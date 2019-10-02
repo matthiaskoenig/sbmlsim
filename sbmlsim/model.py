@@ -4,6 +4,7 @@ Functions for loading models and setting selections.
 import logging
 import roadrunner
 import re
+import numpy as np
 
 
 def load_model(path, selections=True):
@@ -31,48 +32,86 @@ def set_selections(r):
     r.timeCourseSelections += [f'[{key}]' for key in (r.model.getFloatingSpeciesIds() + r.model.getBoundarySpeciesIds())]
 
 
-def
+'''
+# TODO handle the sensitivity changesets
+  for pid in parameters.keys():
+            for change in [1.0 + sensitivity, 1.0 - sensitivity]:
+                resetAll(r)
+                reset_doses(r)
+                # dosing
+                if dosing:
+                    set_dosing(r, dosing, bodyweight=bodyweight)
+                # general changes
+                for key, value in changes.items():
+                    r[key] = value
+                # parameter changes
+                value = r[pid]
+                new_value = value * change
+                r[pid] = new_value
+
+                s = r.simulate(start=0, end=tend, steps=steps)
+                if yfun:
+                    # conversion function
+                    s = pd.DataFrame(s, columns=s.colnames)
+                    yfun(s)
+                    s_data[:, :, idx] = s
+                else:
+                    s_data[:, :, idx] = s
+                idx += 1
+'''
 
 
-def parameters_for_sensitivity(r, model_path):
-    """ Get the parameter ids for the sensitivity analysis.
+def exlude_pkdb_parameter_filter(pid):
+    """ Returns True if excluded, False otherwise
 
-    This includes all constant parameters (not changed via assignments),
-    excluding
-    - parameters with value=0 (no effect on model, dummy parameter)
-    - parameters which are physical constants, e.g., molecular weights
+    :param pid:
+    :return:
     """
-    try:
-        import tesbml as libsbml
-    except ImportError:
-        import libsbml
+    # TODO: implement
+    # dose parameters
+    if (pid.startswith("IVDOSE_")) or (pid.startswith("PODOSE_")):
+        return True
 
-    doc = libsbml.readSBMLFromFile(model_path)
-    model = doc.getModel()
+    # physical parameters
+    if (pid.startswith("Mr_")) or pid in ["R_PDB"]:
+        return True
+    return False
 
-    # constant parameters in model
+
+def _parameters_for_sensitivity(r, exclude_filter=None, exclude_zero=True, zero_eps=1E-8):
+    """ Get parameter ids for sensitivity analysis.
+
+    Values around current model state are used.
+
+    :param r:
+    :param exclude_filter: filter function to exclude parameters
+    :param exclude_zero: exclude parameters which are zero
+    :return:
+    """
+    import libsbml
+
+    print(r.getSBML())
+    doc = libsbml.readSBMLFromString(r.getSBML())  # type: libsbml.SBMLDocument
+    print(doc)
+    model = doc.getModel()  # type: libsbml.Model
+    print(model)
+
+    # constant parameters
     pids_const = []
     for p in model.getListOfParameters():
-        if p.getConstant() == True:
+        if p.getConstant() is True:
             pids_const.append(p.getId())
-
-    # print('constant parameters:', len(pids_const))
 
     # filter parameters
     parameters = {}
     for pid in pids_const:
-        # dose parameters
-        if (pid.startswith("IVDOSE_")) or (pid.startswith("PODOSE_")):
+        if exclude_filter and exclude_filter(pid):
             continue
 
-        # physical parameters
-        if (pid.startswith("Mr_")) or pid in ["R_PDB"]:
-            continue
-
-        # zero parameters
         value = r[pid]
-        if np.abs(value) < 1E-8:
-            continue
+        if exclude_zero:
+            if np.abs(value) < zero_eps:
+                continue
 
         parameters[pid] = value
 

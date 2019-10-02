@@ -3,6 +3,7 @@ Main SBML simulator with roadrunner.
 
 
 """
+import numpy as np
 import pandas as pd
 import roadrunner
 from collections import namedtuple
@@ -16,122 +17,83 @@ import logging
 import json
 
 
+class Sim(object):
+    """ Simulation definition."""
 
-class TimecourseDefinition(object):
-    """ Timecourse definition.
-
-    """
-    def __init__(self, tstart, tend, steps=None, points=None, init_changeset=None, sim_changesets=None,
-                 selections=None, repeats=1):
-        """
+    def __init__(self, tstart, tend, steps, changeset=None, selections=None, repeats=1):
+        """ Create a timecourse definition for simulation.
 
         :param tstart:
         :param tend:
-        :param init_changes:
-        :param sim_changes:
+        :param changeset
         :param selections:
         :param repeats:
         """
+        if changeset is None:
+            changeset = [{}]  # add empty changeset
+        if isinstance(changeset, dict):
+            changeset = [changeset]
+
         self.tstart = tstart
         self.tend = tend
-        self.steps = None
-        self.points = None
-        self.init_changeset = init_changeset
-        self.sim_changesets = sim_changesets
+        self.steps = steps
+        self.changesets = changeset
+        self.selections = selections
         self.repeats = repeats
 
 
-    def check(self, r):
-        """ Check definition with model.
-
-        :param r:
-        :return:
-        """
-        pass
+TimecourseResult = namedtuple("Result", ['mean', 'std', 'min', 'max'])
 
 
-
-TimecourseResult = namedtuple("Result", ['base', 'mean', 'std', 'min', 'max'])
-
-
-
-def timecourse(r, tc_def):
+def timecourse(r, sim):
     """ Timecourse simulations based on timecourse_definition.
 
     :param r: Roadrunner model instance
-    :param timecourse_def: TimeCourseDefinition
+    :param sim: Simulation definition
     :return:
     """
+    # FIXME: support repeats
 
-    # set custom selections
+
+    # set selections
     model_selections = r.timeCourseSelections
-    if tc_def.selections is not None:
-        r.timeCourseSelections = tc_def.selections
+    if sim.selections is not None:
+        r.timeCourseSelections = sim.selections
 
-    # reset all
-    reset_all(r)
+    # empty array for storage
+    columns = r.timeCourseSelections
+    Nt = sim.steps + 1
+    Ncol = len(columns)
+    Nsim = len(sim.changesets)
+    s_data = np.empty((Nt, Ncol, Nsim)) * np.nan
 
+    for idx, changes in enumerate(sim.changesets):
+        # ! parallelization of simulation and better data structures ! # FIXME
 
-    # general changes
-    for key, value in changes.items():
-        r[key] = value
-    s = r.simulate(start=0, end=tend, steps=steps)
-    s_base = pd.DataFrame(s, columns=s.colnames)
+        # reset
+        reset_all(r)
 
-    if yfun:
-        # conversion functio
-        yfun(s_base)
+        # apply changes
+        for key, value in changes.items():
+            r[key] = value
+        # TODO: handle the steps and points correctly
 
-    if parameters is None:
-        return s_base
+        # run simulation
+        s_data[:, :, idx] = r.simulate(start=0, end=sim.tend, steps=sim.steps)
+
+    # reset selections
+    r.timeCourseSelections = model_selections
+
+    # postprocessing
+    if Nsim > 2:
+        s_mean = pd.DataFrame(np.mean(s_data, axis=2), columns=columns)
+        s_std = pd.DataFrame(np.std(s_data, axis=2), columns=columns)
+        s_min = pd.DataFrame(np.min(s_data, axis=2), columns=columns)
+        s_max = pd.DataFrame(np.max(s_data, axis=2), columns=columns)
+        return TimecourseResult(mean=s_mean, std=s_std, min=s_min, max=s_max)
     else:
-        # baseline
-        Np = 2 * len(parameters)
-        (Nt, Ns) = s_base.shape
-        shape = (Nt, Ns, Np)
+        return pd.DataFrame(s_data[:, :, 0], columns=columns)
 
-        # empty array for storage
-        s_data = np.empty(shape) * np.nan
-
-        # all parameter changes
-        idx = 0
-        for pid in parameters.keys():
-            for change in [1.0 + sensitivity, 1.0 - sensitivity]:
-                resetAll(r)
-                reset_doses(r)
-                # dosing
-                if dosing:
-                    set_dosing(r, dosing, bodyweight=bodyweight)
-                # general changes
-                for key, value in changes.items():
-                    r[key] = value
-                # parameter changes
-                value = r[pid]
-                new_value = value * change
-                r[pid] = new_value
-
-                s = r.simulate(start=0, end=tend, steps=steps)
-                if yfun:
-                    # conversion function
-                    s = pd.DataFrame(s, columns=s.colnames)
-                    yfun(s)
-                    s_data[:, :, idx] = s
-                else:
-                    s_data[:, :, idx] = s
-                idx += 1
-
-        s_mean = pd.DataFrame(np.mean(s_data, axis=2), columns=s_base.columns)
-        s_std = pd.DataFrame(np.std(s_data, axis=2), columns=s_base.columns)
-        s_min = pd.DataFrame(np.min(s_data, axis=2), columns=s_base.columns)
-        s_max = pd.DataFrame(np.max(s_data, axis=2), columns=s_base.columns)
-
-        # reset selections
-        model_selections = r.timeCourseSelections
-        if tc_def.selections is not None:
-            r.timeCourseSelections = model_selections
-
-        # return {'base': s_base, 'mean': s_mean, 'std': s_std, 'min': s_min, 'max': s_max}
-        return Result(base=s_base, mean=s_mean, std=s_std, min=s_min, max=s_max)
 
 def simulate(r, start=None, end=None, steps=None, points=None, **kwargs):
     """ Simple simulation.
@@ -159,12 +121,45 @@ def reset_all(r):
             roadrunner.SelectionRecord.FLOATING |
             roadrunner.SelectionRecord.GLOBAL_PARAMETER)
 
+
+# TODO: create advanced changesets
+
+def scan_sim():
+    pass
+
+
+def parameter_sensitivity_sim(r):
+    from sbmlsim.model import _parameters_for_sensitivity
+    p_dict = _parameters_for_sensitivity(r)
+    print(p_dict)
+
+
+
 if __name__ == "__main__":
     import os
     import sbmlsim
     from sbmlsim.tests.settings import DATA_PATH
-    path = os.path.join(DATA_PATH, 'models', 'repressilator.xml')
-    init
+    model_path = os.path.join(DATA_PATH, 'models', 'repressilator.xml')
 
-    tc_def = TimecourseDefinition(tstart=0, tend=100, steps=100, init_changeset=)
-    r = sbmlsim.load_model()
+    r = sbmlsim.load_model(model_path)
+    s = timecourse(r, sim=Sim(tstart=0, tend=100, steps=100))
+    print(s)
+
+    s_result = timecourse(r, sim=Sim(tstart=0, tend=100, steps=100,
+                                     changeset={
+                                         "PX": 10.0
+                                     }))
+    print(s_result)
+
+    s_result = timecourse(r, sim=Sim(tstart=0, tend=100, steps=100,
+                                     changeset=[
+                                         {"[X]": 10.0},
+                                         {"[X]": 15.0},
+                                         {"[X]": 20.0},
+                                         {"[X]": 25.0},
+                                     ])
+                          )
+    print(s_result)
+
+    reset_all(r)
+    parameter_sensitivity_sim(r)

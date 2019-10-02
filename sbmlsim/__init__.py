@@ -2,4 +2,4 @@
 from sbmlsim._version import __version__
 
 from sbmlsim.model import load_model
-from sbmlsim.simulation import simulate
+from sbmlsim.simulation import simulate, timecourse
