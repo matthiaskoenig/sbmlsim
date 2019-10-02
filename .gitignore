@@ -1,0 +1,15 @@
+.idea
+dist
+build
+sbmlsim.egg-info
+cover
+.tox
+.cache
+.coverage
+.benchmark
+*.pyc
+*~
+__pycache__
+
+.ipynb_checkpoints/
+
