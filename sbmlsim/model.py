@@ -2,9 +2,12 @@
 Functions for loading models and setting selections.
 """
 import logging
-import roadrunner
 import re
+from collections import OrderedDict
 import numpy as np
+import roadrunner
+import libsbml
+
 
 
 def load_model(path, selections=True):
@@ -30,35 +33,6 @@ def set_selections(r):
                              + r.model.getReactionIds() \
                              + r.model.getCompartmentIds()
     r.timeCourseSelections += [f'[{key}]' for key in (r.model.getFloatingSpeciesIds() + r.model.getBoundarySpeciesIds())]
-
-
-'''
-# TODO handle the sensitivity changesets
-  for pid in parameters.keys():
-            for change in [1.0 + sensitivity, 1.0 - sensitivity]:
-                resetAll(r)
-                reset_doses(r)
-                # dosing
-                if dosing:
-                    set_dosing(r, dosing, bodyweight=bodyweight)
-                # general changes
-                for key, value in changes.items():
-                    r[key] = value
-                # parameter changes
-                value = r[pid]
-                new_value = value * change
-                r[pid] = new_value
-
-                s = r.simulate(start=0, end=tend, steps=steps)
-                if yfun:
-                    # conversion function
-                    s = pd.DataFrame(s, columns=s.colnames)
-                    yfun(s)
-                    s_data[:, :, idx] = s
-                else:
-                    s_data[:, :, idx] = s
-                idx += 1
-'''
 
 
 def exlude_pkdb_parameter_filter(pid):
@@ -88,13 +62,8 @@ def _parameters_for_sensitivity(r, exclude_filter=None, exclude_zero=True, zero_
     :param exclude_zero: exclude parameters which are zero
     :return:
     """
-    import libsbml
-
-    print(r.getSBML())
     doc = libsbml.readSBMLFromString(r.getSBML())  # type: libsbml.SBMLDocument
-    print(doc)
     model = doc.getModel()  # type: libsbml.Model
-    print(model)
 
     # constant parameters
     pids_const = []
@@ -103,8 +72,8 @@ def _parameters_for_sensitivity(r, exclude_filter=None, exclude_zero=True, zero_
             pids_const.append(p.getId())
 
     # filter parameters
-    parameters = {}
-    for pid in pids_const:
+    parameters = OrderedDict()
+    for pid in sorted(pids_const):
         if exclude_filter and exclude_filter(pid):
             continue
 

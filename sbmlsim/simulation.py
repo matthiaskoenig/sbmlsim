@@ -1,27 +1,26 @@
 """
-Main SBML simulator with roadrunner.
-
-
+Run typical simulation experiments on SBML models
 """
+import logging
+import json
+from collections import namedtuple
+
 import numpy as np
 import pandas as pd
 import roadrunner
-from collections import namedtuple
+
 
 # TODO: parameter sensitivity
 # TODO: initial condition sensitivity
-# TODO: simulation experiments
-
-
-import logging
-import json
+# TODO: parameter scans
 
 
 class Sim(object):
     """ Simulation definition."""
 
-    def __init__(self, tstart, tend, steps, changeset=None, selections=None, repeats=1):
-        """ Create a timecourse definition for simulation.
+    def __init__(self, tstart, tend, steps,
+                 changeset=None, selections=None, repeats=1):
+        """ Create a time course definition for simulation.
 
         :param tstart:
         :param tend:
@@ -31,6 +30,7 @@ class Sim(object):
         """
         if changeset is None:
             changeset = [{}]  # add empty changeset
+
         if isinstance(changeset, dict):
             changeset = [changeset]
 
@@ -53,7 +53,6 @@ def timecourse(r, sim):
     :return:
     """
     # FIXME: support repeats
-
 
     # set selections
     model_selections = r.timeCourseSelections
@@ -128,11 +127,24 @@ def scan_sim():
     pass
 
 
-def parameter_sensitivity_sim(r):
+def parameter_sensitivity_changeset(r, sensitivity=0.1):
+    """ Create changeset to calculate parameter sensitivity.
+
+    :param r: RoadRunner model
+    :return: changeset
+    """
     from sbmlsim.model import _parameters_for_sensitivity
     p_dict = _parameters_for_sensitivity(r)
     print(p_dict)
 
+    # create parameter changeset
+    changeset = []
+    for pid, value in p_dict.items():
+        for change in [1.0 + sensitivity, 1.0 - sensitivity]:
+            changeset.append(
+                {pid: change*value}
+            )
+    return changeset
 
 
 if __name__ == "__main__":
@@ -143,23 +155,8 @@ if __name__ == "__main__":
 
     r = sbmlsim.load_model(model_path)
     s = timecourse(r, sim=Sim(tstart=0, tend=100, steps=100))
-    print(s)
+    psensitivity_changeset = parameter_sensitivity_changeset(r)
 
     s_result = timecourse(r, sim=Sim(tstart=0, tend=100, steps=100,
-                                     changeset={
-                                         "PX": 10.0
-                                     }))
+                                     changeset=psensitivity_changeset))
     print(s_result)
-
-    s_result = timecourse(r, sim=Sim(tstart=0, tend=100, steps=100,
-                                     changeset=[
-                                         {"[X]": 10.0},
-                                         {"[X]": 15.0},
-                                         {"[X]": 20.0},
-                                         {"[X]": 25.0},
-                                     ])
-                          )
-    print(s_result)
-
-    reset_all(r)
-    parameter_sensitivity_sim(r)
