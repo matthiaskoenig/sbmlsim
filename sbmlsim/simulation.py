@@ -9,10 +9,9 @@ import numpy as np
 import pandas as pd
 import roadrunner
 
+from sbmlsim.model import _parameters_for_sensitivity
 
-# TODO: parameter sensitivity
 # TODO: initial condition sensitivity
-# TODO: parameter scans
 
 
 class Sim(object):
@@ -37,12 +36,42 @@ class Sim(object):
         self.tstart = tstart
         self.tend = tend
         self.steps = steps
-        self.changesets = changeset
+        self.changeset = changeset
         self.selections = selections
         self.repeats = repeats
 
 
-TimecourseResult = namedtuple("Result", ['mean', 'std', 'min', 'max'])
+class TimecourseResult(object):
+    """Result of a timecourse simulation."""
+
+    def __init__(self, data, selections, changeset):
+        self.data = data
+        self.changeset = changeset
+        self.selections = selections
+
+    @property
+    def Nsel(self):
+        return len(self.selections)
+
+    @property
+    def Nsim(self):
+        return len(self.changeset)
+
+    @property
+    def mean(self):
+        return pd.DataFrame(np.mean(self.data, axis=2), columns=self.selections)
+
+    @property
+    def std(self):
+        return pd.DataFrame(np.std(self.data, axis=2), columns=self.selections)
+
+    @property
+    def min(self):
+        return pd.DataFrame(np.min(self.data, axis=2), columns=self.selections)
+
+    @property
+    def max(self):
+        return pd.DataFrame(np.max(self.data, axis=2), columns=self.selections)
 
 
 def timecourse(r, sim):
@@ -63,10 +92,10 @@ def timecourse(r, sim):
     columns = r.timeCourseSelections
     Nt = sim.steps + 1
     Ncol = len(columns)
-    Nsim = len(sim.changesets)
+    Nsim = len(sim.changeset)
     s_data = np.empty((Nt, Ncol, Nsim)) * np.nan
 
-    for idx, changes in enumerate(sim.changesets):
+    for idx, changes in enumerate(sim.changeset):
         # ! parallelization of simulation and better data structures ! # FIXME
 
         # reset
@@ -75,7 +104,6 @@ def timecourse(r, sim):
         # apply changes
         for key, value in changes.items():
             r[key] = value
-        # TODO: handle the steps and points correctly
 
         # run simulation
         s_data[:, :, idx] = r.simulate(start=0, end=sim.tend, steps=sim.steps)
@@ -85,11 +113,8 @@ def timecourse(r, sim):
 
     # postprocessing
     if Nsim > 2:
-        s_mean = pd.DataFrame(np.mean(s_data, axis=2), columns=columns)
-        s_std = pd.DataFrame(np.std(s_data, axis=2), columns=columns)
-        s_min = pd.DataFrame(np.min(s_data, axis=2), columns=columns)
-        s_max = pd.DataFrame(np.max(s_data, axis=2), columns=columns)
-        return TimecourseResult(mean=s_mean, std=s_std, min=s_min, max=s_max)
+        return TimecourseResult(data=s_data, selections=columns,
+                                changeset=sim.changeset)
     else:
         return pd.DataFrame(s_data[:, :, 0], columns=columns)
 
@@ -121,10 +146,15 @@ def reset_all(r):
             roadrunner.SelectionRecord.GLOBAL_PARAMETER)
 
 
-# TODO: create advanced changesets
+def value_scan_changeset(selector, values):
+    """Create changeset to scan parameter.
 
-def scan_sim():
-    pass
+    :param r: RoadRunner model
+    :param selector: selector in model
+    :param values:
+    :return: changeset
+    """
+    return [{selector: value} for value in values]
 
 
 def parameter_sensitivity_changeset(r, sensitivity=0.1):
@@ -133,11 +163,7 @@ def parameter_sensitivity_changeset(r, sensitivity=0.1):
     :param r: RoadRunner model
     :return: changeset
     """
-    from sbmlsim.model import _parameters_for_sensitivity
     p_dict = _parameters_for_sensitivity(r)
-    print(p_dict)
-
-    # create parameter changeset
     changeset = []
     for pid, value in p_dict.items():
         for change in [1.0 + sensitivity, 1.0 - sensitivity]:
@@ -160,3 +186,10 @@ if __name__ == "__main__":
     s_result = timecourse(r, sim=Sim(tstart=0, tend=100, steps=100,
                                      changeset=psensitivity_changeset))
     print(s_result)
+
+    scan_changeset = value_scan_changeset('n',
+                                          values=np.linspace(start=2, stop=10, num=8))
+    s_result = timecourse(r,
+                          Sim(tstart=0, tend=100, steps=100,
+                              changeset=scan_changeset)
+                          )
