@@ -16,7 +16,6 @@ plt.rcParams.update({
     'figure.facecolor': '1.00'
 })
 
-
 def add_line(ax, data, yid, xid="time", color='black', label='', kwargs_sim=kwargs_sim,
              xf=1.0, **kwargs):
     """
@@ -30,15 +29,15 @@ def add_line(ax, data, yid, xid="time", color='black', label='', kwargs_sim=kwar
     kwargs_plot = dict(kwargs_sim)
     kwargs_plot.update(kwargs)
 
-
     if isinstance(data, TimecourseResult):
         x = data.mean[xid]*xf
 
+        # FIXME: std areas should be within min/max areas!
         ax.fill_between(x, data.min[yid], data.mean[yid] - data.std[yid], color=color, alpha=0.3, label="__nolabel__")
         ax.fill_between(x, data.mean[yid] + data.std[yid], data.max[yid], color=color, alpha=0.3, label="__nolabel__")
         ax.fill_between(x, data.mean[yid] - data.std[yid], data.mean[yid] + data.std[yid], color=color, alpha=0.5, label="__nolabel__")
 
         ax.plot(x, data.mean[yid], '-', color=color, label="sim {}".format(label), **kwargs_plot)
     else:
-        x = s[xid] * xf
-        ax.plot(x, s[yid], '-', color=color, label="sim {}".format(label), **kwargs_plot)
+        x = data[xid] * xf
+        ax.plot(x, data[yid], '-', color=color, label="sim {}".format(label), **kwargs_plot)
