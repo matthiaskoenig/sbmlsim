@@ -12,7 +12,7 @@ import re
 # tissues to identical values (which removes the distribution kinetics).
 # -------------------------------------------------------------------------------------------------
 
-def set_initial_concentrations(r, skey, value):
+def set_initial_concentrations(r, skey, value: float):
     """ Set initial concentrations for skey.
 
     :param r: roadrunner model
