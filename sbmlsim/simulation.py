@@ -1,5 +1,15 @@
 """
 Run typical simulation experiments on SBML models
+
+TODO: implement timings (duration of interventions)
+- timings of changes are necessary, i.e. when should change start and when end
+Also what is the exact time point the change should be applied.
+- different classes of changes:
+    - initial changes (applied to the complete simulation)
+    - timed changes (applied during the timecourse, start times and end times)
+
+TODO: implement clamping of substances
+
 """
 import logging
 import json
@@ -8,19 +18,26 @@ from collections import namedtuple
 import numpy as np
 import pandas as pd
 import roadrunner
+from copy import deepcopy
 
 from sbmlsim.results import TimecourseResult
+
+
 
 
 class TimecourseSimulation(object):
     """ Simulation definition.
 
-    Definition of all information necessary to run a timecourse simulation.
+    Definition of all information necessary to run a single timecourse simulation.
+
     A single simulation consists of multiple changes which are applied,
     all simulations are performed and collected.
+
+    Changesets and selections are deepcopied for persistance
+
     """
-    def __init__(self, tstart, tend, steps,
-                 changeset=None, selections=None, repeats=1):
+    def __init__(self, tstart: float, tend: float, steps: int,
+                 changeset=None, selections=None, repeats: int=1):
         """ Create a time course definition for simulation.
 
         :param tstart:
@@ -38,9 +55,16 @@ class TimecourseSimulation(object):
         self.tstart = tstart
         self.tend = tend
         self.steps = steps
-        self.changeset = changeset
-        self.selections = selections
+        self.changeset = deepcopy(changeset)
+        self.selections = deepcopy(selections)
         self.repeats = repeats
+
+    def add_change(self, sid, value):
+        self.changeset[sid] = value
+
+    def remove_change(self, sid):
+        del self.changeset[sid]
+
 
 
 def timecourse(r, sim: TimecourseSimulation):

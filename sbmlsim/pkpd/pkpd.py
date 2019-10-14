@@ -54,10 +54,9 @@ def _set_initial_values(r, sid, value, method="concentration"):
             logging.warning("urinary values are not set")
             continue
         if method == "concentration":
-            rkey = f'init([{key}])'
-        elif method == "amount":
-            rkey = f'init({value})'
-        # print(f'{rkey} <- {value}')
+            # FIXME: init is only working on species with boundaryCondition=False
+            # rkey = f'init([{key}])'
+            rkey = f'[{key}]'
 
         changeset[rkey] = value
 
