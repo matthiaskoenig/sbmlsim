@@ -131,8 +131,8 @@ if __name__ == "__main__":
         plot_results(results, "clamp")
 
         # free the simulation
-        rclamp = clamp_species(r, sids="X", boundary_condition=False)
-        results = sbmlsim.timecourse(rclamp, tsim)
+        rfree = clamp_species(rclamp, sids="X", boundary_condition=False)
+        results = sbmlsim.timecourse(rfree, tsim)
         plot_results(results, "freed clamp")
 
 
