@@ -21,11 +21,12 @@ import roadrunner
 from copy import deepcopy
 
 from sbmlsim.results import TimecourseResult
+from sbmlsim.model import clamp_species, MODEL_CHANGE_BOUNDARY_CONDITION
+import warnings
+from typing import List
+from json import JSONEncoder
 
-
-
-
-class TimecourseSimulation(object):
+class Timecourse(JSONEncoder):
     """ Simulation definition.
 
     Definition of all information necessary to run a single timecourse simulation.
@@ -36,50 +37,131 @@ class TimecourseSimulation(object):
     Changesets and selections are deepcopied for persistance
 
     """
-    def __init__(self, tstart: float, tend: float, steps: int,
-                 changeset=None, selections=None, repeats: int=1):
+    def __init__(self, start: float, end: float, steps: int,
+                 changes: dict=None, model_changes: dict=None):
         """ Create a time course definition for simulation.
 
-        :param tstart:
-        :param tend:
-        :param changeset
-        :param selections:
-        :param repeats:
+        :param start: start time
+        :param end: end time
+        :param steps: simulation steps
+        :param changes: parameter and initial condition changes
+        :param model_changes: changes to model structure
         """
-        if changeset is None:
-            changeset = [{}]  # add empty changeset
+        # Create empty changes and model changes for serialization
+        if changes is None:
+            changes = {}
+        if model_changes is None:
+            model_changes = {}
 
-        if isinstance(changeset, dict):
-            changeset = [changeset]
-
-        self.tstart = tstart
-        self.tend = tend
+        self.start = start
+        self.end = end
         self.steps = steps
-        self.changeset = deepcopy(changeset)
+        self.changes = deepcopy(changes)
+        self.model_changes = deepcopy(model_changes)
+
+    def default(self, o):
+        """json encoder"""
+        return o.__dict__
+
+    def add_change(self, sid: str, value: float):
+        self.changes[sid] = value
+
+    def remove_change(self, sid: str):
+        del self.changes[sid]
+
+    def add_model_change(self, sid: str, change):
+        self.model_changes[sid] = change
+
+    def remove_model_change(self, sid: str):
+        del self.model_changes[sid]
+
+
+class TimecourseSimulation(object):
+    """ Complex timecourse simulation consisting of multiple
+    concatenated timecourses.
+    """
+    def __init__(self, timecourses: List[Timecourse],
+                 selections: list = None, reset: bool = True):
+        """
+        :param timecourses:
+        :param selections:
+        :param reset: resetToOrigin at beginning of simulation
+        """
+        if isinstance(timecourses, Timecourse):
+            timecourses = [timecourses]
+
+        self.timecourses = timecourses
         self.selections = deepcopy(selections)
-        self.repeats = repeats
+        self.reset = reset
 
-    def add_change(self, sid, value):
-        self.changeset[sid] = value
-
-    def remove_change(self, sid):
-        del self.changeset[sid]
-
+    def to_dict(self):
+        """Json serialization"""
+        # FIXME
+        pass
 
 
-def timecourse(r, sim: TimecourseSimulation):
+def timecourse(r: roadrunner.RoadRunner, sim: TimecourseSimulation) -> pd.DataFrame:
     """ Timecourse simulations based on timecourse_definition.
 
     :param r: Roadrunner model instance
-    :param sim: Simulation definition
+    :param sim: Simulation definition(s)
     :param reset_all: Reset model at the beginning
     :return:
     """
-    # FIXME: support repeats
-    # FIXME: handle model state persistance, i.e. the initial state of the
-    # model should persist for all the simulations.
+    if sim.reset:
+        r.resetToOrigin()
 
-    # set selections
+    # selections backup
+    model_selections = r.timeCourseSelections
+    if sim.selections is not None:
+        r.timeCourseSelections = sim.selections
+
+    frames = []
+    t_offset = 0.0
+    for tc in sim.timecourses:
+
+        # apply changes
+        for key, value in tc.changes.items():
+            r[key] = value
+
+        for key, value in tc.model_changes.items():
+            if key == MODEL_CHANGE_BOUNDARY_CONDITION:
+                for sid, bc in value.items():
+                    # setting boundary conditions
+                    r = clamp_species(r, sid, boundary_condition=bc)
+            else:
+                logging.error("Unsupported model change: {}:{}".format(key, value))
+
+        # run simulation
+        s = r.simulate(start=tc.start, end=tc.end, steps=tc.steps)
+        df = pd.DataFrame(s, columns=s.colnames)
+        df.time = df.time + t_offset
+        frames.append(df)
+        t_offset += tc.end
+
+    # reset selections
+    r.timeCourseSelections = model_selections
+
+    return pd.concat(frames)
+
+
+def ensemble():
+    """ ensemple simulation
+
+    :return:
+    """
+
+
+def timecourse_old(r, sim: TimecourseSimulation):
+    """ Timecourse simulations based on timecourse_definition.
+
+    :param r: Roadrunner model instance
+    :param sim: Simulation definition(s)
+    :param reset_all: Reset model at the beginning
+    :return:
+    """
+
+    # selections backup
     model_selections = r.timeCourseSelections
     if sim.selections is not None:
         r.timeCourseSelections = sim.selections
@@ -101,18 +183,32 @@ def timecourse(r, sim: TimecourseSimulation):
         for key, value in changes.items():
             r[key] = value
 
+        # TODO: run the full simulation experiment (?!)
+
         # run simulation
         s_data[:, :, idx] = r.simulate(start=0, end=sim.tend, steps=sim.steps)
 
     # reset selections
     r.timeCourseSelections = model_selections
 
-    # postprocessing
+    # Create a result structure
     if Nsim > 2:
         return TimecourseResult(data=s_data, selections=columns,
                                 changeset=sim.changeset)
     else:
         return pd.DataFrame(s_data[:, :, 0], columns=columns)
+
+
+def reset_all(r):
+    """ Reset all model variables to CURRENT init(X) values.
+
+    This resets all variables, S1, S2 etc to the CURRENT init(X) values. It also resets all
+    parameters back to the values they had when the model was first loaded.
+    """
+    r.reset(roadrunner.SelectionRecord.TIME |
+            roadrunner.SelectionRecord.RATE |
+            roadrunner.SelectionRecord.FLOATING |
+            roadrunner.SelectionRecord.GLOBAL_PARAMETER)
 
 
 def simulate(r, start=None, end=None, steps=None, points=None, **kwargs):
@@ -126,17 +222,9 @@ def simulate(r, start=None, end=None, steps=None, points=None, **kwargs):
     :param kwargs:
     :return:
     """
+    warnings.warn(
+        "simulate is deprecated, use timecourse instead",
+        DeprecationWarning
+    )
     s = r.simulate(start=start, end=end, steps=steps, points=points, **kwargs)
     return pd.DataFrame(s, columns=s.colnames)
-
-
-def reset_all(r):
-    """ Reset all model variables to CURRENT init(X) values.
-
-    This resets all variables, S1, S2 etc to the CURRENT init(X) values. It also resets all
-    parameters back to the values they had when the model was first loaded.
-    """
-    r.reset(roadrunner.SelectionRecord.TIME |
-            roadrunner.SelectionRecord.RATE |
-            roadrunner.SelectionRecord.FLOATING |
-            roadrunner.SelectionRecord.GLOBAL_PARAMETER)

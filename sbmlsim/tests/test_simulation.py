@@ -3,6 +3,8 @@ import sbmlsim
 from sbmlsim.tests.settings import DATA_PATH
 from sbmlsim.simulation import TimecourseSimulation
 
+REPRESSILATOR_PATH = os.path.join(DATA_PATH, 'models', 'repressilator.xml')
+
 
 def test_simulate():
     model_path = os.path.join(DATA_PATH, 'models', 'body19_livertoy_flat.xml')
@@ -12,8 +14,7 @@ def test_simulate():
 
 
 def test_timecourse():
-    model_path = os.path.join(DATA_PATH, 'models', 'repressilator.xml')
-    r = sbmlsim.load_model(model_path)
+    r = sbmlsim.load_model(REPRESSILATOR_PATH)
     s = sbmlsim.timecourse(r, sim=TimecourseSimulation(tstart=0, tend=100, steps=100))
     assert s is not None
 
@@ -31,4 +32,20 @@ def test_timecourse():
                                          {"[X]": 25.0},
                                      ])
                                   )
+    assert s_result is not None
+
+
+def test_timecourse_combined():
+    r = sbmlsim.load_model(REPRESSILATOR_PATH)
+    s = sbmlsim.timecourse(r, sim=TimecourseSimulation(tstart=0, tend=100, steps=100))
+    assert s is not None
+
+    tsim =TimecourseSimulation(tstart=0, tend=100, steps=100, changeset={"PX": 10.0})
+    res1 = sbmlsim.timecourse(r, tsim)
+    assert res1 is not None
+    res2 = sbmlsim.timecourse(r, tsim)
+
+    from sbmlsim.results import TimecourseResult
+
+    TimecourseResult.append_results()
     assert s_result is not None

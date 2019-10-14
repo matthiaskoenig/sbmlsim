@@ -69,6 +69,8 @@ setup(
         "pandas>=0.25.1",
         "python-libsbml-experimental>=5.18.1",
         "libroadrunner>=1.5.4",
+        "psutil",
+        "ray",
         "pytest>=4.3.1",
         "pytest-cov>=2.6.1",
     ],

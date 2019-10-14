@@ -5,6 +5,7 @@ import logging
 import roadrunner
 import libsbml
 
+MODEL_CHANGE_BOUNDARY_CONDITION = "boundary_condition"
 
 def load_model(path, selections: bool = True) -> roadrunner.RoadRunner:
     """ Loads the latest model version.

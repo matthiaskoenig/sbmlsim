@@ -1,7 +1,13 @@
+"""
+Helpers for working with timecourse results.
+"""
+
 import logging
 import numpy as np
 import pandas as pd
 
+
+# FIXME: hashing
 
 class TimecourseResult(object):
     """Result of a single timecourse simulation. """
@@ -37,7 +43,7 @@ class TimecourseResult(object):
         return pd.DataFrame(np.max(self.df, axis=2), columns=self.selections)
 
     @staticmethod
-    def append_results(results, offset_time=True):
+    def concatenate(results, offset_time=True):
         """ Append multiple timecourse results.
 
         Changeset and selections have to be identical.
@@ -60,10 +66,4 @@ class TimecourseResult(object):
             """
         df = pd.concat(frames)
         return
-
-
-
-
-
-        return retult
 
