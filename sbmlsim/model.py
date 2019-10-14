@@ -120,7 +120,7 @@ if __name__ == "__main__":
 
         # reference simulation
         r = sbmlsim.load_model(MODEL_REPRESSILATOR)
-        tsim = TimecourseSimulation(tstart=0, tend=400, steps=400, changeset=[{"X": 20}])
+        tsim = TimecourseSimulation(tstart=0, tend=400, steps=400, changeset=[{"X": 10}])
 
         results = sbmlsim.timecourse(r, tsim)
         plot_results(results, "control")
@@ -134,8 +134,6 @@ if __name__ == "__main__":
         rclamp = clamp_species(r, sids="X", boundary_condition=False)
         results = sbmlsim.timecourse(rclamp, tsim)
         plot_results(results, "freed clamp")
-
-
 
 
     run_clamp_sid()
