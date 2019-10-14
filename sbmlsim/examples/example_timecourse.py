@@ -17,27 +17,41 @@ model_path = os.path.join(DATA_PATH, 'models', 'repressilator.xml')
 r = load_model(model_path)
 
 # 1. simple timecourse simulation
-s1 = timecourse(r, sim=TimecourseSimulation(
-                    Timecourse(start=0, end=100, steps=100))
-               )
+print("*** simple timecourse ***")
+tc_sim = TimecourseSimulation(
+    Timecourse(start=0, end=100, steps=100)
+)
+s1 = timecourse(r, sim=tc_sim)
+print(tc_sim)
+
 
 # 2. timecourse with parameter changes
-s2 = timecourse(r, sim=TimecourseSimulation(
-                    Timecourse(start=0, end=100, steps=100, changes={"X": 10, "Y": 200}))
-               )
+print("*** parameter change ***")
+tc_sim = TimecourseSimulation(
+    Timecourse(start=0, end=100, steps=100, changes={"X": 10, "Y": 200})
+)
+s2 = timecourse(r, sim=tc_sim)
+print(tc_sim)
 
 # 3. combined timecourses
-s3 = timecourse(r, sim=TimecourseSimulation([
+print("*** combined timecourse ***")
+tc_sim = TimecourseSimulation([
         Timecourse(start=0, end=100, steps=100),
         Timecourse(start=0, end=100, steps=100, changes={"X": 10, "Y": 20}),
-    ]))
+    ])
+s3 = timecourse(r, sim=tc_sim)
+print(tc_sim)
 
 # 4. combined timecourses with model_change
-s4 = timecourse(r, sim=TimecourseSimulation([
+print("*** model change ***")
+tc_sim = TimecourseSimulation([
         Timecourse(start=0, end=100, steps=100),
         Timecourse(start=0, end=50, steps=100, model_changes={"boundary_condition": {"X": True}}),
         Timecourse(start=0, end=100, steps=100, model_changes={"boundary_condition": {"X": False}}),
-    ]))
+    ])
+s4 = timecourse(r, sim=tc_sim)
+print(tc_sim)
+
 
 # create figure
 fig, (ax1, ax2, ax3, ax4) = plt.subplots(nrows=1, ncols=4, figsize=(20, 5))

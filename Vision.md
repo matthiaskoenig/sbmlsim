@@ -12,6 +12,8 @@
 - Parameter scans
 - Parameter sensitivity analysis
 
+## Unit support
+
 ## Visualization
 - interactive plots (altair)
 

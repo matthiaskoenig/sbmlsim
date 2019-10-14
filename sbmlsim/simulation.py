@@ -23,8 +23,10 @@ from copy import deepcopy
 from sbmlsim.results import TimecourseResult
 from sbmlsim.model import clamp_species, MODEL_CHANGE_BOUNDARY_CONDITION
 import warnings
-from typing import List
+from typing import List, Union
 from json import JSONEncoder
+
+
 
 class Timecourse(JSONEncoder):
     """ Simulation definition.
@@ -38,7 +40,7 @@ class Timecourse(JSONEncoder):
 
     """
     def __init__(self, start: float, end: float, steps: int,
-                 changes: dict=None, model_changes: dict=None):
+                 changes: dict = None, model_changes: dict = None):
         """ Create a time course definition for simulation.
 
         :param start: start time
@@ -76,6 +78,12 @@ class Timecourse(JSONEncoder):
         del self.model_changes[sid]
 
 
+class ObjectJSONEncoder(JSONEncoder):
+    def default(self, o):
+        """json encoder"""
+        return o.__dict__
+
+
 class TimecourseSimulation(object):
     """ Complex timecourse simulation consisting of multiple
     concatenated timecourses.
@@ -90,17 +98,38 @@ class TimecourseSimulation(object):
         if isinstance(timecourses, Timecourse):
             timecourses = [timecourses]
 
+
+        self.id = None
         self.timecourses = timecourses
         self.selections = deepcopy(selections)
         self.reset = reset
 
-    def to_dict(self):
-        """Json serialization"""
-        # FIXME
-        pass
+    def clone(self):
+        return deepcopy(self)
+
+    def ensemble(self, changeset):
+        """ Creates an ensemble of timecourse by mixin the changeset
+
+        :return:
+        """
+        sims = []
+        for changes in changeset:
+            sim = self.clone()
+            tc = sim.timecourses[0]
+            for key, value in changes.items():
+                tc.add_change(key, value)
+            sims.append(sim)
+
+        return sims
+
+    def to_json(self):
+        return json.dumps(self, cls=ObjectJSONEncoder, indent=2)
+
+    def __str__(self):
+        return "{}\n{}".format(type(self), self.to_json())
 
 
-def timecourse(r: roadrunner.RoadRunner, sim: TimecourseSimulation) -> pd.DataFrame:
+def timecourse(r: roadrunner.RoadRunner, sim: Union[TimecourseSimulation, Timecourse]) -> pd.DataFrame:
     """ Timecourse simulations based on timecourse_definition.
 
     :param r: Roadrunner model instance
@@ -108,6 +137,9 @@ def timecourse(r: roadrunner.RoadRunner, sim: TimecourseSimulation) -> pd.DataFr
     :param reset_all: Reset model at the beginning
     :return:
     """
+    if isinstance(sim, Timecourse):
+        sim = TimecourseSimulation(timecourses=[sim])
+
     if sim.reset:
         r.resetToOrigin()
 
@@ -145,11 +177,15 @@ def timecourse(r: roadrunner.RoadRunner, sim: TimecourseSimulation) -> pd.DataFr
     return pd.concat(frames)
 
 
-def ensemble():
-    """ ensemple simulation
+def timecourses(r: roadrunner.RoadRunner, sims: List[TimecourseSimulation]) -> List[pd.DataFrame]:
+    """ Run many timecourses."""
+    # FIXME: parallelize
+    results = []
+    for sim in sims:
+        df = timecourse(r, sim)
+        results.append(df)
 
-    :return:
-    """
+    return results
 
 
 def timecourse_old(r, sim: TimecourseSimulation):
@@ -167,7 +203,7 @@ def timecourse_old(r, sim: TimecourseSimulation):
         r.timeCourseSelections = sim.selections
 
     # empty array for storage
-    columns = r.timeCourseSelections
+    columns: list = r.timeCourseSelections
     Nt = sim.steps + 1
     Ncol = len(columns)
     Nsim = len(sim.changeset)

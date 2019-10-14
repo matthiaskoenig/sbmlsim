@@ -12,58 +12,32 @@ import pandas as pd
 class TimecourseResult(object):
     """Result of a single timecourse simulation. """
 
-    def __init__(self, data, selections, changeset):
+    def __init__(self, dataframes):
+        # empty array for storage
+        df = dataframes[0]
+        self.columns = df.columns
+        Nt = len(df)
+        Ncol = len(self.columns)
+        Nsim = len(dataframes)
+        data = np.empty((Nt, Ncol, Nsim)) * np.nan
 
-        # FIXME: what exactly is this result?
-        # FIXME: what is going on with selections and changesets here?
-        self.df = data
+        for k, df in enumerate(dataframes):
+            data[:, :, k] = df.values
 
-    @property
-    def Nsel(self):
-        return len(self.selections)
-
-    @property
-    def Nsim(self):
-        return len(self.changeset)
+        self.data = data
 
     @property
     def mean(self):
-        return pd.DataFrame(np.mean(self.df, axis=2), columns=self.selections)
+        return pd.DataFrame(np.mean(self.data, axis=2), columns=self.columns)
 
     @property
     def std(self):
-        return pd.DataFrame(np.std(self.df, axis=2), columns=self.selections)
+        return pd.DataFrame(np.std(self.data, axis=2), columns=self.columns)
 
     @property
     def min(self):
-        return pd.DataFrame(np.min(self.df, axis=2), columns=self.selections)
+        return pd.DataFrame(np.min(self.data, axis=2), columns=self.columns)
 
     @property
     def max(self):
-        return pd.DataFrame(np.max(self.df, axis=2), columns=self.selections)
-
-    @staticmethod
-    def concatenate(results, offset_time=True):
-        """ Append multiple timecourse results.
-
-        Changeset and selections have to be identical.
-        """
-        # fix times in individual time frames
-        tend = -1.0
-        frames = []
-        # FIXME
-        for result in results:
-            """
-            df = result.df
-            if "time" in df.columns:
-                tend_new = df.time.values[-1]
-                if tend < 0:
-                    tend = tend_new
-                else:
-                    tend +=
-                    
-            # necessary to fix all the times:
-            """
-        df = pd.concat(frames)
-        return
-
+        return pd.DataFrame(np.max(self.data, axis=2), columns=self.columns)
