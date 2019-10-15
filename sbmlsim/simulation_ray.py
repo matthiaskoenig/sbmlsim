@@ -36,6 +36,14 @@ class SimulatorActor(object):
             self.r.timeCourseSelections += [f'[{key}]' for key in (
                     r_model.getFloatingSpeciesIds() + r_model.getBoundarySpeciesIds())]
 
+    def timecourses(self, simulations: list) -> list:
+        """"""
+        results = []
+        for tc_sim in simulations:
+            results.append(self.timecourse(tc_sim))
+        return results
+
+
     def timecourse(self, sim: TimecourseSimulation) -> pd.DataFrame:
         """ Timecourse simulations based on timecourse_definition.
 
@@ -74,30 +82,80 @@ class SimulatorActor(object):
         return pd.concat(frames)
 
 
+class Simulator(object):
+    @staticmethod
+    def timecourses(path, simulations, selections=None, actor_count=16):
+        """ Run all simulations with given model and collect the results.
+
+        :param path:
+        :param simulations:
+        :param selections:
+        :return:
+        """
+        # Create simulators
+        simulators = [SimulatorActor.remote(path, selections) for _ in range(actor_count)]
+
+
+        # Split simulations in chunks for actors
+        tc_ids = []
+        chunks = list(Simulator.create_chunks(simulations, actor_count))
+        chunks_count = len(chunks)
+        for chunk in chunks:
+            print(len(chunk))
+
+
+        for k, simulator in enumerate(simulators):
+            # FIXME: chunking is not working
+            if k<(chunks_count-1):
+                chunk = chunks[k]
+                tc_id = simulator.timecourses.remote(chunk)
+                tc_ids.append(tc_id)
+
+        results = ray.get(tc_ids)
+        # flatten list of lists [[df, df], [df, df], ...]
+        return [df for sublist in results for df in sublist]
+        # return results
+
+    @staticmethod
+    def create_chunks(l, n):
+        """Yield successive n-sized chunks from l."""
+        for i in range(0, len(l), n):
+            yield l[i:i + n]
+
 if __name__ == "__main__":
 
-    # Create actor process
-    sa = SimulatorActor.remote("repressilator.xml")
+    if False:
+        # [1] Create single actor process
+        sa = SimulatorActor.remote("repressilator.xml")
 
-    # run simulation
+        # run simulation
+        tc_sim = TimecourseSimulation([
+            Timecourse(start=0, end=100, steps=100),
+            Timecourse(start=0, end=100, steps=100, changes={"X": 10, "Y": 20}),
+        ])
+        tc_id = sa.timecourse.remote(tc_sim)
+        print("-" * 80)
+        print(ray.get(tc_id))
+        print("-" * 80)
+
+    if False:
+        # [2] Create ten Simulators.
+        simulators = [SimulatorActor.remote("repressilator.xml") for _ in range(16)]
+        # Run simulation on every simulator
+        tc_ids = [s.timecourse.remote(tc_sim) for s in simulators]
+        results = ray.get(tc_ids)
+        assert results
+
+    # [3] execute multiple simulations
+    simulations = []
     tc_sim = TimecourseSimulation([
         Timecourse(start=0, end=100, steps=100),
         Timecourse(start=0, end=100, steps=100, changes={"X": 10, "Y": 20}),
     ])
+    for _ in range(1000):
+        simulations.append(tc_sim)
 
-    # run sin
-    tc_id = sa.timecourse.remote(tc_sim)
-    print("-" * 80)
-    print(ray.get(tc_id))
-    print("-" * 80)
-    exit()
+    results = Simulator.timecourses(path="repressilator.xml", simulations=simulations)
+    print(len(results))
 
-
-    # Create ten Simulators.
-    simulators = [SimulatorActor.remote("repressilator.xml") for _ in range(16)]
-
-    # Run simulation on every simulator
-    sim_ids = [s.timecourse.remote(tc_sim) for s in simulators]
-    results = ray.get([s.get_value.remote() for s in simulators])
-    print(results)
 
