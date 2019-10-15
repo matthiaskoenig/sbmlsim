@@ -186,8 +186,8 @@ def timecourses(r: roadrunner.RoadRunner, sims: List[TimecourseSimulation]) -> L
         results.append(df)
 
     # TODO: make timecourse result
-    TimecourseResult(data=s_data, selections=columns,
-                     changeset=sim.changeset)
+    # TimecourseResult(data=s_data, selections=columns,
+    #                 changeset=sim.changeset)
 
     return results
 

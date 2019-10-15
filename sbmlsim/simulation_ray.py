@@ -83,8 +83,14 @@ class SimulatorActor(object):
 
 
 class Simulator(object):
-    @staticmethod
-    def timecourses(path, simulations, selections=None, actor_count=16):
+    """
+    # TODO: cash the actors
+    """
+    def __init__(self, path, selections=None, actor_count=16):
+        self.actor_count = actor_count
+        self.simulators = [SimulatorActor.remote(path, selections) for _ in range(actor_count)]
+
+    def timecourses(self, simulations):
         """ Run all simulations with given model and collect the results.
 
         :param path:
@@ -92,24 +98,15 @@ class Simulator(object):
         :param selections:
         :return:
         """
-        # Create simulators
-        simulators = [SimulatorActor.remote(path, selections) for _ in range(actor_count)]
-
-
         # Split simulations in chunks for actors
+        chunks = [[] for _ in range(self.actor_count)]
+        for k, tc_sim in enumerate(simulations):
+            chunks[k % self.actor_count].append(tc_sim)
+
         tc_ids = []
-        chunks = list(Simulator.create_chunks(simulations, actor_count))
-        chunks_count = len(chunks)
-        for chunk in chunks:
-            print(len(chunk))
-
-
-        for k, simulator in enumerate(simulators):
-            # FIXME: chunking is not working
-            if k<(chunks_count-1):
-                chunk = chunks[k]
-                tc_id = simulator.timecourses.remote(chunk)
-                tc_ids.append(tc_id)
+        for k, simulator in enumerate(self.simulators):
+            tcs_id = simulator.timecourses.remote(chunks[k])
+            tc_ids.append(tcs_id)
 
         results = ray.get(tc_ids)
         # flatten list of lists [[df, df], [df, df], ...]
@@ -121,6 +118,7 @@ class Simulator(object):
         """Yield successive n-sized chunks from l."""
         for i in range(0, len(l), n):
             yield l[i:i + n]
+
 
 if __name__ == "__main__":
 
@@ -148,14 +146,42 @@ if __name__ == "__main__":
 
     # [3] execute multiple simulations
     simulations = []
-    tc_sim = TimecourseSimulation([
+    tc_sim_rep = TimecourseSimulation([
         Timecourse(start=0, end=100, steps=100),
         Timecourse(start=0, end=100, steps=100, changes={"X": 10, "Y": 20}),
     ])
+
+    tc_sim = TimecourseSimulation([
+        Timecourse(start=0, end=100, steps=100,
+                   changes={
+                        'IVDOSE_som': 0.0,  # [mg]
+                        'PODOSE_som': 0.0,  # [mg]
+                        'Ri_som': 10.0E-6,  # [mg/min]
+                    }),
+    ])
+
     for _ in range(1000):
         simulations.append(tc_sim)
 
-    results = Simulator.timecourses(path="repressilator.xml", simulations=simulations)
+    import time
+
+    # model_path = "repressilator.xml"
+    model_path = "body19_livertoy_flat.xml"
+
+    simulator = Simulator(path=model_path, actor_count=16)
+
+    start_time = time.time()
+    results = simulator.timecourses(simulations=simulations)
+    print("--- %s seconds ---" % (time.time() - start_time))
     print(len(results))
+
+    from sbmlsim.simulation import timecourses as timcourses_serial
+    from sbmlsim import load_model
+
+    r = load_model(model_path)
+
+    start_time = time.time()
+    timcourses_serial(r, simulations)
+    print("--- %s seconds ---" % (time.time() - start_time))
 
 
