@@ -2,6 +2,6 @@
 from sbmlsim._version import __version__
 
 from sbmlsim.model import load_model, set_timecourse_selections
-from sbmlsim.simulation import simulate, timecourse, TimecourseSimulation
+from sbmlsim.simulation import timecourse, TimecourseSimulation
 from sbmlsim.results import TimecourseResult
 

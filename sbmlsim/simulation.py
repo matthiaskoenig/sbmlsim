@@ -185,54 +185,13 @@ def timecourses(r: roadrunner.RoadRunner, sims: List[TimecourseSimulation]) -> L
         df = timecourse(r, sim)
         results.append(df)
 
+    # TODO: make timecourse result
+    TimecourseResult(data=s_data, selections=columns,
+                     changeset=sim.changeset)
+
     return results
 
 
-def timecourse_old(r, sim: TimecourseSimulation):
-    """ Timecourse simulations based on timecourse_definition.
-
-    :param r: Roadrunner model instance
-    :param sim: Simulation definition(s)
-    :param reset_all: Reset model at the beginning
-    :return:
-    """
-
-    # selections backup
-    model_selections = r.timeCourseSelections
-    if sim.selections is not None:
-        r.timeCourseSelections = sim.selections
-
-    # empty array for storage
-    columns: list = r.timeCourseSelections
-    Nt = sim.steps + 1
-    Ncol = len(columns)
-    Nsim = len(sim.changeset)
-    s_data = np.empty((Nt, Ncol, Nsim)) * np.nan
-
-    for idx, changes in enumerate(sim.changeset):
-        # ! parallelization of simulation and better data structures ! # FIXME
-
-        # reset
-        reset_all(r)
-
-        # apply changes
-        for key, value in changes.items():
-            r[key] = value
-
-        # TODO: run the full simulation experiment (?!)
-
-        # run simulation
-        s_data[:, :, idx] = r.simulate(start=0, end=sim.tend, steps=sim.steps)
-
-    # reset selections
-    r.timeCourseSelections = model_selections
-
-    # Create a result structure
-    if Nsim > 2:
-        return TimecourseResult(data=s_data, selections=columns,
-                                changeset=sim.changeset)
-    else:
-        return pd.DataFrame(s_data[:, :, 0], columns=columns)
 
 
 def reset_all(r):
@@ -241,26 +200,11 @@ def reset_all(r):
     This resets all variables, S1, S2 etc to the CURRENT init(X) values. It also resets all
     parameters back to the values they had when the model was first loaded.
     """
-    r.reset(roadrunner.SelectionRecord.TIME |
-            roadrunner.SelectionRecord.RATE |
-            roadrunner.SelectionRecord.FLOATING |
-            roadrunner.SelectionRecord.GLOBAL_PARAMETER)
-
-
-def simulate(r, start=None, end=None, steps=None, points=None, **kwargs):
-    """ Simple simulation.
-
-    :param r:
-    :param start:
-    :param end:
-    :param steps:
-    :param points:
-    :param kwargs:
-    :return:
-    """
     warnings.warn(
         "simulate is deprecated, use timecourse instead",
         DeprecationWarning
     )
-    s = r.simulate(start=start, end=end, steps=steps, points=points, **kwargs)
-    return pd.DataFrame(s, columns=s.colnames)
+    r.reset(roadrunner.SelectionRecord.TIME |
+            roadrunner.SelectionRecord.RATE |
+            roadrunner.SelectionRecord.FLOATING |
+            roadrunner.SelectionRecord.GLOBAL_PARAMETER)
