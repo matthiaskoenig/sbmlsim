@@ -62,7 +62,7 @@ setup(
     zip_safe=False,
     # List run-time dependencies here.  These will be installed by pip when
     install_requires=[
-        "pip>=19.1.1",
+        "pip>=19.2.3",
         "numpy>=1.17.2",
         "scipy>=1.2.1",
         "matplotlib>=3.1.1",

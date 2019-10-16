@@ -1,35 +1,40 @@
 """
 Test model module.
 """
+import roadrunner
 from matplotlib import pyplot as plt
 
 import sbmlsim
-from sbmlsim import plotting
+from sbmlsim import plotting_matlab as plotting
 from sbmlsim.simulation import TimecourseSimulation
 from sbmlsim.model import clamp_species
 from sbmlsim.parametrization import ChangeSet
+from sbmlsim.model import species_df, parameter_df
 
 from sbmlsim.tests.settings import MODEL_REPRESSILATOR
 
 
 def test_clamp_sid():
     r = sbmlsim.load_model(MODEL_REPRESSILATOR)
-    tsim = TimecourseSimulation(tstart=0, tend=400, steps=400)
-    results = sbmlsim.timecourse(r, tsim)
 
     # Perform clamping
-    # TODO:
-    clamp_species(r, sid="X", value=20)
+    r_clamp = clamp_species(r, sids=["X"], boundary_condition=True)
+    assert r_clamp
+    assert isinstance(r_clamp, roadrunner.RoadRunner)
 
 
-    # create figure
-    fig, (ax1) = plt.subplots(nrows=1, ncols=1, figsize=(5, 5))
-    fig.subplots_adjust(wspace=0.3, hspace=0.3)
+def test_parameter_df():
+    r = sbmlsim.load_model(MODEL_REPRESSILATOR)
+    df = parameter_df(r)
 
-    plotting.add_line(ax=ax1, data=results,
-                      xid='time', yid="X", label="X")
-    plotting.add_line(ax=ax1, data=results,
-                      xid='time', yid="Y", label="Y", color="darkblue")
+    assert df is not None
+    assert "sid" in df
 
-    ax1.legend()
-    plt.show()
+
+def test_species_df():
+    r = sbmlsim.load_model(MODEL_REPRESSILATOR)
+    df = species_df(r)
+    assert df is not None
+    assert "sid" in df
+
+

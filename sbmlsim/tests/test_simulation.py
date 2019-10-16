@@ -1,23 +1,13 @@
-import os
 import pandas as pd
 
 import sbmlsim
-from sbmlsim.tests.settings import DATA_PATH
-from sbmlsim.simulation import Timecourse, TimecourseSimulation
-
-REPRESSILATOR_PATH = os.path.join(DATA_PATH, 'models', 'repressilator.xml')
-
-
-def test_simulate():
-    model_path = os.path.join(DATA_PATH, 'models', 'body19_livertoy_flat.xml')
-    r = sbmlsim.load_model(model_path)
-    s = sbmlsim.simulate(r, start=0, end=100, steps=100)
-    assert s is not None
-    assert isinstance(s, pd.DataFrame)
+from sbmlsim.simulation import Timecourse, TimecourseSimulation, timecourses
+from sbmlsim.tests.settings import MODEL_REPRESSILATOR
+from sbmlsim.results import Result
 
 
 def test_timecourse():
-    r = sbmlsim.load_model(REPRESSILATOR_PATH)
+    r = sbmlsim.load_model(MODEL_REPRESSILATOR)
     s = sbmlsim.timecourse(r, Timecourse(start=0, end=100, steps=100))
     assert s is not None
 
@@ -39,7 +29,7 @@ def test_timecourse():
 
 
 def test_timecourse_combined():
-    r = sbmlsim.load_model(REPRESSILATOR_PATH)
+    r = sbmlsim.load_model(MODEL_REPRESSILATOR)
     s = sbmlsim.timecourse(r, sim=TimecourseSimulation([
         Timecourse(start=0, end=100, steps=100),
         Timecourse(start=0, end=50, steps=100,
@@ -53,10 +43,15 @@ def test_timecourse_combined():
 
 
 def test_timecourse_ensemble():
-    changes = [
+    changeset = [
          {"[X]": 10.0},
          {"[X]": 15.0},
          {"[X]": 20.0},
          {"[X]": 25.0},
     ]
-    assert 0
+    r = sbmlsim.load_model(MODEL_REPRESSILATOR)
+    tc_sims = TimecourseSimulation(
+        Timecourse(start=0, end=400, steps=400),
+    ).ensemble(changeset)
+    result = timecourses(r, tc_sims)
+    assert isinstance(result, Result)

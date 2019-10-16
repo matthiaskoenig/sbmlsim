@@ -4,6 +4,8 @@ Functions for model loading, model manipulation and settings on the integrator.
 import logging
 import roadrunner
 import libsbml
+import numpy as np
+import pandas as pd
 
 MODEL_CHANGE_BOUNDARY_CONDITION = "boundary_condition"
 
@@ -96,6 +98,64 @@ def set_integrator_settings(self, **kwargs):
 
 
 # --------------------------------
+# Model information
+# --------------------------------
+def parameter_df(r: roadrunner.RoadRunner) -> pd.DataFrame:
+    """
+    Create GlobalParameter DataFrame.
+    :return: pandas DataFrame
+    """
+    r_model = r.model  # type: roadrunner.ExecutableModel
+    doc = libsbml.readSBMLFromString(r.getCurrentSBML())  # type: libsbml.SBMLDocument
+    model = doc.getModel()  # type: libsbml.Model
+    sids = r_model.getGlobalParameterIds()
+    parameters = [model.getParameter(sid) for sid in sids]  # type: List[libsbml.Parameter]
+    data = {
+        'sid': sids,
+        'value': r_model.getGlobalParameterValues(),
+        'unit': [p.units for p in parameters],
+        'constant': [p.constant for p in parameters],
+        'name': [p.name for p in parameters],
+        }
+    df = pd.DataFrame(data, columns=['sid', 'value', 'unit', 'constant', 'name'])
+    return df
+
+
+def species_df(r: roadrunner.RoadRunner) -> pd.DataFrame:
+    """
+    Create FloatingSpecies DataFrame.
+    :return: pandas DataFrame
+    """
+    r_model = r.model  # type: roadrunner.ExecutableModel
+    sbml_str = r.getCurrentSBML()
+
+    doc = libsbml.readSBMLFromString(sbml_str)  # type: libsbml.SBMLDocument
+    model = doc.getModel()  # type: libsbml.Model
+
+    sids = r_model.getFloatingSpeciesIds() + r_model.getBoundarySpeciesIds()
+    species = [model.getSpecies(sid) for sid in sids]  # type: List[libsbml.Species]
+
+    data = {
+        'sid': sids,
+        'concentration': np.concatenate([
+            r_model.getFloatingSpeciesConcentrations(),
+            r_model.getBoundarySpeciesConcentrations()
+        ], axis=0),
+        'amount': np.concatenate([
+            r.model.getFloatingSpeciesAmounts(),
+            r.model.getBoundarySpeciesAmounts()
+        ], axis=0),
+        'unit': [s.getUnits() for s in species],
+        'constant': [s.getConstant() for s in species],
+        'boundaryCondition': [s.getBoundaryCondition() for s in species],
+        'name': [s.getName() for s in species],
+    }
+
+    return pd.DataFrame(data, columns=['sid', 'concentration', 'amount', 'unit', 'constant',
+                                'boundaryCondition', 'species', 'name'])
+
+
+# --------------------------------
 # Model manipulation
 # --------------------------------
 def clamp_species(r: roadrunner.RoadRunner, sids, boundary_condition=True) -> roadrunner.RoadRunner:
@@ -138,55 +198,16 @@ def clamp_species(r: roadrunner.RoadRunner, sids, boundary_condition=True) -> ro
     return rmod
 
 
-
-
 if __name__ == "__main__":
-    from matplotlib import pyplot as plt
-
-    import sbmlsim
-    from sbmlsim import plotting
-    from sbmlsim.simulation import TimecourseSimulation
-    from sbmlsim.model import clamp_species
-    from sbmlsim.parametrization import ChangeSet
-
     from sbmlsim.tests.settings import MODEL_REPRESSILATOR
 
-
-    def run_clamp_sid():
-
-        def plot_results(results, title=None):
-            # create figure
-            fig, (ax1) = plt.subplots(nrows=1, ncols=1, figsize=(5, 5))
-            fig.subplots_adjust(wspace=0.3, hspace=0.3)
-
-            plotting.add_line(ax=ax1, data=results,
-                              xid='time', yid="X", label="X")
-            plotting.add_line(ax=ax1, data=results,
-                              xid='time', yid="Y", label="Y", color="darkblue")
-
-            if title:
-                ax1.set_title(title)
-
-            ax1.legend()
-            plt.show()
-
-        # reference simulation
-        r = sbmlsim.load_model(MODEL_REPRESSILATOR)
-        tsim = TimecourseSimulation(tstart=0, tend=400, steps=400, changeset=[{"X": 10}])
-
-        results = sbmlsim.timecourse(r, tsim)
-        plot_results(results, "control")
-
-        # clamp simulation
-        rclamp = clamp_species(r, sids="X")
-        results = sbmlsim.timecourse(rclamp, tsim)
-        plot_results(results, "clamp")
-
-        # free the simulation
-        rfree = clamp_species(rclamp, sids="X", boundary_condition=False)
-        results = sbmlsim.timecourse(rfree, tsim)
-        plot_results(results, "freed clamp")
+    r = load_model(MODEL_REPRESSILATOR)
 
 
-    run_clamp_sid()
-
+    print("-" * 80)
+    df = parameter_df(r)
+    print(df)
+    print("-" * 80)
+    df = species_df(r)
+    print(df)
+    print("-" * 80)

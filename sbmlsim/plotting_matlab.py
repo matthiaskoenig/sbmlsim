@@ -1,5 +1,5 @@
 from matplotlib import pyplot as plt
-from sbmlsim.simulation import TimecourseResult
+from sbmlsim.simulation import Result
 
 kwargs_data = {'marker': 's', 'linestyle': '--', 'linewidth': 1, 'capsize': 3}
 kwargs_sim = {'marker': None, 'linestyle': '-', 'linewidth': 2}
@@ -16,6 +16,7 @@ plt.rcParams.update({
     'figure.facecolor': '1.00'
 })
 
+
 def add_line(ax, data, yid, xid="time", color='black', label='', kwargs_sim=kwargs_sim,
              xf=1.0, **kwargs):
     """
@@ -29,7 +30,7 @@ def add_line(ax, data, yid, xid="time", color='black', label='', kwargs_sim=kwar
     kwargs_plot = dict(kwargs_sim)
     kwargs_plot.update(kwargs)
 
-    if isinstance(data, TimecourseResult):
+    if isinstance(data, Result):
         x = data.mean[xid]*xf
 
         # FIXME: std areas should be within min/max areas!

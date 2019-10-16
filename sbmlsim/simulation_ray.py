@@ -1,7 +1,6 @@
 import ray
 
 import roadrunner
-import numpy as np
 import pandas as pd
 
 from sbmlsim.simulation import TimecourseSimulation, Timecourse

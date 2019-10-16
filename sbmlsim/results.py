@@ -2,30 +2,20 @@
 Helpers for working with simulation results.
 Handles the storage of simulations.
 """
-
 import logging
 import numpy as np
 import pandas as pd
 from typing import List
 
 
-# FIXME: hashing
-# TODO: serialization of results:
-# HDF5 (reading and writing)
-
-class TaskResult(object):
-    """
-    stores
-
-    """
-    def __init__(self, model: str, sims, result):
-        pass
-
-
 class Result(object):
-    """Result of a single timecourse simulation. """
+    """Result of simulation(s)."""
 
     def __init__(self, frames: List[pd.DataFrame]):
+        """
+
+        :param frames: iterable of pd.DataFrame
+        """
         if isinstance(frames, pd.DataFrame):
             frames = [frames]
 
@@ -74,7 +64,6 @@ class Result(object):
             for k, frame in enumerate(self.frames):
                 key = "df{}".format(k)
                 store[key] = frame
-
 
     @staticmethod
     def from_hdf5(path):
