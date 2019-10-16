@@ -4,12 +4,11 @@ import sbmlsim
 from sbmlsim import plotting_matlab as plotting
 from sbmlsim.simulation import TimecourseSimulation, Timecourse
 from sbmlsim.results import Result
-from sbmlsim.model import clamp_species
 
 from sbmlsim.tests.settings import MODEL_REPRESSILATOR
 
 
-def run_clamp_sid():
+def run_clamp():
 
     def plot_result(result: Result, title: str = None) -> None:
         # create figure
@@ -43,4 +42,4 @@ def run_clamp_sid():
 
 
 if __name__ == "__main__":
-    run_clamp_sid()
+    run_clamp()

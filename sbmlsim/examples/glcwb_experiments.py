@@ -33,6 +33,9 @@ from sbmlsim.tests.settings import MODEL_GLCWB
 """
 
 
+# TODO: simulation experiments
+
+
 
 def exlude_pkdb_parameter_filter(pid):
     """ Returns True if excluded, False otherwise

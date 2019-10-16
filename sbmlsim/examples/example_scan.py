@@ -1,19 +1,16 @@
 """
 Example shows basic model simulations and plotting.
 """
-import os
 import numpy as np
-from matplotlib import pyplot as plt
 
 from sbmlsim.model import load_model
 from sbmlsim.simulation import timecourses, Timecourse, TimecourseSimulation
-from sbmlsim.results import TimecourseResult
+from sbmlsim.results import Result
 from sbmlsim.parametrization import ChangeSet
-from sbmlsim.plotting_matlab import add_line
 from sbmlsim.tests.settings import MODEL_REPRESSILATOR
 
 
-def parameter_scan(parallel=False):
+def run_parameter_scan(parallel=False):
     """Perform a parameter scan"""
 
     # [2] value scan
@@ -39,6 +36,6 @@ def parameter_scan(parallel=False):
 
 
 if __name__ == "__main__":
-    parameter_scan(parallel=False)
-    parameter_scan(parallel=True)
+    run_parameter_scan(parallel=False)
+    run_parameter_scan(parallel=True)
 
