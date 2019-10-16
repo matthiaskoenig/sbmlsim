@@ -1,14 +1,11 @@
 """
-Creation and mixing of model changes for simulation.
-
-
-- personalization of models (setting bodyweights)
-- setting values from distributions with correlation matrix (e.g., age & bodyweight)
-
-- dosing of models (with application of parameters)
-
-- general parameter changes
+Parametrization handles collections of changes to the model
+before simulation. Helper functions exist for the creation
+and combination of such changes for simulations.
 """
+# TODO: support of distributions, refactor in factories which create the
+# respective changesets
+
 from collections import OrderedDict
 import logging
 import roadrunner

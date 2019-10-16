@@ -67,6 +67,7 @@ setup(
         "scipy>=1.2.1",
         "matplotlib>=3.1.1",
         "pandas>=0.25.1",
+        "tables>0.3.6",
         "python-libsbml-experimental>=5.18.1",
         "libroadrunner>=1.5.4",
         "psutil",

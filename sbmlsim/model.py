@@ -1,5 +1,5 @@
 """
-Functions for model loading and model manipulation.
+Functions for model loading, model manipulation and settings on the integrator.
 """
 import logging
 import roadrunner
@@ -20,7 +20,9 @@ def load_model(path, selections: bool = True) -> roadrunner.RoadRunner:
         set_timecourse_selections(r)
     return r
 
-
+# --------------------------------------
+# Selections
+# --------------------------------------
 def set_timecourse_selections(r: roadrunner.RoadRunner, selections=None) -> None:
     """ Sets the full model selections. """
     if not selections:
@@ -37,6 +39,29 @@ def set_timecourse_selections(r: roadrunner.RoadRunner, selections=None) -> None
     else:
         r.timeCourseSelections = selections
 
+# --------------------------------------
+# Resets
+# --------------------------------------
+def reset_all(r):
+    """ Reset all model variables to CURRENT init(X) values.
+
+    This resets all variables, S1, S2 etc to the CURRENT init(X) values. It also resets all
+    parameters back to the values they had when the model was first loaded.
+    """
+    # FIXME: check if this is still needed
+    logging.warning(
+        "reset_all is deprecated",
+        DeprecationWarning
+    )
+    r.reset(roadrunner.SelectionRecord.TIME |
+            roadrunner.SelectionRecord.RATE |
+            roadrunner.SelectionRecord.FLOATING |
+            roadrunner.SelectionRecord.GLOBAL_PARAMETER)
+
+# --------------------------------
+# Integrator settings
+# --------------------------------
+# FIXME: implement setting of ode solver properties: variable_step_size, stiff, absolute_tolerance, relative_tolerance
 
 def set_integrator_settings(r: roadrunner.RoadRunner, **kwargs) -> None:
     """ Set integrator settings. """
@@ -49,6 +74,30 @@ def set_integrator_settings(r: roadrunner.RoadRunner, **kwargs) -> None:
     return integrator
 
 
+def set_default_settings(self):
+    """ Set default settings of integrator. """
+    self.set_integrator_settings(
+            variable_step_size=True,
+            stiff=True,
+            absolute_tolerance=1E-8,
+            relative_tolerance=1E-8
+    )
+
+def set_integrator_settings(self, **kwargs):
+    """ Set integrator settings. """
+    for key, value in kwargs.items():
+        # adapt the absolute_tolerance relative to the amounts
+        if key == "absolute_tolerance":
+            value = value * min(self.model.getCompartmentVolumes())
+        self.integrator.setValue(key, value)
+
+    if self.debug:
+        print(self.integrator)
+
+
+# --------------------------------
+# Model manipulation
+# --------------------------------
 def clamp_species(r: roadrunner.RoadRunner, sids, boundary_condition=True) -> roadrunner.RoadRunner:
     """ Clamp/Free specie(s) via setting boundaryCondition=True/False.
 
@@ -87,6 +136,8 @@ def clamp_species(r: roadrunner.RoadRunner, sids, boundary_condition=True) -> ro
     set_timecourse_selections(rmod, r.timeCourseSelections)
 
     return rmod
+
+
 
 
 if __name__ == "__main__":

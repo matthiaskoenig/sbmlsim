@@ -20,7 +20,9 @@ import pandas as pd
 import roadrunner
 from copy import deepcopy
 
-from sbmlsim.results import TimecourseResult
+from sbmlsim.parametrization import ChangeSet
+
+from sbmlsim.results import Result
 from sbmlsim.model import clamp_species, MODEL_CHANGE_BOUNDARY_CONDITION
 import warnings
 from typing import List, Union
@@ -107,10 +109,11 @@ class TimecourseSimulation(object):
     def clone(self):
         return deepcopy(self)
 
-    def ensemble(self, changeset):
+
+    def ensemble(self, changeset: ChangeSet):
         """ Creates an ensemble of timecourse by mixin the changeset
 
-        :return:
+        :return: List[TimecourseSimulation]
         """
         sims = []
         for changes in changeset:
@@ -179,32 +182,9 @@ def timecourse(r: roadrunner.RoadRunner, sim: Union[TimecourseSimulation, Timeco
 
 def timecourses(r: roadrunner.RoadRunner, sims: List[TimecourseSimulation]) -> List[pd.DataFrame]:
     """ Run many timecourses."""
-    # FIXME: parallelize
-    results = []
+    dfs = []
     for sim in sims:
         df = timecourse(r, sim)
-        results.append(df)
+        dfs.append(df)
 
-    # TODO: make timecourse result
-    # TimecourseResult(data=s_data, selections=columns,
-    #                 changeset=sim.changeset)
-
-    return results
-
-
-
-
-def reset_all(r):
-    """ Reset all model variables to CURRENT init(X) values.
-
-    This resets all variables, S1, S2 etc to the CURRENT init(X) values. It also resets all
-    parameters back to the values they had when the model was first loaded.
-    """
-    warnings.warn(
-        "simulate is deprecated, use timecourse instead",
-        DeprecationWarning
-    )
-    r.reset(roadrunner.SelectionRecord.TIME |
-            roadrunner.SelectionRecord.RATE |
-            roadrunner.SelectionRecord.FLOATING |
-            roadrunner.SelectionRecord.GLOBAL_PARAMETER)
+    return Result(dfs)
