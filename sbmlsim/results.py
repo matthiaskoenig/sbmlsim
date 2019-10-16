@@ -30,6 +30,13 @@ class Result(object):
         for k, df in enumerate(self.frames):
             self.data[:, :, k] = df.values
 
+    def statistics_df(self):
+        df = pd.DataFrame({
+            'mean'
+        })
+        pass
+
+
     @property
     def nrow(self):
         return len(self.index)
