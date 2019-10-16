@@ -182,6 +182,9 @@ def timecourse(r: roadrunner.RoadRunner, sim: Union[TimecourseSimulation, Timeco
 
 def timecourses(r: roadrunner.RoadRunner, sims: List[TimecourseSimulation]) -> List[pd.DataFrame]:
     """ Run many timecourses."""
+    if isinstance(sims, TimecourseSimulation):
+        sims = [sims]
+
     dfs = []
     for sim in sims:
         df = timecourse(r, sim)

@@ -12,8 +12,8 @@ import re
 # tissues to identical values (which removes the distribution kinetics).
 # -------------------------------------------------------------------------------------------------
 
-def set_initial_concentrations(r, skey, value: float):
-    """ Set initial concentrations for skey.
+def init_concentrations_changes(r, skey, value: float):
+    """ Changes to set initial concentrations for skey.
 
     :param r: roadrunner model
     :param skey: substance key
@@ -23,7 +23,7 @@ def set_initial_concentrations(r, skey, value: float):
     return _set_initial_values(r, skey, value, method="concentration")
 
 
-def set_initial_amounts(r, skey, value):
+def init_amounts_changes(r, skey, value):
     """ Set initial amounts for skey.
 
     :param r: roadrunner model
@@ -34,7 +34,7 @@ def set_initial_amounts(r, skey, value):
     return _set_initial_values(r, skey, value, method="amount")
 
 
-def _set_initial_values(r, sid, value, method="concentration"):
+def _set_initial_values(r, sid, value, method="concentration") -> dict:
     """ Setting the initial concentration of a distributing substance.
 
     Takes care of all the compartment values so starting close/in steady state.
