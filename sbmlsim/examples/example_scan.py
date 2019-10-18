@@ -4,10 +4,10 @@ Example shows basic model simulations and plotting.
 import numpy as np
 
 from sbmlsim.model import load_model
-from sbmlsim.simulation import timecourses, Timecourse, TimecourseSimulation
-from sbmlsim.results import Result
+from sbmlsim.simulation import timecourses, Timecourse, TimecourseSim
+from sbmlsim.result import Result
 from sbmlsim.parametrization import ChangeSet
-from sbmlsim.tests.settings import MODEL_REPRESSILATOR
+from sbmlsim.tests.constants import MODEL_REPRESSILATOR
 
 
 def run_parameter_scan(parallel=False):
@@ -15,7 +15,7 @@ def run_parameter_scan(parallel=False):
 
     # [2] value scan
     scan_changeset = ChangeSet.scan_changeset('n', values=np.linspace(start=2, stop=10, num=8))
-    tc_sims = TimecourseSimulation(
+    tc_sims = TimecourseSim(
         Timecourse(start=0, end=100, steps=100)
     ).ensemble(changeset=scan_changeset)
 

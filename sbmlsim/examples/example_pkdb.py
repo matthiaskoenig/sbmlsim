@@ -5,9 +5,9 @@ from sbmlsim.model import load_model
 from sbmlsim.simulation import TimecourseSimulation, Timecourse, timecourses
 from sbmlsim.parametrization import ChangeSet
 from sbmlsim.pkpd import pkpd
-from sbmlsim.plotting_matlab import plt, add_line
+from sbmlsim.plotting_matplotlib import plt, add_line
 
-from sbmlsim.tests.settings import MODEL_GLCWB
+from sbmlsim.tests.constants import MODEL_GLCWB
 
 
 def somatostatin_plot(result):

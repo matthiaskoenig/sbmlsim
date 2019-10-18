@@ -2,12 +2,13 @@
 Example shows basic model simulations and plotting.
 """
 from sbmlsim.model import load_model
-from sbmlsim.simulation import timecourses, Timecourse, TimecourseSimulation
+from sbmlsim.simulation import timecourses
+from sbmlsim.timecourse import TimecourseSim, Timecourse, ensemble
 
 from sbmlsim.parametrization import ChangeSet
 
-from sbmlsim.plotting_matlab import add_line, plt
-from sbmlsim.tests.settings import MODEL_REPRESSILATOR
+from sbmlsim.plotting_matplotlib import add_line, plt
+from sbmlsim.tests.constants import MODEL_REPRESSILATOR
 
 
 def run_sensitivity():
@@ -19,12 +20,12 @@ def run_sensitivity():
 
     # parameter sensitivity
     changeset = ChangeSet.parameter_sensitivity_changeset(r)
-    tc_sims = TimecourseSimulation([
+    tc_sim = TimecourseSim([
             Timecourse(start=0, end=100, steps=100),
             Timecourse(start=0, end=200, steps=100, model_changes={"boundary_condition": {"X": True}}),
             Timecourse(start=0, end=100, steps=100, model_changes={"boundary_condition": {"X": False}}),
-        ]).ensemble(changeset=changeset)
-
+        ])
+    tc_sims = ensemble(tc_sim, changeset=changeset)
     result = timecourses(r, tc_sims)
 
     # create figure

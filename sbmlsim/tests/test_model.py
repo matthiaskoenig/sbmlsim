@@ -2,16 +2,12 @@
 Test model module.
 """
 import roadrunner
-from matplotlib import pyplot as plt
 
 import sbmlsim
-from sbmlsim import plotting_matlab as plotting
-from sbmlsim.simulation import TimecourseSimulation
 from sbmlsim.model import clamp_species
-from sbmlsim.parametrization import ChangeSet
 from sbmlsim.model import species_df, parameter_df
 
-from sbmlsim.tests.settings import MODEL_REPRESSILATOR
+from sbmlsim.tests.constants import MODEL_REPRESSILATOR
 
 
 def test_clamp_sid():

@@ -1,11 +1,11 @@
 from matplotlib import pyplot as plt
 
 import sbmlsim
-from sbmlsim import plotting_matlab as plotting
-from sbmlsim.simulation import TimecourseSimulation, Timecourse
-from sbmlsim.results import Result
+from sbmlsim import plotting_matplotlib as plotting
+from sbmlsim.timecourse import TimecourseSim, Timecourse
+from sbmlsim.result import Result
 
-from sbmlsim.tests.settings import MODEL_REPRESSILATOR
+from sbmlsim.tests.constants import MODEL_REPRESSILATOR
 
 
 def run_clamp():

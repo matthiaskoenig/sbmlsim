@@ -2,7 +2,7 @@
 Interactive plots with altair
 """
 import altair as alt
-from sbmlsim.results import Result
+from sbmlsim.result import Result
 from vega_datasets import data
 
 def lineplot(result):
@@ -77,7 +77,7 @@ def add_line(ax, data, yid, xid="time", color='black', label='', xf=1.0, **kwarg
 
 
 if __name__ == "__main__":
-    from sbmlsim.tests.settings import MODEL_REPRESSILATOR
+    from sbmlsim.tests.constants import MODEL_REPRESSILATOR
     from sbmlsim.model import load_model
     from sbmlsim.parametrization import ChangeSet
     from sbmlsim.simulation import TimecourseSimulation, Timecourse, timecourses

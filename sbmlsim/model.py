@@ -190,7 +190,7 @@ def clamp_species(r: roadrunner.RoadRunner, sids, boundary_condition=True) -> ro
 
 
 if __name__ == "__main__":
-    from sbmlsim.tests.settings import MODEL_REPRESSILATOR
+    from sbmlsim.tests.constants import MODEL_REPRESSILATOR
 
     r = load_model(MODEL_REPRESSILATOR)
 

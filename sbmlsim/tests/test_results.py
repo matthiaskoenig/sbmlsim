@@ -1,8 +1,8 @@
 
-from sbmlsim.results import Result
+from sbmlsim.result import Result
 import pandas as pd
 
-from sbmlsim.tests.settings import MODEL_REPRESSILATOR
+from sbmlsim.tests.constants import MODEL_REPRESSILATOR
 
 import roadrunner
 

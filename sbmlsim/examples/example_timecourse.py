@@ -4,10 +4,10 @@ Example showing basic timecourse simulations and plotting.
 import os
 from matplotlib import pyplot as plt
 
-
 from sbmlsim.model import load_model
-from sbmlsim.simulation import timecourse, Timecourse, TimecourseSimulation
-from sbmlsim.tests.settings import MODEL_REPRESSILATOR
+from sbmlsim.simulation import timecourse
+from sbmlsim.timecourse import Timecourse, TimecourseSim
+from sbmlsim.tests.constants import MODEL_REPRESSILATOR
 
 
 def run_timecourse_examples():
@@ -16,7 +16,7 @@ def run_timecourse_examples():
 
     # 1. simple timecourse simulation
     print("*** simple timecourse ***")
-    tc_sim = TimecourseSimulation(
+    tc_sim = TimecourseSim(
         Timecourse(start=0, end=100, steps=100)
     )
     s1 = timecourse(r, sim=tc_sim)
@@ -25,7 +25,7 @@ def run_timecourse_examples():
 
     # 2. timecourse with parameter changes
     print("*** parameter change ***")
-    tc_sim = TimecourseSimulation(
+    tc_sim = TimecourseSim(
         Timecourse(start=0, end=100, steps=100, changes={"X": 10, "Y": 200})
     )
     s2 = timecourse(r, sim=tc_sim)
@@ -33,7 +33,7 @@ def run_timecourse_examples():
 
     # 3. combined timecourses
     print("*** combined timecourse ***")
-    tc_sim = TimecourseSimulation([
+    tc_sim = TimecourseSim([
             Timecourse(start=0, end=100, steps=100),
             Timecourse(start=0, end=100, steps=100, changes={"X": 10, "Y": 20}),
         ])
@@ -42,7 +42,7 @@ def run_timecourse_examples():
 
     # 4. combined timecourses with model_change
     print("*** model change ***")
-    tc_sim = TimecourseSimulation([
+    tc_sim = TimecourseSim([
             Timecourse(start=0, end=100, steps=100),
             Timecourse(start=0, end=50, steps=100, model_changes={"boundary_condition": {"X": True}}),
             Timecourse(start=0, end=100, steps=100, model_changes={"boundary_condition": {"X": False}}),
