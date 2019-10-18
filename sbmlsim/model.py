@@ -85,16 +85,7 @@ def set_default_settings(self):
             relative_tolerance=1E-8
     )
 
-def set_integrator_settings(self, **kwargs):
-    """ Set integrator settings. """
-    for key, value in kwargs.items():
-        # adapt the absolute_tolerance relative to the amounts
-        if key == "absolute_tolerance":
-            value = value * min(self.model.getCompartmentVolumes())
-        self.integrator.setValue(key, value)
 
-    if self.debug:
-        print(self.integrator)
 
 
 # --------------------------------
