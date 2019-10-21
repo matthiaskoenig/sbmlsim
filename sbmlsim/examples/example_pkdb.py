@@ -61,9 +61,7 @@ def po_bolus(simulator, r):
             ]),
         changeset=ChangeSet.parameter_sensitivity_changeset(r, 0.1)
     )
-    result = simulator.timecourses(tcsims)
-    somatostatin_plot(result, title="Oral somatostatin bolus")
-    plt.show()
+    return simulator.timecourses(tcsims)
 
 
 def iv_bolus(simulator, r):
@@ -86,9 +84,8 @@ def iv_bolus(simulator, r):
                            **changes_iv_bolus}
                        )
         ]), p_changeset)
-    result = simulator.timecourses(tcsims)
-    somatostatin_plot(result, title="Intravenous somatostatin bolus")
-    plt.show()
+
+    return simulator.timecourses(tcsims)
 
 
 def iv_infusion(simulator, r):
@@ -108,9 +105,7 @@ def iv_infusion(simulator, r):
             Timecourse(start=0, end=120, steps=240, changes={'Ri_som': 0.0}),      # [mg/min],
         ]), ChangeSet.parameter_sensitivity_changeset(r, 0.1)
     )
-    result = simulator.timecourses(tcsims)
-    somatostatin_plot(result, title="IV somatostatin infusion")
-    plt.show()
+    return simulator.timecourses(tcsims)
 
 
 def clamp(simulator, r):
@@ -134,7 +129,6 @@ def clamp(simulator, r):
     return simulator.timecourses(tcsims)
 
 
-
 def mix(simulator, r):
     """
     [5] combination experiments
@@ -151,10 +145,10 @@ def mix(simulator, r):
             Timecourse(start=0, end=120, steps=240, changes={'Ri_som': 0.0}),      # [mg/min],
         ]), ChangeSet.parameter_sensitivity_changeset(r, 0.1))
 
-    result = simulator.timecourses(tcsims)
-    somatostatin_plot(result, title="Mix PO bolus, IV bolus, IV infusion")
-    plt.show()
+    return simulator.timecourses(tcsims)
 
+
+def stepped_clamp(simulator, r):
 
     changes_init = pkpd.init_concentrations_changes(r, 'som', 0E-6)  # [0 nmol/L]
     tcsims = ensemble(
@@ -166,18 +160,21 @@ def mix(simulator, r):
             Timecourse(start=0, end=60, steps=120, changes={'Ri_som': 80.0E-6}),  # [mg/min],
         ]), ChangeSet.parameter_sensitivity_changeset(r, 0.1)
     )
-    result = simulator.timecourses(tcsims)
-    somatostatin_plot(result, title="Graded IV infusions")
-    plt.show()
+    return simulator.timecourses(tcsims)
 
 
 if __name__ == "__main__":
+    import sys
     r = load_model(MODEL_GLCWB)
     simulator = Simulator(MODEL_GLCWB)
     results = {}
-    for f_simulate in [po_bolus, iv_bolus, iv_infusion, clamp, mix]:
+    for f_simulate in [po_bolus, iv_bolus, iv_infusion, clamp, mix, stepped_clamp]:
         f_key = f_simulate.__name__
-        results[f_key] = f_simulate(simulator, r)
+        print(f_key)
+        result = f_simulate(simulator, r)
+        print(result)
+        print("results:", len(result), sys.getsizeof(result))
+        results[f_key] = result
 
     for key, result in results.items():
         somatostatin_plot(result, title=key)

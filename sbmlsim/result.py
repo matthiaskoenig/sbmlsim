@@ -42,6 +42,16 @@ class Result(object):
     def __len__(self):
         return len(self.frames)
 
+    def __str__(self):
+        lines = [
+            str(type(self)),
+            f"DataFrames: {len(self)}",
+            f"Shape: {self.data.shape}",
+            f"Size (bytes): {self.data.nbytes}"
+        ]
+        return "\n".join(lines)
+
+
     def statistics_df(self):
         df = pd.DataFrame({
             'mean'
