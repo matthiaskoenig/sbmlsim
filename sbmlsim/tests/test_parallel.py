@@ -1,7 +1,7 @@
 import pytest
 
 from sbmlsim.timecourse import Timecourse, TimecourseSim
-from sbmlsim.simulation_ray import Simulator
+from sbmlsim.simulation_ray import SimulatorParallel as Simulator
 
 from sbmlsim.tests.constants import MODEL_GLCWB
 

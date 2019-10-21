@@ -4,20 +4,22 @@ Testing plotting functionality.
 from matplotlib import pyplot as plt
 from sbmlsim.plotting_matplotlib import add_line
 
-import sbmlsim
-from sbmlsim.simulation_serial import timecourses
-from sbmlsim.timecourse import Timecourse, TimecourseSim
+from sbmlsim.model import load_model
+from sbmlsim.simulation_serial import SimulatorSerial as Simulator
+from sbmlsim.timecourse import Timecourse, TimecourseSim, ensemble
 from sbmlsim.parametrization import ChangeSet
 from sbmlsim.tests.constants import MODEL_REPRESSILATOR
 
 
 def test_plotting():
-    r = sbmlsim.load_model(MODEL_REPRESSILATOR)
+    r = load_model(MODEL_REPRESSILATOR)
+    simulator = Simulator(MODEL_REPRESSILATOR)
+
     changeset = ChangeSet.parameter_sensitivity_changeset(r, sensitivity=0.5)
-    tc_sims = TimecourseSim(
-        Timecourse(start=0, end=400, steps=400),
-    ).ensemble(changeset)
-    result = timecourses(r, tc_sims)
+    tcsims = ensemble(TimecourseSim([
+            Timecourse(start=0, end=400, steps=400),
+        ]), changeset)
+    result = simulator.timecourses(tcsims)
 
     # create figure
     fig, (ax1) = plt.subplots(nrows=1, ncols=1, figsize=(5, 5))

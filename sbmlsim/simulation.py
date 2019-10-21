@@ -39,29 +39,29 @@ class SimulatorAbstract(object):
 
 class SimulatorWorker(object):
 
-    def timecourse(self, sim: Union[TimecourseSim, Timecourse]) -> pd.DataFrame:
+    def timecourse(self, simulation: Union[TimecourseSim, Timecourse]) -> pd.DataFrame:
         """ Timecourse simulations based on timecourse_definition.
 
         :param r: Roadrunner model instance
-        :param sim: Simulation definition(s)
+        :param simulation: Simulation definition(s)
         :param reset_all: Reset model at the beginning
         :return:
         """
 
-        if isinstance(sim, Timecourse):
-            sim = TimecourseSim(timecourses=[sim])
+        if isinstance(simulation, Timecourse):
+            simulation = TimecourseSim(timecourses=[simulation])
 
-        if sim.reset:
+        if simulation.reset:
             self.r.resetToOrigin()
 
         # selections backup
         model_selections = self.r.timeCourseSelections
-        if sim.selections is not None:
-            self.r.timeCourseSelections = sim.selections
+        if simulation.selections is not None:
+            self.r.timeCourseSelections = simulation.selections
 
         frames = []
         t_offset = 0.0
-        for tc in sim.timecourses:
+        for tc in simulation.timecourses:
 
             # apply changes
             for key, value in tc.changes.items():

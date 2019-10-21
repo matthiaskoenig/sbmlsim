@@ -58,8 +58,12 @@ def example_multiple_actors():
     return results
 
 
-def example_parallel_timecourse():
-    """Execute multiple simulations with model in parallel."""
+def example_parallel_timecourse(nsim=40, actor_count=15):
+    """Execute multiple simulations with model in parallel.
+
+    :param nsim: number of simulations
+    :return:
+    """
     tcsims = []
 
     tc_sim = TimecourseSim([
@@ -72,12 +76,11 @@ def example_parallel_timecourse():
     ])
 
     # collect all simulation definitions (see also the ensemble functions)
-    nsim = 500
     for _ in range(nsim):
         tcsims.append(tc_sim)
 
     def message(info, time):
-        print(f"{info:<20}: {time:4.3f}")
+        print(f"{info:<10}: {time:4.3f}")
 
     # load model once for caching (fair comparison)
     r = roadrunner.RoadRunner(MODEL_GLCWB)
@@ -90,7 +93,7 @@ def example_parallel_timecourse():
         {
             "key": "parallel",
             'simulator': SimulatorParallel,
-            'kwargs': {'actor_count': 12}
+            'kwargs': {'actor_count': actor_count}
         },
         {
             "key": "serial",
@@ -98,35 +101,54 @@ def example_parallel_timecourse():
             'kwargs': {}
         },
     ]
-
-    for info in simulator_defs:
-
-        key = info['key']
-        Simulator = info['simulator']
-        kwargs = info['kwargs']
+    sim_info = []
+    for sim_def in simulator_defs:
+        key = sim_def['key']
+        print("***", key, "***")
+        Simulator = sim_def['simulator']
+        kwargs = sim_def['kwargs']
 
         # run simulation (with model reading)
         start_time = time.time()
         # create a simulator with 16 parallel actors
         simulator = Simulator(path=MODEL_GLCWB, **kwargs)
         load_time = time.time()-start_time
-        message(f"{key} loading", load_time)
+        message(f"load", load_time)
 
         start_time = time.time()
         results = simulator.timecourses(simulations=tcsims)
         sim_time = time.time()-start_time
-        message(f"{key} total", load_time + sim_time)
-        message(f"{key} simulation", sim_time)
+        total_time = load_time + sim_time
+        message("simulate", sim_time)
+        message("total", total_time)
 
         # run parallel simulation (without model reading)
         start_time = time.time()
         results = simulator.timecourses(simulations=tcsims)
-        message(f"{key} repeat", time.time()-start_time)
+        repeat_time = time.time()-start_time
+        message(f"repeat", repeat_time)
+
+        actor_count = kwargs.get('actor_count', 1)
+        sim_info.append({
+            "key": key,
+            "nsim": nsim,
+            "actor_count": actor_count,
+            "t_load": load_time,
+            "t_sim": sim_time,
+            "t_total": total_time,
+            "t_repeat": repeat_time,
+        })
 
         print("-" * 80)
+
+    return sim_info
 
 
 if __name__ == "__main__":
     # example_single_actor()
     # example_multiple_actors()
-    example_parallel_timecourse()
+
+    sim_info = example_parallel_timecourse(nsim=10, actor_count=15)
+
+
+
