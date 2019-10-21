@@ -11,23 +11,22 @@ from sbmlsim.plotting_matplotlib import plt, add_line
 from sbmlsim.tests.constants import MODEL_GLCWB
 
 
-def somatostatin_plot(result):
+def somatostatin_plot(result, title=''):
     """ Reference plot."""
     # create figure
     f, (ax1, ax2) = plt.subplots(nrows=1, ncols=2, figsize=(10, 5))
     f.subplots_adjust(wspace=0.3, hspace=0.3)
 
-    ax1.set_title("Blood Somatostatin")
     add_line(ax=ax1, data=result,
              xid='time', yid="Cve_som", label="somatostatin blood")
     ax1.set_ylabel("concentration [mM]")
 
-    ax2.set_title("Urine Somatostatin")
     add_line(ax=ax2, data=result,
              xid='time', yid="Aurine_som", label="somatostatin urine", color="darkblue")
     ax2.set_ylabel("amount [mmole]")
 
     for ax in (ax1, ax2):
+        ax.set_title(title)
         ax.legend()
         ax.set_xlabel("time [min]")
 
@@ -63,7 +62,7 @@ def po_bolus(simulator, r):
         changeset=ChangeSet.parameter_sensitivity_changeset(r, 0.1)
     )
     result = simulator.timecourses(tcsims)
-    somatostatin_plot(result)
+    somatostatin_plot(result, title="Oral somatostatin bolus")
     plt.show()
 
 
@@ -88,7 +87,7 @@ def iv_bolus(simulator, r):
                        )
         ]), p_changeset)
     result = simulator.timecourses(tcsims)
-    f = somatostatin_plot(result)
+    somatostatin_plot(result, title="Intravenous somatostatin bolus")
     plt.show()
 
 
@@ -110,7 +109,8 @@ def iv_infusion(simulator, r):
         ]), ChangeSet.parameter_sensitivity_changeset(r, 0.1)
     )
     result = simulator.timecourses(tcsims)
-    somatostatin_plot(result)
+    somatostatin_plot(result, title="IV somatostatin infusion")
+    plt.show()
 
 
 def clamp(simulator, r):
@@ -133,7 +133,7 @@ def clamp(simulator, r):
     )
 
     result = simulator.timecourses(tcsims)
-    somatostatin_plot(result)
+    somatostatin_plot(result, title="Somatostatin clamp")
     plt.show()
 
 
@@ -154,7 +154,8 @@ def mix(simulator, r):
         ]), ChangeSet.parameter_sensitivity_changeset(r, 0.1))
 
     result = simulator.timecourses(tcsims)
-    somatostatin_plot(result)
+    somatostatin_plot(result, title="Mix PO bolus, IV bolus, IV infusion")
+    plt.show()
 
 
     changes_init = pkpd.init_concentrations_changes(r, 'som', 0E-6)  # [0 nmol/L]
@@ -168,7 +169,8 @@ def mix(simulator, r):
         ]), ChangeSet.parameter_sensitivity_changeset(r, 0.1)
     )
     result = simulator.timecourses(tcsims)
-    somatostatin_plot(result)
+    somatostatin_plot(result, title="Graded IV infusions")
+    plt.show()
 
 
 if __name__ == "__main__":
@@ -181,7 +183,6 @@ if __name__ == "__main__":
     clamp(simulator, r)
     mix(simulator, r)
 
-    plt.show()
 
 '''
 def exlude_pkdb_parameter_filter(pid):

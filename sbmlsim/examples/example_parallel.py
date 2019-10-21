@@ -80,7 +80,7 @@ def example_parallel_timecourse():
         print(f"{info:<20}: {time:4.3f}")
 
     # load model once for caching (fair comparison)
-    roadrunner.RoadRunner(MODEL_GLCWB)
+    r = roadrunner.RoadRunner(MODEL_GLCWB)
 
     print("-" * 80)
     print(f"Run '{nsim}' simulations")
@@ -88,14 +88,14 @@ def example_parallel_timecourse():
 
     simulator_defs = [
         {
-            "key": "serial",
-            'simulator': SimulatorSerial,
-            'kwargs': {}
-        },
-        {
             "key": "parallel",
             'simulator': SimulatorParallel,
             'kwargs': {'actor_count': 15}
+        },
+        {
+            "key": "serial",
+            'simulator': SimulatorSerial,
+            'kwargs': {}
         },
     ]
 

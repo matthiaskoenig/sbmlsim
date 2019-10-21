@@ -7,6 +7,9 @@ import numpy as np
 import pandas as pd
 from typing import List
 
+from cached_property import cached_property
+# FIXME: invalidate the cache on changes !!!
+
 
 class Result(object):
     """Result of simulation(s)."""
@@ -40,36 +43,35 @@ class Result(object):
         pass
 
 
-    @property
+    @cached_property
     def nrow(self):
         return len(self.index)
 
-    @property
+    @cached_property
     def ncol(self):
         return len(self.columns)
 
-    @property
+    @cached_property
     def nframes(self):
         return len(self.frames)
 
-    @property
+    @cached_property
     def mean(self):
-        logging.warning("no caching of mean !")
         if len(self) == 1:
             logging.warning("mean() on Result with len==1 is not defined")
             return self.frames[0]
         else:
             return pd.DataFrame(np.mean(self.data, axis=2), columns=self.columns)
 
-    @property
+    @cached_property
     def std(self):
         return pd.DataFrame(np.std(self.data, axis=2), columns=self.columns)
 
-    @property
+    @cached_property
     def min(self):
         return pd.DataFrame(np.min(self.data, axis=2), columns=self.columns)
 
-    @property
+    @cached_property
     def max(self):
         return pd.DataFrame(np.max(self.data, axis=2), columns=self.columns)
 
