@@ -10,6 +10,8 @@ from typing import List
 from cached_property import cached_property
 # FIXME: invalidate the cache on changes !!!
 
+logger = logging.getLogger(__name__)
+
 
 class Result(object):
     """Result of simulation(s)."""
@@ -23,15 +25,19 @@ class Result(object):
             frames = [frames]
 
         # empty array for storage
-        df = frames[0]
-        self.index = df.index
-        self.columns = df.columns
         self.frames = frames
 
-        # store data in numpy
-        self.data = np.empty((self.nrow, self.ncol, self.nframes)) * np.nan
-        for k, df in enumerate(self.frames):
-            self.data[:, :, k] = df.values
+        if len(frames) > 0:
+            df = frames[0]
+            self.index = df.index
+            self.columns = df.columns
+
+            # store data in numpy
+            self.data = np.empty((self.nrow, self.ncol, self.nframes)) * np.nan
+            for k, df in enumerate(self.frames):
+                self.data[:, :, k] = df.values
+        else:
+            logging.warning("Empty Result, no DataFrames.")
 
     def __len__(self):
         return len(self.frames)

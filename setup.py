@@ -72,6 +72,7 @@ setup(
         "psutil",
         "setproctitle",
         "ray",
+        "altair"
         "cached-property",
         "matplotlib>=3.1.1",
         "altair>=3.2",

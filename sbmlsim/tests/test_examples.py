@@ -30,4 +30,4 @@ def test_parallel_2():
 
 
 def test_parallel_3():
-    example_parallel.example_parallel_timecourse()
+    example_parallel.example_parallel_timecourse(nsim=20, actor_count=5)

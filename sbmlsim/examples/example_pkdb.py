@@ -131,10 +131,8 @@ def clamp(simulator, r):
             Timecourse(start=0, end=120, steps=240, model_changes={'boundary_condition': {"Ave_som": False}}),   # release venous som,
         ]), ChangeSet.parameter_sensitivity_changeset(r, 0.1)
     )
+    return simulator.timecourses(tcsims)
 
-    result = simulator.timecourses(tcsims)
-    somatostatin_plot(result, title="Somatostatin clamp")
-    plt.show()
 
 
 def mix(simulator, r):
@@ -176,13 +174,17 @@ def mix(simulator, r):
 if __name__ == "__main__":
     r = load_model(MODEL_GLCWB)
     simulator = Simulator(MODEL_GLCWB)
+    results = {}
+    for f_simulate in [po_bolus, iv_bolus, iv_infusion, clamp, mix]:
+        f_key = f_simulate.__name__
+        results[f_key] = f_simulate(simulator, r)
 
-    po_bolus(simulator, r)
-    iv_bolus(simulator, r)
-    iv_infusion(simulator, r)
-    clamp(simulator, r)
-    mix(simulator, r)
+    for key, result in results.items():
+        somatostatin_plot(result, title=key)
+        plt.show()
 
+    import ray
+    ray.timeline(filename="timeline.json")
 
 '''
 def exlude_pkdb_parameter_filter(pid):

@@ -6,6 +6,8 @@ import logging
 from sbmlsim.timecourse import TimecourseSim, Timecourse
 from sbmlsim.result import Result
 
+logger = logging.getLogger(__name__)
+
 # start ray
 ray.init(ignore_reinit_error=True)
 
@@ -89,7 +91,7 @@ class SimulatorParallel(object):
         :param selections: List[str],  selections to set, if None full selection is performed
         :param actor_count: int,
         """
-        logging.warning(f"creating '{actor_count}' SimulationActors for: '{path}'")
+        logger.warning(f"creating '{actor_count}' SimulationActors for: '{path}'")
         self.actor_count = actor_count
 
         # read SBML string once, to avoid IO blocking
@@ -98,6 +100,7 @@ class SimulatorParallel(object):
         sbml_strings = [sbml_str] * actor_count
 
         self.simulators = [SimulatorActor.remote(sbml_strings[k], selections) for k in range(actor_count)]
+
 
     def timecourses(self, simulations):
         """ Run all simulations with given model and collect the results.

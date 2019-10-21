@@ -1,7 +1,7 @@
 """
 Parallel execution of timecourses
 """
-
+import random
 import time
 import roadrunner
 import ray
@@ -121,23 +121,31 @@ def example_parallel_timecourse(nsim=40, actor_count=15):
         total_time = load_time + sim_time
         message("simulate", sim_time)
         message("total", total_time)
+        assert(len(results) == len(tcsims))
+
+        time.sleep(3)
 
         # run parallel simulation (without model reading)
         start_time = time.time()
         results = simulator.timecourses(simulations=tcsims)
         repeat_time = time.time()-start_time
         message(f"repeat", repeat_time)
+        assert (len(results) == len(tcsims))
 
         actor_count = kwargs.get('actor_count', 1)
-        sim_info.append({
-            "key": key,
-            "nsim": nsim,
-            "actor_count": actor_count,
-            "t_load": load_time,
-            "t_sim": sim_time,
-            "t_total": total_time,
-            "t_repeat": repeat_time,
-        })
+        times = {
+            "load": load_time,
+            "simulate": sim_time,
+            "total": total_time,
+            "repeat": repeat_time,
+        }
+        sim_info.extend([{
+                "key": key,
+                "nsim": nsim,
+                "actor_count": actor_count,
+                "time_type": k,
+                "time": v,
+            } for (k, v) in times.items()])
 
         print("-" * 80)
 
@@ -148,7 +156,10 @@ if __name__ == "__main__":
     # example_single_actor()
     # example_multiple_actors()
 
-    sim_info = example_parallel_timecourse(nsim=10, actor_count=15)
+    import psutil
+    print("num_cpus:", psutil.cpu_count(logical=False))
 
+    sim_info = example_parallel_timecourse(nsim=100, actor_count=15)
+    ray.timeline(filename="timeline.json")
 
 
