@@ -17,9 +17,15 @@ def run_parameter_scan(parallel=False):
     # [2] value scan
     scan_changeset = ChangeSet.scan_changeset('n', values=np.linspace(start=2, stop=10, num=8))
     tcsims = ensemble(
-        sim=TimecourseSim(Timecourse(start=0, end=100, steps=100)),
+        sim=TimecourseSim([
+            Timecourse(start=0, end=100, steps=100, changes={}),
+            Timecourse(start=0, end=60, steps=100, changes={'[X]': 10}),
+            Timecourse(start=0, end=60, steps=100, changes={'X': 10}),
+        ]),
         changeset=scan_changeset
     )
+    print(tcsims[0])
+
     if parallel:
         simulator = SimulatorParallel(path=MODEL_REPRESSILATOR)
         results = simulator.timecourses(tcsims)

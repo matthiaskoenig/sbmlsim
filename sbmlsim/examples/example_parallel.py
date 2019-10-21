@@ -72,7 +72,7 @@ def example_parallel_timecourse():
     ])
 
     # collect all simulation definitions (see also the ensemble functions)
-    nsim = 100
+    nsim = 500
     for _ in range(nsim):
         tcsims.append(tc_sim)
 
@@ -90,7 +90,7 @@ def example_parallel_timecourse():
         {
             "key": "parallel",
             'simulator': SimulatorParallel,
-            'kwargs': {'actor_count': 15}
+            'kwargs': {'actor_count': 12}
         },
         {
             "key": "serial",
@@ -127,6 +127,6 @@ def example_parallel_timecourse():
 
 
 if __name__ == "__main__":
-    example_single_actor()
-    example_multiple_actors()
+    # example_single_actor()
+    # example_multiple_actors()
     example_parallel_timecourse()
