@@ -1,0 +1,27 @@
+"""
+Serial simulator.
+"""
+import logging
+from typing import List
+
+from sbmlsim.simulation import SimulatorAbstract, SimulatorWorker
+from sbmlsim.model import load_model
+from sbmlsim.result import Result
+from sbmlsim.timecourse import TimecourseSim
+
+logger = logging.getLogger(__name__)
+
+
+class SimulatorSerial(SimulatorAbstract, SimulatorWorker):
+    def __init__(self, path, selections: List[str] = None):
+        self.r = load_model(path=path, selections=selections)
+
+    def timecourses(self, simulations: List[TimecourseSim]) -> Result:
+        """ Run many timecourses."""
+        if isinstance(simulations, TimecourseSim):
+            simulations = [simulations]
+
+        logger.warning("Use of SimulatorSerial to run multiple timecourses. "
+                       "Use SimulatorParallel instead.")
+        dfs = [self.timecourse(sim) for sim in simulations]
+        return Result(dfs)

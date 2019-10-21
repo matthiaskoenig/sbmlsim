@@ -30,6 +30,9 @@ class Result(object):
         for k, df in enumerate(self.frames):
             self.data[:, :, k] = df.values
 
+    def __len__(self):
+        return len(self.frames)
+
     def statistics_df(self):
         df = pd.DataFrame({
             'mean'
@@ -51,7 +54,12 @@ class Result(object):
 
     @property
     def mean(self):
-        return pd.DataFrame(np.mean(self.data, axis=2), columns=self.columns)
+        logging.warning("no caching of mean !")
+        if len(self) == 1:
+            logging.warning("mean() on Result with len==1 is not defined")
+            return self.frames[0]
+        else:
+            return pd.DataFrame(np.mean(self.data, axis=2), columns=self.columns)
 
     @property
     def std(self):

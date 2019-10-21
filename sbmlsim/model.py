@@ -6,10 +6,12 @@ import roadrunner
 import libsbml
 import numpy as np
 import pandas as pd
+from typing import List
 
 MODEL_CHANGE_BOUNDARY_CONDITION = "boundary_condition"
 
-def load_model(path, selections: bool = True) -> roadrunner.RoadRunner:
+
+def load_model(path, selections: List[str] = None) -> roadrunner.RoadRunner:
     """ Loads the latest model version.
 
     :param path: path to SBML model or SBML string
@@ -18,14 +20,14 @@ def load_model(path, selections: bool = True) -> roadrunner.RoadRunner:
     """
     logging.info("Loading: '{}'".format(path))
     r = roadrunner.RoadRunner(path)
-    if selections:
-        set_timecourse_selections(r)
+    set_timecourse_selections(r, selections)
     return r
+
 
 # --------------------------------------
 # Selections
 # --------------------------------------
-def set_timecourse_selections(r: roadrunner.RoadRunner, selections=None) -> None:
+def set_timecourse_selections(r: roadrunner.RoadRunner, selections: List[str] = None) -> None:
     """ Sets the full model selections. """
     if not selections:
         r_model = r.model  # type: roadrunner.ExecutableModel
@@ -40,6 +42,7 @@ def set_timecourse_selections(r: roadrunner.RoadRunner, selections=None) -> None
                     r_model.getFloatingSpeciesIds() + r_model.getBoundarySpeciesIds())]
     else:
         r.timeCourseSelections = selections
+
 
 # --------------------------------------
 # Resets
@@ -60,11 +63,11 @@ def reset_all(r):
             roadrunner.SelectionRecord.FLOATING |
             roadrunner.SelectionRecord.GLOBAL_PARAMETER)
 
+
 # --------------------------------
 # Integrator settings
 # --------------------------------
 # FIXME: implement setting of ode solver properties: variable_step_size, stiff, absolute_tolerance, relative_tolerance
-
 def set_integrator_settings(r: roadrunner.RoadRunner, **kwargs) -> None:
     """ Set integrator settings. """
     integrator = r.getIntegrator()
@@ -84,8 +87,6 @@ def set_default_settings(self):
             absolute_tolerance=1E-8,
             relative_tolerance=1E-8
     )
-
-
 
 
 # --------------------------------
@@ -193,7 +194,6 @@ if __name__ == "__main__":
     from sbmlsim.tests.constants import MODEL_REPRESSILATOR
 
     r = load_model(MODEL_REPRESSILATOR)
-
 
     print("-" * 80)
     df = parameter_df(r)

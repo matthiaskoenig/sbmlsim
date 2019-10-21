@@ -70,6 +70,7 @@ setup(
         "python-libsbml-experimental>=5.18.1",
         "libroadrunner>=1.5.4",
         "psutil",
+        "setproctitle",
         "ray",
         "matplotlib>=3.1.1",
         "altair>=3.2",

@@ -2,7 +2,7 @@ import pandas as pd
 
 import sbmlsim
 from sbmlsim.model import load_model
-from sbmlsim.simulation import timecourse, timecourses
+from sbmlsim.simulation_serial import timecourse, timecourses
 from sbmlsim.timecourse import Timecourse, TimecourseSim, ensemble
 from sbmlsim.tests.constants import MODEL_REPRESSILATOR
 from sbmlsim.result import Result

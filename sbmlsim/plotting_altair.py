@@ -3,7 +3,6 @@ Interactive plots with altair
 """
 import altair as alt
 from sbmlsim.result import Result
-from vega_datasets import data
 
 def lineplot(result):
     source = result.mean
@@ -80,7 +79,7 @@ if __name__ == "__main__":
     from sbmlsim.tests.constants import MODEL_REPRESSILATOR
     from sbmlsim.model import load_model
     from sbmlsim.parametrization import ChangeSet
-    from sbmlsim.simulation import TimecourseSimulation, Timecourse, timecourses
+    from sbmlsim.simulation_serial import TimecourseSimulation, Timecourse, timecourses
     r = load_model(MODEL_REPRESSILATOR)
 
     # parameter sensitivity

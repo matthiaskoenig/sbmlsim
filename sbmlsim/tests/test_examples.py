@@ -1,7 +1,8 @@
 """
 Run all the example files in tests.
 """
-from sbmlsim.examples import example_clamp, example_scan, example_sensitivity, example_timecourse
+from sbmlsim.examples import example_clamp, example_scan, example_sensitivity, example_timecourse, \
+    example_parallel
 
 
 def test_clamp():
@@ -18,3 +19,15 @@ def test_sensitivity():
 
 def test_timecourse():
     example_timecourse.run_timecourse_examples()
+
+
+def test_parallel_1():
+    example_parallel.example_single_actor()
+
+
+def test_parallel_2():
+    example_parallel.example_multiple_actors()
+
+
+def test_parallel_3():
+    example_parallel.example_parallel_timecourse()

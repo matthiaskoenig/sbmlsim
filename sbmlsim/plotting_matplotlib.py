@@ -1,5 +1,6 @@
 from matplotlib import pyplot as plt
-from sbmlsim.simulation import Result
+from sbmlsim.simulation_serial import Result
+import pandas as pd
 
 kwargs_data = {'marker': 's', 'linestyle': '--', 'linewidth': 1, 'capsize': 3}
 kwargs_sim = {'marker': None, 'linestyle': '-', 'linewidth': 2}
@@ -30,15 +31,14 @@ def add_line(ax, data, yid, xid="time", color='black', label='', kwargs_sim=kwar
     kwargs_plot = dict(kwargs_sim)
     kwargs_plot.update(kwargs)
 
-    if isinstance(data, Result):
-        x = data.mean[xid]*xf
+    if not isinstance(data, Result):
+        raise ValueError("Only Result objects supported.")
 
+    x = data.mean[xid] * xf
+    if len(data) > 1:
         # FIXME: std areas should be within min/max areas!
         ax.fill_between(x, data.min[yid], data.mean[yid] - data.std[yid], color=color, alpha=0.3, label="__nolabel__")
         ax.fill_between(x, data.mean[yid] + data.std[yid], data.max[yid], color=color, alpha=0.3, label="__nolabel__")
         ax.fill_between(x, data.mean[yid] - data.std[yid], data.mean[yid] + data.std[yid], color=color, alpha=0.5, label="__nolabel__")
 
-        ax.plot(x, data.mean[yid], '-', color=color, label="sim {}".format(label), **kwargs_plot)
-    else:
-        x = data[xid] * xf
-        ax.plot(x, data[yid], '-', color=color, label="sim {}".format(label), **kwargs_plot)
+    ax.plot(x, data.mean[yid], '-', color=color, label="sim {}".format(label), **kwargs_plot)

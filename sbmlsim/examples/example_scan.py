@@ -3,10 +3,11 @@ Example shows basic model simulations and plotting.
 """
 import numpy as np
 
-from sbmlsim.model import load_model
-from sbmlsim.simulation import timecourses, Timecourse, TimecourseSim
-from sbmlsim.result import Result
 from sbmlsim.parametrization import ChangeSet
+from sbmlsim.timecourse import Timecourse, TimecourseSim, ensemble
+from sbmlsim.simulation_ray import SimulatorParallel
+from sbmlsim.simulation_serial import SimulatorSerial
+from sbmlsim.result import Result
 from sbmlsim.tests.constants import MODEL_REPRESSILATOR
 
 
@@ -15,22 +16,19 @@ def run_parameter_scan(parallel=False):
 
     # [2] value scan
     scan_changeset = ChangeSet.scan_changeset('n', values=np.linspace(start=2, stop=10, num=8))
-    tc_sims = TimecourseSim(
-        Timecourse(start=0, end=100, steps=100)
-    ).ensemble(changeset=scan_changeset)
+    tcsims = ensemble(
+        sim=TimecourseSim(Timecourse(start=0, end=100, steps=100)),
+        changeset=scan_changeset
+    )
+    if parallel:
+        simulator = SimulatorParallel(path=MODEL_REPRESSILATOR)
+        results = simulator.timecourses(tcsims)
+        assert isinstance(results, Result)
 
-    for tc_sim in tc_sims:
-        print(tc_sim)
-
-    if not parallel:
-        r = load_model(MODEL_REPRESSILATOR)
-        results = timecourses(r, tc_sims)
     else:
-        # pass
-        # from sbmlsim.simulation_ray import
-
-        # TODO: implement
-        results = None
+        simulator = SimulatorSerial(path=MODEL_REPRESSILATOR)
+        results = simulator.timecourses(tcsims)
+        assert isinstance(results, Result)
 
     return results
 
@@ -38,4 +36,3 @@ def run_parameter_scan(parallel=False):
 if __name__ == "__main__":
     run_parameter_scan(parallel=False)
     run_parameter_scan(parallel=True)
-

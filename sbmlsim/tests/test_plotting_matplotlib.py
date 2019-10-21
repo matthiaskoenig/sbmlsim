@@ -5,7 +5,7 @@ from matplotlib import pyplot as plt
 from sbmlsim.plotting_matplotlib import add_line
 
 import sbmlsim
-from sbmlsim.simulation import timecourses
+from sbmlsim.simulation_serial import timecourses
 from sbmlsim.timecourse import Timecourse, TimecourseSim
 from sbmlsim.parametrization import ChangeSet
 from sbmlsim.tests.constants import MODEL_REPRESSILATOR

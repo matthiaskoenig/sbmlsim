@@ -17,68 +17,76 @@ from typing import List, Union
 import pandas as pd
 import roadrunner
 
-
-from sbmlsim.model import clamp_species, MODEL_CHANGE_BOUNDARY_CONDITION
+from sbmlsim.model import clamp_species, MODEL_CHANGE_BOUNDARY_CONDITION, load_model
 from sbmlsim.result import Result
 from sbmlsim.timecourse import Timecourse, TimecourseSim
 
-
-def timecourse(r: roadrunner.RoadRunner, sim: Union[TimecourseSim, Timecourse]) -> pd.DataFrame:
-    """ Timecourse simulations based on timecourse_definition.
-
-    :param r: Roadrunner model instance
-    :param sim: Simulation definition(s)
-    :param reset_all: Reset model at the beginning
-    :return:
-    """
-    if isinstance(sim, Timecourse):
-        sim = TimecourseSim(timecourses=[sim])
-
-    if sim.reset:
-        r.resetToOrigin()
-
-    # selections backup
-    model_selections = r.timeCourseSelections
-    if sim.selections is not None:
-        r.timeCourseSelections = sim.selections
-
-    frames = []
-    t_offset = 0.0
-    for tc in sim.timecourses:
-
-        # apply changes
-        for key, value in tc.changes.items():
-            r[key] = value
-
-        for key, value in tc.model_changes.items():
-            if key == MODEL_CHANGE_BOUNDARY_CONDITION:
-                for sid, bc in value.items():
-                    # setting boundary conditions
-                    r = clamp_species(r, sid, boundary_condition=bc)
-            else:
-                logging.error("Unsupported model change: {}:{}".format(key, value))
-
-        # run simulation
-        s = r.simulate(start=tc.start, end=tc.end, steps=tc.steps)
-        df = pd.DataFrame(s, columns=s.colnames)
-        df.time = df.time + t_offset
-        frames.append(df)
-        t_offset += tc.end
-
-    # reset selections
-    r.timeCourseSelections = model_selections
-
-    return pd.concat(frames)
+logger = logging.getLogger(__name__)
 
 
-def timecourses(r: roadrunner.RoadRunner, sims: List[TimecourseSim]) -> List[pd.DataFrame]:
-    """ Run many timecourses."""
-    if isinstance(sims, TimecourseSim):
-        sims = [sims]
+class SimulatorAbstract(object):
+    def __init__(self, path, selections: List[str] = None, **kwargs):
+        """ Must be implemented by simulator. """
+        pass
 
-    dfs = []
-    for sim in sims:
-        df = timecourse(r, sim)
-        dfs.append(df)
+    def timecourses(self):
+        """ Must be implemented by simulator.
 
-    return Result(dfs)
+        :return:
+        """
+        raise NotImplementedError("Use concrete implementation")
+
+
+class SimulatorWorker(object):
+
+    def timecourse(self, sim: Union[TimecourseSim, Timecourse]) -> pd.DataFrame:
+        """ Timecourse simulations based on timecourse_definition.
+
+        :param r: Roadrunner model instance
+        :param sim: Simulation definition(s)
+        :param reset_all: Reset model at the beginning
+        :return:
+        """
+
+        if isinstance(sim, Timecourse):
+            sim = TimecourseSim(timecourses=[sim])
+
+        if sim.reset:
+            self.r.resetToOrigin()
+
+        # selections backup
+        model_selections = self.r.timeCourseSelections
+        if sim.selections is not None:
+            self.r.timeCourseSelections = sim.selections
+
+        frames = []
+        t_offset = 0.0
+        for tc in sim.timecourses:
+
+            # apply changes
+            for key, value in tc.changes.items():
+                self.r[key] = value
+
+            # FIXME: model changes (make run in parallel, better handling in model)
+            # logger.error("No support for model changes")
+            '''
+            for key, value in tc.model_changes.items():
+                if key == MODEL_CHANGE_BOUNDARY_CONDITION:
+                    for sid, bc in value.items():
+                        # setting boundary conditions
+                        r = clamp_species(r, sid, boundary_condition=bc)
+                else:
+                    loggeself.r.error("Unsupported model change: {}:{}".format(key, value))
+            '''
+
+            # run simulation
+            s = self.r.simulate(start=tc.start, end=tc.end, steps=tc.steps)
+            df = pd.DataFrame(s, columns=s.colnames)
+            df.time = df.time + t_offset
+            frames.append(df)
+            t_offset += tc.end
+
+        # reset selections
+        self.r.timeCourseSelections = model_selections
+
+        return pd.concat(frames)

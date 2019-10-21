@@ -1,10 +1,10 @@
 from matplotlib import pyplot as plt
 
-import sbmlsim
 from sbmlsim import plotting_matplotlib as plotting
 from sbmlsim.timecourse import TimecourseSim, Timecourse
+# from sbmlsim.simulation_serial import SimulatorSerial as Simulator
+from sbmlsim.simulation_ray import SimulatorParallel as Simulator
 from sbmlsim.result import Result
-
 from sbmlsim.tests.constants import MODEL_REPRESSILATOR
 
 
@@ -27,8 +27,8 @@ def run_clamp():
         plt.show()
 
     # reference simulation
-    r = sbmlsim.load_model(MODEL_REPRESSILATOR)
-    tsim = TimecourseSimulation([
+    simulator = Simulator(MODEL_REPRESSILATOR)
+    tcsim = TimecourseSim([
         Timecourse(start=0, end=400, steps=400, changes={"X": 10}),
         # clamp simulation
         Timecourse(start=0, end=200, steps=200,
@@ -37,7 +37,8 @@ def run_clamp():
         Timecourse(start=0, end=400, steps=400,
                    model_changes={'boundary_condition': {'X': False}}),
     ])
-    result = sbmlsim.timecourse(r, tsim)
+    result = simulator.timecourses(tcsim)
+    assert isinstance(result, Result)
     plot_result(result, "clamp experiment (400-600)")
 
 

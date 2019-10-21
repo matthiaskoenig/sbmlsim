@@ -2,7 +2,7 @@
 Example shows basic model simulations and plotting.
 """
 from sbmlsim.model import load_model
-from sbmlsim.simulation import timecourses
+from sbmlsim.simulation_ray import SimulatorParallel as Simulator
 from sbmlsim.timecourse import TimecourseSim, Timecourse, ensemble
 
 from sbmlsim.parametrization import ChangeSet
@@ -16,9 +16,11 @@ def run_sensitivity():
 
     :return:
     """
-    r = load_model(MODEL_REPRESSILATOR)
+    simulator = Simulator(MODEL_REPRESSILATOR)
 
     # parameter sensitivity
+    # FIXME: make work with parallel
+    r = load_model(MODEL_REPRESSILATOR)
     changeset = ChangeSet.parameter_sensitivity_changeset(r)
     tc_sim = TimecourseSim([
             Timecourse(start=0, end=100, steps=100),
@@ -26,7 +28,7 @@ def run_sensitivity():
             Timecourse(start=0, end=100, steps=100, model_changes={"boundary_condition": {"X": False}}),
         ])
     tc_sims = ensemble(tc_sim, changeset=changeset)
-    result = timecourses(r, tc_sims)
+    result = simulator.timecourses(tc_sims)
 
     # create figure
     fig, (ax1) = plt.subplots(nrows=1, ncols=1, figsize=(5, 5))
