@@ -15,6 +15,6 @@ simulation was developed.
 
 .. parsed-literal::
 
-    0.0.6
+    0.1.0a1
 
 
