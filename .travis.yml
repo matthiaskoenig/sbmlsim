@@ -1,0 +1,24 @@
+language: python
+matrix:
+  include:
+    - os: linux
+      sudo: required
+      python: 3.5
+
+    - os: linux
+      sudo: required
+      python: 3.6
+
+
+install:
+  pip install -r requirements.txt
+
+script:
+  pytest --cov=sbmlsim
+
+after_success:
+   pip install codecov; codecov
+
+cache:
+  directories:
+    - $HOME/.cache/pip
