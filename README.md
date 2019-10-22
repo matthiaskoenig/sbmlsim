@@ -19,6 +19,8 @@ Matthias König is supported by the Federal Ministry of Education and Research (
 within the research network Systems Medicine of the Liver (**LiSyM**, grant number 031L0054).
 
 ## Installation
+`sbmlsim` currently works only python3.6, we are working on python3.7 and python3.8 support.
+
 `sbmlsim` requires HDF5 support which can be installed via
 ```
 sudo apt-get install -y libhdf5-serial-dev
