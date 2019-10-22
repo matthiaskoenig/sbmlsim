@@ -73,7 +73,7 @@ setup(
         "setproctitle>=1.1.10",
         "ray>=0.7.5",
         "cached-property>=1.5.1",
-        "matplotlib>=3.1.1",
+        "matplotlib>=3.1",
         "altair>=3.2",
         "pytest>=4.3.1",
         "pytest-cov>=2.6.1",
