@@ -14,8 +14,20 @@ For documentation and examples see https://sbmlsim.readthedocs.io
 * Source Code: [LGPLv3](http://opensource.org/licenses/LGPL-3.0)
 * Documentation: [CC BY-SA 4.0](http://creativecommons.org/licenses/by-sa/4.0/)
 
-## Funding
+### Funding
 Matthias König is supported by the Federal Ministry of Education and Research (BMBF, Germany)
 within the research network Systems Medicine of the Liver (**LiSyM**, grant number 031L0054).
+
+## Installation
+`sbmlsim` requires HDF5 support which can be installed via
+```
+sudo apt-get install -y libhdf5-serial-dev
+```
+Then clone the repository and install via
+```
+git clone https://github.com/matthiaskoenig/sbmlsim.git
+cd sbmlsim
+pip install -e .
+```
 
 &copy; 2019 Matthias König
