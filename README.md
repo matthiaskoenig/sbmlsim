@@ -1,6 +1,6 @@
 
 [![Build Status](https://travis-ci.org/matthiaskoenig/sbmlsim.svg?branch=develop)](https://travis-ci.org/matthiaskoenig/sbmlsim)
-[![Documentation Status](https://readthedocs.org/projects/sbmlutils/badge/?version=latest)](http://sbmlutils.readthedocs.io/en/latest/)
+[![Documentation Status](https://readthedocs.org/projects/sbmlsim/badge/?version=latest)](https://sbmlsim.readthedocs.io/en/latest/)
 [![License (LGPL version 3)](https://img.shields.io/badge/license-LGPLv3.0-blue.svg?style=flat-square)](http://opensource.org/licenses/LGPL-3.0)
 
 <h1>sbmlsim: SBML simulation made easy</h1>
@@ -26,10 +26,22 @@ within the research network Systems Medicine of the Liver (**LiSyM**, grant numb
 sudo apt-get install -y libhdf5-serial-dev
 ```
 Then clone the repository and install via
-```
+```bash
+# checkout code
 git clone https://github.com/matthiaskoenig/sbmlsim.git
+
+# virtualenv
 cd sbmlsim
-pip install -e .
+mkvirtualenv sbmlsim --python=python3.6
+(sbmlsim) pip install -e .
 ```
+The notebook support can be installed via
+```bash
+(sbmlsim) pip install jupyter jupyterlab
+(sbmlsim) python -m ipykernel install --user --name sbmlsim
+```
+Notebooks are available in
+- `docs/notebooks` (notebooks used in documentation on https://sbmlsim.readthedocs.io/en/latest/)
+- `notebooks`
 
 &copy; 2019 Matthias König
