@@ -1,3 +1,5 @@
+
+[![Build Status](https://travis-ci.org/matthiaskoenig/sbmlsim.svg?branch=develop)](https://travis-ci.org/matthiaskoenig/sbmlsim)
 [![Documentation Status](https://readthedocs.org/projects/sbmlutils/badge/?version=latest)](http://sbmlutils.readthedocs.io/en/latest/)
 [![License (LGPL version 3)](https://img.shields.io/badge/license-LGPLv3.0-blue.svg?style=flat-square)](http://opensource.org/licenses/LGPL-3.0)
 
