@@ -4,7 +4,7 @@
 [![License (LGPL version 3)](https://img.shields.io/badge/license-LGPLv3.0-blue.svg?style=flat-square)](http://opensource.org/licenses/LGPL-3.0)
 
 <h1>sbmlsim: SBML simulation made easy</h1>
-<b><a href="https://orcid.org/0000-0003-1725-179X" title="https://orcid.org/0000-0003-1725-179X"><img src="./docs/images/orcid.png" height="15"/></a> Matthias König</b>
+<b><a href="https://orcid.org/0000-0003-1725-179X" title="https://orcid.org/0000-0003-1725-179X"><img src="./docs/static/images/orcid.png" height="15"/></a> Matthias König</b>
 
 `sbmlsim`: SBML simulation made easy
 
@@ -19,13 +19,14 @@ Matthias König is supported by the Federal Ministry of Education and Research (
 within the research network Systems Medicine of the Liver (**LiSyM**, grant number 031L0054).
 
 ## Installation
-`sbmlsim` currently works only python3.6, we are working on python3.7 and python3.8 support.
+`sbmlsim` currently works only python3.6.
 
-`sbmlsim` requires HDF5 support which can be installed via
+HDF5 support is required which can be installed via
 ```
 sudo apt-get install -y libhdf5-serial-dev
 ```
-Then clone the repository and install via
+
+Best install `sbmlsim` in a virtual environment via pip
 ```bash
 # checkout code
 git clone https://github.com/matthiaskoenig/sbmlsim.git

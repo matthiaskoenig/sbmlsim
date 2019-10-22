@@ -18,7 +18,6 @@ echo "--------------------------------------"
 echo "remove old documentation"
 echo "--------------------------------------"
 rm -rf _built
-rm -rf _static
 rm -rf _templates
 rm -rf _notebooks
 
