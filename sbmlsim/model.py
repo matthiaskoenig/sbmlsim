@@ -6,7 +6,7 @@ import roadrunner
 import libsbml
 import numpy as np
 import pandas as pd
-from typing import List
+from typing import List, Tuple
 
 MODEL_CHANGE_BOUNDARY_CONDITION = "boundary_condition"
 
@@ -22,6 +22,33 @@ def load_model(path, selections: List[str] = None) -> roadrunner.RoadRunner:
     r = roadrunner.RoadRunner(path)
     set_timecourse_selections(r, selections)
     return r
+
+
+def copy_model(r: roadrunner.RoadRunner) -> roadrunner.RoadRunner:
+    """Copy current model.
+
+    :param r:
+    :return:
+    """
+    # independent copy by parsing SBML
+    sbml_str = r.getCurrentSBML()  # type: str
+    r_copy = roadrunner.RoadRunner(sbml_str)
+
+    # copy of selections (by value)
+    r_copy.timeCourseSelections = r.timeCourseSelections
+    r_copy.steadyStateSelections = r.steadyStateSelections
+
+    # copy integrator state
+    # TODO: copy integrator settings
+
+    # copy all integrator settings
+    integrator = r.integrator  # type: roadrunner.Integrator
+    settings_keys = integrator.getSettings()   # type: Tuple[str]
+    print(settings_keys)
+    for key in settings_keys:
+        r.integrator.setValue(key, integrator.getValue(key))
+
+    return r_copy
 
 
 # --------------------------------------
@@ -111,6 +138,9 @@ def parameter_df(r: roadrunner.RoadRunner) -> pd.DataFrame:
         }
     df = pd.DataFrame(data, columns=['sid', 'value', 'unit', 'constant', 'name'])
     return df
+
+
+
 
 
 def species_df(r: roadrunner.RoadRunner) -> pd.DataFrame:

@@ -84,6 +84,7 @@ def example_parallel_timecourse(nsim=40, actor_count=15):
 
     # load model once for caching (fair comparison)
     r = roadrunner.RoadRunner(MODEL_GLCWB)
+    selections = None
 
     print("-" * 80)
     print(f"Run '{nsim}' simulations")
@@ -111,7 +112,7 @@ def example_parallel_timecourse(nsim=40, actor_count=15):
         # run simulation (with model reading)
         start_time = time.time()
         # create a simulator with 16 parallel actors
-        simulator = Simulator(path=MODEL_GLCWB, **kwargs)
+        simulator = Simulator(path=MODEL_GLCWB, selections=selections, **kwargs)
         load_time = time.time()-start_time
         message(f"load", load_time)
 
@@ -122,8 +123,6 @@ def example_parallel_timecourse(nsim=40, actor_count=15):
         message("simulate", sim_time)
         message("total", total_time)
         assert(len(results) == len(tcsims))
-
-        time.sleep(3)
 
         # run parallel simulation (without model reading)
         start_time = time.time()

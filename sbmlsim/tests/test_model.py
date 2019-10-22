@@ -4,10 +4,30 @@ Test model module.
 import roadrunner
 
 
-from sbmlsim.model import load_model, clamp_species
+from sbmlsim.model import load_model, copy_model, clamp_species
 from sbmlsim.model import species_df, parameter_df
 
 from sbmlsim.tests.constants import MODEL_REPRESSILATOR
+
+
+def test_load_model():
+    r = load_model(MODEL_REPRESSILATOR)
+    assert r
+    assert isinstance(r, roadrunner.RoadRunner)
+
+def test_copy_model():
+    r = load_model(MODEL_REPRESSILATOR)
+    r_copy = copy_model(r)
+    assert r_copy
+    assert isinstance(r_copy, roadrunner.RoadRunner)
+
+    r_copy.timeCourseSelections = ['time', "X"]
+    print(r.timeCourseSelections)
+    print(r_copy.timeCourseSelections)
+
+    assert 0
+
+
 
 
 def test_clamp_sid():

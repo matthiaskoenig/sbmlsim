@@ -69,15 +69,17 @@ class SimulatorWorker(object):
 
             # FIXME: model changes (make run in parallel, better handling in model)
             # logger.error("No support for model changes")
-            '''
+
+            if len(tc.model_changes) > 0:
+                r_old = self.r
             for key, value in tc.model_changes.items():
                 if key == MODEL_CHANGE_BOUNDARY_CONDITION:
                     for sid, bc in value.items():
                         # setting boundary conditions
-                        r = clamp_species(r, sid, boundary_condition=bc)
+                        r_new = clamp_species(r.sid, sid, boundary_condition=bc)
                 else:
                     loggeself.r.error("Unsupported model change: {}:{}".format(key, value))
-            '''
+
 
             # run simulation
             s = self.r.simulate(start=tc.start, end=tc.end, steps=tc.steps)
