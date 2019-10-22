@@ -83,7 +83,7 @@ We can now run the simulation with a given model, here with the
 
 .. code:: ipython3
 
-    # stpre the result
+    # get timecourse data
     result.mean.to_csv('./json_examples/example_1.tsv', index=False, sep='\t')
     result.mean
 
@@ -410,6 +410,9 @@ We can now run the simulation with a given model, here with the
 
 
 
+Now we create a small helper for plotting the results which we will
+reuse in the following examples.
+
 .. code:: ipython3
 
     %matplotlib inline
@@ -419,7 +422,6 @@ We can now run the simulation with a given model, here with the
     def plot_repressilator_result(result):
         df = result.mean
         fig, (ax) = plt.subplots(nrows=1, ncols=1, figsize=(5, 5))
-        fig.subplots_adjust(wspace=0.3, hspace=0.3)
     
         ax.plot(df.time, df.X, 'o-', label="X")
         ax.plot(df.time, df.Y, 'o-', label="Y")
@@ -434,23 +436,28 @@ We can now run the simulation with a given model, here with the
 
 
 
-.. image:: simjson_files/simjson_11_0.png
+.. image:: simjson_files/simjson_12_0.png
 
 
 Model changes
 -------------
 
-The next step is to add changes to the model at the beginning of a
-simulation. These are normally either changes in initial amount, initial
-concentration or parameter values. Changes are defined via the
-``changes`` dictionary on a timecourse and reference ``SId``, i.e. SBML
-identifiers, in the SBML model.
+A simulation without changing anything in the model is a bit boring, so
+in the following we add changes to the model at the beginning of a
+simulation. Such changes can either be changes in the initial amount of
+a species, initial concentration of a species or parameter values.
+
+Changes are defined via the ``changes`` field in a timecourse. The
+referencing of model objects (species or parameters) works hereby via
+the ``SId``, i.e. the SBML identifiers used in the SBML model.
 
 Parameter changes
 ~~~~~~~~~~~~~~~~~
 
-E.g. to change the parameter with id ``n`` to ``5`` in the simulation we
-add the changes dictionary ``{'n': 5}`` to the ``Timecourse``
+To change parameter values add the assignment of the change to the
+``changes`` dictionary. In the example the parameter with id ``n`` is
+changed to ``5`` in the simulation by adding the changes ``{'n': 5}`` to
+the ``Timecourse`` object.
 
 .. code:: ipython3
 
@@ -473,7 +480,7 @@ add the changes dictionary ``{'n': 5}`` to the ``Timecourse``
 
 
 
-.. image:: simjson_files/simjson_13_1.png
+.. image:: simjson_files/simjson_14_1.png
 
 
 .. parsed-literal::
@@ -498,8 +505,8 @@ add the changes dictionary ``{'n': 5}`` to the ``Timecourse``
 Initial amount changes
 ~~~~~~~~~~~~~~~~~~~~~~
 
-To change the initial amount of a species ``X`` to ``100`` in the
-simulation we add the changes ``{'X': 100}`` to the ``Timecourse``
+To change the initial amount of a species ``X`` to ``100`` we add the
+corresponding changes ``{'X': 100}`` to the ``Timecourse``.
 
 .. code:: ipython3
 
@@ -522,7 +529,7 @@ simulation we add the changes ``{'X': 100}`` to the ``Timecourse``
 
 
 
-.. image:: simjson_files/simjson_15_1.png
+.. image:: simjson_files/simjson_16_1.png
 
 
 .. parsed-literal::
@@ -578,7 +585,7 @@ in concentration.
 
 
 
-.. image:: simjson_files/simjson_17_1.png
+.. image:: simjson_files/simjson_18_1.png
 
 
 .. parsed-literal::
@@ -633,7 +640,7 @@ beginning of the ``Timecourse``. For instance to change the amount of
 
 
 
-.. image:: simjson_files/simjson_19_1.png
+.. image:: simjson_files/simjson_20_1.png
 
 
 .. parsed-literal::
@@ -663,14 +670,25 @@ Combined timecourses
 Multiple ``Timecourse`` objects can be combined to one large timecourse.
 The results of the individual ``Timecourse`` are thereby concatenated.
 The ``changes`` are always applied at the beginning of the individual
-``Timecourse`` simulations. The model state is persistent in the
-multiple timecourses, i.e. the end state of the state variables of one
-Timecourse are the starting values of the next Timecourse (with
-exception of state variables affected by changes).
+``Timecourse`` simulations.
 
-An example will demonstrate this. Here the complete timecourse
-simulation consists of 3 ``Timecourse`` objects. We start the first
-Timecourse with an initial amount of ``X=20`` and simulate for 120
+The model state is persistent in the multiple timecourses, i.e. the end
+state of the state variables of one Timecourse are the starting values
+of the next Timecourse (with exception of state variables affected by
+changes).
+
+An example will demonstrate what is meant by this. The complete
+timecourse simulation consists of 3 ``Timecourse`` parts:
+
+-  start the first Timecourse with an initial amount of ``X=20`` and
+   simulate for 120 time steps
+-  set ``n=20`` in the model (while keeping the current state of all
+   state variables) and continue simulating for 240 steps
+-  set ``n=2`` (this is the initial value of n) and continue simulating
+   for another 240 steps
+
+The result is a single timecourse simulation consisting of 3 timecourse
+parts.
 
 .. code:: ipython3
 
@@ -695,7 +713,7 @@ Timecourse with an initial amount of ``X=20`` and simulate for 120
 
 
 
-.. image:: simjson_files/simjson_21_1.png
+.. image:: simjson_files/simjson_22_1.png
 
 
 .. parsed-literal::
