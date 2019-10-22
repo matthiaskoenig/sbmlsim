@@ -30,6 +30,10 @@ author = 'Matthias König'
 extensions = [
     'recommonmark',
     'sphinx_rtd_theme',
+    # 'sphinx.ext.autodoc',
+    # 'sphinx.ext.mathjax',
+    # 'sphinx.ext.viewcode',
+    'sphinx.ext.autosectionlabel',
 ]
 
 # Add any paths that contain templates here, relative to this directory.

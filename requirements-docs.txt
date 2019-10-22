@@ -1,3 +1,5 @@
 sphinx
-recommonmark
-sphinx-rtd-theme
+recommonmark>=0.6.0
+sphinx-rtd-theme>=0.4.3
+nbsphinx>=0.4.3
+pypandoc>=1.4

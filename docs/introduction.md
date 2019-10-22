@@ -1,4 +1,4 @@
-# Overview
+# Introduction
 
 **Mission**: make SBML simulations great again
 
@@ -14,6 +14,9 @@ simulations with SBML models in python.
 - combined simulation experiments (combination of changes)
 - parameter scans
 - parameter sensitivity analysis
+
+A simplified exchange language based on JSON is part of `sbmlsim` 
+
 
 **Visualization**
 - interactive plots (altair)

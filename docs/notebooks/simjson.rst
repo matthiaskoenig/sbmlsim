@@ -1,7 +1,5 @@
 .. code:: ipython3
 
-    %load_ext autoreload
-    %autoreload 2
 
 JSON simulation language
 ========================

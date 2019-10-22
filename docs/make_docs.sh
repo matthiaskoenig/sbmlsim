@@ -35,7 +35,8 @@ echo "--------------------------------------"
 echo "postprocessing notebooks rst"
 echo "--------------------------------------"
 # remove the following lines from the documentation
-# sed -i '/%matplotlib inline/d' ./*.rst
+sed -i '/%load_ext autoreload/d' $NBDIR/*.rst
+sed -i '/%autoreload 2/d' $NBDIR/*.rst
 
 # change the image locations (FIXME)
 sed -i -- 's/.. image:: /.. image:: notebooks\/docs\//g' ./*.rst
