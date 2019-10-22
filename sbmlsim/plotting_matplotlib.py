@@ -15,6 +15,7 @@ plt.rcParams.update({
     'xtick.labelsize': 'large',
     'ytick.labelsize': 'large',
     'figure.facecolor': '1.00'
+
 })
 
 

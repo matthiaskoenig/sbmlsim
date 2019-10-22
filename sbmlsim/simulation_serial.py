@@ -21,7 +21,8 @@ class SimulatorSerial(SimulatorAbstract, SimulatorWorker):
         if isinstance(simulations, TimecourseSim):
             simulations = [simulations]
 
-        logger.warning("Use of SimulatorSerial to run multiple timecourses. "
-                       "Use SimulatorParallel instead.")
+        if len(simulations) > 1:
+            logger.warning("Use of SimulatorSerial to run multiple timecourses. "
+                           "Use SimulatorParallel instead.")
         dfs = [self.timecourse(sim) for sim in simulations]
         return Result(dfs)
