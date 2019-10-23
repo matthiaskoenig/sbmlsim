@@ -45,4 +45,9 @@ Notebooks are available in
 - `docs/notebooks` (notebooks used in documentation on https://sbmlsim.readthedocs.io/en/latest/)
 - `notebooks`
 
+and can be started from within `jupyterlab`
+```
+(sbmlsim) jupyter lab
+```
+
 &copy; 2019 Matthias König
