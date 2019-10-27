@@ -76,9 +76,10 @@ class SimulatorWorker(object):
                 if key == MODEL_CHANGE_BOUNDARY_CONDITION:
                     for sid, bc in value.items():
                         # setting boundary conditions
-                        r_new = clamp_species(r.sid, sid, boundary_condition=bc)
+                        r_new = clamp_species(self.r, sid, boundary_condition=bc)
+                        self.r = r_new
                 else:
-                    loggeself.r.error("Unsupported model change: {}:{}".format(key, value))
+                    logger.error("Unsupported model change: {}:{}".format(key, value))
 
 
             # run simulation

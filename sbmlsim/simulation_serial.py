@@ -14,7 +14,11 @@ logger = logging.getLogger(__name__)
 
 class SimulatorSerial(SimulatorAbstract, SimulatorWorker):
     def __init__(self, path, selections: List[str] = None):
-        self.r = load_model(path=path, selections=selections)
+        if path:
+            self.r = load_model(path=path, selections=selections)
+        else:
+            self.r = None
+            logger.warning("Simulator without model instance created!")
 
     def timecourses(self, simulations: List[TimecourseSim]) -> Result:
         """ Run many timecourses."""

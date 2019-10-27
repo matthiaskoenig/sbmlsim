@@ -15,6 +15,7 @@ def test_load_model():
     assert r
     assert isinstance(r, roadrunner.RoadRunner)
 
+
 def test_copy_model():
     r = load_model(MODEL_REPRESSILATOR)
     r_copy = copy_model(r)
@@ -24,10 +25,6 @@ def test_copy_model():
     r_copy.timeCourseSelections = ['time', "X"]
     print(r.timeCourseSelections)
     print(r_copy.timeCourseSelections)
-
-    assert 0
-
-
 
 
 def test_clamp_sid():
