@@ -76,11 +76,13 @@ class TimecourseSim(object):
     In case of a single timecourse, only the single timecourse is executed.
     """
     def __init__(self, timecourses: List[Timecourse],
-                 selections: list = None, reset: bool = True):
+                 selections: list = None, reset: bool = True,
+                 time_offset: float = 0.0):
         """
         :param timecourses:
         :param selections:
         :param reset: resetToOrigin at beginning of simulation
+        :param time_offset: time shift of simulation
         """
         if isinstance(timecourses, Timecourse):
             timecourses = [timecourses]
@@ -88,6 +90,7 @@ class TimecourseSim(object):
         self.timecourses = timecourses
         self.selections = deepcopy(selections)
         self.reset = reset
+        self.time_offset = time_offset
 
     def to_json(self, path=None):
         """ Convert definition to JSON for exchange.

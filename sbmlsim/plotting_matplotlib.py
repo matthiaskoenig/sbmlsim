@@ -19,12 +19,15 @@ plt.rcParams.update({
 })
 
 
-def add_line(ax, data, yid, xid="time", color='black', label='', kwargs_sim=kwargs_sim,
-             xf=1.0, **kwargs):
+def add_line(ax, data: Result, xid: str, yid: str, xf: float = 1.0, yf: float=1.0,
+             color='black', label='', kwargs_sim=kwargs_sim, **kwargs):
     """
-    :param ax:
-    :param xid:
-    :param yid:
+    :param ax: axis to plot to
+    :param data: Result data structure
+    :param xid: id for xdata
+    :param yid: id for ydata
+    :param xf: scaling factor for x
+    :param yf: scaling factor for y
 
     :param color:
     :return:
@@ -36,10 +39,16 @@ def add_line(ax, data, yid, xid="time", color='black', label='', kwargs_sim=kwar
         raise ValueError("Only Result objects supported.")
 
     x = data.mean[xid] * xf
+    y = data.mean[yid] * yf
+    y_sd = data.std[yid] * yf
+    y_min = data.min[yid] * yf
+    y_max = data.max[yid] * yf
+
     if len(data) > 1:
         # FIXME: std areas should be within min/max areas!
-        ax.fill_between(x, data.min[yid], data.mean[yid] - data.std[yid], color=color, alpha=0.3, label="__nolabel__")
-        ax.fill_between(x, data.mean[yid] + data.std[yid], data.max[yid], color=color, alpha=0.3, label="__nolabel__")
-        ax.fill_between(x, data.mean[yid] - data.std[yid], data.mean[yid] + data.std[yid], color=color, alpha=0.5, label="__nolabel__")
+        ax.fill_between(x, y - y_sd, y + y_sd, color=color, alpha=0.4, label="__nolabel__")
 
-    ax.plot(x, data.mean[yid], '-', color=color, label="sim {}".format(label), **kwargs_plot)
+        ax.fill_between(x, y + y_sd, y_max, color=color, alpha=0.2, label="__nolabel__")
+        ax.fill_between(x, y - y_sd, y_min, color=color, alpha=0.2, label="__nolabel__")
+
+    ax.plot(x, y, '-', color=color, label="sim {}".format(label), **kwargs_plot)

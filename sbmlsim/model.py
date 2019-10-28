@@ -84,6 +84,8 @@ def clamp_species(r: roadrunner.RoadRunner, sids, boundary_condition=True) -> ro
     """
     # get model for current SBML state
     sbml_str = r.getCurrentSBML()
+    print(sbml_str)
+
     doc = libsbml.readSBMLFromString(sbml_str)  # type: libsbml.SBMLDocument
     model = doc.getModel()  # type: libsbml.Model
 

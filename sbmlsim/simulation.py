@@ -39,7 +39,7 @@ class SimulatorAbstract(object):
 
 class SimulatorWorker(object):
 
-    def timecourse(self, simulation: Union[TimecourseSim, Timecourse]) -> pd.DataFrame:
+    def timecourse(self, simulation: TimecourseSim) -> pd.DataFrame:
         """ Timecourse simulations based on timecourse_definition.
 
         :param r: Roadrunner model instance
@@ -50,6 +50,8 @@ class SimulatorWorker(object):
 
         if isinstance(simulation, Timecourse):
             simulation = TimecourseSim(timecourses=[simulation])
+            logger.warning("Default TimecourseSim created for Timecourse. Best practise is to"
+                           "provide a TimecourseSim instance.")
 
         if simulation.reset:
             self.r.resetToOrigin()
@@ -60,7 +62,7 @@ class SimulatorWorker(object):
             self.r.timeCourseSelections = simulation.selections
 
         frames = []
-        t_offset = 0.0
+        t_offset = simulation.time_offset
         for tc in simulation.timecourses:
 
             # apply changes
