@@ -169,8 +169,8 @@ if __name__ == "__main__":
     r = load_model(MODEL_GLCWB)
     simulator = Simulator(MODEL_GLCWB)
     results = {}
-    for f_simulate in [clamp]:
-    #for f_simulate in [po_bolus, iv_bolus, iv_infusion, clamp, mix, stepped_clamp]:
+    # for f_simulate in [clamp]:
+    for f_simulate in [po_bolus, iv_bolus, iv_infusion, clamp, mix, stepped_clamp]:
         f_key = f_simulate.__name__
         print(f_key)
         result = f_simulate(simulator, r)
