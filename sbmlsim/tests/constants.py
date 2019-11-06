@@ -1,12 +1,11 @@
 """
-Definition of data and files for the tests.
+Definition of data and files for tests.
 The files are located in the data directory.
 """
-import os
-from os.path import join as pjoin
+from pathlib import Path
 
-TEST_PATH = os.path.dirname(os.path.abspath(__file__))  # directory of test files
-DATA_PATH = pjoin(TEST_PATH, 'data')  # directory of data for tests
+TEST_PATH = Path(__file__).parents[0]  # directory of test files
+DATA_PATH = TEST_PATH / 'data'  # directory of data for tests
 
-MODEL_REPRESSILATOR = pjoin(DATA_PATH, "models", "repressilator.xml")
-MODEL_GLCWB = pjoin(DATA_PATH, "models", "body19_livertoy_flat.xml")
+MODEL_REPRESSILATOR = DATA_PATH / "models" / "repressilator.xml"
+MODEL_GLCWB = DATA_PATH / "models" / "body19_livertoy_flat.xml"

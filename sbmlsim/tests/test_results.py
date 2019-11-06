@@ -1,14 +1,14 @@
 
-from sbmlsim.result import Result
+
 import pandas as pd
 
+from sbmlsim.model import load_model
+from sbmlsim.result import Result
 from sbmlsim.tests.constants import MODEL_REPRESSILATOR
-
-import roadrunner
 
 
 def test_result():
-    r = roadrunner.RoadRunner(MODEL_REPRESSILATOR)
+    r = load_model(MODEL_REPRESSILATOR)
     dfs = []
     for _ in range(10):
         s = r.simulate(0, 10, steps=10)
@@ -22,7 +22,7 @@ def test_result():
 
 
 def test_hdf5(tmp_path):
-    r = roadrunner.RoadRunner(MODEL_REPRESSILATOR)
+    r = load_model(MODEL_REPRESSILATOR)
     dfs = []
     for _ in range(10):
         s = r.simulate(0, 10, steps=10)

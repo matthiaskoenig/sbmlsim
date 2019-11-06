@@ -1,6 +1,7 @@
 """
 Functions for model loading, model manipulation and settings on the integrator.
 """
+from pathlib import Path
 import logging
 import roadrunner
 import libsbml
@@ -19,6 +20,9 @@ def load_model(path, selections: List[str] = None) -> roadrunner.RoadRunner:
     :return: roadrunner instance
     """
     logging.info("Loading: '{}'".format(path))
+    if isinstance(path, Path):
+        path = str(path)
+    
     r = roadrunner.RoadRunner(path)
     set_timecourse_selections(r, selections)
     return r
