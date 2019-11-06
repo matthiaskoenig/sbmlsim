@@ -1,8 +1,9 @@
 """
 Definition of timecourse simulations and timecourse definitions.
 """
+from pathlib import Path
 import json
-from typing import List
+from typing import List, Tuple
 from copy import deepcopy
 from json import JSONEncoder
 import logging
@@ -87,7 +88,14 @@ class TimecourseSim(object):
         if isinstance(timecourses, Timecourse):
             timecourses = [timecourses]
 
-        self.timecourses = timecourses
+        self.timecourses = []
+        for tc in timecourses:
+            if isinstance(tc, dict):
+                # construct from dict
+                self.timecourses.append(Timecourse(**tc))
+            else:
+                self.timecourses.append(tc)
+
         self.selections = deepcopy(selections)
         self.reset = reset
         self.time_offset = time_offset
@@ -106,8 +114,17 @@ class TimecourseSim(object):
 
 
     @staticmethod
-    def from_json(json_str):
-        d = json.loads(json_str)
+    def from_json(json_info: Tuple[str, Path]) -> 'TimecourseSim':
+        """ Load TimecourseSim from Path or str
+
+        :param json_info:
+        :return:
+        """
+        if isinstance(json_info, Path):
+            with open(json_info, "r") as f_json:
+                d = json.load(f_json)
+        else:
+            d = json.loads(json_info)
         return TimecourseSim(**d)
 
     def __str__(self):

@@ -4,7 +4,7 @@ Serial simulator.
 import logging
 from typing import List
 
-from sbmlsim.simulation import SimulatorAbstract, SimulatorWorker
+from sbmlsim.simulation import SimulatorAbstract, SimulatorWorker, set_integrator_settings
 from sbmlsim.model import load_model
 from sbmlsim.result import Result
 from sbmlsim.timecourse import TimecourseSim
@@ -13,9 +13,17 @@ logger = logging.getLogger(__name__)
 
 
 class SimulatorSerial(SimulatorAbstract, SimulatorWorker):
-    def __init__(self, path, selections: List[str] = None):
+    def __init__(self, path, selections: List[str] = None, **kwargs):
+        """
+
+        :param path: Path to model
+        :param selections: Selections to set
+        :param kwargs: integrator arguments
+        """
         if path:
             self.r = load_model(path=path, selections=selections)
+            set_integrator_settings(self.r, **kwargs)
+
         else:
             self.r = None
             logger.warning("Simulator without model instance created!")

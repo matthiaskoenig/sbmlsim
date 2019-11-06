@@ -23,6 +23,39 @@ from sbmlsim.timecourse import Timecourse, TimecourseSim
 
 logger = logging.getLogger(__name__)
 
+# --------------------------------
+# Integrator settings
+# --------------------------------
+# FIXME: implement setting of ode solver properties: variable_step_size, stiff, absolute_tolerance, relative_tolerance
+def set_integrator_settings(r: roadrunner.RoadRunner, **kwargs) -> None:
+    """ Set integrator settings.
+
+    Keys are:
+        variable_step_size [boolean]
+        stiff [boolean]
+        absolute_tolerance [float]
+        relative_tolerance [float]
+
+    """
+    integrator = r.getIntegrator()
+    for key, value in kwargs.items():
+        # adapt the absolute_tolerance relative to the amounts
+        if key == "absolute_tolerance":
+            value = value * min(r.model.getCompartmentVolumes())
+        integrator.setValue(key, value)
+    return integrator
+
+
+def set_default_settings(r: roadrunner.RoadRunner, **kwargs):
+    """ Set default settings of integrator. """
+    set_integrator_settings(r,
+            variable_step_size=True,
+            stiff=True,
+            absolute_tolerance=1E-8,
+            relative_tolerance=1E-8
+    )
+
+
 
 class SimulatorAbstract(object):
     def __init__(self, path, selections: List[str] = None, **kwargs):

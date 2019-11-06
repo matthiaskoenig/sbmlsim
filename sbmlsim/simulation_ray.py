@@ -6,7 +6,7 @@ import logging
 from sbmlsim.model import load_model
 from sbmlsim.timecourse import TimecourseSim, Timecourse
 from sbmlsim.result import Result
-from sbmlsim.simulation import SimulatorWorker
+from sbmlsim.simulation import SimulatorWorker, set_integrator_settings
 
 
 logger = logging.getLogger(__name__)
@@ -19,9 +19,14 @@ ray.init(ignore_reinit_error=True)
 class SimulatorActor(SimulatorWorker):
     """Ray actor to execute simulations.
     An actor instance is specific for a given model.
-    An actor is essentially a stateful worker"""
+    An actor is essentially a stateful worker
+
+    # FIXME: currently no setting of integrator settings
+
+    """
     def __init__(self, path, selections=None):
         self.r = load_model(path, selections)
+        # set_integrator_settings(self.r, **kwargs)
 
     def _timecourses(self, simulations):
         """Run a bunch of simulations on a single worker."""

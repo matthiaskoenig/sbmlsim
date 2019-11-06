@@ -24,12 +24,13 @@ class DataSetsComparison(object):
     eps = 1E-6  # tolerance for comparison
     eps_plot = 1E-9  # tolerance for plotting
 
-    def __init__(self, dfs_dict, columns_filter=None):
+    def __init__(self, dfs_dict, columns_filter=None, title: str = None):
         """Initialize the comparison.
 
         :param dfs_dict: data dictionary d[simulator_key] = df_result
         :param columns_filter:
         """
+        self.title = title
         self.columns_filter = columns_filter
 
         # check that identical number of timepoints
@@ -57,6 +58,8 @@ class DataSetsComparison(object):
 
         # get common subset of data
         self.dfs, self.labels = self._filter_dfs(dfs_dict, self.columns)
+        if self.title is None:
+            self.title = " | ".join(self.labels)
 
         # calculate difference
         self.diff, self.diff_abs, self.diff_rel = self.df_diff()
@@ -145,6 +148,7 @@ class DataSetsComparison(object):
         lines = [
             "-" * 80,
             str(self),
+            str(self.title),
             "-" * 80,
             "# Elements (Nt, Nx)",
             str(self.diff.shape),
@@ -211,12 +215,12 @@ class DataSetsComparison(object):
                 ax.plot(diff_rel[cid], label=cid)
 
         for ax in (ax1, ax2):
-            ax.set_title("Absolute Difference")
-            ax.set_ylabel("Absolute difference")
+            ax.set_title(f"Abs Diff - {self.title}")
+            ax.set_ylabel(f"Abs difference - {self.title}")
 
         for ax in (ax3, ax4):
-            ax.set_title("Relative Difference")
-            ax.set_ylabel("Relative difference")
+            ax.set_title(f"Rel Diff - {self.title}")
+            ax.set_ylabel(f"Relative difference - {self.title}")
 
         for ax in (ax2, ax4):
             ax.set_yscale("log")
@@ -235,49 +239,3 @@ class DataSetsComparison(object):
             # ax.set_xlim(right=ax.get_xlim()[1] * 2)
 
         return f1
-
-
-def run_comparisons():
-    """ Run comparison of test simulations.
-
-    :return:
-    """
-    from sbmlsim.tests.constants import DATA_PATH
-    diff_path = os.path.join(DATA_PATH, "diff")
-
-    # get all simulation definitions in the test directory
-    simulation_keys = []
-    for f in os.listdir(diff_path):
-        if os.path.isfile(os.path.join(diff_path, f)) and f.endswith(".json"):
-            simulation_keys.append(f[:-5])
-    simulation_keys = sorted(simulation_keys)
-    print(simulation_keys)
-
-    for simulation_key in simulation_keys:
-        # run the comparison
-        df_dict = {}
-        for simulator_key in ["sbmlsim", "jws"]:
-            tsv_path = os.path.abspath(
-                os.path.join(diff_path, simulator_key, f"{simulation_key}.tsv")
-            )
-            print(tsv_path)
-            df_dict[simulator_key] = pd.read_csv(tsv_path, sep="\t")
-
-        # perform comparison
-        dsc = DataSetsComparison(
-            dfs_dict=df_dict,
-            columns_filter=None
-        )
-
-        f = dsc.report()
-        fig_path = os.path.join(diff_path, f"{simulation_key}_diff.png")
-        f.savefig(fig_path, dpi=150, bbox_inches="tight")
-        plt.show()
-
-        report_path = os.path.join(diff_path, f"{simulation_key}_diff.tsv")
-        with open(report_path, "w") as f_report:
-            f_report.write(dsc.report_str())
-
-
-if __name__ == "__main__":
-    run_comparisons()
