@@ -5,15 +5,13 @@ example_3 (sbmlsim | jws)
 # Elements (Nt, Nx)
 (61, 32)
 # Maximum column difference (above eps)
-      Delta_abs_0  Delta_rel_0  Delta_max  Delta_rel_max
-PX            0.0          0.0   0.000002   1.212369e-09
-PZ            0.0          0.0   0.000002   3.055835e-09
-[PX]          0.0          0.0   0.000002   1.212369e-09
-[PZ]          0.0          0.0   0.000002   3.055835e-09
+Empty DataFrame
+Columns: [Delta_abs_0, Delta_rel_0, Delta_max, Delta_rel_max]
+Index: []
 # Maximum initial column difference
 2.7755575615628914e-17
 # Maximum element difference
-2.4961507278931094e-06
+1.023727236315608e-08
 # Datasets are equal (diff <= eps=1e-06)
-FALSE
+TRUE
 --------------------------------------------------------------------------------
