@@ -23,7 +23,7 @@ def get_simulation_keys() -> List[str]:
     return sorted(keys)
 
 
-def run_simulations():
+def run_simulations(create_files=True):
     """ Run all the simulations.
 
     :return:
@@ -41,10 +41,11 @@ def run_simulations():
         tcsim = TimecourseSim.from_json(json_path)
         # print(tcsim)
         result = simulator.timecourses([tcsim])
-        result.mean.to_csv(tsv_path, sep="\t", index=False)
+        if create_files:
+            result.mean.to_csv(tsv_path, sep="\t", index=False)
 
 
-def run_comparisons():
+def run_comparisons(create_files=True):
     """ Run comparison of test simulations.
 
     :return:
@@ -69,13 +70,14 @@ def run_comparisons():
         )
 
         f = dsc.report()
-        fig_path = diff_path / f"{simulation_key}_diff.png"
-        f.savefig(fig_path, dpi=150, bbox_inches="tight")
-        plt.show()
+        if create_files:
+            fig_path = diff_path / f"{simulation_key}_diff.png"
+            f.savefig(fig_path, dpi=150, bbox_inches="tight")
+            plt.show()
 
-        report_path = diff_path / f"{simulation_key}_diff.tsv"
-        with open(report_path, "w") as f_report:
-            f_report.write(dsc.report_str())
+            report_path = diff_path / f"{simulation_key}_diff.tsv"
+            with open(report_path, "w") as f_report:
+                f_report.write(dsc.report_str())
 
 
 if __name__ == "__main__":
