@@ -7,6 +7,7 @@ from sbmlsim.model import load_model
 from sbmlsim.timecourse import TimecourseSim, Timecourse
 from sbmlsim.result import Result
 from sbmlsim.simulation import SimulatorWorker, set_integrator_settings
+from sbmlsim.units import Units
 
 
 logger = logging.getLogger(__name__)
@@ -26,6 +27,7 @@ class SimulatorActor(SimulatorWorker):
     """
     def __init__(self, path, selections=None):
         self.r = load_model(path, selections)
+        self.units = Units.get_units_from_sbml(model_path=path)
         # set_integrator_settings(self.r, **kwargs)
 
     def _timecourses(self, simulations):

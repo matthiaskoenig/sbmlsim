@@ -16,7 +16,7 @@ logger = logging.getLogger(__name__)
 class Result(object):
     """Result of simulation(s)."""
 
-    def __init__(self, frames: List[pd.DataFrame]):
+    def __init__(self, frames: List[pd.DataFrame], units=None):
         """
 
         :param frames: iterable of pd.DataFrame
@@ -26,6 +26,8 @@ class Result(object):
 
         # empty array for storage
         self.frames = frames
+        # units dictionary for lookup
+        self.units = units
 
         if len(frames) > 0:
             df = frames[0]
