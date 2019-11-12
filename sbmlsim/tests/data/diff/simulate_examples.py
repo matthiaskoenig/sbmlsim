@@ -3,24 +3,12 @@ import pandas as pd
 
 from typing import List
 
-from sbmlsim.diff import DataSetsComparison
+from sbmlsim.diff import DataSetsComparison, get_json_simulations
 from matplotlib import pyplot as plt
 from sbmlsim.simulation_serial import SimulatorSerial as Simulator
 from sbmlsim.tests.constants import DATA_PATH, MODEL_REPRESSILATOR
 
 from sbmlsim.timecourse import TimecourseSim, Timecourse
-
-
-def get_simulation_keys() -> List[str]:
-    """Get all simulation definitions in the test directory."""
-    diff_path = Path(DATA_PATH) / "diff"
-    simulation_keys = []
-
-    # get all json files in the folder
-    files = [f for f in diff_path.glob('**/*') if f.is_file() and f.suffix == ".json"]
-    keys = [f.name[:-5] for f in files]
-
-    return sorted(keys)
 
 
 def run_simulations(create_files=True):
@@ -34,9 +22,9 @@ def run_simulations(create_files=True):
                           absolute_tolerance=1E-16,
                           relative_tolerance=1E-13)
 
-    simulation_keys = get_simulation_keys()
-    for simulation_key in simulation_keys:
-        json_path = diff_path / f"{simulation_key}.json"
+    simulations = get_json_simulations(diff_path)
+    for simulation_key, json_path in simulations.items():
+
         tsv_path = diff_path / "sbmlsim" / f"{simulation_key}.tsv"
         tcsim = TimecourseSim.from_json(json_path)
         # print(tcsim)
@@ -52,10 +40,10 @@ def run_comparisons(create_files=True):
     """
     diff_path = Path(DATA_PATH) / "diff"
 
-    simulation_keys = get_simulation_keys()
+    simulation_keys = get_json_simulations(diff_path)
     print(simulation_keys)
 
-    for simulation_key in simulation_keys:
+    for simulation_key in simulation_keys.keys():
         # run the comparison
         df_dict = {}
         for simulator_key in ["sbmlsim", "jws"]:

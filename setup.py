@@ -78,6 +78,7 @@ setup(
         "cached-property>=1.5.1",
         "matplotlib>=3.1",
         "altair>=3.2",
+        "pint>=0.9",
         "pytest>=4.3.1",
         "pytest-cov>=2.6.1",
     ],

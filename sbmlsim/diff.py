@@ -7,10 +7,25 @@ Used to benchmark the simulation results.
 import os
 import pandas as pd
 from pprint import pprint
+from typing import List
 import logging
 from matplotlib import pyplot as plt
 
 logger = logging.getLogger(__name__)
+
+
+def get_json_simulations(diff_path) -> List[str]:
+    """Get all simulation definitions in the test directory.
+
+    Simulation definitions are json files.
+    """
+    simulation_keys = []
+
+    # get all json files in the folder
+    files = [f for f in diff_path.glob('**/*') if f.is_file() and f.suffix == ".json"]
+    keys = [f.name[:-5] for f in files]
+
+    return dict(zip(keys, files))
 
 
 class DataSetsComparison(object):
@@ -28,7 +43,7 @@ class DataSetsComparison(object):
         """Initialize the comparison.
 
         :param dfs_dict: data dictionary d[simulator_key] = df_result
-        :param columns_filter:
+        :param columns_filter: function which returns True if in Set or False if should be filtered.
         """
         self.title = title
         self.columns_filter = columns_filter
@@ -71,11 +86,19 @@ class DataSetsComparison(object):
         :param dataframes:
         :return:
         """
+        numerics = ['int16', 'int32', 'int64', 'float16', 'float32', 'float64']
+
         # set of columns from the individual dataframes
         col_union = None
         col_intersection = None
         for path, df in dataframes.items():
-            cols = set(df.columns)
+            # get all numeric columns
+            num_df = df.select_dtypes(include=numerics)
+            if len(num_df.columns) < len(df.columns):
+                logger.warning(f"Non-numeric columns in DataFrame: {set(df.columns)-set(num_df.columns)}")
+
+            cols = set(num_df.columns)
+
             if not col_union or not col_intersection:
                 col_union = cols
                 col_intersection = cols
@@ -83,8 +106,8 @@ class DataSetsComparison(object):
                 col_union = col_union.union(cols)
                 col_intersection = col_intersection.intersection(cols)
 
-        logger.warning("Column Union #:", len(col_union))
-        logger.warning("Column Intersection #:", len(col_intersection))
+        logger.warning(f"Column Union #: {len(col_union)}")
+        logger.warning(f"Column Intersection #: {len(col_intersection)}")
 
         columns = list(col_intersection.copy())
         columns.remove("time")
@@ -166,7 +189,7 @@ class DataSetsComparison(object):
         diff_info = diff_info[diff_max >= DataSetsComparison.eps]
         with pd.option_context('display.max_rows', None, 'display.max_columns', None):
             lines.append(
-                str(diff_info.sort_values(by=['Delta_abs_0'], ascending=False))
+                str(diff_info.sort_values(by=['Delta_rel_max'], ascending=False))
             )
 
         lines.append("# Maximum initial column difference")
