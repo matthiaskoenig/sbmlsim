@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <sbml xmlns="http://www.sbml.org/sbml/level3/version1/core" xmlns:fbc="http://www.sbml.org/sbml/level3/version1/fbc/version2" level="3" version="1" fbc:required="false">
-  <model metaid="meta_body19_livertoy" id="body19_livertoy_flat" name="body19_livertoy_flat" substanceUnits="mmole" timeUnits="min" volumeUnits="l" areaUnits="m2" lengthUnits="m" extentUnits="mmole" fbc:strict="false">
+  <model metaid="meta_body21_livertoy" id="body21_livertoy_flat" name="body21_livertoy_flat" substanceUnits="mmole" timeUnits="min" volumeUnits="l" areaUnits="m2" lengthUnits="m" extentUnits="mmole" fbc:strict="false">
     <notes>
       <body xmlns="http://www.w3.org/1999/xhtml">
         <h1>Wholebody glucose model</h1>
@@ -31,7 +31,7 @@
     </notes>
     <annotation>
       <rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#" xmlns:dcterms="http://purl.org/dc/terms/" xmlns:vCard="http://www.w3.org/2001/vcard-rdf/3.0#" xmlns:vCard4="http://www.w3.org/2006/vcard/ns#" xmlns:bqbiol="http://biomodels.net/biology-qualifiers/" xmlns:bqmodel="http://biomodels.net/model-qualifiers/">
-        <rdf:Description rdf:about="#meta_body19_livertoy">
+        <rdf:Description rdf:about="#meta_body21_livertoy">
           <dcterms:creator>
             <rdf:Bag>
               <rdf:li rdf:parseType="Resource">
@@ -56,10 +56,10 @@
             </rdf:Bag>
           </dcterms:creator>
           <dcterms:created rdf:parseType="Resource">
-            <dcterms:W3CDTF>2019-09-30T12:39:31Z</dcterms:W3CDTF>
+            <dcterms:W3CDTF>2019-11-13T21:32:11Z</dcterms:W3CDTF>
           </dcterms:created>
           <dcterms:modified rdf:parseType="Resource">
-            <dcterms:W3CDTF>2019-09-30T12:39:31Z</dcterms:W3CDTF>
+            <dcterms:W3CDTF>2019-11-13T21:32:11Z</dcterms:W3CDTF>
           </dcterms:modified>
         </rdf:Description>
       </rdf:RDF>
@@ -127,19 +127,19 @@
           <unit kind="second" exponent="-1" scale="0" multiplier="60"/>
         </listOfUnits>
       </unitDefinition>
-      <unitDefinition metaid="meta_mmole_per_minl" id="mmole_per_minl">
+      <unitDefinition metaid="meta_mmole_per_minl" id="mmole_per_min_l">
         <listOfUnits>
           <unit kind="mole" exponent="1" scale="-3" multiplier="1"/>
           <unit kind="second" exponent="-1" scale="0" multiplier="60"/>
           <unit kind="litre" exponent="-1" scale="0" multiplier="1"/>
         </listOfUnits>
       </unitDefinition>
-      <unitDefinition id="h">
+      <unitDefinition id="hr">
         <listOfUnits>
           <unit kind="second" exponent="1" scale="0" multiplier="3600"/>
         </listOfUnits>
       </unitDefinition>
-      <unitDefinition id="per_h">
+      <unitDefinition id="per_hr">
         <listOfUnits>
           <unit kind="second" exponent="-1" scale="0" multiplier="3600"/>
         </listOfUnits>
@@ -149,7 +149,7 @@
           <unit kind="metre" exponent="1" scale="-2" multiplier="1"/>
         </listOfUnits>
       </unitDefinition>
-      <unitDefinition id="mg_per_litre">
+      <unitDefinition id="mg_per_l">
         <listOfUnits>
           <unit kind="gram" exponent="1" scale="-3" multiplier="1"/>
           <unit kind="litre" exponent="-1" scale="0" multiplier="1"/>
@@ -161,47 +161,34 @@
           <unit kind="gram" exponent="-1" scale="0" multiplier="1"/>
         </listOfUnits>
       </unitDefinition>
-      <unitDefinition id="mg_per_h">
+      <unitDefinition id="mg_per_hr">
         <listOfUnits>
           <unit kind="gram" exponent="1" scale="-3" multiplier="1"/>
           <unit kind="second" exponent="-1" scale="0" multiplier="3600"/>
         </listOfUnits>
       </unitDefinition>
-      <unitDefinition id="mmole_per_h">
-        <listOfUnits>
-          <unit kind="mole" exponent="1" scale="-3" multiplier="1"/>
-          <unit kind="second" exponent="-1" scale="0" multiplier="3600"/>
-        </listOfUnits>
-      </unitDefinition>
-      <unitDefinition id="mmole_per_litre">
-        <listOfUnits>
-          <unit kind="mole" exponent="1" scale="-3" multiplier="1"/>
-          <unit kind="litre" exponent="-1" scale="0" multiplier="1"/>
-        </listOfUnits>
-      </unitDefinition>
-      <unitDefinition id="litre_per_min">
+      <unitDefinition id="l_per_min">
         <listOfUnits>
           <unit kind="litre" exponent="1" scale="0" multiplier="1"/>
           <unit kind="second" exponent="-1" scale="0" multiplier="60"/>
         </listOfUnits>
       </unitDefinition>
-      <unitDefinition id="litre_per_h">
+      <unitDefinition id="l_per_hr">
         <listOfUnits>
           <unit kind="litre" exponent="1" scale="0" multiplier="1"/>
           <unit kind="second" exponent="-1" scale="0" multiplier="3600"/>
         </listOfUnits>
       </unitDefinition>
-      <unitDefinition id="litre_per_kg">
+      <unitDefinition id="l_per_kg">
         <listOfUnits>
           <unit kind="litre" exponent="1" scale="0" multiplier="1"/>
           <unit kind="gram" exponent="-1" scale="3" multiplier="1"/>
         </listOfUnits>
       </unitDefinition>
-      <unitDefinition id="mulitre_per_min_mg">
+      <unitDefinition id="l_per_ml">
         <listOfUnits>
-          <unit kind="litre" exponent="1" scale="-6" multiplier="1"/>
-          <unit kind="second" exponent="-1" scale="0" multiplier="60"/>
-          <unit kind="gram" exponent="-1" scale="-3" multiplier="1"/>
+          <unit kind="litre" exponent="1" scale="0" multiplier="1"/>
+          <unit kind="litre" exponent="-1" scale="-3" multiplier="1"/>
         </listOfUnits>
       </unitDefinition>
       <unitDefinition id="g_per_mole">
@@ -216,31 +203,36 @@
           <unit kind="gram" exponent="-1" scale="3" multiplier="1"/>
         </listOfUnits>
       </unitDefinition>
-      <unitDefinition id="mug_per_hkg">
-        <listOfUnits>
-          <unit kind="gram" exponent="1" scale="-6" multiplier="1"/>
-          <unit kind="mole" exponent="-1" scale="0" multiplier="3600"/>
-          <unit kind="gram" exponent="-1" scale="3" multiplier="1"/>
-        </listOfUnits>
-      </unitDefinition>
       <unitDefinition id="mg_per_min">
         <listOfUnits>
           <unit kind="gram" exponent="1" scale="-3" multiplier="1"/>
           <unit kind="second" exponent="-1" scale="0" multiplier="60"/>
         </listOfUnits>
       </unitDefinition>
-      <unitDefinition id="mmole_per_minkg">
+      <unitDefinition id="mmole_per_hr">
+        <listOfUnits>
+          <unit kind="mole" exponent="1" scale="-3" multiplier="1"/>
+          <unit kind="second" exponent="-1" scale="0" multiplier="3600"/>
+        </listOfUnits>
+      </unitDefinition>
+      <unitDefinition id="mmole_per_l">
+        <listOfUnits>
+          <unit kind="mole" exponent="1" scale="-3" multiplier="1"/>
+          <unit kind="litre" exponent="-1" scale="0" multiplier="1"/>
+        </listOfUnits>
+      </unitDefinition>
+      <unitDefinition id="mmole_per_min_kg">
         <listOfUnits>
           <unit kind="mole" exponent="1" scale="-3" multiplier="1"/>
           <unit kind="second" exponent="-1" scale="0" multiplier="60"/>
           <unit kind="gram" exponent="-1" scale="3" multiplier="1"/>
         </listOfUnits>
       </unitDefinition>
-      <unitDefinition id="mmole_per_hm2">
+      <unitDefinition id="mmole_per_hr_ml">
         <listOfUnits>
           <unit kind="mole" exponent="1" scale="-3" multiplier="1"/>
           <unit kind="second" exponent="-1" scale="0" multiplier="3600"/>
-          <unit kind="metre" exponent="-2" scale="0" multiplier="1"/>
+          <unit kind="litre" exponent="-1" scale="-3" multiplier="1"/>
         </listOfUnits>
       </unitDefinition>
       <unitDefinition id="ml_per_s">
@@ -249,14 +241,33 @@
           <unit kind="second" exponent="-1" scale="0" multiplier="1"/>
         </listOfUnits>
       </unitDefinition>
-      <unitDefinition id="ml_per_skg">
+      <unitDefinition id="ml_per_s_kg">
         <listOfUnits>
           <unit kind="litre" exponent="1" scale="-3" multiplier="1"/>
           <unit kind="second" exponent="-1" scale="0" multiplier="1"/>
           <unit kind="gram" exponent="-1" scale="3" multiplier="1"/>
         </listOfUnits>
       </unitDefinition>
-      <unitDefinition id="min_per_h">
+      <unitDefinition id="ml_per_l">
+        <listOfUnits>
+          <unit kind="litre" exponent="1" scale="-3" multiplier="1"/>
+          <unit kind="litre" exponent="-1" scale="0" multiplier="1"/>
+        </listOfUnits>
+      </unitDefinition>
+      <unitDefinition id="mulitre_per_g">
+        <listOfUnits>
+          <unit kind="litre" exponent="1" scale="-6" multiplier="1"/>
+          <unit kind="gram" exponent="-1" scale="0" multiplier="1"/>
+        </listOfUnits>
+      </unitDefinition>
+      <unitDefinition id="mul_per_min_mg">
+        <listOfUnits>
+          <unit kind="litre" exponent="1" scale="-6" multiplier="1"/>
+          <unit kind="second" exponent="-1" scale="0" multiplier="60"/>
+          <unit kind="gram" exponent="-1" scale="-3" multiplier="1"/>
+        </listOfUnits>
+      </unitDefinition>
+      <unitDefinition id="min_per_hr">
         <listOfUnits>
           <unit kind="second" exponent="1" scale="0" multiplier="60"/>
           <unit kind="second" exponent="-1" scale="0" multiplier="3600"/>
@@ -268,41 +279,10 @@
           <unit kind="second" exponent="-1" scale="0" multiplier="3600"/>
         </listOfUnits>
       </unitDefinition>
-      <unitDefinition id="s_per_h">
+      <unitDefinition id="s_per_hr">
         <listOfUnits>
           <unit kind="second" exponent="1" scale="0" multiplier="1"/>
           <unit kind="second" exponent="-1" scale="0" multiplier="3600"/>
-        </listOfUnits>
-      </unitDefinition>
-      <unitDefinition id="mulitre_per_g">
-        <listOfUnits>
-          <unit kind="litre" exponent="1" scale="-6" multiplier="1"/>
-          <unit kind="gram" exponent="-1" scale="0" multiplier="1"/>
-        </listOfUnits>
-      </unitDefinition>
-      <unitDefinition id="ml_per_litre">
-        <listOfUnits>
-          <unit kind="litre" exponent="1" scale="-3" multiplier="1"/>
-          <unit kind="litre" exponent="-1" scale="0" multiplier="1"/>
-        </listOfUnits>
-      </unitDefinition>
-      <unitDefinition id="mmole_per_hml">
-        <listOfUnits>
-          <unit kind="mole" exponent="1" scale="-3" multiplier="1"/>
-          <unit kind="second" exponent="-1" scale="0" multiplier="3600"/>
-          <unit kind="litre" exponent="-1" scale="-3" multiplier="1"/>
-        </listOfUnits>
-      </unitDefinition>
-      <unitDefinition id="ml_per_l">
-        <listOfUnits>
-          <unit kind="litre" exponent="1" scale="-3" multiplier="1"/>
-          <unit kind="litre" exponent="-1" scale="0" multiplier="1"/>
-        </listOfUnits>
-      </unitDefinition>
-      <unitDefinition id="litre_per_ml">
-        <listOfUnits>
-          <unit kind="litre" exponent="1" scale="0" multiplier="1"/>
-          <unit kind="litre" exponent="-1" scale="-3" multiplier="1"/>
         </listOfUnits>
       </unitDefinition>
     </listOfUnitDefinitions>
@@ -318,31 +298,31 @@
       <compartment metaid="meta_Vsp" id="Vsp" name="spleen" spatialDimensions="3" size="0.195" units="litre" constant="false"/>
       <compartment metaid="meta_Vmu" id="Vmu" name="muscle" spatialDimensions="3" size="30" units="litre" constant="false"/>
       <compartment metaid="meta_Vpa" id="Vpa" name="pancreas" spatialDimensions="3" size="0.75" units="litre" constant="false"/>
-      <compartment metaid="meta_Vve" id="Vve" name="venous blood" spatialDimensions="3" size="1.54775" units="litre" constant="false"/>
-      <compartment metaid="meta_Var" id="Var" name="arterial blood" spatialDimensions="3" size="0.773875" units="litre" constant="false"/>
+      <compartment metaid="meta_Vve" id="Vve" name="venous blood" spatialDimensions="3" size="2.9321" units="litre" constant="false"/>
+      <compartment metaid="meta_Var" id="Var" name="arterial blood" spatialDimensions="3" size="1.46605" units="litre" constant="false"/>
       <compartment metaid="meta_Vurine" id="Vurine" name="urine" spatialDimensions="3" size="1" units="litre" constant="true"/>
-      <compartment metaid="meta_Vad_tissue" id="Vad_tissue" name="ad tissue" spatialDimensions="3" size="15.17625" units="litre" constant="false"/>
-      <compartment metaid="meta_Vad_blood" id="Vad_blood" name="ad blood" spatialDimensions="3" size="0.79875" units="litre" constant="false"/>
-      <compartment metaid="meta_Vbr_tissue" id="Vbr_tissue" name="br tissue" spatialDimensions="3" size="1.425" units="litre" constant="false"/>
-      <compartment metaid="meta_Vbr_blood" id="Vbr_blood" name="br blood" spatialDimensions="3" size="0.075" units="litre" constant="false"/>
-      <compartment metaid="meta_Vgu_tissue" id="Vgu_tissue" name="gu tissue" spatialDimensions="3" size="1.218375" units="litre" constant="false"/>
-      <compartment metaid="meta_Vgu_blood" id="Vgu_blood" name="gu blood" spatialDimensions="3" size="0.064125" units="litre" constant="false"/>
-      <compartment metaid="meta_Vhe_tissue" id="Vhe_tissue" name="he tissue" spatialDimensions="3" size="0.334875" units="litre" constant="false"/>
-      <compartment metaid="meta_Vhe_blood" id="Vhe_blood" name="he blood" spatialDimensions="3" size="0.017625" units="litre" constant="false"/>
-      <compartment metaid="meta_Vki_tissue" id="Vki_tissue" name="ki tissue" spatialDimensions="3" size="0.3135" units="litre" constant="false"/>
-      <compartment metaid="meta_Vki_blood" id="Vki_blood" name="ki blood" spatialDimensions="3" size="0.0165" units="litre" constant="false"/>
-      <compartment metaid="meta_Vli_tissue" id="Vli_tissue" name="li tissue" spatialDimensions="3" size="1.49625" units="litre" constant="false"/>
-      <compartment metaid="meta_Vli_blood" id="Vli_blood" name="li blood" spatialDimensions="3" size="0.07875" units="litre" constant="false"/>
-      <compartment metaid="meta_Vlu_tissue" id="Vlu_tissue" name="lu tissue" spatialDimensions="3" size="0.5415" units="litre" constant="false"/>
-      <compartment metaid="meta_Vlu_blood" id="Vlu_blood" name="lu blood" spatialDimensions="3" size="0.0285" units="litre" constant="false"/>
-      <compartment metaid="meta_Vmu_tissue" id="Vmu_tissue" name="mu tissue" spatialDimensions="3" size="28.5" units="litre" constant="false"/>
-      <compartment metaid="meta_Vmu_blood" id="Vmu_blood" name="mu blood" spatialDimensions="3" size="1.5" units="litre" constant="false"/>
-      <compartment metaid="meta_Vpa_tissue" id="Vpa_tissue" name="pa tissue" spatialDimensions="3" size="0.7125" units="litre" constant="false"/>
-      <compartment metaid="meta_Vpa_blood" id="Vpa_blood" name="pa blood" spatialDimensions="3" size="0.0375" units="litre" constant="false"/>
-      <compartment metaid="meta_Vsp_tissue" id="Vsp_tissue" name="sp tissue" spatialDimensions="3" size="0.18525" units="litre" constant="false"/>
-      <compartment metaid="meta_Vsp_blood" id="Vsp_blood" name="sp blood" spatialDimensions="3" size="0.00975" units="litre" constant="false"/>
-      <compartment metaid="meta_Vre_tissue" id="Vre_tissue" name="re tissue" spatialDimensions="3" size="15.853125" units="litre" constant="false"/>
-      <compartment metaid="meta_Vre_blood" id="Vre_blood" name="re blood" spatialDimensions="3" size="0.834375" units="litre" constant="false"/>
+      <compartment metaid="meta_Vad_tissue" id="Vad_tissue" name="ad tissue" spatialDimensions="3" size="15.6555" units="litre" constant="false"/>
+      <compartment metaid="meta_Vad_blood" id="Vad_blood" name="ad blood" spatialDimensions="3" size="0.3195" units="litre" constant="false"/>
+      <compartment metaid="meta_Vbr_tissue" id="Vbr_tissue" name="br tissue" spatialDimensions="3" size="1.47" units="litre" constant="false"/>
+      <compartment metaid="meta_Vbr_blood" id="Vbr_blood" name="br blood" spatialDimensions="3" size="0.03" units="litre" constant="false"/>
+      <compartment metaid="meta_Vgu_tissue" id="Vgu_tissue" name="gu tissue" spatialDimensions="3" size="1.25685" units="litre" constant="false"/>
+      <compartment metaid="meta_Vgu_blood" id="Vgu_blood" name="gu blood" spatialDimensions="3" size="0.02565" units="litre" constant="false"/>
+      <compartment metaid="meta_Vhe_tissue" id="Vhe_tissue" name="he tissue" spatialDimensions="3" size="0.34545" units="litre" constant="false"/>
+      <compartment metaid="meta_Vhe_blood" id="Vhe_blood" name="he blood" spatialDimensions="3" size="0.00705" units="litre" constant="false"/>
+      <compartment metaid="meta_Vki_tissue" id="Vki_tissue" name="ki tissue" spatialDimensions="3" size="0.3234" units="litre" constant="false"/>
+      <compartment metaid="meta_Vki_blood" id="Vki_blood" name="ki blood" spatialDimensions="3" size="0.0066" units="litre" constant="false"/>
+      <compartment metaid="meta_Vli_tissue" id="Vli_tissue" name="li tissue" spatialDimensions="3" size="1.5435" units="litre" constant="false"/>
+      <compartment metaid="meta_Vli_blood" id="Vli_blood" name="li blood" spatialDimensions="3" size="0.0315" units="litre" constant="false"/>
+      <compartment metaid="meta_Vlu_tissue" id="Vlu_tissue" name="lu tissue" spatialDimensions="3" size="0.5586" units="litre" constant="false"/>
+      <compartment metaid="meta_Vlu_blood" id="Vlu_blood" name="lu blood" spatialDimensions="3" size="0.0114" units="litre" constant="false"/>
+      <compartment metaid="meta_Vmu_tissue" id="Vmu_tissue" name="mu tissue" spatialDimensions="3" size="29.4" units="litre" constant="false"/>
+      <compartment metaid="meta_Vmu_blood" id="Vmu_blood" name="mu blood" spatialDimensions="3" size="0.6" units="litre" constant="false"/>
+      <compartment metaid="meta_Vpa_tissue" id="Vpa_tissue" name="pa tissue" spatialDimensions="3" size="0.735" units="litre" constant="false"/>
+      <compartment metaid="meta_Vpa_blood" id="Vpa_blood" name="pa blood" spatialDimensions="3" size="0.015" units="litre" constant="false"/>
+      <compartment metaid="meta_Vsp_tissue" id="Vsp_tissue" name="sp tissue" spatialDimensions="3" size="0.1911" units="litre" constant="false"/>
+      <compartment metaid="meta_Vsp_blood" id="Vsp_blood" name="sp blood" spatialDimensions="3" size="0.0039" units="litre" constant="false"/>
+      <compartment metaid="meta_Vre_tissue" id="Vre_tissue" name="re tissue" spatialDimensions="3" size="16.35375" units="litre" constant="false"/>
+      <compartment metaid="meta_Vre_blood" id="Vre_blood" name="re blood" spatialDimensions="3" size="0.33375" units="litre" constant="false"/>
       <compartment id="KI__Vurine" name="kidney urine" spatialDimensions="3" size="1" units="litre" constant="false"/>
     </listOfCompartments>
     <listOfSpecies>
@@ -431,31 +411,31 @@
       <species id="LI__Ali_lac" name="lactate" compartment="Vli_tissue" initialConcentration="0.8" substanceUnits="mmole" hasOnlySubstanceUnits="true" boundaryCondition="false" constant="false"/>
     </listOfSpecies>
     <listOfParameters>
-      <parameter id="conversion_ml_per_l" name="volume conversion factor" value="1000" units="ml_per_litre" constant="true"/>
-      <parameter id="conversion_l_per_ml" name="volume conversion factor" value="0.001" units="litre_per_ml" constant="true"/>
+      <parameter id="conversion_ml_per_l" name="volume conversion factor" value="1000" units="ml_per_l" constant="true"/>
+      <parameter id="conversion_l_per_ml" name="volume conversion factor" value="0.001" units="l_per_ml" constant="true"/>
       <parameter id="BW" name="body weight [kg]" value="75" units="kg" constant="true"/>
       <parameter id="HEIGHT" name="height [cm]" value="170" units="cm" constant="true"/>
       <parameter id="HR" name="heart rate [1/min]" value="70" units="per_min" constant="true"/>
       <parameter id="HRrest" name="heart rate [1/min]" value="70" units="per_min" constant="true"/>
       <parameter id="BSA" name="body surface area [m^2]" value="0" units="m2" constant="false"/>
-      <parameter id="COBW" name="cardiac output per bodyweight [ml/s/kg]" value="1.548" units="ml_per_skg" constant="true"/>
+      <parameter id="COBW" name="cardiac output per bodyweight [ml/s/kg]" value="1.548" units="ml_per_s_kg" constant="true"/>
       <parameter id="CO" name="cardiac output [ml/s]" value="108.33" units="ml_per_s" constant="false"/>
-      <parameter id="QC" name="cardiac output [L/hr]" value="6499800" units="litre_per_min" constant="false"/>
+      <parameter id="QC" name="cardiac output [L/hr]" value="6499800" units="l_per_min" constant="false"/>
       <parameter id="COHRI" name="increase of cardiac output per heartbeat [ml/min*min]" value="150" units="ml" constant="true"/>
-      <parameter id="Fblood" name="blood fraction of organ volume" value="0.05" units="dimensionless" constant="false"/>
-      <parameter id="FVad" name="adipose fractional tissue volume" value="0.213" units="litre_per_kg" constant="true"/>
-      <parameter id="FVbr" name="brain fractional tissue volume" value="0.02" units="litre_per_kg" constant="true"/>
-      <parameter id="FVhe" name="heart fractional tissue volume" value="0.0047" units="litre_per_kg" constant="true"/>
-      <parameter id="FVgu" name="gut fractional tissue volume" value="0.0171" units="litre_per_kg" constant="true"/>
-      <parameter id="FVki" name="kidney fractional tissue volume" value="0.0044" units="litre_per_kg" constant="true"/>
-      <parameter id="FVli" name="liver fractional tissue volume" value="0.021" units="litre_per_kg" constant="true"/>
-      <parameter id="FVlu" name="lung fractional tissue volume" value="0.0076" units="litre_per_kg" constant="true"/>
-      <parameter id="FVsp" name="spleen fractional tissue volume" value="0.0026" units="litre_per_kg" constant="true"/>
-      <parameter id="FVmu" name="muscle fractional tissue volume" value="0.4" units="litre_per_kg" constant="true"/>
-      <parameter id="FVpa" name="pancreas fractional tissue volume" value="0.01" units="litre_per_kg" constant="true"/>
-      <parameter id="FVre" name="rest of body fractional tissue volume" value="0" units="litre_per_kg" constant="false"/>
-      <parameter id="FVve" name="venous fractional tissue volume" value="0.0514" units="litre_per_kg" constant="true"/>
-      <parameter id="FVar" name="arterial fractional tissue volume" value="0.0257" units="litre_per_kg" constant="true"/>
+      <parameter id="Fblood" name="blood fraction of organ volume" value="0.02" units="dimensionless" constant="false"/>
+      <parameter id="FVad" name="adipose fractional tissue volume" value="0.213" units="l_per_kg" constant="true"/>
+      <parameter id="FVbr" name="brain fractional tissue volume" value="0.02" units="l_per_kg" constant="true"/>
+      <parameter id="FVhe" name="heart fractional tissue volume" value="0.0047" units="l_per_kg" constant="true"/>
+      <parameter id="FVgu" name="gut fractional tissue volume" value="0.0171" units="l_per_kg" constant="true"/>
+      <parameter id="FVki" name="kidney fractional tissue volume" value="0.0044" units="l_per_kg" constant="true"/>
+      <parameter id="FVli" name="liver fractional tissue volume" value="0.021" units="l_per_kg" constant="true"/>
+      <parameter id="FVlu" name="lung fractional tissue volume" value="0.0076" units="l_per_kg" constant="true"/>
+      <parameter id="FVsp" name="spleen fractional tissue volume" value="0.0026" units="l_per_kg" constant="true"/>
+      <parameter id="FVmu" name="muscle fractional tissue volume" value="0.4" units="l_per_kg" constant="true"/>
+      <parameter id="FVpa" name="pancreas fractional tissue volume" value="0.01" units="l_per_kg" constant="true"/>
+      <parameter id="FVre" name="rest of body fractional tissue volume" value="0" units="l_per_kg" constant="false"/>
+      <parameter id="FVve" name="venous fractional tissue volume" value="0.0514" units="l_per_kg" constant="true"/>
+      <parameter id="FVar" name="arterial fractional tissue volume" value="0.0257" units="l_per_kg" constant="true"/>
       <parameter id="FQad" name="adipose fractional tissue blood flow" value="0.05" units="dimensionless" constant="true"/>
       <parameter id="FQbr" name="brain fractional tissue blood flow" value="0.012" units="dimensionless" constant="true"/>
       <parameter id="FQhe" name="heart fractional tissue blood flow" value="0.04" units="dimensionless" constant="true"/>
@@ -470,7 +450,7 @@
       <parameter id="Mr_glc" name="Molecular weight glc [g/mole]" value="180.16" units="g_per_mole" constant="true"/>
       <parameter id="IVDOSE_glc" name="IV bolus dose glc [mg]" value="0" units="mg" constant="false"/>
       <parameter id="PODOSE_glc" name="oral bolus dose glc [mg]" value="0" units="mg" constant="false"/>
-      <parameter id="Ka_glc" name="Ka [1/hr] absorption glc" value="1" units="per_h" constant="true"/>
+      <parameter id="Ka_glc" name="Ka [1/hr] absorption glc" value="1" units="per_hr" constant="true"/>
       <parameter id="F_glc" name="fraction absorbed glc" value="1" units="dimensionless" constant="true"/>
       <parameter id="ti_glc" name="injection time glc [s]" value="10" units="s" constant="true"/>
       <parameter id="Ki_glc" name="Ki [1/min] injection glc" value="0.02" units="per_min" constant="false"/>
@@ -480,7 +460,7 @@
       <parameter id="Mr_lac" name="Molecular weight lac [g/mole]" value="89.07" units="g_per_mole" constant="true"/>
       <parameter id="IVDOSE_lac" name="IV bolus dose lac [mg]" value="0" units="mg" constant="false"/>
       <parameter id="PODOSE_lac" name="oral bolus dose lac [mg]" value="0" units="mg" constant="false"/>
-      <parameter id="Ka_lac" name="Ka [1/hr] absorption lac" value="0.2" units="per_h" constant="true"/>
+      <parameter id="Ka_lac" name="Ka [1/hr] absorption lac" value="0.2" units="per_hr" constant="true"/>
       <parameter id="F_lac" name="fraction absorbed lac" value="1" units="dimensionless" constant="true"/>
       <parameter id="ti_lac" name="injection time lac [s]" value="10" units="s" constant="true"/>
       <parameter id="Ki_lac" name="Ki [1/min] injection lac" value="0.02" units="per_min" constant="false"/>
@@ -490,7 +470,7 @@
       <parameter id="Mr_cpep" name="Molecular weight cpep [g/mole]" value="5793.54" units="g_per_mole" constant="true"/>
       <parameter id="IVDOSE_cpep" name="IV bolus dose cpep [mg]" value="0" units="mg" constant="false"/>
       <parameter id="PODOSE_cpep" name="oral bolus dose cpep [mg]" value="0" units="mg" constant="false"/>
-      <parameter id="Ka_cpep" name="Ka [1/hr] absorption cpep" value="0.2" units="per_h" constant="true"/>
+      <parameter id="Ka_cpep" name="Ka [1/hr] absorption cpep" value="0.2" units="per_hr" constant="true"/>
       <parameter id="F_cpep" name="fraction absorbed cpep" value="1" units="dimensionless" constant="true"/>
       <parameter id="ti_cpep" name="injection time cpep [s]" value="10" units="s" constant="true"/>
       <parameter id="Ki_cpep" name="Ki [1/min] injection cpep" value="0.02" units="per_min" constant="false"/>
@@ -500,7 +480,7 @@
       <parameter id="Mr_ins" name="Molecular weight ins [g/mole]" value="5793.54" units="g_per_mole" constant="true"/>
       <parameter id="IVDOSE_ins" name="IV bolus dose ins [mg]" value="0" units="mg" constant="false"/>
       <parameter id="PODOSE_ins" name="oral bolus dose ins [mg]" value="0" units="mg" constant="false"/>
-      <parameter id="Ka_ins" name="Ka [1/hr] absorption ins" value="0.2" units="per_h" constant="true"/>
+      <parameter id="Ka_ins" name="Ka [1/hr] absorption ins" value="0.2" units="per_hr" constant="true"/>
       <parameter id="F_ins" name="fraction absorbed ins" value="1" units="dimensionless" constant="true"/>
       <parameter id="ti_ins" name="injection time ins [s]" value="10" units="s" constant="true"/>
       <parameter id="Ki_ins" name="Ki [1/min] injection ins" value="0.02" units="per_min" constant="false"/>
@@ -510,229 +490,229 @@
       <parameter id="Mr_som" name="Molecular weight som [g/mole]" value="1637.88" units="g_per_mole" constant="true"/>
       <parameter id="IVDOSE_som" name="IV bolus dose som [mg]" value="0" units="mg" constant="false"/>
       <parameter id="PODOSE_som" name="oral bolus dose som [mg]" value="0" units="mg" constant="false"/>
-      <parameter id="Ka_som" name="Ka [1/hr] absorption som" value="0.2" units="per_h" constant="true"/>
+      <parameter id="Ka_som" name="Ka [1/hr] absorption som" value="0.2" units="per_hr" constant="true"/>
       <parameter id="F_som" name="fraction absorbed som" value="1" units="dimensionless" constant="true"/>
       <parameter id="ti_som" name="injection time som [s]" value="10" units="s" constant="true"/>
       <parameter id="Ki_som" name="Ki [1/min] injection som" value="0.02" units="per_min" constant="false"/>
       <parameter id="Ri_som" name="Ri [mg/min] rate of injection som" value="0" units="mg_per_min" constant="true"/>
       <parameter id="cum_dose_som" name="Cumulative dose due to infusion som" value="0" units="mg" constant="false"/>
       <parameter id="BP_som" name="blood to plasma ratio som" value="1" units="dimensionless" constant="true"/>
-      <parameter id="Qad" name="adipose blood flow" units="litre_per_min" constant="false"/>
-      <parameter id="Qbr" name="brain blood flow" units="litre_per_min" constant="false"/>
-      <parameter id="Qhe" name="heart blood flow" units="litre_per_min" constant="false"/>
-      <parameter id="Qgu" name="gut blood flow" units="litre_per_min" constant="false"/>
-      <parameter id="Qki" name="kidney blood flow" units="litre_per_min" constant="false"/>
-      <parameter id="Qh" name="hepatic (venous side) blood flow" units="litre_per_min" constant="false"/>
-      <parameter id="Qha" name="hepatic artery blood flow" units="litre_per_min" constant="false"/>
-      <parameter id="Qlu" name="lung blood flow" units="litre_per_min" constant="false"/>
-      <parameter id="Qsp" name="spleen blood flow" units="litre_per_min" constant="false"/>
-      <parameter id="Qmu" name="muscle blood flow" units="litre_per_min" constant="false"/>
-      <parameter id="Qpa" name="pancreas blood flow" units="litre_per_min" constant="false"/>
-      <parameter id="Qre" name="rest of body blood flow" units="litre_per_min" constant="false"/>
+      <parameter id="Qad" name="adipose blood flow" units="l_per_min" constant="false"/>
+      <parameter id="Qbr" name="brain blood flow" units="l_per_min" constant="false"/>
+      <parameter id="Qhe" name="heart blood flow" units="l_per_min" constant="false"/>
+      <parameter id="Qgu" name="gut blood flow" units="l_per_min" constant="false"/>
+      <parameter id="Qki" name="kidney blood flow" units="l_per_min" constant="false"/>
+      <parameter id="Qh" name="hepatic (venous side) blood flow" units="l_per_min" constant="false"/>
+      <parameter id="Qha" name="hepatic artery blood flow" units="l_per_min" constant="false"/>
+      <parameter id="Qlu" name="lung blood flow" units="l_per_min" constant="false"/>
+      <parameter id="Qsp" name="spleen blood flow" units="l_per_min" constant="false"/>
+      <parameter id="Qmu" name="muscle blood flow" units="l_per_min" constant="false"/>
+      <parameter id="Qpa" name="pancreas blood flow" units="l_per_min" constant="false"/>
+      <parameter id="Qre" name="rest of body blood flow" units="l_per_min" constant="false"/>
       <parameter id="Cpl_ve_glc" name="glucose venous plasma concentration" units="mM" constant="false"/>
       <parameter id="Cad_blood_glc" name="glucose concentration (adipose)" units="mM" constant="false"/>
       <parameter id="Xad_blood_glc" name="{s_name} amount ({c_name})" units="mg" constant="false"/>
-      <parameter id="Mad_blood_glc" name="glucose amount (adipose)" units="mg_per_litre" constant="false"/>
+      <parameter id="Mad_blood_glc" name="glucose amount (adipose)" units="mg_per_l" constant="false"/>
       <parameter id="Cbr_blood_glc" name="glucose concentration (brain)" units="mM" constant="false"/>
       <parameter id="Xbr_blood_glc" name="{s_name} amount ({c_name})" units="mg" constant="false"/>
-      <parameter id="Mbr_blood_glc" name="glucose amount (brain)" units="mg_per_litre" constant="false"/>
+      <parameter id="Mbr_blood_glc" name="glucose amount (brain)" units="mg_per_l" constant="false"/>
       <parameter id="Cgu_blood_glc" name="glucose concentration (gut)" units="mM" constant="false"/>
       <parameter id="Xgu_blood_glc" name="{s_name} amount ({c_name})" units="mg" constant="false"/>
-      <parameter id="Mgu_blood_glc" name="glucose amount (gut)" units="mg_per_litre" constant="false"/>
+      <parameter id="Mgu_blood_glc" name="glucose amount (gut)" units="mg_per_l" constant="false"/>
       <parameter id="Che_blood_glc" name="glucose concentration (heart)" units="mM" constant="false"/>
       <parameter id="Xhe_blood_glc" name="{s_name} amount ({c_name})" units="mg" constant="false"/>
-      <parameter id="Mhe_blood_glc" name="glucose amount (heart)" units="mg_per_litre" constant="false"/>
+      <parameter id="Mhe_blood_glc" name="glucose amount (heart)" units="mg_per_l" constant="false"/>
       <parameter id="Cki_blood_glc" name="glucose concentration (kidney)" units="mM" constant="false"/>
       <parameter id="Xki_blood_glc" name="{s_name} amount ({c_name})" units="mg" constant="false"/>
-      <parameter id="Mki_blood_glc" name="glucose amount (kidney)" units="mg_per_litre" constant="false"/>
+      <parameter id="Mki_blood_glc" name="glucose amount (kidney)" units="mg_per_l" constant="false"/>
       <parameter id="Cli_blood_glc" name="glucose concentration (liver)" units="mM" constant="false"/>
       <parameter id="Xli_blood_glc" name="{s_name} amount ({c_name})" units="mg" constant="false"/>
-      <parameter id="Mli_blood_glc" name="glucose amount (liver)" units="mg_per_litre" constant="false"/>
+      <parameter id="Mli_blood_glc" name="glucose amount (liver)" units="mg_per_l" constant="false"/>
       <parameter id="Clu_blood_glc" name="glucose concentration (lung)" units="mM" constant="false"/>
       <parameter id="Xlu_blood_glc" name="{s_name} amount ({c_name})" units="mg" constant="false"/>
-      <parameter id="Mlu_blood_glc" name="glucose amount (lung)" units="mg_per_litre" constant="false"/>
+      <parameter id="Mlu_blood_glc" name="glucose amount (lung)" units="mg_per_l" constant="false"/>
       <parameter id="Cmu_blood_glc" name="glucose concentration (muscle)" units="mM" constant="false"/>
       <parameter id="Xmu_blood_glc" name="{s_name} amount ({c_name})" units="mg" constant="false"/>
-      <parameter id="Mmu_blood_glc" name="glucose amount (muscle)" units="mg_per_litre" constant="false"/>
+      <parameter id="Mmu_blood_glc" name="glucose amount (muscle)" units="mg_per_l" constant="false"/>
       <parameter id="Cpa_blood_glc" name="glucose concentration (pancreas)" units="mM" constant="false"/>
       <parameter id="Xpa_blood_glc" name="{s_name} amount ({c_name})" units="mg" constant="false"/>
-      <parameter id="Mpa_blood_glc" name="glucose amount (pancreas)" units="mg_per_litre" constant="false"/>
+      <parameter id="Mpa_blood_glc" name="glucose amount (pancreas)" units="mg_per_l" constant="false"/>
       <parameter id="Csp_blood_glc" name="glucose concentration (spleen)" units="mM" constant="false"/>
       <parameter id="Xsp_blood_glc" name="{s_name} amount ({c_name})" units="mg" constant="false"/>
-      <parameter id="Msp_blood_glc" name="glucose amount (spleen)" units="mg_per_litre" constant="false"/>
+      <parameter id="Msp_blood_glc" name="glucose amount (spleen)" units="mg_per_l" constant="false"/>
       <parameter id="Cre_blood_glc" name="glucose concentration (rest)" units="mM" constant="false"/>
       <parameter id="Xre_blood_glc" name="{s_name} amount ({c_name})" units="mg" constant="false"/>
-      <parameter id="Mre_blood_glc" name="glucose amount (rest)" units="mg_per_litre" constant="false"/>
+      <parameter id="Mre_blood_glc" name="glucose amount (rest)" units="mg_per_l" constant="false"/>
       <parameter id="Car_glc" name="glucose concentration (arterial blood)" units="mM" constant="false"/>
       <parameter id="Xar_glc" name="{s_name} amount ({c_name})" units="mg" constant="false"/>
-      <parameter id="Mar_glc" name="glucose amount (arterial blood)" units="mg_per_litre" constant="false"/>
+      <parameter id="Mar_glc" name="glucose amount (arterial blood)" units="mg_per_l" constant="false"/>
       <parameter id="Cve_glc" name="glucose concentration (venous blood)" units="mM" constant="false"/>
       <parameter id="Xve_glc" name="{s_name} amount ({c_name})" units="mg" constant="false"/>
-      <parameter id="Mve_glc" name="glucose amount (venous blood)" units="mg_per_litre" constant="false"/>
+      <parameter id="Mve_glc" name="glucose amount (venous blood)" units="mg_per_l" constant="false"/>
       <parameter id="Xurine_glc" name="glucose amount (urine)" units="mg" constant="false"/>
       <parameter id="Cpl_ve_lac" name="lactate venous plasma concentration" units="mM" constant="false"/>
       <parameter id="Cad_blood_lac" name="lactate concentration (adipose)" units="mM" constant="false"/>
       <parameter id="Xad_blood_lac" name="{s_name} amount ({c_name})" units="mg" constant="false"/>
-      <parameter id="Mad_blood_lac" name="lactate amount (adipose)" units="mg_per_litre" constant="false"/>
+      <parameter id="Mad_blood_lac" name="lactate amount (adipose)" units="mg_per_l" constant="false"/>
       <parameter id="Cbr_blood_lac" name="lactate concentration (brain)" units="mM" constant="false"/>
       <parameter id="Xbr_blood_lac" name="{s_name} amount ({c_name})" units="mg" constant="false"/>
-      <parameter id="Mbr_blood_lac" name="lactate amount (brain)" units="mg_per_litre" constant="false"/>
+      <parameter id="Mbr_blood_lac" name="lactate amount (brain)" units="mg_per_l" constant="false"/>
       <parameter id="Cgu_blood_lac" name="lactate concentration (gut)" units="mM" constant="false"/>
       <parameter id="Xgu_blood_lac" name="{s_name} amount ({c_name})" units="mg" constant="false"/>
-      <parameter id="Mgu_blood_lac" name="lactate amount (gut)" units="mg_per_litre" constant="false"/>
+      <parameter id="Mgu_blood_lac" name="lactate amount (gut)" units="mg_per_l" constant="false"/>
       <parameter id="Che_blood_lac" name="lactate concentration (heart)" units="mM" constant="false"/>
       <parameter id="Xhe_blood_lac" name="{s_name} amount ({c_name})" units="mg" constant="false"/>
-      <parameter id="Mhe_blood_lac" name="lactate amount (heart)" units="mg_per_litre" constant="false"/>
+      <parameter id="Mhe_blood_lac" name="lactate amount (heart)" units="mg_per_l" constant="false"/>
       <parameter id="Cki_blood_lac" name="lactate concentration (kidney)" units="mM" constant="false"/>
       <parameter id="Xki_blood_lac" name="{s_name} amount ({c_name})" units="mg" constant="false"/>
-      <parameter id="Mki_blood_lac" name="lactate amount (kidney)" units="mg_per_litre" constant="false"/>
+      <parameter id="Mki_blood_lac" name="lactate amount (kidney)" units="mg_per_l" constant="false"/>
       <parameter id="Cli_blood_lac" name="lactate concentration (liver)" units="mM" constant="false"/>
       <parameter id="Xli_blood_lac" name="{s_name} amount ({c_name})" units="mg" constant="false"/>
-      <parameter id="Mli_blood_lac" name="lactate amount (liver)" units="mg_per_litre" constant="false"/>
+      <parameter id="Mli_blood_lac" name="lactate amount (liver)" units="mg_per_l" constant="false"/>
       <parameter id="Clu_blood_lac" name="lactate concentration (lung)" units="mM" constant="false"/>
       <parameter id="Xlu_blood_lac" name="{s_name} amount ({c_name})" units="mg" constant="false"/>
-      <parameter id="Mlu_blood_lac" name="lactate amount (lung)" units="mg_per_litre" constant="false"/>
+      <parameter id="Mlu_blood_lac" name="lactate amount (lung)" units="mg_per_l" constant="false"/>
       <parameter id="Cmu_blood_lac" name="lactate concentration (muscle)" units="mM" constant="false"/>
       <parameter id="Xmu_blood_lac" name="{s_name} amount ({c_name})" units="mg" constant="false"/>
-      <parameter id="Mmu_blood_lac" name="lactate amount (muscle)" units="mg_per_litre" constant="false"/>
+      <parameter id="Mmu_blood_lac" name="lactate amount (muscle)" units="mg_per_l" constant="false"/>
       <parameter id="Cpa_blood_lac" name="lactate concentration (pancreas)" units="mM" constant="false"/>
       <parameter id="Xpa_blood_lac" name="{s_name} amount ({c_name})" units="mg" constant="false"/>
-      <parameter id="Mpa_blood_lac" name="lactate amount (pancreas)" units="mg_per_litre" constant="false"/>
+      <parameter id="Mpa_blood_lac" name="lactate amount (pancreas)" units="mg_per_l" constant="false"/>
       <parameter id="Csp_blood_lac" name="lactate concentration (spleen)" units="mM" constant="false"/>
       <parameter id="Xsp_blood_lac" name="{s_name} amount ({c_name})" units="mg" constant="false"/>
-      <parameter id="Msp_blood_lac" name="lactate amount (spleen)" units="mg_per_litre" constant="false"/>
+      <parameter id="Msp_blood_lac" name="lactate amount (spleen)" units="mg_per_l" constant="false"/>
       <parameter id="Cre_blood_lac" name="lactate concentration (rest)" units="mM" constant="false"/>
       <parameter id="Xre_blood_lac" name="{s_name} amount ({c_name})" units="mg" constant="false"/>
-      <parameter id="Mre_blood_lac" name="lactate amount (rest)" units="mg_per_litre" constant="false"/>
+      <parameter id="Mre_blood_lac" name="lactate amount (rest)" units="mg_per_l" constant="false"/>
       <parameter id="Car_lac" name="lactate concentration (arterial blood)" units="mM" constant="false"/>
       <parameter id="Xar_lac" name="{s_name} amount ({c_name})" units="mg" constant="false"/>
-      <parameter id="Mar_lac" name="lactate amount (arterial blood)" units="mg_per_litre" constant="false"/>
+      <parameter id="Mar_lac" name="lactate amount (arterial blood)" units="mg_per_l" constant="false"/>
       <parameter id="Cve_lac" name="lactate concentration (venous blood)" units="mM" constant="false"/>
       <parameter id="Xve_lac" name="{s_name} amount ({c_name})" units="mg" constant="false"/>
-      <parameter id="Mve_lac" name="lactate amount (venous blood)" units="mg_per_litre" constant="false"/>
+      <parameter id="Mve_lac" name="lactate amount (venous blood)" units="mg_per_l" constant="false"/>
       <parameter id="Xurine_lac" name="lactate amount (urine)" units="mg" constant="false"/>
       <parameter id="Cpl_ve_cpep" name="c-peptide venous plasma concentration" units="mM" constant="false"/>
       <parameter id="Cad_blood_cpep" name="c-peptide concentration (adipose)" units="mM" constant="false"/>
       <parameter id="Xad_blood_cpep" name="{s_name} amount ({c_name})" units="mg" constant="false"/>
-      <parameter id="Mad_blood_cpep" name="c-peptide amount (adipose)" units="mg_per_litre" constant="false"/>
+      <parameter id="Mad_blood_cpep" name="c-peptide amount (adipose)" units="mg_per_l" constant="false"/>
       <parameter id="Cbr_blood_cpep" name="c-peptide concentration (brain)" units="mM" constant="false"/>
       <parameter id="Xbr_blood_cpep" name="{s_name} amount ({c_name})" units="mg" constant="false"/>
-      <parameter id="Mbr_blood_cpep" name="c-peptide amount (brain)" units="mg_per_litre" constant="false"/>
+      <parameter id="Mbr_blood_cpep" name="c-peptide amount (brain)" units="mg_per_l" constant="false"/>
       <parameter id="Cgu_blood_cpep" name="c-peptide concentration (gut)" units="mM" constant="false"/>
       <parameter id="Xgu_blood_cpep" name="{s_name} amount ({c_name})" units="mg" constant="false"/>
-      <parameter id="Mgu_blood_cpep" name="c-peptide amount (gut)" units="mg_per_litre" constant="false"/>
+      <parameter id="Mgu_blood_cpep" name="c-peptide amount (gut)" units="mg_per_l" constant="false"/>
       <parameter id="Che_blood_cpep" name="c-peptide concentration (heart)" units="mM" constant="false"/>
       <parameter id="Xhe_blood_cpep" name="{s_name} amount ({c_name})" units="mg" constant="false"/>
-      <parameter id="Mhe_blood_cpep" name="c-peptide amount (heart)" units="mg_per_litre" constant="false"/>
+      <parameter id="Mhe_blood_cpep" name="c-peptide amount (heart)" units="mg_per_l" constant="false"/>
       <parameter id="Cki_blood_cpep" name="c-peptide concentration (kidney)" units="mM" constant="false"/>
       <parameter id="Xki_blood_cpep" name="{s_name} amount ({c_name})" units="mg" constant="false"/>
-      <parameter id="Mki_blood_cpep" name="c-peptide amount (kidney)" units="mg_per_litre" constant="false"/>
+      <parameter id="Mki_blood_cpep" name="c-peptide amount (kidney)" units="mg_per_l" constant="false"/>
       <parameter id="Cli_blood_cpep" name="c-peptide concentration (liver)" units="mM" constant="false"/>
       <parameter id="Xli_blood_cpep" name="{s_name} amount ({c_name})" units="mg" constant="false"/>
-      <parameter id="Mli_blood_cpep" name="c-peptide amount (liver)" units="mg_per_litre" constant="false"/>
+      <parameter id="Mli_blood_cpep" name="c-peptide amount (liver)" units="mg_per_l" constant="false"/>
       <parameter id="Clu_blood_cpep" name="c-peptide concentration (lung)" units="mM" constant="false"/>
       <parameter id="Xlu_blood_cpep" name="{s_name} amount ({c_name})" units="mg" constant="false"/>
-      <parameter id="Mlu_blood_cpep" name="c-peptide amount (lung)" units="mg_per_litre" constant="false"/>
+      <parameter id="Mlu_blood_cpep" name="c-peptide amount (lung)" units="mg_per_l" constant="false"/>
       <parameter id="Cmu_blood_cpep" name="c-peptide concentration (muscle)" units="mM" constant="false"/>
       <parameter id="Xmu_blood_cpep" name="{s_name} amount ({c_name})" units="mg" constant="false"/>
-      <parameter id="Mmu_blood_cpep" name="c-peptide amount (muscle)" units="mg_per_litre" constant="false"/>
+      <parameter id="Mmu_blood_cpep" name="c-peptide amount (muscle)" units="mg_per_l" constant="false"/>
       <parameter id="Cpa_blood_cpep" name="c-peptide concentration (pancreas)" units="mM" constant="false"/>
       <parameter id="Xpa_blood_cpep" name="{s_name} amount ({c_name})" units="mg" constant="false"/>
-      <parameter id="Mpa_blood_cpep" name="c-peptide amount (pancreas)" units="mg_per_litre" constant="false"/>
+      <parameter id="Mpa_blood_cpep" name="c-peptide amount (pancreas)" units="mg_per_l" constant="false"/>
       <parameter id="Csp_blood_cpep" name="c-peptide concentration (spleen)" units="mM" constant="false"/>
       <parameter id="Xsp_blood_cpep" name="{s_name} amount ({c_name})" units="mg" constant="false"/>
-      <parameter id="Msp_blood_cpep" name="c-peptide amount (spleen)" units="mg_per_litre" constant="false"/>
+      <parameter id="Msp_blood_cpep" name="c-peptide amount (spleen)" units="mg_per_l" constant="false"/>
       <parameter id="Cre_blood_cpep" name="c-peptide concentration (rest)" units="mM" constant="false"/>
       <parameter id="Xre_blood_cpep" name="{s_name} amount ({c_name})" units="mg" constant="false"/>
-      <parameter id="Mre_blood_cpep" name="c-peptide amount (rest)" units="mg_per_litre" constant="false"/>
+      <parameter id="Mre_blood_cpep" name="c-peptide amount (rest)" units="mg_per_l" constant="false"/>
       <parameter id="Car_cpep" name="c-peptide concentration (arterial blood)" units="mM" constant="false"/>
       <parameter id="Xar_cpep" name="{s_name} amount ({c_name})" units="mg" constant="false"/>
-      <parameter id="Mar_cpep" name="c-peptide amount (arterial blood)" units="mg_per_litre" constant="false"/>
+      <parameter id="Mar_cpep" name="c-peptide amount (arterial blood)" units="mg_per_l" constant="false"/>
       <parameter id="Cve_cpep" name="c-peptide concentration (venous blood)" units="mM" constant="false"/>
       <parameter id="Xve_cpep" name="{s_name} amount ({c_name})" units="mg" constant="false"/>
-      <parameter id="Mve_cpep" name="c-peptide amount (venous blood)" units="mg_per_litre" constant="false"/>
+      <parameter id="Mve_cpep" name="c-peptide amount (venous blood)" units="mg_per_l" constant="false"/>
       <parameter id="Xurine_cpep" name="c-peptide amount (urine)" units="mg" constant="false"/>
       <parameter id="Cpl_ve_ins" name="insulin venous plasma concentration" units="mM" constant="false"/>
       <parameter id="Cad_blood_ins" name="insulin concentration (adipose)" units="mM" constant="false"/>
       <parameter id="Xad_blood_ins" name="{s_name} amount ({c_name})" units="mg" constant="false"/>
-      <parameter id="Mad_blood_ins" name="insulin amount (adipose)" units="mg_per_litre" constant="false"/>
+      <parameter id="Mad_blood_ins" name="insulin amount (adipose)" units="mg_per_l" constant="false"/>
       <parameter id="Cbr_blood_ins" name="insulin concentration (brain)" units="mM" constant="false"/>
       <parameter id="Xbr_blood_ins" name="{s_name} amount ({c_name})" units="mg" constant="false"/>
-      <parameter id="Mbr_blood_ins" name="insulin amount (brain)" units="mg_per_litre" constant="false"/>
+      <parameter id="Mbr_blood_ins" name="insulin amount (brain)" units="mg_per_l" constant="false"/>
       <parameter id="Cgu_blood_ins" name="insulin concentration (gut)" units="mM" constant="false"/>
       <parameter id="Xgu_blood_ins" name="{s_name} amount ({c_name})" units="mg" constant="false"/>
-      <parameter id="Mgu_blood_ins" name="insulin amount (gut)" units="mg_per_litre" constant="false"/>
+      <parameter id="Mgu_blood_ins" name="insulin amount (gut)" units="mg_per_l" constant="false"/>
       <parameter id="Che_blood_ins" name="insulin concentration (heart)" units="mM" constant="false"/>
       <parameter id="Xhe_blood_ins" name="{s_name} amount ({c_name})" units="mg" constant="false"/>
-      <parameter id="Mhe_blood_ins" name="insulin amount (heart)" units="mg_per_litre" constant="false"/>
+      <parameter id="Mhe_blood_ins" name="insulin amount (heart)" units="mg_per_l" constant="false"/>
       <parameter id="Cki_blood_ins" name="insulin concentration (kidney)" units="mM" constant="false"/>
       <parameter id="Xki_blood_ins" name="{s_name} amount ({c_name})" units="mg" constant="false"/>
-      <parameter id="Mki_blood_ins" name="insulin amount (kidney)" units="mg_per_litre" constant="false"/>
+      <parameter id="Mki_blood_ins" name="insulin amount (kidney)" units="mg_per_l" constant="false"/>
       <parameter id="Cli_blood_ins" name="insulin concentration (liver)" units="mM" constant="false"/>
       <parameter id="Xli_blood_ins" name="{s_name} amount ({c_name})" units="mg" constant="false"/>
-      <parameter id="Mli_blood_ins" name="insulin amount (liver)" units="mg_per_litre" constant="false"/>
+      <parameter id="Mli_blood_ins" name="insulin amount (liver)" units="mg_per_l" constant="false"/>
       <parameter id="Clu_blood_ins" name="insulin concentration (lung)" units="mM" constant="false"/>
       <parameter id="Xlu_blood_ins" name="{s_name} amount ({c_name})" units="mg" constant="false"/>
-      <parameter id="Mlu_blood_ins" name="insulin amount (lung)" units="mg_per_litre" constant="false"/>
+      <parameter id="Mlu_blood_ins" name="insulin amount (lung)" units="mg_per_l" constant="false"/>
       <parameter id="Cmu_blood_ins" name="insulin concentration (muscle)" units="mM" constant="false"/>
       <parameter id="Xmu_blood_ins" name="{s_name} amount ({c_name})" units="mg" constant="false"/>
-      <parameter id="Mmu_blood_ins" name="insulin amount (muscle)" units="mg_per_litre" constant="false"/>
+      <parameter id="Mmu_blood_ins" name="insulin amount (muscle)" units="mg_per_l" constant="false"/>
       <parameter id="Cpa_blood_ins" name="insulin concentration (pancreas)" units="mM" constant="false"/>
       <parameter id="Xpa_blood_ins" name="{s_name} amount ({c_name})" units="mg" constant="false"/>
-      <parameter id="Mpa_blood_ins" name="insulin amount (pancreas)" units="mg_per_litre" constant="false"/>
+      <parameter id="Mpa_blood_ins" name="insulin amount (pancreas)" units="mg_per_l" constant="false"/>
       <parameter id="Csp_blood_ins" name="insulin concentration (spleen)" units="mM" constant="false"/>
       <parameter id="Xsp_blood_ins" name="{s_name} amount ({c_name})" units="mg" constant="false"/>
-      <parameter id="Msp_blood_ins" name="insulin amount (spleen)" units="mg_per_litre" constant="false"/>
+      <parameter id="Msp_blood_ins" name="insulin amount (spleen)" units="mg_per_l" constant="false"/>
       <parameter id="Cre_blood_ins" name="insulin concentration (rest)" units="mM" constant="false"/>
       <parameter id="Xre_blood_ins" name="{s_name} amount ({c_name})" units="mg" constant="false"/>
-      <parameter id="Mre_blood_ins" name="insulin amount (rest)" units="mg_per_litre" constant="false"/>
+      <parameter id="Mre_blood_ins" name="insulin amount (rest)" units="mg_per_l" constant="false"/>
       <parameter id="Car_ins" name="insulin concentration (arterial blood)" units="mM" constant="false"/>
       <parameter id="Xar_ins" name="{s_name} amount ({c_name})" units="mg" constant="false"/>
-      <parameter id="Mar_ins" name="insulin amount (arterial blood)" units="mg_per_litre" constant="false"/>
+      <parameter id="Mar_ins" name="insulin amount (arterial blood)" units="mg_per_l" constant="false"/>
       <parameter id="Cve_ins" name="insulin concentration (venous blood)" units="mM" constant="false"/>
       <parameter id="Xve_ins" name="{s_name} amount ({c_name})" units="mg" constant="false"/>
-      <parameter id="Mve_ins" name="insulin amount (venous blood)" units="mg_per_litre" constant="false"/>
+      <parameter id="Mve_ins" name="insulin amount (venous blood)" units="mg_per_l" constant="false"/>
       <parameter id="Xurine_ins" name="insulin amount (urine)" units="mg" constant="false"/>
       <parameter id="Cpl_ve_som" name="somatostatin venous plasma concentration" units="mM" constant="false"/>
       <parameter id="Cad_blood_som" name="somatostatin concentration (adipose)" units="mM" constant="false"/>
       <parameter id="Xad_blood_som" name="{s_name} amount ({c_name})" units="mg" constant="false"/>
-      <parameter id="Mad_blood_som" name="somatostatin amount (adipose)" units="mg_per_litre" constant="false"/>
+      <parameter id="Mad_blood_som" name="somatostatin amount (adipose)" units="mg_per_l" constant="false"/>
       <parameter id="Cbr_blood_som" name="somatostatin concentration (brain)" units="mM" constant="false"/>
       <parameter id="Xbr_blood_som" name="{s_name} amount ({c_name})" units="mg" constant="false"/>
-      <parameter id="Mbr_blood_som" name="somatostatin amount (brain)" units="mg_per_litre" constant="false"/>
+      <parameter id="Mbr_blood_som" name="somatostatin amount (brain)" units="mg_per_l" constant="false"/>
       <parameter id="Cgu_blood_som" name="somatostatin concentration (gut)" units="mM" constant="false"/>
       <parameter id="Xgu_blood_som" name="{s_name} amount ({c_name})" units="mg" constant="false"/>
-      <parameter id="Mgu_blood_som" name="somatostatin amount (gut)" units="mg_per_litre" constant="false"/>
+      <parameter id="Mgu_blood_som" name="somatostatin amount (gut)" units="mg_per_l" constant="false"/>
       <parameter id="Che_blood_som" name="somatostatin concentration (heart)" units="mM" constant="false"/>
       <parameter id="Xhe_blood_som" name="{s_name} amount ({c_name})" units="mg" constant="false"/>
-      <parameter id="Mhe_blood_som" name="somatostatin amount (heart)" units="mg_per_litre" constant="false"/>
+      <parameter id="Mhe_blood_som" name="somatostatin amount (heart)" units="mg_per_l" constant="false"/>
       <parameter id="Cki_blood_som" name="somatostatin concentration (kidney)" units="mM" constant="false"/>
       <parameter id="Xki_blood_som" name="{s_name} amount ({c_name})" units="mg" constant="false"/>
-      <parameter id="Mki_blood_som" name="somatostatin amount (kidney)" units="mg_per_litre" constant="false"/>
+      <parameter id="Mki_blood_som" name="somatostatin amount (kidney)" units="mg_per_l" constant="false"/>
       <parameter id="Cli_blood_som" name="somatostatin concentration (liver)" units="mM" constant="false"/>
       <parameter id="Xli_blood_som" name="{s_name} amount ({c_name})" units="mg" constant="false"/>
-      <parameter id="Mli_blood_som" name="somatostatin amount (liver)" units="mg_per_litre" constant="false"/>
+      <parameter id="Mli_blood_som" name="somatostatin amount (liver)" units="mg_per_l" constant="false"/>
       <parameter id="Clu_blood_som" name="somatostatin concentration (lung)" units="mM" constant="false"/>
       <parameter id="Xlu_blood_som" name="{s_name} amount ({c_name})" units="mg" constant="false"/>
-      <parameter id="Mlu_blood_som" name="somatostatin amount (lung)" units="mg_per_litre" constant="false"/>
+      <parameter id="Mlu_blood_som" name="somatostatin amount (lung)" units="mg_per_l" constant="false"/>
       <parameter id="Cmu_blood_som" name="somatostatin concentration (muscle)" units="mM" constant="false"/>
       <parameter id="Xmu_blood_som" name="{s_name} amount ({c_name})" units="mg" constant="false"/>
-      <parameter id="Mmu_blood_som" name="somatostatin amount (muscle)" units="mg_per_litre" constant="false"/>
+      <parameter id="Mmu_blood_som" name="somatostatin amount (muscle)" units="mg_per_l" constant="false"/>
       <parameter id="Cpa_blood_som" name="somatostatin concentration (pancreas)" units="mM" constant="false"/>
       <parameter id="Xpa_blood_som" name="{s_name} amount ({c_name})" units="mg" constant="false"/>
-      <parameter id="Mpa_blood_som" name="somatostatin amount (pancreas)" units="mg_per_litre" constant="false"/>
+      <parameter id="Mpa_blood_som" name="somatostatin amount (pancreas)" units="mg_per_l" constant="false"/>
       <parameter id="Csp_blood_som" name="somatostatin concentration (spleen)" units="mM" constant="false"/>
       <parameter id="Xsp_blood_som" name="{s_name} amount ({c_name})" units="mg" constant="false"/>
-      <parameter id="Msp_blood_som" name="somatostatin amount (spleen)" units="mg_per_litre" constant="false"/>
+      <parameter id="Msp_blood_som" name="somatostatin amount (spleen)" units="mg_per_l" constant="false"/>
       <parameter id="Cre_blood_som" name="somatostatin concentration (rest)" units="mM" constant="false"/>
       <parameter id="Xre_blood_som" name="{s_name} amount ({c_name})" units="mg" constant="false"/>
-      <parameter id="Mre_blood_som" name="somatostatin amount (rest)" units="mg_per_litre" constant="false"/>
+      <parameter id="Mre_blood_som" name="somatostatin amount (rest)" units="mg_per_l" constant="false"/>
       <parameter id="Car_som" name="somatostatin concentration (arterial blood)" units="mM" constant="false"/>
       <parameter id="Xar_som" name="{s_name} amount ({c_name})" units="mg" constant="false"/>
-      <parameter id="Mar_som" name="somatostatin amount (arterial blood)" units="mg_per_litre" constant="false"/>
+      <parameter id="Mar_som" name="somatostatin amount (arterial blood)" units="mg_per_l" constant="false"/>
       <parameter id="Cve_som" name="somatostatin concentration (venous blood)" units="mM" constant="false"/>
       <parameter id="Xve_som" name="{s_name} amount ({c_name})" units="mg" constant="false"/>
-      <parameter id="Mve_som" name="somatostatin amount (venous blood)" units="mg_per_litre" constant="false"/>
+      <parameter id="Mve_som" name="somatostatin amount (venous blood)" units="mg_per_l" constant="false"/>
       <parameter id="Xurine_som" name="somatostatin amount (urine)" units="mg" constant="false"/>
       <parameter id="inflow_li_som" units="mmole_per_min" constant="false"/>
       <parameter id="outflow_li_som" units="mmole_per_min" constant="false"/>
@@ -741,21 +721,21 @@
       <parameter id="AD__Cext_ins" name="insulin concentration (Vext)" units="mM" constant="false"/>
       <parameter id="AD__Cad_glc" name="glucose concentration (Vad)" units="mM" constant="false"/>
       <parameter id="AD__Cad_lac" name="lactate concentration (Vad)" units="mM" constant="false"/>
-      <parameter id="AD__GLCIM_Vmax" name="Glucose import" value="0.5" units="mmole_per_minl" constant="true"/>
+      <parameter id="AD__GLCIM_Vmax" name="Glucose import" value="0.5" units="mmole_per_min_l" constant="true"/>
       <parameter id="AD__GLCIM_Km" value="0.1" units="mM" constant="true"/>
-      <parameter id="AD__LACIM_Vmax" name="Lactate import" value="0.5" units="mmole_per_minl" constant="true"/>
+      <parameter id="AD__LACIM_Vmax" name="Lactate import" value="0.5" units="mmole_per_min_l" constant="true"/>
       <parameter id="AD__LACIM_Km" value="0.1" units="mM" constant="true"/>
-      <parameter id="AD__GLC2LAC_Vmax" name="Glucose utilization adipose" value="0.02" units="mmole_per_minl" constant="true"/>
+      <parameter id="AD__GLC2LAC_Vmax" name="Glucose utilization adipose" value="0.02" units="mmole_per_min_l" constant="true"/>
       <parameter id="AD__GLC2LAC_Km" value="0.1" units="mM" constant="true"/>
       <parameter id="BR__Cext_glc" name="glucose concentration (Vext)" units="mM" constant="false"/>
       <parameter id="BR__Cext_lac" name="lactate concentration (Vext)" units="mM" constant="false"/>
       <parameter id="BR__Cbr_glc" name="glucose concentration (Vbr)" units="mM" constant="false"/>
       <parameter id="BR__Cbr_lac" name="lactate concentration (Vbr)" units="mM" constant="false"/>
-      <parameter id="BR__GLCIM_Vmax" name="Glucose utilization" value="0.7" units="mmole_per_minl" constant="true"/>
+      <parameter id="BR__GLCIM_Vmax" name="Glucose utilization" value="0.7" units="mmole_per_min_l" constant="true"/>
       <parameter id="BR__GLCIM_Km" value="0.1" units="mM" constant="true"/>
-      <parameter id="BR__LACIM_Vmax" name="Lactate import" value="0.7" units="mmole_per_minl" constant="true"/>
+      <parameter id="BR__LACIM_Vmax" name="Lactate import" value="0.7" units="mmole_per_min_l" constant="true"/>
       <parameter id="BR__LACIM_Km" value="0.1" units="mM" constant="true"/>
-      <parameter id="BR__GLC2LAC_Vmax" name="Glucose import" value="0.02" units="mmole_per_minl" constant="true"/>
+      <parameter id="BR__GLC2LAC_Vmax" name="Glucose import" value="0.02" units="mmole_per_min_l" constant="true"/>
       <parameter id="BR__GLC2LAC_Km" value="0.01" units="mM" constant="true"/>
       <parameter id="KI__Cext_glc" name="glucose concentration (Vext)" units="mM" constant="false"/>
       <parameter id="KI__Cext_lac" name="lactate concentration (Vext)" units="mM" constant="false"/>
@@ -765,30 +745,30 @@
       <parameter id="KI__Cki_glc" name="glucose concentration (Vki)" units="mM" constant="false"/>
       <parameter id="KI__Cki_lac" name="lactate concentration (Vki)" units="mM" constant="false"/>
       <parameter id="KI__Cki_cpep" name="c-peptide concentration (Vki)" units="mM" constant="false"/>
-      <parameter id="KI__GLCIM_Vmax" name="Glucose import" value="1" units="mmole_per_minl" constant="true"/>
+      <parameter id="KI__GLCIM_Vmax" name="Glucose import" value="1" units="mmole_per_min_l" constant="true"/>
       <parameter id="KI__GLCIM_Km" value="0.1" units="mM" constant="true"/>
-      <parameter id="KI__LACIM_Vmax" name="Lactate import" value="1" units="mmole_per_minl" constant="true"/>
+      <parameter id="KI__LACIM_Vmax" name="Lactate import" value="1" units="mmole_per_min_l" constant="true"/>
       <parameter id="KI__LACIM_Km" value="0.1" units="mM" constant="true"/>
-      <parameter id="KI__CPEPIM_Vmax" name="C-peptide uptake" value="1" units="mmole_per_minl" constant="true"/>
+      <parameter id="KI__CPEPIM_Vmax" name="C-peptide uptake" value="0.015" units="mmole_per_min_l" constant="true"/>
       <parameter id="KI__CPEPIM_Km" value="0.01" units="mM" constant="true"/>
-      <parameter id="KI__CPEPCL_Vmax" name="C-peptide clearance" value="1" units="mmole_per_minl" constant="true"/>
+      <parameter id="KI__CPEPCL_Vmax" name="C-peptide clearance" value="1" units="mmole_per_min_l" constant="true"/>
       <parameter id="KI__CPEPCL_Km" value="0.01" units="mM" constant="true"/>
-      <parameter id="KI__CPEPEX_Vmax" name="C-peptide clearance" value="0.2" units="mmole_per_minl" constant="true"/>
+      <parameter id="KI__CPEPEX_Vmax" name="C-peptide clearance" value="0.2" units="mmole_per_min_l" constant="true"/>
       <parameter id="KI__CPEPEX_Km" value="0.01" units="mM" constant="true"/>
-      <parameter id="KI__SOMCL_Vmax" name="C-peptide uptake" value="100" units="mmole_per_minl" constant="true"/>
+      <parameter id="KI__SOMCL_Vmax" name="C-peptide uptake" value="1" units="mmole_per_min_l" constant="true"/>
       <parameter id="KI__SOMCL_Km" value="0.01" units="mM" constant="true"/>
-      <parameter id="KI__GLC2LAC_Vmax" name="Glucose utilization" value="0.01" units="mmole_per_minl" constant="true"/>
+      <parameter id="KI__GLC2LAC_Vmax" name="Glucose utilization" value="0.01" units="mmole_per_min_l" constant="true"/>
       <parameter id="KI__GLC2LAC_Km" value="0.01" units="mM" constant="true"/>
       <parameter id="MU__Cext_glc" name="glucose concentration (Vext)" units="mM" constant="false"/>
       <parameter id="MU__Cext_lac" name="lactate concentration (Vext)" units="mM" constant="false"/>
       <parameter id="MU__Cext_ins" name="insulin concentration (Vext)" units="mM" constant="false"/>
       <parameter id="MU__Cmu_glc" name="glucose concentration (Vmu)" units="mM" constant="false"/>
       <parameter id="MU__Cmu_lac" name="lactate concentration (Vmu)" units="mM" constant="false"/>
-      <parameter id="MU__GLCIM_Vmax" name="Glucose import" value="0.5" units="mmole_per_minl" constant="true"/>
+      <parameter id="MU__GLCIM_Vmax" name="Glucose import" value="0.5" units="mmole_per_min_l" constant="true"/>
       <parameter id="MU__GLCIM_Km" value="0.1" units="mM" constant="true"/>
-      <parameter id="MU__LACIM_Vmax" name="Lactate import" value="0.5" units="mmole_per_minl" constant="true"/>
+      <parameter id="MU__LACIM_Vmax" name="Lactate import" value="0.5" units="mmole_per_min_l" constant="true"/>
       <parameter id="MU__LACIM_Km" value="0.1" units="mM" constant="true"/>
-      <parameter id="MU__GLC2LAC_Vmax" name="Glucose utilization" value="0.025" units="mmole_per_minl" constant="true"/>
+      <parameter id="MU__GLC2LAC_Vmax" name="Glucose utilization" value="0.025" units="mmole_per_min_l" constant="true"/>
       <parameter id="MU__GLC2LAC_Km" value="0.01" units="mM" constant="true"/>
       <parameter id="PA__Cext_glc" name="glucose concentration (Vext)" units="mM" constant="false"/>
       <parameter id="PA__Cext_lac" name="lactate concentration (Vext)" units="mM" constant="false"/>
@@ -797,28 +777,28 @@
       <parameter id="PA__Cext_som" name="somatostatin concentration (Vext)" units="mM" constant="false"/>
       <parameter id="PA__Cpa_glc" name="glucose concentration (Vpa)" units="mM" constant="false"/>
       <parameter id="PA__Cpa_lac" name="lactate concentration (Vpa)" units="mM" constant="false"/>
-      <parameter id="PA__GLCIM_Vmax" name="Glucose import" value="0.5" units="mmole_per_minl" constant="true"/>
+      <parameter id="PA__GLCIM_Vmax" name="Glucose import" value="0.5" units="mmole_per_min_l" constant="true"/>
       <parameter id="PA__GLCIM_Km" value="0.1" units="mM" constant="true"/>
-      <parameter id="PA__LACIM_Vmax" name="Lactate import" value="0.5" units="mmole_per_minl" constant="true"/>
+      <parameter id="PA__LACIM_Vmax" name="Lactate import" value="0.5" units="mmole_per_min_l" constant="true"/>
       <parameter id="PA__LACIM_Km" value="0.1" units="mM" constant="true"/>
       <parameter id="PA__IRS_Vmax" name="Insulin secretion" value="0.000666" units="mmole_per_min" constant="true"/>
       <parameter id="PA__IRS_n_glc" value="1.89" units="dimensionless" constant="true"/>
       <parameter id="PA__IRS_Km_glc" value="10" units="mM" constant="true"/>
       <parameter id="PA__IRS_Ki_som" value="0.001" units="mM" constant="true"/>
-      <parameter id="PA__GLC2LAC_Vmax" name="Glucose utilization" value="0.01" units="mmole_per_minl" constant="true"/>
+      <parameter id="PA__GLC2LAC_Vmax" name="Glucose utilization" value="0.01" units="mmole_per_min_l" constant="true"/>
       <parameter id="PA__GLC2LAC_Km" value="0.01" units="mM" constant="true"/>
       <parameter id="LI__Cext_glc" name="glucose concentration (Vext)" units="mM" constant="false"/>
       <parameter id="LI__Cext_lac" name="lactate concentration (Vext)" units="mM" constant="false"/>
       <parameter id="LI__Cext_ins" name="insulin concentration (Vext)" units="mM" constant="false"/>
       <parameter id="LI__Cli_glc" name="glucose concentration (Vli)" units="mM" constant="false"/>
       <parameter id="LI__Cli_lac" name="lactate concentration (Vli)" units="mM" constant="false"/>
-      <parameter id="LI__GLCIM_Vmax" name="Glucose utilization brain" value="30" units="mmole_per_minl" constant="true"/>
+      <parameter id="LI__GLCIM_Vmax" name="Glucose utilization brain" value="30" units="mmole_per_min_l" constant="true"/>
       <parameter id="LI__GLCIM_Km" value="0.1" units="mM" constant="true"/>
-      <parameter id="LI__LACIM_Vmax" name="Glucose utilization brain" value="1000" units="mmole_per_minl" constant="true"/>
+      <parameter id="LI__LACIM_Vmax" name="Glucose utilization brain" value="1000" units="mmole_per_min_l" constant="true"/>
       <parameter id="LI__LACIM_Km" value="0.1" units="mM" constant="true"/>
-      <parameter id="LI__INSCL_Vmax" name="Insulin clearance" value="0.001" units="mmole_per_minl" constant="true"/>
+      <parameter id="LI__INSCL_Vmax" name="Insulin clearance" value="0.001" units="mmole_per_min_l" constant="true"/>
       <parameter id="LI__INSCL_Km" value="0.1" units="mM" constant="true"/>
-      <parameter id="LI__LAC2GLC_Vmax" name="Gluconeogenesis [mmole_per_min]" value="10" units="mmole_per_minl" constant="true"/>
+      <parameter id="LI__LAC2GLC_Vmax" name="Gluconeogenesis [mmole_per_min]" value="10" units="mmole_per_min_l" constant="true"/>
       <parameter id="LI__LAC2GLC_Km" value="0.05" units="mM" constant="true"/>
     </listOfParameters>
     <listOfRules>
@@ -826,7 +806,7 @@
         <math xmlns="http://www.w3.org/1998/Math/MathML" xmlns:sbml="http://www.sbml.org/sbml/level3/version1/core">
           <apply>
             <minus/>
-            <cn sbml:units="litre_per_kg"> 1 </cn>
+            <cn sbml:units="l_per_kg"> 1 </cn>
             <apply>
               <plus/>
               <ci> FVad </ci>
@@ -920,7 +900,7 @@
             <apply>
               <divide/>
               <ci> CO </ci>
-              <cn sbml:units="ml_per_litre" type="integer"> 1000 </cn>
+              <cn sbml:units="ml_per_l" type="integer"> 1000 </cn>
             </apply>
             <cn sbml:units="s_per_min" type="integer"> 60 </cn>
           </apply>
@@ -1051,7 +1031,7 @@
                 <minus/>
                 <apply>
                   <minus/>
-                  <cn sbml:units="litre_per_kg" type="integer"> 1 </cn>
+                  <cn sbml:units="l_per_kg" type="integer"> 1 </cn>
                   <ci> FVve </ci>
                 </apply>
                 <ci> FVar </ci>
@@ -1086,7 +1066,7 @@
                 <minus/>
                 <apply>
                   <minus/>
-                  <cn sbml:units="litre_per_kg" type="integer"> 1 </cn>
+                  <cn sbml:units="l_per_kg" type="integer"> 1 </cn>
                   <ci> FVve </ci>
                 </apply>
                 <ci> FVar </ci>
@@ -1471,7 +1451,7 @@
               <cn sbml:units="dimensionless"> 1.386 </cn>
               <ci> ti_glc </ci>
             </apply>
-            <cn sbml:units="s_per_h" type="integer"> 3600 </cn>
+            <cn sbml:units="s_per_hr" type="integer"> 3600 </cn>
           </apply>
         </math>
       </assignmentRule>
@@ -1905,7 +1885,7 @@
               <cn sbml:units="dimensionless"> 1.386 </cn>
               <ci> ti_lac </ci>
             </apply>
-            <cn sbml:units="s_per_h" type="integer"> 3600 </cn>
+            <cn sbml:units="s_per_hr" type="integer"> 3600 </cn>
           </apply>
         </math>
       </assignmentRule>
@@ -2339,7 +2319,7 @@
               <cn sbml:units="dimensionless"> 1.386 </cn>
               <ci> ti_cpep </ci>
             </apply>
-            <cn sbml:units="s_per_h" type="integer"> 3600 </cn>
+            <cn sbml:units="s_per_hr" type="integer"> 3600 </cn>
           </apply>
         </math>
       </assignmentRule>
@@ -2773,7 +2753,7 @@
               <cn sbml:units="dimensionless"> 1.386 </cn>
               <ci> ti_ins </ci>
             </apply>
-            <cn sbml:units="s_per_h" type="integer"> 3600 </cn>
+            <cn sbml:units="s_per_hr" type="integer"> 3600 </cn>
           </apply>
         </math>
       </assignmentRule>
@@ -3207,7 +3187,7 @@
               <cn sbml:units="dimensionless"> 1.386 </cn>
               <ci> ti_som </ci>
             </apply>
-            <cn sbml:units="s_per_h" type="integer"> 3600 </cn>
+            <cn sbml:units="s_per_hr" type="integer"> 3600 </cn>
           </apply>
         </math>
       </assignmentRule>
@@ -4139,7 +4119,7 @@
                   <apply>
                     <divide/>
                     <ci> Ka_glc </ci>
-                    <cn sbml:units="min_per_h" type="integer"> 60 </cn>
+                    <cn sbml:units="min_per_hr" type="integer"> 60 </cn>
                   </apply>
                   <ci> PODOSE_glc </ci>
                 </apply>
@@ -4582,7 +4562,7 @@
                   <apply>
                     <divide/>
                     <ci> Ka_lac </ci>
-                    <cn sbml:units="min_per_h" type="integer"> 60 </cn>
+                    <cn sbml:units="min_per_hr" type="integer"> 60 </cn>
                   </apply>
                   <ci> PODOSE_lac </ci>
                 </apply>
@@ -5025,7 +5005,7 @@
                   <apply>
                     <divide/>
                     <ci> Ka_cpep </ci>
-                    <cn sbml:units="min_per_h" type="integer"> 60 </cn>
+                    <cn sbml:units="min_per_hr" type="integer"> 60 </cn>
                   </apply>
                   <ci> PODOSE_cpep </ci>
                 </apply>
@@ -5468,7 +5448,7 @@
                   <apply>
                     <divide/>
                     <ci> Ka_ins </ci>
-                    <cn sbml:units="min_per_h" type="integer"> 60 </cn>
+                    <cn sbml:units="min_per_hr" type="integer"> 60 </cn>
                   </apply>
                   <ci> PODOSE_ins </ci>
                 </apply>
@@ -5911,7 +5891,7 @@
                   <apply>
                     <divide/>
                     <ci> Ka_som </ci>
-                    <cn sbml:units="min_per_h" type="integer"> 60 </cn>
+                    <cn sbml:units="min_per_hr" type="integer"> 60 </cn>
                   </apply>
                   <ci> PODOSE_som </ci>
                 </apply>
@@ -6967,6 +6947,9 @@
           <speciesReference species="Apa_blood_ins" stoichiometry="1" constant="true"/>
           <speciesReference species="Apa_blood_cpep" stoichiometry="1" constant="true"/>
         </listOfProducts>
+        <listOfModifiers>
+          <modifierSpeciesReference species="Apa_blood_som"/>
+        </listOfModifiers>
         <kineticLaw>
           <math xmlns="http://www.w3.org/1998/Math/MathML" xmlns:sbml="http://www.sbml.org/sbml/level3/version1/core">
             <apply>

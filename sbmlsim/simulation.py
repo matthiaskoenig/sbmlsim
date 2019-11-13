@@ -106,9 +106,9 @@ class SimulatorWorker(object):
                     if self.units:
                         try:
                             # FIXME: handle the conversion prefactors correctly
-                            logger.warning(self.units[key])
+                            # logger.warning(self.units[key])
                             item_converted = item.to(self.units[key]) * item.magnitude
-                            logger.warning(f"Unit converted: {item} -> {item_converted}")
+                            logger.info(f"Unit converted: {item} -> {item_converted}")
                             item = item_converted
                         except DimensionalityError as err:
                             logger.error(f"DimensionalityError "

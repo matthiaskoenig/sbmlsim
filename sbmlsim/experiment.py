@@ -40,7 +40,7 @@ class SimulationExperiment(object):
 
         tcsim = self.timecourse_sim()
         simulator = Simulator(self.model_path)  # reinitialize due to object store
-        self.result = simulator.timecourses([tcsim])
+        self.result = simulator.timecourses(tcsim)
 
     def plot_data(self):
         raise NotImplementedError
@@ -71,12 +71,21 @@ class SimulationExperiment(object):
         # FIXME
         df.to_csv(results_path / f"{self.sid}_data.tsv", sep="\t", index=False)
 
+    @staticmethod
+    def save_fig(fig, fid, results_path):
+        fig.savefig(results_path / f"{fid}.png", dpi=150, bbox_inches="tight")
+
     def load_data(self, sep="\t"):
         """ Loads data from given figure/table id."""
-        study = self.sid.split('_')[0]
-        path = self.data_path / study / f'{self.sid}.tsv'
+        return load_data(sid=self.sid, data_path=self.data_path)
 
-        if not path.exists():
-            path = self.data_path / study / f'.{self.sid}.tsv'
 
-        return pd.read_csv(path, sep=sep, comment="#")
+def load_data(sid, data_path, sep="\t"):
+    """ Loads data from given figure/table id."""
+    study = sid.split('_')[0]
+    path = data_path / study / f'{sid}.tsv'
+
+    if not path.exists():
+        path = data_path / study / f'.{sid}.tsv'
+
+    return pd.read_csv(path, sep=sep, comment="#")
