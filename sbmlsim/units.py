@@ -8,6 +8,8 @@ import libsbml
 from sbmlsim.tests.constants import MODEL_REPRESSILATOR, MODEL_GLCWB
 from sbmlsim.model import load_model
 
+from pathlib import Path
+
 import pint
 ureg = pint.UnitRegistry()
 ureg.define('none = count')
@@ -38,7 +40,10 @@ class Units(object):
         :param model_path: path to SBML model
         :return:
         """
-        doc = libsbml.readSBML(str(model_path))  # type: libsbml.SBMLDocument
+        if isinstance(model_path, Path):
+            doc = libsbml.readSBMLFromFile(str(model_path))  # type: libsbml.SBMLDocument
+        elif isinstance(model_path, str):
+            doc = libsbml.readSBMLFromString(model_path)
 
         # get all units defined in the model (unit definitions)
         model = doc.getModel()  # type: libsbml.Model
@@ -96,6 +101,11 @@ class Units(object):
 
                     sid_to_ureg[sid] = ureg(substance_uid)
                     sid_to_ureg[f"[{sid}]"] = ureg(f"({substance_ustr})/({volume_ustr})")
+
+                if isinstance(element, libsbml.Compartment):
+                    compartment_uid = element.getUnits()
+                    compartment_ustr = unit_str(compartment_uid)
+                    sid_to_ureg[sid] = ureg(compartment_ustr)
 
                 else:
                     udef = element.getDerivedUnitDefinition()

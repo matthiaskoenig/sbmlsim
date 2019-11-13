@@ -34,9 +34,15 @@ def run_demo_example():
     )
 
     # TODO: JSON serializable format with converted quantities
-
+    from sbmlsim.timecourse import ensemble
+    from sbmlsim.parametrization import ChangeSet
+    from sbmlsim.model import load_model
     # print(tc_sim)
+    r = load_model(MODEL_DEMO)
+    tc_sims = ensemble(tc_sim, ChangeSet.parameter_sensitivity_changeset(r, 0.2))
+
     s = simulator.timecourses(tc_sim)
+    s = simulator.timecourses(tc_sims)
 
     # create figure
     fig, (ax1, ax2, ax3, ax4) = plt.subplots(nrows=1, ncols=4, figsize=(20, 5))

@@ -63,6 +63,7 @@ def add_line(ax, data: Result,
     # get next color
     prop_cycler = ax._get_lines.prop_cycler
     color = kwargs.get("color", next(prop_cycler)['color'])
+    kwargs["color"] = color
 
     if len(data) > 1:
         # FIXME: std areas should be within min/max areas!
@@ -71,4 +72,4 @@ def add_line(ax, data: Result,
         ax.fill_between(x, y + y_sd, y_max, color=color, alpha=0.2, label="__nolabel__")
         ax.fill_between(x, y - y_sd, y_min, color=color, alpha=0.2, label="__nolabel__")
 
-    ax.plot(x, y, '-', color=color, label="{}".format(label), **kwargs)
+    ax.plot(x, y, '-', label="{}".format(label), **kwargs)

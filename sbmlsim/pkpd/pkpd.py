@@ -3,6 +3,12 @@ Methods specific to pkdb models
 """
 import logging
 import re
+import roadrunner
+
+from sbmlsim.units import Units, ureg
+from pint.errors import DimensionalityError
+
+logger = logging.getLogger(__name__)
 
 # -------------------------------------------------------------------------------------------------
 # Initial values
@@ -12,7 +18,7 @@ import re
 # tissues to identical values (which removes the distribution kinetics).
 # -------------------------------------------------------------------------------------------------
 
-def init_concentrations_changes(r, skey, value: float):
+def init_concentrations_changes(r: roadrunner.RoadRunner, skey, value: float):
     """ Changes to set initial concentrations for skey.
 
     :param r: roadrunner model
@@ -23,7 +29,7 @@ def init_concentrations_changes(r, skey, value: float):
     return _set_initial_values(r, skey, value, method="concentration")
 
 
-def init_amounts_changes(r, skey, value):
+def init_amounts_changes(r: roadrunner.RoadRunner, skey, value):
     """ Set initial amounts for skey.
 
     :param r: roadrunner model
@@ -34,7 +40,7 @@ def init_amounts_changes(r, skey, value):
     return _set_initial_values(r, skey, value, method="amount")
 
 
-def _set_initial_values(r, sid, value, method="concentration") -> dict:
+def _set_initial_values(r: roadrunner.RoadRunner, sid, value, method="concentration") -> dict:
     """ Setting the initial concentration of a distributing substance.
 
     Takes care of all the compartment values so starting close/in steady state.
@@ -49,14 +55,32 @@ def _set_initial_values(r, sid, value, method="concentration") -> dict:
     species_keys = get_species_keys(sid, species_ids)
 
     changeset = {}
+
+    # get units from model
+    units = Units.get_units_from_sbml(r.getCurrentSBML())
+
     for key in species_keys:
-        if 'urine' in key:
+
+        if method == "concentration":
+            rkey = f'[{key}]'
+
+        # inject units
+        if hasattr(value, "units"):
+            try:
+                # check that unit can be converted
+                value.to(units[rkey])
+            except DimensionalityError as err:
+                logger.error(f"DimensionalityError "
+                             f"'{rkey} = {value}'. {err}")
+                raise err
+        else:
+            value = value * units[rkey]
+            logger.warning(f"Not possible to check units, model units assumed: '{rkey} = {value}'")
+
+        if 'urine' in rkey:
+            # FIXME
             logging.warning("urinary values are not set")
             continue
-        if method == "concentration":
-            # FIXME: init is only working on species with boundaryCondition=False
-            # rkey = f'init([{key}])'
-            rkey = f'[{key}]'
 
         changeset[rkey] = value
 

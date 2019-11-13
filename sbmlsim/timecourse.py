@@ -68,7 +68,11 @@ class Timecourse(JSONEncoder):
 class ObjectJSONEncoder(JSONEncoder):
     def default(self, o):
         """json encoder"""
-        return o.__dict__
+        if hasattr(o, "__dict__"):
+            return o.__dict__
+        else:
+            # handle pint
+            return str(o)
 
 
 class TimecourseSim(object):
