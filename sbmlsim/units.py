@@ -65,6 +65,13 @@ class Units(object):
                 return uid
 
         sid_to_ureg = {}
+        # add time unit
+        time_uid = model.getTimeUnits()
+        if not time_uid:
+            time_uid = "second"
+        time_ustr = unit_str(time_uid)
+        sid_to_ureg["time"] = ureg(time_ustr)
+
         sid_list = model.getAllElementIdList()  # type: libsbml.IdList
         for k in range(sid_list.size()):
             sid = sid_list.at(k)
@@ -95,7 +102,10 @@ class Units(object):
                     sid_to_ureg[sid] = ureg(cls.unitDefinitionToString(udef))
 
             else:
-                logger.warning(f"No element found for id '{sid}'")
+                # check if sid is a unit
+                udef = model.getUnitDefinition(sid)
+                if udef is None:
+                    logger.error(f"No element found for id '{sid}'")
 
         return sid_to_ureg
 
@@ -180,6 +190,7 @@ if __name__ == "__main__":
 
     '''
     distance = 24.0 * ureg.meter
+    print(type(distance))
     print(distance.magnitude)
     print(distance.units)
     print(distance.dimensionality)
@@ -187,6 +198,7 @@ if __name__ == "__main__":
     speed = distance / time
     print(speed.to(ureg.inch / ureg.minute))
     '''
+
 
 
 

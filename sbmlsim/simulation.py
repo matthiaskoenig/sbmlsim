@@ -13,6 +13,7 @@ Also what is the exact time point the change should be applied.
 
 import logging
 from typing import List, Union
+from pint.errors import DimensionalityError
 
 import pandas as pd
 import roadrunner
@@ -54,7 +55,6 @@ def set_default_settings(r: roadrunner.RoadRunner, **kwargs):
             absolute_tolerance=1E-8,
             relative_tolerance=1E-8
     )
-
 
 
 class SimulatorAbstract(object):
@@ -99,7 +99,27 @@ class SimulatorWorker(object):
         for tc in simulation.timecourses:
 
             # apply changes
-            for key, value in tc.changes.items():
+            for key, item in tc.changes.items():
+                if hasattr(item, "units"):
+                    # pint
+                    # perform unit conversion
+                    if self.units:
+                        try:
+                            item_converted = item.to(self.units[key])
+                            logger.info(f"Unit converted: {item} -> {item_converted}")
+                            item = item_converted
+                        except DimensionalityError as err:
+                            logger.error(f"DimensionalityError "
+                                         f"'{key} = {item}'. {err}")
+                            raise err
+
+                    else:
+                        logger.warning(f"Not possible to check units for change: '{item}'")
+
+                    value = item.magnitude
+                else:
+                    value = item
+
                 self.r[key] = value
 
             # FIXME: model changes (make run in parallel, better handling in model)
