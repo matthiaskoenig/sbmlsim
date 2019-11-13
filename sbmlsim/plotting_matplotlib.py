@@ -1,5 +1,6 @@
 from matplotlib import pyplot as plt
 from sbmlsim.simulation_serial import Result
+from sbmlsim.units import ureg
 import pandas as pd
 
 import logging
@@ -20,6 +21,57 @@ plt.rcParams.update({
     'figure.facecolor': '1.00'
 
 })
+
+
+def add_data(ax, data: pd.DataFrame,
+             xid: str, yid: str, yid_sd=None, yid_se=None, count=None,
+             xunit=None, yunit=None,
+             label='__nolabel__', **kwargs):
+    """ Add experimental data
+
+    :param ax:
+    :param data:
+    :param xid:
+    :param yid:
+    :param xunit:
+    :param yunit:
+    :param label:
+    :param kwargs:
+    :return:
+    """
+    # add default styles
+    if 'marker' not in kwargs:
+        kwargs['marker'] = 's'
+    if 'linestyle' not in kwargs:
+        kwargs['linestyle'] = '--'
+
+    # data with units
+    x = data[xid].values * ureg(xunit)
+    y = data[yid].values * ureg(yunit)
+    y_err = None
+    y_err_type = None
+    if yid_sd:
+        y_err = data[yid_sd].values * ureg(yunit)
+        y_err_type = "SD"
+    elif yid_se:
+        y_err = data[yid_se].values * ureg(yunit)
+        y_err_type = "SE"
+
+    # labels
+    if label != "__nolabel__":
+        if y_err_type:
+            label = f"{label} ± {y_err_type}"
+        if count:
+            label += f" (n={count})"
+
+    # plot
+    if y_err is not None:
+        if 'capsize' not in kwargs:
+            kwargs['capsize'] = 3
+        ax.errorbar(x.magnitude, y.magnitude, y_err.magnitude, label=label, **kwargs)
+    else:
+        ax.plot(x, y, label=label, **kwargs)
+
 
 
 def add_line(ax, data: Result,

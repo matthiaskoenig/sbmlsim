@@ -19,6 +19,7 @@ from pprint import pprint
 def run_demo_example():
     """ Run various timecourses. """
     simulator = Simulator(MODEL_DEMO)
+    pprint(simulator.units)
 
     # 1. simple timecourse simulation
     print("*** setting concentrations and amounts ***")

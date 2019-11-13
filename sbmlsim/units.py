@@ -40,6 +40,11 @@ class Units(object):
         :param model_path: path to SBML model
         :return:
         """
+
+        # FIXME: must create a unit registry for the respective model
+        # ! DO FORBID OVERWRITING OF BASE UNITS !
+
+
         if isinstance(model_path, Path):
             doc = libsbml.readSBMLFromFile(str(model_path))  # type: libsbml.SBMLDocument
         elif isinstance(model_path, str):
@@ -94,15 +99,17 @@ class Units(object):
                     # amount units
                     substance_uid = element.getSubstanceUnits()
                     substance_ustr = unit_str(substance_uid)
+                    # store amount
+                    sid_to_ureg[sid] = ureg(substance_uid)
 
                     compartment = model.getCompartment(element.getCompartment())  # type: libsbml.Compartment
                     volume_uid = compartment.getUnits()
                     volume_ustr = unit_str(volume_uid)
 
-                    sid_to_ureg[sid] = ureg(substance_uid)
+                    # store concentration
                     sid_to_ureg[f"[{sid}]"] = ureg(f"({substance_ustr})/({volume_ustr})")
 
-                if isinstance(element, libsbml.Compartment):
+                elif isinstance(element, libsbml.Compartment):
                     compartment_uid = element.getUnits()
                     compartment_ustr = unit_str(compartment_uid)
                     sid_to_ureg[sid] = ureg(compartment_ustr)
