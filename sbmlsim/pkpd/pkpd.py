@@ -82,6 +82,11 @@ def _set_initial_values(r: roadrunner.RoadRunner, sid, value, method="concentrat
             logging.warning("urinary values are not set")
             continue
 
+        # FIXME: bugfix for json export
+        if hasattr(value, "units"):
+            logger.warning("units ignored ! FIXME")
+            value = value.magnitude
+
         changeset[rkey] = value
 
     return changeset

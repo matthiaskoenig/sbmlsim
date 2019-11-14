@@ -3,6 +3,7 @@ from pathlib import Path
 import pandas as pd
 from sbmlsim.model import load_model
 from sbmlsim.simulation_serial import SimulatorSerial
+from sbmlsim.timecourse import TimecourseSim
 from sbmlsim.plotting_matplotlib import plt
 
 logger = logging.getLogger(__name__)
@@ -30,7 +31,7 @@ class SimulationExperiment(object):
         else:
             self.r = None
 
-    def timecourse_sim(self):
+    def timecourse_sim(self) -> TimecourseSim:
         """ Definition of timecourse experiment"""
         raise NotImplementedError
 
