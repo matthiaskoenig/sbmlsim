@@ -10,16 +10,18 @@ from sbmlsim.simulation_serial import SimulatorSerial as Simulator
 
 from sbmlsim.timecourse import Timecourse, TimecourseSim
 from sbmlsim.tests.constants import MODEL_DEMO
-from sbmlsim.units import ureg
 from sbmlsim.plotting_matplotlib import add_line
 
 from pprint import pprint
-
+from sbmlsim.timecourse import ensemble
+from sbmlsim.parametrization import ChangeSet
+from sbmlsim.model import load_model
 
 def run_demo_example():
     """ Run various timecourses. """
     simulator = Simulator(MODEL_DEMO)
-    pprint(simulator.units)
+    ureg = simulator.ureg
+    pprint(simulator.udict)
 
     # 1. simple timecourse simulation
     print("*** setting concentrations and amounts ***")
@@ -31,18 +33,18 @@ def run_demo_example():
                        "[e__C]": 1 * ureg("mole/m**3"),
                        "c__A": 1E-5 * ureg("mole"),
                        "c__B": 10 * ureg("µmole"),
+
+                       "Vmax_bA": 300.0 * ureg("mole/min")
                    })
     )
 
     # TODO: JSON serializable format with converted quantities
-    from sbmlsim.timecourse import ensemble
-    from sbmlsim.parametrization import ChangeSet
-    from sbmlsim.model import load_model
+
     # print(tc_sim)
     r = load_model(MODEL_DEMO)
-    tc_sims = ensemble(tc_sim, ChangeSet.parameter_sensitivity_changeset(r, 0.2))
-
-    s = simulator.timecourses(tc_sim)
+    # FIXME: some problem with ensemble and unit conversion
+    # tc_sims = ensemble(tc_sim, ChangeSet.parameter_sensitivity_changeset(r, 0.2))
+    tc_sims = [tc_sim]
     s = simulator.timecourses(tc_sims)
 
     # create figure
@@ -72,6 +74,7 @@ def run_demo_example():
 
     plt.show()
 
+    print(s.mean.Vmax_bA)
 
 if __name__ == "__main__":
     run_demo_example()

@@ -24,7 +24,7 @@ class SimulatorSerial(SimulatorAbstract, SimulatorWorker):
         if path:
             self.r = load_model(path=path, selections=selections)
             set_integrator_settings(self.r, **kwargs)
-            self.units = Units.get_units_from_sbml(model_path=path)
+            self.udict, self.ureg = Units.get_units_from_sbml(model_path=path)
 
         else:
             self.r = None
@@ -40,4 +40,4 @@ class SimulatorSerial(SimulatorAbstract, SimulatorWorker):
             logger.warning("Use of SimulatorSerial to run multiple timecourses. "
                            "Use SimulatorParallel instead.")
         dfs = [self.timecourse(sim) for sim in simulations]
-        return Result(dfs, self.units)
+        return Result(dfs, self.udict, self.ureg)

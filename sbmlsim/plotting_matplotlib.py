@@ -1,6 +1,5 @@
 from matplotlib import pyplot as plt
 from sbmlsim.simulation_serial import Result
-from sbmlsim.units import ureg
 import pandas as pd
 
 import logging
@@ -53,15 +52,15 @@ def add_data(ax, data: pd.DataFrame,
         kwargs['linestyle'] = '--'
 
     # data with units
-    x = data[xid].values * ureg(xunit) * xf
-    y = data[yid].values * ureg(yunit) * yf
+    x = data[xid].values * xf
+    y = data[yid].values * yf
     y_err = None
     y_err_type = None
     if yid_sd:
-        y_err = data[yid_sd].values * ureg(yunit) * yf
+        y_err = data[yid_sd].values * yf
         y_err_type = "SD"
     elif yid_se:
-        y_err = data[yid_se].values * ureg(yunit) * yf
+        y_err = data[yid_se].values * yf
         y_err_type = "SE"
 
     # labels
@@ -75,10 +74,9 @@ def add_data(ax, data: pd.DataFrame,
     if y_err is not None:
         if 'capsize' not in kwargs:
             kwargs['capsize'] = 3
-        ax.errorbar(x.magnitude, y.magnitude, y_err.magnitude, label=label, **kwargs)
+        ax.errorbar(x, y, y_err, label=label, **kwargs)
     else:
         ax.plot(x, y, label=label, **kwargs)
-
 
 
 def add_line(ax, data: Result,
@@ -104,11 +102,11 @@ def add_line(ax, data: Result,
         logger.warning("yf attributes are deprecated, use units instead.")
 
     # data with units
-    x = data.mean[xid].values * data.units[xid] * xf
-    y = data.mean[yid].values * data.units[yid] * yf
-    y_sd = data.std[yid].values * data.units[yid] * yf
-    y_min = data.min[yid].values * data.units[yid] * yf
-    y_max = data.max[yid].values * data.units[yid] * yf
+    x = data.mean[xid].values * data.ureg(data.udict[xid]) * xf
+    y = data.mean[yid].values * data.ureg(data.udict[yid]) * yf
+    y_sd = data.std[yid].values * data.ureg(data.udict[yid]) * yf
+    y_min = data.min[yid].values * data.ureg(data.udict[yid]) * yf
+    y_max = data.max[yid].values * data.ureg(data.udict[yid]) * yf
 
     # convert
     if xunit:

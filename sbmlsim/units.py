@@ -4,21 +4,14 @@ Managing units and units conversions in models.
 FIXME: have a look at uncertainties
 https://pythonhosted.org/uncertainties/
 """
+from pathlib import Path
+import pint
+import logging
 import libsbml
 from sbmlsim.tests.constants import MODEL_REPRESSILATOR, MODEL_GLCWB
-from sbmlsim.model import load_model
+from pprint import pprint
+from pint.errors import UndefinedUnitError
 
-from pathlib import Path
-
-import pint
-ureg = pint.UnitRegistry()
-ureg.define('none = count')
-ureg.define('item = count')
-ureg.define('yr = year')
-ureg.define('percent = 0.01*count')
-ureg.define('IU = [activity_amount]')
-
-import logging
 logger = logging.getLogger(__name__)
 
 
@@ -35,62 +28,78 @@ class Units(object):
     }
 
     @classmethod
+    def default_ureg(cls):
+        ureg = pint.UnitRegistry()
+        ureg.define('none = count')
+        ureg.define('item = count')
+        ureg.define('yr = year')
+        ureg.define('percent = 0.01*count')
+        ureg.define('IU = [activity_amount]')
+        return ureg
+
+    @classmethod
+    def ureg_from_sbml(cls, doc: libsbml.SBMLDocument):
+        """ Creates a pint unit registry for the given SBML.
+
+        :param model_path:
+        :return:
+        """
+        # get all units defined in the model (unit definitions)
+        model = doc.getModel()  # type: libsbml.Model
+
+        # add all UnitDefinitions to unit registry
+        ureg = Units.default_ureg()
+        for udef in model.getListOfUnitDefinitions():  # type: libsbml.UnitDefinition
+            uid = udef.getId()
+            try:
+                q = ureg(uid)
+                logger.warning(f"SBML uid '{uid}' already exists in UnitsRegistry as: '{uid} = {q}")
+            except UndefinedUnitError as err:
+                udef_str = cls.unitDefinitionToString(udef)
+                definition = f"{uid} = {udef_str}"
+                ureg.define(definition)
+
+        return ureg
+
+    @classmethod
     def get_units_from_sbml(cls, model_path):
         """ Get pint unit dictionary for given model.
 
         :param model_path: path to SBML model
         :return:
         """
-
-        # FIXME: must create a unit registry for the respective model
-        # ! DO FORBID OVERWRITING OF BASE UNITS !
-
-
         if isinstance(model_path, Path):
             doc = libsbml.readSBMLFromFile(str(model_path))  # type: libsbml.SBMLDocument
         elif isinstance(model_path, str):
             doc = libsbml.readSBMLFromString(model_path)
 
+        # parse unit registry
+        ureg = cls.ureg_from_sbml(doc)
+        print("Unit registry created:", ureg)
+
         # get all units defined in the model (unit definitions)
         model = doc.getModel()  # type: libsbml.Model
 
-        # check that all units can be converted to pint
-        udef_to_ureg = {}
-
-
-        for udef in model.getListOfUnitDefinitions():  # type: libsbml.UnitDefinition
-            udef_str = cls.unitDefinitionToString(udef)
-            quantity = ureg(udef_str)
-            udef_to_ureg[udef.getId()] = quantity.to_compact()
-
-        # create id ureg mapping
+        # create sid to unit mapping
+        udict = {}
         if not model.isPopulatedAllElementIdList():
             model.populateAllElementIdList()
 
-        def unit_str(uid):
-            """ Convert an SBML unit identifier into parsable string by pint."""
-            udef = model.getUnitDefinition(uid)
-            if udef:
-                return cls.unitDefinitionToString(udef)
-            else:
-                return uid
-
-        sid_to_ureg = {}
         # add time unit
         time_uid = model.getTimeUnits()
         if not time_uid:
             time_uid = "second"
-        time_ustr = unit_str(time_uid)
-        sid_to_ureg["time"] = ureg(time_ustr)
+        udict["time"] = time_uid
 
+        pprint(udict)
         sid_list = model.getAllElementIdList()  # type: libsbml.IdList
         for k in range(sid_list.size()):
             sid = sid_list.at(k)
             element = model.getElementBySId(sid)  # type: libsbml.SBase
             if element:
+                # in case of reactions we have to derive units from the kinetic law
                 if isinstance(element, libsbml.Reaction):
                     if element.isSetKineticLaw():
-                        # in case of reactions we have to derive units from the kinetic law
                         element = element.getKineticLaw()
                     else:
                         continue
@@ -99,25 +108,29 @@ class Units(object):
                 if isinstance(element, libsbml.Species):
                     # amount units
                     substance_uid = element.getSubstanceUnits()
-                    substance_ustr = unit_str(substance_uid)
-                    # store amount
-                    sid_to_ureg[sid] = ureg(substance_uid)
+                    udict[sid] = substance_uid
 
                     compartment = model.getCompartment(element.getCompartment())  # type: libsbml.Compartment
                     volume_uid = compartment.getUnits()
-                    volume_ustr = unit_str(volume_uid)
 
                     # store concentration
-                    sid_to_ureg[f"[{sid}]"] = ureg(f"({substance_ustr})/({volume_ustr})")
+                    udict[f"[{sid}]"] = f"{substance_uid}/{volume_uid}"
 
-                elif isinstance(element, libsbml.Compartment):
-                    compartment_uid = element.getUnits()
-                    compartment_ustr = unit_str(compartment_uid)
-                    sid_to_ureg[sid] = ureg(compartment_ustr)
-
+                elif isinstance(element, (libsbml.Compartment, libsbml.Parameter)):
+                    udict[sid] = element.getUnits()
                 else:
                     udef = element.getDerivedUnitDefinition()
-                    sid_to_ureg[sid] = ureg(cls.unitDefinitionToString(udef))
+                    uid = None
+                    # find the correct unit definition
+                    for udef_test in model.getListOfUnitDefinitions():  # type: libsbml.UnitDefinition
+                        if libsbml.UnitDefinition_areEquivalent(udef_test, udef):
+                            uid = udef_test.getId()
+                            break
+                    if uid is None:
+                        logger.warning(f"DerivedUnit not found in UnitDefinitions: {Units.unitDefinitionToString(udef)}")
+                        udict[sid] = Units.unitDefinitionToString(udef)
+                    else:
+                        udict[sid] = uid
 
             else:
                 # check if sid is a unit
@@ -125,8 +138,7 @@ class Units(object):
                 if udef is None:
                     logger.error(f"No element found for id '{sid}'")
 
-        return sid_to_ureg
-
+        return udict, ureg
 
 
     @classmethod
@@ -197,25 +209,25 @@ class Units(object):
 
 
 if __name__ == "__main__":
-    # r = load_model(MODEL_REPRESSILATOR)
+    ureg = pint.UnitRegistry()
 
-    data = 3 * ureg.meter + 4 * ureg.cm
-    print(data)
-
-    sid_to_ureg = Units.get_units_from_sbml(MODEL_GLCWB)
+    udict, ureg = Units.get_units_from_sbml(MODEL_GLCWB)
     from pprint import pprint
-    pprint(sid_to_ureg)
+    # pprint(udict)
+    # print(ureg["mmole_per_min"])
 
-    '''
-    distance = 24.0 * ureg.meter
-    print(type(distance))
-    print(distance.magnitude)
-    print(distance.units)
-    print(distance.dimensionality)
-    time = 8.0 * ureg.second
-    speed = distance / time
-    print(speed.to(ureg.inch / ureg.minute))
-    '''
+    q1 = 1 * ureg("mole/s")
+    print(q1)
+    print(q1.to("mmole_per_min"))
+
+    print('-' * 80)
+
+    q2 = ureg("(mole)/(60000.0*s)")
+    print(q2)
+    print(q2.to("mmole_per_min"))
+
+
+
 
 
 

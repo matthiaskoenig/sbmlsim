@@ -103,11 +103,9 @@ class SimulatorWorker(object):
                 if hasattr(item, "units"):
                     # pint
                     # perform unit conversion
-                    if self.units:
+                    if self.udict:
                         try:
-                            # FIXME: handle the conversion prefactors correctly
-                            # logger.warning(self.units[key])
-                            item_converted = item.to(self.units[key]) * item.magnitude
+                            item_converted = item.to(self.udict[key])
                             logger.info(f"Unit converted: {item} -> {item_converted}")
                             item = item_converted
                         except DimensionalityError as err:
