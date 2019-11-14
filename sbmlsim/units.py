@@ -16,6 +16,7 @@ ureg.define('none = count')
 ureg.define('item = count')
 ureg.define('yr = year')
 ureg.define('percent = 0.01*count')
+ureg.define('IU = [activity_amount]')
 
 import logging
 logger = logging.getLogger(__name__)

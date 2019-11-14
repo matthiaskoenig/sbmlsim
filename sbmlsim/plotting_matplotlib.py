@@ -19,13 +19,13 @@ plt.rcParams.update({
     'xtick.labelsize': 'large',
     'ytick.labelsize': 'large',
     'figure.facecolor': '1.00'
-
 })
 
 
 def add_data(ax, data: pd.DataFrame,
              xid: str, yid: str, yid_sd=None, yid_se=None, count=None,
              xunit=None, yunit=None,
+             xf=1.0, yf=1.0,
              label='__nolabel__', **kwargs):
     """ Add experimental data
 
@@ -39,6 +39,13 @@ def add_data(ax, data: pd.DataFrame,
     :param kwargs:
     :return:
     """
+    if not isinstance(data, pd.DataFrame):
+        raise ValueError("Only DataFrame objects supported in plotting.")
+    if abs(xf-1.0) > 1E-8:
+        logger.warning("xf attributes are deprecated, use units instead.")
+    if abs(yf - 1.0) > 1E-8:
+        logger.warning("yf attributes are deprecated, use units instead.")
+
     # add default styles
     if 'marker' not in kwargs:
         kwargs['marker'] = 's'
@@ -46,15 +53,15 @@ def add_data(ax, data: pd.DataFrame,
         kwargs['linestyle'] = '--'
 
     # data with units
-    x = data[xid].values * ureg(xunit)
-    y = data[yid].values * ureg(yunit)
+    x = data[xid].values * ureg(xunit) * xf
+    y = data[yid].values * ureg(yunit) * yf
     y_err = None
     y_err_type = None
     if yid_sd:
-        y_err = data[yid_sd].values * ureg(yunit)
+        y_err = data[yid_sd].values * ureg(yunit) * yf
         y_err_type = "SD"
     elif yid_se:
-        y_err = data[yid_se].values * ureg(yunit)
+        y_err = data[yid_se].values * ureg(yunit) * yf
         y_err_type = "SE"
 
     # labels
