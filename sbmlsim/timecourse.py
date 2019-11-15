@@ -5,10 +5,12 @@ from pathlib import Path
 import json
 from typing import List, Tuple
 from copy import deepcopy
-from json import JSONEncoder
+
 import logging
 
 from pint.errors import DimensionalityError
+
+from sbmlsim.serialization import ObjectJSONEncoder, JSONEncoder
 from sbmlsim.parametrization import ChangeSet
 
 logger = logging.getLogger(__name__)
@@ -87,16 +89,6 @@ class Timecourse(JSONEncoder):
 
         self.changes = changes_normed
         self.normalized = True
-
-
-class ObjectJSONEncoder(JSONEncoder):
-    def default(self, o):
-        """json encoder"""
-        if hasattr(o, "__dict__"):
-            return o.__dict__
-        else:
-            # handle pint
-            return str(o)
 
 
 class TimecourseSim(object):
