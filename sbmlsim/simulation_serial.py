@@ -28,7 +28,8 @@ class SimulatorSerial(SimulatorAbstract, SimulatorWorker):
 
         else:
             self.r = None
-            self.units = None
+            self.udict = None
+            self.ureg = None
             logger.warning("Simulator without model instance created!")
 
     def timecourses(self, simulations: List[TimecourseSim]) -> Result:

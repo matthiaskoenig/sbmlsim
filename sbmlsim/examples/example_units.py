@@ -17,33 +17,35 @@ from sbmlsim.timecourse import ensemble
 from sbmlsim.parametrization import ChangeSet
 from sbmlsim.model import load_model
 
+
 def run_demo_example():
     """ Run various timecourses. """
     simulator = Simulator(MODEL_DEMO)
-    ureg = simulator.ureg
+    # build quantities using the unit registry for the model
+    Q_ = simulator.ureg.Quantity
     pprint(simulator.udict)
 
     # 1. simple timecourse simulation
     print("*** setting concentrations and amounts ***")
-    tc_sim = TimecourseSim(
+    tc_sim = TimecourseSim([
         Timecourse(start=0, end=10, steps=100,
                    changes={
-                       "[e__A]": 10 * ureg("mM"),
-                       "[e__B]": 1 * ureg("mmole/litre"),
-                       "[e__C]": 1 * ureg("mole/m**3"),
-                       "c__A": 1E-5 * ureg("mole"),
-                       "c__B": 10 * ureg("µmole"),
+                       "[e__A]": Q_(10, "mM"),
+                       "[e__B]": Q_(1, "mmole/litre"),
+                       "[e__C]": Q_(1, "mole/m**3"),
+                       "c__A": Q_(1E-5, "mole"),
+                       "c__B": Q_(10, "µmole"),
+                       "Vmax_bA": Q_(300.0, "mole/min")
+                   }
+        )
+    ])
+    tc_sim.normalize(udict=simulator.udict, ureg=simulator.ureg)
+    print(tc_sim)
 
-                       "Vmax_bA": 300.0 * ureg("mole/min")
-                   })
-    )
 
-    # TODO: JSON serializable format with converted quantities
-
-    # print(tc_sim)
-    r = load_model(MODEL_DEMO)
-    # FIXME: some problem with ensemble and unit conversion
-    # tc_sims = ensemble(tc_sim, ChangeSet.parameter_sensitivity_changeset(r, 0.2))
+    # FIXME: some problem with ensemble and unit conversion before normalization
+    # r = load_model(MODEL_DEMO)
+    #tc_sims = ensemble(tc_sim, ChangeSet.parameter_sensitivity_changeset(r, 0.2))
     tc_sims = [tc_sim]
     s = simulator.timecourses(tc_sims)
 
@@ -73,8 +75,6 @@ def run_demo_example():
         ax.set_ylabel(f"concentration [{yunit}]")
 
     plt.show()
-
-    print(s.mean.Vmax_bA)
 
 if __name__ == "__main__":
     run_demo_example()
