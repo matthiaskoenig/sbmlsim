@@ -97,6 +97,8 @@ class SimulatorWorker(object):
         frames = []
         t_offset = simulation.time_offset
         for tc in simulation.timecourses:
+            if not tc.normalized:
+                tc.normalize(udict=self.udict, ureg=self.ureg)
 
             # apply changes
             for key, item in tc.changes.items():
@@ -105,8 +107,6 @@ class SimulatorWorker(object):
                 except AttributeError as err:
                     logger.error(f"Change is not a Quantity with unit: '{key} = {item}'")
                     raise err
-
-
 
             # FIXME: model changes (make run in parallel, better handling in model)
             if len(tc.model_changes) > 0:
