@@ -8,11 +8,10 @@ from copy import deepcopy
 from json import JSONEncoder
 import logging
 
+from pint.errors import DimensionalityError
 from sbmlsim.parametrization import ChangeSet
 
-
-#
-# TODO: test json serialization (reading and writing)
+logger = logging.getLogger(__name__)
 
 
 class Timecourse(JSONEncoder):
@@ -42,6 +41,7 @@ class Timecourse(JSONEncoder):
         if model_changes is None:
             model_changes = {}
 
+        self.normalized = False
         self.start = start
         self.end = end
         self.steps = steps
@@ -63,6 +63,30 @@ class Timecourse(JSONEncoder):
 
     def remove_model_change(self, sid: str):
         del self.model_changes[sid]
+
+    def normalize(self, udict, ureg):
+        """ Normalize values to model units for all changes."""
+        Q_ = ureg.Quantity
+
+        changes_normed = {}
+        for key, item in self.changes.items():
+            if hasattr(item, "units"):
+                # perform unit conversion
+                try:
+                    # convert to model units
+                    item = item.to(udict[key])
+                except DimensionalityError as err:
+                    logger.error(f"DimensionalityError "
+                                 f"'{key} = {item}'. {err}")
+                    raise err
+            else:
+                item = Q_(item, udict[key])
+                logger.warning(f"No units provided, assuming model units: "
+                               f"{key} = {item}")
+            changes_normed[key] = item
+
+        self.changes = changes_normed
+        self.normalized = True
 
 
 class ObjectJSONEncoder(JSONEncoder):
@@ -103,6 +127,10 @@ class TimecourseSim(object):
         self.selections = deepcopy(selections)
         self.reset = reset
         self.time_offset = time_offset
+
+    def normalize(self, udict, ureg):
+        for tc in self.timecourses:
+            tc.normalize(udict=udict, ureg=ureg)
 
     def to_json(self, path=None):
         """ Convert definition to JSON for exchange.

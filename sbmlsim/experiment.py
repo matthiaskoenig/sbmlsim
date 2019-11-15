@@ -11,13 +11,21 @@ logger = logging.getLogger(__name__)
 
 
 class SimulationExperiment(object):
-    """Generic simulation experiment."""
+    """Generic simulation experiment.
+
+    Consists of model, list of timecourse simulations, and corresponding results.
+
+    """
 
     def __init__(self, model_path=None, data_path=None):
         self.sid = self.__class__.__name__
+        # model
         self.model_path = model_path
         self.data_path = data_path
-        self.result = None
+
+        self.timecourses = None
+        self.figures = None
+        self.results = None
 
     @property
     def model_path(self):
@@ -44,6 +52,7 @@ class SimulationExperiment(object):
             raise ValueError("'model_path' must be set to run 'simulate'")
 
         tcsim = self.timecourse_sim()
+        tcsim.normalize(udict=self.udict, ureg=self.ureg)
         simulator = Simulator(self.model_path)  # reinitialize due to object store
         self.result = simulator.timecourses(tcsim)
 

@@ -100,31 +100,15 @@ class SimulatorWorker(object):
 
             # apply changes
             for key, item in tc.changes.items():
-                if hasattr(item, "units"):
-                    # pint
-                    # perform unit conversion
-                    if self.udict:
-                        try:
-                            item_converted = item.to(self.udict[key])
-                            logger.info(f"Unit converted: {item} -> {item_converted}")
-                            item = item_converted
-                        except DimensionalityError as err:
-                            logger.error(f"DimensionalityError "
-                                         f"'{key} = {item}'. {err}")
-                            raise err
+                try:
+                    self.r[key] = item.magnitude
+                except AttributeError as err:
+                    logger.error(f"Change is not a Quantity with unit: '{key} = {item}'")
+                    raise err
 
-                    else:
-                        logger.warning(f"Not possible to check units for change: '{item}'")
 
-                    value = item.magnitude
-                else:
-                    value = item
-
-                self.r[key] = value
 
             # FIXME: model changes (make run in parallel, better handling in model)
-            # logger.error("No support for model changes")
-
             if len(tc.model_changes) > 0:
                 r_old = self.r
             for key, value in tc.model_changes.items():
@@ -135,7 +119,6 @@ class SimulatorWorker(object):
                         self.r = r_new
                 else:
                     logger.error("Unsupported model change: {}:{}".format(key, value))
-
 
             # run simulation
             s = self.r.simulate(start=tc.start, end=tc.end, steps=tc.steps)
