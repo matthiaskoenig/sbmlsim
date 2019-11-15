@@ -53,7 +53,7 @@ class Units(object):
             uid = udef.getId()
             try:
                 q = ureg(uid)
-                logger.warning(f"SBML uid '{uid}' already exists in UnitsRegistry as: '{uid} = {q}")
+                logger.warning(f"SBML uid '{uid}' already defined in UnitsRegistry: '{uid} = {q}")
             except UndefinedUnitError as err:
                 udef_str = cls.unitDefinitionToString(udef)
                 definition = f"{uid} = {udef_str}"
@@ -75,7 +75,6 @@ class Units(object):
 
         # parse unit registry
         ureg = cls.ureg_from_sbml(doc)
-        print("Unit registry created:", ureg)
 
         # get all units defined in the model (unit definitions)
         model = doc.getModel()  # type: libsbml.Model
@@ -91,7 +90,6 @@ class Units(object):
             time_uid = "second"
         udict["time"] = time_uid
 
-        pprint(udict)
         sid_list = model.getAllElementIdList()  # type: libsbml.IdList
         for k in range(sid_list.size()):
             sid = sid_list.at(k)

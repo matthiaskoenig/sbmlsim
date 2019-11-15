@@ -5,9 +5,6 @@ import logging
 import re
 import roadrunner
 
-from sbmlsim.units import Units, ureg
-from pint.errors import DimensionalityError
-
 logger = logging.getLogger(__name__)
 
 # -------------------------------------------------------------------------------------------------
@@ -56,36 +53,15 @@ def _set_initial_values(r: roadrunner.RoadRunner, sid, value, method="concentrat
 
     changeset = {}
 
-    # get units from model
-    units = Units.get_units_from_sbml(r.getCurrentSBML())
-
     for key in species_keys:
 
         if method == "concentration":
             rkey = f'[{key}]'
 
-        # inject units
-        if hasattr(value, "units"):
-            try:
-                # check that unit can be converted
-                value.to(units[rkey])
-            except DimensionalityError as err:
-                logger.error(f"DimensionalityError "
-                             f"'{rkey} = {value}'. {err}")
-                raise err
-        else:
-            value = value * units[rkey]
-            logger.warning(f"Not possible to check units, model units assumed: '{rkey} = {value}'")
-
         if 'urine' in rkey:
             # FIXME
             logging.warning("urinary values are not set")
             continue
-
-        # FIXME: bugfix for json export
-        if hasattr(value, "units"):
-            logger.warning("units ignored ! FIXME")
-            value = value.magnitude
 
         changeset[rkey] = value
 

@@ -5,6 +5,7 @@ from sbmlsim.model import load_model
 from sbmlsim.simulation_serial import SimulatorSerial
 from sbmlsim.timecourse import TimecourseSim
 from sbmlsim.plotting_matplotlib import plt
+from sbmlsim.units import Units
 
 logger = logging.getLogger(__name__)
 
@@ -28,8 +29,11 @@ class SimulationExperiment(object):
         if model_path:
             logging.warning(f"Reading model: {model_path.resolve()}")
             self.r = load_model(self._model_path)
+            self.udict, self.ureg = Units.get_units_from_sbml(self._model_path)
         else:
             self.r = None
+            self.udict = None
+            self.ureg = None
 
     def timecourse_sim(self) -> TimecourseSim:
         """ Definition of timecourse experiment"""
