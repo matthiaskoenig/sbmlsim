@@ -107,10 +107,6 @@ class SimulationExperiment(object):
         ax.legend()
         return fig, ax
 
-    @staticmethod
-    def save_fig(fig, fid, results_path):
-        fig.savefig(results_path / f"{fid}.png", dpi=150, bbox_inches="tight")
-
     def default(self, o):
         """json encoder"""
         if hasattr(o, "__dict__"):
@@ -120,13 +116,14 @@ class SimulationExperiment(object):
             return str(o)
 
     def to_dict(self):
-        tcsim = self.timecourse_sim()
-        tcsim.normalize(udict=self.udict, ureg=self.ureg)
+        simulations = self.simulations
+        for key, tcsim in simulations.items():
+            tcsim.normalize(udict=self.udict, ureg=self.ureg)
 
         d = {
             "experiment_id": self.sid,
             "model_path": Path(self.model_path).resolve(),
-            "simulations": tcsim,
+            "simulations": simulations,
         }
 
         return d
@@ -143,19 +140,49 @@ class SimulationExperiment(object):
             with open(path, "w") as f_json:
                 json.dump(self.to_dict(), fp=f_json, cls=ObjectJSONEncoder, indent=2)
 
+    def save_simulations(self, results_path, normalize=False):
+        """ Save simulations
 
-    '''
-    def save_result(self, results_path):
-        # FIXME: make work for multiple simulations
-        self.result.mean.to_csv(results_path / f"{self.sid}.tsv", sep="\t", index=False)
+        :param results_path:
+        :param normalize: Normalize all values to model units.
+        :return:
+        """
+        for skey, tcsim in self.simulations.items():
+            if normalize:
+                tcsim.normalize(udict=self.udict, ureg=self.ureg)
+            tcsim.to_json(results_path / f"{self.sid}_{skey}.json")
 
-    def save_data(self, results_path):
-        # FIXME
-        df.to_csv(results_path / f"{self.sid}_data.tsv", sep="\t", index=False)
-    '''
+    def save_figures(self, results_path):
+        """ Save figures.
+        :param results_path:
+        :return:
+        """
+        for fkey, fig in self.figures.items():
+            fig.savefig(results_path / f"{self.sid}_{fkey}.png", dpi=150,
+                        bbox_inches="tight")
+
+    def save_results(self, results_path):
+        """ Save results
+
+        :param results_path:
+        :return:
+        """
+        for rkey, result in self.results.items():
+            result.mean.to_csv(results_path / f"{self.sid}_{rkey}.tsv",
+                               sep="\t", index=False)
+
+    def save_datasets(self, results_path):
+        """ Save datasets
+
+        :param results_path:
+        :return:
+        """
+        for dkey, dset in self.datasets.items():
+            dset.to_csv(results_path / f"{self.sid}_data_{dkey}.tsv",
+                        sep="\t", index=False)
+
 
 # TODO: implement loading of DataSets with units
-
 
 def load_data(sid, data_path, sep="\t", comment="#", **kwargs):
     """ Loads data from given figure/table id."""

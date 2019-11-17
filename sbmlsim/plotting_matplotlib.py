@@ -76,8 +76,8 @@ def add_data(ax, data: DataSet,
         x = x.to(xunit)
     if yunit:
         y = y.to(yunit)
-        y_err = y_err.to(yunit)
-
+        if y_err is not None:
+            y_err = y_err.to(yunit)
 
     # labels
     if label != "__nolabel__":
