@@ -16,6 +16,7 @@ from sbmlsim.serialization import ObjectJSONEncoder
 from typing import Dict
 from sbmlsim.logging_utils import bcolors
 from sbmlsim.result import Result
+from sbmlsim.data import DataSet
 
 from matplotlib.pyplot import Figure
 
@@ -70,7 +71,9 @@ class SimulationExperiment(object):
 
     def load_data(self, sid, **kwargs):
         """ Loads data from given figure/table id."""
-        return load_data(sid=sid, data_path=self.data_path, **kwargs)
+        df = load_data(sid=sid, data_path=self.data_path, **kwargs)
+        # TODO: implement loading of DataSets with units
+        return df
 
     @property
     def results(self) -> Dict[str, Result]:
@@ -150,6 +153,8 @@ class SimulationExperiment(object):
         # FIXME
         df.to_csv(results_path / f"{self.sid}_data.tsv", sep="\t", index=False)
     '''
+
+# TODO: implement loading of DataSets with units
 
 
 def load_data(sid, data_path, sep="\t", comment="#", **kwargs):

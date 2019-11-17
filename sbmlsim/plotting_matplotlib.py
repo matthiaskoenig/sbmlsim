@@ -1,5 +1,7 @@
 from matplotlib import pyplot as plt
-from sbmlsim.simulation_serial import Result
+from sbmlsim.result import Result
+from sbmlsim.data import DataSet
+
 import pandas as pd
 
 import logging
@@ -21,7 +23,7 @@ plt.rcParams.update({
 })
 
 
-def add_data(ax, data: pd.DataFrame,
+def add_data(ax, data: DataSet,
              xid: str, yid: str, yid_sd=None, yid_se=None, count=None,
              xunit=None, yunit=None,
              xf=1.0, yf=1.0,
@@ -38,8 +40,11 @@ def add_data(ax, data: pd.DataFrame,
     :param kwargs:
     :return:
     """
-    if not isinstance(data, pd.DataFrame):
-        raise ValueError("Only DataFrame objects supported in plotting.")
+    if isinstance(data, pd.DataFrame):
+        dset = DataSet(data=data, udict=None, ureg=None)
+    else:
+        dset = data
+
     if abs(xf-1.0) > 1E-8:
         logger.warning("xf attributes are deprecated, use units instead.")
     if abs(yf - 1.0) > 1E-8:
@@ -52,16 +57,24 @@ def add_data(ax, data: pd.DataFrame,
         kwargs['linestyle'] = '--'
 
     # data with units
-    x = data[xid].values * xf
-    y = data[yid].values * yf
+    x = dset.data[xid].values * dset.ureg(dset.udict[xid]) * xf
+    y = dset.data[yid].values * dset.ureg(dset.udict[yid]) * yf
     y_err = None
     y_err_type = None
     if yid_sd:
-        y_err = data[yid_sd].values * yf
+        y_err = dset.data[yid_sd].values * dset.ureg(dset.udict[yid]) * yf
         y_err_type = "SD"
     elif yid_se:
-        y_err = data[yid_se].values * yf
+        y_err = data[yid_se].values * dset.ureg(dset.udict[yid]) * yf
         y_err_type = "SE"
+
+    # convert
+    if xunit:
+        x = x.to(xunit)
+    if yunit:
+        y = y.to(yunit)
+        y_err = y_err.to(yunit)
+
 
     # labels
     if label != "__nolabel__":
