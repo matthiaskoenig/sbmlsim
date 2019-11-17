@@ -3,6 +3,7 @@ import logging
 from pathlib import Path
 import json
 import pandas as pd
+import inspect
 
 
 from sbmlsim.model import load_model
@@ -12,6 +13,11 @@ from sbmlsim.plotting_matplotlib import plt
 from sbmlsim.units import Units
 from json import JSONEncoder
 from sbmlsim.serialization import ObjectJSONEncoder
+from typing import Dict
+from sbmlsim.logging_utils import bcolors
+from sbmlsim.result import Result
+
+from matplotlib.pyplot import Figure
 
 logger = logging.getLogger(__name__)
 
@@ -20,16 +26,16 @@ class SimulationExperiment(object):
     """Generic simulation experiment.
 
     Consists of model, list of timecourse simulations, and corresponding results.
-
     """
-
-    def __init__(self, model_path=None, data_path=None):
+    def __init__(self, model_path=None, data_path=None, Simulator=SimulatorSerial):
         self.sid = self.__class__.__name__
         # model
         self.model_path = model_path
         self.data_path = data_path
-        self.figures = None
-        self.results = None
+        self.Simulator = Simulator
+        self._results = None
+        self._datasets = None
+        self._figures = None
 
     @property
     def model_path(self):
@@ -47,6 +53,61 @@ class SimulationExperiment(object):
             self.udict = None
             self.ureg = None
 
+    @property
+    def simulations(self) -> Dict[str, TimecourseSim]:
+        """ Simulation definitions. """
+        raise NotImplementedError
+
+    @property
+    def datasets(self) -> Dict[str, pd.DataFrame]:
+        """ Datasets. """
+        raise NotImplementedError
+
+    @property
+    def figures(self) -> Dict[str, Figure]:
+        """ Figures."""
+        raise NotImplementedError
+
+    def load_data(self, sid, **kwargs):
+        """ Loads data from given figure/table id."""
+        return load_data(sid=sid, data_path=self.data_path, **kwargs)
+
+    @property
+    def results(self) -> Dict[str, Result]:
+        if self._results is None:
+            self._results = self.simulate()
+        return self._results
+
+    def simulate(self):
+        """Run simulations."""
+        if not self.model_path:
+            raise ValueError("'model_path' must be set to run 'simulate'")
+
+        simulator = self.Simulator(self.model_path)  # reinitialize due to object store
+
+        results = dict()
+        # FIXME: this can be parallized
+        for key, sim_def in self.simulations.items():
+            logger.warning(f"Simulate {key}")
+            # normalize the units
+            sim_def.normalize(udict=self.udict, ureg=self.ureg)
+            # run simulations
+            results[key] = simulator.timecourses(sim_def)
+        return results
+
+    def _figure(self, xlabel, ylabel, title=None):
+        fig, ax = plt.subplots(nrows=1, ncols=1, figsize=(5, 5))
+        if title:
+            ax.set_title(title)
+        ax.set_xlabel(xlabel)
+        ax.set_ylabel(ylabel)
+        ax.legend()
+        return fig, ax
+
+    @staticmethod
+    def save_fig(fig, fid, results_path):
+        fig.savefig(results_path / f"{fid}.png", dpi=150, bbox_inches="tight")
+
     def default(self, o):
         """json encoder"""
         if hasattr(o, "__dict__"):
@@ -63,7 +124,6 @@ class SimulationExperiment(object):
             "experiment_id": self.sid,
             "model_path": Path(self.model_path).resolve(),
             "simulations": tcsim,
-            "figures": self.figures,
         }
 
         return d
@@ -81,65 +141,18 @@ class SimulationExperiment(object):
                 json.dump(self.to_dict(), fp=f_json, cls=ObjectJSONEncoder, indent=2)
 
 
-    def timecourse_sim(self) -> TimecourseSim:
-        """ Definition of timecourse experiment"""
-        raise NotImplementedError
-
-    def simulate(self, Simulator=SimulatorSerial):
-        if not self.model_path:
-            raise ValueError("'model_path' must be set to run 'simulate'")
-
-        tcsim = self.timecourse_sim()
-        tcsim.normalize(udict=self.udict, ureg=self.ureg)
-        simulator = Simulator(self.model_path)  # reinitialize due to object store
-        self.result = simulator.timecourses(tcsim)
-
-    def plot_data(self, ax) -> dict:
-        raise NotImplementedError
-
-    def plot_sim(self, ax) -> dict:
-        raise NotImplementedError
-
-    def figure(self, xlabel, ylabel):
-        fig, (ax) = plt.subplots(nrows=1, ncols=1, figsize=(5, 5))
-        data_dict = self.plot_data(ax)
-
-        if self.result:
-            sim_dict = self.plot_sim(ax)
-        else:
-            logger.warning("No simulation results, run simulation first.")
-
-        self.figures = {
-            'fig1': {
-                **data_dict,
-                **sim_dict,
-            }
-        }
-
-        ax.set_title('{}'.format(self.sid))
-        ax.set_xlabel(xlabel)
-        ax.set_ylabel(ylabel)
-        ax.set_ylim(bottom=0)
-        ax.legend()
-        return fig
-
+    '''
     def save_result(self, results_path):
+        # FIXME: make work for multiple simulations
         self.result.mean.to_csv(results_path / f"{self.sid}.tsv", sep="\t", index=False)
 
     def save_data(self, results_path):
         # FIXME
         df.to_csv(results_path / f"{self.sid}_data.tsv", sep="\t", index=False)
-
-    @staticmethod
-    def save_fig(fig, fid, results_path):
-        fig.savefig(results_path / f"{fid}.png", dpi=150, bbox_inches="tight")
-
-    def load_data(self, sep="\t"):
-        """ Loads data from given figure/table id."""
-        return load_data(sid=self.sid, data_path=self.data_path)
+    '''
 
 
-def load_data(sid, data_path, sep="\t"):
+def load_data(sid, data_path, sep="\t", comment="#", **kwargs):
     """ Loads data from given figure/table id."""
     study = sid.split('_')[0]
     path = data_path / study / f'{sid}.tsv'
@@ -147,4 +160,10 @@ def load_data(sid, data_path, sep="\t"):
     if not path.exists():
         path = data_path / study / f'.{sid}.tsv'
 
-    return pd.read_csv(path, sep=sep, comment="#")
+    return pd.read_csv(path, sep=sep, comment=comment, **kwargs)
+
+
+def function_name():
+    """Returns current function name"""
+    frame = inspect.currentframe()
+    return inspect.getframeinfo(frame).function

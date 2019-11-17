@@ -79,6 +79,7 @@ setup(
         "matplotlib>=3.1",
         "altair>=3.2",
         "pint>=0.9",
+        "coloredlogs",
         "pytest>=4.3.1",
         "pytest-cov>=2.6.1",
     ],

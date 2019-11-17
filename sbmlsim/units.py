@@ -34,7 +34,7 @@ class Units(object):
         ureg.define('item = count')
         ureg.define('yr = year')
         ureg.define('percent = 0.01*count')
-        ureg.define('IU = [activity_amount]')
+        ureg.define('IU = 0.0347 * mg')  # IU for insulin ! (FIXME better handling of general IU)
         return ureg
 
     @classmethod
