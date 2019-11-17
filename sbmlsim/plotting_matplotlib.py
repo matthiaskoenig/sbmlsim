@@ -40,10 +40,13 @@ def add_data(ax, data: DataSet,
     :param kwargs:
     :return:
     """
-    if isinstance(data, pd.DataFrame):
-        dset = DataSet(data=data, udict=None, ureg=None)
-    else:
+    if isinstance(data, DataSet):
         dset = data
+    elif isinstance(data, pd.DataFrame):
+        dset = DataSet.from_df(data=data, udict=None, ureg=None)
+
+    if dset.empty:
+        logger.error(f"Empty dataset in adding data: {dset}")
 
     if abs(xf-1.0) > 1E-8:
         logger.warning("xf attributes are deprecated, use units instead.")
@@ -57,15 +60,15 @@ def add_data(ax, data: DataSet,
         kwargs['linestyle'] = '--'
 
     # data with units
-    x = dset.data[xid].values * dset.ureg(dset.udict[xid]) * xf
-    y = dset.data[yid].values * dset.ureg(dset.udict[yid]) * yf
+    x = dset[xid].values * dset.ureg(dset.udict[xid]) * xf
+    y = dset[yid].values * dset.ureg(dset.udict[yid]) * yf
     y_err = None
     y_err_type = None
     if yid_sd:
-        y_err = dset.data[yid_sd].values * dset.ureg(dset.udict[yid]) * yf
+        y_err = dset[yid_sd].values * dset.ureg(dset.udict[yid]) * yf
         y_err_type = "SD"
     elif yid_se:
-        y_err = data[yid_se].values * dset.ureg(dset.udict[yid]) * yf
+        y_err = dset[yid_se].values * dset.ureg(dset.udict[yid]) * yf
         y_err_type = "SE"
 
     # convert
@@ -87,7 +90,7 @@ def add_data(ax, data: DataSet,
     if y_err is not None:
         if 'capsize' not in kwargs:
             kwargs['capsize'] = 3
-        ax.errorbar(x, y, y_err, label=label, **kwargs)
+        ax.errorbar(x.magnitude, y.magnitude, y_err.magnitude, label=label, **kwargs)
     else:
         ax.plot(x, y, label=label, **kwargs)
 

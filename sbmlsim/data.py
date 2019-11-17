@@ -1,20 +1,52 @@
-from pandas import pd
+import pandas as pd
 import logging
 
 logger = logging.getLogger(__name__)
 
 
-class DataSet(object):
-    """DataSet"""
+class DataSeries(pd.Series):
+    """DataSet - a pd.Series with additional unit information."""
+    # additional properties
+    _metadata = ['udict', 'ureg']
 
-    def __init__(self, data: pd.DataFrame, udict=None, ureg=None):
-        """
+    @property
+    def _constructor(self):
+        return DataSeries
 
-        :param frames: iterable of pd.DataFrame
-        """
+    @property
+    def _constructor_expanddim(self):
+        return DataSet
 
-        # empty array for storage
-        self.data = data
-        # units dictionary for lookup and conversion
-        self.udict = udict
-        self.ureg = ureg
+
+class DataSet(pd.DataFrame):
+    """DataSet - a pd.DataFrame with additional unit information.
+    """
+    # additional properties
+    _metadata = ['udict', 'ureg']
+
+    @property
+    def _constructor(self):
+        return DataSet
+
+    @property
+    def _constructor_sliced(self):
+        return DataSeries
+
+    @classmethod
+    def from_df(cls, data: pd.DataFrame, udict: dict, ureg):
+        dset = DataSet(data)
+        dset.udict = udict
+        dset.ureg = ureg
+        return dset
+
+
+if __name__ == "__main__":
+    df = pd.DataFrame({'col1': [1,2,3], 'col2': [2,3,4], "col3": [4, 5, 6]})
+    print(df)
+    dset = DataSet.from_df(df, udict={"col1": "mM"}, ureg="test")
+    print(dset)
+    print(dset.udict)
+    dset2 = dset[dset.col1>1]
+    print(dset2)
+    print(dset2.udict)
+
