@@ -75,6 +75,15 @@ class SimulationExperiment(object):
         # TODO: implement loading of DataSets with units
         return df
 
+    def load_units(self, sids, df=None, units_dict=None):
+        """ Loads units from given dataframe."""
+        if df is not None:
+             udict = {key: df[f"{key}_unit"].unique()[0] for key in sids}
+        elif units_dict is not None:
+            udict = {}
+            for sid in sids:
+                udict[sid] = units_dict[sid]
+        return udict
     @property
     def results(self) -> Dict[str, Result]:
         if self._results is None:
