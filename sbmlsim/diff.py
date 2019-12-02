@@ -10,22 +10,34 @@ from pprint import pprint
 from typing import List
 import logging
 from matplotlib import pyplot as plt
+from sbmlsim.experiment import JSONExperiment
 
 logger = logging.getLogger(__name__)
 
 
-def get_json_simulations(diff_path) -> List[str]:
+def get_json_files(diff_path) -> List[str]:
     """Get all simulation definitions in the test directory.
 
     Simulation definitions are json files.
     """
-    simulation_keys = []
-
     # get all json files in the folder
     files = [f for f in diff_path.glob('**/*') if f.is_file() and f.suffix == ".json"]
     keys = [f.name[:-5] for f in files]
 
     return dict(zip(keys, files))
+
+
+# FIXME: this belongs to experiment
+def get_simulation_keys(diff_path):
+    simulation_keys = []
+    json_files = get_json_files(diff_path)
+    for key, file in json_files.items():
+        experiment = JSONExperiment.from_json(file)
+        if experiment.simulations:
+            for sim_key in experiment.simulations:
+                simulation_keys.append(f"{key}_{sim_key}")
+    return sorted(simulation_keys)
+
 
 
 class DataSetsComparison(object):
@@ -55,8 +67,9 @@ class DataSetsComparison(object):
                 Nt = len(df)
 
             if len(df) != Nt:
-                raise ValueError("DataFrame has different length: \
-                                 {} != {} ({})".format(len(df), Nt, label))
+                raise ValueError(f"DataFrame have different length (number of rows): "
+                                 f"{len(df)} != {Nt} ({label})")
+
 
         # check that time column exist in data frames
         for label, df in dfs_dict.items():
@@ -106,8 +119,8 @@ class DataSetsComparison(object):
                 col_union = col_union.union(cols)
                 col_intersection = col_intersection.intersection(cols)
 
-        logger.warning(f"Column Union #: {len(col_union)}")
-        logger.warning(f"Column Intersection #: {len(col_intersection)}")
+        logger.info(f"Column Union #: {len(col_union)}")
+        logger.info(f"Column Intersection #: {len(col_intersection)}")
 
         columns = list(col_intersection.copy())
         columns.remove("time")
@@ -229,6 +242,7 @@ class DataSetsComparison(object):
 
         # plot all overview
         f1, ((ax1, ax2), (ax3, ax4)) = plt.subplots(2, 2, figsize=(10, 10))
+        f1.subplots_adjust(wspace=0.3)
 
         for cid in diff_abs.columns:
             for ax in (ax1, ax2):
@@ -238,12 +252,12 @@ class DataSetsComparison(object):
                 ax.plot(diff_rel[cid], label=cid)
 
         for ax in (ax1, ax2):
-            ax.set_title(f"Abs Diff - {self.title}")
-            ax.set_ylabel(f"Abs difference - {self.title}")
+            ax.set_title(f"{self.title}")
+            ax.set_ylabel(f"Absolute difference")
 
         for ax in (ax3, ax4):
-            ax.set_title(f"Rel Diff - {self.title}")
-            ax.set_ylabel(f"Relative difference - {self.title}")
+            ax.set_ylabel(f"Relative difference")
+            ax.set_xlabel("time index")
 
         for ax in (ax2, ax4):
             ax.set_yscale("log")
@@ -257,7 +271,7 @@ class DataSetsComparison(object):
 
         for ax in (ax1, ax2, ax3, ax4):
             ax.axhline(DataSetsComparison.eps, color="black", linestyle="--")
-            ax.set_xlabel("time index")
+
             # ax.legend()
             # ax.set_xlim(right=ax.get_xlim()[1] * 2)
 

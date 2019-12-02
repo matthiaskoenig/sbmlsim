@@ -28,7 +28,8 @@ class Timecourse(JSONEncoder):
 
     """
     def __init__(self, start: float, end: float, steps: int,
-                 changes: dict = None, model_changes: dict = None):
+                 changes: dict = None, model_changes: dict = None,
+                 normalized = False):
         """ Create a time course definition for simulation.
 
         :param start: start time
@@ -43,7 +44,7 @@ class Timecourse(JSONEncoder):
         if model_changes is None:
             model_changes = {}
 
-        self.normalized = False
+        self.normalized = normalized
         self.start = start
         self.end = end
         self.steps = steps

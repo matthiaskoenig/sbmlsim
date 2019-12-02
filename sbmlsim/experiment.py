@@ -28,12 +28,10 @@ class SimulationExperiment(object):
 
     Consists of model, list of timecourse simulations, and corresponding results.
     """
-    def __init__(self, model_path=None, data_path=None, Simulator=SimulatorSerial):
+    def __init__(self, model_path=None, data_path=None):
         self.sid = self.__class__.__name__
-        # model
         self.model_path = model_path
         self.data_path = data_path
-        self.Simulator = Simulator
         self._results = None
         self._datasets = None
         self._figures = None
@@ -90,12 +88,16 @@ class SimulationExperiment(object):
             self._results = self.simulate()
         return self._results
 
-    def simulate(self):
+    def simulate(self, Simulator=SimulatorSerial,
+                 absolute_tolerance=1E-12,
+                 relative_tolerance=1E-12):
         """Run simulations."""
         if not self.model_path:
             raise ValueError("'model_path' must be set to run 'simulate'")
 
-        simulator = self.Simulator(self.model_path)  # reinitialize due to object store
+        simulator = Simulator(self.model_path,
+                              absolute_tolerance=absolute_tolerance,
+                              relative_tolerance=relative_tolerance)  # reinitialize due to object store
 
         results = dict()
         # FIXME: this can be parallized
@@ -129,9 +131,11 @@ class SimulationExperiment(object):
         for key, tcsim in simulations.items():
             tcsim.normalize(udict=self.udict, ureg=self.ureg)
 
+        # FIXME: resolve paths relative to base_paths
         d = {
             "experiment_id": self.sid,
             "model_path": Path(self.model_path).resolve(),
+            "data_path": Path(self.data_path).resolve(),
             "simulations": simulations,
         }
 
@@ -148,6 +152,19 @@ class SimulationExperiment(object):
         else:
             with open(path, "w") as f_json:
                 json.dump(self.to_dict(), fp=f_json, cls=ObjectJSONEncoder, indent=2)
+
+
+    @classmethod
+    def from_json(cls, json_info) -> 'SimulationExperiment':
+        """Load experiment from json path or str"""
+        if isinstance(json_info, Path):
+            with open(json_info, "r") as f_json:
+                d = json.load(f_json)
+        else:
+            d = json.loads(json_info)
+
+        return JSONExperiment.from_dict(d)
+
 
     def save_simulations(self, results_path, normalize=False):
         """ Save simulations
@@ -171,7 +188,7 @@ class SimulationExperiment(object):
                         bbox_inches="tight")
 
     def save_results(self, results_path):
-        """ Save results
+        """ Save results (mean timecourse)
 
         :param results_path:
         :return:
@@ -189,6 +206,31 @@ class SimulationExperiment(object):
         for dkey, dset in self.datasets.items():
             dset.to_csv(results_path / f"{self.sid}_data_{dkey}.tsv",
                         sep="\t", index=False)
+
+
+class JSONExperiment(SimulationExperiment):
+    """An experiment loaded from JSON serialization."""
+
+    @property
+    def simulations(self):
+        return self._simulations
+
+    @classmethod
+    def from_dict(self, d) -> 'JSONExperiment':
+        experiment = JSONExperiment(model_path=Path(d['model_path']),
+                                          data_path=Path(d['data_path']))
+        experiment.sid = d['experiment_id']
+        # parse simulation definitions
+        simulations = {}
+        for key, data in d['simulations'].items():
+            tcsim = TimecourseSim(**data)
+            for tc in tcsim.timecourses:
+                # parse the serialized magnitudes
+                tc.changes = {k: v["_magnitude"] for k, v in tc.changes.items()}
+            simulations[key] = tcsim
+        experiment._simulations = simulations
+
+        return experiment
 
 
 # TODO: implement loading of DataSets with units

@@ -3,7 +3,7 @@ import pandas as pd
 
 from typing import List
 
-from sbmlsim.diff import DataSetsComparison, get_json_simulations
+from sbmlsim.diff import DataSetsComparison, get_json_files
 from matplotlib import pyplot as plt
 from sbmlsim.simulation_serial import SimulatorSerial as Simulator
 from sbmlsim.tests.constants import DATA_PATH, MODEL_REPRESSILATOR
@@ -22,7 +22,7 @@ def run_simulations(create_files=True):
                           absolute_tolerance=1E-16,
                           relative_tolerance=1E-13)
 
-    simulations = get_json_simulations(diff_path)
+    simulations = get_json_files(diff_path)
     for simulation_key, json_path in simulations.items():
 
         tsv_path = diff_path / "sbmlsim" / f"{simulation_key}.tsv"
@@ -40,7 +40,7 @@ def run_comparisons(create_files=True):
     """
     diff_path = Path(DATA_PATH) / "diff"
 
-    simulation_keys = get_json_simulations(diff_path)
+    simulation_keys = get_json_files(diff_path)
     print(simulation_keys)
 
     for simulation_key in simulation_keys.keys():
