@@ -217,8 +217,8 @@ class JSONExperiment(SimulationExperiment):
 
     @classmethod
     def from_dict(self, d) -> 'JSONExperiment':
-        experiment = JSONExperiment(model_path=Path(d['model_path']),
-                                          data_path=Path(d['data_path']))
+        experiment = JSONExperiment(model_path=None,
+                                    data_path=None)
         experiment.sid = d['experiment_id']
         # parse simulation definitions
         simulations = {}
