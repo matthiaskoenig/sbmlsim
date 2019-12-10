@@ -13,3 +13,4 @@ MODEL_DEMO = DATA_PATH / "models" / "Koenig_demo_14.xml"
 
 # FIXME: make unitreg work with legacy paths
 MODEL_MIDAZOLAM = Path("/home/mkoenig/git/sbmlutils/sbmlutils/examples/models/midazolam/midazolam_model.xml")
+MODEL_ACETAMINOPHEN = Path("/home/mkoenig/git/sbmlutils/sbmlutils/examples/models/acetaminophen/paracetamol_model.xml")
