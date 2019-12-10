@@ -16,13 +16,18 @@ def run_timecourse_examples():
     Q_ = simulator.ureg.Quantity
 
     # 1. simple timecourse simulation
-    tc_sim = TimecourseSim(
+    tc_sim = TimecourseSim([
         Timecourse(start=0, end=100, steps=100,
                    changes={
                        '[mid_ext]': Q_(100, "mM"),
                        'MIDIM_Vmax': Q_(10, "mmole_per_min"),
+                   }),
+        Timecourse(start=0, end=100, steps=100,
+               changes={
+                    'MIDIM_Vmax': Q_(20, "mmole_per_min"),
+               }),
 
-                            })
+        ]
     )
     s = simulator.timecourses(tc_sim)
 
