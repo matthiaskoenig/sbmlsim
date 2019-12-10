@@ -12,5 +12,6 @@ MODEL_GLCWB = DATA_PATH / "models" / "body21_livertoy_flat.xml"
 MODEL_DEMO = DATA_PATH / "models" / "Koenig_demo_14.xml"
 
 # FIXME: make unitreg work with legacy paths
-MODEL_MIDAZOLAM = Path("/home/mkoenig/git/sbmlutils/sbmlutils/examples/models/midazolam/midazolam_model.xml")
+MODEL_MIDAZOLAM = Path("/home/mkoenig/git/sbmlutils/sbmlutils/examples/models/midazolam/models/midazolam_liver.xml")
+MODEL_MIDAZOLAM_BODY = Path("/home/mkoenig/git/sbmlutils/sbmlutils/examples/models/midazolam/models/midazolam_body.xml")
 MODEL_ACETAMINOPHEN = Path("/home/mkoenig/git/sbmlutils/sbmlutils/examples/models/acetaminophen/paracetamol_model.xml")
