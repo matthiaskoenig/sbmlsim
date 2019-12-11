@@ -6,20 +6,20 @@ from matplotlib import pyplot as plt
 
 from sbmlsim.simulation_serial import SimulatorSerial as Simulator
 from sbmlsim.timecourse import Timecourse, TimecourseSim, ensemble
-from sbmlsim.tests.constants import MODEL_ACETAMINOPHEN
+from sbmlsim.tests.constants import MODEL_ACETAMINOPHEN_LIVER
 from sbmlsim.plotting_matplotlib import add_line
 
 
 def run_timecourse_examples():
     """ Run various timecourses. """
-    simulator = Simulator(MODEL_ACETAMINOPHEN)
+    simulator = Simulator(MODEL_ACETAMINOPHEN_LIVER)
     Q_ = simulator.ureg.Quantity
 
     # 1. simple timecourse simulation
     tc_sim = TimecourseSim(
         Timecourse(start=0, end=5*60, steps=1000,
                    changes={
-                       '[apap_ext]': Q_(100, "mM"),
+                       '[apap_ext]': Q_(5, "mM"),
                     })
     )
     s = simulator.timecourses(tc_sim)
