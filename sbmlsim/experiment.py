@@ -1,6 +1,7 @@
 import logging
 
 from pathlib import Path
+import os
 import json
 import pandas as pd
 import inspect
@@ -72,6 +73,14 @@ class SimulationExperiment(object):
         df = load_data(sid=sid, data_path=self.data_path, **kwargs)
         # TODO: implement loading of DataSets with units
         return df
+
+    def load_data_pkdb(self, sid, **kwargs):
+        """Load timecourse data with units."""
+        df = load_data(sid=sid, data_path=self.data_path, **kwargs)
+        dframes = {}
+        for substance in df.substance.unique():
+            dframes[substance] = df[df.substance == substance]
+        return dframes
 
     def load_units(self, sids, df=None, units_dict=None):
         """ Loads units from given dataframe."""
@@ -250,3 +259,26 @@ def function_name():
     """Returns current function name"""
     frame = inspect.currentframe()
     return inspect.getframeinfo(frame).function
+
+
+def run_experiment(cls_experiment, output_path, model_path, data_path):
+    # create experiment
+    exp = cls_experiment(model_path=model_path,
+                         data_path=data_path)  # type: SimulationExperiment
+    # run simulations
+    exp.simulate()
+
+    # create and save figures
+    exp.save_figures(output_path)
+
+    # save results
+    path_results = output_path / "sbmlsim"
+    if not path_results.exists():
+        os.mkdir(path_results)
+    exp.save_results(path_results)
+
+    # create and save data sets
+    exp.save_datasets(path_results)
+
+    exp.to_json(output_path / f"{exp.sid}.json")
+    plt.show()
