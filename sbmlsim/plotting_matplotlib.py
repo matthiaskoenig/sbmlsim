@@ -112,9 +112,9 @@ def add_line(ax, data: Result,
     """
     if not isinstance(data, Result):
         raise ValueError("Only Result objects supported in plotting.")
-    if abs(xf-1.0) > 1E-8:
+    if (hasattr(xf, "magnitude") and abs(xf.magnitude-1.0) > 1E-8) or abs(xf-1.0) > 1E-8:
         logger.warning("xf attributes are deprecated, use units instead.")
-    if abs(yf - 1.0) > 1E-8:
+    if (hasattr(yf, "magnitude") and abs(yf.magnitude-1.0) > 1E-8) or abs(yf-1.0) > 1E-8:
         logger.warning("yf attributes are deprecated, use units instead.")
 
     # data with units

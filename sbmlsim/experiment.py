@@ -192,9 +192,13 @@ class SimulationExperiment(object):
         :param results_path:
         :return:
         """
+        paths = []
         for fkey, fig in self.figures.items():
-            fig.savefig(results_path / f"{self.sid}_{fkey}.png", dpi=150,
-                        bbox_inches="tight")
+            path = results_path / f"{self.sid}_{fkey}.png"
+            fig.savefig(path, dpi=150, bbox_inches="tight")
+            paths.append(path)
+        return paths
+
 
     def save_results(self, results_path):
         """ Save results (mean timecourse)
