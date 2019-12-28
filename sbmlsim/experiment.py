@@ -91,6 +91,7 @@ class SimulationExperiment(object):
             for sid in sids:
                 udict[sid] = units_dict[sid]
         return udict
+
     @property
     def results(self) -> Dict[str, Result]:
         if self._results is None:
@@ -98,9 +99,15 @@ class SimulationExperiment(object):
         return self._results
 
     def simulate(self, Simulator=SimulatorSerial,
-                 absolute_tolerance=1E-12,
-                 relative_tolerance=1E-12):
-        """Run simulations."""
+                  absolute_tolerance=1E-12,
+                  relative_tolerance=1E-12):
+        """Run simulations.
+
+        This should not be called directly, but the results of the simulations
+        should be requested by the results property.
+        This allows to hash exectuted simulations without the need for
+        reececuting them
+        """
         if not self.model_path:
             raise ValueError("'model_path' must be set to run 'simulate'")
 
@@ -108,15 +115,16 @@ class SimulationExperiment(object):
                               absolute_tolerance=absolute_tolerance,
                               relative_tolerance=relative_tolerance)  # reinitialize due to object store
 
-        results = dict()
         # FIXME: this can be parallized
+        if self._results is None:
+            self._results = {}
         for key, sim_def in self.simulations.items():
             logger.warning(f"Simulate {key}")
             # normalize the units
             sim_def.normalize(udict=self.udict, ureg=self.ureg)
             # run simulations
-            results[key] = simulator.timecourses(sim_def)
-        return results
+            self._results[key] = simulator.timecourses(sim_def)
+        return None
 
     def _figure(self, xlabel, ylabel, title=None):
         fig, ax = plt.subplots(nrows=1, ncols=1, figsize=(5, 5))

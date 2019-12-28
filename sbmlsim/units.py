@@ -52,11 +52,17 @@ class Units(object):
         ureg = Units.default_ureg()
         for udef in model.getListOfUnitDefinitions():  # type: libsbml.UnitDefinition
             uid = udef.getId()
+            udef_str = cls.unitDefinitionToString(udef)
             try:
-                q = ureg(uid)
-                logger.warning(f"SBML uid '{uid}' already defined in UnitsRegistry: '{uid} = {q}")
+                # check if unit registry definition
+                q1 = ureg(uid)
+                # SBML definition
+                q2 = ureg(udef_str)
+                # check if identical
+                if q1 != q2:
+                    logger.error(f"SBML uid '{uid}' defined differently in UnitsRegistry: '{uid} = {q1} != {q2}")
             except UndefinedUnitError as err:
-                udef_str = cls.unitDefinitionToString(udef)
+
                 definition = f"{uid} = {udef_str}"
                 ureg.define(definition)
 
@@ -119,6 +125,8 @@ class Units(object):
                     udict[sid] = element.getUnits()
                 else:
                     udef = element.getDerivedUnitDefinition()
+                    if udef is None:
+                        continue
                     uid = None
                     # find the correct unit definition
                     for udef_test in model.getListOfUnitDefinitions():  # type: libsbml.UnitDefinition
@@ -135,7 +143,8 @@ class Units(object):
                 # check if sid is a unit
                 udef = model.getUnitDefinition(sid)
                 if udef is None:
-                    logger.error(f"No element found for id '{sid}'")
+                    # elements in packages
+                    logger.info(f"No element found for id '{sid}'")
 
         return udict, ureg
 
