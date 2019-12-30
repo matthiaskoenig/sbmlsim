@@ -9,7 +9,7 @@ import inspect
 
 from sbmlsim.model import load_model
 from sbmlsim.simulation_serial import SimulatorSerial
-from sbmlsim.timecourse import TimecourseSim
+from sbmlsim.timecourse import TimecourseSim, TimecourseScan
 from sbmlsim.plotting_matplotlib import plt
 from sbmlsim.units import Units
 from json import JSONEncoder
@@ -34,6 +34,7 @@ class SimulationExperiment(object):
         self.model_path = model_path
         self.data_path = data_path
         self._results = None
+        self._scan_results = None
         self._datasets = None
         self._figures = None
 
@@ -59,6 +60,11 @@ class SimulationExperiment(object):
         raise NotImplementedError
 
     @property
+    def scans(self) -> Dict[str, TimecourseScan]:
+        """ Scan definitions. """
+        raise NotImplementedError
+
+    @property
     def datasets(self) -> Dict[str, pd.DataFrame]:
         """ Datasets. """
         raise NotImplementedError
@@ -71,7 +77,6 @@ class SimulationExperiment(object):
     def load_data(self, sid, **kwargs):
         """ Loads data from given figure/table id."""
         df = load_data(sid=sid, data_path=self.data_path, **kwargs)
-        # TODO: implement loading of DataSets with units
         return df
 
     def load_data_pkdb(self, sid, **kwargs):
@@ -95,13 +100,19 @@ class SimulationExperiment(object):
     @property
     def results(self) -> Dict[str, Result]:
         if self._results is None:
-            self._results = self.simulate()
+            self.simulate()
         return self._results
+
+    @property
+    def scan_results(self) -> Dict[str, ScanResult]:
+        if self._scan_results is None:
+            self.simulate()
+        return self._scan_results
 
     def simulate(self, Simulator=SimulatorSerial,
                   absolute_tolerance=1E-12,
                   relative_tolerance=1E-12):
-        """Run simulations.
+        """Run simulations & scans.
 
         This should not be called directly, but the results of the simulations
         should be requested by the results property.
@@ -116,14 +127,27 @@ class SimulationExperiment(object):
                               relative_tolerance=relative_tolerance)  # reinitialize due to object store
 
         # FIXME: this can be parallized
+        # run timecourse simulations
         if self._results is None:
             self._results = {}
         for key, sim_def in self.simulations.items():
-            logger.warning(f"Simulate {key}")
+            logger.info(f"Simulate {key}")
             # normalize the units
             sim_def.normalize(udict=self.udict, ureg=self.ureg)
             # run simulations
             self._results[key] = simulator.timecourses(sim_def)
+
+        # run scans
+        if self._scans is None:
+            self._scan_results = {}
+
+        for key, scan_def in self.scans.items():
+            logger.info(f"Simulate {key}")
+            # normalize the units
+            scan_def.normalize(udict=self.udict, ureg=self.ureg)
+            # run simulations
+            self._scan_results = simulator.scans(scan_def)
+
         return None
 
     def _figure(self, xlabel, ylabel, title=None):

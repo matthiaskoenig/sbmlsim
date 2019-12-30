@@ -3,8 +3,9 @@ Definition of timecourse simulations and timecourse definitions.
 """
 from pathlib import Path
 import json
-from typing import List, Tuple
+from typing import List, Tuple, Dict
 from copy import deepcopy
+import numpy as np
 
 import logging
 
@@ -137,7 +138,6 @@ class TimecourseSim(object):
             with open(path, "w") as f_json:
                 json.dump(self, fp=f_json, cls=ObjectJSONEncoder, indent=2)
 
-
     @staticmethod
     def from_json(json_info: Tuple[str, Path]) -> 'TimecourseSim':
         """ Load TimecourseSim from Path or str
@@ -160,6 +160,28 @@ class TimecourseSim(object):
             self.to_json()
         ]
         return "\n".join(lines)
+
+
+class TimecourseScan(object):
+    """A parameter or initial condition scan over a TimecourseSim."""
+
+    def __init__(self, tcsim: TimecourseSim, scan: Dict[str, np.ndarray]):
+        """
+        Multiple parameters will result in a multi-dimensional scan
+
+        :param tcsim:
+        :param scan: dictionary of parameters or conditions to scan
+        """
+        self.tcsim = tcsim
+        self.scan = scan
+
+
+    def normalize(self, udict, ureg):
+        # normalize timecourse sim
+        self.tcsim.normalize(udict=udict, ureg=ureg)
+        # normalize scan parameters
+        logger.error("scan parameters not normalized")
+        # FIXME: implement
 
 
 def ensemble(sim: TimecourseSim, changeset: ChangeSet) -> List[TimecourseSim]:

@@ -119,7 +119,13 @@ class Units(object):
                     volume_uid = compartment.getUnits()
 
                     # store concentration
-                    udict[f"[{sid}]"] = f"{substance_uid}/{volume_uid}"
+                    if substance_uid and volume_uid:
+                        udict[f"[{sid}]"] = f"{substance_uid}/{volume_uid}"
+                    else:
+                        logger.warning(f"substance or volume unit missing, "
+                                       f"impossible to determine concentration "
+                                       f"unit for [{sid}])")
+                        udict[f"[{sid}]"] = ''
 
                 elif isinstance(element, (libsbml.Compartment, libsbml.Parameter)):
                     udict[sid] = element.getUnits()
@@ -144,7 +150,7 @@ class Units(object):
                 udef = model.getUnitDefinition(sid)
                 if udef is None:
                     # elements in packages
-                    logger.info(f"No element found for id '{sid}'")
+                    logger.debug(f"No element found for id '{sid}'")
 
         return udict, ureg
 

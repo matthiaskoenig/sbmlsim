@@ -12,15 +12,17 @@ Also what is the exact time point the change should be applied.
 """
 
 import logging
-from typing import List, Union
-from pint.errors import DimensionalityError
+from typing import List, Union, Dict
 
 import pandas as pd
 import roadrunner
+import itertools
+from copy import deepcopy
+from pprint import pprint
 
-from sbmlsim.model import clamp_species, MODEL_CHANGE_BOUNDARY_CONDITION, load_model
+from sbmlsim.model import clamp_species, MODEL_CHANGE_BOUNDARY_CONDITION
 from sbmlsim.result import Result
-from sbmlsim.timecourse import Timecourse, TimecourseSim
+from sbmlsim.timecourse import Timecourse, TimecourseSim, TimecourseScan
 
 logger = logging.getLogger(__name__)
 
@@ -62,12 +64,47 @@ class SimulatorAbstract(object):
         """ Must be implemented by simulator. """
         pass
 
-    def timecourses(self):
+    def timecourses(self, simulations: List[TimecourseSim]) -> Result:
         """ Must be implemented by simulator.
 
         :return:
         """
         raise NotImplementedError("Use concrete implementation")
+
+    def scan(self, tcscan: TimecourseScan) -> Result:
+        """ Timecourse simulations based on timecourse_definition.
+
+        :param tcscan: Scan definition
+        :param reset_all: Reset model at the beginning
+        :return:
+        """
+        # Create all possible combinations of the scan
+
+
+        keys = []
+        vecs = []
+        print(tcscan.scan)
+        for key, vec in tcscan.scan.items():
+            keys.append(key)
+            vecs.append(list(vec))
+        changes_values = list(itertools.product(*vecs))
+
+        from pprint import pprint
+        pprint(keys)
+        pprint(changes_values)
+
+        sims = []
+        for values in changes_values:
+            sim_new = deepcopy(tcscan.tcsim)
+            # changes are mixed in the first timecourse
+            tc = sim_new.timecourses[0]
+            for k, value in enumerate(values):
+                key = keys[k]
+                tc.add_change(key, value)
+            sims.append(sim_new)
+
+        return self.timecourses(sims)
+
 
 
 class SimulatorWorker(object):
@@ -75,9 +112,7 @@ class SimulatorWorker(object):
     def timecourse(self, simulation: TimecourseSim) -> pd.DataFrame:
         """ Timecourse simulations based on timecourse_definition.
 
-        :param r: Roadrunner model instance
         :param simulation: Simulation definition(s)
-        :param reset_all: Reset model at the beginning
         :return:
         """
 
@@ -131,3 +166,4 @@ class SimulatorWorker(object):
         self.r.timeCourseSelections = model_selections
 
         return pd.concat(frames)
+
