@@ -180,7 +180,7 @@ class TimecourseScan(object):
         # normalize timecourse sim
         self.tcsim.normalize(udict=udict, ureg=ureg)
         # normalize scan parameters
-        logger.error("scan parameters not normalized")
+        logger.warning("scan parameters not normalized")
         # FIXME: implement
 
 
