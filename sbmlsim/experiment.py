@@ -297,7 +297,7 @@ def function_name():
     return inspect.getframeinfo(frame).function
 
 
-def run_experiment(cls_experiment, output_path, model_path, data_path):
+def run_experiment(cls_experiment, output_path, model_path, data_path, show_figures=True):
     # create experiment
     exp = cls_experiment(model_path=model_path,
                          data_path=data_path)  # type: SimulationExperiment
@@ -317,4 +317,5 @@ def run_experiment(cls_experiment, output_path, model_path, data_path):
     exp.save_datasets(path_results)
 
     exp.to_json(output_path / f"{exp.sid}.json")
-    plt.show()
+    if show_figures:
+        plt.show()
