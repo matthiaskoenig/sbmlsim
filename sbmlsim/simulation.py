@@ -80,31 +80,38 @@ class SimulatorAbstract(object):
         """
         # Create all possible combinations of the scan
 
-
+        # TODO: refactor on TimecourseScan
         keys = []
         vecs = []
-        print(tcscan.scan)
+        index_vecs = []
         for key, vec in tcscan.scan.items():
             keys.append(key)
             vecs.append(list(vec))
-        changes_values = list(itertools.product(*vecs))
+            index_vecs.append(range(len(vec)))
 
-        from pprint import pprint
-        pprint(keys)
-        pprint(changes_values)
+        indices = list(itertools.product(*index_vecs))
+
+        # from pprint import pprint
+        # pprint(keys)
+        # pprint(changes_values)
 
         sims = []
-        for values in changes_values:
+        for index_list in indices:
             sim_new = deepcopy(tcscan.tcsim)
             # changes are mixed in the first timecourse
             tc = sim_new.timecourses[0]
-            for k, value in enumerate(values):
+            for k, pos_index in enumerate(index_list):
                 key = keys[k]
+                value = vecs[k][pos_index]
                 tc.add_change(key, value)
             sims.append(sim_new)
 
-        return self.timecourses(sims)
+        result = self.timecourses(sims)
+        result.keys = keys
+        result.vecs = vecs
+        result.indices = indices
 
+        return result
 
 
 class SimulatorWorker(object):

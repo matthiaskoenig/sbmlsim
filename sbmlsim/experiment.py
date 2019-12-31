@@ -104,7 +104,7 @@ class SimulationExperiment(object):
         return self._results
 
     @property
-    def scan_results(self) -> Dict[str, ScanResult]:
+    def scan_results(self) -> Dict[str, Result]:
         if self._scan_results is None:
             self.simulate()
         return self._scan_results
@@ -138,7 +138,7 @@ class SimulationExperiment(object):
             self._results[key] = simulator.timecourses(sim_def)
 
         # run scans
-        if self._scans is None:
+        if self._scan_results is None:
             self._scan_results = {}
 
         for key, scan_def in self.scans.items():
@@ -146,7 +146,7 @@ class SimulationExperiment(object):
             # normalize the units
             scan_def.normalize(udict=self.udict, ureg=self.ureg)
             # run simulations
-            self._scan_results = simulator.scans(scan_def)
+            self._scan_results[key] = simulator.scan(scan_def)
 
         return None
 

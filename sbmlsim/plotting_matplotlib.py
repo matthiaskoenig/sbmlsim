@@ -97,13 +97,14 @@ def add_data(ax, data: DataSet,
 
 def add_line(ax, data: Result,
              xid: str, yid: str,
-             xunit=None, yunit=None, xf=1.0, yf=1.0,
+             xunit=None, yunit=None, xf=1.0, yf=1.0, all_lines=False,
              label='__nolabel__', **kwargs):
     """
     :param ax: axis to plot to
     :param data: Result data structure
     :param xid: id for xdata
     :param yid: id for ydata
+    :param all_lines: plot all individual lines
     :param xunit: target unit for x (conversion is performed automatically)
     :param yunit: target unit for y (conversion is performed automatically)
 
@@ -138,11 +139,19 @@ def add_line(ax, data: Result,
     color = kwargs.get("color", next(prop_cycler)['color'])
     kwargs["color"] = color
 
-    if len(data) > 1:
-        # FIXME: std areas should be within min/max areas!
-        ax.fill_between(x, y - y_sd, y + y_sd, color=color, alpha=0.4, label="__nolabel__")
+    if all_lines:
+        for df in data.frames:
+            xk = df[xid].values * data.ureg(data.udict[xid]) * xf
+            yk = df[yid].values * data.ureg(data.udict[yid]) * yf
+            xk = xk.to(xunit)
+            yk = yk.to(yunit)
+            ax.plot(xk, yk, '-', label="{}".format(label), **kwargs)
+    else:
+        if len(data) > 1:
+            # FIXME: std areas should be within min/max areas!
+            ax.fill_between(x, y - y_sd, y + y_sd, color=color, alpha=0.4, label="__nolabel__")
 
-        ax.fill_between(x, y + y_sd, y_max, color=color, alpha=0.2, label="__nolabel__")
-        ax.fill_between(x, y - y_sd, y_min, color=color, alpha=0.2, label="__nolabel__")
+            ax.fill_between(x, y + y_sd, y_max, color=color, alpha=0.2, label="__nolabel__")
+            ax.fill_between(x, y - y_sd, y_min, color=color, alpha=0.2, label="__nolabel__")
 
-    ax.plot(x, y, '-', label="{}".format(label), **kwargs)
+        ax.plot(x, y, '-', label="{}".format(label), **kwargs)
