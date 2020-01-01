@@ -57,22 +57,26 @@ class SimulationExperiment(object):
     @property
     def simulations(self) -> Dict[str, TimecourseSim]:
         """ Simulation definitions. """
-        raise NotImplementedError
+        logger.warning(f"No simulations defined for '{self.sid}'.")
+        return {}
 
     @property
     def scans(self) -> Dict[str, TimecourseScan]:
         """ Scan definitions. """
-        raise NotImplementedError
+        logger.warning(f"No scans defined for '{self.sid}'.")
+        return {}
 
     @property
     def datasets(self) -> Dict[str, pd.DataFrame]:
         """ Datasets. """
-        raise NotImplementedError
+        logger.warning(f"No datasets defined for '{self.sid}'.")
+        return {}
 
     @property
     def figures(self) -> Dict[str, Figure]:
         """ Figures."""
-        raise NotImplementedError
+        logger.warning(f"No figures defined for '{self.sid}'.")
+        return {}
 
     def load_data(self, sid, **kwargs):
         """ Loads data from given figure/table id."""
@@ -182,6 +186,14 @@ class SimulationExperiment(object):
 
         return d
 
+    def to_markdown(self, output_path=None):
+        """ Create markdown report of the simulation experiment.
+
+        :param path: path for file, if None JSON str is returned
+        :return:
+        """
+        TODO:
+
     def to_json(self, path=None):
         """ Convert experiment to JSON for exchange.
 
@@ -194,7 +206,6 @@ class SimulationExperiment(object):
             with open(path, "w") as f_json:
                 json.dump(self.to_dict(), fp=f_json, cls=ObjectJSONEncoder, indent=2)
 
-
     @classmethod
     def from_json(cls, json_info) -> 'SimulationExperiment':
         """Load experiment from json path or str"""
@@ -205,7 +216,6 @@ class SimulationExperiment(object):
             d = json.loads(json_info)
 
         return JSONExperiment.from_dict(d)
-
 
     def save_simulations(self, results_path, normalize=False):
         """ Save simulations
@@ -316,6 +326,12 @@ def run_experiment(cls_experiment, output_path, model_path, data_path, show_figu
     # create and save data sets
     exp.save_datasets(path_results)
 
-    exp.to_json(output_path / f"{exp.sid}.json")
+    # save json representation
+    # exp.to_json(output_path / f"{exp.sid}.json")
+
+    # display figures
     if show_figures:
         plt.show()
+
+    # create markdown report
+    exp.to_markdown(output_path)
