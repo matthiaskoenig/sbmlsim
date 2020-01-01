@@ -308,6 +308,9 @@ def function_name():
 
 
 def run_experiment(cls_experiment, output_path, model_path, data_path, show_figures=True):
+    """ Run given experiment.
+    Returns info dictionary.
+    """
     # create experiment
     exp = cls_experiment(model_path=model_path,
                          data_path=data_path)  # type: SimulationExperiment
@@ -334,4 +337,11 @@ def run_experiment(cls_experiment, output_path, model_path, data_path, show_figu
         plt.show()
 
     # create markdown report
-    exp.to_markdown(output_path)
+    # exp.to_markdown(output_path)
+
+    return {
+        'experiment': exp,
+        'output_path': output_path,
+        'model_path': model_path,
+        'data_path': data_path,
+    }
