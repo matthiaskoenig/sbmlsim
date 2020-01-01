@@ -192,7 +192,7 @@ class SimulationExperiment(object):
         :param path: path for file, if None JSON str is returned
         :return:
         """
-        TODO:
+        pass
 
     def to_json(self, path=None):
         """ Convert experiment to JSON for exchange.
