@@ -236,14 +236,11 @@ class SimulationExperiment(object):
         """
         paths = []
         for fkey, fig in self.figures.items():
-            path_png = results_path / f"{self.sid}_{fkey}.png"
-            fig.savefig(path_png, dpi=150, bbox_inches="tight")
             path_svg = results_path / f"{self.sid}_{fkey}.svg"
             fig.savefig(path_svg, dpi=150, bbox_inches="tight")
 
-            paths.append(path_png)
+            paths.append(path_svg)
         return paths
-
 
     def save_results(self, results_path):
         """ Save results (mean timecourse)
@@ -252,8 +249,21 @@ class SimulationExperiment(object):
         :return:
         """
         for rkey, result in self.results.items():
-            result.mean.to_csv(results_path / f"{self.sid}_{rkey}.tsv",
+            result.to_hdf5(results_path / f"{self.sid}_simulation_{rkey}.h5")
+
+        for rkey, result in self._scan_results.items():
+            result.to_hdf5(results_path / f"{self.sid}_scan_{rkey}.h5")
+
+        '''
+        for rkey, result in self.results.items():
+            result.mean.to_csv(results_path / f"{self.sid}_simulation_{rkey}.tsv",
                                sep="\t", index=False)
+
+        for rkey, result in self._scan_results.items():
+            result.mean.to_csv(
+                results_path / f"{self.sid}_scan_{rkey}.tsv",
+                sep="\t", index=False)
+        '''
 
     def save_datasets(self, results_path):
         """ Save datasets

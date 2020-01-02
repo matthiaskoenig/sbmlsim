@@ -54,14 +54,6 @@ class Result(object):
         ]
         return "\n".join(lines)
 
-
-    def statistics_df(self):
-        df = pd.DataFrame({
-            'mean'
-        })
-        pass
-
-
     @cached_property
     def nrow(self):
         return len(self.index)
@@ -95,11 +87,11 @@ class Result(object):
         return pd.DataFrame(np.max(self.data, axis=2), columns=self.columns)
 
     def to_hdf5(self, path):
-        """Store to HDF5"""
-        with pd.HDFStore(path) as store:
+        """Store complete results as HDF5"""
+        with pd.HDFStore(path, complib="zlib", complevel=9) as store:
             for k, frame in enumerate(self.frames):
                 key = "df{}".format(k)
-                store[key] = frame
+                store.put(key, frame)
 
     @staticmethod
     def from_hdf5(path):
