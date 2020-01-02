@@ -236,9 +236,12 @@ class SimulationExperiment(object):
         """
         paths = []
         for fkey, fig in self.figures.items():
-            path = results_path / f"{self.sid}_{fkey}.png"
-            fig.savefig(path, dpi=150, bbox_inches="tight")
-            paths.append(path)
+            path_png = results_path / f"{self.sid}_{fkey}.png"
+            fig.savefig(path_png, dpi=150, bbox_inches="tight")
+            path_svg = results_path / f"{self.sid}_{fkey}.svg"
+            fig.savefig(path_svg, dpi=150, bbox_inches="tight")
+
+            paths.append(path_png)
         return paths
 
 
