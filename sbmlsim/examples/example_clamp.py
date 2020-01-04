@@ -29,7 +29,7 @@ def run_clamp():
     # reference simulation
     simulator = Simulator(MODEL_REPRESSILATOR)
     tcsim = TimecourseSim([
-        Timecourse(start=0, end=400, steps=400, changes={"X": 10}),
+        Timecourse(start=0, end=220, steps=300, changes={"X": 10}),
         # clamp simulation
         Timecourse(start=0, end=200, steps=200,
                    model_changes={'boundary_condition': {'X': True}}),
@@ -39,7 +39,7 @@ def run_clamp():
     ])
     result = simulator.timecourses(tcsim)
     assert isinstance(result, Result)
-    plot_result(result, "clamp experiment (400-600)")
+    plot_result(result, "clamp experiment (220-420)")
 
 
 if __name__ == "__main__":

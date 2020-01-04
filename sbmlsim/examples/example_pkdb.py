@@ -119,13 +119,14 @@ def clamp(simulator, r):
     changes_init = pkpd.init_concentrations_changes(r, 'som', 0E-6)  # [0 nmol/L]
 
     # FIXME: some bug in the concentrations and assignments
-    tcsims = ensemble(
-        TimecourseSim([
+    # tcsims = ensemble(
+    tcsims = TimecourseSim([
             Timecourse(start=0, end=60, steps=120, changes={**changes_init, **{'PODOSE_som': 1E-9}}),
+            Timecourse(start=0, end=60, steps=120, changes={**{'PODOSE_som': 1E-9}}),
             Timecourse(start=0, end=120, steps=240, model_changes={'boundary_condition': {"Ave_som": True}}), # clamp venous som
             Timecourse(start=0, end=120, steps=240, model_changes={'boundary_condition': {"Ave_som": False}}),   # release venous som,
-        ]), ChangeSet.parameter_sensitivity_changeset(r, 0.1)
-    )
+        ]) #, ChangeSet.parameter_sensitivity_changeset(r, 0.1))
+
     return simulator.timecourses(tcsims)
 
 
@@ -168,6 +169,7 @@ if __name__ == "__main__":
     r = load_model(MODEL_GLCWB)
     simulator = Simulator(MODEL_GLCWB)
     results = {}
+    # for f_simulate in [clamp]:
     for f_simulate in [po_bolus, iv_bolus, iv_infusion, clamp, mix, stepped_clamp]:
         f_key = f_simulate.__name__
         print(f_key)

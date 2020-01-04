@@ -1,0 +1,15 @@
+{
+  "timecourses": [
+    {
+      "start": 0,
+      "end": 60,
+      "steps": 60,
+      "changes": {
+        "X": 100
+      },
+      "model_changes": {}
+    }
+  ],
+  "selections": null,
+  "reset": true
+}

@@ -1,0 +1,17 @@
+--------------------------------------------------------------------------------
+DataSetsComparison (['sbmlsim', 'jws'])
+example_1 (sbmlsim | jws)
+--------------------------------------------------------------------------------
+# Elements (Nt, Nx)
+(61, 32)
+# Maximum column difference (above eps)
+Empty DataFrame
+Columns: [Delta_abs_0, Delta_rel_0, Delta_max, Delta_rel_max]
+Index: []
+# Maximum initial column difference
+2.7755575615628914e-17
+# Maximum element difference
+2.5429699235246517e-08
+# Datasets are equal (diff <= eps=1e-06)
+TRUE
+--------------------------------------------------------------------------------

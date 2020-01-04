@@ -2,7 +2,7 @@
 Run all the example files in tests.
 """
 from sbmlsim.examples import example_clamp, example_scan, example_sensitivity, example_timecourse, \
-    example_parallel
+    example_parallel, example_units
 
 
 def test_clamp():
@@ -31,3 +31,7 @@ def test_parallel_2():
 
 def test_parallel_3():
     example_parallel.example_parallel_timecourse(nsim=20, actor_count=5)
+
+
+def test_units():
+    example_units.run_demo_example()

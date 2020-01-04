@@ -16,7 +16,7 @@ logger = logging.getLogger(__name__)
 class Result(object):
     """Result of simulation(s)."""
 
-    def __init__(self, frames: List[pd.DataFrame]):
+    def __init__(self, frames: List[pd.DataFrame], udict=None, ureg=None):
         """
 
         :param frames: iterable of pd.DataFrame
@@ -26,6 +26,9 @@ class Result(object):
 
         # empty array for storage
         self.frames = frames
+        # units dictionary for lookup
+        self.udict = udict
+        self.ureg = ureg
 
         if len(frames) > 0:
             df = frames[0]
@@ -51,14 +54,6 @@ class Result(object):
         ]
         return "\n".join(lines)
 
-
-    def statistics_df(self):
-        df = pd.DataFrame({
-            'mean'
-        })
-        pass
-
-
     @cached_property
     def nrow(self):
         return len(self.index)
@@ -74,7 +69,7 @@ class Result(object):
     @cached_property
     def mean(self):
         if len(self) == 1:
-            logging.warning("mean() on Result with len==1 is not defined")
+            logging.warning("For a single simulation the mean returns the single simulation")
             return self.frames[0]
         else:
             return pd.DataFrame(np.mean(self.data, axis=2), columns=self.columns)
@@ -92,11 +87,11 @@ class Result(object):
         return pd.DataFrame(np.max(self.data, axis=2), columns=self.columns)
 
     def to_hdf5(self, path):
-        """Store to HDF5"""
-        with pd.HDFStore(path) as store:
+        """Store complete results as HDF5"""
+        with pd.HDFStore(path, complib="zlib", complevel=9) as store:
             for k, frame in enumerate(self.frames):
                 key = "df{}".format(k)
-                store[key] = frame
+                store.put(key, frame)
 
     @staticmethod
     def from_hdf5(path):

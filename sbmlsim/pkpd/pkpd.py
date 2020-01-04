@@ -3,6 +3,9 @@ Methods specific to pkdb models
 """
 import logging
 import re
+import roadrunner
+
+logger = logging.getLogger(__name__)
 
 # -------------------------------------------------------------------------------------------------
 # Initial values
@@ -12,7 +15,7 @@ import re
 # tissues to identical values (which removes the distribution kinetics).
 # -------------------------------------------------------------------------------------------------
 
-def init_concentrations_changes(r, skey, value: float):
+def init_concentrations_changes(r: roadrunner.RoadRunner, skey, value: float):
     """ Changes to set initial concentrations for skey.
 
     :param r: roadrunner model
@@ -23,7 +26,7 @@ def init_concentrations_changes(r, skey, value: float):
     return _set_initial_values(r, skey, value, method="concentration")
 
 
-def init_amounts_changes(r, skey, value):
+def init_amounts_changes(r: roadrunner.RoadRunner, skey, value):
     """ Set initial amounts for skey.
 
     :param r: roadrunner model
@@ -34,7 +37,7 @@ def init_amounts_changes(r, skey, value):
     return _set_initial_values(r, skey, value, method="amount")
 
 
-def _set_initial_values(r, sid, value, method="concentration") -> dict:
+def _set_initial_values(r: roadrunner.RoadRunner, sid, value, method="concentration") -> dict:
     """ Setting the initial concentration of a distributing substance.
 
     Takes care of all the compartment values so starting close/in steady state.
@@ -49,14 +52,15 @@ def _set_initial_values(r, sid, value, method="concentration") -> dict:
     species_keys = get_species_keys(sid, species_ids)
 
     changeset = {}
+
     for key in species_keys:
-        if 'urine' in key:
-            logging.warning("urinary values are not set")
-            continue
+
         if method == "concentration":
-            # FIXME: init is only working on species with boundaryCondition=False
-            # rkey = f'init([{key}])'
             rkey = f'[{key}]'
+
+        if 'urine' in rkey:
+            logging.info("urinary values are not set")
+            continue
 
         changeset[rkey] = value
 

@@ -3,8 +3,12 @@ import ray
 import roadrunner
 import pandas as pd
 import logging
+from sbmlsim.model import load_model
 from sbmlsim.timecourse import TimecourseSim, Timecourse
 from sbmlsim.result import Result
+from sbmlsim.simulation import SimulatorWorker, set_integrator_settings
+from sbmlsim.units import Units
+
 
 logger = logging.getLogger(__name__)
 
@@ -13,71 +17,25 @@ ray.init(ignore_reinit_error=True)
 
 
 @ray.remote
-class SimulatorActor(object):
+class SimulatorActor(SimulatorWorker):
     """Ray actor to execute simulations.
     An actor instance is specific for a given model.
-    An actor is essentially a stateful worker"""
-    def __init__(self, path, selections=None):
-        self.r = roadrunner.RoadRunner(path)
-        if not selections:
-            r_model = self.r.model  # type: roadrunner.ExecutableModel
+    An actor is essentially a stateful worker
 
-            self.r.timeCourseSelections = ["time"] \
-                 + r_model.getFloatingSpeciesIds() \
-                 + r_model.getBoundarySpeciesIds() \
-                 + r_model.getGlobalParameterIds() \
-                 + r_model.getReactionIds() \
-                 + r_model.getCompartmentIds()
-            self.r.timeCourseSelections += [f'[{key}]' for key in (
-                    r_model.getFloatingSpeciesIds() + r_model.getBoundarySpeciesIds())]
-        else:
-            self.r.timeCourseSelections = selections
+    # FIXME: currently no setting of integrator settings
+
+    """
+    def __init__(self, path, selections=None):
+        self.r = load_model(path, selections)
+        self.units = Units.get_units_from_sbml(model_path=path)
+        # set_integrator_settings(self.r, **kwargs)
 
     def _timecourses(self, simulations):
-        """"""
+        """Run a bunch of simulations on a single worker."""
         results = []
         for tc_sim in simulations:
             results.append(self.timecourse(tc_sim))
         return results
-
-    def timecourse(self, simulation: TimecourseSim) -> pd.DataFrame:
-        """ Timecourse simulations based on timecourse_definition.
-
-        :param r: Roadrunner model instance
-        :param simulation: Simulation definition(s)
-        :param reset_all: Reset model at the beginning
-        :return:
-        """
-        if isinstance(simulation, Timecourse):
-            simulation = TimecourseSim(timecourses=[simulation])
-
-        if simulation.reset:
-            self.r.resetToOrigin()
-
-        # selections backup
-        model_selections = self.r.timeCourseSelections
-        if simulation.selections is not None:
-            self.r.timeCourseSelections = simulation.selections
-
-        frames = []
-        t_offset = 0.0
-        for tc in simulation.timecourses:
-
-            # apply changes
-            for key, value in tc.changes.items():
-                self.r[key] = value
-
-            # run simulation
-            s = self.r.simulate(start=tc.start, end=tc.end, steps=tc.steps)
-            df = pd.DataFrame(s, columns=s.colnames)
-            df.time = df.time + t_offset
-            frames.append(df)
-            t_offset += tc.end
-
-        # reset selections
-        self.r.timeCourseSelections = model_selections
-
-        return pd.concat(frames)
 
 
 class SimulatorParallel(object):
@@ -97,10 +55,8 @@ class SimulatorParallel(object):
         # read SBML string once, to avoid IO blocking
         with open(path, "r") as f_sbml:
             sbml_str = f_sbml.read()
-        sbml_strings = [sbml_str] * actor_count
 
-        self.simulators = [SimulatorActor.remote(sbml_strings[k], selections) for k in range(actor_count)]
-
+        self.simulators = [SimulatorActor.remote(sbml_str, selections) for _ in range(actor_count)]
 
     def timecourses(self, simulations):
         """ Run all simulations with given model and collect the results.
