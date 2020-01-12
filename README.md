@@ -1,7 +1,10 @@
-
+[![PyPI version](https://badge.fury.io/py/sbmlsim.svg)](https://badge.fury.io/py/sbmlsim)
+[![GitHub version](https://badge.fury.io/gh/matthiaskoenig%2Fsbmlsim.svg)](https://badge.fury.io/gh/matthiaskoenig%2Fsbmlsim)
 [![Build Status](https://travis-ci.org/matthiaskoenig/sbmlsim.svg?branch=develop)](https://travis-ci.org/matthiaskoenig/sbmlsim)
 [![Documentation Status](https://readthedocs.org/projects/sbmlsim/badge/?version=latest)](https://sbmlsim.readthedocs.io/en/latest/)
+[![codecov](https://codecov.io/gh/matthiaskoenig/sbmlsim/branch/develop/graph/badge.svg)](https://codecov.io/gh/matthiaskoenig/sbmlsim)
 [![License (LGPL version 3)](https://img.shields.io/badge/license-LGPLv3.0-blue.svg?style=flat-square)](http://opensource.org/licenses/LGPL-3.0)
+[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.3597770.svg)](https://doi.org/10.5281/zenodo.3597770)
 
 <h1>sbmlsim: SBML simulation made easy</h1>
 <b><a href="https://orcid.org/0000-0003-1725-179X" title="https://orcid.org/0000-0003-1725-179X"><img src="./docs/static/images/orcid.png" height="15"/></a> Matthias König</b>
