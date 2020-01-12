@@ -12,7 +12,7 @@ from typing import List, Tuple
 MODEL_CHANGE_BOUNDARY_CONDITION = "boundary_condition"
 
 
-def load_model(path, selections: List[str] = None) -> roadrunner.RoadRunner:
+def load_model(path: Path, selections: List[str] = None) -> roadrunner.RoadRunner:
     """ Loads the latest model version.
 
     :param path: path to SBML model or SBML string
@@ -22,7 +22,7 @@ def load_model(path, selections: List[str] = None) -> roadrunner.RoadRunner:
     logging.info("Loading: '{}'".format(path))
     if isinstance(path, Path):
         path = str(path)
-    
+
     r = roadrunner.RoadRunner(path)
     set_timecourse_selections(r, selections)
     return r
@@ -64,7 +64,7 @@ def copy_model_state(r_from: roadrunner.RoadRunner, r_to: roadrunner.RoadRunner,
         integrator_name = integrator.getName()
         r_to.setIntegrator(integrator_name)
 
-        settings_keys = integrator.getSettings()   # type: Tuple[str]
+        settings_keys = integrator.getSettings()  # type: Tuple[str]
         print(settings_keys)
         for key in settings_keys:
             r_to.integrator.setValue(key, integrator.getValue(key))
@@ -75,8 +75,8 @@ def copy_model_state(r_from: roadrunner.RoadRunner, r_to: roadrunner.RoadRunner,
         pass
 
 
-
-def clamp_species(r: roadrunner.RoadRunner, sids, boundary_condition=True) -> roadrunner.RoadRunner:
+def clamp_species(r: roadrunner.RoadRunner, sids,
+                  boundary_condition=True) -> roadrunner.RoadRunner:
     """ Clamp/Free specie(s) via setting boundaryCondition=True/False.
 
     This requires changing the SBML and ODE system.
@@ -109,7 +109,8 @@ def clamp_species(r: roadrunner.RoadRunner, sids, boundary_condition=True) -> ro
                 species = sbase  # type: libsbml.Species
                 species.setBoundaryCondition(boundary_condition)
             else:
-                logging.error("SId in clamp does not match species: {}".format(sbase))
+                logging.error(
+                    "SId in clamp does not match species: {}".format(sbase))
                 return None
 
     # create modified roadrunner instance
@@ -123,7 +124,8 @@ def clamp_species(r: roadrunner.RoadRunner, sids, boundary_condition=True) -> ro
 # --------------------------------------
 # Selections
 # --------------------------------------
-def set_timecourse_selections(r: roadrunner.RoadRunner, selections: List[str] = None) -> None:
+def set_timecourse_selections(r: roadrunner.RoadRunner,
+                              selections: List[str] = None) -> None:
     """ Sets the full model selections. """
     if not selections:
         r_model = r.model  # type: roadrunner.ExecutableModel
@@ -135,7 +137,7 @@ def set_timecourse_selections(r: roadrunner.RoadRunner, selections: List[str] = 
                                  + r_model.getReactionIds() \
                                  + r_model.getCompartmentIds()
         r.timeCourseSelections += [f'[{key}]' for key in (
-                    r_model.getFloatingSpeciesIds() + r_model.getBoundarySpeciesIds())]
+                r_model.getFloatingSpeciesIds() + r_model.getBoundarySpeciesIds())]
     else:
         r.timeCourseSelections = selections
 
@@ -159,6 +161,7 @@ def reset_all(r):
             roadrunner.SelectionRecord.FLOATING |
             roadrunner.SelectionRecord.GLOBAL_PARAMETER)
 
+
 # --------------------------------
 # Model information
 # --------------------------------
@@ -168,18 +171,21 @@ def parameter_df(r: roadrunner.RoadRunner) -> pd.DataFrame:
     :return: pandas DataFrame
     """
     r_model = r.model  # type: roadrunner.ExecutableModel
-    doc = libsbml.readSBMLFromString(r.getCurrentSBML())  # type: libsbml.SBMLDocument
+    doc = libsbml.readSBMLFromString(
+        r.getCurrentSBML())  # type: libsbml.SBMLDocument
     model = doc.getModel()  # type: libsbml.Model
     sids = r_model.getGlobalParameterIds()
-    parameters = [model.getParameter(sid) for sid in sids]  # type: List[libsbml.Parameter]
+    parameters = [model.getParameter(sid) for sid in
+                  sids]  # type: List[libsbml.Parameter]
     data = {
         'sid': sids,
         'value': r_model.getGlobalParameterValues(),
         'unit': [p.units for p in parameters],
         'constant': [p.constant for p in parameters],
         'name': [p.name for p in parameters],
-        }
-    df = pd.DataFrame(data, columns=['sid', 'value', 'unit', 'constant', 'name'])
+    }
+    df = pd.DataFrame(data,
+                      columns=['sid', 'value', 'unit', 'constant', 'name'])
     return df
 
 
@@ -195,7 +201,8 @@ def species_df(r: roadrunner.RoadRunner) -> pd.DataFrame:
     model = doc.getModel()  # type: libsbml.Model
 
     sids = r_model.getFloatingSpeciesIds() + r_model.getBoundarySpeciesIds()
-    species = [model.getSpecies(sid) for sid in sids]  # type: List[libsbml.Species]
+    species = [model.getSpecies(sid) for sid in
+               sids]  # type: List[libsbml.Species]
 
     data = {
         'sid': sids,
@@ -213,16 +220,13 @@ def species_df(r: roadrunner.RoadRunner) -> pd.DataFrame:
         'name': [s.getName() for s in species],
     }
 
-    return pd.DataFrame(data, columns=['sid', 'concentration', 'amount', 'unit', 'constant',
-                                'boundaryCondition', 'species', 'name'])
-
-
-
+    return pd.DataFrame(data, columns=['sid', 'concentration', 'amount', 'unit',
+                                       'constant',
+                                       'boundaryCondition', 'species', 'name'])
 
 
 if __name__ == "__main__":
     from sbmlsim.tests.constants import MODEL_REPRESSILATOR
-
 
     from sbmlsim.simulation_serial import SimulatorSerial
     from sbmlsim.result import Result
@@ -231,13 +235,14 @@ if __name__ == "__main__":
 
     # running first simulation
     simulator = SimulatorSerial(MODEL_REPRESSILATOR)
-    result = simulator.timecourse(Timecourse(0, 100, 201,))
+    result = simulator.timecourse(Timecourse(0, 100, 201, ))
 
     # make a copy of current model with state
     r_copy = copy_model(simulator.r)
 
     # continue simulation
-    result2 = simulator.timecourse(TimecourseSim(Timecourse(100, 200, 201), reset=False))
+    result2 = simulator.timecourse(
+        TimecourseSim(Timecourse(100, 200, 201), reset=False))
 
     plt.plot(result.time, result.X)
     plt.plot(result2.time, result2.X)
@@ -248,14 +253,7 @@ if __name__ == "__main__":
         simulator2 = SimulatorSerial(path=None)
         simulator2.r = r_copy
         result3 = simulator2.timecourse(TimecourseSim(Timecourse(100, 200, 201),
-                                                     reset=False))
+                                                      reset=False))
         plt.plot(result.time, result.X)
         plt.plot(result3.time, result3.X)
         plt.show()
-
-
-
-
-
-
-

@@ -1,11 +1,19 @@
 import pandas as pd
 
-import sbmlsim
-from sbmlsim.model import load_model
 from sbmlsim.simulation_serial import SimulatorSerial as Simulator
 from sbmlsim.timecourse import Timecourse, TimecourseSim, ensemble
 from sbmlsim.tests.constants import MODEL_REPRESSILATOR
 from sbmlsim.result import Result
+
+
+def test_create_simulator():
+    simulator = Simulator(MODEL_REPRESSILATOR)
+    assert simulator
+
+
+def test_create_simulator_strpath():
+    simulator = Simulator(str(MODEL_REPRESSILATOR))
+    assert simulator
 
 
 def test_timecourse_simulation():

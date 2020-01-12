@@ -28,7 +28,8 @@ NBDIR=$DIR/notebooks
 
 # convert the notebooks to rst after running headlessly
 # if errors should abort, remove the --allow-errors option
-jupyter nbconvert --ExecutePreprocessor.timeout=600 --to=rst --allow-errors --execute $NBDIR/*.ipynb
+# jupyter nbconvert --ExecutePreprocessor.timeout=600 --to=rst --allow-errors --execute $NBDIR/*.ipynb
+jupyter nbconvert --ExecutePreprocessor.timeout=600 --to=rst --execute $NBDIR/*.ipynb
 
 echo "--------------------------------------"
 echo "postprocessing notebooks rst"

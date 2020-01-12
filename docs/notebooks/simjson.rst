@@ -14,7 +14,7 @@ https://github.com/matthiaskoenig/sbmlsim/tree/develop/docs/notebooks
 
 .. parsed-literal::
 
-    0.1.0a1
+    0.1.0
 
 
 Timecourse simulation
@@ -43,6 +43,7 @@ We can convert the timecourse simulation into JSON via
     {
       "timecourses": [
         {
+          "normalized": false,
           "start": 0,
           "end": 60,
           "steps": 60,
@@ -51,7 +52,8 @@ We can convert the timecourse simulation into JSON via
         }
       ],
       "selections": null,
-      "reset": true
+      "reset": true,
+      "time_offset": 0.0
     }
 
 
@@ -66,11 +68,26 @@ We can now run the simulation with a given model, here with the
 
 .. code:: ipython3
 
+    from pathlib import Path
     from sbmlsim.simulation_serial import SimulatorSerial as Simulator
     
     simulator = Simulator("./models/repressilator.xml")
     result = simulator.timecourses(tcsim)
     print(result)
+
+
+.. parsed-literal::
+
+    WARNING:pint.util:Redefining 'yr' (<class 'pint.definitions.UnitDefinition'>)
+    WARNING:sbmlsim.units:substance or volume unit missing, impossible to determine concentration unit for [PX])
+    WARNING:sbmlsim.units:substance or volume unit missing, impossible to determine concentration unit for [PY])
+    WARNING:sbmlsim.units:substance or volume unit missing, impossible to determine concentration unit for [PZ])
+    WARNING:sbmlsim.units:substance or volume unit missing, impossible to determine concentration unit for [X])
+    WARNING:sbmlsim.units:substance or volume unit missing, impossible to determine concentration unit for [Y])
+    WARNING:sbmlsim.units:substance or volume unit missing, impossible to determine concentration unit for [Z])
+    WARNING:sbmlsim.units:DerivedUnit not found in UnitDefinitions: 1/(item)
+    WARNING:sbmlsim.units:DerivedUnit not found in UnitDefinitions: 1/(item)
+    WARNING:sbmlsim.units:DerivedUnit not found in UnitDefinitions: 1/(item)
 
 
 .. parsed-literal::
@@ -90,7 +107,7 @@ We can now run the simulation with a given model, here with the
 
 .. parsed-literal::
 
-    WARNING:root:For a single simulation the mean is the actual simulation
+    WARNING:root:For a single simulation the mean returns the single simulation
 
 
 
@@ -140,7 +157,7 @@ We can now run the simulation with a given model, here with the
       </thead>
       <tbody>
         <tr>
-          <td>0</td>
+          <th>0</th>
           <td>0.0</td>
           <td>0.000000</td>
           <td>0.000000</td>
@@ -164,7 +181,7 @@ We can now run the simulation with a given model, here with the
           <td>0.000000</td>
         </tr>
         <tr>
-          <td>1</td>
+          <th>1</th>
           <td>1.0</td>
           <td>81.440426</td>
           <td>188.382020</td>
@@ -188,7 +205,7 @@ We can now run the simulation with a given model, here with the
           <td>7.491014</td>
         </tr>
         <tr>
-          <td>2</td>
+          <th>2</th>
           <td>2.0</td>
           <td>218.538704</td>
           <td>358.026782</td>
@@ -212,7 +229,7 @@ We can now run the simulation with a given model, here with the
           <td>5.866252</td>
         </tr>
         <tr>
-          <td>3</td>
+          <th>3</th>
           <td>3.0</td>
           <td>337.622362</td>
           <td>469.625864</td>
@@ -236,7 +253,7 @@ We can now run the simulation with a given model, here with the
           <td>4.403620</td>
         </tr>
         <tr>
-          <td>4</td>
+          <th>4</th>
           <td>4.0</td>
           <td>428.938247</td>
           <td>536.662776</td>
@@ -260,7 +277,7 @@ We can now run the simulation with a given model, here with the
           <td>3.295798</td>
         </tr>
         <tr>
-          <td>...</td>
+          <th>...</th>
           <td>...</td>
           <td>...</td>
           <td>...</td>
@@ -284,7 +301,7 @@ We can now run the simulation with a given model, here with the
           <td>...</td>
         </tr>
         <tr>
-          <td>56</td>
+          <th>56</th>
           <td>56.0</td>
           <td>218.684319</td>
           <td>113.893055</td>
@@ -308,7 +325,7 @@ We can now run the simulation with a given model, here with the
           <td>11.909906</td>
         </tr>
         <tr>
-          <td>57</td>
+          <th>57</th>
           <td>57.0</td>
           <td>205.724492</td>
           <td>121.680149</td>
@@ -332,7 +349,7 @@ We can now run the simulation with a given model, here with the
           <td>11.063379</td>
         </tr>
         <tr>
-          <td>58</td>
+          <th>58</th>
           <td>58.0</td>
           <td>193.568968</td>
           <td>130.811333</td>
@@ -356,7 +373,7 @@ We can now run the simulation with a given model, here with the
           <td>10.156582</td>
         </tr>
         <tr>
-          <td>59</td>
+          <th>59</th>
           <td>59.0</td>
           <td>182.181259</td>
           <td>141.421225</td>
@@ -380,7 +397,7 @@ We can now run the simulation with a given model, here with the
           <td>9.218230</td>
         </tr>
         <tr>
-          <td>60</td>
+          <th>60</th>
           <td>60.0</td>
           <td>171.525463</td>
           <td>153.656610</td>
@@ -476,7 +493,18 @@ the ``Timecourse`` object.
 
 .. parsed-literal::
 
-    WARNING:root:For a single simulation the mean is the actual simulation
+    WARNING:pint.util:Redefining 'yr' (<class 'pint.definitions.UnitDefinition'>)
+    WARNING:sbmlsim.units:substance or volume unit missing, impossible to determine concentration unit for [PX])
+    WARNING:sbmlsim.units:substance or volume unit missing, impossible to determine concentration unit for [PY])
+    WARNING:sbmlsim.units:substance or volume unit missing, impossible to determine concentration unit for [PZ])
+    WARNING:sbmlsim.units:substance or volume unit missing, impossible to determine concentration unit for [X])
+    WARNING:sbmlsim.units:substance or volume unit missing, impossible to determine concentration unit for [Y])
+    WARNING:sbmlsim.units:substance or volume unit missing, impossible to determine concentration unit for [Z])
+    WARNING:sbmlsim.units:DerivedUnit not found in UnitDefinitions: 1/(item)
+    WARNING:sbmlsim.units:DerivedUnit not found in UnitDefinitions: 1/(item)
+    WARNING:sbmlsim.units:DerivedUnit not found in UnitDefinitions: 1/(item)
+    WARNING:sbmlsim.timecourse:No units provided, assuming model units: n = 5 dimensionless
+    WARNING:root:For a single simulation the mean returns the single simulation
 
 
 
@@ -488,17 +516,24 @@ the ``Timecourse`` object.
     {
       "timecourses": [
         {
+          "normalized": true,
           "start": 0,
           "end": 60,
           "steps": 60,
           "changes": {
-            "n": 5
+            "n": {
+              "_magnitude": 5,
+              "_units": "dimensionless",
+              "_Quantity__used": false,
+              "_Quantity__handling": null
+            }
           },
           "model_changes": {}
         }
       ],
       "selections": null,
-      "reset": true
+      "reset": true,
+      "time_offset": 0.0
     }
 
 
@@ -525,7 +560,18 @@ corresponding changes ``{'X': 100}`` to the ``Timecourse``.
 
 .. parsed-literal::
 
-    WARNING:root:For a single simulation the mean is the actual simulation
+    WARNING:pint.util:Redefining 'yr' (<class 'pint.definitions.UnitDefinition'>)
+    WARNING:sbmlsim.units:substance or volume unit missing, impossible to determine concentration unit for [PX])
+    WARNING:sbmlsim.units:substance or volume unit missing, impossible to determine concentration unit for [PY])
+    WARNING:sbmlsim.units:substance or volume unit missing, impossible to determine concentration unit for [PZ])
+    WARNING:sbmlsim.units:substance or volume unit missing, impossible to determine concentration unit for [X])
+    WARNING:sbmlsim.units:substance or volume unit missing, impossible to determine concentration unit for [Y])
+    WARNING:sbmlsim.units:substance or volume unit missing, impossible to determine concentration unit for [Z])
+    WARNING:sbmlsim.units:DerivedUnit not found in UnitDefinitions: 1/(item)
+    WARNING:sbmlsim.units:DerivedUnit not found in UnitDefinitions: 1/(item)
+    WARNING:sbmlsim.units:DerivedUnit not found in UnitDefinitions: 1/(item)
+    WARNING:sbmlsim.timecourse:No units provided, assuming model units: X = 100 dimensionless
+    WARNING:root:For a single simulation the mean returns the single simulation
 
 
 
@@ -537,17 +583,24 @@ corresponding changes ``{'X': 100}`` to the ``Timecourse``.
     {
       "timecourses": [
         {
+          "normalized": true,
           "start": 0,
           "end": 60,
           "steps": 60,
           "changes": {
-            "X": 100
+            "X": {
+              "_magnitude": 100,
+              "_units": "dimensionless",
+              "_Quantity__used": false,
+              "_Quantity__handling": null
+            }
           },
           "model_changes": {}
         }
       ],
       "selections": null,
-      "reset": true
+      "reset": true,
+      "time_offset": 0.0
     }
 
 
@@ -581,7 +634,18 @@ in concentration.
 
 .. parsed-literal::
 
-    WARNING:root:For a single simulation the mean is the actual simulation
+    WARNING:pint.util:Redefining 'yr' (<class 'pint.definitions.UnitDefinition'>)
+    WARNING:sbmlsim.units:substance or volume unit missing, impossible to determine concentration unit for [PX])
+    WARNING:sbmlsim.units:substance or volume unit missing, impossible to determine concentration unit for [PY])
+    WARNING:sbmlsim.units:substance or volume unit missing, impossible to determine concentration unit for [PZ])
+    WARNING:sbmlsim.units:substance or volume unit missing, impossible to determine concentration unit for [X])
+    WARNING:sbmlsim.units:substance or volume unit missing, impossible to determine concentration unit for [Y])
+    WARNING:sbmlsim.units:substance or volume unit missing, impossible to determine concentration unit for [Z])
+    WARNING:sbmlsim.units:DerivedUnit not found in UnitDefinitions: 1/(item)
+    WARNING:sbmlsim.units:DerivedUnit not found in UnitDefinitions: 1/(item)
+    WARNING:sbmlsim.units:DerivedUnit not found in UnitDefinitions: 1/(item)
+    WARNING:sbmlsim.timecourse:No units provided, assuming model units: [Y] = 50 dimensionless
+    WARNING:root:For a single simulation the mean returns the single simulation
 
 
 
@@ -593,17 +657,24 @@ in concentration.
     {
       "timecourses": [
         {
+          "normalized": true,
           "start": 0,
           "end": 60,
           "steps": 60,
           "changes": {
-            "[Y]": 50
+            "[Y]": {
+              "_magnitude": 50,
+              "_units": "dimensionless",
+              "_Quantity__used": false,
+              "_Quantity__handling": null
+            }
           },
           "model_changes": {}
         }
       ],
       "selections": null,
-      "reset": true
+      "reset": true,
+      "time_offset": 0.0
     }
 
 
@@ -636,7 +707,20 @@ beginning of the ``Timecourse``. For instance to change the amount of
 
 .. parsed-literal::
 
-    WARNING:root:For a single simulation the mean is the actual simulation
+    WARNING:pint.util:Redefining 'yr' (<class 'pint.definitions.UnitDefinition'>)
+    WARNING:sbmlsim.units:substance or volume unit missing, impossible to determine concentration unit for [PX])
+    WARNING:sbmlsim.units:substance or volume unit missing, impossible to determine concentration unit for [PY])
+    WARNING:sbmlsim.units:substance or volume unit missing, impossible to determine concentration unit for [PZ])
+    WARNING:sbmlsim.units:substance or volume unit missing, impossible to determine concentration unit for [X])
+    WARNING:sbmlsim.units:substance or volume unit missing, impossible to determine concentration unit for [Y])
+    WARNING:sbmlsim.units:substance or volume unit missing, impossible to determine concentration unit for [Z])
+    WARNING:sbmlsim.units:DerivedUnit not found in UnitDefinitions: 1/(item)
+    WARNING:sbmlsim.units:DerivedUnit not found in UnitDefinitions: 1/(item)
+    WARNING:sbmlsim.units:DerivedUnit not found in UnitDefinitions: 1/(item)
+    WARNING:sbmlsim.timecourse:No units provided, assuming model units: n = 5 dimensionless
+    WARNING:sbmlsim.timecourse:No units provided, assuming model units: X = 100 dimensionless
+    WARNING:sbmlsim.timecourse:No units provided, assuming model units: [Y] = 50 dimensionless
+    WARNING:root:For a single simulation the mean returns the single simulation
 
 
 
@@ -648,19 +732,36 @@ beginning of the ``Timecourse``. For instance to change the amount of
     {
       "timecourses": [
         {
+          "normalized": true,
           "start": 0,
           "end": 60,
           "steps": 60,
           "changes": {
-            "n": 5,
-            "X": 100,
-            "[Y]": 50
+            "n": {
+              "_magnitude": 5,
+              "_units": "dimensionless",
+              "_Quantity__used": false,
+              "_Quantity__handling": null
+            },
+            "X": {
+              "_magnitude": 100,
+              "_units": "dimensionless",
+              "_Quantity__used": false,
+              "_Quantity__handling": null
+            },
+            "[Y]": {
+              "_magnitude": 50,
+              "_units": "dimensionless",
+              "_Quantity__used": false,
+              "_Quantity__handling": null
+            }
           },
           "model_changes": {}
         }
       ],
       "selections": null,
-      "reset": true
+      "reset": true,
+      "time_offset": 0.0
     }
 
 
@@ -709,7 +810,20 @@ parts.
 
 .. parsed-literal::
 
-    WARNING:root:For a single simulation the mean is the actual simulation
+    WARNING:pint.util:Redefining 'yr' (<class 'pint.definitions.UnitDefinition'>)
+    WARNING:sbmlsim.units:substance or volume unit missing, impossible to determine concentration unit for [PX])
+    WARNING:sbmlsim.units:substance or volume unit missing, impossible to determine concentration unit for [PY])
+    WARNING:sbmlsim.units:substance or volume unit missing, impossible to determine concentration unit for [PZ])
+    WARNING:sbmlsim.units:substance or volume unit missing, impossible to determine concentration unit for [X])
+    WARNING:sbmlsim.units:substance or volume unit missing, impossible to determine concentration unit for [Y])
+    WARNING:sbmlsim.units:substance or volume unit missing, impossible to determine concentration unit for [Z])
+    WARNING:sbmlsim.units:DerivedUnit not found in UnitDefinitions: 1/(item)
+    WARNING:sbmlsim.units:DerivedUnit not found in UnitDefinitions: 1/(item)
+    WARNING:sbmlsim.units:DerivedUnit not found in UnitDefinitions: 1/(item)
+    WARNING:sbmlsim.timecourse:No units provided, assuming model units: X = 20 dimensionless
+    WARNING:sbmlsim.timecourse:No units provided, assuming model units: n = 20 dimensionless
+    WARNING:sbmlsim.timecourse:No units provided, assuming model units: n = 2 dimensionless
+    WARNING:root:For a single simulation the mean returns the single simulation
 
 
 
@@ -721,35 +835,54 @@ parts.
     {
       "timecourses": [
         {
+          "normalized": true,
           "start": 0,
           "end": 120,
           "steps": 60,
           "changes": {
-            "X": 20
+            "X": {
+              "_magnitude": 20,
+              "_units": "dimensionless",
+              "_Quantity__used": false,
+              "_Quantity__handling": null
+            }
           },
           "model_changes": {}
         },
         {
+          "normalized": true,
           "start": 0,
           "end": 240,
           "steps": 120,
           "changes": {
-            "n": 20
+            "n": {
+              "_magnitude": 20,
+              "_units": "dimensionless",
+              "_Quantity__used": false,
+              "_Quantity__handling": null
+            }
           },
           "model_changes": {}
         },
         {
+          "normalized": true,
           "start": 0,
           "end": 240,
           "steps": 120,
           "changes": {
-            "n": 2
+            "n": {
+              "_magnitude": 2,
+              "_units": "dimensionless",
+              "_Quantity__used": false,
+              "_Quantity__handling": null
+            }
           },
           "model_changes": {}
         }
       ],
       "selections": null,
-      "reset": true
+      "reset": true,
+      "time_offset": 0.0
     }
 
 

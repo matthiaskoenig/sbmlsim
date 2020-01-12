@@ -41,12 +41,13 @@ class DataSet(pd.DataFrame):
 
 
 if __name__ == "__main__":
-    df = pd.DataFrame({'col1': [1,2,3], 'col2': [2,3,4], "col3": [4, 5, 6]})
+    df = pd.DataFrame({'col1': [1, 2, 3],
+                       'col2': [2, 3, 4],
+                       "col3": [4, 5, 6]})
     print(df)
     dset = DataSet.from_df(df, udict={"col1": "mM"}, ureg="test")
     print(dset)
     print(dset.udict)
-    dset2 = dset[dset.col1>1]
+    dset2 = dset[dset.col1 > 1]
     print(dset2)
     print(dset2.udict)
-

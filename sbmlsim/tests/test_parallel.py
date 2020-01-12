@@ -6,6 +6,7 @@ from sbmlsim.simulation_ray import SimulatorParallel as Simulator
 from sbmlsim.tests.constants import MODEL_GLCWB
 
 
+@pytest.mark.skip
 def test_simulation_parallel():
     tcsims = []
 

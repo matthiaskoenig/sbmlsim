@@ -39,7 +39,6 @@ def get_simulation_keys(diff_path):
     return sorted(simulation_keys)
 
 
-
 class DataSetsComparison(object):
     """ Comparing multiple simulation results.
 
@@ -69,7 +68,6 @@ class DataSetsComparison(object):
             if len(df) != Nt:
                 raise ValueError(f"DataFrame have different length (number of rows): "
                                  f"{len(df)} != {Nt} ({label})")
-
 
         # check that time column exist in data frames
         for label, df in dfs_dict.items():
