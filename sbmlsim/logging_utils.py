@@ -8,6 +8,7 @@ coloredlogs.install(
     fmt='%(levelname)s %(message)s'  # "%(module)s:%(lineno)s %(funcName)s %(levelname) -10s %(message)s"
 )
 
+
 class bcolors:
     """ Colors for styling log. """
     HEADER = '\033[95m'

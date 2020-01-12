@@ -1,15 +1,22 @@
 {
   "timecourses": [
     {
+      "normalized": true,
       "start": 0,
       "end": 60,
       "steps": 60,
       "changes": {
-        "n": 5
+        "n": {
+          "_magnitude": 5,
+          "_units": "dimensionless",
+          "_Quantity__used": false,
+          "_Quantity__handling": null
+        }
       },
       "model_changes": {}
     }
   ],
   "selections": null,
-  "reset": true
+  "reset": true,
+  "time_offset": 0.0
 }

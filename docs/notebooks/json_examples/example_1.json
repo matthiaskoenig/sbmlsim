@@ -1,6 +1,7 @@
 {
   "timecourses": [
     {
+      "normalized": false,
       "start": 0,
       "end": 60,
       "steps": 60,
@@ -9,5 +10,6 @@
     }
   ],
   "selections": null,
-  "reset": true
+  "reset": true,
+  "time_offset": 0.0
 }

@@ -114,8 +114,8 @@ class SimulationExperiment(object):
         return self._scan_results
 
     def simulate(self, Simulator=SimulatorSerial,
-                  absolute_tolerance=1E-12,
-                  relative_tolerance=1E-12):
+                 absolute_tolerance=1E-12,
+                 relative_tolerance=1E-12):
         """Run simulations & scans.
 
         This should not be called directly, but the results of the simulations

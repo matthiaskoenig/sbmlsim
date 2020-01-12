@@ -69,7 +69,7 @@ class Units(object):
         return ureg
 
     @classmethod
-    def get_units_from_sbml(cls, model_path):
+    def get_units_from_sbml(cls, model_path: Path):
         """ Get pint unit dictionary for given model.
 
         :param model_path: path to SBML model
@@ -78,7 +78,7 @@ class Units(object):
         if isinstance(model_path, Path):
             doc = libsbml.readSBMLFromFile(str(model_path))  # type: libsbml.SBMLDocument
         elif isinstance(model_path, str):
-            doc = libsbml.readSBMLFromString(model_path)
+            doc = libsbml.readSBMLFromFile(model_path)
 
         # parse unit registry
         ureg = cls.ureg_from_sbml(doc)

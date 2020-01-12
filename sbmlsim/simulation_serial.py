@@ -3,6 +3,7 @@ Serial simulator.
 """
 import logging
 from typing import List
+from pathlib import Path
 
 from sbmlsim.simulation import SimulatorAbstract, SimulatorWorker, set_integrator_settings
 from sbmlsim.model import load_model
@@ -14,7 +15,7 @@ logger = logging.getLogger(__name__)
 
 
 class SimulatorSerial(SimulatorAbstract, SimulatorWorker):
-    def __init__(self, path, selections: List[str] = None, **kwargs):
+    def __init__(self, path: Path, selections: List[str] = None, **kwargs):
         """
 
         :param path: Path to model
