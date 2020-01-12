@@ -36,7 +36,7 @@ setup_kwargs['long_description'] = long_description
 setup(
     name='sbmlsim',
     description='SBML simulation made easy',
-    url='https://github.com/matthiaskoenig/sbmlutils',
+    url='https://github.com/matthiaskoenig/sbmlsim',
     author='Matthias König',
     author_email='konigmatt@googlemail.com',
     license='LGPLv3',

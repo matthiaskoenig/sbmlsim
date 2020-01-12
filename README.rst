@@ -1,6 +1,8 @@
 sbmlsim: SBML simulation made easy
 ==================================
 
-``sbmlsim``
+``sbmlutils`` contains helpers for simulation experiments with SBML models.
 
-© 2017-2019 Matthias König
+Documentation is available at https://sbmlsim.readthedocs.io
+
+© 2019-2020 Matthias König
