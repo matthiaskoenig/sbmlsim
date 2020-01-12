@@ -50,6 +50,7 @@ and can be started from within `jupyterlab`
 (sbmlsim) jupyter lab
 ```
 
+## Release notes
 ### 0.1.0
 * python 3.7 support (dropping py3.5)
 
