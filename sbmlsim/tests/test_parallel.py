@@ -24,5 +24,4 @@ def test_simulation_parallel():
         tcsims.append(tc_sim)
 
     simulator = Simulator(path=MODEL_GLCWB, actor_count=15)
-
     results = simulator.timecourses(simulations=tcsims)

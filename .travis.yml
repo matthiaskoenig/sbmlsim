@@ -1,26 +1,25 @@
 language: python
 matrix:
   include:
-    - os: linux
-      sudo: required
-      python: 3.6
-    - os: linux
-      sudo: required
-      python: 3.7
+  - os: linux
+    sudo: required
+    python: 3.6
+  - os: linux
+    sudo: required
+    python: 3.7
 
-
-before_install:
-   sudo apt-get install -y libhdf5-serial-dev
-
-install:
-  pip install -r requirements.txt
-
-script:
-  pytest --cov=sbmlsim
-
-after_success:
-   pip install codecov; codecov
-
+before_install: sudo apt-get install -y libhdf5-serial-dev
+install: pip install -r requirements.txt
+script: pytest --cov=sbmlsim
+after_success: pip install codecov; codecov
 cache:
   directories:
-    - $HOME/.cache/pip
+  - "$HOME/.cache/pip"
+
+deploy:
+  provider: pypi
+  user: __token__
+  password:
+    secure: qaZaX/l6ChPbJXql4FJo5rlZ9nJ4eYoxgsanWLrvc3eNrt4bOjSDIdMfNTIi9ptp07HNq1v8ixWH7zJPBIZTmYPSV/Od2oA5sT7cETSdB6MRoUmRh4orxY5489Xb4K3eqh/XQE3sseHl/JBVv4Uf+kIIHJdVDkbIwpqP+h2JFm9kkBrqv/R73HSBnyI2GHnWyTWO9tDQYmx03MBiPvOhdceHDlkbnNYCANqppDIE20Bbvvtj96/M6/K3Es4lmQE35Rgf3uk6s6Ut6oSubla0S3OCiszyJb2euS1OX2CygoG5xFhCe8PAf57iyoIwJpzYODCkpL8+CwQWpFJBSkCuK6DbaBV5PukIIISN/15M1nSf7rCGhKk8r2wo2rRV8CWBwZW9s8jlpMng1NkL+bHi99wE2BZKv3vKbCSDTxifI2yq95CTNeifNjjcR3ERzKwOGr97EYLAEISzixAPcbeOv7uF7/0OxQI2Tu8o/Y7X9KLvTxbwhHcz1Uzvm9OEudRYKzQAIQZkGVIJhOCbhHj7pe4zMfXqz8cvWPTuBbY82BTrUeuDImHBFOjzeQ8kia8dy4u+QoohLuomxFiGbhxOHQ6VJQD+vqKR2SKOpQTJeMYDJhI3cPgldZuTp2DHAbXZM1f+VUrFmqefFYot8JeUF88Aorv4vWsAZqROj9hhsUE=
+  on:
+    branch: master
