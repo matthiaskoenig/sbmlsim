@@ -5,7 +5,7 @@ import os
 import json
 import pandas as pd
 import inspect
-
+from dataclasses import dataclass, field
 
 from sbmlsim.model import load_model
 from sbmlsim.simulation_serial import SimulatorSerial
@@ -46,7 +46,7 @@ class SimulationExperiment(object):
     def model_path(self, model_path):
         self._model_path = model_path
         if model_path:
-            logging.warning(f"Reading model: {model_path.resolve()}")
+            logging.info(f"Reading model: {model_path.resolve()}")
             self.r = load_model(self._model_path)
             self.udict, self.ureg = Units.get_units_from_sbml(self._model_path)
         else:
@@ -57,25 +57,25 @@ class SimulationExperiment(object):
     @property
     def simulations(self) -> Dict[str, TimecourseSim]:
         """ Simulation definitions. """
-        logger.warning(f"No simulations defined for '{self.sid}'.")
+        logger.debug(f"No simulations defined for '{self.sid}'.")
         return {}
 
     @property
     def scans(self) -> Dict[str, TimecourseScan]:
         """ Scan definitions. """
-        logger.warning(f"No scans defined for '{self.sid}'.")
+        logger.debug(f"No scans defined for '{self.sid}'.")
         return {}
 
     @property
     def datasets(self) -> Dict[str, pd.DataFrame]:
         """ Datasets. """
-        logger.warning(f"No datasets defined for '{self.sid}'.")
+        logger.debug(f"No datasets defined for '{self.sid}'.")
         return {}
 
     @property
     def figures(self) -> Dict[str, Figure]:
         """ Figures."""
-        logger.warning(f"No figures defined for '{self.sid}'.")
+        logger.debug(f"No figures defined for '{self.sid}'.")
         return {}
 
     def load_data(self, sid, **kwargs):
@@ -320,10 +320,35 @@ def function_name():
     return inspect.getframeinfo(frame).function
 
 
-def run_experiment(cls_experiment, output_path, model_path, data_path, show_figures=True):
-    """ Run given experiment.
+@dataclass
+class ExperimentResult:
+    experiment: SimulationExperiment
+    output_path: Path
+    model_path: Path
+    data_path: Path
+    results_path: Path
+
+
+def run_experiment(cls_experiment: SimulationExperiment,
+                   output_path: Path,
+                   model_path: Path,
+                   data_path: Path, show_figures:bool=True) -> ExperimentResult:
+    """
+    Run given experiment.
     Returns info dictionary.
     """
+    # path operations
+    if not Path.exists(model_path):
+        raise IOError(f"'model_path' does not exist: '{model_path}'")
+    if not Path.exists(data_path):
+        raise IOError(f"'data_path' does not exist: '{data_path}'")
+    if not Path.is_dir(data_path):
+        raise IOError(f"'data_path' is not a directory: '{data_path}'")
+
+    if not Path.exists(output_path):
+        Path.mkdir(output_path, parents=True)
+        logging.info(f"'output_path' created: '{output_path}'")
+
     # create experiment
     exp = cls_experiment(model_path=model_path,
                          data_path=data_path)  # type: SimulationExperiment
@@ -334,16 +359,17 @@ def run_experiment(cls_experiment, output_path, model_path, data_path, show_figu
     exp.save_figures(output_path)
 
     # save results
-    path_results = output_path / "sbmlsim"
-    if not path_results.exists():
-        os.mkdir(path_results)
-    exp.save_results(path_results)
+    results_path = output_path
+    if not results_path.exists():
+        os.mkdir(results_path)
+    exp.save_results(results_path)
 
     # create and save data sets
-    exp.save_datasets(path_results)
+    exp.save_datasets(results_path)
 
     # save json representation
-    # exp.to_json(output_path / f"{exp.sid}.json")
+    # FIXME: update json simulations
+    exp.to_json(output_path / f"{exp.sid}.json")
 
     # display figures
     if show_figures:
@@ -352,9 +378,10 @@ def run_experiment(cls_experiment, output_path, model_path, data_path, show_figu
     # create markdown report
     # exp.to_markdown(output_path)
 
-    return {
-        'experiment': exp,
-        'output_path': output_path,
-        'model_path': model_path,
-        'data_path': data_path,
-    }
+    return ExperimentResult(
+        experiment=exp,
+        output_path=output_path,
+        model_path=model_path,
+        data_path=data_path,
+        results_path=results_path,
+    )

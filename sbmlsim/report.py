@@ -5,47 +5,54 @@ import sys
 import os
 import logging
 import jinja2
-
+from typing import Dict, List
+from pathlib import Path
+from sbmlsim.experiment import ExperimentResult
 from sbmlsim import TEMPLATE_PATH, BASE_PATH
 from sbmlsim import __version__
 
 logger = logging.getLogger(__name__)
 
 
-def create_report(results, output_path):
-    """ Creates markdown files results."""
+def create_report(results: Dict[str, ExperimentResult], output_path: Path, repository=None):
+    """ Creates markdown report.
+
+    Processes dictionary of ExperimentResuls to generate
+    overall report.
+    """
     env = jinja2.Environment(loader=jinja2.FileSystemLoader(str(TEMPLATE_PATH)),
                              extensions=['jinja2.ext.autoescape'],
                              trim_blocks=True,
                              lstrip_blocks=True)
 
     exp_ids = []
-    for item in results:
-        exp = item['experiment']
-        exp_id = exp.sid
+    for exp_result in results:
+        experiment = exp_result.experiment
+        exp_id = experiment.sid
         exp_ids.append(exp_id)
 
         # relative paths to output path
-        model_path = os.path.relpath(str(item['model_path']), output_path)
+        model_path = os.path.relpath(str(exp_result.model_path), output_path)
         report_path = f"{model_path[:-4]}.html"
-        data_path = os.path.relpath(str(item['data_path']), output_path)
+        data_path = os.path.relpath(str(exp_result.data_path), output_path)
 
-        code_path = sys.modules[exp.__module__].__file__
+        code_path = sys.modules[experiment.__module__].__file__
         with open(code_path, "r") as f_code:
             code = f_code.read()
         code_path = os.path.relpath(code_path, BASE_PATH.parent)
-        code_path = "https:/" + os.path.join("/github.com/matthiaskoenig/exsimo/tree/master/", code_path)
-        print(code_path)
+        if repository:
+            code_path = f"https:/{repository}/{code_path}"
+        logger.debug(code_path)
 
         context = {
             'exp_id': exp_id,
             'model_path': model_path,
             'report_path': report_path,
             'data_path': data_path,
-            'datasets': sorted(exp.datasets.keys()),
-            'simulations': sorted(exp.simulations.keys()),
-            'scans': sorted(exp.simulations.keys()),
-            'figures': sorted(exp.figures.keys()),
+            'datasets': sorted(experiment.datasets.keys()),
+            'simulations': sorted(experiment.simulations.keys()),
+            'scans': sorted(experiment.simulations.keys()),
+            'figures': sorted(experiment.figures.keys()),
             'code_path': code_path,
             'code': code,
         }

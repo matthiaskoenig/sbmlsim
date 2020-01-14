@@ -69,7 +69,7 @@ class Result(object):
     @cached_property
     def mean(self):
         if len(self) == 1:
-            logging.warning("For a single simulation the mean returns the single simulation")
+            logging.debug("For a single simulation the mean returns the single simulation")
             return self.frames[0]
         else:
             return pd.DataFrame(np.mean(self.data, axis=2), columns=self.columns)
