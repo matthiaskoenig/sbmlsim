@@ -3,9 +3,6 @@ matrix:
   include:
   - os: linux
     sudo: required
-    python: 3.6
-  - os: linux
-    sudo: required
     python: 3.7
 
 before_install: sudo apt-get install -y libhdf5-serial-dev

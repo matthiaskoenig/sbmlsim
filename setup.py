@@ -45,7 +45,6 @@ setup(
         'Intended Audience :: Science/Research',
         'License :: OSI Approved :: GNU Lesser General Public License v3 (LGPLv3)',
         'Operating System :: OS Independent',
-        'Programming Language :: Python :: 3.6',
         'Programming Language :: Python :: 3.7',
         'Programming Language :: Cython',
         'Programming Language :: Python :: Implementation :: CPython',
@@ -63,7 +62,7 @@ setup(
     },
     include_package_data=True,
     zip_safe=False,
-    python_requires='>=3.6',
+    python_requires='>=3.7',
     # List run-time dependencies here.  These will be installed by pip when
     install_requires=[
         "pip>=19.3.1",
@@ -72,7 +71,7 @@ setup(
         "pandas>=0.25.3",
         "tables>0.3.6",
         "python-libsbml-experimental>=5.18.1",
-        "libroadrunner>=1.5.4",
+        "libroadrunner>=1.6.0",
         "psutil>=5.6.3",
         "setproctitle>=1.1.10",
         "ray>=0.8.0",

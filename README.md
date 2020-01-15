@@ -11,7 +11,7 @@
 
 `sbmlsim`: SBML simulation made easy
 
-For documentation and examples see https://sbmlsim.readthedocs.io
+For documentation and examples see https://sbmlsim.readthedocs.io. `sbmlsim` is working and tested with `py3.7`. We only support the latest version, i.e. with the release of a new version all support for older versions is stopped. 
 
 ### License
 * Source Code: [LGPLv3](http://opensource.org/licenses/LGPL-3.0)
@@ -36,7 +36,7 @@ git clone https://github.com/matthiaskoenig/sbmlsim.git
 
 # virtualenv
 cd sbmlsim
-mkvirtualenv sbmlsim --python=python3.6
+mkvirtualenv sbmlsim --python=python3.7
 (sbmlsim) pip install -e .
 ```
 The notebook support can be installed via
@@ -54,6 +54,9 @@ and can be started from within `jupyterlab`
 ```
 
 ## Release notes
+### 0.1.1
+* dropping py3.6 support (using dataclasses and typing)
+
 ### 0.1.0
 * python 3.7 support (dropping py3.5)
 
