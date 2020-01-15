@@ -15,7 +15,7 @@ from sbmlsim import __version__
 logger = logging.getLogger(__name__)
 
 
-def create_report(results: Dict[str, ExperimentResult],
+def create_report(results: List[ExperimentResult],
                   output_path: Path,
                   repository=None,
                   template_path=TEMPLATE_PATH):

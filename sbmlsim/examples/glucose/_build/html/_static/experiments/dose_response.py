@@ -1,31 +1,3 @@
-[Experiments](index.html)
-
-# DoseResponseExperiment
-
-## Model
-* **SBML**: [model/liver_glucose.xml](./model/liver_glucose.xml)
-* **HTML**: [model/liver_glucose.html](./model/liver_glucose.html)
-
-## Datasets
-* [results/DoseResponseExperiment_data_epinephrine.tsv](./results/DoseResponseExperiment_data_epinephrine.tsv)
-* [results/DoseResponseExperiment_data_glucagon.tsv](./results/DoseResponseExperiment_data_glucagon.tsv)
-* [results/DoseResponseExperiment_data_insulin.tsv](./results/DoseResponseExperiment_data_insulin.tsv)
-
-## Simulations
-
-## Scans
-* [results/DoseResponseExperiment_scan_glc_scan.h5](results/DoseResponseExperiment_scan_glc_scan.tsv)
-
-## Figures
-* [results/DoseResponseExperiment_fig1.svg](results/DoseResponseExperiment_fig1.svg)
-
-### fig1
-![results/DoseResponseExperiment_fig1.svg](results/DoseResponseExperiment_fig1.svg)
-
-## Code
-[experiments/dose_response.py](experiments/dose_response.py)
-
-```python
 from typing import Dict
 from matplotlib.pyplot import Figure
 import numpy as np
@@ -193,5 +165,3 @@ class DoseResponseExperiment(SimulationExperiment):
         return {
             'fig1': f
         }
-
-```

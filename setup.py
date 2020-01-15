@@ -81,7 +81,9 @@ setup(
         "altair>=4.0.0",
         "pint>=0.9",
         "coloredlogs",
-        "Sphinx"
+        "Sphinx",
+        "sphinx_rtd_theme",
+        "recommonmark",
         "pytest>=5.3.2",
         "pytest-cov>=2.8.1",
     ],
