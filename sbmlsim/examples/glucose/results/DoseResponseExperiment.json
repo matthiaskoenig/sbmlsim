@@ -1,0 +1,6 @@
+{
+  "experiment_id": "DoseResponseExperiment",
+  "model_path": "/home/mkoenig/git/sbmlsim/sbmlsim/examples/glucose/model/liver_glucose.xml",
+  "data_path": "/home/mkoenig/git/sbmlsim/sbmlsim/examples/glucose/data",
+  "simulations": {}
+}

@@ -3,23 +3,27 @@
 # DoseResponseExperiment
 
 ## Model
-* **SBML**: [../model/liver_glucose.xml](../model/liver_glucose.xml)
-* **HTML**: [../model/liver_glucose.html](../model/liver_glucose.html)
+* **SBML**: [model/liver_glucose.xml](model/liver_glucose.xml)
+* **HTML**: [model/liver_glucose.html](model/liver_glucose.html)
 
 ## Datasets
-* [epinephrine.tsv](./sbmlsim/DoseResponseExperiment_data_epinephrine.tsv)
-* [glucagon.tsv](./sbmlsim/DoseResponseExperiment_data_glucagon.tsv)
-* [insulin.tsv](./sbmlsim/DoseResponseExperiment_data_insulin.tsv)
+* [results/DoseResponseExperiment_data_epinephrine.tsv](results/DoseResponseExperiment_data_epinephrine.tsv)
+* [results/DoseResponseExperiment_data_glucagon.tsv](results/DoseResponseExperiment_data_glucagon.tsv)
+* [results/DoseResponseExperiment_data_insulin.tsv](results/DoseResponseExperiment_data_insulin.tsv)
+
+## Simulations
+
+## Scans
+* [results/DoseResponseExperiment_scan_glc_scan.h5](results/DoseResponseExperiment_scan_glc_scan.tsv)
 
 ## Figures
-* [DoseResponseExperiment_fig1.svg](DoseResponseExperiment_fig1.svg)
+* [results/DoseResponseExperiment_fig1.svg](results/DoseResponseExperiment_fig1.svg)
 
 ### fig1
-![DoseResponseExperiment_fig1.svg](DoseResponseExperiment_fig1.svg)
-
+![results/DoseResponseExperiment_fig1.svg](results/DoseResponseExperiment_fig1.svg)
 
 ## Code
-[https://github.com/matthiaskoenig/exsimo/tree/master/sbmlsim/examples/experiments/glucose/dose_response.py](https://github.com/matthiaskoenig/exsimo/tree/master/sbmlsim/examples/experiments/glucose/dose_response.py)
+[experiments/dose_response.py](experiments/dose_response.py)
 
 ```python
 from typing import Dict

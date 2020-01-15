@@ -249,21 +249,10 @@ class SimulationExperiment(object):
         :return:
         """
         for rkey, result in self.results.items():
-            result.to_hdf5(results_path / f"{self.sid}_simulation_{rkey}.h5")
+            result.to_hdf5(results_path / f"{self.sid}_sim_{rkey}.h5")
 
         for rkey, result in self._scan_results.items():
             result.to_hdf5(results_path / f"{self.sid}_scan_{rkey}.h5")
-
-        '''
-        for rkey, result in self.results.items():
-            result.mean.to_csv(results_path / f"{self.sid}_simulation_{rkey}.tsv",
-                               sep="\t", index=False)
-
-        for rkey, result in self._scan_results.items():
-            result.mean.to_csv(
-                results_path / f"{self.sid}_scan_{rkey}.tsv",
-                sep="\t", index=False)
-        '''
 
     def save_datasets(self, results_path):
         """ Save datasets
