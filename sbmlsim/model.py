@@ -19,10 +19,9 @@ def load_model(path: Path, selections: List[str] = None) -> roadrunner.RoadRunne
     :param selections: boolean flag to set selections
     :return: roadrunner instance
     """
-    logging.info("Load model: '{}'".format(path.resolve()))
-
     if isinstance(path, Path):
-        path = str(path)
+        path = str(path.resolve())
+    logging.info("Load model: '{}'".format(path))
 
     r = roadrunner.RoadRunner(path)
     set_timecourse_selections(r, selections)

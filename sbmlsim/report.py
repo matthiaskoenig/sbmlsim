@@ -25,7 +25,7 @@ class Report(object):
 
 def create_report(results: List[ExperimentResult],
                   output_path: Path,
-                  metadata: Dict=None,
+                  metadata: Dict = None,
                   repository=None,
                   template_path=TEMPLATE_PATH):
     """ Creates markdown report.
@@ -37,6 +37,8 @@ def create_report(results: List[ExperimentResult],
     paths are below the reports or at the same level in the file
     hierarchy.
     """
+    if metadata is None:
+        metadata = dict()
     env = jinja2.Environment(loader=jinja2.FileSystemLoader(str(template_path)),
                              extensions=['jinja2.ext.autoescape'],
                              trim_blocks=True,
