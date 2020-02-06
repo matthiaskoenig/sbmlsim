@@ -12,6 +12,13 @@ from sbmlsim.tests.constants import MODEL_REPRESSILATOR, MODEL_GLCWB
 from pprint import pprint
 from pint.errors import UndefinedUnitError
 
+from pint import Quantity
+
+import warnings
+with warnings.catch_warnings():
+    warnings.simplefilter("ignore")
+    Quantity([])
+
 logger = logging.getLogger(__name__)
 
 
@@ -32,7 +39,6 @@ class Units(object):
         ureg = pint.UnitRegistry()
         ureg.define('none = count')
         ureg.define('item = count')
-        ureg.define('yr = year')
         ureg.define('percent = 0.01*count')
         ureg.define('IU = 0.0347 * mg')  # IU for insulin ! (FIXME better handling of general IU)
         ureg.define('IU/ml = 0.0347 * mg/ml')  # IU for insulin ! (FIXME better handling of general IU)

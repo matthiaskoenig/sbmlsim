@@ -15,12 +15,12 @@
 
 ## Simulations
 {% for sim_id in simulations %}
-* [{{results_path}}/{{ exp_id }}_sim_{{ sim_id }}.h5]({{results_path}}/{{ exp_id }}_sim_{{ sim_id }}.tsv)
+* [{{results_path}}/{{ exp_id }}_sim_{{ sim_id }}.h5]({{results_path}}/{{ exp_id }}_sim_{{ sim_id }}.h5)
 {% endfor %}
 
 ## Scans
 {% for scan_id in scans %}
-* [{{results_path}}/{{ exp_id }}_scan_{{ scan_id }}.h5]({{results_path}}/{{ exp_id }}_scan_{{ scan_id }}.tsv)
+* [{{results_path}}/{{ exp_id }}_scan_{{ scan_id }}.h5]({{results_path}}/{{ exp_id }}_scan_{{ scan_id }}.h5)
 {% endfor %}
 
 ## Figures
@@ -36,6 +36,7 @@
 ## Code
 [{{ code_path }}]({{ code_path }})
 
-```python
+```
+
 {{ code }}
 ```
