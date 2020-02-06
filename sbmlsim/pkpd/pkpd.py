@@ -59,7 +59,7 @@ def _set_initial_values(r: roadrunner.RoadRunner, sid, value, method="concentrat
             rkey = f'[{key}]'
 
         if 'urine' in rkey:
-            logging.info("urinary values are not set")
+            logging.debug("urinary values are not set")
             continue
 
         changeset[rkey] = value

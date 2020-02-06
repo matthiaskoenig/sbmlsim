@@ -19,7 +19,8 @@ def load_model(path: Path, selections: List[str] = None) -> roadrunner.RoadRunne
     :param selections: boolean flag to set selections
     :return: roadrunner instance
     """
-    logging.info("Loading: '{}'".format(path))
+    logging.info("Load model: '{}'".format(path.resolve()))
+
     if isinstance(path, Path):
         path = str(path)
 

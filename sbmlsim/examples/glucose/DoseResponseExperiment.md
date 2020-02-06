@@ -3,18 +3,18 @@
 # DoseResponseExperiment
 
 ## Model
-* **SBML**: [model/liver_glucose.xml](./model/liver_glucose.xml)
-* **HTML**: [model/liver_glucose.html](./model/liver_glucose.html)
+* **SBML**: [model/liver_glucose.xml](model/liver_glucose.xml)
+* **HTML**: [model/liver_glucose.html](model/liver_glucose.html)
 
 ## Datasets
-* [results/DoseResponseExperiment_data_epinephrine.tsv](./results/DoseResponseExperiment_data_epinephrine.tsv)
-* [results/DoseResponseExperiment_data_glucagon.tsv](./results/DoseResponseExperiment_data_glucagon.tsv)
-* [results/DoseResponseExperiment_data_insulin.tsv](./results/DoseResponseExperiment_data_insulin.tsv)
+* [results/DoseResponseExperiment_data_epinephrine.tsv](results/DoseResponseExperiment_data_epinephrine.tsv)
+* [results/DoseResponseExperiment_data_glucagon.tsv](results/DoseResponseExperiment_data_glucagon.tsv)
+* [results/DoseResponseExperiment_data_insulin.tsv](results/DoseResponseExperiment_data_insulin.tsv)
 
 ## Simulations
 
 ## Scans
-* [results/DoseResponseExperiment_scan_glc_scan.h5](results/DoseResponseExperiment_scan_glc_scan.tsv)
+* [results/DoseResponseExperiment_scan_glc_scan.h5](results/DoseResponseExperiment_scan_glc_scan.h5)
 
 ## Figures
 * [results/DoseResponseExperiment_fig1.svg](results/DoseResponseExperiment_fig1.svg)

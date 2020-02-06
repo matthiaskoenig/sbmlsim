@@ -8,6 +8,7 @@ import jinja2
 from typing import Dict, List
 from pathlib import Path
 from markdown import markdown
+from mdx_gfm import GithubFlavoredMarkdownExtension
 
 from sbmlsim.experiment import ExperimentResult, SimulationExperiment
 from sbmlsim import TEMPLATE_PATH
@@ -16,6 +17,12 @@ from sbmlsim import __version__
 
 logger = logging.getLogger(__name__)
 
+
+class Report(object):
+    pass
+
+
+# TODO: refactor in report class
 
 def create_report(results: List[ExperimentResult],
                   output_path: Path,
@@ -35,9 +42,23 @@ def create_report(results: List[ExperimentResult],
                              trim_blocks=True,
                              lstrip_blocks=True)
 
-    # ---------------------------------------
-    # {exp_id}.md
-    # ---------------------------------------
+    def write_report(name, context, template):
+        """Writes the report file from given context and template."""
+        md = template.render(context)
+        md_file = output_path / f'{name}.md'
+        with open(md_file, "w") as f_md:
+            f_md.write(md)
+            logger.info(f"Write markdown: '{md_file}'")
+
+        # additional conversion to HTML
+        html = markdown(text=md,
+                        extensions=[GithubFlavoredMarkdownExtension()])
+        html_file = output_path / f'{name}.html'
+        with open(html_file, "w") as f_html:
+            f_html.write(html)
+            logger.info(f"Write html: '{html_file}'")
+
+    # --- {exp_id}.md ---
     exp_ids = []
     for exp_result in results:  # type: ExperimentResult
         experiment = exp_result.experiment  # type: SimulationExperiment
@@ -72,39 +93,17 @@ def create_report(results: List[ExperimentResult],
         if Path(f"{str(exp_result.model_path)[:-4]}.html").exists():
             context["report_path"] = f"{model_path[:-4]}.html"
 
-        template = env.get_template('experiment.md')
-        md = template.render(context)
-        md_file = output_path / f'{exp_id}.md'
-        with open(md_file, "w") as f_md:
-            f_md.write(md)
-            logger.info(f"Create '{md_file}'")
+        write_report(name=exp_id, context=context,
+                     template=env.get_template('experiment.md'))
 
-        # additional conversion to HTML
-        html = markdown(text=md)
-        html_file = output_path / f'{exp_id}.html'
-        with open(html_file, "w") as f_html:
-            f_html.write(html)
-
-
-    # ---------------------------------------
-    # index.md
-    # ---------------------------------------
+    # --- index.md ---
     context = {
         'version': __version__,
         'exp_ids': exp_ids,
     }
-    template = env.get_template('index.md')
-    md = template.render(context)
-    md_file = output_path / 'index.md'
-    with open(md_file, "w") as f_md:
-        f_md.write(md)
-        logger.info(f"Create '{md_file}'")
+    write_report(name="index", context=context,
+                 template=env.get_template('index.md'))
 
-    # additional conversion to HTML
-    html = markdown(text=md)
-    html_file = output_path / f'index.html'
-    with open(html_file, "w") as f_html:
-        f_html.write(html)
 
 if __name__ == "__main__":
     from pathlib import Path

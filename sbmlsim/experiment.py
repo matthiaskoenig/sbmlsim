@@ -46,7 +46,6 @@ class SimulationExperiment(object):
     def model_path(self, model_path):
         self._model_path = model_path
         if model_path:
-            logging.info(f"Reading model: {model_path.resolve()}")
             self.r = load_model(self._model_path)
             self.udict, self.ureg = Units.get_units_from_sbml(self._model_path)
         else:
@@ -135,7 +134,7 @@ class SimulationExperiment(object):
         if self._results is None:
             self._results = {}
         for key, sim_def in self.simulations.items():
-            logger.info(f"Simulate {key}")
+            logger.info(f"Simulate timecourse: '{key}'")
             # normalize the units
             sim_def.normalize(udict=self.udict, ureg=self.ureg)
             # run simulations
@@ -146,7 +145,7 @@ class SimulationExperiment(object):
             self._scan_results = {}
 
         for key, scan_def in self.scans.items():
-            logger.info(f"Simulate {key}")
+            logger.info(f"Simulate scan: '{key}'")
             # normalize the units
             scan_def.normalize(udict=self.udict, ureg=self.ureg)
             # run simulations

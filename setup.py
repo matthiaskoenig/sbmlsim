@@ -83,7 +83,8 @@ setup(
         "Sphinx",
         "sphinx_rtd_theme",
         "recommonmark",
-        "markdown>=3.1.1",
+        "markdown<3",        # markdown to html
+        "py-gfm>=0.1.4",   # github flavored markdown
         "pytest>=5.3.2",
         "pytest-cov>=2.8.1",
     ],
