@@ -28,8 +28,15 @@
 * [{{results_path}}/{{ exp_id }}_{{ fig_id }}.svg]({{results_path}}/{{ exp_id }}_{{ fig_id }}.svg)
 {% endfor %}
 
-{% for fig_id in figures %}
+{% for fig_id, meta in figures.items() %}
 ### {{ fig_id }}
+{% if meta %}
+{% for k, v in meta.items() %}
+{% if v %}
+**{{ k }}**: {{ v }}  
+{% endif %}
+{% endfor %}
+{% endif %}
 ![{{results_path}}/{{ exp_id }}_{{ fig_id }}.svg]({{results_path}}/{{ exp_id }}_{{ fig_id }}.svg)
 {% endfor %}
 

@@ -5,6 +5,7 @@ import sys
 import os
 import logging
 import jinja2
+from collections import OrderedDict
 from typing import Dict, List
 from pathlib import Path
 from markdown import markdown
@@ -26,6 +27,7 @@ class Report(object):
 
 def create_report(results: List[ExperimentResult],
                   output_path: Path,
+                  metadata: Dict=None,
                   repository=None,
                   template_path=TEMPLATE_PATH):
     """ Creates markdown report.
@@ -59,11 +61,11 @@ def create_report(results: List[ExperimentResult],
             logger.info(f"Write html: '{html_file}'")
 
     # --- {exp_id}.md ---
-    exp_ids = []
+    exp_ids = OrderedDict()
     for exp_result in results:  # type: ExperimentResult
         experiment = exp_result.experiment  # type: SimulationExperiment
         exp_id = experiment.sid
-        exp_ids.append(exp_id)
+
 
         # relative paths to output path
         model_path = os.path.relpath(str(exp_result.model_path), output_path)
@@ -76,6 +78,10 @@ def create_report(results: List[ExperimentResult],
             code = f_code.read()
         code_path = os.path.relpath(code_path, output_path)
 
+        # parse meta data for figures (mapping based on figure keys)
+        figures_keys = sorted(experiment.figures.keys())
+        figures = {key: metadata.get(f"{exp_id}_{key}", None) for key in figures_keys}
+
         context = {
             'exp_id': exp_id,
             'results_path': results_path,  # prefix path for all results (figures, json, ...)
@@ -85,9 +91,10 @@ def create_report(results: List[ExperimentResult],
             'datasets': sorted(experiment.datasets.keys()),
             'simulations': sorted(experiment.simulations.keys()),
             'scans': sorted(experiment.scans.keys()),
-            'figures': sorted(experiment.figures.keys()),
+            'figures': figures,
             'code': code,
         }
+        exp_ids[exp_id] = context
 
         # add additional information if existing
         if Path(f"{str(exp_result.model_path)[:-4]}.html").exists():
