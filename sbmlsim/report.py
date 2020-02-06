@@ -8,8 +8,6 @@ import jinja2
 from collections import OrderedDict
 from typing import Dict, List
 from pathlib import Path
-from markdown import markdown
-from mdx_gfm import GithubFlavoredMarkdownExtension
 
 from sbmlsim.experiment import ExperimentResult, SimulationExperiment
 from sbmlsim import TEMPLATE_PATH
@@ -44,21 +42,15 @@ def create_report(results: List[ExperimentResult],
                              trim_blocks=True,
                              lstrip_blocks=True)
 
-    def write_report(name, context, template):
+    def write_report(name: str, context: Dict, template_str: str):
         """Writes the report file from given context and template."""
-        md = template.render(context)
-        md_file = output_path / f'{name}.md'
-        with open(md_file, "w") as f_md:
-            f_md.write(md)
-            logger.info(f"Write markdown: '{md_file}'")
-
-        # additional conversion to HTML
-        html = markdown(text=md,
-                        extensions=[GithubFlavoredMarkdownExtension()])
-        html_file = output_path / f'{name}.html'
-        with open(html_file, "w") as f_html:
-            f_html.write(html)
-            logger.info(f"Write html: '{html_file}'")
+        template = env.get_template(template_str)
+        text = template.render(context)
+        suffix = template_str.split(".")[-1]
+        out_file = output_path / f'{name}.{suffix}'
+        with open(out_file, "w") as f_md:
+            f_md.write(text)
+            logger.info(f"Write {suffix}: '{out_file}'")
 
     # --- {exp_id}.md ---
     exp_ids = OrderedDict()
@@ -100,16 +92,16 @@ def create_report(results: List[ExperimentResult],
         if Path(f"{str(exp_result.model_path)[:-4]}.html").exists():
             context["report_path"] = f"{model_path[:-4]}.html"
 
-        write_report(name=exp_id, context=context,
-                     template=env.get_template('experiment.md'))
+        write_report(name=exp_id, context=context, template_str='experiment.md')
+        write_report(name=exp_id, context=context, template_str='experiment.html')
 
     # --- index.md ---
     context = {
         'version': __version__,
         'exp_ids': exp_ids,
     }
-    write_report(name="index", context=context,
-                 template=env.get_template('index.md'))
+    write_report(name="index", context=context, template_str='index.md')
+    write_report(name="index", context=context, template_str='index.html')
 
 
 if __name__ == "__main__":
