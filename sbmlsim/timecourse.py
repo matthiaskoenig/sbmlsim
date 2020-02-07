@@ -83,6 +83,9 @@ class Timecourse(JSONEncoder):
                     logger.error(f"DimensionalityError "
                                  f"'{key} = {item}'. {err}")
                     raise err
+                except KeyError as err:
+                    logger.error(f"KeyError: '{key}' does not exist in unit dictionary of model.")
+                    raise err
             else:
                 item = Q_(item, udict[key])
                 logger.warning(f"No units provided, assuming model units: "

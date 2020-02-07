@@ -52,7 +52,7 @@ def create_report(results: List[ExperimentResult],
         out_file = output_path / f'{name}.{suffix}'
         with open(out_file, "w") as f_md:
             f_md.write(text)
-            logger.info(f"Write {suffix}: '{out_file}'")
+            logger.info(f"Write {suffix}: 'file://{out_file}'")
 
     # --- {exp_id}.md ---
     exp_ids = OrderedDict()
