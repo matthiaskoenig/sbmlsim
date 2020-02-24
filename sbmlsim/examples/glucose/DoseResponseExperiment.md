@@ -35,7 +35,6 @@ from sbmlsim.experiment import SimulationExperiment
 from sbmlsim.data import DataSet
 from sbmlsim.timecourse import Timecourse, TimecourseSim, TimecourseScan
 from sbmlsim.plotting_matplotlib import add_data, add_line, plt
-from sbmlsim.pkpd import pkpd
 
 
 class DoseResponseExperiment(SimulationExperiment):

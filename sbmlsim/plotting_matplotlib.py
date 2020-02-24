@@ -3,6 +3,7 @@ from sbmlsim.result import Result
 from sbmlsim.data import DataSet
 
 import pandas as pd
+from sbmlsim.plotting import Figure, SubPlot, Plot, Curve
 
 import logging
 logger = logging.getLogger(__name__)
@@ -19,8 +20,48 @@ plt.rcParams.update({
     'legend.fontsize': 'small',
     'xtick.labelsize': 'large',
     'ytick.labelsize': 'large',
-    'figure.facecolor': '1.00'
+    'figure.facecolor': '1.00',
+    'figure.dpi': '150',
 })
+
+from matplotlib.pyplot import GridSpec
+
+def to_figure(figure: Figure):
+    """Convert sbmlsim.Figure to matplotlib figure."""
+    fig = plt.figure(constrained_layout=True, figsize=(figure.height, figure.width))
+
+    gs = GridSpec(figure.num_rows, figure.num_cols, figure=fig)
+    for subplot in figure.subplots:  # type: SubPlot
+
+        ridx = subplot.row_span - 1
+        cidx = subplot.col_span - 1
+        ax = fig.add_subplot(
+            gs[ridx:ridx+subplot.row_span, cidx:cidx+subplot.col_span]
+        )
+        # axes labels and legends
+        plot = subplot.plot
+        if plot.name:
+            ax.set_title(plot.name)
+        if plot.xaxis:
+            if plot.xaxis.name:
+                ax.set_xlabel(plot.xaxis.name)
+        if plot.yaxis:
+            if plot.yaxis.name:
+                ax.set_ylabel(plot.yaxis.name)
+        if plot.legend:
+            ax.legend()
+
+        # TODO: add the curves
+
+        for curve in plot.curves:
+            # TODO: sort by order
+            # TODO: errorbars and styling
+            print("xdata", curve.xdata)
+            print("ydata", curve.ydata)
+            ax.plot(curve.xdata, curve.ydata, label=curve.name)
+
+    return fig
+
 
 
 def add_data(ax, data: DataSet,

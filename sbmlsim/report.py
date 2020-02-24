@@ -106,20 +106,4 @@ def create_report(results: List[ExperimentResult],
     write_report(name="index", context=context, template_str='index.html')
 
 
-if __name__ == "__main__":
-    from pathlib import Path
-    from sbmlsim.experiment import run_experiment
 
-    from sbmlsim.examples.glucose.experiments.dose_response import DoseResponseExperiment
-    BASE_PATH = Path(__file__).parent / "examples" / "glucose"
-
-    results = []
-    info = run_experiment(
-        DoseResponseExperiment,
-        output_path=BASE_PATH / "results",
-        model_path=BASE_PATH / "model" / "liver_glucose.xml",
-        data_path=BASE_PATH / "data",
-        show_figures=False
-    )
-    results.append(info)
-    create_report(results, output_path=BASE_PATH)
