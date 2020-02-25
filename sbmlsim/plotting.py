@@ -18,7 +18,7 @@ class Base(object):
 
     """
     def __init__(self, sid: str, name: str):
-        self.sid = sid,
+        self.sid = sid
         self.name = name
 
 
@@ -207,8 +207,7 @@ class Plot(Base):
 
         self.curves.append(curve)
 
-    '''
-    def add_line(ax, data: Result,
+    def add_line(self, data: Result,
                  xid: str, yid: str,
                  xunit=None, yunit=None, xf=1.0, yf=1.0, all_lines=False,
                  label='__nolabel__', **kwargs):
@@ -249,10 +248,11 @@ class Plot(Base):
             y_min = y_min.to(yunit)
             y_max = y_min.to(yunit)
 
+        # FIXME: move to matplotlib backend
         # get next color
-        prop_cycler = ax._get_lines.prop_cycler
-        color = kwargs.get("color", next(prop_cycler)['color'])
-        kwargs["color"] = color
+        # prop_cycler = ax._get_lines.prop_cycler
+        # color = kwargs.get("color", next(prop_cycler)['color'])
+        # kwargs["color"] = color
 
         if all_lines:
             for df in data.frames:
@@ -260,7 +260,11 @@ class Plot(Base):
                 yk = df[yid].values * data.ureg(data.udict[yid]) * yf
                 xk = xk.to(xunit)
                 yk = yk.to(yunit)
-                ax.plot(xk, yk, '-', label="{}".format(label), **kwargs)
+                # ax.plot(xk, yk, '-', label=label, **kwargs)
+                if "linestyle" not in kwargs:
+                    kwargs["linestyle"] = "-"
+                curve = Curve(sid=None, name=label, xdata=xk, ydata=yk, **kwargs)
+                self.curves.append(curve)
         else:
             if len(data) > 1:
                 # FIXME: std areas should be within min/max areas!
@@ -272,8 +276,11 @@ class Plot(Base):
                 ax.fill_between(x, y - y_sd, y_min, color=color, alpha=0.2,
                                 label="__nolabel__")
 
-            ax.plot(x, y, '-', label="{}".format(label), **kwargs)
-    '''
+            if "linestyle" not in kwargs:
+                kwargs["linestyle"] = "-"
+            curve = Curve(sid=None, name=label, xdata=x, ydata=y, **kwargs)
+            self.curves.append(curve)
+            # ax.plot(x, y, '-', label="{}".format(label), **kwargs)
 
 
 class SubPlot(Base):
@@ -306,5 +313,3 @@ class Figure(Base):
         self.width = width
         self.num_rows = num_rows
         self.num_cols = num_cols
-
-

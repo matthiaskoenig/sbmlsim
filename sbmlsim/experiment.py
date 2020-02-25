@@ -10,7 +10,7 @@ from dataclasses import dataclass, field
 from sbmlsim.model import load_model
 from sbmlsim.simulation_serial import SimulatorSerial
 from sbmlsim.timecourse import TimecourseSim, TimecourseScan
-from sbmlsim.plotting_matplotlib import plt
+
 from sbmlsim.units import Units
 from json import JSONEncoder
 from sbmlsim.serialization import ObjectJSONEncoder
@@ -19,7 +19,10 @@ from sbmlsim.logging_utils import bcolors
 from sbmlsim.result import Result
 from sbmlsim.data import DataSet
 
-from matplotlib.pyplot import Figure
+# matplotlib backend
+from sbmlsim.plotting_matplotlib import plt, to_figure
+from matplotlib.pyplot import Figure as FigureMPL
+from sbmlsim.plotting import Figure as FigureSEDML
 
 logger = logging.getLogger(__name__)
 
@@ -72,8 +75,9 @@ class SimulationExperiment(object):
         return {}
 
     @property
-    def figures(self) -> Dict[str, Figure]:
+    def figures(self) -> Dict[str, FigureMPL]:
         """ Figures."""
+        # FIXME: generic handling of figures (i.e., support of multiple backends)
         logger.debug(f"No figures defined for '{self.sid}'.")
         return {}
 
@@ -171,6 +175,9 @@ class SimulationExperiment(object):
             return str(o)
 
     def to_dict(self):
+        """Convert to dictionary.
+        This is the basis for the JSON serialization.
+        """
         simulations = self.simulations
         for key, tcsim in simulations.items():
             tcsim.normalize(udict=self.udict, ureg=self.ureg)
@@ -181,6 +188,7 @@ class SimulationExperiment(object):
             "model_path": Path(self.model_path).resolve(),
             "data_path": Path(self.data_path).resolve(),
             "simulations": simulations,
+            "figures": self.figures,
         }
 
         return d
@@ -236,7 +244,14 @@ class SimulationExperiment(object):
         paths = []
         for fkey, fig in self.figures.items():
             path_svg = results_path / f"{self.sid}_{fkey}.svg"
-            fig.savefig(path_svg, dpi=150, bbox_inches="tight")
+
+            print(type(fig))
+            if isinstance(fig, FigureSEDML):
+                fig_mpl = to_figure(fig)
+            else:
+                fig_mpl = fig
+
+            fig_mpl.savefig(path_svg, dpi=150, bbox_inches="tight")
 
             paths.append(path_svg)
         return paths

@@ -56,8 +56,8 @@ def to_figure(figure: Figure):
         for curve in plot.curves:
             # TODO: sort by order
             # TODO: errorbars and styling
-            print("xdata", curve.xdata)
-            print("ydata", curve.ydata)
+            # print("xdata", curve.xdata)
+            # print("ydata", curve.ydata)
             ax.plot(curve.xdata, curve.ydata, label=curve.name)
 
     return fig
