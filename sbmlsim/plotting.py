@@ -1,7 +1,7 @@
 """
 Base classes for storing plotting information.
 """
-from typing import List
+from typing import List, Dict
 import logging
 import pandas as pd
 from dataclasses import dataclass
@@ -75,7 +75,8 @@ class Fill(object):
 
 
 class Style(Base):
-    def __init__(self, sid: str, name: str,
+    def __init__(self, sid: str = None,
+                 name: str = None,
                  base_style: 'Style' = None,
                  line: Line = None,
                  marker: Marker = None,
@@ -84,6 +85,103 @@ class Style(Base):
         self.line = line
         self.marker = marker
         self.fill = fill
+
+    # https://matplotlib.org/3.1.0/gallery/lines_bars_and_markers/linestyles.html
+    MPL2SEDML_LINESTYLE_MAPPING = {
+        '-': LineType.SOLID,
+        'solid': LineType.SOLID,
+        '.': LineType.DOT,
+        'dotted': LineType.DOT,
+        '--': LineType.DASH,
+        'dashed': LineType.DASH.DASH,
+        '-.': LineType.DASHDOT,
+        'dashdot': LineType.DASHDOT,
+        'dashdotdotted': LineType.DASHDOTDOT
+    }
+    SEDML2MPL_LINESTYLE_MAPPING = {v: k for (k, v) in MPL2SEDML_LINESTYLE_MAPPING.items()}
+
+    MPL2SEDML_MARKER_MAPPING = {
+        '': MarkerType.NONE,
+        's': MarkerType.SQUARE,
+        'o': MarkerType.CIRCLE,
+        'D': MarkerType.DIAMOND,
+        'x': MarkerType.XCROSS,
+        '+': MarkerType.PLUS,
+        '*': MarkerType.STAR,
+        '^': MarkerType.TRIANGLEUP,
+        'v': MarkerType.TRIANGLEDOWN,
+        '<': MarkerType.TRIANGLELEFT,
+        '>': MarkerType.TRIANGLERIGHT,
+        '_': MarkerType.HDASH,
+        '|': MarkerType.VDASH,
+    }
+    SEDML2MPL_MARKER_MAPPING = {v: k for (k,v) in MPL2SEDML_MARKER_MAPPING.items()}
+
+    def to_mpl_kwargs(self) -> Dict:
+        """Convert to matplotlib plotting arguments"""
+        kwargs = {}
+        if self.line:
+            if self.line.color:
+                kwargs["color"] = self.line.color
+            if self.line.type:
+                kwargs["linestyle"] = Style.SEDML2MPL_LINESTYLE_MAPPING[self.line.type]
+            if self.line.thickness:
+                kwargs["linewidth"] = self.line.thickness
+        if self.marker:
+            if self.marker.type:
+                kwargs["marker"] = Style.SEDML2MPL_MARKER_MAPPING[self.marker.type]
+            if self.marker.size:
+                kwargs["markersize"] = self.marker.size
+            if self.marker.fill:
+                kwargs["markerfacecolor"] = self.marker.fill
+            if self.marker.line_color:
+                kwargs["markeredgecolor"] = self.marker.line_color
+            if self.marker.line_thickness:
+                kwargs["markeredgewidth"] = self.marker.line_thickness
+
+        if self.fill:
+            pass
+
+        return kwargs
+
+    @staticmethod
+    def from_mpl_kwargs(**kwargs) -> 'Style':
+
+        # FIXME: handle alpha colors
+        # https://matplotlib.org/3.1.0/tutorials/colors/colors.html
+        from matplotlib.colors import to_rgba
+        alpha = kwargs.get("alpha", 1.0)
+        color = kwargs.get("color", None)
+        if color:
+            color = to_rgba(color, alpha)
+
+        # Line
+        linestyle = kwargs.get("linestyle", '-')
+        if linestyle is not None:
+            linestyle = Style.MPL2SEDML_LINESTYLE_MAPPING[linestyle]
+
+        line = Line(
+            color=color,
+            type=linestyle,
+            thickness=kwargs.get("linewidth", 1.0)
+        )
+
+        # Marker
+        marker_symbol = kwargs.get("marker", None)
+        if marker_symbol is not None:
+            marker_symbol = Style.MPL2SEDML_MARKER_MAPPING[marker_symbol]
+        marker = Marker(
+            size=kwargs.get("markersize", None),
+            type=marker_symbol,
+            fill=kwargs.get("markerfacecolor", color),
+            line_color=kwargs.get("markeredgecolor", None),
+            line_thickness=kwargs.get("markeredgewidth", None)
+        )
+
+        # Fill
+        # FIXME: implement
+
+        return Style(line=line, marker=marker, fill=None)
 
 
 class Axis(Base):
@@ -94,6 +192,14 @@ class Axis(Base):
 class AbstractCurve(Base):
     def __init__(self, sid: str, name: str,
                  xdata, order, style, yaxis):
+        """
+        :param sid:
+        :param name: label of the curve
+        :param xdata:
+        :param order:
+        :param style:
+        :param yaxis:
+        """
         super(AbstractCurve, self).__init__(sid, name)
         self.xdata = xdata
         self.order = order
@@ -109,6 +215,12 @@ class Curve(AbstractCurve):
         self.ydata = ydata
         self.xerr = xerr
         self.yerr = yerr
+
+        # FIXME: handle styles and kwargs consistently
+        if kwargs:
+            # parse additional arguments and create style
+            print(kwargs)
+            self.style = Style.from_mpl_kwargs(**kwargs)
 
 
 class Plot(Base):
@@ -133,7 +245,7 @@ class Plot(Base):
                  xid: str, yid: str, yid_sd=None, yid_se=None, count=None,
                  xunit=None, yunit=None,
                  xf=1.0, yf=1.0,
-                 label='__nolabel__', **kwargs):
+                 label='__nolabel__', name=None, **kwargs):
         """ Add experimental data
 
         :param ax:
@@ -198,12 +310,11 @@ class Plot(Base):
                 kwargs['capsize'] = 3
             #ax.errorbar(x.magnitude, y.magnitude, y_err.magnitude, label=label,
             #            **kwargs)
-            curve = Curve(sid=None, label=label,
+            curve = Curve(sid=None, name=label,
                   xdata=x.magnitude, ydata=y.magnitude, yerr=y_err.magnitude, **kwargs)
         else:
-            curve = Curve(sid=None, label=label,
+            curve = Curve(sid=None, name=label,
                   xdata=x, ydata=y, **kwargs)
-            # ax.plot(x, y, label=label, **kwargs)
 
         self.curves.append(curve)
 
@@ -267,6 +378,7 @@ class Plot(Base):
                 self.curves.append(curve)
         else:
             if len(data) > 1:
+                # FIXME: handle areas correctly
                 # FIXME: std areas should be within min/max areas!
                 ax.fill_between(x, y - y_sd, y + y_sd, color=color, alpha=0.4,
                                 label="__nolabel__")

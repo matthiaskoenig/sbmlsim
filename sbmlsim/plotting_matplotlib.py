@@ -51,14 +51,13 @@ def to_figure(figure: Figure):
         if plot.legend:
             ax.legend()
 
-        # TODO: add the curves
-
         for curve in plot.curves:
             # TODO: sort by order
-            # TODO: errorbars and styling
-            # print("xdata", curve.xdata)
-            # print("ydata", curve.ydata)
-            ax.plot(curve.xdata, curve.ydata, label=curve.name)
+
+            kwargs = {}
+            if curve.style:
+                kwargs = curve.style.to_mpl_kwargs()
+            ax.plot(curve.xdata, curve.ydata, label=curve.name, **kwargs)
 
     return fig
 
