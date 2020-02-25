@@ -10,6 +10,8 @@ from enum import Enum
 from sbmlsim.result import Result
 from sbmlsim.data import DataSet
 
+from matplotlib.colors import to_rgba, to_hex
+
 logger = logging.getLogger(__name__)
 
 
@@ -149,11 +151,14 @@ class Style(Base):
 
         # FIXME: handle alpha colors
         # https://matplotlib.org/3.1.0/tutorials/colors/colors.html
-        from matplotlib.colors import to_rgba
+
+
         alpha = kwargs.get("alpha", 1.0)
         color = kwargs.get("color", None)
         if color:
             color = to_rgba(color, alpha)
+            color = to_hex(color, keep_alpha=True)
+
 
         # Line
         linestyle = kwargs.get("linestyle", '-')
@@ -208,10 +213,10 @@ class AbstractCurve(Base):
 
 
 class Curve(AbstractCurve):
-    def __init__(self, sid: str, name: str,
+    def __init__(self, name: str,
                  xdata, ydata, xerr=None, yerr=None,
                  order=None, style: Style=None, yaxis=None, **kwargs):
-        super(Curve, self).__init__(sid, name, xdata, order, style, yaxis)
+        super(Curve, self).__init__(None, name, xdata, order, style, yaxis)
         self.ydata = ydata
         self.xerr = xerr
         self.yerr = yerr
@@ -240,6 +245,15 @@ class Plot(Base):
         self.xaxis = xaxis
         self.yaxis = yaxis
         self.curves = curves
+
+    def add_curve(self, curve: Curve):
+        """
+        Curves are added via the helper function
+        """
+        if curve.sid is None:
+            curve.sid = f"{self.sid}_curve{len(self.curves)+1}"
+        self.curves.append(curve)
+
 
     def add_data(self, data: DataSet,
                  xid: str, yid: str, yid_sd=None, yid_se=None, count=None,
@@ -298,6 +312,9 @@ class Plot(Base):
                 y_err = y_err.to(yunit)
 
         # labels
+        if name:
+            label = name
+
         if label != "__nolabel__":
             if y_err_type:
                 label = f"{label} ± {y_err_type}"
@@ -314,9 +331,9 @@ class Plot(Base):
                   xdata=x.magnitude, ydata=y.magnitude, yerr=y_err.magnitude, **kwargs)
         else:
             curve = Curve(sid=None, name=label,
-                  xdata=x, ydata=y, **kwargs)
+                  xdata=x.magnitude, ydata=y.magnitude, **kwargs)
 
-        self.curves.append(curve)
+        self.add_curve(curve)
 
     def add_line(self, data: Result,
                  xid: str, yid: str,
@@ -359,23 +376,16 @@ class Plot(Base):
             y_min = y_min.to(yunit)
             y_max = y_min.to(yunit)
 
-        # FIXME: move to matplotlib backend
-        # get next color
-        # prop_cycler = ax._get_lines.prop_cycler
-        # color = kwargs.get("color", next(prop_cycler)['color'])
-        # kwargs["color"] = color
-
         if all_lines:
             for df in data.frames:
                 xk = df[xid].values * data.ureg(data.udict[xid]) * xf
                 yk = df[yid].values * data.ureg(data.udict[yid]) * yf
                 xk = xk.to(xunit)
                 yk = yk.to(yunit)
-                # ax.plot(xk, yk, '-', label=label, **kwargs)
-                if "linestyle" not in kwargs:
-                    kwargs["linestyle"] = "-"
-                curve = Curve(sid=None, name=label, xdata=xk, ydata=yk, **kwargs)
-                self.curves.append(curve)
+
+                self.add_curve(
+                    Curve(sid=None, name=label, xdata=xk.magnitude, ydata=yk.magnitude, **kwargs)
+                )
         else:
             if len(data) > 1:
                 # FIXME: handle areas correctly
@@ -388,11 +398,10 @@ class Plot(Base):
                 ax.fill_between(x, y - y_sd, y_min, color=color, alpha=0.2,
                                 label="__nolabel__")
 
-            if "linestyle" not in kwargs:
-                kwargs["linestyle"] = "-"
-            curve = Curve(sid=None, name=label, xdata=x, ydata=y, **kwargs)
-            self.curves.append(curve)
-            # ax.plot(x, y, '-', label="{}".format(label), **kwargs)
+            self.add_curve(
+                Curve(sid=None, name=label, xdata=x.magnitude, ydata=y.magnitude, **kwargs)
+            )
+
 
 
 class SubPlot(Base):
@@ -425,3 +434,17 @@ class Figure(Base):
         self.width = width
         self.num_rows = num_rows
         self.num_cols = num_cols
+
+    @staticmethod
+    def from_plots(sid, plots: List[Plot]) -> 'Figure':
+        """
+        Create figure object from list of plots.
+        """
+        num_plots = len(plots)
+        return Figure(sid=sid,
+                 num_rows=num_plots, num_cols=1,
+                 height=num_plots*5.0, width=5.0,
+                 subplots=[
+                     SubPlot(plot, row=(k+1), col=1) for k, plot in enumerate(plots)
+                 ])
+

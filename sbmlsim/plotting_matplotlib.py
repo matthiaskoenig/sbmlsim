@@ -48,8 +48,6 @@ def to_figure(figure: Figure):
         if plot.yaxis:
             if plot.yaxis.name:
                 ax.set_ylabel(plot.yaxis.name)
-        if plot.legend:
-            ax.legend()
 
         for curve in plot.curves:
             # TODO: sort by order
@@ -58,6 +56,9 @@ def to_figure(figure: Figure):
             if curve.style:
                 kwargs = curve.style.to_mpl_kwargs()
             ax.plot(curve.xdata, curve.ydata, label=curve.name, **kwargs)
+
+        if plot.legend:
+            ax.legend()
 
     return fig
 
