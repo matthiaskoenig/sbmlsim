@@ -26,9 +26,10 @@ plt.rcParams.update({
 
 from matplotlib.pyplot import GridSpec
 
+
 def to_figure(figure: Figure):
     """Convert sbmlsim.Figure to matplotlib figure."""
-    fig = plt.figure(constrained_layout=True, figsize=(figure.height, figure.width))
+    fig = plt.figure(figsize=(figure.height, figure.width))
 
     gs = GridSpec(figure.num_rows, figure.num_cols, figure=fig)
     for subplot in figure.subplots:  # type: SubPlot
@@ -55,13 +56,10 @@ def to_figure(figure: Figure):
             kwargs = {}
             if curve.style:
                 kwargs = curve.style.to_mpl_kwargs()
-            print(curve)
-            print()
             x = curve.x.data
             y = curve.y.data
-            print(x)
-            print(y)
 
+            # FIXME: errorbars
             ax.plot(x.magnitude, y.magnitude, label=curve.name, **kwargs)
 
         if plot.legend:

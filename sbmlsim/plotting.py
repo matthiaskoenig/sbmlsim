@@ -229,6 +229,9 @@ class Curve(AbstractCurve):
         self.xerr = xerr
         self.yerr = yerr
 
+        if "label" in kwargs:
+            self.name = kwargs["label"]
+
         # parse additional arguments and create style
         self.style = Style.from_mpl_kwargs(**kwargs)
 

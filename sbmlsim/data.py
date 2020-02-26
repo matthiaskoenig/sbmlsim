@@ -2,7 +2,8 @@ import pandas as pd
 from enum import Enum
 import logging
 
-# from sbmlsim.experiment import SimulationExperiment
+# from experiment import SimulationExperiment
+from sbmlsim.result import Result
 
 logger = logging.getLogger(__name__)
 
@@ -55,21 +56,26 @@ class Data(object):
         if dtype == Data.Types.DATASET:
             # read dataset data
             data = self.experiment.datasets[self.dataset]
+
+            # Make a dataset with units out of the data
+            if isinstance(data, DataSet):
+                dset = data
+            elif isinstance(data, pd.DataFrame):
+                dset = DataSet.from_df(data=data, udict=None, ureg=None)
+
+            if dset.empty:
+                logger.error(f"Empty dataset in adding data: {dset}")
+
+            # data with units
+            x = dset[self.index].values * dset.ureg(dset.udict[self.index])
+
         elif dtype == Data.Types.SIMULATION:
             # read simulation data
-            data = self.experiment.simulations[self.simulation]
-
-        # Make a dataset with units out of the data
-        if isinstance(data, DataSet):
-            dset = data
-        elif isinstance(data, pd.DataFrame):
-            dset = DataSet.from_df(data=data, udict=None, ureg=None)
-
-        if dset.empty:
-            logger.error(f"Empty dataset in adding data: {dset}")
-
-        # data with units
-        x = dset[self.index].values * dset.ureg(dset.udict[self.index])
+            result = self.experiment.results[self.simulation]  # type: Result
+            print(type(result))
+            if not isinstance(result, Result):
+                raise ValueError("Only Result objects supported in plotting.")
+            x = result.mean[self.index].values * result.ureg(result.udict[self.index])
 
         # convert units
         if self.unit:

@@ -382,7 +382,8 @@ def run_experiment(cls_experiment: SimulationExperiment,
     from pprint import pprint
     pprint(exp.to_dict())
 
-    exp.to_json(output_path / f"{exp.sid}.json")
+    # FIXME:
+    # exp.to_json(output_path / f"{exp.sid}.json")
 
     # display figures
     if show_figures:
