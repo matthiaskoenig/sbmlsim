@@ -194,8 +194,8 @@ class SimulationExperiment(object):
             "experiment_id": self.sid,
             "model_path": Path(self.model_path).resolve(),
             "data_path": Path(self.data_path).resolve(),
-            "simulations": simulations,
-            "figures": self.figures,
+            # "simulations": simulations,
+            # "figures": self.figures,
         }
 
         return d
@@ -383,7 +383,7 @@ def run_experiment(cls_experiment: SimulationExperiment,
     pprint(exp.to_dict())
 
     # FIXME:
-    # exp.to_json(output_path / f"{exp.sid}.json")
+    exp.to_json(output_path / f"{exp.sid}.json")
 
     # display figures
     if show_figures:

@@ -72,7 +72,6 @@ class Data(object):
         elif dtype == Data.Types.SIMULATION:
             # read simulation data
             result = self.experiment.results[self.simulation]  # type: Result
-            print(type(result))
             if not isinstance(result, Result):
                 raise ValueError("Only Result objects supported in plotting.")
             x = result.mean[self.index].values * result.ureg(result.udict[self.index])
