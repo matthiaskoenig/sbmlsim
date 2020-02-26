@@ -8,7 +8,7 @@ from dataclasses import dataclass
 from enum import Enum
 
 from sbmlsim.result import Result
-from sbmlsim.data import DataSet
+from sbmlsim.data import DataSet, Data
 
 from matplotlib.colors import to_rgba, to_hex
 
@@ -190,13 +190,21 @@ class Style(Base):
 
 
 class Axis(Base):
-    def __init__(self, sid: str = None, name: str = None):
-        super(Axis, self).__init__(sid, name)
+    def __init__(self, name: str = None, unit: str = None):
+        super(Axis, self).__init__(None, name)
+        if unit is None:
+            unit = "?"
+        self.unit = unit
+
+    @property
+    def label(self):
+        return f"{self.name} [{self.unit}]"
+
 
 
 class AbstractCurve(Base):
     def __init__(self, sid: str, name: str,
-                 xdata, order, style, yaxis):
+                 x: Data, order: int, style: Style, yaxis: Axis):
         """
         :param sid:
         :param name: label of the curve
@@ -206,26 +214,27 @@ class AbstractCurve(Base):
         :param yaxis:
         """
         super(AbstractCurve, self).__init__(sid, name)
-        self.xdata = xdata
+        self.x = x
         self.order = order
         self.style = style
         self.yaxis = yaxis
 
 
 class Curve(AbstractCurve):
-    def __init__(self, name: str,
-                 xdata, ydata, xerr=None, yerr=None,
+    def __init__(self,
+                 x: Data, y: Data, xerr: Data=None, yerr: Data=None,
                  order=None, style: Style=None, yaxis=None, **kwargs):
-        super(Curve, self).__init__(None, name, xdata, order, style, yaxis)
-        self.ydata = ydata
+        super(Curve, self).__init__(None, None, x, order, style, yaxis)
+        self.y = y
         self.xerr = xerr
         self.yerr = yerr
 
-        # FIXME: handle styles and kwargs consistently
-        if kwargs:
-            # parse additional arguments and create style
-            print(kwargs)
-            self.style = Style.from_mpl_kwargs(**kwargs)
+        # parse additional arguments and create style
+        self.style = Style.from_mpl_kwargs(**kwargs)
+
+    def __str__(self):
+        info = f"x: {self.x}\ny: {self.y}\nxerr: {self.xerr}\nyerr: {self.yerr}"
+        return info
 
 
 class Plot(Base):
@@ -253,6 +262,32 @@ class Plot(Base):
         if curve.sid is None:
             curve.sid = f"{self.sid}_curve{len(self.curves)+1}"
         self.curves.append(curve)
+
+    def _default_kwargs(self, d, dtype):
+        """Default plotting styles"""
+
+        if dtype == Data.Types.SIMULATION:
+            if "linestyle" not in d:
+                d["linestyle"] = "-"
+            if "linewidth" not in d:
+                d["linewidth"] = 2.0
+
+        elif dtype == Data.Types.DATASET:
+            if "linestyle" not in d:
+                d["linestyle"] = "--"
+            if "marker" not in d:
+                d['marker'] = 's'
+
+        if 'capsize' not in d:
+            d['capsize'] = 3
+        return d
+
+    def curve(self, x: Data, y: Data, xerr: Data=None, yerr: Data=None, **kwargs):
+        """Add curve to the plot."""
+
+        kwargs = self._default_kwargs(kwargs, x.get_type())
+        curve = Curve(x, y, xerr, yerr, **kwargs)
+        self.add_curve(curve)
 
 
     def add_data(self, data: DataSet,

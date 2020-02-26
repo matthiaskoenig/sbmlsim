@@ -1,15 +1,21 @@
 from json import JSONEncoder
 from enum import Enum
 from numpy import ndarray
+from matplotlib.pyplot import Figure
 
 
 class ObjectJSONEncoder(JSONEncoder):
     def default(self, o):
         """json encoder"""
+        print(type(o))
 
         # handle enums
         if isinstance(o, Enum):
             return o.name
+
+        # no serialization of Matplotlib figures
+        if isinstance(o, Figure):
+            return o.__class__.__name__
 
         # handle numpy ndarrays
         if isinstance(o, ndarray):

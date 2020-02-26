@@ -55,7 +55,14 @@ def to_figure(figure: Figure):
             kwargs = {}
             if curve.style:
                 kwargs = curve.style.to_mpl_kwargs()
-            ax.plot(curve.xdata, curve.ydata, label=curve.name, **kwargs)
+            print(curve)
+            print()
+            x = curve.x.data
+            y = curve.y.data
+            print(x)
+            print(y)
+
+            ax.plot(x.magnitude, y.magnitude, label=curve.name, **kwargs)
 
         if plot.legend:
             ax.legend()

@@ -1,7 +1,81 @@
 import pandas as pd
+from enum import Enum
 import logging
 
+# from sbmlsim.experiment import SimulationExperiment
+
 logger = logging.getLogger(__name__)
+
+
+class Data(object):
+    """Main data generator class which uses data either from
+    experimental data or simulations.
+
+    # Possible Data:
+    # simulation result: access via id
+    # Dataset access via id
+
+    # FIXME: must also handle all the unit conversions
+    """
+    class Types(Enum):
+        SIMULATION = 1
+        DATASET = 2
+        FUNCTION = 3
+
+    def __init__(self, experiment,  # FIXME: annotate SimulationExperiment
+                 index: str, unit: str=None,
+                 simulation: str=None,
+                 dataset: str=None,
+                 function=None, data=None):
+        self.experiment = experiment
+        self.index = index
+        self.unit = unit
+        self.simulation = simulation
+        self.dataset = dataset
+        self.function = function
+        self._data = data
+
+    def get_type(self):
+        if self.simulation:
+            dtype = Data.Types.SIMULATION
+        elif self.dataset:
+            dtype = Data.Types.DATASET
+        return dtype
+
+    # todo: dimensions, data type
+    # TODO: calculations
+
+    @property
+    def data(self):
+        """Returns actual data from the data object"""
+        # FIXME: data caching
+
+        # Necessary to resolve the data
+        dtype = self.get_type()
+        if dtype == Data.Types.DATASET:
+            # read dataset data
+            data = self.experiment.datasets[self.dataset]
+        elif dtype == Data.Types.SIMULATION:
+            # read simulation data
+            data = self.experiment.simulations[self.simulation]
+
+        # Make a dataset with units out of the data
+        if isinstance(data, DataSet):
+            dset = data
+        elif isinstance(data, pd.DataFrame):
+            dset = DataSet.from_df(data=data, udict=None, ureg=None)
+
+        if dset.empty:
+            logger.error(f"Empty dataset in adding data: {dset}")
+
+        # data with units
+        x = dset[self.index].values * dset.ureg(dset.udict[self.index])
+
+        # convert units
+        if self.unit:
+            x = x.to(self.unit)
+
+        return x
 
 
 class DataSeries(pd.Series):

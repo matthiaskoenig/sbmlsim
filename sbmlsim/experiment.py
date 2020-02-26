@@ -17,7 +17,7 @@ from sbmlsim.serialization import ObjectJSONEncoder
 from typing import Dict
 from sbmlsim.logging_utils import bcolors
 from sbmlsim.result import Result
-from sbmlsim.data import DataSet
+from sbmlsim.data import Data, DataSet
 
 # matplotlib backend
 from sbmlsim.plotting_matplotlib import plt, to_figure
@@ -36,9 +36,11 @@ class SimulationExperiment(object):
         self.sid = self.__class__.__name__
         self.model_path = model_path
         self.data_path = data_path
+
         self._results = None
         self._scan_results = None
         self._datasets = None
+        self._datagenerators = None
         self._figures = None
 
     @property
@@ -57,6 +59,12 @@ class SimulationExperiment(object):
             self.ureg = None
 
     @property
+    def datasets(self) -> Dict[str, pd.DataFrame]:
+        """ Datasets. """
+        logger.debug(f"No datasets defined for '{self.sid}'.")
+        return {}
+
+    @property
     def simulations(self) -> Dict[str, TimecourseSim]:
         """ Simulation definitions. """
         logger.debug(f"No simulations defined for '{self.sid}'.")
@@ -69,10 +77,9 @@ class SimulationExperiment(object):
         return {}
 
     @property
-    def datasets(self) -> Dict[str, pd.DataFrame]:
-        """ Datasets. """
-        logger.debug(f"No datasets defined for '{self.sid}'.")
-        return {}
+    def data(self) -> Dict[str, Data]:
+        return self._data
+
 
     @property
     def figures(self) -> Dict[str, FigureMPL]:
@@ -372,6 +379,9 @@ def run_experiment(cls_experiment: SimulationExperiment,
 
     # save json representation
     # FIXME: update json simulations
+    from pprint import pprint
+    pprint(exp.to_dict())
+
     exp.to_json(output_path / f"{exp.sid}.json")
 
     # display figures
