@@ -245,7 +245,7 @@ class Plot(Base):
     A plot is the basic element of a plot.
     This corresponds to an axis.
     """
-    def __init__(self, sid: str, name: str,
+    def __init__(self, sid: str, name: str = None,
                  legend: bool = False,
                  xaxis: Axis = None,
                  yaxis: Axis = None,
@@ -447,7 +447,7 @@ class SubPlot(Base):
     A SubPlot is a locate plot in a figure.
     """
     def __init__(self, plot: Plot,
-                 row: int = 1, col: int = 1,
+                 row: None, col: None,
                  row_span: int = 1,
                  col_span: int = 1):
         self.plot = plot
@@ -468,10 +468,27 @@ class Figure(Base):
         if subplots is None:
             subplots = list()
         self.subplots = subplots
-        self.height = height
         self.width = width
+        self.height = height
         self.num_rows = num_rows
         self.num_cols = num_cols
+
+    def add_plots(self, plots: List[Plot]):
+        if len(plots) > self.num_cols*self.num_rows:
+            raise ValueError("Too many plots for figure")
+        ridx = 1
+        cidx = 1
+        for k, plot in enumerate(plots):
+            self.subplots.append(
+                SubPlot(plot=plot, row=ridx, col=cidx, row_span=1, col_span=1)
+            )
+
+            # increase indices for next plot
+            if cidx == self.num_cols:
+                cidx = 1
+                ridx += 1
+            else:
+                cidx += 1
 
     @staticmethod
     def from_plots(sid, plots: List[Plot]) -> 'Figure':

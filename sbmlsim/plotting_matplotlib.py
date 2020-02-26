@@ -29,13 +29,15 @@ from matplotlib.pyplot import GridSpec
 
 def to_figure(figure: Figure):
     """Convert sbmlsim.Figure to matplotlib figure."""
-    fig = plt.figure(figsize=(figure.height, figure.width))
+    fig = plt.figure(figsize=(figure.width, figure.height))
 
     gs = GridSpec(figure.num_rows, figure.num_cols, figure=fig)
+    # TODO: subplots adjust
+
     for subplot in figure.subplots:  # type: SubPlot
 
-        ridx = subplot.row_span - 1
-        cidx = subplot.col_span - 1
+        ridx = subplot.row - 1
+        cidx = subplot.col - 1
         ax = fig.add_subplot(
             gs[ridx:ridx+subplot.row_span, cidx:cidx+subplot.col_span]
         )
