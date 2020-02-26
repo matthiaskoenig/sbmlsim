@@ -252,7 +252,6 @@ class SimulationExperiment(object):
         for fkey, fig in self.figures.items():
             path_svg = results_path / f"{self.sid}_{fkey}.svg"
 
-            print(type(fig))
             if isinstance(fig, FigureSEDML):
                 fig_mpl = to_figure(fig)
             else:
@@ -379,8 +378,8 @@ def run_experiment(cls_experiment: SimulationExperiment,
 
     # save json representation
     # FIXME: update json simulations
-    from pprint import pprint
-    pprint(exp.to_dict())
+    # from pprint import pprint
+    # pprint(exp.to_dict())
 
     # FIXME:
     exp.to_json(output_path / f"{exp.sid}.json")

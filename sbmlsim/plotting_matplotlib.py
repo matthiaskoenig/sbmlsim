@@ -21,7 +21,7 @@ plt.rcParams.update({
     'xtick.labelsize': 'large',
     'ytick.labelsize': 'large',
     'figure.facecolor': '1.00',
-    'figure.dpi': '150',
+    'figure.dpi': '72',
 })
 
 from matplotlib.pyplot import GridSpec

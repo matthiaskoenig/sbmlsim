@@ -8,8 +8,8 @@ from sbmlsim.data import Data
 class ObjectJSONEncoder(JSONEncoder):
     def default(self, o):
         """json encoder"""
-        print(type(o))
-        print(o)
+        # print(type(o))
+        # print(o)
 
         # handle enums
         if isinstance(o, Enum):
