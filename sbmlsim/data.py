@@ -45,11 +45,23 @@ class Data(object):
 
     # todo: dimensions, data type
     # TODO: calculations
+    # TODO: conversion factors for units, necessary to store
+
+    def to_dict(self):
+        """ Convert to dictionary. """
+        d = {
+            "index": self.index,
+            "unit": self.unit,
+            "simulation": self.simulation,
+            "dataset": self.dataset,
+            "function": self.function,
+        }
+        return d
 
     @property
     def data(self):
         """Returns actual data from the data object"""
-        # FIXME: data caching
+        # FIXME: data caching & store conversion factors
 
         # Necessary to resolve the data
         dtype = self.get_type()

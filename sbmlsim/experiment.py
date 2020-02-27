@@ -2,6 +2,7 @@ import logging
 
 from pathlib import Path
 import os
+import warnings
 import json
 import pandas as pd
 import inspect
@@ -80,7 +81,6 @@ class SimulationExperiment(object):
     def data(self) -> Dict[str, Data]:
         return self._data
 
-
     @property
     def figures(self) -> Dict[str, FigureMPL]:
         """ Figures."""
@@ -92,6 +92,20 @@ class SimulationExperiment(object):
         """ Loads data from given figure/table id."""
         df = load_data(sid=sid, data_path=self.data_path, **kwargs)
         return df
+
+    def validate(self):
+        for key in self.datasets.keys():
+            if not isinstance(key, str):
+                raise ValueError(f"Dataset keys must be str: '{key} -> {type(key)}'")
+        for key in self.simulations.keys():
+            if not isinstance(key, str):
+                raise ValueError(f"Simulation keys must be str: '{key} -> {type(key)}'")
+        for key in self.scans.keys():
+            if not isinstance(key, str):
+                raise ValueError(f"Scan keys must be str: '{key} -> {type(key)}'")
+        for key in self.figures.keys():
+            if not isinstance(key, str):
+                raise ValueError(f"Figure keys must be str: '{key} -> {type(key)}'")
 
     def load_data_pkdb(self, sid, **kwargs):
         """Load timecourse data with units."""
@@ -165,6 +179,10 @@ class SimulationExperiment(object):
         return None
 
     def _figure(self, xlabel, ylabel, title=None):
+        warnings.warn(
+            "'_figure' is deprecated, use sbmlsim.plotting.Figure instead",
+            DeprecationWarning
+        )
         fig, ax = plt.subplots(nrows=1, ncols=1, figsize=(5, 5))
         if title:
             ax.set_title(title)
@@ -194,8 +212,8 @@ class SimulationExperiment(object):
             "experiment_id": self.sid,
             "model_path": Path(self.model_path).resolve(),
             "data_path": Path(self.data_path).resolve(),
-            # "simulations": simulations,
-            # "figures": self.figures,
+            "simulations": simulations,
+            "figures": self.figures,
         }
 
         return d
@@ -337,7 +355,7 @@ class ExperimentResult:
     data_path: Path
     results_path: Path
 
-
+# FIXME: put on experiment class
 def run_experiment(cls_experiment: SimulationExperiment,
                    output_path: Path,
                    model_path: Path,
@@ -361,6 +379,10 @@ def run_experiment(cls_experiment: SimulationExperiment,
     # create experiment
     exp = cls_experiment(model_path=model_path,
                          data_path=data_path)  # type: SimulationExperiment
+
+    # validation
+    exp.validate()
+
     # run simulations
     exp.simulate()
 
@@ -377,11 +399,8 @@ def run_experiment(cls_experiment: SimulationExperiment,
     exp.save_datasets(results_path)
 
     # save json representation
-    # FIXME: update json simulations
-    # from pprint import pprint
-    # pprint(exp.to_dict())
-
-    # FIXME:
+    from pprint import pprint
+    pprint(exp.to_dict())
     exp.to_json(output_path / f"{exp.sid}.json")
 
     # display figures

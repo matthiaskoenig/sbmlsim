@@ -263,6 +263,17 @@ class Plot(Base):
         self.curves = curves
         self._figure = None  # type: Figure
 
+    def to_dict(self):
+        """ Convert to dictionary. """
+        d = {
+            "sid": self.sid,
+            "name": self.name,
+            "legend": self.legend,
+            "xaxis": self.xaxis,
+            "yaxis": self.yaxis,
+            "curves": self.curves,
+        }
+        return d
 
     def get_figure(self):
         if not self._figure:
@@ -279,7 +290,6 @@ class Plot(Base):
     def experiment(self):
         return self.figure.experiment
 
-
     def get_title(self):
         return self.name
 
@@ -291,7 +301,6 @@ class Plot(Base):
 
     def set_yaxis(self, label: str, unit: str=None):
         self.yaxis = Axis(name=label, unit=unit)
-
 
     def add_curve(self, curve: Curve):
         """
@@ -609,9 +618,21 @@ class Figure(Base):
         """
         num_plots = len(plots)
         return Figure(sid=sid,
-                 num_rows=num_plots, num_cols=1,
-                 height=num_plots*5.0, width=5.0,
-                 subplots=[
-                     SubPlot(plot, row=(k+1), col=1) for k, plot in enumerate(plots)
-                 ])
+                      num_rows=num_plots, num_cols=1,
+                      height=num_plots*5.0, width=5.0,
+                      subplots=[
+                        SubPlot(plot, row=(k+1), col=1) for k, plot in enumerate(plots)
+                      ])
 
+    def to_dict(self):
+        """ Convert to dictionary. """
+        d = {
+            "sid": self.sid,
+            "name": self.name,
+            "num_rows": self.num_rows,
+            "num_cols": self.num_cols,
+            "width": self.width,
+            "height": self.height,
+            "subplots": self.subplots,
+        }
+        return d
