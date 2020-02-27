@@ -270,7 +270,7 @@ class Plot(Base):
         return self.name
 
     def set_title(self, name: str):
-        self.name = title
+        self.name = name
 
     def set_xaxis(self, label: str, unit: str=None):
         self.xaxis = Axis(name=label, unit=unit)
@@ -314,18 +314,45 @@ class Plot(Base):
         self.add_curve(curve)
 
     def add_data(self,
-                 xid: str, yid: str, yid_sd=None, yid_se=None, count=None,
+                 xid: str, yid: str, yid_sd=None, yid_se=None, count: int=None,
                  dataset: str=None, simulation: str=None,
                  xunit=None, yunit=None,
-                 name=None, label='__nolabel__',
-                 xf=1.0, yf=1.0,    
+                 label='__nolabel__',
+                 xf=1.0, yf=1.0,
                  **kwargs):
         """Wrapper around curve. """
+        if yid_sd and yid_se:
+            raise ValueError("Set either 'yid_sd' or 'yid_se', not both.")
+        if dataset and simulation:
+            raise ValueError("Set either 'dataset' or 'simulation', not both.")
+        if dataset is None and simulation is None:
+            raise ValueError("Set either 'dataset' or 'simulation'.")
+
+        if abs(xf-1.0)>1E-8 or abs(yf-1.0)>1E-8:
+            raise ValueError("Scaling factors not supported yet !!!")
+
+        # yerr data
+        yerr = None
+        yerr_label = ''
+        if yid_sd:
+            yerr_label = "+-SD"
+            yerr = Data(self, yid_sd, dataset=dataset, simulation=simulation, unit=yunit)
+        elif yid_se:
+            yerr_label = "+-SE"
+            yerr = Data(self, yid_se, dataset=dataset, simulation=simulation, unit=yunit)
+
+        # label
+        if label != "__nolabel__":
+            count_label = ""
+            if count:
+                count_label = f" (n={count})"
+            label = f"{label}{yerr_label}{count_label}"
+
         self.curve(
-            x=Data(self, "time", dataset="fig1_po100", unit=unit_time),
-            y=Data(self, "glcve", dataset="fig1_po100", unit=unit_glc),
-            yerr=Data(self, "glcve_se", dataset="fig1_po100", unit=unit_glc),
-            label="cpeptide (n=10)", color="black"
+            x=Data(self, xid, dataset=dataset, simulation=simulation, unit=xunit),
+            y=Data(self, yid, dataset=dataset, simulation=simulation, unit=yunit),
+            yerr=yerr,
+            label=label, **kwargs
         )
 
 
@@ -495,6 +522,9 @@ class SubPlot(Base):
 
 class Figure(Base):
     """A figure consists of multiple subplots."""
+    panel_width = 5.0
+    panel_height = 5.0
+
     def __init__(self, sid: str, name: str = None,
                  subplots: List[SubPlot] = None,
                  height: float = None,
@@ -504,10 +534,15 @@ class Figure(Base):
         if subplots is None:
             subplots = list()
         self.subplots = subplots
-        self.width = width
-        self.height = height
         self.num_rows = num_rows
         self.num_cols = num_cols
+
+        if width == None:
+            width = num_cols * Figure.panel_width
+        if height == None:
+            height = num_rows * Figure.panel_height
+        self.width = width
+        self.height = height
 
     def num_subplots(self):
         """Number of existing subplots."""
@@ -516,6 +551,15 @@ class Figure(Base):
     def num_panels(self):
         """Number of available spots for plots."""
         return self.num_cols * self.num_rows
+
+    def create_plots(self, xaxis: Axis=None,
+                     yaxis: Axis=None, legend: bool=True) -> List[Plot]:
+        """Template function for creating plots"""
+        plots = [
+            Plot(sid=f"plot{k}", xaxis=xaxis, yaxis=yaxis, legend=legend) for k in range(self.num_panels())
+        ]
+        self.add_plots(plots)
+        return plots
 
     def add_plots(self, plots: List[Plot]):
         if len(plots) > self.num_cols*self.num_rows:
