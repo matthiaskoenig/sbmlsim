@@ -67,7 +67,11 @@ class Data(object):
                 logger.error(f"Empty dataset in adding data: {dset}")
 
             # data with units
-            x = dset[self.index].values * dset.ureg(dset.udict[self.index])
+            if self.index.endswith("_se") or self.index.endswith("_sd"):
+                uindex = self.index[:-3]
+            else:
+                uindex = self.index
+            x = dset[self.index].values * dset.ureg(dset.udict[uindex])
 
         elif dtype == Data.Types.SIMULATION:
             # read simulation data

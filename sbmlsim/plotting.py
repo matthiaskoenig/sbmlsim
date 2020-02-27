@@ -151,14 +151,11 @@ class Style(Base):
 
         # FIXME: handle alpha colors
         # https://matplotlib.org/3.1.0/tutorials/colors/colors.html
-
-
         alpha = kwargs.get("alpha", 1.0)
         color = kwargs.get("color", None)
         if color:
             color = to_rgba(color, alpha)
             color = to_hex(color, keep_alpha=True)
-
 
         # Line
         linestyle = kwargs.get("linestyle", '-')
@@ -199,7 +196,6 @@ class Axis(Base):
     @property
     def label(self):
         return f"{self.name} [{self.unit}]"
-
 
 
 class AbstractCurve(Base):
@@ -265,6 +261,24 @@ class Plot(Base):
         self.xaxis = xaxis
         self.yaxis = yaxis
         self.curves = curves
+        self._figure = None  # type: Figure
+
+
+    def get_figure(self):
+        if not self._figure:
+            raise ValueError(f"The plot '{self}' has no associated figure.")
+
+        return self._figure
+
+    def set_figure(self, value: 'Figure'):
+        self._figure = value
+
+    figure = property(get_figure, set_figure)
+
+    @property
+    def experiment(self):
+        return self.figure.experiment
+
 
     def get_title(self):
         return self.name
@@ -331,15 +345,18 @@ class Plot(Base):
         if abs(xf-1.0)>1E-8 or abs(yf-1.0)>1E-8:
             raise ValueError("Scaling factors not supported yet !!!")
 
+        # experiment to resolve data
+        experiment = self.experiment
+
         # yerr data
         yerr = None
         yerr_label = ''
         if yid_sd:
             yerr_label = "+-SD"
-            yerr = Data(self, yid_sd, dataset=dataset, simulation=simulation, unit=yunit)
+            yerr = Data(experiment, yid_sd, dataset=dataset, simulation=simulation, unit=yunit)
         elif yid_se:
             yerr_label = "+-SE"
-            yerr = Data(self, yid_se, dataset=dataset, simulation=simulation, unit=yunit)
+            yerr = Data(experiment, yid_se, dataset=dataset, simulation=simulation, unit=yunit)
 
         # label
         if label != "__nolabel__":
@@ -349,13 +366,13 @@ class Plot(Base):
             label = f"{label}{yerr_label}{count_label}"
 
         self.curve(
-            x=Data(self, xid, dataset=dataset, simulation=simulation, unit=xunit),
-            y=Data(self, yid, dataset=dataset, simulation=simulation, unit=yunit),
+            x=Data(experiment, xid, dataset=dataset, simulation=simulation, unit=xunit),
+            y=Data(experiment, yid, dataset=dataset, simulation=simulation, unit=yunit),
             yerr=yerr,
             label=label, **kwargs
         )
 
-
+    '''
     def add_data_old(self, data: DataSet,
                  xid: str, yid: str, yid_sd=None, yid_se=None, count=None,
                  xunit=None, yunit=None,
@@ -436,7 +453,7 @@ class Plot(Base):
 
         self.add_curve(curve)
 
-    def add_line(self, data: Result,
+    def add_line_old(self, data: Result,
                  xid: str, yid: str,
                  xunit=None, yunit=None, xf=1.0, yf=1.0, all_lines=False,
                  label='__nolabel__', **kwargs):
@@ -502,7 +519,7 @@ class Plot(Base):
             self.add_curve(
                 Curve(sid=None, name=label, xdata=x.magnitude, ydata=y.magnitude, **kwargs)
             )
-
+    '''
 
 
 class SubPlot(Base):
@@ -521,16 +538,21 @@ class SubPlot(Base):
 
 
 class Figure(Base):
-    """A figure consists of multiple subplots."""
+    """A figure consists of multiple subplots.
+
+    A reference to the experiment is required, so the plot can
+    resolve the datasets and the simulations.
+    """
     panel_width = 5.0
     panel_height = 5.0
 
-    def __init__(self, sid: str, name: str = None,
+    def __init__(self, experiment, sid: str, name: str = None,
                  subplots: List[SubPlot] = None,
                  height: float = None,
                  width: float = None,
                  num_rows: int = 1, num_cols: int = 1):
         super(Figure, self).__init__(sid, name)
+        self.experiment = experiment
         if subplots is None:
             subplots = list()
         self.subplots = subplots
@@ -577,6 +599,8 @@ class Figure(Base):
                 ridx += 1
             else:
                 cidx += 1
+            # set the figure for the plot
+            plot.set_figure(value=self)
 
     @staticmethod
     def from_plots(sid, plots: List[Plot]) -> 'Figure':

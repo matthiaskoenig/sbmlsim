@@ -61,8 +61,20 @@ def to_figure(figure: Figure):
             x = curve.x.data
             y = curve.y.data
 
-            # FIXME: errorbars
-            ax.plot(x.magnitude, y.magnitude, label=curve.name, **kwargs)
+            yerr = None
+            if curve.yerr is not None:
+                yerr = curve.yerr.data
+
+            # FIXME: x - errorbars
+            xerr = None
+            if curve.xerr is not None:
+                xerr = curve.xerr.data
+
+            if (xerr is None) and (yerr is None):
+                ax.plot(x.magnitude, y.magnitude, label=curve.name, **kwargs)
+            elif (xerr is None) and (yerr is not None):
+                ax.errorbar(x.magnitude, y.magnitude, yerr.magnitude,
+                            label=curve.name, **kwargs)
 
         if plot.legend:
             ax.legend()
