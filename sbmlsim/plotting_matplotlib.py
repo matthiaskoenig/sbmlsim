@@ -30,6 +30,8 @@ from matplotlib.pyplot import GridSpec
 def to_figure(figure: Figure):
     """Convert sbmlsim.Figure to matplotlib figure."""
     fig = plt.figure(figsize=(figure.width, figure.height))
+    # FIXME: check that the settings are applied
+    fig.subplots_adjust(wspace=0.3, hspace=0.3)
 
     gs = GridSpec(figure.num_rows, figure.num_cols, figure=fig)
     # TODO: subplots adjust
