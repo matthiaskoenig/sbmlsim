@@ -250,6 +250,14 @@ class Plot(Base):
                  xaxis: Axis = None,
                  yaxis: Axis = None,
                  curves: List[Curve] = None):
+        """
+        :param sid:
+        :param name: title of the plot
+        :param legend:
+        :param xaxis:
+        :param yaxis:
+        :param curves:
+        """
         super(Plot, self).__init__(sid, name)
         if curves is None:
             curves = list()
@@ -257,6 +265,19 @@ class Plot(Base):
         self.xaxis = xaxis
         self.yaxis = yaxis
         self.curves = curves
+
+    def get_title(self):
+        return self.name
+
+    def set_title(self, name: str):
+        self.name = title
+
+    def set_xaxis(self, label: str, unit: str=None):
+        self.xaxis = Axis(name=label, unit=unit)
+
+    def set_yaxis(self, label: str, unit: str=None):
+        self.yaxis = Axis(name=label, unit=unit)
+
 
     def add_curve(self, curve: Curve):
         """
@@ -292,8 +313,23 @@ class Plot(Base):
         curve = Curve(x, y, xerr, yerr, **kwargs)
         self.add_curve(curve)
 
+    def add_data(self,
+                 xid: str, yid: str, yid_sd=None, yid_se=None, count=None,
+                 dataset: str=None, simulation: str=None,
+                 xunit=None, yunit=None,
+                 name=None, label='__nolabel__',
+                 xf=1.0, yf=1.0,    
+                 **kwargs):
+        """Wrapper around curve. """
+        self.curve(
+            x=Data(self, "time", dataset="fig1_po100", unit=unit_time),
+            y=Data(self, "glcve", dataset="fig1_po100", unit=unit_glc),
+            yerr=Data(self, "glcve_se", dataset="fig1_po100", unit=unit_glc),
+            label="cpeptide (n=10)", color="black"
+        )
 
-    def add_data(self, data: DataSet,
+
+    def add_data_old(self, data: DataSet,
                  xid: str, yid: str, yid_sd=None, yid_se=None, count=None,
                  xunit=None, yunit=None,
                  xf=1.0, yf=1.0,
@@ -472,6 +508,14 @@ class Figure(Base):
         self.height = height
         self.num_rows = num_rows
         self.num_cols = num_cols
+
+    def num_subplots(self):
+        """Number of existing subplots."""
+        return len(self.subplots)
+
+    def num_panels(self):
+        """Number of available spots for plots."""
+        return self.num_cols * self.num_rows
 
     def add_plots(self, plots: List[Plot]):
         if len(plots) > self.num_cols*self.num_rows:
