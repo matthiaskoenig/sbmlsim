@@ -351,8 +351,12 @@ class Plot(Base):
         if dataset is None and simulation is None:
             raise ValueError("Set either 'dataset' or 'simulation'.")
 
-        if abs(xf-1.0)>1E-8 or abs(yf-1.0)>1E-8:
-            raise ValueError("Scaling factors not supported yet !!!")
+        for f in [xf, yf]:
+            if hasattr(f, "magnitude"):
+                f = f.magnitude
+                if abs(f-1.0)>1E-8:
+                    # FIXME: fix scaling factors
+                    raise ValueError("Scaling factors not supported yet !!!")
 
         # experiment to resolve data
         experiment = self.experiment

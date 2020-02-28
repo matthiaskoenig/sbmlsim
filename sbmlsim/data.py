@@ -54,7 +54,7 @@ class Data(object):
             "unit": self.unit,
             "simulation": self.simulation,
             "dataset": self.dataset,
-            "function": self.function,
+            # "function": self.function,
         }
         return d
 
@@ -98,6 +98,14 @@ class Data(object):
 
         return x
 
+class DataFunction(object):
+    """TODO: Data based on functions, i.e. data based on data.
+
+    These are the more complicated data generators.
+    1. calculatable from existing data,
+    2. data can be directly serialized
+    """
+    pass
 
 class DataSeries(pd.Series):
     """DataSet - a pd.Series with additional unit information."""
