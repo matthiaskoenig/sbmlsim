@@ -33,7 +33,7 @@ class SimulationExperiment(object):
 
     Consists of model, list of timecourse simulations, and corresponding results.
     """
-    def __init__(self, model_path=None, data_path=None):
+    def __init__(self, model_path=None, data_path=None, **kwargs):
         self.sid = self.__class__.__name__
         self.model_path = model_path
         self.data_path = data_path
@@ -43,6 +43,7 @@ class SimulationExperiment(object):
         self._datasets = None
         self._datagenerators = None
         self._figures = None
+        self.settings = kwargs
 
     @property
     def model_path(self):
@@ -138,8 +139,8 @@ class SimulationExperiment(object):
         return self._scan_results
 
     def simulate(self, Simulator=SimulatorSerial,
-                 absolute_tolerance=1E-12,
-                 relative_tolerance=1E-12):
+                 absolute_tolerance=1E-14,
+                 relative_tolerance=1E-14):
         """Run simulations & scans.
 
         This should not be called directly, but the results of the simulations
