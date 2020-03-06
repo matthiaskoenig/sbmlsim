@@ -55,10 +55,12 @@ class SimulationExperiment(object):
         if model_path:
             self.r = load_model(self._model_path)
             self.udict, self.ureg = Units.get_units_from_sbml(self._model_path)
+            self.Q_ = self.ureg.Quantity
         else:
             self.r = None
             self.udict = None
             self.ureg = None
+            self.Q_ = None
 
     @property
     def datasets(self) -> Dict[str, pd.DataFrame]:

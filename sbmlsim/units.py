@@ -4,6 +4,7 @@ Managing units and units conversions in models.
 FIXME: have a look at uncertainties
 https://pythonhosted.org/uncertainties/
 """
+from typing import Dict, List
 from pathlib import Path
 import pint
 import logging
@@ -12,7 +13,7 @@ from sbmlsim.tests.constants import MODEL_REPRESSILATOR, MODEL_GLCWB
 from pprint import pprint
 from pint.errors import UndefinedUnitError
 
-from pint import Quantity
+from pint import Quantity, UnitRegistry
 
 import warnings
 with warnings.catch_warnings():

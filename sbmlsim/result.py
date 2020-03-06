@@ -14,7 +14,12 @@ logger = logging.getLogger(__name__)
 
 
 class Result(object):
-    """Result of simulation(s)."""
+    """Result of simulation(s).
+
+    Results only store the raw data without any units.
+    The SimulationExperiment context, i.e., especially the model definition is
+    required to resolve the units.
+    """
 
     def __init__(self, frames: List[pd.DataFrame], udict=None, ureg=None):
         """

@@ -107,6 +107,7 @@ class DataFunction(object):
     """
     pass
 
+
 class DataSeries(pd.Series):
     """DataSet - a pd.Series with additional unit information."""
     # additional properties
@@ -141,6 +142,16 @@ class DataSet(pd.DataFrame):
         dset.udict = udict
         dset.ureg = ureg
         return dset
+
+    def get_quantity(self, key):
+        """Returns quantity for given key.
+
+        Requires using the numpy data instead of the series.
+        """
+        return self.ureg.Quantity(
+            self[key].values, self.udict[key]
+        )
+
 
 
 if __name__ == "__main__":
