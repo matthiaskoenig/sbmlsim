@@ -1,0 +1,13 @@
+<omexManifest>
+<content location="manifest.xml" format="http://identifiers.org/combine.specifications/omex-manifest" master="False"/>
+<content location="metadata.rdf" format="http://identifiers.org/combine.specifications/omex-metadata" master="False"/>
+<content location="." format="http://identifiers.org/combine.specifications/omex" master="False"/>
+<content location="manifest.json" format="http://purl.org/NET/mediatypes/application/json" master="False"/>
+<content location="repressilator.xml" format="http://identifiers.org/combine.specifications/sed-ml" master="True"/>
+<content location="results/sedml_webtools/timecourse.pdf" format="http://purl.org/NET/mediatypes/application/pdf" master="False"/>
+<content location="results/sedml_webtools/preprocessing.pdf" format="http://purl.org/NET/mediatypes/application/pdf" master="False"/>
+<content location="results/sedml_webtools/postprocessing.pdf" format="http://purl.org/NET/mediatypes/application/pdf" master="False"/>
+<content location="results/tellurium/timecourse.pdf" format="http://purl.org/NET/mediatypes/application/pdf" master="False"/>
+<content location="results/tellurium/preprocessing.pdf" format="http://purl.org/NET/mediatypes/application/pdf" master="False"/>
+<content location="results/tellurium/postprocessing.pdf" format="http://purl.org/NET/mediatypes/application/pdf" master="False"/>
+</omexManifest>
