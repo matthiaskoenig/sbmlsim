@@ -19,6 +19,10 @@ def load_model(path: Path, selections: List[str] = None) -> roadrunner.RoadRunne
     :param selections: boolean flag to set selections
     :return: roadrunner instance
     """
+
+    # FIXME: support urls for models
+
+
     if isinstance(path, Path):
         path = str(path.resolve())
     logging.info("Load model: '{}'".format(path))

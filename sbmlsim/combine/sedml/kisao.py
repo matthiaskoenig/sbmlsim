@@ -1,31 +1,3 @@
-"""
-Converting SED-ML to a simulation experiment.
-Reading SED-ML file and encoding as simulation experiment.
-"""
-import sys
-import platform
-import tempfile
-import shutil
-import traceback
-import os.path
-import warnings
-import datetime
-import zipfile
-import re
-import numpy as np
-from collections import namedtuple
-import jinja2
-from pathlib import Path
-
-import libsedml
-import importlib
-importlib.reload(libsedml)
-
-from sbmlsim.combine import omex
-from sbmlsim.experiment import SimulationExperiment
-from .mathml import evaluableMathML
-
-
 ######################################################################################################################
 # KISAO MAPPINGS
 ######################################################################################################################
@@ -129,19 +101,3 @@ KISAOS_ALGORITHMPARAMETERS = {
     'KISAO:0000487': ('minimum_damping', float),  # [nleq] minimum damping value
     'KISAO:0000488': ('seed', int),  # the seed for stochastic runs of the algorithm
 }
-
-def experiment_from_omex(omex_path: Path):
-    """Create SimulationExperiments from all SED-ML files."""
-    tmp_dir = tempfile.mkdtemp()
-    try:
-        omex.extractCombineArchive(omex_path, directory=tmp_dir, method="zip")
-        locations = omex.getLocationsByFormat(omex_path, "sed-ml")
-        sedml_files = [os.path.join(tmp_dir, loc) for loc in locations]
-
-        for k, sedml_file in enumerate(sedml_files):
-            pystr = sedmlToPython(sedml_file)
-            pycode[locations[k]] = pystr
-
-    finally:
-        shutil.rmtree(tmp_dir)
-    return pycode
