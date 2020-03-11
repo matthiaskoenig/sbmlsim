@@ -1,6 +1,94 @@
+# -*- coding: utf-8 -*-
 """
 Converting SED-ML to a simulation experiment.
 Reading SED-ML file and encoding as simulation experiment.
+
+This module implements SED-ML support for sbmlsim.
+
+----------------
+Overview SED-ML
+----------------
+SED-ML is build of main classes
+    the Model Class,
+    the Simulation Class,
+    the Task Class,
+    the DataGenerator Class,
+    and the Output Class.
+
+The Model Class
+    The Model class is used to reference the models used in the simulation experiment.
+    SED-ML itself is independent of the model encoding underlying the models. The only
+    requirement is that the model needs to be referenced by using an unambiguous identifier
+    which allows for finding it, for example using a MIRIAM URI. To specify the language in
+    which the model is encoded, a set of predefined language URNs is provided.
+    The SED-ML Change class allows the application of changes to the referenced models,
+    including changes on the XML attributes, e.g. changing the value of an observable,
+    computing the change of a value using mathematics, or general changes on any XML element
+    of the model representation that is addressable by XPath expressions, e.g. substituting
+    a piece of XML by an updated one.
+
+TODO: DATA CLASS
+
+
+The Simulation Class
+    The Simulation class defines the simulation settings and the steps taken during simulation.
+    These include the particular type of simulation and the algorithm used for the execution of
+    the simulation; preferably an unambiguous reference to such an algorithm should be given,
+    using a controlled vocabulary, or ontologies. One example for an ontology of simulation
+    algorithms is the Kinetic Simulation Algorithm Ontology KiSAO. Further information encodable
+    in the Simulation class includes the step size, simulation duration, and other
+    simulation-type dependent information.
+
+The Task Class
+    SED-ML makes use of the notion of a Task class to combine a defined model (from the Model class)
+    and a defined simulation setting (from the Simulation class). A task always holds one reference each.
+    To refer to a specific model and to a specific simulation, the corresponding IDs are used.
+
+The DataGenerator Class
+    The raw simulation result sometimes does not correspond to the desired output of the simulation,
+    e.g. one might want to normalise a plot before output, or apply post-processing like mean-value calculation.
+    The DataGenerator class allows for the encoding of such post-processings which need to be applied to the
+    simulation result before output. To define data generators, any addressable variable or parameter
+    of any defined model (from instances of the Model class) may be referenced, and new entities might
+    be specified using MathML definitions.
+
+The Output Class
+    The Output class defines the output of the simulation, in the sense that it specifies what shall be
+    plotted in the output. To do so, an output type is defined, e.g. 2D-plot, 3D-plot or data table,
+    and the according axes or columns are all assigned to one of the formerly specified instances
+    of the DataGenerator class.
+
+For information about SED-ML please refer to http://www.sed-ml.org/
+and the SED-ML specification.
+
+------------------------------------
+SED-ML in tellurium: Implementation
+------------------------------------
+SED-ML support in tellurium is based on Combine Archives.
+The SED-ML files in the Archive can be executed and stored with results.
+
+----------------------------------------
+SED-ML in tellurium: Supported Features
+----------------------------------------
+Tellurium supports SED-ML L1V3 with SBML as model format.
+
+SBML models are fully supported, whereas for CellML models only basic support
+is implemented (when additional support is requested it be implemented).
+CellML models are transformed to SBML models which results in different XPath expressions,
+so that targets, selections cannot be easily resolved in the CellMl-SBML.
+
+Supported input for SED-ML are either SED-ML files ('.sedml' extension),
+SED-ML XML strings or combine archives ('.sedx'|'.omex' extension).
+Executable python code is generated from the SED-ML which allows the
+execution of the defined simulation experiment.
+
+In the current implementation all SED-ML constructs with exception of
+XML transformation changes of the model
+    - Change.RemoveXML
+    - Change.AddXML
+    - Change.ChangeXML
+are supported.
+
 """
 import sys
 import platform
@@ -26,12 +114,13 @@ import re
 import requests
 
 from sbmlsim.combine import omex
+from sbmlsim.combine.sedml.utils import SEDMLTools
 from sbmlsim.experiment import SimulationExperiment
-from .mathml import evaluableMathML
+from sbmlsim.model import load_model
+from sbmlsim.combine.sedml.mathml import evaluableMathML
 
 
-
-
+'''
 def experiment_from_omex(omex_path: Path):
     """Create SimulationExperiments from all SED-ML files."""
     tmp_dir = tempfile.mkdtemp()
@@ -49,25 +138,33 @@ def experiment_from_omex(omex_path: Path):
     finally:
         shutil.rmtree(tmp_dir)
     return pycode
+'''
+
 
 class SEDMLModelParser(object):
-
-
-
-
-class SEDMLCodeFactory(object):
     """ Code Factory generating executable code."""
 
-    def parse_models(self, model: libsedml.SedModel, working_dir: Path):
+    def __init__(self, doc: libsedml.SedDocument, working_dir: Path):
+        self.doc = doc
+        self.working_dir = working_dir
+        model_sources, model_changes = SEDMLTools.resolve_model_changes(self.doc)
+        self.model_sources = model_sources
+        self.model_changes = model_changes
+        models = {}
+        for sed_model in doc.getListOfModels():  # type: libsedml.SedModel
+            model_result = self.parse_model(sed_model, working_dir=working_dir)
+            print(model_result)
+
+    def parse_model(self, sed_model: libsedml.SedModel, working_dir: Path):
         """ Python code for SedModel.
 
-        :param model: SedModel instance
-        :type model: SedModel
+        :param sed_model: SedModel instance
+        :type sed_model: SedModel
         :return: python str
         :rtype: str
         """
-        mid = model.getId()
-        language = model.getLanguage()
+        mid = sed_model.getId()
+        language = sed_model.getLanguage()
         source = self.model_sources[mid]
 
         if not language:
@@ -81,27 +178,98 @@ class SEDMLCodeFactory(object):
 
         # read SBML
         if 'sbml' in language or len(language) == 0:
+            sbml_str = None
             if is_urn():
                 sbml_str = biomodels.from_urn(source)
             elif is_http():
                 sbml_str = biomodels.from_url(source)
+            if sbml_str:
+                model = load_model(sbml_str)
             else:
-                # load file
-                path = os.path.join(working_dir, source)
+                # load file, by resolving path relative to working dir
+                # FIXME: absolute paths?
+                sbml_path = os.path.join(working_dir, source)
+                model = load_model(sbml_path)
 
         # read CellML
         elif 'cellml' in language:
             warnings.warn("CellML model encountered, sbmlsim does not support CellML".format(language))
-            raise ValueError
+            raise ValueError("CellML models not supported yet")
         # other
         else:
             warnings.warn("Unsupported model language: '{}'.".format(language))
 
-        # TODO: load models
-
 
         # apply model changes
-        for change in self.model_changes[mid]:
-            lines.extend(SEDMLCodeFactory.modelChangeToPython(model, change))
+        # for change in self.model_changes[mid]:
+            # lines.extend(SEDMLCodeFactory.modelChangeToPython(model, change))
 
-        return model
+        return {
+            'model': model,
+            'mid': mid,
+            'language': language,
+        }
+
+    '''
+    def modelChangeToPython(model, change):
+        """ Creates the apply change python string for given model and change.
+
+        Currently only a very limited subset of model changes is supported.
+        Namely changes of parameters and concentrations within a SedChangeAttribute.
+
+        :param model: given model
+        :type model: SedModel
+        :param change: model change
+        :type change: SedChange
+        :return:
+        :rtype: str
+        """
+        lines = []
+        mid = model.getId()
+        xpath = change.getTarget()
+
+        if change.getTypeCode() == libsedml.SEDML_CHANGE_ATTRIBUTE:
+            # resolve target change
+            value = change.getNewValue()
+            lines.append("# {} {}".format(xpath, value))
+            lines.append(SEDMLCodeFactory.targetToPython(xpath, value, modelId=mid))
+
+        elif change.getTypeCode() == libsedml.SEDML_CHANGE_COMPUTECHANGE:
+            variables = {}
+            for par in change.getListOfParameters():
+                variables[par.getId()] = par.getValue()
+            for var in change.getListOfVariables():
+                vid = var.getId()
+                selection = SEDMLCodeFactory.selectionFromVariable(var, mid)
+                expr = selection.id
+                if selection.type == "concentration":
+                    expr = "init([{}])".format(selection.id)
+                elif selection.type == "amount":
+                    expr = "init({})".format(selection.id)
+                lines.append("__var__{} = {}['{}']".format(vid, mid, expr))
+                variables[vid] = "__var__{}".format(vid)
+
+            # value is calculated with the current state of model
+            value = evaluableMathML(change.getMath(), variables=variables)
+            lines.append(SEDMLCodeFactory.targetToPython(xpath, value, modelId=mid))
+
+        elif change.getTypeCode() in [libsedml.SEDML_CHANGE_REMOVEXML,
+                                      libsedml.SEDML_CHANGE_ADDXML,
+                                      libsedml.SEDML_CHANGE_CHANGEXML]:
+            lines.append("# Unsupported change: {}".format(change.getElementName()))
+            warnings.warn("Unsupported change: {}".format(change.getElementName()))
+        else:
+            lines.append("# Unsupported change: {}".format(change.getElementName()))
+            warnings.warn("Unsupported change: {}".format(change.getElementName()))
+
+        return lines
+    '''
+
+if __name__ == "__main__":
+    from pathlib import Path
+    base_path = Path(__file__).parent
+    sedml_path = base_path / "experiments" / "repressilator_sedml.xml"
+    results = SEDMLTools.read_sedml_document(str(sedml_path), working_dir=base_path)
+    doc = results['doc']
+    sed_parser = SEDMLModelParser(doc, working_dir=base_path)
+

@@ -71,7 +71,7 @@ def _parseDataDescriptions(sedml_path):
     assert os.path.exists(sedml_path_str)
 
     doc_sedml = libsedml.readSedMLFromFile(sedml_path_str)
-    SEDMLTools.checkSEDMLDocument(doc_sedml)
+    SEDMLTools.check_sedml_document(doc_sedml)
 
     # parse DataDescriptions
     list_dd = doc_sedml.getListOfDataDescriptions()

@@ -20,7 +20,7 @@ class SEDMLTools(object):
     INPUT_TYPE_FILE_COMBINE = 'COMBINE_FILE'  # includes .sedx archives
 
     @classmethod
-    def checkSEDMLDocument(cls, doc):
+    def check_sedml_document(cls, doc: libsedml.SedDocument):
         """ Checks the SedDocument for errors.
         Raises IOError if error exists.
         :param doc:
@@ -43,7 +43,7 @@ class SEDMLTools(object):
             warnings.warn(msg)
 
     @classmethod
-    def readSEDMLDocument(cls, inputStr, workingDir):
+    def read_sedml_document(cls, input: str, working_dir):
         """ Parses SedMLDocument from given input.
 
         :return: dictionary of SedDocument, inputType and working directory.
@@ -51,35 +51,35 @@ class SEDMLTools(object):
         """
 
         # SEDML-String
-        if not os.path.exists(inputStr):
+        if not os.path.exists(input):
             try:
                 from xml.etree import ElementTree
-                x = ElementTree.fromstring(inputStr)
+                x = ElementTree.fromstring(input)
                 # is parsable xml string
-                doc = libsedml.readSedMLFromString(inputStr)
+                doc = libsedml.readSedMLFromString(input)
                 inputType = cls.INPUT_TYPE_STR
-                if workingDir is None:
-                    workingDir = os.getcwd()
+                if working_dir is None:
+                    working_dir = os.getcwd()
 
             except ElementTree.ParseError:
-                if not os.path.exists(inputStr):
-                    raise IOError("SED-ML String is not valid XML:", inputStr)
+                if not os.path.exists(input):
+                    raise IOError("SED-ML String is not valid XML:", input)
 
         # SEDML-File
         else:
-            filename, extension = os.path.splitext(os.path.basename(inputStr))
+            filename, extension = os.path.splitext(os.path.basename(input))
 
             # Archive
-            if zipfile.is_zipfile(inputStr):
-                omexPath = inputStr
+            if zipfile.is_zipfile(input):
+                omexPath = input
                 inputType = cls.INPUT_TYPE_FILE_COMBINE
 
                 # in case of sedx and combine a working directory is created
                 # in which the files are extracted
-                if workingDir is None:
+                if working_dir is None:
                     extractDir = os.path.join(os.path.dirname(os.path.realpath(omexPath)), '_te_{}'.format(filename))
                 else:
-                    extractDir = workingDir
+                    extractDir = working_dir
 
                 # TODO: refactor this
                 importlib.reload(libcombine)
@@ -100,21 +100,76 @@ class SEDMLTools(object):
                 sedmlFile = sedmlFiles[0]
                 doc = libsedml.readSedMLFromFile(sedmlFile)
                 # we have to work relative to the SED-ML file
-                workingDir = os.path.dirname(sedmlFile)
+                working_dir = os.path.dirname(sedmlFile)
 
-                cls.checkSEDMLDocument(doc)
+                cls.check_sedml_document(doc)
 
             # SEDML single file
-            elif os.path.isfile(inputStr):
+            elif os.path.isfile(input):
                 if extension not in [".sedml", '.xml']:
-                    raise IOError("SEDML file should have [.sedml|.xml] extension:", inputStr)
+                    raise IOError("SEDML file should have [.sedml|.xml] extension:", input)
                 inputType = cls.INPUT_TYPE_FILE_SEDML
-                doc = libsedml.readSedMLFromFile(inputStr)
-                cls.checkSEDMLDocument(doc)
+                doc = libsedml.readSedMLFromFile(input)
+                cls.check_sedml_document(doc)
                 # working directory is where the sedml file is
-                if workingDir is None:
-                    workingDir = os.path.dirname(os.path.realpath(inputStr))
+                if working_dir is None:
+                    working_dir = os.path.dirname(os.path.realpath(input))
 
         return {'doc': doc,
                 'inputType': inputType,
-                'workingDir': workingDir}
+                'workingDir': working_dir}
+
+    @staticmethod
+    def resolve_model_changes(doc: libsedml.SedDocument):
+        """ Resolves the original source model and full change lists for models.
+
+         Going through the tree of model upwards until root is reached and
+         collecting changes on the way (example models m* and changes c*)
+         m1 (source) -> m2 (c1, c2) -> m3 (c3, c4)
+         resolves to
+         m1 (source) []
+         m2 (source) [c1,c2]
+         m3 (source) [c1,c2,c3,c4]
+         The order of changes is important (at least between nodes on different
+         levels of hierarchies), because later changes of derived models could
+         reverse earlier changes.
+
+         Uses recursive search strategy, which should be okay as long as the model tree hierarchy is
+         not getting to big.
+         """
+        # initial dicts (handle source & change information for single node)
+        model_sources = {}
+        model_changes = {}
+
+        for m in doc.getListOfModels():  # type: libsedml.SedModel
+            mid = m.getId()
+            source = m.getSource()
+            model_sources[mid] = source
+            changes = []
+            # store the changes unique for this model
+            for c in m.getListOfChanges():
+                changes.append(c)
+            model_changes[mid] = changes
+
+        # recursive search for original model and store the
+        # changes which have to be applied in the list of changes
+        def findSource(mid, changes):
+            # mid is node above
+            if mid in model_sources and not model_sources[mid] == mid:
+                # add changes for node
+                for c in model_changes[mid]:
+                    changes.append(c)
+                # keep looking deeper
+                return findSource(model_sources[mid], changes)
+            # the source is no longer a key in the sources, it is the source
+            return mid, changes
+
+        all_changes = {}
+
+        mids = [m.getId() for m in doc.getListOfModels()]
+        for mid in mids:
+            source, changes = findSource(mid, changes=list())
+            model_sources[mid] = source
+            all_changes[mid] = changes[::-1]
+
+        return model_sources, all_changes
