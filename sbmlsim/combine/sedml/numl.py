@@ -6,6 +6,7 @@ import importlib
 from pathlib import Path
 import libnuml
 import libsedml
+import libsbml
 from enum import Enum
 
 logger = logging.getLogger(__name__)
@@ -42,6 +43,7 @@ class NumlParser(object):
         if errorlog.getNumFailsWithSeverity(libnuml.LIBNUML_SEV_GENERAL_WARNING) > 0:
             warnings.warn(msg)
 
+        importlib.reload(libsbml)
         return doc_numl
 
     @classmethod

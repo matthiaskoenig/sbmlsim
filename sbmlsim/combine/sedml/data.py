@@ -5,6 +5,7 @@ import os
 import logging
 import warnings
 import tempfile
+import libsbml
 import pandas as pd
 from pathlib import Path
 
@@ -193,6 +194,8 @@ class DataDescriptionParser(object):
         # FIXME: handle in finally
         if tmp_file is not None:
             os.remove(tmp_file)
+
+        importlib.reload(libsbml)
 
         return data_sources
 
