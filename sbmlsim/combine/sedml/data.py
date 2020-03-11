@@ -5,15 +5,14 @@ import os
 import logging
 import warnings
 import tempfile
-import numpy as np
 import pandas as pd
 from pathlib import Path
 
 import http.client as httplib
 
-import libnuml
 import libsedml
 import importlib
+from .numl import NumlParser
 
 logger = logging.getLogger('sedml-data')
 
@@ -95,10 +94,9 @@ class DataDescriptionParser(object):
         # -------------------------------
         # FIXME: uses the data_types to check the actual data type
         dim_description = dd.getDimensionDescription()
+        data_types = None
         if dim_description is not None:
-            data_types = cls.parse_dimension_description(dim_description)
-        else:
-            data_types = None
+            data_types = NumlParser.parse_dimension_description(dim_description, library=NumlParser.Library.LIBSEDML)
 
         # -------------------------------
         # Load complete data
@@ -271,233 +269,3 @@ class DataDescriptionParser(object):
                          skipinitialspace=True,
                          na_values="nan")
         return df
-
-    @classmethod
-    def read_numl_document(cls, path):
-        """ Helper to read numl document and checking errors
-
-        :param path: path of file
-        :return:
-        """
-        importlib.reload(libnuml)
-        doc_numl = libnuml.readNUMLFromFile(path)  # type: libnuml.NUMLDocument
-
-        # check for errors
-        errorlog = doc_numl.getErrorLog()
-        msg = "NUML ERROR in '{}': {}".format(path, errorlog.toString())
-        if errorlog.getNumFailsWithSeverity(libnuml.LIBNUML_SEV_ERROR) > 0:
-            raise IOError(msg)
-        if errorlog.getNumFailsWithSeverity(libnuml.LIBNUML_SEV_FATAL) > 0:
-            raise IOError(msg)
-        if errorlog.getNumFailsWithSeverity(libnuml.LIBNUML_SEV_WARNING) > 0:
-            warnings.warn(msg)
-        if errorlog.getNumFailsWithSeverity(libnuml.LIBNUML_SEV_SCHEMA_ERROR) > 0:
-            warnings.warn(msg)
-        if errorlog.getNumFailsWithSeverity(libnuml.LIBNUML_SEV_GENERAL_WARNING) > 0:
-            warnings.warn(msg)
-
-        return doc_numl
-
-    @classmethod
-    def _load_numl(cls, path):
-        """ Reading NuML data from file.
-
-        This loads the complete numl data.
-        For more information see: https://github.com/numl/numl
-
-        :param path: NuML path
-        :return: data
-        """
-        importlib.reload(libnuml)
-        path_str = path
-        if isinstance(path, Path):
-            path_str = str(path)
-
-        doc_numl = DataDescriptionParser.read_numl_document(path_str)
-
-        # reads all the resultComponents from the numl file
-        results = []
-
-        Nrc = doc_numl.getNumResultComponents()
-        rcs = doc_numl.getResultComponents()
-
-        logger.info('\nNumResultComponents:', Nrc)
-        for k in range(Nrc):
-            rc = rcs.get(k)  # parse ResultComponent
-            rc_id = rc.getId()
-
-            # dimension info
-            description = rc.getDimensionDescription()
-            data_types = cls.parse_dimension_description(description)
-
-            # data
-            dimension = rc.getDimension()
-            assert (isinstance(dimension, libnuml.Dimension))
-            data = [cls._parse_dimension(dimension.get(k)) for k in range(dimension.size())]
-
-            # create data frame
-            flat_data = []
-            for entry in data:
-                for part in entry:
-                    flat_data.append(part)
-
-            # column ids from DimensionDescription
-            column_ids = []
-            for entry in data_types:
-                for cid, dtype in entry.items():
-                    column_ids.append(cid)
-
-            df = pd.DataFrame(flat_data, columns=column_ids)
-
-            # convert data types to actual data types
-            for entry in data_types:
-                for cid, dtype in entry.items():
-                    if dtype == 'double':
-                        df[cid] = df[cid].astype(np.float64)
-                    elif dtype == 'string':
-                        df[cid] = df[cid].astype(str)
-
-            # convert all the individual columns to the corresponding data types
-            # df = df.apply(pd.to_numeric, errors="ignore")
-
-            results.append([rc_id, df, data_types])
-
-        return results
-
-    @classmethod
-    def parse_dimension_description(cls, description: libnuml.DimensionDescription):
-        """ Parses the given dimension description.
-
-        Returns dictionary of { key: dtype }
-
-        :param description:
-        :return:
-        """
-        importlib.reload(libnuml)
-        assert description.getTypeCode() == libnuml.NUML_DIMENSIONDESCRIPTION
-        info = [cls._parse_description(description.get(k)) for k in range(description.size())]
-
-        flat_info = []
-        for entry in info:
-            for part in entry:
-                flat_info.append(part)
-
-        return flat_info
-
-    @classmethod
-    def _parse_description(cls, d, info=None, entry=None):
-        """ Parses the recursive DimensionDescription, TupleDescription, AtomicDescription.
-
-        This gets the dimension information from NuML.
-
-          <dimensionDescription>
-            <compositeDescription indexType="double" id="time" name="time">
-              <compositeDescription indexType="string" id="SpeciesIds" name="SpeciesIds">
-                <atomicDescription valueType="double" id="Concentrations" name="Concentrations" />
-              </compositeDescription>
-            </compositeDescription>
-          </dimensionDescription>
-
-        :param d:
-        :param info:
-        :return:
-        """
-        importlib.reload(libnuml)
-        if info is None:
-            info = []
-        if entry is None:
-            entry = []
-
-        type_code = d.getTypeCode()
-        # print('typecode:', type_code)
-        assert(type_code in [libnuml.NUML_COMPOSITEDESCRIPTION,
-                             libnuml.NUML_ATOMICDESCRIPTION,
-                             libnuml.NUML_TUPLEDESCRIPTION])
-
-        if type_code == libnuml.NUML_COMPOSITEDESCRIPTION:
-            print(d, type(d))
-            content = {d.getId(): d.getIndexType()}
-            info.append(content)
-            # print('\t* CompositeDescription:', content)
-            if d.isContentCompositeDescription():
-                for k in range(d.size()):
-                    info = cls._parse_description(d.getCompositeDescription(k), info, list(entry))
-            elif d.isContentAtomicDescription():
-                info = cls._parse_description(d.getAtomicDescription(), info, entry)
-
-        elif type_code == libnuml.NUML_ATOMICDESCRIPTION:
-            content = {d.getId(): d.getValueType()}
-            info.append(content)
-            # print('\t* AtomicDescription:', content)
-
-        elif type_code == libnuml.NUML_TUPLEDESCRIPTION:
-            tuple_des = d.getTupleDescription()
-            Natomic = d.size()
-            valueTypes = []
-            for k in range(Natomic):
-                atomic = tuple_des.getAtomicDescription(k)
-                valueTypes.append(atomic.getValueType())
-
-            info.append(valueTypes)
-            # print('\t* TupleDescription:', valueTypes)
-
-        else:
-            raise NotImplementedError("Type code: {}".format(type_code))
-
-        return info
-
-    @classmethod
-    def _parse_dimension(cls, d, data=None, entry=None):
-        """ Parses the recursive CompositeValue, Tuple, AtomicValue.
-
-        This gets the actual data from NuML.
-
-        :param d:
-        :param data:
-        :return:
-        """
-        importlib.reload(libnuml)
-        if data is None:
-            data = []
-        if entry is None:
-            entry = []
-
-        type_code = d.getTypeCode()
-        # print('typecode:', type_code)
-
-        if type_code == libnuml.NUML_COMPOSITEVALUE:
-            indexValue = d.getIndexValue()
-            entry.append(indexValue)
-            # print('\t* CompositeValue:', indexValue)
-
-            if d.isContentCompositeValue():
-                for k in range(d.size()):
-                    # make copy, so every entry is own entry
-                    data = cls._parse_dimension(d.getCompositeValue(k), data, list(entry))
-            elif d.isContentAtomicValue():
-                data = cls._parse_dimension(d.getAtomicValue(), data, entry)
-
-        elif type_code == libnuml.NUML_ATOMICVALUE:
-            # Data is converted to correct
-            # value = d.getDoubleValue()
-            value = d.getValue()
-            entry.append(value)
-            # entry finished, we are appending
-            data.append(entry)
-            # print('\t* AtomicValue:', value)
-
-        elif type_code == libnuml.NUML_TUPLE:
-            tuple = d.getTuple()
-            Natomic = d.size()
-            values = []
-            for k in range(Natomic):
-                atomic = tuple.getAtomicValue(k)
-                values.append(atomic.getDoubleValue())
-
-            data.append(values)
-            # print('\t* TupleDescription:', values)
-
-        else:
-            raise NotImplementedError
-
-        return data

@@ -1,6 +1,6 @@
 import libsbml
 
-from sbmlsim.combine.sedml import evaluateMathML
+from sbmlsim.combine.sedml.mathml import evaluateMathML
 
 
 def test_mathmlstr():
