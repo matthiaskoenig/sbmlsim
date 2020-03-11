@@ -107,7 +107,7 @@ class DataDescriptionParser(object):
         elif format == cls.FORMAT_TSV:
             data = cls._load_tsv(path=source_path)
         elif format == cls.FORMAT_NUML:
-            data = cls._load_numl(path=source_path)
+            data = NumlParser.load_numl_data(path=source_path)
 
         # log data
         logger.info("-" * 80)
