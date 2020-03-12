@@ -1,12 +1,10 @@
 """
 Parallel execution of timecourses
 """
-import random
 import time
-import roadrunner
 import ray
 
-from sbmlsim.model import load_model
+from sbmlsim.models.model import load_model
 from sbmlsim.timecourse import TimecourseSim, Timecourse
 from sbmlsim.simulation_ray import SimulatorParallel, SimulatorActor
 from sbmlsim.simulation_serial import SimulatorSerial

@@ -1,10 +1,8 @@
 """
 Example for handling units in simulations and results.
 """
-import os
 from matplotlib import pyplot as plt
 
-from sbmlsim.model import load_model
 # from sbmlsim.simulation_ray import SimulatorParallel as Simulator
 from sbmlsim.simulation_serial import SimulatorSerial as Simulator
 
@@ -13,9 +11,6 @@ from sbmlsim.tests.constants import MODEL_DEMO
 from sbmlsim.plotting_matplotlib import add_line
 
 from pprint import pprint
-from sbmlsim.timecourse import ensemble
-from sbmlsim.parametrization import ChangeSet
-from sbmlsim.model import load_model
 
 
 def run_demo_example():

@@ -5,7 +5,7 @@ import re
 import requests
 
 
-def mid_from_str(text) -> str:
+def biomodels_mid_from_str(text) -> str:
     """Resolve biomodel id from string."""
 
     pattern = "((BIOMD|MODEL)\d{10})|(BMID\d{12})"
@@ -14,7 +14,7 @@ def mid_from_str(text) -> str:
     return mid
 
 
-def from_urn(urn) -> str:
+def sbml_from_biomodels_urn(urn) -> str:
     """ Get SBML string from given BioModels URN.
 
     Searches for a BioModels identifier in the given urn and retrieves the SBML from biomodels.
@@ -26,12 +26,12 @@ def from_urn(urn) -> str:
     :param urn:
     :return: SBML string for given model urn
     """
-    mid = mid_from_str(urn)
+    mid = biomodels_mid_from_str(urn)
     url = f"https://www.ebi.ac.uk/biomodels-main/download?mid={mid}"
-    return from_url(url)
+    return sbml_from_biomodels_url(url)
 
 
-def from_url(url) -> str:
+def sbml_from_biomodels_url(url) -> str:
     """ Get SBML string from given
 
     :param url:

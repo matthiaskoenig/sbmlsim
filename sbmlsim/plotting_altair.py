@@ -77,7 +77,7 @@ def add_line(ax, data, yid, xid="time", color='black', label='', xf=1.0, **kwarg
 
 if __name__ == "__main__":
     from sbmlsim.tests.constants import MODEL_REPRESSILATOR
-    from sbmlsim.model import load_model
+    from sbmlsim.models.model import load_model
     from sbmlsim.parametrization import ChangeSet
     from sbmlsim.simulation_serial import TimecourseSimulation, Timecourse, timecourses
     r = load_model(MODEL_REPRESSILATOR)

@@ -90,20 +90,10 @@ XML transformation changes of the model
 are supported.
 
 """
-from pathlib import Path
 
 import re
-import requests
 import logging
-import sys
-import platform
-import tempfile
-import shutil
-import traceback
-import os.path
 import warnings
-import datetime
-import zipfile
 import numpy as np
 from collections import namedtuple
 from pathlib import Path
@@ -112,12 +102,10 @@ import libsedml
 import importlib
 importlib.reload(libsedml)
 
-from sbmlsim.combine import biomodels
-from sbmlsim.combine import omex
+from sbmlsim.models import biomodels
 from sbmlsim.combine.sedml.data import DataDescriptionParser
 from sbmlsim.combine.sedml.utils import SEDMLTools
-from sbmlsim.experiment import SimulationExperiment
-from sbmlsim.model import load_model
+from sbmlsim.models.model import Model
 from sbmlsim.combine.sedml.mathml import evaluableMathML
 
 logger = logging.getLogger(__file__)
@@ -178,9 +166,12 @@ class SEDMLParser(object):
         :return: python str
         :rtype: str
         """
-        mid = sed_model.getId()
-        language = sed_model.getLanguage()
-        source = self.model_sources[mid]
+        model = Model(
+            sid=sed_model.getId(),
+            language=sed_model.getLanguage(),
+            source=sed_model.getSource()
+        )
+
 
         if not language:
             warnings.warn("No model language specified, defaulting to SBML for: {}".format(source))
@@ -195,9 +186,9 @@ class SEDMLParser(object):
         if 'sbml' in language or len(language) == 0:
             sbml_str = None
             if is_urn():
-                sbml_str = biomodels.from_urn(source)
+                sbml_str = biomodels.sbml_from_biomodels_urn(source)
             elif is_http():
-                sbml_str = biomodels.from_url(source)
+                sbml_str = biomodels.sbml_from_biomodels_url(source)
             if sbml_str:
                 model = load_model(sbml_str)
             else:
@@ -348,7 +339,7 @@ class SEDMLParser(object):
             warnings.warn(f"Unrecognized Selection in variable: {var}")
             return None
 
-    def _apply_model_change(self, model, change):
+    def _apply_model_change(self, model, change: libsedml.SedChange):
         """ Creates the apply change python string for given model and change.
 
         Currently only a very limited subset of model changes is supported.
@@ -598,7 +589,7 @@ class SEDMLParser(object):
 
 
     @staticmethod
-    def simpleTaskToPython(doc, node):
+    def simpleTaskToPython(doc, node: TaskNode):
         """ Creates the simulation python code for a given taskNode.
 
         The taskNodes are required to handle the relationships between

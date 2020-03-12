@@ -6,9 +6,9 @@ from typing import List
 from pathlib import Path
 
 from sbmlsim.simulation import SimulatorAbstract, SimulatorWorker, set_integrator_settings
-from sbmlsim.model import load_model
+from sbmlsim.models.model import load_model
 from sbmlsim.result import Result
-from sbmlsim.timecourse import TimecourseSim, TimecourseScan
+from sbmlsim.timecourse import TimecourseSim
 from sbmlsim.units import Units
 
 logger = logging.getLogger(__name__)

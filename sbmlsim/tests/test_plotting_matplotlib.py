@@ -4,7 +4,7 @@ Testing plotting functionality.
 from matplotlib import pyplot as plt
 from sbmlsim.plotting_matplotlib import add_line
 
-from sbmlsim.model import load_model
+from sbmlsim.models.model import load_model
 from sbmlsim.simulation_serial import SimulatorSerial as Simulator
 from sbmlsim.timecourse import Timecourse, TimecourseSim, ensemble
 from sbmlsim.parametrization import ChangeSet

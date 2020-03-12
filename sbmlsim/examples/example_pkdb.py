@@ -1,7 +1,7 @@
 """
 Running typical simulation experiments with PK/PB models.
 """
-from sbmlsim.model import load_model
+from sbmlsim.models.model import load_model
 from sbmlsim.timecourse import TimecourseSim, Timecourse, ensemble
 from sbmlsim.simulation_ray import SimulatorParallel as Simulator
 from sbmlsim.parametrization import ChangeSet

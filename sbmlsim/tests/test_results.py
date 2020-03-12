@@ -2,7 +2,7 @@
 
 import pandas as pd
 
-from sbmlsim.model import load_model
+from sbmlsim.models.model import load_model
 from sbmlsim.result import Result
 from sbmlsim.tests.constants import MODEL_REPRESSILATOR
 

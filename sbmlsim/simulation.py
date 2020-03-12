@@ -12,15 +12,14 @@ Also what is the exact time point the change should be applied.
 """
 
 import logging
-from typing import List, Union, Dict
+from typing import List
 
 import pandas as pd
 import roadrunner
 import itertools
 from copy import deepcopy
-from pprint import pprint
 
-from sbmlsim.model import clamp_species, MODEL_CHANGE_BOUNDARY_CONDITION
+from sbmlsim.models.model import clamp_species, MODEL_CHANGE_BOUNDARY_CONDITION
 from sbmlsim.result import Result
 from sbmlsim.timecourse import Timecourse, TimecourseSim, TimecourseScan
 

@@ -1,12 +1,10 @@
 import ray
 
-import roadrunner
-import pandas as pd
 import logging
-from sbmlsim.model import load_model
-from sbmlsim.timecourse import TimecourseSim, Timecourse
+from sbmlsim.models.model import load_model
+from sbmlsim.timecourse import TimecourseSim
 from sbmlsim.result import Result
-from sbmlsim.simulation import SimulatorWorker, set_integrator_settings
+from sbmlsim.simulation import SimulatorWorker
 from sbmlsim.units import Units
 
 

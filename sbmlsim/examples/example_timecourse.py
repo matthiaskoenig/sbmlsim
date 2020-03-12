@@ -1,10 +1,8 @@
 """
 Example showing basic timecourse simulations and plotting.
 """
-import os
 from matplotlib import pyplot as plt
 
-from sbmlsim.model import load_model
 # from sbmlsim.simulation_ray import SimulatorParallel as Simulator
 from sbmlsim.simulation_serial import SimulatorSerial as Simulator
 

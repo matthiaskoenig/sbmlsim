@@ -1,7 +1,7 @@
 """
 Example shows basic model simulations and plotting.
 """
-from sbmlsim.model import load_model
+from sbmlsim.models.model import load_model
 from sbmlsim.simulation_serial import SimulatorSerial as Simulator
 from sbmlsim.timecourse import TimecourseSim, Timecourse, ensemble
 

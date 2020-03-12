@@ -4,8 +4,8 @@ Test model module.
 import roadrunner
 
 
-from sbmlsim.model import load_model, copy_model, clamp_species
-from sbmlsim.model import species_df, parameter_df
+from sbmlsim.models.model import load_model, copy_model, clamp_species
+from sbmlsim.models.model import species_df, parameter_df
 
 from sbmlsim.tests.constants import MODEL_REPRESSILATOR
 

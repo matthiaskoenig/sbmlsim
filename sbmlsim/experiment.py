@@ -6,19 +6,17 @@ import warnings
 import json
 import pandas as pd
 import inspect
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 
-from sbmlsim.model import load_model
+from sbmlsim.models.model import load_model
 from sbmlsim.simulation_serial import SimulatorSerial
 from sbmlsim.timecourse import TimecourseSim, TimecourseScan
 
 from sbmlsim.units import Units
-from json import JSONEncoder
 from sbmlsim.serialization import ObjectJSONEncoder
 from typing import Dict
-from sbmlsim.logging_utils import bcolors
 from sbmlsim.result import Result
-from sbmlsim.data import Data, DataSet
+from sbmlsim.data import Data
 
 # matplotlib backend
 from sbmlsim.plotting_matplotlib import plt, to_figure
@@ -33,6 +31,9 @@ class SimulationExperiment(object):
 
     Consists of model, list of timecourse simulations, and corresponding results.
     """
+    # FIXME: have multiple models which could be used and defined at the beginning.
+    # These could be derived models based on applied model changes.
+
     def __init__(self, model_path=None, data_path=None, **kwargs):
         self.sid = self.__class__.__name__
         self.model_path = model_path
@@ -64,7 +65,10 @@ class SimulationExperiment(object):
 
     @property
     def datasets(self) -> Dict[str, pd.DataFrame]:
-        """ Datasets. """
+        """ Datasets.
+
+        This corresponds to datasets in SED-ML
+        """
         logger.debug(f"No datasets defined for '{self.sid}'.")
         return {}
 

@@ -1,35 +1,25 @@
-"""
-Functions for model loading, model manipulation and settings on the integrator.
-"""
-from pathlib import Path
-import logging
-import roadrunner
-import libsbml
-import numpy as np
-import pandas as pd
-from typing import List, Tuple
+class RoadrunnerModel(object):
 
-MODEL_CHANGE_BOUNDARY_CONDITION = "boundary_condition"
+    def load_model(source, selections: List[str] = None) -> roadrunner.RoadRunner:
+        """ Loads the latest model version.
 
+        :param source: path to SBML model or SBML string
+        :param selections: boolean flag to set selections
+        :return: roadrunner instance
+        """
 
-def load_model(path: Path, selections: List[str] = None) -> roadrunner.RoadRunner:
-    """ Loads the latest model version.
+        # FIXME: support urls for models
 
-    :param path: path to SBML model or SBML string
-    :param selections: boolean flag to set selections
-    :return: roadrunner instance
-    """
+        if isinstance(source, Path):
+            source = str(source.resolve())
+        logging.info("Load model: '{}'".format(source))
 
-    # FIXME: support urls for models
+        r = roadrunner.RoadRunner(source)
+        set_timecourse_selections(r, selections)
+        return r
 
 
-    if isinstance(path, Path):
-        path = str(path.resolve())
-    logging.info("Load model: '{}'".format(path))
-
-    r = roadrunner.RoadRunner(path)
-    set_timecourse_selections(r, selections)
-    return r
+####################################################################################################
 
 
 def copy_model(r: roadrunner.RoadRunner) -> roadrunner.RoadRunner:
