@@ -621,7 +621,6 @@ class SEDMLCodeFactory(object):
 
         return lines
 
-
     def dataDescriptionToPython(self, dataDescription):
         """ Python code for DataDescription.
 
