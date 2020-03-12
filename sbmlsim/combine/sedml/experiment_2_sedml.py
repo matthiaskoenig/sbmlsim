@@ -43,6 +43,6 @@ def modelToPython(self, model):
 
     # apply model changes
     for change in self.model_changes[mid]:
-        lines.extend(SEDMLCodeFactory.modelChangeToPython(model, change))
+        lines.extend(SEDMLCodeFactory._apply_model_change(model, change))
 
     return '\n'.join(lines)

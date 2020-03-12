@@ -90,6 +90,9 @@ XML transformation changes of the model
 are supported.
 
 """
+import re
+import requests
+import logging
 import sys
 import platform
 import tempfile
@@ -99,10 +102,8 @@ import os.path
 import warnings
 import datetime
 import zipfile
-import re
 import numpy as np
 from collections import namedtuple
-import jinja2
 from pathlib import Path
 
 import libsedml
@@ -110,16 +111,13 @@ import importlib
 importlib.reload(libsedml)
 
 from sbmlsim.combine import biomodels
-import re
-import requests
-
 from sbmlsim.combine import omex
 from sbmlsim.combine.sedml.utils import SEDMLTools
 from sbmlsim.experiment import SimulationExperiment
 from sbmlsim.model import load_model
 from sbmlsim.combine.sedml.mathml import evaluableMathML
 
-
+logger = logging.getLogger(__file__)
 '''
 def experiment_from_omex(omex_path: Path):
     """Create SimulationExperiments from all SED-ML files."""
@@ -148,12 +146,15 @@ class SEDMLModelParser(object):
         self.doc = doc
         self.working_dir = working_dir
         model_sources, model_changes = SEDMLTools.resolve_model_changes(self.doc)
+
         self.model_sources = model_sources
         self.model_changes = model_changes
-        models = {}
+        self.models = {}
+
         for sed_model in doc.getListOfModels():  # type: libsedml.SedModel
+            mid = sed_model.getId()  # type: str
             model_result = self.parse_model(sed_model, working_dir=working_dir)
-            print(model_result)
+            self.models[mid] = model_result['model']
 
     def parse_model(self, sed_model: libsedml.SedModel, working_dir: Path):
         """ Python code for SedModel.
@@ -199,10 +200,9 @@ class SEDMLModelParser(object):
         else:
             warnings.warn("Unsupported model language: '{}'.".format(language))
 
-
         # apply model changes
-        # for change in self.model_changes[mid]:
-            # lines.extend(SEDMLCodeFactory.modelChangeToPython(model, change))
+        for change in self.model_changes[mid]:
+            self._apply_model_change(model, change)
 
         return {
             'model': model,
@@ -210,8 +210,111 @@ class SEDMLModelParser(object):
             'language': language,
         }
 
-    '''
-    def modelChangeToPython(model, change):
+    @staticmethod
+    def set_xpath_value(xpath: str, value: float, model):
+        """ Creates python line for given xpath target and value.
+        :param xpath:
+        :type xpath:
+        :param value:
+        :type value:
+        :return:
+        :rtype:
+        """
+        target = SEDMLModelParser._resolve_xpath(xpath)
+        if target:
+            if target.type == "concentration":
+                # initial concentration
+                expr = f'init([{target.id}])'
+            elif target.type == "amount":
+                # initial amount
+                expr = f'init({target.id})'
+            else:
+                # other (parameter, flux, ...)
+                expr = target.id
+            print(f"{expr} = {value}")
+            model[expr] = value
+        else:
+            logger.error(f"Unsupported target xpath: {xpath}")
+
+
+    @staticmethod
+    def _resolve_xpath(xpath: str):
+        """ Resolve the target from the xpath expression.
+
+        A single target in the model corresponding to the modelId is resolved.
+        Currently, the model is not used for xpath resolution.
+
+        :param xpath: xpath expression.
+        :type xpath: str
+        :param modelId: id of model in which xpath should be resolved
+        :type modelId: str
+        :return: single target of xpath expression
+        :rtype: Target (namedtuple: id type)
+        """
+        # TODO: via better xpath expression
+        #   get type from the SBML document for the given id.
+        #   The xpath expression can be very general and does not need to contain the full
+        #   xml path
+        #   For instance:
+        #   /sbml:sbml/sbml:model/descendant::*[@id='S1']
+        #   has to resolve to species.
+        # TODO: figure out concentration or amount (from SBML document)
+        # FIXME: getting of sids, pids not very robust, handle more cases (rules, reactions, ...)
+
+        Target = namedtuple('Target', 'id type')
+
+        def getId(xpath):
+            xpath = xpath.replace('"', "'")
+            match = re.findall(r"id='(.*?)'", xpath)
+            if (match is None) or (len(match) is 0):
+                logger.warn("Xpath could not be resolved: {}".format(xpath))
+            return match[0]
+
+        # parameter value change
+        if ("model" in xpath) and ("parameter" in xpath):
+            return Target(getId(xpath), 'parameter')
+        # species concentration change
+        elif ("model" in xpath) and ("species" in xpath):
+            return Target(getId(xpath), 'concentration')
+        # other
+        elif ("model" in xpath) and ("id" in xpath):
+            return Target(getId(xpath), 'other')
+        # cannot be parsed
+        else:
+            raise ValueError("Unsupported target in xpath: {}".format(xpath))
+
+    @staticmethod
+    def selectionFromVariable(var, model):
+        """ Resolves the selection for the given variable.
+
+        First checks if the variable is a symbol and returns the symbol.
+        If no symbol is set the xpath of the target is resolved
+        and used in the selection
+
+        :param var: variable to resolve
+        :type var: SedVariable
+        :return: a single selection
+        :rtype: Selection (namedtuple: id type)
+        """
+        Selection = namedtuple('Selection', 'id type')
+
+        # parse symbol expression
+        if var.isSetSymbol():
+            cvs = var.getSymbol()
+            astr = cvs.rsplit("symbol:")
+            sid = astr[1]
+            return Selection(sid, 'symbol')
+        # use xpath
+        elif var.isSetTarget():
+            xpath = var.getTarget()
+            target = SEDMLModelParser._resolveXPath(xpath, model)
+            return Selection(target.id, target.type)
+
+        else:
+            warnings.warn("Unrecognized Selection in variable")
+            return None
+
+    def _apply_model_change(self, model, change):
         """ Creates the apply change python string for given model and change.
 
         Currently only a very limited subset of model changes is supported.
@@ -224,46 +327,40 @@ class SEDMLModelParser(object):
         :return:
         :rtype: str
         """
-        lines = []
-        mid = model.getId()
         xpath = change.getTarget()
 
         if change.getTypeCode() == libsedml.SEDML_CHANGE_ATTRIBUTE:
             # resolve target change
-            value = change.getNewValue()
-            lines.append("# {} {}".format(xpath, value))
-            lines.append(SEDMLCodeFactory.targetToPython(xpath, value, modelId=mid))
+            value = float(change.getNewValue())
+            SEDMLModelParser.set_xpath_value(xpath, value, model=model)
 
         elif change.getTypeCode() == libsedml.SEDML_CHANGE_COMPUTECHANGE:
+            # calculate the value
             variables = {}
-            for par in change.getListOfParameters():
+            for par in change.getListOfParameters():  # type: libsedml.SedParameter
                 variables[par.getId()] = par.getValue()
-            for var in change.getListOfVariables():
+
+            for var in change.getListOfVariables():  # type: libsedml.SedVariable
                 vid = var.getId()
-                selection = SEDMLCodeFactory.selectionFromVariable(var, mid)
+                selection = SEDMLModelParser.selectionFromVariable(var, model)
                 expr = selection.id
                 if selection.type == "concentration":
-                    expr = "init([{}])".format(selection.id)
+                    expr = f"init([{selection.id}])"
                 elif selection.type == "amount":
-                    expr = "init({})".format(selection.id)
-                lines.append("__var__{} = {}['{}']".format(vid, mid, expr))
-                variables[vid] = "__var__{}".format(vid)
+                    expr = f"init({selection.id})"
+                variables[vid] = model[expr]
 
             # value is calculated with the current state of model
             value = evaluableMathML(change.getMath(), variables=variables)
-            lines.append(SEDMLCodeFactory.targetToPython(xpath, value, modelId=mid))
+            SEDMLModelParser.set_xpath_value(xpath, value, model=model)
 
         elif change.getTypeCode() in [libsedml.SEDML_CHANGE_REMOVEXML,
                                       libsedml.SEDML_CHANGE_ADDXML,
                                       libsedml.SEDML_CHANGE_CHANGEXML]:
-            lines.append("# Unsupported change: {}".format(change.getElementName()))
-            warnings.warn("Unsupported change: {}".format(change.getElementName()))
+            logger.error(f"Unsupported change: {change.getElementName()}")
         else:
-            lines.append("# Unsupported change: {}".format(change.getElementName()))
-            warnings.warn("Unsupported change: {}".format(change.getElementName()))
+            logger.error(f"Unknown change: {change.getElementName()}")
 
-        return lines
-    '''
 
 if __name__ == "__main__":
     from pathlib import Path
