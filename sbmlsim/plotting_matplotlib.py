@@ -49,10 +49,10 @@ def to_figure(figure: Figure):
             ax.set_title(plot.name)
         if plot.xaxis:
             if plot.xaxis.name:
-                ax.set_xlabel(plot.xaxis.name)
+                ax.set_xlabel(f"{plot.xaxis.name} [{plot.xaxis.unit}]")
         if plot.yaxis:
             if plot.yaxis.name:
-                ax.set_ylabel(plot.yaxis.name)
+                ax.set_ylabel(f"{plot.yaxis.name} [{plot.yaxis.unit}]")
 
         for curve in plot.curves:
             # TODO: sort by order

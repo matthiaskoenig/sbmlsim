@@ -3,37 +3,27 @@ Serial simulator.
 """
 import logging
 from typing import List
-from pathlib import Path
 
-from sbmlsim.models import RoadrunnerSBMLModel
 from sbmlsim.simulation import SimulatorAbstract, SimulatorWorker, set_integrator_settings
 from sbmlsim.result import Result
 from sbmlsim.timecourse import TimecourseSim
-from sbmlsim.units import Units
+from sbmlsim.models import AbstractModel
 
 logger = logging.getLogger(__name__)
 
 
 class SimulatorSerial(SimulatorAbstract, SimulatorWorker):
-    def __init__(self, path: Path, selections: List[str] = None, **kwargs):
-        """
+    def __init__(self, model: AbstractModel, **kwargs):
+        """ Serial simulator.
 
-        :param path: Path to model
+        :param model: Path to model
         :param selections: Selections to set
         :param kwargs: integrator arguments
         """
-        if path:
-            # FIXME: store the abstract model class
-            model = RoadrunnerSBMLModel(source=path, selections=selections)
-            self.r = model._model
-            set_integrator_settings(self.r, **kwargs)
-            # TODO: use global ureg
-            self.udict, self.ureg = Units.get_units_from_sbml(model_path=path)
-        else:
-            self.r = None
-            self.udict = None
-            self.ureg = None
-            logger.warning("Simulator without model instance created!")
+        self.r = model._model
+        self.udict = model.udict
+        self.ureg = model.ureg
+        set_integrator_settings(self.r, **kwargs)
 
     def timecourses(self, simulations: List[TimecourseSim]) -> Result:
         """ Run many timecourses."""

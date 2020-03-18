@@ -10,6 +10,9 @@ from pathlib import Path
 from enum import Enum
 import logging
 import abc
+from sbmlsim.units import Units
+from pint import UnitRegistry
+
 
 from sbmlsim.models.model_resources import Source, resolve_source
 
@@ -45,7 +48,9 @@ class AbstractModel(object):
                  base_path: Path = None,
                  changes: Dict = None,
                  sid: str = None, name: str = None,
-                 selections: List[str] = None):
+                 selections: List[str] = None,
+                 ureg: UnitRegistry = None,
+                 ):
         """
 
         :param mid: model id
@@ -83,12 +88,29 @@ class AbstractModel(object):
 
         self.selections = selections
 
+        # load the model
         self._model = self.load_model()  # field for loaded model with changes
+
+        # every model has its own unit registry (in a simulation experiment one
+        # global unit registry per experiment should be used)
+        if not ureg:
+            ureg = Units.default_ureg()
+        self.udict, self.ureg = self.parse_units(ureg)
+        self.Q_ = self.ureg.Quantity
+
+    @property
+    def model(self):
+        return self._model
+
+    @abc.abstractmethod
+    def parse_units(self, ureg: UnitRegistry):
+        """Parses the units from the model"""
+        return {}, ureg
 
     @abc.abstractmethod
     def load_model(self):
         """Loads the model from the current information."""
-        return
+        return None
 
     @abc.abstractclassmethod
     def apply_change(cls, model, change):

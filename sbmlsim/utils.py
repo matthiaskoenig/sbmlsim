@@ -1,6 +1,8 @@
 import warnings
 import functools
 import time
+import inspect
+
 
 def deprecated(func):
     """This is a decorator which can be used to mark functions
@@ -15,7 +17,6 @@ def deprecated(func):
         warnings.simplefilter('default', DeprecationWarning)  # reset filter
         return func(*args, **kwargs)
     return new_func
-
 
 
 def timeit(method):
@@ -33,3 +34,10 @@ def timeit(method):
         return result
 
     return timed
+
+
+def function_name():
+    """Returns current function name"""
+    frame = inspect.currentframe()
+    return inspect.getframeinfo(frame).function
+

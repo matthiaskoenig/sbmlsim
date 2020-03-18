@@ -2,8 +2,8 @@ import pandas as pd
 from enum import Enum
 import logging
 
-# from experiment import SimulationExperiment
 from sbmlsim.result import Result
+from sbmlsim.utils import deprecated
 
 logger = logging.getLogger(__name__)
 
@@ -98,6 +98,7 @@ class Data(object):
 
         return x
 
+
 class DataFunction(object):
     """TODO: Data based on functions, i.e. data based on data.
 
@@ -123,7 +124,8 @@ class DataSeries(pd.Series):
 
 
 class DataSet(pd.DataFrame):
-    """DataSet - a pd.DataFrame with additional unit information.
+    """
+    DataSet - a pd.DataFrame with additional unit information.
     """
     # additional properties
     _metadata = ['udict', 'ureg']
@@ -158,6 +160,18 @@ class DataSet(pd.DataFrame):
             self[key].values, self.udict[key]
         )
 
+
+# TODO: implement loading of DataSets with units
+
+def load_dataframe(sid, data_path, sep="\t", comment="#", **kwargs) -> pd.DataFrame:
+    """ Loads data from given figure/table id."""
+    study = sid.split('_')[0]
+    path = data_path / study / f'{sid}.tsv'
+
+    if not path.exists():
+        path = data_path / study / f'.{sid}.tsv'
+
+    return pd.read_csv(path, sep=sep, comment=comment, **kwargs)
 
 @deprecated
 def load_data_pkdb(self, sid, **kwargs):

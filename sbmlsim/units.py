@@ -46,7 +46,7 @@ class Units(object):
         return ureg
 
     @classmethod
-    def ureg_from_sbml(cls, doc: libsbml.SBMLDocument):
+    def ureg_from_sbml(cls, doc: libsbml.SBMLDocument, ureg: UnitRegistry = None):
         """ Creates a pint unit registry for the given SBML.
 
         :param model_path:
@@ -56,7 +56,8 @@ class Units(object):
         model = doc.getModel()  # type: libsbml.Model
 
         # add all UnitDefinitions to unit registry
-        ureg = Units.default_ureg()
+        if not UnitRegistry:
+            ureg = Units.default_ureg()
         for udef in model.getListOfUnitDefinitions():  # type: libsbml.UnitDefinition
             uid = udef.getId()
             udef_str = cls.unitDefinitionToString(udef)
@@ -76,7 +77,7 @@ class Units(object):
         return ureg
 
     @classmethod
-    def get_units_from_sbml(cls, model_path: Path):
+    def get_units_from_sbml(cls, model_path: Path, ureg: UnitRegistry=None):
         """ Get pint unit dictionary for given model.
 
         :param model_path: path to SBML model
@@ -88,7 +89,7 @@ class Units(object):
             doc = libsbml.readSBMLFromFile(model_path)
 
         # parse unit registry
-        ureg = cls.ureg_from_sbml(doc)
+        ureg = cls.ureg_from_sbml(doc, ureg)
 
         # get all units defined in the model (unit definitions)
         model = doc.getModel()  # type: libsbml.Model

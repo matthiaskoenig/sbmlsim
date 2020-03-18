@@ -89,10 +89,6 @@ class SimulatorAbstract(object):
 
         indices = list(itertools.product(*index_vecs))
 
-        # from pprint import pprint
-        # pprint(keys)
-        # pprint(changes_values)
-
         sims = []
         for index_list in indices:
             sim_new = deepcopy(tcscan.tcsim)
@@ -163,7 +159,7 @@ class SimulatorWorker(object):
             """
 
             # run simulation
-            s = self.r._run_tasks(start=tc.start, end=tc.end, steps=tc.steps)
+            s = self.r.simulate(start=tc.start, end=tc.end, steps=tc.steps)
             df = pd.DataFrame(s, columns=s.colnames)
             df.time = df.time + t_offset
             frames.append(df)

@@ -6,9 +6,11 @@ import libsbml
 import pandas as pd
 import numpy as np
 
+from pint import UnitRegistry
+
 from sbmlsim.models.model_resources import Source
 from sbmlsim.models.model import AbstractModel
-
+from sbmlsim.units import Units
 from sbmlsim.utils import deprecated
 
 logger = logging.getLogger(__name__)
@@ -20,7 +22,9 @@ class RoadrunnerSBMLModel(AbstractModel):
     def __init__(self, source: str, base_path: Path = None,
                  changes: Dict = None,
                  sid: str = None, name: str = None,
-                 selections: List[str] = None):
+                 selections: List[str] = None,
+                 ureg: UnitRegistry = None,
+                 ):
         super(RoadrunnerSBMLModel, self).__init__(
             source=source,
             language_type=AbstractModel.LanguageType.SBML,
@@ -28,7 +32,8 @@ class RoadrunnerSBMLModel(AbstractModel):
             sid=sid,
             name=name,
             base_path=base_path,
-            selections=selections
+            selections=selections,
+            ureg=ureg
         )
 
     def load_model(self):
@@ -62,6 +67,14 @@ class RoadrunnerSBMLModel(AbstractModel):
         cls.set_timecourse_selections(r, selections)
         return r
 
+    def parse_units(self, ureg):
+        """Parse units from SBML model"""
+        if self.source.is_content():
+            model_path = self.source.content
+        elif self.source.is_path():
+            model_path = self.source.path
+
+        return Units.get_units_from_sbml(model_path, ureg)
 
     @classmethod
     def apply_change(cls, model, change):
