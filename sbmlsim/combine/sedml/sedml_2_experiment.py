@@ -105,7 +105,7 @@ importlib.reload(libsedml)
 from sbmlsim.models import model_resources
 from sbmlsim.combine.sedml.data import DataDescriptionParser
 from sbmlsim.combine.sedml.utils import SEDMLTools
-from sbmlsim.models.model import Model
+from sbmlsim.models.model import AbstractModel
 from sbmlsim.combine.sedml.mathml import evaluableMathML
 
 logger = logging.getLogger(__file__)
@@ -166,7 +166,7 @@ class SEDMLParser(object):
         :return: python str
         :rtype: str
         """
-        model = Model(
+        model = AbstractModel(
             mid=sed_model.getId(),
             language=sed_model.getLanguage(),
             source=sed_model.getSource()
@@ -188,7 +188,7 @@ class SEDMLParser(object):
             if is_urn():
                 sbml_str = model_resources.sbml_from_biomodels_urn(source)
             elif is_http():
-                sbml_str = model_resources.sbml_from_url(source)
+                sbml_str = model_resources.model_from_url(source)
             if sbml_str:
                 model = load_model(sbml_str)
             else:

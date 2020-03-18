@@ -6,17 +6,41 @@ import libsbml
 import pandas as pd
 import numpy as np
 
-from sbmlsim.models import model_resources
+from sbmlsim.models.model_resources import Source
+from sbmlsim.models.model import AbstractModel
+
 from sbmlsim.utils import deprecated
 
 logger = logging.getLogger(__name__)
 
 
-class RoadrunnerModel(object):
-    # FIXME: use abstract parent class
+class RoadrunnerSBMLModel(AbstractModel):
+    """Roadrunner model wrapper."""
+
+    def __init__(self, source: str, base_path: Path = None,
+                 changes: Dict = None,
+                 sid: str = None, name: str = None):
+        super(RoadrunnerSBMLModel, self).__init__(
+            source=source,
+            language_type=AbstractModel.LanguageType.SBML,
+            changes=changes,
+            sid=sid,
+            name=name,
+            base_path=base_path
+        )
+
+    def load_model(self, selections: List[str] = None):
+        """Loads the model from the given source information."""
+        print(type(self), self)
+        if self.language_type != AbstractModel.LanguageType.SBML:
+            raise ValueError(f"{self.__class__.__name__} only supports "
+                             f"language_type '{AbstractModel.LanguageType.SBML}'.")
+
+        r = RoadrunnerSBMLModel.load_roadrunner_model(self.source, selections=selections)
+        return
 
     @classmethod
-    def load_model(cls, source, selections: List[str] = None) -> roadrunner.RoadRunner:
+    def load_roadrunner_model(cls, source: Source, selections: List[str] = None) -> roadrunner.RoadRunner:
         """ Loads model from given source
 
         :param source: path to SBML model or SBML string
@@ -24,37 +48,22 @@ class RoadrunnerModel(object):
         :return: roadrunner instance
         """
 
-        # FIXME: support urls for models (see generic model class)
-        if isinstance(source, Path):
-            source = str(source.resolve())
-        logging.info("Load model: '{}'".format(source))
+        # load model
+        if source.is_path():
+            logging.info(f"Load model: '{source.path}'")
+            r = roadrunner.RoadRunner(str(source.path))
+        elif source.is_content():
+            r = roadrunner.RoadRunner(str(source.content))
 
-        r = roadrunner.RoadRunner(source)
+        # set selections
         cls.set_timecourse_selections(r, selections)
         return r
 
-    def resolve_sbml(self):
-        """"""
 
-        # read SBML
-
-        if 'sbml' in language or len(language) == 0:
-            sbml_str = None
-            if is_urn():
-                sbml_str = model_resources.sbml_from_biomodels_urn(source)
-            elif is_http():
-                sbml_str = model_resources.sbml_from_url(source)
-            if sbml_str:
-                model = load_model(sbml_str)
-
-
-            else:
-                # load file, by resolving path relative to working dir
-                # FIXME: support absolute paths?
-                sbml_path = self.working_dir / source
-
-                model = load_model(sbml_path)
-
+    @classmethod
+    def apply_change(cls, model, change):
+        """Applies change to model"""
+        return
 
 
     @classmethod
@@ -246,37 +255,7 @@ class RoadrunnerModel(object):
                 roadrunner.SelectionRecord.GLOBAL_PARAMETER)
 
 
-
-
 if __name__ == "__main__":
     from sbmlsim.tests.constants import MODEL_REPRESSILATOR
-
-    from sbmlsim.simulation_serial import SimulatorSerial
-    from sbmlsim.result import Result
-    from sbmlsim.timecourse import Timecourse, TimecourseSim
-    from matplotlib import pyplot as plt
-
-    # running first simulation
-    simulator = SimulatorSerial(MODEL_REPRESSILATOR)
-    result = simulator.timecourse(Timecourse(0, 100, 201, ))
-
-    # make a copy of current model with state
-    r_copy = RoadrunnerModel.copy_model(simulator.r)
-
-    # continue simulation
-    result2 = simulator.timecourse(
-        TimecourseSim(Timecourse(100, 200, 201), reset=False))
-
-    plt.plot(result.time, result.X)
-    plt.plot(result2.time, result2.X)
-    plt.show()
-
-    if True:
-        # r = simulator.r
-        simulator2 = SimulatorSerial(path=None)
-        simulator2.r = r_copy
-        result3 = simulator2.timecourse(TimecourseSim(Timecourse(100, 200, 201),
-                                                      reset=False))
-        plt.plot(result.time, result.X)
-        plt.plot(result3.time, result3.X)
-        plt.show()
+    model = RoadrunnerSBMLModel(source=MODEL_REPRESSILATOR)
+    print(model)

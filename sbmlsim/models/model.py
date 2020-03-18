@@ -6,8 +6,12 @@ Other formats could be supported like CellML or NeuroML.
 
 """
 from typing import List, Tuple, Dict
+from pathlib import Path
+from enum import Enum
 import logging
 import abc
+
+from sbmlsim.models.model_resources import Source, resolve_source
 
 logger = logging.getLogger(__name__)
 
@@ -22,48 +26,66 @@ class ModelChange(object):
         raise NotImplementedError
 
 
-class Model(object):
+class AbstractModel(object):
     """Abstract base class to store a model in sbmlsim.
 
     Depending on the model language different subclasses are implemented.
     """
-    MODEL_LANGUAGE_SBML = "sbml"
-    MODEL_LANGUAGE_CELLML = "cellml"
+    class LanguageType(Enum):
+        SBML = 1
+        CELLML = 2
 
-    def __init__(self, mid: str, source: str, language: str = None, changes: Dict = None,
-                 name: str = None):
+    class SourceType(Enum):
+        PATH = 1
+        URN = 2
+        URL = 3
+
+    def __init__(self, source: str,
+                 language: str = None, language_type: LanguageType = None,
+                 base_path: Path = None,
+                 changes: Dict = None,
+                 sid: str = None, name: str = None,
+                 selections: List[str] = None):
         """
-
-        Currently only absolute paths are supported in path.
-        FIXME: relative paths.
 
         :param mid: model id
         :param source: path string or urn string
         :param language:
         :param changes:
+        :param base_path: base path relative to which the sources are resolved
         :param name:
         """
-        if not language or len(language) == 0:
-            logger.warning(f"No model language specified, defaulting to "
-                           f"SBML for: '{source}'")
-            language = Model.MODEL_LANGUAGE_SBML
-        if 'sbml' not in language:
-            logger.warning(f"Unsupported model language: '{language}'")
+        if not language and not language_type:
+            raise ValueError("Either 'language' or 'language_type' argument are"
+                             "required")
+        if language and language_type:
+            raise ValueError("Either 'language' or 'language_type' can be set,"
+                             "but not both.")
 
-        self.sid = mid
+        # parse language_type
+        if language:
+            if isinstance(language, str):
+                if 'sbml' in language:
+                    language_type = AbstractModel.LanguageType.SBML
+                else:
+                    raise ValueError(f"Unsupported model language: '{language}'")
+
+        self.sid = sid
         self.name = name
         self.language = language
-        self.source = source
+        self.language_type = language_type
+        self.base_path = base_path
+        self.source = resolve_source(source, base_dir=base_path)  # type: Source
 
         if changes is None:
             changes = {}
         self.changes = changes
 
         self._model = None  # field for loaded model with changes
-        self.load_model()
+        self.load_model(selections=selections)
 
     @abc.abstractmethod
-    def load_model(self):
+    def load_model(self, selections: List[str] = None):
         """Loads the model from the given source information."""
         return
 
@@ -75,4 +97,4 @@ class Model(object):
     def apply_model_changes(self, changes):
         """Applies dictionary of model changes."""
         for change in self.changes:
-            Model.apply_change(self._model, change)
+            AbstractModel.apply_change(self._model, change)
