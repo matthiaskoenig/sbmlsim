@@ -81,12 +81,13 @@ class AbstractModel(object):
             changes = {}
         self.changes = changes
 
-        self._model = None  # field for loaded model with changes
-        self.load_model(selections=selections)
+        self.selections = selections
+
+        self._model = self.load_model()  # field for loaded model with changes
 
     @abc.abstractmethod
-    def load_model(self, selections: List[str] = None):
-        """Loads the model from the given source information."""
+    def load_model(self):
+        """Loads the model from the current information."""
         return
 
     @abc.abstractclassmethod

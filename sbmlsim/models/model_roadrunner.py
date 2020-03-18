@@ -19,25 +19,28 @@ class RoadrunnerSBMLModel(AbstractModel):
 
     def __init__(self, source: str, base_path: Path = None,
                  changes: Dict = None,
-                 sid: str = None, name: str = None):
+                 sid: str = None, name: str = None,
+                 selections: List[str] = None):
         super(RoadrunnerSBMLModel, self).__init__(
             source=source,
             language_type=AbstractModel.LanguageType.SBML,
             changes=changes,
             sid=sid,
             name=name,
-            base_path=base_path
+            base_path=base_path,
+            selections=selections
         )
 
-    def load_model(self, selections: List[str] = None):
+    def load_model(self):
         """Loads the model from the given source information."""
         print(type(self), self)
         if self.language_type != AbstractModel.LanguageType.SBML:
             raise ValueError(f"{self.__class__.__name__} only supports "
                              f"language_type '{AbstractModel.LanguageType.SBML}'.")
 
-        r = RoadrunnerSBMLModel.load_roadrunner_model(self.source, selections=selections)
-        return
+        r = RoadrunnerSBMLModel.load_roadrunner_model(
+            self.source, selections=self.selections)
+        return r
 
     @classmethod
     def load_roadrunner_model(cls, source: Source, selections: List[str] = None) -> roadrunner.RoadRunner:

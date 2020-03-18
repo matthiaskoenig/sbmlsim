@@ -4,7 +4,7 @@ Parallel execution of timecourses
 import time
 import ray
 
-from sbmlsim.models.model import load_model
+from sbmlsim.models import RoadrunnerSBMLModel
 from sbmlsim.timecourse import TimecourseSim, Timecourse
 from sbmlsim.simulation_ray import SimulatorParallel, SimulatorActor
 from sbmlsim.simulation_serial import SimulatorSerial
@@ -82,7 +82,7 @@ def example_parallel_timecourse(nsim=40, actor_count=15):
         print(f"{info:<10}: {time:4.3f}")
 
     # load model once for caching (fair comparison)
-    r = load_model(MODEL_GLCWB)
+    r = RoadrunnerSBMLModel(source=MODEL_GLCWB)._model
     selections = None
 
     print("-" * 80)

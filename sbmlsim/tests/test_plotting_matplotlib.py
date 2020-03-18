@@ -4,7 +4,6 @@ Testing plotting functionality.
 from matplotlib import pyplot as plt
 from sbmlsim.plotting_matplotlib import add_line
 
-from sbmlsim.models.model import load_model
 from sbmlsim.simulation_serial import SimulatorSerial as Simulator
 from sbmlsim.timecourse import Timecourse, TimecourseSim, ensemble
 from sbmlsim.parametrization import ChangeSet
@@ -12,10 +11,9 @@ from sbmlsim.tests.constants import MODEL_REPRESSILATOR
 
 
 def test_plotting():
-    r = load_model(MODEL_REPRESSILATOR)
     simulator = Simulator(MODEL_REPRESSILATOR)
 
-    changeset = ChangeSet.parameter_sensitivity_changeset(r, sensitivity=0.5)
+    changeset = ChangeSet.parameter_sensitivity_changeset(simulator.r, sensitivity=0.5)
     tcsims = ensemble(TimecourseSim([
             Timecourse(start=0, end=400, steps=400),
         ]), changeset)

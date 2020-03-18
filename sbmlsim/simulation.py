@@ -19,7 +19,6 @@ import roadrunner
 import itertools
 from copy import deepcopy
 
-from sbmlsim.models.model import clamp_species, MODEL_CHANGE_BOUNDARY_CONDITION
 from sbmlsim.result import Result
 from sbmlsim.timecourse import Timecourse, TimecourseSim, TimecourseScan
 
@@ -149,7 +148,8 @@ class SimulatorWorker(object):
                     logger.error(f"Change is not a Quantity with unit: '{key} = {item}'")
                     raise err
 
-            # FIXME: model changes (make run in parallel, better handling in model)
+            # FIXME: implement model changes & also make run in parallel
+            """
             if len(tc.model_changes) > 0:
                 r_old = self.r
             for key, value in tc.model_changes.items():
@@ -160,6 +160,7 @@ class SimulatorWorker(object):
                         self.r = r_new
                 else:
                     logger.error("Unsupported model change: {}:{}".format(key, value))
+            """
 
             # run simulation
             s = self.r.simulate(start=tc.start, end=tc.end, steps=tc.steps)

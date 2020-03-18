@@ -1,10 +1,8 @@
 """
 Example shows basic model simulations and plotting.
 """
-from sbmlsim.models.model import load_model
 from sbmlsim.simulation_serial import SimulatorSerial as Simulator
 from sbmlsim.timecourse import TimecourseSim, Timecourse, ensemble
-
 from sbmlsim.parametrization import ChangeSet
 
 from sbmlsim.plotting_matplotlib import add_line, plt
@@ -20,8 +18,7 @@ def run_sensitivity():
 
     # parameter sensitivity
     # FIXME: make work with parallel
-    r = load_model(MODEL_REPRESSILATOR)
-    changeset = ChangeSet.parameter_sensitivity_changeset(r)
+    changeset = ChangeSet.parameter_sensitivity_changeset(simulator.r)
     tc_sim = TimecourseSim([
             Timecourse(start=0, end=100, steps=100),
             Timecourse(start=0, end=200, steps=100, model_changes={"boundary_condition": {"X": True}}),

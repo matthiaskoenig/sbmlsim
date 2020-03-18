@@ -8,7 +8,6 @@ import pandas as pd
 import inspect
 from dataclasses import dataclass
 
-from sbmlsim.models.model import load_model
 from sbmlsim.simulation_serial import SimulatorSerial
 from sbmlsim.timecourse import TimecourseSim, TimecourseScan
 
@@ -17,6 +16,8 @@ from sbmlsim.serialization import ObjectJSONEncoder
 from typing import Dict
 from sbmlsim.result import Result
 from sbmlsim.data import Data
+
+from sbmlsim.models import RoadrunnerSBMLModel
 
 # matplotlib backend
 from sbmlsim.plotting_matplotlib import plt, to_figure
@@ -54,7 +55,8 @@ class SimulationExperiment(object):
     def model_path(self, model_path):
         self._model_path = model_path
         if model_path:
-            self.r = load_model(self._model_path)
+            model = RoadrunnerSBMLModel(source=self._model_path)
+            self.r = model._model
             self.udict, self.ureg = Units.get_units_from_sbml(self._model_path)
             self.Q_ = self.ureg.Quantity
         else:

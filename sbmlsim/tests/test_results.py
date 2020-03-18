@@ -2,13 +2,13 @@
 
 import pandas as pd
 
-from sbmlsim.models.model import load_model
+from sbmlsim.models import RoadrunnerSBMLModel
 from sbmlsim.result import Result
 from sbmlsim.tests.constants import MODEL_REPRESSILATOR
 
 
 def test_result():
-    r = load_model(MODEL_REPRESSILATOR)
+    r = RoadrunnerSBMLModel(source=MODEL_REPRESSILATOR)._model
     dfs = []
     for _ in range(10):
         s = r.simulate(0, 10, steps=10)
@@ -22,7 +22,7 @@ def test_result():
 
 
 def test_hdf5(tmp_path):
-    r = load_model(MODEL_REPRESSILATOR)
+    r = RoadrunnerSBMLModel(source=MODEL_REPRESSILATOR)._model
     dfs = []
     for _ in range(10):
         s = r.simulate(0, 10, steps=10)

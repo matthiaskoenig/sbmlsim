@@ -1,7 +1,7 @@
 import ray
 
 import logging
-from sbmlsim.models.model import load_model
+from sbmlsim.models import RoadrunnerSBMLModel
 from sbmlsim.timecourse import TimecourseSim
 from sbmlsim.result import Result
 from sbmlsim.simulation import SimulatorWorker
@@ -24,7 +24,7 @@ class SimulatorActor(SimulatorWorker):
 
     """
     def __init__(self, path, selections=None):
-        self.r = load_model(path, selections)
+        self.r = RoadrunnerSBMLModel(source=path, selections=selections)._model
         self.units = Units.get_units_from_sbml(model_path=path)
         # set_integrator_settings(self.r, **kwargs)
 
