@@ -138,6 +138,11 @@ class DataSet(pd.DataFrame):
 
     @classmethod
     def from_df(cls, data: pd.DataFrame, udict: dict, ureg):
+        # add the unit columns to the data frame
+        for key, unit in udict.items():
+            # FIXME
+            data.loc[:, (f"{key}_unit",)] = unit
+
         dset = DataSet(data)
         dset.udict = udict
         dset.ureg = ureg
