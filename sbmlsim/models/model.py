@@ -5,47 +5,52 @@ Model can be in different formats, main supported format being SBML.
 Other formats could be supported like CellML or NeuroML.
 
 """
-
-# FIXME: general model and model changes
-
-
-from pathlib import Path
 from typing import List, Tuple, Dict
-import warnings
+import logging
 import abc
-from
 
-from sbmlsim.models import biomodels
-
-
-MODEL_CHANGE_BOUNDARY_CONDITION = "boundary_condition"
+logger = logging.getLogger(__name__)
 
 
 class ModelChange(object):
-    # TODO: encode all the possible model changes which can be performed with
-    # a model. These are reused in the setting up of models in the beginning,
-    # or later on in simulations
-    pass
+    MODEL_CHANGE_BOUNDARY_CONDITION = "boundary_condition"
+
+    def __init__(self):
+        # TODO: encode all the possible model changes which can be performed with
+        # a model. These are reused in the setting up of models in the beginning,
+        # or later on in simulations
+        raise NotImplementedError
 
 
 class Model(object):
+    """Abstract base class to store a model in sbmlsim.
 
-    def __init__(self, sid: str, source: str, language: str=None, changes: Dict=None,
-                 name: str=None):
+    Depending on the model language different subclasses are implemented.
+    """
+    MODEL_LANGUAGE_SBML = "sbml"
+    MODEL_LANGUAGE_CELLML = "cellml"
+
+    def __init__(self, mid: str, source: str, language: str = None, changes: Dict = None,
+                 name: str = None):
         """
 
-        :param sid:
-        :param source: resolvable absolute path, no support for relative paths
+        Currently only absolute paths are supported in path.
+        FIXME: relative paths.
+
+        :param mid: model id
+        :param source: path string or urn string
         :param language:
         :param changes:
         :param name:
         """
-
         if not language or len(language) == 0:
-            warnings.warn(f"No model language specified, defaulting to SBML for: '{source}'")
-            language = "sbml"
+            logger.warning(f"No model language specified, defaulting to "
+                           f"SBML for: '{source}'")
+            language = Model.MODEL_LANGUAGE_SBML
+        if 'sbml' not in language:
+            logger.warning(f"Unsupported model language: '{language}'")
 
-        self.sid = sid
+        self.sid = mid
         self.name = name
         self.language = language
         self.source = source
@@ -53,55 +58,21 @@ class Model(object):
         if changes is None:
             changes = {}
         self.changes = changes
-        self.model = None
 
-
-
-        # read CellML
-        if 'cellml' in language:
-            warnings.warn("CellML model encountered, sbmlsim does not support CellML".format(language))
-            raise ValueError("CellML models not supported yet")
-        # other
-        else:
-            warnings.warn("Unsupported model language: '{}'.".format(language))
+        self._model = None  # field for loaded model with changes
+        self.load_model()
 
     @abc.abstractmethod
     def load_model(self):
         """Loads the model from the given source information."""
         return
 
-    @abc.abstractmethod
-    def apply_change(self, model, change):
+    @abc.abstractclassmethod
+    def apply_change(cls, model, change):
+        """Applies change to model"""
         return
 
-    def apply_model_changes(self):
-        # apply model changes
-        for change in self.model_changes[mid]:
-            self._apply_model_change(model, change)
-
-
-class SBMLModel(Model):
-    """An SBML model."""
-
-    def resolve_sbml(self):
-        def is_urn():
-            return self.source.lower().startswith('urn')
-
-        def is_http():
-            return self.source.lower().startswith('http') or source.startswith('HTTP')
-
-            # read SBML
-
-        if 'sbml' in language or len(language) == 0:
-            sbml_str = None
-            if is_urn():
-                sbml_str = biomodels.sbml_from_biomodels_urn(source)
-            elif is_http():
-                sbml_str = biomodels.sbml_from_biomodels_url(source)
-            if sbml_str:
-                model = load_model(sbml_str)
-            else:
-                # load file, by resolving path relative to working dir
-                # FIXME: support absolute paths?
-                sbml_path = self.working_dir / source
-                model = load_model(sbml_path)
+    def apply_model_changes(self, changes):
+        """Applies dictionary of model changes."""
+        for change in self.changes:
+            Model.apply_change(self._model, change)

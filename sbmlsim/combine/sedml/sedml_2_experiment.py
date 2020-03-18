@@ -102,7 +102,7 @@ import libsedml
 import importlib
 importlib.reload(libsedml)
 
-from sbmlsim.models import biomodels
+from sbmlsim.models import model_resources
 from sbmlsim.combine.sedml.data import DataDescriptionParser
 from sbmlsim.combine.sedml.utils import SEDMLTools
 from sbmlsim.models.model import Model
@@ -167,7 +167,7 @@ class SEDMLParser(object):
         :rtype: str
         """
         model = Model(
-            sid=sed_model.getId(),
+            mid=sed_model.getId(),
             language=sed_model.getLanguage(),
             source=sed_model.getSource()
         )
@@ -186,9 +186,9 @@ class SEDMLParser(object):
         if 'sbml' in language or len(language) == 0:
             sbml_str = None
             if is_urn():
-                sbml_str = biomodels.sbml_from_biomodels_urn(source)
+                sbml_str = model_resources.sbml_from_biomodels_urn(source)
             elif is_http():
-                sbml_str = biomodels.sbml_from_biomodels_url(source)
+                sbml_str = model_resources.sbml_from_url(source)
             if sbml_str:
                 model = load_model(sbml_str)
             else:
