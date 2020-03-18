@@ -1,21 +1,22 @@
-from typing import Dict, List, Iterable
+"""
+Example simulation experiment.
+"""
+
+from typing import Dict
 from pathlib import Path
-import pandas as pd
 
 from sbmlsim.tests.constants import MODEL_REPRESSILATOR
 
 from sbmlsim.experiment import SimulationExperiment
+from sbmlsim.models import AbstractModel, RoadrunnerSBMLModel
 from sbmlsim.data import Data, DataSet
 from sbmlsim.timecourse import Timecourse, TimecourseSim
-from sbmlsim.plotting import Figure, Axis
-
-from sbmlsim.experiment import ExperimentResult
-from sbmlsim.models import AbstractModel, RoadrunnerSBMLModel
 from sbmlsim.tasks import Task
+from sbmlsim.plotting import Figure, Axis
 
 
 class RepressilatorExperiment(SimulationExperiment):
-
+    """Simple repressilator experiment."""
     def models(self) -> Dict[str, AbstractModel]:
         return {
             'model1': RoadrunnerSBMLModel(source=MODEL_REPRESSILATOR,
@@ -26,7 +27,6 @@ class RepressilatorExperiment(SimulationExperiment):
         return {}
 
     def tasks(self) -> Dict[str, Task]:
-        Q_ = self.Q_
         tcsim = TimecourseSim([
             Timecourse(start=0, end=100, steps=100),
             Timecourse(start=0, end=100, steps=100, changes={"X": 10, "Y": 20}),

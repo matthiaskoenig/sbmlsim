@@ -41,7 +41,7 @@ class Result(object):
             self.columns = df.columns
 
             # store data in numpy
-            self.data = np.empty((self.nrow, self.ncol, self.nframes)) * np.nan
+            self.data = np.empty((self.nrow, self.ncol, self.nframes))
             for k, df in enumerate(self.frames):
                 self.data[:, :, k] = df.values
         else:

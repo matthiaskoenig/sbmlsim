@@ -7,7 +7,7 @@ from typing import List
 from sbmlsim.simulation import SimulatorAbstract, SimulatorWorker, set_integrator_settings
 from sbmlsim.result import Result
 from sbmlsim.timecourse import TimecourseSim
-from sbmlsim.models import AbstractModel
+from sbmlsim.models import AbstractModel, RoadrunnerSBMLModel
 
 logger = logging.getLogger(__name__)
 
@@ -20,9 +20,17 @@ class SimulatorSerial(SimulatorAbstract, SimulatorWorker):
         :param selections: Selections to set
         :param kwargs: integrator arguments
         """
-        self.r = model._model
-        self.udict = model.udict
-        self.ureg = model.ureg
+        if isinstance(model, AbstractModel):
+            self.r = model._model
+            self.udict = model.udict
+            self.ureg = model.ureg
+        else:
+            # handle path, urn, ...
+            m = RoadrunnerSBMLModel(source=model)
+            self.r = m._model
+            self.udict = m.udict
+            self.ureg = m.ureg
+
         set_integrator_settings(self.r, **kwargs)
 
     def timecourses(self, simulations: List[TimecourseSim]) -> Result:

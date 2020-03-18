@@ -7,7 +7,7 @@ from sbmlsim.diff import DataSetsComparison, get_json_files
 from matplotlib import pyplot as plt
 from sbmlsim.simulation_serial import SimulatorSerial as Simulator
 from sbmlsim.tests.constants import DATA_PATH, MODEL_REPRESSILATOR
-
+from sbmlsim.models import RoadrunnerSBMLModel
 from sbmlsim.timecourse import TimecourseSim, Timecourse
 
 
@@ -17,8 +17,7 @@ def run_simulations(create_files=True):
     :return:
     """
     diff_path = Path(DATA_PATH) / "diff"
-    # FIXME: do not hardcode the model, model should be provided relative to the json definition
-    simulator = Simulator(MODEL_REPRESSILATOR,
+    simulator = Simulator(RoadrunnerSBMLModel(MODEL_REPRESSILATOR),
                           absolute_tolerance=1E-16,
                           relative_tolerance=1E-13)
 

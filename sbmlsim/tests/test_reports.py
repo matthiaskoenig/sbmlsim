@@ -1,5 +1,5 @@
 import pytest
-from pathlib import Path
+
 from sbmlsim.report import create_report
 
 
@@ -9,16 +9,16 @@ def test_glucose_report(tmp_path):
     :param tmp_path:
     :return:
     """
-    from sbmlsim.experiment import run_experiment
     from sbmlsim.examples.glucose.experiments.dose_response import DoseResponseExperiment
-    from sbmlsim.examples.glucose import MODEL_PATH, DATA_PATH
+    from sbmlsim.examples.glucose import BASE_PATH, DATA_PATH
 
     results = []
-    info = run_experiment(
-        DoseResponseExperiment,
+    exp = DoseResponseExperiment(
+        base_path=BASE_PATH,
+        data_path=DATA_PATH
+    )
+    info = exp.run(
         output_path=tmp_path / "results",
-        model_path=MODEL_PATH / "liver_glucose.xml",
-        data_path=DATA_PATH,
         show_figures=False
     )
     results.append(info)

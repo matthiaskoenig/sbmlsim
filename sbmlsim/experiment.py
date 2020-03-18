@@ -1,17 +1,12 @@
 import logging
 
 from pathlib import Path
-import os
-import warnings
 import json
-import pandas as pd
-import inspect
 from dataclasses import dataclass
-from typing import Dict, Tuple, List
-import abc
-from abc import ABC
-
+from typing import Dict
 from pint import UnitRegistry
+
+from sbmlsim.utils import timeit
 from sbmlsim.tasks import Task
 from sbmlsim.simulation_serial import SimulatorSerial
 from sbmlsim.timecourse import TimecourseSim, TimecourseScan
@@ -19,7 +14,6 @@ from sbmlsim.serialization import ObjectJSONEncoder
 from sbmlsim.result import Result
 from sbmlsim.data import Data, DataSet, load_dataframe
 from sbmlsim.models import RoadrunnerSBMLModel, AbstractModel
-
 from sbmlsim.plotting_matplotlib import plt, to_figure
 from matplotlib.pyplot import Figure as FigureMPL
 from sbmlsim.plotting import Figure as FigureSEDML
@@ -66,7 +60,6 @@ class SimulationExperiment(object):
         self._tasks = self.tasks()
         self._simulations = self.simulations()
         self._scans = self.scans()
-        self._figures = self.figures()
 
         # task results
         self._results = None
@@ -74,10 +67,14 @@ class SimulationExperiment(object):
         # processing
         self._datagenerators = None
 
+        # figures
+        self._figures = None  # requires access to results
+
         # settings
         self.settings = kwargs
 
     # --- MODELS --------------------------------------------------------------
+    @timeit
     def models(self) -> Dict[str, AbstractModel]:
         logger.debug(f"No models defined for '{self.sid}'.")
         return {}
@@ -126,13 +123,14 @@ class SimulationExperiment(object):
 
     def _check_keys(self):
         """Check that everything is okay with the experiment."""
-        for field in ["_models", "_datasets", "_tasks", "_simulations", "_scans", "_figures"]:
+        for field in ["_models", "_datasets", "_tasks", "_simulations", "_scans"]:
             for key in getattr(self, field).keys():
                 if not isinstance(key, str):
                     raise ValueError(f"'{field} keys must be str: "
                                      f"'{key} -> {type(key)}'")
 
     # --- EXECUTE -------------------------------------------------------------
+    @timeit
     def run(self,
             output_path: Path,
             show_figures: bool = True) -> ExperimentResult:
@@ -149,6 +147,8 @@ class SimulationExperiment(object):
 
         # run simulations
         self._run_tasks()
+        # some of the figures require actual numerical results
+        self._figures = self.figures()
 
         # save outputs
         self.save_datasets(output_path)
@@ -167,6 +167,7 @@ class SimulationExperiment(object):
             output_path=output_path
         )
 
+    @timeit
     def _run_tasks(self, Simulator=SimulatorSerial,
                    absolute_tolerance=1E-14,
                    relative_tolerance=1E-14):
@@ -261,6 +262,7 @@ class SimulationExperiment(object):
                 tcsim.normalize(udict=self.udict, ureg=self.ureg)
             tcsim.to_json(results_path / f"{self.sid}_{skey}.json")
 
+    @timeit
     def save_figures(self, results_path):
         """ Save figures.
         :param results_path:

@@ -34,7 +34,7 @@ def run_parameter_scan(parallel=False):
     if parallel:
         raise NotImplementedError
     else:
-        simulator = SimulatorSerial(path=MODEL_REPRESSILATOR)
+        simulator = SimulatorSerial(model=MODEL_REPRESSILATOR)
 
     udict, ureg = Units.get_units_from_sbml(MODEL_REPRESSILATOR)
     Q_ = ureg.Quantity

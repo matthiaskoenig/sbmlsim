@@ -5,6 +5,8 @@ import pandas as pd
 
 from sbmlsim.experiment import SimulationExperiment
 from sbmlsim.data import DataSet
+from sbmlsim.tasks import Task
+from sbmlsim.models import AbstractModel, RoadrunnerSBMLModel
 from sbmlsim.timecourse import Timecourse, TimecourseSim, TimecourseScan
 from sbmlsim.plotting_matplotlib import add_data, add_line, plt
 
@@ -12,7 +14,12 @@ from sbmlsim.plotting_matplotlib import add_data, add_line, plt
 class DoseResponseExperiment(SimulationExperiment):
     """Hormone dose-response curves."""
 
-    @property
+    def models(self) -> Dict[str, AbstractModel]:
+        return {
+            "model1": RoadrunnerSBMLModel(source="model/liver_glucose.xml",
+                                          base_path=self.base_path)
+        }
+
     def datasets(self) -> Dict[str, DataSet]:
         dsets = {}
 
@@ -70,24 +77,21 @@ class DoseResponseExperiment(SimulationExperiment):
 
         return dsets
 
-    @property
-    def scans(self) -> Dict[str, TimecourseScan]:
+    def tasks(self) -> Dict[str, Task]:
         """Scanning dose-response curves of hormones and gamma function.
 
-        Vary external glucose concentrations (boundary condition).
-        """
-        Q_ = self.ureg.Quantity
+                Vary external glucose concentrations (boundary condition).
+                """
         glc_scan = TimecourseScan(
             tcsim=TimecourseSim([
                 Timecourse(start=0, end=1, steps=1, changes={})
             ]),
-            scan={'[glc_ext]': Q_(np.linspace(2, 20, num=100), 'mM')},
+            scan={'[glc_ext]': self.Q_(np.linspace(2, 20, num=100), 'mM')},
         )
         return {
-            "glc_scan": glc_scan
+            "glc_scan": Task(model="model1", simulation=glc_scan)
         }
 
-    @property
     def figures(self) -> Dict[str, Figure]:
         xunit = "mM"
         yunit_hormone = "pmol/l"
@@ -98,9 +102,11 @@ class DoseResponseExperiment(SimulationExperiment):
         axes = (ax1, ax2, ax3, ax4)
 
         # process scan results
-        tcscan = self.scans["glc_scan"]
+        task = self._tasks["glc_scan"]
+        model = self._models[task.model]
+        tcscan = task.simulation
         glc_vec = tcscan.scan['[glc_ext]']
-        results = self.scan_results["glc_scan"]  # type: Result
+        results = self.results["glc_scan"]  # type: Result
         dose_response = {k: list() for k in ["glu", "epi", "ins", "gamma"]}
         for k, glc_ext in enumerate(glc_vec):
             s = results.frames[k]
@@ -111,7 +117,7 @@ class DoseResponseExperiment(SimulationExperiment):
 
         dose_response['[glc_ext]'] = glc_vec
         df = pd.DataFrame(dose_response)
-        dset = DataSet.from_df(df, udict=self.udict, ureg=self.ureg)
+        dset = DataSet.from_df(df, udict=model.udict, ureg=self.ureg)
 
         # plot scan results
         kwargs = {
@@ -135,14 +141,14 @@ class DoseResponseExperiment(SimulationExperiment):
             'linestyle': "None",
             'alpha': 0.6,
         }
-        add_data(ax1, self.datasets["glucagon"], xid="glc", yid="mean",
+        add_data(ax1, self._datasets["glucagon"], xid="glc", yid="mean",
                  yid_se="se",
                  xunit=xunit, yunit=yunit_hormone, label="Glucagon", **kwargs)
-        add_data(ax2, self.datasets["epinephrine"], xid="glc", yid="mean",
+        add_data(ax2, self._datasets["epinephrine"], xid="glc", yid="mean",
                  yid_se="se",
                  xunit=xunit, yunit=yunit_hormone, label="Epinephrine",
                  **kwargs)
-        add_data(ax3, self.datasets["insulin"], xid="glc", yid="mean",
+        add_data(ax3, self._datasets["insulin"], xid="glc", yid="mean",
                  yid_se="se",
                  xunit=xunit, yunit=yunit_hormone, label="Insulin", **kwargs)
 

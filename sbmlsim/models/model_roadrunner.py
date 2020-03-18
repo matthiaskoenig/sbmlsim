@@ -38,7 +38,6 @@ class RoadrunnerSBMLModel(AbstractModel):
 
     def load_model(self):
         """Loads the model from the given source information."""
-        print(type(self), self)
         if self.language_type != AbstractModel.LanguageType.SBML:
             raise ValueError(f"{self.__class__.__name__} only supports "
                              f"language_type '{AbstractModel.LanguageType.SBML}'.")

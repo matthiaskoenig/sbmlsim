@@ -56,7 +56,7 @@ class Units(object):
         model = doc.getModel()  # type: libsbml.Model
 
         # add all UnitDefinitions to unit registry
-        if not UnitRegistry:
+        if not ureg:
             ureg = Units.default_ureg()
         for udef in model.getListOfUnitDefinitions():  # type: libsbml.UnitDefinition
             uid = udef.getId()

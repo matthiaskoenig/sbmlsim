@@ -62,9 +62,9 @@ def create_report(results: List[ExperimentResult],
 
 
         # relative paths to output path
-        model_path = os.path.relpath(str(exp_result.model_path), output_path)
-        data_path = os.path.relpath(str(exp_result.data_path), output_path)
-        results_path = os.path.relpath(str(exp_result.results_path), output_path)
+        model_path = ""  # FIXME os.path.relpath(str(exp_result.model_path), output_path)
+        data_path = os.path.relpath(str(experiment.data_path), output_path)
+        results_path = os.path.relpath(str(exp_result.output_path), output_path)
 
         # code path
         code_path = sys.modules[experiment.__module__].__file__
@@ -73,7 +73,7 @@ def create_report(results: List[ExperimentResult],
         code_path = os.path.relpath(code_path, output_path)
 
         # parse meta data for figures (mapping based on figure keys)
-        figures_keys = sorted(experiment.figures.keys())
+        figures_keys = sorted(experiment._figures.keys())
         figures = {key: metadata.get(f"{exp_id}_{key}", None) for key in figures_keys}
 
         context = {
@@ -82,17 +82,18 @@ def create_report(results: List[ExperimentResult],
             'model_path': model_path,
             'data_path': data_path,
             'code_path': code_path,
-            'datasets': sorted(experiment.datasets.keys()),
-            'simulations': sorted(experiment.simulations.keys()),
-            'scans': sorted(experiment.scans.keys()),
+            'datasets': sorted(experiment._datasets.keys()),
+            'simulations': sorted(experiment._simulations.keys()),
+            'scans': sorted(experiment._scans.keys()),
             'figures': figures,
             'code': code,
         }
         exp_ids[exp_id] = context
 
         # add additional information if existing
-        if Path(f"{str(exp_result.model_path)[:-4]}.html").exists():
-            context["report_path"] = f"{model_path[:-4]}.html"
+        # FIXME
+        # if Path(f"{str(exp_result.model_path)[:-4]}.html").exists():
+        #     context["report_path"] = f"{model_path[:-4]}.html"
 
         write_report(name=exp_id, context=context, template_str='experiment.md')
         write_report(name=exp_id, context=context, template_str='experiment.html')
