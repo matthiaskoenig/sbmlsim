@@ -25,7 +25,7 @@ class DoseResponseExperiment(SimulationExperiment):
 
         # dose-response data for hormones
         for hormone_key in ['Epinephrine', 'Glucagon', 'Insulin']:
-            df = self.load_dataframe(f"DoseResponse_Tab{hormone_key}")
+            df = self.load_data(f"DoseResponse_Tab{hormone_key}")
             df = df[df.condition == "normal"]  # only healthy controls
             epi_normal_studies = [
                 "Degn2004", "Lerche2009", "Mitrakou1991",

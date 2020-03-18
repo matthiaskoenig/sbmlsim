@@ -20,7 +20,7 @@ class RepressilatorExperiment(SimulationExperiment):
 
     @property
     def datasets(self) -> Dict[str, DataSet]:
-        d1 = self.load_dataframe(f"{self.sid}_Fig1")
+        d1 = self.load_data(f"{self.sid}_Fig1")
         d1_udict = {key: d1[f"{key}_unit"].unique()[0] for key in
                     ["time", "cpep"]}
         return {

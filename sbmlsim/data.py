@@ -182,16 +182,6 @@ def load_data_pkdb(self, sid, **kwargs):
         dframes[substance] = df[df.substance == substance]
     return dframes
 
-@deprecated
-def load_units(self, sids, df=None, units_dict=None):
-    """ Loads units from given dataframe."""
-    if df is not None:
-         udict = {key: df[f"{key}_unit"].unique()[0] for key in sids}
-    elif units_dict is not None:
-        udict = {}
-        for sid in sids:
-            udict[sid] = units_dict[sid]
-    return udict
 
 
 if __name__ == "__main__":

@@ -88,10 +88,20 @@ class SimulationExperiment(object):
         # different then datasets
         return self._data
 
-    def load_dataframe(self, sid, **kwargs):
+    def load_data(self, sid, **kwargs):
         """ Loads data from given figure/table id."""
         df = load_dataframe(sid=sid, data_path=self.data_path, **kwargs)
         return df
+
+    def load_units(self, sids, df=None, units_dict=None):
+        """ Loads units from given dataframe."""
+        if df is not None:
+            udict = {key: df[f"{key}_unit"].unique()[0] for key in sids}
+        elif units_dict is not None:
+            udict = {}
+            for sid in sids:
+                udict[sid] = units_dict[sid]
+        return udict
 
     # --- TASKS ---------------------------------------------------------------
     def tasks(self) -> Dict[str, Task]:
