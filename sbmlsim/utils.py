@@ -1,6 +1,6 @@
 import warnings
 import functools
-
+import time
 
 def deprecated(func):
     """This is a decorator which can be used to mark functions
@@ -15,3 +15,21 @@ def deprecated(func):
         warnings.simplefilter('default', DeprecationWarning)  # reset filter
         return func(*args, **kwargs)
     return new_func
+
+
+
+def timeit(method):
+    """Tming decorator"""
+    def timed(*args, **kw):
+        ts = time.time()
+        result = method(*args, **kw)
+        te = time.time()
+
+        if 'log_time' in kw:
+            name = kw.get('log_name', method.__name__.upper())
+            kw['log_time'][name] = int((te - ts) * 1000)
+        else:
+            print('{}  {:2.2f} ms'.format(method.__name__, (te - ts) * 1000))
+        return result
+
+    return timed

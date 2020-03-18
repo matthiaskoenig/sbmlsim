@@ -7,19 +7,20 @@ import json
 import pandas as pd
 import inspect
 from dataclasses import dataclass
+from typing import Dict, Tuple
+import abc
+from abc import ABC
 
+
+from sbmlsim.utils import deprecated
 from sbmlsim.simulation_serial import SimulatorSerial
 from sbmlsim.timecourse import TimecourseSim, TimecourseScan
-
 from sbmlsim.units import Units
 from sbmlsim.serialization import ObjectJSONEncoder
-from typing import Dict
 from sbmlsim.result import Result
 from sbmlsim.data import Data
+from sbmlsim.models import RoadrunnerSBMLModel, AbstractModel
 
-from sbmlsim.models import RoadrunnerSBMLModel
-
-# matplotlib backend
 from sbmlsim.plotting_matplotlib import plt, to_figure
 from matplotlib.pyplot import Figure as FigureMPL
 from sbmlsim.plotting import Figure as FigureSEDML
@@ -27,25 +28,64 @@ from sbmlsim.plotting import Figure as FigureSEDML
 logger = logging.getLogger(__name__)
 
 
-class SimulationExperiment(object):
+@dataclass
+class ExperimentResult:
+    """Result of a simulation experiment"""
+    experiment: 'SimulationExperiment'
+    output_path: Path
+    model_path: Path
+    data_path: Path
+    results_path: Path
+
+
+class SimulationExperiment(ABC):
     """Generic simulation experiment.
 
-    Consists of model, list of timecourse simulations, and corresponding results.
+    Consists of models, datasets, simulations, tasks, results, processing, figures
     """
+
+    def __init__(self, model_path=None, data_path=None, **kwargs):
+        """ Constructor.
+
+        When an instance of the SimulationExperiment is created all information
+        defined in the static methods is collected.
+
+        The execute function executes the model subsequently.
+
+        :param model_path:
+        :param data_path:
+        :param kwargs:
+        """
+
+        self.name = self.__class__.__name__
+
+        # models
+        self.model_path = model_path
+
+        # datasets
+        self.data_path = data_path
+        self._datasets = None
+
+        # task results
+        self._results = None
+        self._scan_results = None
+
+        # processing
+        self._datagenerators = None
+
+        # figures
+        self._figures = None
+
+        # settings
+        self.settings = kwargs
+
+    # --- MODELS --------------------------------------------------------------
     # FIXME: have multiple models which could be used and defined at the beginning.
     # These could be derived models based on applied model changes.
 
-    def __init__(self, model_path=None, data_path=None, **kwargs):
-        self.sid = self.__class__.__name__
-        self.model_path = model_path
-        self.data_path = data_path
-
-        self._results = None
-        self._scan_results = None
-        self._datasets = None
-        self._datagenerators = None
-        self._figures = None
-        self.settings = kwargs
+    @abc.abstractclassmethod
+    def _models(cls, self) -> Dict:
+        return
 
     @property
     def model_path(self):
@@ -65,6 +105,7 @@ class SimulationExperiment(object):
             self.ureg = None
             self.Q_ = None
 
+    # --- DATASETS ------------------------------------------------------------
     @property
     def datasets(self) -> Dict[str, pd.DataFrame]:
         """ Datasets.
@@ -74,6 +115,16 @@ class SimulationExperiment(object):
         logger.debug(f"No datasets defined for '{self.sid}'.")
         return {}
 
+    @property
+    def data(self) -> Dict[str, Data]:
+        return self._data
+
+    def load_data(self, sid, **kwargs):
+        """ Loads data from given figure/table id."""
+        df = load_data(sid=sid, data_path=self.data_path, **kwargs)
+        return df
+
+    # --- TASKS ---------------------------------------------------------------
     @property
     def simulations(self) -> Dict[str, TimecourseSim]:
         """ Simulation definitions. """
@@ -86,23 +137,29 @@ class SimulationExperiment(object):
         logger.debug(f"No scans defined for '{self.sid}'.")
         return {}
 
-    @property
-    def data(self) -> Dict[str, Data]:
-        return self._data
+    # FIXME: make sure things are only executed once
+    def results(self) -> Dict[str, Result]:
+        if self._results is None:
+            self._run_tasks()
+        return self._results
 
-    @property
+    def scan_results(self) -> Dict[str, Result]:
+        if self._scan_results is None:
+            self._run_tasks()
+        return self._scan_results
+
+    # --- PROCESSING ----------------------------------------------------------
+    # TODO:
+
+    # --- FIGURES ----------------------------------------------------------
     def figures(self) -> Dict[str, FigureMPL]:
         """ Figures."""
         # FIXME: generic handling of figures (i.e., support of multiple backends)
         logger.debug(f"No figures defined for '{self.sid}'.")
         return {}
 
-    def load_data(self, sid, **kwargs):
-        """ Loads data from given figure/table id."""
-        df = load_data(sid=sid, data_path=self.data_path, **kwargs)
-        return df
-
-    def validate(self):
+    def _check(self):
+        """Check that everything is okay with the experiment."""
         for key in self.datasets.keys():
             if not isinstance(key, str):
                 raise ValueError(f"Dataset keys must be str: '{key} -> {type(key)}'")
@@ -116,39 +173,73 @@ class SimulationExperiment(object):
             if not isinstance(key, str):
                 raise ValueError(f"Figure keys must be str: '{key} -> {type(key)}'")
 
-    def load_data_pkdb(self, sid, **kwargs):
-        """Load timecourse data with units."""
-        df = load_data(sid=sid, data_path=self.data_path, **kwargs)
-        dframes = {}
-        for substance in df.substance.unique():
-            dframes[substance] = df[df.substance == substance]
-        return dframes
+    # --- EXECUTE -------------------------------------------------------------
+    def execute(self,
+                output_path: Path,
+                model_path: Path,
+                data_path: Path,
+                show_figures: bool = True) -> ExperimentResult:
+        """
+        Executes given experiment.
+        Returns info dictionary.
+        """
+        # path operations
+        if not Path.exists(model_path):
+            raise IOError(f"'model_path' does not exist: '{model_path}'")
+        if not Path.exists(data_path):
+            raise IOError(f"'data_path' does not exist: '{data_path}'")
+        if not Path.is_dir(data_path):
+            raise IOError(f"'data_path' is not a directory: '{data_path}'")
 
-    def load_units(self, sids, df=None, units_dict=None):
-        """ Loads units from given dataframe."""
-        if df is not None:
-             udict = {key: df[f"{key}_unit"].unique()[0] for key in sids}
-        elif units_dict is not None:
-            udict = {}
-            for sid in sids:
-                udict[sid] = units_dict[sid]
-        return udict
+        if not Path.exists(output_path):
+            Path.mkdir(output_path, parents=True)
+            logging.info(f"'output_path' created: '{output_path}'")
 
-    @property
-    def results(self) -> Dict[str, Result]:
-        if self._results is None:
-            self.simulate()
-        return self._results
+        # create experiment
+        exp = cls_experiment(model_path=model_path,
+                             data_path=data_path)  # type: SimulationExperiment
 
-    @property
-    def scan_results(self) -> Dict[str, Result]:
-        if self._scan_results is None:
-            self.simulate()
-        return self._scan_results
+        # validation
+        exp._check()
 
-    def simulate(self, Simulator=SimulatorSerial,
-                 absolute_tolerance=1E-14,
-                 relative_tolerance=1E-14):
+        # run simulations
+        exp._run_tasks()
+
+        # create and save figures
+        exp.save_figures(output_path)
+
+        # save results
+        results_path = output_path
+        if not results_path.exists():
+            os.mkdir(results_path)
+        exp.save_results(results_path)
+
+        # create and save data sets
+        exp.save_datasets(results_path)
+
+        # save json representation
+        from pprint import pprint
+        pprint(exp.to_dict())
+        exp.to_json(output_path / f"{exp.sid}.json")
+
+        # display figures
+        if show_figures:
+            plt.show()
+
+        # create markdown report
+        # exp.to_markdown(output_path)
+
+        return ExperimentResult(
+            experiment=exp,
+            output_path=output_path,
+            model_path=model_path,
+            data_path=data_path,
+            results_path=results_path,
+        )
+
+    def _run_tasks(self, Simulator=SimulatorSerial,
+                   absolute_tolerance=1E-14,
+                   relative_tolerance=1E-14):
         """Run simulations & scans.
 
         This should not be called directly, but the results of the simulations
@@ -187,18 +278,8 @@ class SimulationExperiment(object):
 
         return None
 
-    def _figure(self, xlabel, ylabel, title=None):
-        warnings.warn(
-            "'_figure' is deprecated, use sbmlsim.plotting.Figure instead",
-            DeprecationWarning
-        )
-        fig, ax = plt.subplots(nrows=1, ncols=1, figsize=(5, 5))
-        if title:
-            ax.set_title(title)
-        ax.set_xlabel(xlabel)
-        ax.set_ylabel(ylabel)
-        ax.legend()
-        return fig, ax
+    # --- SERIALIZATION -------------------------------------------------------
+
 
     def default(self, o):
         """json encoder"""
@@ -360,73 +441,3 @@ def function_name():
     return inspect.getframeinfo(frame).function
 
 
-@dataclass
-class ExperimentResult:
-    experiment: SimulationExperiment
-    output_path: Path
-    model_path: Path
-    data_path: Path
-    results_path: Path
-
-# FIXME: put on experiment class
-def run_experiment(cls_experiment: SimulationExperiment,
-                   output_path: Path,
-                   model_path: Path,
-                   data_path: Path, show_figures:bool=True) -> ExperimentResult:
-    """
-    Run given experiment.
-    Returns info dictionary.
-    """
-    # path operations
-    if not Path.exists(model_path):
-        raise IOError(f"'model_path' does not exist: '{model_path}'")
-    if not Path.exists(data_path):
-        raise IOError(f"'data_path' does not exist: '{data_path}'")
-    if not Path.is_dir(data_path):
-        raise IOError(f"'data_path' is not a directory: '{data_path}'")
-
-    if not Path.exists(output_path):
-        Path.mkdir(output_path, parents=True)
-        logging.info(f"'output_path' created: '{output_path}'")
-
-    # create experiment
-    exp = cls_experiment(model_path=model_path,
-                         data_path=data_path)  # type: SimulationExperiment
-
-    # validation
-    exp.validate()
-
-    # run simulations
-    exp.simulate()
-
-    # create and save figures
-    exp.save_figures(output_path)
-
-    # save results
-    results_path = output_path
-    if not results_path.exists():
-        os.mkdir(results_path)
-    exp.save_results(results_path)
-
-    # create and save data sets
-    exp.save_datasets(results_path)
-
-    # save json representation
-    from pprint import pprint
-    pprint(exp.to_dict())
-    exp.to_json(output_path / f"{exp.sid}.json")
-
-    # display figures
-    if show_figures:
-        plt.show()
-
-    # create markdown report
-    # exp.to_markdown(output_path)
-
-    return ExperimentResult(
-        experiment=exp,
-        output_path=output_path,
-        model_path=model_path,
-        data_path=data_path,
-        results_path=results_path,
-    )

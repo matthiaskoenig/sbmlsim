@@ -11,7 +11,7 @@ def test_result():
     r = RoadrunnerSBMLModel(source=MODEL_REPRESSILATOR)._model
     dfs = []
     for _ in range(10):
-        s = r.simulate(0, 10, steps=10)
+        s = r._run_tasks(0, 10, steps=10)
         dfs.append(pd.DataFrame(s, columns=s.colnames))
 
     result = Result(dfs)
@@ -25,7 +25,7 @@ def test_hdf5(tmp_path):
     r = RoadrunnerSBMLModel(source=MODEL_REPRESSILATOR)._model
     dfs = []
     for _ in range(10):
-        s = r.simulate(0, 10, steps=10)
+        s = r._run_tasks(0, 10, steps=10)
         dfs.append(pd.DataFrame(s, columns=s.colnames))
 
     result = Result(dfs)

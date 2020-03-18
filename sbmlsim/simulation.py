@@ -163,7 +163,7 @@ class SimulatorWorker(object):
             """
 
             # run simulation
-            s = self.r.simulate(start=tc.start, end=tc.end, steps=tc.steps)
+            s = self.r._run_tasks(start=tc.start, end=tc.end, steps=tc.steps)
             df = pd.DataFrame(s, columns=s.colnames)
             df.time = df.time + t_offset
             frames.append(df)

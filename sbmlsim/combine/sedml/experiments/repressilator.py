@@ -1,12 +1,23 @@
 from typing import Dict, List
+from pathlib import Path
+import pandas as pd
 
 from sbmlsim.experiment import SimulationExperiment
 from sbmlsim.data import Data, DataSet
 from sbmlsim.timecourse import Timecourse, TimecourseSim
 from sbmlsim.plotting import Figure, Axis
 
+from sbmlsim.experiment import ExperimentResult
+from sbmlsim.models import RoadrunnerSBMLModel
 
 class RepressilatorExperiment(SimulationExperiment):
+
+    base_path = Path(__file__).parent
+    model_path = base_path / "repressilator.xml"
+
+    def models(self) -> Dict:
+        return RoadrunnerSBMLModel()
+
     @property
     def datasets(self) -> Dict[str, DataSet]:
         d1 = self.load_data(f"{self.sid}_Fig1")
@@ -76,3 +87,30 @@ class RepressilatorExperiment(SimulationExperiment):
             label="sim cpeptide", color="black"
         )
         return {fig.sid: fig}
+
+
+def run_repressilator(output_path: Path, show_figures: bool = False) -> ExperimentResult:
+    """ Run all experiments.
+
+    :param output_path:
+    :param experiments: list of experiments to run
+    :param show_figures:
+    :return:
+    """
+    base_path = Path(__file__).parent
+    model_path = base_path / "repressilator.xml"
+    data_path = base_path
+
+    experiment = RepressilatorExperiment()
+    results = experiment.execute(
+        output_path=output_path / RepressilatorExperiment.__name__,
+        model_path=model_path,
+        data_path=data_path,
+        show_figures=show_figures
+    )
+
+    return results
+
+
+if __name__ == "__main__":
+    run_repressilator(output_path=Path("."))

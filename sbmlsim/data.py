@@ -141,7 +141,8 @@ class DataSet(pd.DataFrame):
         # add the unit columns to the data frame
         for key, unit in udict.items():
             # FIXME
-            data.loc[:, (f"{key}_unit",)] = unit
+            setattr(data, f"{key}_unit", unit)
+            # data.loc[:, (f"{key}_unit",)] = unit
 
         dset = DataSet(data)
         dset.udict = udict
@@ -157,6 +158,26 @@ class DataSet(pd.DataFrame):
             self[key].values, self.udict[key]
         )
 
+
+@deprecated
+def load_data_pkdb(self, sid, **kwargs):
+    """Load timecourse data with units."""
+    df = load_data(sid=sid, data_path=self.data_path, **kwargs)
+    dframes = {}
+    for substance in df.substance.unique():
+        dframes[substance] = df[df.substance == substance]
+    return dframes
+
+@deprecated
+def load_units(self, sids, df=None, units_dict=None):
+    """ Loads units from given dataframe."""
+    if df is not None:
+         udict = {key: df[f"{key}_unit"].unique()[0] for key in sids}
+    elif units_dict is not None:
+        udict = {}
+        for sid in sids:
+            udict[sid] = units_dict[sid]
+    return udict
 
 
 if __name__ == "__main__":

@@ -6,8 +6,9 @@ from sbmlsim.experiment import run_experiment
 from sbmlsim.report import create_report
 
 from sbmlsim.examples.glucose.experiments.dose_response import DoseResponseExperiment
+from sbmlsim.utils import timeit
 
-
+@timeit
 def glucose_experiment():
     BASE_PATH = Path(__file__).parent / "glucose"
 
@@ -24,4 +25,5 @@ def glucose_experiment():
 
 
 if __name__ == "__main__":
+
     glucose_experiment()
