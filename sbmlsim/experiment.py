@@ -5,8 +5,9 @@ import json
 from dataclasses import dataclass
 from typing import Dict
 from pint import UnitRegistry
+import pandas as pd
 
-from sbmlsim.utils import timeit
+from sbmlsim.utils import timeit, deprecated
 from sbmlsim.tasks import Task
 from sbmlsim.simulation_serial import SimulatorSerial
 from sbmlsim.timecourse import TimecourseSim, TimecourseScan
@@ -58,6 +59,7 @@ class SimulationExperiment(object):
         self._models = self.models()
         self._datasets = self.datasets()
         self._tasks = self.tasks()
+        # FIXME: remove simulations
         self._simulations = self.simulations()
         self._scans = self.scans()
 
@@ -88,20 +90,54 @@ class SimulationExperiment(object):
         # different then datasets
         return self._data
 
-    def load_data(self, sid, **kwargs):
-        """ Loads data from given figure/table id."""
+    @deprecated
+    def load_data(self, sid, **kwargs) -> pd.DataFrame:
+        """ Loads data from given figure/table id.
+
+        Use load_dataset instead. This function will be removed
+        in future releases.
+        """
         df = load_dataframe(sid=sid, data_path=self.data_path, **kwargs)
         return df
+
+    def load_dataset(self, sid, udict=None, **kwargs) -> DataSet:
+        """ Loads DataSet (with units) from given figure/table id.
+
+        :param sid:
+        :param ureg:
+        :param udict: additional units from the outside
+        :param kwargs:
+        :return:
+        """
+        df = load_dataframe(sid=sid, data_path=self.data_path, **kwargs)
+        all_udict = {}
+        for key in df.columns:
+            if key.endswith("_unit"):
+                # parse the item and unit in dict
+                units = df[key].unique()
+                if len(units) > 1:
+                    logger.error(f"Column '{key}' in '{sid}' has multiple "
+                                 f"units: '{units}'")
+                item_key = key[0:-5]
+                if item_key not in df.columns:
+                    logger.error(f"Missing * column '{item_key}' for unit "
+                                 f"column: '{key}'")
+                all_udict[item_key] = units[0]
+
+        # add external definitions
+        if udict:
+            all_udict.update(udict)
+        return DataSet.from_df(df, udict=all_udict, ureg=self.ureg)
 
     def load_units(self, sids, df=None, units_dict=None):
         """ Loads units from given dataframe."""
         if df is not None:
-            udict = {key: df[f"{key}_unit"].unique()[0] for key in sids}
+            all_udict = {key: df[f"{key}_unit"].unique()[0] for key in sids}
         elif units_dict is not None:
-            udict = {}
+            all_udict = {}
             for sid in sids:
-                udict[sid] = units_dict[sid]
-        return udict
+                all_udict[sid] = units_dict[sid]
+        return all_udict
 
     # --- TASKS ---------------------------------------------------------------
     def tasks(self) -> Dict[str, Task]:

@@ -139,7 +139,7 @@ class DataSet(pd.DataFrame):
         return DataSeries
 
     @classmethod
-    def from_df(cls, data: pd.DataFrame, udict: dict, ureg):
+    def from_df(cls, data: pd.DataFrame, udict: dict, ureg) -> 'DataSet':
         # add the unit columns to the data frame
         for key, unit in udict.items():
             # FIXME
