@@ -224,6 +224,7 @@ class SimulationExperiment(object):
         """Convert to dictionary.
         This is the basis for the JSON serialization.
         """
+        # necessary to convert the tasks
         for key, tcsim in self._simulations.items():
             tcsim.normalize(udict=self.udict, ureg=self.ureg)
 

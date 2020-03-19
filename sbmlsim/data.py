@@ -67,7 +67,7 @@ class Data(object):
         dtype = self.get_type()
         if dtype == Data.Types.DATASET:
             # read dataset data
-            data = self.experiment.datasets[self.dataset]
+            data = self.experiment._datasets[self.dataset]
 
             # Make a dataset with units out of the data
             if isinstance(data, DataSet):
