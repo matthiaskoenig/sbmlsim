@@ -139,6 +139,15 @@ class SimulationExperiment(object):
                 all_udict[sid] = units_dict[sid]
         return all_udict
 
+    @deprecated
+    def load_data_pkdb(self, sid, **kwargs) -> Dict[str, pd.DataFrame]:
+        """Load timecourse data with units."""
+        df = self.load_data(sid=sid, **kwargs)
+        dframes = {}
+        for substance in df.substance.unique():
+            dframes[substance] = df[df.substance == substance]
+        return dframes
+
     # --- TASKS ---------------------------------------------------------------
     def tasks(self) -> Dict[str, Task]:
         """Task definitions."""
@@ -202,7 +211,8 @@ class SimulationExperiment(object):
         self.save_figures(output_path)
 
         # serialization
-        self.to_json(output_path / f"{self.sid}.json")
+        # FIXME: handle the old data plotting functions correctly
+        # self.to_json(output_path / f"{self.sid}.json")
 
         # display figures
         if show_figures:

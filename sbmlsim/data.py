@@ -188,14 +188,7 @@ def load_dataframe(sid, data_path, sep="\t", comment="#", **kwargs) -> pd.DataFr
 
     return pd.read_csv(path, sep=sep, comment=comment, **kwargs)
 
-@deprecated
-def load_data_pkdb(self, sid, **kwargs):
-    """Load timecourse data with units."""
-    df = load_data(sid=sid, data_path=self.data_path, **kwargs)
-    dframes = {}
-    for substance in df.substance.unique():
-        dframes[substance] = df[df.substance == substance]
-    return dframes
+
 
 
 
