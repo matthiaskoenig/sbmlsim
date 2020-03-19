@@ -69,14 +69,9 @@ class Data(object):
         dtype = self.get_type()
         if dtype == Data.Types.DATASET:
             # read dataset data
-            data = self.experiment._datasets[self.dataset]
-
-            # Make a dataset with units out of the data
-            if isinstance(data, DataSet):
-                dset = data
-            elif isinstance(data, pd.DataFrame):
-                dset = DataSet.from_df(data=data, udict=None, ureg=None)
-
+            dset = self.experiment._datasets[self.dataset]
+            if not isinstance(dset, DataSet):
+                raise ValueError(dset)
             if dset.empty:
                 logger.error(f"Empty dataset in adding data: {dset}")
 
@@ -142,11 +137,13 @@ class DataSet(pd.DataFrame):
 
     @classmethod
     def from_df(cls, data: pd.DataFrame, udict: dict, ureg) -> 'DataSet':
-        # add the unit columns to the data frame
+        """DataSet from pandas.DataFrame"""
+        if udict is None:
+            udict = {}
+
         for key, unit in udict.items():
-            # FIXME
+            # add the unit columns to the data frame
             setattr(data, f"{key}_unit", unit)
-            # data.loc[:, (f"{key}_unit",)] = unit
 
         dset = DataSet(data)
         dset.udict = udict
