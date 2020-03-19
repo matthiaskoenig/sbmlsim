@@ -5,6 +5,8 @@ import logging
 from sbmlsim.result import Result
 from sbmlsim.utils import deprecated
 
+from pint import Quantity
+
 logger = logging.getLogger(__name__)
 
 
@@ -151,12 +153,25 @@ class DataSet(pd.DataFrame):
         dset.ureg = ureg
         return dset
 
+    def unit_conversion(self, key, factor: Quantity):
+        """Also converts the corresponding errors"""
+        if key in self.columns:
+            self[key] = self[key] * factor
+            self.udict[key] = str((self.get_quantity(key) * factor).units)
+            for err_key in [f"{key}_sd", f"{key}_se"]:
+                if err_key in self.columns:
+                    self[err_key] = self[err_key] * factor
+                    # error keys not stored in udict
+        else:
+            logger.warning(f"Key '{key}' not in DataSet: '{id(self)}'")
+
     def get_quantity(self, key):
         """Returns quantity for given key.
 
         Requires using the numpy data instead of the series.
         """
         return self.ureg.Quantity(
+            # downcasting !
             self[key].values, self.udict[key]
         )
 
