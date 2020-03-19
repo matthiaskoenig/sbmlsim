@@ -1,8 +1,9 @@
 #!/bin/env python
+from pathlib import Path
 import libsedml
 
 
-def create_dependent_variable_example(file_name):
+def create_dependent_variable_example(path: Path):
     # create the document
     doc = libsedml.SedDocument(1, 4)
 
@@ -80,8 +81,8 @@ def create_dependent_variable_example(file_name):
     curve.setYDataReference("dS1dt")
 
     # write doc
-    libsedml.writeSedML(doc, file_name)
+    libsedml.writeSedML(doc, str(path))
 
 
 if __name__ == "__main__":
-    create_dependent_variable_example('dependent_example.xml')
+    create_dependent_variable_example(Path('dependent_example.xml'))

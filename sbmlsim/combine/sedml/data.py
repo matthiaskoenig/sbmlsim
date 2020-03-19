@@ -97,7 +97,8 @@ class DataDescriptionParser(object):
         dim_description = dd.getDimensionDescription()
         data_types = None
         if dim_description is not None:
-            data_types = NumlParser.parse_dimension_description(dim_description, library=NumlParser.Library.LIBSEDML)
+            data_types = NumlParser.parse_dimension_description(dim_description,
+                                                                library=NumlParser.Library.LIBSEDML)
 
         # -------------------------------
         # Load complete data

@@ -13,7 +13,7 @@ def resource():
     importlib.reload(libsbml)
 
 
-def test_create_dependent_variable(resource):
-    create_dependent_variable.create_dependent_variable_example()
-
-
+def test_create_dependent_variable(resource, tmp_path):
+    test_path = tmp_path / "test.sedml"
+    create_dependent_variable.create_dependent_variable_example(tmp_path / "test.sedml")
+    assert test_path.exists()

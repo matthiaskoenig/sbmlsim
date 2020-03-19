@@ -71,7 +71,7 @@ setup(
         "pandas>=0.25.3",
         "tables>0.3.6",
         "python-libsbml-experimental>=5.18.1",
-        "python-libsedml>=2.0.8",
+        "python-libsedml>=2.0.9",
         "python-libcombine>=0.2.3",
         "python-libnuml>=1.1.1",
         "libroadrunner>=1.6.0",

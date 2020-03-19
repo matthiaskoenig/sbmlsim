@@ -128,7 +128,7 @@ class NumlParser(object):
             importlib.reload(libsedml)
             assert description.getTypeCode() == libsedml.NUML_DIMENSIONDESCRIPTION
 
-        info = [cls._parse_description(description.get(k)) for k in range(description.size())]
+        info = [cls._parse_description(description.get(k), library=library) for k in range(description.size())]
 
         flat_info = []
         for entry in info:
@@ -181,17 +181,15 @@ class NumlParser(object):
 
         if (library == cls.Library.LIBNUML and type_code == libnuml.NUML_COMPOSITEDESCRIPTION) or \
                 (library == cls.Library.LIBSEDML and type_code == libsedml.NUML_COMPOSITEDESCRIPTION):
-            print(d, type(d))
-            libsedml.DimensionDescription.get
 
             content = {d.getId(): d.getIndexType()}
             info.append(content)
             # print('\t* CompositeDescription:', content)
             if d.isContentCompositeDescription():
                 for k in range(d.size()):
-                    info = cls._parse_description(d.getCompositeDescription(k), info, list(entry))
+                    info = cls._parse_description(d.getCompositeDescription(k), info, list(entry), library=library)
             elif d.isContentAtomicDescription():
-                info = cls._parse_description(d.getAtomicDescription(), info, entry)
+                info = cls._parse_description(d.getAtomicDescription(), info, entry, library=library)
 
         elif (library == cls.Library.LIBNUML and type_code == libnuml.NUML_ATOMICDESCRIPTION) or \
                 (library == cls.Library.LIBSEDML and type_code == libsedml.NUML_ATOMICDESCRIPTION):
