@@ -313,7 +313,7 @@ class Plot(Base):
     def _default_kwargs(self, d, dtype):
         """Default plotting styles"""
 
-        if dtype == Data.Types.SIMULATION:
+        if dtype == Data.Types.TASK:
             if "linestyle" not in d:
                 d["linestyle"] = "-"
             if "linewidth" not in d:
@@ -338,7 +338,7 @@ class Plot(Base):
 
     def add_data(self,
                  xid: str, yid: str, yid_sd=None, yid_se=None, count: int=None,
-                 dataset: str=None, simulation: str=None,
+                 dataset: str=None, task: str=None,
                  xunit=None, yunit=None,
                  label='__nolabel__',
                  xf=1.0, yf=1.0,
@@ -346,15 +346,15 @@ class Plot(Base):
         """Wrapper around curve. """
         if yid_sd and yid_se:
             raise ValueError("Set either 'yid_sd' or 'yid_se', not both.")
-        if dataset and simulation:
-            raise ValueError("Set either 'dataset' or 'simulation', not both.")
-        if dataset is None and simulation is None:
-            raise ValueError("Set either 'dataset' or 'simulation'.")
+        if dataset and task:
+            raise ValueError("Set either 'dataset' or 'task', not both.")
+        if dataset is None and task is None:
+            raise ValueError("Set either 'dataset' or 'task'.")
 
         for f in [xf, yf]:
             if hasattr(f, "magnitude"):
                 f = f.magnitude
-                if abs(f-1.0)>1E-8:
+                if abs(f-1.0) > 1E-8:
                     # FIXME: fix scaling factors
                     raise ValueError("Scaling factors not supported yet !!!")
 
@@ -366,10 +366,10 @@ class Plot(Base):
         yerr_label = ''
         if yid_sd:
             yerr_label = "+-SD"
-            yerr = Data(experiment, yid_sd, dataset=dataset, simulation=simulation, unit=yunit)
+            yerr = Data(experiment, yid_sd, dset_id=dataset, task_id=task, unit=yunit)
         elif yid_se:
             yerr_label = "+-SE"
-            yerr = Data(experiment, yid_se, dataset=dataset, simulation=simulation, unit=yunit)
+            yerr = Data(experiment, yid_se, dset_id=dataset, task_id=task, unit=yunit)
 
         # label
         if label != "__nolabel__":
@@ -379,8 +379,8 @@ class Plot(Base):
             label = f"{label}{yerr_label}{count_label}"
 
         self.curve(
-            x=Data(experiment, xid, dataset=dataset, simulation=simulation, unit=xunit),
-            y=Data(experiment, yid, dataset=dataset, simulation=simulation, unit=yunit),
+            x=Data(experiment, xid, dset_id=dataset, task_id=task, unit=xunit),
+            y=Data(experiment, yid, dset_id=dataset, task_id=task, unit=yunit),
             yerr=yerr,
             label=label, **kwargs
         )

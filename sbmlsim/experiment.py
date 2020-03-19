@@ -176,8 +176,21 @@ class SimulationExperiment(object):
         """ Figures."""
         return {}
 
+    # --- VALIDATION -------------------------------------------------------------
     def _check_keys(self):
         """Check that everything is okay with the experiment."""
+        for field in ["_models", "_datasets", "_tasks", "_simulations", "_scans"]:
+            for key in getattr(self, field).keys():
+                if not isinstance(key, str):
+                    raise ValueError(f"'{field} keys must be str: "
+                                     f"'{key} -> {type(key)}'")
+
+    def _check_types(self):
+        """Check that correct types"""
+        for key, dset in self._datasets.items():
+            if not isinstance(dset, DataSet):
+                raise ValueError(f"datasets must be of type DataSet, but "
+                                 f"dataset '{key}' has type: '{type(dset)}'")
         for field in ["_models", "_datasets", "_tasks", "_simulations", "_scans"]:
             for key in getattr(self, field).keys():
                 if not isinstance(key, str):
@@ -199,6 +212,7 @@ class SimulationExperiment(object):
 
         # validation
         self._check_keys()
+        self._check_types()
 
         # run simulations
         self._run_tasks()

@@ -21,27 +21,27 @@ class Data(object):
     # FIXME: must also handle all the unit conversions
     """
     class Types(Enum):
-        SIMULATION = 1
+        TASK = 1
         DATASET = 2
         FUNCTION = 3
 
-    def __init__(self, experiment,  # FIXME: annotate SimulationExperiment
+    def __init__(self, experiment,
                  index: str, unit: str=None,
-                 simulation: str=None,
-                 dataset: str=None,
+                 task_id: str = None,
+                 dset_id: str = None,
                  function=None, data=None):
         self.experiment = experiment
         self.index = index
         self.unit = unit
-        self.simulation = simulation
-        self.dataset = dataset
+        self.task_id = task_id
+        self.dset_id = dset_id
         self.function = function
         self._data = data
 
     def get_type(self):
-        if self.simulation:
-            dtype = Data.Types.SIMULATION
-        elif self.dataset:
+        if self.task_id:
+            dtype = Data.Types.TASK
+        elif self.dset_id:
             dtype = Data.Types.DATASET
         return dtype
 
@@ -54,8 +54,8 @@ class Data(object):
         d = {
             "index": self.index,
             "unit": self.unit,
-            "simulation": self.simulation,
-            "dataset": self.dataset,
+            "task": self.task_id,
+            "dataset": self.dset_id,
             # "function": self.function,
         }
         return d
@@ -69,7 +69,7 @@ class Data(object):
         dtype = self.get_type()
         if dtype == Data.Types.DATASET:
             # read dataset data
-            dset = self.experiment._datasets[self.dataset]
+            dset = self.experiment._datasets[self.dset_id]
             if not isinstance(dset, DataSet):
                 raise ValueError(dset)
             if dset.empty:
@@ -82,11 +82,11 @@ class Data(object):
                 uindex = self.index
             x = dset[self.index].values * dset.ureg(dset.udict[uindex])
 
-        elif dtype == Data.Types.SIMULATION:
-            # read simulation data
-            result = self.experiment.results[self.simulation]  # type: Result
+        elif dtype == Data.Types.TASK:
+            # read results of task
+            result = self.experiment.results[self.task_id]  # type: Result
             if not isinstance(result, Result):
-                raise ValueError("Only Result objects supported in plotting.")
+                raise ValueError("Only Result objects supported in task data.")
             x = result.mean[self.index].values * result.ureg(result.udict[self.index])
 
         # convert units

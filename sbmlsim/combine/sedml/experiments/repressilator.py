@@ -77,13 +77,13 @@ class RepressilatorExperiment(SimulationExperiment):
             legend=True)
         plots[0].set_title(f"{self.sid}_{fig.sid}")
         plots[0].curve(
-            x=Data(self, "time", dataset="fig1", unit=unit_time),
-            y=Data(self, "cpep", dataset="fig1", unit=unit_cpep),
+            x=Data(self, "time", dset_id="fig1", unit=unit_time),
+            y=Data(self, "cpep", dset_id="fig1", unit=unit_cpep),
             label="cpeptide (n=1)", color="black"
         )
         plots[0].curve(
-            x=Data(self, "time", simulation="cpep", unit=unit_time),
-            y=Data(self, "Cve_cpep", simulation="cpep", unit=unit_cpep),
+            x=Data(self, "time", task_id="cpep", unit=unit_time),
+            y=Data(self, "Cve_cpep", task_id="cpep", unit=unit_cpep),
             label="sim cpeptide", color="black"
         )
         return {fig.sid: fig}

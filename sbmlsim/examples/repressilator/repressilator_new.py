@@ -48,13 +48,13 @@ class RepressilatorExperiment(SimulationExperiment):
         )
         plots[0].set_title(f"{self.sid}_{fig.sid}")
         plots[0].curve(
-            x=Data(self, "time", simulation="task1", unit=unit_time),
-            y=Data(self, "X", simulation="task1", unit=unit_data),
+            x=Data(self, "time", task_id="task1", unit=unit_time),
+            y=Data(self, "X", task_id="task1", unit=unit_data),
             label="X sim", color="black"
         )
         plots[0].curve(
-            x=Data(self, "time", simulation="task1", unit=unit_time),
-            y=Data(self, "Y", simulation="task1", unit=unit_data),
+            x=Data(self, "time", task_id="task1", unit=unit_time),
+            y=Data(self, "Y", task_id="task1", unit=unit_data),
             label="Y sim", color="blue"
         )
         return {fig.sid: fig}
