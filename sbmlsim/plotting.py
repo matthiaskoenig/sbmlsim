@@ -346,7 +346,7 @@ class Plot(Base):
         """Wrapper around curve. """
         if yid_sd and yid_se:
             raise ValueError("Set either 'yid_sd' or 'yid_se', not both.")
-        if dataset and task:
+        if dataset is not None and task is not None:
             raise ValueError("Set either 'dataset' or 'task', not both.")
         if dataset is None and task is None:
             raise ValueError("Set either 'dataset' or 'task'.")
