@@ -156,12 +156,17 @@ class DataSet(pd.DataFrame):
     def unit_conversion(self, key, factor: Quantity):
         """Also converts the corresponding errors"""
         if key in self.columns:
-            self[key] = self[key] * factor
-            self.udict[key] = str((self.get_quantity(key) * factor).units)
+            self[key] = (self[key] * factor)
+            new_units = (self.get_quantity(key) * factor).to_base_units().to_reduced_units().units
+            new_units_str = str(new_units)  # '{:~}'.format(new_units)
+            self.udict[key] = new_units_str
             for err_key in [f"{key}_sd", f"{key}_se"]:
                 if err_key in self.columns:
                     self[err_key] = self[err_key] * factor
                     # error keys not stored in udict
+            # if unit is stored in tsv these must be updated
+            if f"{key}_unit" in self.columns:
+                self[f"{key}_unit"] = new_units_str
         else:
             logger.warning(f"Key '{key}' not in DataSet: '{id(self)}'")
 
