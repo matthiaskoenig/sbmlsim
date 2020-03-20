@@ -72,10 +72,10 @@ class SimulationExperiment(object):
         # load everything once, never call this function again
         self._models = self.models()
         self._datasets = self.datasets()
-        self._tasks = self.tasks()
 
         # FIXME: multiple analysis possible, handle consistently
         self._simulations = self.simulations()
+        self._tasks = self.tasks()
 
         # Normalize the tasks
         for task_id, task in self._tasks.items():
