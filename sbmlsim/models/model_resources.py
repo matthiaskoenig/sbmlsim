@@ -21,6 +21,14 @@ class Source:
     def is_content(self):
         return self.content is not None
 
+    def to_dict(self):
+        # add keys individually for order!
+        d = dict()
+        d["source"] = str(self.source)
+        d["path"] = str(self.path) if self.path else None
+        d["content"] = self.content
+        return d
+
 
 def resolve_source(source: str, base_dir: Path = None) -> Source:
     """Resolves the source string."""
@@ -39,6 +47,7 @@ def resolve_source(source: str, base_dir: Path = None) -> Source:
             path = Path(base_dir) / Path(source)
         else:
             path = Path(source)
+        path = path.resolve()
         if not path.exists():
             raise IOError(f"Path '{source}' for model source '{source}' "
                           f"does not exist.")

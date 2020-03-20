@@ -84,7 +84,6 @@ def create_report(results: List[ExperimentResult],
             'code_path': code_path,
             'datasets': sorted(experiment._datasets.keys()),
             'simulations': sorted(experiment._simulations.keys()),
-            'scans': sorted(experiment._scans.keys()),
             'figures': figures,
             'code': code,
         }

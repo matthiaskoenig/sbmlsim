@@ -57,7 +57,7 @@ class RoadrunnerSBMLModel(AbstractModel):
 
         # load model
         if source.is_path():
-            logging.info(f"Load model: '{source.path}'")
+            logging.info(f"Load model: '{source.path.resolve()}'")
             r = roadrunner.RoadRunner(str(source.path))
         elif source.is_content():
             r = roadrunner.RoadRunner(str(source.content))

@@ -9,7 +9,10 @@ from sbmlsim.data import Data
 class ObjectJSONEncoder(JSONEncoder):
     def default(self, o):
         """json encoder"""
+
         # print(type(o))
+        # print(o)
+        # print("-" * 80)
 
         if isinstance(o, Enum):
             # handle enums
@@ -19,13 +22,13 @@ class ObjectJSONEncoder(JSONEncoder):
             # no serialization of Matplotlib figures
             return o.__class__.__name__
 
-        if isinstance(o, (Figure, Plot, Data)):
-            # return o.__class__.__name__
-            return o.to_dict()
-
         # handle numpy ndarrays
         if isinstance(o, ndarray):
             return o.tolist()
+
+        # custom serializer (Figure, Plot, Data, ...)
+        if hasattr(o, "to_dict"):
+            return o.to_dict()
 
         if hasattr(o, "__dict__"):
             return o.__dict__

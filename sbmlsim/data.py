@@ -12,7 +12,7 @@ logger = logging.getLogger(__name__)
 
 class Data(object):
     """Main data generator class which uses data either from
-    experimental data or simulations.
+    experimental data, simulations or via function calculation.
 
     # Possible Data:
     # simulation result: access via id
@@ -27,18 +27,19 @@ class Data(object):
 
     def __init__(self, experiment,
                  index: str, unit: str=None,
-                 task_id: str = None,
-                 dset_id: str = None,
+                 task: str = None,
+                 dataset: str = None,
                  function=None, data=None):
         self.experiment = experiment
         self.index = index
         self.unit = unit
-        self.task_id = task_id
-        self.dset_id = dset_id
+        self.task_id = task
+        self.dset_id = dataset
         self.function = function
         self._data = data
 
-    def get_type(self):
+    @property
+    def dtype(self):
         if self.task_id:
             dtype = Data.Types.TASK
         elif self.dset_id:
@@ -48,15 +49,17 @@ class Data(object):
     # todo: dimensions, data type
     # TODO: calculations
     # TODO: conversion factors for units, necessary to store
+    # TODO: storage of definitions on simulation.
 
     def to_dict(self):
         """ Convert to dictionary. """
         d = {
+            "type": self.dtype,
             "index": self.index,
             "unit": self.unit,
             "task": self.task_id,
             "dataset": self.dset_id,
-            # "function": self.function,
+            "function": self.function,
         }
         return d
 
@@ -66,8 +69,8 @@ class Data(object):
         # FIXME: data caching & store conversion factors
 
         # Necessary to resolve the data
-        dtype = self.get_type()
-        if dtype == Data.Types.DATASET:
+
+        if self.dtype == Data.Types.DATASET:
             # read dataset data
             dset = self.experiment._datasets[self.dset_id]
             if not isinstance(dset, DataSet):
@@ -82,7 +85,7 @@ class Data(object):
                 uindex = self.index
             x = dset[self.index].values * dset.ureg(dset.udict[uindex])
 
-        elif dtype == Data.Types.TASK:
+        elif self.dtype == Data.Types.TASK:
             # read results of task
             result = self.experiment.results[self.task_id]  # type: Result
             if not isinstance(result, Result):

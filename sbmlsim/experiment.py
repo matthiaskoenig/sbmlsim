@@ -10,7 +10,7 @@ import pandas as pd
 from sbmlsim.utils import timeit, deprecated
 from sbmlsim.tasks import Task
 from sbmlsim.simulation_serial import SimulatorSerial
-from sbmlsim.timecourse import TimecourseSim, TimecourseScan
+from sbmlsim.timecourse import AbstractSim, TimecourseSim, TimecourseScan
 from sbmlsim.serialization import ObjectJSONEncoder
 from sbmlsim.result import Result
 from sbmlsim.data import Data, DataSet, load_dataframe
@@ -46,7 +46,21 @@ class SimulationExperiment(object):
         """
         if not sid:
             self.sid = self.__class__.__name__
+
+        if data_path:
+            data_path = Path(data_path).resolve()
+            if not data_path.exists():
+                raise IOError(f"data_path '{data_path}' does not exist")
+        else:
+            logger.warning("No data_path provided, reading of datasets may fail.")
         self.data_path = data_path
+
+        if base_path:
+            base_path = Path(base_path).resolve()
+            if not base_path.exists():
+                raise IOError(f"base_path '{base_path}' does not exist")
+        else:
+            logger.warning("No base_path provided, reading/writing of resources may fail.")
         self.base_path = base_path
 
         # single UnitRegistry per SimulationExperiment (can be shared)
@@ -59,9 +73,17 @@ class SimulationExperiment(object):
         self._models = self.models()
         self._datasets = self.datasets()
         self._tasks = self.tasks()
-        # FIXME: remove simulations
+
+        # FIXME: multiple analysis possible, handle consistently
         self._simulations = self.simulations()
-        self._scans = self.scans()
+
+        # Normalize the tasks
+        for task_id, task in self._tasks.items():
+            model = self._models[task.model_id]
+            sim = self._simulations[task.simulation_id]
+
+            # normalize simulations with respective model dictionary
+            sim.normalize(udict=model.udict, ureg=model.ureg)
 
         # task results
         self._results = None
@@ -70,7 +92,7 @@ class SimulationExperiment(object):
         self._datagenerators = None
 
         # figures
-        self._figures = None  # requires access to results
+        self._figures = None
 
         # settings
         self.settings = kwargs
@@ -153,13 +175,13 @@ class SimulationExperiment(object):
         """Task definitions."""
         return {}
 
-    def simulations(self) -> Dict[str, TimecourseSim]:
+    def simulations(self) -> Dict[str, AbstractSim]:
         """Simulation definitions."""
         return {}
 
-    def scans(self) -> Dict[str, TimecourseScan]:
-        """Scan definitions."""
-        return {}
+    #def scans(self) -> Dict[str, TimecourseScan]:
+    #    """Scan definitions."""
+    #    return {}
 
     # --- RESULTS -------------------------------------------------------------
     @property
@@ -179,7 +201,7 @@ class SimulationExperiment(object):
     # --- VALIDATION -------------------------------------------------------------
     def _check_keys(self):
         """Check that everything is okay with the experiment."""
-        for field in ["_models", "_datasets", "_tasks", "_simulations", "_scans"]:
+        for field in ["_models", "_datasets", "_tasks", "_simulations"]:
             for key in getattr(self, field).keys():
                 if not isinstance(key, str):
                     raise ValueError(f"'{field} keys must be str: "
@@ -191,11 +213,18 @@ class SimulationExperiment(object):
             if not isinstance(dset, DataSet):
                 raise ValueError(f"datasets must be of type DataSet, but "
                                  f"dataset '{key}' has type: '{type(dset)}'")
-        for field in ["_models", "_datasets", "_tasks", "_simulations", "_scans"]:
-            for key in getattr(self, field).keys():
-                if not isinstance(key, str):
-                    raise ValueError(f"'{field} keys must be str: "
-                                     f"'{key} -> {type(key)}'")
+        for key, model in self._models.items():
+            if not isinstance(model, AbstractModel):
+                raise ValueError(f"datasets must be of type AbstractModel, but "
+                                 f"model '{key}' has type: '{type(model)}'")
+        for key, task in self._tasks.items():
+            if not isinstance(task, Task):
+                raise ValueError(f"tasks must be of type Task, but "
+                                 f"task '{key}' has type: '{type(task)}'")
+        for key, sim in self._simulations.items():
+            if not isinstance(sim, AbstractSim):
+                raise ValueError(f"simulations must be of type AbstractSim, but "
+                                 f"simulation '{key}' has type: '{type(sim)}'")
 
     # --- EXECUTE -------------------------------------------------------------
     @timeit
@@ -215,8 +244,9 @@ class SimulationExperiment(object):
         self._check_types()
 
         # run simulations
-        self._run_tasks()
-        # some of the figures require actual numerical results
+        self._run_tasks()  # sets self._results
+
+        # some of the figures require actual numerical results!
         self._figures = self.figures()
 
         # save outputs
@@ -225,8 +255,7 @@ class SimulationExperiment(object):
         self.save_figures(output_path)
 
         # serialization
-        # FIXME: handle the old data plotting functions correctly
-        # self.to_json(output_path / f"{self.sid}.json")
+        self.to_json(output_path / f"{self.sid}.json")
 
         # display figures
         if show_figures:
@@ -250,7 +279,8 @@ class SimulationExperiment(object):
         # FIXME: this can be parallized (or on level of the SimulationExperiment)
         # tasks for individual models can be run separately !
         for task_key, task in self._tasks.items():
-            model = self._models[task.model]
+            model = self._models[task.model_id]
+            # FIXME: creates new simulator for every task! we can reuse all simulators for a given model
             simulator = Simulator(model=model,
                                   absolute_tolerance=absolute_tolerance,
                                   relative_tolerance=relative_tolerance)
@@ -258,18 +288,17 @@ class SimulationExperiment(object):
             if self._results is None:
                 self._results = {}
 
-            simulation = task.simulation
-            # adapt units in simulation/scan
-            simulation.normalize(udict=model.udict, ureg=model.ureg)
-            if isinstance(simulation, TimecourseSim):
+            sim = self._simulations[task.simulation_id]
+
+            if isinstance(sim, TimecourseSim):
                 logger.info(f"Run timecourse task: '{task_key}'")
-                self._results[task_key] = simulator.timecourses(simulation)
-            elif isinstance(simulation, TimecourseScan):
+                self._results[task_key] = simulator.timecourses(sim)
+            elif isinstance(sim, TimecourseScan):
                 logger.info(f"Run scan task: '{task_key}'")
-                self._results[task_key] = simulator.scan(simulation)
+                self._results[task_key] = simulator.scan(sim)
             else:
                 raise ValueError(f"Unsupported simulation type: "
-                                 f"{type(simulation)}")
+                                 f"{type(sim)}")
 
     # --- SERIALIZATION -------------------------------------------------------
     def default(self, o):
@@ -280,35 +309,39 @@ class SimulationExperiment(object):
             # handle pint
             return str(o)
 
-    def to_dict(self):
-        """Convert to dictionary.
-        This is the basis for the JSON serialization.
-        """
-        # necessary to convert the tasks
-        for key, tcsim in self._simulations.items():
-            tcsim.normalize(udict=self.udict, ureg=self.ureg)
-
-        # FIXME: resolve paths relative to base_paths
-        d = {
-            "experiment_id": self.sid,
-            "data_path": Path(self.data_path).resolve(),
-            "simulations": self._simulations,  # TODO: serialize the tasks
-            "figures": self.figures,
-        }
-
-        return d
-
-    def to_json(self, path=None):
+    def to_json(self, path=None, indent=2):
         """ Convert experiment to JSON for exchange.
 
         :param path: path for file, if None JSON str is returned
         :return:
         """
+        d = self.to_dict()
+        from pprint import pprint
+        pprint(d)
         if path is None:
-            return json.dumps(self.to_dict(), cls=ObjectJSONEncoder, indent=2)
+            return json.dumps(d, cls=ObjectJSONEncoder, indent=indent)
         else:
             with open(path, "w") as f_json:
-                json.dump(self.to_dict(), fp=f_json, cls=ObjectJSONEncoder, indent=2)
+                json.dump(d, fp=f_json, cls=ObjectJSONEncoder, indent=indent)
+
+    def to_dict(self):
+        """Convert to dictionary.
+        This is the basis for the JSON serialization.
+        """
+
+        # FIXME: resolve paths relative to base_paths
+        # FIXME: ordered dict
+
+        return {
+            "experiment_id": self.sid,
+            "base_bath": str(self.base_path) if self.base_path else None,
+            "data_path": str(self.data_path) if self.data_path else None,
+            # "unit_registry": self.ureg,
+            "models": {k: v.to_dict() for k, v in self._models.items()},
+            "tasks": {k: v.to_dict() for k, v in self._tasks.items()},
+            "simulations": {k: v.to_dict() for k, v in self._simulations.items()},
+            "figures": self._figures,
+        }
 
     @classmethod
     def from_json(cls, json_info) -> 'SimulationExperiment':
@@ -360,7 +393,7 @@ class SimulationExperiment(object):
         :return:
         """
         for rkey, result in self.results.items():
-            result.to_hdf5(results_path / f"{self.sid}_task_{rkey}.h5")
+            result.to_hdf5(results_path / f"{self.sid}_{rkey}.h5")
 
     def save_datasets(self, results_path):
         """ Save datasets
@@ -369,7 +402,7 @@ class SimulationExperiment(object):
         :return:
         """
         for dkey, dset in self._datasets.items():
-            dset.to_csv(results_path / f"{self.sid}_data_{dkey}.tsv",
+            dset.to_csv(results_path / f"{self.sid}_{dkey}.tsv",
                         sep="\t", index=False)
 
 

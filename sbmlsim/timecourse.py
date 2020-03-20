@@ -54,7 +54,15 @@ class Timecourse(JSONEncoder):
 
     def default(self, o):
         """json encoder"""
+        # FIXME: unified handling of encoding via single encoder
         return o.__dict__
+
+    def to_dict(self):
+        """ Convert to dictionary. """
+        d = dict()
+        for key in self.__dict__:
+            d[key] = self.__dict__[key]
+        return d
 
     def add_change(self, sid: str, value: float):
         self.changes[sid] = value
@@ -96,7 +104,18 @@ class Timecourse(JSONEncoder):
         self.normalized = True
 
 
-class TimecourseSim(object):
+class AbstractSim(object):
+    def normalize(self, udict, ureg):
+        pass
+
+    def to_dict(self):
+        """ Convert to dictionary. """
+        d = {
+            'type': self.__class__.__name__,
+        }
+        return d
+
+class TimecourseSim(AbstractSim):
     """ Timecourse simulation consisting of multiple concatenated timecourses.
 
     In case of a single timecourse, only the single timecourse is executed.
@@ -128,6 +147,17 @@ class TimecourseSim(object):
     def normalize(self, udict, ureg):
         for tc in self.timecourses:
             tc.normalize(udict=udict, ureg=ureg)
+
+    def to_dict(self):
+        """ Convert to dictionary. """
+        d = {
+            'type': self.__class__.__name__,
+            'selections': self.selections,
+            'reset': self.reset,
+            'time_offset': self.time_offset,
+            'timecourses': [tc.to_dict() for tc in self.timecourses]
+        }
+        return d
 
     def to_json(self, path=None):
         """ Convert definition to JSON for exchange.
@@ -165,7 +195,7 @@ class TimecourseSim(object):
         return "\n".join(lines)
 
 
-class TimecourseScan(object):
+class TimecourseScan(AbstractSim):
     """A parameter or initial condition scan over a TimecourseSim."""
 
     def __init__(self, tcsim: TimecourseSim, scan: Dict[str, np.ndarray]):
@@ -177,7 +207,6 @@ class TimecourseScan(object):
         """
         self.tcsim = tcsim
         self.scan = scan
-
 
     def normalize(self, udict, ureg):
         # normalize timecourse sim

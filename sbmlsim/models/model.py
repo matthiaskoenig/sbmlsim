@@ -98,6 +98,18 @@ class AbstractModel(object):
         self.udict, self.ureg = self.parse_units(ureg)
         self.Q_ = self.ureg.Quantity
 
+    def to_dict(self):
+        """ Convert to dictionary. """
+        d = {
+            "sid": self.sid,
+            "name": self.name,
+            "language": self.language_type,
+            "language_type": self.language_type,
+            "source": self.source.to_dict(),
+            "changes": self.changes,
+        }
+        return d
+
     @property
     def model(self):
         return self._model
