@@ -301,14 +301,6 @@ class SimulationExperiment(object):
                                  f"{type(sim)}")
 
     # --- SERIALIZATION -------------------------------------------------------
-    def default(self, o):
-        """json encoder"""
-        if hasattr(o, "__dict__"):
-            return o.__dict__
-        else:
-            # handle pint
-            return str(o)
-
     def to_json(self, path=None, indent=2):
         """ Convert experiment to JSON for exchange.
 
@@ -328,7 +320,6 @@ class SimulationExperiment(object):
         """Convert to dictionary.
         This is the basis for the JSON serialization.
         """
-
         # FIXME: resolve paths relative to base_paths
         # FIXME: ordered dict
 
@@ -346,6 +337,7 @@ class SimulationExperiment(object):
     @classmethod
     def from_json(cls, json_info) -> 'SimulationExperiment':
         """Load experiment from json path or str"""
+        # FIXME: update serialization
         if isinstance(json_info, Path):
             with open(json_info, "r") as f_json:
                 d = json.load(f_json)
@@ -354,17 +346,32 @@ class SimulationExperiment(object):
 
         return JSONExperiment.from_dict(d)
 
-    def save_simulations(self, results_path, normalize=False):
-        """ Save simulations
+    @timeit
+    def save_datasets(self, results_path):
+        """ Save datasets
 
         :param results_path:
-        :param normalize: Normalize all values to model units.
         :return:
         """
-        for skey, tcsim in self.simulations.items():
-            if normalize:
-                tcsim.normalize(udict=self.udict, ureg=self.ureg)
-            tcsim.to_json(results_path / f"{self.sid}_{skey}.json")
+        if self._datasets is None:
+            logger.warning(f"No datasets in SimulationExperiment: '{self.sid}'")
+        else:
+            for dkey, dset in self._datasets.items():
+                dset.to_csv(results_path / f"{self.sid}_{dkey}.tsv",
+                            sep="\t", index=False)
+
+    @timeit
+    def save_results(self, results_path):
+        """ Save results (mean timecourse)
+
+        :param results_path:
+        :return:
+        """
+        if self.results is None:
+            logger.warning(f"No results in SimulationExperiment: '{self.sid}'")
+        else:
+            for rkey, result in self.results.items():
+                result.to_hdf5(results_path / f"{self.sid}_{rkey}.h5")
 
     @timeit
     def save_figures(self, results_path):
@@ -386,24 +393,7 @@ class SimulationExperiment(object):
             paths.append(path_svg)
         return paths
 
-    def save_results(self, results_path):
-        """ Save results (mean timecourse)
 
-        :param results_path:
-        :return:
-        """
-        for rkey, result in self.results.items():
-            result.to_hdf5(results_path / f"{self.sid}_{rkey}.h5")
-
-    def save_datasets(self, results_path):
-        """ Save datasets
-
-        :param results_path:
-        :return:
-        """
-        for dkey, dset in self._datasets.items():
-            dset.to_csv(results_path / f"{self.sid}_{dkey}.tsv",
-                        sep="\t", index=False)
 
 
 class JSONExperiment(SimulationExperiment):
