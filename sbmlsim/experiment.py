@@ -201,10 +201,13 @@ class SimulationExperiment(object):
     # --- VALIDATION -------------------------------------------------------------
     def _check_keys(self):
         """Check that everything is okay with the experiment."""
-        for field in ["_models", "_datasets", "_tasks", "_simulations"]:
-            for key in getattr(self, field).keys():
+        for field_key in ["_models", "_datasets", "_tasks", "_simulations"]:
+            field = getattr(self, field_key)
+            if not isinstance(field, dict):
+                raise ValueError(f"'{field_key} must be a dict, but '{field}' is type '{type(field)}'.")
+            for key in getattr(self, field_key).keys():
                 if not isinstance(key, str):
-                    raise ValueError(f"'{field} keys must be str: "
+                    raise ValueError(f"'{field_key} keys must be str: "
                                      f"'{key} -> {type(key)}'")
 
     def _check_types(self):

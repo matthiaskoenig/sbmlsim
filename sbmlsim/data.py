@@ -148,6 +148,16 @@ class DataSet(pd.DataFrame):
             # add the unit columns to the data frame
             setattr(data, f"{key}_unit", unit)
 
+        # handle special unit column
+        if "unit" in data.columns:
+            # add unit to "mean", "value", "sd", "se" columns
+            for key in ["mean", "value", "sd", "se"]:
+                if not f"{key}_unit" in data.columns:
+                    setattr(data, f"{key}_unit", data.unit)
+                    unit_keys = data.unit.unique()
+                    if len(data.unit.unique()) > 1:
+                        logger.error("More than 1 unit in 'unit' column !")
+                    udict[key] = unit_keys[0]
         dset = DataSet(data)
         dset.udict = udict
         dset.ureg = ureg
@@ -180,8 +190,6 @@ class DataSet(pd.DataFrame):
             self[key].values, self.udict[key]
         )
 
-
-# TODO: implement loading of DataSets with units
 
 def load_dataframe(sid, data_path, sep="\t", comment="#", **kwargs) -> pd.DataFrame:
     """ Loads data from given figure/table id."""

@@ -474,7 +474,7 @@ class Figure(Base):
         num_plots = len(plots)
         return Figure(sid=sid,
                       num_rows=num_plots, num_cols=1,
-                      height=num_plots*5.0, width=5.0,
+                      height=num_rows*5.0, width=num_cols*5.0,
                       subplots=[
                         SubPlot(plot, row=(k+1), col=1) for k, plot in enumerate(plots)
                       ])
