@@ -10,9 +10,14 @@ from pint import Quantity
 logger = logging.getLogger(__name__)
 
 
+
+
+
 class Data(object):
     """Main data generator class which uses data either from
-    experimental data, simulations or via function calculation.
+    experimental data, simulations or via function calculations.
+
+    Alls transformation of data and a tree of data operations.
 
     # Possible Data:
     # simulation result: access via id
@@ -36,7 +41,7 @@ class Data(object):
         self.task_id = task
         self.dset_id = dataset
         self.function = function
-        self._data = data
+        # self._data = data
 
     @property
     def dtype(self):

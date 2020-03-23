@@ -19,6 +19,7 @@ from sbmlsim.plotting_matplotlib import plt, to_figure
 from matplotlib.pyplot import Figure as FigureMPL
 from sbmlsim.plotting import Figure as FigureSEDML
 from sbmlsim.units import Units
+import os
 
 logger = logging.getLogger(__name__)
 
@@ -36,24 +37,19 @@ class SimulationExperiment(object):
     Consists of models, datasets, simulations, tasks, results, processing, figures
     """
 
-    def __init__(self, sid: str=None, data_path: Path=None, base_path: Path=None,
+    def __init__(self, sid: str=None, base_path: Path=None,
+                 data_path: Path=None,
                  ureg: UnitRegistry=None, **kwargs):
-        """ Constructor.
+        """
 
-        :param model_path:
+        :param sid:
+        :param base_path:
         :param data_path:
+        :param ureg:
         :param kwargs:
         """
         if not sid:
             self.sid = self.__class__.__name__
-
-        if data_path:
-            data_path = Path(data_path).resolve()
-            if not data_path.exists():
-                raise IOError(f"data_path '{data_path}' does not exist")
-        else:
-            logger.warning("No data_path provided, reading of datasets may fail.")
-        self.data_path = data_path
 
         if base_path:
             base_path = Path(base_path).resolve()
@@ -62,6 +58,17 @@ class SimulationExperiment(object):
         else:
             logger.warning("No base_path provided, reading/writing of resources may fail.")
         self.base_path = base_path
+
+        if data_path:
+            data_path = Path(data_path).resolve()
+            if not data_path.exists():
+                raise IOError(f"data_path '{data_path}' does not exist")
+        else:
+            logger.warning("No data_path provided, reading of datasets may fail.")
+        self.data_path = data_path
+        # if self.base_path:
+        # resolve data_path relative to base_path
+        # self.data_path = self.data_path.relative_to(self.base_path)
 
         # single UnitRegistry per SimulationExperiment (can be shared)
         if not ureg:
@@ -201,6 +208,8 @@ class SimulationExperiment(object):
     # --- VALIDATION -------------------------------------------------------------
     def _check_keys(self):
         """Check that everything is okay with the experiment."""
+        # string keys for main objects must be unique on SimulationExperiment
+        all_keys = dict()
         for field_key in ["_models", "_datasets", "_tasks", "_simulations"]:
             field = getattr(self, field_key)
             if not isinstance(field, dict):
@@ -209,6 +218,11 @@ class SimulationExperiment(object):
                 if not isinstance(key, str):
                     raise ValueError(f"'{field_key} keys must be str: "
                                      f"'{key} -> {type(key)}'")
+                if key in all_keys:
+                    raise ValueError(f"Duplicate key '{key}' for '{field_key}' and '{all_keys[key]}'")
+                else:
+                    all_keys[key] = field_key
+
 
     def _check_types(self):
         """Check that correct types"""
@@ -231,11 +245,9 @@ class SimulationExperiment(object):
 
     # --- EXECUTE -------------------------------------------------------------
     @timeit
-    def run(self,
-            output_path: Path,
-            show_figures: bool = True) -> ExperimentResult:
+    def run(self, output_path: Path, show_figures: bool = True) -> ExperimentResult:
         """
-        Executes given experiment.
+        Executes given experiment and stores results.
         Returns info dictionary.
         """
         if not Path.exists(output_path):
@@ -264,10 +276,7 @@ class SimulationExperiment(object):
         if show_figures:
             plt.show()
 
-        return ExperimentResult(
-            experiment=self,
-            output_path=output_path
-        )
+        return ExperimentResult(experiment=self, output_path=output_path)
 
     @timeit
     def _run_tasks(self, Simulator=SimulatorSerial,
@@ -311,8 +320,8 @@ class SimulationExperiment(object):
         :return:
         """
         d = self.to_dict()
-        from pprint import pprint
-        pprint(d)
+        # from pprint import pprint
+        # pprint(d)
         if path is None:
             return json.dumps(d, cls=ObjectJSONEncoder, indent=indent)
         else:
@@ -328,7 +337,7 @@ class SimulationExperiment(object):
 
         return {
             "experiment_id": self.sid,
-            "base_bath": str(self.base_path) if self.base_path else None,
+            "base_path": str(self.base_path) if self.base_path else None,
             "data_path": str(self.data_path) if self.data_path else None,
             # "unit_registry": self.ureg,
             "models": {k: v.to_dict() for k, v in self._models.items()},
@@ -395,7 +404,6 @@ class SimulationExperiment(object):
 
             paths.append(path_svg)
         return paths
-
 
 
 
