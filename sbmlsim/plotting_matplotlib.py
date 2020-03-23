@@ -105,7 +105,7 @@ def add_data(ax, data: DataSet,
     if isinstance(data, DataSet):
         dset = data
     elif isinstance(data, pd.DataFrame):
-        dset = DataSet.from_df(data=data, udict=None, ureg=None)
+        dset = DataSet.from_df(df=data, udict=None, ureg=None)
 
     if dset.empty:
         logger.error(f"Empty dataset in adding data: {dset}")

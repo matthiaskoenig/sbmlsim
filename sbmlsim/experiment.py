@@ -13,7 +13,7 @@ from sbmlsim.simulation_serial import SimulatorSerial
 from sbmlsim.timecourse import AbstractSim, TimecourseSim, TimecourseScan
 from sbmlsim.serialization import ObjectJSONEncoder
 from sbmlsim.result import Result
-from sbmlsim.data import Data, DataSet, load_dataframe
+from sbmlsim.data import Data, DataSet
 from sbmlsim.models import RoadrunnerSBMLModel, AbstractModel
 from sbmlsim.plotting_matplotlib import plt, to_figure
 from matplotlib.pyplot import Figure as FigureMPL
@@ -115,93 +115,15 @@ class SimulationExperiment(object):
         """Dataset definition (experimental data)"""
         return {}
 
-    def data(self) -> Dict[str, Data]:
-        # different then datasets
-        return self._data
-
-    @deprecated
-    def load_data(self, sid, **kwargs) -> pd.DataFrame:
-        """ Loads data from given figure/table id.
-
-        Use load_dataset instead. This function will be removed
-        in future releases.
-        """
-        df = load_dataframe(sid=sid, data_path=self.data_path, **kwargs)
-        return df
-
-    def load_dataset(self, sid, udict=None, **kwargs) -> DataSet:
-        """ Loads DataSet (with units) from given figure/table id.
-
-        :param sid:
-        :param ureg:
-        :param udict: additional units from the outside
-        :param kwargs:
-        :return:
-        """
-        df = load_dataframe(sid=sid, data_path=self.data_path, **kwargs)
-        return load_dataframe_from_df(df=df, udict=udict, **kwargs)
-
-    def load_dataset_from_df(self, df: pd.DataFrame, udict=None, **kwargs) -> DataSet:
-        """ Loads DataSet (with units) from given pandas dataframe.
-
-        :param sid:
-        :param ureg:
-        :param udict: additional units from the outside
-        :param kwargs:
-        :return:
-        """
-        all_udict = {}
-        for key in df.columns:
-            if key.endswith("_unit"):
-                # parse the item and unit in dict
-                units = df[key].unique()
-                if len(units) > 1:
-                    logger.error(f"Column '{key}' in '{sid}' has multiple "
-                                 f"units: '{units}'")
-                item_key = key[0:-5]
-                if item_key not in df.columns:
-                    logger.error(f"Missing * column '{item_key}' for unit "
-                                 f"column: '{key}'")
-                all_udict[item_key] = units[0]
-
-        # add external definitions
-        if udict:
-            all_udict.update(udict)
-        # FIXME: move all logic on the Dataset class
-        return DataSet.from_df(df, udict=all_udict, ureg=self.ureg)
-
-
-    def load_units(self, sids, df=None, units_dict=None):
-        """ Loads units from given dataframe."""
-        if df is not None:
-            all_udict = {key: df[f"{key}_unit"].unique()[0] for key in sids}
-        elif units_dict is not None:
-            all_udict = {}
-            for sid in sids:
-                all_udict[sid] = units_dict[sid]
-        return all_udict
-
-    @deprecated
-    def load_data_pkdb(self, sid, **kwargs) -> Dict[str, pd.DataFrame]:
-        """Load timecourse data with units."""
-        df = self.load_data(sid=sid, **kwargs)
-        dframes = {}
-        for substance in df.substance.unique():
-            dframes[substance] = df[df.substance == substance]
-        return dframes
-
     # --- TASKS ---------------------------------------------------------------
     def tasks(self) -> Dict[str, Task]:
         """Task definitions."""
         return {}
 
+    # --- SIMULATIONS ---------------------------------------------------------
     def simulations(self) -> Dict[str, AbstractSim]:
         """Simulation definitions."""
         return {}
-
-    #def scans(self) -> Dict[str, TimecourseScan]:
-    #    """Scan definitions."""
-    #    return {}
 
     # --- RESULTS -------------------------------------------------------------
     @property

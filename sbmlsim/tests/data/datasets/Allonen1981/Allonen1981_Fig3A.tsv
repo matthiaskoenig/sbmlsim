@@ -1,0 +1,27 @@
+study	subject	intervention	measurement	substance	tissue	time	time_unit	mean	mean_pm	sd	unit
+Allonen1981	all	po15	concentration	midazolam	plasma	0.17	hr	10.1	14.86	4.76	ng/ml
+Allonen1981	all	po15	concentration	midazolam	plasma	0.33	hr	132.17	207.01	74.85	ng/ml
+Allonen1981	all	po15	concentration	midazolam	plasma	0.75	hr	134.36	164.45	30.09	ng/ml
+Allonen1981	all	po15	concentration	midazolam	plasma	1	hr	96.69	138.96	42.27	ng/ml
+Allonen1981	all	po15	concentration	midazolam	plasma	1.5	hr	96.59	149.51	52.92	ng/ml
+Allonen1981	all	po15	concentration	midazolam	plasma	2	hr	67.74	92.83	25.09	ng/ml
+Allonen1981	all	po15	concentration	midazolam	plasma	2.5	hr	57.47	69.3	11.84	ng/ml
+Allonen1981	all	po15	concentration	midazolam	plasma	3	hr	45.8	56.56	10.76	ng/ml
+Allonen1981	all	po15	concentration	midazolam	plasma	4	hr	34.15	45.03	10.87	ng/ml
+Allonen1981	all	po15	concentration	midazolam	plasma	5.01	hr	23.09	28.77	5.68	ng/ml
+Allonen1981	all	po15	concentration	midazolam	plasma	6	hr	14.15	17.95	3.8	ng/ml
+Allonen1981	all	po15	concentration	midazolam	plasma	7.01	hr	11.17	15.03	3.86	ng/ml
+Allonen1981	all	iv	concentration	midazolam	plasma	0	hr	184.71	208.02	23.31	ng/ml
+Allonen1981	all	iv	concentration	midazolam	plasma	0.17	hr	143.97	162.14	18.17	ng/ml
+Allonen1981	all	iv	concentration	midazolam	plasma	0.33	hr	120.53	99.94	20.58	ng/ml
+Allonen1981	all	iv	concentration	midazolam	plasma	0.5	hr	105.82	132.64	26.82	ng/ml
+Allonen1981	all	iv	concentration	midazolam	plasma	0.75	hr	83.75	73.49	10.27	ng/ml
+Allonen1981	all	iv	concentration	midazolam	plasma	1	hr	76.68	56.8	19.89	ng/ml
+Allonen1981	all	iv	concentration	midazolam	plasma	1.5	hr	58.28	48.9	9.37	ng/ml
+Allonen1981	all	iv	concentration	midazolam	plasma	2	hr	44.03	30.73	13.3	ng/ml
+Allonen1981	all	iv	concentration	midazolam	plasma	3	hr	31.03	20.96	10.07	ng/ml
+Allonen1981	all	iv	concentration	midazolam	plasma	4	hr	21.04	14.13	6.91	ng/ml
+Allonen1981	all	iv	concentration	midazolam	plasma	5	hr	16.95	9.11	7.84	ng/ml
+Allonen1981	all	iv	concentration	midazolam	plasma	6	hr	14.03	8.09	5.93	ng/ml
+Allonen1981	all	iv	concentration	midazolam	plasma	7	hr	10.62	7.48	3.14	ng/ml
+

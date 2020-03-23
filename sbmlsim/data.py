@@ -3,14 +3,12 @@ from enum import Enum
 import logging
 
 from sbmlsim.result import Result
+from typing import Dict
 from sbmlsim.utils import deprecated
 
-from pint import Quantity
+from pint import Quantity, UnitRegistry
 
 logger = logging.getLogger(__name__)
-
-
-
 
 
 class Data(object):
@@ -112,6 +110,7 @@ class DataFunction(object):
     2. data can be directly serialized
     """
     pass
+    # TODO: implement
 
 
 class DataSeries(pd.Series):
@@ -130,7 +129,10 @@ class DataSeries(pd.Series):
 
 class DataSet(pd.DataFrame):
     """
-    DataSet - a pd.DataFrame with additional unit information.
+    DataSet - a pd.DataFrame with additional unit information in the form
+              of a unit dictionary 'udict' (Dict[str, str]) mapping column
+              keys to units. The UnitRegistry is the UnitRegistry conversions
+              are calculated on.
     """
     # additional properties
     _metadata = ['udict', 'ureg']
@@ -143,34 +145,87 @@ class DataSet(pd.DataFrame):
     def _constructor_sliced(self):
         return DataSeries
 
+    def get_quantity(self, key):
+        """Returns quantity for given key.
+
+        Requires using the numpy data instead of the series.
+        """
+        return self.ureg.Quantity(
+            # downcasting !
+            self[key].values, self.udict[key]
+        )
+
     @classmethod
-    def from_df(cls, data: pd.DataFrame, udict: dict, ureg) -> 'DataSet':
-        """DataSet from pandas.DataFrame"""
+    def from_df(cls, df: pd.DataFrame, ureg: UnitRegistry, udict: Dict[str, str]=None) -> 'DataSet':
+        """Creates DataSet from given pandas.DataFrame.
+
+        The DataFrame can have various formats which should be handled.
+        Standard formats are
+        1. units annotations based on '*_unit' columns, with additional '*_sd'
+           or '*_se' units
+        2. units annotations based on 'unit' column which is applied on
+           'mean', 'value', 'sd' and 'se' columns
+
+        :param df: pandas.DataFrame
+        :param udict: optional unit dictionary
+        :param ureg:
+        :return:
+        """
+        if not isinstance(ureg, UnitRegistry):
+            raise ValueError(f"ureg must be a UnitRegistry, but '{ureg}' is '{type(ureg)}'")
         if udict is None:
             udict = {}
 
-        for key, unit in udict.items():
-            # add the unit columns to the data frame
-            setattr(data, f"{key}_unit", unit)
+        # all units from udict and DataFrame
+        all_udict = {}
 
-        # handle special unit column
-        if "unit" in data.columns:
-            
-            # add unit to "mean", "value", "sd", "se" columns
-            for key in ["mean", "value", "sd", "se"]:
-                if not f"{key}_unit" in data.columns:
-                    setattr(data, f"{key}_unit", data.unit)
-                    unit_keys = data.unit.unique()
-                    if len(data.unit.unique()) > 1:
-                        logger.error("More than 1 unit in 'unit' column !")
-                    udict[key] = unit_keys[0]
-                    
-        dset = DataSet(data)
-        dset.udict = udict
+        for key in df.columns:
+            # handle '*_unit columns'
+            if key.endswith("_unit"):
+                # parse the item and unit in dict
+                units = df[key].unique()
+                if len(units) > 1:
+                    logger.error(f"Column '{key}' units are not unique: "
+                                 f"'{units}'")
+                item_key = key[0:-5]
+                if item_key not in df.columns:
+                    logger.error(f"Missing * column '{item_key}' for unit "
+                                 f"column: '{key}'")
+                else:
+                    all_udict[item_key] = units[0]
+
+            elif key == "unit":
+                # add unit to "mean" and "value"
+                for key in ["mean", "value"]:
+                    if (key in df.columns) and not (f"{key}_unit" in df.columns):
+                        setattr(df, f"{key}_unit", df.unit)
+                        unit_keys = df.unit.unique()
+                        if len(df.unit.unique()) > 1:
+                            logger.error("More than 1 unit in 'unit' column !")
+                        udict[key] = unit_keys[0]
+
+                        # rename the sd and se columns to mean_sd and mean_se
+                        if key == 'mean':
+                            for err_key in ['sd', 'se']:
+                                df.rename(columns={f'{err_key}': f'mean_{err_key}'}, inplace=True)
+
+                # remove unit column
+                del df['unit']
+
+        # add external definitions
+        if udict:
+            for key, unit in udict.items():
+                if key in all_udict:
+                    logger.error(f"Duplicate unit definition for: '{key}'")
+                else:
+                    all_udict[key] = unit
+                    # add the unit columns to the data frame
+                    setattr(df, f"{key}_unit", unit)
+
+        dset = DataSet(df)
+        dset.udict = all_udict
         dset.ureg = ureg
         return dset
-
-
 
     def unit_conversion(self, key, factor: Quantity):
         """Also converts the corresponding errors"""
@@ -183,6 +238,7 @@ class DataSet(pd.DataFrame):
                 if err_key in self.columns:
                     self[err_key] = self[err_key] * factor
                     # error keys not stored in udict
+
             # if unit is stored in tsv these must be updated
             if f"{key}_unit" in self.columns:
                 self[f"{key}_unit"] = new_units_str
@@ -198,24 +254,12 @@ class DataSet(pd.DataFrame):
                         self[key_additional] = (self[key_additional] * factor)
                     self.udict[key_additional] = new_units_str
 
-
-
         else:
             logger.warning(f"Key '{key}' not in DataSet: '{id(self)}'")
 
-    def get_quantity(self, key):
-        """Returns quantity for given key.
 
-        Requires using the numpy data instead of the series.
-        """
-        return self.ureg.Quantity(
-            # downcasting !
-            self[key].values, self.udict[key]
-        )
-
-
-def load_dataframe(sid, data_path, sep="\t", comment="#", **kwargs) -> pd.DataFrame:
-    """ Loads data from given figure/table id."""
+def load_pkdb_df(sid, data_path, sep="\t", comment="#", **kwargs) -> pd.DataFrame:
+    """ Loads data from given pkdb figure/table id."""
     study = sid.split('_')[0]
     path = data_path / study / f'{sid}.tsv'
 
@@ -225,17 +269,10 @@ def load_dataframe(sid, data_path, sep="\t", comment="#", **kwargs) -> pd.DataFr
     return pd.read_csv(path, sep=sep, comment=comment, **kwargs)
 
 
-
-
-
-if __name__ == "__main__":
-    df = pd.DataFrame({'col1': [1, 2, 3],
-                       'col2': [2, 3, 4],
-                       "col3": [4, 5, 6]})
-    print(df)
-    dset = DataSet.from_df(df, udict={"col1": "mM"}, ureg="test")
-    print(dset)
-    print(dset.udict)
-    dset2 = dset[dset.col1 > 1]
-    print(dset2)
-    print(dset2.udict)
+def load_pkdb_substance_dfs(sid, data_path, **kwargs) -> Dict[str, pd.DataFrame]:
+    """Load data from given pkdb figure/table id split on substance."""
+    df = load_pkdb_df(sid=sid, data_path=data_path, **kwargs)
+    frames = {}
+    for substance in df.substance.unique():
+        frames[substance] = df[df.substance == substance]
+    return frames
