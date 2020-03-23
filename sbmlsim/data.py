@@ -243,17 +243,6 @@ class DataSet(pd.DataFrame):
             if f"{key}_unit" in self.columns:
                 self[f"{key}_unit"] = new_units_str
 
-            # special handling of unspecific mean or value
-            # FIXME: make this work in general
-            # FIXME: add validation rules on PKDB that no unit_* columns
-            if key in {"mean"}:
-                if "unit" in self.columns:
-                    self["unit"] = new_units_str
-                for key_additional in {'sd', 'se', 'value'}:
-                    if key_additional in self.columns:
-                        self[key_additional] = (self[key_additional] * factor)
-                    self.udict[key_additional] = new_units_str
-
         else:
             logger.warning(f"Key '{key}' not in DataSet: '{id(self)}'")
 
