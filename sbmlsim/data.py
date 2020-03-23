@@ -155,6 +155,7 @@ class DataSet(pd.DataFrame):
 
         # handle special unit column
         if "unit" in data.columns:
+            
             # add unit to "mean", "value", "sd", "se" columns
             for key in ["mean", "value", "sd", "se"]:
                 if not f"{key}_unit" in data.columns:
@@ -163,10 +164,13 @@ class DataSet(pd.DataFrame):
                     if len(data.unit.unique()) > 1:
                         logger.error("More than 1 unit in 'unit' column !")
                     udict[key] = unit_keys[0]
+                    
         dset = DataSet(data)
         dset.udict = udict
         dset.ureg = ureg
         return dset
+
+
 
     def unit_conversion(self, key, factor: Quantity):
         """Also converts the corresponding errors"""
@@ -182,6 +186,20 @@ class DataSet(pd.DataFrame):
             # if unit is stored in tsv these must be updated
             if f"{key}_unit" in self.columns:
                 self[f"{key}_unit"] = new_units_str
+
+            # special handling of unspecific mean or value
+            # FIXME: make this work in general
+            # FIXME: add validation rules on PKDB that no unit_* columns
+            if key in {"mean"}:
+                if "unit" in self.columns:
+                    self["unit"] = new_units_str
+                for key_additional in {'sd', 'se', 'value'}:
+                    if key_additional in self.columns:
+                        self[key_additional] = (self[key_additional] * factor)
+                    self.udict[key_additional] = new_units_str
+
+
+
         else:
             logger.warning(f"Key '{key}' not in DataSet: '{id(self)}'")
 

@@ -139,6 +139,17 @@ class SimulationExperiment(object):
         :return:
         """
         df = load_dataframe(sid=sid, data_path=self.data_path, **kwargs)
+        return load_dataframe_from_df(df=df, udict=udict, **kwargs)
+
+    def load_dataset_from_df(self, df: pd.DataFrame, udict=None, **kwargs) -> DataSet:
+        """ Loads DataSet (with units) from given pandas dataframe.
+
+        :param sid:
+        :param ureg:
+        :param udict: additional units from the outside
+        :param kwargs:
+        :return:
+        """
         all_udict = {}
         for key in df.columns:
             if key.endswith("_unit"):
@@ -156,7 +167,9 @@ class SimulationExperiment(object):
         # add external definitions
         if udict:
             all_udict.update(udict)
+        # FIXME: move all logic on the Dataset class
         return DataSet.from_df(df, udict=all_udict, ureg=self.ureg)
+
 
     def load_units(self, sids, df=None, units_dict=None):
         """ Loads units from given dataframe."""
