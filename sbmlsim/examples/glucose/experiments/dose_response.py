@@ -78,6 +78,12 @@ class DoseResponseExperiment(SimulationExperiment):
         return dsets
 
     def tasks(self) -> Dict[str, Task]:
+        """Tasks"""
+        return {
+            "task_glc_scan": Task(model="model1", simulation="glc_scan")
+        }
+
+    def simulations(self) -> Dict[str, TimecourseScan]:
         """Scanning dose-response curves of hormones and gamma function.
 
                 Vary external glucose concentrations (boundary condition).
@@ -89,7 +95,7 @@ class DoseResponseExperiment(SimulationExperiment):
             scan={'[glc_ext]': self.Q_(np.linspace(2, 20, num=100), 'mM')},
         )
         return {
-            "glc_scan": Task(model="model1", simulation=glc_scan)
+            "glc_scan": glc_scan
         }
 
     def figures(self) -> Dict[str, Figure]:
@@ -102,11 +108,11 @@ class DoseResponseExperiment(SimulationExperiment):
         axes = (ax1, ax2, ax3, ax4)
 
         # process scan results
-        task = self._tasks["glc_scan"]
-        model = self._models[task.model]
-        tcscan = task.simulation
+        task = self._tasks["task_glc_scan"]
+        model = self._models[task.model_id]
+        tcscan = self._simulations[task.simulation_id]  # TimecourseScan Definition
         glc_vec = tcscan.scan['[glc_ext]']
-        results = self.results["glc_scan"]  # type: Result
+        results = self.results["task_glc_scan"]  # type: Result
         dose_response = {k: list() for k in ["glu", "epi", "ins", "gamma"]}
         for k, glc_ext in enumerate(glc_vec):
             s = results.frames[k]

@@ -183,6 +183,8 @@ class TimecourseSim(AbstractSim):
                 d = json.load(f_json)
         else:
             d = json.loads(json_info)
+        if "type" in d:
+            d.pop("type")  # serialized property
         return TimecourseSim(**d)
 
     def __str__(self):
