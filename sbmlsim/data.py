@@ -1,12 +1,11 @@
-import pandas as pd
+
 from enum import Enum
 import logging
+from typing import Dict
+import pandas as pd
+from pint import Quantity, UnitRegistry
 
 from sbmlsim.result import Result
-from typing import Dict
-from sbmlsim.utils import deprecated
-
-from pint import Quantity, UnitRegistry
 
 logger = logging.getLogger(__name__)
 
@@ -198,7 +197,8 @@ class DataSet(pd.DataFrame):
                 # add unit to "mean" and "value"
                 for key in ["mean", "value"]:
                     if (key in df.columns) and not (f"{key}_unit" in df.columns):
-                        setattr(df, f"{key}_unit", df.unit)
+                        # FIXME: probably not a good idea to add columns while iterating over them
+                        df[f"{key}_unit"] = df.unit
                         unit_keys = df.unit.unique()
                         if len(df.unit.unique()) > 1:
                             logger.error("More than 1 unit in 'unit' column !")
@@ -230,25 +230,41 @@ class DataSet(pd.DataFrame):
     def unit_conversion(self, key, factor: Quantity):
         """Also converts the corresponding errors"""
         if key in self.columns:
-            self[key] = (self[key] * factor)
+            if key not in self.udict:
+                raise ValueError(
+                    f"Unit conversion only possible on keys which have units! "
+                    f"No unit defined for key '{key}'")
+
+            self[key] = self[key] * factor
+
+            # updated units
             new_units = (self.get_quantity(key) * factor).to_base_units().to_reduced_units().units
             new_units_str = str(new_units).replace("**", "^").replace(" ", "")  # '{:~}'.format(new_units)
             self.udict[key] = new_units_str
+
+            # update error measures
             for err_key in [f"{key}_sd", f"{key}_se"]:
                 if err_key in self.columns:
+                    # error keys not stored in udict, only the base quantity
                     self[err_key] = self[err_key] * factor
-                    # error keys not stored in udict
 
-            # if unit is stored in tsv these must be updated
+            # update unit columns
             if f"{key}_unit" in self.columns:
                 self[f"{key}_unit"] = new_units_str
-
         else:
-            logger.warning(f"Key '{key}' not in DataSet: '{id(self)}'")
+            logger.error(f"Key '{key}' not in DataSet, unit conversion not applied: '{factor}'")
 
 
-def load_pkdb_df(sid, data_path, sep="\t", comment="#", **kwargs) -> pd.DataFrame:
-    """ Loads data from given pkdb figure/table id."""
+def load_pkdb_dataframe(sid, data_path, sep="\t", comment="#", **kwargs) -> pd.DataFrame:
+    """ Loads data from given pkdb figure/table id.
+
+    :param sid:
+    :param data_path:
+    :param sep: separator
+    :param comment: comment characters
+    :param kwargs: additional kwargs for csv parsing
+    :return: pandas DataFrame
+    """
     study = sid.split('_')[0]
     path = data_path / study / f'{sid}.tsv'
 
@@ -258,9 +274,15 @@ def load_pkdb_df(sid, data_path, sep="\t", comment="#", **kwargs) -> pd.DataFram
     return pd.read_csv(path, sep=sep, comment=comment, **kwargs)
 
 
-def load_pkdb_substance_dfs(sid, data_path, **kwargs) -> Dict[str, pd.DataFrame]:
-    """Load data from given pkdb figure/table id split on substance."""
-    df = load_pkdb_df(sid=sid, data_path=data_path, **kwargs)
+def load_pkdb_dataframes_by_substance(sid, data_path, **kwargs) -> Dict[str, pd.DataFrame]:
+    """ Load dataframes from given pkdb figure/table id split on substance.
+
+    :param sid:
+    :param data_path:
+    :param kwargs:
+    :return: Dict[substance, pd.DataFrame]
+    """
+    df = load_pkdb_dataframe(sid=sid, data_path=data_path, **kwargs)
     frames = {}
     for substance in df.substance.unique():
         frames[substance] = df[df.substance == substance]

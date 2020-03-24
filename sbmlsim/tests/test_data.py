@@ -44,6 +44,31 @@ def test_Allonen1981_Fig3A():
         assert dset.udict['time'] == "hr"
         assert dset.udict['mean'] == "ng/ml"
         assert 'time_unit' in dset.columns
-        assert dset.time_unit.unique()[0] == "min"
-        assert 'cpep_unit' in dset.columns
-        assert dset.cpep_unit.unique()[0] == "pmol/ml"
+        assert dset.time_unit.unique()[0] == "hr"
+        assert 'mean_unit' in dset.columns
+        assert dset.mean_unit.unique()[0] == "ng/ml"
+        assert 'unit' not in dset.columns
+
+
+def test_unit_conversion1():
+    data_path = DATA_PATH / 'datasets'
+    df = load_pkdb_dataframe(sid="Allonen1981_Fig3A", data_path=data_path)
+
+    ureg = UnitRegistry()
+    Q_ = ureg.Quantity
+    Mr = Q_(300, "g/mole")
+    for substance in df.substance.unique():
+        d = DataSet.from_df(df[df.substance == substance],
+                               ureg=ureg)
+        d.unit_conversion("mean", factor=1 / Mr)
+
+        assert 'mean' in d.udict
+        assert 'time' in d.udict
+        assert d.udict['time'] == "hr"
+
+        # check that units converted correctly
+        mean_unit = ureg.Unit(d.udict['mean'])
+        assert mean_unit.dimensionality == ureg.Unit('mole/meter**3').dimensionality
+
+        # check that factor applied correctly
+        assert d['mean'].values[0] < 1.0
