@@ -71,4 +71,5 @@ def test_unit_conversion1():
         assert mean_unit.dimensionality == ureg.Unit('mole/meter**3').dimensionality
 
         # check that factor applied correctly
-        assert d['mean'].values[0] < 1.0
+        assert d['mean'].values[0] < 0.00004
+        assert d['mean'].values[0] > 0.00003

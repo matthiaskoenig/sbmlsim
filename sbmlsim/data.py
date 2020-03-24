@@ -235,20 +235,26 @@ class DataSet(pd.DataFrame):
                     f"Unit conversion only possible on keys which have units! "
                     f"No unit defined for key '{key}'")
 
-            self[key] = self[key] * factor
+            # unit conversion and simplification
+            new_quantity = self.ureg.Quantity(self[key], self.udict[key]) * factor
+            new_quantity = new_quantity.to_base_units().to_reduced_units()
 
-            # updated units
-            new_units = (self.get_quantity(key) * factor).to_base_units().to_reduced_units().units
-            new_units_str = str(new_units).replace("**", "^").replace(" ", "")  # '{:~}'.format(new_units)
-            self.udict[key] = new_units_str
+            # updated values
+            self[key] = new_quantity.magnitude
 
             # update error measures
             for err_key in [f"{key}_sd", f"{key}_se"]:
                 if err_key in self.columns:
                     # error keys not stored in udict, only the base quantity
-                    self[err_key] = self[err_key] * factor
+                    new_err_quantity = self.ureg.Quantity(self[err_key], self.udict[key]) * factor
+                    new_err_quantity = new_err_quantity.to_base_units().to_reduced_units()
+                    self[err_key] = new_err_quantity.magnitude
 
-            # update unit columns
+            # updated units
+            new_units = new_quantity.units
+            new_units_str = str(new_units).replace("**", "^").replace(" ", "")  # '{:~}'.format(new_units)
+            self.udict[key] = new_units_str
+
             if f"{key}_unit" in self.columns:
                 self[f"{key}_unit"] = new_units_str
         else:
@@ -282,7 +288,7 @@ def load_pkdb_dataframes_by_substance(sid, data_path, **kwargs) -> Dict[str, pd.
     :param kwargs:
     :return: Dict[substance, pd.DataFrame]
     """
-    df = load_pkdb_dataframe(sid=sid, data_path=data_path, **kwargs)
+    df = load_pkdb_dataframe(sid=sid, data_path=data_path, na_values=['na'], **kwargs)
     frames = {}
     for substance in df.substance.unique():
         frames[substance] = df[df.substance == substance]
