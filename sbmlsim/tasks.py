@@ -1,10 +1,20 @@
-from sbmlsim.timecourse import TimecourseScan, TimecourseSim
-
 
 class Task(object):
+    """ Tasks combine models with simulations.
 
-    # FIXME: just reference the simulation id
+    This allows to execute the same simulation with different
+    model variants.
+    """
     def __init__(self, model: str, simulation: str):
+        if not isinstance(model, str):
+            raise ValueError(f"Reference to a model must be a string model key, "
+                             f"but found: '{model}' of type '{type(model)}'")
+
+        if not isinstance(simulation, str):
+            raise ValueError(f"Reference to a simulation must be a string "
+                             f"simulation key, "
+                             f"but found: '{model}' of type '{type(model)}'")
+
         self.model_id = model
         self.simulation_id = simulation
 

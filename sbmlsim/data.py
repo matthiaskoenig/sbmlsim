@@ -40,6 +40,22 @@ class Data(object):
         self.function = function
         # self._data = data
 
+        # register data in simulation
+        if experiment._data is None:
+            experiment._data = {}
+
+        experiment._data[self.sid] = self
+
+    @property
+    def sid(self):
+        if self.task_id:
+            obj_id = self.task_id
+        elif self.dset_id:
+            obj_id = self.dset_id
+
+        return f"{self.dtype.name}__{obj_id}__{self.index}"
+
+
     @property
     def dtype(self):
         if self.task_id:

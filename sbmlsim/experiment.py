@@ -96,7 +96,7 @@ class SimulationExperiment(object):
         self._results = None
 
         # processing
-        self._datagenerators = None
+        self._data = None
 
         # figures
         self._figures = None
@@ -135,12 +135,12 @@ class SimulationExperiment(object):
     # --- PROCESSING ----------------------------------------------------------
     # TODO:
 
-    # --- FIGURES ----------------------------------------------------------
+    # --- FIGURES -------------------------------------------------------------
     def figures(self) -> Dict[str, FigureMPL]:
         """ Figures."""
         return {}
 
-    # --- VALIDATION -------------------------------------------------------------
+    # --- VALIDATION ----------------------------------------------------------
     def _check_keys(self):
         """Check that everything is okay with the experiment."""
         # string keys for main objects must be unique on SimulationExperiment
@@ -158,7 +158,6 @@ class SimulationExperiment(object):
                 else:
                     all_keys[key] = field_key
 
-
     def _check_types(self):
         """Check that correct types"""
         for key, dset in self._datasets.items():
@@ -173,6 +172,7 @@ class SimulationExperiment(object):
             if not isinstance(task, Task):
                 raise ValueError(f"tasks must be of type Task, but "
                                  f"task '{key}' has type: '{type(task)}'")
+
         for key, sim in self._simulations.items():
             if not isinstance(sim, AbstractSim):
                 raise ValueError(f"simulations must be of type AbstractSim, but "
@@ -278,6 +278,7 @@ class SimulationExperiment(object):
             "models": {k: v.to_dict() for k, v in self._models.items()},
             "tasks": {k: v.to_dict() for k, v in self._tasks.items()},
             "simulations": {k: v.to_dict() for k, v in self._simulations.items()},
+            "data": self._data,
             "figures": self._figures,
         }
 
