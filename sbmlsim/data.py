@@ -3,12 +3,12 @@ from enum import Enum
 import logging
 from typing import Dict
 import pandas as pd
+import numpy as np
 from pint import Quantity, UnitRegistry
-
+from sbmlsim.processing import mathml
 from sbmlsim.result import Result
 
 logger = logging.getLogger(__name__)
-
 
 class Data(object):
     """Main data generator class which uses data either from
@@ -31,13 +31,14 @@ class Data(object):
                  index: str, unit: str=None,
                  task: str = None,
                  dataset: str = None,
-                 function=None, data=None):
+                 function=None, variables=None):
         self.experiment = experiment
         self.index = index
         self.unit = unit
         self.task_id = task
         self.dset_id = dataset
-        self.function_id = function
+        self.function = function
+        self.variables = variables
 
         # register data in simulation
         if experiment._data is None:
@@ -48,13 +49,13 @@ class Data(object):
     @property
     def sid(self):
         if self.task_id:
-            obj_id = self.task_id
+            sid = f"{self.task_id}__{self.index}"
         elif self.dset_id:
-            obj_id = self.dset_id
-        elif self.function_id:
-            obj_id = self.function_id
+            sid = f"{self.dset_id}__{self.index}"
+        elif self.function:
+            sid = self.index
 
-        return f"{self.dtype.name}__{obj_id}__{self.index}"
+        return sid
 
 
     @property
@@ -63,7 +64,7 @@ class Data(object):
             dtype = Data.Types.TASK
         elif self.dset_id:
             dtype = Data.Types.DATASET
-        elif self.function_id:
+        elif self.function:
             dtype = Data.Types.FUNCTION
         else:
             raise ValueError("DataType could not be determined!")
@@ -82,7 +83,8 @@ class Data(object):
             "unit": self.unit,
             "task": self.task_id,
             "dataset": self.dset_id,
-            "function": self.function_id,
+            "function": self.function,
+            "variables": self.variables if self.variables else None
         }
         return d
 
@@ -115,9 +117,20 @@ class Data(object):
                 raise ValueError("Only Result objects supported in task data.")
             x = result.mean[self.index].values * result.ureg(result.udict[self.index])
         elif self.dtype == Data.Types.FUNCTION:
-            # evaluate function
-            # FIXME: implement
-            x = self.experiment._functions[self.function_id].data
+            # evaluate with actual data
+            astnode = mathml.formula_to_astnode(self.function)
+            variables = {}
+            for k, v in self.variables.items():
+                # lookup via key
+                if isinstance(v, str):
+                    variables[k] = self.experiment._data[v].data
+                elif isinstance(v, Data):
+                    variables[k] = v.data
+
+            res = mathml.evaluate(astnode=astnode, variables=variables)
+            return res
+
+
 
         # convert units
         if self.unit:
@@ -127,14 +140,19 @@ class Data(object):
 
 
 class DataFunction(object):
-    """TODO: Data based on functions, i.e. data based on data.
+    """ Functional data calculation.
 
-    These are the more complicated data generators.
-    1. calculatable from existing data,
-    2. data can be directly serialized
+    The idea ist to provide an object which can calculate a generic math function
+    based on given input symbols.
+
+    Important challenge is to handle the correct functional evaluation.
     """
-    pass
-    # TODO: implement
+    def __init__(self, index, formula, variables):
+        self.index = index
+        self.formula = formula
+        self.variables = variables
+
+
 
 
 class DataSeries(pd.Series):
@@ -318,3 +336,15 @@ def load_pkdb_dataframes_by_substance(sid, data_path, **kwargs) -> Dict[str, pd.
     for substance in df.substance.unique():
         frames[substance] = df[df.substance == substance]
     return frames
+
+
+if __name__ == "__main__":
+    f1 = DataFunction(
+        index="test", formula="(x + y + z)/x",
+        variables={
+         'x': 0.1 * np.ones(shape=[1, 10]),
+         'y': 3.0 * np.ones(shape=[1, 10]),
+         'z': 2.0 * np.ones(shape=[1, 10]),
+        })
+    res = f1.data()
+    print(res)

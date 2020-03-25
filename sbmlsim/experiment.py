@@ -14,7 +14,6 @@ from sbmlsim.timecourse import AbstractSim, TimecourseSim, TimecourseScan
 from sbmlsim.serialization import ObjectJSONEncoder
 from sbmlsim.result import Result
 from sbmlsim.data import Data, DataSet
-from sbmlsim.processing.function import Function
 from sbmlsim.models import RoadrunnerSBMLModel, AbstractModel
 from sbmlsim.plotting_matplotlib import plt, to_figure
 from matplotlib.pyplot import Figure as FigureMPL
@@ -129,9 +128,9 @@ class SimulationExperiment(object):
         return {}
 
     # --- FUNCTIONS -----------------------------------------------------------
-    def functions(self) -> Dict[str, Function]:
-        """DataGenerator function definitions."""
-        return {}
+    def datagenerators(self) -> None:
+        """DataGenerator definitions."""
+        return
 
     # --- RESULTS -------------------------------------------------------------
     @property
@@ -204,8 +203,8 @@ class SimulationExperiment(object):
         # run simulations
         self._run_tasks()  # sets self._results
 
-        # functions require numerical results
-        self._functions = self.functions()
+        # definition of data accessed later on
+        self.datagenerators()
 
         # some of the figures require actual numerical results!
         self._figures = self.figures()

@@ -62,53 +62,65 @@
     }
   },
   "data": {
-    "TASK__task_tc__X": {
+    "task_tc__X": {
       "type": "TASK",
       "index": "X",
       "unit": "dimensionless",
       "task": "task_tc",
       "dataset": null,
-      "function": null
+      "function": null,
+      "variables": null
     },
-    "TASK__task_tc__Y": {
+    "task_tc__Y": {
       "type": "TASK",
       "index": "Y",
       "unit": "dimensionless",
       "task": "task_tc",
       "dataset": null,
-      "function": null
+      "function": null,
+      "variables": null
     },
-    "TASK__task_tc__Z": {
+    "task_tc__Z": {
       "type": "TASK",
       "index": "Z",
       "unit": "dimensionless",
       "task": "task_tc",
       "dataset": null,
-      "function": null
+      "function": null,
+      "variables": null
     },
-    "TASK__task_tc__time": {
+    "f1": {
+      "type": "FUNCTION",
+      "index": "f1",
+      "unit": "dimensionless",
+      "task": null,
+      "dataset": null,
+      "function": "(sin(X)+Y+Z)/max(X)",
+      "variables": {
+        "X": "task_tc__X",
+        "Y": "task_tc__Y",
+        "Z": "task_tc__Z"
+      }
+    },
+    "f2": {
+      "type": "FUNCTION",
+      "index": "f2",
+      "unit": "dimensionless",
+      "task": null,
+      "dataset": null,
+      "function": "Y/max(Y)",
+      "variables": {
+        "Y": "task_tc__Y"
+      }
+    },
+    "task_tc__time": {
       "type": "TASK",
       "index": "time",
       "unit": "min",
       "task": "task_tc",
       "dataset": null,
-      "function": null
-    },
-    "FUNCTION__f1__f1": {
-      "type": "FUNCTION",
-      "index": "f1",
-      "unit": null,
-      "task": null,
-      "dataset": null,
-      "function": "f1"
-    },
-    "FUNCTION__f2__f2": {
-      "type": "FUNCTION",
-      "index": "f2",
-      "unit": null,
-      "task": null,
-      "dataset": null,
-      "function": "f2"
+      "function": null,
+      "variables": null
     }
   },
   "figures": {
@@ -145,7 +157,8 @@
                   "unit": "min",
                   "task": "task_tc",
                   "dataset": null,
-                  "function": null
+                  "function": null,
+                  "variables": null
                 },
                 "order": null,
                 "style": {
@@ -172,7 +185,8 @@
                   "unit": "dimensionless",
                   "task": "task_tc",
                   "dataset": null,
-                  "function": null
+                  "function": null,
+                  "variables": null
                 },
                 "xerr": null,
                 "yerr": null
@@ -186,7 +200,8 @@
                   "unit": "min",
                   "task": "task_tc",
                   "dataset": null,
-                  "function": null
+                  "function": null,
+                  "variables": null
                 },
                 "order": null,
                 "style": {
@@ -213,7 +228,8 @@
                   "unit": "dimensionless",
                   "task": "task_tc",
                   "dataset": null,
-                  "function": null
+                  "function": null,
+                  "variables": null
                 },
                 "xerr": null,
                 "yerr": null
@@ -257,10 +273,15 @@
                 "x": {
                   "type": "FUNCTION",
                   "index": "f1",
-                  "unit": null,
+                  "unit": "dimensionless",
                   "task": null,
                   "dataset": null,
-                  "function": "f1"
+                  "function": "(sin(X)+Y+Z)/max(X)",
+                  "variables": {
+                    "X": "task_tc__X",
+                    "Y": "task_tc__Y",
+                    "Z": "task_tc__Z"
+                  }
                 },
                 "order": null,
                 "style": {
@@ -284,10 +305,13 @@
                 "y": {
                   "type": "FUNCTION",
                   "index": "f2",
-                  "unit": null,
+                  "unit": "dimensionless",
                   "task": null,
                   "dataset": null,
-                  "function": "f2"
+                  "function": "Y/max(Y)",
+                  "variables": {
+                    "Y": "task_tc__Y"
+                  }
                 },
                 "xerr": null,
                 "yerr": null
