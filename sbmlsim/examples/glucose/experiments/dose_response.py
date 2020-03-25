@@ -1,14 +1,15 @@
 from typing import Dict
-from matplotlib.pyplot import Figure
 import numpy as np
 import pandas as pd
 
+from matplotlib.pyplot import Figure
+from sbmlsim.plotting_matplotlib import add_data, add_line, plt
+
 from sbmlsim.experiment import SimulationExperiment
-from sbmlsim.data import DataSet
+from sbmlsim.data import DataSet, load_pkdb_dataframe
 from sbmlsim.tasks import Task
 from sbmlsim.models import AbstractModel, RoadrunnerSBMLModel
 from sbmlsim.timecourse import Timecourse, TimecourseSim, TimecourseScan
-from sbmlsim.plotting_matplotlib import add_data, add_line, plt
 
 
 class DoseResponseExperiment(SimulationExperiment):
@@ -25,7 +26,10 @@ class DoseResponseExperiment(SimulationExperiment):
 
         # dose-response data for hormones
         for hormone_key in ['Epinephrine', 'Glucagon', 'Insulin']:
-            df = self.load_data(f"DoseResponse_Tab{hormone_key}")
+            df = load_pkdb_dataframe(
+                f"DoseResponse_Tab{hormone_key}",
+                data_path=self.data_path
+            )
             df = df[df.condition == "normal"]  # only healthy controls
             epi_normal_studies = [
                 "Degn2004", "Lerche2009", "Mitrakou1991",
@@ -148,14 +152,14 @@ class DoseResponseExperiment(SimulationExperiment):
             'alpha': 0.6,
         }
         add_data(ax1, self._datasets["glucagon"], xid="glc", yid="mean",
-                 yid_se="se",
+                 yid_se="mean_se",
                  xunit=xunit, yunit=yunit_hormone, label="Glucagon", **kwargs)
         add_data(ax2, self._datasets["epinephrine"], xid="glc", yid="mean",
-                 yid_se="se",
+                 yid_se="mean_se",
                  xunit=xunit, yunit=yunit_hormone, label="Epinephrine",
                  **kwargs)
         add_data(ax3, self._datasets["insulin"], xid="glc", yid="mean",
-                 yid_se="se",
+                 yid_se="mean_se",
                  xunit=xunit, yunit=yunit_hormone, label="Insulin", **kwargs)
 
         ax1.set_ylabel(f'glucagon [{yunit_hormone}]')
