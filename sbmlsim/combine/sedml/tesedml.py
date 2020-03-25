@@ -116,7 +116,7 @@ importlib.reload(libsedml)
 
 
 from tellurium.utils import omex
-from .mathml import evaluableMathML
+from sbmlsim.oven.mathml import evaluableMathML
 import tellurium as te
 
 try:
@@ -1984,7 +1984,7 @@ def fix_endpoints(x, y, color, tag, fig):
 if __name__ == "__main__":
     import os
     from tellurium.tests.testdata import SEDML_TEST_DIR, OMEX_TEST_DIR
-    import matplotlib
+
 
     def testInput(sedmlInput):
         """ Test function run on inputStr. """

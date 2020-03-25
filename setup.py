@@ -68,8 +68,10 @@ setup(
         "pip>=19.3.1",
         "numpy>=1.18.1",
         "scipy>=1.4.1",
+        "sympy>=1.5.1"
         "pandas>=0.25.3",
         "tables>0.3.6",
+
         "python-libsbml-experimental>=5.18.1",
         "python-libsedml>=2.0.9",
         "python-libcombine>=0.2.3",

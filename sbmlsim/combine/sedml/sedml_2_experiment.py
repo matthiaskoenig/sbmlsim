@@ -106,7 +106,7 @@ from sbmlsim.models import model_resources
 from sbmlsim.combine.sedml.data import DataDescriptionParser
 from sbmlsim.combine.sedml.utils import SEDMLTools
 from sbmlsim.models.model import AbstractModel
-from sbmlsim.combine.sedml.mathml import evaluableMathML
+from sbmlsim.oven.mathml import evaluableMathML
 
 logger = logging.getLogger(__file__)
 '''
