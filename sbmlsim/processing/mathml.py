@@ -8,6 +8,7 @@ import logging
 import libsbml
 from sympy import Symbol, sympify
 from sympy.core.compatibility import exec_
+from sympy import lambdify
 
 
 def formula_to_astnode(formula: str):
@@ -43,44 +44,53 @@ def parse_astnode(astnode: libsbml.ASTNode):
     :param mathml:
     :return:
     """
-
     formula = libsbml.formulaToL3String(astnode)
-    formula = formula.replace("piecewise", 'Piecewise')
-    # formula = formula.replace("&&", 'and')
-    # formula = formula.replace("||", 'or')
 
-    # TODO: some rewrites necessary for Sympy
-    # Piecewise
-
-    print(formula)
-
-    # [1] iterate over ASTNode and figure out variables
+    # iterate over ASTNode and figure out variables
     variables = _get_variables(astnode)
-    print(variables)
+
+    # create sympy expression
+    expr = expr_from_formula(formula)
+
+    print(formula, expr, variables)
+    return expr, variables
+
+
+def expr_from_formula(formula: str):
+    """Parses sympy expression from given formula string."""
 
 
     # [2] create sympy expressions with variables and formula
     # necessary to map the expression trees
     # create symbols
+    formula = replace_piecewise(formula)
+    formula = formula.replace("&&", '&')
+    formula = formula.replace("||", '|')
 
     # additional methods
-    ns = {}
-    exec_('from sbmlsim.processing.mathml_functions import piecewise', ns)
-    # FIXME: rewrite the piecwise function
-
-    from sympy import Symbol
-    for variable in variables:
-        ns[variable] = Symbol(variable)
-
-    expr = sympify(formula, locals=ns)
-    print(expr)
+    # ns = {}
+    # symbols = []
+    # exec_('from sbmlsim.processing.mathml_functions import piecewise', ns)
+    # from sympy import Symbol
+    #for variable in sorted(variables):
+    #    symbol = Symbol(variable)
+    #    ns[variable] = symbol
+    #    symbols.append(symbol)
+    # expr = sympify(formula, locals=ns)
+    expr = sympify(formula)
 
     return expr
 
 
 def evaluate(astnode, variables={}, array=False):
     """Evaluate the astnode with values """
-    pass
+    expr, variables = parse_formula("x + y")
+    parse_astnode()
+    print(expr, type(expr))
+    f = lambdify(args=expr.free_symbols, expr=expr)
+    res = f(x=1, y=3)
+    print(res)
+
 
 
 def _get_variables(astnode: libsbml.ASTNode, variables=None) -> Set:
@@ -100,6 +110,57 @@ def _get_variables(astnode: libsbml.ASTNode, variables=None) -> Set:
 
     return variables
 
+
+def replace_piecewise(formula):
+    """Replaces libsbml piecewise with sympy piecewise."""
+    while True:
+        index = formula.find("piecewise(")
+        if index == -1:
+            break
+
+        # process piecewise
+        search_idx = index + 9
+
+        # init counters
+        bracket_open = 0
+        pieces = []
+        piece_chars = []
+
+        while search_idx < len(formula):
+            c = formula[search_idx]
+            if c == ",":
+                if bracket_open == 1:
+                    pieces.append("".join(piece_chars).strip())
+                    piece_chars = []
+            else:
+                if c == "(":
+                    if bracket_open != 0:
+                        piece_chars.append(c)
+                    bracket_open += 1
+                elif c == ")":
+                    if bracket_open != 1:
+                        piece_chars.append(c)
+                    bracket_open -= 1
+                else:
+                    piece_chars.append(c)
+
+            if bracket_open == 0:
+                pieces.append("".join(piece_chars).strip())
+                break
+
+            # next character
+            search_idx += 1
+
+        # find end index
+        if (len(pieces) % 2) == 1:
+            pieces.append("True")  # last condition is True
+        sympy_pieces = []
+        for k in range(0, int(len(pieces)/2)):
+            sympy_pieces.append(f'({pieces[2*k]}, {pieces[2*k+1]})')
+        new_str = f"Piecewise({','.join(sympy_pieces)})"
+        formula = formula.replace(formula[index:search_idx+1], new_str)
+
+    return formula
 
 
 if __name__ == "__main__":
@@ -121,7 +182,7 @@ if __name__ == "__main__":
                       <and/>
                       <apply>
                         <leq/>
-                        <cn type="integer"> 4 </cn>
+                        <cn type="integer"> 5 </cn>
                         <ci> x </ci>
                       </apply>
                       <apply>
@@ -143,10 +204,28 @@ if __name__ == "__main__":
     variables = _get_variables(astnode)
     print(variables)
 
-    expr = parse_formula("x + y")
+    expr, variables = parse_formula("x + y")
+    print(expr, type(expr))
+    f = lambdify(args=expr.free_symbols, expr=expr)
+    res = f(x=1, y=3)
+    print(res)
+
+    print(f)
+
     print(type(expr))
 
+    # Piecewise in sympy
+    # https://docs.sympy.org/latest/modules/functions/elementary.html#piecewise
+    # Piecewise((expr, cond), (expr, cond), … )
+    # necessary to do a rewrite of the piecewise function
+    expr = expr_from_formula("piecewise(8, x < 4, 0.1, (4 <= x) && (x < 6), 8)")
+    expr = expr_from_formula("Piecewise((8, x < 4), (0.1, (x >= 5) & (x < 6)), (8, True))")
 
+    print(expr)
+
+    # evaluate expression
+    expr = parse_formula("x + y")
+    print(expr.free_symbols, type(expr))
 
     '''
     # evaluate the function with the values
@@ -157,3 +236,8 @@ if __name__ == "__main__":
                          variables={'x': y})
     print('Result:', res)
     '''
+
+    """
+    * The Boolean function symbols '&&' (and), '||' (or), '!' (not),
+    and '!=' (not equals) may be used.
+    """
