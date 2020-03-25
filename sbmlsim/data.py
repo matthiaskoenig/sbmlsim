@@ -127,10 +127,7 @@ class Data(object):
                 elif isinstance(v, Data):
                     variables[k] = v.data
 
-            res = mathml.evaluate(astnode=astnode, variables=variables)
-            return res
-
-
+            x = mathml.evaluate(astnode=astnode, variables=variables)
 
         # convert units
         if self.unit:
