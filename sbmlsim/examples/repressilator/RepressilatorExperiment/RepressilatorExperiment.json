@@ -151,15 +151,6 @@
               {
                 "sid": "plot0_curve1",
                 "name": "X sim",
-                "x": {
-                  "type": "TASK",
-                  "index": "time",
-                  "unit": "min",
-                  "task": "task_tc",
-                  "dataset": null,
-                  "function": null,
-                  "variables": null
-                },
                 "order": null,
                 "style": {
                   "sid": null,
@@ -178,31 +169,15 @@
                   },
                   "fill": null
                 },
-                "yaxis": null,
-                "y": {
-                  "type": "TASK",
-                  "index": "X",
-                  "unit": "dimensionless",
-                  "task": "task_tc",
-                  "dataset": null,
-                  "function": null,
-                  "variables": null
-                },
+                "x": "task_tc__time",
+                "y": "task_tc__X",
                 "xerr": null,
-                "yerr": null
+                "yerr": null,
+                "yaxis": null
               },
               {
                 "sid": "plot0_curve2",
                 "name": "Y sim",
-                "x": {
-                  "type": "TASK",
-                  "index": "time",
-                  "unit": "min",
-                  "task": "task_tc",
-                  "dataset": null,
-                  "function": null,
-                  "variables": null
-                },
                 "order": null,
                 "style": {
                   "sid": null,
@@ -221,18 +196,11 @@
                   },
                   "fill": null
                 },
-                "yaxis": null,
-                "y": {
-                  "type": "TASK",
-                  "index": "Y",
-                  "unit": "dimensionless",
-                  "task": "task_tc",
-                  "dataset": null,
-                  "function": null,
-                  "variables": null
-                },
+                "x": "task_tc__time",
+                "y": "task_tc__Y",
                 "xerr": null,
-                "yerr": null
+                "yerr": null,
+                "yaxis": null
               }
             ]
           },
@@ -270,19 +238,6 @@
               {
                 "sid": "plot0_curve1",
                 "name": "f2 ~ f1",
-                "x": {
-                  "type": "FUNCTION",
-                  "index": "f1",
-                  "unit": "dimensionless",
-                  "task": null,
-                  "dataset": null,
-                  "function": "(sin(X)+Y+Z)/max(X)",
-                  "variables": {
-                    "X": "task_tc__X",
-                    "Y": "task_tc__Y",
-                    "Z": "task_tc__Z"
-                  }
-                },
                 "order": null,
                 "style": {
                   "sid": null,
@@ -301,20 +256,11 @@
                   },
                   "fill": null
                 },
-                "yaxis": null,
-                "y": {
-                  "type": "FUNCTION",
-                  "index": "f2",
-                  "unit": "dimensionless",
-                  "task": null,
-                  "dataset": null,
-                  "function": "Y/max(Y)",
-                  "variables": {
-                    "Y": "task_tc__Y"
-                  }
-                },
+                "x": "f1",
+                "y": "f2",
                 "xerr": null,
-                "yerr": null
+                "yerr": null,
+                "yaxis": null
               }
             ]
           },

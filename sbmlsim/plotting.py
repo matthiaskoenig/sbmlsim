@@ -235,6 +235,21 @@ class Curve(AbstractCurve):
         info = f"x: {self.x}\ny: {self.y}\nxerr: {self.xerr}\nyerr: {self.yerr}"
         return info
 
+    def to_dict(self):
+        """ Convert to dictionary. """
+        d = {
+            "sid": self.sid,
+            "name": self.name,
+            "order": self.order,
+            "style": self.style,
+            "x": self.x.sid if self.x else None,
+            "y": self.y.sid if self.y else None,
+            "xerr": self.xerr.sid if self.xerr else None,
+            "yerr": self.yerr.sid if self.yerr else None,
+            "yaxis": self.yaxis
+        }
+        return d
+
 
 class Plot(Base):
     """
