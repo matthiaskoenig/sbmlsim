@@ -10,6 +10,7 @@ from sbmlsim.tests.constants import MODEL_REPRESSILATOR
 from sbmlsim.experiment import SimulationExperiment
 from sbmlsim.models import AbstractModel, RoadrunnerSBMLModel
 from sbmlsim.data import Data, DataSet
+from sbmlsim.processing.function import Function
 from sbmlsim.timecourse import AbstractSim, Timecourse, TimecourseSim
 from sbmlsim.tasks import Task
 from sbmlsim.plotting import Figure, Axis
@@ -37,14 +38,14 @@ class RepressilatorExperiment(SimulationExperiment):
         :return:
         """
         tcsim = TimecourseSim([
-            Timecourse(start=0, end=600, steps=1000),
-            Timecourse(start=0, end=600, steps=1000, changes={"X": 10, "Y": 20}),
+            Timecourse(start=0, end=600, steps=2000),
+            Timecourse(start=0, end=600, steps=2000, changes={"X": 10, "Y": 20}),
         ])
         return {
             "tc": tcsim,
         }
 
-    def processing(self):
+    def functions(self) -> Dict[str, Function]:
         """ Calculate additional functions.
 
         :return:
@@ -54,36 +55,43 @@ class RepressilatorExperiment(SimulationExperiment):
         unit_time = "min"
         unit_data = "dimensionless"
 
-        # [1] direct access of variables (in task or dataset)
-        task_tc_time = Data(self, "time", task="task_tc", unit=unit_time),
-        task_tc_X = Data(self, "X", task="task_tc", unit=unit_time),
-        task_tc_X = Data(self, "Y", task="task_tc", unit=unit_time),
-
-        # [2] functional relationships expressable as MathML
-        Function(variables) = X/Y
-        Function = X/(X+Y+Z)
-        # or aggregation functions
-        Function = X/max(X)
-
+        # FIXME: units
+        f1 = Function(
+            index="f1",
+            formula="(sin(X)+Y+Z)/max(X)",
+            variables={
+                "X": Data(self, "X", task="task_tc", unit=unit_data),
+                "Y": Data(self, "Y", task="task_tc", unit=unit_data),
+                "Z": Data(self, "Z", task="task_tc", unit=unit_data),
+            }
+        )
+        f2 = Function(
+            index="f2",
+            formula="Y/max(Y)",
+            variables={
+                "Y": Data(self, "Y", task="task_tc", unit=unit_data),
+            }
+        )
         # [3] arbitrary processing (e.g. pharmacokinetic calculations)
-        Processing(variables) # arbitrary functions
-
-        # Aggregation over 
-
-
+        # Processing(variables) # arbitrary functions
+        # Aggregation over
+        return {
+            "f1": f1,
+            "f2": f2
+        }
 
     def figures(self) -> Dict[str, Figure]:
         unit_time = "min"
         unit_data = "dimensionless"
 
-        fig = Figure(experiment=self,
+        fig1 = Figure(experiment=self,
                      sid="Fig1", num_cols=1, num_rows=1)
-        plots = fig.create_plots(
+        plots = fig1.create_plots(
             xaxis=Axis("time", unit=unit_time),
             yaxis=Axis("data", unit=unit_data),
             legend=True
         )
-        plots[0].set_title(f"{self.sid}_{fig.sid}")
+        plots[0].set_title(f"{self.sid}_{fig1.sid}")
         plots[0].curve(
             x=Data(self, "time", task="task_tc", unit=unit_time),
             y=Data(self, "X", task="task_tc", unit=unit_data),
@@ -94,7 +102,24 @@ class RepressilatorExperiment(SimulationExperiment):
             y=Data(self, "Y", task="task_tc", unit=unit_data),
             label="Y sim", color="blue"
         )
-        return {fig.sid: fig}
+
+        fig2 = Figure(experiment=self,
+                     sid="Fig2", num_cols=1, num_rows=1)
+        plots = fig2.create_plots(
+            xaxis=Axis("data", unit=unit_data),
+            yaxis=Axis("data", unit=unit_data),
+            legend=True
+        )
+        plots[0].curve(
+            x=Data(self, "f1", function="f1"),
+            y=Data(self, "f2", function="f2"),
+            label="f2 ~ f1", color="black", marker="o", alpha=0.3
+        )
+
+        return {
+            fig1.sid: fig1,
+            fig2.sid: fig2,
+        }
 
 
 def run(output_path):

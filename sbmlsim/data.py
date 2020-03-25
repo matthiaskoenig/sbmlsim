@@ -37,8 +37,7 @@ class Data(object):
         self.unit = unit
         self.task_id = task
         self.dset_id = dataset
-        self.function = function
-        # self._data = data
+        self.function_id = function
 
         # register data in simulation
         if experiment._data is None:
@@ -52,6 +51,8 @@ class Data(object):
             obj_id = self.task_id
         elif self.dset_id:
             obj_id = self.dset_id
+        elif self.function_id:
+            obj_id = self.function_id
 
         return f"{self.dtype.name}__{obj_id}__{self.index}"
 
@@ -62,6 +63,10 @@ class Data(object):
             dtype = Data.Types.TASK
         elif self.dset_id:
             dtype = Data.Types.DATASET
+        elif self.function_id:
+            dtype = Data.Types.FUNCTION
+        else:
+            raise ValueError("DataType could not be determined!")
         return dtype
 
     # todo: dimensions, data type
@@ -77,7 +82,7 @@ class Data(object):
             "unit": self.unit,
             "task": self.task_id,
             "dataset": self.dset_id,
-            "function": self.function,
+            "function": self.function_id,
         }
         return d
 
@@ -109,6 +114,10 @@ class Data(object):
             if not isinstance(result, Result):
                 raise ValueError("Only Result objects supported in task data.")
             x = result.mean[self.index].values * result.ureg(result.udict[self.index])
+        elif self.dtype == Data.Types.FUNCTION:
+            # evaluate function
+            # FIXME: implement
+            x = self.experiment._functions[self.function_id].data
 
         # convert units
         if self.unit:

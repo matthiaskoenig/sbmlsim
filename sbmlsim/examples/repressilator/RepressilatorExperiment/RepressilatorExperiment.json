@@ -33,7 +33,7 @@
           "normalized": true,
           "start": 0,
           "end": 600,
-          "steps": 1000,
+          "steps": 2000,
           "changes": {},
           "model_changes": {}
         },
@@ -41,7 +41,7 @@
           "normalized": true,
           "start": 0,
           "end": 600,
-          "steps": 1000,
+          "steps": 2000,
           "changes": {
             "X": {
               "_magnitude": 10,
@@ -62,14 +62,6 @@
     }
   },
   "data": {
-    "TASK__task_tc__time": {
-      "type": "TASK",
-      "index": "time",
-      "unit": "min",
-      "task": "task_tc",
-      "dataset": null,
-      "function": null
-    },
     "TASK__task_tc__X": {
       "type": "TASK",
       "index": "X",
@@ -85,6 +77,38 @@
       "task": "task_tc",
       "dataset": null,
       "function": null
+    },
+    "TASK__task_tc__Z": {
+      "type": "TASK",
+      "index": "Z",
+      "unit": "dimensionless",
+      "task": "task_tc",
+      "dataset": null,
+      "function": null
+    },
+    "TASK__task_tc__time": {
+      "type": "TASK",
+      "index": "time",
+      "unit": "min",
+      "task": "task_tc",
+      "dataset": null,
+      "function": null
+    },
+    "FUNCTION__f1__f1": {
+      "type": "FUNCTION",
+      "index": "f1",
+      "unit": null,
+      "task": null,
+      "dataset": null,
+      "function": "f1"
+    },
+    "FUNCTION__f2__f2": {
+      "type": "FUNCTION",
+      "index": "f2",
+      "unit": null,
+      "task": null,
+      "dataset": null,
+      "function": "f2"
     }
   },
   "figures": {
@@ -190,6 +214,80 @@
                   "task": "task_tc",
                   "dataset": null,
                   "function": null
+                },
+                "xerr": null,
+                "yerr": null
+              }
+            ]
+          },
+          "row": 1,
+          "col": 1,
+          "row_span": 1,
+          "col_span": 1
+        }
+      ]
+    },
+    "Fig2": {
+      "sid": "Fig2",
+      "name": null,
+      "num_rows": 1,
+      "num_cols": 1,
+      "width": 5.0,
+      "height": 5.0,
+      "subplots": [
+        {
+          "plot": {
+            "sid": "plot0",
+            "name": null,
+            "legend": true,
+            "xaxis": {
+              "sid": null,
+              "name": "data",
+              "unit": "dimensionless"
+            },
+            "yaxis": {
+              "sid": null,
+              "name": "data",
+              "unit": "dimensionless"
+            },
+            "curves": [
+              {
+                "sid": "plot0_curve1",
+                "name": "f2 ~ f1",
+                "x": {
+                  "type": "FUNCTION",
+                  "index": "f1",
+                  "unit": null,
+                  "task": null,
+                  "dataset": null,
+                  "function": "f1"
+                },
+                "order": null,
+                "style": {
+                  "sid": null,
+                  "name": null,
+                  "line": {
+                    "type": "SOLID",
+                    "color": "#0000004c",
+                    "thickness": 1.0
+                  },
+                  "marker": {
+                    "size": null,
+                    "type": "CIRCLE",
+                    "fill": "#0000004c",
+                    "line_color": null,
+                    "line_thickness": null
+                  },
+                  "fill": null
+                },
+                "yaxis": null,
+                "y": {
+                  "type": "FUNCTION",
+                  "index": "f2",
+                  "unit": null,
+                  "task": null,
+                  "dataset": null,
+                  "function": "f2"
                 },
                 "xerr": null,
                 "yerr": null

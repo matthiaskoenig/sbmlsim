@@ -14,6 +14,7 @@ from sbmlsim.timecourse import AbstractSim, TimecourseSim, TimecourseScan
 from sbmlsim.serialization import ObjectJSONEncoder
 from sbmlsim.result import Result
 from sbmlsim.data import Data, DataSet
+from sbmlsim.processing.function import Function
 from sbmlsim.models import RoadrunnerSBMLModel, AbstractModel
 from sbmlsim.plotting_matplotlib import plt, to_figure
 from matplotlib.pyplot import Figure as FigureMPL
@@ -84,6 +85,7 @@ class SimulationExperiment(object):
         self._simulations = self.simulations()
         self._tasks = self.tasks()
 
+
         # Normalize the tasks
         for task_id, task in self._tasks.items():
             model = self._models[task.model_id]
@@ -97,6 +99,7 @@ class SimulationExperiment(object):
 
         # processing
         self._data = None
+        self._functions = None
 
         # figures
         self._figures = None
@@ -123,6 +126,11 @@ class SimulationExperiment(object):
     # --- SIMULATIONS ---------------------------------------------------------
     def simulations(self) -> Dict[str, AbstractSim]:
         """Simulation definitions."""
+        return {}
+
+    # --- FUNCTIONS -----------------------------------------------------------
+    def functions(self) -> Dict[str, Function]:
+        """DataGenerator function definitions."""
         return {}
 
     # --- RESULTS -------------------------------------------------------------
@@ -195,6 +203,9 @@ class SimulationExperiment(object):
 
         # run simulations
         self._run_tasks()  # sets self._results
+
+        # functions require numerical results
+        self._functions = self.functions()
 
         # some of the figures require actual numerical results!
         self._figures = self.figures()

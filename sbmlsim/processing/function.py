@@ -19,10 +19,11 @@ class Function(object):
         self.formula = formula
         self.variables = variables
 
+    @property
     def data(self):
         # evalutate with actual data
         astnode = mathml.formula_to_astnode(self.formula)
-        res = mathml.evaluate(astnode=astnode, variables=self.variables)
+        res = mathml.evaluate(astnode=astnode, variables={k: v.data for k,v in self.variables.items()})
         return res
 
 
