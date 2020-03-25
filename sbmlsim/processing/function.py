@@ -1,9 +1,9 @@
 from pint import UnitRegistry
 
 from sbmlsim.data import Data
+import numpy as np
 
-
-
+from sbmlsim.processing import mathml
 
 
 class Function(object):
@@ -14,14 +14,25 @@ class Function(object):
 
     Important challenge is to handle the correct functional evaluation.
     """
-    index = "abs_glc_bw",  # name to access (something not existing in data or task)
+    def __init__(self, index, formula, variables):
+        self.index = index
+        self.formula = formula
+        self.variables = variables
 
-    f = "absorption_glc" / self.Q_(70, "kg"),  # when is this evaluated? How does this work with units
-    task = "task_ogtt",
-    dataset = None,
-    data = {
-        'absorption_glc': Data(self, index="absorption_glc", task="task_ogtt")
-    }
+    def data(self):
+        # evalutate with actual data
+        astnode = mathml.formula_to_astnode(self.formula)
+        res = mathml.evaluate(astnode=astnode, variables=self.variables)
+        return res
+
 
 if __name__ == "__main__":
-    # TODO: example
+    f1 = Function(
+        index="test", formula="(x + y + z)/x",
+        variables={
+         'x': 0.1 * np.ones(shape=[1, 10]),
+         'y': 3.0 * np.ones(shape=[1, 10]),
+         'z': 2.0 * np.ones(shape=[1, 10]),
+        })
+    res = f1.data()
+    print(res)

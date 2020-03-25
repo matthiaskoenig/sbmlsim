@@ -6,12 +6,11 @@ from typing import Set, Dict, Tuple
 import logging
 
 import libsbml
-from sympy import Symbol, sympify
-from sympy.core.compatibility import exec_
-from sympy import lambdify
+from sympy import Symbol, sympify, lambdify
 
 
-def formula_to_astnode(formula: str):
+def formula_to_astnode(formula: str) -> libsbml.ASTNode:
+    """Parses astnode from formula"""
     astnode = libsbml.parseL3Formula(formula)
     if not astnode:
         logging.error("Formula could not be parsed: '{}'".format(formula))
@@ -19,13 +18,12 @@ def formula_to_astnode(formula: str):
     return astnode
 
 
-def parse_formula(formula: str):
-    astnode = formula_to_astnode(formula)
-    return parse_astnode(astnode)
-
-
 def parse_mathml_str(mathml_str: str):
     astnode = libsbml.readMathMLFromString(mathml_str)  # type: libsbml.ASTNode
+    return parse_astnode(astnode)
+
+def parse_formula(formula: str):
+    astnode = formula_to_astnode(formula)
     return parse_astnode(astnode)
 
 
@@ -47,18 +45,17 @@ def parse_astnode(astnode: libsbml.ASTNode):
     formula = libsbml.formulaToL3String(astnode)
 
     # iterate over ASTNode and figure out variables
-    variables = _get_variables(astnode)
+    # variables = _get_variables(astnode)
 
     # create sympy expression
     expr = expr_from_formula(formula)
 
-    print(formula, expr, variables)
-    return expr, variables
+    # print(formula, expr)
+    return expr
 
 
 def expr_from_formula(formula: str):
     """Parses sympy expression from given formula string."""
-
 
     # [2] create sympy expressions with variables and formula
     # necessary to map the expression trees
@@ -82,15 +79,12 @@ def expr_from_formula(formula: str):
     return expr
 
 
-def evaluate(astnode, variables={}, array=False):
+def evaluate(astnode: libsbml.ASTNode, variables: Dict):
     """Evaluate the astnode with values """
-    expr, variables = parse_formula("x + y")
-    parse_astnode()
-    print(expr, type(expr))
+    expr = parse_astnode(astnode)
     f = lambdify(args=expr.free_symbols, expr=expr)
-    res = f(x=1, y=3)
-    print(res)
-
+    res = f(**variables)
+    return res
 
 
 def _get_variables(astnode: libsbml.ASTNode, variables=None) -> Set:
@@ -165,54 +159,8 @@ def replace_piecewise(formula):
 
 if __name__ == "__main__":
 
-    mathml_str = """
-           <math xmlns="http://www.w3.org/1998/Math/MathML">
-                <piecewise>
-                  <piece>
-                    <cn type="integer"> 8 </cn>
-                    <apply>
-                      <lt/>
-                      <ci> x </ci>
-                      <cn type="integer"> 4 </cn>
-                    </apply>
-                  </piece>
-                  <piece>
-                    <cn> 0.1 </cn>
-                    <apply>
-                      <and/>
-                      <apply>
-                        <leq/>
-                        <cn type="integer"> 5 </cn>
-                        <ci> x </ci>
-                      </apply>
-                      <apply>
-                        <lt/>
-                        <ci> x </ci>
-                        <cn type="integer"> 6 </cn>
-                      </apply>
-                    </apply>
-                  </piece>
-                  <otherwise>
-                    <cn type="integer"> 8 </cn>
-                  </otherwise>
-                </piecewise>
-              </math>
-    """
-    parse_mathml_str(mathml_str)
 
-    astnode = formula_to_astnode("x + y")
-    variables = _get_variables(astnode)
-    print(variables)
 
-    expr, variables = parse_formula("x + y")
-    print(expr, type(expr))
-    f = lambdify(args=expr.free_symbols, expr=expr)
-    res = f(x=1, y=3)
-    print(res)
-
-    print(f)
-
-    print(type(expr))
 
     # Piecewise in sympy
     # https://docs.sympy.org/latest/modules/functions/elementary.html#piecewise
