@@ -20,7 +20,8 @@ import itertools
 from copy import deepcopy
 
 from sbmlsim.result import Result
-from sbmlsim.timecourse import Timecourse, TimecourseSim, TimecourseScan
+from sbmlsim.timecourse import Timecourse, TimecourseSim
+from sbmlsim.scan import ParameterScan
 
 logger = logging.getLogger(__name__)
 
@@ -69,7 +70,7 @@ class SimulatorAbstract(object):
         """
         raise NotImplementedError("Use concrete implementation")
 
-    def scan(self, tcscan: TimecourseScan) -> Result:
+    def scan(self, tcscan: ParameterScan) -> Result:
         """ Timecourse simulations based on timecourse_definition.
 
         :param tcscan: Scan definition
@@ -116,7 +117,6 @@ class SimulatorWorker(object):
         :param simulation: Simulation definition(s)
         :return:
         """
-
         if isinstance(simulation, Timecourse):
             simulation = TimecourseSim(timecourses=[simulation])
             logger.warning("Default TimecourseSim created for Timecourse. Best practise is to"
@@ -141,7 +141,8 @@ class SimulatorWorker(object):
                 try:
                     self.r[key] = item.magnitude
                 except AttributeError as err:
-                    logger.error(f"Change is not a Quantity with unit: '{key} = {item}'")
+                    logger.error(f"Change is not a Quantity with unit: '{key} = {item}'. "
+                                 f"Add units to all changes.")
                     raise err
 
             # FIXME: implement model changes & also make run in parallel

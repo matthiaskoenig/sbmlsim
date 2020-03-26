@@ -1,7 +1,7 @@
 """
 Example simulation experiment.
 """
-
+import numpy as np
 from typing import Dict
 from pathlib import Path
 
@@ -11,6 +11,7 @@ from sbmlsim.experiment import SimulationExperiment
 from sbmlsim.models import AbstractModel, RoadrunnerSBMLModel
 from sbmlsim.data import Data, DataSet
 from sbmlsim.timecourse import AbstractSim, Timecourse, TimecourseSim
+from sbmlsim.scan import ParameterScan
 from sbmlsim.tasks import Task
 from sbmlsim.plotting import Figure, Axis
 
@@ -23,12 +24,9 @@ class RepressilatorExperiment(SimulationExperiment):
                                           ureg=self.ureg)
         }
 
-    def datasets(self) -> Dict[str, DataSet]:
-        return {}
-
     def tasks(self) -> Dict[str, Task]:
         return {
-            'task_tc': Task(model='model1', simulation='tc')
+            f'task_{key}': Task(model='model1', simulation=key) for key in self.simulations()
         }
 
     def simulations(self) -> Dict[str, AbstractSim]:
@@ -36,12 +34,44 @@ class RepressilatorExperiment(SimulationExperiment):
         Simulation time is in [s]
         :return:
         """
-        tcsim = TimecourseSim([
+        Q_ = self.Q_
+        unit_data = "dimensionless"
+        # simple timecourse
+        tc = TimecourseSim([
             Timecourse(start=0, end=600, steps=2000),
-            Timecourse(start=0, end=600, steps=2000, changes={"X": 10, "Y": 20}),
+            Timecourse(start=0, end=600, steps=2000,
+                       changes={"X": Q_(10, unit_data),
+                                "Y": Q_(20, unit_data)
+                                }),
         ])
+
+        scan1d = ParameterScan(
+            TimecourseSim([Timecourse(start=0, end=600, steps=2000)]),
+            scan={
+                'X': Q_(np.linspace(0, 10, num=11), unit_data),
+            }
+        )
+        scan2d = ParameterScan(
+            TimecourseSim([Timecourse(start=0, end=600, steps=2000)]),
+            scan={
+                'X': Q_(np.linspace(0, 10, num=11), unit_data),
+                'Y': Q_(np.linspace(0, 10, num=11), unit_data),
+            }
+        )
+        scan3d = ParameterScan(
+            TimecourseSim([Timecourse(start=0, end=600, steps=2000)]),
+            scan={
+                'X': Q_(np.linspace(0, 10, num=11), unit_data),
+                'Y': Q_(np.linspace(0, 10, num=11), unit_data),
+                'Z': Q_(np.linspace(0, 10, num=11), unit_data),
+            }
+        )
+
         return {
-            "tc": tcsim,
+            "tc": tc,
+            "scan1d": scan1d,
+            "scan2d": scan2d,
+            "scan3d": scan3d,
         }
 
     def datagenerators(self) -> None:

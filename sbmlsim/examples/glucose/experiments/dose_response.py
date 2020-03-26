@@ -9,7 +9,7 @@ from sbmlsim.experiment import SimulationExperiment
 from sbmlsim.data import DataSet, load_pkdb_dataframe
 from sbmlsim.tasks import Task
 from sbmlsim.models import AbstractModel, RoadrunnerSBMLModel
-from sbmlsim.timecourse import Timecourse, TimecourseSim, TimecourseScan
+from sbmlsim.timecourse import Timecourse, TimecourseSim, ParameterScan
 
 
 class DoseResponseExperiment(SimulationExperiment):
@@ -87,13 +87,13 @@ class DoseResponseExperiment(SimulationExperiment):
             "task_glc_scan": Task(model="model1", simulation="glc_scan")
         }
 
-    def simulations(self) -> Dict[str, TimecourseScan]:
+    def simulations(self) -> Dict[str, ParameterScan]:
         """Scanning dose-response curves of hormones and gamma function.
 
                 Vary external glucose concentrations (boundary condition).
                 """
-        glc_scan = TimecourseScan(
-            tcsim=TimecourseSim([
+        glc_scan = ParameterScan(
+            simulation=TimecourseSim([
                 Timecourse(start=0, end=1, steps=1, changes={})
             ]),
             scan={'[glc_ext]': self.Q_(np.linspace(2, 20, num=100), 'mM')},

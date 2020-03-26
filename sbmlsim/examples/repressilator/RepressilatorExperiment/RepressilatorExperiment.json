@@ -20,6 +20,18 @@
     "task_tc": {
       "model": "model1",
       "simulation": "tc"
+    },
+    "task_scan1d": {
+      "model": "model1",
+      "simulation": "scan1d"
+    },
+    "task_scan2d": {
+      "model": "model1",
+      "simulation": "scan2d"
+    },
+    "task_scan3d": {
+      "model": "model1",
+      "simulation": "scan3d"
     }
   },
   "simulations": {
@@ -59,6 +71,15 @@
           "model_changes": {}
         }
       ]
+    },
+    "scan1d": {
+      "type": "ParameterScan"
+    },
+    "scan2d": {
+      "type": "ParameterScan"
+    },
+    "scan3d": {
+      "type": "ParameterScan"
     }
   },
   "data": {

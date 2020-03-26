@@ -5,7 +5,7 @@ import pandas as pd
 
 from sbmlsim.experiment import SimulationExperiment
 from sbmlsim.data import DataSet
-from sbmlsim.timecourse import Timecourse, TimecourseSim, TimecourseScan
+from sbmlsim.timecourse import Timecourse, TimecourseSim, ParameterScan
 from sbmlsim.plotting_matplotlib import add_data, add_line, plt
 from sbmlsim.pkpd import pkpd
 
@@ -72,14 +72,14 @@ class DoseResponseExperiment(SimulationExperiment):
         return dsets
 
     @property
-    def scans(self) -> Dict[str, TimecourseScan]:
+    def scans(self) -> Dict[str, ParameterScan]:
         """Scanning dose-response curves of hormones and gamma function.
 
         Vary external glucose concentrations (boundary condition).
         """
         Q_ = self.ureg.Quantity
-        glc_scan = TimecourseScan(
-            tcsim=TimecourseSim([
+        glc_scan = ParameterScan(
+            simulation=TimecourseSim([
                 Timecourse(start=0, end=1, steps=1, changes={})
             ]),
             scan={'[glc_ext]': Q_(np.linspace(2, 20, num=100), 'mM')},

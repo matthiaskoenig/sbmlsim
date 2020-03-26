@@ -10,7 +10,8 @@ import pandas as pd
 from sbmlsim.utils import timeit, deprecated
 from sbmlsim.tasks import Task
 from sbmlsim.simulation_serial import SimulatorSerial
-from sbmlsim.timecourse import AbstractSim, TimecourseSim, TimecourseScan
+from sbmlsim.timecourse import AbstractSim, TimecourseSim
+from sbmlsim.scan import ParameterScan
 from sbmlsim.serialization import ObjectJSONEncoder
 from sbmlsim.result import Result
 from sbmlsim.data import Data, DataSet
@@ -211,7 +212,9 @@ class SimulationExperiment(object):
 
         # save outputs
         self.save_datasets(output_path)
-        self.save_results(output_path)
+
+        # This is not necessary and takes very long
+        # self.save_results(output_path)
         self.save_figures(output_path)
 
         # serialization
@@ -250,7 +253,7 @@ class SimulationExperiment(object):
             if isinstance(sim, TimecourseSim):
                 logger.info(f"Run timecourse task: '{task_key}'")
                 self._results[task_key] = simulator.timecourses(sim)
-            elif isinstance(sim, TimecourseScan):
+            elif isinstance(sim, ParameterScan):
                 logger.info(f"Run scan task: '{task_key}'")
                 self._results[task_key] = simulator.scan(sim)
             else:
@@ -258,6 +261,7 @@ class SimulationExperiment(object):
                                  f"{type(sim)}")
 
     # --- SERIALIZATION -------------------------------------------------------
+    @timeit
     def to_json(self, path=None, indent=2):
         """ Convert experiment to JSON for exchange.
 

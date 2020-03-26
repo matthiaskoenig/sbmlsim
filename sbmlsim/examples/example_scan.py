@@ -4,7 +4,7 @@ Example shows basic model simulations and plotting.
 import numpy as np
 
 from sbmlsim.parametrization import ChangeSet
-from sbmlsim.timecourse import Timecourse, TimecourseSim, TimecourseScan
+from sbmlsim.timecourse import Timecourse, TimecourseSim, ParameterScan
 from sbmlsim.simulation_ray import SimulatorParallel
 from sbmlsim.simulation_serial import SimulatorSerial
 from sbmlsim.result import Result
@@ -42,8 +42,8 @@ def run_parameter_scan(parallel=False):
     print("-" * 80)
     print("Parameter scan")
     print("-" * 80)
-    tcscan = TimecourseScan(
-        tcsim=TimecourseSim([
+    tcscan = ParameterScan(
+        simulation=TimecourseSim([
             Timecourse(start=0, end=100, steps=100, changes={}),
             Timecourse(start=0, end=60, steps=100, changes={'[X]': Q_(10, "dimensionless")}),
             Timecourse(start=0, end=60, steps=100, changes={'X': Q_(10, "dimensionless")}),

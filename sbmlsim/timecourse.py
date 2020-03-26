@@ -197,25 +197,6 @@ class TimecourseSim(AbstractSim):
         return "\n".join(lines)
 
 
-class TimecourseScan(AbstractSim):
-    """A parameter or initial condition scan over a TimecourseSim."""
-
-    def __init__(self, tcsim: TimecourseSim, scan: Dict[str, np.ndarray]):
-        """
-        Multiple parameters will result in a multi-dimensional scan
-
-        :param tcsim:
-        :param scan: dictionary of parameters or conditions to scan
-        """
-        self.tcsim = tcsim
-        self.scan = scan
-
-    def normalize(self, udict, ureg):
-        # normalize timecourse sim
-        self.tcsim.normalize(udict=udict, ureg=ureg)
-        # normalize scan parameters
-        logger.warning("scan parameters not normalized")
-        # FIXME: implement
 
 
 def ensemble(sim: TimecourseSim, changeset: ChangeSet) -> List[TimecourseSim]:
