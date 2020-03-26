@@ -10,7 +10,6 @@ Also what is the exact time point the change should be applied.
     - initial changes (applied to the complete simulation)
     - timed changes (applied during the timecourse, start times and end times)
 """
-
 import logging
 from typing import List
 
@@ -19,6 +18,7 @@ import roadrunner
 import itertools
 from copy import deepcopy
 
+from sbmlsim.utils import timeit
 from sbmlsim.result import Result
 from sbmlsim.timecourse import Timecourse, TimecourseSim
 from sbmlsim.scan import ParameterScan
@@ -70,6 +70,7 @@ class SimulatorAbstract(object):
         """
         raise NotImplementedError("Use concrete implementation")
 
+    @timeit
     def scan(self, tcscan: ParameterScan) -> Result:
         """ Timecourse simulations based on timecourse_definition.
 
