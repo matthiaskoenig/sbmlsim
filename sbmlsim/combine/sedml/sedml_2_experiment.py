@@ -1,112 +1,112 @@
 # -*- coding: utf-8 -*-
 """
-Converting SED-ML to a simulation experiment.
-Reading SED-ML file and encoding as simulation experiment.
+SED-ML support for sbmlsim
+==========================
 
-This module implements SED-ML support for sbmlsim.
+This modules parses SED-ML based simulation experiments in the sbmlsim
+SimulationExperiment format and executes them.
 
-----------------
 Overview SED-ML
 ----------------
-SED-ML is build of main classes
-    the Model Class,
-    the Simulation Class,
-    the Task Class,
-    the DataGenerator Class,
-    and the Output Class.
+SED-ML is build of the main classes
+- DataDescription
+- Model
+- Simulation
+- Task
+- DataGenerator
+- Output
 
-The Model Class
-    The Model class is used to reference the models used in the simulation experiment.
-    SED-ML itself is independent of the model encoding underlying the models. The only
-    requirement is that the model needs to be referenced by using an unambiguous identifier
-    which allows for finding it, for example using a MIRIAM URI. To specify the language in
-    which the model is encoded, a set of predefined language URNs is provided.
-    The SED-ML Change class allows the application of changes to the referenced models,
-    including changes on the XML attributes, e.g. changing the value of an observable,
-    computing the change of a value using mathematics, or general changes on any XML element
-    of the model representation that is addressable by XPath expressions, e.g. substituting
-    a piece of XML by an updated one.
+DataDescription
+---------------
+The DataDescription allows to reference external data, and contains a
+description on how to access the data, in what format it is, and what subset
+of data to extract.
 
-TODO: DATA CLASS
+Model
+-----
+The Model class is used to reference the models used in the simulation
+experiment. SED-ML itself is independent of the model encoding underlying the
+models. The only requirement is that the model needs to be referenced by
+using an unambiguous identifier which allows for finding it, for example
+using a MIRIAM URI. To specify the language in which the model is encoded,
+a set of predefined language URNs is provided. The SED-ML Change class allows
+the application of changes to the referenced models, including changes on the
+XML attributes, e.g. changing the value of an observable, computing the change
+of a value using mathematics, or general changes on any XML element
+of the model representation that is addressable by XPath expressions,
+e.g. substituting a piece of XML by an updated one.
 
+Simulation
+----------
+The Simulation class defines the simulation settings and the steps taken
+during simulation. These include the particular type of simulation and the
+algorithm used for the execution of the simulation; preferably an unambiguous
+reference to such an algorithm should be given, using a controlled vocabulary,
+or ontologies. One example for an ontology of simulation algorithms is the
+Kinetic Simulation Algorithm Ontology KiSAO. Further information encodable
+in the Simulation class includes the step size, simulation duration, and other
+simulation-type dependent information.
 
-The Simulation Class
-    The Simulation class defines the simulation settings and the steps taken during simulation.
-    These include the particular type of simulation and the algorithm used for the execution of
-    the simulation; preferably an unambiguous reference to such an algorithm should be given,
-    using a controlled vocabulary, or ontologies. One example for an ontology of simulation
-    algorithms is the Kinetic Simulation Algorithm Ontology KiSAO. Further information encodable
-    in the Simulation class includes the step size, simulation duration, and other
-    simulation-type dependent information.
+Task
+----
+SED-ML makes use of the notion of a Task class to combine a defined model
+(from the Model class) and a defined simulation setting
+(from the Simulation class). A task always holds one reference each.
+To refer to a specific model and to a specific simulation, the corresponding
+IDs are used.
 
-The Task Class
-    SED-ML makes use of the notion of a Task class to combine a defined model (from the Model class)
-    and a defined simulation setting (from the Simulation class). A task always holds one reference each.
-    To refer to a specific model and to a specific simulation, the corresponding IDs are used.
+DataGenerator
+-------------
+The raw simulation result sometimes does not correspond to the desired output
+of the simulation, e.g. one might want to normalise a plot before output,
+or apply post-processing like mean-value calculation.
+The DataGenerator class allows for the encoding of such post-processings
+which need to be applied to the simulation result before output.
+To define data generators, any addressable variable or parameter of any
+defined model (from instances of the Model class) may be referenced,
+and new entities might be specified using MathML definitions.
 
-The DataGenerator Class
-    The raw simulation result sometimes does not correspond to the desired output of the simulation,
-    e.g. one might want to normalise a plot before output, or apply post-processing like mean-value calculation.
-    The DataGenerator class allows for the encoding of such post-processings which need to be applied to the
-    simulation result before output. To define data generators, any addressable variable or parameter
-    of any defined model (from instances of the Model class) may be referenced, and new entities might
-    be specified using MathML definitions.
-
-The Output Class
-    The Output class defines the output of the simulation, in the sense that it specifies what shall be
-    plotted in the output. To do so, an output type is defined, e.g. 2D-plot, 3D-plot or data table,
-    and the according axes or columns are all assigned to one of the formerly specified instances
-    of the DataGenerator class.
+Output
+-------
+The Output class defines the output of the simulation, in the sense that it
+specifies what shall be plotted in the output. To do so, an output type is
+defined, e.g. 2D-plot, 3D-plot or data table, and the according axes or
+columns are all assigned to one of the formerly specified instances of the
+DataGenerator class.
 
 For information about SED-ML please refer to http://www.sed-ml.org/
 and the SED-ML specification.
 
-------------------------------------
-SED-ML in tellurium: Implementation
-------------------------------------
-SED-ML support in tellurium is based on Combine Archives.
-The SED-ML files in the Archive can be executed and stored with results.
-
-----------------------------------------
-SED-ML in tellurium: Supported Features
-----------------------------------------
-Tellurium supports SED-ML L1V3 with SBML as model format.
-
-SBML models are fully supported, whereas for CellML models only basic support
-is implemented (when additional support is requested it be implemented).
-CellML models are transformed to SBML models which results in different XPath expressions,
-so that targets, selections cannot be easily resolved in the CellMl-SBML.
+SED-ML in sbmlsim: Supported Features
+=====================================
+sbmlsim supports SED-ML L1V4 with SBML as model format.
+SBML models are fully supported
 
 Supported input for SED-ML are either SED-ML files ('.sedml' extension),
 SED-ML XML strings or combine archives ('.sedx'|'.omex' extension).
-Executable python code is generated from the SED-ML which allows the
-execution of the defined simulation experiment.
 
 In the current implementation all SED-ML constructs with exception of
-XML transformation changes of the model
-    - Change.RemoveXML
-    - Change.AddXML
-    - Change.ChangeXML
+XML transformation changes of the model, i.e.,
+- Change.RemoveXML
+- Change.AddXML
+- Change.ChangeXML
 are supported.
-
 """
-
 import re
 import logging
 import warnings
 import numpy as np
+from typing import Dict, List
 from collections import namedtuple
 from pathlib import Path
-
 import libsedml
 import importlib
-importlib.reload(libsedml)
 
 from sbmlsim.models import model_resources
 from sbmlsim.combine.sedml.data import DataDescriptionParser
 from sbmlsim.combine.sedml.utils import SEDMLTools
 from sbmlsim.models.model import AbstractModel
-from sbmlsim.oven.mathml import evaluableMathML
+
 
 logger = logging.getLogger(__file__)
 '''
@@ -131,7 +131,7 @@ def experiment_from_omex(omex_path: Path):
 
 
 class SEDMLParser(object):
-    """ Code Factory generating executable code."""
+    """ Parsing SED-ML in internal format."""
 
     def __init__(self, doc: libsedml.SedDocument, working_dir: Path):
         self.doc = doc
