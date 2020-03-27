@@ -5,7 +5,7 @@ from typing import Dict
 import pandas as pd
 import numpy as np
 from pint import Quantity, UnitRegistry
-from sbmlsim.processing import mathml
+from sbmlsim.combine import mathml
 from sbmlsim.result import Result
 
 logger = logging.getLogger(__name__)

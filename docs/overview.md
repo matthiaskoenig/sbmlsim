@@ -1,4 +1,4 @@
-# Introduction
+# Overview
 
 **Mission**: make SBML simulations great again
 
@@ -15,8 +15,9 @@ simulations with SBML models in python.
 - parameter scans
 - parameter sensitivity analysis
 
-A simplified exchange language based on JSON is part of `sbmlsim` 
-
+**Reproducibility**
+- A simplified exchange language based on JSON is part of `sbmlsim`
+- COMBINE standards are used whereever possible. 
 
 **Visualization**
 - interactive plots (altair)
@@ -25,7 +26,8 @@ A simplified exchange language based on JSON is part of `sbmlsim`
 -  simple parallelization of multiple simulation, collection of results
 
 **Parameter fitting**
-- helpers for using model + data to run simulations on a cluster
+- helpers for running parameter fitting experiments
 
 **Unit support**
+- full support for units on model simulations
 

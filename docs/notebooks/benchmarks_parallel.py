@@ -1,3 +1,7 @@
+"""
+Scripts for benchmarking
+"""
+
 from sbmlsim.examples.example_parallel import example_parallel_timecourse
 
 if __name__ == "__main__":
