@@ -9,7 +9,8 @@ from sbmlsim.experiment import SimulationExperiment
 from sbmlsim.data import DataSet, load_pkdb_dataframe
 from sbmlsim.tasks import Task
 from sbmlsim.models import AbstractModel, RoadrunnerSBMLModel
-from sbmlsim.timecourse import Timecourse, TimecourseSim, ParameterScan
+from sbmlsim.timecourse import Timecourse, TimecourseSim
+from sbmlsim.scan import ParameterScan
 
 
 class DoseResponseExperiment(SimulationExperiment):

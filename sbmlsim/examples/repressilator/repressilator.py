@@ -61,9 +61,9 @@ class RepressilatorExperiment(SimulationExperiment):
         scan3d = ParameterScan(
             TimecourseSim([Timecourse(start=0, end=600, steps=2000)]),
             scan={
-                'X': Q_(np.linspace(0, 10, num=11), unit_data),
-                'Y': Q_(np.linspace(0, 10, num=11), unit_data),
-                'Z': Q_(np.linspace(0, 10, num=11), unit_data),
+                'X': Q_(np.linspace(0, 10, num=5), unit_data),
+                'Y': Q_(np.linspace(0, 10, num=5), unit_data),
+                'Z': Q_(np.linspace(0, 10, num=5), unit_data),
             }
         )
 
@@ -131,7 +131,7 @@ class RepressilatorExperiment(SimulationExperiment):
         )
 
         fig2 = Figure(experiment=self,
-                     sid="Fig2", num_cols=1, num_rows=1)
+                     sid="Fig2", num_rows=2, num_cols=1)
         plots = fig2.create_plots(
             xaxis=Axis("data", unit=unit_data),
             yaxis=Axis("data", unit=unit_data),
@@ -140,6 +140,17 @@ class RepressilatorExperiment(SimulationExperiment):
         plots[0].curve(x=self._data['f1'], y=self._data['f2'],
             label="f2 ~ f1", color="black", marker="o", alpha=0.3
         )
+        plots[1].curve(
+            x=self._data['f1'], y=self._data['f2'],
+            label="f2 ~ f1", color="black", marker="o", alpha=0.3
+        )
+
+        plots[0].xaxis.min = -1.0
+        plots[0].xaxis.max = 2.0
+        plots[0].xaxis.grid = True
+
+        plots[1].xaxis.scale = "log"
+        plots[1].yaxis.scale = "log"
 
         return {
             fig1.sid: fig1,

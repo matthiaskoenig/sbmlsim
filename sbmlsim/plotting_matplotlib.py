@@ -3,7 +3,7 @@ from sbmlsim.result import Result
 from sbmlsim.data import DataSet
 
 import pandas as pd
-from sbmlsim.plotting import Figure, SubPlot, Plot, Curve
+from sbmlsim.plotting import Figure, SubPlot, Plot, Curve, Axis
 
 import logging
 logger = logging.getLogger(__name__)
@@ -29,12 +29,20 @@ from matplotlib.pyplot import GridSpec
 
 def to_figure(figure: Figure):
     """Convert sbmlsim.Figure to matplotlib figure."""
-    fig = plt.figure(figsize=(figure.width, figure.height))
+    fig = plt.figure(figsize=(figure.width, figure.height))  # type: plt.Figure
     # FIXME: check that the settings are applied
     fig.subplots_adjust(wspace=0.3, hspace=0.3)
 
     gs = GridSpec(figure.num_rows, figure.num_cols, figure=fig)
     # TODO: subplots adjust
+
+    def get_scale(axis):
+        if axis.scale == Axis.AxisScale.LINEAR:
+            return "linear"
+        elif axis.scale == Axis.AxisScale.LOG10:
+            return "log"
+        else:
+            raise ValueError(f"Unsupported axis scale: '{axis.scale}'")
 
     for subplot in figure.subplots:  # type: SubPlot
 
@@ -42,17 +50,45 @@ def to_figure(figure: Figure):
         cidx = subplot.col - 1
         ax = fig.add_subplot(
             gs[ridx:ridx+subplot.row_span, cidx:cidx+subplot.col_span]
-        )
+        )  # type: plt.Axes
         # axes labels and legends
         plot = subplot.plot
         if plot.name:
             ax.set_title(plot.name)
+        xgrid = False
         if plot.xaxis:
-            if plot.xaxis.name:
-                ax.set_xlabel(f"{plot.xaxis.name} [{plot.xaxis.unit}]")
+            xax = plot.xaxis  # type: Axis
+            ax.set_xscale(get_scale(xax))
+            if xax.name:
+                ax.set_xlabel(f"{xax.name} [{xax.unit}]")
+            if xax.min:
+                ax.set_xlim(left=xax.min)
+            if xax.max:
+                ax.set_xlim(right=xax.max)
+            if xax.grid:
+                xgrid = True
+
+        ygrid = False
         if plot.yaxis:
-            if plot.yaxis.name:
-                ax.set_ylabel(f"{plot.yaxis.name} [{plot.yaxis.unit}]")
+            yax = plot.yaxis  # type: Axis
+            ax.set_yscale(get_scale(yax))
+            if yax.name:
+                ax.set_ylabel(f"{yax.name} [{yax.unit}]")
+            if yax.min:
+                ax.set_ylim(bottom=yax.min)
+            if yax.max:
+                ax.set_ylim(top=xax.max)
+            if yax.grid:
+                ygrid = True
+
+        if xgrid and ygrid:
+            ax.grid(True, axis="both")
+        elif xgrid:
+            ax.grid(True, axis="x")
+        elif ygrid:
+            ax.grid(True, axis="y")
+        else:
+            ax.grid(False)
 
         for curve in plot.curves:
             # TODO: sort by order

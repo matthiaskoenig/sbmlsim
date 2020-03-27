@@ -6,6 +6,7 @@ import logging
 import pandas as pd
 from dataclasses import dataclass
 from enum import Enum
+from copy import deepcopy
 
 from sbmlsim.result import Result
 from sbmlsim.data import DataSet, Data
@@ -187,11 +188,45 @@ class Style(Base):
 
 
 class Axis(Base):
-    def __init__(self, name: str = None, unit: str = None):
+
+    class AxisScale(Enum):
+        LINEAR = 1
+        LOG10 = 2
+
+    def __init__(self, name: str = None, unit: str = None,
+                 scale: AxisScale = AxisScale.LINEAR,
+                 min: float = None, max: float = None, grid: bool = False):
+        """ Axis object.
+
+        :param name:
+        :param unit:
+        :param scale: Scale of the axis, i.e. "linear" or "log" axis.
+        :param min: lower axis bound
+        :param max: upper axis bound
+        """
         super(Axis, self).__init__(None, name)
         if unit is None:
             unit = "?"
         self.unit = unit
+        self.scale = scale
+        self.min = min
+        self.max = max
+        self.grid = grid
+
+    @property
+    def scale(self):
+        return self._scale
+
+    @scale.setter
+    def scale(self, scale: AxisScale):
+        if isinstance(scale, str):
+            if scale == "linear":
+                scale = self.AxisScale.LINEAR
+            elif scale in {"log", "log10"}:
+                scale = self.AxisScale.LOG10
+            else:
+                ValueError(f"Unsupported axis scale: '{scale}'")
+        self._scale = scale
 
     @property
     def label(self):
@@ -456,9 +491,14 @@ class Figure(Base):
     def create_plots(self, xaxis: Axis=None,
                      yaxis: Axis=None, legend: bool=True) -> List[Plot]:
         """Template function for creating plots"""
-        plots = [
-            Plot(sid=f"plot{k}", xaxis=xaxis, yaxis=yaxis, legend=legend) for k in range(self.num_panels())
-        ]
+        plots = []
+        for k in range(self.num_panels()):
+            # create independent axis objects
+            xax = deepcopy(xaxis) if xaxis else None
+            yax = deepcopy(yaxis) if yaxis else None
+            # create plot
+            p = Plot(sid=f"plot{k}", xaxis=xax, yaxis=yax, legend=legend)
+            plots.append(p)
         self.add_plots(plots)
         return plots
 
