@@ -40,4 +40,3 @@ def function_name():
     """Returns current function name"""
     frame = inspect.currentframe()
     return inspect.getframeinfo(frame).function
-

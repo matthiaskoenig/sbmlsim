@@ -1,18 +1,13 @@
 """
-Managing units and units conversions in models.
-
-FIXME: have a look at uncertainties
-https://pythonhosted.org/uncertainties/
+Manages units and units conversions in models.
 """
 from typing import Dict, List
 from pathlib import Path
-import pint
+
 import logging
 import libsbml
-from sbmlsim.tests.constants import MODEL_REPRESSILATOR, MODEL_GLCWB
-from pprint import pprint
+import pint
 from pint.errors import UndefinedUnitError
-
 from pint import Quantity, UnitRegistry
 
 import warnings
@@ -41,8 +36,8 @@ class Units(object):
         ureg.define('none = count')
         ureg.define('item = count')
         ureg.define('percent = 0.01*count')
-        ureg.define('IU = 0.0347 * mg')  # IU for insulin ! (FIXME better handling of general IU)
-        ureg.define('IU/ml = 0.0347 * mg/ml')  # IU for insulin ! (FIXME better handling of general IU)
+        ureg.define('IU = 0.0347 * mg')  # IU for insulin ! FIXME better handling of general IU
+        ureg.define('IU/ml = 0.0347 * mg/ml')  # IU for insulin ! FIXME better handling of general IU
         return ureg
 
     @classmethod
@@ -162,7 +157,6 @@ class Units(object):
 
         return udict, ureg
 
-
     @classmethod
     def unitDefinitionToString(cls, udef: libsbml.UnitDefinition) -> str:
         """ Formating of units.
@@ -228,33 +222,3 @@ class Units(object):
     def _isclose(a, b, rel_tol=1e-09, abs_tol=0.0):
         """ Calculate the two floats are identical. """
         return abs(a - b) <= max(rel_tol * max(abs(a), abs(b)), abs_tol)
-
-
-if __name__ == "__main__":
-    ureg = pint.UnitRegistry()
-
-    udict, ureg = Units.get_units_from_sbml(MODEL_GLCWB)
-    from pprint import pprint
-    # pprint(udict)
-    # print(ureg["mmole_per_min"])
-
-    q1 = 1 * ureg("mole/s")
-    print(q1)
-    print(q1.to("mmole_per_min"))
-
-    print('-' * 80)
-
-    q2 = ureg("(mole)/(60000.0*s)")
-    print(q2)
-    print(q2.to("mmole_per_min"))
-
-
-
-
-
-
-
-
-
-
-

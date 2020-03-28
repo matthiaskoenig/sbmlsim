@@ -2,12 +2,12 @@
 Running typical simulation experiments with PK/PB models.
 """
 from sbmlsim.models.model import load_model
-from sbmlsim.timecourse import TimecourseSim, Timecourse, ensemble
-from sbmlsim.simulation_ray import SimulatorParallel as Simulator
+from sbmlsim.simulation.timecourse import TimecourseSim, Timecourse, ensemble
+from sbmlsim.simulator.simulation_ray import SimulatorParallel as Simulator
 from sbmlsim.parametrization import ChangeSet
 
 from sbmlsim.pkpd import pkpd
-from sbmlsim.plotting_matplotlib import plt, add_line
+from sbmlsim.plotting.plotting_matplotlib import plt, add_line
 from sbmlsim.tests.constants import MODEL_GLCWB
 
 

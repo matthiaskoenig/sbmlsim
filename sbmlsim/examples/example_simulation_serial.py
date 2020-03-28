@@ -1,9 +1,7 @@
 from sbmlsim.tests.constants import MODEL_REPRESSILATOR
-from sbmlsim.models import RoadrunnerSBMLModel
 
-from sbmlsim.simulation_serial import SimulatorSerial
-from sbmlsim.result import Result
-from sbmlsim.timecourse import Timecourse, TimecourseSim
+from sbmlsim.simulator.simulation_serial import SimulatorSerial
+from sbmlsim.simulation.timecourse import Timecourse, TimecourseSim
 
 from matplotlib import pyplot as plt
 

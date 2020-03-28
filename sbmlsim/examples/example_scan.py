@@ -4,10 +4,10 @@ Example shows basic model simulations and plotting.
 import numpy as np
 
 from sbmlsim.parametrization import ChangeSet
-from sbmlsim.timecourse import Timecourse, TimecourseSim
-from sbmlsim.scan import ParameterScan
-from sbmlsim.simulation_ray import SimulatorParallel
-from sbmlsim.simulation_serial import SimulatorSerial
+from sbmlsim.simulation.timecourse import Timecourse, TimecourseSim
+from sbmlsim.simulation.scan import ParameterScan
+from sbmlsim.simulator.simulation_ray import SimulatorParallel
+from sbmlsim.simulator.simulation_serial import SimulatorSerial
 from sbmlsim.result import Result
 from sbmlsim.tests.constants import MODEL_REPRESSILATOR
 from sbmlsim.units import Units

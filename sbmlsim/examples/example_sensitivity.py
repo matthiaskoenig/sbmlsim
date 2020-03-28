@@ -1,11 +1,11 @@
 """
 Example shows basic model simulations and plotting.
 """
-from sbmlsim.simulation_serial import SimulatorSerial as Simulator
-from sbmlsim.timecourse import TimecourseSim, Timecourse, ensemble
+from sbmlsim.simulator.simulation_serial import SimulatorSerial as Simulator
+from sbmlsim.simulation.timecourse import TimecourseSim, Timecourse, ensemble
 from sbmlsim.parametrization import ChangeSet
 
-from sbmlsim.plotting_matplotlib import add_line, plt
+from sbmlsim.plotting.plotting_matplotlib import add_line, plt
 from sbmlsim.tests.constants import MODEL_REPRESSILATOR
 
 

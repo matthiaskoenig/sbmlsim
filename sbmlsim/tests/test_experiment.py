@@ -1,6 +1,4 @@
-import pytest
-
-from sbmlsim.examples.repressilator import repressilator
+from sbmlsim.examples.experiments.repressilator import repressilator
 
 
 def test_repressilator_experiment(tmp_path):

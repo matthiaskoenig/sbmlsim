@@ -4,11 +4,11 @@ Example for handling units in simulations and results.
 from matplotlib import pyplot as plt
 
 # from sbmlsim.simulation_ray import SimulatorParallel as Simulator
-from sbmlsim.simulation_serial import SimulatorSerial as Simulator
+from sbmlsim.simulator.simulation_serial import SimulatorSerial as Simulator
 
-from sbmlsim.timecourse import Timecourse, TimecourseSim
+from sbmlsim.simulation.timecourse import Timecourse, TimecourseSim
 from sbmlsim.tests.constants import MODEL_DEMO
-from sbmlsim.plotting_matplotlib import add_line
+from sbmlsim.plotting.plotting_matplotlib import add_line
 
 from pprint import pprint
 

@@ -1,4 +1,4 @@
-from sbmlsim.timecourse import Timecourse, TimecourseSim
+from sbmlsim.simulation.timecourse import Timecourse, TimecourseSim
 
 
 def test_json():

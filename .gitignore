@@ -18,4 +18,4 @@ __pycache__
 docs/_build/
 
 
-sbmlsim/examples/repressilator/RepressilatorExperiment/RepressilatorExperiment_task_tc.h5
+sbmlsim/examples/experiments/repressilator/RepressilatorExperiment/RepressilatorExperiment_task_tc.h5

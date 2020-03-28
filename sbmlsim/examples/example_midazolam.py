@@ -1,13 +1,12 @@
 """
 Example showing basic timecourse simulations and plotting.
 """
-import os
 from matplotlib import pyplot as plt
 
-from sbmlsim.simulation_serial import SimulatorSerial as Simulator
-from sbmlsim.timecourse import Timecourse, TimecourseSim, ensemble
+from sbmlsim.simulator.simulation_serial import SimulatorSerial as Simulator
+from sbmlsim.simulation.timecourse import Timecourse, TimecourseSim
 from sbmlsim.tests.constants import MODEL_MIDAZOLAM, MODEL_MIDAZOLAM_BODY
-from sbmlsim.plotting_matplotlib import add_line
+from sbmlsim.plotting.plotting_matplotlib import add_line
 
 
 def run_timecourse_liver():

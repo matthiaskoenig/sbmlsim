@@ -4,9 +4,9 @@ Example showing basic timecourse simulations and plotting.
 from matplotlib import pyplot as plt
 
 # from sbmlsim.simulation_ray import SimulatorParallel as Simulator
-from sbmlsim.simulation_serial import SimulatorSerial as Simulator
+from sbmlsim.simulator.simulation_serial import SimulatorSerial as Simulator
 
-from sbmlsim.timecourse import Timecourse, TimecourseSim
+from sbmlsim.simulation.timecourse import Timecourse, TimecourseSim
 from sbmlsim.tests.constants import MODEL_REPRESSILATOR
 
 

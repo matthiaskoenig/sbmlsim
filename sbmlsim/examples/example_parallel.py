@@ -5,9 +5,9 @@ import time
 import ray
 
 from sbmlsim.models import RoadrunnerSBMLModel
-from sbmlsim.timecourse import TimecourseSim, Timecourse
-from sbmlsim.simulation_ray import SimulatorParallel, SimulatorActor
-from sbmlsim.simulation_serial import SimulatorSerial
+from sbmlsim.simulation.timecourse import TimecourseSim, Timecourse
+from sbmlsim.simulator.simulation_ray import SimulatorParallel, SimulatorActor
+from sbmlsim.simulator.simulation_serial import SimulatorSerial
 
 from sbmlsim.tests.constants import MODEL_REPRESSILATOR, MODEL_GLCWB
 

@@ -1,6 +1,4 @@
-import pytest
-
-from sbmlsim.report import create_report
+from sbmlsim.experiment.report import create_report
 
 
 def test_glucose_report(tmp_path):
@@ -9,8 +7,8 @@ def test_glucose_report(tmp_path):
     :param tmp_path:
     :return:
     """
-    from sbmlsim.examples.glucose.experiments.dose_response import DoseResponseExperiment
-    from sbmlsim.examples.glucose import BASE_PATH, DATA_PATH
+    from sbmlsim.examples.experiments.glucose import DoseResponseExperiment
+    from sbmlsim.examples.experiments.glucose import BASE_PATH, DATA_PATH
 
     results = []
     exp = DoseResponseExperiment(

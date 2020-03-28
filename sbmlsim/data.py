@@ -10,6 +10,7 @@ from sbmlsim.result import Result
 
 logger = logging.getLogger(__name__)
 
+
 class Data(object):
     """Main data generator class which uses data either from
     experimental data, simulations or via function calculations.
@@ -148,8 +149,6 @@ class DataFunction(object):
         self.index = index
         self.formula = formula
         self.variables = variables
-
-
 
 
 class DataSeries(pd.Series):

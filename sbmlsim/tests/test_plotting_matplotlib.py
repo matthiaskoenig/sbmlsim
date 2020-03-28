@@ -2,10 +2,10 @@
 Testing plotting functionality.
 """
 from matplotlib import pyplot as plt
-from sbmlsim.plotting_matplotlib import add_line
+from sbmlsim.plotting.plotting_matplotlib import add_line
 
-from sbmlsim.simulation_serial import SimulatorSerial as Simulator
-from sbmlsim.timecourse import Timecourse, TimecourseSim, ensemble
+from sbmlsim.simulator.simulation_serial import SimulatorSerial as Simulator
+from sbmlsim.simulation.timecourse import Timecourse, TimecourseSim, ensemble
 from sbmlsim.parametrization import ChangeSet
 from sbmlsim.tests.constants import MODEL_REPRESSILATOR
 

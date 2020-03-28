@@ -1,8 +1,8 @@
 from matplotlib import pyplot as plt
 
-from sbmlsim import plotting_matplotlib as plotting
-from sbmlsim.timecourse import TimecourseSim, Timecourse
-from sbmlsim.simulation_serial import SimulatorSerial as Simulator
+from sbmlsim.plotting import plotting_matplotlib as plotting
+from sbmlsim.simulation.timecourse import TimecourseSim, Timecourse
+from sbmlsim.simulator.simulation_serial import SimulatorSerial as Simulator
 # from sbmlsim.simulation_ray import SimulatorParallel as Simulator
 from sbmlsim.result import Result
 from sbmlsim.tests.constants import MODEL_REPRESSILATOR

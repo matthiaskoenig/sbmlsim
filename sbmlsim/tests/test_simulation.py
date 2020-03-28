@@ -1,7 +1,7 @@
 import pandas as pd
 
-from sbmlsim.simulation_serial import SimulatorSerial as Simulator
-from sbmlsim.timecourse import Timecourse, TimecourseSim, ensemble
+from sbmlsim.simulator.simulation_serial import SimulatorSerial as Simulator
+from sbmlsim.simulation.timecourse import Timecourse, TimecourseSim, ensemble
 from sbmlsim.tests.constants import MODEL_REPRESSILATOR
 from sbmlsim.result import Result
 
