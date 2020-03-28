@@ -45,6 +45,9 @@ class AbstractModel(object):
         URN = 2
         URL = 3
 
+    def __repr__(self):
+        return f"{self.language_type.name}({self.source.source}, changes={len(self.changes)})"
+
     def __init__(self, source: str,
                  sid: str = None, name: str = None,
                  language: str = None,
@@ -129,20 +132,22 @@ class AbstractModel(object):
         """Loads the model from the current information."""
         return None
 
-    def apply_change(cls, model, target, value):
+    def apply_change(self, target, value):
         """Applies change to model"""
+        if target.startswith("/"):
+            # xpath expression
+            target = AbstractModel._resolve_xpath(self._model, target)
 
 
     def apply_model_changes(self, changes):
         """Applies dictionary of model changes."""
-        # FIXME: this must be an OrderedDict
-        for key, value in self.changes:
-            AbstractModel.apply_change(self._model, change)
+        # FIXME: this must be an OrderedDict, changes must be applied in order
+        for key, value in self.changes.items():
+            AbstractModel.apply_change(target=key, value=value)
 
-    # Necessary to resolve xpaths in changes
 
     @staticmethod
-    def _resolve_xpath(xpath: str):
+    def _target_from_xpath(model: 'AbstractModel', xpath: str):
         """ Resolve the target from the xpath expression.
 
         A single target in the model corresponding to the modelId is resolved.
@@ -186,3 +191,29 @@ class AbstractModel(object):
         # cannot be parsed
         else:
             raise ValueError("Unsupported target in xpath: {}".format(xpath))
+
+    @staticmethod
+    def set_xpath_value(xpath: str, value: float, model):
+        """ Creates python line for given xpath target and value.
+        :param xpath:
+        :type xpath:
+        :param value:
+        :type value:
+        :return:
+        :rtype:
+        """
+        target = SEDMLParser._resolve_xpath(xpath)
+        if target:
+            if target.type == "concentration":
+                # initial concentration
+                expr = f'init([{target.id}])'
+            elif target.type == "amount":
+                # initial amount
+                expr = f'init({target.id})'
+            else:
+                # other (parameter, flux, ...)
+                expr = target.id
+            print(f"{expr} = {value}")
+            model[expr] = value
+        else:
+            logger.error(f"Unsupported target xpath: {xpath}")

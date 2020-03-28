@@ -101,6 +101,7 @@ from collections import namedtuple
 from pathlib import Path
 import libsedml
 import importlib
+from collections import OrderedDict
 
 from sbmlsim.models import model_resources
 from sbmlsim.combine.sedml.data import DataDescriptionParser
@@ -172,10 +173,10 @@ class SEDMLParser(object):
         :param sed_model:
         :return:
         """
-        # TODO: resolve changes
-        changes = []
+        changes = OrderedDict()
         for sed_change in sed_changes:
-            self.parse_change(model, sed_change)
+            d = self.parse_change(sed_change)
+            changes.update(d)
 
         mid = sed_model.getId()
         model = AbstractModel(
@@ -184,11 +185,10 @@ class SEDMLParser(object):
             name=sed_model.getName(),
             language=sed_model.getLanguage(),
             base_path=self.working_dir,
-            changes=None,
+            changes=changes,
             selections=None,
             ureg=self.ureg
         )
-
 
         return model
 
@@ -263,14 +263,16 @@ class SEDMLParser(object):
         xpath = sed_change.getTarget()
 
         if sed_change.getTypeCode() == libsedml.SEDML_CHANGE_ATTRIBUTE:
-            # resolve target change
+            # simple change which can be directly set in model
             value = float(sed_change.getNewValue())
-
-            SEDMLParser.set_xpath_value(xpath, value, model=model)
-
+            return {xpath: value}
 
         elif sed_change.getTypeCode() == libsedml.SEDML_CHANGE_COMPUTECHANGE:
-            # calculate the value
+            # change based on a model calculation (with optional parameters)
+
+            logger.error("ComputeChange not implemented correctly")
+            '''
+            # TODO: general calculation on model with amounts and concentrations
             variables = {}
             for par in sed_change.getListOfParameters():  # type: libsedml.SedParameter
                 variables[par.getId()] = par.getValue()
@@ -287,46 +289,16 @@ class SEDMLParser(object):
 
             # value is calculated with the current state of model
             value = evaluableMathML(sed_change.getMath(), variables=variables)
-            SEDMLParser.set_xpath_value(xpath, value, model=model)
+            '''
+            value = -1.0
+            return {xpath: value}
 
-        elif sed_change.getTypeCode() in [libsedml.SEDML_CHANGE_REMOVEXML,
-                                          libsedml.SEDML_CHANGE_ADDXML,
-                                          libsedml.SEDML_CHANGE_CHANGEXML]:
+        else:
             logger.error(f"Unsupported change: {sed_change.getElementName()}")
-        else:
-            logger.error(f"Unknown change: {sed_change.getElementName()}")
-
-
-    @staticmethod
-    def set_xpath_value(xpath: str, value: float, model):
-        """ Creates python line for given xpath target and value.
-        :param xpath:
-        :type xpath:
-        :param value:
-        :type value:
-        :return:
-        :rtype:
-        """
-        target = SEDMLParser._resolve_xpath(xpath)
-        if target:
-            if target.type == "concentration":
-                # initial concentration
-                expr = f'init([{target.id}])'
-            elif target.type == "amount":
-                # initial amount
-                expr = f'init({target.id})'
-            else:
-                # other (parameter, flux, ...)
-                expr = target.id
-            print(f"{expr} = {value}")
-            model[expr] = value
-        else:
-            logger.error(f"Unsupported target xpath: {xpath}")
-
-
-
-
-
+            # TODO: libsedml.SEDML_CHANGE_REMOVEXML
+            # TODO: libsedml.SEDML_CHANGE_ADDXML
+            # TODO: libsedml.SEDML_CHANGE_CHANGEXML
+            return {}
 
     def parse_data_description(self, dataDescription):
         """Parse DataDescription.
@@ -355,4 +327,5 @@ if __name__ == "__main__":
     results = SEDMLTools.read_sedml_document(str(sedml_path), working_dir=base_path)
     doc = results['doc']
     sed_parser = SEDMLParser(doc, working_dir=base_path)
+    print(sed_parser.models)
 
