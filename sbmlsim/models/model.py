@@ -15,6 +15,8 @@ from pint import UnitRegistry
 
 
 from sbmlsim.models.model_resources import Source, resolve_source
+from collections import namedtuple
+
 
 logger = logging.getLogger(__name__)
 
@@ -44,10 +46,12 @@ class AbstractModel(object):
         URL = 3
 
     def __init__(self, source: str,
-                 language: str = None, language_type: LanguageType = None,
+                 sid: str = None, name: str = None,
+                 language: str = None,
+                 language_type: LanguageType = None,
                  base_path: Path = None,
                  changes: Dict = None,
-                 sid: str = None, name: str = None,
+
                  selections: List[str] = None,
                  ureg: UnitRegistry = None,
                  ):
@@ -85,6 +89,7 @@ class AbstractModel(object):
         if changes is None:
             changes = {}
         self.changes = changes
+        # TODO: these changes must be applied during simulation
 
         self.selections = selections
 
@@ -124,12 +129,60 @@ class AbstractModel(object):
         """Loads the model from the current information."""
         return None
 
-    @abc.abstractclassmethod
-    def apply_change(cls, model, change):
+    def apply_change(cls, model, target, value):
         """Applies change to model"""
-        return
+
 
     def apply_model_changes(self, changes):
         """Applies dictionary of model changes."""
-        for change in self.changes:
+        # FIXME: this must be an OrderedDict
+        for key, value in self.changes:
             AbstractModel.apply_change(self._model, change)
+
+    # Necessary to resolve xpaths in changes
+
+    @staticmethod
+    def _resolve_xpath(xpath: str):
+        """ Resolve the target from the xpath expression.
+
+        A single target in the model corresponding to the modelId is resolved.
+        Currently, the model is not used for xpath resolution.
+
+        :param xpath: xpath expression.
+        :type xpath: str
+        :param modelId: id of model in which xpath should be resolved
+        :type modelId: str
+        :return: single target of xpath expression
+        :rtype: Target (namedtuple: id type)
+        """
+        # TODO: via better xpath expression
+        #   get type from the SBML document for the given id.
+        #   The xpath expression can be very general and does not need to contain the full
+        #   xml path
+        #   For instance:
+        #   /sbml:sbml/sbml:model/descendant::*[@id='S1']
+        #   has to resolve to species.
+        # TODO: figure out concentration or amount (from SBML document)
+        # FIXME: getting of sids, pids not very robust, handle more cases (rules, reactions, ...)
+
+        Target = namedtuple('Target', 'id type')
+
+        def getId(xpath):
+            xpath = xpath.replace('"', "'")
+            match = re.findall(r"id='(.*?)'", xpath)
+            if (match is None) or (len(match) is 0):
+                logger.warn("Xpath could not be resolved: {}".format(xpath))
+            return match[0]
+
+        # parameter value change
+        if ("model" in xpath) and ("parameter" in xpath):
+            return Target(getId(xpath), 'parameter')
+        # species concentration change
+        elif ("model" in xpath) and ("species" in xpath):
+            return Target(getId(xpath), 'concentration')
+        # other
+        elif ("model" in xpath) and ("id" in xpath):
+            return Target(getId(xpath), 'other')
+        # cannot be parsed
+        else:
+            raise ValueError("Unsupported target in xpath: {}".format(xpath))

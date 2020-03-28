@@ -106,7 +106,6 @@ class RepressilatorExperiment(SimulationExperiment):
         # Processing(variables) # arbitrary functions
         # Aggregation over
 
-
     def figures(self) -> Dict[str, Figure]:
         unit_time = "min"
         unit_data = "dimensionless"

@@ -107,6 +107,7 @@ from sbmlsim.combine.sedml.data import DataDescriptionParser
 from sbmlsim.combine.sedml.utils import SEDMLTools
 from sbmlsim.models.model import AbstractModel
 
+from pint import UnitRegistry
 
 logger = logging.getLogger(__file__)
 '''
@@ -133,106 +134,167 @@ def experiment_from_omex(omex_path: Path):
 class SEDMLParser(object):
     """ Parsing SED-ML in internal format."""
 
-    def __init__(self, doc: libsedml.SedDocument, working_dir: Path):
-        self.doc = doc
+    def __init__(self, sed_doc: libsedml.SedDocument, working_dir: Path):
+        self.sed_doc = sed_doc  # type: libsedml.SedDocument
         self.working_dir = working_dir
-        model_sources, model_changes = SEDMLTools.resolve_model_changes(self.doc)
 
-        self.model_sources = model_sources
-        self.model_changes = model_changes
+        # unit registry to handle units throughout the simulation
+        self.ureg = UnitRegistry()
+
+        # --- Models ---
         self.models = {}
+        # resolve original model source and changes
+        model_sources, model_changes = self.resolve_model_changes()
+        for sed_model in self.sed_doc.getListOfModels():  # type: libsedml.SedModel
+            mid = sed_model.getId()
+            source = model_sources[mid]
+            sed_changes = model_changes[mid]
+            self.models[mid] = self.parse_model(sed_model, source=source, sed_changes=sed_changes)
 
-        # parse models
-        for sed_model in doc.getListOfModels():  # type: libsedml.SedModel
-            mid = sed_model.getId()  # type: str
-            model_result = self.parse_model(sed_model)
-            self.models[mid] = model_result['model']
-
-        # parse data descriptions
-        for sed_data_description in doc.getListOfDataDescriptions():  # type: libsedml.SedDataDescription
+        '''
+        # --- DataDescriptions ---
+        for sed_data_description in sed_doc.getListOfDataDescriptions():  # type: libsedml.SedDataDescription
             did = sed_data_description.getId()
             self.data_descriptions[did] = self.parse_data_description(sed_data_description)
 
         # parse tasks
-        for sed_task in doc.getListOfTasks():  # type: libsedml.SedTask
+        for sed_task in sed_doc.getListOfTasks():  # type: libsedml.SedTask
             tid = sed_task.getId()
             self.tasks[tid] = self.parse_tasks(sed_task)
+        '''
 
-    def parse_model(self, sed_model: libsedml.SedModel):
-        """ Python code for SedModel.
+    # --- MODELS ---
+    def parse_model(self, sed_model: libsedml.SedModel,
+                    source: str,
+                    sed_changes: List[libsedml.SedChange]) -> AbstractModel:
+        """ Convert SedModel to AbstractModel.
 
-        :param sed_model: SedModel instance
-        :type sed_model: SedModel
-        :return: python str
-        :rtype: str
+        :param sed_model:
+        :return:
         """
+        # TODO: resolve changes
+        changes = []
+        for sed_change in sed_changes:
+            self.parse_change(model, sed_change)
+
+        mid = sed_model.getId()
         model = AbstractModel(
-            mid=sed_model.getId(),
+            source=source,
+            sid=mid,
+            name=sed_model.getName(),
             language=sed_model.getLanguage(),
-            source=sed_model.getSource()
+            base_path=self.working_dir,
+            changes=None,
+            selections=None,
+            ureg=self.ureg
         )
 
 
-        if not language:
-            warnings.warn("No model language specified, defaulting to SBML for: {}".format(source))
+        return model
 
-        def is_urn():
-            return source.lower().startswith('urn')
+    def resolve_model_changes(self):
+        """Resolves the original model sources and full change lists.
 
-        def is_http():
-            return source.lower().startswith('http') or source.startswith('HTTP')
+         Going through the tree of model upwards until root is reached and
+         collecting changes on the way (example models m* and changes c*)
+         m1 (source) -> m2 (c1, c2) -> m3 (c3, c4)
+         resolves to
+         m1 (source) []
+         m2 (source) [c1,c2]
+         m3 (source) [c1,c2,c3,c4]
+         The order of changes is important (at least between nodes on different
+         levels of hierarchies), because later changes of derived models could
+         reverse earlier changes.
 
-        # read SBML
-        if 'sbml' in language or len(language) == 0:
-            sbml_str = None
-            if is_urn():
-                sbml_str = model_resources.sbml_from_biomodels_urn(source)
-            elif is_http():
-                sbml_str = model_resources.model_from_url(source)
-            if sbml_str:
-                model = load_model(sbml_str)
-            else:
-                # load file, by resolving path relative to working dir
-                # FIXME: support absolute paths?
-                sbml_path = self.working_dir / source
-                model = load_model(sbml_path)
+         Uses recursive search strategy, which should be okay as long as the
+         model tree hierarchy is not getting to deep.
+         """
+        def findSource(mid, changes):
+            """
+            Recursive search for original model and store the
+            changes which have to be applied in the list of changes
 
-        # read CellML
-        elif 'cellml' in language:
-            warnings.warn("CellML model encountered, sbmlsim does not support CellML".format(language))
-            raise ValueError("CellML models not supported yet")
-        # other
-        else:
-            warnings.warn("Unsupported model language: '{}'.".format(language))
+            :param mid:
+            :param changes:
+            :return:
+            """
+            # mid is node above
+            if mid in model_sources and not model_sources[mid] == mid:
+                # add changes for node
+                for c in model_changes[mid]:
+                    changes.append(c)
+                # keep looking deeper
+                return findSource(model_sources[mid], changes)
+            # the source is no longer a key in the sources, it is the source
+            return mid, changes
 
-        # apply model changes
-        for change in self.model_changes[mid]:
-            self._apply_model_change(model, change)
+        # store original source and changes for model
+        model_sources = {}
+        model_changes = {}
 
-        return {
-            'model': model,
-            'mid': mid,
-            'language': language,
-        }
+        # collect direct source and changes
+        for m in self.sed_doc.getListOfModels():  # type: libsedml.SedModel
+            mid = m.getId()
+            source = m.getSource()
+            model_sources[mid] = source
+            changes = []
+            # store the changes unique for this model
+            for c in m.getListOfChanges():
+                changes.append(c)
+            model_changes[mid] = changes
 
-    def parse_data_description(self, dataDescription):
-        """Parse DataDescription.
+        # resolve source and changes recursively
+        all_changes = {}
+        mids = [m.getId() for m in self.sed_doc.getListOfModels()]
+        for mid in mids:
+            source, changes = findSource(mid, changes=list())
+            model_sources[mid] = source
+            all_changes[mid] = changes[::-1]
 
-        :param dataDescription: SedModel instance
-        :type dataDescription: DataDescription
-        :return: python str
-        :rtype: str
+        return model_sources, all_changes
+
+    def parse_change(self, sed_change: libsedml.SedChange) -> Dict:
+        """ Parses the change.
+
+        Currently only a limited subset of model changes is supported.
+        Namely changes of parameters and concentrations within a
+        SedChangeAttribute.
         """
-        lines = []
-        data_sources = DataDescriptionParser.parse(dataDescription, self.workingDir)
+        xpath = sed_change.getTarget()
 
-        # FIXME: still needed
-        # for sid, data in data_sources.items():
-        #    # handle the 1D shapes
-        #    if len(data.shape) == 1:
-        #        data = np.reshape(data.values, (data.shape[0], 1))
+        if sed_change.getTypeCode() == libsedml.SEDML_CHANGE_ATTRIBUTE:
+            # resolve target change
+            value = float(sed_change.getNewValue())
 
-        return data_sources
+            SEDMLParser.set_xpath_value(xpath, value, model=model)
+
+
+        elif sed_change.getTypeCode() == libsedml.SEDML_CHANGE_COMPUTECHANGE:
+            # calculate the value
+            variables = {}
+            for par in sed_change.getListOfParameters():  # type: libsedml.SedParameter
+                variables[par.getId()] = par.getValue()
+
+            for var in sed_change.getListOfVariables():  # type: libsedml.SedVariable
+                vid = var.getId()
+                selection = SEDMLParser.selectionFromVariable(var, model)
+                expr = selection.id
+                if selection.type == "concentration":
+                    expr = f"init([{selection.id}])"
+                elif selection.type == "amount":
+                    expr = f"init({selection.id})"
+                variables[vid] = model[expr]
+
+            # value is calculated with the current state of model
+            value = evaluableMathML(sed_change.getMath(), variables=variables)
+            SEDMLParser.set_xpath_value(xpath, value, model=model)
+
+        elif sed_change.getTypeCode() in [libsedml.SEDML_CHANGE_REMOVEXML,
+                                          libsedml.SEDML_CHANGE_ADDXML,
+                                          libsedml.SEDML_CHANGE_CHANGEXML]:
+            logger.error(f"Unsupported change: {sed_change.getElementName()}")
+        else:
+            logger.error(f"Unknown change: {sed_change.getElementName()}")
 
 
     @staticmethod
@@ -262,665 +324,29 @@ class SEDMLParser(object):
             logger.error(f"Unsupported target xpath: {xpath}")
 
 
-    @staticmethod
-    def _resolve_xpath(xpath: str):
-        """ Resolve the target from the xpath expression.
 
-        A single target in the model corresponding to the modelId is resolved.
-        Currently, the model is not used for xpath resolution.
 
-        :param xpath: xpath expression.
-        :type xpath: str
-        :param modelId: id of model in which xpath should be resolved
-        :type modelId: str
-        :return: single target of xpath expression
-        :rtype: Target (namedtuple: id type)
-        """
-        # TODO: via better xpath expression
-        #   get type from the SBML document for the given id.
-        #   The xpath expression can be very general and does not need to contain the full
-        #   xml path
-        #   For instance:
-        #   /sbml:sbml/sbml:model/descendant::*[@id='S1']
-        #   has to resolve to species.
-        # TODO: figure out concentration or amount (from SBML document)
-        # FIXME: getting of sids, pids not very robust, handle more cases (rules, reactions, ...)
 
-        Target = namedtuple('Target', 'id type')
 
-        def getId(xpath):
-            xpath = xpath.replace('"', "'")
-            match = re.findall(r"id='(.*?)'", xpath)
-            if (match is None) or (len(match) is 0):
-                logger.warn("Xpath could not be resolved: {}".format(xpath))
-            return match[0]
+    def parse_data_description(self, dataDescription):
+        """Parse DataDescription.
 
-        # parameter value change
-        if ("model" in xpath) and ("parameter" in xpath):
-            return Target(getId(xpath), 'parameter')
-        # species concentration change
-        elif ("model" in xpath) and ("species" in xpath):
-            return Target(getId(xpath), 'concentration')
-        # other
-        elif ("model" in xpath) and ("id" in xpath):
-            return Target(getId(xpath), 'other')
-        # cannot be parsed
-        else:
-            raise ValueError("Unsupported target in xpath: {}".format(xpath))
-
-    @staticmethod
-    def selectionFromVariable(var, model):
-        """ Resolves the selection for the given variable.
-
-        First checks if the variable is a symbol and returns the symbol.
-        If no symbol is set the xpath of the target is resolved
-        and used in the selection
-
-        :param var: variable to resolve
-        :type var: SedVariable
-        :return: a single selection
-        :rtype: Selection (namedtuple: id type)
-        """
-        Selection = namedtuple('Selection', 'id type')
-
-        # parse symbol expression
-        if var.isSetSymbol():
-            cvs = var.getSymbol()
-            astr = cvs.rsplit("symbol:")
-            sid = astr[1]
-            return Selection(sid, 'symbol')
-        # use xpath
-        elif var.isSetTarget():
-            xpath = var.getTarget()
-            target = SEDMLParser._resolveXPath(xpath, model)
-            return Selection(target.id, target.type)
-
-        else:
-            warnings.warn(f"Unrecognized Selection in variable: {var}")
-            return None
-
-    def _apply_model_change(self, model, change: libsedml.SedChange):
-        """ Creates the apply change python string for given model and change.
-
-        Currently only a very limited subset of model changes is supported.
-        Namely changes of parameters and concentrations within a SedChangeAttribute.
-
-        :param model: given model
-        :type model: SedModel
-        :param change: model change
-        :type change: SedChange
-        :return:
+        :param dataDescription: SedModel instance
+        :type dataDescription: DataDescription
+        :return: python str
         :rtype: str
         """
-        xpath = change.getTarget()
-
-        if change.getTypeCode() == libsedml.SEDML_CHANGE_ATTRIBUTE:
-            # resolve target change
-            value = float(change.getNewValue())
-            SEDMLParser.set_xpath_value(xpath, value, model=model)
-
-        elif change.getTypeCode() == libsedml.SEDML_CHANGE_COMPUTECHANGE:
-            # calculate the value
-            variables = {}
-            for par in change.getListOfParameters():  # type: libsedml.SedParameter
-                variables[par.getId()] = par.getValue()
-
-            for var in change.getListOfVariables():  # type: libsedml.SedVariable
-                vid = var.getId()
-                selection = SEDMLParser.selectionFromVariable(var, model)
-                expr = selection.id
-                if selection.type == "concentration":
-                    expr = f"init([{selection.id}])"
-                elif selection.type == "amount":
-                    expr = f"init({selection.id})"
-                variables[vid] = model[expr]
-
-            # value is calculated with the current state of model
-            value = evaluableMathML(change.getMath(), variables=variables)
-            SEDMLParser.set_xpath_value(xpath, value, model=model)
-
-        elif change.getTypeCode() in [libsedml.SEDML_CHANGE_REMOVEXML,
-                                      libsedml.SEDML_CHANGE_ADDXML,
-                                      libsedml.SEDML_CHANGE_CHANGEXML]:
-            logger.error(f"Unsupported change: {change.getElementName()}")
-        else:
-            logger.error(f"Unknown change: {change.getElementName()}")
-
-    @staticmethod
-    def parse_task(doc: libsedml.SedDocument, sed_task: libsedml.SedAbstractTask):
-        """ Create python for arbitrary task (repeated or simple)."""
-        # If no DataGenerator references the task, no execution is necessary
-        dgs = SEDMLParser.get_data_generators_for_tasks(doc, sed_task)
-        if len(dgs) == 0:
-            logger.warning(f"Task '{sed_task.getId()}' is not part of any DataGenerator. "
-                           f"Task will not be executed.")
-
-        # tasks contain other subtasks, which can contain subtasks. This
-        # results in a tree of task dependencies where the
-        # simple tasks are the node leaves. These tree has to be resolved to
-        # generate code for more complex task dependencies.
-
-        # resolve task tree (order & dependency of tasks) & generate code
-        taskTree = SEDMLParser.createTaskTree(doc, rootTask=sed_task)
-        return SEDMLParser.parse_task_tree(doc, tree=taskTree)
-
-    @staticmethod
-    def get_data_generators_for_tasks(doc: libsedml.SedDocument, sed_task: libsedml.SedTask) -> List[DataGenerator]:
-        """ Get the DataGenerators which reference the given task."""
-        dgs = []
-        for dg in doc.getListOfDataGenerators():  # type: libsedml.SedTask
-            for var in dg.getListOfVariables():  # type: libsedml.SedVariable
-                if var.getTaskReference() == sed_task.getId():
-                    dgs.append(dg)
-                    break  # the DataGenerator is added, no need to look at rest of variables
-        return dgs
-
-    class TaskNode(object):
-        """ Tree implementation of task tree. """
-        def __init__(self, task, depth):
-            self.task = task
-            self.depth = depth
-            self.children = []
-            self.parent = None
-
-        def add_child(self, obj):
-            obj.parent = self
-            self.children.append(obj)
-
-        def is_leaf(self):
-            return len(self.children) == 0
-
-        def __str__(self):
-            lines = ["<[{}] {} ({})>".format(self.depth, self.task.getId(), self.task.getElementName())]
-            for child in self.children:
-                child_str = child.__str__()
-                lines.extend(["\t{}".format(line) for line in child_str.split('\n')])
-            return "\n".join(lines)
-
-        def info(self):
-            return "<[{}] {} ({})>".format(self.depth, self.task.getId(), self.task.getElementName())
-
-        def __iter__(self):
-            """ Depth-first iterator which yields TaskNodes."""
-            yield self
-            for child in self.children:
-                for node in child:
-                    yield node
-
-    class Stack(object):
-        """ Stack implementation for nodes."""
-        def __init__(self):
-            self.items = []
-
-        def isEmpty(self):
-            return self.items == []
-
-        def push(self, item):
-            self.items.append(item)
-
-        def pop(self):
-            return self.items.pop()
-
-        def peek(self):
-            return self.items[len(self.items)-1]
-
-        def size(self):
-            return len(self.items)
-
-        def __str__(self):
-            return "stack: " + str([item.info() for item in self.items])
-
-    @staticmethod
-    def createTaskTree(doc: libsedml.SedDocument, rootTask: libsedml.SedAbstractTask) -> TaskNode:
-        """ Creates the task tree.
-        The task tree is used to resolve the order of all simulations.
-        """
-        def add_children(node):
-            typeCode = node.task.getTypeCode()
-            if typeCode == libsedml.SEDML_TASK:
-                return  # no children
-            elif typeCode == libsedml.SEDML_TASK_REPEATEDTASK:
-                # add the ordered list of subtasks as children
-                subtasks = SEDMLParser.getOrderedSubtasks(node.task)
-                for st in subtasks:
-                    # get real task for subtask
-                    t = doc.getTask(st.getTask())
-                    child = SEDMLParser.TaskNode(t, depth=node.depth+1)
-                    node.add_child(child)
-                    # recursive adding of children
-                    add_children(child)
-            else:
-                raise IOError('Unsupported task type: {}'.format(node.task.getElementName()))
-
-        # create root
-        root = SEDMLParser.TaskNode(rootTask, depth=0)
-        # recursive adding of children
-        add_children(root)
-        return root
-
-    @staticmethod
-    def getOrderedSubtasks(task):
-        """ Ordered list of subtasks for task."""
-        subtasks = task.getListOfSubTasks()
-        subtaskOrder = [st.getOrder() for st in subtasks]
-        # sort by order, if all subtasks have order (not required)
-        if all(subtaskOrder) != None:
-            subtasks = [st for (stOrder, st) in sorted(zip(subtaskOrder, subtasks))]
-        return subtasks
-
-    @staticmethod
-    def parse_task_tree(doc: libsedml.SedDocument, tree: TaskNode):
-        """ Python code generation from task tree. """
-
-        # go forward through task tree
         lines = []
-        nodeStack = SEDMLParser.Stack()
-        treeNodes = [n for n in tree]
+        data_sources = DataDescriptionParser.parse(dataDescription, self.workingDir)
 
-        # iterate over the tree
-        for kn, node in enumerate(treeNodes):
-            task_type = node.task.getTypeCode()
+        # FIXME: still needed
+        # for sid, data in data_sources.items():
+        #    # handle the 1D shapes
+        #    if len(data.shape) == 1:
+        #        data = np.reshape(data.values, (data.shape[0], 1))
 
-            # Create information for task
-            # We are going down in the tree
-            if task_type == libsedml.SEDML_TASK_REPEATEDTASK:
-                taskLines = SEDMLCodeFactory.repeatedTaskToPython(doc, node=node)
+        return data_sources
 
-            elif task_type == libsedml.SEDML_TASK:
-                tid = node.task.getId()
-                taskLines = SEDMLCodeFactory.simpleTaskToPython(doc=doc, node=node)
-            else:
-                lines.append("# Unsupported task: {}".format(task_type))
-                warnings.warn("Unsupported task: {}".format(task_type))
-
-            lines.extend(["    "*node.depth + line for line in taskLines])
-
-            # Collect information
-            # We have to go back up
-            # Look at next node in the treeNodes (this is the next one to write)
-            if kn == (len(treeNodes)-1):
-                nextNode = None
-            else:
-                nextNode = treeNodes[kn+1]
-
-            # The next node is further up in the tree, or there is no next node
-            # and still nodes on the stack
-            if (nextNode is None) or (nextNode.depth < node.depth):
-
-                # necessary to pop nodes from the stack and close the code
-                test = True
-                while test is True:
-                    # stack is empty
-                    if nodeStack.size() == 0:
-                        test = False
-                        continue
-                    # try to pop next one
-                    peek = nodeStack.peek()
-                    if (nextNode is None) or (peek.depth > nextNode.depth):
-                        # TODO: reset evaluation has to be defined here
-                        # determine if it's steady state
-                        # if taskType == libsedml.SEDML_TASK_REPEATEDTASK:
-                        # print('task {}'.format(node.task.getId()))
-                        # print('  peek {}'.format(peek.task.getId()))
-                        if node.task.getTypeCode() == libsedml.SEDML_TASK_REPEATEDTASK:
-                        # if peek.task.getTypeCode() == libsedml.SEDML_TASK_REPEATEDTASK:
-                            # sid = task.getSimulationReference()
-                            # simulation = doc.getSimulation(sid)
-                            # simType = simulation.getTypeCode()
-                            # if simType is libsedml.SEDML_SIMULATION_STEADYSTATE:
-                            terminator = 'terminate_trace({})'.format(node.task.getId())
-                        else:
-                            terminator = '{}'.format(node.task.getId())
-
-                        lines.extend([
-                            "",
-                            # "    "*node.depth + "{}.extend({})".format(peek.task.getId(), terminator),
-                            "    " * node.depth + "{}.extend({})".format(peek.task.getId(), node.task.getId()),
-                        ])
-                        node = nodeStack.pop()
-
-                    else:
-                        test = False
-            else:
-                # we are going done or next subtask -> put node on stack
-                nodeStack.push(node)
-
-        return "\n".join(lines)
-
-
-    @staticmethod
-    def simpleTaskToPython(doc, node: TaskNode):
-        """ Creates the simulation python code for a given taskNode.
-
-        The taskNodes are required to handle the relationships between
-        RepeatedTasks, SubTasks and SimpleTasks (Task).
-
-        :param doc: sedml document
-        :type doc: SEDDocument
-        :param node: taskNode of the current task
-        :type node: TaskNode
-        :return:
-        :rtype:
-        """
-        lines = []
-        task = node.task
-        lines.append("# Task: <{}>".format(task.getId()))
-        lines.append("{} = [None]".format(task.getId()))
-
-        mid = task.getModelReference()
-        sid = task.getSimulationReference()
-        simulation = doc.getSimulation(sid)
-
-        simType = simulation.getTypeCode()
-        algorithm = simulation.getAlgorithm()
-        if algorithm is None:
-            warnings.warn("Algorithm missing on simulation, defaulting to 'cvode: KISAO:0000019'")
-            algorithm = simulation.createAlgorithm()
-            algorithm.setKisaoID("KISAO:0000019")
-        kisao = algorithm.getKisaoID()
-
-        # is supported algorithm
-        if not SEDMLCodeFactory.isSupportedAlgorithmForSimulationType(kisao=kisao, simType=simType):
-            warnings.warn("Algorithm {} unsupported for simulation {} type {} in task {}".format(kisao, simulation.getId(), simType, task.getId()))
-            lines.append("# Unsupported Algorithm {} for SimulationType {}".format(kisao, simulation.getElementName()))
-            return lines
-
-        # set integrator/solver
-        integratorName = SEDMLCodeFactory.getIntegratorNameForKisaoID(kisao)
-        if not integratorName:
-            warnings.warn("No integrator exists for {} in roadrunner".format(kisao))
-            return lines
-
-        if simType is libsedml.SEDML_SIMULATION_STEADYSTATE:
-            lines.append("{}.setSteadyStateSolver('{}')".format(mid, integratorName))
-        else:
-            lines.append("{}.setIntegrator('{}')".format(mid, integratorName))
-
-        # use fixed step by default for stochastic sims
-        if integratorName == 'gillespie':
-            lines.append("{}.integrator.setValue('{}', {})".format(mid, 'variable_step_size', False))
-
-        if kisao == "KISAO:0000288":  # BDF
-            lines.append("{}.integrator.setValue('{}', {})".format(mid, 'stiff', True))
-        elif kisao == "KISAO:0000280":  # Adams-Moulton
-            lines.append("{}.integrator.setValue('{}', {})".format(mid, 'stiff', False))
-
-        # integrator/solver settings (AlgorithmParameters)
-        for par in algorithm.getListOfAlgorithmParameters():
-            pkey = SEDMLCodeFactory.algorithmParameterToParameterKey(par)
-            # only set supported algorithm paramters
-            if pkey:
-                if pkey.dtype is str:
-                    value = "'{}'".format(pkey.value)
-                else:
-                    value = pkey.value
-
-                if value == str('inf') or pkey.value == float('inf'):
-                    value = "float('inf')"
-                else:
-                    pass
-
-                if simType is libsedml.SEDML_SIMULATION_STEADYSTATE:
-                    lines.append("{}.steadyStateSolver.setValue('{}', {})".format(mid, pkey.key, value))
-                else:
-                    lines.append("{}.integrator.setValue('{}', {})".format(mid, pkey.key, value))
-
-        if simType is libsedml.SEDML_SIMULATION_STEADYSTATE:
-            lines.append("if {model}.conservedMoietyAnalysis == False: {model}.conservedMoietyAnalysis = True".format(model=mid))
-        else:
-            lines.append("if {model}.conservedMoietyAnalysis == True: {model}.conservedMoietyAnalysis = False".format(model=mid))
-
-        # get parents
-        parents = []
-        parent = node.parent
-        while parent is not None:
-            parents.append(parent)
-            parent = parent.parent
-
-        # <selections> of all parents
-        # ---------------------------
-        selections = SEDMLCodeFactory.selectionsForTask(doc=doc, task=node.task)
-        for p in parents:
-            selections.update(SEDMLCodeFactory.selectionsForTask(doc=doc, task=p.task))
-
-        # <setValues> of all parents
-        # ---------------------------
-        # apply changes based on current variables, parameters and range variables
-        for parent in reversed(parents):
-            rangeId = parent.task.getRangeId()
-            helperRanges = {}
-            for r in parent.task.getListOfRanges():
-                if r.getId() != rangeId:
-                    helperRanges[r.getId()] = r
-
-            for setValue in parent.task.getListOfTaskChanges():
-                variables = {}
-                # range variables
-                variables[rangeId] = "__value__{}".format(rangeId)
-                for key in helperRanges.keys():
-                    variables[key] = "__value__{}".format(key)
-                # parameters
-                for par in setValue.getListOfParameters():
-                    variables[par.getId()] = par.getValue()
-                for var in setValue.getListOfVariables():
-                    vid = var.getId()
-                    mid = var.getModelReference()
-                    selection = SEDMLCodeFactory.selectionFromVariable(var, mid)
-                    expr = selection.id
-                    if selection.type == 'concentration':
-                        expr = "init([{}])".format(selection.id)
-                    elif selection.type == 'amount':
-                        expr = "init({})".format(selection.id)
-
-                    # create variable
-                    lines.append("__value__{} = {}['{}']".format(vid, mid, expr))
-                    # variable for replacement
-                    variables[vid] = "__value__{}".format(vid)
-
-                # value is calculated with the current state of model
-                lines.append(SEDMLCodeFactory.targetToPython(xpath=setValue.getTarget(),
-                                                             value=evaluableMathML(setValue.getMath(), variables=variables),
-                                                             modelId=setValue.getModelReference())
-                             )
-
-        # handle result variable
-        resultVariable = "{}[0]".format(task.getId())
-
-        # -------------------------------------------------------------------------
-        # <UNIFORM TIMECOURSE>
-        # -------------------------------------------------------------------------
-        if simType == libsedml.SEDML_SIMULATION_UNIFORMTIMECOURSE:
-            lines.append("{}.timeCourseSelections = {}".format(mid, list(selections)))
-
-            initialTime = simulation.getInitialTime()
-            outputStartTime = simulation.getOutputStartTime()
-            outputEndTime = simulation.getOutputEndTime()
-            numberOfPoints = simulation.getNumberOfPoints()
-
-            # reset before simulation (see https://github.com/sys-bio/tellurium/issues/193)
-            lines.append("{}.reset()".format(mid))
-
-            # throw some points away
-            if abs(outputStartTime - initialTime) > 1E-6:
-                lines.append("{}.simulate(start={}, end={}, points=2)".format(
-                                    mid, initialTime, outputStartTime))
-            # real simulation
-            lines.append("{} = {}.simulate(start={}, end={}, steps={})".format(
-                                    resultVariable, mid, outputStartTime, outputEndTime, numberOfPoints))
-        # -------------------------------------------------------------------------
-        # <ONESTEP>
-        # -------------------------------------------------------------------------
-        elif simType == libsedml.SEDML_SIMULATION_ONESTEP:
-            lines.append("{}.timeCourseSelections = {}".format(mid, list(selections)))
-            step = simulation.getStep()
-            lines.append("{} = {}.simulate(start={}, end={}, points=2)".format(resultVariable, mid, 0.0, step))
-
-        # -------------------------------------------------------------------------
-        # <STEADY STATE>
-        # -------------------------------------------------------------------------
-        elif simType == libsedml.SEDML_SIMULATION_STEADYSTATE:
-            lines.append("{}.steadyStateSolver.setValue('{}', {})".format(mid, 'allow_presimulation', False))
-            lines.append("{}.steadyStateSelections = {}".format(mid, list(selections)))
-            lines.append("{}.simulate()".format(mid))  # for stability of the steady state solver
-            lines.append("{} = {}.steadyStateNamedArray()".format(resultVariable, mid))
-            # no need to turn this off because it will be checked before the next simulation
-            # lines.append("{}.conservedMoietyAnalysis = False".format(mid))
-
-        # -------------------------------------------------------------------------
-        # <OTHER>
-        # -------------------------------------------------------------------------
-        else:
-            lines.append("# Unsupported simulation: {}".format(simType))
-
-        return lines
-
-    @staticmethod
-    def repeatedTaskToPython(doc, node):
-        """ Create python for RepeatedTask.
-
-        Must create
-        - the ranges (Ranges)
-        - apply all changes (SetValues)
-        """
-        # storage of results
-        task = node.task
-        lines = ["", "{} = []".format(task.getId())]
-
-        # <Range Definition>
-        # master range
-        rangeId = task.getRangeId()
-        masterRange = task.getRange(rangeId)
-        if masterRange.getTypeCode() == libsedml.SEDML_RANGE_UNIFORMRANGE:
-            lines.extend(SEDMLCodeFactory.uniformRangeToPython(masterRange))
-        elif masterRange.getTypeCode() == libsedml.SEDML_RANGE_VECTORRANGE:
-            lines.extend(SEDMLCodeFactory.vectorRangeToPython(masterRange))
-        elif masterRange.getTypeCode() == libsedml.SEDML_RANGE_FUNCTIONALRANGE:
-            warnings.warn("FunctionalRange for master range not supported in task.")
-        # lock-in ranges
-        for r in task.getListOfRanges():
-            if r.getId() != rangeId:
-                if r.getTypeCode() == libsedml.SEDML_RANGE_UNIFORMRANGE:
-                    lines.extend(SEDMLCodeFactory.uniformRangeToPython(r))
-                elif r.getTypeCode() == libsedml.SEDML_RANGE_VECTORRANGE:
-                    lines.extend(SEDMLCodeFactory.vectorRangeToPython(r))
-
-        # <Range Iteration>
-        # iterate master range
-        lines.append("for __k__{}, __value__{} in enumerate(__range__{}):".format(rangeId, rangeId, rangeId))
-
-        # Everything from now on is done in every iteration of the range
-        # We have to collect & intent all lines in the loop)
-        forLines = []
-
-        # definition of lock-in ranges
-        helperRanges = {}
-        for r in task.getListOfRanges():
-            if r.getId() != rangeId:
-                helperRanges[r.getId()] = r
-                if r.getTypeCode() in [libsedml.SEDML_RANGE_UNIFORMRANGE,
-                                       libsedml.SEDML_RANGE_VECTORRANGE]:
-                    forLines.append("__value__{} = __range__{}[__k__{}]".format(r.getId(), r.getId(), rangeId))
-
-                # <functional range>
-                if r.getTypeCode() == libsedml.SEDML_RANGE_FUNCTIONALRANGE:
-                    variables = {}
-                    # range variables
-                    variables[rangeId] = "__value__{}".format(rangeId)
-                    for key in helperRanges.keys():
-                        variables[key] = "__value__{}".format(key)
-                    # parameters
-                    for par in r.getListOfParameters():
-                        variables[par.getId()] = par.getValue()
-                    for var in r.getListOfVariables():
-                        vid = var.getId()
-                        mid = var.getModelReference()
-                        selection = SEDMLCodeFactory.selectionFromVariable(var, mid)
-                        expr = selection.id
-                        if selection.type == 'concentration':
-                            expr = "[{}]".format(selection.id)
-                        lines.append("__value__{} = {}['{}']".format(vid, mid, expr))
-                        variables[vid] = "__value__{}".format(vid)
-
-                    # value is calculated with the current state of model
-                    value = evaluableMathML(r.getMath(), variables=variables)
-                    forLines.append("__value__{} = {}".format(r.getId(), value))
-
-        # <resetModels>
-        # models to reset via task tree below node
-        mids = set([])
-        for child in node:
-            t = child.task
-            if t.getTypeCode() == libsedml.SEDML_TASK:
-                mids.add(t.getModelReference())
-        # reset models referenced in tree below task
-        for mid in mids:
-            if task.getResetModel():
-                # reset before every iteration
-                forLines.append("{}.reset()".format(mid))
-            else:
-                # reset before first iteration
-                forLines.append("if __k__{} == 0:".format(rangeId))
-                forLines.append("    {}.reset()".format(mid))
-
-        # add lines
-        lines.extend('    ' + line for line in forLines)
-
-        return lines
-
-
-
-    @staticmethod
-    def selectionsForTask(doc, task):
-        """ Populate variable lists from the data generators for the given task.
-
-        These are the timeCourseSelections and steadyStateSelections
-        in RoadRunner.
-
-        Search all data generators for variables which have to be part of the simulation.
-        """
-        modelId = task.getModelReference()
-        selections = set()
-        for dg in doc.getListOfDataGenerators():
-            for var in dg.getListOfVariables():
-                if var.getTaskReference() == task.getId():
-                    selection = SEDMLCodeFactory.selectionFromVariable(var, modelId)
-                    expr = selection.id
-                    if selection.type == "concentration":
-                        expr = "[{}]".format(selection.id)
-                    selections.add(expr)
-
-        return selections
-
-    @staticmethod
-    def uniformRangeToPython(r):
-        """ Create python lines for uniform range.
-        :param r:
-        :type r:
-        :return:
-        :rtype:
-        """
-        lines = []
-        rId = r.getId()
-        rStart = r.getStart()
-        rEnd = r.getEnd()
-        rPoints = r.getNumberOfPoints()+1  # One point more than number of points
-        rType = r.getType()
-        if rType in ['Linear', 'linear']:
-            lines.append("__range__{} = np.linspace(start={}, stop={}, num={})".format(rId, rStart, rEnd, rPoints))
-        elif rType in ['Log', 'log']:
-            lines.append("__range__{} = np.logspace(start={}, stop={}, num={})".format(rId, rStart, rEnd, rPoints))
-        else:
-            warnings.warn("Unsupported range type in UniformRange: {}".format(rType))
-        return lines
-
-    @staticmethod
-    def vectorRangeToPython(r):
-        lines = []
-        __range = np.zeros(shape=[r.getNumValues()])
-        for k, v in enumerate(r.getValues()):
-            __range[k] = v
-        lines.append("__range__{} = {}".format(r.getId(), list(__range)))
-        return lines
 
 if __name__ == "__main__":
 

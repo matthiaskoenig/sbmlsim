@@ -8,9 +8,8 @@ import zipfile
 
 import importlib
 import libcombine
-importlib.reload(libcombine)
 import libsedml
-importlib.reload(libsedml)
+
 
 class SEDMLTools(object):
     """ Helper functions to work with sedml. """
@@ -119,57 +118,4 @@ class SEDMLTools(object):
                 'inputType': inputType,
                 'workingDir': working_dir}
 
-    @staticmethod
-    def resolve_model_changes(doc: libsedml.SedDocument):
-        """ Resolves the original source model and full change lists for models.
 
-         Going through the tree of model upwards until root is reached and
-         collecting changes on the way (example models m* and changes c*)
-         m1 (source) -> m2 (c1, c2) -> m3 (c3, c4)
-         resolves to
-         m1 (source) []
-         m2 (source) [c1,c2]
-         m3 (source) [c1,c2,c3,c4]
-         The order of changes is important (at least between nodes on different
-         levels of hierarchies), because later changes of derived models could
-         reverse earlier changes.
-
-         Uses recursive search strategy, which should be okay as long as the model tree hierarchy is
-         not getting to big.
-         """
-        # initial dicts (handle source & change information for single node)
-        model_sources = {}
-        model_changes = {}
-
-        for m in doc.getListOfModels():  # type: libsedml.SedModel
-            mid = m.getId()
-            source = m.getSource()
-            model_sources[mid] = source
-            changes = []
-            # store the changes unique for this model
-            for c in m.getListOfChanges():
-                changes.append(c)
-            model_changes[mid] = changes
-
-        # recursive search for original model and store the
-        # changes which have to be applied in the list of changes
-        def findSource(mid, changes):
-            # mid is node above
-            if mid in model_sources and not model_sources[mid] == mid:
-                # add changes for node
-                for c in model_changes[mid]:
-                    changes.append(c)
-                # keep looking deeper
-                return findSource(model_sources[mid], changes)
-            # the source is no longer a key in the sources, it is the source
-            return mid, changes
-
-        all_changes = {}
-
-        mids = [m.getId() for m in doc.getListOfModels()]
-        for mid in mids:
-            source, changes = findSource(mid, changes=list())
-            model_sources[mid] = source
-            all_changes[mid] = changes[::-1]
-
-        return model_sources, all_changes
