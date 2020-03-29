@@ -7,7 +7,7 @@ from pathlib import Path
 import logging
 import libsbml
 import pint
-from pint.errors import UndefinedUnitError
+from pint.errors import UndefinedUnitError, DimensionalityError
 from pint import Quantity, UnitRegistry
 
 import warnings
@@ -222,3 +222,28 @@ class Units(object):
     def _isclose(a, b, rel_tol=1e-09, abs_tol=0.0):
         """ Calculate the two floats are identical. """
         return abs(a - b) <= max(rel_tol * max(abs(a), abs(b)), abs_tol)
+
+    @staticmethod
+    def normalize_changes(changes: Dict, udict: Dict, ureg: UnitRegistry) -> Dict:
+        Q_ = ureg.Quantity
+        changes_normed = {}
+        for key, item in changes.items():
+            if hasattr(item, "units"):
+                # perform unit conversion
+                try:
+                    # convert to model units
+                    item = item.to(udict[key])
+                except DimensionalityError as err:
+                    logger.error(f"DimensionalityError "
+                                 f"'{key} = {item}'. {err}")
+                    raise err
+                except KeyError as err:
+                    logger.error(
+                        f"KeyError: '{key}' does not exist in unit dictionary of model.")
+                    raise err
+            else:
+                item = Q_(item, udict[key])
+                logger.warning(f"No units provided, assuming dictionary units: "
+                               f"{key} = {item}")
+            changes_normed[key] = item
+        return changes_normed

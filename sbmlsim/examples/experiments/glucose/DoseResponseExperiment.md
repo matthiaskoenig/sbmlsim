@@ -131,7 +131,7 @@ class DoseResponseExperiment(SimulationExperiment):
         task = self._tasks["glc_scan"]
         model = self._models[task.model]
         tcscan = task.simulation
-        glc_vec = tcscan.scan['[glc_ext]']
+        glc_vec = tcscan.run_scan['[glc_ext]']
         results = self.results["glc_scan"]  # type: Result
         dose_response = {k: list() for k in ["glu", "epi", "ins", "gamma"]}
         for k, glc_ext in enumerate(glc_vec):

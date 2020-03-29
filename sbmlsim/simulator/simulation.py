@@ -12,13 +12,9 @@ Also what is the exact time point the change should be applied.
 """
 import logging
 from typing import List
-
 import pandas as pd
 import roadrunner
-import itertools
-from copy import deepcopy
 
-from sbmlsim.utils import timeit
 from sbmlsim.result import Result
 from sbmlsim.simulation.timecourse import Timecourse, TimecourseSim
 from sbmlsim.simulation.scan import ParameterScan
@@ -63,51 +59,19 @@ class SimulatorAbstract(object):
         """ Must be implemented by simulator. """
         pass
 
-    def timecourses(self, simulations: List[TimecourseSim]) -> Result:
+    def run_timecourses(self, simulations: List[TimecourseSim]) -> List[pd.DataFrame]:
         """ Must be implemented by simulator.
 
         :return:
         """
         raise NotImplementedError("Use concrete implementation")
 
-    @timeit
-    def scan(self, tcscan: ParameterScan) -> Result:
-        """ Timecourse simulations based on timecourse_definition.
+    def run_scan(self, scan: ParameterScan) -> List[pd.DataFrame]:
+        """ Must be implemented by simulator.
 
-        :param tcscan: Scan definition
-        :param reset_all: Reset model at the beginning
         :return:
         """
-        # Create all possible combinations of the scan
-
-        # TODO: refactor on TimecourseScan
-        keys = []
-        vecs = []
-        index_vecs = []
-        for key, vec in tcscan.scan.items():
-            keys.append(key)
-            vecs.append(list(vec))
-            index_vecs.append(range(len(vec)))
-
-        indices = list(itertools.product(*index_vecs))
-
-        sims = []
-        for index_list in indices:
-            sim_new = deepcopy(tcscan.tcsim)
-            # changes are mixed in the first timecourse
-            tc = sim_new.timecourses[0]
-            for k, pos_index in enumerate(index_list):
-                key = keys[k]
-                value = vecs[k][pos_index]
-                tc.add_change(key, value)
-            sims.append(sim_new)
-
-        result = self.timecourses(sims)
-        result.keys = keys
-        result.vecs = vecs
-        result.indices = indices
-
-        return result
+        raise NotImplementedError("Use concrete implementation")
 
 
 class SimulatorWorker(object):

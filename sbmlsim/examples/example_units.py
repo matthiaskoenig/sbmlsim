@@ -41,7 +41,7 @@ def run_demo_example():
     # r = load_model(MODEL_DEMO)
     #tc_sims = ensemble(tc_sim, ChangeSet.parameter_sensitivity_changeset(r, 0.2))
     tc_sims = [tc_sim]
-    s = simulator.timecourses(tc_sims)
+    s = simulator.run_timecourses(tc_sims)
 
     # create figure
     fig, (ax1, ax2, ax3, ax4) = plt.subplots(nrows=1, ncols=4, figsize=(20, 5))

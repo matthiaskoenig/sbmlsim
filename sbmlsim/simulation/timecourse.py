@@ -7,7 +7,7 @@ from typing import List, Tuple
 from copy import deepcopy
 import logging
 from pint.errors import DimensionalityError
-
+from sbmlsim.units import Units
 from sbmlsim.serialization import ObjectJSONEncoder, JSONEncoder
 from sbmlsim.simulation.simulation import AbstractSim
 
@@ -27,7 +27,7 @@ class Timecourse(JSONEncoder):
     """
     def __init__(self, start: float, end: float, steps: int,
                  changes: dict = None, model_changes: dict = None,
-                 normalized = False):
+                 normalized: bool = False):
         """ Create a time course definition for simulation.
 
         :param start: start time
@@ -48,6 +48,9 @@ class Timecourse(JSONEncoder):
         self.steps = steps
         self.changes = deepcopy(changes)
         self.model_changes = deepcopy(model_changes)
+
+    def __repr__(self):
+        return f"Timecourse([{self.start},{self.end}])"
 
     def default(self, o):
         """json encoder"""
@@ -75,29 +78,7 @@ class Timecourse(JSONEncoder):
 
     def normalize(self, udict, ureg):
         """ Normalize values to model units for all changes."""
-        Q_ = ureg.Quantity
-
-        changes_normed = {}
-        for key, item in self.changes.items():
-            if hasattr(item, "units"):
-                # perform unit conversion
-                try:
-                    # convert to model units
-                    item = item.to(udict[key])
-                except DimensionalityError as err:
-                    logger.error(f"DimensionalityError "
-                                 f"'{key} = {item}'. {err}")
-                    raise err
-                except KeyError as err:
-                    logger.error(f"KeyError: '{key}' does not exist in unit dictionary of model.")
-                    raise err
-            else:
-                item = Q_(item, udict[key])
-                logger.warning(f"No units provided, assuming model units: "
-                               f"{key} = {item}")
-            changes_normed[key] = item
-
-        self.changes = changes_normed
+        self.changes = Units.normalize_changes(self.changes, udict=udict, ureg=ureg)
         self.normalized = True
 
 
@@ -129,6 +110,9 @@ class TimecourseSim(AbstractSim):
         self.selections = deepcopy(selections)
         self.reset = reset
         self.time_offset = time_offset
+
+    def __repr__(self):
+        return f"TimecourseSim({[tc for tc in self.timecourses]})"
 
     def normalize(self, udict, ureg):
         for tc in self.timecourses:

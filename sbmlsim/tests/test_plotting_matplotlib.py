@@ -16,7 +16,7 @@ def test_plotting():
     tcsims = ensemble(TimecourseSim([
             Timecourse(start=0, end=400, steps=400),
         ]), changeset)
-    result = simulator.timecourses(tcsims)
+    result = simulator.run_timecourses(tcsims)
 
     # create figure
     fig, (ax1) = plt.subplots(nrows=1, ncols=1, figsize=(5, 5))

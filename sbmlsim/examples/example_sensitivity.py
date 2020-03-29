@@ -24,7 +24,7 @@ def run_sensitivity():
             Timecourse(start=0, end=100, steps=100, model_changes={"boundary_condition": {"X": False}}),
         ])
     tc_sims = ensemble(tc_sim, changeset=changeset)
-    result = simulator.timecourses(tc_sims)
+    result = simulator.run_timecourses(tc_sims)
 
     # create figure
     fig, (ax1) = plt.subplots(nrows=1, ncols=1, figsize=(5, 5))

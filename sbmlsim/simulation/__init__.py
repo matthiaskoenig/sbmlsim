@@ -1,3 +1,4 @@
-from .scan import ParameterScan
-from .timecourse import Timecourse, TimecourseSim
 from .simulation import AbstractSim
+from .timecourse import TimecourseSim, Timecourse
+from .scan import ParameterScan, ScanDimension
+

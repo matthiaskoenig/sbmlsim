@@ -1,4 +1,6 @@
-
+"""
+Abstract base simulation.
+"""
 
 
 class AbstractSim(object):

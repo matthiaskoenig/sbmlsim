@@ -19,7 +19,7 @@ def run_timecourse_examples():
     tc_sim = TimecourseSim(
         Timecourse(start=0, end=100, steps=100)
     )
-    s1 = simulator.timecourses(tc_sim)
+    s1 = simulator.run_timecourses(tc_sim)
     print(tc_sim)
 
 
@@ -28,7 +28,7 @@ def run_timecourse_examples():
     tc_sim = TimecourseSim(
         Timecourse(start=0, end=100, steps=100, changes={"X": 10, "Y": 200})
     )
-    s2 = simulator.timecourses(tc_sim)
+    s2 = simulator.run_timecourses(tc_sim)
     print(tc_sim)
 
     # 3. combined timecourses
@@ -37,7 +37,7 @@ def run_timecourse_examples():
             Timecourse(start=0, end=100, steps=100),
             Timecourse(start=0, end=100, steps=100, changes={"X": 10, "Y": 20}),
         ])
-    s3 = simulator.timecourses(tc_sim)
+    s3 = simulator.run_timecourses(tc_sim)
     print(tc_sim)
 
     # 4. combined timecourses with model_change
@@ -47,7 +47,7 @@ def run_timecourse_examples():
             Timecourse(start=0, end=50, steps=100, model_changes={"boundary_condition": {"X": True}}),
             Timecourse(start=0, end=100, steps=100, model_changes={"boundary_condition": {"X": False}}),
         ])
-    s4 = simulator.timecourses(tc_sim)
+    s4 = simulator.run_timecourses(tc_sim)
     print(tc_sim)
 
     # create figure

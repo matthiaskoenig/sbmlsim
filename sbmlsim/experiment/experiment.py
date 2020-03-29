@@ -254,10 +254,10 @@ class SimulationExperiment(object):
 
             if isinstance(sim, TimecourseSim):
                 logger.info(f"Run timecourse task: '{task_key}'")
-                self._results[task_key] = simulator.timecourses(sim)
+                self._results[task_key] = simulator.run_timecourses(sim)
             elif isinstance(sim, ParameterScan):
                 logger.info(f"Run scan task: '{task_key}'")
-                self._results[task_key] = simulator.scan(sim)
+                self._results[task_key] = simulator.run_scan(sim)
             else:
                 raise ValueError(f"Unsupported simulation type: "
                                  f"{type(sim)}")

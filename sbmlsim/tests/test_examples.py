@@ -3,7 +3,7 @@ Run all the example files in tests.
 """
 import pytest
 from sbmlsim.examples import example_clamp, example_scan, example_sensitivity, example_timecourse, \
-    example_parallel, example_units
+    example_simulator_parallel, example_units
 
 
 def test_clamp():
@@ -24,17 +24,17 @@ def test_timecourse():
 
 @pytest.mark.skip
 def test_parallel_1():
-    example_parallel.example_single_actor()
+    example_simulator_parallel.example_single_actor()
 
 
 @pytest.mark.skip
 def test_parallel_2():
-    example_parallel.example_multiple_actors()
+    example_simulator_parallel.example_multiple_actors()
 
 
 @pytest.mark.skip
 def test_parallel_3():
-    example_parallel.example_parallel_timecourse(nsim=20, actor_count=5)
+    example_simulator_parallel.example_parallel_timecourse(nsim=20, actor_count=5)
 
 
 def test_units():

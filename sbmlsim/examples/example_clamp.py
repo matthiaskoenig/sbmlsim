@@ -37,7 +37,7 @@ def run_clamp():
         Timecourse(start=0, end=400, steps=400,
                    model_changes={'boundary_condition': {'X': False}}),
     ])
-    result = simulator.timecourses(tcsim)
+    result = simulator.run_timecourses(tcsim)
     assert isinstance(result, Result)
     plot_result(result, "clamp experiment (220-420)")
 
