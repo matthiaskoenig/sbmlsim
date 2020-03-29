@@ -3,10 +3,8 @@ Example showing basic timecourse simulations and plotting.
 """
 from matplotlib import pyplot as plt
 
-# from sbmlsim.simulation_ray import SimulatorParallel as Simulator
-from sbmlsim.simulator.simulation_serial import SimulatorSerial as Simulator
-
-from sbmlsim.simulation.timecourse import Timecourse, TimecourseSim
+from sbmlsim.simulator import SimulatorSerial as Simulator
+from sbmlsim.simulation import Timecourse, TimecourseSim
 from sbmlsim.tests.constants import MODEL_REPRESSILATOR
 
 
@@ -19,16 +17,15 @@ def run_timecourse_examples():
     tc_sim = TimecourseSim(
         Timecourse(start=0, end=100, steps=100)
     )
-    s1 = simulator._run_timecourses(tc_sim)
+    s1 = simulator.timecourse(tc_sim)
     print(tc_sim)
-
 
     # 2. timecourse with parameter changes
     print("*** parameter change ***")
     tc_sim = TimecourseSim(
         Timecourse(start=0, end=100, steps=100, changes={"X": 10, "Y": 200})
     )
-    s2 = simulator._run_timecourses(tc_sim)
+    s2 = simulator.timecourse(tc_sim)
     print(tc_sim)
 
     # 3. combined timecourses
@@ -37,7 +34,7 @@ def run_timecourse_examples():
             Timecourse(start=0, end=100, steps=100),
             Timecourse(start=0, end=100, steps=100, changes={"X": 10, "Y": 20}),
         ])
-    s3 = simulator._run_timecourses(tc_sim)
+    s3 = simulator.timecourse(tc_sim)
     print(tc_sim)
 
     # 4. combined timecourses with model_change
@@ -47,7 +44,7 @@ def run_timecourse_examples():
             Timecourse(start=0, end=50, steps=100, model_changes={"boundary_condition": {"X": True}}),
             Timecourse(start=0, end=100, steps=100, model_changes={"boundary_condition": {"X": False}}),
         ])
-    s4 = simulator._run_timecourses(tc_sim)
+    s4 = simulator.timecourse(tc_sim)
     print(tc_sim)
 
     # create figure
@@ -60,7 +57,7 @@ def run_timecourse_examples():
     ax4.set_title("model change")
 
     for s, ax in [(s1, ax1), (s2, ax2), (s3, ax3), (s4, ax4)]:
-        df = s.frames[0]
+        df = s
         ax.plot(df.time, df.X, label="X")
         ax.plot(df.time, df.Y, label="Y")
         ax.plot(df.time, df.Z, label="Z")

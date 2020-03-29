@@ -48,6 +48,7 @@ class SimulatorSerial(SimulatorAbstract, SimulatorWorker):
         """ Run a scan simulation."""
         # Create all possible combinations of the scan
         indices, simulations = scan.to_simulations()
+
         # Based on the indices the result structure must be created
         return Result.from_dfs(
             dfs=self._run_timecourses(simulations),

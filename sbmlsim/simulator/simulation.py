@@ -15,7 +15,7 @@ from typing import List
 import pandas as pd
 import roadrunner
 
-from sbmlsim.result import Result
+import xarray as xr
 from sbmlsim.simulation.timecourse import Timecourse, TimecourseSim
 from sbmlsim.simulation.scan import ScanSim
 
@@ -59,14 +59,14 @@ class SimulatorAbstract(object):
         """ Must be implemented by simulator. """
         pass
 
-    def _run_timecourses(self, simulations: List[TimecourseSim]) -> Result:
+    def _run_timecourses(self, simulations: List[TimecourseSim]) -> List[pd.DataFrame]:
         """ Must be implemented by simulator.
 
         :return:
         """
         raise NotImplementedError("Use concrete implementation")
 
-    def run_scan(self, scan: ScanSim) -> Result:
+    def run_scan(self, scan: ScanSim) -> xr.Dataset:
         """ Must be implemented by simulator.
 
         :return:

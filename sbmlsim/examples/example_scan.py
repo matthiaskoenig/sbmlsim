@@ -6,7 +6,7 @@ import numpy as np
 from sbmlsim.simulation import Timecourse, TimecourseSim, ScanSim, Dimension
 from sbmlsim.simulator import SimulatorSerial, SimulatorParallel
 from sbmlsim.units import Units
-from sbmlsim.result import XResult
+from sbmlsim.result import Result
 
 from sbmlsim.tests.constants import MODEL_REPRESSILATOR
 
@@ -27,7 +27,7 @@ def run_parameter_scan0d():
     )
     scan0d.normalize(udict=udict, ureg=ureg)
     dfs = simulator.run_scan(scan0d)
-    result = XResult.from_dfs(scan=scan0d, dfs=dfs)
+    result = Result.from_dfs(scan=scan0d, dfs=dfs)
     print(result)
     return result
 
@@ -52,8 +52,7 @@ def run_parameter_scan1d():
         ]
     )
     scan1d.normalize(udict=udict, ureg=ureg)
-    dfs = simulator.run_scan(scan1d)
-    result = XResult.from_dfs(scan=scan1d, dfs=dfs)
+    result = simulator.run_scan(scan1d)
     print(result)
     return result
 
@@ -79,10 +78,10 @@ def run_parameter_scan1d_distribution():
         ]
     )
     scan1d.normalize(udict=udict, ureg=ureg)
-    dfs = simulator.run_scan(scan1d)
-    result = XResult.from_dfs(scan=scan1d, dfs=dfs)
+    result = simulator.run_scan(scan1d)
     print(result)
     return result
+
 
 def run_parameter_scan2d():
     """Perform a parameter scan"""
@@ -106,8 +105,7 @@ def run_parameter_scan2d():
         ]
     )
     scan2d.normalize(udict=udict, ureg=ureg)
-    dfs = simulator.run_scan(scan2d)
-    result = XResult.from_dfs(scan=scan2d, dfs=dfs)
+    result = simulator.run_scan(scan2d)
     print(result)
     return result
 

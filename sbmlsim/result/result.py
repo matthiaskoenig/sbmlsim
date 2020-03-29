@@ -81,7 +81,7 @@ class Result:
 
             ds[column] = da
 
-        return cls(xarray_obj=ds)
+        return ds
 
 
     '''
