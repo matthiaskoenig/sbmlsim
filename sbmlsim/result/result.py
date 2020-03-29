@@ -29,13 +29,25 @@ class XResult(object):
         coords = {"time": df.time.values}
         for scan_dim in scan.dimensions:  # type: ScanDimension
             shape.append(len(scan_dim))
+
+            # FIXME: conflict with names
+            # changes = scan_dim.changes
+            # if changes and len(changes) == 1:
+            #     # set the key as dimension key
+            #     dim = list(changes.keys())[0]
+            #     # exactly one change in dimension, we use the coordinates
+            #     coords[dim] = list(changes.values())[0]
+            # else:
+
             dim = scan_dim.dimension
-            dims.append(dim)
             coords[dim] = scan_dim.index
+
+            dims.append(dim)
 
         print("shape:", shape)
         print("dims:", dims)
         # print(coords)
+        del df
 
         indices = scan.indices()
 
@@ -48,6 +60,7 @@ class XResult(object):
                 continue
 
             for k_df, df in enumerate(dfs):
+                print(df['PX'])
                 index = tuple([...] + list(indices[k_df]))  # trick to get the ':' in first time dimension
                 # print(index)
                 # print(index)

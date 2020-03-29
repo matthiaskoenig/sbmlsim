@@ -36,6 +36,13 @@ class ScanSim(AbstractSim):
     def dimensions(self):
         return self.dimensions
 
+    def get_dimension(self, key):
+        """Get dimension by key."""
+        for dim in self.dimensions:
+            if dim.dimension == dim:
+                return dim
+        raise KeyError(f"Dimension with key '{key}' does not exist.")
+
     def indices(self):
         """Indices of all combinations."""
         index_vecs = [dim.index for dim in self.dimensions]

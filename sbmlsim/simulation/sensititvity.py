@@ -1,7 +1,7 @@
 """
 Helpers for calculating model sensitivity.
 """
-
+from sbmlsim.model import RoadrunnerSBMLModel
 # FIXME: make this work with an Abstract model
 
 def parameter_sensitivity_changeset(cls, r: roadrunner.RoadRunner,
@@ -22,7 +22,7 @@ def parameter_sensitivity_changeset(cls, r: roadrunner.RoadRunner,
     return changeset
 
 
-def _parameters_for_sensitivity(r, exclude_filter=None,
+def _parameters_for_sensitivity(r: Road, exclude_filter=None,
                                 exclude_zero: bool = True,
                                 zero_eps: float = 1E-8):
     """ Get parameter ids for sensitivity analysis.
