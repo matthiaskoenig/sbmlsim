@@ -17,7 +17,7 @@ import roadrunner
 
 from sbmlsim.result import Result
 from sbmlsim.simulation.timecourse import Timecourse, TimecourseSim
-from sbmlsim.simulation.scan import ParameterScan
+from sbmlsim.simulation.scan import ScanSim
 
 logger = logging.getLogger(__name__)
 
@@ -66,7 +66,7 @@ class SimulatorAbstract(object):
         """
         raise NotImplementedError("Use concrete implementation")
 
-    def run_scan(self, scan: ParameterScan) -> List[pd.DataFrame]:
+    def run_scan(self, scan: ScanSim) -> List[pd.DataFrame]:
         """ Must be implemented by simulator.
 
         :return:

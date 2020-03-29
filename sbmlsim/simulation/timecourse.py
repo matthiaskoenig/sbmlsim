@@ -6,15 +6,16 @@ import json
 from typing import List, Tuple
 from copy import deepcopy
 import logging
-from pint.errors import DimensionalityError
+import numpy as np
+
 from sbmlsim.units import Units
-from sbmlsim.serialization import ObjectJSONEncoder, JSONEncoder
-from sbmlsim.simulation.simulation import AbstractSim
+from sbmlsim.serialization import ObjectJSONEncoder
+from sbmlsim.simulation import AbstractSim, Dimension
 
 logger = logging.getLogger(__name__)
 
 
-class Timecourse(JSONEncoder):
+class Timecourse(ObjectJSONEncoder):
     """ Simulation definition.
 
     Definition of all information necessary to run a single timecourse simulation.
@@ -51,11 +52,6 @@ class Timecourse(JSONEncoder):
 
     def __repr__(self):
         return f"Timecourse([{self.start},{self.end}])"
-
-    def default(self, o):
-        """json encoder"""
-        # FIXME: unified handling of encoding via single encoder
-        return o.__dict__
 
     def to_dict(self):
         """ Convert to dictionary. """
@@ -111,8 +107,26 @@ class TimecourseSim(AbstractSim):
         self.reset = reset
         self.time_offset = time_offset
 
+        self.time = self._time()
+
     def __repr__(self):
         return f"TimecourseSim({[tc for tc in self.timecourses]})"
+
+    def _time(self):
+        """Calculates the time vector once for the simulation."""
+        t_offset = self.time_offset
+        time_vecs = []
+        for tc in self.timecourses:
+            time_vecs.append(
+                np.linspace(tc.start, tc.end, num=tc.steps + 1) + t_offset
+            )
+            t_offset += tc.end
+        return np.concatenate(time_vecs)
+
+    def dimensions(self) -> List[Dimension]:
+        return [
+            Dimension(dimension="time", index=self.time)
+        ]
 
     def normalize(self, udict, ureg):
         for tc in self.timecourses:

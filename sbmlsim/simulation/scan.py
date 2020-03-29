@@ -1,39 +1,23 @@
 import logging
 import numpy as np
 import itertools
-
 from pint import UnitRegistry
 from copy import deepcopy
-from typing import Dict, List, Iterable
-from sbmlsim.simulation.simulation import AbstractSim
+from typing import Dict, List
+
+from sbmlsim.simulation import AbstractSim, Dimension
 from sbmlsim.units import Units
 
 logger = logging.getLogger()
 
 
-class ScanDimension(object):
-    """Defines a single dimension for a scan.
-    The dimension defines how the dimension is called,
-    the index is the corresponding index of the dimension
+class ScanSim(AbstractSim):
+    """A scan simulation over another AbstractSim.
 
+    FIXME: probably not necessary to make this a simulation.
     """
-    def __init__(self, dimension: str, index: Iterable, changes: Dict):
-        self.dimension = dimension
-        self.index = index
-        self.changes = changes
 
-    def __repr__(self):
-        return f"Dim({self.dimension}({len(self)}), " \
-               f"{list(self.changes.keys())})"
-
-    def __len__(self):
-        return len(self.index)
-
-
-class ParameterScan(AbstractSim):
-    """A parameter or initial condition scan over a AbstractSim."""
-
-    def __init__(self, simulation: AbstractSim, dimensions: List[ScanDimension]):
+    def __init__(self, simulation: AbstractSim, dimensions: List[Dimension]):
         """Scanning a simulation.
 
         Parameters or initial conditions can be scanned.
@@ -49,15 +33,21 @@ class ParameterScan(AbstractSim):
         return f"Scan({self.simulation.__class__.__name__}: " \
                f"[{', '.join([str(d) for d in self.dimensions])}])"
 
+    def dimensions(self):
+        return self.dimensions
+
+    def indices(self):
+        """Indices of all combinations."""
+        index_vecs = [dim.index for dim in self.dimensions]
+        return list(itertools.product(*index_vecs))
+
     def to_simulations(self):
         """Flattens the scan to individual simulations.
 
         Necessary to track the results.
         """
         # create all combinations of the scan
-        index_vecs = [dim.index for dim in self.dimensions]
-        indices = list(itertools.product(*index_vecs))
-
+        indices = self.indices()
         # create respective simulations
         simulations = []
         for index_list in indices:
@@ -101,7 +91,7 @@ if __name__ == "__main__":
     Q_ = ureg.Quantity
     udict = {k: "dimensionless" for k in ['X', '[X]', 'n', 'Y']}
 
-    scan2d = ParameterScan(
+    scan2d = ScanSim(
         simulation=TimecourseSim([
             Timecourse(start=0, end=100, steps=100,
                        changes={'X': Q_(10, "dimensionless")}),
@@ -111,10 +101,10 @@ if __name__ == "__main__":
                        changes={'X': Q_(10, "dimensionless")}),
         ]),
         dimensions=[
-            ScanDimension("dim1", index=range(8), changes={
+            Dimension("dim1", index=range(8), changes={
                 'n': Q_(np.linspace(start=2, stop=10, num=8), "dimensionless"),
             }),
-            ScanDimension("dim2", index=range(4), changes={
+            Dimension("dim2", index=range(4), changes={
                 'Y': Q_(np.linspace(start=10, stop=20, num=4), "dimensionless"),
             }),
         ]

@@ -7,7 +7,7 @@ import pandas as pd
 
 from sbmlsim.simulator.simulation import SimulatorAbstract, SimulatorWorker, set_integrator_settings
 from sbmlsim.result import Result
-from sbmlsim.simulation import TimecourseSim, ParameterScan
+from sbmlsim.simulation import TimecourseSim, ScanSim
 from sbmlsim.model import AbstractModel, RoadrunnerSBMLModel
 
 logger = logging.getLogger(__name__)
@@ -44,7 +44,7 @@ class SimulatorSerial(SimulatorAbstract, SimulatorWorker):
                            "Use SimulatorParallel instead.")
         return [self.timecourse(sim) for sim in simulations]
 
-    def run_scan(self, scan: ParameterScan) -> List[pd.DataFrame]:
+    def run_scan(self, scan: ScanSim) -> List[pd.DataFrame]:
 
         # Create all possible combinations of the scan
         indices, simulations = scan.to_simulations()

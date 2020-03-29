@@ -2,15 +2,62 @@
 Helpers for working with simulation results.
 Handles the storage of simulations.
 """
+from typing import List
 import logging
 import numpy as np
 import pandas as pd
+import xarray as xr
 from typing import List
+
+from sbmlsim.simulation import ScanSim, Dimension
 
 from cached_property import cached_property
 # FIXME: invalidate the cache on changes !!!
 
 logger = logging.getLogger(__name__)
+
+
+class XResult(object):
+
+    @classmethod
+    def from_dfs(cls, scan: ScanSim, dfs: List[pd.DataFrame]) -> xr.Dataset:
+        """Structure is based on the underlying scan."""
+        df = dfs[0]
+        # add time dimension (FIXME: internal dimension depend on simulation type)
+        shape = [len(df)]
+        dims = ["time"]
+        coords = {"time": df.time.values}
+        for scan_dim in scan.dimensions:  # type: ScanDimension
+            shape.append(len(scan_dim))
+            dim = scan_dim.dimension
+            dims.append(dim)
+            coords[dim] = scan_dim.index
+
+        print("shape:", shape)
+        print("dims:", dims)
+        # print(coords)
+
+        indices = scan.indices()
+
+        ds = xr.Dataset()
+        columns = dfs[0].columns
+        data = np.empty(shape=shape)
+        for k_col, column in enumerate(columns):
+            if column == "time":
+                # not storing the "time" column (encoded as dimension)
+                continue
+
+            for k_df, df in enumerate(dfs):
+                index = tuple([...] + list(indices[k_df]))  # trick to get the ':' in first time dimension
+                # print(index)
+                # print(index)
+                data[index] = df[column].values
+
+            # create DataArray for given column
+            da = xr.DataArray(data=data, dims=dims, coords=coords)
+            ds[column] = da
+
+        return ds
 
 
 class Result(object):

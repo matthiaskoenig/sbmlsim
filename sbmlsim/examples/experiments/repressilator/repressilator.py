@@ -10,7 +10,7 @@ from pathlib import Path
 from sbmlsim.experiment import SimulationExperiment
 from sbmlsim.model import AbstractModel, RoadrunnerSBMLModel
 from sbmlsim.data import Data
-from sbmlsim.simulation import Timecourse, TimecourseSim, AbstractSim, ParameterScan
+from sbmlsim.simulation import Timecourse, TimecourseSim, AbstractSim, ScanSim
 from sbmlsim.task import Task
 from sbmlsim.plot import Figure, Axis
 
@@ -46,20 +46,20 @@ class RepressilatorExperiment(SimulationExperiment):
                                 }),
         ])
 
-        scan1d = ParameterScan(
+        scan1d = ScanSim(
             TimecourseSim([Timecourse(start=0, end=600, steps=2000)]),
             scan={
                 'X': Q_(np.linspace(0, 10, num=11), unit_data),
             }
         )
-        scan2d = ParameterScan(
+        scan2d = ScanSim(
             TimecourseSim([Timecourse(start=0, end=600, steps=2000)]),
             scan={
                 'X': Q_(np.linspace(0, 10, num=11), unit_data),
                 'Y': Q_(np.linspace(0, 10, num=11), unit_data),
             }
         )
-        scan3d = ParameterScan(
+        scan3d = ScanSim(
             TimecourseSim([Timecourse(start=0, end=600, steps=2000)]),
             scan={
                 'X': Q_(np.linspace(0, 10, num=5), unit_data),

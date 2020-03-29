@@ -9,7 +9,7 @@ from pint import UnitRegistry
 
 from sbmlsim.task import Task
 from sbmlsim.simulator import SimulatorSerial
-from sbmlsim.simulation import AbstractSim, TimecourseSim, ParameterScan
+from sbmlsim.simulation import AbstractSim, TimecourseSim, ScanSim
 from sbmlsim.serialization import ObjectJSONEncoder
 from sbmlsim.result import Result
 from sbmlsim.data import DataSet
@@ -255,7 +255,7 @@ class SimulationExperiment(object):
             if isinstance(sim, TimecourseSim):
                 logger.info(f"Run timecourse task: '{task_key}'")
                 self._results[task_key] = simulator.run_timecourses(sim)
-            elif isinstance(sim, ParameterScan):
+            elif isinstance(sim, ScanSim):
                 logger.info(f"Run scan task: '{task_key}'")
                 self._results[task_key] = simulator.run_scan(sim)
             else:
