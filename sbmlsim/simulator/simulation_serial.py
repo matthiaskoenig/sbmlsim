@@ -34,7 +34,7 @@ class SimulatorSerial(SimulatorAbstract, SimulatorWorker):
 
         set_integrator_settings(self.r, **kwargs)
 
-    def run_timecourses(self, simulations: List[TimecourseSim]) -> List[pd.DataFrame]:
+    def _run_timecourses(self, simulations: List[TimecourseSim]) -> List[pd.DataFrame]:
         """ Run many timecourses."""
         if isinstance(simulations, TimecourseSim):
             simulations = [simulations]
@@ -44,11 +44,13 @@ class SimulatorSerial(SimulatorAbstract, SimulatorWorker):
                            "Use SimulatorParallel instead.")
         return [self.timecourse(sim) for sim in simulations]
 
-    def run_scan(self, scan: ScanSim) -> List[pd.DataFrame]:
-
+    def run_scan(self, scan: ScanSim) -> Result:
+        """ Run a scan simulation."""
         # Create all possible combinations of the scan
         indices, simulations = scan.to_simulations()
-        dfs = self.run_timecourses(simulations)
         # Based on the indices the result structure must be created
-
-        return dfs
+        return Result.from_dfs(
+            dfs=self._run_timecourses(simulations),
+            scan=scan,
+            udict=self.udict
+        )

@@ -26,7 +26,7 @@ def run_simulations(create_files=True):
         tsv_path = diff_path / "sbmlsim" / f"{simulation_key}.tsv"
         tcsim = TimecourseSim.from_json(json_path)
         # print(tcsim)
-        result = simulator.run_timecourses([tcsim])
+        result = simulator._run_timecourses([tcsim])
         if create_files:
             result.mean.to_csv(tsv_path, sep="\t", index=False)
 

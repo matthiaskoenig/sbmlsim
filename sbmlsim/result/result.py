@@ -17,37 +17,46 @@ from cached_property import cached_property
 logger = logging.getLogger(__name__)
 
 
-class XResult(object):
+@xr.register_dataset_accessor("sim")
+class Result:
+    def __init__(self, xarray_obj):
+        self._obj = xarray_obj
 
     @classmethod
-    def from_dfs(cls, scan: ScanSim, dfs: List[pd.DataFrame]) -> xr.Dataset:
+    def from_dfs(cls, dfs: List[pd.DataFrame], scan: ScanSim=None, udict=None) -> xr.Dataset:
         """Structure is based on the underlying scan."""
+        if isinstance(dfs, pd.DataFrame):
+            dfs = [dfs]
+
+        if udict is None:
+            udict = {}
+
+        # add time dimension
+        # FIXME: internal dimensions different for other simulation types
         df = dfs[0]
-        # add time dimension (FIXME: internal dimension depend on simulation type)
         shape = [len(df)]
         dims = ["time"]
         coords = {"time": df.time.values}
+        del df
+
+        if scan is None:
+            logger.error("dummy scan created!")
+            # Create a dummy scan
+            scan = ScanSim(
+                simulation=None,
+                dimensions=[Dimension("dim1", index=np.arange(1))]
+            )
+
+        # add additional scan dimensions
         for scan_dim in scan.dimensions:  # type: ScanDimension
             shape.append(len(scan_dim))
-
-            # FIXME: conflict with names
-            # changes = scan_dim.changes
-            # if changes and len(changes) == 1:
-            #     # set the key as dimension key
-            #     dim = list(changes.keys())[0]
-            #     # exactly one change in dimension, we use the coordinates
-            #     coords[dim] = list(changes.values())[0]
-            # else:
-
             dim = scan_dim.dimension
             coords[dim] = scan_dim.index
-
             dims.append(dim)
 
-        print("shape:", shape)
-        print("dims:", dims)
+        # print("shape:", shape)
+        # print("dims:", dims)
         # print(coords)
-        del df
 
         indices = scan.indices()
 
@@ -56,69 +65,26 @@ class XResult(object):
         data = np.empty(shape=shape)
         for k_col, column in enumerate(columns):
             if column == "time":
-                # not storing the "time" column (encoded as dimension)
+                # not storing "time" column (encoded as dimension)
                 continue
 
             for k_df, df in enumerate(dfs):
-                print(df['PX'])
                 index = tuple([...] + list(indices[k_df]))  # trick to get the ':' in first time dimension
-                # print(index)
-                # print(index)
                 data[index] = df[column].values
 
             # create DataArray for given column
             da = xr.DataArray(data=data, dims=dims, coords=coords)
+
+            # set unit
+            if column in udict:
+                da.attrs["units"] = udict[column]
+
             ds[column] = da
 
-        return ds
+        return cls(xarray_obj=ds)
 
 
-class Result(object):
-    """Result of simulation(s).
-
-    Results only store the raw data without any units.
-    The SimulationExperiment context, i.e., especially the model definition is
-    required to resolve the units.
-    """
-
-    def __init__(self, frames: List[pd.DataFrame], udict=None, ureg=None):
-        """
-
-        :param frames: iterable of pd.DataFrame
-        """
-        if isinstance(frames, pd.DataFrame):
-            frames = [frames]
-
-        # empty array for storage
-        self.frames = frames
-        # units dictionary for lookup
-        self.udict = udict
-        self.ureg = ureg
-
-        if len(frames) > 0:
-            df = frames[0]
-            self.index = df.index
-            self.columns = df.columns
-
-            # store data in numpy
-            self.data = np.empty((self.nrow, self.ncol, self.nframes))
-            for k, df in enumerate(self.frames):
-                self.data[:, :, k] = df.values
-        else:
-            logging.warning("Empty Result, no DataFrames.")
-
-    def __len__(self):
-        return len(self.frames)
-
-    def __str__(self):
-        lines = [
-            str(type(self)),
-            f"DataFrames: {len(self)}",
-            f"Shape: {self.data.shape}",
-            f"Size (bytes): {self.data.nbytes}"
-        ]
-        return "\n".join(lines)
-
+    '''
     @cached_property
     def nrow(self):
         return len(self.index)
@@ -165,3 +131,4 @@ class Result(object):
             frames = [store[key] for key in store.keys()]
 
         return Result(frames=frames)
+    '''

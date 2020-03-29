@@ -254,7 +254,7 @@ class SimulationExperiment(object):
 
             if isinstance(sim, TimecourseSim):
                 logger.info(f"Run timecourse task: '{task_key}'")
-                self._results[task_key] = simulator.run_timecourses(sim)
+                self._results[task_key] = simulator._run_timecourses(sim)
             elif isinstance(sim, ScanSim):
                 logger.info(f"Run scan task: '{task_key}'")
                 self._results[task_key] = simulator.run_scan(sim)

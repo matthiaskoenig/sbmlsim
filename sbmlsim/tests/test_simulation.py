@@ -66,5 +66,5 @@ def test_timecourse_ensemble():
     tcsims = ensemble(TimecourseSim([
             Timecourse(start=0, end=400, steps=400),
         ]), changeset=changeset)
-    result = simulator.run_timecourses(tcsims)
+    result = simulator._run_timecourses(tcsims)
     assert isinstance(result, Result)

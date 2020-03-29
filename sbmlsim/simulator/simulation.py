@@ -59,14 +59,14 @@ class SimulatorAbstract(object):
         """ Must be implemented by simulator. """
         pass
 
-    def run_timecourses(self, simulations: List[TimecourseSim]) -> List[pd.DataFrame]:
+    def _run_timecourses(self, simulations: List[TimecourseSim]) -> Result:
         """ Must be implemented by simulator.
 
         :return:
         """
         raise NotImplementedError("Use concrete implementation")
 
-    def run_scan(self, scan: ScanSim) -> List[pd.DataFrame]:
+    def run_scan(self, scan: ScanSim) -> Result:
         """ Must be implemented by simulator.
 
         :return:
