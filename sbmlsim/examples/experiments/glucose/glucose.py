@@ -3,9 +3,9 @@ Run some example experiments.
 """
 from pathlib import Path
 from sbmlsim.experiment.report import create_report
-
-from sbmlsim.examples.experiments.glucose import DoseResponseExperiment
 from sbmlsim.utils import timeit
+
+from sbmlsim.examples.experiments.glucose.experiments.dose_response import DoseResponseExperiment
 
 
 @timeit

@@ -1,8 +1,8 @@
 import ray
 
 import logging
-from sbmlsim.models import RoadrunnerSBMLModel
-from sbmlsim.simulation.timecourse import TimecourseSim
+from sbmlsim.model import RoadrunnerSBMLModel
+from sbmlsim.simulation import TimecourseSim
 from sbmlsim.result import Result
 from sbmlsim.simulator.simulation import SimulatorWorker
 from sbmlsim.units import Units

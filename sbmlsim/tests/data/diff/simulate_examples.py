@@ -2,11 +2,12 @@ from pathlib import Path
 import pandas as pd
 
 from sbmlsim.diff import DataSetsComparison, get_json_files
+from sbmlsim.simulator import SimulatorSerial as Simulator
+from sbmlsim.model import RoadrunnerSBMLModel
+from sbmlsim.simulation import TimecourseSim
 from matplotlib import pyplot as plt
-from sbmlsim.simulator.simulation_serial import SimulatorSerial as Simulator
+
 from sbmlsim.tests.constants import DATA_PATH, MODEL_REPRESSILATOR
-from sbmlsim.models import RoadrunnerSBMLModel
-from sbmlsim.simulation.timecourse import TimecourseSim
 
 
 def run_simulations(create_files=True):

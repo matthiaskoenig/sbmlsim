@@ -3,14 +3,12 @@ Example shows basic model simulations and plotting.
 """
 import numpy as np
 
-from sbmlsim.parametrization import ChangeSet
-from sbmlsim.simulation.timecourse import Timecourse, TimecourseSim
-from sbmlsim.simulation.scan import ParameterScan
-from sbmlsim.simulator.simulation_ray import SimulatorParallel
-from sbmlsim.simulator.simulation_serial import SimulatorSerial
-from sbmlsim.result import Result
-from sbmlsim.tests.constants import MODEL_REPRESSILATOR
+from sbmlsim.simulation import Timecourse, TimecourseSim, ParameterScan
+from sbmlsim.simulator import SimulatorSerial, SimulatorParallel
 from sbmlsim.units import Units
+
+from sbmlsim.tests.constants import MODEL_REPRESSILATOR
+
 
 def run_parameter_scan(parallel=False):
     """Perform a parameter scan"""
@@ -61,40 +59,9 @@ def run_parameter_scan(parallel=False):
     print(results.vecs)
     print(results.indices)
 
-
-    return results
-
-
-def run_parameter_scan_old(parallel=False):
-    """Perform a parameter scan"""
-
-    # [2] value scan
-    scan_changeset = ChangeSet.scan_changeset('n', values=np.linspace(start=2, stop=10, num=8))
-    tcsims = ensemble(
-        sim=TimecourseSim([
-            Timecourse(start=0, end=100, steps=100, changes={}),
-            Timecourse(start=0, end=60, steps=100, changes={'[X]': 10}),
-            Timecourse(start=0, end=60, steps=100, changes={'X': 10}),
-        ]),
-        changeset=scan_changeset
-    )
-    print(tcsims[0])
-
-    if parallel:
-        simulator = SimulatorParallel(path=MODEL_REPRESSILATOR)
-        results = simulator.timecourses(tcsims)
-        assert isinstance(results, Result)
-
-    else:
-        simulator = SimulatorSerial(path=MODEL_REPRESSILATOR)
-        results = simulator.timecourses(tcsims)
-        assert isinstance(results, Result)
-
     return results
 
 
 if __name__ == "__main__":
     run_parameter_scan(parallel=False)
 
-    # run_parameter_scan_old(parallel=False)
-    # run_parameter_scan_old(parallel=True)

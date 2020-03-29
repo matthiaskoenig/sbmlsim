@@ -1,8 +1,6 @@
-
-
 import pandas as pd
 
-from sbmlsim.models import RoadrunnerSBMLModel
+from sbmlsim.model import RoadrunnerSBMLModel
 from sbmlsim.result import Result
 from sbmlsim.tests.constants import MODEL_REPRESSILATOR
 

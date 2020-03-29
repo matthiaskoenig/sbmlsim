@@ -1,11 +1,11 @@
-from matplotlib import pyplot as plt
+import logging
+import pandas as pd
+
 from sbmlsim.result import Result
 from sbmlsim.data import DataSet
+from sbmlsim.plot import Figure, SubPlot, Plot, Curve, Axis
+from matplotlib import pyplot as plt
 
-import pandas as pd
-from sbmlsim.plotting import Figure, SubPlot, Plot, Curve, Axis
-
-import logging
 logger = logging.getLogger(__name__)
 
 kwargs_data = {'marker': 's', 'linestyle': '--', 'linewidth': 1, 'capsize': 3}

@@ -14,7 +14,7 @@ from sbmlsim.units import Units
 from pint import UnitRegistry
 
 
-from sbmlsim.models.model_resources import Source, resolve_source
+from sbmlsim.model.model_resources import Source, resolve_source
 from collections import namedtuple
 
 

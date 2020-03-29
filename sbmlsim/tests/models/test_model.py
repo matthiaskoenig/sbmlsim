@@ -1,10 +1,6 @@
 import pytest
 
-import roadrunner
-
-from sbmlsim.models.model import AbstractModel
-from sbmlsim.models.model_roadrunner import RoadrunnerSBMLModel
-
+from sbmlsim.model import AbstractModel, RoadrunnerSBMLModel
 from sbmlsim.tests.constants import MODEL_REPRESSILATOR
 
 

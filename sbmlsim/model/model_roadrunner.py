@@ -5,11 +5,10 @@ import roadrunner
 import libsbml
 import pandas as pd
 import numpy as np
-
 from pint import UnitRegistry
 
-from sbmlsim.models.model_resources import Source
-from sbmlsim.models.model import AbstractModel
+from sbmlsim.model import AbstractModel
+from sbmlsim.model.model_resources import Source
 from sbmlsim.units import Units
 from sbmlsim.utils import deprecated
 

@@ -6,20 +6,23 @@ from dataclasses import dataclass
 from typing import Dict
 from pint import UnitRegistry
 
-from sbmlsim.utils import timeit
+
 from sbmlsim.task import Task
-from sbmlsim.simulator.simulation_serial import SimulatorSerial
-from sbmlsim.simulation.timecourse import TimecourseSim
-from sbmlsim.simulation.simulation import AbstractSim
-from sbmlsim.simulation.scan import ParameterScan
+from sbmlsim.simulator import SimulatorSerial
+from sbmlsim.simulation import AbstractSim, TimecourseSim, ParameterScan
 from sbmlsim.serialization import ObjectJSONEncoder
 from sbmlsim.result import Result
 from sbmlsim.data import DataSet
-from sbmlsim.models import AbstractModel
-from sbmlsim.plotting.plotting_matplotlib import plt, to_figure
-from matplotlib.pyplot import Figure as FigureMPL
-from sbmlsim.plotting import Figure as FigureSEDML
+from sbmlsim.model import AbstractModel
+from sbmlsim.utils import timeit
+
+
 from sbmlsim.units import Units
+
+from sbmlsim.plot import Figure
+from sbmlsim.plot.plotting_matplotlib import plt, to_figure
+from matplotlib.pyplot import Figure as FigureMPL
+
 
 logger = logging.getLogger(__name__)
 
@@ -344,7 +347,7 @@ class SimulationExperiment(object):
         for fkey, fig in self._figures.items():
             path_svg = results_path / f"{self.sid}_{fkey}.svg"
 
-            if isinstance(fig, FigureSEDML):
+            if isinstance(fig, Figure):
                 fig_mpl = to_figure(fig)
             else:
                 fig_mpl = fig
@@ -354,7 +357,7 @@ class SimulationExperiment(object):
             paths.append(path_svg)
         return paths
 
-'''
+
 # FIXME: deprecated, remove
 class JSONExperiment(SimulationExperiment):
     """An experiment loaded from JSON serialization."""
@@ -379,4 +382,3 @@ class JSONExperiment(SimulationExperiment):
         experiment._simulations = simulations
 
         return experiment
-'''

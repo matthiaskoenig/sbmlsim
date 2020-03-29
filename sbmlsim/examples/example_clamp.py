@@ -1,11 +1,13 @@
-from matplotlib import pyplot as plt
 
-from sbmlsim.plotting import plotting_matplotlib as plotting
+
+
 from sbmlsim.simulation.timecourse import TimecourseSim, Timecourse
 from sbmlsim.simulator.simulation_serial import SimulatorSerial as Simulator
-# from sbmlsim.simulation_ray import SimulatorParallel as Simulator
 from sbmlsim.result import Result
 from sbmlsim.tests.constants import MODEL_REPRESSILATOR
+
+from sbmlsim.plot.plotting_matplotlib import add_line
+from matplotlib import pyplot as plt
 
 
 def run_clamp():
@@ -15,10 +17,8 @@ def run_clamp():
         fig, (ax1) = plt.subplots(nrows=1, ncols=1, figsize=(5, 5))
         fig.subplots_adjust(wspace=0.3, hspace=0.3)
 
-        plotting.add_line(ax=ax1, data=result,
-                          xid='time', yid="X", label="X")
-        plotting.add_line(ax=ax1, data=result,
-                          xid='time', yid="Y", label="Y", color="darkblue")
+        add_line(ax=ax1, data=result, xid='time', yid="X", label="X")
+        add_line(ax=ax1, data=result, xid='time', yid="Y", label="Y", color="darkblue")
 
         if title:
             ax1.set_title(title)

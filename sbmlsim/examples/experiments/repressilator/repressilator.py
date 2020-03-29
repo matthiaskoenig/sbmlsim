@@ -5,16 +5,16 @@ import numpy as np
 from typing import Dict
 from pathlib import Path
 
-from sbmlsim.tests.constants import MODEL_REPRESSILATOR
+
 
 from sbmlsim.experiment import SimulationExperiment
-from sbmlsim.models import AbstractModel, RoadrunnerSBMLModel
+from sbmlsim.model import AbstractModel, RoadrunnerSBMLModel
 from sbmlsim.data import Data
-from sbmlsim.simulation.timecourse import Timecourse, TimecourseSim
-from sbmlsim.simulation.simulation import AbstractSim
-from sbmlsim.simulation.scan import ParameterScan
+from sbmlsim.simulation import Timecourse, TimecourseSim, AbstractSim, ParameterScan
 from sbmlsim.task import Task
-from sbmlsim.plotting import Figure, Axis
+from sbmlsim.plot import Figure, Axis
+
+from sbmlsim.tests.constants import MODEL_REPRESSILATOR
 
 
 class RepressilatorExperiment(SimulationExperiment):

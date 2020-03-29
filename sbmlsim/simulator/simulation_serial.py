@@ -7,7 +7,7 @@ from typing import List
 from sbmlsim.simulator.simulation import SimulatorAbstract, SimulatorWorker, set_integrator_settings
 from sbmlsim.result import Result
 from sbmlsim.simulation.timecourse import TimecourseSim
-from sbmlsim.models import AbstractModel, RoadrunnerSBMLModel
+from sbmlsim.model import AbstractModel, RoadrunnerSBMLModel
 
 logger = logging.getLogger(__name__)
 
