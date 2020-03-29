@@ -17,7 +17,7 @@ class ScanSim(AbstractSim):
     FIXME: probably not necessary to make this a simulation.
     """
 
-    def __init__(self, simulation: AbstractSim, dimensions: List[Dimension]):
+    def __init__(self, simulation: AbstractSim, dimensions: List[Dimension] = None):
         """Scanning a simulation.
 
         Parameters or initial conditions can be scanned.
@@ -27,6 +27,8 @@ class ScanSim(AbstractSim):
         :param scan: dictionary of parameters or conditions to scan
         """
         self.simulation = simulation
+        if dimensions is None:
+            dimensions = [Dimension("dim0", index=np.arange(1))]
         self.dimensions = dimensions
 
     def __repr__(self):

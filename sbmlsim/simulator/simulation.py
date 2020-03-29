@@ -59,7 +59,7 @@ class SimulatorAbstract(object):
         """ Must be implemented by simulator. """
         pass
 
-    def _run_timecourses(self, simulations: List[TimecourseSim]) -> List[pd.DataFrame]:
+    def run_timecourse(self, simulations: List[TimecourseSim]) -> List[pd.DataFrame]:
         """ Must be implemented by simulator.
 
         :return:
@@ -76,7 +76,7 @@ class SimulatorAbstract(object):
 
 class SimulatorWorker(object):
 
-    def timecourse(self, simulation: TimecourseSim) -> pd.DataFrame:
+    def _timecourse(self, simulation: TimecourseSim) -> pd.DataFrame:
         """ Timecourse simulations based on timecourse_definition.
 
         :param simulation: Simulation definition(s)

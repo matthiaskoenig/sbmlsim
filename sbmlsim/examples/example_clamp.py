@@ -1,11 +1,10 @@
-
-
-
-from sbmlsim.simulation.timecourse import TimecourseSim, Timecourse
-from sbmlsim.simulator.simulation_serial import SimulatorSerial as Simulator
+"""
+Clamping given substance
+"""
+from sbmlsim.simulation import TimecourseSim, Timecourse
+from sbmlsim.simulator import SimulatorSerial as Simulator
 from sbmlsim.result import Result
 from sbmlsim.tests.constants import MODEL_REPRESSILATOR
-
 from sbmlsim.plot.plotting_matplotlib import add_line
 from matplotlib import pyplot as plt
 
@@ -37,7 +36,7 @@ def run_clamp():
         Timecourse(start=0, end=400, steps=400,
                    model_changes={'boundary_condition': {'X': False}}),
     ])
-    result = simulator._run_timecourses(tcsim)
+    result = simulator.run_timecourse(tcsim)
     assert isinstance(result, Result)
     plot_result(result, "clamp experiment (220-420)")
 

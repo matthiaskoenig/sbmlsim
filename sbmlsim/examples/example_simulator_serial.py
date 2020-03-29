@@ -7,11 +7,11 @@ from matplotlib import pyplot as plt
 
 # running first simulation
 simulator = SimulatorSerial(MODEL_REPRESSILATOR)
-result = simulator.timecourse(Timecourse(0, 100, 201, ))
+result = simulator._timecourse(Timecourse(0, 100, 201, ))
 
 
 # continue simulation
-result2 = simulator.timecourse(
+result2 = simulator._timecourse(
     TimecourseSim(Timecourse(100, 200, 201), reset=False))
 
 plt.plot(result.time, result.X)

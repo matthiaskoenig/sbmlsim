@@ -12,9 +12,11 @@ class Dimension(object):
     The dimension defines how the dimension is called,
     the index is the corresponding index of the dimension.
     """
-    def __init__(self, dimension: str, index: np.ndarray, changes: Dict):
+    def __init__(self, dimension: str, index: np.ndarray, changes: Dict=None):
         self.dimension = dimension  # type: str
         self.index = index
+        if changes is None:
+            changes = {}
         self.changes = changes
 
     def __repr__(self):

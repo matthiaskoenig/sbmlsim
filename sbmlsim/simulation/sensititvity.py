@@ -71,7 +71,7 @@ def ensemble(sim: TimecourseSim, changeset: ChangeSet) -> List[TimecourseSim]:
         # FIXME: not sure if this is doing the correct thing or custom implementation of copy and deepcopy needed
         sim_new = deepcopy(sim)
         # changes are mixed in the first timecourse
-        tc = sim_new._run_timecourses[0]
+        tc = sim_new.run_timecourse[0]
         for key, value in changes.items():
             tc.add_change(key, value)
         sims.append(sim_new)

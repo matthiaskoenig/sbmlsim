@@ -34,7 +34,7 @@ def run_demo_example():
         )
     ])
     print(tc_sim)
-    s = simulator.timecourse(tc_sim)
+    s = simulator._timecourse(tc_sim)
 
     print(tc_sim)  # simulation has been unit normalized
 

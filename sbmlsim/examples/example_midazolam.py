@@ -28,7 +28,7 @@ def run_timecourse_liver():
 
         ]
     )
-    s = simulator._run_timecourses(tc_sim)
+    s = simulator.run_timecourse(tc_sim)
 
     # create figure
     fig, (ax1, ax2) = plt.subplots(nrows=1, ncols=2, figsize=(10, 5))
@@ -63,7 +63,7 @@ def run_timecourse_body():
                    }),
         ]
     )
-    s = simulator._run_timecourses(tc_sim)
+    s = simulator.run_timecourse(tc_sim)
 
     # create figure
     fig, (ax1, ax2) = plt.subplots(nrows=1, ncols=2, figsize=(10, 5))

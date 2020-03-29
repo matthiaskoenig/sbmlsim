@@ -28,7 +28,7 @@ def example_single_actor():
         Timecourse(start=0, end=100, steps=100),
         Timecourse(start=0, end=100, steps=100, changes={"X": 10, "Y": 20}),
     ])
-    tc_id = sa.timecourse.remote(tcsim)
+    tc_id = sa._timecourse.remote(tcsim)
     print("-" * 80)
     print(ray.get(tc_id))
     print("-" * 80)
@@ -50,7 +50,7 @@ def example_multiple_actors():
     ])
 
     # run simulation on simulators
-    tc_ids = [s.timecourse.remote(tcsim) for s in simulators]
+    tc_ids = [s._timecourse.remote(tcsim) for s in simulators]
     # collect results
     results = ray.get(tc_ids)
     return results

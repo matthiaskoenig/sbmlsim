@@ -19,10 +19,10 @@ def test_create_simulator_strpath():
 def test_timecourse_simulation():
     simulator = Simulator(MODEL_REPRESSILATOR)
 
-    s = simulator.timecourse(Timecourse(start=0, end=100, steps=100))
+    s = simulator._timecourse(Timecourse(start=0, end=100, steps=100))
     assert s is not None
 
-    s = simulator.timecourse(
+    s = simulator._timecourse(
         Timecourse(start=0, end=100, steps=100,
                    changes={"PX": 10.0})
     )
@@ -32,7 +32,7 @@ def test_timecourse_simulation():
     assert len(s.time) == 101
     assert s.PX[0] == 10.0
 
-    s = simulator.timecourse(TimecourseSim(timecourses=[
+    s = simulator._timecourse(TimecourseSim(timecourses=[
         Timecourse(start=0, end=100, steps=100, changes={"[X]": 10.0})
     ])
                                   )
@@ -42,7 +42,7 @@ def test_timecourse_simulation():
 def test_timecourse_combined():
     simulator = Simulator(MODEL_REPRESSILATOR)
 
-    s = simulator.timecourse(simulation=TimecourseSim([
+    s = simulator._timecourse(simulation=TimecourseSim([
             Timecourse(start=0, end=100, steps=100),
             Timecourse(start=0, end=50, steps=100,
                        model_changes={"boundary_condition": {"X": True}}),
@@ -66,5 +66,5 @@ def test_timecourse_ensemble():
     tcsims = ensemble(TimecourseSim([
             Timecourse(start=0, end=400, steps=400),
         ]), changeset=changeset)
-    result = simulator._run_timecourses(tcsims)
+    result = simulator.run_timecourse(tcsims)
     assert isinstance(result, Result)

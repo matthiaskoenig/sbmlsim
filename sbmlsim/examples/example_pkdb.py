@@ -61,7 +61,7 @@ def po_bolus(simulator, r):
             ]),
         changeset=ChangeSet.parameter_sensitivity_changeset(r, 0.1)
     )
-    return simulator._run_timecourses(tcsims)
+    return simulator.run_timecourse(tcsims)
 
 
 def iv_bolus(simulator, r):
@@ -85,7 +85,7 @@ def iv_bolus(simulator, r):
                        )
         ]), p_changeset)
 
-    return simulator._run_timecourses(tcsims)
+    return simulator.run_timecourse(tcsims)
 
 
 def iv_infusion(simulator, r):
@@ -105,7 +105,7 @@ def iv_infusion(simulator, r):
             Timecourse(start=0, end=120, steps=240, changes={'Ri_som': 0.0}),      # [mg/min],
         ]), ChangeSet.parameter_sensitivity_changeset(r, 0.1)
     )
-    return simulator._run_timecourses(tcsims)
+    return simulator.run_timecourse(tcsims)
 
 
 def clamp(simulator, r):
@@ -127,7 +127,7 @@ def clamp(simulator, r):
             Timecourse(start=0, end=120, steps=240, model_changes={'boundary_condition': {"Ave_som": False}}),   # release venous som,
         ]) #, ChangeSet.parameter_sensitivity_changeset(r, 0.1))
 
-    return simulator._run_timecourses(tcsims)
+    return simulator.run_timecourse(tcsims)
 
 
 def mix(simulator, r):
@@ -146,7 +146,7 @@ def mix(simulator, r):
             Timecourse(start=0, end=120, steps=240, changes={'Ri_som': 0.0}),      # [mg/min],
         ]), ChangeSet.parameter_sensitivity_changeset(r, 0.1))
 
-    return simulator._run_timecourses(tcsims)
+    return simulator.run_timecourse(tcsims)
 
 
 def stepped_clamp(simulator, r):
@@ -161,7 +161,7 @@ def stepped_clamp(simulator, r):
             Timecourse(start=0, end=60, steps=120, changes={'Ri_som': 80.0E-6}),  # [mg/min],
         ]), ChangeSet.parameter_sensitivity_changeset(r, 0.1)
     )
-    return simulator._run_timecourses(tcsims)
+    return simulator.run_timecourse(tcsims)
 
 
 if __name__ == "__main__":

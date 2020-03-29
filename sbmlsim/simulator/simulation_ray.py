@@ -32,7 +32,7 @@ class SimulatorActor(SimulatorWorker):
         """Run a bunch of simulations on a single worker."""
         results = []
         for tc_sim in simulations:
-            results.append(self.timecourse(tc_sim))
+            results.append(self._timecourse(tc_sim))
         return results
 
 
