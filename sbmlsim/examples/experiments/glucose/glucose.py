@@ -10,7 +10,7 @@ from sbmlsim.examples.experiments.glucose.experiments.dose_response import DoseR
 
 @timeit
 def glucose_experiment():
-    BASE_PATH = Path(__file__).parent / "glucose"
+    BASE_PATH = Path(__file__).parent
 
     results = []
     exp = DoseResponseExperiment(

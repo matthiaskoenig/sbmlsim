@@ -77,37 +77,24 @@ class XResult:
         # print(coords)
 
         indices = scan.indices()
-        print(indices)
-
-        # FIXME: This takes much too long
-
-        ds = xr.Dataset()
         columns = dfs[0].columns
-        for k_col, column in enumerate(columns):
-            print(column)
-            data = np.empty(shape=shape)
-            if column == "time":
-                # not storing "time" column (encoded as dimension)
-                continue
 
-            for k_df, df in enumerate(dfs):
+        data_dict = {col: np.empty(shape=shape) for col in columns if col != "time"}
+        for k_df, df in enumerate(dfs):
+            for k_col, column in enumerate(columns):
+
+                if column == "time":
+                    # not storing "time" column (encoded as dimension)
+                    continue
+
+                # FIXME: speedup by restructuring data
                 index = tuple([...] + list(indices[k_df]))  # trick to get the ':' in first time dimension
-                data[index] = df[column].values
+                data_dict[column][index] = df[column].values
 
-            # create DataArray for given column
-            da = xr.DataArray(data=data, dims=dims, coords=coords)
+        # Create the DataSet
+        ds = xr.Dataset({key: xr.DataArray(data=data, dims=dims, coords=coords) for key, data in data_dict.items()})
+        return XResult(xdataset=ds, scan=scan, udict=udict, ureg=ureg)
 
-            # set unit
-            if column in udict:
-                da.attrs["units"] = udict[column]
-            else:
-                logger.warning(f"No units for column '{column}' in udict '{udict}'.")
-
-            ds[column] = da
-
-        xres = XResult(xdataset=ds, scan=scan, udict=udict, ureg=ureg)
-        logger.error("Finished creating XResult")
-        return xres
 
 
     @deprecated

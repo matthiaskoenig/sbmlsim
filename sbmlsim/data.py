@@ -120,13 +120,12 @@ class Data(object):
             # calculate mean over all repeats
             # FIXME: put on xresult
             xda = xres[self.index]  # type: xr.DataArray
+            xda_unit = xres.udict[self.index]
             dims_mean = [dim_id for dim_id in xres.dims if dim_id != "time"]
 
             if self.index == "time":
-                xda_unit = xres.udict["time"]
                 x = xda.values * xres.ureg(xda_unit)
             else:
-                xda_unit = xda.attrs["units"]
                 x = xda.mean(dim=dims_mean, skipna=True).values * xres.ureg(xda_unit)
 
         elif self.dtype == Data.Types.FUNCTION:

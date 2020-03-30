@@ -1,6 +1,34 @@
 {
   "experiment_id": "DoseResponseExperiment",
-  "data_path": "/home/mkoenig/git/sbmlsim/sbmlsim/examples/glucose/data",
-  "simulations": {},
-  "figures": {}
+  "base_path": "/home/mkoenig/git/sbmlsim/sbmlsim/examples/experiments/glucose",
+  "data_path": "/home/mkoenig/git/sbmlsim/sbmlsim/examples/experiments/glucose/data",
+  "models": {
+    "model1": {
+      "sid": null,
+      "name": null,
+      "language": "SBML",
+      "language_type": "SBML",
+      "source": {
+        "source": "model/liver_glucose.xml",
+        "path": "/home/mkoenig/git/sbmlsim/sbmlsim/examples/experiments/glucose/model/liver_glucose.xml",
+        "content": null
+      },
+      "changes": {}
+    }
+  },
+  "tasks": {
+    "task_glc_scan": {
+      "model": "model1",
+      "simulation": "glc_scan"
+    }
+  },
+  "simulations": {
+    "glc_scan": {
+      "type": "ScanSim"
+    }
+  },
+  "data": null,
+  "figures": {
+    "fig1": "Figure"
+  }
 }

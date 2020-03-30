@@ -232,11 +232,10 @@ def add_line(ax, xres: XResult,
     # calculate the mean, sd, min over all dimensions besides time
     dims_mean = [dim_id for dim_id in xres.dims if dim_id != "time"]
 
+    xda_unit = xres.udict[xid]
     if xid == "time":
-        xda_unit = xres.udict["time"]
         x = xda.values * ureg(xda_unit) * xf
     else:
-        xda_unit = xda.attrs["units"]
         x = xda.mean(dim=dims_mean, skipna=True).values * ureg(xda_unit) * xf
 
     yda_unit = yda.attrs["units"]
