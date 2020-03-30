@@ -3,7 +3,7 @@ Clamping given substance
 """
 from sbmlsim.simulation import TimecourseSim, Timecourse
 from sbmlsim.simulator import SimulatorSerial as Simulator
-from sbmlsim.result import Result
+from sbmlsim.result import XResult
 from sbmlsim.tests.constants import MODEL_REPRESSILATOR
 from sbmlsim.plot.plotting_matplotlib import add_line
 from matplotlib import pyplot as plt
@@ -11,7 +11,7 @@ from matplotlib import pyplot as plt
 
 def run_clamp():
 
-    def plot_result(result: Result, title: str = None) -> None:
+    def plot_result(result: XResult, title: str = None) -> None:
         # create figure
         fig, (ax1) = plt.subplots(nrows=1, ncols=1, figsize=(5, 5))
         fig.subplots_adjust(wspace=0.3, hspace=0.3)
@@ -37,7 +37,7 @@ def run_clamp():
                    model_changes={'boundary_condition': {'X': False}}),
     ])
     result = simulator.run_timecourse(tcsim)
-    assert isinstance(result, Result)
+    assert isinstance(result, XResult)
     plot_result(result, "clamp experiment (220-420)")
 
 

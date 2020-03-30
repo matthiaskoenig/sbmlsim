@@ -11,7 +11,7 @@ from sbmlsim.task import Task
 from sbmlsim.simulator import SimulatorSerial
 from sbmlsim.simulation import AbstractSim, TimecourseSim, ScanSim
 from sbmlsim.serialization import ObjectJSONEncoder
-from sbmlsim.result import Result
+from sbmlsim.result import XResult
 from sbmlsim.data import DataSet
 from sbmlsim.model import AbstractModel
 from sbmlsim.utils import timeit
@@ -137,7 +137,7 @@ class SimulationExperiment(object):
 
     # --- RESULTS -------------------------------------------------------------
     @property
-    def results(self) -> Dict[str, Result]:
+    def results(self) -> Dict[str, XResult]:
         if self._results is None:
             self._run_tasks()
         return self._results

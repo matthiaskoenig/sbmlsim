@@ -6,7 +6,7 @@ import pandas as pd
 import numpy as np
 from pint import Quantity, UnitRegistry
 from sbmlsim.combine import mathml
-from sbmlsim.result import Result
+from sbmlsim.result import XResult
 
 logger = logging.getLogger(__name__)
 
@@ -113,8 +113,8 @@ class Data(object):
 
         elif self.dtype == Data.Types.TASK:
             # read results of task
-            result = self.experiment.results[self.task_id]  # type: Result
-            if not isinstance(result, Result):
+            result = self.experiment.results[self.task_id]  # type: XResult
+            if not isinstance(result, XResult):
                 raise ValueError("Only Result objects supported in task data.")
             x = result.mean[self.index].values * result.ureg(result.udict[self.index])
         elif self.dtype == Data.Types.FUNCTION:

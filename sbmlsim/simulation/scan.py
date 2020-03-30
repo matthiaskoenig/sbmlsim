@@ -28,6 +28,7 @@ class ScanSim(AbstractSim):
         """
         self.simulation = simulation
         if dimensions is None:
+            # handling the simple simulation case
             dimensions = [Dimension("dim0", index=np.arange(1))]
         self.dimensions = dimensions
 

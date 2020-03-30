@@ -8,7 +8,7 @@ from dataclasses import dataclass
 from enum import Enum
 from copy import deepcopy
 
-from sbmlsim.result import Result
+from sbmlsim.result import XResult
 from sbmlsim.data import DataSet, Data
 
 from matplotlib.colors import to_rgba, to_hex

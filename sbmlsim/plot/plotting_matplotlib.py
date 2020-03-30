@@ -1,7 +1,7 @@
 import logging
 import pandas as pd
 
-from sbmlsim.result import Result
+from sbmlsim.result import XResult
 from sbmlsim.data import DataSet
 from sbmlsim.plot import Figure, SubPlot, Plot, Curve, Axis
 from matplotlib import pyplot as plt
@@ -193,7 +193,7 @@ def add_data(ax, data: DataSet,
         ax.plot(x, y, label=label, **kwargs)
 
 
-def add_line(ax, data: Result,
+def add_line(ax, data: XResult,
              xid: str, yid: str,
              xunit=None, yunit=None, xf=1.0, yf=1.0, all_lines=False,
              label='__nolabel__', **kwargs):
@@ -209,7 +209,7 @@ def add_line(ax, data: Result,
     :param color:
     :return:
     """
-    if not isinstance(data, Result):
+    if not isinstance(data, XResult):
         raise ValueError("Only Result objects supported in plotting.")
     if (hasattr(xf, "magnitude") and abs(xf.magnitude-1.0) > 1E-8) or abs(xf-1.0) > 1E-8:
         logger.warning("xf attributes are deprecated, use units instead.")

@@ -1,1 +1,1 @@
-from .result import Result
+from .xresult import XResult

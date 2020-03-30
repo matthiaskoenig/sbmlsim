@@ -3,7 +3,7 @@ import ray
 import logging
 from sbmlsim.model import RoadrunnerSBMLModel
 from sbmlsim.simulation import TimecourseSim
-from sbmlsim.result import Result
+from sbmlsim.result import XResult
 from sbmlsim.simulator.simulation import SimulatorWorker
 from sbmlsim.units import Units
 
@@ -78,7 +78,7 @@ class SimulatorParallel(object):
         results = ray.get(tc_ids)
         # flatten list of lists [[df, df], [df, df], ...]
         dfs = [df for sublist in results for df in sublist]
-        return Result(dfs)
+        return XResult(dfs)
         # return results
 
     @staticmethod

@@ -2,7 +2,7 @@
 Interactive plots with altair
 """
 import altair as alt
-from sbmlsim.result import Result
+from sbmlsim.result import XResult
 
 def lineplot(result):
     source = result.mean
@@ -61,7 +61,7 @@ def add_line(ax, data, yid, xid="time", color='black', label='', xf=1.0, **kwarg
     kwargs_plot = dict(kwargs_sim)
     kwargs_plot.update(kwargs)
 
-    if isinstance(data, Result):
+    if isinstance(data, XResult):
         x = data.mean[xid]*xf
 
         # FIXME: std areas should be within min/max areas!

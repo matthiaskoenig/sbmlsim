@@ -6,7 +6,7 @@ from typing import List
 import pandas as pd
 
 from sbmlsim.simulator.simulation import SimulatorAbstract, SimulatorWorker, set_integrator_settings
-from sbmlsim.result import Result
+from sbmlsim.result import XResult
 from sbmlsim.simulation import TimecourseSim, ScanSim
 from sbmlsim.model import AbstractModel, RoadrunnerSBMLModel
 
@@ -34,13 +34,16 @@ class SimulatorSerial(SimulatorAbstract, SimulatorWorker):
 
         set_integrator_settings(self.r, **kwargs)
 
-    def run_timecourse(self, simulation: TimecourseSim) -> Result:
+    def run_timecourse(self, simulation: TimecourseSim) -> XResult:
         """ Run many timecourses."""
         scan = ScanSim(simulation=simulation)
         return self.run_scan(scan)
 
-    def run_scan(self, scan: ScanSim) -> Result:
+    def run_scan(self, scan: ScanSim) -> XResult:
         """ Run a scan simulation."""
+        # normalize the scan
+        scan.normalize(udict=self.udict, ureg=self.ureg)
+
         # Create all possible combinations of the scan
         indices, simulations = scan.to_simulations()
 
@@ -50,7 +53,7 @@ class SimulatorSerial(SimulatorAbstract, SimulatorWorker):
         dfs = [self._timecourse(sim) for sim in simulations]
 
         # Based on the indices the result structure must be created
-        return Result.from_dfs(
+        return XResult.from_dfs(
             dfs=dfs,
             scan=scan,
             udict=self.udict

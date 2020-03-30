@@ -2,28 +2,31 @@
 Helpers for working with simulation results.
 Handles the storage of simulations.
 """
-from typing import List
+from typing import List, Dict
 import logging
 import numpy as np
 import pandas as pd
 import xarray as xr
 from typing import List
+from pint import UnitRegistry
+from cached_property import cached_property
 
 from sbmlsim.simulation import ScanSim, Dimension
-
-from cached_property import cached_property
-# FIXME: invalidate the cache on changes !!!
 
 logger = logging.getLogger(__name__)
 
 
-@xr.register_dataset_accessor("sim")
-class Result:
-    def __init__(self, xarray_obj):
-        self._obj = xarray_obj
+class XResult:
+    def __init__(self, xdataset: xr.Dataset, scan: ScanSim,
+                 udict: Dict = None, ureg: UnitRegistry=None):
+        self.xds = xdataset
+        self.scan = scan
+        self.udict = udict
+        self.ureg = ureg
 
     @classmethod
-    def from_dfs(cls, dfs: List[pd.DataFrame], scan: ScanSim=None, udict=None) -> xr.Dataset:
+    def from_dfs(cls, dfs: List[pd.DataFrame], scan: ScanSim=None,
+                 udict: Dict = None, ureg: UnitRegistry = None) -> 'XResult':
         """Structure is based on the underlying scan."""
         if isinstance(dfs, pd.DataFrame):
             dfs = [dfs]
@@ -81,7 +84,7 @@ class Result:
 
             ds[column] = da
 
-        return ds
+        return XResult(xdataset=ds, scan=scan, udict=udict, ureg=ureg)
 
 
     '''

@@ -2,7 +2,7 @@ import pandas as pd
 
 from sbmlsim.simulator import SimulatorSerial as Simulator
 from sbmlsim.simulation import Timecourse, TimecourseSim
-from sbmlsim.result import Result
+from sbmlsim.result import XResult
 from sbmlsim.tests.constants import MODEL_REPRESSILATOR
 
 
@@ -67,4 +67,4 @@ def test_timecourse_ensemble():
             Timecourse(start=0, end=400, steps=400),
         ]), changeset=changeset)
     result = simulator.run_timecourse(tcsims)
-    assert isinstance(result, Result)
+    assert isinstance(result, XResult)
