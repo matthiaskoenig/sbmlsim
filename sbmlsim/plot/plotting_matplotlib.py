@@ -238,7 +238,7 @@ def add_line(ax, xres: XResult,
     else:
         x = xda.mean(dim=dims_mean, skipna=True).values * ureg(xda_unit) * xf
 
-    yda_unit = yda.attrs["units"]
+    yda_unit = xres.udict[yid]
     y = yda.mean(dim=dims_mean, skipna=True).values * ureg(yda_unit) * yf
     ysd = yda.std(dim=dims_mean, skipna=True).values * ureg(yda_unit) * yf
     ymin = yda.min(dim=dims_mean, skipna=True).values * ureg(yda_unit) * yf
