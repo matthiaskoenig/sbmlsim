@@ -42,6 +42,7 @@ class XResult:
     def from_dfs(cls, dfs: List[pd.DataFrame], scan: ScanSim=None,
                  udict: Dict = None, ureg: UnitRegistry = None) -> 'XResult':
         """Structure is based on the underlying scan."""
+        logger.error("Start creating XResult")
         if isinstance(dfs, pd.DataFrame):
             dfs = [dfs]
 
@@ -76,10 +77,14 @@ class XResult:
         # print(coords)
 
         indices = scan.indices()
+        print(indices)
+
+        # FIXME: This takes much too long
 
         ds = xr.Dataset()
         columns = dfs[0].columns
         for k_col, column in enumerate(columns):
+            print(column)
             data = np.empty(shape=shape)
             if column == "time":
                 # not storing "time" column (encoded as dimension)
@@ -100,7 +105,9 @@ class XResult:
 
             ds[column] = da
 
-        return XResult(xdataset=ds, scan=scan, udict=udict, ureg=ureg)
+        xres = XResult(xdataset=ds, scan=scan, udict=udict, ureg=ureg)
+        logger.error("Finished creating XResult")
+        return xres
 
 
     @deprecated
