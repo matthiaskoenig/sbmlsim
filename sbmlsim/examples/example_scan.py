@@ -27,7 +27,10 @@ def run_scan0d() -> XResult:
 
 
 def run_scan1d() -> XResult:
-    """Perform a parameter scan"""
+    """Perform a 1D parameter scan.
+
+    Scanning a single parameter.
+    """
     simulator = SimulatorSerial(model=MODEL_REPRESSILATOR)
     Q_ = simulator.ureg.Quantity
 
@@ -49,7 +52,7 @@ def run_scan1d() -> XResult:
     return simulator.run_scan(scan1d)
 
 
-def run_parameter_scan2d() -> XResult:
+def run_scan2d() -> XResult:
     """Perform a parameter scan"""
     simulator = SimulatorSerial(model=MODEL_REPRESSILATOR)
     Q_ = simulator.ureg.Quantity
@@ -126,6 +129,6 @@ if __name__ == "__main__":
     plt.show()
 
     # scan2d
-    xres = run_parameter_scan2d()
+    xres = run_scan2d()
     xres[column].plot()
     plt.show()

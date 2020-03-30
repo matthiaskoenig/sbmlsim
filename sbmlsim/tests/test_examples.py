@@ -10,8 +10,17 @@ def test_clamp():
     example_clamp.run_clamp()
 
 
-def test_scan():
-    example_scan.run_parameter_scan()
+def test_scan0d():
+    example_scan.run_scan0d()
+
+def test_scan1d():
+    example_scan.run_scan1d()
+
+def test_scan2d():
+    example_scan.run_scan2d()
+
+def test():
+    example_scan.run_scan1d_distribution()
 
 
 def test_sensitivity():
@@ -21,6 +30,8 @@ def test_sensitivity():
 def test_timecourse():
     example_timecourse.run_timecourse_examples()
 
+def test_units():
+    example_units.run_demo_example()
 
 @pytest.mark.skip
 def test_parallel_1():
@@ -35,7 +46,3 @@ def test_parallel_2():
 @pytest.mark.skip
 def test_parallel_3():
     example_simulator_parallel.example_parallel_timecourse(nsim=20, actor_count=5)
-
-
-def test_units():
-    example_units.run_demo_example()

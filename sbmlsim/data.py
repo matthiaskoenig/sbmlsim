@@ -113,10 +113,22 @@ class Data(object):
 
         elif self.dtype == Data.Types.TASK:
             # read results of task
-            result = self.experiment.results[self.task_id]  # type: XResult
-            if not isinstance(result, XResult):
+            xres = self.experiment.results[self.task_id]  # type: XResult
+            if not isinstance(xres, XResult):
                 raise ValueError("Only Result objects supported in task data.")
-            x = result.mean[self.index].values * result.ureg(result.udict[self.index])
+
+            # calculate mean over all repeats
+            # FIXME: put on xresult
+            xda = xres[self.index]  # type: xr.DataArray
+            dims_mean = [dim_id for dim_id in xres.dims if dim_id != "time"]
+
+            if self.index == "time":
+                xda_unit = xres.udict["time"]
+                x = xda.values * xres.ureg(xda_unit)
+            else:
+                xda_unit = xda.attrs["units"]
+                x = xda.mean(dim=dims_mean, skipna=True).values * xres.ureg(xda_unit)
+
         elif self.dtype == Data.Types.FUNCTION:
             # evaluate with actual data
             astnode = mathml.formula_to_astnode(self.function)

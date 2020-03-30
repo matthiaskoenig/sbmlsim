@@ -236,7 +236,7 @@ def add_line(ax, xres: XResult,
         x = xda.values * ureg(xda_unit) * xf
     else:
         xda_unit = xda.attrs["units"]
-        x = xda.mean(dims=dims_mean, skipna=True).values * ureg(xda_unit) * xf
+        x = xda.mean(dim=dims_mean, skipna=True).values * ureg(xda_unit) * xf
 
     yda_unit = yda.attrs["units"]
     y = yda.mean(dim=dims_mean, skipna=True).values * ureg(yda_unit) * yf
@@ -263,6 +263,9 @@ def add_line(ax, xres: XResult,
         pass
         # FIXME: implement
         ''''
+        for k in range(xres.dims["dim1"]):
+            # individual timecourses
+            plt.plot(da.coords['time'], da.isel(dim1=k))
         for df in xres.frames:
             xk = df[xid].values * xres.ureg(xres.udict[xid]) * xf
             yk = df[yid].values * xres.ureg(xres.udict[yid]) * yf
@@ -270,9 +273,7 @@ def add_line(ax, xres: XResult,
             yk = yk.to(yunit)
             ax.plot(xk, yk, '-', label="{}".format(label), **kwargs)
         '''
-        for k in range(xres.dims["dim1"]):
-            # individual timecourses
-            plt.plot(da.coords['time'], da.isel(dim1=k))
+
 
     # FIXME: update the plotting of the ranges
     '''

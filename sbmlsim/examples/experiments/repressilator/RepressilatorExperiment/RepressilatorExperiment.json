@@ -1,0 +1,370 @@
+{
+  "experiment_id": "RepressilatorExperiment",
+  "base_path": "/home/mkoenig/git/sbmlsim/sbmlsim/examples/experiments/repressilator",
+  "data_path": "/home/mkoenig/git/sbmlsim/sbmlsim/examples/experiments/repressilator",
+  "models": {
+    "model1": {
+      "sid": null,
+      "name": null,
+      "language": "SBML",
+      "language_type": "SBML",
+      "source": {
+        "source": "/home/mkoenig/git/sbmlsim/sbmlsim/tests/data/models/repressilator.xml",
+        "path": "/home/mkoenig/git/sbmlsim/sbmlsim/tests/data/models/repressilator.xml",
+        "content": null
+      },
+      "changes": {}
+    }
+  },
+  "tasks": {
+    "task_tc": {
+      "model": "model1",
+      "simulation": "tc"
+    },
+    "task_scan1d": {
+      "model": "model1",
+      "simulation": "scan1d"
+    },
+    "task_scan2d": {
+      "model": "model1",
+      "simulation": "scan2d"
+    },
+    "task_scan3d": {
+      "model": "model1",
+      "simulation": "scan3d"
+    }
+  },
+  "simulations": {
+    "tc": {
+      "type": "TimecourseSim",
+      "selections": null,
+      "reset": true,
+      "time_offset": 0.0,
+      "timecourses": [
+        {
+          "normalized": true,
+          "start": 0,
+          "end": 600,
+          "steps": 2000,
+          "changes": {},
+          "model_changes": {}
+        },
+        {
+          "normalized": true,
+          "start": 0,
+          "end": 600,
+          "steps": 2000,
+          "changes": {
+            "X": {
+              "_magnitude": 10,
+              "_units": "dimensionless",
+              "_Quantity__used": false,
+              "_Quantity__handling": null
+            },
+            "Y": {
+              "_magnitude": 20,
+              "_units": "dimensionless",
+              "_Quantity__used": false,
+              "_Quantity__handling": null
+            }
+          },
+          "model_changes": {}
+        }
+      ]
+    },
+    "scan1d": {
+      "type": "ScanSim"
+    },
+    "scan2d": {
+      "type": "ScanSim"
+    },
+    "scan3d": {
+      "type": "ScanSim"
+    }
+  },
+  "data": {
+    "task_tc__X": {
+      "type": "TASK",
+      "index": "X",
+      "unit": "dimensionless",
+      "task": "task_tc",
+      "dataset": null,
+      "function": null,
+      "variables": null
+    },
+    "task_tc__Y": {
+      "type": "TASK",
+      "index": "Y",
+      "unit": "dimensionless",
+      "task": "task_tc",
+      "dataset": null,
+      "function": null,
+      "variables": null
+    },
+    "task_tc__Z": {
+      "type": "TASK",
+      "index": "Z",
+      "unit": "dimensionless",
+      "task": "task_tc",
+      "dataset": null,
+      "function": null,
+      "variables": null
+    },
+    "f1": {
+      "type": "FUNCTION",
+      "index": "f1",
+      "unit": "dimensionless",
+      "task": null,
+      "dataset": null,
+      "function": "(sin(X)+Y+Z)/max(X)",
+      "variables": {
+        "X": "task_tc__X",
+        "Y": "task_tc__Y",
+        "Z": "task_tc__Z"
+      }
+    },
+    "f2": {
+      "type": "FUNCTION",
+      "index": "f2",
+      "unit": "dimensionless",
+      "task": null,
+      "dataset": null,
+      "function": "Y/max(Y)",
+      "variables": {
+        "Y": "task_tc__Y"
+      }
+    },
+    "task_tc__time": {
+      "type": "TASK",
+      "index": "time",
+      "unit": "min",
+      "task": "task_tc",
+      "dataset": null,
+      "function": null,
+      "variables": null
+    }
+  },
+  "figures": {
+    "Fig1": {
+      "sid": "Fig1",
+      "name": null,
+      "num_rows": 1,
+      "num_cols": 1,
+      "width": 5.0,
+      "height": 5.0,
+      "subplots": [
+        {
+          "plot": {
+            "sid": "plot0",
+            "name": "RepressilatorExperiment_Fig1",
+            "legend": true,
+            "xaxis": {
+              "sid": null,
+              "name": "time",
+              "unit": "min",
+              "_scale": "LINEAR",
+              "min": null,
+              "max": null,
+              "grid": false
+            },
+            "yaxis": {
+              "sid": null,
+              "name": "data",
+              "unit": "dimensionless",
+              "_scale": "LINEAR",
+              "min": null,
+              "max": null,
+              "grid": false
+            },
+            "curves": [
+              {
+                "sid": "plot0_curve1",
+                "name": "X sim",
+                "order": null,
+                "style": {
+                  "sid": null,
+                  "name": null,
+                  "line": {
+                    "type": "SOLID",
+                    "color": "#000000ff",
+                    "thickness": 2.0
+                  },
+                  "marker": {
+                    "size": null,
+                    "type": null,
+                    "fill": "#000000ff",
+                    "line_color": null,
+                    "line_thickness": null
+                  },
+                  "fill": null
+                },
+                "x": "task_tc__time",
+                "y": "task_tc__X",
+                "xerr": null,
+                "yerr": null,
+                "yaxis": null
+              },
+              {
+                "sid": "plot0_curve2",
+                "name": "Y sim",
+                "order": null,
+                "style": {
+                  "sid": null,
+                  "name": null,
+                  "line": {
+                    "type": "SOLID",
+                    "color": "#0000ffff",
+                    "thickness": 2.0
+                  },
+                  "marker": {
+                    "size": null,
+                    "type": null,
+                    "fill": "#0000ffff",
+                    "line_color": null,
+                    "line_thickness": null
+                  },
+                  "fill": null
+                },
+                "x": "task_tc__time",
+                "y": "task_tc__Y",
+                "xerr": null,
+                "yerr": null,
+                "yaxis": null
+              }
+            ]
+          },
+          "row": 1,
+          "col": 1,
+          "row_span": 1,
+          "col_span": 1
+        }
+      ]
+    },
+    "Fig2": {
+      "sid": "Fig2",
+      "name": null,
+      "num_rows": 2,
+      "num_cols": 1,
+      "width": 5.0,
+      "height": 10.0,
+      "subplots": [
+        {
+          "plot": {
+            "sid": "plot0",
+            "name": null,
+            "legend": true,
+            "xaxis": {
+              "sid": null,
+              "name": "data",
+              "unit": "dimensionless",
+              "_scale": "LINEAR",
+              "min": -1.0,
+              "max": 2.0,
+              "grid": true
+            },
+            "yaxis": {
+              "sid": null,
+              "name": "data",
+              "unit": "dimensionless",
+              "_scale": "LINEAR",
+              "min": null,
+              "max": null,
+              "grid": false
+            },
+            "curves": [
+              {
+                "sid": "plot0_curve1",
+                "name": "f2 ~ f1",
+                "order": null,
+                "style": {
+                  "sid": null,
+                  "name": null,
+                  "line": {
+                    "type": "SOLID",
+                    "color": "#0000004c",
+                    "thickness": 1.0
+                  },
+                  "marker": {
+                    "size": null,
+                    "type": "CIRCLE",
+                    "fill": "#0000004c",
+                    "line_color": null,
+                    "line_thickness": null
+                  },
+                  "fill": null
+                },
+                "x": "f1",
+                "y": "f2",
+                "xerr": null,
+                "yerr": null,
+                "yaxis": null
+              }
+            ]
+          },
+          "row": 1,
+          "col": 1,
+          "row_span": 1,
+          "col_span": 1
+        },
+        {
+          "plot": {
+            "sid": "plot1",
+            "name": null,
+            "legend": true,
+            "xaxis": {
+              "sid": null,
+              "name": "data",
+              "unit": "dimensionless",
+              "_scale": "LOG10",
+              "min": null,
+              "max": null,
+              "grid": false
+            },
+            "yaxis": {
+              "sid": null,
+              "name": "data",
+              "unit": "dimensionless",
+              "_scale": "LOG10",
+              "min": null,
+              "max": null,
+              "grid": false
+            },
+            "curves": [
+              {
+                "sid": "plot1_curve1",
+                "name": "f2 ~ f1",
+                "order": null,
+                "style": {
+                  "sid": null,
+                  "name": null,
+                  "line": {
+                    "type": "SOLID",
+                    "color": "#0000004c",
+                    "thickness": 1.0
+                  },
+                  "marker": {
+                    "size": null,
+                    "type": "CIRCLE",
+                    "fill": "#0000004c",
+                    "line_color": null,
+                    "line_thickness": null
+                  },
+                  "fill": null
+                },
+                "x": "f1",
+                "y": "f2",
+                "xerr": null,
+                "yerr": null,
+                "yaxis": null
+              }
+            ]
+          },
+          "row": 2,
+          "col": 1,
+          "row_span": 1,
+          "col_span": 1
+        }
+      ]
+    }
+  }
+}

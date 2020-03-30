@@ -6,11 +6,10 @@ from typing import Dict
 from pathlib import Path
 
 
-
 from sbmlsim.experiment import SimulationExperiment
 from sbmlsim.model import AbstractModel, RoadrunnerSBMLModel
 from sbmlsim.data import Data
-from sbmlsim.simulation import Timecourse, TimecourseSim, AbstractSim, ScanSim
+from sbmlsim.simulation import Timecourse, TimecourseSim, AbstractSim, ScanSim, Dimension
 from sbmlsim.task import Task
 from sbmlsim.plot import Figure, Axis
 
@@ -41,31 +40,44 @@ class RepressilatorExperiment(SimulationExperiment):
         tc = TimecourseSim([
             Timecourse(start=0, end=600, steps=2000),
             Timecourse(start=0, end=600, steps=2000,
-                       changes={"X": Q_(10, unit_data),
-                                "Y": Q_(20, unit_data)
-                                }),
+                       changes={
+                            "X": Q_(10, unit_data),
+                            "Y": Q_(20, unit_data)
+                       }),
         ])
 
         scan1d = ScanSim(
-            TimecourseSim([Timecourse(start=0, end=600, steps=2000)]),
-            scan={
-                'X': Q_(np.linspace(0, 10, num=11), unit_data),
-            }
+            simulation=tc,
+            dimensions=[
+                Dimension(
+                    "dim1", changes={'X': Q_(np.linspace(0, 10, num=11), unit_data)}
+                )
+            ]
         )
         scan2d = ScanSim(
-            TimecourseSim([Timecourse(start=0, end=600, steps=2000)]),
-            scan={
-                'X': Q_(np.linspace(0, 10, num=11), unit_data),
-                'Y': Q_(np.linspace(0, 10, num=11), unit_data),
-            }
+            simulation=tc,
+            dimensions=[
+                Dimension(
+                    "dim1", changes={'X': Q_(np.linspace(0, 10, num=11), unit_data)}
+                ),
+                Dimension(
+                    "dim2", changes={'Y': Q_(np.linspace(0, 10, num=11), unit_data)}
+                ),
+            ]
         )
         scan3d = ScanSim(
-            TimecourseSim([Timecourse(start=0, end=600, steps=2000)]),
-            scan={
-                'X': Q_(np.linspace(0, 10, num=5), unit_data),
-                'Y': Q_(np.linspace(0, 10, num=5), unit_data),
-                'Z': Q_(np.linspace(0, 10, num=5), unit_data),
-            }
+            simulation=tc,
+            dimensions=[
+                Dimension(
+                    "dim1", changes={'X': Q_(np.linspace(0, 10, num=5), unit_data)}
+                ),
+                Dimension(
+                    "dim2", changes={'Y': Q_(np.linspace(0, 10, num=5), unit_data)}
+                ),
+                Dimension(
+                    "dim3", changes={'Z': Q_(np.linspace(0, 10, num=5), unit_data)}
+                ),
+            ]
         )
 
         return {
@@ -177,7 +189,3 @@ def run(output_path):
 if __name__ == "__main__":
     output_path = Path(".")
     run(output_path=output_path)
-
-
-
-
