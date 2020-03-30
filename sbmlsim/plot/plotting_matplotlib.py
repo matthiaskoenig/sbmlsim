@@ -1,10 +1,14 @@
 import logging
 import pandas as pd
+import xarray as xr
 
 from sbmlsim.result import XResult
 from sbmlsim.data import DataSet
 from sbmlsim.plot import Figure, SubPlot, Plot, Curve, Axis
+
+from matplotlib.pyplot import GridSpec
 from matplotlib import pyplot as plt
+from sbmlsim.utils import deprecated
 
 logger = logging.getLogger(__name__)
 
@@ -23,8 +27,6 @@ plt.rcParams.update({
     'figure.facecolor': '1.00',
     'figure.dpi': '72',
 })
-
-from matplotlib.pyplot import GridSpec
 
 
 def to_figure(figure: Figure):
@@ -120,13 +122,14 @@ def to_figure(figure: Figure):
     return fig
 
 
-
-def add_data(ax, data: DataSet,
+@deprecated
+def add_data(ax: plt.Axes, data: DataSet,
              xid: str, yid: str, yid_sd=None, yid_se=None, count=None,
-             xunit=None, yunit=None,
-             xf=1.0, yf=1.0,
-             label='__nolabel__', **kwargs):
-    """ Add experimental data
+             xunit=None, yunit=None, xf=1.0, yf=1.0, label='__nolabel__', **kwargs):
+    """ Add experimental data to a matplotlib axes.
+
+    This is deprecated the plotting Figure, Plot, Curves, should be used
+    instead.
 
     :param ax:
     :param data:
@@ -193,44 +196,62 @@ def add_data(ax, data: DataSet,
         ax.plot(x, y, label=label, **kwargs)
 
 
-def add_line(ax, data: XResult,
+@deprecated
+def add_line(ax, xres: XResult,
              xid: str, yid: str,
              xunit=None, yunit=None, xf=1.0, yf=1.0, all_lines=False,
              label='__nolabel__', **kwargs):
-    """
+    """ Adding information from a simulation result to a matplotlib figure.
+
+    This is deprecated the plotting Figure, Plot, Curves, should be used
+    instead.
+
     :param ax: axis to plot to
-    :param data: Result data structure
+    :param xres: Result data structure
     :param xid: id for xdata
     :param yid: id for ydata
     :param all_lines: plot all individual lines
-    :param xunit: target unit for x (conversion is performed automatically)
-    :param yunit: target unit for y (conversion is performed automatically)
+    :param xunit: target unit for x
+    :param yunit: target unit for y
 
     :param color:
     :return:
     """
-    if not isinstance(data, XResult):
-        raise ValueError("Only Result objects supported in plotting.")
-    if (hasattr(xf, "magnitude") and abs(xf.magnitude-1.0) > 1E-8) or abs(xf-1.0) > 1E-8:
-        logger.warning("xf attributes are deprecated, use units instead.")
-    if (hasattr(yf, "magnitude") and abs(yf.magnitude-1.0) > 1E-8) or abs(yf-1.0) > 1E-8:
-        logger.warning("yf attributes are deprecated, use units instead.")
+    if not isinstance(xres, XResult):
+        raise ValueError(f"Only XResult supported in plotting, but found: "
+                         f"'{type(xres)}'")
 
     # data with units
-    x = data.mean[xid].values * data.ureg(data.udict[xid]) * xf
-    y = data.mean[yid].values * data.ureg(data.udict[yid]) * yf
-    y_sd = data.std[yid].values * data.ureg(data.udict[yid]) * yf
-    y_min = data.min[yid].values * data.ureg(data.udict[yid]) * yf
-    y_max = data.max[yid].values * data.ureg(data.udict[yid]) * yf
+    print(xid), print(yid)
+    ureg = xres.ureg
+    print(ureg)
+    xda = xres[xid]  # type: xr.DataArray
+    yda = xres[yid]  # type: xr.DataArray
 
-    # convert
+    # calculate the mean, sd, min over all dimensions besides time
+    dims_mean = [dim_id for dim_id in xres.dims if dim_id != "time"]
+
+    if xid == "time":
+        xda_unit = xres.udict["time"]
+        x = xda.values * ureg(xda_unit) * xf
+    else:
+        xda_unit = xda.attrs["units"]
+        x = xda.mean(dims=dims_mean, skipna=True).values * ureg(xda_unit) * xf
+
+    yda_unit = yda.attrs["units"]
+    y = yda.mean(dim=dims_mean, skipna=True).values * ureg(yda_unit) * yf
+    ysd = yda.std(dim=dims_mean, skipna=True).values * ureg(yda_unit) * yf
+    ymin = yda.min(dim=dims_mean, skipna=True).values * ureg(yda_unit) * yf
+    ymax = yda.max(dim=dims_mean, skipna=True).values * ureg(yda_unit) * yf
+
+    # convert units to requested units
     if xunit:
         x = x.to(xunit)
     if yunit:
         y = y.to(yunit)
-        y_sd = y_sd.to(yunit)
-        y_min = y_min.to(yunit)
-        y_max = y_min.to(yunit)
+        ysd = ysd.to(yunit)
+        ymin = ymin.to(yunit)
+        ymax = ymax.to(yunit)
 
     # get next color
     prop_cycler = ax._get_lines.prop_cycler
@@ -238,18 +259,34 @@ def add_line(ax, data: XResult,
     kwargs["color"] = color
 
     if all_lines:
-        for df in data.frames:
-            xk = df[xid].values * data.ureg(data.udict[xid]) * xf
-            yk = df[yid].values * data.ureg(data.udict[yid]) * yf
+        # iterate over all dimensions besides time
+        pass
+        # FIXME: implement
+        ''''
+        for df in xres.frames:
+            xk = df[xid].values * xres.ureg(xres.udict[xid]) * xf
+            yk = df[yid].values * xres.ureg(xres.udict[yid]) * yf
             xk = xk.to(xunit)
             yk = yk.to(yunit)
             ax.plot(xk, yk, '-', label="{}".format(label), **kwargs)
-    else:
-        if len(data) > 1:
-            # FIXME: std areas should be within min/max areas!
-            ax.fill_between(x, y - y_sd, y + y_sd, color=color, alpha=0.4, label="__nolabel__")
+        '''
+        for k in range(xres.dims["dim1"]):
+            # individual timecourses
+            plt.plot(da.coords['time'], da.isel(dim1=k))
 
-            ax.fill_between(x, y + y_sd, y_max, color=color, alpha=0.2, label="__nolabel__")
-            ax.fill_between(x, y - y_sd, y_min, color=color, alpha=0.2, label="__nolabel__")
+    # FIXME: update the plotting of the ranges
+    '''
+    if len(xres) > 1:
+        # FIXME: std areas should be within min/max areas!
+        ax.fill_between(x, y - y_sd, y + y_sd, color=color, alpha=0.4, label="__nolabel__")
 
-        ax.plot(x, y, '-', label="{}".format(label), **kwargs)
+        ax.fill_between(x, y + y_sd, y_max, color=color, alpha=0.2, label="__nolabel__")
+        ax.fill_between(x, y - y_sd, y_min, color=color, alpha=0.2, label="__nolabel__")
+    '''
+
+    ax.plot(x, y + ysd, '-', label="__nolabel__", alpha=0.4, **kwargs)
+    ax.plot(x, y - ysd, '-', label="__nolabel__", alpha=0.4, **kwargs)
+    ax.plot(x, ymin, '-', label="__nolabel__", alpha=0.2, **kwargs)
+    ax.plot(x, ymax, '-', label="__nolabel__", alpha=0.2, **kwargs)
+    # curve
+    ax.plot(x, y, '-', label=label, **kwargs)

@@ -24,6 +24,18 @@ class XResult:
         self.udict = udict
         self.ureg = ureg
 
+    def __getitem__(self, key) -> xr.DataArray:
+        return self.xds[key]
+
+    def __getattr__(self, name):
+        """Provide dot access to keys."""
+        if name in {'xds', 'scan', 'udict', 'ureg'}:
+            # local field lookup
+            return getattr(self, name)
+        else:
+            # forward lookup to xds
+            return getattr(self.xds, name)
+
     @classmethod
     def from_dfs(cls, dfs: List[pd.DataFrame], scan: ScanSim=None,
                  udict: Dict = None, ureg: UnitRegistry = None) -> 'XResult':
@@ -65,8 +77,8 @@ class XResult:
 
         ds = xr.Dataset()
         columns = dfs[0].columns
-        data = np.empty(shape=shape)
         for k_col, column in enumerate(columns):
+            data = np.empty(shape=shape)
             if column == "time":
                 # not storing "time" column (encoded as dimension)
                 continue
@@ -81,6 +93,8 @@ class XResult:
             # set unit
             if column in udict:
                 da.attrs["units"] = udict[column]
+            else:
+                logger.warning(f"No units for column '{column}' in udict '{udict}'.")
 
             ds[column] = da
 

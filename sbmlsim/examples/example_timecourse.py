@@ -17,7 +17,7 @@ def run_timecourse_examples():
     tc_sim = TimecourseSim(
         Timecourse(start=0, end=100, steps=100)
     )
-    s1 = simulator.run_timecourse(tc_sim)
+    xr1 = simulator.run_timecourse(tc_sim)
     print(tc_sim)
 
     # 2. timecourse with parameter changes
@@ -25,7 +25,7 @@ def run_timecourse_examples():
     tc_sim = TimecourseSim(
         Timecourse(start=0, end=100, steps=100, changes={"X": 10, "Y": 200})
     )
-    s2 = simulator.run_timecourse(tc_sim)
+    xr2 = simulator.run_timecourse(tc_sim)
     print(tc_sim)
 
     # 3. combined timecourses
@@ -34,7 +34,7 @@ def run_timecourse_examples():
             Timecourse(start=0, end=100, steps=100),
             Timecourse(start=0, end=100, steps=100, changes={"X": 10, "Y": 20}),
         ])
-    s3 = simulator.run_timecourse(tc_sim)
+    xr3 = simulator.run_timecourse(tc_sim)
     print(tc_sim)
 
     # 4. combined timecourses with model_change
@@ -44,7 +44,7 @@ def run_timecourse_examples():
             Timecourse(start=0, end=50, steps=100, model_changes={"boundary_condition": {"X": True}}),
             Timecourse(start=0, end=100, steps=100, model_changes={"boundary_condition": {"X": False}}),
         ])
-    s4 = simulator.run_timecourse(tc_sim)
+    xr4 = simulator.run_timecourse(tc_sim)
     print(tc_sim)
 
     # create figure
@@ -56,12 +56,10 @@ def run_timecourse_examples():
     ax3.set_title("combined timecourse")
     ax4.set_title("model change")
 
-
-    for s, ax in [(s1, ax1), (s2, ax2), (s3, ax3), (s4, ax4)]:
-
-        ax.plot(s.time, s.X, label="X")
-        ax.plot(s.time, s.Y, label="Y")
-        ax.plot(s.time, s.Z, label="Z")
+    for xres, ax in [(xr1, ax1), (xr2, ax2), (xr3, ax3), (xr4, ax4)]:
+        ax.plot(xres.time, xres.X, label="X")
+        ax.plot(xres.time, xres.Y, label="Y")
+        ax.plot(xres.time, xres.Z, label="Z")
 
     for ax in (ax1, ax2, ax3, ax4):
         ax.legend()

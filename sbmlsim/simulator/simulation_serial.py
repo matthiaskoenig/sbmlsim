@@ -35,7 +35,10 @@ class SimulatorSerial(SimulatorAbstract, SimulatorWorker):
         set_integrator_settings(self.r, **kwargs)
 
     def run_timecourse(self, simulation: TimecourseSim) -> XResult:
-        """ Run many timecourses."""
+        """ Run single timecourse."""
+        if not isinstance(simulation, TimecourseSim):
+            raise ValueError(f"'run_timecourse' requires TimecourseSim, but "
+                             f"'{type(simulation)}'")
         scan = ScanSim(simulation=simulation)
         return self.run_scan(scan)
 
@@ -56,5 +59,6 @@ class SimulatorSerial(SimulatorAbstract, SimulatorWorker):
         return XResult.from_dfs(
             dfs=dfs,
             scan=scan,
-            udict=self.udict
+            udict=self.udict,
+            ureg=self.ureg
         )

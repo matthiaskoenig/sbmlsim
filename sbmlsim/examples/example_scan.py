@@ -101,20 +101,11 @@ if __name__ == "__main__":
 
     # scan0d
     xres = run_scan0d()
-
     for key in ['PX', 'PY', 'PZ']:
-        plt.plot(xres.xds['time'], xres.xds[key], label=key)
+        plt.plot(xres.time, xres[key], label=key)
     plt.legend()
     plt.show()
 
-    # xres.xds['PX'].plot()
-    # xres.xds['PY'].plot()
-    # xres.xds['PZ'].plot()
-    # plt.show()
-
-
-
-    exit(0)
     # scan1d
     xres = run_scan1d()
     xres.xds[column].plot()
@@ -122,10 +113,10 @@ if __name__ == "__main__":
 
     # scan1d_distrib
     xres = run_scan1d_distribution()
-    xres.xds[column].plot()
+    xres[column].plot()
     plt.show()
-    da = xres.xds[column]
-    for k in range(xres.xds.dims["dim1"]):
+    da = xres[column]
+    for k in range(xres.dims["dim1"]):
         # individual timecourses
         plt.plot(da.coords['time'], da.isel(dim1=k))
 
@@ -136,5 +127,5 @@ if __name__ == "__main__":
 
     # scan2d
     xres = run_parameter_scan2d()
-    xres.xds[column].plot()
+    xres[column].plot()
     plt.show()
