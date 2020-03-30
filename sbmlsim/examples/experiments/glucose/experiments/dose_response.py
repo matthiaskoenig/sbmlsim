@@ -1,12 +1,14 @@
 from typing import Dict
 import numpy as np
 import pandas as pd
+import xarray as xr
 
 from sbmlsim.experiment import SimulationExperiment
 from sbmlsim.data import DataSet, load_pkdb_dataframe
 from sbmlsim.model import AbstractModel, RoadrunnerSBMLModel
 from sbmlsim.simulation import Timecourse, TimecourseSim, ScanSim, Dimension
 from sbmlsim.task import Task
+from sbmlsim.utils import timeit
 
 from matplotlib.pyplot import Figure
 from sbmlsim.plot.plotting_matplotlib import add_data, plt
@@ -15,12 +17,14 @@ from sbmlsim.plot.plotting_matplotlib import add_data, plt
 class DoseResponseExperiment(SimulationExperiment):
     """Hormone dose-response curves."""
 
+    @timeit
     def models(self) -> Dict[str, AbstractModel]:
         return {
             "model1": RoadrunnerSBMLModel(source="model/liver_glucose.xml",
                                           base_path=self.base_path)
         }
 
+    @timeit
     def datasets(self) -> Dict[str, DataSet]:
         dsets = {}
 
@@ -81,12 +85,14 @@ class DoseResponseExperiment(SimulationExperiment):
 
         return dsets
 
+    @timeit
     def tasks(self) -> Dict[str, Task]:
         """Tasks"""
         return {
             "task_glc_scan": Task(model="model1", simulation="glc_scan")
         }
 
+    @timeit
     def simulations(self) -> Dict[str, ScanSim]:
         """Scanning dose-response curves of hormones and gamma function.
 
@@ -96,12 +102,18 @@ class DoseResponseExperiment(SimulationExperiment):
             simulation=TimecourseSim([
                 Timecourse(start=0, end=1, steps=1, changes={})
             ]),
-            scan={'[glc_ext]': self.Q_(np.linspace(2, 20, num=100), 'mM')},
+            dimensions=[
+                Dimension(
+                    "dim1", changes={
+                        '[glc_ext]': self.Q_(np.linspace(2, 20, num=10), 'mM')
+                    }),
+            ]
         )
         return {
             "glc_scan": glc_scan
         }
 
+    @timeit
     def figures(self) -> Dict[str, Figure]:
         xunit = "mM"
         yunit_hormone = "pmol/l"
@@ -115,19 +127,26 @@ class DoseResponseExperiment(SimulationExperiment):
         task = self._tasks["task_glc_scan"]
         model = self._models[task.model_id]
         tcscan = self._simulations[task.simulation_id]  # TimecourseScan Definition
-        glc_vec = tcscan.run_scan['[glc_ext]']
-        results = self.results["task_glc_scan"]  # type: Result
-        dose_response = {k: list() for k in ["glu", "epi", "ins", "gamma"]}
-        for k, glc_ext in enumerate(glc_vec):
-            s = results.frames[k]
-            # store results
-            for key in dose_response:
-                value = s[key].values[0]  # initial value calculated
-                dose_response[key].append(value)
+
+        # FIXME: this must be simpler
+        glc_vec = tcscan.dimensions[0].changes['[glc_ext]']
+        xres = self.results["task_glc_scan"]  # type: Result
+
+        # we already have all the data ordered, we only want the steady state value
+
+        dose_response = {}
+        for sid in ["glu", "epi", "ins", "gamma"]:
+            da = xres[sid]  # type: xr.DataArray
+
+            # get initial time
+            head = da.head({'time': 1}).to_series()
+            dose_response[sid] = head.values
 
         dose_response['[glc_ext]'] = glc_vec
         df = pd.DataFrame(dose_response)
         dset = DataSet.from_df(df, udict=model.udict, ureg=self.ureg)
+        print(dset)
+
 
         # plot scan results
         kwargs = {

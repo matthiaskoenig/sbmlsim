@@ -13,7 +13,7 @@ from cached_property import cached_property
 
 
 from sbmlsim.simulation import ScanSim, Dimension
-from sbmlsim.utils import deprecated
+from sbmlsim.utils import deprecated, timeit
 
 logger = logging.getLogger(__name__)
 

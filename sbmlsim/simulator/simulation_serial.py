@@ -4,6 +4,7 @@ Serial simulator.
 import logging
 from typing import List
 import pandas as pd
+from sbmlsim.utils import timeit
 
 from sbmlsim.simulator.simulation import SimulatorAbstract, SimulatorWorker, set_integrator_settings
 from sbmlsim.result import XResult
@@ -34,6 +35,7 @@ class SimulatorSerial(SimulatorAbstract, SimulatorWorker):
 
         set_integrator_settings(self.r, **kwargs)
 
+    @timeit
     def run_timecourse(self, simulation: TimecourseSim) -> XResult:
         """ Run single timecourse."""
         if not isinstance(simulation, TimecourseSim):
@@ -42,6 +44,7 @@ class SimulatorSerial(SimulatorAbstract, SimulatorWorker):
         scan = ScanSim(simulation=simulation)
         return self.run_scan(scan)
 
+    @timeit
     def run_scan(self, scan: ScanSim) -> XResult:
         """ Run a scan simulation."""
         # normalize the scan

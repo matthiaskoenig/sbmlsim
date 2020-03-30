@@ -3,4 +3,4 @@ from pathlib import Path
 from sbmlsim._version import __version__
 
 BASE_PATH = Path(__file__).parent
-TEMPLATE_PATH = BASE_PATH / "templates"
+TEMPLATE_PATH = BASE_PATH / "experiment" / "templates"
