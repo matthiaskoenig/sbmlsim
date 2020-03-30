@@ -1,5 +1,6 @@
 import logging
 import pandas as pd
+import numpy as np
 import xarray as xr
 
 from sbmlsim.result import XResult
@@ -274,20 +275,19 @@ def add_line(ax, xres: XResult,
             ax.plot(xk, yk, '-', label="{}".format(label), **kwargs)
         '''
 
+    # calculate rational ysd, i.e., if the value if y + ysd is larger than ymax take ymax
+    ysd_up = (y + ysd).copy()
+    ysd_up[ysd_up > ymax] = ymax[ysd_up > ymax]
+    ysd_down = (y - ysd).copy()
+    ysd_down[ysd_down < ymin] = ymax[ysd_down < ymin]
 
-    # FIXME: update the plotting of the ranges
-    '''
-    if len(xres) > 1:
-        # FIXME: std areas should be within min/max areas!
-        ax.fill_between(x, y - y_sd, y + y_sd, color=color, alpha=0.4, label="__nolabel__")
+    ax.fill_between(x, ysd_down, ysd_up, color=color, alpha=0.4, label="__nolabel__")
+    ax.fill_between(x, ysd_up, ymax, color=color, alpha=0.1, label="__nolabel__")
+    ax.fill_between(x, ysd_down, ymin, color=color, alpha=0.1, label="__nolabel__")
 
-        ax.fill_between(x, y + y_sd, y_max, color=color, alpha=0.2, label="__nolabel__")
-        ax.fill_between(x, y - y_sd, y_min, color=color, alpha=0.2, label="__nolabel__")
-    '''
-
-    ax.plot(x, y + ysd, '-', label="__nolabel__", alpha=0.4, **kwargs)
-    ax.plot(x, y - ysd, '-', label="__nolabel__", alpha=0.4, **kwargs)
-    ax.plot(x, ymin, '-', label="__nolabel__", alpha=0.2, **kwargs)
-    ax.plot(x, ymax, '-', label="__nolabel__", alpha=0.2, **kwargs)
+    ax.plot(x, ysd_up, '-', label="__nolabel__", alpha=0.8, **kwargs)
+    ax.plot(x, ysd_down, '-', label="__nolabel__", alpha=0.8, **kwargs)
+    ax.plot(x, ymin, '-', label="__nolabel__", alpha=0.6, **kwargs)
+    ax.plot(x, ymax, '-', label="__nolabel__", alpha=0.6, **kwargs)
     # curve
     ax.plot(x, y, '-', label=label, **kwargs)

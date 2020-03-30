@@ -53,18 +53,3 @@ def test_timecourse_combined():
     assert isinstance(s, pd.DataFrame)
     assert "time" in s
     assert s.time.values[-1] == 250.0
-
-
-def test_timecourse_ensemble():
-    changeset = [
-         {"[X]": 10.0},
-         {"[X]": 15.0},
-         {"[X]": 20.0},
-         {"[X]": 25.0},
-    ]
-    simulator = Simulator(MODEL_REPRESSILATOR)
-    tcsims = ensemble(TimecourseSim([
-            Timecourse(start=0, end=400, steps=400),
-        ]), changeset=changeset)
-    result = simulator.run_timecourse(tcsims)
-    assert isinstance(result, XResult)

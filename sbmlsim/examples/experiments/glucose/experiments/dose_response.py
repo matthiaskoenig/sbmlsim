@@ -2,15 +2,14 @@ from typing import Dict
 import numpy as np
 import pandas as pd
 
-from matplotlib.pyplot import Figure
-from sbmlsim.plotting.plotting_matplotlib import add_data, plt
-
 from sbmlsim.experiment import SimulationExperiment
 from sbmlsim.data import DataSet, load_pkdb_dataframe
+from sbmlsim.model import AbstractModel, RoadrunnerSBMLModel
+from sbmlsim.simulation import Timecourse, TimecourseSim, ScanSim, Dimension
 from sbmlsim.task import Task
-from sbmlsim.models import AbstractModel, RoadrunnerSBMLModel
-from sbmlsim.simulation.timecourse import Timecourse, TimecourseSim
-from sbmlsim.simulation.scan import ScanSim
+
+from matplotlib.pyplot import Figure
+from sbmlsim.plot.plotting_matplotlib import add_data, plt
 
 
 class DoseResponseExperiment(SimulationExperiment):

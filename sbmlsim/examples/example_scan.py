@@ -89,7 +89,7 @@ def run_scan1d_distribution() -> XResult:
                        changes={'X': Q_(10, "dimensionless")}),
         ]),
         dimensions=[
-            Dimension("dim1", index=np.arange(50), changes={
+            Dimension("dim1", changes={
                 'n': Q_(np.random.normal(loc=5.0, scale=0.2, size=50), "dimensionless"),
             })
         ]

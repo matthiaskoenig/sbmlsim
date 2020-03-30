@@ -1,30 +1,40 @@
 """
 Testing plotting functionality.
 """
-from matplotlib import pyplot as plt
-from sbmlsim.plot.plotting_matplotlib import add_line
-
-from sbmlsim.simulator.simulation_serial import SimulatorSerial as Simulator
-from sbmlsim.simulation.timecourse import Timecourse, TimecourseSim
+import numpy as np
+from sbmlsim.simulator import SimulatorSerial as Simulator
+from sbmlsim.simulation import Timecourse, TimecourseSim, ScanSim, Dimension
+from sbmlsim.plot.plotting_matplotlib import plt, add_line
 from sbmlsim.tests.constants import MODEL_REPRESSILATOR
 
 
 def test_plotting():
     simulator = Simulator(MODEL_REPRESSILATOR)
-
-    changeset = ChangeSet.parameter_sensitivity_changeset(simulator.r, sensitivity=0.5)
-    tcsims = ensemble(TimecourseSim([
-            Timecourse(start=0, end=400, steps=400),
-        ]), changeset)
-    result = simulator.run_timecourse(tcsims)
+    Q_ = simulator.ureg.Quantity
+    scan1d = ScanSim(
+        simulation=TimecourseSim([
+            Timecourse(start=0, end=100, steps=400),
+            Timecourse(start=0, end=60, steps=100,
+                       changes={'[X]': Q_(10, "dimensionless")}),
+            Timecourse(start=0, end=60, steps=100,
+                       changes={'X': Q_(10, "dimensionless")}),
+        ]),
+        dimensions=[
+            Dimension("dim1", changes={
+                'Y': Q_(np.random.normal(loc=10.0, scale=3.0, size=50),
+                        "dimensionless"),
+            })
+        ]
+    )
+    xres = simulator.run_scan(scan1d)
 
     # create figure
     fig, (ax1) = plt.subplots(nrows=1, ncols=1, figsize=(5, 5))
     fig.subplots_adjust(wspace=0.3, hspace=0.3)
 
-    add_line(ax=ax1, xres=result,
-             xid='time', yid="X", label="X")
-    add_line(ax=ax1, xres=result,
+    add_line(ax=ax1, xres=xres,
+             xid='time', yid="X", label="X", color="darkgreen")
+    add_line(ax=ax1, xres=xres,
              xid='time', yid="Y", label="Y", color="darkblue")
 
     ax1.legend()

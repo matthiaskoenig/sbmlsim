@@ -11,7 +11,9 @@ from typing import List
 from pint import UnitRegistry
 from cached_property import cached_property
 
+
 from sbmlsim.simulation import ScanSim, Dimension
+from sbmlsim.utils import deprecated
 
 logger = logging.getLogger(__name__)
 
@@ -101,51 +103,59 @@ class XResult:
         return XResult(xdataset=ds, scan=scan, udict=udict, ureg=ureg)
 
 
-    '''
-    @cached_property
-    def nrow(self):
-        return len(self.index)
-
-    @cached_property
-    def ncol(self):
-        return len(self.columns)
-
-    @cached_property
-    def nframes(self):
-        return len(self.frames)
-
-    @cached_property
-    def mean(self):
-        if len(self) == 1:
-            logging.debug("For a single simulation the mean returns the single simulation")
-            return self.frames[0]
-        else:
-            return pd.DataFrame(np.mean(self.data, axis=2), columns=self.columns)
-
-    @cached_property
-    def std(self):
-        return pd.DataFrame(np.std(self.data, axis=2), columns=self.columns)
-
-    @cached_property
-    def min(self):
-        return pd.DataFrame(np.min(self.data, axis=2), columns=self.columns)
-
-    @cached_property
-    def max(self):
-        return pd.DataFrame(np.max(self.data, axis=2), columns=self.columns)
-
+    @deprecated
     def to_hdf5(self, path):
         """Store complete results as HDF5"""
-        with pd.HDFStore(path, complib="zlib", complevel=9) as store:
-            for k, frame in enumerate(self.frames):
-                key = "df{}".format(k)
-                store.put(key, frame)
+        logger.warning("to_hdf5 not implemented")
+        # FIXME: new serialization format (netCDF?)
+        # with pd.HDFStore(path, complib="zlib", complevel=9) as store:
+        #    for k, frame in enumerate(self.frames):
+        #        key = "df{}".format(k)
+        #        store.put(key, frame)
 
+
+    @deprecated
     @staticmethod
     def from_hdf5(path):
         """Read from HDF5"""
-        with pd.HDFStore(path) as store:
-            frames = [store[key] for key in store.keys()]
+        logger.warning("'from_hdf5' not implemented")
+        # FIXME: implement new serialization format
 
-        return Result(frames=frames)
-    '''
+        # with pd.HDFStore(path) as store:
+        #    frames = [store[key] for key in store.keys()]
+        #
+        # return Result(frames=frames)
+
+'''
+@cached_property
+def nrow(self):
+    return len(self.index)
+
+@cached_property
+def ncol(self):
+    return len(self.columns)
+
+@cached_property
+def nframes(self):
+    return len(self.frames)
+
+@cached_property
+def mean(self):
+    if len(self) == 1:
+        logging.debug("For a single simulation the mean returns the single simulation")
+        return self.frames[0]
+    else:
+        return pd.DataFrame(np.mean(self.data, axis=2), columns=self.columns)
+
+@cached_property
+def std(self):
+    return pd.DataFrame(np.std(self.data, axis=2), columns=self.columns)
+
+@cached_property
+def min(self):
+    return pd.DataFrame(np.min(self.data, axis=2), columns=self.columns)
+
+@cached_property
+def max(self):
+    return pd.DataFrame(np.max(self.data, axis=2), columns=self.columns)
+'''
