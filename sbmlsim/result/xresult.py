@@ -20,11 +20,14 @@ logger = logging.getLogger(__name__)
 
 class XResult:
     def __init__(self, xdataset: xr.Dataset, scan: ScanSim,
-                 udict: Dict = None, ureg: UnitRegistry=None):
+                 udict: Dict = None, ureg: UnitRegistry=None, _df: pd.DataFrame = None):
         self.xds = xdataset
         self.scan = scan
         self.udict = udict
         self.ureg = ureg
+
+        # set the DataFrame if a one-dimensional scan
+        self._df = _df
 
     def __getitem__(self, key) -> xr.DataArray:
         return self.xds[key]
@@ -92,20 +95,33 @@ class XResult:
                 data_dict[column][index] = df[column].values
 
         # Create the DataSet
+        _df = None
+        if len(dfs) == 1:
+            # store a copy of single timecourse for serialization
+            # FIXME: this is a hack for now
+            _df = dfs[0].copy()
+
         ds = xr.Dataset({key: xr.DataArray(data=data, dims=dims, coords=coords) for key, data in data_dict.items()})
-        return XResult(xdataset=ds, scan=scan, udict=udict, ureg=ureg)
+        return XResult(xdataset=ds, scan=scan, udict=udict, ureg=ureg, _df=_df)
 
 
 
     @deprecated
     def to_hdf5(self, path):
         """Store complete results as HDF5"""
-        logger.warning("to_hdf5 not implemented")
+        # FIXME: handle the special case, where we can convert things to
+        # a dataframe
+
+        logger.warning("to_hdf5 only partially implemented")
         # FIXME: new serialization format (netCDF?)
-        # with pd.HDFStore(path, complib="zlib", complevel=9) as store:
-        #    for k, frame in enumerate(self.frames):
-        #        key = "df{}".format(k)
-        #        store.put(key, frame)
+
+        if self._df is not None:
+            with pd.HDFStore(path, complib="zlib", complevel=9) as store:
+                for k, frame in enumerate([self._df]):
+                    key = "df{}".format(k)
+                    store.put(key, frame)
+        else:
+            logger.error("No dataframe found.")
 
 
     @deprecated

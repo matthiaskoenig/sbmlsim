@@ -190,7 +190,8 @@ class SimulationExperiment(object):
 
     # --- EXECUTE -------------------------------------------------------------
     @timeit
-    def run(self, output_path: Path, show_figures: bool = True) -> ExperimentResult:
+    def run(self, output_path: Path, show_figures: bool = True,
+            save_results: bool = False) -> ExperimentResult:
         """
         Executes given experiment and stores results.
         Returns info dictionary.
@@ -215,8 +216,11 @@ class SimulationExperiment(object):
         # save outputs
         self.save_datasets(output_path)
 
-        # This is not necessary and takes very long
-        # self.save_results(output_path)
+        # Saving takes often much longer then simulation
+        if save_results:
+            self.save_results(output_path)
+
+        # save figure
         self.save_figures(output_path)
 
         # serialization

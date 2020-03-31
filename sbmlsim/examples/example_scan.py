@@ -43,7 +43,7 @@ def run_scan1d() -> XResult:
                        changes={'X': Q_(10, "dimensionless")}),
         ]),
         dimensions=[
-            Dimension("dim1", index=np.arange(8), changes={
+            Dimension("dim1", changes={
                 'n': Q_(np.linspace(start=2, stop=10, num=8), "dimensionless"),
             })
         ]
@@ -64,11 +64,11 @@ def run_scan2d() -> XResult:
             Timecourse(start=0, end=60, steps=100, changes={'X': Q_(10, "dimensionless")}),
         ]),
         dimensions=[
-            Dimension("dim1", index=np.arange(8), changes={
+            Dimension("dim1", changes={
                 'n': Q_(np.linspace(start=2, stop=10, num=8), "dimensionless"),
             }),
-            Dimension("dim2", index=np.arange(4), changes={
-                'Y': Q_(np.linspace(start=10, stop=20, num=4), "dimensionless"),
+            Dimension("dim2", changes={
+                'Y': Q_(np.logspace(start=2, stop=2.5, num=4), "dimensionless"),
             }),
         ]
     )
@@ -102,6 +102,7 @@ if __name__ == "__main__":
 
     column = 'PX'
 
+    '''
     # scan0d
     xres = run_scan0d()
     for key in ['PX', 'PY', 'PZ']:
@@ -109,15 +110,20 @@ if __name__ == "__main__":
     plt.legend()
     plt.show()
 
+
     # scan1d
     xres = run_scan1d()
     xres.xds[column].plot()
     plt.show()
+    '''
 
     # scan1d_distrib
     xres = run_scan1d_distribution()
+    print(xres.xds)
+
     xres[column].plot()
     plt.show()
+
     da = xres[column]
     for k in range(xres.dims["dim1"]):
         # individual timecourses
@@ -128,7 +134,9 @@ if __name__ == "__main__":
     plt.plot(da.coords['time'], da.max(dim="dim1"), color="black", linewidth=2.0)
     plt.show()
 
+    '''
     # scan2d
     xres = run_scan2d()
     xres[column].plot()
     plt.show()
+    '''

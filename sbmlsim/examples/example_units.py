@@ -22,18 +22,7 @@ def run_demo_example():
 
     # 1. simple timecourse simulation
     print("*** setting concentrations and amounts ***")
-    tc_sim = TimecourseSim([
-        Timecourse(start=0, end=10, steps=100,
-                   changes={
-                       "[e__A]": Q_(10, "mM"),
-                       "[e__B]": Q_(1, "mmole/litre"),
-                       "[e__C]": Q_(1, "mole/m**3"),
-                       "c__A": Q_(1E-5, "mole"),
-                       "c__B": Q_(10, "µmole"),
-                       "Vmax_bA": Q_(300.0, "mole/min")
-                   }
-        )
-    ])
+
     tc_scan = ScanSim(
         simulation=TimecourseSim([
             Timecourse(start=0, end=10, steps=100,

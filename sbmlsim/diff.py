@@ -4,39 +4,28 @@ Allows to test semi-automatically for problems with the various models.
 
 Used to benchmark the simulation results.
 """
-import os
+
 import pandas as pd
-from pprint import pprint
 from typing import List
 import logging
 from matplotlib import pyplot as plt
-from sbmlsim.experiment import JSONExperiment
+
+from sbmlsim.utils import timeit
+
 
 logger = logging.getLogger(__name__)
 
 
-def get_json_files(diff_path) -> List[str]:
+def get_files_by_extension(base_path, extension=".json") -> List[str]:
     """Get all simulation definitions in the test directory.
 
     Simulation definitions are json files.
     """
-    # get all json files in the folder
-    files = [f for f in diff_path.glob('**/*') if f.is_file() and f.suffix == ".json"]
+    # get all files with extension in given path
+    files = [f for f in base_path.glob('**/*') if f.is_file() and f.suffix == extension]
     keys = [f.name[:-5] for f in files]
 
     return dict(zip(keys, files))
-
-
-# FIXME: this belongs to experiment
-def get_simulation_keys(diff_path):
-    simulation_keys = []
-    json_files = get_json_files(diff_path)
-    for key, file in json_files.items():
-        experiment = JSONExperiment.from_json(file)
-        if experiment.simulations:
-            for sim_key in experiment.simulations:
-                simulation_keys.append(f"{key}_{sim_key}")
-    return sorted(simulation_keys)
 
 
 class DataSetsComparison(object):
@@ -50,6 +39,7 @@ class DataSetsComparison(object):
     eps = 1E-6  # tolerance for comparison
     eps_plot = 1E-9  # tolerance for plotting
 
+    @timeit
     def __init__(self, dfs_dict, columns_filter=None, title: str = None):
         """Initialize the comparison.
 
@@ -174,6 +164,7 @@ class DataSetsComparison(object):
     def __repr__(self):
         return f"{self.__class__.__name__} [{self.id}] ({self.labels})"
 
+    @timeit
     def report_str(self):
         """
 
@@ -217,6 +208,7 @@ class DataSetsComparison(object):
 
         return "\n".join([str(item) for item in lines])
 
+    @timeit
     def report(self):
         # print report
         print(self.report_str())
@@ -225,7 +217,12 @@ class DataSetsComparison(object):
         f = self.plot_diff()
         return f
 
+    @timeit
     def plot_diff(self):
+        """Plots lines for entries which are above epsilon treshold."""
+
+        # FIXME: only plot the top differences, otherwise plotting takes
+        # very long
         # filter data
         diff_abs = self.diff_abs.copy()
         diff_rel = self.diff_rel.copy()
