@@ -10,6 +10,7 @@ from sbmlsim.experiment import SimulationExperiment
 from sbmlsim.model import AbstractModel, RoadrunnerSBMLModel
 from sbmlsim.data import Data
 from sbmlsim.simulation import Timecourse, TimecourseSim, AbstractSim, ScanSim, Dimension
+from sbmlsim.simulation.sensititvity import ModelSensitivity, SensitivityType
 from sbmlsim.task import Task
 from sbmlsim.plot import Figure, Axis
 
@@ -30,6 +31,46 @@ class RepressilatorExperiment(SimulationExperiment):
         }
 
     def simulations(self) -> Dict[str, AbstractSim]:
+        return {
+            **self.sim_scans(),
+            # **self.sim_sensitivities(),
+        }
+
+    def sim_sensitivity(self) -> Dict[str, AbstractSim]:
+        """
+        Simulation time is in [s]
+        :return:
+        """
+        Q_ = self.Q_
+        unit_data = "dimensionless"
+        # simple timecourse
+        tcsim = TimecourseSim([
+            Timecourse(start=0, end=100, steps=2000),
+            Timecourse(start=0, end=100, steps=2000,
+                       changes={
+                            "X": Q_(10, unit_data),
+                            "Y": Q_(20, unit_data)
+                       }),
+        ])
+
+        # Additional changes for model sensitivity
+        p_dict = ModelSensitivity.reference_values(self._models["model1"],
+                                                      stype=SensitivityType.PARAMETER_SENSITIVITY)
+        pup_dict = ModelSensitivity.apply_change(p_dict, 0.1)
+        pdown_dict = ModelSensitivity.apply_change(p_dict, -0.1)
+        simulations_up = ModelSensitivity.create_simulations(
+            simulation=tcsim, value_dict=pup_dict
+        )
+        simulations_down = ModelSensitivity.create_simulations(
+            simulation=tcsim, value_dict=pdown_dict
+        )
+
+        return {
+            # FIXME
+        }
+
+
+    def sim_scans(self) -> Dict[str, AbstractSim]:
         """
         Simulation time is in [s]
         :return:
@@ -38,8 +79,8 @@ class RepressilatorExperiment(SimulationExperiment):
         unit_data = "dimensionless"
         # simple timecourse
         tc = TimecourseSim([
-            Timecourse(start=0, end=600, steps=2000),
-            Timecourse(start=0, end=600, steps=2000,
+            Timecourse(start=0, end=100, steps=2000),
+            Timecourse(start=0, end=100, steps=2000,
                        changes={
                             "X": Q_(10, unit_data),
                             "Y": Q_(20, unit_data)
@@ -58,10 +99,10 @@ class RepressilatorExperiment(SimulationExperiment):
             simulation=tc,
             dimensions=[
                 Dimension(
-                    "dim1", changes={'X': Q_(np.linspace(0, 10, num=11), unit_data)}
+                    "dim1", changes={'X': Q_(np.random.normal(5, 2, size=10), unit_data)}
                 ),
                 Dimension(
-                    "dim2", changes={'Y': Q_(np.linspace(0, 10, num=11), unit_data)}
+                    "dim2", changes={'Y': Q_(np.random.normal(5, 2, size=10), unit_data)}
                 ),
             ]
         )
@@ -84,7 +125,7 @@ class RepressilatorExperiment(SimulationExperiment):
             "tc": tc,
             "scan1d": scan1d,
             "scan2d": scan2d,
-            "scan3d": scan3d,
+            # "scan3d": scan3d,
         }
 
     def datagenerators(self) -> None:
