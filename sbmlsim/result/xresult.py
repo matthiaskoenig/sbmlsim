@@ -120,6 +120,12 @@ class XResult:
                 for k, frame in enumerate([self._df]):
                     key = "df{}".format(k)
                     store.put(key, frame)
+
+        if self._df is not None:
+            path_tsv = f"{str(path)}.tsv"
+            print(path_tsv)
+            self._df.to_csv(path_tsv, sep="\t", index=False)
+
         else:
             logger.error("No dataframe found.")
 
