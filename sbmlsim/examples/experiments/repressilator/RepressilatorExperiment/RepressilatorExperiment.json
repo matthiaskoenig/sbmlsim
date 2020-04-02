@@ -28,10 +28,6 @@
     "task_scan2d": {
       "model": "model1",
       "simulation": "scan2d"
-    },
-    "task_scan3d": {
-      "model": "model1",
-      "simulation": "scan3d"
     }
   },
   "simulations": {
@@ -44,7 +40,7 @@
         {
           "normalized": true,
           "start": 0,
-          "end": 600,
+          "end": 100,
           "steps": 2000,
           "changes": {},
           "model_changes": {}
@@ -52,7 +48,7 @@
         {
           "normalized": true,
           "start": 0,
-          "end": 600,
+          "end": 100,
           "steps": 2000,
           "changes": {
             "X": {
@@ -76,9 +72,6 @@
       "type": "ScanSim"
     },
     "scan2d": {
-      "type": "ScanSim"
-    },
-    "scan3d": {
       "type": "ScanSim"
     }
   },
