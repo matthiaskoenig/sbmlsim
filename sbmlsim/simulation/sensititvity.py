@@ -41,40 +41,45 @@ class ModelSensitivity(object):
         state. Values in current model state are used.
 
         :param model:
-        :param exclude_filter: filter function to exclude parameters
+        :param exclude_filter: filter function to exclude parameters,
+            excludes parameter id if the filter function is True
         :param exclude_zero: exclude parameters which are zero
         :return:
         """
-        r = model.model
-        doc = libsbml.readSBMLFromString(r.getSBML())  # type: libsbml.SBMLDocument
-        model = doc.getModel()  # type: libsbml.Model
+
+        doc = libsbml.readSBMLFromString(model.model.getSBML())  # type: libsbml.SBMLDocument
+        sbml_model = doc.getModel()  # type: libsbml.Model
 
         ids = []
 
         if stype == SensitivityType.PARAMETER_SENSITIVITY:
             # constant parameters
-            for p in model.getListOfParameters():  # type: libsbml.Parameter
+            for p in sbml_model.getListOfParameters():  # type: libsbml.Parameter
                 if p.getConstant() is True:
                     ids.append(p.getId())
         elif stype == SensitivityType.SPECIES_SENSITIVITY:
             # initial species amount
-            for s in model.getListOfSpecies():  # type: libsbml.Species
+            for s in sbml_model.getListOfSpecies():  # type: libsbml.Species
                 ids.append(s.getId())
 
         def value_dict(ids):
             """Key: value dict from current model state.
             Non-zero and exclude filtering is applied.
             """
+            ureg = model.ureg
+            udict = model.udict
+            Q_ = model.Q_
+
             d = {}
             for id in sorted(ids):
                 if exclude_filter and exclude_filter(id):
                     continue
 
-                value = r[id]
+                value = model.model[id]
                 if exclude_zero:
                     if np.abs(value) < zero_eps:
                         continue
-                d[id] = value
+                d[id] = Q_(value, udict[id])
             return d
 
         return value_dict(ids)
@@ -116,6 +121,7 @@ if __name__ == "__main__":
     pprint(p_ref)
     pprint(ModelSensitivity.apply_change(p_ref, change=0.1))
     pprint(ModelSensitivity.apply_change(p_ref, change=-0.1))
+    exit()
 
     pprint(s_ref)
     pprint(ModelSensitivity.apply_change(s_ref, change=0.1))

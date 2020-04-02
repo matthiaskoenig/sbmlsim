@@ -270,6 +270,7 @@ class RoadrunnerSBMLModel(AbstractModel):
 
 
 if __name__ == "__main__":
+
     from sbmlsim.tests.constants import MODEL_REPRESSILATOR
     model = RoadrunnerSBMLModel(source=MODEL_REPRESSILATOR)
     print(model)

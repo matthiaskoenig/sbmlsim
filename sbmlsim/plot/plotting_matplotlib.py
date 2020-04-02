@@ -281,12 +281,12 @@ def add_line(ax, xres: XResult,
     ysd_down[ysd_down < ymin] = ymax[ysd_down < ymin]
 
     ax.fill_between(x, ysd_down, ysd_up, color=color, alpha=0.4, label="__nolabel__")
-    ax.fill_between(x, ysd_up, ymax, color=color, alpha=0.1, label="__nolabel__")
-    ax.fill_between(x, ysd_down, ymin, color=color, alpha=0.1, label="__nolabel__")
+    # ax.fill_between(x, ysd_up, ymax, color=color, alpha=0.1, label="__nolabel__")
+    # ax.fill_between(x, ysd_down, ymin, color=color, alpha=0.1, label="__nolabel__")
 
     ax.plot(x, ysd_up, '-', label="__nolabel__", alpha=0.8, **kwargs)
     ax.plot(x, ysd_down, '-', label="__nolabel__", alpha=0.8, **kwargs)
-    ax.plot(x, ymin, '-', label="__nolabel__", alpha=0.6, **kwargs)
-    ax.plot(x, ymax, '-', label="__nolabel__", alpha=0.6, **kwargs)
+    # ax.plot(x, ymin, '-', label="__nolabel__", alpha=0.6, **kwargs)
+    # ax.plot(x, ymax, '-', label="__nolabel__", alpha=0.6, **kwargs)
     # curve
     ax.plot(x, y, '-', label=label, **kwargs)

@@ -127,9 +127,9 @@ class Data(object):
                 x = xda.values * xres.ureg(xda_unit)
             else:
                 # perform unit conversion
-                x = xda.copy()
-                x.values = (x.values * xres.ureg(xda_unit)).to(self.unit).values
-                return x
+                # x = xda.copy()
+                # x.values = (x.values * xres.ureg(xda_unit)).to(self.unit).values
+                # return x
                 x = xda.mean(dim=dims_mean, skipna=True).values * xres.ureg(xda_unit)
 
         elif self.dtype == Data.Types.FUNCTION:

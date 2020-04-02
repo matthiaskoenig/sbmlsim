@@ -141,7 +141,6 @@ class AbstractModel(object):
 
     def apply_model_changes(self, changes):
         """Applies dictionary of model changes."""
-        # FIXME: this must be an OrderedDict, changes must be applied in order
         for key, value in self.changes.items():
             AbstractModel.apply_change(target=key, value=value)
 
