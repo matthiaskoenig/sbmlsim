@@ -10,11 +10,9 @@ from pathlib import Path
 from enum import Enum
 import logging
 import abc
-from sbmlsim.units import Units
-from pint import UnitRegistry
-
 
 from sbmlsim.model.model_resources import Source, resolve_source
+from sbmlsim.units import Units, UnitRegistry
 from collections import namedtuple
 
 

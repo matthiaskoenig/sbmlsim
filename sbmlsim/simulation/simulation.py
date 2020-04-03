@@ -5,6 +5,7 @@ from typing import List, Dict, Iterable
 import abc
 from abc import ABC
 import numpy as np
+import itertools
 
 
 class Dimension(object):
@@ -38,6 +39,12 @@ class Dimension(object):
 
     def __len__(self):
         return len(self.index)
+
+    @staticmethod
+    def indices_from_dimensions(dimensions: List['Dimension']):
+        """Indices of all combinations of dimenions"""
+        index_vecs = [dim.index for dim in dimensions]
+        return list(itertools.product(*index_vecs))
 
 
 class AbstractSim(ABC):

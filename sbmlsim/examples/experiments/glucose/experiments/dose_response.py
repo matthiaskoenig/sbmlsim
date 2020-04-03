@@ -139,7 +139,7 @@ class DoseResponseExperiment(SimulationExperiment):
             da = xres[sid]  # type: xr.DataArray
 
             # get initial time
-            head = da.head({'time': 1}).to_series()
+            head = da.head({'_time': 1}).to_series()
             dose_response[sid] = head.values
 
         dose_response['[glc_ext]'] = glc_vec

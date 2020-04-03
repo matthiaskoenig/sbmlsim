@@ -106,14 +106,12 @@ from collections import OrderedDict
 from sbmlsim.combine.sedml.kisao import \
     is_supported_algorithm_for_simulation_type
 from sbmlsim.models import model_resources
-from sbmlsim.sim
 from sbmlsim.combine.sedml.data import DataDescriptionParser
 from sbmlsim.combine.sedml.utils import SEDMLTools
 from sbmlsim.models.model import AbstractModel
 
 from sbmlsim.combine.sedml.task import TaskTree, TaskNode, Stack
-
-from pint import UnitRegistry
+from sbmlsim.units import UnitRegistry
 
 logger = logging.getLogger(__file__)
 '''

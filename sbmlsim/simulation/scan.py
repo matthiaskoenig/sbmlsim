@@ -1,12 +1,11 @@
 import logging
 import numpy as np
 import itertools
-from pint import UnitRegistry
 from copy import deepcopy
 from typing import Dict, List
 
 from sbmlsim.simulation import AbstractSim, Dimension
-from sbmlsim.units import Units
+from sbmlsim.units import Units, UnitRegistry
 
 logger = logging.getLogger()
 
@@ -48,8 +47,7 @@ class ScanSim(AbstractSim):
 
     def indices(self):
         """Indices of all combinations."""
-        index_vecs = [dim.index for dim in self.dimensions]
-        return list(itertools.product(*index_vecs))
+        return Dimension.indices_from_dimensions(self.dimensions)
 
     def to_simulations(self):
         """Flattens the scan to individual simulations.
@@ -91,7 +89,7 @@ if __name__ == "__main__":
     from sbmlsim.simulation import TimecourseSim, Timecourse
     import numpy as np
     import warnings
-    from pint import Quantity, UnitRegistry
+    from sbmlsim.units import Quantity, UnitRegistry
 
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")

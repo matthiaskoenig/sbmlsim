@@ -4,7 +4,7 @@ Testing DataSet and Data functionality.
 import pandas as pd
 from sbmlsim.data import DataSet, load_pkdb_dataframe
 from sbmlsim.tests.constants import DATA_PATH
-from pint import UnitRegistry
+from sbmlsim.units import UnitRegistry
 
 
 def test_dataset():

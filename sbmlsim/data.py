@@ -4,7 +4,7 @@ import logging
 from typing import Dict
 import pandas as pd
 import numpy as np
-from pint import Quantity, UnitRegistry
+from sbmlsim.units import Quantity, UnitRegistry
 from sbmlsim.combine import mathml
 from sbmlsim.result import XResult
 
@@ -117,20 +117,7 @@ class Data(object):
             if not isinstance(xres, XResult):
                 raise ValueError("Only Result objects supported in task data.")
 
-            # calculate mean over all repeats
-            # FIXME: put on xresult
-            xda = xres[self.index]  # type: xr.DataArray
-            xda_unit = xres.udict[self.index]
-            dims_mean = [dim_id for dim_id in xres.dims if dim_id != "time"]
-
-            if self.index == "time":
-                x = xda.values * xres.ureg(xda_unit)
-            else:
-                # perform unit conversion
-                # x = xda.copy()
-                # x.values = (x.values * xres.ureg(xda_unit)).to(self.unit).values
-                # return x
-                x = xda.mean(dim=dims_mean, skipna=True).values * xres.ureg(xda_unit)
+            x = xres.dim_mean(self.index)
 
         elif self.dtype == Data.Types.FUNCTION:
             # evaluate with actual data

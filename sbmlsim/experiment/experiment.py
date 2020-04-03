@@ -4,7 +4,7 @@ from pathlib import Path
 import json
 from dataclasses import dataclass
 from typing import Dict
-from pint import UnitRegistry
+
 
 
 from sbmlsim.task import Task
@@ -15,9 +15,7 @@ from sbmlsim.result import XResult
 from sbmlsim.data import DataSet
 from sbmlsim.model import AbstractModel
 from sbmlsim.utils import timeit
-
-
-from sbmlsim.units import Units
+from sbmlsim.units import UnitRegistry, Units
 
 from sbmlsim.plot import Figure
 from sbmlsim.plot.plotting_matplotlib import plt, to_figure
@@ -339,7 +337,7 @@ class SimulationExperiment(object):
             logger.warning(f"No results in SimulationExperiment: '{self.sid}'")
         else:
             for rkey, result in self.results.items():
-                result.to_hdf5(results_path / f"{self.sid}_{rkey}.h5")
+                result.to_netcdf(results_path / f"{self.sid}_{rkey}.h5")
 
     @timeit
     def save_figures(self, results_path):

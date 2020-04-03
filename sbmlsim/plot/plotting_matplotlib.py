@@ -222,34 +222,21 @@ def add_line(ax, xres: XResult,
         raise ValueError(f"Only XResult supported in plotting, but found: "
                          f"'{type(xres)}'")
 
+
     # data with units
-    print(xid), print(yid)
-    ureg = xres.ureg
-    print(ureg)
-    xda = xres[xid]  # type: xr.DataArray
-    yda = xres[yid]  # type: xr.DataArray
+    x = xres.dim_mean(xid)
+    y = xres.dim_mean(yid) * yf
 
-    # calculate the mean, sd, min over all dimensions besides time
-    dims_mean = [dim_id for dim_id in xres.dims if dim_id != "time"]
-
-    xda_unit = xres.udict[xid]
-    if xid == "time":
-        x = xda.values * ureg(xda_unit) * xf
-    else:
-        x = xda.mean(dim=dims_mean, skipna=True).values * ureg(xda_unit) * xf
-
-    yda_unit = xres.udict[yid]
-    y = yda.mean(dim=dims_mean, skipna=True).values * ureg(yda_unit) * yf
-    ysd = yda.std(dim=dims_mean, skipna=True).values * ureg(yda_unit) * yf
-    ymin = yda.min(dim=dims_mean, skipna=True).values * ureg(yda_unit) * yf
-    ymax = yda.max(dim=dims_mean, skipna=True).values * ureg(yda_unit) * yf
+    ystd = xres.dim_std(yid) * yf
+    ymin = xres.dim_min(yid) * yf
+    ymax = xres.dim_max(yid) * yf
 
     # convert units to requested units
     if xunit:
         x = x.to(xunit)
     if yunit:
         y = y.to(yunit)
-        ysd = ysd.to(yunit)
+        ystd = ystd.to(yunit)
         ymin = ymin.to(yunit)
         ymax = ymax.to(yunit)
 
@@ -275,18 +262,19 @@ def add_line(ax, xres: XResult,
         '''
 
     # calculate rational ysd, i.e., if the value if y + ysd is larger than ymax take ymax
-    ysd_up = (y + ysd).copy()
+    ysd_up = y + ystd
     ysd_up[ysd_up > ymax] = ymax[ysd_up > ymax]
-    ysd_down = (y - ysd).copy()
+    ysd_down = y - ystd
     ysd_down[ysd_down < ymin] = ymin[ysd_down < ymin]
 
-    ax.fill_between(x, ysd_down, ysd_up, color=color, alpha=0.4, label="__nolabel__")
-    ax.fill_between(x, ysd_up, ymax, color=color, alpha=0.1, label="__nolabel__")
-    ax.fill_between(x, ysd_down, ymin, color=color, alpha=0.1, label="__nolabel__")
+    ax.fill_between(x.magnitude, ysd_down.magnitude, ysd_up.magnitude, color=color, alpha=0.4, label="__nolabel__")
+    ax.fill_between(x.magnitude, ysd_up.magnitude, ymax.magnitude, color=color, alpha=0.1, label="__nolabel__")
+    ax.fill_between(x.magnitude, ysd_down.magnitude, ymin.magnitude, color=color, alpha=0.1, label="__nolabel__")
 
-    ax.plot(x, ysd_up, '-', label="__nolabel__", alpha=0.8, **kwargs)
-    ax.plot(x, ysd_down, '-', label="__nolabel__", alpha=0.8, **kwargs)
-    ax.plot(x, ymin, '-', label="__nolabel__", alpha=0.6, **kwargs)
-    ax.plot(x, ymax, '-', label="__nolabel__", alpha=0.6, **kwargs)
+    ax.plot(x.magnitude, ysd_up.magnitude, '-', label="__nolabel__", alpha=0.8, **kwargs)
+    ax.plot(x.magnitude, ysd_down.magnitude, '-', label="__nolabel__", alpha=0.8, **kwargs)
+    ax.plot(x.magnitude, ymin.magnitude, '-', label="__nolabel__", alpha=0.6, **kwargs)
+    ax.plot(x.magnitude, ymax.magnitude, '-', label="__nolabel__", alpha=0.6, **kwargs)
+
     # curve
-    ax.plot(x, y, '-', label=label, **kwargs)
+    ax.plot(x.magnitude, y.magnitude, '-', label=label, **kwargs)

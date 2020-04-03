@@ -7,27 +7,24 @@ import logging
 import numpy as np
 import pandas as pd
 import xarray as xr
-from typing import List
-from pint import UnitRegistry
-from cached_property import cached_property
-
 
 from sbmlsim.simulation import ScanSim, Dimension
 from sbmlsim.utils import deprecated, timeit
+from sbmlsim.units import UnitRegistry
 
 logger = logging.getLogger(__name__)
 
 
 class XResult:
-    def __init__(self, xdataset: xr.Dataset, scan: ScanSim,
-                 udict: Dict = None, ureg: UnitRegistry=None, _df: pd.DataFrame = None):
+    """
+    FIXME: write the units in the attrs, store time correctly
+    FIXME: helper method for to DataFrame
+    """
+    def __init__(self, xdataset: xr.Dataset,
+                 udict: Dict = None, ureg: UnitRegistry=None):
         self.xds = xdataset
-        self.scan = scan
         self.udict = udict
         self.ureg = ureg
-
-        # set the DataFrame if a one-dimensional scan
-        self._df = _df
 
     def __getitem__(self, key) -> xr.DataArray:
         return self.xds[key]
@@ -41,54 +38,68 @@ class XResult:
             # forward lookup to xds
             return getattr(self.xds, name)
 
+    def dim_mean(self, key):
+        """Mean over all added dimensions"""
+        return self.xds[key].mean(dim=self._op_dims(), skipna=True).values * self.ureg(self.udict[key])
+
+    def dim_std(self, key):
+        """Standard deviation over all added dimensions"""
+        return self.xds[key].std(dim=self._op_dims(), skipna=True).values * self.ureg(self.udict[key])
+
+    def dim_min(self, key):
+        """Minimum over all added dimensions"""
+        return self.xds[key].min(dim=self._op_dims(), skipna=True).values * self.ureg(self.udict[key])
+
+    def dim_max(self, key):
+        """Maximum over all added dimensions"""
+        return self.xds[key].max(dim=self._op_dims(), skipna=True).values * self.ureg(self.udict[key])
+
+    def _op_dims(self) -> List[str]:
+        """Dimensions for operations."""
+        return [dim_id for dim_id in self.dims if dim_id != "_time"]
+
     @classmethod
     def from_dfs(cls, dfs: List[pd.DataFrame], scan: ScanSim=None,
                  udict: Dict = None, ureg: UnitRegistry = None) -> 'XResult':
         """Structure is based on the underlying scan."""
-        logger.error("Start creating XResult")
         if isinstance(dfs, pd.DataFrame):
             dfs = [dfs]
 
         if udict is None:
             udict = {}
 
-        # add time dimension
-        # FIXME: internal dimensions different for other simulation types
         df = dfs[0]
+        num_dfs = len(dfs)
+
+        # add time dimension
         shape = [len(df)]
-        dims = ["time"]
-        coords = {"time": df.time.values}
+        dims = ["_time"]  # FIXME: internal dimensions different for other simulation types
+        coords = {"_time": df.time.values}
+        columns = df.columns
         del df
 
+        # Additional dimensions
         if scan is None:
-            logger.error("dummy scan created!")
-            # Create a dummy scan
-            scan = ScanSim(
-                simulation=None,
-                dimensions=[Dimension("dim1", index=np.arange(1))]
-            )
+            dimensions = [Dimension("_dfs", index=np.arange(num_dfs))]
+        else:
+            dimensions = scan.dimensions
 
-        # add additional scan dimensions
-        for scan_dim in scan.dimensions:  # type: ScanDimension
-            shape.append(len(scan_dim))
-            dim = scan_dim.dimension
-            coords[dim] = scan_dim.index
-            dims.append(dim)
+        # add additional dimensions
+        for dimension in dimensions:  # type: Dimension
+            shape.append(len(dimension))
+            dim_id = dimension.dimension
+            coords[dim_id] = dimension.index
+            dims.append(dim_id)
 
         # print("shape:", shape)
         # print("dims:", dims)
         # print(coords)
 
-        indices = scan.indices()
-        columns = dfs[0].columns
+        indices = Dimension.indices_from_dimensions(dimensions)
 
-        data_dict = {col: np.empty(shape=shape) for col in columns if col != "time"}
+        data_dict = {col: np.empty(shape=shape) for col in columns}
         for k_df, df in enumerate(dfs):
             for k_col, column in enumerate(columns):
-
-                if column == "time":
-                    # not storing "time" column (encoded as dimension)
-                    continue
 
                 # FIXME: speedup by restructuring data
                 index = tuple([...] + list(indices[k_df]))  # trick to get the ':' in first time dimension
@@ -102,76 +113,42 @@ class XResult:
             _df = dfs[0].copy()
 
         ds = xr.Dataset({key: xr.DataArray(data=data, dims=dims, coords=coords) for key, data in data_dict.items()})
-        return XResult(xdataset=ds, scan=scan, udict=udict, ureg=ureg, _df=_df)
+        for key in data_dict:
+            if key in udict:
+                ds[key].attrs["units"] = udict[key]
+        return XResult(xdataset=ds, udict=udict, ureg=ureg)
 
+    def to_netcdf(self, path):
+        """Store results as netcdf."""
+        self.xds.to_netcdf(path)
 
-
-    @deprecated
-    def to_hdf5(self, path):
-        """Store complete results as HDF5"""
-        # FIXME: handle the special case, where we can convert things to
-        # a dataframe
-
-        logger.warning("to_hdf5 only partially implemented")
-        # FIXME: new serialization format (netCDF?)
-
+        '''
         if self._df is not None:
             with pd.HDFStore(path, complib="zlib", complevel=9) as store:
                 for k, frame in enumerate([self._df]):
                     key = "df{}".format(k)
                     store.put(key, frame)
-
+        
         if self._df is not None:
             path_tsv = f"{str(path)}.tsv"
-            print(path_tsv)
             self._df.to_csv(path_tsv, sep="\t", index=False)
+        '''
 
-        else:
-            logger.error("No dataframe found.")
-
-
-    @deprecated
     @staticmethod
-    def from_hdf5(path):
-        """Read from HDF5"""
-        logger.warning("'from_hdf5' not implemented")
-        # FIXME: implement new serialization format
+    def from_netcdf(path):
+        """Read from netCDF"""
+        ds = xr.open_dataset(path)
+        return XResult(xdataset=ds)
 
-        # with pd.HDFStore(path) as store:
-        #    frames = [store[key] for key in store.keys()]
-        #
-        # return Result(frames=frames)
 
-'''
-@cached_property
-def nrow(self):
-    return len(self.index)
+if __name__ == "__main__":
+    from sbmlsim.model import RoadrunnerSBMLModel
+    from sbmlsim.tests.constants import MODEL_REPRESSILATOR
+    r = RoadrunnerSBMLModel(source=MODEL_REPRESSILATOR)._model
+    dfs = []
+    for _ in range(10):
+        s = r.simulate(0, 10, steps=10)
+        dfs.append(pd.DataFrame(s, columns=s.colnames))
 
-@cached_property
-def ncol(self):
-    return len(self.columns)
-
-@cached_property
-def nframes(self):
-    return len(self.frames)
-
-@cached_property
-def mean(self):
-    if len(self) == 1:
-        logging.debug("For a single simulation the mean returns the single simulation")
-        return self.frames[0]
-    else:
-        return pd.DataFrame(np.mean(self.data, axis=2), columns=self.columns)
-
-@cached_property
-def std(self):
-    return pd.DataFrame(np.std(self.data, axis=2), columns=self.columns)
-
-@cached_property
-def min(self):
-    return pd.DataFrame(np.min(self.data, axis=2), columns=self.columns)
-
-@cached_property
-def max(self):
-    return pd.DataFrame(np.max(self.data, axis=2), columns=self.columns)
-'''
+    xres = XResult.from_dfs(dfs)
+    print(xres)

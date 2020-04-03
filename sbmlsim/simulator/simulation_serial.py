@@ -57,7 +57,6 @@ class SimulatorSerial(SimulatorAbstract, SimulatorWorker):
 
         # Create all possible combinations of the scan
         indices, simulations = scan.to_simulations()
-        print(simulations)
 
         if len(simulations) > 1:
             logger.warning("Use of SimulatorSerial to run multiple timecourses. "

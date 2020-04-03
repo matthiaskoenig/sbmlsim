@@ -6,6 +6,10 @@ from pathlib import Path
 
 import logging
 import libsbml
+# Disable Pint's old fallback behavior (must come before importing Pint)
+import os
+os.environ['PINT_ARRAY_PROTOCOL_FALLBACK'] = "0"
+
 import pint
 from pint.errors import UndefinedUnitError, DimensionalityError
 from pint import Quantity, UnitRegistry
@@ -125,9 +129,9 @@ class Units(object):
                     if substance_uid and volume_uid:
                         udict[f"[{sid}]"] = f"{substance_uid}/{volume_uid}"
                     else:
-                        logger.warning(f"substance or volume unit missing, "
-                                       f"impossible to determine concentration "
-                                       f"unit for [{sid}])")
+                        logger.warning(f"Substance or volume unit missing, "
+                                       f"cannot determine concentration "
+                                       f"unit for '[{sid}]')")
                         udict[f"[{sid}]"] = ''
 
                 elif isinstance(element, (libsbml.Compartment, libsbml.Parameter)):
@@ -143,7 +147,8 @@ class Units(object):
                             uid = udef_test.getId()
                             break
                     if uid is None:
-                        logger.warning(f"DerivedUnit not found in UnitDefinitions: {Units.unitDefinitionToString(udef)}")
+                        logger.warning(f"DerivedUnit not in UnitDefinitions: "
+                                       f"'{Units.unitDefinitionToString(udef)}'")
                         udict[sid] = Units.unitDefinitionToString(udef)
                     else:
                         udict[sid] = uid
