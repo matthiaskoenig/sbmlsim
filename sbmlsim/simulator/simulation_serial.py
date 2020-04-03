@@ -23,17 +23,22 @@ class SimulatorSerial(SimulatorAbstract, SimulatorWorker):
         :param kwargs: integrator arguments
         """
         if isinstance(model, AbstractModel):
-            self.r = model._model
-            self.udict = model.udict
-            self.ureg = model.ureg
+            self.model = model
         else:
             # handle path, urn, ...
-            m = RoadrunnerSBMLModel(source=model)
-            self.r = m._model
-            self.udict = m.udict
-            self.ureg = m.ureg
+            self.model = RoadrunnerSBMLModel(source=model)
 
         set_integrator_settings(self.r, **kwargs)
+
+    @property
+    def r(self):
+        return self.model._model
+    @property
+    def ureg(self):
+        return self.model.ureg
+    @property
+    def udict(self):
+        return self.model.udict
 
     @timeit
     def run_timecourse(self, simulation: TimecourseSim) -> XResult:

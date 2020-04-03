@@ -54,10 +54,10 @@ class RepressilatorExperiment(SimulationExperiment):
         ])
 
         # Additional changes for model sensitivity
-        p_dict = ModelSensitivity.reference_values(self._models["model1"],
-                                                      stype=SensitivityType.PARAMETER_SENSITIVITY)
-        pup_dict = ModelSensitivity.apply_change(p_dict, 0.1)
-        pdown_dict = ModelSensitivity.apply_change(p_dict, -0.1)
+        p_dict = ModelSensitivity.reference_dict(self._models["model1"],
+                                                 stype=SensitivityType.PARAMETER_SENSITIVITY)
+        pup_dict = ModelSensitivity.apply_change_to_dict(p_dict, 0.1)
+        pdown_dict = ModelSensitivity.apply_change_to_dict(p_dict, -0.1)
         simulations_up = ModelSensitivity.create_simulations(
             simulation=tcsim, value_dict=pup_dict
         )
