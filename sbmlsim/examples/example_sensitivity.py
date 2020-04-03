@@ -77,6 +77,5 @@ def run_sensitivity():
     plot_results(res_diff_scan)
 
 
-
 if __name__ == "__main__":
     run_sensitivity()

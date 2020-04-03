@@ -206,7 +206,7 @@ class ModelSensitivity(object):
             for p in sbml_model.getListOfParameters():  # type: libsbml.Parameter
                 if p.getConstant() is True:
                     ids.append(p.getId())
-        elif stype in {SensitivityType.SPECIES_SENSITIVITY,
+        if stype in {SensitivityType.SPECIES_SENSITIVITY,
                        SensitivityType.All_SENSITIVITY}:
             # initial species amount
             for s in sbml_model.getListOfSpecies():  # type: libsbml.Species
@@ -216,7 +216,6 @@ class ModelSensitivity(object):
             """Key: value dict from current model state.
             Non-zero and exclude filtering is applied.
             """
-            ureg = model.ureg
             udict = model.udict
             Q_ = model.Q_
 

@@ -36,40 +36,6 @@ class RepressilatorExperiment(SimulationExperiment):
             # **self.sim_sensitivities(),
         }
 
-    def sim_sensitivity(self) -> Dict[str, AbstractSim]:
-        """
-        Simulation time is in [s]
-        :return:
-        """
-        Q_ = self.Q_
-        unit_data = "dimensionless"
-        # simple timecourse
-        tcsim = TimecourseSim([
-            Timecourse(start=0, end=100, steps=2000),
-            Timecourse(start=0, end=100, steps=2000,
-                       changes={
-                            "X": Q_(10, unit_data),
-                            "Y": Q_(20, unit_data)
-                       }),
-        ])
-
-        # Additional changes for model sensitivity
-        p_dict = ModelSensitivity.reference_dict(self._models["model1"],
-                                                 stype=SensitivityType.PARAMETER_SENSITIVITY)
-        pup_dict = ModelSensitivity.apply_change_to_dict(p_dict, 0.1)
-        pdown_dict = ModelSensitivity.apply_change_to_dict(p_dict, -0.1)
-        simulations_up = ModelSensitivity.create_simulations(
-            simulation=tcsim, value_dict=pup_dict
-        )
-        simulations_down = ModelSensitivity.create_simulations(
-            simulation=tcsim, value_dict=pdown_dict
-        )
-
-        return {
-            # FIXME
-        }
-
-
     def sim_scans(self) -> Dict[str, AbstractSim]:
         """
         Simulation time is in [s]
