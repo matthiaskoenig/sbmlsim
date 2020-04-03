@@ -20,7 +20,7 @@ def deprecated(func):
 
 
 def timeit(method):
-    """Tming decorator"""
+    """Timing decorator"""
     def timed(*args, **kw):
         ts = time.time()
         result = method(*args, **kw)
