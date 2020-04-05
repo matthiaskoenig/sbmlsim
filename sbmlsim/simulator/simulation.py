@@ -12,10 +12,11 @@ Also what is the exact time point the change should be applied.
 """
 import logging
 from typing import List
-import pandas as pd
 import roadrunner
-
+import pandas as pd
 import xarray as xr
+
+from sbmlsim.model import ModelChange
 from sbmlsim.simulation.timecourse import Timecourse, TimecourseSim
 from sbmlsim.simulation.scan import ScanSim
 
@@ -110,19 +111,17 @@ class SimulatorWorker(object):
                                  f"Add units to all changes.")
                     raise err
 
-            # FIXME: implement model changes & also make run in parallel
-            """
+            # model changes are applied to model
             if len(tc.model_changes) > 0:
-                r_old = self.r
-            for key, value in tc.model_changes.items():
-                if key == MODEL_CHANGE_BOUNDARY_CONDITION:
-                    for sid, bc in value.items():
-                        # setting boundary conditions
-                        r_new = clamp_species(self.r, sid, boundary_condition=bc)
-                        self.r = r_new
-                else:
-                    logger.error("Unsupported model change: {}:{}".format(key, value))
-            """
+                for key, value in tc.model_changes.items():
+                    if key == ModelChange.CLAMP_SPECIES:
+                        for sid, formula in value.items():
+                            # setting boundary conditions
+                            ModelChange.clamp_species(self.r, sid, formula)
+                    else:
+                        raise ValueError(f"Unsupported model change: "
+                                         f"'{key}': {value}. Supported changes are: "
+                                         f"['{ModelChange.CLAMP_SPECIES}']")
 
             # run simulation
             s = self.r.simulate(start=tc.start, end=tc.end, steps=tc.steps)
@@ -134,5 +133,5 @@ class SimulatorWorker(object):
         # reset selections
         self.r.timeCourseSelections = model_selections
 
-        return pd.concat(frames)
+        return pd.concat(frames, sort=False)
 

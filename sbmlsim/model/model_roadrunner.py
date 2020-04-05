@@ -10,7 +10,6 @@ import tempfile
 from sbmlsim.model import AbstractModel
 from sbmlsim.model.model_resources import Source
 from sbmlsim.units import Units, UnitRegistry
-from sbmlsim.utils import deprecated
 
 logger = logging.getLogger(__name__)
 
@@ -172,60 +171,3 @@ class RoadrunnerSBMLModel(AbstractModel):
         return pd.DataFrame(data, columns=['sid', 'concentration', 'amount', 'unit',
                                            'constant',
                                            'boundaryCondition', 'species', 'name'])
-
-
-    @classmethod
-    @deprecated
-    def clamp_species(cls, r: roadrunner.RoadRunner, sids,
-                      boundary_condition=True) -> roadrunner.RoadRunner:
-        """ Clamp/Free specie(s) via setting boundaryCondition=True/False.
-
-        This requires changing the SBML and ODE system.
-
-        :param r: roadrunner.RoadRunner
-        :param sids: sid or iterable of sids
-        :param boundary_condition: boolean flag to clamp (True) or free (False) species
-        :return: modified roadrunner.RoadRunner
-        """
-        # TODO: implement via Roadrunner model changes
-
-        # get model for current SBML state
-        sbml_str = r.getCurrentSBML()
-        # FIXME: bug in concentrations!
-
-        # print(sbml_str)
-
-        doc = libsbml.readSBMLFromString(sbml_str)  # type: libsbml.SBMLDocument
-        model = doc.getModel()  # type: libsbml.Model
-
-        if isinstance(sids, str):
-            sids = [sids]
-
-        for sid in sids:
-            # set boundary conditions
-            sbase = model.getElementBySId(sid)  # type: libsbml.SBase
-            if not sbase:
-                logging.error("No element for SId in model: {}".format(sid))
-                return None
-            else:
-                if sbase.getTypeCode() == libsbml.SBML_SPECIES:
-                    species = sbase  # type: libsbml.Species
-                    species.setBoundaryCondition(boundary_condition)
-                else:
-                    logging.error(
-                        "SId in clamp does not match species: {}".format(sbase))
-                    return None
-
-        # create modified roadrunner instance
-        sbmlmod_str = libsbml.writeSBMLToString(doc)
-        rmod = cls.load_model(sbmlmod_str)  # type: roadrunner.RoadRunner
-        cls.set_timecourse_selections(rmod, r.timeCourseSelections)
-
-        return rmod
-
-
-if __name__ == "__main__":
-
-    from sbmlsim.tests.constants import MODEL_REPRESSILATOR
-    model = RoadrunnerSBMLModel(source=MODEL_REPRESSILATOR)
-    print(model)

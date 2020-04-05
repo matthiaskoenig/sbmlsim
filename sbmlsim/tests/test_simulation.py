@@ -2,7 +2,7 @@ import pandas as pd
 
 from sbmlsim.simulator import SimulatorSerial as Simulator
 from sbmlsim.simulation import Timecourse, TimecourseSim
-from sbmlsim.result import XResult
+from sbmlsim.model import ModelChange
 from sbmlsim.tests.constants import MODEL_REPRESSILATOR
 
 
@@ -45,9 +45,9 @@ def test_timecourse_combined():
     s = simulator._timecourse(simulation=TimecourseSim([
             Timecourse(start=0, end=100, steps=100),
             Timecourse(start=0, end=50, steps=100,
-                       model_changes={"boundary_condition": {"X": True}}),
+                       model_changes={ModelChange.CLAMP_SPECIES: {"X": True}}),
             Timecourse(start=0, end=100, steps=100,
-                       model_changes={"boundary_condition": {"X": False}}),
+                       model_changes={ModelChange.CLAMP_SPECIES: {"X": False}}),
         ])
     )
     assert isinstance(s, pd.DataFrame)

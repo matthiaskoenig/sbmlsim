@@ -1,4 +1,9 @@
 from sbmlsim.simulation.timecourse import Timecourse, TimecourseSim
+from sbmlsim.examples import example_timecourse
+
+
+def test_timecourse():
+    example_timecourse.run_timecourse_examples()
 
 
 def test_json():

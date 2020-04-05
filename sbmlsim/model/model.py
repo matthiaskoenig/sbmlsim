@@ -19,16 +19,6 @@ from collections import namedtuple
 logger = logging.getLogger(__name__)
 
 
-class ModelChange(object):
-    MODEL_CHANGE_BOUNDARY_CONDITION = "boundary_condition"
-
-    def __init__(self):
-        # TODO: encode all the possible model changes which can be performed with
-        # a model. These are reused in the setting up of models in the beginning,
-        # or later on in simulations
-        raise NotImplementedError
-
-
 class AbstractModel(object):
     """Abstract base class to store a model in sbmlsim.
 
