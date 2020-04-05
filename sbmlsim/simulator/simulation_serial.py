@@ -15,11 +15,10 @@ logger = logging.getLogger(__name__)
 
 
 class SimulatorSerial(SimulatorAbstract, SimulatorWorker):
-    def __init__(self, model: AbstractModel, **kwargs):
+    def __init__(self, model, **kwargs):
         """ Serial simulator.
 
-        :param model: Path to model
-        :param selections: Selections to set
+        :param model: Path to model or model
         :param kwargs: integrator arguments
         """
         if isinstance(model, AbstractModel):

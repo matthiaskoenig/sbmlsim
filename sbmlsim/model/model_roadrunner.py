@@ -80,6 +80,11 @@ class RoadrunnerSBMLModel(AbstractModel):
             else:
                 logging.info(f"Load model from SBML: '{source.path.resolve()}'")
                 r = roadrunner.RoadRunner(str(source.path))
+                # create state file
+                # FIXME: check hash & recreate only if necessary
+                filename_state = f"{str(source.path)}.dat"
+                r.saveState(filename_state)
+                logging.warning(f"Save state: '{filename_state}'")
         elif source.is_content():
             r = roadrunner.RoadRunner(str(source.content))
 

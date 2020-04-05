@@ -7,9 +7,11 @@ import roadrunner
 import pandas as pd
 import xarray as xr
 
+
 from sbmlsim.model import ModelChange
 from sbmlsim.simulation.timecourse import Timecourse, TimecourseSim
 from sbmlsim.simulation.scan import ScanSim
+from sbmlsim.result import XResult
 
 logger = logging.getLogger(__name__)
 
@@ -19,14 +21,14 @@ class SimulatorAbstract(object):
         """ Must be implemented by simulator. """
         pass
 
-    def run_timecourse(self, simulations: List[TimecourseSim]) -> List[pd.DataFrame]:
+    def run_timecourse(self, simulation: TimecourseSim) -> XResult:
         """ Must be implemented by simulator.
 
         :return:
         """
         raise NotImplementedError("Use concrete implementation")
 
-    def run_scan(self, scan: ScanSim) -> xr.Dataset:
+    def run_scan(self, scan: ScanSim) -> XResult:
         """ Must be implemented by simulator.
 
         :return:
@@ -40,7 +42,8 @@ class SimulatorWorker(object):
         """ Timecourse simulation.
 
         Requires for all timecourse definitions to be unit normalized
-        before being sent here !
+        before being sent here ! The changes have no units any more
+        for parallel simulations.
         You should never call this function directly!
 
         :param simulation: Simulation definition(s)
@@ -61,10 +64,11 @@ class SimulatorWorker(object):
                 try:
                     self.r[key] = item.magnitude
                 except AttributeError as err:
-                    logger.error(
-                        f"Change is not a Quantity: '{key} = {item}'. "
-                        f"Units are required for all changes.")
-                    raise err
+                    self.r[key] = item
+                    #logger.warning(
+                    #    f"Change is not a Quantity: '{key} = {item}'. "
+                    #    f"Units are required for all changes.")
+                    # raise err
 
             # model changes are applied to model
             if len(tc.model_changes) > 0:

@@ -16,4 +16,4 @@ if __name__ == "__main__":
     import pandas as pd
     df = pd.DataFrame(benchmarks)
     print(df)
-    df.to_csv("benchmarks.tsv", sep="\t", index=False)
+    df.to_csv("benchmarks_v03.tsv", sep="\t", index=False)

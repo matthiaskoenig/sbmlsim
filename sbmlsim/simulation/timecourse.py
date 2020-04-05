@@ -75,6 +75,8 @@ class Timecourse(ObjectJSONEncoder):
     def normalize(self, udict, ureg):
         """ Normalize values to model units for all changes."""
         self.changes = Units.normalize_changes(self.changes, udict=udict, ureg=ureg)
+        # FIXME: stripping units for parallel simulations
+        self.changes = {k: v.magnitude for k, v in self.changes.items()}
         self.normalized = True
 
 

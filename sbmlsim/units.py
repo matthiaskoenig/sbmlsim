@@ -229,7 +229,7 @@ class Units(object):
         return abs(a - b) <= max(rel_tol * max(abs(a), abs(b)), abs_tol)
 
     @staticmethod
-    def normalize_changes(changes: Dict, udict: Dict, ureg: UnitRegistry) -> Dict:
+    def normalize_changes(changes: Dict, udict: Dict, ureg: UnitRegistry) -> Dict[str, Quantity]:
         Q_ = ureg.Quantity
         changes_normed = {}
         for key, item in changes.items():
@@ -251,4 +251,5 @@ class Units(object):
                 logger.warning(f"No units provided, assuming dictionary units: "
                                f"{key} = {item}")
             changes_normed[key] = item
+
         return changes_normed

@@ -47,21 +47,23 @@ class SimulatorParallel(SimulatorSerial):
     """
     Parallel simulator
     """
-    def __init__(self, model: AbstractModel, **kwargs):
+    def __init__(self, model, **kwargs):
         """ Initialize parallel simulator with multiple workers.
 
-        :param path:
-        :param selections: List[str],  selections to set, if None full selection is performed
+        :param model: model source or model
         :param actor_count: int,
         """
+        if "actor_count" in kwargs:
+            self.actor_count = kwargs.pop("actor_count")
+        else:
+            self.actor_count = cpu_count() - 1
+
         super(SimulatorParallel, self).__init__(model, **kwargs)
-        self.actor_count = kwargs.get("actor_count", cpu_count()-1)
+        # FIXME: more robust
+        filename_state = f"{str(self.model.source.path)}.dat"
+
         logger.warning(f"Creating '{self.actor_count}' SimulationActors")
-
-        f_tmp = tempfile.NamedTemporaryFile(suffix=".dat")
-        self.r.saveState(f_tmp.name)
-
-        self.simulators = [SimulatorActor.remote(f_tmp.name) for _ in range(self.actor_count)]
+        self.simulators = [SimulatorActor.remote(filename_state) for _ in range(self.actor_count)]
 
     def _timecourses(self, simulations: List[TimecourseSim]) -> List[pd.DataFrame]:
         """ Run all simulations with given model and collect the results.
@@ -69,7 +71,6 @@ class SimulatorParallel(SimulatorSerial):
         :param simulations: List[TimecourseSim]
         :return: Result
         """
-
         # Split simulations in chunks for actors
         chunks = [[] for _ in range(self.actor_count)]
         for k, tc_sim in enumerate(simulations):
@@ -82,8 +83,7 @@ class SimulatorParallel(SimulatorSerial):
 
         results = ray.get(tc_ids)
         # flatten list of lists [[df, df], [df, df], ...]
-        dfs = [df for sublist in results for df in sublist]
-        return XResult(dfs)
+        return [df for sublist in results for df in sublist]
 
     @staticmethod
     def _create_chunks(l, n):

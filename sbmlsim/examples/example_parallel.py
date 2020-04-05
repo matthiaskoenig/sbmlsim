@@ -2,11 +2,15 @@
 Parallel execution of timecourses
 """
 import time
+import roadrunner
+import tempfile
+import numpy as np
 
 from sbmlsim.model import RoadrunnerSBMLModel
-from sbmlsim.simulation import TimecourseSim, Timecourse
+from sbmlsim.simulation import TimecourseSim, Timecourse, ScanSim, Dimension
 from sbmlsim.simulator import SimulatorSerial
 from sbmlsim.simulator.simulation_ray import SimulatorParallel, SimulatorActor, ray, cpu_count
+from sbmlsim.units import Units
 
 from sbmlsim.tests.constants import MODEL_REPRESSILATOR, MODEL_GLCWB
 
@@ -14,40 +18,56 @@ from sbmlsim.tests.constants import MODEL_REPRESSILATOR, MODEL_GLCWB
 def example_single_actor():
     """ Creates a single stateful simulator actor and executes timecourse.
 
-    Normally multiple actors are created which execute the simulation
-    load together. Actors should not be created manually, use the Simulator
-    classes for simulations.
+    Actors should never created manually !
+    Use the SimulatorParallel to run parallel simulations.
 
     :return:
     """
+    # create state file
+    r = roadrunner.RoadRunner(str(MODEL_REPRESSILATOR))
+    RoadrunnerSBMLModel.set_timecourse_selections(r)
+    udict, ureg = Units.get_units_from_sbml(str(MODEL_REPRESSILATOR))
+
+    f_state = tempfile.NamedTemporaryFile(suffix=".dat")
+    r.saveState(f_state.name)
+
     # Create single actor process
-    sa = SimulatorActor.remote(MODEL_REPRESSILATOR)
+    sa = SimulatorActor.remote(f_state.name)
 
     # run simulation
     tcsim = TimecourseSim([
         Timecourse(start=0, end=100, steps=100),
         Timecourse(start=0, end=100, steps=100, changes={"X": 10, "Y": 20}),
     ])
+
+    tcsim.normalize(udict=udict, ureg=ureg)
     tc_id = sa._timecourse.remote(tcsim)
-    print("-" * 80)
-    print(ray.get(tc_id))
-    print("-" * 80)
+    results = ray.get(tc_id)
+    return results
 
 
 def example_multiple_actors():
     """Multiple independent simulator actors.
 
-    Actors should not be created manually, use the Simulator
-    classes for simulations.
+    Actors should never be created manually, use the SimulatorParallel!
     """
+    # create state file
+    r = roadrunner.RoadRunner(str(MODEL_REPRESSILATOR))
+    RoadrunnerSBMLModel.set_timecourse_selections(r)
+    udict, ureg = Units.get_units_from_sbml(str(MODEL_REPRESSILATOR))
+
+    f_state = tempfile.NamedTemporaryFile(suffix=".dat")
+    r.saveState(f_state.name)
+
     # create ten Simulators.
-    simulators = [SimulatorActor.remote(MODEL_REPRESSILATOR) for _ in range(16)]
+    simulators = [SimulatorActor.remote(f_state.name) for _ in range(16)]
 
     # define timecourse
     tcsim = TimecourseSim([
         Timecourse(start=0, end=100, steps=100),
         Timecourse(start=0, end=100, steps=100, changes={"X": 10, "Y": 20}),
     ])
+    tcsim.normalize(udict=udict, ureg=ureg)
 
     # run simulation on simulators
     tc_ids = [s._timecourse.remote(tcsim) for s in simulators]
@@ -62,32 +82,26 @@ def example_parallel_timecourse(nsim=40, actor_count=15):
     :param nsim: number of simulations
     :return:
     """
-    tcsims = []
-
-    tc_sim = TimecourseSim([
-        Timecourse(start=0, end=100, steps=100,
-                   changes={
-                       'IVDOSE_som': 0.0,  # [mg]
-                       'PODOSE_som': 0.0,  # [mg]
-                       'Ri_som': 10.0E-6,  # [mg/min]
-                   })
-    ])
-
     # collect all simulation definitions (see also the ensemble functions)
-    for _ in range(nsim):
-        tcsims.append(tc_sim)
+
+    scan = ScanSim(
+        simulation=TimecourseSim([
+            Timecourse(start=0, end=100, steps=100,
+                       changes={
+                           'IVDOSE_som': 0.0,  # [mg]
+                           'PODOSE_som': 0.0,  # [mg]
+                           'Ri_som': 10.0E-6,  # [mg/min]
+                       })
+        ]),
+        dimensions=[Dimension("dim1", index=np.arange(nsim))]
+    )
 
     def message(info, time):
         print(f"{info:<10}: {time:4.3f}")
 
     # load model once for caching (fair comparison)
-    r = RoadrunnerSBMLModel(source=MODEL_GLCWB)._model
-    selections = None
-
-    print("-" * 80)
-    print(f"Run '{nsim}' simulations")
-    print("-" * 80)
-
+    r = roadrunner.RoadRunner(str(MODEL_GLCWB))
+    # simulator definitions
     simulator_defs = [
         {
             "key": "parallel",
@@ -100,6 +114,9 @@ def example_parallel_timecourse(nsim=40, actor_count=15):
             'kwargs': {}
         },
     ]
+    print("-" * 80)
+    print(f"Run '{nsim}' simulations")
+    print("-" * 80)
     sim_info = []
     for sim_def in simulator_defs:
         key = sim_def['key']
@@ -110,24 +127,24 @@ def example_parallel_timecourse(nsim=40, actor_count=15):
         # run simulation (with model reading)
         start_time = time.time()
         # create a simulator with 16 parallel actors
-        simulator = Simulator(path=MODEL_GLCWB, selections=selections, **kwargs)
+        simulator = Simulator(model=MODEL_GLCWB, **kwargs)
         load_time = time.time()-start_time
         message(f"load", load_time)
 
         start_time = time.time()
-        results = simulator.timecourses(simulations=tcsims)
+        results = simulator.run_scan(scan=scan)
         sim_time = time.time()-start_time
         total_time = load_time + sim_time
         message("simulate", sim_time)
         message("total", total_time)
-        assert(len(results) == len(tcsims))
+        assert len(results.coords["dim1"]) == nsim
 
         # run parallel simulation (without model reading)
         start_time = time.time()
-        results = simulator.timecourses(simulations=tcsims)
+        results = simulator.run_scan(scan=scan)
         repeat_time = time.time()-start_time
         message(f"repeat", repeat_time)
-        assert (len(results) == len(tcsims))
+        assert len(results.coords["dim1"]) == nsim
 
         actor_count = kwargs.get('actor_count', 1)
         times = {
@@ -150,12 +167,8 @@ def example_parallel_timecourse(nsim=40, actor_count=15):
 
 
 if __name__ == "__main__":
-    print(f"cpu_count: {cpu_count()}")
-    example_single_actor()
-    exit()
-
+    # example_single_actor()
     # example_multiple_actors()
-
 
     sim_info = example_parallel_timecourse(nsim=100, actor_count=15)
     ray.timeline(filename="timeline.json")
