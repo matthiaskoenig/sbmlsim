@@ -198,14 +198,14 @@ def add_data(ax: plt.Axes, data: DataSet,
 
 
 @deprecated
-def add_line(ax, xres: XResult,
+def add_line(ax: plt.Axes, xres: XResult,
              xid: str, yid: str,
              xunit=None, yunit=None, xf=1.0, yf=1.0, all_lines=False,
              label='__nolabel__', **kwargs):
     """ Adding information from a simulation result to a matplotlib figure.
 
-    This is deprecated the plotting Figure, Plot, Curves, should be used
-    instead.
+    This is deprecated the sbmlsim.plot.plotting Figure, Plot, Curves, ...
+    should be used.
 
     :param ax: axis to plot to
     :param xres: Result data structure

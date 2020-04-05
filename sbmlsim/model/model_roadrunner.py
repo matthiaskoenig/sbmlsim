@@ -5,11 +5,11 @@ import roadrunner
 import libsbml
 import pandas as pd
 import numpy as np
-from pint import UnitRegistry
+import tempfile
 
 from sbmlsim.model import AbstractModel
 from sbmlsim.model.model_resources import Source
-from sbmlsim.units import Units
+from sbmlsim.units import Units, UnitRegistry
 from sbmlsim.utils import deprecated
 
 logger = logging.getLogger(__name__)
@@ -46,6 +46,20 @@ class RoadrunnerSBMLModel(AbstractModel):
         return r
 
     @classmethod
+    def copy_roadrunner_model(cls, r: roadrunner.RoadRunner) -> roadrunner.RoadRunner:
+        """Copy roadrunner model by using the state.
+
+        :param r:
+        :return:
+        """
+        ftmp = tempfile.NamedTemporaryFile()
+        filename = ftmp.name
+        r.saveState(filename)
+        r2 = roadrunner.RoadRunner()
+        r2.loadState(filename)
+        return r2
+
+    @classmethod
     def load_roadrunner_model(cls, source: Source, selections: List[str] = None) -> roadrunner.RoadRunner:
         """ Loads model from given source
 
@@ -53,6 +67,8 @@ class RoadrunnerSBMLModel(AbstractModel):
         :param selections: boolean flag to set selections
         :return: roadrunner instance
         """
+        if isinstance(source, (str, Path)):
+            source = Source.from_source(source=source)
 
         # load model
         if source.is_path():
@@ -79,7 +95,6 @@ class RoadrunnerSBMLModel(AbstractModel):
         """Applies change to model"""
         return
 
-
     @classmethod
     def set_timecourse_selections(cls, r: roadrunner.RoadRunner,
                                   selections: List[str] = None) -> None:
@@ -98,6 +113,7 @@ class RoadrunnerSBMLModel(AbstractModel):
         else:
             r.timeCourseSelections = selections
 
+    @staticmethod
     def parameter_df(r: roadrunner.RoadRunner) -> pd.DataFrame:
         """
         Create GlobalParameter DataFrame.
@@ -121,6 +137,7 @@ class RoadrunnerSBMLModel(AbstractModel):
                           columns=['sid', 'value', 'unit', 'constant', 'name'])
         return df
 
+    @staticmethod
     def species_df(r: roadrunner.RoadRunner) -> pd.DataFrame:
         """
         Create FloatingSpecies DataFrame.
@@ -156,55 +173,6 @@ class RoadrunnerSBMLModel(AbstractModel):
                                            'constant',
                                            'boundaryCondition', 'species', 'name'])
 
-
-    @classmethod
-    @deprecated
-    def copy_model(cls, r: roadrunner.RoadRunner) -> roadrunner.RoadRunner:
-        """Copy current model.
-
-        :param r:
-        :return:
-        """
-        # independent copy by parsing SBML
-        sbml_str = r.getCurrentSBML()  # type: str
-        r_copy = roadrunner.RoadRunner(sbml_str)
-
-        # copy state of instance
-        cls.copy_model_state(r_from=r, r_to=r_copy)
-        return r_copy
-
-    @classmethod
-    @deprecated
-    def copy_model_state(cls, r_from: roadrunner.RoadRunner, r_to: roadrunner.RoadRunner,
-                         copy_selections=True,
-                         copy_integrator=True,
-                         copy_states=True):
-        """ Copy roadrunner state between model instances
-
-        :param r_from:
-        :param r_to:
-        :return:
-        """
-        if copy_selections:
-            # copy of selections (by value)
-            r_to.timeCourseSelections = r_from.timeCourseSelections
-            r_to.steadyStateSelections = r_from.steadyStateSelections
-
-        if copy_integrator:
-            # copy integrator state
-            integrator = r_from.getIntegrator()  # type: roadrunner.Integrator
-            integrator_name = integrator.getName()
-            r_to.setIntegrator(integrator_name)
-
-            settings_keys = integrator.getSettings()  # type: Tuple[str]
-            print(settings_keys)
-            for key in settings_keys:
-                r_to.integrator.setValue(key, integrator.getValue(key))
-
-        if copy_states:
-            # FIXME: implement: copying of current state to initial state
-            # for state variables
-            pass
 
     @classmethod
     @deprecated
@@ -254,19 +222,6 @@ class RoadrunnerSBMLModel(AbstractModel):
         cls.set_timecourse_selections(rmod, r.timeCourseSelections)
 
         return rmod
-
-    @classmethod
-    @deprecated
-    def reset_all(cls, r):
-        """ Reset all model variables to CURRENT init(X) values.
-
-        This resets all variables, S1, S2 etc to the CURRENT init(X) values. It also resets all
-        parameters back to the values they had when the model was first loaded.
-        """
-        r.reset(roadrunner.SelectionRecord.TIME |
-                roadrunner.SelectionRecord.RATE |
-                roadrunner.SelectionRecord.FLOATING |
-                roadrunner.SelectionRecord.GLOBAL_PARAMETER)
 
 
 if __name__ == "__main__":

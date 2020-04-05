@@ -29,30 +29,34 @@ class Source:
         d["content"] = self.content
         return d
 
+    @classmethod
+    def from_source(cls, source: str, base_dir: Path = None) -> 'Source':
+        """Resolves the source string.
 
-def resolve_source(source: str, base_dir: Path = None) -> Source:
-    """Resolves the source string."""
-    path = None
-    content = None
+        # FIXME: handle the case of models given as strings.
+        """
+        path = None
+        content = None
 
-    if isinstance(source, str):
-        if is_urn(source):
-            content = model_from_urn(source)
-        elif is_http(source):
-            content = model_from_url()
+        if isinstance(source, str):
+            if is_urn(source):
+                content = model_from_urn(source)
+            elif is_http(source):
+                content = model_from_url()
 
-    # is path
-    if content is None:
-        if base_dir:
-            path = Path(base_dir) / Path(source)
-        else:
-            path = Path(source)
-        path = path.resolve()
-        if not path.exists():
-            raise IOError(f"Path '{source}' for model source '{source}' "
-                          f"does not exist.")
+        # is path
+        if content is None:
+            if base_dir:
+                path = Path(base_dir) / Path(source)
+            else:
+                # uses current working dir as base_dir
+                path = Path(source).resolve()
+            path = path.resolve()
+            if not path.exists():
+                raise IOError(f"Path '{source}' for model source '{source}' "
+                              f"does not exist.")
 
-    return Source(source, path, content)
+        return Source(source, path, content)
 
 
 def is_urn(source):

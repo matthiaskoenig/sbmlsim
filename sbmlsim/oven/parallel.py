@@ -43,8 +43,76 @@ class SimulatorActorPath(object):
         print("Finished '{}' simulations: {:2.2f} ms".format(size, (te - ts) * 1000))
         return results
 
+@ray.remote
+class SimulatorActorState(object):
+    """Ray actor to execute simulations.
+
+    """
+    def __init__(self, state_path):
+        print("Start loading model")
+        ts = time.time()
+        self.r = roadrunner.RoadRunner()  # type: roadrunner.RoadRunner
+        self.r.loadState(state_path)
+        te = time.time()
+        print("Finished loading model: {:2.2f} ms".format((te - ts) * 1000))
+
+    def simulate(self, size=1):
+        print("Start simulations")
+        ts = time.time()
+        results = []
+        for k in range(size):
+            self.r.resetAll()
+            s = self.r.simulate(0, 100, steps=100)
+            # create numpy array (which can be pickled), better used shared memory
+            df = pd.DataFrame(s, columns=s.colnames)
+            results.append(df)
+        te = time.time()
+        print("Finished '{}' simulations: {:2.2f} ms".format(size, (te - ts) * 1000))
+        return results
+
+
 
 if __name__ == "__main__":
+
+    actor_count = 10   # cores to run this on
+
+    # sending the SBML to every core, every core needs to read the SBML
+    # sending as string to avoid parallel IO by 30 cores
+    path = "glucose_rbcmqreduced_flat.xml"
+    # path = "glucose_rbcmqparasite_flat.xml"
+    doc = libsbml.readSBMLFromFile(path)  # type: libsbml.SBMLDocument
+    sbml_str = libsbml.writeSBMLToString(doc)
+
+    r = roadrunner.RoadRunner(path)
+    r.saveState("test.dat")
+
+    ts = time.time()
+    r2 = roadrunner.RoadRunner(path)
+    r2.loadState("test.dat")
+    te = time.time()
+    print("Loading state: {:2.2f} ms".format((te - ts) * 1000))
+
+
+    def run_simulations(simulators):
+        # run simulations
+        sim_per_actor = 10
+        tc_ids = []
+        for k, simulator in enumerate(simulators):
+            tcs_id = simulator.simulate.remote(size=sim_per_actor)
+            tc_ids.append(tcs_id)
+
+        results = ray.get(tc_ids)
+
+    # Every core must parse the SBML
+    # simulators = [SimulatorActorPath.remote(sbml_str) for _ in range(actor_count)]
+    # run_simulations(simulators)
+
+    simulators = [SimulatorActorState.remote("test.dat") for _ in range(actor_count)]
+    run_simulations(simulators)
+
+
+
+    """
     from copy import deepcopy
     r = roadrunner.RoadRunner("glucose_rbcmqreduced_flat.xml")
     r2 = deepcopy(r)
@@ -56,25 +124,4 @@ if __name__ == "__main__":
     r2 = pickle.load("test.dat")
 
     exit()
-
-
-    actor_count = 10   # cores to run this on
-
-    # sending the SBML to every core, every core needs to read the SBML
-    # sending as string to avoid parallel IO by 30 cores
-    path = "glucose_rbcmqreduced_flat.xml"
-    # path = "glucose_rbcmqparasite_flat.xml"
-    doc = libsbml.readSBMLFromFile(path)  # type: libsbml.SBMLDocument
-    sbml_str = libsbml.writeSBMLToString(doc)
-
-    # Every core must parse the SBML
-    simulators = [SimulatorActorPath.remote(sbml_str) for _ in range(actor_count)]
-
-    # run simulations
-    sim_per_actor = 100
-    tc_ids = []
-    for k, simulator in enumerate(simulators):
-        tcs_id = simulator.simulate.remote(size=sim_per_actor)
-        tc_ids.append(tcs_id)
-
-    results = ray.get(tc_ids)
+    """

@@ -11,7 +11,7 @@ from enum import Enum
 import logging
 import abc
 
-from sbmlsim.model.model_resources import Source, resolve_source
+from sbmlsim.model.model_resources import Source
 from sbmlsim.units import Units, UnitRegistry
 from collections import namedtuple
 
@@ -85,7 +85,7 @@ class AbstractModel(object):
         self.language = language
         self.language_type = language_type
         self.base_path = base_path
-        self.source = resolve_source(source, base_dir=base_path)  # type: Source
+        self.source = Source.from_source(source, base_dir=base_path)  # type: Source
 
         if changes is None:
             changes = {}
@@ -102,7 +102,6 @@ class AbstractModel(object):
         if not ureg:
             ureg = Units.default_ureg()
         self.udict, self.ureg = self.parse_units(ureg)
-        self.Q_ = self.ureg.Quantity
 
     def to_dict(self):
         """ Convert to dictionary. """
@@ -115,6 +114,10 @@ class AbstractModel(object):
             "changes": self.changes,
         }
         return d
+
+    @property
+    def Q_(self):
+        return self.ureg.Quantity
 
     @property
     def model(self):
