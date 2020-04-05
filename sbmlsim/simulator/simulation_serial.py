@@ -5,7 +5,7 @@ import logging
 from typing import List
 import pandas as pd
 
-from sbmlsim.simulator.simulation import SimulatorAbstract, SimulatorWorker, set_integrator_settings
+from sbmlsim.simulator.simulation import SimulatorAbstract, SimulatorWorker
 from sbmlsim.result import XResult
 from sbmlsim.simulation import TimecourseSim, ScanSim
 from sbmlsim.model import AbstractModel, RoadrunnerSBMLModel

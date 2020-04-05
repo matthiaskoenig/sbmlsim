@@ -19,23 +19,25 @@ def test_create_simulator_strpath():
 def test_timecourse_simulation():
     simulator = Simulator(MODEL_REPRESSILATOR)
 
-    s = simulator._timecourse(Timecourse(start=0, end=100, steps=100))
+    tc = Timecourse(start=0, end=100, steps=100)
+    tc.normalize(udict=simulator.udict, ureg=simulator.ureg)
+    s = simulator._timecourse(tc)
     assert s is not None
 
-    s = simulator._timecourse(
-        Timecourse(start=0, end=100, steps=100,
-                   changes={"PX": 10.0})
-    )
+    tc = Timecourse(start=0, end=100, steps=100, changes={"PX": 10.0})
+    tc.normalize(udict=simulator.udict, ureg=simulator.ureg)
+    s = simulator._timecourse(tc)
     assert s is not None
     assert isinstance(s, pd.DataFrame)
     assert "time" in s
     assert len(s.time) == 101
     assert s.PX[0] == 10.0
 
-    s = simulator._timecourse(TimecourseSim(timecourses=[
+    tcsim = TimecourseSim(timecourses=[
         Timecourse(start=0, end=100, steps=100, changes={"[X]": 10.0})
     ])
-                                  )
+    tcsim.normalize(udict=simulator.udict, ureg=simulator.ureg)
+    s = simulator._timecourse(tcsim)
     assert s is not None
 
 

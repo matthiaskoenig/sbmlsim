@@ -31,8 +31,7 @@ class RoadrunnerSBMLModel(AbstractModel):
             sid=sid,
             name=name,
             base_path=base_path,
-            selections=selections,
-            ureg=ureg
+            selections=selections
         )
         if self.language_type != AbstractModel.LanguageType.SBML:
             raise ValueError(f"{self.__class__.__name__} only supports "
@@ -43,7 +42,8 @@ class RoadrunnerSBMLModel(AbstractModel):
             source=self.source, selections=self.selections
         )
         # set integrator settings
-        RoadrunnerSBMLModel.set_integrator_settings(self._model, **settings)
+        if settings is not None:
+            RoadrunnerSBMLModel.set_integrator_settings(self._model, **settings)
 
         # every model has its own unit registry (in a simulation experiment one
         # global unit registry per experiment should be used)
