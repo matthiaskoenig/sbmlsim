@@ -18,6 +18,9 @@ class Source:
     def is_path(self):
         return self.path is not None
 
+    def is_state_path(self):
+        return str(self.path).endswith(".dat")
+
     def is_content(self):
         return self.content is not None
 

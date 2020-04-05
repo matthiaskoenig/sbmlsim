@@ -2,7 +2,7 @@ import pytest
 
 from sbmlsim.simulation.timecourse import Timecourse, TimecourseSim
 from sbmlsim.simulator.simulation_ray import SimulatorParallel as Simulator
-from sbmlsim.examples import example_simulator_parallel
+from sbmlsim.examples import example_parallel
 
 from sbmlsim.tests.constants import MODEL_GLCWB
 
@@ -30,14 +30,14 @@ def test_simulation_parallel():
 
 @pytest.mark.skip
 def test_parallel_1():
-    example_simulator_parallel.example_single_actor()
+    example_parallel.example_single_actor()
 
 
 @pytest.mark.skip
 def test_parallel_2():
-    example_simulator_parallel.example_multiple_actors()
+    example_parallel.example_multiple_actors()
 
 
 @pytest.mark.skip
 def test_parallel_3():
-    example_simulator_parallel.example_parallel_timecourse(nsim=20, actor_count=5)
+    example_parallel.example_parallel_timecourse(nsim=20, actor_count=5)

@@ -9,11 +9,8 @@ from typing import List, Tuple, Dict
 from pathlib import Path
 from enum import Enum
 import logging
-import abc
 
 from sbmlsim.model.model_resources import Source
-from sbmlsim.units import Units, UnitRegistry
-from collections import namedtuple
 
 
 logger = logging.getLogger(__name__)
@@ -42,19 +39,9 @@ class AbstractModel(object):
                  language_type: LanguageType = None,
                  base_path: Path = None,
                  changes: Dict = None,
-
                  selections: List[str] = None,
-                 ureg: UnitRegistry = None,
                  ):
-        """
 
-        :param mid: model id
-        :param source: path string or urn string
-        :param language:
-        :param changes:
-        :param base_path: base path relative to which the sources are resolved
-        :param name:
-        """
         if not language and not language_type:
             raise ValueError("Either 'language' or 'language_type' argument are"
                              "required")
@@ -80,18 +67,7 @@ class AbstractModel(object):
         if changes is None:
             changes = {}
         self.changes = changes
-        # TODO: these changes must be applied during simulation
-
         self.selections = selections
-
-        # load the model
-        self._model = self.load_model()  # field for loaded model with changes
-
-        # every model has its own unit registry (in a simulation experiment one
-        # global unit registry per experiment should be used)
-        if not ureg:
-            ureg = Units.default_ureg()
-        self.udict, self.ureg = self.parse_units(ureg)
 
     def to_dict(self):
         """ Convert to dictionary. """
@@ -105,23 +81,9 @@ class AbstractModel(object):
         }
         return d
 
-    @property
-    def Q_(self):
-        return self.ureg.Quantity
 
-    @property
-    def model(self):
-        return self._model
-
-    @abc.abstractmethod
-    def parse_units(self, ureg: UnitRegistry):
-        """Parses the units from the model"""
-        return {}, ureg
-
-    @abc.abstractmethod
-    def load_model(self):
-        """Loads the model from the current information."""
-        return None
+    '''
+    # SED-ML HANDLING
 
     def apply_change(self, target, value):
         """Applies change to model"""
@@ -238,4 +200,4 @@ class AbstractModel(object):
         else:
             warnings.warn(f"Unrecognized Selection in variable: {var}")
             return None
-
+    '''

@@ -4,12 +4,12 @@ Serial simulator.
 import logging
 from typing import List
 import pandas as pd
-from sbmlsim.utils import timeit
 
 from sbmlsim.simulator.simulation import SimulatorAbstract, SimulatorWorker, set_integrator_settings
 from sbmlsim.result import XResult
 from sbmlsim.simulation import TimecourseSim, ScanSim
 from sbmlsim.model import AbstractModel, RoadrunnerSBMLModel
+from sbmlsim.utils import timeit
 
 logger = logging.getLogger(__name__)
 
@@ -26,16 +26,16 @@ class SimulatorSerial(SimulatorAbstract, SimulatorWorker):
             self.model = model
         else:
             # handle path, urn, ...
-            self.model = RoadrunnerSBMLModel(source=model)
-
-        set_integrator_settings(self.r, **kwargs)
+            self.model = RoadrunnerSBMLModel(source=model, **kwargs)
 
     @property
     def r(self):
         return self.model._model
+
     @property
     def ureg(self):
         return self.model.ureg
+
     @property
     def udict(self):
         return self.model.udict
@@ -61,7 +61,7 @@ class SimulatorSerial(SimulatorAbstract, SimulatorWorker):
         if len(simulations) > 1:
             logger.warning("Use of SimulatorSerial to run multiple timecourses. "
                            "Use SimulatorParallel instead.")
-        dfs = [self._timecourse(sim) for sim in simulations]
+        dfs = self._timecourses(simulations)
 
         # Based on the indices the result structure must be created
         return XResult.from_dfs(
@@ -70,3 +70,6 @@ class SimulatorSerial(SimulatorAbstract, SimulatorWorker):
             udict=self.udict,
             ureg=self.ureg
         )
+
+    def _timecourses(self, simulations: List[TimecourseSim]) -> List[pd.DataFrame]:
+        return [self._timecourse(sim) for sim in simulations]

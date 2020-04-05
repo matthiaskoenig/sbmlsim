@@ -2,11 +2,11 @@
 Parallel execution of timecourses
 """
 import time
-import ray
 
 from sbmlsim.model import RoadrunnerSBMLModel
 from sbmlsim.simulation import TimecourseSim, Timecourse
-from sbmlsim.simulator import SimulatorSerial, SimulatorParallel, SimulatorActor
+from sbmlsim.simulator import SimulatorSerial
+from sbmlsim.simulator.simulation_ray import SimulatorParallel, SimulatorActor, ray, cpu_count
 
 from sbmlsim.tests.constants import MODEL_REPRESSILATOR, MODEL_GLCWB
 
@@ -150,11 +150,12 @@ def example_parallel_timecourse(nsim=40, actor_count=15):
 
 
 if __name__ == "__main__":
-    # example_single_actor()
+    print(f"cpu_count: {cpu_count()}")
+    example_single_actor()
+    exit()
+
     # example_multiple_actors()
 
-    import psutil
-    print("num_cpus:", psutil.cpu_count(logical=False))
 
     sim_info = example_parallel_timecourse(nsim=100, actor_count=15)
     ray.timeline(filename="timeline.json")

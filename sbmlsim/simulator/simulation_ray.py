@@ -1,11 +1,16 @@
-import ray
-
 import logging
-from sbmlsim.model import RoadrunnerSBMLModel
+import ray
+import psutil
+import roadrunner
+from typing import List
+import pandas as pd
+import tempfile
+
+from sbmlsim.model import RoadrunnerSBMLModel, AbstractModel
+from sbmlsim.simulator import SimulatorSerial
 from sbmlsim.simulation import TimecourseSim
 from sbmlsim.result import XResult
 from sbmlsim.simulator.simulation import SimulatorWorker
-from sbmlsim.units import Units
 
 
 logger = logging.getLogger(__name__)
@@ -14,21 +19,23 @@ logger = logging.getLogger(__name__)
 ray.init(ignore_reinit_error=True)
 
 
+def cpu_count() -> int:
+    """Get physical CPU count."""
+    return psutil.cpu_count(logical=False)
+
+
 @ray.remote
 class SimulatorActor(SimulatorWorker):
     """Ray actor to execute simulations.
-    An actor instance is specific for a given model.
+
     An actor is essentially a stateful worker
-
-    # FIXME: currently no setting of integrator settings
-
     """
-    def __init__(self, path, selections=None):
-        self.r = RoadrunnerSBMLModel(source=path, selections=selections)._model
-        self.units = Units.get_units_from_sbml(model_path=path)
-        # set_integrator_settings(self.r, **kwargs)
+    def __init__(self, path_state):
+        """State contains model, integrator settings and selections."""
+        self.r = roadrunner.RoadRunner()  # type: roadrunner.RoadRunner
+        self.r.loadState(path_state)
 
-    def _timecourses(self, simulations):
+    def work(self, simulations):
         """Run a bunch of simulations on a single worker."""
         results = []
         for tc_sim in simulations:
@@ -36,34 +43,32 @@ class SimulatorActor(SimulatorWorker):
         return results
 
 
-class SimulatorParallel(object):
+class SimulatorParallel(SimulatorSerial):
     """
     Parallel simulator
     """
-    def __init__(self, path, selections=None, actor_count=15):
+    def __init__(self, model: AbstractModel, **kwargs):
         """ Initialize parallel simulator with multiple workers.
 
         :param path:
         :param selections: List[str],  selections to set, if None full selection is performed
         :param actor_count: int,
         """
-        logger.warning(f"creating '{actor_count}' SimulationActors for: '{path}'")
-        self.actor_count = actor_count
+        super(SimulatorParallel, self).__init__(model, **kwargs)
+        self.actor_count = kwargs.get("actor_count", cpu_count()-1)
+        logger.warning(f"Creating '{self.actor_count}' SimulationActors")
 
-        # read SBML string once, to avoid IO blocking
-        with open(path, "r") as f_sbml:
-            sbml_str = f_sbml.read()
+        f_tmp = tempfile.NamedTemporaryFile(suffix=".dat")
+        self.r.saveState(f_tmp.name)
 
-        self.simulators = [SimulatorActor.remote(sbml_str, selections) for _ in range(actor_count)]
+        self.simulators = [SimulatorActor.remote(f_tmp.name) for _ in range(self.actor_count)]
 
-    def timecourses(self, simulations):
+    def _timecourses(self, simulations: List[TimecourseSim]) -> List[pd.DataFrame]:
         """ Run all simulations with given model and collect the results.
 
         :param simulations: List[TimecourseSim]
         :return: Result
         """
-        if isinstance(simulations, TimecourseSim):
-            simulations = [simulations]
 
         # Split simulations in chunks for actors
         chunks = [[] for _ in range(self.actor_count)]
@@ -72,14 +77,13 @@ class SimulatorParallel(object):
 
         tc_ids = []
         for k, simulator in enumerate(self.simulators):
-            tcs_id = simulator._timecourses.remote(chunks[k])
+            tcs_id = simulator.work.remote(chunks[k])
             tc_ids.append(tcs_id)
 
         results = ray.get(tc_ids)
         # flatten list of lists [[df, df], [df, df], ...]
         dfs = [df for sublist in results for df in sublist]
         return XResult(dfs)
-        # return results
 
     @staticmethod
     def _create_chunks(l, n):
