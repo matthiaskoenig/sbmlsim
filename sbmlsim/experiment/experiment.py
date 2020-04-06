@@ -5,10 +5,9 @@ import json
 from dataclasses import dataclass
 from typing import Dict
 
-
-
 from sbmlsim.task import Task
 from sbmlsim.simulator import SimulatorSerial
+from sbmlsim.simulator.simulation_ray import SimulatorParallel
 from sbmlsim.simulation import AbstractSim, TimecourseSim, ScanSim
 from sbmlsim.serialization import ObjectJSONEncoder
 from sbmlsim.result import XResult
@@ -20,7 +19,6 @@ from sbmlsim.units import UnitRegistry, Units
 from sbmlsim.plot import Figure
 from sbmlsim.plot.plotting_matplotlib import plt, to_figure
 from matplotlib.pyplot import Figure as FigureMPL
-
 
 logger = logging.getLogger(__name__)
 
@@ -38,9 +36,9 @@ class SimulationExperiment(object):
     Consists of models, datasets, simulations, tasks, results, processing, figures
     """
 
-    def __init__(self, sid: str=None, base_path: Path=None,
-                 data_path: Path=None,
-                 ureg: UnitRegistry=None, **kwargs):
+    def __init__(self, sid: str = None, base_path: Path = None,
+                 data_path: Path = None,
+                 ureg: UnitRegistry = None, **kwargs):
         """
 
         :param sid:
@@ -57,7 +55,8 @@ class SimulationExperiment(object):
             if not base_path.exists():
                 raise IOError(f"base_path '{base_path}' does not exist")
         else:
-            logger.warning("No base_path provided, reading/writing of resources may fail.")
+            logger.warning(
+                "No base_path provided, reading/writing of resources may fail.")
         self.base_path = base_path
 
         if data_path:
@@ -65,7 +64,8 @@ class SimulationExperiment(object):
             if not data_path.exists():
                 raise IOError(f"data_path '{data_path}' does not exist")
         else:
-            logger.warning("No data_path provided, reading of datasets may fail.")
+            logger.warning(
+                "No data_path provided, reading of datasets may fail.")
         self.data_path = data_path
         # if self.base_path:
         # resolve data_path relative to base_path
@@ -84,7 +84,6 @@ class SimulationExperiment(object):
         # FIXME: multiple analysis possible, handle consistently
         self._simulations = self.simulations()
         self._tasks = self.tasks()
-
 
         # Normalize the tasks
         for task_id, task in self._tasks.items():
@@ -156,13 +155,15 @@ class SimulationExperiment(object):
         for field_key in ["_models", "_datasets", "_tasks", "_simulations"]:
             field = getattr(self, field_key)
             if not isinstance(field, dict):
-                raise ValueError(f"'{field_key} must be a dict, but '{field}' is type '{type(field)}'.")
+                raise ValueError(
+                    f"'{field_key} must be a dict, but '{field}' is type '{type(field)}'.")
             for key in getattr(self, field_key).keys():
                 if not isinstance(key, str):
                     raise ValueError(f"'{field_key} keys must be str: "
                                      f"'{key} -> {type(key)}'")
                 if key in all_keys:
-                    raise ValueError(f"Duplicate key '{key}' for '{field_key}' and '{all_keys[key]}'")
+                    raise ValueError(
+                        f"Duplicate key '{key}' for '{field_key}' and '{all_keys[key]}'")
                 else:
                     all_keys[key] = field_key
 
@@ -183,8 +184,9 @@ class SimulationExperiment(object):
 
         for key, sim in self._simulations.items():
             if not isinstance(sim, AbstractSim):
-                raise ValueError(f"simulations must be of type AbstractSim, but "
-                                 f"simulation '{key}' has type: '{type(sim)}'")
+                raise ValueError(
+                    f"simulations must be of type AbstractSim, but "
+                    f"simulation '{key}' has type: '{type(sim)}'")
 
     # --- EXECUTE -------------------------------------------------------------
     @timeit
@@ -295,7 +297,8 @@ class SimulationExperiment(object):
             # "unit_registry": self.ureg,
             "models": {k: v.to_dict() for k, v in self._models.items()},
             "tasks": {k: v.to_dict() for k, v in self._tasks.items()},
-            "simulations": {k: v.to_dict() for k, v in self._simulations.items()},
+            "simulations": {k: v.to_dict() for k, v in
+                            self._simulations.items()},
             "data": self._data,
             "figures": self._figures,
         }
