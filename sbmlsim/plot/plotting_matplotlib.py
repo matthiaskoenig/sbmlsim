@@ -4,7 +4,7 @@ import numpy as np
 import xarray as xr
 
 from sbmlsim.result import XResult
-from sbmlsim.data import DataSet
+from sbmlsim.data import DataSet, Data
 from sbmlsim.plot import Figure, SubPlot, Plot, Curve, Axis
 
 from matplotlib.pyplot import GridSpec
@@ -99,8 +99,33 @@ def to_figure(figure: Figure):
             kwargs = {}
             if curve.style:
                 kwargs = curve.style.to_mpl_kwargs()
+
+            # mean
             x = curve.x.data
             y = curve.y.data
+
+            # additional data exists in xres
+            x_std = None
+            if curve.x.dtype == Data.Types.TASK:
+                data = curve.x
+                xres = data.experiment.results[data.task_id]  # type: XResult
+                x_std = xres.dim_std(data.index).to(data.unit)
+                x_min = xres.dim_min(data.index).to(data.unit)
+                x_max = xres.dim_max(data.index).to(data.unit)
+
+            y_std = None
+            if curve.y.dtype == Data.Types.TASK:
+                data = curve.y
+                xres = data.experiment.results[data.task_id]  # type: XResult
+                y_std = xres.dim_std(data.index).to(data.unit)
+                y_min = xres.dim_min(data.index).to(data.unit)
+                y_max = xres.dim_max(data.index).to(data.unit)
+            print(y_std)
+
+
+            # FIXME: get access to the full data matrix and support plotting
+            #if isinstance(x, XResult):
+            #    x_mean = x.mean(dim=self._op_dims(), skipna=True).values * self.ureg(self.udict[key])
 
             yerr = None
             if curve.yerr is not None:
@@ -116,6 +141,12 @@ def to_figure(figure: Figure):
             elif (xerr is None) and (yerr is not None):
                 ax.errorbar(x.magnitude, y.magnitude, yerr.magnitude,
                             label=curve.name, **kwargs)
+
+            if y_std is not None:
+                # ax.plot(x.magnitude, y.magnitude + y_std.magnitude, label="__nolabel__", **kwargs)
+                ax.fill_between(x.magnitude, y.magnitude - y_std.magnitude,
+                                y.magnitude + y_std.magnitude,
+                                alpha=0.4, label="__nolabel__", color="darkblue")
 
         if plot.legend:
             ax.legend()

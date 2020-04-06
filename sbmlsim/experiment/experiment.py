@@ -85,14 +85,6 @@ class SimulationExperiment(object):
         self._simulations = self.simulations()
         self._tasks = self.tasks()
 
-        # Normalize the tasks
-        for task_id, task in self._tasks.items():
-            model = self._models[task.model_id]
-            sim = self._simulations[task.simulation_id]
-
-            # normalize simulations with respective model dictionary
-            sim.normalize(udict=model.udict, ureg=model.ureg)
-
         # task results
         self._results = None
 
@@ -203,6 +195,14 @@ class SimulationExperiment(object):
         # validation
         self._check_keys()
         self._check_types()
+
+        # normalize the tasks
+        for task_id, task in self._tasks.items():
+            model = self._models[task.model_id]
+            sim = self._simulations[task.simulation_id]
+
+            # normalize simulations with respective model dictionary
+            sim.normalize(udict=model.udict, ureg=model.ureg)
 
         # run simulations
         self._run_tasks()  # sets self._results

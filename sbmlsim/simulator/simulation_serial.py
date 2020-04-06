@@ -25,7 +25,7 @@ class SimulatorSerial(SimulatorAbstract, SimulatorWorker):
             self.model = model
         else:
             # handle path, urn, ...
-            self.model = RoadrunnerSBMLModel(source=model, **kwargs)
+            self.model = RoadrunnerSBMLModel(source=model, settings=kwargs)
 
     @property
     def r(self):

@@ -117,7 +117,9 @@ class Data(object):
             if not isinstance(xres, XResult):
                 raise ValueError("Only Result objects supported in task data.")
 
+            # FIXME: complete data must be kept
             x = xres.dim_mean(self.index)
+            # x = xres[self.index]
 
         elif self.dtype == Data.Types.FUNCTION:
             # evaluate with actual data
