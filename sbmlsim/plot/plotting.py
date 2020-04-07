@@ -414,10 +414,10 @@ class Plot(Base):
         yerr = None
         yerr_label = ''
         if yid_sd:
-            yerr_label = "+-SD"
+            yerr_label = "±SD"
             yerr = Data(experiment, yid_sd, dataset=dataset, task=task, unit=yunit)
         elif yid_se:
-            yerr_label = "+-SE"
+            yerr_label = "±SE"
             yerr = Data(experiment, yid_se, dataset=dataset, task=task, unit=yunit)
 
         # label
