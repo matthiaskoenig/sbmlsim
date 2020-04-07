@@ -246,6 +246,7 @@ class SimulationExperiment(object):
         # tasks for individual models can be run separately !
         for task_key, task in self._tasks.items():
             model = self._models[task.model_id]
+
             # FIXME: creates new simulator for every task! we can reuse all simulators for a given model
             simulator = Simulator(model=model,
                                   absolute_tolerance=absolute_tolerance,

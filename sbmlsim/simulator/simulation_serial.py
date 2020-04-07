@@ -19,10 +19,14 @@ class SimulatorSerial(SimulatorAbstract, SimulatorWorker):
         """ Serial simulator.
 
         :param model: Path to model or model
-        :param kwargs: integrator arguments
+        :param kwargs: integrator settings
         """
         if isinstance(model, AbstractModel):
             self.model = model
+            if isinstance(model, RoadrunnerSBMLModel):
+                RoadrunnerSBMLModel.set_integrator_settings(
+                    model.r, **kwargs
+                )
         else:
             # handle path, urn, ...
             self.model = RoadrunnerSBMLModel(source=model, settings=kwargs)
