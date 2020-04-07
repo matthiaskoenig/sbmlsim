@@ -11,6 +11,9 @@ cover
 *~
 __pycache__
 
+# cached model state
+*.xml.dat
+
 .ipynb_checkpoints/
 .pytest_cache
 
