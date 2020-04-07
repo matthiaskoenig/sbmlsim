@@ -82,10 +82,13 @@ class SimulatorParallel(SimulatorSerial):
                 raise ValueError("State path does not exist.")
 
             state_path = str(self.model.state_path)
-            selections = self.r.selections
             for simulator in self.simulators:
                 simulator.set_model.remote(state_path)
-                simulator.set_timecourse_selections.remote(selections)
+            self.set_timecourse_selections(self.r.selections)
+
+    def set_timecourse_selections(self, selections):
+        for simulator in self.simulators:
+            simulator.set_timecourse_selections.remote(selections)
 
     def _timecourses(self, simulations: List[TimecourseSim]) -> List[pd.DataFrame]:
         """ Run all simulations with given model and collect the results.

@@ -58,6 +58,14 @@ class Data(object):
 
         return sid
 
+    def is_task(self):
+        return self.task_id is not None
+
+    def is_dataset(self):
+        return self.dset_id is not None
+
+    def is_function(self):
+        return self.function is not None
 
     @property
     def dtype(self):

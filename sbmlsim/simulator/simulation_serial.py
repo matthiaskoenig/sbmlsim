@@ -50,10 +50,8 @@ class SimulatorSerial(SimulatorAbstract, SimulatorWorker):
                 # handle path, urn, ...
                 self.model = RoadrunnerSBMLModel(source=model, settings=self.settings)
 
-            # Create state file
-            # FIXME: handle this robustly (via caching and similar mechanism)
-            # filename_state = f"{str(self.model.source.path)}.dat"
-            # self.r.saveState(filename_state)
+    def set_timecourse_selections(self, selections):
+        RoadrunnerSBMLModel.set_timecourse_selections(self.r, selections=selections)
 
     @property
     def r(self):

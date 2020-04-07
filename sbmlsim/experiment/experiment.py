@@ -14,7 +14,7 @@ from sbmlsim.simulator import SimulatorSerial
 from sbmlsim.simulation import AbstractSim, TimecourseSim, ScanSim
 from sbmlsim.serialization import ObjectJSONEncoder
 from sbmlsim.result import XResult
-from sbmlsim.data import DataSet
+from sbmlsim.data import DataSet, Data
 from sbmlsim.model import AbstractModel
 from sbmlsim.utils import timeit
 from sbmlsim.units import UnitRegistry, Units
@@ -206,11 +206,14 @@ class SimulationExperiment(object):
         self._check_keys()
         self._check_types()
 
-        # run simulations
-        self._run_tasks()  # sets self._results
-
         # definition of data accessed later on
         self.datagenerators()
+
+        # some of the figures require actual numerical results!
+        self._figures = self.figures()
+
+        # run simulations
+        self._run_tasks()  # sets self._results
 
         # some of the figures require actual numerical results!
         self._figures = self.figures()
@@ -255,6 +258,17 @@ class SimulationExperiment(object):
             # load model in simulator
             model = self._models[model_id]
             self.simulator.set_model(model=model)
+
+            # set selections based on data
+
+            selections = set()
+            for d in self._data.values():  # type: Data
+                if d.is_task():
+                    selections.add(d.index)
+            selections = sorted(list(selections))
+            print(f"Setting selections: {selections}")
+            self.simulator.set_timecourse_selections(selections=selections)
+
             for task_key in task_keys:  # type: str
                 task = self._tasks[task_key]
                 sim = self._simulations[task.simulation_id]
