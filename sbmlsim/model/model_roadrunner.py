@@ -9,7 +9,7 @@ import tempfile
 
 from sbmlsim.model import AbstractModel
 from sbmlsim.model.model_resources import Source
-from sbmlsim.units import Units, UnitRegistry
+from sbmlsim.units import Units, UnitRegistry, Quantity
 
 logger = logging.getLogger(__name__)
 
@@ -51,13 +51,14 @@ class RoadrunnerSBMLModel(AbstractModel):
             ureg = Units.default_ureg()
         self.udict, self.ureg = self.parse_units(ureg)
 
-
     @property
-    def Q_(self):
+    def Q_(self) -> Quantity:
+        """Quantity to create quantities for model changes."""
         return self.ureg.Quantity
 
     @property
-    def model(self):
+    def r(self) -> roadrunner.RoadRunner:
+        """Roadrunner instance."""
         return self._model
 
     @classmethod
@@ -148,14 +149,17 @@ class RoadrunnerSBMLModel(AbstractModel):
         for key, value in kwargs.items():
             # adapt the absolute_tolerance relative to the amounts
             if key == "absolute_tolerance":
-                value = value * min(r.model.getCompartmentVolumes())
+                # special hack to acount for amount and concentration absolute
+                # tolerances
+                value = min(value, value * min(r.model.getCompartmentVolumes()))
             integrator.setValue(key, value)
+            logger.warning(f"Integrator setting: '{key} = {value}'")
         return integrator
 
     @staticmethod
     def set_default_settings(r: roadrunner.RoadRunner, **kwargs):
         """ Set default settings of integrator. """
-        SimulatorAbstract.set_integrator_settings(
+        RoadrunnerSBMLModel.set_integrator_settings(
             r,
             variable_step_size=True,
             stiff=True,

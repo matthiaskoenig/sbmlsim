@@ -179,7 +179,7 @@ class ModelSensitivity(object):
         :return:
         """
         # reset model
-        model.model.resetAll()
+        model.r.resetAll()
 
         # apply normalized model changes
         if changes is None:
@@ -188,14 +188,14 @@ class ModelSensitivity(object):
             Units.normalize_changes(changes, udict=model.udict, ureg=model.ureg)
         for key, item in changes.items():
             try:
-                model.model[key] = item.magnitude
+                model.r[key] = item.magnitude
             except AttributeError as err:
                 logger.error(
                     f"Change is not a Quantity with unit: '{key} = {item}'. "
                     f"Add units to all changes.")
                 raise err
 
-        doc = libsbml.readSBMLFromString(model.model.getSBML())  # type: libsbml.SBMLDocument
+        doc = libsbml.readSBMLFromString(model.r.getSBML())  # type: libsbml.SBMLDocument
         sbml_model = doc.getModel()  # type: libsbml.Model
 
         ids = []
@@ -224,7 +224,7 @@ class ModelSensitivity(object):
                 if exclude_filter and exclude_filter(id):
                     continue
 
-                value = model.model[id]
+                value = model.r[id]
                 if exclude_zero:
                     if np.abs(value) < zero_eps:
                         continue

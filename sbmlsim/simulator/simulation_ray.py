@@ -59,7 +59,7 @@ class SimulatorParallel(SimulatorSerial):
             self.actor_count = cpu_count() - 1
 
         super(SimulatorParallel, self).__init__(model, **kwargs)
-        # FIXME: more robust
+        # FIXME: handle this robustly (via caching and similar mechanism)
         filename_state = f"{str(self.model.source.path)}.dat"
 
         logger.warning(f"Creating '{self.actor_count}' SimulationActors")

@@ -60,7 +60,7 @@ class Dosing(object):
         :return:
         """
         doses_keys = []
-        for pid in r.model.getGlobalParameterIds():
+        for pid in r.r.getGlobalParameterIds():
             if pid.startswith("PODOSE_") or pid.startswith("IVDOSE_"):
                 doses_keys.append(pid)
 
