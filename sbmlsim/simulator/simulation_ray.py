@@ -39,7 +39,10 @@ class SimulatorActor(SimulatorWorker):
     def set_model(self, path_state):
         self.r = roadrunner.RoadRunner()  # type: roadrunner.RoadRunner
         if path_state is not None:
-            self.r.loadState(path_state)
+            self.r.loadState(str(path_state))
+
+    def set_timecourse_selections(self, selections):
+        self.r.timeCourseSelections = selections
 
     def work(self, simulations):
         """Run a bunch of simulations on a single worker."""
@@ -73,14 +76,16 @@ class SimulatorParallel(SimulatorSerial):
             self.set_model(model=model)
 
     def set_model(self, model):
-        super(SimulatorParallel, self).set_model(model=model)
+        super(SimulatorParallel, self).set_model(model)
+        if model:
+            if not self.model.state_path:
+                raise ValueError("State path does not exist.")
 
-        if self.model is None:
-            filename_state = None
-        else:
-            filename_state = f"{str(self.model.source.path)}.dat"
-        for simulator in self.simulators:
-            simulator.set_model.remote(filename_state)
+            state_path = str(self.model.state_path)
+            selections = self.r.selections
+            for simulator in self.simulators:
+                simulator.set_model.remote(state_path)
+                simulator.set_timecourse_selections.remote(selections)
 
     def _timecourses(self, simulations: List[TimecourseSim]) -> List[pd.DataFrame]:
         """ Run all simulations with given model and collect the results.

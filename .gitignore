@@ -13,6 +13,7 @@ __pycache__
 
 # cached model state
 *.xml.dat
+*.state
 
 .ipynb_checkpoints/
 .pytest_cache

@@ -10,6 +10,7 @@ import tempfile
 from sbmlsim.model import AbstractModel
 from sbmlsim.model.model_resources import Source
 from sbmlsim.units import Units, UnitRegistry, Quantity
+from sbmlsim.utils import md5_for_path
 
 logger = logging.getLogger(__name__)
 
@@ -38,9 +39,16 @@ class RoadrunnerSBMLModel(AbstractModel):
                              f"language_type '{AbstractModel.LanguageType.SBML}'.")
 
         # load the model
+        self.state_path = self.get_state_path()
         self._model = self.load_roadrunner_model(
-            source=self.source, selections=self.selections
+            source=self.source,
+            state_path=self.state_path
         )
+        # set selections
+        self.selections = self.set_timecourse_selections(
+            self._model, selections=self.selections
+        )
+
         # set integrator settings
         if settings is not None:
             RoadrunnerSBMLModel.set_integrator_settings(self._model, **settings)
@@ -50,6 +58,7 @@ class RoadrunnerSBMLModel(AbstractModel):
         if not ureg:
             ureg = Units.default_ureg()
         self.udict, self.ureg = self.parse_units(ureg)
+
 
     @property
     def Q_(self) -> Quantity:
@@ -61,12 +70,20 @@ class RoadrunnerSBMLModel(AbstractModel):
         """Roadrunner instance."""
         return self._model
 
+    def get_state_path(self):
+        if self.source.is_path():
+            mdf5 = md5_for_path(self.source.path)
+            return Path(f"{self.source.path}_{mdf5}.state")
+        else:
+            return None
+
     @classmethod
-    def load_roadrunner_model(cls, source: Source, selections: List[str] = None) -> roadrunner.RoadRunner:
+    def load_roadrunner_model(cls, source: Source,
+                              state_path: Path = None) -> roadrunner.RoadRunner:
         """ Loads model from given source
 
         :param source: path to SBML model or SBML string
-        :param selections: boolean flag to set selections
+        :param state_path: path to rr state
         :return: roadrunner instance
         """
         if isinstance(source, (str, Path)):
@@ -74,23 +91,20 @@ class RoadrunnerSBMLModel(AbstractModel):
 
         # load model
         if source.is_path():
-            if source.is_state_path():
-                logging.info(f"Load model from state: '{source.path.resolve()}'")
+            if state_path and state_path.exists():
+                logging.warning(f"Load model from state: '{state_path}'")
                 r = roadrunner.RoadRunner()
-                r.loadState(str(source.path))
+                r.loadState(str(state_path))
             else:
-                logging.info(f"Load model from SBML: '{source.path.resolve()}'")
+                logging.warning(f"Load model from SBML: '{source.path.resolve()}'")
                 r = roadrunner.RoadRunner(str(source.path))
-                # create state file
-                # FIXME: check hash & recreate only if necessary
-                filename_state = f"{str(source.path)}.dat"
-                r.saveState(filename_state)
-                logging.warning(f"Save state: '{filename_state}'")
+                # save state path
+                if state_path:
+                    r.saveState(str(state_path))
+                    logging.warning(f"Save state: '{state_path}'")
         elif source.is_content():
             r = roadrunner.RoadRunner(str(source.content))
 
-        # set selections
-        cls.set_timecourse_selections(r, selections)
         return r
 
     @classmethod
@@ -133,6 +147,7 @@ class RoadrunnerSBMLModel(AbstractModel):
                     r_model.getFloatingSpeciesIds() + r_model.getBoundarySpeciesIds())]
         else:
             r.timeCourseSelections = selections
+        return selections
 
     @staticmethod
     def set_integrator_settings(r: roadrunner.RoadRunner, **kwargs) -> None:

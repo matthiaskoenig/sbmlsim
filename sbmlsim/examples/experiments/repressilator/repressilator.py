@@ -183,16 +183,17 @@ def run(output_path):
     base_path = Path(__file__).parent
     data_path = base_path
 
-    exp = RepressilatorExperiment(
-        simulator=SimulatorSerial(),
-        # simulator=SimulatorParallel(),
-        data_path=data_path,
-        base_path=base_path
-    )
-    results = exp.run(
-        output_path=output_path / RepressilatorExperiment.__name__,
-        show_figures=True
-    )
+    for simulator in [SimulatorSerial(), SimulatorParallel()]:
+        exp = RepressilatorExperiment(
+            simulator=simulator,
+            data_path=data_path,
+            base_path=base_path
+        )
+
+        results = exp.run(
+            output_path=output_path / RepressilatorExperiment.__name__,
+            show_figures=True
+        )
 
 
 if __name__ == "__main__":

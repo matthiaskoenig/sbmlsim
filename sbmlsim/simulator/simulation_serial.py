@@ -52,8 +52,8 @@ class SimulatorSerial(SimulatorAbstract, SimulatorWorker):
 
             # Create state file
             # FIXME: handle this robustly (via caching and similar mechanism)
-            filename_state = f"{str(self.model.source.path)}.dat"
-            self.r.saveState(filename_state)
+            # filename_state = f"{str(self.model.source.path)}.dat"
+            # self.r.saveState(filename_state)
 
     @property
     def r(self):
