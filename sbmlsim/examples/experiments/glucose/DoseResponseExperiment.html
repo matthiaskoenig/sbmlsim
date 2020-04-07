@@ -211,6 +211,7 @@ class DoseResponseExperiment(SimulationExperiment):
         dose_response['[glc_ext]'] = glc_vec
         df = pd.DataFrame(dose_response)
         dset = DataSet.from_df(df, udict=model.udict, ureg=self.ureg)
+        print(dset)
 
 
         # plot scan results
