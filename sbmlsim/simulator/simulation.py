@@ -2,10 +2,7 @@
 Classes for running simulations with SBML models.
 """
 import logging
-from typing import List
-import roadrunner
 import pandas as pd
-import xarray as xr
 
 
 from sbmlsim.model import ModelChange
@@ -17,10 +14,6 @@ logger = logging.getLogger(__name__)
 
 
 class SimulatorAbstract(object):
-    def __init__(self, path, selections: List[str] = None, **kwargs):
-        """ Must be implemented by simulator. """
-        pass
-
     def run_timecourse(self, simulation: TimecourseSim) -> XResult:
         """ Must be implemented by simulator.
 
@@ -65,10 +58,6 @@ class SimulatorWorker(object):
                     self.r[key] = item.magnitude
                 except AttributeError as err:
                     self.r[key] = item
-                    #logger.warning(
-                    #    f"Change is not a Quantity: '{key} = {item}'. "
-                    #    f"Units are required for all changes.")
-                    # raise err
 
             # model changes are applied to model
             if len(tc.model_changes) > 0:

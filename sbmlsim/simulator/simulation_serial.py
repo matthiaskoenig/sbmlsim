@@ -16,26 +16,44 @@ logger = logging.getLogger(__name__)
 
 class SimulatorSerial(SimulatorAbstract, SimulatorWorker):
     """
-    FIXME: Simulator instances must be able to execute many models.
-    I.e. a simulator should not be specific for a model,
-    but the respective model should be set easily (with hashing of loading).
+    Simulators can run many different models.
+    Use the set_model method to set the model to execute.
     """
-
-    def __init__(self, model, **kwargs):
+    def __init__(self, model=None, **kwargs):
         """ Serial simulator.
 
         :param model: Path to model or model
         :param kwargs: integrator settings
         """
-        if isinstance(model, AbstractModel):
-            self.model = model
-            if isinstance(model, RoadrunnerSBMLModel):
-                RoadrunnerSBMLModel.set_integrator_settings(
-                    model.r, **kwargs
-                )
+        self.set_model(model)
+        self.settings = {
+            "absolute_tolerance": 1E-14,
+            "relative_tolerance": 1E-14,
+        }
+        self.settings.update(kwargs)
+
+    def set_model(self, model):
+        """Set model for simulator.
+
+        This should handle caching and state saving.
+        """
+        if model is None:
+            self.model = None
         else:
-            # handle path, urn, ...
-            self.model = RoadrunnerSBMLModel(source=model, settings=kwargs)
+            if isinstance(model, AbstractModel):
+                self.model = model
+                if isinstance(model, RoadrunnerSBMLModel):
+                    RoadrunnerSBMLModel.set_integrator_settings(
+                        model.r, **self.settings
+                    )
+            else:
+                # handle path, urn, ...
+                self.model = RoadrunnerSBMLModel(source=model, settings=self.settings)
+
+            # Create state file
+            # FIXME: handle this robustly (via caching and similar mechanism)
+            filename_state = f"{str(self.model.source.path)}.dat"
+            self.r.saveState(filename_state)
 
     @property
     def r(self):

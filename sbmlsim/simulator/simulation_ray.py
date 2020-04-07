@@ -30,10 +30,16 @@ class SimulatorActor(SimulatorWorker):
 
     An actor is essentially a stateful worker
     """
-    def __init__(self, path_state):
+    def __init__(self, path_state=None):
         """State contains model, integrator settings and selections."""
+        self.r = None
+        if path_state is not None:
+            self.set_model(path_state)
+
+    def set_model(self, path_state):
         self.r = roadrunner.RoadRunner()  # type: roadrunner.RoadRunner
-        self.r.loadState(path_state)
+        if path_state is not None:
+            self.r.loadState(path_state)
 
     def work(self, simulations):
         """Run a bunch of simulations on a single worker."""
@@ -47,7 +53,7 @@ class SimulatorParallel(SimulatorSerial):
     """
     Parallel simulator
     """
-    def __init__(self, model, **kwargs):
+    def __init__(self, model=None, **kwargs):
         """ Initialize parallel simulator with multiple workers.
 
         :param model: model source or model
@@ -58,15 +64,23 @@ class SimulatorParallel(SimulatorSerial):
         else:
             self.actor_count = cpu_count() - 1
 
-        super(SimulatorParallel, self).__init__(model, **kwargs)
-
-        # Create state file
-        # FIXME: handle this robustly (via caching and similar mechanism)
-        filename_state = f"{str(self.model.source.path)}.dat"
-        self.model.r.saveState(filename_state)
-
+        # Create actors once
         logger.warning(f"Creating '{self.actor_count}' SimulationActors")
-        self.simulators = [SimulatorActor.remote(filename_state) for _ in range(self.actor_count)]
+        self.simulators = [SimulatorActor.remote() for _ in range(self.actor_count)]
+
+        super(SimulatorParallel, self).__init__(model=None, **kwargs)
+        if model is not None:
+            self.set_model(model=model)
+
+    def set_model(self, model):
+        super(SimulatorParallel, self).set_model(model=model)
+
+        if self.model is None:
+            filename_state = None
+        else:
+            filename_state = f"{str(self.model.source.path)}.dat"
+        for simulator in self.simulators:
+            simulator.set_model.remote(filename_state)
 
     def _timecourses(self, simulations: List[TimecourseSim]) -> List[pd.DataFrame]:
         """ Run all simulations with given model and collect the results.

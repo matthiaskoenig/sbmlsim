@@ -4,10 +4,13 @@ from pathlib import Path
 import json
 from dataclasses import dataclass
 from typing import Dict
+from collections import defaultdict
 
 from sbmlsim.task import Task
-from sbmlsim.simulator import SimulatorSerial
+from sbmlsim.simulator.simulation import SimulatorAbstract
 from sbmlsim.simulator.simulation_ray import SimulatorParallel
+from sbmlsim.simulator import SimulatorSerial
+
 from sbmlsim.simulation import AbstractSim, TimecourseSim, ScanSim
 from sbmlsim.serialization import ObjectJSONEncoder
 from sbmlsim.result import XResult
@@ -36,7 +39,8 @@ class SimulationExperiment(object):
     Consists of models, datasets, simulations, tasks, results, processing, figures
     """
     @timeit
-    def __init__(self, sid: str = None, base_path: Path = None,
+    def __init__(self, simulator: SimulatorAbstract = None,
+                 sid: str = None, base_path: Path = None,
                  data_path: Path = None,
                  ureg: UnitRegistry = None, **kwargs):
         """
@@ -47,6 +51,15 @@ class SimulationExperiment(object):
         :param ureg:
         :param kwargs:
         """
+        if simulator is None:
+            simulator = SimulatorSerial(
+                absolute_tolerance=1E-14,
+                relative_tolerance=1E-14
+            )
+            logger.warning(f"No simulator provided, using default simulator: "
+                           f"'{simulator}'")
+        self.simulator = simulator  # type: SimulatorAbstract
+
         if not sid:
             self.sid = self.__class__.__name__
 
@@ -222,40 +235,36 @@ class SimulationExperiment(object):
         return ExperimentResult(experiment=self, output_path=output_path)
 
     @timeit
-    def _run_tasks(self, Simulator=SimulatorSerial,
-                   absolute_tolerance=1E-14,
-                   relative_tolerance=1E-14):
+    def _run_tasks(self):
         """Run simulations & scans.
 
         This should not be called directly, but the results of the simulations
         should be requested by the results property.
         This allows to hash executed simulations.
         """
-        # FIXME: this can be parallized (or on level of the SimulationExperiment)
-        # tasks for individual models can be run separately !
+        if self._results is None:
+            self._results = {}
+
+        # get all tasks for given model
+        model_tasks = defaultdict(list)
         for task_key, task in self._tasks.items():
-            model = self._models[task.model_id]
+            model_tasks[task.model_id].append(task_key)
 
-            # FIXME: creates new simulator for every task! we can reuse all simulators for a given model
-            # FIXME: share the global simulator and execute the tasks with them
-            simulator = Simulator(model=model,
-                                  absolute_tolerance=absolute_tolerance,
-                                  relative_tolerance=relative_tolerance)
-            # run tasks
-            if self._results is None:
-                self._results = {}
-
-            sim = self._simulations[task.simulation_id]
-
-            if isinstance(sim, TimecourseSim):
-                logger.info(f"Run timecourse task: '{task_key}'")
-                self._results[task_key] = simulator.run_timecourse(sim)
-            elif isinstance(sim, ScanSim):
-                logger.info(f"Run scan task: '{task_key}'")
-                self._results[task_key] = simulator.run_scan(sim)
-            else:
-                raise ValueError(f"Unsupported simulation type: "
-                                 f"{type(sim)}")
+        # execute all tasks for given model
+        for model_id, task_keys in model_tasks.items():
+            # load model in simulator
+            model = self._models[model_id]
+            self.simulator.set_model(model=model)
+            for task_key in task_keys:  # type: str
+                task = self._tasks[task_key]
+                sim = self._simulations[task.simulation_id]
+                if isinstance(sim, TimecourseSim):
+                    self._results[task_key] = self.simulator.run_timecourse(sim)
+                elif isinstance(sim, ScanSim):
+                    self._results[task_key] = self.simulator.run_scan(sim)
+                else:
+                    raise ValueError(f"Unsupported simulation type: "
+                                     f"{type(sim)}")
 
     # --- SERIALIZATION -------------------------------------------------------
     @timeit

@@ -11,6 +11,7 @@ from sbmlsim.model import AbstractModel, RoadrunnerSBMLModel
 from sbmlsim.data import Data
 from sbmlsim.simulation import Timecourse, TimecourseSim, AbstractSim, ScanSim, Dimension
 from sbmlsim.simulation.sensititvity import ModelSensitivity, SensitivityType
+from sbmlsim.simulator.simulation_ray import SimulatorParallel, SimulatorSerial
 from sbmlsim.task import Task
 from sbmlsim.plot import Figure, Axis
 
@@ -183,6 +184,8 @@ def run(output_path):
     data_path = base_path
 
     exp = RepressilatorExperiment(
+        simulator=SimulatorSerial(),
+        # simulator=SimulatorParallel(),
         data_path=data_path,
         base_path=base_path
     )
