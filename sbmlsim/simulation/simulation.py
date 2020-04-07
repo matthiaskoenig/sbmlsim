@@ -14,6 +14,14 @@ class Dimension(object):
     the index is the corresponding index of the dimension.
     """
     def __init__(self, dimension: str, index: np.ndarray=None, changes: Dict=None):
+        """ Dimension.
+
+        If no index is provided the index is calculated from the changes.
+
+        :param dimension: unique id of dimension, should start with 'dim'
+        :param index: index for values in dimension
+        :param changes: changes to apply.
+        """
         if index is None and changes is None:
             raise ValueError("Either 'index' or 'changes' required for Dimension.")
         self.dimension = dimension  # type: str

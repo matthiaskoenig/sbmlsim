@@ -75,9 +75,11 @@ class Timecourse(ObjectJSONEncoder):
     def normalize(self, udict, ureg):
         """ Normalize values to model units for all changes."""
         self.changes = Units.normalize_changes(self.changes, udict=udict, ureg=ureg)
+        self.normalized = True
+
+    def strip_units(self):
         # FIXME: stripping units for parallel simulations
         self.changes = {k: v.magnitude for k, v in self.changes.items()}
-        self.normalized = True
 
 
 class TimecourseSim(AbstractSim):
@@ -133,6 +135,10 @@ class TimecourseSim(AbstractSim):
     def normalize(self, udict, ureg):
         for tc in self.timecourses:
             tc.normalize(udict=udict, ureg=ureg)
+
+    def strip_units(self):
+        for tc in self.timecourses:
+            tc.strip_units()
 
     def to_dict(self):
         """ Convert to dictionary. """

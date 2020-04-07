@@ -15,6 +15,12 @@ logger = logging.getLogger(__name__)
 
 
 class SimulatorSerial(SimulatorAbstract, SimulatorWorker):
+    """
+    FIXME: Simulator instances must be able to execute many models.
+    I.e. a simulator should not be specific for a model,
+    but the respective model should be set easily (with hashing of loading).
+    """
+
     def __init__(self, model, **kwargs):
         """ Serial simulator.
 
@@ -43,7 +49,6 @@ class SimulatorSerial(SimulatorAbstract, SimulatorWorker):
     def udict(self):
         return self.model.udict
 
-    @timeit
     def run_timecourse(self, simulation: TimecourseSim) -> XResult:
         """ Run single timecourse."""
         if not isinstance(simulation, TimecourseSim):
@@ -55,15 +60,11 @@ class SimulatorSerial(SimulatorAbstract, SimulatorWorker):
     @timeit
     def run_scan(self, scan: ScanSim) -> XResult:
         """ Run a scan simulation."""
-        # normalize the scan
+        # normalize the scan (which also normalizes all simulations)
         scan.normalize(udict=self.udict, ureg=self.ureg)
 
         # Create all possible combinations of the scan
         indices, simulations = scan.to_simulations()
-
-        if len(simulations) > 1:
-            logger.warning("Use of SimulatorSerial to run multiple timecourses. "
-                           "Use SimulatorParallel instead.")
         dfs = self._timecourses(simulations)
 
         # Based on the indices the result structure must be created
@@ -75,4 +76,8 @@ class SimulatorSerial(SimulatorAbstract, SimulatorWorker):
         )
 
     def _timecourses(self, simulations: List[TimecourseSim]) -> List[pd.DataFrame]:
+        if len(simulations) > 1:
+            logger.warning(
+                "Use of SimulatorSerial to run multiple timecourses. "
+                "Use SimulatorParallel instead.")
         return [self._timecourse(sim) for sim in simulations]

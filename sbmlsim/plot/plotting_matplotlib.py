@@ -120,7 +120,7 @@ def to_figure(figure: Figure):
                 y_std = xres.dim_std(data.index).to(data.unit)
                 y_min = xres.dim_min(data.index).to(data.unit)
                 y_max = xres.dim_max(data.index).to(data.unit)
-            print(y_std)
+            # print(y_std)
 
 
             # FIXME: get access to the full data matrix and support plotting

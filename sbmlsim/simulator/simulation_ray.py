@@ -59,8 +59,11 @@ class SimulatorParallel(SimulatorSerial):
             self.actor_count = cpu_count() - 1
 
         super(SimulatorParallel, self).__init__(model, **kwargs)
+
+        # Create state file
         # FIXME: handle this robustly (via caching and similar mechanism)
         filename_state = f"{str(self.model.source.path)}.dat"
+        self.model.r.saveState(filename_state)
 
         logger.warning(f"Creating '{self.actor_count}' SimulationActors")
         self.simulators = [SimulatorActor.remote(filename_state) for _ in range(self.actor_count)]
@@ -71,6 +74,10 @@ class SimulatorParallel(SimulatorSerial):
         :param simulations: List[TimecourseSim]
         :return: Result
         """
+        # Strip units for parallel simulations
+        for sim in simulations:
+            sim.strip_units()
+
         # Split simulations in chunks for actors
         chunks = [[] for _ in range(self.actor_count)]
         for k, tc_sim in enumerate(simulations):

@@ -35,7 +35,7 @@ class SimulationExperiment(object):
 
     Consists of models, datasets, simulations, tasks, results, processing, figures
     """
-
+    @timeit
     def __init__(self, sid: str = None, base_path: Path = None,
                  data_path: Path = None,
                  ureg: UnitRegistry = None, **kwargs):
@@ -131,9 +131,6 @@ class SimulationExperiment(object):
             self._run_tasks()
         return self._results
 
-    # --- PROCESSING ----------------------------------------------------------
-    # TODO:
-
     # --- FIGURES -------------------------------------------------------------
     def figures(self) -> Dict[str, FigureMPL]:
         """ Figures."""
@@ -196,14 +193,6 @@ class SimulationExperiment(object):
         self._check_keys()
         self._check_types()
 
-        # normalize the tasks
-        for task_id, task in self._tasks.items():
-            model = self._models[task.model_id]
-            sim = self._simulations[task.simulation_id]
-
-            # normalize simulations with respective model dictionary
-            sim.normalize(udict=model.udict, ureg=model.ureg)
-
         # run simulations
         self._run_tasks()  # sets self._results
 
@@ -248,6 +237,7 @@ class SimulationExperiment(object):
             model = self._models[task.model_id]
 
             # FIXME: creates new simulator for every task! we can reuse all simulators for a given model
+            # FIXME: share the global simulator and execute the tasks with them
             simulator = Simulator(model=model,
                                   absolute_tolerance=absolute_tolerance,
                                   relative_tolerance=relative_tolerance)

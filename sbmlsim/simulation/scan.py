@@ -16,7 +16,9 @@ class ScanSim(AbstractSim):
     FIXME: probably not necessary to make this a simulation.
     """
 
-    def __init__(self, simulation: AbstractSim, dimensions: List[Dimension] = None):
+    def __init__(self, simulation: AbstractSim,
+                 dimensions: List[Dimension] = None,
+                 mapping: Dict[str, int] = None):
         """Scanning a simulation.
 
         Parameters or initial conditions can be scanned.
@@ -24,12 +26,21 @@ class ScanSim(AbstractSim):
 
         :param simulation: simulation to scan over the given parameters
         :param scan: dictionary of parameters or conditions to scan
+        :param mapping: map of changes to parts of simulations
         """
         self.simulation = simulation
         if dimensions is None:
             # handling the simple simulation case
             dimensions = [Dimension("dim0", index=np.arange(1))]
         self.dimensions = dimensions
+        if mapping is None:
+            # if no mapping is provided than the changes map on the
+            # initial part of the simulation
+            mapping = {dim.dimension: 0 for dim in self.dimensions}
+        if len(mapping) != len(dimensions):
+            raise ValueError(f"mapping '{mapping}' incompatible with dimensions "
+                             f"'{dimensions}'.")
+        self.mapping = mapping
 
     def __repr__(self):
         return f"Scan({self.simulation.__class__.__name__}: " \
@@ -61,12 +72,15 @@ class ScanSim(AbstractSim):
         for index_list in indices:
             sim_new = deepcopy(self.simulation)
 
-            # TODO: support additional simulation types (assuming Timecourse here)
-            # changes are mixed in the first timecourse
-            tc = sim_new.timecourses[0]
+            # TODO: support additional simulation types (currently
+            #       only Timecourses assumed.
             for k_dim, k_index in enumerate(index_list):
                 # add all changes for the given dimension and index
-                changes = self.dimensions[k_dim].changes
+                dim = self.dimensions[k_dim]
+                changes = dim.changes
+                map_index = self.mapping[dim.dimension]
+                # changes have to be applied to correct part of simulation
+                tc = sim_new.timecourses[map_index]
                 for key in changes.keys():
                     value = changes[key][k_index]
                     tc.add_change(key, value)
@@ -117,6 +131,5 @@ if __name__ == "__main__":
             }),
         ]
     )
-    print(scan2d)
     indices, sims = scan2d.to_simulations()
     scan2d.normalize(udict=udict, ureg=ureg)

@@ -190,7 +190,6 @@ def run(output_path):
         output_path=output_path / RepressilatorExperiment.__name__,
         show_figures=True
     )
-    print(results)
 
 
 if __name__ == "__main__":
