@@ -76,15 +76,16 @@ class SimulatorSerial(SimulatorAbstract, SimulatorWorker):
     @timeit
     def run_scan(self, scan: ScanSim) -> XResult:
         """ Run a scan simulation."""
-        # normalize the scan (which also normalizes all simulations)
-        # FIXME: here is a bug, normalization not working
+        # normalize the scan (simulation and dimensions)
         scan.normalize(udict=self.udict, ureg=self.ureg)
 
-        # Create all possible combinations of the scan
+        # create all possible combinations of the scan
         indices, simulations = scan.to_simulations()
+
+        # simulate (uses respective function of simulator)
         dfs = self._timecourses(simulations)
 
-        # Based on the indices the result structure must be created
+        # based on the indices the result structure must be created
         return XResult.from_dfs(
             dfs=dfs,
             scan=scan,

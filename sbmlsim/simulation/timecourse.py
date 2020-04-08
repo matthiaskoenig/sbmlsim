@@ -27,8 +27,7 @@ class Timecourse(ObjectJSONEncoder):
 
     """
     def __init__(self, start: float, end: float, steps: int,
-                 changes: dict = None, model_changes: dict = None,
-                 normalized: bool = False):
+                 changes: dict = None, model_changes: dict = None):
         """ Create a time course definition for simulation.
 
         :param start: start time
@@ -43,7 +42,6 @@ class Timecourse(ObjectJSONEncoder):
         if model_changes is None:
             model_changes = {}
 
-        self.normalized = normalized
         self.start = start
         self.end = end
         self.steps = steps
@@ -74,11 +72,14 @@ class Timecourse(ObjectJSONEncoder):
 
     def normalize(self, udict, ureg):
         """ Normalize values to model units for all changes."""
-        self.changes = Units.normalize_changes(self.changes, udict=udict, ureg=ureg)
-        self.normalized = True
+        self.changes = Units.normalize_changes(
+            self.changes, udict=udict, ureg=ureg
+        )
 
     def strip_units(self):
-        # FIXME: stripping units for parallel simulations
+        """ Stripping units for parallel simulation.
+        All changes must be normalized before stripping !.
+        """
         self.changes = {k: v.magnitude for k, v in self.changes.items()}
 
 
@@ -117,7 +118,7 @@ class TimecourseSim(AbstractSim):
         return f"TimecourseSim({[tc for tc in self.timecourses]})"
 
     def _time(self):
-        """Calculates the time vector once for the simulation."""
+        """Calculates the time vector complete simulation."""
         t_offset = self.time_offset
         time_vecs = []
         for tc in self.timecourses:
@@ -133,10 +134,12 @@ class TimecourseSim(AbstractSim):
         ]
 
     def normalize(self, udict, ureg):
+        """Normalize timecourse simulation."""
         for tc in self.timecourses:
             tc.normalize(udict=udict, ureg=ureg)
 
     def strip_units(self):
+        """Strip units from simulation."""
         for tc in self.timecourses:
             tc.strip_units()
 

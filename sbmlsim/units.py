@@ -230,11 +230,17 @@ class Units(object):
 
     @staticmethod
     def normalize_changes(changes: Dict, udict: Dict, ureg: UnitRegistry) -> Dict[str, Quantity]:
+        """Normalizes all changes to units in units dictionary.
+
+        :param changes:
+        :param udict:
+        :param ureg:
+        :return:
+        """
         Q_ = ureg.Quantity
         changes_normed = {}
         for key, item in changes.items():
             if hasattr(item, "units"):
-                # perform unit conversion
                 try:
                     # convert to model units
                     item = item.to(udict[key])
@@ -244,7 +250,8 @@ class Units(object):
                     raise err
                 except KeyError as err:
                     logger.error(
-                        f"KeyError: '{key}' does not exist in unit dictionary of model.")
+                        f"KeyError: '{key}' does not exist in unit "
+                        f"dictionary of model.")
                     raise err
             else:
                 item = Q_(item, udict[key])

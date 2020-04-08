@@ -61,17 +61,22 @@ class ScanSim(AbstractSim):
         return Dimension.indices_from_dimensions(self.dimensions)
 
     def normalize(self, udict: Dict, ureg: UnitRegistry):
+        """Normalizes the scan.
+        Requires normalization of timecourse simulation as well
+        as all dimensions in the scan.
+        """
         # normalize simulation
         self.simulation.normalize(udict=udict, ureg=ureg)
 
         # normalize changes in all dimensions
         for scan_dim in self.dimensions:
-            self.changes = Units.normalize_changes(scan_dim.changes, udict, ureg)
-            self.normalized = True
+            scan_dim.changes = Units.normalize_changes(scan_dim.changes, udict=udict, ureg=ureg)
 
     def to_simulations(self):
         """Flattens the scan to individual simulations.
         Here the changes are appended.
+
+        Scan should be normalized before calling this function.
 
         Necessary to track the results.
         """
