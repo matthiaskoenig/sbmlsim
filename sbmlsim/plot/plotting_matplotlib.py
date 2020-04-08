@@ -147,7 +147,7 @@ def to_figure(figure: Figure):
                 # ax.plot(x.magnitude, y.magnitude + y_std.magnitude, label="__nolabel__", **kwargs)
                 ax.fill_between(x.magnitude, y.magnitude - y_std.magnitude,
                                 y.magnitude + y_std.magnitude,
-                                alpha=0.4, label="__nolabel__", color="darkblue")
+                                alpha=0.4, label="__nolabel__")
 
         if plot.legend:
             ax.legend()
@@ -254,16 +254,11 @@ def add_line(ax: plt.Axes, xres: XResult,
         raise ValueError(f"Only XResult supported in plotting, but found: "
                          f"'{type(xres)}'")
 
-
     # data with units
     x = xres.dim_mean(xid)
-
-
     y = xres.dim_mean(yid) * yf
-    # print("x", x.units, x)
-    # print("y", y.units, y)
 
-
+    # reduction over all dimensions (not necessarily what is wanted !)
     ystd = xres.dim_std(yid) * yf
     ymin = xres.dim_min(yid) * yf
     ymax = xres.dim_max(yid) * yf
@@ -277,9 +272,6 @@ def add_line(ax: plt.Axes, xres: XResult,
         ymin = ymin.to(yunit)
         ymax = ymax.to(yunit)
 
-    # print("x", x.units, x)
-    # print("y", y.units, y)
-
     # get next color
     prop_cycler = ax._get_lines.prop_cycler
     color = kwargs.get("color", next(prop_cycler)['color'])
@@ -292,35 +284,30 @@ def add_line(ax: plt.Axes, xres: XResult,
         dims = xres._redop_dims()
         index_vecs = [xres.coords[dim].values for dim in dims]
         indices = list(itertools.product(*index_vecs))
-        # print("index_vecs:", index_vecs)
-        # print(indices)
         for item in indices:
             d = dict(zip(dims, item))
-            # print(d)
-            # individual timecourses
             xi = Q_(xres[xid].isel(d).values, xres.udict[xid])
             yi = Q_(xres[yid].isel(d).values, xres.udict[yid])
             xi = xi.to(xunit)
             yi = yi.to(yunit)
 
-            ax.plot(xi, yi, color="darkred", linewidth=3)
+            ax.plot(xi.magnitude, yi.magnitude, color=color)
 
-    # calculate rational ysd, i.e., if the value if y + ysd is larger than ymax take ymax
-    ysd_up = y + ystd
-    ysd_up[ysd_up > ymax] = ymax[ysd_up > ymax]
-    ysd_down = y - ystd
-    ysd_down[ysd_down < ymin] = ymin[ysd_down < ymin]
+    else:
+        # calculate rational ysd, i.e., if the value if y + ysd is larger than ymax take ymax
+        ysd_up = y + ystd
+        ysd_up[ysd_up > ymax] = ymax[ysd_up > ymax]
+        ysd_down = y - ystd
+        ysd_down[ysd_down < ymin] = ymin[ysd_down < ymin]
 
-    ax.fill_between(x.magnitude, ysd_down.magnitude, ysd_up.magnitude, color=color, alpha=0.4, label="__nolabel__")
-    ax.fill_between(x.magnitude, ysd_up.magnitude, ymax.magnitude, color=color, alpha=0.1, label="__nolabel__")
-    ax.fill_between(x.magnitude, ysd_down.magnitude, ymin.magnitude, color=color, alpha=0.1, label="__nolabel__")
+        ax.fill_between(x.magnitude, ysd_down.magnitude, ysd_up.magnitude, color=color, alpha=0.4, label="__nolabel__")
+        ax.fill_between(x.magnitude, ysd_up.magnitude, ymax.magnitude, color=color, alpha=0.1, label="__nolabel__")
+        ax.fill_between(x.magnitude, ysd_down.magnitude, ymin.magnitude, color=color, alpha=0.1, label="__nolabel__")
 
-    ax.plot(x.magnitude, ysd_up.magnitude, '-', label="__nolabel__", alpha=0.8, **kwargs)
-    ax.plot(x.magnitude, ysd_down.magnitude, '-', label="__nolabel__", alpha=0.8, **kwargs)
-    ax.plot(x.magnitude, ymin.magnitude, '-', label="__nolabel__", alpha=0.6, **kwargs)
-    ax.plot(x.magnitude, ymax.magnitude, '-', label="__nolabel__", alpha=0.6, **kwargs)
+        ax.plot(x.magnitude, ysd_up.magnitude, '-', label="__nolabel__", alpha=0.8, **kwargs)
+        ax.plot(x.magnitude, ysd_down.magnitude, '-', label="__nolabel__", alpha=0.8, **kwargs)
+        ax.plot(x.magnitude, ymin.magnitude, '-', label="__nolabel__", alpha=0.6, **kwargs)
+        ax.plot(x.magnitude, ymax.magnitude, '-', label="__nolabel__", alpha=0.6, **kwargs)
 
-    # curve
-
-    ax.plot(x.magnitude, y.magnitude, '-', label=label, **kwargs)
-
+        # curve
+        ax.plot(x.magnitude, y.magnitude, '-', label=label, **kwargs)

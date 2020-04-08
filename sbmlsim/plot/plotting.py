@@ -379,9 +379,20 @@ class Plot(Base):
         return d
 
     def curve(self, x: Data, y: Data, xerr: Data=None, yerr: Data=None, **kwargs):
-        """Add curve to the plot."""
+        """Adds curves to the plot.
+
+        Data can be high-dimensional data from a scan.
+        Additional settings are required which allow to define how things
+        are plotted.
+        E.g. over which dimensions should an error be calculated and which
+        dimensions should be plotted individually.
+        """
 
         kwargs = self._default_kwargs(kwargs, x.dtype)
+
+        # FIXME: here all the processing must happen and the various curves
+        # must be created.
+
         curve = Curve(x, y, xerr, yerr, **kwargs)
         self.add_curve(curve)
 

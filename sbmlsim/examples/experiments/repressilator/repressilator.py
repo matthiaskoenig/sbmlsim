@@ -100,13 +100,9 @@ class RepressilatorExperiment(SimulationExperiment):
 
         :return:
         """
-        unit_time = "min"
-        unit_data = "dimensionless"
-
-        # Data accessed
-        Data(self, task="task_tc", index="X", unit=unit_data)
-        Data(self, task="task_tc", index="Y", unit=unit_data)
-        Data(self, task="task_tc", index="Z", unit=unit_data)
+        for selection in ["X", "Y", "Z"]:
+            # accessed data
+            Data(self, task="task_tc", index=selection)
 
         # Define functions (data generators)
         Data(
@@ -191,7 +187,7 @@ def run(output_path):
         )
 
         results = exp.run(
-            output_path=output_path / RepressilatorExperiment.__name__,
+            output_path=output_path / "results",
             show_figures=True
         )
 
