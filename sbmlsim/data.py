@@ -41,6 +41,10 @@ class Data(object):
         self.function = function
         self.variables = variables
 
+        if (not self.task_id) and (not self.dset_id) and (not self.function):
+            raise ValueError(f"Either 'task_id', 'dset_id' or 'function' "
+                             f"required for Data.")
+
         # register data in simulation
         if experiment._data is None:
             experiment._data = {}
