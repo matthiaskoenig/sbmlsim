@@ -25,12 +25,12 @@ class SimulatorSerial(SimulatorAbstract, SimulatorWorker):
         :param model: Path to model or model
         :param kwargs: integrator settings
         """
-        self.set_model(model)
         self.settings = {
             "absolute_tolerance": 1E-14,
             "relative_tolerance": 1E-14,
         }
         self.settings.update(kwargs)
+        self.set_model(model)
 
     def set_model(self, model):
         """Set model for simulator.

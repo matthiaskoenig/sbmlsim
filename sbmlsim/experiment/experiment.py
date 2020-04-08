@@ -207,6 +207,7 @@ class SimulationExperiment(object):
         self._check_types()
 
         # definition of data accessed later on
+        self._data = {}
         self.datagenerators()
 
         # some of the figures require actual numerical results!

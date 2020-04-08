@@ -20,6 +20,7 @@ def run_model_change_example1():
     :return:
     """
     r = RoadrunnerSBMLModel.load_roadrunner_model(MODEL_REPRESSILATOR)
+    RoadrunnerSBMLModel.set_timecourse_selections(r)
 
     s1 = r.simulate(start=0, end=100, steps=500)
     s1 = pd.DataFrame(s1, columns=s1.colnames)
@@ -119,5 +120,5 @@ def run_model_clamp2():
 
 if __name__ == "__main__":
     run_model_change_example1()
-    run_model_clamp1()
-    run_model_clamp2()
+    # run_model_clamp1()
+    # run_model_clamp2()

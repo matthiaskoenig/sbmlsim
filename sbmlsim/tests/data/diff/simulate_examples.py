@@ -28,7 +28,8 @@ def run_simulations(create_files=True):
         # print(tcsim)
         xres = simulator.run_timecourse(tcsim)
         if create_files:
-            xres.mean.to_csv(tsv_path, sep="\t", index=False)
+            df = xres.to_mean_dataframe()
+            df.to_csv(tsv_path, sep="\t", index=False)
 
 
 def run_comparisons(create_files=True):
@@ -67,7 +68,5 @@ def run_comparisons(create_files=True):
 
 
 if __name__ == "__main__":
-
     run_simulations()
     run_comparisons()
-

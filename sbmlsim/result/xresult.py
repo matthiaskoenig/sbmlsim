@@ -7,24 +7,32 @@ import logging
 import numpy as np
 import pandas as pd
 import xarray as xr
+from enum import Enum
 
 from sbmlsim.simulation import ScanSim, Dimension
 from sbmlsim.utils import deprecated, timeit
 from sbmlsim.units import UnitRegistry
+
 
 logger = logging.getLogger(__name__)
 
 
 class XResult:
     """
-    FIXME: write the units in the attrs, store time correctly
+    FIXME: write the units in the attrs
     FIXME: helper method for to DataFrame
     """
+    class XResultType(Enum):
+        TIMECOURSE = 1
+        STEADYSTATE = 2
+
     def __init__(self, xdataset: xr.Dataset,
-                 udict: Dict = None, ureg: UnitRegistry=None):
+                 udict: Dict = None, ureg: UnitRegistry=None,
+                 type: XResultType = XResultType.TIMECOURSE):
         self.xds = xdataset
         self.udict = udict
         self.ureg = ureg
+        self.type = type
 
     def __getitem__(self, key) -> xr.DataArray:
         return self.xds[key]
@@ -38,25 +46,46 @@ class XResult:
             # forward lookup to xds
             return getattr(self.xds, name)
 
+    # TODO: general dimension reduction (for complete dataset)
+
+    '''
+    def dim_op(self, f_op, key=None):
+        data = self.xds[key] if key else self.xds
+        f = getattr(data, "f_op")
+        res = f(dim=self._redop_dims(), skipna=True)
+        if key: 
+            return res.values * self.ureg(self.udict[key])
+        else:
+            return res
+    '''
+    def to_mean_dataframe(self):
+        res = {}
+        for col in self.xds:
+            res[col] = self.dim_mean(key=col)
+        return pd.DataFrame(res)
+
     def dim_mean(self, key):
         """Mean over all added dimensions"""
-        return self.xds[key].mean(dim=self._op_dims(), skipna=True).values * self.ureg(self.udict[key])
+        return self.xds[key].mean(dim=self._redop_dims(), skipna=True).values * self.ureg(self.udict[key])
 
     def dim_std(self, key):
         """Standard deviation over all added dimensions"""
-        return self.xds[key].std(dim=self._op_dims(), skipna=True).values * self.ureg(self.udict[key])
+        return self.xds[key].std(dim=self._redop_dims(), skipna=True).values * self.ureg(self.udict[key])
 
     def dim_min(self, key):
         """Minimum over all added dimensions"""
-        return self.xds[key].min(dim=self._op_dims(), skipna=True).values * self.ureg(self.udict[key])
+        return self.xds[key].min(dim=self._redop_dims(), skipna=True).values * self.ureg(self.udict[key])
 
     def dim_max(self, key):
         """Maximum over all added dimensions"""
-        return self.xds[key].max(dim=self._op_dims(), skipna=True).values * self.ureg(self.udict[key])
+        return self.xds[key].max(dim=self._redop_dims(), skipna=True).values * self.ureg(self.udict[key])
 
-    def _op_dims(self) -> List[str]:
-        """Dimensions for operations."""
-        return [dim_id for dim_id in self.dims if dim_id != "_time"]
+    def _redop_dims(self) -> List[str]:
+        """Dimensions for reducing operations."""
+        if self.type == self.XResultType.TIMECOURSE:
+            return [dim_id for dim_id in self.dims if dim_id != "_time"]
+        else:
+            return [dim_id for dim_id in self.dims if dim_id != "_time"]
 
     @classmethod
     def from_dfs(cls, dfs: List[pd.DataFrame], scan: ScanSim=None,
