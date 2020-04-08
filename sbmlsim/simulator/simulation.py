@@ -34,7 +34,7 @@ class SimulatorWorker(object):
     def _timecourse(self, simulation: TimecourseSim) -> pd.DataFrame:
         """ Timecourse simulation.
 
-        Requires for all timecourse definitions to be unit normalized
+        Requires for all timecourse definitions to be unit NORMALIZED
         before being sent here ! The changes have no units any more
         for parallel simulations.
         You should never call this function directly!

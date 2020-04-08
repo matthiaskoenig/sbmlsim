@@ -77,6 +77,7 @@ class SimulatorSerial(SimulatorAbstract, SimulatorWorker):
     def run_scan(self, scan: ScanSim) -> XResult:
         """ Run a scan simulation."""
         # normalize the scan (which also normalizes all simulations)
+        # FIXME: here is a bug, normalization not working
         scan.normalize(udict=self.udict, ureg=self.ureg)
 
         # Create all possible combinations of the scan

@@ -60,8 +60,18 @@ class ScanSim(AbstractSim):
         """Indices of all combinations."""
         return Dimension.indices_from_dimensions(self.dimensions)
 
+    def normalize(self, udict: Dict, ureg: UnitRegistry):
+        # normalize simulation
+        self.simulation.normalize(udict=udict, ureg=ureg)
+
+        # normalize changes in all dimensions
+        for scan_dim in self.dimensions:
+            self.changes = Units.normalize_changes(scan_dim.changes, udict, ureg)
+            self.normalized = True
+
     def to_simulations(self):
         """Flattens the scan to individual simulations.
+        Here the changes are appended.
 
         Necessary to track the results.
         """
@@ -87,16 +97,12 @@ class ScanSim(AbstractSim):
 
             simulations.append(sim_new)
 
+        #print(simulations)
+        #for sim in simulations:
+        #    print("-" * 80)
+        #    print(sim)
+
         return indices, simulations
-
-    def normalize(self, udict: Dict, ureg: UnitRegistry):
-        # normalize simulation
-        self.simulation.normalize(udict=udict, ureg=ureg)
-
-        # normalize changes in all dimensions
-        for scan_dim in self.dimensions:
-            self.changes = Units.normalize_changes(scan_dim.changes, udict, ureg)
-            self.normalized = True
 
 
 if __name__ == "__main__":

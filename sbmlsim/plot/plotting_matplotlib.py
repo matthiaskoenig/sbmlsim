@@ -2,6 +2,7 @@ import logging
 import pandas as pd
 import numpy as np
 import xarray as xr
+import itertools
 
 from sbmlsim.result import XResult
 from sbmlsim.data import DataSet, Data
@@ -256,7 +257,12 @@ def add_line(ax: plt.Axes, xres: XResult,
 
     # data with units
     x = xres.dim_mean(xid)
+
+
     y = xres.dim_mean(yid) * yf
+    # print("x", x.units, x)
+    # print("y", y.units, y)
+
 
     ystd = xres.dim_std(yid) * yf
     ymin = xres.dim_min(yid) * yf
@@ -271,26 +277,33 @@ def add_line(ax: plt.Axes, xres: XResult,
         ymin = ymin.to(yunit)
         ymax = ymax.to(yunit)
 
+    # print("x", x.units, x)
+    # print("y", y.units, y)
+
     # get next color
     prop_cycler = ax._get_lines.prop_cycler
     color = kwargs.get("color", next(prop_cycler)['color'])
     kwargs["color"] = color
 
     if all_lines:
+        Q_ = xres.ureg.Quantity
         # iterate over all dimensions besides time
-        pass
-        # FIXME: implement
-        ''''
-        for k in range(xres.dims["dim1"]):
+        # all combinations
+        dims = xres._redop_dims()
+        index_vecs = [xres.coords[dim].values for dim in dims]
+        indices = list(itertools.product(*index_vecs))
+        # print("index_vecs:", index_vecs)
+        # print(indices)
+        for item in indices:
+            d = dict(zip(dims, item))
+            # print(d)
             # individual timecourses
-            plt.plot(da.coords['time'], da.isel(dim1=k))
-        for df in xres.frames:
-            xk = df[xid].values * xres.ureg(xres.udict[xid]) * xf
-            yk = df[yid].values * xres.ureg(xres.udict[yid]) * yf
-            xk = xk.to(xunit)
-            yk = yk.to(yunit)
-            ax.plot(xk, yk, '-', label="{}".format(label), **kwargs)
-        '''
+            xi = Q_(xres[xid].isel(d).values, xres.udict[xid])
+            yi = Q_(xres[yid].isel(d).values, xres.udict[yid])
+            xi = xi.to(xunit)
+            yi = yi.to(yunit)
+
+            ax.plot(xi, yi, color="darkred", linewidth=3)
 
     # calculate rational ysd, i.e., if the value if y + ysd is larger than ymax take ymax
     ysd_up = y + ystd
@@ -308,4 +321,6 @@ def add_line(ax: plt.Axes, xres: XResult,
     ax.plot(x.magnitude, ymax.magnitude, '-', label="__nolabel__", alpha=0.6, **kwargs)
 
     # curve
+
     ax.plot(x.magnitude, y.magnitude, '-', label=label, **kwargs)
+

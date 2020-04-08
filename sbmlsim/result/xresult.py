@@ -19,6 +19,8 @@ logger = logging.getLogger(__name__)
 
 class XResult:
     """
+    Always check if returned quantities have units or not!
+
     FIXME: write the units in the attrs
     FIXME: helper method for to DataFrame
     """
@@ -120,12 +122,7 @@ class XResult:
             coords[dim_id] = dimension.index
             dims.append(dim_id)
 
-        # print("shape:", shape)
-        # print("dims:", dims)
-        # print(coords)
-
         indices = Dimension.indices_from_dimensions(dimensions)
-
         data_dict = {col: np.empty(shape=shape) for col in columns}
         for k_df, df in enumerate(dfs):
             for k_col, column in enumerate(columns):
