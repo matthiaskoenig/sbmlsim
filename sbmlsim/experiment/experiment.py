@@ -211,6 +211,9 @@ class SimulationExperiment(object):
         self.datagenerators()
 
         # some of the figures require actual numerical results!
+        # this results in execution of the tasks! On the other hand we
+        # want to register the data before running the tasks.
+        # FIXME
         self._figures = self.figures()
 
         # run simulations

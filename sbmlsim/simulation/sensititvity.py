@@ -39,7 +39,7 @@ class ModelSensitivity(object):
             exclude_zero: bool = True,
             zero_eps: float = 1E-8) -> ScanSim:
 
-        dim = ModelSensitivity._create_difference_dimension(
+        dim = ModelSensitivity.create_difference_dimension(
             model=model,
             changes=simulation.timecourses[0].changes,
             difference=difference, stype=stype,
@@ -50,10 +50,10 @@ class ModelSensitivity(object):
             simulation=simulation,
             dimensions=[
                 dim,
-            ]
+            ],
+            mapping = {'dim_sens': 0}
         )
         return scan
-
 
     @staticmethod
     def distribution_sensitivity_scan(
@@ -67,7 +67,7 @@ class ModelSensitivity(object):
             exclude_zero: bool = True,
             zero_eps: float = 1E-8) -> ScanSim:
 
-        dim = ModelSensitivity._create_sampling_dimension(
+        dim = ModelSensitivity.create_sampling_dimension(
             model=model,
             changes=simulation.timecourses[0].changes,
             cv=cv, size=size, distribution=distribution, stype=stype,
@@ -78,12 +78,13 @@ class ModelSensitivity(object):
             simulation=simulation,
             dimensions=[
                 dim,
-            ]
+            ],
+            mapping = {'dim_sens': 0}
         )
         return scan
 
     @staticmethod
-    def _create_sampling_dimension(
+    def create_sampling_dimension(
             model: RoadrunnerSBMLModel,
             changes: Dict = None,
             cv: float = 0.1,
@@ -120,10 +121,10 @@ class ModelSensitivity(object):
                 raise ValueError(f"Unsupported distribution: {distribution}")
             changes[key] = Q_(values, value.units)
 
-        return Dimension(f"dim_1", changes=changes)
+        return Dimension(f"dim_sens", changes=changes)
 
     @staticmethod
-    def _create_difference_dimension(
+    def create_difference_dimension(
             model: RoadrunnerSBMLModel,
             changes: Dict = None,
             difference: float = 0.1,
@@ -157,7 +158,7 @@ class ModelSensitivity(object):
             values[index + num_pars] = value.magnitude * (1.0 - difference)
             changes[key] = Q_(values, value.units)
             index += 1
-        return Dimension(f"dim_1", changes=changes)
+        return Dimension(f"dim_sens", changes=changes)
 
     @staticmethod
     def reference_dict(
