@@ -65,7 +65,7 @@ class SimulatorParallel(SimulatorSerial):
         if "actor_count" in kwargs:
             self.actor_count = kwargs.pop("actor_count")
         else:
-            self.actor_count = cpu_count() - 1
+            self.actor_count = max(cpu_count()-1, 1)
 
         # Create actors once
         logger.warning(f"Creating '{self.actor_count}' SimulationActors")
