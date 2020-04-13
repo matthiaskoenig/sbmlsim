@@ -121,6 +121,9 @@ class Data(object):
                 uindex = self.index[:-3]
             else:
                 uindex = self.index
+
+            if self.unit is None:
+                self.unit = dset.udict[uindex]
             x = dset[self.index].values * dset.ureg(dset.udict[uindex])
 
         elif self.dtype == Data.Types.TASK:
@@ -129,6 +132,8 @@ class Data(object):
             if not isinstance(xres, XResult):
                 raise ValueError("Only Result objects supported in task data.")
 
+            if self.unit is None:
+                self.unit = xres.udict[self.index]
             # FIXME: complete data must be kept
             x = xres.dim_mean(self.index)
             # x = xres[self.index]
@@ -145,6 +150,8 @@ class Data(object):
                     variables[k] = v.data
 
             x = mathml.evaluate(astnode=astnode, variables=variables)
+            if self.unit is None:
+                self.unit = str(x.units)  # check if this is correct
 
         # convert units
         if self.unit:
