@@ -75,7 +75,8 @@ def run_model_clamp1():
     fig, ax1 = plt.subplots(nrows=1, ncols=1, figsize=(5, 5))
 
     for sid in ["X", "Y", "Z"]:
-        add_line(ax1, xres, "time", sid, label=sid)
+        add_line(ax1, xres, xid="time", yid=sid,
+                 xunit="second", yunit="dimensionless", label=sid)
 
     for ax in (ax1,):
         ax.legend()
@@ -92,8 +93,10 @@ def run_model_clamp2():
         fig, (ax1) = plt.subplots(nrows=1, ncols=1, figsize=(5, 5))
         fig.subplots_adjust(wspace=0.3, hspace=0.3)
 
-        add_line(ax=ax1, xres=result, xid='time', yid="X", label="X")
+        add_line(ax=ax1, xres=result, xid='time', yid="X", label="X",
+                 xunit="second", yunit="dimensionless")
         add_line(ax=ax1, xres=result, xid='time', yid="Y", label="Y",
+                 xunit="second", yunit="dimensionless",
                  color="darkblue")
 
         if title:

@@ -32,9 +32,9 @@ def test_plotting():
     fig, (ax1) = plt.subplots(nrows=1, ncols=1, figsize=(5, 5))
     fig.subplots_adjust(wspace=0.3, hspace=0.3)
 
-    add_line(ax=ax1, xres=xres,
+    add_line(ax=ax1, xres=xres, xunit="min", yunit="dimensionless",
              xid='time', yid="X", label="X", color="darkgreen")
-    add_line(ax=ax1, xres=xres,
+    add_line(ax=ax1, xres=xres, xunit="min", yunit="dimensionless",
              xid='time', yid="Y", label="Y", color="darkblue")
 
     ax1.legend()
