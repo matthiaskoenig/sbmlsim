@@ -106,14 +106,14 @@ class RepressilatorExperiment(SimulationExperiment):
 
         # Define functions (data generators)
         Data(
-            self, index="f1", function="(sin(X)+Y+Z)/max(X)", unit="dimensionless",
+            self, index="f1", function="(sin(X)+Y+Z)/max(X)",
             variables={
                 "X": 'task_tc__X',
                 "Y": 'task_tc__Y',
                 "Z": 'task_tc__Z',
             })
         Data(
-            self, index="f2", function="Y/max(Y)", unit="dimensionless",
+            self, index="f2", function="Y/max(Y)",
             variables={
                 "Y": 'task_tc__Y',
             }
@@ -136,13 +136,13 @@ class RepressilatorExperiment(SimulationExperiment):
         )
         plots[0].set_title(f"{self.sid}_{fig1.sid}")
         plots[0].curve(
-            x=Data(self, "time", task="task_tc", unit=unit_time),
-            y=Data(self, "X", task="task_tc", unit=unit_data),
+            x=Data(self, "time", task="task_tc"),
+            y=Data(self, "X", task="task_tc"),
             label="X sim", color="black"
         )
         plots[0].curve(
-            x=Data(self, "time", task="task_tc", unit=unit_time),
-            y=Data(self, "Y", task="task_tc", unit=unit_data),
+            x=Data(self, "time", task="task_tc"),
+            y=Data(self, "Y", task="task_tc"),
             label="Y sim", color="blue"
         )
 

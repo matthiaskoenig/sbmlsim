@@ -399,7 +399,6 @@ class Plot(Base):
     def add_data(self,
                  xid: str, yid: str, yid_sd=None, yid_se=None, count: int=None,
                  dataset: str=None, task: str=None,
-                 xunit=None, yunit=None,
                  label='__nolabel__',
                  xf=1.0, yf=1.0,
                  **kwargs):
@@ -426,10 +425,10 @@ class Plot(Base):
         yerr_label = ''
         if yid_sd:
             yerr_label = "±SD"
-            yerr = Data(experiment, yid_sd, dataset=dataset, task=task, unit=yunit)
+            yerr = Data(experiment, yid_sd, dataset=dataset, task=task)
         elif yid_se:
             yerr_label = "±SE"
-            yerr = Data(experiment, yid_se, dataset=dataset, task=task, unit=yunit)
+            yerr = Data(experiment, yid_se, dataset=dataset, task=task)
 
         # label
         if label != "__nolabel__":
@@ -439,8 +438,8 @@ class Plot(Base):
             label = f"{label}{yerr_label}{count_label}"
 
         self.curve(
-            x=Data(experiment, xid, dataset=dataset, task=task, unit=xunit),
-            y=Data(experiment, yid, dataset=dataset, task=task, unit=yunit),
+            x=Data(experiment, xid, dataset=dataset, task=task),
+            y=Data(experiment, yid, dataset=dataset, task=task),
             yerr=yerr,
             label=label, **kwargs
         )

@@ -94,6 +94,10 @@ def to_figure(figure: Figure):
         else:
             ax.grid(False)
 
+        # units
+        xunit = xax.unit
+        yunit = yax.unit
+
         for curve in plot.curves:
             # TODO: sort by order
 
@@ -102,25 +106,25 @@ def to_figure(figure: Figure):
                 kwargs = curve.style.to_mpl_kwargs()
 
             # mean
-            x = curve.x.data
-            y = curve.y.data
+            x = curve.x.get_data(to_units=xunit)
+            y = curve.y.get_data(to_units=yunit)
 
             # additional data exists in xres
             x_std = None
             if curve.x.dtype == Data.Types.TASK:
                 data = curve.x
                 xres = data.experiment.results[data.task_id]  # type: XResult
-                x_std = xres.dim_std(data.index).to(data.unit)
-                x_min = xres.dim_min(data.index).to(data.unit)
-                x_max = xres.dim_max(data.index).to(data.unit)
+                x_std = xres.dim_std(data.index).to(xunit)
+                x_min = xres.dim_min(data.index).to(xunit)
+                x_max = xres.dim_max(data.index).to(xunit)
 
             y_std = None
             if curve.y.dtype == Data.Types.TASK:
                 data = curve.y
                 xres = data.experiment.results[data.task_id]  # type: XResult
-                y_std = xres.dim_std(data.index).to(data.unit)
-                y_min = xres.dim_min(data.index).to(data.unit)
-                y_max = xres.dim_max(data.index).to(data.unit)
+                y_std = xres.dim_std(data.index).to(yunit)
+                y_min = xres.dim_min(data.index).to(yunit)
+                y_max = xres.dim_max(data.index).to(yunit)
             # print(y_std)
 
 
@@ -141,7 +145,6 @@ def to_figure(figure: Figure):
             elif yerr is not None:
                 ax.errorbar(x.magnitude, y.magnitude, yerr.magnitude,
                             label=curve.name, **kwargs)
-
 
             if y_std is not None:
                 # ax.plot(x.magnitude, y.magnitude + y_std.magnitude, label="__nolabel__", **kwargs)
@@ -232,7 +235,7 @@ def add_data(ax: plt.Axes, data: DataSet,
 @deprecated
 def add_line(ax: plt.Axes, xres: XResult,
              xid: str, yid: str,
-             xunit=None, yunit=None, xf=1.0, yf=1.0, all_lines=False,
+             xunit, yunit, xf=1.0, yf=1.0, all_lines=False,
              label='__nolabel__', **kwargs):
     """ Adding information from a simulation result to a matplotlib figure.
 
@@ -288,8 +291,11 @@ def add_line(ax: plt.Axes, xres: XResult,
             d = dict(zip(dims, item))
             xi = Q_(xres[xid].isel(d).values, xres.udict[xid])
             yi = Q_(xres[yid].isel(d).values, xres.udict[yid])
-            xi = xi.to(xunit)
-            yi = yi.to(yunit)
+            # FIXME: these conversions should not be necessary
+            if xunit:
+                xi = xi.to(xunit)
+            if yunit:
+                yi = yi.to(yunit)
 
             ax.plot(xi.magnitude, yi.magnitude, color=color)
 

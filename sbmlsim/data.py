@@ -29,17 +29,17 @@ class Data(object):
         FUNCTION = 3
 
     def __init__(self, experiment,
-                 index: str, unit: str=None,
+                 index: str,
                  task: str = None,
                  dataset: str = None,
                  function=None, variables=None):
         self.experiment = experiment
         self.index = index
-        self.unit = unit
         self.task_id = task
         self.dset_id = dataset
         self.function = function
         self.variables = variables
+        self.unit = None
 
         if (not self.task_id) and (not self.dset_id) and (not self.function):
             raise ValueError(f"Either 'task_id', 'dset_id' or 'function' "
@@ -101,13 +101,13 @@ class Data(object):
         }
         return d
 
-    @property
-    def data(self):
-        """Returns actual data from the data object"""
-        # FIXME: data caching & store conversion factors
+    def get_data(self, to_units: str = None):
+        """Returns actual data from the data object.
 
+        :param to_units: units to convert to
+        :return:
+        """
         # Necessary to resolve the data
-
         if self.dtype == Data.Types.DATASET:
             # read dataset data
             dset = self.experiment._datasets[self.dset_id]
@@ -122,8 +122,7 @@ class Data(object):
             else:
                 uindex = self.index
 
-            if self.unit is None:
-                self.unit = dset.udict[uindex]
+            self.unit = dset.udict[uindex]
             x = dset[self.index].values * dset.ureg(dset.udict[uindex])
 
         elif self.dtype == Data.Types.TASK:
@@ -132,8 +131,7 @@ class Data(object):
             if not isinstance(xres, XResult):
                 raise ValueError("Only Result objects supported in task data.")
 
-            if self.unit is None:
-                self.unit = xres.udict[self.index]
+            self.unit = xres.udict[self.index]
             # FIXME: complete data must be kept
             x = xres.dim_mean(self.index)
             # x = xres[self.index]
@@ -150,15 +148,15 @@ class Data(object):
                     variables[k] = v.data
 
             x = mathml.evaluate(astnode=astnode, variables=variables)
-            if self.unit is None:
-                self.unit = str(x.units)  # check if this is correct
+            self.unit = str(x.units)  # check if this is correct
 
-        # convert units
-        if self.unit:
-            x = x.to(self.unit)
+        # convert units to requested units
+        if to_units is not None:
+            x = x.to(to_units)
 
         return x
 
+    data = property(get_data)
 
 class DataFunction(object):
     """ Functional data calculation.
