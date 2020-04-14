@@ -1,0 +1,1 @@
+from .fitting import FitMapping, FitData
