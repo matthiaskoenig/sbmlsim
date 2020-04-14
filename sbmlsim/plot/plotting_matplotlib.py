@@ -132,13 +132,15 @@ def to_figure(figure: Figure):
             #if isinstance(x, XResult):
             #    x_mean = x.mean(dim=self._op_dims(), skipna=True).values * self.ureg(self.udict[key])
 
-            yerr = None
-            if curve.yerr is not None:
-                yerr = curve.yerr.data
+
 
             xerr = None
             if curve.xerr is not None:
-                xerr = curve.xerr.data
+                xerr = curve.xerr.get_data(to_units=xunit)
+
+            yerr = None
+            if curve.yerr is not None:
+                yerr = curve.yerr.get_data(to_units=yunit)
 
             if (xerr is None) and (yerr is None):
                 ax.plot(x.magnitude, y.magnitude, label=curve.name, **kwargs)
