@@ -1,1 +1,2 @@
-from .fitting import FitMapping, FitData
+from .fitting import FitMapping, FitData, FitExperiment, FitParameter, \
+    OptimizationProblem
