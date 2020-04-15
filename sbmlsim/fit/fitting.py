@@ -2,6 +2,7 @@ from typing import List, Dict, Iterable
 from sbmlsim.data import Data
 from sbmlsim.experiment import SimulationExperiment
 import numpy as np
+from scipy import optimize
 
 from sbmlsim.data import Data
 
@@ -61,6 +62,7 @@ class FitParameter(object):
         return f"{self.__class__.__name__}<{self.pid} = {self.start_value} " \
                f"[{self.lower_bound} - {self.upper_bound}]>"
 
+
 class FitExperiment(object):
     """
     A Simulation Experiment used in a fitting.
@@ -86,6 +88,7 @@ class FitExperiment(object):
 
     def __str__(self):
         return f"{self.__class__.__name__}({self.experiment} {self.mappings})"
+
 
 class FitResult(object):
     def __init__(self, parameters, status, trajectory):
@@ -113,7 +116,20 @@ class OptimizationProblem(object):
         self.experiments = fit_experiments
         self.parameters = fit_parameters
 
+    @property
+    def x0(self):
+        """Initial values of parameters."""
+        return [p.start_value for p in self.parameters]
+
+    @property
+    def bounds(self):
+        """Bounds of parameters."""
+        lb = [p.lower_bound for p in self.parameters]
+        ub = [p.upper_bound for p in self.parameters]
+        return [lb, ub]
+
     def __str__(self):
+        """String representation."""
         info = []
         info.append("-"*80)
         info.append(self.__class__.__name__)
@@ -128,17 +144,20 @@ class OptimizationProblem(object):
     def report(self):
         print(str(self))
 
-
-    def _residuals(self):
+    def residuals(self, **kwargs):
         """ Calculates residuals
 
         :return:
         """
+        # **kwargs is dictionary of current parameters
+
+        # [1] simulate all simulation experiments with current parameters
+        # TODO: simulation
+
+        # [2] interpolate observables with reference time points
         # TODO: interpolation (make this fast (c++ and numba))
 
-        # TODO implement (non-linear least square optimization
-
-        # TODO: make this fast (c++ and numba)
+        # [3] calculate residuals between simulation and reference output
         raise NotImplementedError
 
     def optimize(self):
@@ -151,6 +170,8 @@ class OptimizationProblem(object):
         -> local optima of optimization
 
         """
+        results = optimize.least_squares(fun=self.residual, x0=p0, bounds=(-np.inf, np.inf),
+                                            kwargs={"x": x, "y": y})
         # TODO implement (non-linear least square optimization)
         # TODO: make fast and native parallelization (cluster deployment)
         raise NotImplementedError
