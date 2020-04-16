@@ -27,9 +27,6 @@ from matplotlib.pyplot import Figure as FigureMPL
 logger = logging.getLogger(__name__)
 
 
-
-
-
 class SimulationExperiment(object):
     """Generic simulation experiment.
 
@@ -41,7 +38,7 @@ class SimulationExperiment(object):
                  sid: str = None, base_path: Path = None,
                  data_path: Path = None,
                  ureg: UnitRegistry = None, **kwargs):
-        """
+        """SimulationExperiemend
 
         :param sid:
         :param base_path:
