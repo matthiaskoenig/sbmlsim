@@ -18,6 +18,7 @@ from sbmlsim.data import DataSet, Data
 from sbmlsim.model import AbstractModel
 from sbmlsim.utils import timeit
 from sbmlsim.units import UnitRegistry, Units
+from sbmlsim.fit import FitMapping, FitData
 
 from sbmlsim.plot import Figure
 from sbmlsim.plot.plotting_matplotlib import plt, to_figure
@@ -26,11 +27,7 @@ from matplotlib.pyplot import Figure as FigureMPL
 logger = logging.getLogger(__name__)
 
 
-@dataclass
-class ExperimentResult:
-    """Result of a simulation experiment"""
-    experiment: 'SimulationExperiment'
-    output_path: Path
+
 
 
 class SimulationExperiment(object):
@@ -38,6 +35,7 @@ class SimulationExperiment(object):
 
     Consists of models, datasets, simulations, tasks, results, processing, figures
     """
+
     @timeit
     def __init__(self, simulator: SimulatorAbstract = None,
                  sid: str = None, base_path: Path = None,
@@ -91,25 +89,28 @@ class SimulationExperiment(object):
         self.Q_ = ureg.Quantity
 
         # load everything once, never call this function again
+        self._data = {}
         self._models = self.models()
         self._datasets = self.datasets()
-
-        # FIXME: multiple analysis possible, handle consistently
         self._simulations = self.simulations()
         self._tasks = self.tasks()
+        self._fit_mappings = self.fit_mappings()  # type: Dict[str, FitMapping]
+        self.datagenerators()  # definition of data accessed later on (sets self._data)
 
         # task results
         self._results = None
-
         # processing
-        self._data = None
         self._functions = None
-
         # figures
         self._figures = None
 
         # settings
         self.settings = kwargs
+
+        # validation
+        self._check_keys()
+        self._check_types()
+
 
     # --- MODELS --------------------------------------------------------------
     @timeit
@@ -130,6 +131,14 @@ class SimulationExperiment(object):
     # --- SIMULATIONS ---------------------------------------------------------
     def simulations(self) -> Dict[str, AbstractSim]:
         """Simulation definitions."""
+        return {}
+
+    # --- FITTING -------------------------------------------------------------
+    def fit_mappings(self) -> Dict[str, FitMapping]:
+        """ Fit mappings, mapping reference data on observables.
+
+        Used for the optimization of parameters.
+        """
         return {}
 
     # --- FUNCTIONS -----------------------------------------------------------
@@ -154,7 +163,7 @@ class SimulationExperiment(object):
         """Check that everything is okay with the experiment."""
         # string keys for main objects must be unique on SimulationExperiment
         all_keys = dict()
-        for field_key in ["_models", "_datasets", "_tasks", "_simulations"]:
+        for field_key in ["_models", "_datasets", "_tasks", "_simulations", "_fit_mappings"]:
             field = getattr(self, field_key)
             if not isinstance(field, dict):
                 raise ValueError(
@@ -175,10 +184,12 @@ class SimulationExperiment(object):
             if not isinstance(dset, DataSet):
                 raise ValueError(f"datasets must be of type DataSet, but "
                                  f"dataset '{key}' has type: '{type(dset)}'")
+
         for key, model in self._models.items():
             if not isinstance(model, AbstractModel):
                 raise ValueError(f"datasets must be of type AbstractModel, but "
                                  f"model '{key}' has type: '{type(model)}'")
+
         for key, task in self._tasks.items():
             if not isinstance(task, Task):
                 raise ValueError(f"tasks must be of type Task, but "
@@ -190,50 +201,57 @@ class SimulationExperiment(object):
                     f"simulations must be of type AbstractSim, but "
                     f"simulation '{key}' has type: '{type(sim)}'")
 
+        for key, mapping in self._fit_mappings.items():
+            if not isinstance(mapping, FitMapping):
+                raise ValueError(
+                    f"fit_mappings must be of type FitMappintg, but "
+                    f"mapping '{key}' has type: '{type(mapping)}'")
+
     # --- EXECUTE -------------------------------------------------------------
+
     @timeit
-    def run(self, output_path: Path, show_figures: bool = True,
-            save_results: bool = False) -> ExperimentResult:
+    def run(self, output_path: Path = None, show_figures: bool = True,
+            save_results: bool = False) -> 'ExperimentResult':
         """
         Executes given experiment and stores results.
         Returns info dictionary.
         """
-        if not Path.exists(output_path):
-            Path.mkdir(output_path, parents=True)
-            logging.info(f"'output_path' created: '{output_path}'")
 
-        # validation
-        self._check_keys()
-        self._check_types()
-
-        # definition of data accessed later on
-        self._data = {}
-        self.datagenerators()
 
         # some of the figures require actual numerical results!
         # this results in execution of the tasks! On the other hand we
         # want to register the data before running the tasks.
-        # FIXME
+        # FIXME (executed 2 times)
         self._figures = self.figures()
 
         # run simulations
         self._run_tasks()  # sets self._results
 
+        # evaluate mappings
+        self.evaluate_mappings()
+
         # some of the figures require actual numerical results!
+        # FIXME (executed 2 times)
         self._figures = self.figures()
 
-        # save outputs
-        self.save_datasets(output_path)
+        # create outputs
+        if output_path is not None:
+            if not Path.exists(output_path):
+                Path.mkdir(output_path, parents=True)
+                logging.info(f"'output_path' created: '{output_path}'")
 
-        # Saving takes often much longer then simulation
-        if save_results:
-            self.save_results(output_path)
+            # save outputs
+            self.save_datasets(output_path)
 
-        # save figure
-        self.save_figures(output_path)
+            # Saving takes often much longer then simulation
+            if save_results:
+                self.save_results(output_path)
 
-        # serialization
-        self.to_json(output_path / f"{self.sid}.json")
+            # save figure
+            self.save_figures(output_path)
+
+            # serialization
+            self.to_json(output_path / f"{self.sid}.json")
 
         # display figures
         if show_figures:
@@ -283,6 +301,13 @@ class SimulationExperiment(object):
                 else:
                     raise ValueError(f"Unsupported simulation type: "
                                      f"{type(sim)}")
+
+    def evaluate_mappings(self):
+        """Evaluates the fit mappings."""
+        for key, mapping in self._fit_mappings.items():
+            for fit_data in [mapping.reference, mapping.observable]:
+                # Get actual data from the results
+                fit_data.get_data()
 
     # --- SERIALIZATION -------------------------------------------------------
     @timeit
@@ -405,3 +430,9 @@ class JSONExperiment(SimulationExperiment):
         experiment._simulations = simulations
 
         return experiment
+
+@dataclass
+class ExperimentResult:
+    """Result of a simulation experiment"""
+    experiment: SimulationExperiment
+    output_path: Path

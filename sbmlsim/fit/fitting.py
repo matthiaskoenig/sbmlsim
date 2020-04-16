@@ -1,8 +1,8 @@
-from typing import List, Dict, Iterable
-from sbmlsim.data import Data
-from sbmlsim.experiment import SimulationExperiment
 import numpy as np
 from scipy import optimize
+from typing import List, Dict, Iterable
+from sbmlsim.data import Data
+
 
 from sbmlsim.data import Data
 
@@ -13,22 +13,50 @@ class FitData(object):
     This is either data from a dataset, a simulation results from
     a task or functional data, i.e. calculated from other data.
     """
-    def __init__(self, xid: str, yid: str,
+    def __init__(self, experiment: 'SimulationExperiment',
+                 xid: str, yid: str,
                  xid_sd: str=None, xid_se: str=None,
                  yid_sd: str=None, yid_se: str=None,
                  dataset: str=None, task: str=None, function: str=None):
-        self.xid = xid
-        self.xid_sd = xid_sd
-        self.xid_se = xid_se
-        self.yid = yid
-        self.yid_sd = yid_sd
-        self.yid_se = yid_se
+
+        self.dataset = dataset
+        self.task = task
+        self.function = function
+
+        # FIXME: simplify
+        self.x = Data(experiment=experiment, index=xid,
+                 task=self.task, dataset=self.dataset, function=self.function)
+        self.y = Data(experiment=experiment, index=yid,
+                 task=self.task, dataset=self.dataset, function=self.function)
+        self.x_sd = None
+        self.x_se = None
+        self.y_sd = None
+        self.y_se = None
+        if xid_sd:
+            self.x_sd = Data(experiment=experiment, index=xid_sd, task=self.task,
+                        dataset=self.dataset, function=self.function)
+        if xid_se:
+            self.x_se = Data(experiment=experiment, index=xid_se, task=self.task,
+                        dataset=self.dataset, function=self.function)
+        if yid_sd:
+            self.y_sd = Data(experiment=experiment, index=yid_sd, task=self.task,
+                        dataset=self.dataset, function=self.function)
+        if yid_se:
+            self.y_se = Data(experiment=experiment, index=yid_se, task=self.task,
+                             dataset=self.dataset, function=self.function)
+
+    def get_data(self):
+        for key in ["x", "y", "x_sd", "x_se", "y_sd", "y_se"]:
+            d = getattr(self, key)
+            if d is not None:
+                data = d.data
+                print(f"FitData: {key} = {data}")
 
 
 class FitMapping(object):
     """Mapping of reference data to obeservables in the model."""
 
-    def __init__(self, experiment: SimulationExperiment,
+    def __init__(self, experiment: 'sbmlsim.experiment.SimulationExperiment',
                  reference: FitData, observable: FitData):
         """FitMapping.
 
@@ -68,7 +96,8 @@ class FitExperiment(object):
     A Simulation Experiment used in a fitting.
     """
 
-    def __init__(self, experiment: SimulationExperiment, weight: float=1.0, mappings: List[str]=None,
+    def __init__(self, experiment: 'sbmlsim.simulation.SimulationExperiment',
+                 weight: float=1.0, mappings: List[str]=None,
                  fit_parameters: List[FitParameter]=None):
         """A Simulation experiment used in a fitting.
 
@@ -80,7 +109,7 @@ class FitExperiment(object):
         """
         self.experiment = experiment
         if mappings is None:
-            mappings = experiment.fitting()
+            mappings = experiment._fit_mappings
         self.mappings = mappings
         self.weight = weight
         if fit_parameters is None:
@@ -144,15 +173,29 @@ class OptimizationProblem(object):
     def report(self):
         print(str(self))
 
-    def residuals(self, **kwargs):
+    def timecourse_sims(self):
+        """Collect all the timecourse_simulations which must be run
+
+        :return:
+        """
+        # TODO:
+
+        self.simulations = None
+
+    def residuals(self, p, **kwargs):
         """ Calculates residuals
 
         :return:
         """
+        m = 1
+        residuals = np.zeros(shape=(m,))
         # **kwargs is dictionary of current parameters
 
         # [1] simulate all simulation experiments with current parameters
         # TODO: simulation
+        # get tasks to run
+
+        # inject parameters in tasks
 
         # [2] interpolate observables with reference time points
         # TODO: interpolation (make this fast (c++ and numba))
@@ -170,6 +213,8 @@ class OptimizationProblem(object):
         -> local optima of optimization
 
         """
+        x0 = self.x0
+        bounds = self.bounds
         results = optimize.least_squares(fun=self.residual, x0=p0, bounds=(-np.inf, np.inf),
                                             kwargs={"x": x, "y": y})
         # TODO implement (non-linear least square optimization)
