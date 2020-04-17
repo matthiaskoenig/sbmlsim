@@ -1,4 +1,4 @@
-from typing import List, Dict, Iterable
+from typing import List, Dict, Iterable, Set
 from collections import defaultdict, namedtuple
 import numpy as np
 from scipy import optimize
@@ -138,7 +138,7 @@ class FitExperiment(object):
     """
 
     def __init__(self, experiment: 'sbmlsim.simulation.SimulationExperiment',
-                 weight: float=1.0, mappings: List[str]=None,
+                 weight: float=1.0, mappings: Set[str]=None,
                  fit_parameters: List[FitParameter]=None):
         """A Simulation experiment used in a fitting.
 
@@ -277,6 +277,8 @@ class OptimizationProblem(object):
         for fit_experiment in self.experiments:
             sim_experiment = fit_experiment.experiment
             for key, mapping in sim_experiment._fit_mappings.items():
+                if key not in fit_experiment.mappings:
+                    continue
                 # Get actual data from the results
 
                 # print("observable")
@@ -302,7 +304,7 @@ class OptimizationProblem(object):
 
                 if make_plots:
                     plt.plot(data_ref.x.magnitude, data_ref.y.magnitude, "s", color="black", label="reference_data")
-                    plt.plot(data_obs.x.magnitude, data_obs.y.magnitude, "-", color="black", label="observable")
+                    plt.plot(data_obs.x.magnitude, data_obs.y.magnitude, "-", color="blue", label="observable")
                     plt.plot(data_ref.x.magnitude, yobs, "o", color="blue", label="interpolation")
                     plt.plot(data_ref.x.magnitude, res, "o", color="darkorange", label="residuals")
                     plt.xlabel("x")
