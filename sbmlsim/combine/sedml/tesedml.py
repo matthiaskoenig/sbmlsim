@@ -741,12 +741,12 @@ class SEDMLCodeFactory(object):
         Required for resolution of order of all simulations.
         """
         def add_children(node):
-            typeCode = node.task.getTypeCode()
+            typeCode = node.task_id.getTypeCode()
             if typeCode == libsedml.SEDML_TASK:
                 return  # no children
             elif typeCode == libsedml.SEDML_TASK_REPEATEDTASK:
                 # add the ordered list of subtasks as children
-                subtasks = SEDMLCodeFactory.getOrderedSubtasks(node.task)
+                subtasks = SEDMLCodeFactory.getOrderedSubtasks(node.task_id)
                 for st in subtasks:
                     # get real task for subtask
                     t = doc.getTask(st.getTask())
@@ -755,7 +755,7 @@ class SEDMLCodeFactory(object):
                     # recursive adding of children
                     add_children(child)
             else:
-                raise IOError('Unsupported task type: {}'.format(node.task.getElementName()))
+                raise IOError('Unsupported task type: {}'.format(node.task_id.getElementName()))
 
         # create root
         root = SEDMLCodeFactory.TaskNode(rootTask, depth=0)
@@ -784,7 +784,7 @@ class SEDMLCodeFactory(object):
 
         # iterate over the tree
         for kn, node in enumerate(treeNodes):
-            taskType = node.task.getTypeCode()
+            taskType = node.task_id.getTypeCode()
 
             # Create information for task
             # We are going down in the tree
@@ -792,7 +792,7 @@ class SEDMLCodeFactory(object):
                 taskLines = SEDMLCodeFactory.repeatedTaskToPython(doc, node=node)
 
             elif taskType == libsedml.SEDML_TASK:
-                tid = node.task.getId()
+                tid = node.task_id.getId()
                 taskLines = SEDMLCodeFactory.simpleTaskToPython(doc=doc, node=node)
             else:
                 lines.append("# Unsupported task: {}".format(taskType))
@@ -847,20 +847,20 @@ class SEDMLCodeFactory(object):
                         # if taskType == libsedml.SEDML_TASK_REPEATEDTASK:
                         # print('task {}'.format(node.task.getId()))
                         # print('  peek {}'.format(peek.task.getId()))
-                        if node.task.getTypeCode() == libsedml.SEDML_TASK_REPEATEDTASK:
+                        if node.task_id.getTypeCode() == libsedml.SEDML_TASK_REPEATEDTASK:
                         # if peek.task.getTypeCode() == libsedml.SEDML_TASK_REPEATEDTASK:
                             # sid = task.getSimulationReference()
                             # simulation = doc.getSimulation(sid)
                             # simType = simulation.getTypeCode()
                             # if simType is libsedml.SEDML_SIMULATION_STEADYSTATE:
-                            terminator = 'terminate_trace({})'.format(node.task.getId())
+                            terminator = 'terminate_trace({})'.format(node.task_id.getId())
                         else:
-                            terminator = '{}'.format(node.task.getId())
+                            terminator = '{}'.format(node.task_id.getId())
 
                         lines.extend([
                             "",
                             # "    "*node.depth + "{}.extend({})".format(peek.task.getId(), terminator),
-                            "    " * node.depth + "{}.extend({})".format(peek.task.getId(), node.task.getId()),
+                            "    " * node.depth + "{}.extend({})".format(peek.task_id.getId(), node.task_id.getId()),
                         ])
                         node = nodeStack.pop()
 
@@ -887,7 +887,7 @@ class SEDMLCodeFactory(object):
         :rtype:
         """
         lines = []
-        task = node.task
+        task = node.task_id
         lines.append("# Task: <{}>".format(task.getId()))
         lines.append("{} = [None]".format(task.getId()))
 
@@ -963,21 +963,21 @@ class SEDMLCodeFactory(object):
 
         # <selections> of all parents
         # ---------------------------
-        selections = SEDMLCodeFactory.selectionsForTask(doc=doc, task=node.task)
+        selections = SEDMLCodeFactory.selectionsForTask(doc=doc, task=node.task_id)
         for p in parents:
-            selections.update(SEDMLCodeFactory.selectionsForTask(doc=doc, task=p.task))
+            selections.update(SEDMLCodeFactory.selectionsForTask(doc=doc, task=p.task_id))
 
         # <setValues> of all parents
         # ---------------------------
         # apply changes based on current variables, parameters and range variables
         for parent in reversed(parents):
-            rangeId = parent.task.getRangeId()
+            rangeId = parent.task_id.getRangeId()
             helperRanges = {}
-            for r in parent.task.getListOfRanges():
+            for r in parent.task_id.getListOfRanges():
                 if r.getId() != rangeId:
                     helperRanges[r.getId()] = r
 
-            for setValue in parent.task.getListOfTaskChanges():
+            for setValue in parent.task_id.getListOfTaskChanges():
                 variables = {}
                 # range variables
                 variables[rangeId] = "__value__{}".format(rangeId)
@@ -1067,7 +1067,7 @@ class SEDMLCodeFactory(object):
         - apply all changes (SetValues)
         """
         # storage of results
-        task = node.task
+        task = node.task_id
         lines = ["", "{} = []".format(task.getId())]
 
         # <Range Definition>
@@ -1133,7 +1133,7 @@ class SEDMLCodeFactory(object):
         # models to reset via task tree below node
         mids = set([])
         for child in node:
-            t = child.task
+            t = child.task_id
             if t.getTypeCode() == libsedml.SEDML_TASK:
                 mids.add(t.getModelReference())
         # reset models referenced in tree below task

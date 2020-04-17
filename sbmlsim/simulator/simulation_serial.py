@@ -73,7 +73,6 @@ class SimulatorSerial(SimulatorAbstract, SimulatorWorker):
         scan = ScanSim(simulation=simulation)
         return self.run_scan(scan)
 
-    @timeit
     def run_scan(self, scan: ScanSim) -> XResult:
         """ Run a scan simulation."""
         # normalize the scan (simulation and dimensions)

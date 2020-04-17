@@ -415,7 +415,7 @@ class SEDMLParser(object):
         tree_nodes = [n for n in task_tree]
 
         for kn, node in enumerate(tree_nodes):
-            task_type = node.task.getTypeCode()
+            task_type = node.task_id.getTypeCode()
 
             # Create simulation for task
             if task_type == libsedml.SEDML_TASK:

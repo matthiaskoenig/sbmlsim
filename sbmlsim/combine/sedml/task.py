@@ -72,12 +72,12 @@ class TaskTree(object):
         The task tree is used to resolve the order of all simulations.
         """
         def add_children(node):
-            typeCode = node.task.getTypeCode()
+            typeCode = node.task_id.getTypeCode()
             if typeCode == libsedml.SEDML_TASK:
                 return  # no children
             elif typeCode == libsedml.SEDML_TASK_REPEATEDTASK:
                 # add the ordered list of subtasks as children
-                subtasks = TaskTree.get_ordered_subtasks(node.task)
+                subtasks = TaskTree.get_ordered_subtasks(node.task_id)
                 for st in subtasks:
                     # get real task for subtask
                     t = sed_task.getTask(st.getTask())
@@ -86,7 +86,7 @@ class TaskTree(object):
                     # recursive adding of children
                     add_children(child)
             else:
-                raise IOError('Unsupported task type: {}'.format(node.task.getElementName()))
+                raise IOError('Unsupported task type: {}'.format(node.task_id.getElementName()))
 
         # create root
         root = TaskNode(root_task, depth=0)
@@ -194,19 +194,19 @@ class Test(object):
         # ---------------------------
         selections = SEDMLCodeFactory.selections_for_task(doc=doc, sed_task=node.task)
         for p in parents:
-            selections.update(SEDMLCodeFactory.selections_for_task(doc=doc, sed_task=p.task))
+            selections.update(SEDMLCodeFactory.selections_for_task(doc=doc, sed_task=p.task_id))
 
         # <setValues> of all parents
         # ---------------------------
         # apply changes based on current variables, parameters and range variables
         for parent in reversed(parents):
-            rangeId = parent.task.getRangeId()
+            rangeId = parent.task_id.getRangeId()
             helperRanges = {}
-            for r in parent.task.getListOfRanges():
+            for r in parent.task_id.getListOfRanges():
                 if r.getId() != rangeId:
                     helperRanges[r.getId()] = r
 
-            for setValue in parent.task.getListOfTaskChanges():
+            for setValue in parent.task_id.getListOfTaskChanges():
                 variables = {}
                 # range variables
                 variables[rangeId] = "__value__{}".format(rangeId)
@@ -296,7 +296,7 @@ class Test(object):
         - apply all changes (SetValues)
         """
         # storage of results
-        task = node.task
+        task = node.task_id
         lines = ["", "{} = []".format(task.getId())]
 
         # <Range Definition>
@@ -362,7 +362,7 @@ class Test(object):
         # models to reset via task tree below node
         mids = set([])
         for child in node:
-            t = child.task
+            t = child.task_id
             if t.getTypeCode() == libsedml.SEDML_TASK:
                 mids.add(t.getModelReference())
         # reset models referenced in tree below task
