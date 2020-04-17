@@ -303,14 +303,23 @@ class OptimizationProblem(object):
                 parts.append(res)
 
                 if make_plots:
-                    plt.plot(data_ref.x.magnitude, data_ref.y.magnitude, "s", color="black", label="reference_data")
+                    yerr = None
+                    if data_ref.y_sd is not None:
+                        yerr = data_ref.y_sd.to(data_obs.y.units)
+                    if data_ref.y_se is not None:
+                        yerr = data_ref.y_se.to(data_obs.y.units)
+                    if yerr is None:
+                        plt.plot(data_ref.x.magnitude, data_ref.y.magnitude, "s", color="black", label="reference_data")
+                    else:
+                        plt.errorbar(data_ref.x.magnitude, data_ref.y.magnitude, yerr=yerr.magnitude,
+                                 marker="s", color="black", label="reference_data")
                     plt.plot(data_obs.x.magnitude, data_obs.y.magnitude, "-", color="blue", label="observable")
                     plt.plot(data_ref.x.magnitude, yobs, "o", color="blue", label="interpolation")
                     plt.plot(data_ref.x.magnitude, res, "o", color="darkorange", label="residuals")
                     plt.xlabel("x")
                     plt.ylabel("y")
                     if title:
-                        plt.title(title)
+                        plt.title(f"{sim_experiment.sid}: {title}")
                     plt.legend()
                     plt.show()
 
