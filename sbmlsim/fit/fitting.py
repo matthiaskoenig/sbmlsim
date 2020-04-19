@@ -355,7 +355,7 @@ class OptimizationProblem(object):
         else:
             return np.concatenate(parts)
 
-    def plot_costs(self, res_data_start, res_data_fit):
+    def plot_costs(self, res_data_start, res_data_fit, filepath=None):
         data = []
         types = ["initial", "fit"]
 
@@ -372,13 +372,18 @@ class OptimizationProblem(object):
                 })
         cost_df = pd.DataFrame(data, columns=["id", "experiment", "mapping", "cost", "type"])
 
+        fig, ax = plt.subplots(nrows=1, ncols=1, figsize=(10,10))
         sns.set_color_codes("pastel")
-        ax = sns.barplot(x="cost", y="id", hue="type", data=cost_df)
+        sns.barplot(ax=ax, x="cost", y="id", hue="type", data=cost_df)
+        ax.set_xscale("log")
+        if filepath:
+            fig.savefig(filepath)
         plt.show()
 
 
+
     def plot_residuals(self, res_data_start, res_data_fit=None,
-                       titles=["initial", "fit"]):
+                       titles=["initial", "fit"], filepath=None):
         """ Plot residual data.
 
         :param res_data_start: initial residual data
@@ -467,6 +472,9 @@ class OptimizationProblem(object):
                     ylim2 = ax2.get_ylim()
                     for ax in axes:
                         ax.set_ylim([min(ylim1[0],ylim2[0]), max(ylim1[1],ylim2[1])])
+
+            if filepath is not None:
+                fig.savefig(filepath / f"{sid}.png")
             plt.show()
 
 
