@@ -8,7 +8,7 @@ import pandas as pd
 
 from sbmlsim.data import Data
 from sbmlsim.simulation import TimecourseSim, ScanSim
-
+from sbmlsim.utils import timeit
 from sbmlsim.plot.plotting_matplotlib import plt  # , GridSpec
 
 
@@ -288,11 +288,12 @@ class OptimizationProblem(object):
                 # Get actual data from the results
                 data_obs = mapping.observable.get_data()
 
-                # convert reference data to observable
+                # convert & prepare reference data to observable
+                # -------------------------------------
+                # FIXME: Do once outside of residuals!
                 data_ref = mapping.reference.get_data()
                 data_ref.x = data_ref.x.to(data_obs.x.units)
                 data_ref.y = data_ref.y.to(data_obs.y.units)
-
                 x_ref = data_ref.x.magnitude
                 y_ref = data_ref.y.magnitude
 
@@ -302,8 +303,16 @@ class OptimizationProblem(object):
                 elif data_ref.y_se is not None:
                     y_ref_err = data_ref.y_se.to(data_obs.y.units).magnitude
 
+                # remove NaN
+                x_ref = x_ref[~np.isnan(y_ref)]
+                y_ref_err = y_ref_err[~np.isnan(y_ref)]
+                y_ref = y_ref[~np.isnan(y_ref)]
+                # -------------------------------------
+
                 # interpolation
                 # TODO: interpolation (make this fast (c++ and numba))
+                # FIXME: make a fast interpolation via the datapoints left and right of experimental
+                # points (or directly request the necessary data points)
                 f = interpolate.interp1d(x=data_obs.x.magnitude, y=data_obs.y.magnitude, copy=False, assume_sorted=True)
                 y_obs = f(x_ref)
 
@@ -377,7 +386,7 @@ class OptimizationProblem(object):
         """
 
         for sid in res_data_start.keys():
-            fig, ((a1, a2), (a3, a4), (a5, a6)) = plt.subplots(nrows=3, ncols=2, figsize=(7, 7))
+            fig, ((a1, a2), (a3, a4), (a5, a6)) = plt.subplots(nrows=3, ncols=2, figsize=(10, 10))
 
             axes = [(a1, a3, a5), (a2, a4, a6)]
             if titles is None:
@@ -417,12 +426,12 @@ class OptimizationProblem(object):
                 for ax in (ax1, ax2):
                     ax.plot(x_ref, res, "o", color="darkorange",
                             label="residuals")
-                ax1.fill_between(data_ref.x.magnitude, res, np.zeros_like(res),
+                ax1.fill_between(x_ref, res, np.zeros_like(res),
                                  alpha=0.4, color="darkorange", label="__nolabel__")
 
                 ax2.plot(x_ref, res_weighted, "o", color="darkgreen",
                          label="weighted residuals")
-                ax2.fill_between(data_ref.x.magnitude, res_weighted,
+                ax2.fill_between(x_ref, res_weighted,
                                  np.zeros_like(res), alpha=0.4, color="darkgreen",
                                  label="__nolabel__")
 
@@ -461,6 +470,7 @@ class OptimizationProblem(object):
             plt.show()
 
 
+    @timeit
     def optimize(self, **kwargs):
         """Runs optimization problem.
 

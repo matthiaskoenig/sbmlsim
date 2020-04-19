@@ -337,7 +337,9 @@ def load_pkdb_dataframe(sid, data_path, sep="\t", comment="#", **kwargs) -> pd.D
     if not path.exists():
         path = data_path / study / f'.{sid}.tsv'
 
-    return pd.read_csv(path, sep=sep, comment=comment, **kwargs)
+    df = pd.read_csv(path, sep=sep, comment=comment, **kwargs)
+    df = df.dropna(how='all')  # drop all NA rows
+    return df
 
 
 def load_pkdb_dataframes_by_substance(sid, data_path, **kwargs) -> Dict[str, pd.DataFrame]:
