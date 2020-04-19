@@ -7,7 +7,8 @@ from scipy import interpolate
 from sbmlsim.data import Data
 from sbmlsim.simulation import TimecourseSim, ScanSim
 
-from sbmlsim.plot.plotting_matplotlib import plt
+from sbmlsim.plot.plotting_matplotlib import plt  # , GridSpec
+
 
 class FitDataResult(object):
     def __init__(self):
@@ -298,29 +299,71 @@ class OptimizationProblem(object):
                 f = interpolate.interp1d(x=data_obs.x.magnitude, y=data_obs.y.magnitude, copy=False, assume_sorted=True)
                 yobs = f(data_ref.x.magnitude)
 
+                # calculate weights based on errors
+                yerr = None
+                if data_ref.y_sd is not None:
+                    yerr = data_ref.y_sd.to(data_obs.y.units)
+                if data_ref.y_se is not None:
+                    yerr = data_ref.y_se.to(data_obs.y.units)
+
+                if yerr is not None:
+                    weights = 1.0 / yerr.magnitude.copy()  # the larger the error, the smaller the weight
+                    weights[np.isnan(weights)] = np.nanmax(weights)  # NaNs are filled with minimal errors, i.e. max weights
+                    weights = weights / np.min(weights)  # normalize minimal weight to 1.0
+                else:
+                    weights = np.ones_like(data_ref.y.magnitude)
+
+                # experiment based weight
+                weights = weights * fit_experiment.weight
+
                 # calculate residuals
                 res = yobs - data_ref.y.magnitude
-                parts.append(res)
+                res_weighted = res * weights
+                parts.append(res_weighted)
 
+                # ---------------------
+                # Plotting
+                # ---------------------
                 if make_plots:
-                    yerr = None
-                    if data_ref.y_sd is not None:
-                        yerr = data_ref.y_sd.to(data_obs.y.units)
-                    if data_ref.y_se is not None:
-                        yerr = data_ref.y_se.to(data_obs.y.units)
+                    fig, (ax1, ax2, ax3) = plt.subplots(nrows=3, ncols=1, figsize=(5, 7))
+
+                    for ax in (ax1, ax2, ax3):
+                        ax.axhline(y=0, color="black")
+
                     if yerr is None:
-                        plt.plot(data_ref.x.magnitude, data_ref.y.magnitude, "s", color="black", label="reference_data")
+                        ax1.plot(data_ref.x.magnitude, data_ref.y.magnitude, "s", color="black", label="reference_data")
                     else:
-                        plt.errorbar(data_ref.x.magnitude, data_ref.y.magnitude, yerr=yerr.magnitude,
+                        ax1.errorbar(data_ref.x.magnitude, data_ref.y.magnitude, yerr=yerr.magnitude,
                                  marker="s", color="black", label="reference_data")
-                    plt.plot(data_obs.x.magnitude, data_obs.y.magnitude, "-", color="blue", label="observable")
-                    plt.plot(data_ref.x.magnitude, yobs, "o", color="blue", label="interpolation")
-                    plt.plot(data_ref.x.magnitude, res, "o", color="darkorange", label="residuals")
-                    plt.xlabel("x")
-                    plt.ylabel("y")
+                    ax1.plot(data_obs.x.magnitude, data_obs.y.magnitude, "-", color="blue", label="observable")
+                    ax1.plot(data_ref.x.magnitude, yobs, "o", color="blue", label="interpolation")
+                    for ax in (ax1, ax2):
+                        ax.plot(data_ref.x.magnitude, res, "o", color="darkorange", label="residuals")
+                    ax1.fill_between(data_ref.x.magnitude, res, np.zeros_like(res), alpha=0.4, color="darkorange", label="__nolabel__")
+
+                    ax2.plot(data_ref.x.magnitude, res_weighted, "o", color="darkgreen", label="weighted residuals")
+                    ax2.fill_between(data_ref.x.magnitude, res_weighted, np.zeros_like(res), alpha=0.4, color="darkgreen", label="__nolabel__")
+
+                    res_weighted2 = np.power(res_weighted, 2)
+                    ax3.plot(data_ref.x.magnitude, res_weighted2, "o", color="darkred", label="(weighted residuals)^2")
+                    ax3.fill_between(data_ref.x.magnitude, res_weighted2, np.zeros_like(res), alpha=0.4, color="darkred", label="__nolabel__")
+
+                    for ax in (ax1, ax2):
+                        plt.setp(ax.get_xticklabels(), visible=False)
+
+                    # ax3.set_xlabel("x")
+                    for ax in (ax2, ax3):
+                        ax.set_xlim(ax1.get_xlim())
                     if title:
-                        plt.title(f"{sim_experiment.sid}: {title}")
-                    plt.legend()
+                        title = "{}: {} (cost={:.4e})".format(
+                            sim_experiment.sid, title, 0.5*np.sum(res_weighted2)
+                        )
+                        ax1.set_title(title)
+                    for ax in (ax1, ax2, ax3):
+                        plt.setp(ax.get_yticklabels(), visible=False)
+                        # ax.set_ylabel("y")
+                        ax.legend()
+
                     plt.show()
 
         residuals = np.concatenate(parts)
