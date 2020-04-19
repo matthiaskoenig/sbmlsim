@@ -84,6 +84,7 @@ setup(
         "ray>=0.8.0",
         "matplotlib>=3.1",
         "altair>=4.0.0",
+        "seaborn>=0.10.0",
         "coloredlogs",
         "Sphinx",
         "sphinx_rtd_theme",
