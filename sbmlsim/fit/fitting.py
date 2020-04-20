@@ -355,32 +355,6 @@ class OptimizationProblem(object):
         else:
             return np.concatenate(parts)
 
-    def plot_costs(self, res_data_start, res_data_fit, filepath=None):
-        data = []
-        types = ["initial", "fit"]
-
-        for sid in res_data_start.keys():
-            for k, res_data in enumerate([res_data_start, res_data_fit]):
-                rdata = res_data[sid]
-
-                data.append({
-                    'id': sid,
-                    'experiment': rdata['experiment'],
-                    'mapping': rdata['mapping'],
-                    'cost': rdata['cost'],
-                    'type': types[k]
-                })
-        cost_df = pd.DataFrame(data, columns=["id", "experiment", "mapping", "cost", "type"])
-
-        fig, ax = plt.subplots(nrows=1, ncols=1, figsize=(10,10))
-        sns.set_color_codes("pastel")
-        sns.barplot(ax=ax, x="cost", y="id", hue="type", data=cost_df)
-        ax.set_xscale("log")
-        if filepath:
-            fig.savefig(filepath)
-        plt.show()
-
-
 
     def plot_residuals(self, res_data_start, res_data_fit=None,
                        titles=["initial", "fit"], filepath=None):
@@ -476,6 +450,38 @@ class OptimizationProblem(object):
             if filepath is not None:
                 fig.savefig(filepath / f"{sid}.png")
             plt.show()
+
+    def plot_costs(self, res_data_start, res_data_fit, filepath=None):
+        """Plots bar diagram of costs for set of residuals
+
+        :param res_data_start:
+        :param res_data_fit:
+        :param filepath:
+        :return:
+        """
+        data = []
+        types = ["initial", "fit"]
+
+        for sid in res_data_start.keys():
+            for k, res_data in enumerate([res_data_start, res_data_fit]):
+                rdata = res_data[sid]
+
+                data.append({
+                    'id': sid,
+                    'experiment': rdata['experiment'],
+                    'mapping': rdata['mapping'],
+                    'cost': rdata['cost'],
+                    'type': types[k]
+                })
+        cost_df = pd.DataFrame(data, columns=["id", "experiment", "mapping", "cost", "type"])
+
+        fig, ax = plt.subplots(nrows=1, ncols=1, figsize=(10,10))
+        sns.set_color_codes("pastel")
+        sns.barplot(ax=ax, x="cost", y="id", hue="type", data=cost_df)
+        ax.set_xscale("log")
+        if filepath:
+            fig.savefig(filepath)
+        plt.show()
 
 
     @timeit
