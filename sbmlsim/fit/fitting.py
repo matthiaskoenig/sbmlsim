@@ -305,10 +305,14 @@ class OptimizationProblem(object):
                     y_ref_err = data_ref.y_sd.to(data_obs.y.units).magnitude
                 elif data_ref.y_se is not None:
                     y_ref_err = data_ref.y_se.to(data_obs.y.units).magnitude
+                # handle special case of all NaN errors
+                if y_ref_err is not None and np.all(np.isnan(y_ref_err)):
+                    y_ref_err = None
 
                 # remove NaN
                 x_ref = x_ref[~np.isnan(y_ref)]
-                y_ref_err = y_ref_err[~np.isnan(y_ref)]
+                if y_ref_err is not None:
+                    y_ref_err = y_ref_err[~np.isnan(y_ref)]
                 y_ref = y_ref[~np.isnan(y_ref)]
                 # -------------------------------------
 
@@ -324,8 +328,6 @@ class OptimizationProblem(object):
                     weights = np.ones_like(y_ref)
                 else:
                     # handle special case that all errors are NA (no normalization possible)
-                    if np.all(np.isnan(y_ref_err)):
-                        y_ref_err = np.ones_like(y_ref)
                     weights = 1.0 / y_ref_err  # the larger the error, the smaller the weight
                     weights[np.isnan(weights)] = np.nanmax(
                         weights)  # NaNs are filled with minimal errors, i.e. max weights
