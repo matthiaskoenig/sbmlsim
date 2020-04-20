@@ -364,7 +364,7 @@ class OptimizationProblem(object):
             return np.concatenate(parts)
 
     @timeit
-    def optimize(self, x0=None, optimizer="least square", **kwargs) -> scipy.optimize.OptimizeResult:
+    def _optimize_single(self, x0=None, optimizer="least square", **kwargs) -> scipy.optimize.OptimizeResult:
         """ Runs single optimization with x0 start values.
 
         :param x0: parameter start vector (important for deterministic optimizers)
@@ -379,15 +379,15 @@ class OptimizationProblem(object):
             opt_result = optimize.least_squares(
                 fun=self.residuals, x0=x0, bounds=self.bounds, **kwargs
             )
-            opt_result.x0 = x0
+            opt_result.x0 = x0  # store start value
             return opt_result
         else:
             raise ValueError(f"optimizer is not supported: {optimizer}")
 
-    def optimize_many(self, size=10,
-                      optimizer="least square", sampling="loguniform",
-                      max_bound=1E10, min_bound=1E-10,
-                      **kwargs) -> List[scipy.optimize.OptimizeResult]:
+    def optimize(self, size=10, seed=None,
+                 optimizer="least square", sampling="loguniform",
+                 max_bound=1E10, min_bound=1E-10,
+                 **kwargs) -> List[scipy.optimize.OptimizeResult]:
         """Run multiple optimizations."""
 
         # create the sample parameters
@@ -395,6 +395,8 @@ class OptimizationProblem(object):
         # parameter set are the x0 values
         x0_values[0, :] = self.x0
         # remaining samples are random samples
+        if seed:
+            np.random.seed(seed)
         for k, p in enumerate(self.parameters):
             lb = p.lower_bound if not np.isinf(p.lower_bound) else -max_bound
             ub = p.upper_bound if not np.isinf(p.upper_bound) else max_bound
@@ -412,34 +414,42 @@ class OptimizationProblem(object):
                 values_log = np.random.uniform(lb_log, ub_log, size=size)
                 x0_values[:, k] = np.power(10, values_log)
 
-        bounds = pd.DataFrame(x0_values, columns=[p.pid for p in self.parameters])
-        print(bounds)
+        x0_samples = pd.DataFrame(x0_values, columns=[p.pid for p in self.parameters])
+        print("samples:")
+        print(x0_samples)
 
         fits = []
         for k in range(size):
-            x0 = bounds.values[k, :]
+            x0 = x0_samples.values[k, :]
             print(f"[{k+1}/{size}] optimize from x0={x0}")
-            fits.append(self.optimize(x0=x0, **kwargs))
+            fits.append(
+                self._optimize_single(x0=x0, optimizer=optimizer, **kwargs)
+            )
         return fits
 
-    @classmethod
-    def process_fits(cls, fits: List[scipy.optimize.OptimizeResult]):
+    def process_fits(self, fits: List[scipy.optimize.OptimizeResult]):
         """Process the optimization results."""
         results = []
+        pids = [p.pid for p in self.parameters]
         for fit in fits:
             res = {
                 'status': fit.status,
                 'success': fit.success,
                 'cost': fit.cost,
                 'optimality': fit.optimality,
-                'x': fit.x,
-                'x0': fit.x0,
                 # 'message': fit.message
             }
+            # add parameter columns
+            for k, pid in enumerate(pids):
+                res[pid] = fit.x[k]
+            res['x'] = fit.x
+            res['x0'] = fit.x0
+
             results.append(res)
         df = pd.DataFrame(results)
         df.sort_values(by=["cost"], inplace=True)
         return df
+
 
     def plot_residuals(self, res_data_start, res_data_fit=None,
                        titles=["initial", "fit"], filepath=None):
@@ -536,22 +546,47 @@ class OptimizationProblem(object):
                 fig.savefig(filepath / f"{sid}.png")
             plt.show()
 
-    @classmethod
-    def plot_waterfall(cls, fits: List[scipy.optimize.OptimizeResult]):
-        """Process the optimization results."""
-        df = cls.process_fits(fits)
+    def fit_report(self, fits: List[scipy.optimize.OptimizeResult]):
+        """ Readable report of optimization.
+        """
+        # plot top fit
+        fit_results = self.process_fits(fits)
+
         pd.set_option('display.max_columns', None)
-        print(df)
+        print("-" * 80)
+        print(fit_results)
+        print("-" * 80)
+        print("Optimal parameters:")
+        fitted_pars = dict(zip(
+            [p.pid for p in self.parameters],
+            fit_results.x[0]
+        ))
+        for key, value in fitted_pars.items():
+            print("\t{:<15} {}".format(key, value))
+        print("-" * 80)
+
+    def plot_waterfall(self, fits: List[scipy.optimize.OptimizeResult]):
+        """Process the optimization results."""
+        df = self.process_fits(fits)
+
 
         fig, ax = plt.subplots(nrows=1, ncols=1, figsize=(10, 10))
-        ax.plot(range(len(df)), df.cost, '-o', color="black")
-        ax.set_xlabel("index")
-        ax.set_ylabel("cost")
+        ax.plot(range(len(df)), 1 + (df.cost-df.cost[0]), '-o', color="black")
+        ax.set_xlabel("index (Ordered optimizer run)")
+        ax.set_ylabel("Offsetted cost value (relative to best start)")
         ax.set_yscale("log")
-        ax.set_title("waterfall plot")
+        ax.set_title("Waterfall plot")
 
         plt.show()
 
+    def plot_correlation(self, fits: List[scipy.optimize.OptimizeResult]):
+        """Process the optimization results."""
+        df = self.process_fits(fits)
+
+        sns.set(style="ticks", color_codes=True)
+        pids = [p.pid for p in self.parameters]
+        sns.pairplot(data=df[pids])
+        plt.show()
 
     def plot_costs(self, res_data_start, res_data_fit, filepath=None):
         """Plots bar diagram of costs for set of residuals
