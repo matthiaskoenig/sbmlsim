@@ -323,6 +323,9 @@ class OptimizationProblem(object):
                 if y_ref_err is None:
                     weights = np.ones_like(y_ref)
                 else:
+                    # handle special case that all errors are NA (no normalization possible)
+                    if np.all(np.isnan(y_ref_err)):
+                        y_ref_err = np.ones_like(y_ref)
                     weights = 1.0 / y_ref_err  # the larger the error, the smaller the weight
                     weights[np.isnan(weights)] = np.nanmax(
                         weights)  # NaNs are filled with minimal errors, i.e. max weights
@@ -359,7 +362,7 @@ class OptimizationProblem(object):
             return np.concatenate(parts)
 
     @timeit
-    def optimize(self, x0, optimizer="least square", **kwargs) -> scipy.optimize.OptimizeResult:
+    def optimize(self, x0=None, optimizer="least square", **kwargs) -> scipy.optimize.OptimizeResult:
         """ Runs single optimization with x0 start values.
 
         :param x0: parameter start vector (important for deterministic optimizers)
@@ -367,6 +370,9 @@ class OptimizationProblem(object):
         :param kwargs:
         :return:
         """
+        if x0 is None:
+            x0 = self.x0
+
         if optimizer == "least square":
             return optimize.least_squares(
                 fun=self.residuals, x0=x0, bounds=self.bounds, **kwargs
