@@ -346,6 +346,8 @@ class OptimizationProblem(object):
                     residual_data[f"{sim_experiment.sid}_{key}"] = {
                         "experiment": sim_experiment.sid,
                         "mapping": key,
+                        "observable": mapping.observable,
+                        "reference": mapping.reference,
                         "data_obs": data_obs,
                         "data_ref": data_ref,
                         "x_ref": x_ref,
@@ -487,6 +489,7 @@ class OptimizationProblem(object):
 
                 for ax in (ax1, ax2, ax3):
                     ax.axhline(y=0, color="black")
+                    ax.set_ylabel(f"{rdata['observable'].y.index}")
 
                 if y_ref_err is None:
                     ax1.plot(x_ref, y_ref, "s", color="black", label="reference_data")
