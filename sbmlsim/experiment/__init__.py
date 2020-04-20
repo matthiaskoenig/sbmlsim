@@ -1,2 +1,3 @@
-from .experiment import ExperimentResult, SimulationExperiment, JSONExperiment
+from .experiment import SimulationExperiment, ExperimentResult, JSONExperiment
+from .runner import  ExperimentRunner
 from .report import create_report

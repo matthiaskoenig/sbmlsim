@@ -1,16 +1,12 @@
 import logging
-
 from pathlib import Path
 import json
-from dataclasses import dataclass
-from typing import Dict
+from typing import Dict, List
 from collections import defaultdict
 
-from sbmlsim.task import Task
-from sbmlsim.simulator.simulation import SimulatorAbstract
-from sbmlsim.simulator.simulation_ray import SimulatorParallel
-from sbmlsim.simulator import SimulatorSerial
+from dataclasses import dataclass
 
+from sbmlsim.task import Task
 from sbmlsim.simulation import AbstractSim, TimecourseSim, ScanSim
 from sbmlsim.serialization import ObjectJSONEncoder
 from sbmlsim.result import XResult
@@ -33,12 +29,11 @@ class SimulationExperiment(object):
     Consists of models, datasets, simulations, tasks, results, processing, figures
     """
 
-    @timeit
-    def __init__(self, simulator: SimulatorAbstract = None,
+    def __init__(self,
                  sid: str = None, base_path: Path = None,
                  data_path: Path = None,
                  ureg: UnitRegistry = None, **kwargs):
-        """SimulationExperiemend
+        """SimulationExperiement.
 
         :param sid:
         :param base_path:
@@ -46,15 +41,6 @@ class SimulationExperiment(object):
         :param ureg:
         :param kwargs:
         """
-        if simulator is None:
-            simulator = SimulatorSerial(
-                absolute_tolerance=1E-14,
-                relative_tolerance=1E-14
-            )
-            logger.warning(f"No simulator provided, using default simulator: "
-                           f"'{simulator}'")
-        self.simulator = simulator  # type: SimulatorAbstract
-
         if not sid:
             self.sid = self.__class__.__name__
 
@@ -64,7 +50,7 @@ class SimulationExperiment(object):
                 raise IOError(f"base_path '{base_path}' does not exist")
         else:
             logger.warning(
-                "No base_path provided, reading/writing of resources may fail.")
+                "No 'base_path' provided, reading/writing of resources may fail.")
         self.base_path = base_path
 
         if data_path:
@@ -73,11 +59,8 @@ class SimulationExperiment(object):
                 raise IOError(f"data_path '{data_path}' does not exist")
         else:
             logger.warning(
-                "No data_path provided, reading of datasets may fail.")
+                "No 'data_path' provided, reading of datasets may fail.")
         self.data_path = data_path
-        # if self.base_path:
-        # resolve data_path relative to base_path
-        # self.data_path = self.data_path.relative_to(self.base_path)
 
         # single UnitRegistry per SimulationExperiment (can be shared)
         if not ureg:
@@ -85,9 +68,16 @@ class SimulationExperiment(object):
         self.ureg = ureg
         self.Q_ = ureg.Quantity
 
+        # settings
+        self.settings = kwargs
+        self._models = None  # instances are loaded by runner !
+
+    def initialize(self):
+        """
+        :return:
+        """
         # load everything once, never call this function again
         self._data = {}
-        self._models = self.models()
         self._datasets = self.datasets()
         self._simulations = self.simulations()
         self._tasks = self.tasks()
@@ -101,16 +91,11 @@ class SimulationExperiment(object):
         # figures
         self._figures = None
 
-        # settings
-        self.settings = kwargs
-
         # validation
         self._check_keys()
         self._check_types()
 
-
     # --- MODELS --------------------------------------------------------------
-    @timeit
     def models(self) -> Dict[str, AbstractModel]:
         logger.debug(f"No models defined for '{self.sid}'.")
         return {}
@@ -147,7 +132,7 @@ class SimulationExperiment(object):
     @property
     def results(self) -> Dict[str, XResult]:
         if self._results is None:
-            self._run_tasks()
+            self._run_tasks(self.simulator)
         return self._results
 
     # --- FIGURES -------------------------------------------------------------
@@ -207,14 +192,12 @@ class SimulationExperiment(object):
     # --- EXECUTE -------------------------------------------------------------
 
     @timeit
-    def run(self, output_path: Path = None, show_figures: bool = True,
+    def run(self, simulator, output_path: Path = None, show_figures: bool = True,
             save_results: bool = False) -> 'ExperimentResult':
         """
         Executes given experiment and stores results.
         Returns info dictionary.
         """
-
-
         # some of the figures require actual numerical results!
         # this results in execution of the tasks! On the other hand we
         # want to register the data before running the tasks.
@@ -222,7 +205,7 @@ class SimulationExperiment(object):
         self._figures = self.figures()
 
         # run simulations
-        self._run_tasks()  # sets self._results
+        self._run_tasks(simulator)  # sets self._results
 
         # evaluate mappings
         self.evaluate_mappings()
@@ -257,7 +240,7 @@ class SimulationExperiment(object):
         return ExperimentResult(experiment=self, output_path=output_path)
 
     @timeit
-    def _run_tasks(self):
+    def _run_tasks(self, simulator):
         """Run simulations & scans.
 
         This should not be called directly, but the results of the simulations
@@ -276,7 +259,7 @@ class SimulationExperiment(object):
         for model_id, task_keys in model_tasks.items():
             # load model in simulator
             model = self._models[model_id]
-            self.simulator.set_model(model=model)
+            simulator.set_model(model=model)
 
             # set selections based on data
 
@@ -286,15 +269,15 @@ class SimulationExperiment(object):
                     selections.add(d.index)
             selections = sorted(list(selections))
             print(f"Setting selections: {selections}")
-            self.simulator.set_timecourse_selections(selections=selections)
+            simulator.set_timecourse_selections(selections=selections)
 
             for task_key in task_keys:  # type: str
                 task = self._tasks[task_key]
                 sim = self._simulations[task.simulation_id]
                 if isinstance(sim, TimecourseSim):
-                    self._results[task_key] = self.simulator.run_timecourse(sim)
+                    self._results[task_key] = simulator.run_timecourse(sim)
                 elif isinstance(sim, ScanSim):
-                    self._results[task_key] = self.simulator.run_scan(sim)
+                    self._results[task_key] = simulator.run_scan(sim)
                 else:
                     raise ValueError(f"Unsupported simulation type: "
                                      f"{type(sim)}")
