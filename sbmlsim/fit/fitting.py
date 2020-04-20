@@ -274,7 +274,7 @@ class OptimizationProblem(object):
 
         :return:
         """
-        print(f"parameters: {p}")
+        print(f"\t{p}")
         # run simulations
         self.run_tasks(p)
 
@@ -376,9 +376,11 @@ class OptimizationProblem(object):
             x0 = self.x0
 
         if optimizer == "least square":
-            return optimize.least_squares(
+            opt_result = optimize.least_squares(
                 fun=self.residuals, x0=x0, bounds=self.bounds, **kwargs
             )
+            opt_result.x0 = x0
+            return opt_result
         else:
             raise ValueError(f"optimizer is not supported: {optimizer}")
 
@@ -386,7 +388,7 @@ class OptimizationProblem(object):
                       optimizer="least square", sampling="loguniform",
                       max_bound=1E10, min_bound=1E-10,
                       **kwargs) -> List[scipy.optimize.OptimizeResult]:
-        """Run multiple optimization."""
+        """Run multiple optimizations."""
 
         # create the sample parameters
         x0_values = np.zeros(shape=(size, len(self.parameters)))
@@ -416,10 +418,28 @@ class OptimizationProblem(object):
         fits = []
         for k in range(size):
             x0 = bounds.values[k, :]
-            print(f"[{k}/{size}] optimize: {x0}")
+            print(f"[{k+1}/{size}] optimize from x0={x0}")
             fits.append(self.optimize(x0=x0, **kwargs))
         return fits
 
+    @classmethod
+    def process_fits(cls, fits: List[scipy.optimize.OptimizeResult]):
+        """Process the optimization results."""
+        results = []
+        for fit in fits:
+            res = {
+                'status': fit.status,
+                'success': fit.success,
+                'cost': fit.cost,
+                'optimality': fit.optimality,
+                'x': fit.x,
+                'x0': fit.x0,
+                # 'message': fit.message
+            }
+            results.append(res)
+        df = pd.DataFrame(results)
+        df.sort_values(by=["cost"], inplace=True)
+        return df
 
     def plot_residuals(self, res_data_start, res_data_fit=None,
                        titles=["initial", "fit"], filepath=None):
@@ -516,6 +536,23 @@ class OptimizationProblem(object):
                 fig.savefig(filepath / f"{sid}.png")
             plt.show()
 
+    @classmethod
+    def plot_waterfall(cls, fits: List[scipy.optimize.OptimizeResult]):
+        """Process the optimization results."""
+        df = cls.process_fits(fits)
+        pd.set_option('display.max_columns', None)
+        print(df)
+
+        fig, ax = plt.subplots(nrows=1, ncols=1, figsize=(10, 10))
+        ax.plot(range(len(df)), df.cost, '-o', color="black")
+        ax.set_xlabel("index")
+        ax.set_ylabel("cost")
+        ax.set_yscale("log")
+        ax.set_title("waterfall plot")
+
+        plt.show()
+
+
     def plot_costs(self, res_data_start, res_data_fit, filepath=None):
         """Plots bar diagram of costs for set of residuals
 
@@ -540,7 +577,7 @@ class OptimizationProblem(object):
                 })
         cost_df = pd.DataFrame(data, columns=["id", "experiment", "mapping", "cost", "type"])
 
-        fig, ax = plt.subplots(nrows=1, ncols=1, figsize=(10,10))
+        fig, ax = plt.subplots(nrows=1, ncols=1, figsize=(10, 10))
         sns.set_color_codes("pastel")
         sns.barplot(ax=ax, x="cost", y="id", hue="type", data=cost_df)
         ax.set_xscale("log")
