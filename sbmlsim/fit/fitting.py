@@ -216,6 +216,7 @@ class OptimizationProblem(object):
     def report(self):
         print(str(self))
 
+    @timeit
     def run_tasks(self, p):
         """Run tasks"""
 
@@ -269,6 +270,7 @@ class OptimizationProblem(object):
         # Get the new data for the simulation experiment
         # sim_experiment.evaluate_mappings()
 
+    @timeit
     def residuals(self, p, complete_data=False):
         """ Calculates residuals
 
