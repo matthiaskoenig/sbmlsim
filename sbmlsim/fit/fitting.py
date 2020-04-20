@@ -1,6 +1,9 @@
 from typing import List, Dict, Iterable, Set
+
 from collections import defaultdict, namedtuple
 import numpy as np
+import pandas as pd
+import scipy
 from scipy import optimize
 from scipy import interpolate
 import seaborn as sns
@@ -355,6 +358,60 @@ class OptimizationProblem(object):
         else:
             return np.concatenate(parts)
 
+    @timeit
+    def optimize(self, x0, optimizer="least square", **kwargs) -> scipy.optimize.OptimizeResult:
+        """ Runs single optimization with x0 start values.
+
+        :param x0: parameter start vector (important for deterministic optimizers)
+        :param optimizer: optimization algorithm and method
+        :param kwargs:
+        :return:
+        """
+        if optimizer == "least square":
+            return optimize.least_squares(
+                fun=self.residuals, x0=x0, bounds=self.bounds, **kwargs
+            )
+        else:
+            raise ValueError(f"optimizer is not supported: {optimizer}")
+
+    def optimize_many(self, size=10,
+                      optimizer="least square", sampling="loguniform",
+                      max_bound=1E10, min_bound=1E-10,
+                      **kwargs) -> List[scipy.optimize.OptimizeResult]:
+        """Run multiple optimization."""
+
+        # create the sample parameters
+        x0_values = np.zeros(shape=(size, len(self.parameters)))
+        # parameter set are the x0 values
+        x0_values[0, :] = self.x0
+        # remaining samples are random samples
+        for k, p in enumerate(self.parameters):
+            lb = p.lower_bound if not np.isinf(p.lower_bound) else -max_bound
+            ub = p.upper_bound if not np.isinf(p.upper_bound) else max_bound
+
+            # uniform sampling
+            if sampling == "uniform":
+                x0_values[1:,k] = np.random.uniform(lb, ub, size=size-1)
+            elif sampling == "loguniform":
+                # only working with positive values
+                if lb <= 0.0:
+                    lb = min_bound
+                lb_log = np.log10(lb)
+                ub_log = np.log10(ub)
+
+                values_log = np.random.uniform(lb_log, ub_log, size=size)
+                x0_values[:, k] = np.power(10, values_log)
+
+        bounds = pd.DataFrame(x0_values, columns=[p.pid for p in self.parameters])
+        print(bounds)
+
+        fits = []
+        for k in range(size):
+            x0 = bounds.values[k, :]
+            print(f"[{k}/{size}] optimize: {x0}")
+            fits.append(self.optimize(x0=x0, **kwargs))
+        return fits
+
 
     def plot_residuals(self, res_data_start, res_data_fit=None,
                        titles=["initial", "fit"], filepath=None):
@@ -482,19 +539,3 @@ class OptimizationProblem(object):
         if filepath:
             fig.savefig(filepath)
         plt.show()
-
-
-    @timeit
-    def optimize(self, **kwargs):
-        """Runs optimization problem.
-
-        Starts many optimizations with sampling, parallelization, ...
-
-        Returns list of optimal parameters with respective value of objective value
-        and residuals (per fit experiment).
-        -> local optima of optimization
-
-        """
-        return optimize.least_squares(
-            fun=self.residuals, x0=self.x0, bounds=self.bounds, **kwargs
-        )
