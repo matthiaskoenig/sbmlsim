@@ -148,7 +148,7 @@ class Data(object):
                     variables[k] = v.data
 
             x = mathml.evaluate(astnode=astnode, variables=variables)
-            self.unit = str(x.punits)  # check if this is correct
+            self.unit = str(x.units)  # check if this is correct
 
         # convert units to requested units
         if to_units is not None:

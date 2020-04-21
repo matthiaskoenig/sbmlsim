@@ -332,7 +332,6 @@ class OptimizationProblem(object):
             # logger.warning(f"Running simulation: {k} - {self.experiment_keys[k]} - {mapping_id}")
             df = simulator._timecourses([simulation])[0]
 
-
             # interpolation of simulation results
             f = interpolate.interp1d(
                 x=df[self.xid_observable[k]],
@@ -393,12 +392,14 @@ class OptimizationProblem(object):
         print(self.fit_results)
         print("-" * 80)
         print("Optimal parameters:")
-        fitted_pars = dict(zip(
-            [p.pid for p in self.parameters],
-            self.fit_results.x.iloc[0]
-        ))
+
+        xopt = self.fit_results.x.iloc[0]
+        fitted_pars = {}
+        for k, p in enumerate(self.parameters):
+            fitted_pars[p.pid] = (xopt[k], p.unit)
+
         for key, value in fitted_pars.items():
-            print("\t{:<15} {}".format(key, value))
+            print("\t'{}': Q_({}, '{}'),".format(key, value[0], value[1]))
         print("-" * 80)
 
     def plot_waterfall(self):
