@@ -8,6 +8,7 @@ import seaborn as sns
 import time
 import pandas as pd
 import logging
+from dataclasses import dataclass
 
 from sbmlsim.data import Data
 from sbmlsim.simulator import SimulatorSerial
@@ -20,6 +21,15 @@ from sbmlsim.plot.plotting_matplotlib import plt  # , GridSpec
 from .fitting import FitExperiment, FitParameter
 
 logger = logging.getLogger(__name__)
+
+@dataclass
+class RuntimeErrorOptimizeResult:
+    status: str = -1
+    success: bool = False
+    duration: float = -1.0
+    cost: float = np.Inf
+    optimality: float = np.Inf
+
 
 class OptimizationProblem(object):
     """Parameter optimization problem."""
@@ -67,11 +77,6 @@ class OptimizationProblem(object):
         self.simulations = []
         self.selections = []
 
-        # access latest model & simulation
-        self.current_model = None
-        self.current_simulation = None
-        self.current_result = None
-
         # Collect information for simulations
         for fit_experiment in self.fit_experiments:
 
@@ -88,11 +93,13 @@ class OptimizationProblem(object):
 
             # use all fit_mappings if None are provided
             if fit_experiment.mappings is None:
-                fit_experiment.mappings = sim_experiment._fit_mappings
+                fit_experiment.mappings = list(sim_experiment._fit_mappings.keys())
+                fit_experiment.weights = [1.0] * len(fit_experiment.mappings)
 
             # collect information for single mapping
             for k, mapping_id in enumerate(fit_experiment.mappings):
                 # weight of mapping
+
                 weight = fit_experiment.weights[k]
 
                 # sanity checks
@@ -189,6 +196,29 @@ class OptimizationProblem(object):
     def report(self):
         print(str(self))
 
+    def run_optimization(self, size: int = 5, seed: int = 1234,
+                         plot_results=True, **kwargs):
+        """Runs the given optimization problem.
+
+        Creates all standard plots and reports
+        """
+        self.report()
+
+        # optimize
+        fits = self.optimize(size=size, seed=seed, **kwargs)
+        self.fit_report()
+
+        if plot_results:
+            if len(fits) > 1:
+                self.plot_waterfall()
+                self.plot_correlation()
+
+            # plot top fit
+            self.plot_costs()
+            self.plot_residuals()
+
+        return fits
+
     def optimize(self, size=10, seed=None,
                  optimizer="least square", sampling="loguniform",
                  max_bound=1E10, min_bound=1E-10,
@@ -207,7 +237,7 @@ class OptimizationProblem(object):
 
             # uniform sampling
             if sampling == "uniform":
-                x0_values[1:,k] = np.random.uniform(lb, ub, size=size-1)
+                x0_values[1:, k] = np.random.uniform(lb, ub, size=size-1)
             elif sampling == "loguniform":
                 # only working with positive values
                 if lb <= 0.0:
@@ -215,8 +245,8 @@ class OptimizationProblem(object):
                 lb_log = np.log10(lb)
                 ub_log = np.log10(ub)
 
-                values_log = np.random.uniform(lb_log, ub_log, size=size)
-                x0_values[:, k] = np.power(10, values_log)
+                values_log = np.random.uniform(lb_log, ub_log, size=size-1)
+                x0_values[1:, k] = np.power(10, values_log)
 
         x0_samples = pd.DataFrame(x0_values, columns=[p.pid for p in self.parameters])
         print("samples:")
@@ -250,9 +280,14 @@ class OptimizationProblem(object):
 
         if optimizer == "least square":
             ts = time.time()
-            opt_result = optimize.least_squares(
-                fun=self.residuals, x0=x0, bounds=self.bounds, **kwargs
-            )
+            try:
+                opt_result = optimize.least_squares(
+                    fun=self.residuals, x0=x0, bounds=self.bounds, **kwargs
+                )
+            except RuntimeError:
+                logger.error("RuntimeError in ODE integration")
+                opt_result = RuntimeErrorOptimizeResult()
+                opt_result.x = x0
             te = time.time()
             opt_result.x0 = x0  # store start value
             opt_result.duration = (te - ts)
@@ -260,7 +295,6 @@ class OptimizationProblem(object):
         else:
             raise ValueError(f"optimizer is not supported: {optimizer}")
 
-    @timeit
     def residuals(self, x, complete_data=False):
         """Calculates residuals for given parameter vector.
 
@@ -268,7 +302,7 @@ class OptimizationProblem(object):
         :param complete_data: boolean flag to return additional information
         :return:
         """
-        print(f"\t{x}")
+        # print(f"\t{x}")
         parts = []
         if complete_data:
             residual_data = defaultdict(list)
@@ -278,35 +312,26 @@ class OptimizationProblem(object):
         Q_ = self.runner.Q_
 
         for k, mapping_id in enumerate(self.mapping_keys):
+            # Overwrite initial changes in the simulation
+            changes = {
+                self.pids[i]: Q_(value, self.punits[i]) for i, value in enumerate(x)
+            }
+            self.simulations[k].timecourses[0].changes.update(changes)
 
-            if (self.models[k] == self.current_model) and (self.simulations[k] == self.current_simulation):
-                # logger.warning(f"Using cached result: {k} - {self.experiment_keys[k]} - {mapping_id}")
-                df = self.current_result
-            else:
-                # Overwrite initial changes in the simulation
-                changes = {
-                    self.pids[i]: Q_(value, self.punits[i]) for i, value in enumerate(x)
-                }
-                self.simulations[k].timecourses[0].changes.update(changes)
+            # set model in simulator (FIXME: update only when necessary)
+            simulator.set_model(model=self.models[k])
+            simulator.set_integrator_settings(variable_step_size=True,
+                                              relative_tolerance=1E-6, absolute_tolerance=1E-8)
+            simulator.set_timecourse_selections(selections=self.selections[k])
 
-                # set model in simulator (FIXME: update only when necessary)
-                simulator.set_model(model=self.models[k])
-                simulator.set_integrator_settings(variable_step_size=True,
-                                                  relative_tolerance=1E-6, absolute_tolerance=1E-6)
-                simulator.set_timecourse_selections(selections=self.selections[k])
+            # FIXME: normalize simulations and parameters once outside of loop
+            simulation = self.simulations[k]  # type: TimecourseSim
+            simulation.normalize(udict=simulator.udict, ureg=simulator.ureg)
 
-                # FIXME: normalize simulations and parameters once outside of loop
-                simulation = self.simulations[k]  # type: TimecourseSim
-                simulation.normalize(udict=simulator.udict, ureg=simulator.ureg)
+            # run simulation
+            # logger.warning(f"Running simulation: {k} - {self.experiment_keys[k]} - {mapping_id}")
+            df = simulator._timecourses([simulation])[0]
 
-                # run simulation
-                # logger.warning(f"Running simulation: {k} - {self.experiment_keys[k]} - {mapping_id}")
-                df = simulator._timecourses([simulation])[0]
-
-                # update cache
-                self.current_model = self.models[k]
-                self.current_simulation = self.simulations[k]
-                self.current_result = df
 
             # interpolation of simulation results
             f = interpolate.interp1d(
@@ -396,7 +421,7 @@ class OptimizationProblem(object):
         sns.pairplot(data=df[pids])
         plt.show()
 
-    def plot_costs(self, filepath=None):
+    def plot_costs(self, xstart=None, xopt=None, filepath=None):
         """Plots bar diagram of costs for set of residuals
 
         :param res_data_start:
@@ -404,8 +429,16 @@ class OptimizationProblem(object):
         :param filepath:
         :return:
         """
-        res_data_start = self.residuals(x=self.x0, complete_data=True)
-        res_data_fit = self.residuals(x=self.xopt, complete_data=True)
+        if xstart is None:
+            xstart = self.x0
+        if xopt is None:
+            xopt = self.xopt
+
+        print("xstart", xstart)
+        print("xopt", xopt)
+
+        res_data_start = self.residuals(x=xstart, complete_data=True)
+        res_data_fit = self.residuals(x=xopt, complete_data=True)
 
         data = []
         types = ["initial", "fit"]
@@ -430,15 +463,20 @@ class OptimizationProblem(object):
             fig.savefig(filepath)
         plt.show()
 
-    def plot_residuals(self, filepath=None):
+    def plot_residuals(self, xstart=None, xopt=None, filepath=None):
         """ Plot residual data.
 
         :param res_data_start: initial residual data
         :return:
         """
+        if xstart is None:
+            xstart = self.x0
+        if xopt is None:
+            xopt = self.xopt
+
         titles = ["initial", "fit"]
-        res_data_start = self.residuals(x=self.x0, complete_data=True)
-        res_data_fit = self.residuals(x=self.xopt, complete_data=True)
+        res_data_start = self.residuals(x=xstart, complete_data=True)
+        res_data_fit = self.residuals(x=xopt, complete_data=True)
 
         for k, mapping_id in enumerate(self.mapping_keys):
             fig, ((a1, a2), (a3, a4), (a5, a6)) = plt.subplots(nrows=3, ncols=2, figsize=(10, 10))

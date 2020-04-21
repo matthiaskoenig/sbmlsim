@@ -1,7 +1,10 @@
 from typing import List, Dict, Iterable, Set
-
+import logging
 import numpy as np
+
 from sbmlsim.data import Data
+
+logger = logging.getLogger(__name__)
 
 
 class FitExperiment(object):
@@ -15,6 +18,8 @@ class FitExperiment(object):
                  fit_parameters: Dict[str, List['FitParameter']] = None):
         """A Simulation experiment used in a fitting.
 
+        weights must be updated according to the mappings
+
         :param experiment:
         :param weights: weight of mappings
         :param mappings: mappings to use from experiments (None uses all mappings)
@@ -22,6 +27,12 @@ class FitExperiment(object):
                                 experiment
         """
         self.experiment_class = experiment
+
+        if (weights is None) or (mappings is None):
+            weights = []
+        if mappings is None:
+            mappings = []
+
         self.mappings = mappings
         if isinstance(weights, (float, int)):
             self.weights = [weights] * len(mappings)
