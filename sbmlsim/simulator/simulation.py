@@ -70,7 +70,12 @@ class SimulatorWorker(object):
                             f"['{ModelChange.CLAMP_SPECIES}']")
 
             # run simulation
-            s = self.r.simulate(start=tc.start, end=tc.end, steps=tc.steps)
+            integrator = self.r.integrator
+            if integrator.getValue("variable_step_size"):
+                s = self.r.simulate(start=tc.start, end=tc.end)
+            else:
+                s = self.r.simulate(start=tc.start, end=tc.end, steps=tc.steps)
+
             df = pd.DataFrame(s, columns=s.colnames)
             df.time = df.time + t_offset
             frames.append(df)

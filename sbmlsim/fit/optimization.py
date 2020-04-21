@@ -4,6 +4,7 @@ import scipy
 from scipy import optimize
 from scipy import interpolate
 import seaborn as sns
+import time
 import pandas as pd
 
 from sbmlsim.data import Data
@@ -71,8 +72,6 @@ class OptimizationProblem(object):
         """Run tasks"""
 
         results = {}
-        # TODO: necessary to execute all tasks, which are used in fit models
-        # with the respective parameters.
         # FIXME: much faster by getting models and simulations once with fast updates
         # of unit converted values
         simulator = self.runner.simulator
@@ -104,6 +103,9 @@ class OptimizationProblem(object):
                         # set model in simulator
                         # FIXME: only if necessary
                         simulator.set_model(model=model)
+                        simulator.set_integrator_settings(variable_step_size=True, relative_tolerance=1E-6)
+                        # simulator.set_integrator_settings(variable_step_size=False, relative_tolerance=1E-6)
+                        # print(simulator.model.r.integrator)
 
                         # set selections based on data
                         # FIXME: selections must be based on fit mappings
@@ -179,6 +181,9 @@ class OptimizationProblem(object):
                 # TODO: interpolation (make this fast (c++ and numba))
                 # FIXME: make a fast interpolation via the datapoints left and right of experimental
                 # points (or directly request the necessary data points)
+                # plt.plot(data_obs.x.magnitude, data_obs.y.magnitude, 'o-')
+                # print("Data points:", len(data_obs.y.magnitude))
+                # plt.show()
                 f = interpolate.interp1d(x=data_obs.x.magnitude, y=data_obs.y.magnitude, copy=False, assume_sorted=True)
                 y_obs = f(x_ref)
 
@@ -237,10 +242,13 @@ class OptimizationProblem(object):
             x0 = self.x0
 
         if optimizer == "least square":
+            ts = time.time()
             opt_result = optimize.least_squares(
                 fun=self.residuals, x0=x0, bounds=self.bounds, **kwargs
             )
+            te = time.time()
             opt_result.x0 = x0  # store start value
+            opt_result.duration = (te - ts)
             return opt_result
         else:
             raise ValueError(f"optimizer is not supported: {optimizer}")
@@ -280,6 +288,7 @@ class OptimizationProblem(object):
         print(x0_samples)
 
         fits = []
+        # TODO: parallelization
         for k in range(size):
             x0 = x0_samples.values[k, :]
             print(f"[{k+1}/{size}] optimize from x0={x0}")
@@ -296,6 +305,7 @@ class OptimizationProblem(object):
             res = {
                 'status': fit.status,
                 'success': fit.success,
+                'duration': fit.duration,
                 'cost': fit.cost,
                 'optimality': fit.optimality,
                 # 'message': fit.message

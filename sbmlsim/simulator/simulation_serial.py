@@ -25,15 +25,15 @@ class SimulatorSerial(SimulatorAbstract, SimulatorWorker):
         :param model: Path to model or model
         :param kwargs: integrator settings
         """
-        self.settings = {
+        self.integrator_settings = {
             "absolute_tolerance": 1E-14,
             "relative_tolerance": 1E-14,
         }
-        self.settings.update(kwargs)
+        self.integrator_settings.update(kwargs)
         self.set_model(model)
 
     def set_model(self, model):
-        """Set model for simulator.
+        """Set model for simulator and updates the integrator settings
 
         This should handle caching and state saving.
         """
@@ -42,13 +42,19 @@ class SimulatorSerial(SimulatorAbstract, SimulatorWorker):
         else:
             if isinstance(model, AbstractModel):
                 self.model = model
-                if isinstance(model, RoadrunnerSBMLModel):
-                    RoadrunnerSBMLModel.set_integrator_settings(
-                        model.r, **self.settings
-                    )
             else:
                 # handle path, urn, ...
-                self.model = RoadrunnerSBMLModel(source=model, settings=self.settings)
+                self.model = RoadrunnerSBMLModel(source=model, settings=self.integrator_settings)
+
+            self.set_integrator_settings(**self.integrator_settings)
+
+    def set_integrator_settings(self, **kwargs):
+        if isinstance(self.model, RoadrunnerSBMLModel):
+            RoadrunnerSBMLModel.set_integrator_settings(
+                self.model.r, **kwargs
+            )
+        else:
+            logger.warning("Integrator settings can only be set on RoadrunnerSBMLModel.")
 
     def set_timecourse_selections(self, selections):
         RoadrunnerSBMLModel.set_timecourse_selections(self.r, selections=selections)
