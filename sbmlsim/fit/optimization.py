@@ -171,7 +171,6 @@ class OptimizationProblem(object):
                 self.weights.append(weights)
                 self.weights_mapping.append(weight)
 
-
     def __str__(self):
         """String representation."""
         info = []
@@ -188,98 +187,11 @@ class OptimizationProblem(object):
     def report(self):
         print(str(self))
 
-    @timeit
-    def residuals(self, x, complete_data=False):
-        """ Calculates residuals
-
-        :return:
-        """
-        print(f"\t{x}")
-        parts = []
-        if complete_data:
-            residual_data = defaultdict(list)
-
-        # simulate all mappings for all experiments
-        simulator = self.runner.simulator  # type: SimulatorSerial
-        Q_ = self.runner.Q_
-
-        for k, mapping_id in enumerate(self.mapping_keys):
-
-            # Overwrite initial changes in the simulation
-            changes = {
-                self.pids[i]: Q_(value, self.punits[i]) for i, value in enumerate(x)
-            }
-            self.simulations[k].timecourses[0].changes.update(changes)
-
-            # set model in simulator (FIXME: update only when necessary)
-            simulator.set_model(model=self.models[k])
-            simulator.set_integrator_settings(variable_step_size=True,
-                                              relative_tolerance=1E-6)
-            simulator.set_timecourse_selections(selections=self.selections[k])
-
-            # FIXME: normalize simulations and parameters once outside of loop
-            simulation = self.simulations[k]  # type: TimecourseSim
-            simulation.normalize(udict=simulator.udict, ureg=simulator.ureg)
-
-            # run simulation
-            df = simulator._timecourses([simulation])[0]
-
-            # interpolation of simulation results
-            f = interpolate.interp1d(
-                x=df[self.xid_observable[k]],
-                y=df[self.yid_observable[k]],
-                copy=False, assume_sorted=True
-            )
-            y_obsip = f(self.x_references[k])
-
-            # calculate weighted residuals
-            parts.append(
-                (y_obsip - self.y_references[k]) * self.weights[k] * self.weights_mapping[k]
-            )
-
-            if complete_data:
-                residual_data["x_obs"].append(df[self.xid_observable[k]])
-                residual_data["y_obs"].append(df[self.yid_observable[k]])
-                residual_data["y_obsip"].append(res)
-                residual_data["residuals"].append(y_obsip - self.y_references[k])
-                residual_data["residuals_weighted"].append(parts[k])
-                residual_data["cost"].append(0.5 * np.sum(np.power(res_weighted, 2)))
-
-        if complete_data:
-            return residual_data
-        else:
-            return np.concatenate(parts)
-
-    @timeit
-    def _optimize_single(self, x0=None, optimizer="least square", **kwargs) -> scipy.optimize.OptimizeResult:
-        """ Runs single optimization with x0 start values.
-
-        :param x0: parameter start vector (important for deterministic optimizers)
-        :param optimizer: optimization algorithm and method
-        :param kwargs:
-        :return:
-        """
-        if x0 is None:
-            x0 = self.x0
-
-        if optimizer == "least square":
-            ts = time.time()
-            opt_result = optimize.least_squares(
-                fun=self.residuals, x0=x0, bounds=self.bounds, **kwargs
-            )
-            te = time.time()
-            opt_result.x0 = x0  # store start value
-            opt_result.duration = (te - ts)
-            return opt_result
-        else:
-            raise ValueError(f"optimizer is not supported: {optimizer}")
-
     def optimize(self, size=10, seed=None,
                  optimizer="least square", sampling="loguniform",
                  max_bound=1E10, min_bound=1E-10,
                  **kwargs) -> List[scipy.optimize.OptimizeResult]:
-        """Run multiple optimizations."""
-
+        """Run parameter optimization"""
         # create the sample parameters
         x0_values = np.zeros(shape=(size, len(self.parameters)))
         # parameter set are the x0 values
@@ -318,9 +230,99 @@ class OptimizationProblem(object):
             )
 
         self.fit_results = self.process_fits(fits)
-        # FIXME: make sure these are the optimal values
-        self.xopt = self.fit_results.x[0]
+        self.xopt = self.fit_results.x.iloc[0]
         return fits
+
+    @timeit
+    def _optimize_single(self, x0=None, optimizer="least square",
+                         **kwargs) -> scipy.optimize.OptimizeResult:
+        """ Runs single optimization with x0 start values.
+
+        :param x0: parameter start vector (important for deterministic optimizers)
+        :param optimizer: optimization algorithm and method
+        :param kwargs:
+        :return:
+        """
+        if x0 is None:
+            x0 = self.x0
+
+        if optimizer == "least square":
+            ts = time.time()
+            opt_result = optimize.least_squares(
+                fun=self.residuals, x0=x0, bounds=self.bounds, **kwargs
+            )
+            te = time.time()
+            opt_result.x0 = x0  # store start value
+            opt_result.duration = (te - ts)
+            return opt_result
+        else:
+            raise ValueError(f"optimizer is not supported: {optimizer}")
+
+    @timeit
+    def residuals(self, x, complete_data=False):
+        """Calculates residuals for given parameter vector.
+
+        :param x: parameter vector
+        :param complete_data: boolean flag to return additional information
+        :return:
+        """
+        print(f"\t{x}")
+        parts = []
+        if complete_data:
+            residual_data = defaultdict(list)
+
+        # simulate all mappings for all experiments
+        simulator = self.runner.simulator  # type: SimulatorSerial
+        Q_ = self.runner.Q_
+
+        for k, mapping_id in enumerate(self.mapping_keys):
+
+            # Overwrite initial changes in the simulation
+            changes = {
+                self.pids[i]: Q_(value, self.punits[i]) for i, value in enumerate(x)
+            }
+            self.simulations[k].timecourses[0].changes.update(changes)
+
+            # set model in simulator (FIXME: update only when necessary)
+            simulator.set_model(model=self.models[k])
+            simulator.set_integrator_settings(variable_step_size=True,
+                                              relative_tolerance=1E-6 , absolute_tolerance=1E-6)
+            simulator.set_timecourse_selections(selections=self.selections[k])
+
+            # FIXME: normalize simulations and parameters once outside of loop
+            simulation = self.simulations[k]  # type: TimecourseSim
+            simulation.normalize(udict=simulator.udict, ureg=simulator.ureg)
+
+            # run simulation
+            df = simulator._timecourses([simulation])[0]
+
+            # interpolation of simulation results
+            f = interpolate.interp1d(
+                x=df[self.xid_observable[k]],
+                y=df[self.yid_observable[k]],
+                copy=False, assume_sorted=True
+            )
+            y_obsip = f(self.x_references[k])
+
+            # calculate weighted residuals
+            parts.append(
+                (y_obsip - self.y_references[k]) * self.weights[k] * self.weights_mapping[k]
+            )
+
+            if complete_data:
+                res = (y_obsip - self.y_references[k])
+                res_weighted = res * self.weights[k] * self.weights_mapping[k]
+                residual_data["x_obs"].append(df[self.xid_observable[k]])
+                residual_data["y_obs"].append(df[self.yid_observable[k]])
+                residual_data["y_obsip"].append(y_obsip)
+                residual_data["residuals"].append(res)
+                residual_data["residuals_weighted"].append(res_weighted)
+                residual_data["cost"].append(0.5 * np.sum(np.power(res_weighted, 2)))
+
+        if complete_data:
+            return residual_data
+        else:
+            return np.concatenate(parts)
 
     def process_fits(self, fits: List[scipy.optimize.OptimizeResult]):
         """Process the optimization results."""
@@ -346,6 +348,76 @@ class OptimizationProblem(object):
         df.sort_values(by=["cost"], inplace=True)
         return df
 
+    def fit_report(self):
+        """ Readable report of optimization.
+        """
+        pd.set_option('display.max_columns', None)
+        print("-" * 80)
+        print(self.fit_results)
+        print("-" * 80)
+        print("Optimal parameters:")
+        fitted_pars = dict(zip(
+            [p.pid for p in self.parameters],
+            self.fit_results.x.iloc[0]
+        ))
+        for key, value in fitted_pars.items():
+            print("\t{:<15} {}".format(key, value))
+        print("-" * 80)
+
+    def plot_waterfall(self):
+        """Process the optimization results."""
+        df = self.fit_results
+        fig, ax = plt.subplots(nrows=1, ncols=1, figsize=(10, 10))
+        ax.plot(range(len(df)), 1 + (df.cost-df.cost.iloc[0]), '-o', color="black")
+        ax.set_xlabel("index (Ordered optimizer run)")
+        ax.set_ylabel("Offsetted cost value (relative to best start)")
+        ax.set_yscale("log")
+        ax.set_title("Waterfall plot")
+
+        plt.show()
+
+    def plot_correlation(self):
+        """Process the optimization results."""
+        df = self.fit_results
+        sns.set(style="ticks", color_codes=True)
+        pids = [p.pid for p in self.parameters]
+        sns.pairplot(data=df[pids])
+        plt.show()
+
+    def plot_costs(self, filepath=None):
+        """Plots bar diagram of costs for set of residuals
+
+        :param res_data_start:
+        :param res_data_fit:
+        :param filepath:
+        :return:
+        """
+        res_data_start = self.residuals(x=self.x0, complete_data=True)
+        res_data_fit = self.residuals(x=self.xopt, complete_data=True)
+
+        data = []
+        types = ["initial", "fit"]
+
+        for k in range(len(self.mapping_keys)):
+            for kdata, res_data in enumerate([res_data_start, res_data_fit]):
+
+                data.append({
+                    'id': f"{self.experiment_keys[k]}_{self.mapping_keys[k]}",
+                    'experiment': self.experiment_keys[k],
+                    'mapping': self.mapping_keys[k],
+                    'cost': res_data['cost'][k],
+                    'type': types[kdata]
+                })
+        cost_df = pd.DataFrame(data, columns=["id", "experiment", "mapping", "cost", "type"])
+
+        fig, ax = plt.subplots(nrows=1, ncols=1, figsize=(10, 10))
+        sns.set_color_codes("pastel")
+        sns.barplot(ax=ax, x="cost", y="id", hue="type", data=cost_df)
+        ax.set_xscale("log")
+        if filepath:
+            fig.savefig(filepath)
+        plt.show()
+
     def plot_residuals(self, filepath=None):
         """ Plot residual data.
 
@@ -353,47 +425,52 @@ class OptimizationProblem(object):
         :return:
         """
         titles = ["initial", "fit"]
-        res_data_start = opt_problem.residuals(x=self.x0, complete_data=True)
-        res_data_fit = opt_problem.residuals(x=self.xopt, complete_data=True)
+        res_data_start = self.residuals(x=self.x0, complete_data=True)
+        res_data_fit = self.residuals(x=self.xopt, complete_data=True)
 
-        for sid in res_data_start.keys():
+        for k, mapping_id in enumerate(self.mapping_keys):
             fig, ((a1, a2), (a3, a4), (a5, a6)) = plt.subplots(nrows=3, ncols=2, figsize=(10, 10))
 
             axes = [(a1, a3, a5), (a2, a4, a6)]
             if titles is None:
                 titles = ["Initial", "Fit"]
-            for k, res_data in enumerate([res_data_start, res_data_fit]):
-                if res_data is None:
-                    continue
 
-                ax1, ax2, ax3 = axes[k]
-                title = titles[k]
+            # global reference data
+            sid = self.experiment_keys[k]
+            mapping_id = self.mapping_keys[k]
+            weights = self.weights[k]
+            x_ref = self.x_references[k]
+            y_ref = self.y_references[k]
+            y_ref_err = self.y_errors[k]
+            x_id = self.xid_observable[k]
+            y_id = self.yid_observable[k]
 
-                # get data
-                rdata = res_data[sid]
-                data_obs = rdata['data_obs']
-                data_ref = rdata['data_ref']
-                x_ref = rdata['x_ref']
-                y_ref = rdata['y_ref']
-                y_ref_err = rdata['y_ref_err']
-                y_obs = rdata['y_obs']
-                res = rdata['res']
-                res_weighted = rdata['res_weighted']
-                weights = rdata['weights']
-                cost = rdata['cost']
+            for kdata, res_data in enumerate([res_data_start, res_data_fit]):
+                ax1, ax2, ax3 = axes[kdata]
+                title = titles[kdata]
+
+                # calculated data in residuals
+
+                x_obs = res_data['x_obs'][k]
+                y_obs = res_data['y_obs'][k]
+                y_obsip = res_data['y_obsip'][k]
+                res = res_data['residuals'][k]
+                res_weighted = res_data['residuals_weighted'][k]
+                cost = res_data['cost'][k]
 
                 for ax in (ax1, ax2, ax3):
                     ax.axhline(y=0, color="black")
-                    ax.set_ylabel(f"{rdata['observable'].y.index}")
+                    ax.set_ylabel(y_id)
+                ax3.set_xlabel(x_id)
 
                 if y_ref_err is None:
                     ax1.plot(x_ref, y_ref, "s", color="black", label="reference_data")
                 else:
                     ax1.errorbar(x_ref, y_ref, yerr=y_ref_err,
                                  marker="s", color="black", label="reference_data")
-                ax1.plot(data_obs.x.magnitude, data_obs.y.magnitude, "-",
+                ax1.plot(x_obs, y_obs, "-",
                          color="blue", label="observable")
-                ax1.plot(x_ref, y_obs, "o", color="blue",
+                ax1.plot(x_ref, y_obsip, "o", color="blue",
                          label="interpolation")
                 for ax in (ax1, ax2):
                     ax.plot(x_ref, res, "o", color="darkorange",
@@ -422,8 +499,8 @@ class OptimizationProblem(object):
                     ax.set_xlim(ax1.get_xlim())
 
                 if title:
-                    full_title = "{}: {} (cost={:.4e})".format(
-                        sid, title, cost
+                    full_title = "{}_{}: {} (cost={:.3e})".format(
+                        sid, mapping_id, title, cost
                     )
                     ax1.set_title(full_title)
                 for ax in (ax1, ax2, ax3):
@@ -443,77 +520,3 @@ class OptimizationProblem(object):
             if filepath is not None:
                 fig.savefig(filepath / f"{sid}.png")
             plt.show()
-
-    def fit_report(self):
-        """ Readable report of optimization.
-        """
-        pd.set_option('display.max_columns', None)
-        print("-" * 80)
-        print(fit_results)
-        print("-" * 80)
-        print("Optimal parameters:")
-        fitted_pars = dict(zip(
-            [p.pid for p in self.parameters],
-            # FIXME: make sure this works
-            self.fit_results.x[0]
-        ))
-        for key, value in fitted_pars.items():
-            print("\t{:<15} {}".format(key, value))
-        print("-" * 80)
-
-    def plot_waterfall(self):
-        """Process the optimization results."""
-        df = self.fit_results
-
-        fig, ax = plt.subplots(nrows=1, ncols=1, figsize=(10, 10))
-        ax.plot(range(len(df)), 1 + (df.cost-df.cost.values[0]), '-o', color="black")
-        ax.set_xlabel("index (Ordered optimizer run)")
-        ax.set_ylabel("Offsetted cost value (relative to best start)")
-        ax.set_yscale("log")
-        ax.set_title("Waterfall plot")
-
-        plt.show()
-
-    def plot_correlation(self):
-        """Process the optimization results."""
-        df = self.fit_results
-
-        sns.set(style="ticks", color_codes=True)
-        pids = [p.pid for p in self.parameters]
-        sns.pairplot(data=df[pids])
-        plt.show()
-
-    def plot_costs(self, res_data_start, res_data_fit, filepath=None):
-        """Plots bar diagram of costs for set of residuals
-
-        :param res_data_start:
-        :param res_data_fit:
-        :param filepath:
-        :return:
-        """
-        res_data_start = opt_problem.residuals(x=self.x0, complete_data=True)
-        res_data_fit = opt_problem.residuals(x=self.xopt, complete_data=True)
-
-        data = []
-        types = ["initial", "fit"]
-
-        for sid in res_data_start.keys():
-            for k, res_data in enumerate([res_data_start, res_data_fit]):
-                rdata = res_data[sid]
-
-                data.append({
-                    'id': sid,
-                    'experiment': rdata['experiment'],
-                    'mapping': rdata['mapping'],
-                    'cost': rdata['cost'],
-                    'type': types[k]
-                })
-        cost_df = pd.DataFrame(data, columns=["id", "experiment", "mapping", "cost", "type"])
-
-        fig, ax = plt.subplots(nrows=1, ncols=1, figsize=(10, 10))
-        sns.set_color_codes("pastel")
-        sns.barplot(ax=ax, x="cost", y="id", hue="type", data=cost_df)
-        ax.set_xscale("log")
-        if filepath:
-            fig.savefig(filepath)
-        plt.show()
