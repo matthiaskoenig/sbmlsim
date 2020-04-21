@@ -3,13 +3,16 @@ import numpy as np
 import scipy
 from scipy import optimize
 from scipy import interpolate
+from collections import defaultdict
 import seaborn as sns
 import time
 import pandas as pd
 
 from sbmlsim.data import Data
+from sbmlsim.simulator import SimulatorSerial
 from sbmlsim.simulation import TimecourseSim, ScanSim
 from sbmlsim.experiment import ExperimentRunner
+from sbmlsim.model import RoadrunnerSBMLModel
 from sbmlsim.utils import timeit
 from sbmlsim.plot.plotting_matplotlib import plt  # , GridSpec
 
@@ -27,29 +30,147 @@ class OptimizationProblem(object):
         :param fit_experiments:
         :param fit_parameters:
         """
-        self.fit_experiments = fit_experiments
+
+        self.fit_experiments = FitExperiment.reduce(fit_experiments)
         self.parameters = fit_parameters
-        # create a runner
-        exp_classes = {fit_exp.experiment_class for fit_exp in self.fit_experiments}
-
-        # Create experiment runner (loads the experiments & all models)
-        self.runner = ExperimentRunner(experiment_classes=exp_classes, simulator=simulator,
-                                       base_path=base_path, data_path=data_path)
-
-        for fit_experiment in self.fit_experiments:
-            sid = fit_experiment.experiment_class.__name__
-            fit_experiment.experiment = self.runner.experiments[sid]
-            # use all fit_mappings
-            if fit_experiment.mappings is None:
-                fit_experiment.mappings = fit_experiment.experiment._fit_mappings
 
         # parameter information
         self.pids = [p.pid for p in self.parameters]
-        self.x0 = [p.start_value for p in self.parameters]
-        self.units = [p.unit for p in self.parameters]
+        self.punits = [p.unit for p in self.parameters]
         lb = [p.lower_bound for p in self.parameters]
         ub = [p.upper_bound for p in self.parameters]
         self.bounds = [lb, ub]
+        self.x0 = [p.start_value for p in self.parameters]
+
+        # Create experiment runner (loads the experiments & all models)
+        exp_classes = {fit_exp.experiment_class for fit_exp in self.fit_experiments}
+        self.runner = ExperimentRunner(
+            experiment_classes=exp_classes,
+            simulator=simulator,
+            base_path=base_path,
+            data_path=data_path
+        )
+
+        # prepare reference data for all mappings (full length lists)
+        self.experiment_keys = []
+        self.mapping_keys = []
+        self.xid_observable = []
+        self.yid_observable = []
+        self.x_references = []
+        self.y_references = []
+        self.y_errors = []
+        self.weights = []
+        self.weights_mapping = []
+
+        # reduced length lists
+        self.models = []
+        self.simulations = []
+        self.selections = []
+
+        # FIXME: reuse of models and simulations
+        # self.models = {}  # only a mapping (reuse)
+        # self.selections = {}  # only a mapping (reuse)
+        # self.simulations = {}  # only a mapping (reuse
+
+        # Collect information for simulations
+        for fit_experiment in self.fit_experiments:
+
+            # get simulation experiment
+            sid = fit_experiment.experiment_class.__name__
+            sim_experiment = self.runner.experiments[sid]
+
+            # FIXME: selections should be based on fit mappings
+            selections = set()
+            for d in sim_experiment._data.values():  # type: Data
+                if d.is_task():
+                    selections.add(d.index)
+            selections = list(selections)
+
+            # use all fit_mappings if None are provided
+            if fit_experiment.mappings is None:
+                fit_experiment.mappings = sim_experiment._fit_mappings
+
+            # collect information for single mapping
+            for k, mapping_id in enumerate(fit_experiment.mappings):
+                # weight of mapping
+                weight = fit_experiment.weights[k]
+
+                # sanity checks
+                if mapping_id not in sim_experiment._fit_mappings:
+                    raise ValueError(f"Mapping key '{mapping_id}' not defined in "
+                                     f"SimulationExperiment '{sim_experiment}'.")
+
+                mapping = sim_experiment._fit_mappings[mapping_id]  # type: FitMapping
+
+                if mapping.observable.task_id is None:
+                    raise ValueError(f"Only observables from tasks supported: "
+                                     f"'{mapping.observable}'")
+                if mapping.reference.dset_id is None:
+                    raise ValueError(f"Only references from datasets supported: "
+                                     f"'{mapping.reference}'")
+
+                task_id = mapping.observable.task_id
+                task = sim_experiment._tasks[task_id]
+                model = sim_experiment._models[task.model_id]  # type: RoadrunnerSBMLModel
+                simulation = sim_experiment._simulations[task.simulation_id]
+
+                if not isinstance(simulation, TimecourseSim):
+                    raise ValueError(f"Only TimecourseSims supported in fitting: "
+                                     f"'{simulation}")
+
+                # observable units
+                obs_xid = mapping.observable.x.index
+                obs_yid = mapping.observable.y.index
+                obs_x_unit = model.udict[obs_xid]
+                obs_y_unit = model.udict[obs_yid]
+
+                # prepare data
+                data_ref = mapping.reference.get_data()
+                data_ref.x = data_ref.x.to(obs_x_unit)
+                data_ref.y = data_ref.y.to(obs_y_unit)
+                x_ref = data_ref.x.magnitude
+                y_ref = data_ref.y.magnitude
+
+                y_ref_err = None
+                if data_ref.y_sd is not None:
+                    y_ref_err = data_ref.y_sd.to(obs_y_unit).magnitude
+                elif data_ref.y_se is not None:
+                    y_ref_err = data_ref.y_se.to(obs_y_unit).magnitude
+                # handle special case of all NaN errors
+                if y_ref_err is not None and np.all(np.isnan(y_ref_err)):
+                    y_ref_err = None
+
+                # remove NaN
+                x_ref = x_ref[~np.isnan(y_ref)]
+                if y_ref_err is not None:
+                    y_ref_err = y_ref_err[~np.isnan(y_ref)]
+                y_ref = y_ref[~np.isnan(y_ref)]
+
+                # calculate weights based on errors
+                if y_ref_err is None:
+                    weights = np.ones_like(y_ref)
+                else:
+                    # handle special case that all errors are NA (no normalization possible)
+                    weights = 1.0 / y_ref_err  # the larger the error, the smaller the weight
+                    weights[np.isnan(weights)] = np.nanmax(
+                        weights)  # NaNs are filled with minimal errors, i.e. max weights
+                    weights = weights / np.min(
+                        weights)  # normalize minimal weight to 1.0
+
+                # store information
+                self.experiment_keys.append(sid)
+                self.mapping_keys.append(mapping_id)
+                self.models.append(model)
+                self.selections.append(selections)
+                self.simulations.append(simulation)
+                self.xid_observable.append(obs_xid)
+                self.yid_observable.append(obs_yid)
+                self.x_references.append(x_ref)
+                self.y_references.append(y_ref)
+                self.y_errors.append(y_ref_err)
+                self.weights.append(weights)
+                self.weights_mapping.append(weight)
+
 
     def __str__(self):
         """String representation."""
@@ -68,161 +189,61 @@ class OptimizationProblem(object):
         print(str(self))
 
     @timeit
-    def run_tasks(self, p):
-        """Run tasks"""
-
-        results = {}
-        # FIXME: much faster by getting models and simulations once with fast updates
-        # of unit converted values
-        simulator = self.runner.simulator
-
-        for fit_experiment in self.fit_experiments:
-            sim_experiment = fit_experiment.experiment  # type: sbmlsim.simulation.SimulationExperiment
-
-            # TODO: store fitting results in different structure to experiment
-            if sim_experiment._results == None:
-                sim_experiment._results = {}
-            for mapping_id in fit_experiment.mappings:
-                mapping = sim_experiment._fit_mappings[mapping_id]  # type: FitMapping
-                for fit_data in [mapping.reference, mapping.observable]:
-                    if fit_data.is_task():
-                        task_id = fit_data.task_id
-                        task = sim_experiment._tasks[task_id]
-                        model = sim_experiment._models[task.model_id]
-                        simulation = sim_experiment._simulations[task.simulation_id]
-
-                        # Overwrite initial changes in the simulation
-                        changes = {}
-                        Q_ = sim_experiment.Q_
-                        for k, value in enumerate(p):
-                            changes[self.pids[k]] = Q_(value, self.units[k])
-                        # print("Update: ", changes)
-                        simulation.timecourses[0].changes.update(changes)
-
-
-                        # set model in simulator
-                        # FIXME: only if necessary
-                        simulator.set_model(model=model)
-                        simulator.set_integrator_settings(variable_step_size=True, relative_tolerance=1E-6)
-                        # simulator.set_integrator_settings(variable_step_size=False, relative_tolerance=1E-6)
-                        # print(simulator.model.r.integrator)
-
-                        # set selections based on data
-                        # FIXME: selections must be based on fit mappings
-                        selections = set()
-                        for d in sim_experiment._data.values():  # type: Data
-                            if d.is_task():
-                                selections.add(d.index)
-                        selections = sorted(list(selections))
-                        # print(f"Setting selections: {selections}")
-                        simulator.set_timecourse_selections(selections=selections)
-
-
-                if isinstance(simulation, TimecourseSim):
-                    sim_experiment._results[task_id] = simulator.run_timecourse(simulation)
-                elif isinstance(simulation, ScanSim):
-                    sim_experiment._results[task_id] = simulator.run_scan(simulation)
-                else:
-                    raise ValueError(f"Unsupported simulation type: "
-                                     f"{type(simulation)}")
-
-        # Get the new data for the simulation experiment
-        # sim_experiment.evaluate_mappings()
-
-
-    def residuals(self, p, complete_data=False):
+    def residuals(self, x, complete_data=False):
         """ Calculates residuals
 
         :return:
         """
-        print(f"\t{p}")
-        # run simulations
-        self.run_tasks(p)
-
-        # get data for residual calculation
+        print(f"\t{x}")
         parts = []
         if complete_data:
-            residual_data = {}
-        for fit_experiment in self.fit_experiments:
-            sim_experiment = fit_experiment.experiment
-            for key, mapping in sim_experiment._fit_mappings.items():
-                if key not in fit_experiment.mappings:
-                    continue
+            residual_data = defaultdict(list)
 
-                # Get actual data from the results
-                data_obs = mapping.observable.get_data()
+        # simulate all mappings for all experiments
+        simulator = self.runner.simulator  # type: SimulatorSerial
+        Q_ = self.runner.Q_
 
-                # convert & prepare reference data to observable
-                # -------------------------------------
-                # FIXME: Do once outside of residuals!
-                data_ref = mapping.reference.get_data()
-                data_ref.x = data_ref.x.to(data_obs.x.units)
-                data_ref.y = data_ref.y.to(data_obs.y.units)
-                x_ref = data_ref.x.magnitude
-                y_ref = data_ref.y.magnitude
+        for k, mapping_id in enumerate(self.mapping_keys):
 
-                y_ref_err = None
-                if data_ref.y_sd is not None:
-                    y_ref_err = data_ref.y_sd.to(data_obs.y.units).magnitude
-                elif data_ref.y_se is not None:
-                    y_ref_err = data_ref.y_se.to(data_obs.y.units).magnitude
-                # handle special case of all NaN errors
-                if y_ref_err is not None and np.all(np.isnan(y_ref_err)):
-                    y_ref_err = None
+            # Overwrite initial changes in the simulation
+            changes = {
+                self.pids[i]: Q_(value, self.punits[i]) for i, value in enumerate(x)
+            }
+            self.simulations[k].timecourses[0].changes.update(changes)
 
-                # remove NaN
-                x_ref = x_ref[~np.isnan(y_ref)]
-                if y_ref_err is not None:
-                    y_ref_err = y_ref_err[~np.isnan(y_ref)]
-                y_ref = y_ref[~np.isnan(y_ref)]
-                # -------------------------------------
+            # set model in simulator (FIXME: update only when necessary)
+            simulator.set_model(model=self.models[k])
+            simulator.set_integrator_settings(variable_step_size=True,
+                                              relative_tolerance=1E-6)
+            simulator.set_timecourse_selections(selections=self.selections[k])
 
-                # interpolation
-                # TODO: interpolation (make this fast (c++ and numba))
-                # FIXME: make a fast interpolation via the datapoints left and right of experimental
-                # points (or directly request the necessary data points)
-                # plt.plot(data_obs.x.magnitude, data_obs.y.magnitude, 'o-')
-                # print("Data points:", len(data_obs.y.magnitude))
-                # plt.show()
-                f = interpolate.interp1d(x=data_obs.x.magnitude, y=data_obs.y.magnitude, copy=False, assume_sorted=True)
-                y_obs = f(x_ref)
+            # FIXME: normalize simulations and parameters once outside of loop
+            simulation = self.simulations[k]  # type: TimecourseSim
+            simulation.normalize(udict=simulator.udict, ureg=simulator.ureg)
 
-                # calculate weights based on errors
-                if y_ref_err is None:
-                    weights = np.ones_like(y_ref)
-                else:
-                    # handle special case that all errors are NA (no normalization possible)
-                    weights = 1.0 / y_ref_err  # the larger the error, the smaller the weight
-                    weights[np.isnan(weights)] = np.nanmax(
-                        weights)  # NaNs are filled with minimal errors, i.e. max weights
-                    weights = weights / np.min(
-                        weights)  # normalize minimal weight to 1.0
+            # run simulation
+            df = simulator._timecourses([simulation])[0]
 
-                # experiment based weight
-                weights = weights * fit_experiment.weight
+            # interpolation of simulation results
+            f = interpolate.interp1d(
+                x=df[self.xid_observable[k]],
+                y=df[self.yid_observable[k]],
+                copy=False, assume_sorted=True
+            )
+            y_obsip = f(self.x_references[k])
 
-                # calculate residuals
-                res = y_obs - y_ref
-                res_weighted = res * weights
-                parts.append(res_weighted)
+            # calculate weighted residuals
+            parts.append(
+                (y_obsip - self.y_references[k]) * self.weights[k] * self.weights_mapping[k]
+            )
 
-                if complete_data:
-                    residual_data[f"{sim_experiment.sid}_{key}"] = {
-                        "experiment": sim_experiment.sid,
-                        "mapping": key,
-                        "observable": mapping.observable,
-                        "reference": mapping.reference,
-                        "data_obs": data_obs,
-                        "data_ref": data_ref,
-                        "x_ref": x_ref,
-                        "y_ref": y_ref,
-                        "y_ref_err": y_ref_err,
-                        "y_obs": y_obs,
-                        "res": res,
-                        "res_weighted": res_weighted,
-                        "weights": weights,
-                        "cost": 0.5 * np.sum(np.power(res_weighted, 2))
-                    }
+            if complete_data:
+                residual_data["x_obs"].append(df[self.xid_observable[k]])
+                residual_data["y_obs"].append(df[self.yid_observable[k]])
+                residual_data["y_obsip"].append(res)
+                residual_data["residuals"].append(y_obsip - self.y_references[k])
+                residual_data["residuals_weighted"].append(parts[k])
+                residual_data["cost"].append(0.5 * np.sum(np.power(res_weighted, 2)))
 
         if complete_data:
             return residual_data

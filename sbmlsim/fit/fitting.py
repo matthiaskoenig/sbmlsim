@@ -10,21 +10,49 @@ class FitExperiment(object):
     """
 
     def __init__(self, experiment,
-                 weight: float = 1.0, mappings: Set[str] = None,
-                 fit_parameters: List['FitParameter'] = None):
+                 mappings: List[str] = None,
+                 weights: List[float] = 1.0,
+                 fit_parameters: Dict[str, List['FitParameter']] = None):
         """A Simulation experiment used in a fitting.
 
         :param experiment:
-        :param weight: weight in the global fitting
+        :param weights: weight of mappings
         :param mappings: mappings to use from experiments (None uses all mappings)
         :param fit_parameters: LOCAL parameters only changed in this simulation
                                 experiment
         """
         self.experiment_class = experiment
         self.mappings = mappings
-        self.weight = weight
+        if isinstance(weights, (float, int)):
+            self.weights = [weights] * len(mappings)
+        else:
+            # list of weights
+            if len(weights) != len(mappings):
+                raise ValueError(
+                    f"Mapping weights '{weights}' must have same length as "
+                    f"mappings '{mappings}'.")
+            self.weights = weights
         if fit_parameters is None:
-            self.fit_parameters = []
+            self.fit_parameters = {}
+        else:
+            ValueError("Local parameters in FitExperiment not yet supported.")
+            # FIXME: implement
+
+    @staticmethod
+    def reduce(fit_experiments: Iterable['FitExperiment']) -> List['FitExperiment']:
+        """Collects fit mappings of multiple FitExperiments"""
+        red_experiments = {}
+        for fit_exp in fit_experiments:
+            sid = fit_exp.experiment_class.__name__
+            if sid not in red_experiments:
+                red_experiments[sid] = fit_exp
+            else:
+                # combine the experiments
+                red_exp = red_experiments[sid]
+                red_exp.mappings = red_exp.mappings + fit_exp.mappings
+                red_exp.weights = red_exp.weights + fit_exp.weights
+
+        return red_experiments.values()
 
     def __str__(self):
         return f"{self.__class__.__name__}({self.experiment_class} {self.mappings})"
@@ -87,6 +115,7 @@ class FitData(object):
         self.task_id = task
         self.function = function
 
+        # actual Data
         # FIXME: simplify
         self.x = Data(experiment=experiment, index=xid,
                       task=self.task_id, dataset=self.dset_id, function=self.function)

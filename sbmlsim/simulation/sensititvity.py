@@ -119,7 +119,7 @@ class ModelSensitivity(object):
                 values = np.random.normal(magnitude, scale=magnitude * cv, size=size)
             else:
                 raise ValueError(f"Unsupported distribution: {distribution}")
-            changes[key] = Q_(values, value.units)
+            changes[key] = Q_(values, value.punits)
 
         return Dimension(f"dim_sens", changes=changes)
 
@@ -156,7 +156,7 @@ class ModelSensitivity(object):
             # change parameters in correct position
             values[index] = value.magnitude * (1.0 + difference)
             values[index + num_pars] = value.magnitude * (1.0 - difference)
-            changes[key] = Q_(values, value.units)
+            changes[key] = Q_(values, value.punits)
             index += 1
         return Dimension(f"dim_sens", changes=changes)
 
