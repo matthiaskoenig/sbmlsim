@@ -7,6 +7,7 @@ from collections import defaultdict
 import seaborn as sns
 import time
 import pandas as pd
+import logging
 
 from sbmlsim.data import Data
 from sbmlsim.simulator import SimulatorSerial
@@ -18,6 +19,7 @@ from sbmlsim.plot.plotting_matplotlib import plt  # , GridSpec
 
 from .fitting import FitExperiment, FitParameter
 
+logger = logging.getLogger(__name__)
 
 class OptimizationProblem(object):
     """Parameter optimization problem."""
@@ -30,7 +32,6 @@ class OptimizationProblem(object):
         :param fit_experiments:
         :param fit_parameters:
         """
-
         self.fit_experiments = FitExperiment.reduce(fit_experiments)
         self.parameters = fit_parameters
 
@@ -62,15 +63,14 @@ class OptimizationProblem(object):
         self.weights = []
         self.weights_mapping = []
 
-        # reduced length lists
         self.models = []
         self.simulations = []
         self.selections = []
 
-        # FIXME: reuse of models and simulations
-        # self.models = {}  # only a mapping (reuse)
-        # self.selections = {}  # only a mapping (reuse)
-        # self.simulations = {}  # only a mapping (reuse
+        # access latest model & simulation
+        self.current_model = None
+        self.current_simulation = None
+        self.current_result = None
 
         # Collect information for simulations
         for fit_experiment in self.fit_experiments:
@@ -157,12 +157,14 @@ class OptimizationProblem(object):
                     weights = weights / np.min(
                         weights)  # normalize minimal weight to 1.0
 
+                # lookup maps
+                self.models.append(model)
+                self.simulations.append(simulation)
+                self.selections.append(selections)
+
                 # store information
                 self.experiment_keys.append(sid)
                 self.mapping_keys.append(mapping_id)
-                self.models.append(model)
-                self.selections.append(selections)
-                self.simulations.append(simulation)
                 self.xid_observable.append(obs_xid)
                 self.yid_observable.append(obs_yid)
                 self.x_references.append(x_ref)
@@ -277,24 +279,34 @@ class OptimizationProblem(object):
 
         for k, mapping_id in enumerate(self.mapping_keys):
 
-            # Overwrite initial changes in the simulation
-            changes = {
-                self.pids[i]: Q_(value, self.punits[i]) for i, value in enumerate(x)
-            }
-            self.simulations[k].timecourses[0].changes.update(changes)
+            if (self.models[k] == self.current_model) and (self.simulations[k] == self.current_simulation):
+                # logger.warning(f"Using cached result: {k} - {self.experiment_keys[k]} - {mapping_id}")
+                df = self.current_result
+            else:
+                # Overwrite initial changes in the simulation
+                changes = {
+                    self.pids[i]: Q_(value, self.punits[i]) for i, value in enumerate(x)
+                }
+                self.simulations[k].timecourses[0].changes.update(changes)
 
-            # set model in simulator (FIXME: update only when necessary)
-            simulator.set_model(model=self.models[k])
-            simulator.set_integrator_settings(variable_step_size=True,
-                                              relative_tolerance=1E-6 , absolute_tolerance=1E-6)
-            simulator.set_timecourse_selections(selections=self.selections[k])
+                # set model in simulator (FIXME: update only when necessary)
+                simulator.set_model(model=self.models[k])
+                simulator.set_integrator_settings(variable_step_size=True,
+                                                  relative_tolerance=1E-6, absolute_tolerance=1E-6)
+                simulator.set_timecourse_selections(selections=self.selections[k])
 
-            # FIXME: normalize simulations and parameters once outside of loop
-            simulation = self.simulations[k]  # type: TimecourseSim
-            simulation.normalize(udict=simulator.udict, ureg=simulator.ureg)
+                # FIXME: normalize simulations and parameters once outside of loop
+                simulation = self.simulations[k]  # type: TimecourseSim
+                simulation.normalize(udict=simulator.udict, ureg=simulator.ureg)
 
-            # run simulation
-            df = simulator._timecourses([simulation])[0]
+                # run simulation
+                # logger.warning(f"Running simulation: {k} - {self.experiment_keys[k]} - {mapping_id}")
+                df = simulator._timecourses([simulation])[0]
+
+                # update cache
+                self.current_model = self.models[k]
+                self.current_simulation = self.simulations[k]
+                self.current_result = df
 
             # interpolation of simulation results
             f = interpolate.interp1d(
