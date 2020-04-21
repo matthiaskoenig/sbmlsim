@@ -316,6 +316,10 @@ class OptimizationProblem(object):
             fits.append(
                 self._optimize_single(x0=x0, optimizer=optimizer, **kwargs)
             )
+
+        self.fit_results = self.process_fits(fits)
+        # FIXME: make sure these are the optimal values
+        self.xopt = self.fit_results.x[0]
         return fits
 
     def process_fits(self, fits: List[scipy.optimize.OptimizeResult]):
@@ -342,14 +346,15 @@ class OptimizationProblem(object):
         df.sort_values(by=["cost"], inplace=True)
         return df
 
-
-    def plot_residuals(self, res_data_start, res_data_fit=None,
-                       titles=["initial", "fit"], filepath=None):
+    def plot_residuals(self, filepath=None):
         """ Plot residual data.
 
         :param res_data_start: initial residual data
         :return:
         """
+        titles = ["initial", "fit"]
+        res_data_start = opt_problem.residuals(x=self.x0, complete_data=True)
+        res_data_fit = opt_problem.residuals(x=self.xopt, complete_data=True)
 
         for sid in res_data_start.keys():
             fig, ((a1, a2), (a3, a4), (a5, a6)) = plt.subplots(nrows=3, ncols=2, figsize=(10, 10))
@@ -439,12 +444,9 @@ class OptimizationProblem(object):
                 fig.savefig(filepath / f"{sid}.png")
             plt.show()
 
-    def fit_report(self, fits: List[scipy.optimize.OptimizeResult]):
+    def fit_report(self):
         """ Readable report of optimization.
         """
-        # plot top fit
-        fit_results = self.process_fits(fits)
-
         pd.set_option('display.max_columns', None)
         print("-" * 80)
         print(fit_results)
@@ -452,19 +454,19 @@ class OptimizationProblem(object):
         print("Optimal parameters:")
         fitted_pars = dict(zip(
             [p.pid for p in self.parameters],
-            fit_results.x[0]
+            # FIXME: make sure this works
+            self.fit_results.x[0]
         ))
         for key, value in fitted_pars.items():
             print("\t{:<15} {}".format(key, value))
         print("-" * 80)
 
-    def plot_waterfall(self, fits: List[scipy.optimize.OptimizeResult]):
+    def plot_waterfall(self):
         """Process the optimization results."""
-        df = self.process_fits(fits)
-
+        df = self.fit_results
 
         fig, ax = plt.subplots(nrows=1, ncols=1, figsize=(10, 10))
-        ax.plot(range(len(df)), 1 + (df.cost-df.cost[0]), '-o', color="black")
+        ax.plot(range(len(df)), 1 + (df.cost-df.cost.values[0]), '-o', color="black")
         ax.set_xlabel("index (Ordered optimizer run)")
         ax.set_ylabel("Offsetted cost value (relative to best start)")
         ax.set_yscale("log")
@@ -472,9 +474,9 @@ class OptimizationProblem(object):
 
         plt.show()
 
-    def plot_correlation(self, fits: List[scipy.optimize.OptimizeResult]):
+    def plot_correlation(self):
         """Process the optimization results."""
-        df = self.process_fits(fits)
+        df = self.fit_results
 
         sns.set(style="ticks", color_codes=True)
         pids = [p.pid for p in self.parameters]
@@ -489,6 +491,9 @@ class OptimizationProblem(object):
         :param filepath:
         :return:
         """
+        res_data_start = opt_problem.residuals(x=self.x0, complete_data=True)
+        res_data_fit = opt_problem.residuals(x=self.xopt, complete_data=True)
+
         data = []
         types = ["initial", "fit"]
 
