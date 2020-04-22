@@ -8,102 +8,101 @@ import jinja2
 from collections import OrderedDict
 from typing import Dict, List
 from pathlib import Path
+from enum import Enum
 
-from sbmlsim.experiment import ExperimentResult, SimulationExperiment
-from sbmlsim import TEMPLATE_PATH
-
+from sbmlsim.experiment import SimulationExperiment, ExperimentResult
 from sbmlsim import __version__
+from sbmlsim import BASE_PATH
 
+
+TEMPLATE_PATH = BASE_PATH / "experiment" / "templates"
 logger = logging.getLogger(__name__)
 
 
-class Report(object):
-    pass
+class ExperimentReport(object):
 
+    class ReportType(Enum):
+        MARKDOWN = 1
+        HTML = 2
 
-# TODO: refactor in report class
+    def __init__(self, results: List[ExperimentResult],
+                 metadata: Dict = None,
+                 template_path=TEMPLATE_PATH):
+        self.results = results
+        if metadata is None:
+            metadata = dict()
 
-def create_report(results: List[ExperimentResult],
-                  output_path: Path,
-                  metadata: Dict = None,
-                  repository=None,
-                  template_path=TEMPLATE_PATH):
-    """ Creates markdown report.
+        self.metadata = metadata
+        self.template_path = template_path
 
-    Processes dictionary of ExperimentResuls to generate
-    overall report.
+    def create_report(self, output_path: Path, report_type: ReportType=ReportType.HTML):
+        """ Create report of SimulationExperiments.
 
-    All relative paths only can be resolved in the reports if the
-    paths are below the reports or at the same level in the file
-    hierarchy.
-    """
-    if metadata is None:
-        metadata = dict()
-    env = jinja2.Environment(loader=jinja2.FileSystemLoader(str(template_path)),
-                             extensions=['jinja2.ext.autoescape'],
-                             trim_blocks=True,
-                             lstrip_blocks=True)
+        Processes ExperimentResults to generate overall report.
 
-    def write_report(name: str, context: Dict, template_str: str):
-        """Writes the report file from given context and template."""
-        template = env.get_template(template_str)
-        text = template.render(context)
-        suffix = template_str.split(".")[-1]
-        out_file = output_path / f'{name}.{suffix}'
-        with open(out_file, "w") as f_md:
-            f_md.write(text)
-            logger.info(f"Write {suffix}: 'file://{out_file}'")
+        All relative paths only can be resolved in the reports if the
+        paths are below the reports or at the same level in the file
+        hierarchy.
+        """
+        env = jinja2.Environment(loader=jinja2.FileSystemLoader(str(self.template_path)),
+                                 extensions=['jinja2.ext.autoescape'],
+                                 trim_blocks=True,
+                                 lstrip_blocks=True)
 
-    # --- {exp_id}.md ---
-    exp_ids = OrderedDict()
-    for exp_result in results:  # type: ExperimentResult
-        experiment = exp_result.experiment  # type: SimulationExperiment
-        exp_id = experiment.sid
+        def write_report(name: str, context: Dict, template_str: str):
+            """Writes the report file from given context and template."""
+            template = env.get_template(template_str)
+            text = template.render(context)
+            suffix = template_str.split(".")[-1]
+            out_file = output_path / f'{name}.{suffix}'
+            with open(out_file, "w") as f_out:
+                f_out.write(text)
 
+        if report_type == self.ReportType.HTML:
+            suffix = "html"
+        elif report_type == self.ReportType.MARKDOWN:
+            suffix = "md"
 
-        # relative paths to output path
-        model_path = ""  # FIXME os.path.relpath(str(exp_result.model_path), output_path)
-        data_path = os.path.relpath(str(experiment.data_path), output_path)
-        results_path = os.path.relpath(str(exp_result.output_path), output_path)
+        # report for simulation experiment
+        exp_ids = OrderedDict()
+        for exp_result in self.results:  # type: ExperimentResult
+            experiment = exp_result.experiment  # type: SimulationExperiment
+            exp_id = experiment.sid
 
-        # code path
-        code_path = sys.modules[experiment.__module__].__file__
-        with open(code_path, "r") as f_code:
-            code = f_code.read()
-        code_path = os.path.relpath(code_path, output_path)
+            # relative paths to output path
+            model_path = ""  # FIXME os.path.relpath(str(exp_result.model_path), output_path)
+            data_path = os.path.relpath(str(experiment.data_path), os.path.join(output_path, exp_id))
+            results_path = os.path.relpath(str(exp_result.output_path), os.path.join(output_path, exp_id))
 
-        # parse meta data for figures (mapping based on figure keys)
-        figures_keys = sorted(experiment._figures.keys())
-        figures = {key: metadata.get(f"{exp_id}_{key}", None) for key in figures_keys}
+            # code path
+            code_path = sys.modules[experiment.__module__].__file__
+            with open(code_path, "r") as f_code:
+                code = f_code.read()
+            code_path = os.path.relpath(code_path, os.path.join(output_path, exp_id))
 
+            # parse meta data for figures (mapping based on figure keys)
+            figures_keys = sorted(experiment._figures.keys())
+            figures = {key: self.metadata.get(f"{exp_id}_{key}", None) for key in figures_keys}
+
+            context = {
+                'exp_id': exp_id,
+                'results_path': results_path,  # prefix path for all results (figures, json, ...)
+                'model_path': model_path,
+                'data_path': data_path,
+                'code_path': code_path,
+                'datasets': sorted(experiment._datasets.keys()),
+                'simulations': sorted(experiment._simulations.keys()),
+                'figures': figures,
+                'code': code,
+            }
+            exp_ids[exp_id] = context
+            write_report(name=f"{exp_id}/{exp_id}", context=context,
+                         template_str=f"experiment.{suffix}")
+
+        # index file
         context = {
-            'exp_id': exp_id,
-            'results_path': results_path,  # prefix path for all results (figures, json, ...)
-            'model_path': model_path,
-            'data_path': data_path,
-            'code_path': code_path,
-            'datasets': sorted(experiment._datasets.keys()),
-            'simulations': sorted(experiment._simulations.keys()),
-            'figures': figures,
-            'code': code,
+            'version': __version__,
+            'exp_ids': exp_ids,
         }
-        exp_ids[exp_id] = context
-
-        # add additional information if existing
-        # FIXME
-        # if Path(f"{str(exp_result.model_path)[:-4]}.html").exists():
-        #     context["report_path"] = f"{model_path[:-4]}.html"
-
-        write_report(name=exp_id, context=context, template_str='experiment.md')
-        write_report(name=exp_id, context=context, template_str='experiment.html')
-
-    # --- index.md ---
-    context = {
-        'version': __version__,
-        'exp_ids': exp_ids,
-    }
-    write_report(name="index", context=context, template_str='index.md')
-    write_report(name="index", context=context, template_str='index.html')
-
-
-
+        write_report(name="index", context=context,
+                     template_str=f'index.{suffix}')
