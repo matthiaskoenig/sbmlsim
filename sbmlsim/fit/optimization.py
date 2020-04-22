@@ -329,7 +329,7 @@ class OptimizationProblem(object):
             # set model in simulator (FIXME: update only when necessary)
             simulator.set_model(model=self.models[k])
             simulator.set_integrator_settings(variable_step_size=True,
-                                              relative_tolerance=1E-6, absolute_tolerance=1E-8)
+                                              relative_tolerance=1E-6, absolute_tolerance=1E-6)
             simulator.set_timecourse_selections(selections=self.selections[k])
 
             # FIXME: normalize simulations and parameters once outside of loop
