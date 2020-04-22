@@ -4,7 +4,8 @@ import scipy
 from scipy import optimize
 from scipy import interpolate
 from collections import defaultdict
-import seaborn as sns
+from pathlib import Path
+
 import time
 import pandas as pd
 import logging
@@ -17,6 +18,7 @@ from sbmlsim.experiment import ExperimentRunner
 from sbmlsim.model import RoadrunnerSBMLModel
 from sbmlsim.utils import timeit
 from sbmlsim.plot.plotting_matplotlib import plt  # , GridSpec
+import seaborn as sns
 
 from .fitting import FitExperiment, FitParameter
 
@@ -193,29 +195,35 @@ class OptimizationProblem(object):
         info.append("-" * 80)
         return "\n".join(info)
 
-    def report(self):
-        print(str(self))
+    def report(self, output_path=None):
+        """Print and write report."""
+        info = str(self)
+        print(info)
+        if output_path is not None:
+            filepath = output_path / "optimization_problem.txt"
+            with open(filepath, "w") as fout:
+                fout.write(info)
 
     def run_optimization(self, size: int = 5, seed: int = 1234,
-                         plot_results=True, **kwargs):
+                         plot_results=True, output_path=None, **kwargs):
         """Runs the given optimization problem.
 
         Creates all standard plots and reports
         """
-        self.report()
+        self.report(output_path=output_path)
 
         # optimize
         fits = self.optimize(size=size, seed=seed, **kwargs)
-        self.fit_report()
+        self.fit_report(output_path=output_path)
 
         if plot_results:
             if len(fits) > 1:
-                self.plot_waterfall()
-                self.plot_correlation()
+                self.plot_waterfall(output_path=output_path)
+                self.plot_correlation(output_path=output_path)
 
             # plot top fit
-            self.plot_costs()
-            self.plot_residuals()
+            self.plot_costs(output_path=output_path)
+            self.plot_residuals(output_path=output_path)
 
         return fits
 
@@ -384,14 +392,15 @@ class OptimizationProblem(object):
         df.sort_values(by=["cost"], inplace=True)
         return df
 
-    def fit_report(self):
-        """ Readable report of optimization.
-        """
+    def fit_report(self, output_path: Path=None):
+        """ Readable report of optimization. """
         pd.set_option('display.max_columns', None)
-        print("-" * 80)
-        print(self.fit_results)
-        print("-" * 80)
-        print("Optimal parameters:")
+        info = [
+            "-" * 80,
+            str(self.fit_results),
+            "-" * 80,
+            "Optimal parameters:",
+        ]
 
         xopt = self.fit_results.x.iloc[0]
         fitted_pars = {}
@@ -399,30 +408,35 @@ class OptimizationProblem(object):
             fitted_pars[p.pid] = (xopt[k], p.unit)
 
         for key, value in fitted_pars.items():
-            print("\t'{}': Q_({}, '{}'),".format(key, value[0], value[1]))
-        print("-" * 80)
+            info.append(
+                "\t'{}': Q_({}, '{}'),".format(key, value[0], value[1])
+            )
+        info.append("-" * 80)
+        info = "\n".join(info)
+        print(info)
+        if output_path is not None:
+            filepath = output_path / "fit_report.txt"
+            with open(filepath, "w") as fout:
+                fout.write(info)
 
-    def plot_waterfall(self):
+    def plot_waterfall(self, output_path=None):
         """Process the optimization results."""
         df = self.fit_results
-        fig, ax = plt.subplots(nrows=1, ncols=1, figsize=(10, 10))
+        fig, ax = plt.subplots(nrows=1, ncols=1, figsize=(5, 5))
         ax.plot(range(len(df)), 1 + (df.cost-df.cost.iloc[0]), '-o', color="black")
         ax.set_xlabel("index (Ordered optimizer run)")
         ax.set_ylabel("Offsetted cost value (relative to best start)")
         ax.set_yscale("log")
         ax.set_title("Waterfall plot")
 
+        if output_path is not None:
+            filepath = output_path / "01_waterfall.svg"
+            fig.savefig(filepath, bbox_inches="tight")
+
         plt.show()
 
-    def plot_correlation(self):
-        """Process the optimization results."""
-        df = self.fit_results
-        sns.set(style="ticks", color_codes=True)
-        pids = [p.pid for p in self.parameters]
-        sns.pairplot(data=df[pids])
-        plt.show()
 
-    def plot_costs(self, xstart=None, xopt=None, filepath=None):
+    def plot_costs(self, xstart=None, xopt=None, output_path: Path=None):
         """Plots bar diagram of costs for set of residuals
 
         :param res_data_start:
@@ -456,15 +470,28 @@ class OptimizationProblem(object):
                 })
         cost_df = pd.DataFrame(data, columns=["id", "experiment", "mapping", "cost", "type"])
 
-        fig, ax = plt.subplots(nrows=1, ncols=1, figsize=(10, 10))
+        fig, ax = plt.subplots(nrows=1, ncols=1, figsize=(5, 5))
         sns.set_color_codes("pastel")
         sns.barplot(ax=ax, x="cost", y="id", hue="type", data=cost_df)
         ax.set_xscale("log")
-        if filepath:
-            fig.savefig(filepath)
+        if output_path:
+            filepath = output_path / "02_costs.svg"
+            fig.savefig(filepath, bbox_inches="tight")
         plt.show()
 
-    def plot_residuals(self, xstart=None, xopt=None, filepath=None):
+    def plot_correlation(self, output_path=None):
+        """Process the optimization results."""
+        df = self.fit_results
+        sns.set(style="ticks", color_codes=True)
+        pids = [p.pid for p in self.parameters]
+        sns_plot = sns.pairplot(data=df[pids])
+        if output_path is not None:
+            filepath = output_path / "03_parameter_correlation.svg"
+            sns_plot.savefig(filepath, bbox_inches="tight")
+
+        plt.show()
+
+    def plot_residuals(self, xstart=None, xopt=None, output_path: Path = None):
         """ Plot residual data.
 
         :param res_data_start: initial residual data
@@ -568,6 +595,7 @@ class OptimizationProblem(object):
                     for ax in axes:
                         ax.set_ylim([min(ylim1[0],ylim2[0]), max(ylim1[1],ylim2[1])])
 
-            if filepath is not None:
-                fig.savefig(filepath / f"{sid}.png")
+            if output_path is not None:
+                fig.savefig(output_path / f"residuals_{sid}_{mapping_id}.svg",
+                            bbox_inches="tight")
             plt.show()
