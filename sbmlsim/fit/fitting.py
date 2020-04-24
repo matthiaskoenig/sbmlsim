@@ -104,6 +104,9 @@ class FitParameter(object):
         self.lower_bound = lower_bound
         self.upper_bound = upper_bound
         self.unit = unit
+        if unit is None:
+            logger.error(f"No unit provided for FitParameter '{pid}', assuming "
+                         f"model units.")
 
     def __str__(self):
         return f"{self.__class__.__name__}<{self.pid} = {self.start_value} " \

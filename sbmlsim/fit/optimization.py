@@ -121,6 +121,9 @@ class OptimizationProblem(object):
                 task_id = mapping.observable.task_id
                 task = sim_experiment._tasks[task_id]
                 model = sim_experiment._models[task.model_id]  # type: RoadrunnerSBMLModel
+                # only set the tolerances at the beginning
+                # FIXME: better setting of parameters
+
                 simulation = sim_experiment._simulations[task.simulation_id]
 
                 if not isinstance(simulation, TimecourseSim):
@@ -205,10 +208,19 @@ class OptimizationProblem(object):
                 fout.write(info)
 
     def run_optimization(self, size: int = 5, seed: int = 1234,
-                         plot_results=True, output_path=None, **kwargs):
+                         plot_results: bool = True, output_path=None, **kwargs) -> List[scipy.optimize.OptimizeResult]:
         """Runs the given optimization problem.
 
-        Creates all standard plots and reports
+        This changes the internal state of the optimization problem
+        and provides simple access to parameters and costs after
+        optimization.
+
+        :param size: number of optimization with different start values
+        :param seed: random seed (for sampling of parameters)
+        :param plot_results: should standard plots be generated
+        :param output_path: path (directory) to store results
+        :param kwargs: additional arguments for optimizer, e.g. xtol
+        :return: list of optimization results
         """
         self.report(output_path=output_path)
 
@@ -287,6 +299,8 @@ class OptimizationProblem(object):
             x0 = self.x0
 
         if optimizer == "least square":
+            # scipy least square optimizer
+            # https://docs.scipy.org/doc/scipy/reference/generated/scipy.optimize.least_squares.html
             ts = time.time()
             try:
                 opt_result = optimize.least_squares(
@@ -425,11 +439,11 @@ class OptimizationProblem(object):
     def plot_waterfall(self, output_path=None):
         """Process the optimization results."""
         df = self.fit_results
-        fig, ax = plt.subplots(nrows=1, ncols=1, figsize=(5, 5))
+        fig, ax = plt.subplots(nrows=1, ncols=1, figsize=(10, 10))
         ax.plot(range(len(df)), 1 + (df.cost-df.cost.iloc[0]), '-o', color="black")
         ax.set_xlabel("index (Ordered optimizer run)")
         ax.set_ylabel("Offsetted cost value (relative to best start)")
-        ax.set_yscale("log")
+        # ax.set_yscale("log")
         ax.set_title("Waterfall plot")
 
         if output_path is not None:
