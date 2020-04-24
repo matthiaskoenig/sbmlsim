@@ -310,7 +310,7 @@ class OptimizationProblem(object):
         :param complete_data: boolean flag to return additional information
         :return:
         """
-        # print(f"\t{x}")
+        print(f"\t{x}")
         parts = []
         if complete_data:
             residual_data = defaultdict(list)
@@ -329,7 +329,7 @@ class OptimizationProblem(object):
             # set model in simulator (FIXME: update only when necessary)
             simulator.set_model(model=self.models[k])
             simulator.set_integrator_settings(variable_step_size=True,
-                                              relative_tolerance=1E-6, absolute_tolerance=1E-6)
+                                              relative_tolerance=1E-6, absolute_tolerance=1E-8)
             simulator.set_timecourse_selections(selections=self.selections[k])
 
             # FIXME: normalize simulations and parameters once outside of loop
@@ -348,13 +348,16 @@ class OptimizationProblem(object):
             )
             y_obsip = f(self.x_references[k])
 
+            # scaling of residuals
+            # scale = 1E8
+
             # calculate weighted residuals
             parts.append(
-                (y_obsip - self.y_references[k]) * self.weights[k] * self.weights_mapping[k]
+                (y_obsip - self.y_references[k]) * self.weights[k] * self.weights_mapping[k] # * scale
             )
 
             if complete_data:
-                res = (y_obsip - self.y_references[k])
+                res = (y_obsip - self.y_references[k]) # * scale
                 res_weighted = res * self.weights[k] * self.weights_mapping[k]
                 residual_data["x_obs"].append(df[self.xid_observable[k]])
                 residual_data["y_obs"].append(df[self.yid_observable[k]])
@@ -379,7 +382,7 @@ class OptimizationProblem(object):
                 'duration': fit.duration,
                 'cost': fit.cost,
                 'optimality': fit.optimality,
-                # 'message': fit.message
+                'message': fit.message
             }
             # add parameter columns
             for k, pid in enumerate(pids):

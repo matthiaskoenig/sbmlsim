@@ -122,7 +122,12 @@ class Data(object):
             else:
                 uindex = self.index
 
-            self.unit = dset.udict[uindex]
+            try:
+                self.unit = dset.udict[uindex]
+            except KeyError as err:
+                logger.error(f"Units missing for key '{uindex}' in dataset: "
+                             f"'{self.dset_id}'. Add missing units to dataset.")
+                raise err
             x = dset[self.index].values * dset.ureg(dset.udict[uindex])
 
         elif self.dtype == Data.Types.TASK:
