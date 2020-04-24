@@ -286,9 +286,9 @@ class Curve(AbstractCurve):
 
 
 class Plot(Base):
-    """
-    A plot is the basic element of a plot.
-    This corresponds to an axis.
+    """ Plot panel.
+    A plot is the basic element of a plot. This corresponds to a single
+    panel or axes combination in a plot. Multiple plots create a figure.
     """
     def __init__(self, sid: str, name: str = None,
                  legend: bool = False,
@@ -340,9 +340,11 @@ class Plot(Base):
         return self.figure.experiment
 
     def get_title(self):
+        """Get title of plot panel."""
         return self.name
 
     def set_title(self, name: str):
+        """Set title of plot panel."""
         self.name = name
 
     def set_xaxis(self, label: str, unit: str=None):

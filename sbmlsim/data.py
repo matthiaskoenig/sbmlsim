@@ -1,4 +1,3 @@
-
 from enum import Enum
 import logging
 from typing import Dict
@@ -7,6 +6,7 @@ import numpy as np
 from sbmlsim.units import Quantity, UnitRegistry
 from sbmlsim.combine import mathml
 from sbmlsim.result import XResult
+from sbmlsim.utils import deprecated
 
 logger = logging.getLogger(__name__)
 
@@ -288,7 +288,19 @@ class DataSet(pd.DataFrame):
         return dset
 
     def unit_conversion(self, key, factor: Quantity):
-        """Also converts the corresponding errors"""
+        """Converts the units of the given key in the dataset.
+
+        The quantity in the dataset is multiplied with the conversion factor.
+        In addition to the key, also the respective error measures are
+        converted with the same factor, i.e.
+        - key
+        - key_sd
+        - key_se
+
+        :param key: column key in dataset (this column is unit converted)
+        :param factor: multiplicative Quantity factor for conversion
+        :return: None
+        """
         if key in self.columns:
             if key not in self.udict:
                 raise ValueError(
@@ -321,29 +333,43 @@ class DataSet(pd.DataFrame):
             logger.error(f"Key '{key}' not in DataSet, unit conversion not applied: '{factor}'")
 
 
+@deprecated
 def load_pkdb_dataframe(sid, data_path, sep="\t", comment="#", **kwargs) -> pd.DataFrame:
-    """ Loads data from given pkdb figure/table id.
+    """ Loads TSV data from PKDB figure or table id.
 
-    :param sid:
-    :param data_path:
+    This is a simple helper functions to directly loading the TSV data.
+    It is recommended to use `pkdb_analysis` methods instead.
+
+    This function will be removed.
+
+    E.g. for 'Amchin1999_Tab1' the file
+        data_path / 'Amchin1999' / '.Amchin1999.tsv'
+    is loaded.
+
+    :param sid: figure or table id
+    :param data_path: base path of data
     :param sep: separator
     :param comment: comment characters
     :param kwargs: additional kwargs for csv parsing
     :return: pandas DataFrame
     """
     study = sid.split('_')[0]
-    path = data_path / study / f'{sid}.tsv'
-
-    if not path.exists():
-        path = data_path / study / f'.{sid}.tsv'
+    path = data_path / study / f'.{sid}.tsv'
 
     df = pd.read_csv(path, sep=sep, comment=comment, **kwargs)
     df = df.dropna(how='all')  # drop all NA rows
     return df
 
-
+@deprecated
 def load_pkdb_dataframes_by_substance(sid, data_path, **kwargs) -> Dict[str, pd.DataFrame]:
-    """ Load dataframes from given pkdb figure/table id split on substance.
+    """ Load dataframes from given PKDB figure/table id split on substance.
+
+    The DataFrame is split on the 'substance' key.
+
+    This is a simple helper functions to directly loading the TSV data.
+    It is recommended to use `pkdb_analysis` methods instead.
+
+    This function will be removed.
 
     :param sid:
     :param data_path:
@@ -355,15 +381,3 @@ def load_pkdb_dataframes_by_substance(sid, data_path, **kwargs) -> Dict[str, pd.
     for substance in df.substance.unique():
         frames[substance] = df[df.substance == substance]
     return frames
-
-
-if __name__ == "__main__":
-    f1 = DataFunction(
-        index="test", formula="(x + y + z)/x",
-        variables={
-         'x': 0.1 * np.ones(shape=[1, 10]),
-         'y': 3.0 * np.ones(shape=[1, 10]),
-         'z': 2.0 * np.ones(shape=[1, 10]),
-        })
-    res = f1.data()
-    print(res)
