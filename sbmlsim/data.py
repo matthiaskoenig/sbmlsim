@@ -333,7 +333,7 @@ class DataSet(pd.DataFrame):
             logger.error(f"Key '{key}' not in DataSet, unit conversion not applied: '{factor}'")
 
 
-@deprecated
+# @deprecated
 def load_pkdb_dataframe(sid, data_path, sep="\t", comment="#", **kwargs) -> pd.DataFrame:
     """ Loads TSV data from PKDB figure or table id.
 
@@ -360,7 +360,7 @@ def load_pkdb_dataframe(sid, data_path, sep="\t", comment="#", **kwargs) -> pd.D
     df = df.dropna(how='all')  # drop all NA rows
     return df
 
-@deprecated
+# @deprecated
 def load_pkdb_dataframes_by_substance(sid, data_path, **kwargs) -> Dict[str, pd.DataFrame]:
     """ Load dataframes from given PKDB figure/table id split on substance.
 

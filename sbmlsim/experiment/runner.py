@@ -75,6 +75,7 @@ class ExperimentRunner(object):
         """Run the experiments."""
         results = []
         for sid, experiment in self.experiments.items():
+            logger.info(f"Running SimulationExperiment: {sid}")
             info = experiment.run(
                 simulator=self.simulator,
                 output_path=output_path / sid,
