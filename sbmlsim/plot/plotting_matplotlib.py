@@ -289,7 +289,7 @@ def add_line(ax: plt.Axes, xres: XResult,
         dims = xres._redop_dims()
         index_vecs = [xres.coords[dim].values for dim in dims]
         indices = list(itertools.product(*index_vecs))
-        for item in indices:
+        for k, item in enumerate(indices):
             d = dict(zip(dims, item))
             xi = Q_(xres[xid].isel(d).values, xres.udict[xid])
             yi = Q_(xres[yid].isel(d).values, xres.udict[yid])
@@ -298,8 +298,9 @@ def add_line(ax: plt.Axes, xres: XResult,
                 xi = xi.to(xunit)
             if yunit:
                 yi = yi.to(yunit)
-
-            ax.plot(xi.magnitude, yi.magnitude, color=color)
+            if k != 0:
+                label = "__nolabel__"
+            ax.plot(xi.magnitude, yi.magnitude, color=color, label=label)
 
     else:
         # calculate rational ysd, i.e., if the value if y + ysd is larger than ymax take ymax
