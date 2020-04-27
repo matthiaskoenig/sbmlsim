@@ -202,12 +202,12 @@ class SimulationExperiment(object):
         # this results in execution of the tasks! On the other hand we
         # want to register the data before running the tasks.
         # FIXME (executed 2 times)
-        # self._figures = self.figures()
+        self._figures = self.figures()
 
         # run simulations
         self._run_tasks(simulator)  # sets self._results
         # FIXME
-        self._figures = self.figures()
+        # self._figures = self.figures()
 
         # evaluate mappings
         self.evaluate_mappings()

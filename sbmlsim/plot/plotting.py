@@ -347,11 +347,11 @@ class Plot(Base):
         """Set title of plot panel."""
         self.name = name
 
-    def set_xaxis(self, label: str, unit: str=None):
-        self.xaxis = Axis(name=label, unit=unit)
+    def set_xaxis(self, label: str, unit: str=None, **kwargs):
+        self.xaxis = Axis(name=label, unit=unit, **kwargs)
 
-    def set_yaxis(self, label: str, unit: str=None):
-        self.yaxis = Axis(name=label, unit=unit)
+    def set_yaxis(self, label: str, unit: str=None, **kwargs):
+        self.yaxis = Axis(name=label, unit=unit, **kwargs)
 
     def add_curve(self, curve: Curve):
         """
