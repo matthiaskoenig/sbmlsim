@@ -396,7 +396,7 @@ class OptimizationProblem(object):
                 'duration': fit.duration,
                 'cost': fit.cost,
                 'optimality': fit.optimality,
-                'message': fit.message
+                'message': fit.message if hasattr(fit, "message") else None
             }
             # add parameter columns
             for k, pid in enumerate(pids):

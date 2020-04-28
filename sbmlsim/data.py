@@ -7,6 +7,7 @@ from sbmlsim.units import Quantity, UnitRegistry
 from sbmlsim.combine import mathml
 from sbmlsim.result import XResult
 from sbmlsim.utils import deprecated
+from sbmlsim.units import DimensionalityError
 
 logger = logging.getLogger(__name__)
 
@@ -50,6 +51,14 @@ class Data(object):
             experiment._data = {}
 
         experiment._data[self.sid] = self
+
+    def __str__(self):
+        if self.is_task():
+            return f"Data(index={self.index}, task_id={self.task_id})"
+        elif self.is_dataset():
+            return f"Data(index={self.index}, dset_id={self.task_id})"
+        elif self.is_function():
+            return f"Data(index={self.index}, function={self.function})"
 
     @property
     def sid(self):
@@ -157,7 +166,13 @@ class Data(object):
 
         # convert units to requested units
         if to_units is not None:
-            x = x.to(to_units)
+            try:
+                x = x.to(to_units)
+            except DimensionalityError as err:
+                logger.error(f"Could not convert data '{str(self)}' with "
+                             f"content '{x}' to "
+                             f"units '{to_units}'")
+                raise err
 
         return x
 
