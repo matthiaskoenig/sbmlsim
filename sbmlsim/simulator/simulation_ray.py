@@ -42,7 +42,11 @@ class SimulatorActor(SimulatorWorker):
             self.r.loadState(str(path_state))
 
     def set_timecourse_selections(self, selections):
-        self.r.timeCourseSelections = selections
+        try:
+            self.r.timeCourseSelections = selections
+        except RuntimeError as err:
+            print(f"ERROR: {err}")
+            raise(err)
 
     def work(self, simulations):
         """Run a bunch of simulations on a single worker."""
