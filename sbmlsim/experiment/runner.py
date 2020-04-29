@@ -71,17 +71,17 @@ class ExperimentRunner(object):
     @timeit
     def run_experiments(self, output_path: Path,
                         show_figures: bool = False,
-                        save_results: bool = False):
+                        save_results: bool = False) -> List:
         """Run the experiments."""
-        results = []
+        exp_results = []
         for sid, experiment in self.experiments.items():
             logger.info(f"Running SimulationExperiment: {sid}")
-            info = experiment.run(
+            result = experiment.run(
                 simulator=self.simulator,
                 output_path=output_path / sid,
                 show_figures=show_figures,
                 save_results=save_results,
             )
-            results.append(info)
-        return results
+            exp_results.append(result)
+        return exp_results
 

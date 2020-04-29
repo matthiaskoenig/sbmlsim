@@ -131,6 +131,11 @@ class Data(object):
             else:
                 uindex = self.index
 
+            if self.index not in dset.columns:
+                error_msg = f"Data column with key '{self.index}' does not " \
+                            f"exist in dataset: '{self.dset_id}'."
+                logger.error(error_msg)
+                raise KeyError(error_msg)
             try:
                 self.unit = dset.udict[uindex]
             except KeyError as err:

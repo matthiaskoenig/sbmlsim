@@ -1,3 +1,59 @@
+<html>
+<head>
+</head>
+<body>
+
+        <a href="../index.html">Experiments</a>
+
+        <h1>DoseResponseExperiment</h1>
+
+        <h2>Model</h2>
+        <p>
+        <ul>
+            <li><strong>SBML</strong>: <a href=""></a></li>
+            </li>
+        </ul>
+        </p>
+
+        <h2>Datasets</h2>
+        <p>
+        <ul>
+            <li><a href="./DoseResponseExperiment_epinephrine.tsv">./DoseResponseExperiment_epinephrine.tsv</a></li>
+            <li><a href="./DoseResponseExperiment_glucagon.tsv">./DoseResponseExperiment_glucagon.tsv</a></li>
+            <li><a href="./DoseResponseExperiment_insulin.tsv">./DoseResponseExperiment_insulin.tsv</a></li>
+        </ul>
+        </p>
+
+        <h2>Figures</h2>
+        <p>
+        <ul>
+            <li><a href="./DoseResponseExperiment_fig1.svg">./DoseResponseExperiment_fig1.svg</a></li>
+        </ul>
+        </p>
+
+
+        <h2><a href="DoseResponseExperiment.html">DoseResponseExperiment</a></h2>
+        <h3>fig1</h3>
+        <p>
+        <table>
+            <tr>
+                <td>
+                    <a href="DoseResponseExperiment.html"><img
+                            src="./DoseResponseExperiment_fig1.svg"/></a>
+                </td>
+                <td>
+                </td>
+            </tr>
+        </table>
+        </p>
+
+
+        <h2>Code</h2>
+        <p>
+            <a href="../../experiments/dose_response.py">../../experiments/dose_response.py</a>
+
+        <pre>
+  <code>
 from typing import Dict
 import numpy as np
 import pandas as pd
@@ -199,3 +255,10 @@ class DoseResponseExperiment(SimulationExperiment):
         return {
             'fig1': f
         }
+
+  </code>
+</pre>
+        </p>
+
+</body>
+</html>

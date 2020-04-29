@@ -2,7 +2,8 @@
 Run some example experiments.
 """
 from pathlib import Path
-from sbmlsim.experiment.report import create_report
+from sbmlsim.experiment import ExperimentReport, ExperimentRunner
+from sbmlsim.simulator import SimulatorSerial
 from sbmlsim.utils import timeit
 
 from sbmlsim.examples.experiments.glucose.experiments.dose_response import DoseResponseExperiment
@@ -11,19 +12,18 @@ from sbmlsim.examples.experiments.glucose.experiments.dose_response import DoseR
 @timeit
 def glucose_experiment():
     BASE_PATH = Path(__file__).parent
-
-    results = []
-    exp = DoseResponseExperiment(
+    runner = ExperimentRunner(
+        [DoseResponseExperiment],
+        simulator=SimulatorSerial(),
         base_path=BASE_PATH,
         data_path=BASE_PATH / "data",
     )
-    info = exp.run(
+    results = runner.run_experiments(
         output_path=BASE_PATH / "results",
         show_figures=False
     )
-    results.append(info)
-
-    create_report(results, output_path=BASE_PATH)
+    report = ExperimentReport(results)
+    report.create_report(output_path=BASE_PATH / "results")
 
 
 if __name__ == "__main__":

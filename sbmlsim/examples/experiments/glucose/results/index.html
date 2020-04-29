@@ -1,0 +1,50 @@
+<html>
+<head>
+    <link rel="stylesheet" type="text/css" href="https://cdnjs.cloudflare.com/ajax/libs/fullPage.js/3.0.8/fullpage.min.css"/>
+</head>
+<body>
+
+<!--
+<h1>Simulation Experiments</h1>
+<ul id="menu">
+    <li data-menuanchor="Bagger2011" class="active"><a href="#Bagger2011">First section</a></li>
+    <li data-menuanchor="secondPage"><a href="#secondPage">Second section</a></li>
+    <li data-menuanchor="thirdPage"><a href="#thirdPage">Third section</a></li>
+    <li data-menuanchor="fourthPage"><a href="#fourthPage">Fourth section</a></li>
+</ul>
+-->
+
+<div id="fullpage">
+        <div class="section">
+        <h2><a href="DoseResponseExperiment/DoseResponseExperiment.html">DoseResponseExperiment</a></h2>
+            <h3>fig1</h3>
+            <p>
+            <table><tr><td>
+                <a href="DoseResponseExperiment/DoseResponseExperiment.html"><img src="./DoseResponseExperiment/DoseResponseExperiment_fig1.svg" width="50%"/></a>
+            </td><td>
+            </td></tr>
+            </table>
+            </p>
+
+        </div>
+
+    <div class= ‘section fp-auto-height’>Footer</div>
+</div>
+<script src="https://ajax.googleapis.com/ajax/libs/jquery/3.3.1/jquery.min.js"></script>
+<script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/fullPage.js/3.0.8/fullpage.extensions.min.js"></script>
+<script type="text/javascript">
+    $(document).ready(function() {
+	$('#fullpage').fullpage({
+		//options here
+        anchors: ['DoseResponseExperiment'],
+		autoScrolling:true,
+        scrollOverflow: true,
+		scrollHorizontally: true
+	});
+
+	//methods
+	//$.fn.fullpage.setAllowScrolling(false);
+});
+</script>
+</body>
+</html>

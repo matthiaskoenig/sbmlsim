@@ -6,7 +6,7 @@ from typing import Dict
 from pathlib import Path
 
 
-from sbmlsim.experiment import SimulationExperiment
+from sbmlsim.experiment import SimulationExperiment, ExperimentRunner
 from sbmlsim.model import AbstractModel, RoadrunnerSBMLModel
 from sbmlsim.data import Data
 from sbmlsim.simulation import Timecourse, TimecourseSim, AbstractSim, ScanSim, Dimension
@@ -22,8 +22,7 @@ class RepressilatorExperiment(SimulationExperiment):
     """Simple repressilator experiment."""
     def models(self) -> Dict[str, AbstractModel]:
         return {
-            'model1': RoadrunnerSBMLModel(source=MODEL_REPRESSILATOR,
-                                          ureg=self.ureg)
+            'model1': MODEL_REPRESSILATOR
         }
 
     def tasks(self) -> Dict[str, Task]:
@@ -180,13 +179,13 @@ def run(output_path):
     data_path = base_path
 
     for simulator in [SimulatorSerial(), SimulatorParallel()]:
-        exp = RepressilatorExperiment(
+        runner = ExperimentRunner(
+            [RepressilatorExperiment],
             simulator=simulator,
             data_path=data_path,
             base_path=base_path
         )
-
-        results = exp.run(
+        results = runner.run_experiments(
             output_path=output_path / "results",
             show_figures=True
         )
