@@ -1,4 +1,5 @@
 import logging
+from typing import List
 import pandas as pd
 import numpy as np
 import xarray as xr
@@ -31,133 +32,230 @@ plt.rcParams.update({
 })
 
 
-def to_figure(figure: Figure):
-    """Convert sbmlsim.Figure to matplotlib figure."""
-    fig = plt.figure(figsize=(figure.width, figure.height))  # type: plt.Figure
-    # FIXME: check that the settings are applied
-    fig.subplots_adjust(wspace=0.3, hspace=0.3)
+class MatplotlibFigureSerializer(object):
 
-    gs = GridSpec(figure.num_rows, figure.num_cols, figure=fig)
-    # TODO: subplots adjust
+    def to_figure(figure: Figure) -> plt.Figure:
+        """Convert sbmlsim.Figure to matplotlib figure."""
 
-    def get_scale(axis):
-        if axis.scale == Axis.AxisScale.LINEAR:
-            return "linear"
-        elif axis.scale == Axis.AxisScale.LOG10:
-            return "log"
-        else:
-            raise ValueError(f"Unsupported axis scale: '{axis.scale}'")
+        # create new figure
+        fig = plt.figure(figsize=(figure.width, figure.height))  # type: plt.Figure
+        fig.subplots_adjust(wspace=0.3, hspace=0.3)
 
-    for subplot in figure.subplots:  # type: SubPlot
+        # create grid for figure
+        gs = GridSpec(figure.num_rows, figure.num_cols, figure=fig)
 
-        ridx = subplot.row - 1
-        cidx = subplot.col - 1
-        ax = fig.add_subplot(
-            gs[ridx:ridx+subplot.row_span, cidx:cidx+subplot.col_span]
-        )  # type: plt.Axes
-        # axes labels and legends
-        plot = subplot.plot
-        if plot.name:
-            ax.set_title(plot.name)
-        xgrid = False
-        if plot.xaxis:
-            xax = plot.xaxis  # type: Axis
-            ax.set_xscale(get_scale(xax))
-            if xax.name:
-                ax.set_xlabel(f"{xax.name} [{xax.unit}]")
-            if xax.min:
-                ax.set_xlim(left=xax.min)
-            if xax.max:
-                ax.set_xlim(right=xax.max)
-            if xax.grid:
-                xgrid = True
+        def get_scale(axis):
+            if axis.scale == Axis.AxisScale.LINEAR:
+                return "linear"
+            elif axis.scale == Axis.AxisScale.LOG10:
+                return "log"
+            else:
+                raise ValueError(f"Unsupported axis scale: '{axis.scale}'")
 
-        ygrid = False
-        if plot.yaxis:
-            yax = plot.yaxis  # type: Axis
-            ax.set_yscale(get_scale(yax))
-            if yax.name:
-                ax.set_ylabel(f"{yax.name} [{yax.unit}]")
-            if yax.min:
-                ax.set_ylim(bottom=yax.min)
-            if yax.max:
-                ax.set_ylim(top=xax.max)
-            if yax.grid:
-                ygrid = True
+        for subplot in figure.subplots:  # type: SubPlot
 
-        if xgrid and ygrid:
-            ax.grid(True, axis="both")
-        elif xgrid:
-            ax.grid(True, axis="x")
-        elif ygrid:
-            ax.grid(True, axis="y")
-        else:
-            ax.grid(False)
+            ridx = subplot.row - 1
+            cidx = subplot.col - 1
+            ax = fig.add_subplot(
+                gs[ridx:ridx+subplot.row_span, cidx:cidx+subplot.col_span]
+            )  # type: plt.Axes
+            # axes labels and legends
+            plot = subplot.plot
+            if plot.name:
+                ax.set_title(plot.name)
+            xgrid = False
+            if plot.xaxis:
+                xax = plot.xaxis  # type: Axis
+                ax.set_xscale(get_scale(xax))
+                if xax.name:
+                    ax.set_xlabel(f"{xax.name} [{xax.unit}]")
+                if xax.min:
+                    ax.set_xlim(left=xax.min)
+                if xax.max:
+                    ax.set_xlim(right=xax.max)
+                if xax.grid:
+                    xgrid = True
 
-        # units
-        xunit = xax.unit
-        yunit = yax.unit
+            ygrid = False
+            if plot.yaxis:
+                yax = plot.yaxis  # type: Axis
+                ax.set_yscale(get_scale(yax))
+                if yax.name:
+                    ax.set_ylabel(f"{yax.name} [{yax.unit}]")
+                if yax.min:
+                    ax.set_ylim(bottom=yax.min)
+                if yax.max:
+                    ax.set_ylim(top=xax.max)
+                if yax.grid:
+                    ygrid = True
 
-        for curve in plot.curves:
-            # TODO: sort by order
+            if xgrid and ygrid:
+                ax.grid(True, axis="both")
+            elif xgrid:
+                ax.grid(True, axis="x")
+            elif ygrid:
+                ax.grid(True, axis="y")
+            else:
+                ax.grid(False)
 
-            kwargs = {}
-            if curve.style:
-                kwargs = curve.style.to_mpl_kwargs()
+            # units
+            xunit = xax.unit
+            yunit = yax.unit
 
-            # mean
-            x = curve.x.get_data(to_units=xunit)
-            y = curve.y.get_data(to_units=yunit)
+            for curve in plot.curves:
+                # TODO: sort by order
 
-            # additional data exists in xres
-            x_std = None
-            if curve.x.dtype == Data.Types.TASK:
-                data = curve.x
-                xres = data.experiment.results[data.task_id]  # type: XResult
-                x_std = xres.dim_std(data.index).to(xunit)
-                x_min = xres.dim_min(data.index).to(xunit)
-                x_max = xres.dim_max(data.index).to(xunit)
+                kwargs = {}
+                if curve.style:
+                    kwargs = curve.style.to_mpl_kwargs()
 
-            y_std = None
-            if curve.y.dtype == Data.Types.TASK:
-                data = curve.y
-                xres = data.experiment.results[data.task_id]  # type: XResult
-                y_std = xres.dim_std(data.index).to(yunit)
-                y_min = xres.dim_min(data.index).to(yunit)
-                y_max = xres.dim_max(data.index).to(yunit)
-            # print(y_std)
+                # mean quantity
+                x = curve.x.get_data(to_units=xunit)
+                y = curve.y.get_data(to_units=yunit)
+
+                # additional data exists in xres
+                # FIXME: get access to the full data matrix and support plotting
+                # if isinstance(x, XResult):
+                #    x_mean = x.mean(dim=self._op_dims(), skipna=True).values * self.ureg(self.udict[key])
+
+                x_std = None
+                if curve.x.dtype == Data.Types.TASK:
+                    data = curve.x
+                    xres = data.experiment.results[data.task_id]  # type: XResult
+                    x_std = xres.dim_std(data.index).to(xunit)
+                    x_min = xres.dim_min(data.index).to(xunit)
+                    x_max = xres.dim_max(data.index).to(xunit)
+
+                y_std = None
+                if curve.y.dtype == Data.Types.TASK:
+                    data = curve.y
+                    xres = data.experiment.results[data.task_id]  # type: XResult
+                    y_std = xres.dim_std(data.index).to(yunit)
+                    y_min = xres.dim_min(data.index).to(yunit)
+                    y_max = xres.dim_max(data.index).to(yunit)
+                # print(y_std)
 
 
-            # FIXME: get access to the full data matrix and support plotting
-            #if isinstance(x, XResult):
-            #    x_mean = x.mean(dim=self._op_dims(), skipna=True).values * self.ureg(self.udict[key])
+                xerr = None
+                if curve.xerr is not None:
+                    xerr = curve.xerr.get_data(to_units=xunit)
+
+                yerr = None
+                if curve.yerr is not None:
+                    yerr = curve.yerr.get_data(to_units=yunit)
+
+                if (xerr is None) and (yerr is None):
+                    ax.plot(x.magnitude, y.magnitude, label=curve.name, **kwargs)
+                elif yerr is not None:
+                    ax.errorbar(x.magnitude, y.magnitude, yerr.magnitude,
+                                label=curve.name, **kwargs)
+
+                if y_std is not None:
+                    # ax.plot(x.magnitude, y.magnitude + y_std.magnitude, label="__nolabel__", **kwargs)
+                    ax.fill_between(x.magnitude, y.magnitude - y_std.magnitude,
+                                    y.magnitude + y_std.magnitude,
+                                    alpha=0.4, label="__nolabel__")
+
+            if plot.legend:
+                ax.legend()
+
+        return fig
 
 
+def add_line(ax: plt.Axes, xres: XResult,
+             xid: str, yid: str,
+             xunit, yunit,
+             yres: XResult = None,
+             xf=1.0, yf=1.0, all_lines=False,
+             label='__nolabel__', **kwargs):
+    """ Adding information from a simulation result to a matplotlib figure.
 
-            xerr = None
-            if curve.xerr is not None:
-                xerr = curve.xerr.get_data(to_units=xunit)
+    This is deprecated the sbmlsim.plot.plotting Figure, Plot, Curves, ...
+    should be used.
 
-            yerr = None
-            if curve.yerr is not None:
-                yerr = curve.yerr.get_data(to_units=yunit)
+    :param ax: axis to plot to
+    :param xres: Result data structure
+    :param xid: id for xdata
+    :param yid: id for ydata
+    :param all_lines: plot all individual lines
+    :param xunit: target unit for x
+    :param yunit: target unit for y
 
-            if (xerr is None) and (yerr is None):
-                ax.plot(x.magnitude, y.magnitude, label=curve.name, **kwargs)
-            elif yerr is not None:
-                ax.errorbar(x.magnitude, y.magnitude, yerr.magnitude,
-                            label=curve.name, **kwargs)
+    :param color:
+    :return:
+    """
+    if not isinstance(xres, XResult):
+        raise ValueError(f"Only XResult supported in plotting, but found: "
+                         f"'{type(xres)}'")
 
-            if y_std is not None:
-                # ax.plot(x.magnitude, y.magnitude + y_std.magnitude, label="__nolabel__", **kwargs)
-                ax.fill_between(x.magnitude, y.magnitude - y_std.magnitude,
-                                y.magnitude + y_std.magnitude,
-                                alpha=0.4, label="__nolabel__")
+    # mean data with units
+    x = xres.dim_mean(xid)
+    y = xres.dim_mean(yid) * yf
 
-        if plot.legend:
-            ax.legend()
+    # reduction over all dimensions (not necessarily what is wanted !)
+    ystd = xres.dim_std(yid) * yf
+    ymin = xres.dim_min(yid) * yf
+    ymax = xres.dim_max(yid) * yf
 
-    return fig
+    # convert units to requested units
+    if xunit:
+        x = x.to(xunit)
+    if yunit:
+        y = y.to(yunit)
+        ystd = ystd.to(yunit)
+        ymin = ymin.to(yunit)
+        ymax = ymax.to(yunit)
+
+    # get next color
+    prop_cycler = ax._get_lines.prop_cycler
+    color = kwargs.get("color", next(prop_cycler)['color'])
+    kwargs["color"] = color
+
+    if all_lines:
+        Q_ = xres.ureg.Quantity
+        # iterate over all dimensions besides time
+        # all combinations
+        dims = xres._redop_dims()
+        index_vecs = [xres.coords[dim].values for dim in dims]
+        indices = list(itertools.product(*index_vecs))
+        for k, item in enumerate(indices):
+            d = dict(zip(dims, item))
+            xi = Q_(xres[xid].isel(d).values, xres.udict[xid])
+            yi = Q_(xres[yid].isel(d).values, xres.udict[yid])
+            # FIXME: these conversions should not be necessary
+            if xunit:
+                xi = xi.to(xunit)
+            if yunit:
+                yi = yi.to(yunit)
+            if k != 0:
+                label = "__nolabel__"
+            ax.plot(xi.magnitude, yi.magnitude, color=color, label=label)
+
+    else:
+        # calculate rational ysd, i.e., if the value if y + ysd is larger than ymax take ymax
+        ysd_up = y + ystd
+        ysd_up[ysd_up > ymax] = ymax[ysd_up > ymax]
+        ysd_down = y - ystd
+        ysd_down[ysd_down < ymin] = ymin[ysd_down < ymin]
+
+        ax.fill_between(x.magnitude, ysd_down.magnitude, ysd_up.magnitude,
+                        color=color, alpha=0.4, label="__nolabel__")
+        ax.fill_between(x.magnitude, ysd_up.magnitude, ymax.magnitude,
+                        color=color, alpha=0.1, label="__nolabel__")
+        ax.fill_between(x.magnitude, ysd_down.magnitude, ymin.magnitude,
+                        color=color, alpha=0.1, label="__nolabel__")
+
+        ax.plot(x.magnitude, ysd_up.magnitude, '-', label="__nolabel__",
+                alpha=0.8, **kwargs)
+        ax.plot(x.magnitude, ysd_down.magnitude, '-', label="__nolabel__",
+                alpha=0.8, **kwargs)
+        ax.plot(x.magnitude, ymin.magnitude, '-', label="__nolabel__",
+                alpha=0.6, **kwargs)
+        ax.plot(x.magnitude, ymax.magnitude, '-', label="__nolabel__",
+                alpha=0.6, **kwargs)
+
+        # curve
+        ax.plot(x.magnitude, y.magnitude, '-', label=label, **kwargs)
 
 
 @deprecated
@@ -234,89 +332,4 @@ def add_data(ax: plt.Axes, data: DataSet,
         ax.plot(x, y, label=label, **kwargs)
 
 
-@deprecated
-def add_line(ax: plt.Axes, xres: XResult,
-             xid: str, yid: str,
-             xunit, yunit, xf=1.0, yf=1.0, all_lines=False,
-             label='__nolabel__', **kwargs):
-    """ Adding information from a simulation result to a matplotlib figure.
 
-    This is deprecated the sbmlsim.plot.plotting Figure, Plot, Curves, ...
-    should be used.
-
-    :param ax: axis to plot to
-    :param xres: Result data structure
-    :param xid: id for xdata
-    :param yid: id for ydata
-    :param all_lines: plot all individual lines
-    :param xunit: target unit for x
-    :param yunit: target unit for y
-
-    :param color:
-    :return:
-    """
-    if not isinstance(xres, XResult):
-        raise ValueError(f"Only XResult supported in plotting, but found: "
-                         f"'{type(xres)}'")
-
-    # data with units
-    x = xres.dim_mean(xid)
-    y = xres.dim_mean(yid) * yf
-
-    # reduction over all dimensions (not necessarily what is wanted !)
-    ystd = xres.dim_std(yid) * yf
-    ymin = xres.dim_min(yid) * yf
-    ymax = xres.dim_max(yid) * yf
-
-    # convert units to requested units
-    if xunit:
-        x = x.to(xunit)
-    if yunit:
-        y = y.to(yunit)
-        ystd = ystd.to(yunit)
-        ymin = ymin.to(yunit)
-        ymax = ymax.to(yunit)
-
-    # get next color
-    prop_cycler = ax._get_lines.prop_cycler
-    color = kwargs.get("color", next(prop_cycler)['color'])
-    kwargs["color"] = color
-
-    if all_lines:
-        Q_ = xres.ureg.Quantity
-        # iterate over all dimensions besides time
-        # all combinations
-        dims = xres._redop_dims()
-        index_vecs = [xres.coords[dim].values for dim in dims]
-        indices = list(itertools.product(*index_vecs))
-        for k, item in enumerate(indices):
-            d = dict(zip(dims, item))
-            xi = Q_(xres[xid].isel(d).values, xres.udict[xid])
-            yi = Q_(xres[yid].isel(d).values, xres.udict[yid])
-            # FIXME: these conversions should not be necessary
-            if xunit:
-                xi = xi.to(xunit)
-            if yunit:
-                yi = yi.to(yunit)
-            if k != 0:
-                label = "__nolabel__"
-            ax.plot(xi.magnitude, yi.magnitude, color=color, label=label)
-
-    else:
-        # calculate rational ysd, i.e., if the value if y + ysd is larger than ymax take ymax
-        ysd_up = y + ystd
-        ysd_up[ysd_up > ymax] = ymax[ysd_up > ymax]
-        ysd_down = y - ystd
-        ysd_down[ysd_down < ymin] = ymin[ysd_down < ymin]
-
-        ax.fill_between(x.magnitude, ysd_down.magnitude, ysd_up.magnitude, color=color, alpha=0.4, label="__nolabel__")
-        ax.fill_between(x.magnitude, ysd_up.magnitude, ymax.magnitude, color=color, alpha=0.1, label="__nolabel__")
-        ax.fill_between(x.magnitude, ysd_down.magnitude, ymin.magnitude, color=color, alpha=0.1, label="__nolabel__")
-
-        ax.plot(x.magnitude, ysd_up.magnitude, '-', label="__nolabel__", alpha=0.8, **kwargs)
-        ax.plot(x.magnitude, ysd_down.magnitude, '-', label="__nolabel__", alpha=0.8, **kwargs)
-        ax.plot(x.magnitude, ymin.magnitude, '-', label="__nolabel__", alpha=0.6, **kwargs)
-        ax.plot(x.magnitude, ymax.magnitude, '-', label="__nolabel__", alpha=0.6, **kwargs)
-
-        # curve
-        ax.plot(x.magnitude, y.magnitude, '-', label=label, **kwargs)

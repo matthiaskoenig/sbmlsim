@@ -17,6 +17,8 @@ class Dimension(object):
         """ Dimension.
 
         If no index is provided the index is calculated from the changes.
+        So in most cases the index can be left empty (e.g., for scanning of
+        parameters).
 
         :param dimension: unique id of dimension, should start with 'dim'
         :param index: index for values in dimension

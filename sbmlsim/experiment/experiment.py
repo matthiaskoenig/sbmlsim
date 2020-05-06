@@ -17,7 +17,7 @@ from sbmlsim.units import UnitRegistry, Units
 from sbmlsim.fit import FitMapping, FitData
 
 from sbmlsim.plot import Figure
-from sbmlsim.plot.plotting_matplotlib import plt, to_figure
+from sbmlsim.plot.plotting_matplotlib import plt, MatplotlibFigureSerializer
 from matplotlib.pyplot import Figure as FigureMPL
 
 logger = logging.getLogger(__name__)
@@ -88,8 +88,10 @@ class SimulationExperiment(object):
         self._results = None
         # processing
         self._functions = None
+
         # figures
         self._figures = None
+        self._figures_mpl = None
 
         # validation
         self._check_keys()
@@ -125,7 +127,7 @@ class SimulationExperiment(object):
 
     # --- FUNCTIONS -----------------------------------------------------------
     def datagenerators(self) -> None:
-        """DataGenerator definitions."""
+        """DataGenerator definitions including functions."""
         return
 
     # --- RESULTS -------------------------------------------------------------
@@ -136,8 +138,26 @@ class SimulationExperiment(object):
         return self._results
 
     # --- FIGURES -------------------------------------------------------------
-    def figures(self) -> Dict[str, FigureMPL]:
-        """ Figures."""
+    def figures(self) -> Dict[str, Figure]:
+        """ sbmlsim figures.
+
+        These figures register their data automatically, whereas mpl figures
+        have to manually register data via the datagenerators to ensure data
+        is available.
+
+        These figures do not have access to concrete data, but only abstract
+        data concepts.
+        """
+        return {}
+
+    def figures_mpl(self) -> Dict[str, FigureMPL]:
+        """ matplotlib figures.
+
+        Figures which require access to actual data, or manual manipulation
+        of matplotlib figure properties.
+        These are concrete instances of figures with data, but bound
+        to a plotting framework, here matplotlib.
+        """
         return {}
 
     # --- VALIDATION ----------------------------------------------------------
@@ -378,7 +398,7 @@ class SimulationExperiment(object):
             path_svg = results_path / f"{self.sid}_{fkey}.svg"
 
             if isinstance(fig, Figure):
-                fig_mpl = to_figure(fig)
+                fig_mpl = MatplotlibFigureSerializer.to_figure(fig)
             else:
                 fig_mpl = fig
 

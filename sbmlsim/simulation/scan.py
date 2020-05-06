@@ -23,6 +23,13 @@ class ScanSim(AbstractSim):
 
         Parameters or initial conditions can be scanned.
         Multiple parameters will result in a multi-dimensional scan.
+        If the changes should be applied to a later timecourse in the
+        timecourse simulation the mapping dictionary can be used to map
+        the changes of a given dimension on the respective timecourse
+        index (starting from index 0). E.g.,
+            mapping = {dim_1: 1}
+        will apply the changes of 'dim_1' on the second timecouse in the
+        timecourse simulation.
 
         :param simulation: simulation to scan over the given parameters
         :param scan: dictionary of parameters or conditions to scan

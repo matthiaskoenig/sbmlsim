@@ -1,5 +1,12 @@
 """
 Base classes for storing plotting information.
+
+The general workflow of generating plotting information is the following.
+
+1. Within simulation experiments abstract plotting information is stored.
+    i.e., how from the data plots can be generated.
+
+
 """
 from typing import List, Dict
 import logging
@@ -253,11 +260,13 @@ class AbstractCurve(Base):
 class Curve(AbstractCurve):
     def __init__(self,
                  x: Data, y: Data, xerr: Data=None, yerr: Data=None,
+                 single_lines: bool=False,
                  order=None, style: Style=None, yaxis=None, **kwargs):
         super(Curve, self).__init__(None, None, x, order, style, yaxis)
         self.y = y
         self.xerr = xerr
         self.yerr = yerr
+        self.single_lines = single_lines
 
         if "label" in kwargs:
             self.name = kwargs["label"]
@@ -380,7 +389,8 @@ class Plot(Base):
             d['capsize'] = 3
         return d
 
-    def curve(self, x: Data, y: Data, xerr: Data=None, yerr: Data=None, **kwargs):
+    def curve(self, x: Data, y: Data, xerr: Data=None, yerr: Data=None,
+              single_lines: bool = False, **kwargs):
         """Adds curves to the plot.
 
         Data can be high-dimensional data from a scan.
@@ -391,20 +401,18 @@ class Plot(Base):
         """
 
         kwargs = self._default_kwargs(kwargs, x.dtype)
-
-        # FIXME: here all the processing must happen and the various curves
-        # must be created.
-
-        curve = Curve(x, y, xerr, yerr, **kwargs)
+        curve = Curve(x, y, xerr, yerr, single_lines=single_lines, **kwargs)
         self.add_curve(curve)
 
     def add_data(self,
                  xid: str, yid: str, yid_sd=None, yid_se=None, count: int=None,
                  dataset: str=None, task: str=None,
                  label='__nolabel__',
-                 xf=1.0, yf=1.0,
+                 xf=1.0, yf=1.0, single_lines=False,
                  **kwargs):
-        """Wrapper around curve. """
+        """Wrapper around plotting.
+
+        """
         if yid_sd and yid_se:
             raise ValueError("Set either 'yid_sd' or 'yid_se', not both.")
         if dataset is not None and task is not None:
@@ -439,11 +447,16 @@ class Plot(Base):
                 count_label = f" (n={count})"
             label = f"{label}{yerr_label}{count_label}"
 
+        # FIXME: here the data is not resolved yet, it is just the definition
+        # Necessary to define how the scans should be plotted, i.e.
+        # which curves should be generated
         self.curve(
             x=Data(experiment, xid, dataset=dataset, task=task),
             y=Data(experiment, yid, dataset=dataset, task=task),
             yerr=yerr,
-            label=label, **kwargs
+            label=label,
+            single_lines=single_lines,
+            **kwargs
         )
 
 
