@@ -314,15 +314,39 @@ class OptimizationProblem(object):
             opt_result.x0 = x0  # store start value
             opt_result.duration = (te - ts)
             return opt_result
+
+        elif optimizer == "differential evolution":
+            # scipy differential evolution
+            # https://docs.scipy.org/doc/scipy/reference/generated/scipy.optimize.differential_evolution.html#scipy.optimize.differential_evolution
+            ts = time.time()
+            try:
+                de_bounds = [(p.lower_bound, p.upper_bound) for k, p in enumerate(self.parameters)]
+                opt_result = optimize.differential_evolution(
+                    func=self.cost_least_square, bounds=de_bounds, **kwargs
+                )
+            except RuntimeError:
+                logger.error("RuntimeError in ODE integration")
+                opt_result = RuntimeErrorOptimizeResult()
+                opt_result.x = x0
+            te = time.time()
+            opt_result.x0 = x0  # store start value
+            opt_result.duration = (te - ts)
+            opt_result.cost = self.cost_least_square(opt_result.x)
+            return opt_result
+
         else:
             raise ValueError(f"optimizer is not supported: {optimizer}")
+
+    def cost_least_square(self, x):
+        res_weighted = self.residuals(x)
+        return 0.5 * np.sum(np.power(res_weighted, 2))
 
     def residuals(self, x, complete_data=False):
         """Calculates residuals for given parameter vector.
 
         :param x: parameter vector
         :param complete_data: boolean flag to return additional information
-        :return:
+        :return: vector of weighted residuals
         """
         print(f"\t{x}")
         parts = []
@@ -389,13 +413,14 @@ class OptimizationProblem(object):
         """Process the optimization results."""
         results = []
         pids = [p.pid for p in self.parameters]
+        print(fits)
         for fit in fits:
             res = {
-                'status': fit.status,
+                # 'status': fit.status,
                 'success': fit.success,
                 'duration': fit.duration,
                 'cost': fit.cost,
-                'optimality': fit.optimality,
+                 # 'optimality': fit.optimality,
                 'message': fit.message if hasattr(fit, "message") else None
             }
             # add parameter columns
