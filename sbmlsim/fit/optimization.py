@@ -5,6 +5,8 @@ from scipy import optimize
 from scipy import interpolate
 from collections import defaultdict
 from pathlib import Path
+from enum import Enum
+
 
 import time
 import pandas as pd
@@ -32,6 +34,13 @@ class RuntimeErrorOptimizeResult:
     cost: float = np.Inf
     optimality: float = np.Inf
 
+class SamplingType(Enum):
+    LOGUNIFORM = 1
+    UNIFORM = 2
+
+class OptimizerType(Enum):
+    LEAST_SQUARE = 1
+    DIFFERENTIAL_EVOLUTION = 2
 
 class OptimizationProblem(object):
     """Parameter optimization problem."""
@@ -240,7 +249,7 @@ class OptimizationProblem(object):
         return fits
 
     def optimize(self, size=10, seed=None,
-                 optimizer="least square", sampling="loguniform",
+                 optimizer="least square", sampling=SamplingType.UNIFORM,
                  max_bound=1E10, min_bound=1E-10,
                  **kwargs) -> List[scipy.optimize.OptimizeResult]:
         """Run parameter optimization"""
@@ -256,9 +265,9 @@ class OptimizationProblem(object):
             ub = p.upper_bound if not np.isinf(p.upper_bound) else max_bound
 
             # uniform sampling
-            if sampling == "uniform":
+            if sampling == SamplingType.UNIFORM:
                 x0_values[1:, k] = np.random.uniform(lb, ub, size=size-1)
-            elif sampling == "loguniform":
+            elif sampling == SamplingType.LOGUNIFORM:
                 # only working with positive values
                 if lb <= 0.0:
                     lb = min_bound
@@ -286,7 +295,7 @@ class OptimizationProblem(object):
         return fits
 
     @timeit
-    def _optimize_single(self, x0=None, optimizer="least square",
+    def _optimize_single(self, x0=None, optimizer=OptimizerType.LEAST_SQUARE,
                          **kwargs) -> scipy.optimize.OptimizeResult:
         """ Runs single optimization with x0 start values.
 
@@ -298,7 +307,7 @@ class OptimizationProblem(object):
         if x0 is None:
             x0 = self.x0
 
-        if optimizer == "least square":
+        if optimizer == OptimizerType.LEAST_SQUARE:
             # scipy least square optimizer
             # https://docs.scipy.org/doc/scipy/reference/generated/scipy.optimize.least_squares.html
             ts = time.time()
@@ -315,7 +324,7 @@ class OptimizationProblem(object):
             opt_result.duration = (te - ts)
             return opt_result
 
-        elif optimizer == "differential evolution":
+        elif optimizer == OptimizerType.DIFFERENTIAL_EVOLUTION:
             # scipy differential evolution
             # https://docs.scipy.org/doc/scipy/reference/generated/scipy.optimize.differential_evolution.html#scipy.optimize.differential_evolution
             ts = time.time()
@@ -413,7 +422,7 @@ class OptimizationProblem(object):
         """Process the optimization results."""
         results = []
         pids = [p.pid for p in self.parameters]
-        print(fits)
+        # print(fits)
         for fit in fits:
             res = {
                 # 'status': fit.status,
@@ -470,13 +479,11 @@ class OptimizationProblem(object):
         ax.set_ylabel("Offsetted cost value (relative to best start)")
         # ax.set_yscale("log")
         ax.set_title("Waterfall plot")
+        plt.show()
 
         if output_path is not None:
             filepath = output_path / "01_waterfall.svg"
             fig.savefig(filepath, bbox_inches="tight")
-
-        plt.show()
-
 
     def plot_costs(self, xstart=None, xopt=None, output_path: Path=None):
         """Plots bar diagram of costs for set of residuals
@@ -516,22 +523,82 @@ class OptimizationProblem(object):
         sns.set_color_codes("pastel")
         sns.barplot(ax=ax, x="cost", y="id", hue="type", data=cost_df)
         ax.set_xscale("log")
+        plt.show()
         if output_path:
             filepath = output_path / "02_costs.svg"
             fig.savefig(filepath, bbox_inches="tight")
-        plt.show()
+
 
     def plot_correlation(self, output_path=None):
         """Process the optimization results."""
         df = self.fit_results
-        sns.set(style="ticks", color_codes=True)
+
         pids = [p.pid for p in self.parameters]
-        sns_plot = sns.pairplot(data=df[pids])
-        if output_path is not None:
-            filepath = output_path / "03_parameter_correlation.svg"
-            sns_plot.savefig(filepath, bbox_inches="tight")
+        sns.set(style="ticks", color_codes=True)
+        # sns_plot = sns.pairplot(data=df[pids + ["cost"]], hue="cost", corner=True)
+
+        npars = len(pids)
+        # x0 =
+        fig, axes = plt.subplots(nrows=npars, ncols=npars, figsize=(5*npars, 5*npars))
+        size = 20 * (df.cost.min() / df.cost.values)
+        alpha = 0.6*df.cost.min() / df.cost.values
+        for kx, pidx in enumerate(pids):
+            for ky, pidy in enumerate(pids):
+                if npars == 1:
+                    ax = axes
+                else:
+                    ax = axes[kx][ky]
+
+                # optimal values
+                if kx >= ky:
+                    # start values
+                    for ks in range(len(size)):
+                        # x = df[pidx].values[ks]
+                        # y = df[pidy].values[ks]
+                        if 'x0' in df.columns:
+                            xstart = df.x0[ks][kx]
+                            ystart = df.x0[ks][ky]
+                            ax.plot(xstart, ystart, "x", color="black")
+                        # axes[kx][ky].plot(x, y, "o", color="black", markersize=size[ks], alpha=alpha[ks])
+
+                    # optimal values
+                    ax.scatter(df[pidx], df[pidy], c=df.cost, s=np.power(size,2), alpha=1.0,
+                                         cmap="RdBu")
+                    ax.set_xlabel(pidx)
+                    ax.set_ylabel(pidy)
+
+                    ax.plot(self.xopt[kx], self.xopt[ky], "s",
+                                      color="darkgreen", markersize=30,
+                                      alpha=0.9)
+
+                # trajectory
+                if kx < ky:
+                    # start values
+                    for ks in range(len(size)):
+                        x = df[pidx].values[ks]
+                        y = df[pidy].values[ks]
+                        if 'x0' in df.columns:
+                            xstart = df.x0[ks][kx]
+                            ystart = df.x0[ks][ky]
+                            # start point
+                            ax.plot(xstart, ystart, "x", color="black")
+                            # end point
+                            ax.plot(x, y, "o", color="black")
+                            # search
+                            ax.plot([xstart, x], [ystart, y], "-", color="black")
+
+                            #print("xstart", xstart)
+                            #print("ystart", ystart)
+                            #print("x", x)
+                            #print("y", y)
+                # plt.colorbar()
+
 
         plt.show()
+        if output_path is not None:
+            filepath = output_path / "03_parameter_correlation.svg"
+            # sns_plot.savefig(filepath, bbox_inches="tight")
+            fig.savefig(filepath, bbox_inches="tight")
 
     def plot_residuals(self, xstart=None, xopt=None, output_path: Path = None):
         """ Plot residual data.
@@ -635,9 +702,9 @@ class OptimizationProblem(object):
                     ylim1 = ax1.get_ylim()
                     ylim2 = ax2.get_ylim()
                     for ax in axes:
-                        ax.set_ylim([min(ylim1[0],ylim2[0]), max(ylim1[1],ylim2[1])])
+                        ax.set_ylim([min(ylim1[0], ylim2[0]), max(ylim1[1],ylim2[1])])
 
+            plt.show()
             if output_path is not None:
                 fig.savefig(output_path / f"residuals_{sid}_{mapping_id}.svg",
                             bbox_inches="tight")
-            plt.show()
