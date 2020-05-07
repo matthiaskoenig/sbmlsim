@@ -249,7 +249,8 @@ class OptimizationProblem(object):
         return fits
 
     def optimize(self, size=10, seed=None,
-                 optimizer="least square", sampling=SamplingType.UNIFORM,
+                 optimizer: OptimizerType=OptimizerType.LEAST_SQUARE,
+                 sampling: SamplingType=SamplingType.UNIFORM,
                  max_bound=1E10, min_bound=1E-10,
                  **kwargs) -> List[scipy.optimize.OptimizeResult]:
         """Run parameter optimization"""
@@ -307,21 +308,36 @@ class OptimizationProblem(object):
         if x0 is None:
             x0 = self.x0
 
+        # logarithmic parameters for optimizer
+        x0log = np.log10(x0)
+
         if optimizer == OptimizerType.LEAST_SQUARE:
             # scipy least square optimizer
             # https://docs.scipy.org/doc/scipy/reference/generated/scipy.optimize.least_squares.html
             ts = time.time()
             try:
-                opt_result = optimize.least_squares(
-                    fun=self.residuals, x0=x0, bounds=self.bounds, **kwargs
-                )
+                boundslog = [
+                    np.log10([p.lower_bound for p in self.parameters]),
+                    np.log10([p.upper_bound for p in self.parameters]),
+                ]
+                if "method" in kwargs and kwargs["method"] == "lm":
+                    # no bounds supported on lm
+                    logger.warning("No bounds on Levenberg-Marquardt optimizations")
+                    opt_result = optimize.least_squares(
+                        fun=self.residuals, x0=x0log, **kwargs
+                    )
+                else:
+                    opt_result = optimize.least_squares(
+                        fun=self.residuals, x0=x0log, bounds=boundslog, **kwargs
+                    )
             except RuntimeError:
                 logger.error("RuntimeError in ODE integration")
                 opt_result = RuntimeErrorOptimizeResult()
-                opt_result.x = x0
+                opt_result.x = x0log
             te = time.time()
             opt_result.x0 = x0  # store start value
             opt_result.duration = (te - ts)
+            opt_result.x = np.power(10, opt_result.x)
             return opt_result
 
         elif optimizer == OptimizerType.DIFFERENTIAL_EVOLUTION:
@@ -329,35 +345,40 @@ class OptimizationProblem(object):
             # https://docs.scipy.org/doc/scipy/reference/generated/scipy.optimize.differential_evolution.html#scipy.optimize.differential_evolution
             ts = time.time()
             try:
-                de_bounds = [(p.lower_bound, p.upper_bound) for k, p in enumerate(self.parameters)]
+                de_bounds_log = [(np.log10(p.lower_bound), np.log10(p.upper_bound)) for k, p in enumerate(self.parameters)]
                 opt_result = optimize.differential_evolution(
-                    func=self.cost_least_square, bounds=de_bounds, **kwargs
+                    func=self.cost_least_square, bounds=de_bounds_log, **kwargs
                 )
             except RuntimeError:
                 logger.error("RuntimeError in ODE integration")
                 opt_result = RuntimeErrorOptimizeResult()
-                opt_result.x = x0
+                opt_result.x = x0log
             te = time.time()
             opt_result.x0 = x0  # store start value
             opt_result.duration = (te - ts)
             opt_result.cost = self.cost_least_square(opt_result.x)
+            opt_result.x = np.power(10, opt.result.x)
             return opt_result
 
         else:
             raise ValueError(f"optimizer is not supported: {optimizer}")
 
-    def cost_least_square(self, x):
-        res_weighted = self.residuals(x)
+    def cost_least_square(self, xlog):
+        res_weighted = self.residuals(xlog)
         return 0.5 * np.sum(np.power(res_weighted, 2))
 
-    def residuals(self, x, complete_data=False):
+    def residuals(self, xlog, complete_data=False):
         """Calculates residuals for given parameter vector.
 
-        :param x: parameter vector
+        :param x: logarithmic parameter vector
         :param complete_data: boolean flag to return additional information
         :return: vector of weighted residuals
         """
-        print(f"\t{x}")
+        # Necessary to work in logarithmic parameter space to account for xtol
+        # in largely varying parameters
+        # see https://github.com/scipy/scipy/issues/7632
+        x = np.power(10, xlog)
+        print(f"\t{xlog}")
         parts = []
         if complete_data:
             residual_data = defaultdict(list)
@@ -501,8 +522,8 @@ class OptimizationProblem(object):
         print("xstart", xstart)
         print("xopt", xopt)
 
-        res_data_start = self.residuals(x=xstart, complete_data=True)
-        res_data_fit = self.residuals(x=xopt, complete_data=True)
+        res_data_start = self.residuals(xlog=np.log10(xstart), complete_data=True)
+        res_data_fit = self.residuals(xlog=np.log10(xopt), complete_data=True)
 
         data = []
         types = ["initial", "fit"]
@@ -540,59 +561,65 @@ class OptimizationProblem(object):
         npars = len(pids)
         # x0 =
         fig, axes = plt.subplots(nrows=npars, ncols=npars, figsize=(5*npars, 5*npars))
-        size = 20 * (df.cost.min() / df.cost.values)
-        alpha = 0.6*df.cost.min() / df.cost.values
+
+        cost_normed = (df.cost - df.cost.min())
+        cost_normed = 1 - cost_normed/cost_normed.max()
+        print("cost_normed", cost_normed)
+        size = np.power(15*cost_normed, 2)
+
         for kx, pidx in enumerate(pids):
             for ky, pidy in enumerate(pids):
                 if npars == 1:
                     ax = axes
                 else:
-                    ax = axes[kx][ky]
+                    ax = axes[ky][kx]
+                    ax.set_xscale("log")
+                    ax.set_yscale("log")
+
 
                 # optimal values
-                if kx >= ky:
-                    # start values
-                    for ks in range(len(size)):
-                        # x = df[pidx].values[ks]
-                        # y = df[pidy].values[ks]
-                        if 'x0' in df.columns:
-                            xstart = df.x0[ks][kx]
-                            ystart = df.x0[ks][ky]
-                            ax.plot(xstart, ystart, "x", color="black")
-                        # axes[kx][ky].plot(x, y, "o", color="black", markersize=size[ks], alpha=alpha[ks])
-
-                    # optimal values
-                    ax.scatter(df[pidx], df[pidy], c=df.cost, s=np.power(size,2), alpha=1.0,
-                                         cmap="RdBu")
+                if kx > ky:
                     ax.set_xlabel(pidx)
                     ax.set_ylabel(pidy)
+                    # optimal values
+                    ax.scatter(df[pidx], df[pidy], c=df.cost, s=size, alpha=0.75, cmap="jet")
 
                     ax.plot(self.xopt[kx], self.xopt[ky], "s",
                                       color="darkgreen", markersize=30,
-                                      alpha=0.9)
+                                      alpha=0.7)
+
+                if kx == ky:
+                    ax.set_ylabel(pidy)
+                    ax.set_ylabel("cost")
+                    ax.scatter(df[pidx], df.cost, color="black", marker="_", alpha=1.0)
 
                 # trajectory
                 if kx < ky:
+                    ax.set_xlabel(pidy)
+                    ax.set_ylabel(pidx)
                     # start values
+                    xall = []
+                    yall = []
+                    xstart_all = []
+                    ystart_all = []
                     for ks in range(len(size)):
                         # FIXME: use iloc!
                         x = df.x[ks][kx]
                         y = df.x[ks][ky]
+                        xall.append(x)
+                        yall.append(y)
                         if 'x0' in df.columns:
                             xstart = df.x0[ks][kx]
                             ystart = df.x0[ks][ky]
-                            # start point
-                            ax.plot(xstart, ystart, "x", color="black")
-                            # end point
-                            ax.plot(x, y, "o", color="black")
-                            # search
-                            ax.plot([xstart, x], [ystart, y], "-", color="black")
+                            xstart_all.append(xstart)
+                            ystart_all.append(ystart)
 
-                            #print("xstart", xstart)
-                            #print("ystart", ystart)
-                            #print("x", x)
-                            #print("y", y)
-                # plt.colorbar()
+                            ax.plot([ystart, y], [xstart, x], "-", color="darkblue", alpha=0.7)
+
+                    # start point
+                    ax.plot(ystart_all, xstart_all, "^", color="black", markersize=10, alpha=0.9)
+                    # end point
+                    ax.plot(yall, xall, "o", color="black", markersize=10, alpha=0.9)
 
 
         plt.show()
@@ -613,8 +640,8 @@ class OptimizationProblem(object):
             xopt = self.xopt
 
         titles = ["initial", "fit"]
-        res_data_start = self.residuals(x=xstart, complete_data=True)
-        res_data_fit = self.residuals(x=xopt, complete_data=True)
+        res_data_start = self.residuals(xlog=np.log10(xstart), complete_data=True)
+        res_data_fit = self.residuals(xlog=np.log10(xopt), complete_data=True)
 
         for k, mapping_id in enumerate(self.mapping_keys):
             fig, ((a1, a2), (a3, a4), (a5, a6)) = plt.subplots(nrows=3, ncols=2, figsize=(10, 10))
