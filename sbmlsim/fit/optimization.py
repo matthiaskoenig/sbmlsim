@@ -575,8 +575,9 @@ class OptimizationProblem(object):
                 if kx < ky:
                     # start values
                     for ks in range(len(size)):
-                        x = df[pidx].values[ks]
-                        y = df[pidy].values[ks]
+                        # FIXME: use iloc!
+                        x = df.x[ks][kx]
+                        y = df.x[ks][ky]
                         if 'x0' in df.columns:
                             xstart = df.x0[ks][kx]
                             ystart = df.x0[ks][ky]
