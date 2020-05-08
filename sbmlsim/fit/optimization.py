@@ -357,7 +357,7 @@ class OptimizationProblem(object):
             opt_result.x0 = x0  # store start value
             opt_result.duration = (te - ts)
             opt_result.cost = self.cost_least_square(opt_result.x)
-            opt_result.x = np.power(10, opt.result.x)
+            opt_result.x = np.power(10, opt_result.x)
             return opt_result
 
         else:
@@ -566,6 +566,9 @@ class OptimizationProblem(object):
         cost_normed = 1 - cost_normed/cost_normed.max()
         print("cost_normed", cost_normed)
         size = np.power(15*cost_normed, 2)
+
+        # FIXME: plot bounds
+        # FIXME: plot cost of initial guesses (both should be in data frame)
 
         for kx, pidx in enumerate(pids):
             for ky, pidy in enumerate(pids):
