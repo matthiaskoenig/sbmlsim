@@ -27,10 +27,9 @@ def run_optimization(
     problem.report(output_path=output_path)
 
     # optimize
-    fits = problem.optimize(size=size, seed=seed, **kwargs)
+    fits, trajectories = problem.optimize(size=size, seed=seed, **kwargs)
 
     # process results and plots
-    trajectories = None
     opt_result = OptimizationResult(parameters=problem.parameters, fits=fits,
                                     trajectories=trajectories)
     opt_result.report(output_path=output_path)

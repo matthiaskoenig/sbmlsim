@@ -116,14 +116,26 @@ op_mid1oh_iv = OptimizationProblem(
 if __name__ == "__main__":
     if True:
         if True:
-            run_optimization(op_mid1oh_iv, size=5, seed=1235,
+            opt_res1 = run_optimization(op_mid1oh_iv, size=100, seed=1235,
                            output_path=RESULTS_PATH / "mid1oh_iv" / "least_square",
                            optimizer=OptimizerType.LEAST_SQUARE,
                            sampling=SamplingType.LOGUNIFORM,
                            # method="lm", x_scale="jac",
                            diff_step=0.05,
                            jac='3-point', gtol=1e-10, xtol=1e-12,
-        )
+            )
+            exit()
+            opt_res2 = run_optimization(op_mid1oh_iv, size=5, seed=4350,
+                                        output_path=RESULTS_PATH / "mid1oh_iv" / "least_square",
+                                        optimizer=OptimizerType.LEAST_SQUARE,
+                                        sampling=SamplingType.LOGUNIFORM,
+                                        # method="lm", x_scale="jac",
+                                        diff_step=0.05,
+                                        jac='3-point', gtol=1e-10, xtol=1e-12,
+                                        )
+            from sbmlsim.fit.analysis import OptimizationResult
+            opt_res = OptimizationResult.combine([opt_res1, opt_res2])
+            opt_res.report()
 
         if False:
             mid1oh_iv_optimization(size=3, seed=1234,

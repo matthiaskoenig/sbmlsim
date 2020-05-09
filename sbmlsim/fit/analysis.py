@@ -49,17 +49,56 @@ class OptimizationResult(object):
         self.trajectories = trajectories
 
         # create data frame from results
-        self.df = OptimizationResult.process_fits(self.parameters, self.fits)
+        self.df_fits = OptimizationResult.process_fits(self.parameters, self.fits)
+        self.df_traces = OptimizationResult.process_traces(self.parameters, self.trajectories)
+
+    @staticmethod
+    def combine(opt_results: List[OptimizeResult]):
+        # FIXME: check that the parameters are fitting
+        parameters = opt_results[0].parameters
+        pids = {p.pid for p in parameters}
+
+        fits = []
+        trajectories = []
+        for opt_res in opt_results:
+            pids_next = {p.pid for p in opt_res.parameters}
+            if pids != pids_next:
+                logger.error(f"Parameters of OptimizationResults do not match: "
+                             f"{pids} != {pids_next}")
+
+            fits.extend(opt_res.fits)
+            trajectories.extend(opt_res.trajectories)
+        return OptimizationResult(parameters=parameters, fits=fits,
+                                  trajectories=trajectories)
 
     @property
     def size(self):
         """Number of optimizations in result."""
-        return len(self.df)
+        return len(self.df_fits)
 
     @property
     def xopt(self):
         """Optimal parameters"""
-        return self.df.x.iloc[0]
+        return self.df_fits.x.iloc[0]
+
+    @staticmethod
+    def process_traces(parameters: List[FitParameter], trajectories):
+        """Process the optimization results."""
+        results = []
+        pids = [p.pid for p in parameters]
+        # print(fits)
+        for kt, trajectory in enumerate(trajectories):
+            for step in trajectory:
+                res = {
+                    'run': kt,
+                    'cost': step[1],
+                }
+                # add parameter columns
+                for k, pid in enumerate(pids):
+                    res[pid] = step[0][k]
+                results.append(res)
+        df = pd.DataFrame(results)
+        return df
 
     @staticmethod
     def process_fits(parameters: List[FitParameter], fits: List[OptimizeResult]):
@@ -67,27 +106,27 @@ class OptimizationResult(object):
         results = []
         pids = [p.pid for p in parameters]
         # print(fits)
-        for k, fit in enumerate(fits):
+        for kf, fit in enumerate(fits):
             res = {
-                'index': k,
+                'run': kf,
                 # 'status': fit.status,
                 'success': fit.success,
                 'duration': fit.duration,
                 'cost': fit.cost,
                  # 'optimality': fit.optimality,
-                'message': fit.message if hasattr(fit, "message") else None
             }
             # add parameter columns
             for k, pid in enumerate(pids):
                 res[pid] = fit.x[k]
             res['x'] = fit.x
             res['x0'] = fit.x0
+            res['message'] = fit.message if hasattr(fit, "message") else None
 
             results.append(res)
         df = pd.DataFrame(results)
         df.sort_values(by=["cost"], inplace=True)
         # reindex
-        df = df.reindex(range(len(df)))
+        df.index = range(len(df))
 
         return df
 
@@ -96,7 +135,7 @@ class OptimizationResult(object):
         pd.set_option('display.max_columns', None)
         info = [
             "-" * 80,
-            str(self.df),
+            str(self.df_fits),
             "-" * 80,
             "Optimal parameters:",
         ]
@@ -113,6 +152,10 @@ class OptimizationResult(object):
         info.append("-" * 80)
         info = "\n".join(info)
         print(info)
+
+        print("trajectories:")
+        print(self.df_traces)
+
         if output_path is not None:
             filepath = output_path / "fit_report.txt"
             with open(filepath, "w") as fout:
@@ -124,7 +167,7 @@ class OptimizationResult(object):
         Plots the optimization runs sorted by cost.
         """
         fig, ax = plt.subplots(nrows=1, ncols=1, figsize=(10, 10))
-        ax.plot(range(self.size), 1 + (self.df.cost-self.cost.iloc[0]), '-o', color="black")
+        ax.plot(range(self.size), 1 + (self.df_fits.cost - self.df_fits.cost.iloc[0]), '-o', color="black")
         ax.set_xlabel("index (Ordered optimizer run)")
         ax.set_ylabel("Offsetted cost value (relative to best start)")
         # ax.set_yscale("log")
@@ -137,7 +180,7 @@ class OptimizationResult(object):
 
     def plot_correlation(self, output_path=None):
         """Process the optimization results."""
-        df = self.fit_results
+        df = self.df_fits
 
         pids = [p.pid for p in self.parameters]
         sns.set(style="ticks", color_codes=True)
@@ -167,7 +210,10 @@ class OptimizationResult(object):
                 # optimal values
                 if kx > ky:
                     ax.set_xlabel(pidx)
+                    ax.set_xlim(self.parameters[kx].lower_bound, self.parameters[kx].upper_bound)
                     ax.set_ylabel(pidy)
+                    ax.set_ylim(self.parameters[ky].lower_bound,
+                                self.parameters[ky].upper_bound)
                     # optimal values
                     ax.scatter(df[pidx], df[pidy], c=df.cost, s=size, alpha=0.75, cmap="jet")
 
@@ -176,14 +222,20 @@ class OptimizationResult(object):
                                       alpha=0.7)
 
                 if kx == ky:
-                    ax.set_ylabel(pidy)
+                    ax.set_xlabel(pidx)
+                    ax.set_xlim(self.parameters[kx].lower_bound,
+                                self.parameters[kx].upper_bound)
                     ax.set_ylabel("cost")
                     ax.scatter(df[pidx], df.cost, color="black", marker="_", alpha=1.0)
 
                 # trajectory
                 if kx < ky:
                     ax.set_xlabel(pidy)
+                    ax.set_xlim(self.parameters[ky].lower_bound,
+                                self.parameters[ky].upper_bound)
                     ax.set_ylabel(pidx)
+                    ax.set_ylim(self.parameters[kx].lower_bound,
+                                self.parameters[kx].upper_bound)
                     # start values
                     xall = []
                     yall = []
@@ -201,7 +253,15 @@ class OptimizationResult(object):
                             xstart_all.append(xstart)
                             ystart_all.append(ystart)
 
-                            ax.plot([ystart, y], [xstart, x], "-", color="darkblue", alpha=0.7)
+                            # ax.plot([ystart, y], [xstart, x], "-", color="black", alpha=0.7)
+
+
+                    for run in range(self.size):
+                        df_run = self.df_traces[self.df_traces.run == run]
+
+                        ax.plot(df_run[pidy], df_run[pidx], '-', color="black", alpha=0.3)
+                        ax.scatter(df_run[pidy], df_run[pidx], c=df_run.cost, cmap="jet", alpha=0.8)
+
 
                     # start point
                     ax.plot(ystart_all, xstart_all, "^", color="black", markersize=10, alpha=0.9)

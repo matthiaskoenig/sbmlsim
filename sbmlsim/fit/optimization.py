@@ -1,4 +1,4 @@
-from typing import List, Dict, Iterable, Set
+from typing import List, Dict, Iterable, Set, Tuple
 import numpy as np
 import scipy
 from scipy import optimize
@@ -6,6 +6,7 @@ from scipy import interpolate
 from collections import defaultdict
 from pathlib import Path
 from enum import Enum
+from copy import deepcopy
 
 import seaborn as sns
 from matplotlib import pyplot as plt
@@ -223,7 +224,7 @@ class OptimizationProblem(object):
                  optimizer: OptimizerType=OptimizerType.LEAST_SQUARE,
                  sampling: SamplingType=SamplingType.UNIFORM,
                  max_bound=1E10, min_bound=1E-10,
-                 **kwargs) -> List[scipy.optimize.OptimizeResult]:
+                 **kwargs) -> Tuple[List[scipy.optimize.OptimizeResult], List]:
         """Run parameter optimization"""
         # create the sample parameters
         x0_values = np.zeros(shape=(size, len(self.parameters)))
@@ -254,17 +255,19 @@ class OptimizationProblem(object):
         print(x0_samples)
 
         fits = []
+        trajectories = []
         # TODO: parallelization
         for k in range(size):
             x0 = x0_samples.values[k, :]
             print(f"[{k+1}/{size}] x0={x0}")
-            fit = self._optimize_single(x0=x0, optimizer=optimizer, **kwargs)
+            fit, trajectory = self._optimize_single(x0=x0, optimizer=optimizer, **kwargs)
             print("\t{:8.4f} [s]".format(fit.duration))
             fits.append(fit)
-        return fits
+            trajectories.append(trajectory)
+        return fits, trajectories
 
     def _optimize_single(self, x0=None, optimizer=OptimizerType.LEAST_SQUARE,
-                         **kwargs) -> scipy.optimize.OptimizeResult:
+                         **kwargs) -> Tuple[scipy.optimize.OptimizeResult, List]:
         """ Runs single optimization with x0 start values.
 
         :param x0: parameter start vector (important for deterministic optimizers)
@@ -278,6 +281,7 @@ class OptimizationProblem(object):
         # logarithmic parameters for optimizer
         x0log = np.log10(x0)
 
+        self._trajectory = []
         if optimizer == OptimizerType.LEAST_SQUARE:
             # scipy least square optimizer
             # https://docs.scipy.org/doc/scipy/reference/generated/scipy.optimize.least_squares.html
@@ -305,7 +309,7 @@ class OptimizationProblem(object):
             opt_result.x0 = x0  # store start value
             opt_result.duration = (te - ts)
             opt_result.x = np.power(10, opt_result.x)
-            return opt_result
+            return opt_result, deepcopy(self._trajectory)
 
         elif optimizer == OptimizerType.DIFFERENTIAL_EVOLUTION:
             # scipy differential evolution
@@ -325,7 +329,7 @@ class OptimizationProblem(object):
             opt_result.duration = (te - ts)
             opt_result.cost = self.cost_least_square(opt_result.x)
             opt_result.x = np.power(10, opt_result.x)
-            return opt_result
+            return opt_result, deepcopy(self._trajectory)
 
         else:
             raise ValueError(f"optimizer is not supported: {optimizer}")
@@ -404,7 +408,13 @@ class OptimizationProblem(object):
         if complete_data:
             return residual_data
         else:
-            return np.concatenate(parts)
+            res_all = np.concatenate(parts)
+            # store the local step
+            self._trajectory.append(
+                (deepcopy(x),
+                 0.5 * np.sum(np.power(res_all, 2)))
+            )
+            return res_all
 
 
     def plot_costs(self, xstart=None, xopt=None, output_path: Path=None):
