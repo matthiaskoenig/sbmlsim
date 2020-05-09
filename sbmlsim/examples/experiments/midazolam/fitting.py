@@ -1,0 +1,146 @@
+"""
+Defines the parameter fitting problems
+"""
+from pathlib import Path
+import numpy as np
+import pandas as pd
+
+from sbmlsim.fit import FitData, FitMapping, FitExperiment, FitParameter, run_optimization
+from sbmlsim.fit.optimization import OptimizationProblem, SamplingType, OptimizerType
+from sbmlsim.simulator import SimulatorSerial
+
+from sbmlsim.examples.experiments.midazolam.experiments.mandema1992 import Mandema1992
+from sbmlsim.examples.experiments.midazolam import MIDAZOLAM_PATH
+RESULTS_PATH = MIDAZOLAM_PATH / "results"
+DATA_PATH = MIDAZOLAM_PATH / "data"
+
+simulator = SimulatorSerial()
+exp_kwargs = {
+    "simulator": simulator,
+    "base_path": MIDAZOLAM_PATH,
+    "data_path": DATA_PATH,
+}
+
+
+def mandema_optimization(**kwargs):
+    fit_problem = OptimizationProblem(
+        fit_experiments=[
+            # FitExperiment(experiment=Mandema1992, mappings=["fm1"]),
+            FitExperiment(experiment=Mandema1992, mappings=["fm1", "fm3", "fm4"]),
+        ],
+        fit_parameters=[
+            # --- LIVER ---
+            # mid import
+            FitParameter(parameter_id="LI__MIDIM_Vmax", start_value=0.1,
+                         lower_bound=1E-3, upper_bound=1E6,
+                         unit="mmole_per_min"),
+            #FitParameter(parameter_id="LI__MIDIM_Km", start_value=0.1,
+            #             lower_bound=1E-3, upper_bound=1E6,
+            #             unit="mM"),
+            # mid1oh export
+            FitParameter(parameter_id="LI__MID1OHEX_Vmax", start_value=0.1,
+                         lower_bound=1E-3, upper_bound=1E6,
+                         unit="mmole_per_min"),
+            #FitParameter(parameter_id="LI__MID1OHEX_Km", start_value=0.1,
+            #             lower_bound=1E-3, upper_bound=1E6,
+            #             unit="mM"),
+            # mid -> mid1oh
+            FitParameter(parameter_id="LI__MIDOH_Vmax", start_value=100,
+                         lower_bound=10, upper_bound=200, unit="mmole_per_min"),
+
+            FitParameter(parameter_id="ftissue_mid", start_value=2000,
+                          lower_bound=1E2, upper_bound=1E4,
+                          unit="liter/min"),
+            FitParameter(parameter_id="fup_mid", start_value=0.1,
+                          lower_bound=0.05, upper_bound=0.3,
+                          unit="dimensionless"),
+            # mid1oh kinetics
+            # FitParameter(parameter_id="KI__MID1OHEX_Vmax", start_value=5.0,
+            #              lower_bound=1, upper_bound=25,
+            #              unit="mmole/min"),
+            # FitParameter(parameter_id="KI__MID1OHEX_Km", start_value=0.5,
+            #              lower_bound=0.2, upper_bound=1.0,
+            #              unit="mM"),
+
+
+            # # distribution parameters
+            # FitParameter(parameter_id="ftissue_mid1oh", start_value=2000,
+            #              lower_bound=1E3, upper_bound=1E4,
+            #              unit="liter/min"),
+            # FitParameter(parameter_id="fup_mid1oh", start_value=0.1,
+            #              lower_bound=0.05, upper_bound=0.3,
+            #              unit="dimensionless"),
+            # # mid1oh kinetics
+            # FitParameter(parameter_id="KI__MID1OHEX_Vmax", start_value=5.0,
+            #              lower_bound=1, upper_bound=25,
+            #              unit="mmole/min"),
+            # FitParameter(parameter_id="KI__MID1OHEX_Km", start_value=0.5,
+            #              lower_bound=0.2, upper_bound=1.0,
+            #              unit="mM"),
+        ],
+        **exp_kwargs
+    )
+    run_optimization(fit_problem, **kwargs)
+
+
+'''
+Intravenous application of mid1oh. 
+'''
+op_mid1oh_iv = OptimizationProblem(
+    fit_experiments=[
+        FitExperiment(experiment=Mandema1992, mappings=["fm4"])
+    ],
+    fit_parameters=[
+        # distribution parameters
+        FitParameter(parameter_id="ftissue_mid1oh", start_value=1.0,
+                     lower_bound=1, upper_bound=1E4,
+                     unit="liter/min"),
+        FitParameter(parameter_id="fup_mid1oh", start_value=0.1,
+                     lower_bound=0.05, upper_bound=0.3,
+                     unit="dimensionless"),
+
+        # mid1oh kinetics
+        FitParameter(parameter_id="KI__MID1OHEX_Vmax", start_value=100,
+                     lower_bound=1E2, upper_bound=1E4,
+                     unit="mmole/min"),
+        #FitParameter(parameter_id="KI__MID1OHEX_Km", start_value=1E-3,
+        #             lower_bound=1E-6, upper_bound=1.0,
+        #             unit="mM"),
+
+    ],
+    **exp_kwargs
+)
+
+
+
+if __name__ == "__main__":
+    if True:
+        if True:
+            run_optimization(op_mid1oh_iv, size=5, seed=1235,
+                           output_path=RESULTS_PATH / "mid1oh_iv" / "least_square",
+                           optimizer=OptimizerType.LEAST_SQUARE,
+                           sampling=SamplingType.LOGUNIFORM,
+                           # method="lm", x_scale="jac",
+                           diff_step=0.05,
+                           jac='3-point', gtol=1e-10, xtol=1e-12,
+        )
+
+        if False:
+            mid1oh_iv_optimization(size=3, seed=1234,
+                           output_path=MIDAZOLAM_PATH / "results_fit" / "mid1oh_iv" / "differential_evolution",
+                           optimizer=OptimizerType.DIFFERENTIAL_EVOLUTION)
+
+
+    if False:
+        if True:
+            mandema_optimization(size=200, seed=1233,
+                                output_path=MIDAZOLAM_PATH / "results_fit" / "mandema",
+                                optimizer=OptimizerType.LEAST_SQUARE,
+                                sampling=SamplingType.LOGUNIFORM,
+                                diff_step=0.05,
+                                jac='3-point', gtol=1e-10, xtol=1e-12,
+            )
+        else:
+            mandema_optimization(size=3, seed=1234,
+                                   output_path=MIDAZOLAM_PATH / "results_fit" / "mandema",
+                                   optimizer=OptimizerType.DIFFERENTIAL_EVOLUTION)

@@ -1,3 +1,6 @@
+"""
+Definition of FitProblem.
+"""
 from typing import List, Dict, Iterable, Set
 import logging
 import numpy as np
@@ -105,7 +108,7 @@ class FitParameter(object):
         self.upper_bound = upper_bound
         self.unit = unit
         if unit is None:
-            logger.error(f"No unit provided for FitParameter '{pid}', assuming "
+            logger.error(f"No unit provided for FitParameter '{self.pid}', assuming "
                          f"model units.")
 
     def __str__(self):

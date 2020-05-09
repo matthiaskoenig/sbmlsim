@@ -1,0 +1,15 @@
+study	subject	n	intervention	substance	measurement	tissue	mean	mean_pm	se	sd	unit	time	time_unit
+Mandema1992	all	8	iv_1ohmid	1-hydroxymidazolam	concentration	plasma	41.566704	58.228928	16.662224	47.127886320197	ng/ml	5	min
+Mandema1992	all	8	iv_1ohmid	1-hydroxymidazolam	concentration	plasma	187.03427	242.87311	55.83884	157.936089670363	ng/ml	10	min
+Mandema1992	all	8	iv_1ohmid	1-hydroxymidazolam	concentration	plasma	177.78786	212.20583	34.41797	97.3487199267006	ng/ml	15	min
+Mandema1992	all	8	iv_1ohmid	1-hydroxymidazolam	concentration	plasma	128.512	146.44441	17.93241	50.7205148560698	ng/ml	20	min
+Mandema1992	all	8	iv_1ohmid	1-hydroxymidazolam	concentration	plasma	92.89213	106.3001	13.40797	37.9234660357832	ng/ml	25	min
+Mandema1992	all	8	iv_1ohmid	1-hydroxymidazolam	concentration	plasma	70.32142	82.88189	12.56047	35.5263740475608	ng/ml	35	min
+Mandema1992	all	8	iv_1ohmid	1-hydroxymidazolam	concentration	plasma	70.89622	76.16391	5.26769	14.8992772807543	ng/ml	45	min
+Mandema1992	all	8	iv_1ohmid	1-hydroxymidazolam	concentration	plasma	59.123066	64.05255	4.929484	13.9426862566023	ng/ml	60	min
+Mandema1992	all	8	iv_1ohmid	1-hydroxymidazolam	concentration	plasma	40.772675	46.461594	5.688919	16.090692810084	ng/ml	90	min
+Mandema1992	all	8	iv_1ohmid	1-hydroxymidazolam	concentration	plasma	29.327682	33.0001	3.672418	10.3871666846062	ng/ml	120	min
+Mandema1992	all	8	iv_1ohmid	1-hydroxymidazolam	concentration	plasma	17.232649	19.886967	2.654318	7.50754502890206	ng/ml	150	min
+Mandema1992	all	8	iv_1ohmid	1-hydroxymidazolam	concentration	plasma	12.928759	15.046341	2.117582	5.98942636767429	ng/ml	180	min
+Mandema1992	all	8	iv_1ohmid	1-hydroxymidazolam	concentration	plasma	7.4322767	8.154102	0.7218253	2.04163025784806	ng/ml	240	min
+Mandema1992	all	8	iv_1ohmid	1-hydroxymidazolam	concentration	plasma	4.21878	4.6874537	0.4686737	1.32560940573516	ng/ml	300	min

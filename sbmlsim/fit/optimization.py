@@ -7,6 +7,8 @@ from collections import defaultdict
 from pathlib import Path
 from enum import Enum
 
+import seaborn as sns
+from matplotlib import pyplot as plt
 
 import time
 import pandas as pd
@@ -19,12 +21,10 @@ from sbmlsim.simulation import TimecourseSim, ScanSim
 from sbmlsim.experiment import ExperimentRunner
 from sbmlsim.model import RoadrunnerSBMLModel
 from sbmlsim.utils import timeit
-from sbmlsim.plot.plotting_matplotlib import plt  # , GridSpec
-import seaborn as sns
-
-from .fitting import FitExperiment, FitParameter
+from sbmlsim.fit.objects import FitExperiment, FitParameter
 
 logger = logging.getLogger(__name__)
+
 
 @dataclass
 class RuntimeErrorOptimizeResult:
@@ -34,13 +34,16 @@ class RuntimeErrorOptimizeResult:
     cost: float = np.Inf
     optimality: float = np.Inf
 
+
 class SamplingType(Enum):
     LOGUNIFORM = 1
     UNIFORM = 2
 
+
 class OptimizerType(Enum):
     LEAST_SQUARE = 1
     DIFFERENTIAL_EVOLUTION = 2
+
 
 class OptimizationProblem(object):
     """Parameter optimization problem."""
@@ -216,38 +219,6 @@ class OptimizationProblem(object):
             with open(filepath, "w") as fout:
                 fout.write(info)
 
-    def run_optimization(self, size: int = 5, seed: int = 1234,
-                         plot_results: bool = True, output_path=None, **kwargs) -> List[scipy.optimize.OptimizeResult]:
-        """Runs the given optimization problem.
-
-        This changes the internal state of the optimization problem
-        and provides simple access to parameters and costs after
-        optimization.
-
-        :param size: number of optimization with different start values
-        :param seed: random seed (for sampling of parameters)
-        :param plot_results: should standard plots be generated
-        :param output_path: path (directory) to store results
-        :param kwargs: additional arguments for optimizer, e.g. xtol
-        :return: list of optimization results
-        """
-        self.report(output_path=output_path)
-
-        # optimize
-        fits = self.optimize(size=size, seed=seed, **kwargs)
-        self.fit_report(output_path=output_path)
-
-        if plot_results:
-            if len(fits) > 1:
-                self.plot_waterfall(output_path=output_path)
-                self.plot_correlation(output_path=output_path)
-
-            # plot top fit
-            self.plot_costs(output_path=output_path)
-            self.plot_residuals(output_path=output_path)
-
-        return fits
-
     def optimize(self, size=10, seed=None,
                  optimizer: OptimizerType=OptimizerType.LEAST_SQUARE,
                  sampling: SamplingType=SamplingType.UNIFORM,
@@ -286,16 +257,12 @@ class OptimizationProblem(object):
         # TODO: parallelization
         for k in range(size):
             x0 = x0_samples.values[k, :]
-            print(f"[{k+1}/{size}] optimize from x0={x0}")
-            fits.append(
-                self._optimize_single(x0=x0, optimizer=optimizer, **kwargs)
-            )
-
-        self.fit_results = self.process_fits(fits)
-        self.xopt = self.fit_results.x.iloc[0]
+            print(f"[{k+1}/{size}] x0={x0}")
+            fit = self._optimize_single(x0=x0, optimizer=optimizer, **kwargs)
+            print("\t{:8.4f} [s]".format(fit.duration))
+            fits.append(fit)
         return fits
 
-    @timeit
     def _optimize_single(self, x0=None, optimizer=OptimizerType.LEAST_SQUARE,
                          **kwargs) -> scipy.optimize.OptimizeResult:
         """ Runs single optimization with x0 start values.
@@ -377,8 +344,8 @@ class OptimizationProblem(object):
         # Necessary to work in logarithmic parameter space to account for xtol
         # in largely varying parameters
         # see https://github.com/scipy/scipy/issues/7632
+        # print(f"\t{xlog}")
         x = np.power(10, xlog)
-        print(f"\t{xlog}")
         parts = []
         if complete_data:
             residual_data = defaultdict(list)
@@ -439,72 +406,6 @@ class OptimizationProblem(object):
         else:
             return np.concatenate(parts)
 
-    def process_fits(self, fits: List[scipy.optimize.OptimizeResult]):
-        """Process the optimization results."""
-        results = []
-        pids = [p.pid for p in self.parameters]
-        # print(fits)
-        for fit in fits:
-            res = {
-                # 'status': fit.status,
-                'success': fit.success,
-                'duration': fit.duration,
-                'cost': fit.cost,
-                 # 'optimality': fit.optimality,
-                'message': fit.message if hasattr(fit, "message") else None
-            }
-            # add parameter columns
-            for k, pid in enumerate(pids):
-                res[pid] = fit.x[k]
-            res['x'] = fit.x
-            res['x0'] = fit.x0
-
-            results.append(res)
-        df = pd.DataFrame(results)
-        df.sort_values(by=["cost"], inplace=True)
-        return df
-
-    def fit_report(self, output_path: Path=None):
-        """ Readable report of optimization. """
-        pd.set_option('display.max_columns', None)
-        info = [
-            "-" * 80,
-            str(self.fit_results),
-            "-" * 80,
-            "Optimal parameters:",
-        ]
-
-        xopt = self.fit_results.x.iloc[0]
-        fitted_pars = {}
-        for k, p in enumerate(self.parameters):
-            fitted_pars[p.pid] = (xopt[k], p.unit)
-
-        for key, value in fitted_pars.items():
-            info.append(
-                "\t'{}': Q_({}, '{}'),".format(key, value[0], value[1])
-            )
-        info.append("-" * 80)
-        info = "\n".join(info)
-        print(info)
-        if output_path is not None:
-            filepath = output_path / "fit_report.txt"
-            with open(filepath, "w") as fout:
-                fout.write(info)
-
-    def plot_waterfall(self, output_path=None):
-        """Process the optimization results."""
-        df = self.fit_results
-        fig, ax = plt.subplots(nrows=1, ncols=1, figsize=(10, 10))
-        ax.plot(range(len(df)), 1 + (df.cost-df.cost.iloc[0]), '-o', color="black")
-        ax.set_xlabel("index (Ordered optimizer run)")
-        ax.set_ylabel("Offsetted cost value (relative to best start)")
-        # ax.set_yscale("log")
-        ax.set_title("Waterfall plot")
-        plt.show()
-
-        if output_path is not None:
-            filepath = output_path / "01_waterfall.svg"
-            fig.savefig(filepath, bbox_inches="tight")
 
     def plot_costs(self, xstart=None, xopt=None, output_path: Path=None):
         """Plots bar diagram of costs for set of residuals
@@ -549,87 +450,6 @@ class OptimizationProblem(object):
             filepath = output_path / "02_costs.svg"
             fig.savefig(filepath, bbox_inches="tight")
 
-
-    def plot_correlation(self, output_path=None):
-        """Process the optimization results."""
-        df = self.fit_results
-
-        pids = [p.pid for p in self.parameters]
-        sns.set(style="ticks", color_codes=True)
-        # sns_plot = sns.pairplot(data=df[pids + ["cost"]], hue="cost", corner=True)
-
-        npars = len(pids)
-        # x0 =
-        fig, axes = plt.subplots(nrows=npars, ncols=npars, figsize=(5*npars, 5*npars))
-
-        cost_normed = (df.cost - df.cost.min())
-        cost_normed = 1 - cost_normed/cost_normed.max()
-        print("cost_normed", cost_normed)
-        size = np.power(15*cost_normed, 2)
-
-        # FIXME: plot bounds
-        # FIXME: plot cost of initial guesses (both should be in data frame)
-
-        for kx, pidx in enumerate(pids):
-            for ky, pidy in enumerate(pids):
-                if npars == 1:
-                    ax = axes
-                else:
-                    ax = axes[ky][kx]
-                    ax.set_xscale("log")
-                    ax.set_yscale("log")
-
-
-                # optimal values
-                if kx > ky:
-                    ax.set_xlabel(pidx)
-                    ax.set_ylabel(pidy)
-                    # optimal values
-                    ax.scatter(df[pidx], df[pidy], c=df.cost, s=size, alpha=0.75, cmap="jet")
-
-                    ax.plot(self.xopt[kx], self.xopt[ky], "s",
-                                      color="darkgreen", markersize=30,
-                                      alpha=0.7)
-
-                if kx == ky:
-                    ax.set_ylabel(pidy)
-                    ax.set_ylabel("cost")
-                    ax.scatter(df[pidx], df.cost, color="black", marker="_", alpha=1.0)
-
-                # trajectory
-                if kx < ky:
-                    ax.set_xlabel(pidy)
-                    ax.set_ylabel(pidx)
-                    # start values
-                    xall = []
-                    yall = []
-                    xstart_all = []
-                    ystart_all = []
-                    for ks in range(len(size)):
-                        # FIXME: use iloc!
-                        x = df.x[ks][kx]
-                        y = df.x[ks][ky]
-                        xall.append(x)
-                        yall.append(y)
-                        if 'x0' in df.columns:
-                            xstart = df.x0[ks][kx]
-                            ystart = df.x0[ks][ky]
-                            xstart_all.append(xstart)
-                            ystart_all.append(ystart)
-
-                            ax.plot([ystart, y], [xstart, x], "-", color="darkblue", alpha=0.7)
-
-                    # start point
-                    ax.plot(ystart_all, xstart_all, "^", color="black", markersize=10, alpha=0.9)
-                    # end point
-                    ax.plot(yall, xall, "o", color="black", markersize=10, alpha=0.9)
-
-
-        plt.show()
-        if output_path is not None:
-            filepath = output_path / "03_parameter_correlation.svg"
-            # sns_plot.savefig(filepath, bbox_inches="tight")
-            fig.savefig(filepath, bbox_inches="tight")
 
     def plot_residuals(self, xstart=None, xopt=None, output_path: Path = None):
         """ Plot residual data.

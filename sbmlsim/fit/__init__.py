@@ -1,1 +1,2 @@
-from .fitting import FitMapping, FitData, FitExperiment, FitParameter
+from .objects import FitMapping, FitData, FitExperiment, FitParameter
+from .fit import run_optimization
