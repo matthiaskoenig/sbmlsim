@@ -22,91 +22,69 @@ exp_kwargs = {
 }
 
 
-def mandema_optimization(**kwargs):
-    fit_problem = OptimizationProblem(
-        fit_experiments=[
-            # FitExperiment(experiment=Mandema1992, mappings=["fm1"]),
-            FitExperiment(experiment=Mandema1992, mappings=["fm1", "fm3", "fm4"]),
-        ],
-        fit_parameters=[
-            # --- LIVER ---
-            # mid import
-            FitParameter(parameter_id="LI__MIDIM_Vmax", start_value=0.1,
-                         lower_bound=1E-3, upper_bound=1E6,
-                         unit="mmole_per_min"),
-            #FitParameter(parameter_id="LI__MIDIM_Km", start_value=0.1,
-            #             lower_bound=1E-3, upper_bound=1E6,
-            #             unit="mM"),
-            # mid1oh export
-            FitParameter(parameter_id="LI__MID1OHEX_Vmax", start_value=0.1,
-                         lower_bound=1E-3, upper_bound=1E6,
-                         unit="mmole_per_min"),
-            #FitParameter(parameter_id="LI__MID1OHEX_Km", start_value=0.1,
-            #             lower_bound=1E-3, upper_bound=1E6,
-            #             unit="mM"),
-            # mid -> mid1oh
-            FitParameter(parameter_id="LI__MIDOH_Vmax", start_value=100,
-                         lower_bound=10, upper_bound=200, unit="mmole_per_min"),
 
-            FitParameter(parameter_id="ftissue_mid", start_value=2000,
-                          lower_bound=1E2, upper_bound=1E4,
-                          unit="liter/min"),
-            FitParameter(parameter_id="fup_mid", start_value=0.1,
-                          lower_bound=0.05, upper_bound=0.3,
-                          unit="dimensionless"),
-            # mid1oh kinetics
-            # FitParameter(parameter_id="KI__MID1OHEX_Vmax", start_value=5.0,
-            #              lower_bound=1, upper_bound=25,
-            #              unit="mmole/min"),
-            # FitParameter(parameter_id="KI__MID1OHEX_Km", start_value=0.5,
-            #              lower_bound=0.2, upper_bound=1.0,
-            #              unit="mM"),
+op_mandema1992 = OptimizationProblem(
+    opid="mandema1992",
+    fit_experiments=[
+        # FitExperiment(experiment=Mandema1992, mappings=["fm1"]),
+        FitExperiment(experiment=Mandema1992, mappings=["fm1", "fm3", "fm4"]),
+    ],
+    fit_parameters=[
+        # liver
+        FitParameter(parameter_id="LI__MIDIM_Vmax", start_value=0.1,
+                     lower_bound=1E-3, upper_bound=1E6,
+                     unit="mmole_per_min"),
+        FitParameter(parameter_id="LI__MID1OHEX_Vmax", start_value=0.1,
+                     lower_bound=1E-3, upper_bound=1E6,
+                     unit="mmole_per_min"),
+        FitParameter(parameter_id="LI__MIDOH_Vmax", start_value=100,
+                     lower_bound=10, upper_bound=200, unit="mmole_per_min"),
+        # kidneys
+        FitParameter(parameter_id="KI__MID1OHEX_Vmax", start_value=100,
+                     lower_bound=1E-1, upper_bound=1E4,
+                     unit="mmole/min"),
 
+        # distribution
+        FitParameter(parameter_id="ftissue_mid", start_value=2000,
+                      lower_bound=1, upper_bound=1E5,
+                      unit="liter/min"),
+        FitParameter(parameter_id="fup_mid", start_value=0.1,
+                      lower_bound=0.05, upper_bound=0.3,
+                      unit="dimensionless"),
+        # distribution parameters
+        FitParameter(parameter_id="ftissue_mid1oh", start_value=1.0,
+                     lower_bound=1, upper_bound=1E5,
+                     unit="liter/min"),
+        FitParameter(parameter_id="fup_mid1oh", start_value=0.1,
+                     lower_bound=0.01, upper_bound=0.3,
+                     unit="dimensionless"),
+    ],
+    **exp_kwargs
+)
 
-            # # distribution parameters
-            # FitParameter(parameter_id="ftissue_mid1oh", start_value=2000,
-            #              lower_bound=1E3, upper_bound=1E4,
-            #              unit="liter/min"),
-            # FitParameter(parameter_id="fup_mid1oh", start_value=0.1,
-            #              lower_bound=0.05, upper_bound=0.3,
-            #              unit="dimensionless"),
-            # # mid1oh kinetics
-            # FitParameter(parameter_id="KI__MID1OHEX_Vmax", start_value=5.0,
-            #              lower_bound=1, upper_bound=25,
-            #              unit="mmole/min"),
-            # FitParameter(parameter_id="KI__MID1OHEX_Km", start_value=0.5,
-            #              lower_bound=0.2, upper_bound=1.0,
-            #              unit="mM"),
-        ],
-        **exp_kwargs
-    )
-    run_optimization(fit_problem, **kwargs)
 
 
 '''
 Intravenous application of mid1oh. 
 '''
 op_mid1oh_iv = OptimizationProblem(
+    opid="mid1oh_iv",
     fit_experiments=[
         FitExperiment(experiment=Mandema1992, mappings=["fm4"])
     ],
     fit_parameters=[
         # distribution parameters
         FitParameter(parameter_id="ftissue_mid1oh", start_value=1.0,
-                     lower_bound=1, upper_bound=1E4,
+                     lower_bound=1, upper_bound=1E5,
                      unit="liter/min"),
         FitParameter(parameter_id="fup_mid1oh", start_value=0.1,
-                     lower_bound=0.05, upper_bound=0.3,
+                     lower_bound=0.01, upper_bound=0.3,
                      unit="dimensionless"),
 
         # mid1oh kinetics
         FitParameter(parameter_id="KI__MID1OHEX_Vmax", start_value=100,
-                     lower_bound=1E2, upper_bound=1E4,
+                     lower_bound=1E-1, upper_bound=1E4,
                      unit="mmole/min"),
-        #FitParameter(parameter_id="KI__MID1OHEX_Km", start_value=1E-3,
-        #             lower_bound=1E-6, upper_bound=1.0,
-        #             unit="mM"),
-
     ],
     **exp_kwargs
 )
@@ -116,8 +94,19 @@ op_mid1oh_iv = OptimizationProblem(
 if __name__ == "__main__":
     if True:
         if True:
-            opt_res1 = run_optimization(op_mid1oh_iv, size=100, seed=1236,
-                           output_path=RESULTS_PATH / "mid1oh_iv" / "least_square",
+            opt_res = run_optimization(op_mandema1992, size=200, seed=2345,
+                           output_path=RESULTS_PATH,
+                           optimizer=OptimizerType.LEAST_SQUARE,
+                           sampling=SamplingType.LOGUNIFORM,
+                           diff_step=0.05,
+                           jac='3-point', gtol=1e-10, xtol=1e-12,
+            )
+            exit()
+
+
+        if True:
+            opt_res1 = run_optimization(op_mid1oh_iv, size=20, seed=1236,
+                           output_path=RESULTS_PATH,
                            optimizer=OptimizerType.LEAST_SQUARE,
                            sampling=SamplingType.LOGUNIFORM,
                            diff_step=0.05,

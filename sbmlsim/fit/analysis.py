@@ -143,18 +143,21 @@ class OptimizationResult(object):
         xopt = self.xopt
         fitted_pars = {}
         for k, p in enumerate(self.parameters):
-            fitted_pars[p.pid] = (xopt[k], p.unit)
+            opt_value = xopt[k]
+            if abs(opt_value-p.lower_bound)/p.lower_bound < 0.05:
+                logger.error(f"Optimal parameter '{p.pid}' within 5% of lower bound!")
+            if abs(opt_value-p.upper_bound)/p.upper_bound < 0.05:
+                logger.error(f"Optimal parameter '{p.pid}' within 5% of upper bound!")
+            fitted_pars[p.pid] = (opt_value, p.unit, p.lower_bound, p.upper_bound)
 
         for key, value in fitted_pars.items():
             info.append(
-                "\t'{}': Q_({}, '{}'),".format(key, value[0], value[1])
+                "\t'{}': Q_({}, '{}'),  # [{} - {}]".format(key, value[0], value[1],
+                                                            value[2], value[3])
             )
         info.append("-" * 80)
         info = "\n".join(info)
         print(info)
-
-        print("trajectories:")
-        print(self.df_traces)
 
         if output_path is not None:
             filepath = output_path / "fit_report.txt"
@@ -214,7 +217,7 @@ class OptimizationResult(object):
         fig, axes = plt.subplots(nrows=npars, ncols=npars, figsize=(5*npars, 5*npars))
         cost_normed = (df.cost - df.cost.min())
         cost_normed = 1 - cost_normed/cost_normed.max()
-        print("cost_normed", cost_normed)
+        # print("cost_normed", cost_normed)
         size = np.power(15*cost_normed, 2)
 
         bound_kwargs = {'color': "darkgrey", 'linestyle': "--", "alpha": 1.0}
@@ -271,7 +274,7 @@ class OptimizationResult(object):
                     ax.set_ylabel("cost")
                     ax.plot(df[pidx], df.cost, color="black", marker="s", linestyle="None", alpha=1.0)
 
-                # traces
+                # traces (walk through cost function)
                 if kx < ky:
                     ax.set_xlabel(pidy)
                     # ax.set_xlim(self.parameters[ky].lower_bound, self.parameters[ky].upper_bound)
@@ -287,7 +290,8 @@ class OptimizationResult(object):
                     for run in range(self.size):
                         df_run = self.df_traces[self.df_traces.run == run]
                         # ax.plot(df_run[pidy], df_run[pidx], '-', color="black", alpha=0.3)
-                        ax.scatter(df_run[pidy], df_run[pidx], c=df_run.cost, cmap="jet", alpha=0.8)
+                        ax.scatter(df_run[pidy], df_run[pidx], c=df_run.cost, cmap="jet",
+                                   marker="s", alpha=0.8)
 
                     # end point
                     # ax.plot(yall, xall, "o", color="black", markersize=10, alpha=0.9)
@@ -296,6 +300,13 @@ class OptimizationResult(object):
                 ax.set_xscale("log")
                 if kx != ky:
                     ax.set_yscale("log")
+
+        # correct scatter limits
+        for kx, pidx in enumerate(pids):
+            for ky, pidy in enumerate(pids):
+                if kx < ky:
+                    axes[ky][kx].set_xlim(axes[kx][ky].get_xlim())
+                    axes[ky][kx].set_ylim(axes[kx][ky].get_ylim())
 
         plt.show()
         if output_path is not None:

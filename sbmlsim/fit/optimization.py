@@ -49,14 +49,16 @@ class OptimizerType(Enum):
 class OptimizationProblem(object):
     """Parameter optimization problem."""
 
-    def __init__(self, fit_experiments: Iterable[FitExperiment],
+    def __init__(self, opid, fit_experiments: Iterable[FitExperiment],
                  fit_parameters: Iterable[FitParameter], simulator=None,
                  base_path=None, data_path=None):
         """Optimization problem.
 
+        :param opid
         :param fit_experiments:
         :param fit_parameters:
         """
+        self.opid = opid
         self.fit_experiments = FitExperiment.reduce(fit_experiments)
         self.parameters = fit_parameters
 
@@ -417,7 +419,7 @@ class OptimizationProblem(object):
             return res_all
 
 
-    def plot_costs(self, xstart=None, xopt=None, output_path: Path=None):
+    def plot_costs(self, x, xstart=None, output_path: Path=None):
         """Plots bar diagram of costs for set of residuals
 
         :param res_data_start:
@@ -427,14 +429,9 @@ class OptimizationProblem(object):
         """
         if xstart is None:
             xstart = self.x0
-        if xopt is None:
-            xopt = self.xopt
-
-        print("xstart", xstart)
-        print("xopt", xopt)
 
         res_data_start = self.residuals(xlog=np.log10(xstart), complete_data=True)
-        res_data_fit = self.residuals(xlog=np.log10(xopt), complete_data=True)
+        res_data_fit = self.residuals(xlog=np.log10(x), complete_data=True)
 
         data = []
         types = ["initial", "fit"]
@@ -457,11 +454,11 @@ class OptimizationProblem(object):
         ax.set_xscale("log")
         plt.show()
         if output_path:
-            filepath = output_path / "02_costs.svg"
+            filepath = output_path / "02_experiment_costs.svg"
             fig.savefig(filepath, bbox_inches="tight")
 
 
-    def plot_residuals(self, xstart=None, xopt=None, output_path: Path = None):
+    def plot_residuals(self, x, xstart=None, output_path: Path = None):
         """ Plot residual data.
 
         :param res_data_start: initial residual data
@@ -469,12 +466,10 @@ class OptimizationProblem(object):
         """
         if xstart is None:
             xstart = self.x0
-        if xopt is None:
-            xopt = self.xopt
 
         titles = ["initial", "fit"]
         res_data_start = self.residuals(xlog=np.log10(xstart), complete_data=True)
-        res_data_fit = self.residuals(xlog=np.log10(xopt), complete_data=True)
+        res_data_fit = self.residuals(xlog=np.log10(x), complete_data=True)
 
         for k, mapping_id in enumerate(self.mapping_keys):
             fig, ((a1, a2), (a3, a4), (a5, a6)) = plt.subplots(nrows=3, ncols=2, figsize=(10, 10))
