@@ -1,22 +1,15 @@
 --------------------------------------------------------------------------------
-   run  success    duration      cost  ftissue_mid1oh  fup_mid1oh  \
-0    1     True  211.005416  0.000001     1289.511279    0.050664   
-1    0     True  144.127977  0.000001     1174.637463    0.051376   
+   run  success   duration      cost  ftissue_mid1oh  fup_mid1oh  \
+0    0     True  31.702854  0.000001      3757.92929    0.050065   
 
    KI__MID1OHEX_Vmax                                                  x  \
-0         101.162430  [1289.51127863729, 0.05066371478800747, 101.16...   
-1         100.765258  [1174.6374629618647, 0.051375865011490815, 100...   
+0         100.079355  [3757.929290335492, 0.05006544340908644, 100.0...   
 
-                                                  x0  \
-0  [1916.002984338544, 0.20552719275995796, 4433....   
-1                                  [1.0, 0.1, 100.0]   
-
-                                 message  
-0  Optimization terminated successfully.  
-1  Optimization terminated successfully.  
+                  x0                                message  
+0  [1.0, 0.1, 100.0]  Optimization terminated successfully.  
 --------------------------------------------------------------------------------
 Optimal parameters:
-	'ftissue_mid1oh': Q_(1289.51127863729, 'liter/min'),
-	'fup_mid1oh': Q_(0.05066371478800747, 'dimensionless'),
-	'KI__MID1OHEX_Vmax': Q_(101.16242995747426, 'mmole/min'),
+	'ftissue_mid1oh': Q_(3757.929290335492, 'liter/min'),
+	'fup_mid1oh': Q_(0.05006544340908644, 'dimensionless'),
+	'KI__MID1OHEX_Vmax': Q_(100.07935541707073, 'mmole/min'),
 --------------------------------------------------------------------------------

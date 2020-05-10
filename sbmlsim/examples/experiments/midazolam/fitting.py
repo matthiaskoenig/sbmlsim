@@ -115,17 +115,16 @@ op_mid1oh_iv = OptimizationProblem(
 
 if __name__ == "__main__":
     if True:
-        if False:
+        if True:
             opt_res1 = run_optimization(op_mid1oh_iv, size=100, seed=1236,
                            output_path=RESULTS_PATH / "mid1oh_iv" / "least_square",
                            optimizer=OptimizerType.LEAST_SQUARE,
                            sampling=SamplingType.LOGUNIFORM,
-                           # method="lm", x_scale="jac",
                            diff_step=0.05,
                            jac='3-point', gtol=1e-10, xtol=1e-12,
             )
             exit()
-            opt_res2 = run_optimization(op_mid1oh_iv, size=5, seed=4350,
+            opt_res2 = run_optimization(op_mid1oh_iv, size=3, seed=4350,
                                         output_path=RESULTS_PATH / "mid1oh_iv" / "least_square",
                                         optimizer=OptimizerType.LEAST_SQUARE,
                                         sampling=SamplingType.LOGUNIFORM,
@@ -138,7 +137,7 @@ if __name__ == "__main__":
             opt_res.report()
 
         if True:
-            run_optimization(op_mid1oh_iv, size=2, seed=1234,
+            run_optimization(op_mid1oh_iv, size=1, seed=1234,
                            output_path=RESULTS_PATH / "mid1oh_iv" / "differential_evolution",
                            optimizer=OptimizerType.DIFFERENTIAL_EVOLUTION)
 

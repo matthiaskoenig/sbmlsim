@@ -34,11 +34,15 @@ def run_optimization(
                                     trajectories=trajectories)
     opt_result.report(output_path=output_path)
 
+    # FIXME: save and load the results
+    # opt_result.save(output_path=output_path)
+
+
     if plot_results:
         if len(fits) > 1:
             opt_result.plot_waterfall(output_path=output_path)
-            opt_result.plot_traces(output_path=output_path)
-            opt_result.plot_correlation(output_path=output_path)
+        opt_result.plot_traces(output_path=output_path)
+        opt_result.plot_correlation(output_path=output_path)
 
 
         # plot top fit

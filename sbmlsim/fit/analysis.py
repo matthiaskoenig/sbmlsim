@@ -188,6 +188,7 @@ class OptimizationResult(object):
             df_run = self.df_traces[self.df_traces.run == run]
             ax.plot(range(len(df_run)), df_run.cost, '-', alpha=0.8)
         for run in range(self.size):
+            df_run = self.df_traces[self.df_traces.run == run]
             ax.plot(len(df_run)-1, df_run.cost.iloc[-1], 'o', color="black", alpha=0.8)
 
         ax.set_xlabel("step")
@@ -216,8 +217,7 @@ class OptimizationResult(object):
         print("cost_normed", cost_normed)
         size = np.power(15*cost_normed, 2)
 
-        # FIXME: plot bounds
-        # FIXME: plot cost of initial guesses (both should be in data frame)
+        bound_kwargs = {'color': "darkgrey", 'linestyle': "--", "alpha": 1.0}
 
         for kx, pidx in enumerate(pids):
             for ky, pidy in enumerate(pids):
@@ -225,16 +225,17 @@ class OptimizationResult(object):
                     ax = axes
                 else:
                     ax = axes[ky][kx]
-                    ax.set_xscale("log")
-                    ax.set_yscale("log")
 
                 # optimal values
                 if kx > ky:
                     ax.set_xlabel(pidx)
-                    ax.set_xlim(self.parameters[kx].lower_bound, self.parameters[kx].upper_bound)
+                    # ax.set_xlim(self.parameters[kx].lower_bound, self.parameters[kx].upper_bound)
+                    ax.axvline(x=self.parameters[kx].lower_bound, **bound_kwargs)
+                    ax.axvline(x=self.parameters[kx].upper_bound, **bound_kwargs)
                     ax.set_ylabel(pidy)
-                    ax.set_ylim(self.parameters[ky].lower_bound,
-                                self.parameters[ky].upper_bound)
+                    #ax.set_ylim(self.parameters[ky].lower_bound, self.parameters[ky].upper_bound)
+                    ax.axhline(y=self.parameters[ky].lower_bound, **bound_kwargs)
+                    ax.axhline(y=self.parameters[ky].upper_bound, **bound_kwargs)
 
                     # start values
                     xall = []
@@ -253,9 +254,9 @@ class OptimizationResult(object):
                             ystart_all.append(ystart)
 
                     # start point
-                    ax.plot(xstart_all, ystart_all, "^", color="black", markersize=7, alpha=0.9)
+                    ax.plot(xstart_all, ystart_all, "^", color="black", markersize=2, alpha=0.5)
                     # optimal values
-                    ax.scatter(df[pidx], df[pidy], c=df.cost, s=size, alpha=0.75, cmap="jet")
+                    ax.scatter(df[pidx], df[pidy], c=df.cost, s=size, alpha=0.9, cmap="jet"),
 
                     ax.plot(self.xopt[kx], self.xopt[ky], "s",
                                       color="darkgreen", markersize=30,
@@ -263,30 +264,38 @@ class OptimizationResult(object):
 
                 if kx == ky:
                     ax.set_xlabel(pidx)
-                    ax.set_xlim(self.parameters[kx].lower_bound,
-                                self.parameters[kx].upper_bound)
+                    ax.axvline(x=self.parameters[kx].lower_bound, **bound_kwargs)
+                    ax.axvline(x=self.parameters[kx].upper_bound, **bound_kwargs)
+                    # ax.set_xlim(self.parameters[kx].lower_bound,
+                    #            self.parameters[kx].upper_bound)
                     ax.set_ylabel("cost")
-                    ax.scatter(df[pidx], df.cost, color="black", marker="_", alpha=1.0)
+                    ax.plot(df[pidx], df.cost, color="black", marker="s", linestyle="None", alpha=1.0)
 
                 # traces
                 if kx < ky:
                     ax.set_xlabel(pidy)
-                    ax.set_xlim(self.parameters[ky].lower_bound,
-                                self.parameters[ky].upper_bound)
+                    # ax.set_xlim(self.parameters[ky].lower_bound, self.parameters[ky].upper_bound)
+                    ax.axvline(x=self.parameters[ky].lower_bound, **bound_kwargs)
+                    ax.axvline(x=self.parameters[ky].upper_bound, **bound_kwargs)
                     ax.set_ylabel(pidx)
-                    ax.set_ylim(self.parameters[kx].lower_bound,
-                                self.parameters[kx].upper_bound)
+                    # ax.set_ylim(self.parameters[kx].lower_bound, self.parameters[kx].upper_bound)
+                    ax.axhline(y=self.parameters[kx].lower_bound, **bound_kwargs)
+                    ax.axhline(y=self.parameters[kx].upper_bound, **bound_kwargs)
 
                             # ax.plot([ystart, y], [xstart, x], "-", color="black", alpha=0.7)
 
                     for run in range(self.size):
                         df_run = self.df_traces[self.df_traces.run == run]
-
                         # ax.plot(df_run[pidy], df_run[pidx], '-', color="black", alpha=0.3)
                         ax.scatter(df_run[pidy], df_run[pidx], c=df_run.cost, cmap="jet", alpha=0.8)
 
                     # end point
                     # ax.plot(yall, xall, "o", color="black", markersize=10, alpha=0.9)
+                    ax.plot(self.xopt[ky], self.xopt[kx], "s", color="darkgreen", markersize=30, alpha=0.7)
+
+                ax.set_xscale("log")
+                if kx != ky:
+                    ax.set_yscale("log")
 
         plt.show()
         if output_path is not None:
