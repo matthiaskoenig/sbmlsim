@@ -178,6 +178,28 @@ class OptimizationResult(object):
             filepath = output_path / "01_waterfall.svg"
             fig.savefig(filepath, bbox_inches="tight")
 
+    def plot_traces(self, output_path=None):
+        """Plots optimization traces.
+
+        """
+        fig, ax = plt.subplots(nrows=1, ncols=1, figsize=(10, 10))
+
+        for run in range(self.size):
+            df_run = self.df_traces[self.df_traces.run == run]
+            ax.plot(range(len(df_run)), df_run.cost, '-', alpha=0.8)
+        for run in range(self.size):
+            ax.plot(len(df_run)-1, df_run.cost.iloc[-1], 'o', color="black", alpha=0.8)
+
+        ax.set_xlabel("step")
+        ax.set_ylabel("cost")
+        # ax.set_yscale("log")
+        ax.set_title("Traces")
+        plt.show()
+
+        if output_path is not None:
+            filepath = output_path / "02_traces.svg"
+            fig.savefig(filepath, bbox_inches="tight")
+
     def plot_correlation(self, output_path=None):
         """Process the optimization results."""
         df = self.df_fits
@@ -189,7 +211,6 @@ class OptimizationResult(object):
         npars = len(pids)
         # x0 =
         fig, axes = plt.subplots(nrows=npars, ncols=npars, figsize=(5*npars, 5*npars))
-
         cost_normed = (df.cost - df.cost.min())
         cost_normed = 1 - cost_normed/cost_normed.max()
         print("cost_normed", cost_normed)
@@ -214,6 +235,25 @@ class OptimizationResult(object):
                     ax.set_ylabel(pidy)
                     ax.set_ylim(self.parameters[ky].lower_bound,
                                 self.parameters[ky].upper_bound)
+
+                    # start values
+                    xall = []
+                    yall = []
+                    xstart_all = []
+                    ystart_all = []
+                    for ks in range(len(size)):
+                        x = df.x[ks][kx]
+                        y = df.x[ks][ky]
+                        xall.append(x)
+                        yall.append(y)
+                        if 'x0' in df.columns:
+                            xstart = df.x0[ks][kx]
+                            ystart = df.x0[ks][ky]
+                            xstart_all.append(xstart)
+                            ystart_all.append(ystart)
+
+                    # start point
+                    ax.plot(xstart_all, ystart_all, "^", color="black", markersize=7, alpha=0.9)
                     # optimal values
                     ax.scatter(df[pidx], df[pidy], c=df.cost, s=size, alpha=0.75, cmap="jet")
 
@@ -228,7 +268,7 @@ class OptimizationResult(object):
                     ax.set_ylabel("cost")
                     ax.scatter(df[pidx], df.cost, color="black", marker="_", alpha=1.0)
 
-                # trajectory
+                # traces
                 if kx < ky:
                     ax.set_xlabel(pidy)
                     ax.set_xlim(self.parameters[ky].lower_bound,
@@ -236,42 +276,19 @@ class OptimizationResult(object):
                     ax.set_ylabel(pidx)
                     ax.set_ylim(self.parameters[kx].lower_bound,
                                 self.parameters[kx].upper_bound)
-                    # start values
-                    xall = []
-                    yall = []
-                    xstart_all = []
-                    ystart_all = []
-                    for ks in range(len(size)):
-                        # FIXME: use iloc!
-                        x = df.x[ks][kx]
-                        y = df.x[ks][ky]
-                        xall.append(x)
-                        yall.append(y)
-                        if 'x0' in df.columns:
-                            xstart = df.x0[ks][kx]
-                            ystart = df.x0[ks][ky]
-                            xstart_all.append(xstart)
-                            ystart_all.append(ystart)
 
                             # ax.plot([ystart, y], [xstart, x], "-", color="black", alpha=0.7)
-
 
                     for run in range(self.size):
                         df_run = self.df_traces[self.df_traces.run == run]
 
-                        ax.plot(df_run[pidy], df_run[pidx], '-', color="black", alpha=0.3)
+                        # ax.plot(df_run[pidy], df_run[pidx], '-', color="black", alpha=0.3)
                         ax.scatter(df_run[pidy], df_run[pidx], c=df_run.cost, cmap="jet", alpha=0.8)
 
-
-                    # start point
-                    ax.plot(ystart_all, xstart_all, "^", color="black", markersize=10, alpha=0.9)
                     # end point
-                    ax.plot(yall, xall, "o", color="black", markersize=10, alpha=0.9)
-
+                    # ax.plot(yall, xall, "o", color="black", markersize=10, alpha=0.9)
 
         plt.show()
         if output_path is not None:
             filepath = output_path / "03_parameter_correlation.svg"
             fig.savefig(filepath, bbox_inches="tight")
-
-

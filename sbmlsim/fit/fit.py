@@ -37,7 +37,9 @@ def run_optimization(
     if plot_results:
         if len(fits) > 1:
             opt_result.plot_waterfall(output_path=output_path)
+            opt_result.plot_traces(output_path=output_path)
             opt_result.plot_correlation(output_path=output_path)
+
 
         # plot top fit
         # FIXME: run plots fo the simulation problem

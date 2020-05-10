@@ -115,8 +115,8 @@ op_mid1oh_iv = OptimizationProblem(
 
 if __name__ == "__main__":
     if True:
-        if True:
-            opt_res1 = run_optimization(op_mid1oh_iv, size=100, seed=1235,
+        if False:
+            opt_res1 = run_optimization(op_mid1oh_iv, size=100, seed=1236,
                            output_path=RESULTS_PATH / "mid1oh_iv" / "least_square",
                            optimizer=OptimizerType.LEAST_SQUARE,
                            sampling=SamplingType.LOGUNIFORM,
@@ -137,15 +137,15 @@ if __name__ == "__main__":
             opt_res = OptimizationResult.combine([opt_res1, opt_res2])
             opt_res.report()
 
-        if False:
-            mid1oh_iv_optimization(size=3, seed=1234,
-                           output_path=MIDAZOLAM_PATH / "results_fit" / "mid1oh_iv" / "differential_evolution",
+        if True:
+            run_optimization(op_mid1oh_iv, size=2, seed=1234,
+                           output_path=RESULTS_PATH / "mid1oh_iv" / "differential_evolution",
                            optimizer=OptimizerType.DIFFERENTIAL_EVOLUTION)
 
 
     if False:
         if True:
-            mandema_optimization(size=200, seed=1233,
+            mandema_optimization(size=50, seed=1233,
                                 output_path=MIDAZOLAM_PATH / "results_fit" / "mandema",
                                 optimizer=OptimizerType.LEAST_SQUARE,
                                 sampling=SamplingType.LOGUNIFORM,
