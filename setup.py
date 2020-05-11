@@ -86,6 +86,8 @@ setup(
         "altair>=4.0.0",
         "seaborn>=0.10.0",
         "coloredlogs",
+         # "lhmsmdu",
+        "pyDOE>=0.3.8",
         "Sphinx",
         "sphinx_rtd_theme",
         "recommonmark",

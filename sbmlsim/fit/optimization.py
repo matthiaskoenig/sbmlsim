@@ -23,7 +23,7 @@ from sbmlsim.experiment import ExperimentRunner
 from sbmlsim.model import RoadrunnerSBMLModel
 from sbmlsim.utils import timeit
 from sbmlsim.fit.objects import FitExperiment, FitParameter
-
+from sbmlsim.fit.sampling import SamplingType, create_samples
 logger = logging.getLogger(__name__)
 
 
@@ -34,11 +34,6 @@ class RuntimeErrorOptimizeResult:
     duration: float = -1.0
     cost: float = np.Inf
     optimality: float = np.Inf
-
-
-class SamplingType(Enum):
-    LOGUNIFORM = 1
-    UNIFORM = 2
 
 
 class OptimizerType(Enum):
@@ -225,42 +220,20 @@ class OptimizationProblem(object):
     def optimize(self, size=10, seed=None,
                  optimizer: OptimizerType=OptimizerType.LEAST_SQUARE,
                  sampling: SamplingType=SamplingType.UNIFORM,
-                 max_bound=1E10, min_bound=1E-10,
                  **kwargs) -> Tuple[List[scipy.optimize.OptimizeResult], List]:
         """Run parameter optimization"""
-        # create the sample parameters
-        x0_values = np.zeros(shape=(size, len(self.parameters)))
-        # parameter set are the x0 values
-        x0_values[0, :] = self.x0
-        # remaining samples are random samples
-        if seed:
-            np.random.seed(seed)
-        for k, p in enumerate(self.parameters):
-            lb = p.lower_bound if not np.isinf(p.lower_bound) else -max_bound
-            ub = p.upper_bound if not np.isinf(p.upper_bound) else max_bound
 
-            # uniform sampling
-            if sampling == SamplingType.UNIFORM:
-                x0_values[1:, k] = np.random.uniform(lb, ub, size=size-1)
-            elif sampling == SamplingType.LOGUNIFORM:
-                # only working with positive values
-                if lb <= 0.0:
-                    lb = min_bound
-                lb_log = np.log10(lb)
-                ub_log = np.log10(ub)
-
-                values_log = np.random.uniform(lb_log, ub_log, size=size-1)
-                x0_values[1:, k] = np.power(10, values_log)
-
-        x0_samples = pd.DataFrame(x0_values, columns=[p.pid for p in self.parameters])
-        print("samples:")
-        print(x0_samples)
+        x_samples = create_samples(
+            parameters=self.parameters,
+            size=size,
+            sampling=sampling,
+        )
 
         fits = []
         trajectories = []
         # TODO: parallelization
         for k in range(size):
-            x0 = x0_samples.values[k, :]
+            x0 = x_samples.values[k, :]
             print(f"[{k+1}/{size}] x0={x0}")
             fit, trajectory = self._optimize_single(x0=x0, optimizer=optimizer, **kwargs)
             print("\t{:8.4f} [s]".format(fit.duration))

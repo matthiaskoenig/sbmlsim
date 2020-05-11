@@ -94,21 +94,21 @@ op_mid1oh_iv = OptimizationProblem(
 if __name__ == "__main__":
     if True:
         if True:
-            opt_res = run_optimization(op_mandema1992, size=200, seed=2345,
+            opt_res = run_optimization(op_mandema1992, size=50, seed=2345,
                            output_path=RESULTS_PATH,
                            optimizer=OptimizerType.LEAST_SQUARE,
-                           sampling=SamplingType.LOGUNIFORM,
+                           sampling=SamplingType.LOGUNIFORM_LHS,
                            diff_step=0.05,
-                           jac='3-point', gtol=1e-10, xtol=1e-12,
+                           jac='2-point', gtol=1e-10, xtol=1e-12,
             )
             exit()
 
 
-        if True:
+        if False:
             opt_res1 = run_optimization(op_mid1oh_iv, size=20, seed=1236,
                            output_path=RESULTS_PATH,
                            optimizer=OptimizerType.LEAST_SQUARE,
-                           sampling=SamplingType.LOGUNIFORM,
+                           sampling=SamplingType.LOGUNIFORM_LHS,
                            diff_step=0.05,
                            jac='3-point', gtol=1e-10, xtol=1e-12,
             )
