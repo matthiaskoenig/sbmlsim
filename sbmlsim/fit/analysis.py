@@ -173,7 +173,7 @@ class OptimizationResult(object):
         ax.plot(range(self.size), 1 + (self.df_fits.cost - self.df_fits.cost.iloc[0]), '-o', color="black")
         ax.set_xlabel("index (Ordered optimizer run)")
         ax.set_ylabel("Offsetted cost value (relative to best start)")
-        # ax.set_yscale("log")
+        ax.set_yscale("log")
         ax.set_title("Waterfall plot")
         plt.show()
 
@@ -183,7 +183,6 @@ class OptimizationResult(object):
 
     def plot_traces(self, output_path=None):
         """Plots optimization traces.
-
         """
         fig, ax = plt.subplots(nrows=1, ncols=1, figsize=(10, 10))
 
@@ -196,7 +195,7 @@ class OptimizationResult(object):
 
         ax.set_xlabel("step")
         ax.set_ylabel("cost")
-        # ax.set_yscale("log")
+        ax.set_yscale("log")
         ax.set_title("Traces")
         plt.show()
 

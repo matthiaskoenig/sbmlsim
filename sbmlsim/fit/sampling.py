@@ -35,9 +35,6 @@ def create_samples(parameters: List[FitParameter], size, sampling=SamplingType.L
     :param min_bound: hard upper bound
     :return:
     """
-    # create the sample parameters
-    x = np.zeros(shape=(size, len(parameters)))
-
     # seed for reproducibility
     if seed:
         np.random.seed(seed)

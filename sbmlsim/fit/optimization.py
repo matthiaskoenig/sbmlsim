@@ -7,23 +7,21 @@ from collections import defaultdict
 from pathlib import Path
 from enum import Enum
 from copy import deepcopy
-
-import seaborn as sns
-from matplotlib import pyplot as plt
-
 import time
 import pandas as pd
 import logging
 from dataclasses import dataclass
+import seaborn as sns
+from matplotlib import pyplot as plt
 
 from sbmlsim.data import Data
 from sbmlsim.simulator import SimulatorSerial
-from sbmlsim.simulation import TimecourseSim, ScanSim
+from sbmlsim.simulation import TimecourseSim
 from sbmlsim.experiment import ExperimentRunner
 from sbmlsim.model import RoadrunnerSBMLModel
-from sbmlsim.utils import timeit
 from sbmlsim.fit.objects import FitExperiment, FitParameter
 from sbmlsim.fit.sampling import SamplingType, create_samples
+
 logger = logging.getLogger(__name__)
 
 
@@ -222,18 +220,26 @@ class OptimizationProblem(object):
                  sampling: SamplingType=SamplingType.UNIFORM,
                  **kwargs) -> Tuple[List[scipy.optimize.OptimizeResult], List]:
         """Run parameter optimization"""
-
-        x_samples = create_samples(
-            parameters=self.parameters,
-            size=size,
-            sampling=sampling,
-        )
+        if optimizer == OptimizerType.LEAST_SQUARE:
+            # initial value samples for local optimizer (use seed value if existing)
+            x_samples = create_samples(
+                parameters=self.parameters,
+                size=size,
+                sampling=sampling,
+                seed=seed,
+            )
+        else:
+            if seed is not None:
+                np.random.seed(seed)
 
         fits = []
         trajectories = []
         # TODO: parallelization
         for k in range(size):
-            x0 = x_samples.values[k, :]
+            if optimizer == OptimizerType.LEAST_SQUARE:
+                x0 = x_samples.values[k, :]
+            else:
+                x0 = None
             print(f"[{k+1}/{size}] x0={x0}")
             fit, trajectory = self._optimize_single(x0=x0, optimizer=optimizer, **kwargs)
             print("\t{:8.4f} [s]".format(fit.duration))
