@@ -130,7 +130,7 @@ class OptimizationResult(object):
 
         return df
 
-    def report(self, output_path: Path=None):
+    def report(self, output_path: Path=None, print_output=True):
         """ Readable report of optimization. """
         pd.set_option('display.max_columns', None)
         info = [
@@ -157,7 +157,8 @@ class OptimizationResult(object):
             )
         info.append("-" * 80)
         info = "\n".join(info)
-        print(info)
+        if print_output:
+            print(info)
 
         if output_path is not None:
             filepath = output_path / "fit_report.txt"

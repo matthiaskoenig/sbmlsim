@@ -397,7 +397,9 @@ class OptimizationProblem(object):
             )
             return res_all
 
-
+    # --------------------------
+    # Plotting
+    # --------------------------
     def plot_costs(self, x, xstart=None, output_path: Path=None):
         """Plots bar diagram of costs for set of residuals
 

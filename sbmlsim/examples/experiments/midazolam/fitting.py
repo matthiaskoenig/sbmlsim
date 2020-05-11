@@ -44,12 +44,13 @@ op_mid1oh_iv = OptimizationProblem(
 if __name__ == "__main__":
 
     # TODO: run multiple optimization problems
-    opt_res1 = run_optimization(op_mid1oh_iv, size=20, seed=1236,
-                   output_path=RESULTS_PATH,
-                   optimizer=OptimizerType.LEAST_SQUARE,
-                   sampling=SamplingType.LOGUNIFORM_LHS,
-                   diff_step=0.05,
-                   # jac='3-point', gtol=1e-10, xtol=1e-12,
+    opt_res1 = run_optimization(op_mid1oh_iv, size=100, seed=1236,
+       output_path=RESULTS_PATH,
+       plot_results=False,
+       optimizer=OptimizerType.LEAST_SQUARE,
+       sampling=SamplingType.LOGUNIFORM_LHS,
+       diff_step=0.05,
+       # jac='3-point', gtol=1e-10, xtol=1e-12,
     )
 
     # combining simulation results
@@ -59,7 +60,7 @@ if __name__ == "__main__":
     opt_res.report()
     '''
 
-    if True:
+    if False:
         run_optimization(op_mid1oh_iv, size=2, seed=1234,
                        output_path=RESULTS_PATH,
                        optimizer=OptimizerType.DIFFERENTIAL_EVOLUTION,

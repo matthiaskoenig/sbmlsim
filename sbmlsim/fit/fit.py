@@ -43,7 +43,7 @@ def run_optimization(
                                     trajectories=trajectories)
 
     # write report (additional folders based on runs)
-    opt_result.report(output_path=op_path)
+    opt_result.report(output_path=op_path, print_output=plot_results)
     # FIXME: save and load the results
     # opt_result.save(output_path=output_path)
 
