@@ -18,7 +18,6 @@ exp_kwargs = {
     "data_path": DATA_PATH,
 }
 
-# FIXME: create a set of optimization problems
 op_mid1oh_iv = OptimizationProblem(
     opid="mid1oh_iv",
     fit_experiments=[
@@ -42,16 +41,15 @@ op_mid1oh_iv = OptimizationProblem(
 
 
 if __name__ == "__main__":
-
-    # TODO: run multiple optimization problems
-    opt_res1 = run_optimization(op_mid1oh_iv, size=100, seed=1236,
-       output_path=RESULTS_PATH,
-       plot_results=False,
-       optimizer=OptimizerType.LEAST_SQUARE,
-       sampling=SamplingType.LOGUNIFORM_LHS,
-       diff_step=0.05,
-       # jac='3-point', gtol=1e-10, xtol=1e-12,
-    )
+    if True:
+        opt_res1 = run_optimization(op_mid1oh_iv, size=50, seed=1236,
+           output_path=RESULTS_PATH,
+           plot_results=False,
+           optimizer=OptimizerType.LEAST_SQUARE,
+           sampling=SamplingType.LOGUNIFORM_LHS,
+           diff_step=0.05,
+           # jac='3-point', gtol=1e-10, xtol=1e-12,
+        )
 
     # combining simulation results
     '''
@@ -61,7 +59,7 @@ if __name__ == "__main__":
     '''
 
     if False:
-        run_optimization(op_mid1oh_iv, size=2, seed=1234,
+        run_optimization(op_mid1oh_iv, size=3, seed=1234,
                        output_path=RESULTS_PATH,
                        optimizer=OptimizerType.DIFFERENTIAL_EVOLUTION,
         )
