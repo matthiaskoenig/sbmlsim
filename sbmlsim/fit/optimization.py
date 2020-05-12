@@ -207,8 +207,6 @@ class OptimizationProblem(object):
                 self.weights.append(weights)
                 self.weights_mapping.append(weight)
 
-
-
     def set_simulator(self, simulator):
         """Sets the simulator on the runner and the experiments.
 

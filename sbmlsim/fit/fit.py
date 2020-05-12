@@ -1,5 +1,6 @@
 from pathlib import Path
 
+from sbmlsim.simulator import SimulatorSerial
 from sbmlsim.fit.optimization import OptimizationProblem
 from sbmlsim.fit.analysis import OptimizationResult
 from sbmlsim.utils import timeit
@@ -8,7 +9,7 @@ from sbmlsim.utils import timeit
 @timeit
 def run_optimization(
         problem: OptimizationProblem,
-        size: int = 5, seed: int = None, verbose=True, **kwargs) -> OptimizationResult:
+        size: int = 5, seed: int = None, verbose=False, **kwargs) -> OptimizationResult:
     """Runs the given optimization problem.
 
     This changes the internal state of the optimization problem
@@ -22,6 +23,14 @@ def run_optimization(
     :param kwargs: additional arguments for optimizer, e.g. xtol
     :return: list of optimization results
     """
+    # initialize problem
+    problem.initialize()
+
+    # new simulator instance
+    # FIXME: handle tolerances here
+    simulator = SimulatorSerial()
+    problem.set_simulator(simulator)
+
     # optimize
     fits, trajectories = problem.optimize(size=size, seed=seed, verbose=verbose, **kwargs)
 

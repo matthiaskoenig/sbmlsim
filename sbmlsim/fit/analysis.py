@@ -122,9 +122,9 @@ class OptimizationResult(object):
             # add parameter columns
             for k, pid in enumerate(pids):
                 res[pid] = fit.x[k]
+            res['message'] = fit.message if hasattr(fit, "message") else None
             res['x'] = fit.x
             res['x0'] = fit.x0
-            res['message'] = fit.message if hasattr(fit, "message") else None
 
             results.append(res)
         df = pd.DataFrame(results)
@@ -137,7 +137,12 @@ class OptimizationResult(object):
     def report(self, output_path: Path=None, print_output=True):
         """ Readable report of optimization. """
         pd.set_option('display.max_columns', None)
+        pd.set_option('display.expand_frame_repr', False)
+
         info = [
+            "\n",
+            "-" * 80,
+            "Optimization Results",
             "-" * 80,
             str(self.df_fits),
             "-" * 80,
