@@ -7,7 +7,6 @@ from sbmlsim.examples.experiments.midazolam.experiments.mandema1992 import Mande
 
 from sbmlsim.examples.experiments.midazolam import MIDAZOLAM_PATH
 
-
 RESULTS_PATH = MIDAZOLAM_PATH / "results"
 DATA_PATH = MIDAZOLAM_PATH / "data"
 
@@ -76,8 +75,9 @@ op_mandema1992 = {
 
 
 def run_mpfit():
-    n_cores = multiprocessing.cpu_count()
-    opt_res = mpfit.fit_parallel(n_cores=n_cores, size=10, op_dict=op_mid1oh_iv)
+    n_cores = multiprocessing.cpu_count()-1
+    # opt_res = mpfit.fit_parallel(n_cores=n_cores, size=50, op_dict=op_mid1oh_iv)
+    opt_res = mpfit.fit_parallel(n_cores=n_cores, size=8, op_dict=op_mandema1992)
 
     # opt_res.report()
     analyze_optimization(opt_res)

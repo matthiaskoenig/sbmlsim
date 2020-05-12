@@ -32,18 +32,12 @@ import socket
 from sbmlsim.fit.fit import run_optimization, analyze_optimization
 
 from sbmlsim.simulator import SimulatorSerial
-
 from sbmlsim.fit.optimization import OptimizationProblem, SamplingType, OptimizerType
 from sbmlsim.fit.analysis import OptimizationResult
-from sbmlsim.examples.experiments.midazolam.experiments.mandema1992 import Mandema1992
 from sbmlsim.utils import timeit
 
-
-
-
-
-
 logger = logging.getLogger(__name__)
+
 
 def worker(size, seed, opdict):
     """ Creates a worker for the cpu which listens for available simulations. """
@@ -65,8 +59,16 @@ def worker(size, seed, opdict):
         )
         return opt_res
 
+
 @timeit
 def fit_parallel(n_cores: int, size: int, op_dict: Dict):
+    """
+
+    :param n_cores: number of workers
+    :param size: number of optimizations per worker
+    :param op_dict: optimization problem
+    :return:
+    """
     # Lock for syncronization between processes (but locks)
     lock = multiprocessing.Lock()
 
@@ -123,9 +125,12 @@ if __name__ == "__main__":
     print('Used CPUs: ', n_cores)
     print('#'*60)
 
+    # FIXME: load op problem from file or JSON
+    """
     size = 10
     op_dict = op_mid1oh_iv
     opt_res = fit_parallel(n_cores=n_cores, size=size, op_dict=op_dict)
     # opt_res.report()
     analyze_optimization(opt_res)
+    """
 
