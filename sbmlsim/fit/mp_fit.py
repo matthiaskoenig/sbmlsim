@@ -40,9 +40,14 @@ from sbmlsim.examples.experiments.midazolam import MIDAZOLAM_PATH
 RESULTS_PATH = MIDAZOLAM_PATH / "results"
 DATA_PATH = MIDAZOLAM_PATH / "data"
 
+
+from sbmlsim.examples.experiments.midazolam.experiments.mandema1992 import Mandema1992
+
+
 logger = logging.getLogger(__name__)
 
-op_kwargs = {
+
+op_kwargs1 = {
     "opid": "mid1oh_iv",
     "base_path": MIDAZOLAM_PATH,
     "data_path": DATA_PATH,
@@ -64,6 +69,46 @@ op_kwargs = {
         ]
 }
 
+op_mandema1992 = {
+    "opid": "mandema1992",
+    "base_path": MIDAZOLAM_PATH,
+    "data_path": DATA_PATH,
+    "fit_experiments": [
+        # FitExperiment(experiment=Mandema1992, mappings=["fm1"]),
+        FitExperiment(experiment=Mandema1992, mappings=["fm1", "fm3", "fm4"]),
+    ],
+    "fit_parameters": [
+        # liver
+        FitParameter(parameter_id="LI__MIDIM_Vmax", start_value=0.1,
+                     lower_bound=1E-3, upper_bound=1E6,
+                     unit="mmole_per_min"),
+        FitParameter(parameter_id="LI__MID1OHEX_Vmax", start_value=0.1,
+                     lower_bound=1E-3, upper_bound=1E6,
+                     unit="mmole_per_min"),
+        FitParameter(parameter_id="LI__MIDOH_Vmax", start_value=100,
+                     lower_bound=10, upper_bound=200, unit="mmole_per_min"),
+        # kidneys
+        FitParameter(parameter_id="KI__MID1OHEX_Vmax", start_value=100,
+                     lower_bound=1E-1, upper_bound=1E4,
+                     unit="mmole/min"),
+
+        # distribution
+        FitParameter(parameter_id="ftissue_mid", start_value=2000,
+                      lower_bound=1, upper_bound=1E5,
+                      unit="liter/min"),
+        FitParameter(parameter_id="fup_mid", start_value=0.1,
+                      lower_bound=0.05, upper_bound=0.3,
+                      unit="dimensionless"),
+        # distribution parameters
+        FitParameter(parameter_id="ftissue_mid1oh", start_value=1.0,
+                     lower_bound=1, upper_bound=1E5,
+                     unit="liter/min"),
+        FitParameter(parameter_id="fup_mid1oh", start_value=0.1,
+                     lower_bound=0.01, upper_bound=0.3,
+                     unit="dimensionless"),
+    ],
+}
+
 
 def worker(size, seed):
     """ Creates a worker for the cpu which listens for available simulations. """
@@ -73,7 +118,8 @@ def worker(size, seed):
         print('{:<20} <Run fit>'.format(ip))
 
         simulator = SimulatorSerial()
-        op = OptimizationProblem(simulator=simulator, **op_kwargs)
+        # op = OptimizationProblem(simulator=simulator, **op_kwargs)
+        op = OptimizationProblem(simulator=simulator, **op_mandema1992)
 
         opt_res = run_optimization(
             op, size=size, seed=seed,
