@@ -177,6 +177,10 @@ class OptimizationProblem(object):
                     weights = weights / np.min(
                         weights)  # normalize minimal weight to 1.0
 
+                # FIXME: overwriting weights
+                weights = np.ones_like(y_ref)
+
+
                 # lookup maps
                 self.models.append(model)
                 self.simulations.append(simulation)
@@ -367,9 +371,6 @@ class OptimizationProblem(object):
                 copy=False, assume_sorted=True
             )
             y_obsip = f(self.x_references[k])
-
-            # scaling of residuals
-            # scale = 1E8
 
             # calculate weighted residuals
             parts.append(
