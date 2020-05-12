@@ -51,8 +51,7 @@ class OptimizationProblem(object):
 
     def __init__(self, opid, fit_experiments: Iterable[FitExperiment],
                  fit_parameters: Iterable[FitParameter],
-                 base_path=None, data_path=None,
-                 weighing: WeightingType=WeightingType.ONE_OVER_WEIGHTING):
+                 base_path=None, data_path=None):
         """Optimization problem.
 
         The problem must be pickable for parallelization !
@@ -77,7 +76,7 @@ class OptimizationProblem(object):
         # paths
         self.base_path = base_path
         self.data_path = data_path
-        self.weighting = weighing
+        self.weighting = None
 
     def initialize(self):
         # Create experiment runner (loads the experiments & all models)
@@ -184,8 +183,7 @@ class OptimizationProblem(object):
                 weights = np.ones_like(y_ref)
 
                 # calculate weights based on errors
-                if (self.weighting != WeightingType.NO_WEIGHTING) and (y_ref_err is not None):
-
+                if y_ref_err is not None:
                     # FIXME: different weighting schemas, this is highly nonlinear
                     weights = 1.0 / y_ref_err  # the larger the error, the smaller the weight
                     weights[np.isnan(weights)] = np.nanmax(weights)  # NaNs are filled with minimal errors, i.e. max weights
@@ -243,8 +241,10 @@ class OptimizationProblem(object):
     def optimize(self, size=10, seed=None, verbose=False,
                  optimizer: OptimizerType=OptimizerType.LEAST_SQUARE,
                  sampling: SamplingType=SamplingType.UNIFORM,
+                 weighting: WeightingType = WeightingType.ONE_OVER_WEIGHTING,
                  **kwargs) -> Tuple[List[scipy.optimize.OptimizeResult], List]:
         """Run parameter optimization"""
+        self.weighting = weighting
         if optimizer == OptimizerType.LEAST_SQUARE:
             # initial value samples for local optimizer
             x_samples = create_samples(
@@ -397,9 +397,12 @@ class OptimizationProblem(object):
             y_obsip = f(self.x_references[k])
 
             # calculate weighted residuals
-            parts.append(
-                (y_obsip - self.y_references[k]) * self.weights[k] * self.weights_mapping[k] # * scale
-            )
+            if self.weighting == WeightingType.NO_WEIGHTING:
+                res = (y_obsip - self.y_references[k]) * self.weights_mapping[k]
+            elif self.weighting == WeightingType.ONE_OVER_WEIGHTING:
+                res = (y_obsip - self.y_references[k]) * self.weights_mapping[k] * self.weights[k]
+
+            parts.append(res)
 
             if complete_data:
                 res = (y_obsip - self.y_references[k]) # * scale

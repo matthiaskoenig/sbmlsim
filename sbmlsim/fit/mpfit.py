@@ -26,19 +26,20 @@ import numpy as np
 import logging
 
 from sbmlsim.fit.fit import run_optimization
-from sbmlsim.fit.optimization import OptimizationProblem, SamplingType, OptimizerType
+from sbmlsim.fit.optimization import OptimizationProblem
 from sbmlsim.fit.analysis import OptimizationResult
 from sbmlsim.utils import timeit
 
 logger = logging.getLogger(__name__)
 
 @timeit
-def run_optimization_parallel(problem: OptimizationProblem, size: int, n_cores: int = None) -> OptimizationResult:
+def run_optimization_parallel(problem: OptimizationProblem, size: int, n_cores: int = None,
+                              seed: int = None, **kwargs) -> OptimizationResult:
     """Run optimization in parallel
 
     :param problem: uninitialized optimization problem (pickable)
     :param n_cores: number of workers
-    :param size: number of optimizations per worker
+    :param size: total number of optimizations
     :param op_dict: optimization problem
 
     :return:
@@ -46,33 +47,42 @@ def run_optimization_parallel(problem: OptimizationProblem, size: int, n_cores: 
     # set number of cores
     if n_cores is None:
         n_cores = multiprocessing.cpu_count()-1
+    if size < 2*n_cores:
+        logger.error(f"Less simulations then 2 * cores: '{size} < {n_cores}'")
+        # required for LHS sampling
+        size = 2 * n_cores
+
+    sizes = [len(c) for c in np.array_split(range(size), n_cores)]
+    print(sizes)
 
     # worker pool
     pool = multiprocessing.Pool(processes=n_cores)
 
     # setting arguments
-    problems = [problem] * n_cores
-    sizes = [size]*n_cores
+    if seed is not None:
+        # set seed before getting worker seeds
+        np.random.seed(seed)
+    # we require seeds for the workers to get different results
     seeds = list(np.random.randint(low=1, high=2000, size=n_cores))
 
-    opt_results = pool.starmap(worker, zip(problems, sizes, seeds))
+    args_list = []
+    for k in range(n_cores):
+        d = {
+            'problem': problem,
+            'size': sizes[k],
+            'seed': seeds[k],
+            **kwargs
+        }
+        args_list.append(d)
+
+    opt_results = pool.map(worker, args_list)
 
     # combine simulation results
     return OptimizationResult.combine(opt_results)
 
 
-def worker(problem: OptimizationProblem, size: int, seed: int) -> OptimizationResult:
+def worker(kwargs) -> OptimizationResult:
     """ Worker for running optimization problem. """
     while True:
         print(f'{os.getpid()} <worker>')
-
-
-        # FIXME: arguments for the optimization run must be provided to the worker
-        opt_res = run_optimization(
-            problem, size=size, seed=seed,
-            verbose=False,
-            optimizer=OptimizerType.LEAST_SQUARE,
-            sampling=SamplingType.LOGUNIFORM_LHS,
-            diff_step=0.05,
-        )
-        return opt_res
+        return run_optimization(**kwargs)
