@@ -1,19 +1,18 @@
 """
 Defines the parameter fitting problems
 """
-from sbmlsim.fit import FitExperiment, FitParameter, run_optimization
+from sbmlsim.fit import FitExperiment, FitParameter
+from sbmlsim.fit.fit import run_optimization
 from sbmlsim.fit.optimization import OptimizationProblem, SamplingType, OptimizerType
 from sbmlsim.simulator import SimulatorSerial
-
 from sbmlsim.examples.experiments.midazolam.experiments.mandema1992 import Mandema1992
 
 from sbmlsim.examples.experiments.midazolam import MIDAZOLAM_PATH
 RESULTS_PATH = MIDAZOLAM_PATH / "results"
 DATA_PATH = MIDAZOLAM_PATH / "data"
-simulator = SimulatorSerial()
+
 
 exp_kwargs = {
-    "simulator": simulator,
     "base_path": MIDAZOLAM_PATH,
     "data_path": DATA_PATH,
 }
@@ -42,21 +41,16 @@ op_mid1oh_iv = OptimizationProblem(
 
 if __name__ == "__main__":
     if True:
-        opt_res1 = run_optimization(op_mid1oh_iv, size=50, seed=1236,
-           output_path=RESULTS_PATH,
-           plot_results=False,
+        opt_res1 = run_optimization(
+            op_mid1oh_iv, size=50, seed=1236,
+            output_path=RESULTS_PATH,
+
            optimizer=OptimizerType.LEAST_SQUARE,
            sampling=SamplingType.LOGUNIFORM_LHS,
            diff_step=0.05,
            # jac='3-point', gtol=1e-10, xtol=1e-12,
         )
 
-    # combining simulation results
-    '''
-    from sbmlsim.fit.analysis import OptimizationResult
-    opt_res = OptimizationResult.combine([opt_res1, opt_res2])
-    opt_res.report()
-    '''
 
     if False:
         run_optimization(op_mid1oh_iv, size=3, seed=1234,

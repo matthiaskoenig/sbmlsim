@@ -1,6 +1,4 @@
-from typing import List
 from pathlib import Path
-import scipy
 
 from sbmlsim.fit.optimization import OptimizationProblem
 from sbmlsim.fit.analysis import OptimizationResult

@@ -21,6 +21,7 @@ from sbmlsim.experiment import ExperimentRunner
 from sbmlsim.model import RoadrunnerSBMLModel
 from sbmlsim.fit.objects import FitExperiment, FitParameter
 from sbmlsim.fit.sampling import SamplingType, create_samples
+from sbmlsim.utils import timeit
 
 logger = logging.getLogger(__name__)
 
@@ -39,15 +40,25 @@ class OptimizerType(Enum):
     DIFFERENTIAL_EVOLUTION = 2
 
 
+class WeightingType(Enum):
+    NO_WEIGHTING = 1  # data points are weighted equally
+    ONE_OVER_WEIGHTING = 2  # data points are weighted as 1/(error-min(error))
+    # LINEAR_WEIGHTING = 3 # data points are weighted by
+
+
 class OptimizationProblem(object):
     """Parameter optimization problem."""
 
     def __init__(self, opid, fit_experiments: Iterable[FitExperiment],
-                 fit_parameters: Iterable[FitParameter], simulator=None,
-                 base_path=None, data_path=None):
+                 fit_parameters: Iterable[FitParameter],
+                 base_path=None, data_path=None,
+                 weighing: WeightingType=WeightingType.ONE_OVER_WEIGHTING):
         """Optimization problem.
 
-        :param opid
+        The problem must be pickable for parallelization !
+        So initialize must be run to create the non-pickable instances.
+
+        :param opid: id for optimization problem
         :param fit_experiments:
         :param fit_parameters:
         """
@@ -63,13 +74,19 @@ class OptimizationProblem(object):
         self.bounds = [lb, ub]
         self.x0 = [p.start_value for p in self.parameters]
 
+        # paths
+        self.base_path = base_path
+        self.data_path = data_path
+        self.weighting = weighing
+
+    def initialize(self):
         # Create experiment runner (loads the experiments & all models)
         exp_classes = {fit_exp.experiment_class for fit_exp in self.fit_experiments}
+
         self.runner = ExperimentRunner(
             experiment_classes=exp_classes,
-            simulator=simulator,
-            base_path=base_path,
-            data_path=data_path
+            base_path=self.base_path,
+            data_path=self.data_path
         )
 
         # prepare reference data for all mappings (full length lists)
@@ -129,9 +146,6 @@ class OptimizationProblem(object):
                 task_id = mapping.observable.task_id
                 task = sim_experiment._tasks[task_id]
                 model = sim_experiment._models[task.model_id]  # type: RoadrunnerSBMLModel
-                # only set the tolerances at the beginning
-                # FIXME: better setting of parameters
-
                 simulation = sim_experiment._simulations[task.simulation_id]
 
                 if not isinstance(simulation, TimecourseSim):
@@ -166,20 +180,16 @@ class OptimizationProblem(object):
                     y_ref_err = y_ref_err[~np.isnan(y_ref)]
                 y_ref = y_ref[~np.isnan(y_ref)]
 
-                # calculate weights based on errors
-                if y_ref_err is None:
-                    weights = np.ones_like(y_ref)
-                else:
-                    # handle special case that all errors are NA (no normalization possible)
-                    weights = 1.0 / y_ref_err  # the larger the error, the smaller the weight
-                    weights[np.isnan(weights)] = np.nanmax(
-                        weights)  # NaNs are filled with minimal errors, i.e. max weights
-                    weights = weights / np.min(
-                        weights)  # normalize minimal weight to 1.0
-
-                # FIXME: overwriting weights
+                # weights
                 weights = np.ones_like(y_ref)
 
+                # calculate weights based on errors
+                if (self.weighting != WeightingType.NO_WEIGHTING) and (y_ref_err is not None):
+
+                    # FIXME: different weighting schemas, this is highly nonlinear
+                    weights = 1.0 / y_ref_err  # the larger the error, the smaller the weight
+                    weights[np.isnan(weights)] = np.nanmax(weights)  # NaNs are filled with minimal errors, i.e. max weights
+                    weights = weights / np.min(weights)  # normalize minimal weight to 1.0
 
                 # lookup maps
                 self.models.append(model)
@@ -196,6 +206,19 @@ class OptimizationProblem(object):
                 self.y_errors.append(y_ref_err)
                 self.weights.append(weights)
                 self.weights_mapping.append(weight)
+
+
+
+    def set_simulator(self, simulator):
+        """Sets the simulator on the runner and the experiments.
+
+        :param simulator:
+        :return:
+        """
+        self.runner.set_simulator(simulator)
+
+    def __repr__(self):
+        return f"<OptimizationProblem: {self.opid}>"
 
     def __str__(self):
         """String representation."""
@@ -225,7 +248,7 @@ class OptimizationProblem(object):
                  **kwargs) -> Tuple[List[scipy.optimize.OptimizeResult], List]:
         """Run parameter optimization"""
         if optimizer == OptimizerType.LEAST_SQUARE:
-            # initial value samples for local optimizer (use seed value if existing)
+            # initial value samples for local optimizer
             x_samples = create_samples(
                 parameters=self.parameters,
                 size=size,
@@ -238,7 +261,6 @@ class OptimizationProblem(object):
 
         fits = []
         trajectories = []
-        # TODO: parallelization
         for k in range(size):
             if optimizer == OptimizerType.LEAST_SQUARE:
                 x0 = x_samples.values[k, :]
@@ -254,6 +276,7 @@ class OptimizationProblem(object):
             trajectories.append(trajectory)
         return fits, trajectories
 
+    @timeit
     def _optimize_single(self, x0=None, optimizer=OptimizerType.LEAST_SQUARE,
                          **kwargs) -> Tuple[scipy.optimize.OptimizeResult, List]:
         """ Runs single optimization with x0 start values.

@@ -1,15 +1,16 @@
-from typing import List
+"""
+Runner for SimulationExperiments.
+"""
+
 from pathlib import Path
+from typing import List, Iterable
 import logging
 
-from collections import defaultdict
-from dataclasses import dataclass
 
-from .experiment import SimulationExperiment
+from sbmlsim.experiment import SimulationExperiment
 from sbmlsim.simulator.simulation import SimulatorAbstract
-from sbmlsim.simulator import SimulatorSerial
-from sbmlsim.units import UnitRegistry, Units
 from sbmlsim.model import RoadrunnerSBMLModel
+from sbmlsim.units import UnitRegistry, Units
 from sbmlsim.utils import timeit
 
 logger = logging.getLogger(__name__)
@@ -18,19 +19,10 @@ logger = logging.getLogger(__name__)
 class ExperimentRunner(object):
     """Class for running simulation experiments."""
 
-    def __init__(self, experiment_classes: List[SimulationExperiment],
+    def __init__(self, experiment_classes: Iterable[SimulationExperiment],
                  base_path: Path, data_path: Path,
                  simulator: SimulatorAbstract = None,
                  ureg: UnitRegistry = None, **kwargs):
-
-        if simulator is None:
-            simulator = SimulatorSerial(
-                absolute_tolerance=1E-14,
-                relative_tolerance=1E-14
-            )
-            logger.warning(f"No simulator provided, using default simulator: "
-                           f"'{simulator}'")
-        self.simulator = simulator  # type: SimulatorAbstract
 
         # single UnitRegistry per runner
         if not ureg:
@@ -45,6 +37,16 @@ class ExperimentRunner(object):
         self.models = {}
 
         self.initialize(experiment_classes, **kwargs)
+        self.set_simulator(simulator)
+
+    def set_simulator(self, simulator):
+        """Set simulator on the runner and experiments."""
+        if simulator is None:
+            logger.warning(f"No simulator set in ExperimentRunner.")
+        else:
+            self.simulator = simulator  # type: SimulatorAbstract
+            for experiment in self.experiments.values():
+                experiment.simulator = simulator
 
     @timeit
     def initialize(self, experiment_classes, **kwargs):
@@ -66,7 +68,6 @@ class ExperimentRunner(object):
 
             experiment._models = _models
             experiment.initialize()
-            experiment.simulator = self.simulator
 
     @timeit
     def run_experiments(self, output_path: Path,

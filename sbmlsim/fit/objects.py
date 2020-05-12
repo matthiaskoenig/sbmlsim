@@ -66,7 +66,7 @@ class FitExperiment(object):
                 red_exp.mappings = red_exp.mappings + fit_exp.mappings
                 red_exp.weights = red_exp.weights + fit_exp.weights
 
-        return red_experiments.values()
+        return list(red_experiments.values())
 
     def __str__(self):
         return f"{self.__class__.__name__}({self.experiment_class} {self.mappings})"
