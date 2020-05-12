@@ -219,7 +219,7 @@ class OptimizationProblem(object):
             with open(filepath, "w") as fout:
                 fout.write(info)
 
-    def optimize(self, size=10, seed=None,
+    def optimize(self, size=10, seed=None, verbose=False,
                  optimizer: OptimizerType=OptimizerType.LEAST_SQUARE,
                  sampling: SamplingType=SamplingType.UNIFORM,
                  **kwargs) -> Tuple[List[scipy.optimize.OptimizeResult], List]:
@@ -244,9 +244,12 @@ class OptimizationProblem(object):
                 x0 = x_samples.values[k, :]
             else:
                 x0 = None
-            print(f"[{k+1}/{size}] x0={x0}")
+            if verbose:
+                print(f"[{k+1}/{size}] x0={x0}")
             fit, trajectory = self._optimize_single(x0=x0, optimizer=optimizer, **kwargs)
-            print("\t{:8.4f} [s]".format(fit.duration))
+            if verbose:
+                print("\t{:8.4f} [s]".format(fit.duration))
+
             fits.append(fit)
             trajectories.append(trajectory)
         return fits, trajectories
@@ -286,8 +289,8 @@ class OptimizationProblem(object):
                     opt_result = optimize.least_squares(
                         fun=self.residuals, x0=x0log, bounds=boundslog, **kwargs
                     )
-            except RuntimeError:
-                logger.error("RuntimeError in ODE integration")
+            except RuntimeError as err:
+                logger.error("RuntimeError in ODE integration: {err}")
                 opt_result = RuntimeErrorOptimizeResult()
                 opt_result.x = x0log
             te = time.time()

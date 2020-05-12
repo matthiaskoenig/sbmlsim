@@ -52,6 +52,10 @@ class OptimizationResult(object):
         self.df_fits = OptimizationResult.process_fits(self.parameters, self.fits)
         self.df_traces = OptimizationResult.process_traces(self.parameters, self.trajectories)
 
+    def __str__(self):
+        info = f"<OptimizationResult: n={self.size}>"
+        return info
+
     @staticmethod
     def combine(opt_results: List[OptimizeResult]):
         # FIXME: check that the parameters are fitting
