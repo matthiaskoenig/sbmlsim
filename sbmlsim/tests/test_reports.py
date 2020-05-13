@@ -1,6 +1,7 @@
 from sbmlsim.experiment import ExperimentReport, ExperimentRunner
 from sbmlsim.examples.experiments.glucose.experiments.dose_response import \
     DoseResponseExperiment
+from sbmlsim.simulator import SimulatorSerial
 from sbmlsim.examples.experiments.glucose import BASE_PATH, DATA_PATH
 
 
@@ -13,7 +14,8 @@ def test_glucose_report(tmp_path):
     runner = ExperimentRunner(
         [DoseResponseExperiment],
         base_path=BASE_PATH,
-        data_path=DATA_PATH
+        data_path=DATA_PATH,
+        simulator=SimulatorSerial(),
     )
     results = runner.run_experiments(
         output_path=tmp_path / "results",
