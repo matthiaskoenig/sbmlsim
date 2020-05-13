@@ -11,7 +11,7 @@ RESULTS_PATH = MIDAZOLAM_PATH / "results"
 def fitlq_mid1ohiv():
     """Local least square fitting."""
     return run_optimization_parallel(
-        problem=op_mid1oh_iv, size=50, seed=1236,
+        problem=op_mid1oh_iv(), size=50, seed=1236,
         optimizer=OptimizerType.LEAST_SQUARE,
         weighting=WeightingType.NO_WEIGHTING,
         # parameters for least square optimization
@@ -23,7 +23,7 @@ def fitlq_mid1ohiv():
 def fitde_mid1ohiv():
     """Global differential evolution fitting."""
     return run_optimization_parallel(
-            problem=op_mid1oh_iv, size=10, seed=1234,
+            problem=op_mid1oh_iv(), size=10, seed=1234,
             optimizer=OptimizerType.DIFFERENTIAL_EVOLUTION,
             weighting=WeightingType.NO_WEIGHTING,
         )

@@ -32,6 +32,7 @@ from sbmlsim.utils import timeit
 
 logger = logging.getLogger(__name__)
 
+
 @timeit
 def run_optimization_parallel(problem: OptimizationProblem, size: int, n_cores: int = None,
                               seed: int = None, **kwargs) -> OptimizationResult:
@@ -46,7 +47,7 @@ def run_optimization_parallel(problem: OptimizationProblem, size: int, n_cores: 
     """
     # set number of cores
     if n_cores is None:
-        n_cores = multiprocessing.cpu_count()-1
+        n_cores = max(1, multiprocessing.cpu_count()-1)
     if size < 2*n_cores:
         logger.error(f"Less simulations then 2 * cores: '{size} < {n_cores}'")
         # required for LHS sampling
