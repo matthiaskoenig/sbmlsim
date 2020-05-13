@@ -5,9 +5,22 @@ from json import JSONEncoder
 from enum import Enum
 from numpy import ndarray
 from matplotlib.pyplot import Figure as MPLFigure
+import json
 
 
 class ObjectJSONEncoder(JSONEncoder):
+    def to_json(self, path=None):
+        """ Convert definition to JSON for exchange.
+
+        :param path: path for file, if None JSON str is returned
+        :return:
+        """
+        if path is None:
+            return json.dumps(self, cls=ObjectJSONEncoder, indent=2)
+        else:
+            with open(path, "w") as f_json:
+                json.dump(self, fp=f_json, cls=ObjectJSONEncoder, indent=2)
+
     def default(self, o):
         """json encoder"""
 

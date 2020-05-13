@@ -1,46 +1,34 @@
-from typing import List, Dict, Iterable, Set
-import numpy as np
-import scipy
-from scipy import optimize
-from scipy import interpolate
-from collections import defaultdict
-from pathlib import Path
-from enum import Enum
+from typing import List, Dict, Iterable, Set, Tuple
 
+
+from pathlib import Path
+import json
 
 import time
+import numpy as np
 import pandas as pd
 import logging
-from dataclasses import dataclass
-
-from sbmlsim.data import Data
-from sbmlsim.simulator import SimulatorSerial
-from sbmlsim.simulation import TimecourseSim, ScanSim
-from sbmlsim.experiment import ExperimentRunner
-from sbmlsim.model import RoadrunnerSBMLModel
-from sbmlsim.utils import timeit
-from sbmlsim.plot.plotting_matplotlib import plt  # , GridSpec
 import seaborn as sns
 from scipy.optimize import OptimizeResult
 
-from .objects import FitParameter
-
+from sbmlsim.plot.plotting_matplotlib import plt
+from sbmlsim.fit.objects import FitParameter
+from sbmlsim.serialization import ObjectJSONEncoder
 
 logger = logging.getLogger(__name__)
 
 
-class OptimizeTrajectory(object):
-    pass
-
-
-class OptimizationResult(object):
+class OptimizationResult(ObjectJSONEncoder):
     """Result of optimization problem"""
 
     def __init__(self, parameters: List[FitParameter], fits: List[OptimizeResult],
-                 trajectories: List[OptimizeTrajectory]):
-        """
+                 trajectories: List):
+        """Result of an optimization.
 
-        :param problem: definiition of optimization problem
+        Provides access to the FitParameters, the individual fits, and
+        the trajectories of the fits.
+
+        :param parameters:
         :param fits:
         :param trajectories:
         """
@@ -51,6 +39,27 @@ class OptimizationResult(object):
         # create data frame from results
         self.df_fits = OptimizationResult.process_fits(self.parameters, self.fits)
         self.df_traces = OptimizationResult.process_traces(self.parameters, self.trajectories)
+
+    def to_dict(self):
+        """ Convert to dictionary. """
+        d = dict()
+        for key in ['parameters', 'fits', 'trajectories']:
+            d[key] = self.__dict__[key]
+        return d
+
+    @staticmethod
+    def from_json(json_info: Tuple[str, Path]) -> 'TimecourseSim':
+        """ Load OptimizationResult from Path or str
+
+        :param json_info:
+        :return:
+        """
+        if isinstance(json_info, Path):
+            with open(json_info, "r") as f_json:
+                d = json.load(f_json)
+        else:
+            d = json.loads(json_info)
+        return OptimizationResult(**d)
 
     def __str__(self):
         info = f"<OptimizationResult: n={self.size}>"
