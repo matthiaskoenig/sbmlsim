@@ -206,14 +206,8 @@
       </unitDefinition>
       <unitDefinition metaid="meta_s_per_min" id="s_per_min">
         <listOfUnits>
-          <unit kind="second" exponent="1" scale="0" multiplier="60"/>
-          <unit kind="second" exponent="-1" scale="0" multiplier="3600"/>
-        </listOfUnits>
-      </unitDefinition>
-      <unitDefinition id="s_per_hr">
-        <listOfUnits>
           <unit kind="second" exponent="1" scale="0" multiplier="1"/>
-          <unit kind="second" exponent="-1" scale="0" multiplier="3600"/>
+          <unit kind="second" exponent="-1" scale="0" multiplier="60"/>
         </listOfUnits>
       </unitDefinition>
     </listOfUnitDefinitions>
@@ -894,10 +888,10 @@
             <times/>
             <apply>
               <divide/>
-              <cn sbml:units="dimensionless"> 1.386 </cn>
+              <cn sbml:units="dimensionless"> 0.693 </cn>
               <ci> ti_mid </ci>
             </apply>
-            <cn sbml:units="s_per_hr" type="integer"> 3600 </cn>
+            <cn sbml:units="s_per_min" type="integer"> 60 </cn>
           </apply>
         </math>
       </assignmentRule>
@@ -1204,10 +1198,10 @@
             <times/>
             <apply>
               <divide/>
-              <cn sbml:units="dimensionless"> 1.386 </cn>
+              <cn sbml:units="dimensionless"> 0.693 </cn>
               <ci> ti_mid1oh </ci>
             </apply>
-            <cn sbml:units="s_per_hr" type="integer"> 3600 </cn>
+            <cn sbml:units="s_per_min" type="integer"> 60 </cn>
           </apply>
         </math>
       </assignmentRule>
@@ -1530,12 +1524,16 @@
       <rateRule variable="IVDOSE_mid">
         <math xmlns="http://www.w3.org/1998/Math/MathML">
           <apply>
-            <times/>
+            <plus/>
             <apply>
-              <minus/>
-              <ci> injection_mid </ci>
+              <times/>
+              <apply>
+                <minus/>
+                <ci> iv_mid </ci>
+              </apply>
+              <ci> Mr_mid </ci>
             </apply>
-            <ci> Mr_mid </ci>
+            <ci> Ri_mid </ci>
           </apply>
         </math>
       </rateRule>
@@ -1559,12 +1557,16 @@
       <rateRule variable="IVDOSE_mid1oh">
         <math xmlns="http://www.w3.org/1998/Math/MathML">
           <apply>
-            <times/>
+            <plus/>
             <apply>
-              <minus/>
-              <ci> injection_mid1oh </ci>
+              <times/>
+              <apply>
+                <minus/>
+                <ci> iv_mid1oh </ci>
+              </apply>
+              <ci> Mr_mid1oh </ci>
             </apply>
-            <ci> Mr_mid1oh </ci>
+            <ci> Ri_mid1oh </ci>
           </apply>
         </math>
       </rateRule>
@@ -1659,7 +1661,7 @@
           </math>
         </kineticLaw>
       </reaction>
-      <reaction id="injection_mid" name="injection midazolam" reversible="false" fast="false" compartment="Vve">
+      <reaction id="iv_mid" name="iv midazolam" reversible="false" fast="false" compartment="Vve">
         <listOfProducts>
           <speciesReference species="Cve_mid" stoichiometry="1" constant="true"/>
         </listOfProducts>
@@ -1672,20 +1674,6 @@
                 <ci> Ki_mid </ci>
                 <ci> IVDOSE_mid </ci>
               </apply>
-              <ci> Mr_mid </ci>
-            </apply>
-          </math>
-        </kineticLaw>
-      </reaction>
-      <reaction id="infusion_mid" name="infusion midazolam" reversible="false" fast="false" compartment="Vve">
-        <listOfProducts>
-          <speciesReference species="Cve_mid" stoichiometry="1" constant="true"/>
-        </listOfProducts>
-        <kineticLaw>
-          <math xmlns="http://www.w3.org/1998/Math/MathML">
-            <apply>
-              <divide/>
-              <ci> Ri_mid </ci>
               <ci> Mr_mid </ci>
             </apply>
           </math>
@@ -2046,7 +2034,7 @@
           </math>
         </kineticLaw>
       </reaction>
-      <reaction id="injection_mid1oh" name="injection 1-hydroxymidazolam" reversible="false" fast="false" compartment="Vve">
+      <reaction id="iv_mid1oh" name="iv 1-hydroxymidazolam" reversible="false" fast="false" compartment="Vve">
         <listOfProducts>
           <speciesReference species="Cve_mid1oh" stoichiometry="1" constant="true"/>
         </listOfProducts>
@@ -2059,20 +2047,6 @@
                 <ci> Ki_mid1oh </ci>
                 <ci> IVDOSE_mid1oh </ci>
               </apply>
-              <ci> Mr_mid1oh </ci>
-            </apply>
-          </math>
-        </kineticLaw>
-      </reaction>
-      <reaction id="infusion_mid1oh" name="infusion 1-hydroxymidazolam" reversible="false" fast="false" compartment="Vve">
-        <listOfProducts>
-          <speciesReference species="Cve_mid1oh" stoichiometry="1" constant="true"/>
-        </listOfProducts>
-        <kineticLaw>
-          <math xmlns="http://www.w3.org/1998/Math/MathML">
-            <apply>
-              <divide/>
-              <ci> Ri_mid1oh </ci>
               <ci> Mr_mid1oh </ci>
             </apply>
           </math>
