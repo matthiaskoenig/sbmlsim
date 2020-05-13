@@ -8,21 +8,30 @@ from sbmlsim.examples.experiments.midazolam.fitting_problems import op_mid1oh_iv
 RESULTS_PATH = MIDAZOLAM_PATH / "results"
 
 
-if __name__ == "__main__":
-    if False:
-        opt_result = run_optimization_parallel(
-            n_cores=10,
-            problem=op_mid1oh_iv, size=20,
-            verbose=False,
-            optimizer=OptimizerType.LEAST_SQUARE,
-            sampling=SamplingType.LOGUNIFORM_LHS,
-            weighting=WeightingType.NO_WEIGHTING,
-            diff_step=0.05,
-        )
-    else:
-        opt_result = run_optimization_parallel(
-            problem=op_mid1oh_iv, size=20, seed=1234,
+def fitlq_mid1ohiv():
+    """Local least square fitting."""
+    return run_optimization_parallel(
+        problem=op_mid1oh_iv, size=50, seed=1236,
+        optimizer=OptimizerType.LEAST_SQUARE,
+        weighting=WeightingType.NO_WEIGHTING,
+        # parameters for least square optimization
+        sampling=SamplingType.LOGUNIFORM_LHS,
+        diff_step=0.05
+    )
+
+
+def fitde_mid1ohiv():
+    """Global differential evolution fitting."""
+    return run_optimization_parallel(
+            problem=op_mid1oh_iv, size=10, seed=1234,
             optimizer=OptimizerType.DIFFERENTIAL_EVOLUTION,
             weighting=WeightingType.NO_WEIGHTING,
         )
-    analyze_optimization(opt_result)
+
+
+if __name__ == "__main__":
+    opt_res_lq = fitlq_mid1ohiv()
+    analyze_optimization(opt_res_lq)
+
+    opt_res_de = fitde_mid1ohiv()
+    analyze_optimization(opt_res_de)
