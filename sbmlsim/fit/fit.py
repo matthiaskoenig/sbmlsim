@@ -49,9 +49,18 @@ def analyze_optimization(opt_result: OptimizationResult,
     if opt_result.size > 1:
         opt_result.plot_waterfall(output_path=output_path)
     opt_result.plot_traces(output_path=output_path)
-    opt_result.plot_correlation(output_path=output_path)
 
     # plot top fit
     if problem:
+        # FIMXE: problem references not initialized on multi-core and
+        # don't have a simulator yet
+        # FIXME: tolerances
+        problem.initialize()
+        problem.set_simulator(simulator=SimulatorSerial())
+
+        problem.plot_fits(x=opt_result.xopt, output_path=output_path)
         problem.plot_costs(x=opt_result.xopt, output_path=output_path)
         problem.plot_residuals(x=opt_result.xopt, output_path=output_path)
+
+    opt_result.plot_correlation(output_path=output_path)
+

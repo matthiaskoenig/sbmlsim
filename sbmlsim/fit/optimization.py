@@ -397,10 +397,14 @@ class OptimizationProblem(object):
             y_obsip = f(self.x_references[k])
 
             # calculate weighted residuals
-            if self.weighting == WeightingType.NO_WEIGHTING:
+            if (self.weighting == WeightingType.NO_WEIGHTING) or (self.weighting is None):
                 res = (y_obsip - self.y_references[k]) * self.weights_mapping[k]
+                if self.weighting is None:
+                    logger.warning("No weighting provided, defaulting to no weighting")
             elif self.weighting == WeightingType.ONE_OVER_WEIGHTING:
                 res = (y_obsip - self.y_references[k]) * self.weights_mapping[k] * self.weights[k]
+            else:
+                raise ValueError(f"Weighting not supported: {self.weighting}")
 
             parts.append(res)
 
@@ -465,6 +469,55 @@ class OptimizationProblem(object):
         if output_path:
             filepath = output_path / "02_experiment_costs.svg"
             fig.savefig(filepath, bbox_inches="tight")
+
+
+    def plot_fits(self, x, output_path: Path = None):
+        """ Plot fitted curves.
+
+        :param x: parameters to evaluate
+        :return:
+        """
+        n_plots = len(self.mapping_keys)
+        fix, [axes1, axes2] = plt.subplots(nrows=n_plots, ncols=2, figsize=(10, 5*n_plots), squeeze=False)
+
+        # residual data and simulations of optimal paraemters
+        res_data = self.residuals(xlog=np.log10(x), complete_data=True)
+
+        for k, mapping_id in enumerate(self.mapping_keys):
+
+            # global reference data
+            sid = self.experiment_keys[k]
+            mapping_id = self.mapping_keys[k]
+            x_ref = self.x_references[k]
+            y_ref = self.y_references[k]
+            y_ref_err = self.y_errors[k]
+            x_id = self.xid_observable[k]
+            y_id = self.yid_observable[k]
+
+            for ax in [axes1[k], axes2[k]]:
+                ax.set_title(f"{sid} {mapping_id}")
+                ax.set_xlabel(x_id)
+                ax.set_ylabel(y_id)
+
+                # calculated data in residuals
+                x_obs = res_data['x_obs'][k]
+                y_obs = res_data['y_obs'][k]
+
+                # plot data
+                if y_ref_err is None:
+                    ax.plot(x_ref, y_ref, "s", color="black", label="reference_data")
+                else:
+                    ax.errorbar(x_ref, y_ref, yerr=y_ref_err,
+                                 marker="s", color="black", label="reference_data")
+                # plot simulation
+                ax.plot(x_obs, y_obs, "-", color="blue", label="observable")
+
+            axes2[k].set_yscale("log")
+            axes2[k].set_ylim(bottom=0.3 * np.nanmin(y_ref))
+
+        plt.show()
+        if output_path is not None:
+            fig.savefig(output_path / f"fits_{sid}.svg", bbox_inches="tight")
 
 
     def plot_residuals(self, x, xstart=None, output_path: Path = None):
