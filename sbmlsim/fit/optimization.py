@@ -432,7 +432,8 @@ class OptimizationProblem(object):
     # --------------------------
     # Plotting
     # --------------------------
-    def plot_costs(self, x, xstart=None, output_path: Path=None):
+    @timeit
+    def plot_costs(self, x, xstart=None, output_path: Path=None, show_plots: bool = True):
         """Plots bar diagram of costs for set of residuals
 
         :param res_data_start:
@@ -465,20 +466,21 @@ class OptimizationProblem(object):
         sns.set_color_codes("pastel")
         sns.barplot(ax=ax, x="cost", y="id", hue="type", data=cost_df)
         ax.set_xscale("log")
-        plt.show()
+        if show_plots:
+            plt.show()
         if output_path:
             filepath = output_path / "02_experiment_costs.svg"
             fig.savefig(filepath, bbox_inches="tight")
 
-
-    def plot_fits(self, x, output_path: Path = None):
+    @timeit
+    def plot_fits(self, x, output_path: Path = None, show_plots: bool = True):
         """ Plot fitted curves.
 
         :param x: parameters to evaluate
         :return:
         """
         n_plots = len(self.mapping_keys)
-        fix, [axes1, axes2] = plt.subplots(nrows=n_plots, ncols=2, figsize=(10, 5*n_plots), squeeze=False)
+        fig, [axes1, axes2] = plt.subplots(nrows=n_plots, ncols=2, figsize=(10, 5*n_plots), squeeze=False)
 
         # residual data and simulations of optimal paraemters
         res_data = self.residuals(xlog=np.log10(x), complete_data=True)
@@ -515,12 +517,13 @@ class OptimizationProblem(object):
             axes2[k].set_yscale("log")
             axes2[k].set_ylim(bottom=0.3 * np.nanmin(y_ref))
 
-        plt.show()
+        if show_plots:
+            plt.show()
         if output_path is not None:
             fig.savefig(output_path / f"fits_{sid}.svg", bbox_inches="tight")
 
-
-    def plot_residuals(self, x, xstart=None, output_path: Path = None):
+    @timeit
+    def plot_residuals(self, x, xstart=None, output_path: Path = None, show_plots: bool = True):
         """ Plot residual data.
 
         :param res_data_start: initial residual data
@@ -621,8 +624,8 @@ class OptimizationProblem(object):
                     ylim2 = ax2.get_ylim()
                     for ax in axes:
                         ax.set_ylim([min(ylim1[0], ylim2[0]), max(ylim1[1],ylim2[1])])
-
-            plt.show()
+            if show_plots:
+                plt.show()
             if output_path is not None:
                 fig.savefig(output_path / f"residuals_{sid}_{mapping_id}.svg",
                             bbox_inches="tight")

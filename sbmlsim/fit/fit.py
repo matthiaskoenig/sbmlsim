@@ -39,7 +39,8 @@ def run_optimization(
 
 
 def analyze_optimization(opt_result: OptimizationResult,
-                         output_path: Path=None, problem: OptimizationProblem=None):
+                         output_path: Path=None, problem: OptimizationProblem=None,
+                         show_plots=True):
     # write report (additional folders based on runs)
     opt_result.report(output_path=output_path)
 
@@ -47,8 +48,8 @@ def analyze_optimization(opt_result: OptimizationResult,
     # opt_result.save(output_path=output_path)
 
     if opt_result.size > 1:
-        opt_result.plot_waterfall(output_path=output_path)
-    opt_result.plot_traces(output_path=output_path)
+        opt_result.plot_waterfall(output_path=output_path, show_plots=show_plots)
+    opt_result.plot_traces(output_path=output_path, show_plots=show_plots)
 
     # plot top fit
     if problem:
@@ -58,9 +59,9 @@ def analyze_optimization(opt_result: OptimizationResult,
         problem.initialize()
         problem.set_simulator(simulator=SimulatorSerial())
 
-        problem.plot_fits(x=opt_result.xopt, output_path=output_path)
-        problem.plot_costs(x=opt_result.xopt, output_path=output_path)
-        problem.plot_residuals(x=opt_result.xopt, output_path=output_path)
+        problem.plot_fits(x=opt_result.xopt, output_path=output_path, show_plots=show_plots)
+        problem.plot_costs(x=opt_result.xopt, output_path=output_path, show_plots=show_plots)
+        problem.plot_residuals(x=opt_result.xopt, output_path=output_path, show_plots=show_plots)
 
-    opt_result.plot_correlation(output_path=output_path)
+    opt_result.plot_correlation(output_path=output_path, show_plots=show_plots)
 

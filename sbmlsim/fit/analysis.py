@@ -14,6 +14,7 @@ from scipy.optimize import OptimizeResult
 from sbmlsim.plot.plotting_matplotlib import plt
 from sbmlsim.fit.objects import FitParameter
 from sbmlsim.serialization import ObjectJSONEncoder
+from sbmlsim.utils import timeit
 
 logger = logging.getLogger(__name__)
 
@@ -183,7 +184,8 @@ class OptimizationResult(ObjectJSONEncoder):
             with open(filepath, "w") as fout:
                 fout.write(info)
 
-    def plot_waterfall(self, output_path=None):
+    @timeit
+    def plot_waterfall(self, output_path: Path = None, show_plots: bool = True):
         """Creates waterfall plot for the fit results.
 
         Plots the optimization runs sorted by cost.
@@ -194,13 +196,15 @@ class OptimizationResult(ObjectJSONEncoder):
         ax.set_ylabel("Offsetted cost value (relative to best start)")
         ax.set_yscale("log")
         ax.set_title("Waterfall plot")
-        plt.show()
+        if show_plots:
+            plt.show()
 
         if output_path is not None:
             filepath = output_path / "01_waterfall.svg"
             fig.savefig(filepath, bbox_inches="tight")
 
-    def plot_traces(self, output_path=None):
+    @timeit
+    def plot_traces(self, output_path: Path = None, show_plots: bool = True):
         """Plots optimization traces.
         """
         fig, ax = plt.subplots(nrows=1, ncols=1, figsize=(10, 10))
@@ -216,13 +220,16 @@ class OptimizationResult(ObjectJSONEncoder):
         ax.set_ylabel("cost")
         ax.set_yscale("log")
         ax.set_title("Traces")
-        plt.show()
+        if show_plots:
+            plt.show()
 
         if output_path is not None:
             filepath = output_path / "02_traces.svg"
             fig.savefig(filepath, bbox_inches="tight")
 
-    def plot_correlation(self, output_path=None):
+    @timeit
+    def plot_correlation(self, output_path: Path = None, show_plots: bool = True,
+                         output_format: str="png"):
         """Process the optimization results."""
         df = self.df_fits
 
@@ -326,7 +333,8 @@ class OptimizationResult(ObjectJSONEncoder):
                     axes[ky][kx].set_xlim(axes[kx][ky].get_xlim())
                     axes[ky][kx].set_ylim(axes[kx][ky].get_ylim())
 
-        plt.show()
+        if show_plots:
+            plt.show()
         if output_path is not None:
-            filepath = output_path / "03_parameter_correlation.svg"
+            filepath = output_path / f"03_parameter_correlation.{output_format}"
             fig.savefig(filepath, bbox_inches="tight")
