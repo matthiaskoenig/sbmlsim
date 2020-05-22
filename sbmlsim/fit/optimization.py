@@ -480,7 +480,7 @@ class OptimizationProblem(object):
         :return:
         """
         n_plots = len(self.mapping_keys)
-        fig, [axes1, axes2] = plt.subplots(nrows=n_plots, ncols=2, figsize=(10, 5*n_plots), squeeze=False)
+        fig, axes = plt.subplots(nrows=n_plots, ncols=2, figsize=(10, 5*n_plots), squeeze=False)
 
         # residual data and simulations of optimal paraemters
         res_data = self.residuals(xlog=np.log10(x), complete_data=True)
@@ -496,7 +496,7 @@ class OptimizationProblem(object):
             x_id = self.xid_observable[k]
             y_id = self.yid_observable[k]
 
-            for ax in [axes1[k], axes2[k]]:
+            for ax in axes[k]:
                 ax.set_title(f"{sid} {mapping_id}")
                 ax.set_xlabel(x_id)
                 ax.set_ylabel(y_id)
@@ -514,8 +514,8 @@ class OptimizationProblem(object):
                 # plot simulation
                 ax.plot(x_obs, y_obs, "-", color="blue", label="observable")
 
-            axes2[k].set_yscale("log")
-            axes2[k].set_ylim(bottom=0.3 * np.nanmin(y_ref))
+            axes[k][1].set_yscale("log")
+            axes[k][1].set_ylim(bottom=0.3 * np.nanmin(y_ref))
 
         if show_plots:
             plt.show()
