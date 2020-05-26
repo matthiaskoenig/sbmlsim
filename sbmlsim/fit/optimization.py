@@ -44,7 +44,7 @@ class WeightingLocalType(Enum):
     """Weighting of the data points within a single fit mapping.
 
     This decides how the data points within a single fit mapping are
-    weighted.
+    weighted. One can account for the errors or not.
     """
     NO_WEIGHTING = 1  # data points are weighted equally
     ONE_OVER_WEIGHTING = 2  # data points are weighted as 1/(error-min(error))
@@ -52,6 +52,9 @@ class WeightingLocalType(Enum):
 
 class WeightingGlobalType(Enum):
     """Weighting of fit experiments in cost function.
+
+    How are individual fit mappings scaled, so that fit mappings are
+    comparable.
     """
     NO_WEIGHTING = 1  # fit mappings are not weighted, every fit mapping adds its absolute costs
     RELATIVE_WEIGHTING = 2  # data points are weighted relative to reference data
@@ -439,7 +442,8 @@ class OptimizationProblem(object):
             # FIXME: check and better implementation of all the weightings
             if self.weighting_global == WeightingGlobalType.RELATIVE_WEIGHTING:
                 res = res / self.y_references[k]
-                # FIXME handle INF values in zero references
+                # FIXME handle NaN values in zero references
+                res[np.isnan(res)] = 0
 
             parts.append(res)
 

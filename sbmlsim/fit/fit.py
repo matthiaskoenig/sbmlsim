@@ -41,6 +41,7 @@ def run_optimization(
 def analyze_optimization(opt_result: OptimizationResult,
                          output_path: Path=None, problem: OptimizationProblem=None,
                          show_plots=True,
+                         weighting_local=None, weighting_global=None,
                          variable_step_size=True, absolute_tolerance=1E-6, relative_tolerance=1E-6):
     # write report (additional folders based on runs)
     opt_result.report(output_path=output_path)
@@ -62,6 +63,8 @@ def analyze_optimization(opt_result: OptimizationResult,
         problem.variable_step_size = variable_step_size
         problem.absolute_tolerance = absolute_tolerance
         problem.relative_tolerance = relative_tolerance
+        problem.weighting_local = weighting_local
+        problem.weighting_global = weighting_global
 
         problem.plot_fits(x=opt_result.xopt, output_path=output_path, show_plots=show_plots)
         problem.plot_costs(x=opt_result.xopt, output_path=output_path, show_plots=show_plots)
