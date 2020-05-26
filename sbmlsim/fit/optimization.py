@@ -40,10 +40,21 @@ class OptimizerType(Enum):
     DIFFERENTIAL_EVOLUTION = 2
 
 
-class WeightingType(Enum):
+class WeightingLocalType(Enum):
+    """Weighting of the data points within a single fit mapping.
+
+    This decides how the data points within a single fit mapping are
+    weighted.
+    """
     NO_WEIGHTING = 1  # data points are weighted equally
     ONE_OVER_WEIGHTING = 2  # data points are weighted as 1/(error-min(error))
-    # LINEAR_WEIGHTING = 3 # data points are weighted by
+
+
+class WeightingGlobalType(Enum):
+    """Weighting of fit experiments in cost function.
+    """
+    NO_WEIGHTING = 1  # fit mappings are not weighted, every fit mapping adds its absolute costs
+    RELATIVE_WEIGHTING = 2  # data points are weighted relative to reference data
 
 
 class OptimizationProblem(object):
@@ -76,7 +87,10 @@ class OptimizationProblem(object):
         # paths
         self.base_path = base_path
         self.data_path = data_path
-        self.weighting = None
+
+        # weighting in fitting
+        self.weighting_local = None
+        self.weighting_global = None
 
     def initialize(self):
         # Create experiment runner (loads the experiments & all models)
@@ -241,10 +255,21 @@ class OptimizationProblem(object):
     def optimize(self, size=10, seed=None, verbose=False,
                  optimizer: OptimizerType=OptimizerType.LEAST_SQUARE,
                  sampling: SamplingType=SamplingType.UNIFORM,
-                 weighting: WeightingType = WeightingType.ONE_OVER_WEIGHTING,
+                 weighting_local: WeightingLocalType = WeightingLocalType.NO_WEIGHTING,
+                 weighting_global: WeightingGlobalType = WeightingGlobalType.NO_WEIGHTING,
+                 variable_step_size=True,
+                 relative_tolerance=1E-6,
+                 absolute_tolerance=1E-8,
+
                  **kwargs) -> Tuple[List[scipy.optimize.OptimizeResult], List]:
         """Run parameter optimization"""
-        self.weighting = weighting
+        # additional settings for optimization
+        self.weighting_local = weighting_local
+        self.weighting_global = weighting_global
+        self.variable_step_size=variable_step_size
+        self.relative_tolerance=relative_tolerance
+        self.absolute_tolerance=absolute_tolerance
+
         if optimizer == OptimizerType.LEAST_SQUARE:
             # initial value samples for local optimizer
             x_samples = create_samples(
@@ -376,8 +401,13 @@ class OptimizationProblem(object):
 
             # set model in simulator (FIXME: update only when necessary)
             simulator.set_model(model=self.models[k])
-            simulator.set_integrator_settings(variable_step_size=True,
-                                              relative_tolerance=1E-6, absolute_tolerance=1E-8)
+            # FIXME: only update when necessary
+            simulator.set_integrator_settings(
+                variable_step_size=self.variable_step_size,
+                relative_tolerance=self.relative_tolerance,
+                absolute_tolerance=self.absolute_tolerance
+            )
+            # print(simulator.r.integrator)
             simulator.set_timecourse_selections(selections=self.selections[k])
 
             # FIXME: normalize simulations and parameters once outside of loop
@@ -396,20 +426,28 @@ class OptimizationProblem(object):
             )
             y_obsip = f(self.x_references[k])
 
-            # calculate weighted residuals
-            if (self.weighting == WeightingType.NO_WEIGHTING) or (self.weighting is None):
+            # calculate locally weighted residuals
+            if (self.weighting_local == WeightingLocalType.NO_WEIGHTING) or (self.weighting_local is None):
                 res = (y_obsip - self.y_references[k]) * self.weights_mapping[k]
-                if self.weighting is None:
+                if self.weighting_local is None:
                     logger.warning("No weighting provided, defaulting to no weighting")
-            elif self.weighting == WeightingType.ONE_OVER_WEIGHTING:
+            elif self.weighting_local == WeightingLocalType.ONE_OVER_WEIGHTING:
                 res = (y_obsip - self.y_references[k]) * self.weights_mapping[k] * self.weights[k]
             else:
-                raise ValueError(f"Weighting not supported: {self.weighting}")
+                raise ValueError(f"Weighting not supported: {self.weighting_local}")
+
+            # FIXME: check and better implementation of all the weightings
+            if self.weighting_global == WeightingGlobalType.RELATIVE_WEIGHTING:
+                res = res / self.y_references[k]
+                # FIXME handle INF values in zero references
 
             parts.append(res)
 
             if complete_data:
-                res = (y_obsip - self.y_references[k]) # * scale
+                if self.weighting_global == WeightingGlobalType.NO_WEIGHTING:
+                    res = (y_obsip - self.y_references[k])
+                elif self.weighting_global == WeightingGlobalType.RELATIVE_WEIGHTING:
+                    res = (y_obsip - self.y_references[k]/self.y_references[k])
                 res_weighted = res * self.weights[k] * self.weights_mapping[k]
                 residual_data["x_obs"].append(df[self.xid_observable[k]])
                 residual_data["y_obs"].append(df[self.yid_observable[k]])

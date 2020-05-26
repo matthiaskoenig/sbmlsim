@@ -2,7 +2,7 @@ from typing import Tuple
 
 from sbmlsim.fit.mpfit import run_optimization_parallel
 from sbmlsim.fit.fit import analyze_optimization, OptimizationResult
-from sbmlsim.fit.optimization import OptimizationProblem, SamplingType, OptimizerType, WeightingType
+from sbmlsim.fit.optimization import OptimizationProblem, SamplingType, OptimizerType, WeightingLocalType
 from sbmlsim.examples.experiments.midazolam import MIDAZOLAM_PATH
 from sbmlsim.examples.experiments.midazolam.fitting_problems import op_mid1oh_iv, op_mandema1992
 
@@ -15,7 +15,7 @@ def fitlq_mid1ohiv() -> Tuple[OptimizationResult, OptimizationProblem]:
     opt_res = run_optimization_parallel(
         problem=problem, size=50, seed=1236,
         optimizer=OptimizerType.LEAST_SQUARE,
-        weighting=WeightingType.NO_WEIGHTING,
+        weighting=WeightingLocalType.NO_WEIGHTING,
         # parameters for least square optimization
         sampling=SamplingType.LOGUNIFORM_LHS,
         diff_step=0.05
@@ -29,7 +29,7 @@ def fitde_mid1ohiv() -> Tuple[OptimizationResult, OptimizationProblem]:
     opt_res = run_optimization_parallel(
             problem=problem, size=10, seed=1234,
             optimizer=OptimizerType.DIFFERENTIAL_EVOLUTION,
-            weighting=WeightingType.NO_WEIGHTING,
+            weighting=WeightingLocalType.NO_WEIGHTING,
         )
     return opt_res, problem
 

@@ -51,6 +51,7 @@ class ExperimentRunner(object):
     @timeit
     def initialize(self, experiment_classes, **kwargs):
         for exp_class in experiment_classes:
+            logger.info(f"Initialize SimulationExperiment: {exp_class.__name__}")
             experiment = exp_class(
                 base_path=self.base_path,
                 data_path=self.data_path,
