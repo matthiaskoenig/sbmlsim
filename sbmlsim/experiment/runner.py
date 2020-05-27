@@ -42,7 +42,10 @@ class ExperimentRunner(object):
     def set_simulator(self, simulator):
         """Set simulator on the runner and experiments."""
         if simulator is None:
-            logger.warning(f"No simulator set in ExperimentRunner.")
+            logger.warning(
+                f"No simulator set in ExperimentRunner. This warning can be "
+                f"ignored for parameter fitting which provides a simulator."
+            )
         else:
             self.simulator = simulator  # type: SimulatorAbstract
             for experiment in self.experiments.values():

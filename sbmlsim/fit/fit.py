@@ -44,6 +44,7 @@ def analyze_optimization(opt_result: OptimizationResult,
                          weighting_local=None, weighting_global=None,
                          variable_step_size=True, absolute_tolerance=1E-6, relative_tolerance=1E-6):
     # write report (additional folders based on runs)
+    
     opt_result.report(output_path=output_path)
 
     # FIXME: save and load the results
@@ -66,6 +67,7 @@ def analyze_optimization(opt_result: OptimizationResult,
         problem.weighting_local = weighting_local
         problem.weighting_global = weighting_global
 
+        problem.report(output_path=output_path)
         problem.plot_fits(x=opt_result.xopt, output_path=output_path, show_plots=show_plots)
         problem.plot_costs(x=opt_result.xopt, output_path=output_path, show_plots=show_plots)
         problem.plot_residuals(x=opt_result.xopt, output_path=output_path, show_plots=show_plots)

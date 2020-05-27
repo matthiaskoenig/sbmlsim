@@ -3,7 +3,8 @@ Defines the parameter fitting problems
 """
 from typing import Tuple
 from sbmlsim.fit.fit import run_optimization, analyze_optimization
-from sbmlsim.fit.optimization import SamplingType, OptimizerType, WeightingLocalType, OptimizationProblem
+from sbmlsim.fit.optimization import SamplingType, OptimizerType, \
+    WeightingLocalType, WeightingGlobalType, OptimizationProblem
 from sbmlsim.fit.analysis import OptimizationResult
 
 from sbmlsim.examples.experiments.midazolam.fitting_problems import op_mid1oh_iv, op_mandema1992
@@ -17,7 +18,8 @@ def fitlq_mid1ohiv() -> Tuple[OptimizationResult, OptimizationProblem]:
     opt_res = run_optimization(
         problem=problem, size=20, seed=1236,
         optimizer=OptimizerType.LEAST_SQUARE,
-        weighting=WeightingLocalType.ONE_OVER_WEIGHTING,
+        weighting_local=WeightingLocalType.ONE_OVER_WEIGHTING,
+        weighting_global=WeightingGlobalType.NO_WEIGHTING,
         # parameters for least square optimization
         sampling=SamplingType.LOGUNIFORM_LHS,
         diff_step=0.05
@@ -31,7 +33,8 @@ def fitde_mid1ohiv() -> Tuple[OptimizationResult, OptimizationProblem]:
     opt_res = run_optimization(
         problem=problem, size=1, seed=1234,
         optimizer=OptimizerType.DIFFERENTIAL_EVOLUTION,
-        weighting=WeightingLocalType.ONE_OVER_WEIGHTING,
+        weighting_local=WeightingLocalType.ONE_OVER_WEIGHTING,
+        weighting_global=WeightingGlobalType.NO_WEIGHTING,
     )
     return opt_res, problem
 

@@ -49,12 +49,11 @@ def run_optimization_parallel(problem: OptimizationProblem, size: int, n_cores: 
     if n_cores is None:
         n_cores = max(1, multiprocessing.cpu_count()-1)
     if size < 2*n_cores:
-        logger.error(f"Less simulations then 2 * cores: '{size} < {n_cores}'")
-        # required for LHS sampling
+        logger.warning(f"Less simulations then 2 * cores: '{size} < {n_cores}',"
+                       f"increasing number of simulations to '{2 * n_cores}'.")
         size = 2 * n_cores
 
     sizes = [len(c) for c in np.array_split(range(size), n_cores)]
-    print(sizes)
 
     # worker pool
     pool = multiprocessing.Pool(processes=n_cores)

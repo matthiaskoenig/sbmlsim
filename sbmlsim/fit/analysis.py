@@ -180,7 +180,7 @@ class OptimizationResult(ObjectJSONEncoder):
             print(info)
 
         if output_path is not None:
-            filepath = output_path / "fit_report.txt"
+            filepath = output_path / "00_fit_report.txt"
             with open(filepath, "w") as fout:
                 fout.write(info)
 
@@ -325,6 +325,8 @@ class OptimizationResult(ObjectJSONEncoder):
                 ax.set_xscale("log")
                 if kx != ky:
                     ax.set_yscale("log")
+                if kx == ky:
+                    ax.set_yscale("log")
 
         # correct scatter limits
         for kx, pidx in enumerate(pids):
@@ -336,5 +338,5 @@ class OptimizationResult(ObjectJSONEncoder):
         if show_plots:
             plt.show()
         if output_path is not None:
-            filepath = output_path / f"03_parameter_correlation.{output_format}"
+            filepath = output_path / f"04_parameter_landscape.{output_format}"
             fig.savefig(filepath, bbox_inches="tight")

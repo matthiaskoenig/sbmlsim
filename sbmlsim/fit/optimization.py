@@ -251,7 +251,7 @@ class OptimizationProblem(object):
         info = str(self)
         print(info)
         if output_path is not None:
-            filepath = output_path / "optimization_problem.txt"
+            filepath = output_path / "00_fit_problem.txt"
             with open(filepath, "w") as fout:
                 fout.write(info)
 
@@ -430,29 +430,32 @@ class OptimizationProblem(object):
             y_obsip = f(self.x_references[k])
 
             # calculate locally weighted residuals
+            res = y_obsip - self.y_references[k]
             if (self.weighting_local == WeightingLocalType.NO_WEIGHTING) or (self.weighting_local is None):
-                res = (y_obsip - self.y_references[k]) * self.weights_mapping[k]
+                resw = res * self.weights_mapping[k]
                 if self.weighting_local is None:
                     logger.warning("No weighting provided, defaulting to no weighting")
             elif self.weighting_local == WeightingLocalType.ONE_OVER_WEIGHTING:
-                res = (y_obsip - self.y_references[k]) * self.weights_mapping[k] * self.weights[k]
+                resw = res * self.weights_mapping[k] * self.weights[k]
             else:
                 raise ValueError(f"Weighting not supported: {self.weighting_local}")
 
             # FIXME: check and better implementation of all the weightings
             if self.weighting_global == WeightingGlobalType.RELATIVE_WEIGHTING:
-                res = res / self.y_references[k]
-                # FIXME handle NaN values in zero references
-                res[np.isnan(res)] = 0
+                resw = res / self.y_references[k]
+                # handle NaN values (zero values are ignores)
+                resw[np.isnan(resw)] = 0
 
-            parts.append(res)
+            parts.append(resw)
 
             if complete_data:
+                res = (y_obsip - self.y_references[k])
+
                 if self.weighting_global == WeightingGlobalType.NO_WEIGHTING:
-                    res = (y_obsip - self.y_references[k])
+                    res_weighted = res * self.weights[k] * self.weights_mapping[k]
                 elif self.weighting_global == WeightingGlobalType.RELATIVE_WEIGHTING:
-                    res = (y_obsip - self.y_references[k]/self.y_references[k])
-                res_weighted = res * self.weights[k] * self.weights_mapping[k]
+                    res_weighted = res/self.y_references[k] * self.weights[k] * self.weights_mapping[k]
+
                 residual_data["x_obs"].append(df[self.xid_observable[k]])
                 residual_data["y_obs"].append(df[self.yid_observable[k]])
                 residual_data["y_obsip"].append(y_obsip)
@@ -511,7 +514,7 @@ class OptimizationProblem(object):
         if show_plots:
             plt.show()
         if output_path:
-            filepath = output_path / "02_experiment_costs.svg"
+            filepath = output_path / "03_costs_mappings.svg"
             fig.savefig(filepath, bbox_inches="tight")
 
     @timeit
@@ -562,7 +565,7 @@ class OptimizationProblem(object):
         if show_plots:
             plt.show()
         if output_path is not None:
-            fig.savefig(output_path / f"fits_{sid}.svg", bbox_inches="tight")
+            fig.savefig(output_path / f"00_fits_{self.opid}.svg", bbox_inches="tight")
 
     @timeit
     def plot_residuals(self, x, xstart=None, output_path: Path = None, show_plots: bool = True):
@@ -669,5 +672,5 @@ class OptimizationProblem(object):
             if show_plots:
                 plt.show()
             if output_path is not None:
-                fig.savefig(output_path / f"residuals_{sid}_{mapping_id}.svg",
+                fig.savefig(output_path / f"06_residuals_{sid}_{mapping_id}.svg",
                             bbox_inches="tight")
