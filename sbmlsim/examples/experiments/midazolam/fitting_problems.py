@@ -26,7 +26,7 @@ def op_mid1oh_iv() -> OptimizationProblem:
                              lower_bound=1, upper_bound=1E5,
                              unit="liter/min"),
                 FitParameter(parameter_id="fup_mid1oh", start_value=0.1,
-                             lower_bound=0.01, upper_bound=0.3,
+                             lower_bound=0.01, upper_bound=0.5,
                              unit="dimensionless"),
                 # mid1oh kinetics
                 FitParameter(parameter_id="KI__MID1OHEX_Vmax", start_value=100,

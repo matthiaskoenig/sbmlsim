@@ -189,10 +189,10 @@ class Mandema1992(MidazolamSimulationExperiment):
 
         plots[0].add_data(task='task_mid1oh_iv', xid='time', yid="IVDOSE_mid1oh",
                           label="IVDOSE_mid1oh", color="black")
-        plots[1].add_data(task='task_mid1oh_iv', xid='time', yid="injection_mid1oh",
-                          label="injection_mid1oh", color="blue")
-        plots[1].add_data(task='task_mid1oh_iv', xid='time', yid="infusion_mid1oh",
-                          label="infusion_mid1oh", color="darkorange")
+        # plots[1].add_data(task='task_mid1oh_iv', xid='time', yid="injection_mid1oh",
+        #                  label="injection_mid1oh", color="blue")
+        # plots[1].add_data(task='task_mid1oh_iv', xid='time', yid="infusion_mid1oh",
+        #                  label="infusion_mid1oh", color="darkorange")
         plots[2].add_data(task='task_mid1oh_iv', xid='time', yid="Aurine_mid1oh",
                           label="mid1oh (urine)", color="darkgrey")
 

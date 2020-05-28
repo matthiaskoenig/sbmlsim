@@ -240,6 +240,9 @@ class OptimizationProblem(object):
         info.append(self.__class__.__name__)
         info.append("-" * 80)
         info.append("Experiments")
+
+        # FIXME: full serialization of experiments!
+        # FIXME: runner only available after initialization
         info.extend([f"\t{e}" for e in self.runner.experiments])
         info.append("Parameters")
         info.extend([f"\t{p}" for p in self.parameters])
@@ -451,7 +454,9 @@ class OptimizationProblem(object):
             if complete_data:
                 res = (y_obsip - self.y_references[k])
 
-                if self.weighting_global == WeightingGlobalType.NO_WEIGHTING:
+                if self.weighting_global is None:
+                    res_weighted = res * self.weights[k] * self.weights_mapping[k]
+                elif self.weighting_global == WeightingGlobalType.NO_WEIGHTING:
                     res_weighted = res * self.weights[k] * self.weights_mapping[k]
                 elif self.weighting_global == WeightingGlobalType.RELATIVE_WEIGHTING:
                     res_weighted = res/self.y_references[k] * self.weights[k] * self.weights_mapping[k]
