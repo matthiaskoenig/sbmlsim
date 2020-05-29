@@ -97,6 +97,7 @@ class Style(Base):
 
     # https://matplotlib.org/3.1.0/gallery/lines_bars_and_markers/linestyles.html
     MPL2SEDML_LINESTYLE_MAPPING = {
+        '': LineType.NONE,
         '-': LineType.SOLID,
         'solid': LineType.SOLID,
         '.': LineType.DOT,

@@ -5,12 +5,98 @@ from sbmlsim.fit import FitExperiment, FitParameter
 from sbmlsim.fit.optimization import OptimizationProblem
 
 from sbmlsim.examples.experiments.midazolam.experiments.mandema1992 import Mandema1992
+from sbmlsim.examples.experiments.midazolam.experiments.kupferschmidt1995 import Kupferschmidt1995
+
 from sbmlsim.examples.experiments.midazolam import MIDAZOLAM_PATH
 
 exp_kwargs = {
     "base_path": MIDAZOLAM_PATH,
     "data_path": MIDAZOLAM_PATH / "data",
 }
+
+def op_kupferschmidt1995() -> OptimizationProblem:
+    """Factory to get uninitialized optimization problem."""
+
+    exp_kwargs = {
+        "base_path": MIDAZOLAM_PATH,
+        "data_path": MIDAZOLAM_PATH / "data",
+    }
+
+    KM_BOUNDS = (1E-5, 1E-1)
+    VMAX_BOUNDS = (1E-3, 1E3)
+
+    return OptimizationProblem(
+        opid="mid1oh_iv",
+        base_path=MIDAZOLAM_PATH / "data",
+        data_path=MIDAZOLAM_PATH,
+
+        fit_experiments=[
+            FitExperiment(experiment=Kupferschmidt1995, mappings=["fm_mid_iv", "fm_mid1oh_iv"]),
+        ],
+        fit_parameters=[
+            # liver
+            FitParameter(parameter_id="LI__MIDIM_Vmax", start_value=0.1,
+                         lower_bound=VMAX_BOUNDS[0], upper_bound=VMAX_BOUNDS[1],
+                         unit="mmole_per_min"),
+            # FitParameter(parameter_id="LI__MIDIM_Km", start_value=0.1,
+            #              lower_bound=KM_BOUNDS[0], upper_bound=KM_BOUNDS[1],
+            #              unit="mM"),
+
+            FitParameter(parameter_id="LI__MID1OHEX_Vmax", start_value=0.1,
+                         lower_bound=VMAX_BOUNDS[0], upper_bound=VMAX_BOUNDS[1],
+                         unit="mmole_per_min"),
+            # FitParameter(parameter_id="LI__MID1OHEX_Km", start_value=0.1,
+            #              lower_bound=KM_BOUNDS[0], upper_bound=KM_BOUNDS[1],
+            #              unit="mM"),
+
+            FitParameter(parameter_id="LI__MIDOH_Vmax", start_value=100,
+                         lower_bound=VMAX_BOUNDS[0], upper_bound=VMAX_BOUNDS[1],
+                         unit="mmole_per_min"),
+            # FitParameter(parameter_id="LI__MIDOH_Km", start_value=100,
+            #              lower_bound=KM_BOUNDS[0], upper_bound=KM_BOUNDS[1],
+            #              unit="mM"),
+
+            # does not improve fits
+            # FitParameter(parameter_id="LI__MIDX_Vmax", start_value=100,
+            #              lower_bound=VMAX_BOUNDS[0], upper_bound=VMAX_BOUNDS[1],
+            #              unit="mmole_per_min"),
+            # FitParameter(parameter_id="LI__MIDX_Km", start_value=0.1,
+            #              lower_bound=KM_BOUNDS[0], upper_bound=KM_BOUNDS[1],
+            #              unit="mM"),
+
+            # kidneys (determined via 1-OH fits)
+            FitParameter(parameter_id="KI__MID1OHEX_Vmax", start_value=100,
+                         lower_bound=VMAX_BOUNDS[0], upper_bound=VMAX_BOUNDS[1],
+                         unit="mmole/min"),
+            FitParameter(parameter_id="KI__MID1OHEX_Km", start_value=100,
+                         lower_bound=KM_BOUNDS[0], upper_bound=KM_BOUNDS[1],
+                         unit="mM"),
+            # currently not considered
+            # FitParameter(parameter_id="KI__MIDEX_Vmax", start_value=100,
+            #             lower_bound=1E-4, upper_bound=1E4,
+            #             unit="mmole/min"),
+
+            # injection kinetics
+            # FitParameter(parameter_id="ti_mid", start_value=120,
+            #              lower_bound=10, upper_bound=300,
+            #              unit="s"),
+
+            # distribution
+            FitParameter(parameter_id="ftissue_mid", start_value=50,
+                         lower_bound=1E-1, upper_bound=1E2,
+                         unit="liter/min"),
+            # FitParameter(parameter_id="fup_mid", start_value=0.1,
+            #               lower_bound=0.05, upper_bound=0.3,
+            #              unit="dimensionless"),
+            FitParameter(parameter_id="ftissue_mid1oh", start_value=1.0,
+                         lower_bound=1, upper_bound=1E5,
+                         unit="liter/min"),
+            # FitParameter(parameter_id="fup_mid1oh", start_value=0.1,
+            #             lower_bound=0.01, upper_bound=0.3,
+            #             unit="dimensionless"),
+            ],
+        **exp_kwargs
+    )
 
 
 def op_mid1oh_iv() -> OptimizationProblem:

@@ -342,7 +342,7 @@ class OptimizationProblem(object):
                         fun=self.residuals, x0=x0log, bounds=boundslog, **kwargs
                     )
             except RuntimeError as err:
-                logger.error("RuntimeError in ODE integration: {err}")
+                logger.error(f"RuntimeError in ODE integration: {err}")
                 opt_result = RuntimeErrorOptimizeResult()
                 opt_result.x = x0log
             te = time.time()

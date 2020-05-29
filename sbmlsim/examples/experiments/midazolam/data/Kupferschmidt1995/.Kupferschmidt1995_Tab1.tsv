@@ -1,0 +1,21 @@
+study	subject	n	intervention	measurement	substance	tissue	mean	se	sd	unit
+Kupferschmidt1995	all	8	iv	auc_inf	midazolam	plasma	199.0	16	45.254833995939	ug*hr/l
+Kupferschmidt1995	all	8	iv	bioavailability	midazolam	plasma	100.0	na	na	percent
+Kupferschmidt1995	all	8	iv	clearance	midazolam	plasma	26.3	2	5.65685424949238	l/hr
+Kupferschmidt1995	all	8	iv	vd_ss	midazolam	plasma	65.5	3.4	9.61665222413705	l
+Kupferschmidt1995	all	8	iv	kel	midazolam	plasma	0.35	0.02	0.0565685424949238	1/hr
+Kupferschmidt1995	all	8	GRAP1, GRAP2, iv	auc_inf	midazolam	plasma	207.0	15	42.4264068711929	ug*hr/l
+Kupferschmidt1995	all	8	GRAP1, GRAP2, iv	bioavailability	midazolam	plasma	100.0	na	na	percent
+Kupferschmidt1995	all	8	GRAP1, GRAP2, iv	clearance	midazolam	plasma	25.0	1.6	4.52548339959391	l/hr
+Kupferschmidt1995	all	8	GRAP1, GRAP2, iv	vd_ss	midazolam	plasma	68.9	5.7	16.1220346110533	l
+Kupferschmidt1995	all	8	GRAP1, GRAP2, iv	kel	midazolam	plasma	0.35	0.03	0.0848528137423857	1/hr
+Kupferschmidt1995	all	8	po	auc_inf	midazolam	plasma	143.0	26	73.539105243401	ug*hr/l
+Kupferschmidt1995	all	8	po	bioavailability	midazolam	plasma	24.0	3	8.48528137423857	percent
+Kupferschmidt1995	all	8	po	clearance	midazolam	plasma	25.2	1.9	5.37401153701776	l/hr
+Kupferschmidt1995	all	8	po	vd_ss	midazolam	plasma	46.5	5.6	15.8391918985787	l
+Kupferschmidt1995	all	8	po	kel	midazolam	plasma	0.47	0.03	0.0848528137423857	1/hr
+Kupferschmidt1995	all	8	GRAP1, GRAP2, po	auc_inf	midazolam	plasma	217.0	31	87.6812408671319	ug*hr/l
+Kupferschmidt1995	all	8	GRAP1, GRAP2, po	bioavailability	midazolam	plasma	35.0	3	8.48528137423857	percent
+Kupferschmidt1995	all	8	GRAP1, GRAP2, po	clearance	midazolam	plasma	24.2	2.6	7.3539105243401	l/hr
+Kupferschmidt1995	all	8	GRAP1, GRAP2, po	vd_ss	midazolam	plasma	41.2	5.4	15.2735064736294	l
+Kupferschmidt1995	all	8	GRAP1, GRAP2, po	kel	midazolam	plasma	0.48	0.03	0.0848528137423857	1/hr

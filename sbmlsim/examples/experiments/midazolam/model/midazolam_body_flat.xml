@@ -267,8 +267,10 @@
       <species metaid="meta_Csp_mid1oh" id="Csp_mid1oh" name="1-hydroxymidazolam (spleen)" compartment="Vsp_tissue" initialConcentration="0" substanceUnits="mmole" hasOnlySubstanceUnits="false" boundaryCondition="false" constant="false"/>
       <species metaid="meta_Cre_mid1oh" id="Cre_mid1oh" name="1-hydroxymidazolam (rest)" compartment="Vre_tissue" initialConcentration="0" substanceUnits="mmole" hasOnlySubstanceUnits="false" boundaryCondition="false" constant="false"/>
       <species metaid="meta_Aurine_mid1oh" id="Aurine_mid1oh" name="1-hydroxymidazolam (urine)" compartment="Vurine" initialConcentration="0" substanceUnits="mmole" hasOnlySubstanceUnits="true" boundaryCondition="false" constant="false"/>
+      <species id="KI__midx_urine" name="midazolam metabolites (urine)" compartment="KI__Vurine" initialConcentration="0" substanceUnits="mmole" hasOnlySubstanceUnits="true" boundaryCondition="false" constant="false"/>
       <species id="LI__mid" name="midazolam" compartment="Vli_tissue" initialConcentration="0" substanceUnits="mmole" hasOnlySubstanceUnits="false" boundaryCondition="false" constant="false"/>
       <species id="LI__mid1oh" name="1-hydroxy-midazolam" compartment="Vli_tissue" initialConcentration="0" substanceUnits="mmole" hasOnlySubstanceUnits="false" boundaryCondition="false" constant="false"/>
+      <species id="LI__midx" name="midazolam metabolites" compartment="Vli_tissue" initialConcentration="0" substanceUnits="mmole" hasOnlySubstanceUnits="false" boundaryCondition="false" constant="false"/>
       <species id="GU__mid" name="midazolam (intestine)" compartment="Vgu_tissue" initialConcentration="0" substanceUnits="mmole" hasOnlySubstanceUnits="false" boundaryCondition="false" constant="false"/>
       <species id="GU__mid1oh" name="1-hydroxy-midazolam (intestine)" compartment="Vgu_tissue" initialConcentration="0" substanceUnits="mmole" hasOnlySubstanceUnits="false" boundaryCondition="false" constant="false"/>
     </listOfSpecies>
@@ -393,15 +395,16 @@
       <parameter id="Xurine_mid1oh" name="1-hydroxymidazolam amount (urine)" units="mg" constant="false"/>
       <parameter id="inflow_li_mid1oh" units="mmole_per_min" constant="false"/>
       <parameter id="outflow_li_mid1oh" units="mmole_per_min" constant="false"/>
-      <parameter id="KI__fup_mid" name="fraction unbound in plasma mid" value="1" units="dimensionless" constant="true"/>
-      <parameter id="KI__MID1OHEX_Vmax" value="0.01" units="mmole_per_min" constant="true"/>
-      <parameter id="KI__MID1OHEX_Km" value="0.001" units="mM" constant="true"/>
+      <parameter id="KI__MID1OHEX_Vmax" value="15" units="mmole_per_min" constant="true"/>
+      <parameter id="KI__MID1OHEX_Km" value="0.7" units="mM" constant="true"/>
       <parameter id="LI__MIDIM_Vmax" value="0.1" units="mmole_per_min" constant="true"/>
       <parameter id="LI__MIDIM_Km" value="0.001" units="mM" constant="true"/>
       <parameter id="LI__MID1OHEX_Vmax" value="0.1" units="mmole_per_min" constant="true"/>
       <parameter id="LI__MID1OHEX_Km" value="0.001" units="mM" constant="true"/>
       <parameter id="LI__MIDOH_Vmax" value="0.005" units="mmole_per_min" constant="true"/>
       <parameter id="LI__MIDOH_Km" value="0.004" units="mM" constant="true"/>
+      <parameter id="LI__MIDX_Vmax" value="0.005" units="mmole_per_min" constant="true"/>
+      <parameter id="LI__MIDX_Km" value="0.004" units="mM" constant="true"/>
       <parameter id="GU__MIDIM_Vmax" value="0.1" units="mmole_per_min" constant="true"/>
       <parameter id="GU__MIDIM_Km" value="1e-05" units="mM" constant="true"/>
       <parameter id="GU__MID1OHEX_Vmax" value="0.1" units="mmole_per_min" constant="true"/>
@@ -2468,6 +2471,31 @@
                 <plus/>
                 <ci> LI__mid </ci>
                 <ci> LI__MIDOH_Km </ci>
+              </apply>
+            </apply>
+          </math>
+        </kineticLaw>
+      </reaction>
+      <reaction sboTerm="SBO:0000176" id="LI__MIDX" reversible="false" fast="false">
+        <listOfReactants>
+          <speciesReference species="LI__mid" stoichiometry="1" constant="true"/>
+        </listOfReactants>
+        <listOfProducts>
+          <speciesReference species="LI__midx" stoichiometry="1" constant="true"/>
+        </listOfProducts>
+        <kineticLaw>
+          <math xmlns="http://www.w3.org/1998/Math/MathML">
+            <apply>
+              <divide/>
+              <apply>
+                <times/>
+                <ci> LI__MIDX_Vmax </ci>
+                <ci> LI__mid </ci>
+              </apply>
+              <apply>
+                <plus/>
+                <ci> LI__mid </ci>
+                <ci> LI__MIDX_Km </ci>
               </apply>
             </apply>
           </math>

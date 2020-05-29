@@ -1,0 +1,17 @@
+study	subject	n	intervention	measurement	substance	tissue	mean	se	sd	unit
+Kupferschmidt1995	all	8	iv	auc_inf	1-hydroxymidazolam	plasma	24.5	3.8	10.7480230740355	ug*hr/l
+Kupferschmidt1995	all	8	iv	cmax	1-hydroxymidazolam	plasma	6.9	0.7	1.97989898732233	ug/l
+Kupferschmidt1995	all	8	iv	tmax	1-hydroxymidazolam	plasma	0.54	0.17	0.480832611206852	hr
+Kupferschmidt1995	all	8	iv	kel	1-hydroxymidazolam	plasma	0.34	0.03	0.0848528137423857	1/hr
+Kupferschmidt1995	all	8	GRAP1, GRAP2, iv	auc_inf	1-hydroxymidazolam	plasma	26.1	3.9	11.0308657865101	ug*hr/l
+Kupferschmidt1995	all	8	GRAP1, GRAP2, iv	cmax	1-hydroxymidazolam	plasma	8.2	1.4	3.95979797464467	ug/l
+Kupferschmidt1995	all	8	GRAP1, GRAP2, iv	tmax	1-hydroxymidazolam	plasma	0.48	0.13	0.367695526217005	hr
+Kupferschmidt1995	all	8	GRAP1, GRAP2, iv	kel	1-hydroxymidazolam	plasma	0.34	0.02	0.0565685424949238	1/hr
+Kupferschmidt1995	all	8	po	auc_inf	1-hydroxymidazolam	plasma	57.2	9.6	27.1529003975634	ug*hr/l
+Kupferschmidt1995	all	8	po	cmax	1-hydroxymidazolam	plasma	29.6	5.2	14.7078210486802	ug/l
+Kupferschmidt1995	all	8	po	tmax	1-hydroxymidazolam	plasma	0.62	0.2	0.565685424949238	hr
+Kupferschmidt1995	all	8	po	kel	1-hydroxymidazolam	plasma	0.6	0.04	0.113137084989848	1/hr
+Kupferschmidt1995	all	8	GRAP1, GRAP2, po	auc_inf	1-hydroxymidazolam	plasma	74.6	14.6	41.2950360212944	ug*hr/l
+Kupferschmidt1995	all	8	GRAP1, GRAP2, po	cmax	1-hydroxymidazolam	plasma	29.6	5.3	14.9906637611548	ug/l
+Kupferschmidt1995	all	8	GRAP1, GRAP2, po	tmax	1-hydroxymidazolam	plasma	1.27	0.26	0.73539105243401	hr
+Kupferschmidt1995	all	8	GRAP1, GRAP2, po	kel	1-hydroxymidazolam	plasma	0.6	0.06	0.169705627484771	1/hr

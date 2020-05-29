@@ -7,13 +7,14 @@ from sbmlsim.simulator import SimulatorSerial
 from sbmlsim.utils import timeit
 
 from sbmlsim.examples.experiments.midazolam.experiments.mandema1992 import Mandema1992
+from sbmlsim.examples.experiments.midazolam.experiments.kupferschmidt1995 import Kupferschmidt1995
 
 
 @timeit
 def midazolam_experiment():
     BASE_PATH = Path(__file__).parent
     runner = ExperimentRunner(
-        [Mandema1992],
+        [Mandema1992, Kupferschmidt1995],
         simulator=SimulatorSerial(),
         base_path=BASE_PATH,
         data_path=BASE_PATH / "data",

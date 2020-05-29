@@ -1,0 +1,51 @@
+study	subject	n	intervention	measurement	substance	tissue	mean	mean_pm	se	sd	unit	time	time_unit
+Kupferschmidt1995	all	8	iv	concentration	1-hydroxymidazolam	plasma	0.0	na	na	na	ug/l	0.0	hr
+Kupferschmidt1995	all	8	iv	concentration	1-hydroxymidazolam	plasma	1.4616665	0.853754	0.6079125	1.71943620447227	ug/l	0.0833333333333333	hr
+Kupferschmidt1995	all	8	iv	concentration	1-hydroxymidazolam	plasma	5.266239	4.145998	1.120241	3.1685200306528	ug/l	0.166666666666667	hr
+Kupferschmidt1995	all	8	iv	concentration	1-hydroxymidazolam	plasma	5.389024	4.6171827	0.7718413	2.18309686891936	ug/l	0.333333333333333	hr
+Kupferschmidt1995	all	8	iv	concentration	1-hydroxymidazolam	plasma	5.989773	5.4023585	0.5874145	1.66145910526922	ug/l	0.666666666666667	hr
+Kupferschmidt1995	all	8	iv	concentration	1-hydroxymidazolam	plasma	5.545443	5.033153	0.512289999999999	1.44897493173622	ug/l	1.0	hr
+Kupferschmidt1995	all	8	iv	concentration	1-hydroxymidazolam	plasma	5.148755	4.7594604	0.3892946	1.10109140615722	ug/l	1.5	hr
+Kupferschmidt1995	all	8	iv	concentration	1-hydroxymidazolam	plasma	4.342236	3.816278	0.525958	1.48763387367726	ug/l	2.0	hr
+Kupferschmidt1995	all	8	iv	concentration	1-hydroxymidazolam	plasma	3.822603	3.3512964	0.4713066	1.3330563715119	ug/l	2.5	hr
+Kupferschmidt1995	all	8	iv	concentration	1-hydroxymidazolam	plasma	1.6904122	1.07565	0.6147622	1.73881008174864	ug/l	3.5	hr
+Kupferschmidt1995	all	8	iv	concentration	1-hydroxymidazolam	plasma	0.24079698	0.08374392	0.15705306	0.444213134928391	ug/l	5.0	hr
+Kupferschmidt1995	all	8	iv	concentration	1-hydroxymidazolam	plasma	0.1294585	0.027056811	0.102401689	0.289635714787424	ug/l	7.0	hr
+Kupferschmidt1995	all	8	iv	concentration	1-hydroxymidazolam	plasma	0.0	na	na	na	ug/l	9.0	hr
+Kupferschmidt1995	all	8	GRAP1, GRAP2, iv	concentration	1-hydroxymidazolam	plasma	3.2008531e-06	na	na	na	ug/l	0.0	hr
+Kupferschmidt1995	all	8	GRAP1, GRAP2, iv	concentration	1-hydroxymidazolam	plasma	3.01908	4.4671526	1.4480726	4.09576782044174	ug/l	0.0833333333333333	hr
+Kupferschmidt1995	all	8	GRAP1, GRAP2, iv	concentration	1-hydroxymidazolam	plasma	6.741647	8.39467	1.653023	4.67545509102932	ug/l	0.166666666666667	hr
+Kupferschmidt1995	all	8	GRAP1, GRAP2, iv	concentration	1-hydroxymidazolam	plasma	7.0010376	7.9026604	0.9016228	2.55017438380961	ug/l	0.333333333333333	hr
+Kupferschmidt1995	all	8	GRAP1, GRAP2, iv	concentration	1-hydroxymidazolam	plasma	5.9966035	6.5157046	0.5191011	1.46823963172559	ug/l	0.666666666666667	hr
+Kupferschmidt1995	all	8	GRAP1, GRAP2, iv	concentration	1-hydroxymidazolam	plasma	5.8254986	6.2831244	0.457625800000001	1.29436122570368	ug/l	1.0	hr
+Kupferschmidt1995	all	8	GRAP1, GRAP2, iv	concentration	1-hydroxymidazolam	plasma	5.626892	6.3099475	0.6830555	1.93197270390707	ug/l	1.5	hr
+Kupferschmidt1995	all	8	GRAP1, GRAP2, iv	concentration	1-hydroxymidazolam	plasma	4.888679	5.3872952	0.4986162	1.41029958491787	ug/l	2.0	hr
+Kupferschmidt1995	all	8	GRAP1, GRAP2, iv	concentration	1-hydroxymidazolam	plasma	4.170958	4.6285906	0.4576326	1.29438045900812	ug/l	2.5	hr
+Kupferschmidt1995	all	8	GRAP1, GRAP2, iv	concentration	1-hydroxymidazolam	plasma	1.9909595	2.7081618	0.7172023	2.02855443925035	ug/l	3.5	hr
+Kupferschmidt1995	all	8	GRAP1, GRAP2, iv	concentration	1-hydroxymidazolam	plasma	0.24762121	0.39790127	0.15028006	0.425056198012485	ug/l	5.0	hr
+Kupferschmidt1995	all	8	GRAP1, GRAP2, iv	concentration	1-hydroxymidazolam	plasma	0.115784466	0.21825017	0.102465704	0.289816776549814	ug/l	7.0	hr
+Kupferschmidt1995	all	8	GRAP1, GRAP2, iv	concentration	1-hydroxymidazolam	plasma	0.011276606	0.052285936	0.04100933	0.115991901339668	ug/l	9.0	hr
+Kupferschmidt1995	all	8	po	concentration	1-hydroxymidazolam	plasma	0.026918633	na	na	na	ug/l	0.0833333333333333	hr
+Kupferschmidt1995	all	8	po	concentration	1-hydroxymidazolam	plasma	7.17156	11.11222	3.94066	11.1458696334023	ug/l	0.166666666666667	hr
+Kupferschmidt1995	all	8	po	concentration	1-hydroxymidazolam	plasma	27.658564	33.555244	5.89668	16.6783296579484	ug/l	0.333333333333333	hr
+Kupferschmidt1995	all	8	po	concentration	1-hydroxymidazolam	plasma	24.583302	28.903973	4.320671	12.2207030535043	ug/l	0.666666666666667	hr
+Kupferschmidt1995	all	8	po	concentration	1-hydroxymidazolam	plasma	19.442898	22.62209	3.179192	8.99211288757609	ug/l	1.0	hr
+Kupferschmidt1995	all	8	po	concentration	1-hydroxymidazolam	plasma	17.235077	20.115438	2.880361	8.14689118146106	ug/l	1.5	hr
+Kupferschmidt1995	all	8	po	concentration	1-hydroxymidazolam	plasma	14.076078	16.331352	2.255274	6.37887815533483	ug/l	2.0	hr
+Kupferschmidt1995	all	8	po	concentration	1-hydroxymidazolam	plasma	7.9821157	9.150684	1.1685683	3.30521027683854	ug/l	2.5	hr
+Kupferschmidt1995	all	8	po	concentration	1-hydroxymidazolam	plasma	4.082608	4.6538587	0.5712507	1.61574097491025	ug/l	3.5	hr
+Kupferschmidt1995	all	8	po	concentration	1-hydroxymidazolam	plasma	1.1819	1.8338213	0.6519213	1.8439118881198	ug/l	5.0	hr
+Kupferschmidt1995	all	8	po	concentration	1-hydroxymidazolam	plasma	0.5840884	na	na	na	ug/l	7.0	hr
+Kupferschmidt1995	all	8	po	concentration	1-hydroxymidazolam	plasma	0.0	na	na	na	ug/l	9.0	hr
+Kupferschmidt1995	all	8	GRAP1, GRAP2, po	concentration	1-hydroxymidazolam	plasma	0.00025539502	na	na	na	ug/l	0.0833333333333333	hr
+Kupferschmidt1995	all	8	GRAP1, GRAP2, po	concentration	1-hydroxymidazolam	plasma	0.024790343	na	na	na	ug/l	0.166666666666667	hr
+Kupferschmidt1995	all	8	GRAP1, GRAP2, po	concentration	1-hydroxymidazolam	plasma	6.3539553	10.213008	3.8590527	10.915049332505	ug/l	0.333333333333333	hr
+Kupferschmidt1995	all	8	GRAP1, GRAP2, po	concentration	1-hydroxymidazolam	plasma	16.295223	20.561546	4.266323	12.0669836961285	ug/l	0.666666666666667	hr
+Kupferschmidt1995	all	8	GRAP1, GRAP2, po	concentration	1-hydroxymidazolam	plasma	24.959057	30.855906	5.896849	16.6788076621324	ug/l	1.0	hr
+Kupferschmidt1995	all	8	GRAP1, GRAP2, po	concentration	1-hydroxymidazolam	plasma	22.751148	25.658855	2.907707	8.22423734961437	ug/l	1.5	hr
+Kupferschmidt1995	all	8	GRAP1, GRAP2, po	concentration	1-hydroxymidazolam	plasma	22.282465	25.597782	3.315317	9.37713252993217	ug/l	2.0	hr
+Kupferschmidt1995	all	8	GRAP1, GRAP2, po	concentration	1-hydroxymidazolam	plasma	15.373451	18.036676	2.663225	7.53273782930217	ug/l	2.5	hr
+Kupferschmidt1995	all	8	GRAP1, GRAP2, po	concentration	1-hydroxymidazolam	plasma	8.511805	10.849112	2.337307	6.61090251765914	ug/l	3.5	hr
+Kupferschmidt1995	all	8	GRAP1, GRAP2, po	concentration	1-hydroxymidazolam	plasma	2.9209528	4.4970465	1.5760937	4.45786617222158	ug/l	5.0	hr
+Kupferschmidt1995	all	8	GRAP1, GRAP2, po	concentration	1-hydroxymidazolam	plasma	0.5568292	1.344876	0.7880468	2.22893294468944	ug/l	7.0	hr
+Kupferschmidt1995	all	8	GRAP1, GRAP2, po	concentration	1-hydroxymidazolam	plasma	0.5569314	1.181934	0.6250026	1.76777430687689	ug/l	9.0	hr

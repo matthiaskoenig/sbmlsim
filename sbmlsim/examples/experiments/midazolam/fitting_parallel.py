@@ -5,14 +5,14 @@ from sbmlsim.fit.fit import analyze_optimization, OptimizationResult
 from sbmlsim.fit.optimization import OptimizationProblem, SamplingType, \
     OptimizerType, WeightingLocalType, WeightingGlobalType
 from sbmlsim.examples.experiments.midazolam import MIDAZOLAM_PATH
-from sbmlsim.examples.experiments.midazolam.fitting_problems import op_mid1oh_iv, op_mandema1992
+from sbmlsim.examples.experiments.midazolam.fitting_problems import op_mid1oh_iv, op_mandema1992, op_kupferschmidt1995
 
 RESULTS_PATH = MIDAZOLAM_PATH / "results"
 
 
-def fitlq_mid1ohiv() -> Tuple[OptimizationResult, OptimizationProblem]:
+def fit_lsq(problem_factory) -> Tuple[OptimizationResult, OptimizationProblem]:
     """Local least square fitting."""
-    problem = op_mid1oh_iv()
+    problem = problem_factory()
     opt_res = run_optimization_parallel(
         problem=problem, size=50, seed=1236, n_cores=10,
         optimizer=OptimizerType.LEAST_SQUARE,
@@ -26,9 +26,9 @@ def fitlq_mid1ohiv() -> Tuple[OptimizationResult, OptimizationProblem]:
     return opt_res, problem
 
 
-def fitde_mid1ohiv() -> Tuple[OptimizationResult, OptimizationProblem]:
+def fit_de(problem_factory) -> Tuple[OptimizationResult, OptimizationProblem]:
     """Global differential evolution fitting."""
-    problem = op_mid1oh_iv()
+    problem = problem_factory()
     opt_res = run_optimization_parallel(
         problem=problem, size=10, seed=1234, n_cores=10,
         optimizer=OptimizerType.DIFFERENTIAL_EVOLUTION,
@@ -39,9 +39,13 @@ def fitde_mid1ohiv() -> Tuple[OptimizationResult, OptimizationProblem]:
 
 
 if __name__ == "__main__":
+
+    fit_id = "mid1oh_iv"
+    # fit_id = "kupferschmidt1995"
+
     fit_path = MIDAZOLAM_PATH / "results_fit"
-    fit_path_lq = fit_path / "mid1ohiv" / "lq"
-    fit_path_de = fit_path / "mid1ohiv" / "de"
+    fit_path_lq = fit_path / fit_id / "lq"
+    fit_path_de = fit_path / fit_id / "de"
     for p in [fit_path_de, fit_path_lq]:
         if not p.exists():
             p.mkdir(parents=True)
@@ -52,10 +56,15 @@ if __name__ == "__main__":
     # opt_res2 = OptimizationResult.from_json(json_str)
     # analyze_optimization(opt_res2, problem=problem)
 
-    opt_res_lq, problem = fitlq_mid1ohiv()
+    if fit_id == "mid1oh_iv":
+        problem_factory = op_mid1oh_iv
+    elif fit_id == "kupferschmidt1995":
+        problem_factory = op_kupferschmidt1995
+
+    opt_res_lq, problem = fit_lsq(problem_factory)
     analyze_optimization(opt_res_lq, problem=problem,
                          output_path=fit_path_lq)
 
-    opt_res_de, problem = fitde_mid1ohiv()
+    opt_res_de, problem = fit_de(problem_factory)
     analyze_optimization(opt_res_de, problem=problem,
                          output_path=fit_path_de)
