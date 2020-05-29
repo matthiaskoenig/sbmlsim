@@ -19,7 +19,7 @@ def op_kupferschmidt1995() -> OptimizationProblem:
     """Factory to get uninitialized optimization problem."""
 
     KM_BOUNDS = (1E-5, 1E-1)
-    VMAX_BOUNDS = (1E-3, 1E3)
+    VMAX_BOUNDS = (1E-5, 1E3)
 
     return OptimizationProblem(
         opid="mid1oh_iv",
@@ -44,16 +44,16 @@ def op_kupferschmidt1995() -> OptimizationProblem:
                          unit="mmole_per_min"),
 
             # does not improve fits
-            FitParameter(parameter_id="LI__MIDX_Vmax", start_value=100,
-                        lower_bound=VMAX_BOUNDS[0], upper_bound=VMAX_BOUNDS[1],
-                        unit="mmole_per_min"),
-            FitParameter(parameter_id="LI__MIDX_Km", start_value=0.1,
-                         lower_bound=KM_BOUNDS[0], upper_bound=KM_BOUNDS[1],
-                         unit="mM"),
+            # FitParameter(parameter_id="LI__MIDX_Vmax", start_value=100,
+            #            lower_bound=VMAX_BOUNDS[0], upper_bound=VMAX_BOUNDS[1],
+            #            unit="mmole_per_min"),
+            #FitParameter(parameter_id="LI__MIDX_Km", start_value=0.1,
+            #             lower_bound=KM_BOUNDS[0], upper_bound=KM_BOUNDS[1],
+            #             unit="mM"),
 
             # kidneys (determined via 1-OH fits)
             FitParameter(parameter_id="KI__MID1OHEX_Vmax", start_value=100,
-                         lower_bound=VMAX_BOUNDS[0], upper_bound=VMAX_BOUNDS[1],
+                         lower_bound=VMAX_BOUNDS[0], upper_bound=VMAX_BOUNDS[1]*10,
                          unit="mmole/min"),
             FitParameter(parameter_id="KI__MID1OHEX_Km", start_value=100,
                          lower_bound=KM_BOUNDS[0], upper_bound=KM_BOUNDS[1],
@@ -61,13 +61,13 @@ def op_kupferschmidt1995() -> OptimizationProblem:
 
             # distribution
             FitParameter(parameter_id="ftissue_mid", start_value=50,
-                         lower_bound=1E-1, upper_bound=1E2,
+                         lower_bound=VMAX_BOUNDS[0], upper_bound=VMAX_BOUNDS[1],
                          unit="liter/min"),
             # FitParameter(parameter_id="fup_mid", start_value=0.1,
             #               lower_bound=0.05, upper_bound=0.3,
             #              unit="dimensionless"),
             FitParameter(parameter_id="ftissue_mid1oh", start_value=1.0,
-                         lower_bound=1, upper_bound=1E5,
+                         lower_bound=VMAX_BOUNDS[0], upper_bound=VMAX_BOUNDS[1],
                          unit="liter/min"),
             # FitParameter(parameter_id="fup_mid1oh", start_value=0.1,
             #             lower_bound=0.01, upper_bound=0.3,

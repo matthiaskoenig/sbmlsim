@@ -67,16 +67,17 @@ if __name__ == "__main__":
         problem_factory = op_kupferschmidt1995
 
     fit_kwargs = {
-        "weighting_local": WeightingLocalType.RELATIVE_ONE_OVER_WEIGHTING,
-        "residual_type": ResidualType.RELATIVE_RESIDUALS
+        "weighting_local": WeightingLocalType.ABSOLUTE_ONE_OVER_WEIGHTING,
+        "residual_type": ResidualType.ABSOLUTE_NORMED_RESIDUALS
     }
 
     if 0:
-        opt_res_lq, problem = fit_lsq(problem_factory, **fit_kwargs)
-        analyze_optimization(opt_res_lq, problem=problem,
-                         output_path=fit_path_lsq, **fit_kwargs)
+        opt_res_lsq, problem = fit_lsq(problem_factory, **fit_kwargs)
+        analyze_optimization(opt_res_lsq, problem=problem,
+                             output_path=fit_path_lsq, **fit_kwargs)
 
+    if 1:
 
-    opt_res_de, problem = fit_de(problem_factory, **fit_kwargs)
-    analyze_optimization(opt_res_de, problem=problem,
+        opt_res_de, problem = fit_de(problem_factory, **fit_kwargs)
+        analyze_optimization(opt_res_de, problem=problem,
                          output_path=fit_path_de, **fit_kwargs)

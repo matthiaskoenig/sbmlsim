@@ -58,9 +58,9 @@ class ResidualType(Enum):
 
     Relative residuals make different fit mappings comparable.
     """
-    ABSOLUTE_RESIDUALS = 1
-    RELATIVE_RESIDUALS = 2
-    # ABSOLUTE_NORMED_RESIDUALS = 3  # absolute residuals normed per mean data point
+    ABSOLUTE_RESIDUALS = 1  # (no local effects)
+    RELATIVE_RESIDUALS = 2  # (local effects) induces local weighting by normalizing every residual by absolute value
+    ABSOLUTE_NORMED_RESIDUALS = 3  # (no local effects) absolute residuals normed per mean reference data
 
 
 class OptimizationProblem(object):
@@ -461,6 +461,7 @@ class OptimizationProblem(object):
 
             # calculate absolute & relative residuals
             res_abs = y_obsip - self.y_references[k]
+            res_abs_normed = res_abs / self.y_references[k].mean()
             res_rel = res_abs / self.y_references[k]
             res_rel[np.isnan(res_rel)] = 0  # no cost contribution
             res_rel[np.isinf(res_rel)] = 0
@@ -468,6 +469,8 @@ class OptimizationProblem(object):
             # select correct residuals
             if self.residual_type == ResidualType.ABSOLUTE_RESIDUALS:
                 res = res_abs
+            elif self.residual_type == ResidualType.ABSOLUTE_NORMED_RESIDUALS:
+                res = res_abs_normed
             elif self.residual_type == ResidualType.RELATIVE_RESIDUALS:
                 res = res_rel
 
@@ -483,6 +486,9 @@ class OptimizationProblem(object):
                 residual_data["y_obsip"].append(y_obsip)
                 residual_data["residuals"].append(res)
                 residual_data["residuals_weighted"].append(resw)
+                residual_data["res_abs"].append(res_abs)
+                residual_data["res_abs_normed"].append(res_abs_normed)
+                residual_data["res_rel"].append(res_rel)
                 # FIXME: this depends on loss function
                 residual_data["cost"].append(0.5 * np.sum(np.power(resw, 2)))
 
@@ -573,6 +579,8 @@ class OptimizationProblem(object):
                 x_obs = res_data['x_obs'][k]
                 y_obs = res_data['y_obs'][k]
 
+                # FIXME: add residuals
+
                 # plot data
                 if y_ref_err is None:
                     ax.plot(x_ref, y_ref, "s", color="black", label="reference_data")
@@ -630,8 +638,12 @@ class OptimizationProblem(object):
                 x_obs = res_data['x_obs'][k]
                 y_obs = res_data['y_obs'][k]
                 y_obsip = res_data['y_obsip'][k]
+
                 res = res_data['residuals'][k]
                 res_weighted = res_data['residuals_weighted'][k]
+                res_abs = res_data['res_abs'][k]
+                res_rel = res_data['res_rel'][k]
+
                 cost = res_data['cost'][k]
 
                 for ax in (ax1, ax2, ax3):
@@ -644,21 +656,22 @@ class OptimizationProblem(object):
                 else:
                     ax1.errorbar(x_ref, y_ref, yerr=y_ref_err,
                                  marker="s", color="black", label="reference_data")
-                ax1.plot(x_obs, y_obs, "-",
-                         color="blue", label="observable")
-                ax1.plot(x_ref, y_obsip, "o", color="blue",
-                         label="interpolation")
+
+                ax1.plot(x_obs, y_obs, "-", color="blue", label="observable")
+                ax1.plot(x_ref, y_obsip, "o", color="blue", label="interpolation")
                 for ax in (ax1, ax2):
-                    ax.plot(x_ref, res, "o", color="darkorange",
-                            label="residuals")
-                ax1.fill_between(x_ref, res, np.zeros_like(res),
+                    ax.plot(x_ref, res_abs, "o", color="darkorange",
+                            label="obs-ref")
+                ax1.fill_between(x_ref, res_abs, np.zeros_like(res),
                                  alpha=0.4, color="darkorange", label="__nolabel__")
+
 
                 ax2.plot(x_ref, res_weighted, "o", color="darkgreen",
                          label="weighted residuals")
                 ax2.fill_between(x_ref, res_weighted,
-                                 np.zeros_like(res), alpha=0.4, color="darkgreen",
+                                 np.zeros_like(res_weighted), alpha=0.4, color="darkgreen",
                                  label="__nolabel__")
+
 
                 res_weighted2 = np.power(res_weighted, 2)
                 ax3.plot(x_ref, res_weighted2, "o", color="darkred",
@@ -680,8 +693,9 @@ class OptimizationProblem(object):
                     )
                     ax1.set_title(full_title)
                 for ax in (ax1, ax2, ax3):
-                    plt.setp(ax.get_yticklabels(), visible=False)
+                    # plt.setp(ax.get_yticklabels(), visible=False)
                     # ax.set_ylabel("y")
+                    # ax.set_yscale("log")
                     ax.legend()
 
             # adapt axes
@@ -690,8 +704,8 @@ class OptimizationProblem(object):
                     ax1, ax2 = axes
                     ylim1 = ax1.get_ylim()
                     ylim2 = ax2.get_ylim()
-                    for ax in axes:
-                        ax.set_ylim([min(ylim1[0], ylim2[0]), max(ylim1[1],ylim2[1])])
+                    # for ax in axes:
+                    #    ax.set_ylim([min(ylim1[0], ylim2[0]), max(ylim1[1],ylim2[1])])
             if show_plots:
                 plt.show()
             if output_path is not None:
