@@ -25,3 +25,4 @@ docs/_build/
 sbmlsim/examples/experiments/repressilator/RepressilatorExperiment/RepressilatorExperiment_task_tc.h5
 
 sbmlsim/examples/experiments/midazolam/results/
+sbmlsim/examples/experiments/midazolam/results_fit/

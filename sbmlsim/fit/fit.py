@@ -23,8 +23,12 @@ def run_optimization(
     :param kwargs: additional arguments for optimizer, e.g. xtol
     :return: list of optimization results
     """
-    # initialize problem
-    problem.initialize()
+    # here the additional information must be injected
+    weighting_local = kwargs["weighting_local"]
+    residual_type = kwargs["residual_type"]
+
+    # initialize problem, which calculates errors
+    problem.initialize(weighting_local=weighting_local, residual_type=residual_type)
 
     # new simulator instance
     # FIXME: handle tolerances here
@@ -41,7 +45,7 @@ def run_optimization(
 def analyze_optimization(opt_result: OptimizationResult,
                          output_path: Path=None, problem: OptimizationProblem=None,
                          show_plots=True,
-                         weighting_local=None, weighting_global=None,
+                         weighting_local=None, residual_type=None,
                          variable_step_size=True, absolute_tolerance=1E-6, relative_tolerance=1E-6):
     # write report (additional folders based on runs)
     
@@ -56,16 +60,15 @@ def analyze_optimization(opt_result: OptimizationResult,
 
     # plot top fit
     if problem:
-        # FIMXE: problem references not initialized on multi-core and
-        # don't have a simulator yet
+        # FIMXE: problem references not initialized on multi-core and don't have a simulator yet
+
+        problem.initialize(weighting_local=weighting_local, residual_type=residual_type)
         # FIXME: tolerances
-        problem.initialize()
         problem.set_simulator(simulator=SimulatorSerial())
         problem.variable_step_size = variable_step_size
         problem.absolute_tolerance = absolute_tolerance
         problem.relative_tolerance = relative_tolerance
-        problem.weighting_local = weighting_local
-        problem.weighting_global = weighting_global
+
 
         problem.report(output_path=output_path)
         problem.plot_fits(x=opt_result.xopt, output_path=output_path, show_plots=show_plots)
