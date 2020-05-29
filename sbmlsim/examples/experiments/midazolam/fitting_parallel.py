@@ -71,11 +71,12 @@ if __name__ == "__main__":
         "residual_type": ResidualType.RELATIVE_RESIDUALS
     }
 
-    opt_res_lq, problem = fit_lsq(problem_factory, **fit_kwargs)
-    analyze_optimization(opt_res_lq, problem=problem,
+    if 0:
+        opt_res_lq, problem = fit_lsq(problem_factory, **fit_kwargs)
+        analyze_optimization(opt_res_lq, problem=problem,
                          output_path=fit_path_lsq, **fit_kwargs)
-    exit()
 
-    opt_res_de, problem = fit_de(problem_factory, fit_kwargs)
+
+    opt_res_de, problem = fit_de(problem_factory, **fit_kwargs)
     analyze_optimization(opt_res_de, problem=problem,
                          output_path=fit_path_de, **fit_kwargs)
