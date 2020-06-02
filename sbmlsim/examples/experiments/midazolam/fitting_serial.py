@@ -21,8 +21,7 @@ def fitlq_mid1ohiv() -> Tuple[OptimizationResult, OptimizationProblem]:
         weighting_local=WeightingLocalType.ONE_OVER_WEIGHTING,
         weighting_global=ResidualType.NO_WEIGHTING,
         # parameters for least square optimization
-        sampling=SamplingType.LOGUNIFORM_LHS,
-        diff_step=0.05
+
     )
     return opt_res, problem
 

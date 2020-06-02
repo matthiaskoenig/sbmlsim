@@ -48,6 +48,7 @@ def run_optimization_parallel(problem: OptimizationProblem, size: int, n_cores: 
     # set number of cores
     if n_cores is None:
         n_cores = max(1, multiprocessing.cpu_count()-1)
+        logger.warning(f"Running {n_cores} workers")
     if size < 2*n_cores:
         logger.warning(f"Less simulations then 2 * cores: '{size} < {n_cores}',"
                        f"increasing number of simulations to '{2 * n_cores}'.")
