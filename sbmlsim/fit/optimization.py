@@ -121,6 +121,7 @@ class OptimizationProblem(object):
         self.x_references = []
         self.y_references = []
         self.y_errors = []
+        self.y_errors_type = []
         self.weights_local = []  # weights for data points
         self.weights_global_user = []  # user defined weights per mapping
 
@@ -188,11 +189,18 @@ class OptimizationProblem(object):
                 x_ref = data_ref.x.magnitude
                 y_ref = data_ref.y.magnitude
 
+                # Use errors for weighting (tries SD and falls back on SE)
+                # FIXME: not handled uniquely, i.e., slightly different weighting
                 y_ref_err = None
                 if data_ref.y_sd is not None:
                     y_ref_err = data_ref.y_sd.to(obs_y_unit).magnitude
+                    y_ref_err_type = "SD"
                 elif data_ref.y_se is not None:
                     y_ref_err = data_ref.y_se.to(obs_y_unit).magnitude
+                    y_ref_err_type = "SE"
+                else:
+                    y_ref_err_type = None
+
                 # handle special case of all NaN errors
                 if y_ref_err is not None and np.all(np.isnan(y_ref_err)):
                     y_ref_err = None
@@ -229,7 +237,7 @@ class OptimizationProblem(object):
                         else:
                             raise ValueError(f"Local weighting not supported: {self.weighting_local}")
                     else:
-                        logger.warning(f"Using local weighting '{self.weighting_local}', but"
+                        logger.warning(f"Using local weighting '{self.weighting_local}', but "
                                        f"no errors exist in reference data. Using default "
                                        f"weights of 1.0 for all data points.")
 
@@ -246,6 +254,7 @@ class OptimizationProblem(object):
                 self.x_references.append(x_ref)
                 self.y_references.append(y_ref)
                 self.y_errors.append(y_ref_err)
+                self.y_errors_type.append(y_ref_err_type)
                 self.weights_local.append(weights)
                 self.weights_global_user.append(weight_global_user)
 
@@ -432,14 +441,9 @@ class OptimizationProblem(object):
             }
             self.simulations[k].timecourses[0].changes.update(changes)
 
-            # set model in simulator (FIXME: update only when necessary)
+            # set model in simulator
             simulator.set_model(model=self.models[k])
-            # FIXME: only update when necessary
-            simulator.set_integrator_settings(
-                variable_step_size=self.variable_step_size,
-                relative_tolerance=self.relative_tolerance,
-                absolute_tolerance=self.absolute_tolerance
-            )
+
             # print(simulator.r.integrator)
             simulator.set_timecourse_selections(selections=self.selections[k])
 
@@ -548,7 +552,9 @@ class OptimizationProblem(object):
 
     @timeit
     def plot_fits(self, x, output_path: Path = None, show_plots: bool = True):
-        """ Plot fitted curves.
+        """ Plot fitted curves with experimental data.
+
+        Overview of all fit mappings.
 
         :param x: parameters to evaluate
         :return:
@@ -567,6 +573,7 @@ class OptimizationProblem(object):
             x_ref = self.x_references[k]
             y_ref = self.y_references[k]
             y_ref_err = self.y_errors[k]
+            y_ref_err_type = self.y_errors_type[k]
             x_id = self.xid_observable[k]
             y_id = self.yid_observable[k]
 
@@ -586,9 +593,10 @@ class OptimizationProblem(object):
                     ax.plot(x_ref, y_ref, "s", color="black", label="reference_data")
                 else:
                     ax.errorbar(x_ref, y_ref, yerr=y_ref_err,
-                                 marker="s", color="black", label="reference_data")
+                                 marker="s", color="black", label=f"reference_data ± {y_ref_err_type}")
                 # plot simulation
                 ax.plot(x_obs, y_obs, "-", color="blue", label="observable")
+                ax.legend()
 
             axes[k][1].set_yscale("log")
             axes[k][1].set_ylim(bottom=0.3 * np.nanmin(y_ref))

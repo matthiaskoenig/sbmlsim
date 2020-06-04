@@ -18,6 +18,13 @@ logger = logging.getLogger(__name__)
 class RoadrunnerSBMLModel(AbstractModel):
     """Roadrunner model wrapper."""
 
+    IntegratorSettingKeys = {
+        "variable_step_size",
+        "stiff",
+        "absolute_tolerance",
+        "relative_tolerance"
+    }
+
     def __init__(self, source: str, base_path: Path = None,
                  changes: Dict = None,
                  sid: str = None, name: str = None,
@@ -162,6 +169,11 @@ class RoadrunnerSBMLModel(AbstractModel):
         """
         integrator = r.getIntegrator()
         for key, value in kwargs.items():
+            if key not in RoadrunnerSBMLModel.IntegratorSettingKeys:
+                logger.debug(f"Unsupported integrator key for roadrunner "
+                               f"integrator: '{key}'")
+                continue
+
             # adapt the absolute_tolerance relative to the amounts
             if key == "absolute_tolerance":
                 # special hack to acount for amount and concentration absolute

@@ -31,8 +31,7 @@ def run_optimization(
     problem.initialize(weighting_local=weighting_local, residual_type=residual_type)
 
     # new simulator instance
-    # FIXME: handle tolerances here
-    simulator = SimulatorSerial()
+    simulator = SimulatorSerial(**kwargs)  # sets tolerances
     problem.set_simulator(simulator)
 
     # optimize
