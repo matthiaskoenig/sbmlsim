@@ -378,7 +378,7 @@ class OptimizationProblem(object):
                         fun=self.residuals, x0=x0log, bounds=boundslog, **kwargs
                     )
             except RuntimeError as err:
-                logger.error(f"RuntimeError in ODE integration: {err}")
+                logger.error(f"RuntimeError in ODE integration (optimize): {err}")
                 opt_result = RuntimeErrorOptimizeResult()
                 opt_result.x = x0log
             te = time.time()
@@ -396,8 +396,8 @@ class OptimizationProblem(object):
                 opt_result = optimize.differential_evolution(
                     func=self.cost_least_square, bounds=de_bounds_log, **kwargs
                 )
-            except RuntimeError:
-                logger.error("RuntimeError in ODE integration")
+            except RuntimeError as err:
+                logger.error(f"RuntimeError in ODE integration (optimize): {err}")
                 opt_result = RuntimeErrorOptimizeResult()
                 opt_result.x = x0log
             te = time.time()
@@ -453,18 +453,26 @@ class OptimizationProblem(object):
 
             # run simulation
             # logger.warning(f"Running simulation: {k} - {self.experiment_keys[k]} - {mapping_id}")
-            df = simulator._timecourses([simulation])[0]
 
-            # interpolation of simulation results
-            f = interpolate.interp1d(
-                x=df[self.xid_observable[k]],
-                y=df[self.yid_observable[k]],
-                copy=False, assume_sorted=True
-            )
-            y_obsip = f(self.x_references[k])
+            try:
+                df = simulator._timecourses([simulation])[0]
 
-            # calculate absolute & relative residuals
-            res_abs = y_obsip - self.y_references[k]
+                # interpolation of simulation results
+                f = interpolate.interp1d(
+                    x=df[self.xid_observable[k]],
+                    y=df[self.yid_observable[k]],
+                    copy=False, assume_sorted=True
+                )
+                y_obsip = f(self.x_references[k])
+
+                # calculate absolute & relative residuals
+                res_abs = y_obsip - self.y_references[k]
+
+            except RuntimeError as err:
+                # something went wrong in the integration
+                logger.error(f"RuntimeError in ODE integration (residuals for {x}): {err}")
+                res_abs = 5.0 * self.y_references[k]  # total error
+
             res_abs_normed = res_abs / self.y_references[k].mean()
             res_rel = res_abs / self.y_references[k]
             res_rel[np.isnan(res_rel)] = 0  # no cost contribution
