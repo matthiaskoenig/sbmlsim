@@ -35,7 +35,7 @@ def fit_de(problem_factory,
     """Global differential evolution fitting."""
     problem = problem_factory()
     opt_res = run_optimization_parallel(
-        problem=problem, size=100, seed=1234,
+        problem=problem, size=500, seed=1234,
         optimizer=OptimizerType.DIFFERENTIAL_EVOLUTION,
         weighting_local=weighting_local,
         residual_type=residual_type,
