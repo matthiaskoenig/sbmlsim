@@ -40,6 +40,7 @@ class Units(object):
         ureg.define('none = count')
         ureg.define('item = count')
         ureg.define('percent = 0.01*count')
+        # FIXME: manual conversion
         ureg.define('IU = 0.0347 * mg')  # IU for insulin ! FIXME better handling of general IU
         ureg.define('IU/ml = 0.0347 * mg/ml')  # IU for insulin ! FIXME better handling of general IU
         return ureg
