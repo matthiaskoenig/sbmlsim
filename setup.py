@@ -33,6 +33,14 @@ else:
 long_description = read('README.rst')
 setup_kwargs['long_description'] = long_description
 
+# ray not supported on windows
+if os.name == 'nt':
+    install_ray = []
+else:
+    install_ray = [
+        "ray>=0.8.0",
+    ]
+
 setup(
     name='sbmlsim',
     description='SBML simulation made easy',
@@ -81,7 +89,6 @@ setup(
         "libroadrunner>=1.6.0",
         "psutil>=5.6.3",
         "setproctitle>=1.1.10",
-        "ray>=0.8.0",
         "matplotlib>=3.1",
         "altair>=4.0.0",
         "seaborn>=0.10.0",
@@ -93,6 +100,6 @@ setup(
         "recommonmark",
         "pytest>=5.3.2",
         "pytest-cov>=2.8.1",
-    ],
+    ] + install_ray,
     extras_require={},
     **setup_kwargs)
