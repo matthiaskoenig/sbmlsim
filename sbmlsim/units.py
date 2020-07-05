@@ -81,7 +81,7 @@ class Units(object):
         """ Get pint unit dictionary for given model.
 
         :param model_path: path to SBML model
-        :return:
+        :return: udict, ureg
         """
         if isinstance(model_path, Path):
             doc = libsbml.readSBMLFromFile(str(model_path))  # type: libsbml.SBMLDocument

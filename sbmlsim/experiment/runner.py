@@ -78,6 +78,9 @@ class ExperimentRunner(object):
                         show_figures: bool = False,
                         save_results: bool = False) -> List:
         """Run the experiments."""
+        if not output_path.exists():
+            output_path.mkdir(parents=True)
+
         exp_results = []
         for sid, experiment in self.experiments.items():
             logger.info(f"Running SimulationExperiment: {sid}")

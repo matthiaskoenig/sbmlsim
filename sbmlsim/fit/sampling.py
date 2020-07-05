@@ -35,6 +35,8 @@ def create_samples(parameters: List[FitParameter], size, sampling=SamplingType.L
     :param min_bound: hard upper bound
     :return:
     """
+    # TODO: add option to get current model parameter values as start values for local gradient descent
+
     # seed for reproducibility
     if seed:
         np.random.seed(seed)

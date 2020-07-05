@@ -189,6 +189,8 @@ class OptimizationProblem(object):
                 x_ref = data_ref.x.magnitude
                 y_ref = data_ref.y.magnitude
 
+
+
                 # Use errors for weighting (tries SD and falls back on SE)
                 # FIXME: not handled uniquely, i.e., slightly different weighting
                 y_ref_err = None
@@ -205,11 +207,26 @@ class OptimizationProblem(object):
                 if y_ref_err is not None and np.all(np.isnan(y_ref_err)):
                     y_ref_err = None
 
+                # remove zero values for relative errors (no inf residuals)
+                if self.residual_type == ResidualType.RELATIVE_RESIDUALS:
+                    nonzero_mask = (y_ref != 0.0)
+                    if not np.all(nonzero_mask):
+                        logger.warning(f"Zero (0.0) values in y data in experiment '{sid}' "
+                                       f"mapping '{mapping_id}' removed: {y_ref}")
+                        x_ref = x_ref[nonzero_mask]
+                        if y_ref_err is not None:
+                            y_ref_err = y_ref_err[nonzero_mask]
+                        y_ref = y_ref[nonzero_mask]
+
                 # remove NaN
-                x_ref = x_ref[~np.isnan(y_ref)]
+                nonnan_mask = ~np.isnan(y_ref)
+                if not np.all(nonnan_mask):
+                    logger.warning(f"NaN values in y data in experiment '{sid}' "
+                                   f"mapping '{mapping_id}' removed: {y_ref}")
+                x_ref = x_ref[nonnan_mask]
                 if y_ref_err is not None:
-                    y_ref_err = y_ref_err[~np.isnan(y_ref)]
-                y_ref = y_ref[~np.isnan(y_ref)]
+                    y_ref_err = y_ref_err[nonnan_mask]
+                y_ref = y_ref[nonnan_mask]
 
                 # calculate local weights based on errors
                 weights = np.ones_like(y_ref)  # local weights are by default 1.0
@@ -469,7 +486,7 @@ class OptimizationProblem(object):
                 res_abs = y_obsip - self.y_references[k]
 
             except RuntimeError as err:
-                # something went wrong in the integration
+                # something went wrong in the integration (setting high residuals & cost)
                 logger.error(f"RuntimeError in ODE integration (residuals for {x}): {err}")
                 res_abs = 5.0 * self.y_references[k]  # total error
 
@@ -489,6 +506,7 @@ class OptimizationProblem(object):
             # apply local weighting & user defined weighting
             resw = res * self.weights_local[k] * self.weights_global_user[k]
             parts.append(resw)
+            # print(self.experiment_keys[k], 'mapping_id:', mapping_id, resw)
 
             # for post_processing
             if complete_data:
