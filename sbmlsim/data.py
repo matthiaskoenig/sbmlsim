@@ -280,7 +280,7 @@ class DataSet(pd.DataFrame):
 
             elif key == "unit":
                 # add unit to "mean" and "value"
-                for key in ["mean", "value"]:
+                for key in ["mean", "value", "median"]:
                     if (key in df.columns) and not (f"{key}_unit" in df.columns):
                         # FIXME: probably not a good idea to add columns while iterating over them
                         df[f"{key}_unit"] = df.unit

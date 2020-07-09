@@ -165,11 +165,15 @@ class SimulationExperiment(object):
         """Check that everything is okay with the experiment."""
         # string keys for main objects must be unique on SimulationExperiment
         all_keys = dict()
+        allowed_types = dict
         for field_key in ["_models", "_datasets", "_tasks", "_simulations", "_fit_mappings"]:
             field = getattr(self, field_key)
-            if not isinstance(field, dict):
+
+            if not isinstance(field, allowed_types):
                 raise ValueError(
-                    f"'{field_key} must be a dict, but '{field}' is type '{type(field)}'.")
+                    f"SimulationExperiment '{self.sid}': '{field_key} must be a '{allowed_types}', but '{field}' is type '{type(field)}'. "
+                    f"Check that the respective definition returns an object of type '{allowed_types}. "
+                    f"Often simply the return statement is missing (returning NoneType).")
             for key in getattr(self, field_key).keys():
                 if not isinstance(key, str):
                     raise ValueError(f"'{field_key} keys must be str: "

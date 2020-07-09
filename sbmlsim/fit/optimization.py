@@ -203,6 +203,10 @@ class OptimizationProblem(object):
                 else:
                     y_ref_err_type = None
 
+                # remove 0.0 from y-error
+                if y_ref_err is not None:
+                    y_ref_err[(y_ref_err == 0.0)] = np.NAN
+
                 # handle special case of all NaN errors
                 if y_ref_err is not None and np.all(np.isnan(y_ref_err)):
                     y_ref_err = None
@@ -218,15 +222,15 @@ class OptimizationProblem(object):
                             y_ref_err = y_ref_err[nonzero_mask]
                         y_ref = y_ref[nonzero_mask]
 
-                # remove NaN
+                # remove NaN from y-data
                 nonnan_mask = ~np.isnan(y_ref)
                 if not np.all(nonnan_mask):
                     logger.warning(f"NaN values in y data in experiment '{sid}' "
                                    f"mapping '{mapping_id}' removed: {y_ref}")
                 x_ref = x_ref[nonnan_mask]
+                y_ref = y_ref[nonnan_mask]
                 if y_ref_err is not None:
                     y_ref_err = y_ref_err[nonnan_mask]
-                y_ref = y_ref[nonnan_mask]
 
                 # calculate local weights based on errors
                 weights = np.ones_like(y_ref)  # local weights are by default 1.0
@@ -245,6 +249,7 @@ class OptimizationProblem(object):
                         elif self.weighting_local == WeightingLocalType.RELATIVE_ONE_OVER_WEIGHTING:
                             # weighing data points by 1/(y_ref_err/y_ref)
                             # calculate y_mean/y_ref_err which is robust to missing data (NaN and 0.0 errors)
+                            # FIXME: better weighting strategy to handle zero weighting for NaN errors
                             weights = y_ref / y_ref_err  # the larger the error, the smaller the weight
 
                             weights[np.isnan(weights)] = np.nanmax(weights)  # NaNs are filled with minimal errors, i.e. max weights
