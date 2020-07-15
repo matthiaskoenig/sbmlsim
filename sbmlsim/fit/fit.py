@@ -48,6 +48,9 @@ def analyze_optimization(opt_result: OptimizationResult,
                          variable_step_size=True, absolute_tolerance=1E-6, relative_tolerance=1E-6):
     # write report (additional folders based on runs)
     
+    if output_path is not None:
+        output_path.mkdir(parents=True, exist_ok=True)
+
     opt_result.report(output_path=output_path)
 
     # FIXME: save and load the results
