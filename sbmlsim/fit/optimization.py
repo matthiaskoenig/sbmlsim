@@ -100,6 +100,8 @@ class OptimizationProblem(object):
             raise ValueError("'weighting_local' is required.")
         if residual_type is None:
             raise ValueError("'residual_type' is required.")
+        logger.info(f"weighting_local: {weighting_local}")
+        logger.info(f"residual_type: {residual_type}")
 
         self.weighting_local = weighting_local
         self.residual_type = residual_type
@@ -189,10 +191,8 @@ class OptimizationProblem(object):
                 x_ref = data_ref.x.magnitude
                 y_ref = data_ref.y.magnitude
 
-
-
                 # Use errors for weighting (tries SD and falls back on SE)
-                # FIXME: not handled uniquely, i.e., slightly different weighting
+                # FIXME: SE & SD not handled uniquely, i.e., slightly different weighting
                 y_ref_err = None
                 if data_ref.y_sd is not None:
                     y_ref_err = data_ref.y_sd.to(obs_y_unit).magnitude
@@ -203,19 +203,22 @@ class OptimizationProblem(object):
                 else:
                     y_ref_err_type = None
 
-                # remove 0.0 from y-error
+                # handle missing data (0.0 and NaN
                 if y_ref_err is not None:
+                    # remove 0.0 from y-error
                     y_ref_err[(y_ref_err == 0.0)] = np.NAN
-
-                # handle special case of all NaN errors
-                if y_ref_err is not None and np.all(np.isnan(y_ref_err)):
-                    y_ref_err = None
+                    if np.all(np.isnan(y_ref_err)):
+                        # handle special case of all NaN errors
+                        y_ref_err = None
+                    else:
+                        # some NaNs could exist (err is maximal error of all data points)
+                        y_ref_err[np.isnan(y_ref_err)] = np.nanmax(y_ref_err)
 
                 # remove zero values for relative errors (no inf residuals)
                 if self.residual_type == ResidualType.RELATIVE_RESIDUALS:
                     nonzero_mask = (y_ref != 0.0)
                     if not np.all(nonzero_mask):
-                        logger.warning(f"Zero (0.0) values in y data in experiment '{sid}' "
+                        logger.debug(f"Zero (0.0) values in y data in experiment '{sid}' "
                                        f"mapping '{mapping_id}' removed: {y_ref}")
                         x_ref = x_ref[nonzero_mask]
                         if y_ref_err is not None:
@@ -225,42 +228,44 @@ class OptimizationProblem(object):
                 # remove NaN from y-data
                 nonnan_mask = ~np.isnan(y_ref)
                 if not np.all(nonnan_mask):
-                    logger.warning(f"Removing NaN values in '{sid}:{mapping_id}' y data: {y_ref}")
+                    logger.debug(f"Removing NaN values in '{sid}:{mapping_id}' y data: {y_ref}")
                 x_ref = x_ref[nonnan_mask]
                 y_ref = y_ref[nonnan_mask]
                 if y_ref_err is not None:
                     y_ref_err = y_ref_err[nonnan_mask]
 
+                # at this point all x_ref, y_ref and y_ref_err (if not None) should be numerical
+                if np.any(~np.isfinite(x_ref)):
+                    raise ValueError(f"{fit_experiment}.{mapping_id}: NaN or INF in x_ref: {x_ref}")
+                if np.any(~np.isfinite(y_ref)):
+                    raise ValueError(f"{fit_experiment}.{mapping_id}: NaN or INF in y_ref: {y_ref}")
+                if y_ref_err is not None:
+                    if np.any(~np.isfinite(y_ref_err)):
+                        raise ValueError(f"{fit_experiment}.{mapping_id}: NaN or INF in y_ref_err: {y_ref_err}")
+
                 # calculate local weights based on errors
                 weights = np.ones_like(y_ref)  # local weights are by default 1.0
+
                 if self.weighting_local != WeightingLocalType.NO_WEIGHTING:
                     if y_ref_err is not None:
                         if self.weighting_local == WeightingLocalType.ABSOLUTE_ONE_OVER_WEIGHTING:
-                            # calculate 1/y_ref_err which is robust to missing data (NaN and 0.0 errors)
                             weights = 1.0 / y_ref_err  # the larger the error, the smaller the weight
-
-                            weights[np.isnan(weights)] = np.nanmax(weights)  # NaNs are filled with minimal errors, i.e. max weights
-                            weights[np.isinf(weights)] = np.nanmax(weights)  # Zeros are filled with minimal errors, i.e. max weights
-
-                            # normalize maximal weight to 1.0
-                            weights = weights / np.max(weights) # weights in (0, 1]
-
+                            weights = weights / np.max(weights)  # normalize maximal weight to 1.0, weights in (0, 1]
                         elif self.weighting_local == WeightingLocalType.RELATIVE_ONE_OVER_WEIGHTING:
-                            # weighing data points by 1/(y_ref_err/y_ref)
-                            # calculate y_mean/y_ref_err which is robust to missing data (NaN and 0.0 errors)
-                            # FIXME: better weighting strategy to handle zero weighting for NaN errors
                             weights = y_ref / y_ref_err  # the larger the error, the smaller the weight
-
-                            weights[np.isnan(weights)] = np.nanmax(weights)  # NaNs are filled with minimal errors, i.e. max weights
-                            weights[np.isinf(weights)] = np.nanmax(weights)  # Zeros are filled with minimal errors, i.e. max weights
-
-                            # no additional normalization
                         else:
                             raise ValueError(f"Local weighting not supported: {self.weighting_local}")
                     else:
                         logger.warning(f"Using local weighting '{self.weighting_local}', but "
                                        f"no errors exist in reference data. Using default "
                                        f"weights of 1.0 for all data points.")
+
+                if False:
+                    print("-" * 80)
+                    print(f"{fit_experiment}.{mapping_id}")
+                    print(f"weights: {weights}")
+                    print(f"y_ref: {y_ref}")
+                    print(f"y_ref_err: {y_ref_err}")
 
                 # lookup maps
                 self.models.append(model)
@@ -494,7 +499,7 @@ class OptimizationProblem(object):
                 logger.error(f"RuntimeError in ODE integration (residuals for {x}): {err}")
                 res_abs = 5.0 * self.y_references[k]  # total error
 
-            res_abs_normed = res_abs / self.y_references[k].mean()
+            res_abs_normed = res_abs / self.y_references[k].mean()  # FIXME: why strange values here?
             res_rel = res_abs / self.y_references[k]
             res_rel[np.isnan(res_rel)] = 0  # no cost contribution
             res_rel[np.isinf(res_rel)] = 0
@@ -507,10 +512,14 @@ class OptimizationProblem(object):
             elif self.residual_type == ResidualType.RELATIVE_RESIDUALS:
                 res = res_rel
 
-            # apply local weighting & user defined weighting
-            resw = res * self.weights_local[k] * self.weights_global_user[k]
+            # apply local weighting & user defined weighting (in the cost function the weighted residuals are squared)
+            # sum(w_i * r_i^2) = sum((w_i^0.5*r_i)^2)
+            resw = res * np.sqrt(self.weights_local[k]) * np.sqrt(self.weights_global_user[k])  # FIXME: handle square of global weights correctly
             parts.append(resw)
-            # print(self.experiment_keys[k], 'mapping_id:', mapping_id, resw)
+
+            #if False:
+            #    print("residuals:", self.experiment_keys[k], 'mapping_id:', mapping_id, res)
+            #    print("residuals weighted:", self.experiment_keys[k], 'mapping_id:', mapping_id, resw)
 
             # for post_processing
             if complete_data:
