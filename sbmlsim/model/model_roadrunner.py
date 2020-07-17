@@ -80,7 +80,7 @@ class RoadrunnerSBMLModel(AbstractModel):
     def get_state_path(self):
         if self.source.is_path():
             mdf5 = md5_for_path(self.source.path)
-            return Path(f"{self.source.path}_{mdf5}.state")
+            return Path(f"{self.source.path}_rr{roadrunner.__version__}_{mdf5}.state")
         else:
             return None
 

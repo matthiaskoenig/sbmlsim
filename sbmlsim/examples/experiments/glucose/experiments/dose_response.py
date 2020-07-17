@@ -105,7 +105,7 @@ class DoseResponseExperiment(SimulationExperiment):
             dimensions=[
                 Dimension(
                     "dim1", changes={
-                        '[glc_ext]': self.Q_(np.linspace(2, 20, num=10), 'mM')
+                        '[glc_ext]': self.Q_(np.linspace(2, 20, num=30), 'mM')
                     }),
             ]
         )
