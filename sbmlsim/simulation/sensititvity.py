@@ -250,8 +250,11 @@ class ModelSensitivity(object):
 if __name__ == "__main__":
     from pprint import pprint
     from sbmlsim.tests.constants import MODEL_REPRESSILATOR
+
+    print("Loading model")
     model = RoadrunnerSBMLModel(MODEL_REPRESSILATOR)
 
+    print("Reference dict")
     p_ref = ModelSensitivity.reference_dict(
         model=model,
         stype=SensitivityType.PARAMETER_SENSITIVITY
@@ -261,6 +264,7 @@ if __name__ == "__main__":
         stype=SensitivityType.SPECIES_SENSITIVITY
     )
 
+    print("Apply changes")
     pprint(p_ref)
     pprint(ModelSensitivity.apply_change_to_dict(p_ref, change=0.1))
     pprint(ModelSensitivity.apply_change_to_dict(p_ref, change=-0.1))
