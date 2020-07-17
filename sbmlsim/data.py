@@ -21,8 +21,6 @@ class Data(object):
     # Possible Data:
     # simulation result: access via id
     # Dataset access via id
-
-    # FIXME: must also handle all the unit conversions
     """
     class Types(Enum):
         TASK = 1
@@ -257,6 +255,9 @@ class DataSet(pd.DataFrame):
         """
         if not isinstance(ureg, UnitRegistry):
             raise ValueError(f"ureg must be a UnitRegistry, but '{ureg}' is '{type(ureg)}'")
+        if df.empty:
+            raise ValueError(f"DataFrame cannot be empty, check DataFrame: {df}")
+
         if udict is None:
             udict = {}
 
@@ -271,6 +272,9 @@ class DataSet(pd.DataFrame):
                 if len(units) > 1:
                     logger.error(f"Column '{key}' units are not unique: "
                                  f"'{units}'")
+                elif len(units) == 0:
+                    logger.error(f"Column '{key}' units are missing: '{units}'")
+                    print(df.head())
                 item_key = key[0:-5]
                 if item_key not in df.columns:
                     logger.error(f"Missing * column '{item_key}' for unit "

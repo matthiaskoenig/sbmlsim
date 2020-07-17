@@ -59,44 +59,12 @@ class MatplotlibFigureSerializer(object):
             ax = fig.add_subplot(
                 gs[ridx:ridx+subplot.row_span, cidx:cidx+subplot.col_span]
             )  # type: plt.Axes
-            # axes labels and legends
+
             plot = subplot.plot
-            if plot.name:
-                ax.set_title(plot.name)
-            xgrid = False
-            if plot.xaxis:
-                xax = plot.xaxis  # type: Axis
-                ax.set_xscale(get_scale(xax))
-                if xax.name:
-                    ax.set_xlabel(f"{xax.name} [{xax.unit}]")
-                if xax.min:
-                    ax.set_xlim(left=xax.min)
-                if xax.max:
-                    ax.set_xlim(right=xax.max)
-                if xax.grid:
-                    xgrid = True
+            xax = plot.xaxis  # type: Axis
+            yax = plot.yaxis  # type: Axis
 
-            ygrid = False
-            if plot.yaxis:
-                yax = plot.yaxis  # type: Axis
-                ax.set_yscale(get_scale(yax))
-                if yax.name:
-                    ax.set_ylabel(f"{yax.name} [{yax.unit}]")
-                if yax.min:
-                    ax.set_ylim(bottom=yax.min)
-                if yax.max:
-                    ax.set_ylim(top=xax.max)
-                if yax.grid:
-                    ygrid = True
 
-            if xgrid and ygrid:
-                ax.grid(True, axis="both")
-            elif xgrid:
-                ax.grid(True, axis="x")
-            elif ygrid:
-                ax.grid(True, axis="y")
-            else:
-                ax.grid(False)
 
             # units
             xunit = xax.unit
@@ -155,6 +123,31 @@ class MatplotlibFigureSerializer(object):
                     ax.fill_between(x.magnitude, y.magnitude - y_std.magnitude,
                                     y.magnitude + y_std.magnitude,
                                     alpha=0.4, label="__nolabel__")
+
+            # plot settings
+            if plot.name:
+                ax.set_title(plot.name)
+
+            if plot.xaxis:
+                ax.set_xscale(get_scale(xax))
+                ax.set_xlim(xmin=xax.min, xmax=xax.max)
+                if xax.name:
+                    ax.set_xlabel(f"{xax.name} [{xax.unit}]")
+
+            if plot.yaxis:
+                ax.set_yscale(get_scale(yax))
+                ax.set_ylim(ymin=yax.min, ymax=yax.max)
+                if yax.name:
+                    ax.set_ylabel(f"{yax.name} [{yax.unit}]")
+
+            if xax.grid and xax.grid:
+                ax.grid(True, axis="both")
+            elif xax.grid:
+                ax.grid(True, axis="x")
+            elif yax.grid:
+                ax.grid(True, axis="y")
+            else:
+                ax.grid(False)
 
             if plot.legend:
                 ax.legend()

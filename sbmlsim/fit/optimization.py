@@ -225,8 +225,7 @@ class OptimizationProblem(object):
                 # remove NaN from y-data
                 nonnan_mask = ~np.isnan(y_ref)
                 if not np.all(nonnan_mask):
-                    logger.warning(f"NaN values in y data in experiment '{sid}' "
-                                   f"mapping '{mapping_id}' removed: {y_ref}")
+                    logger.warning(f"Removing NaN values in '{sid}:{mapping_id}' y data: {y_ref}")
                 x_ref = x_ref[nonnan_mask]
                 y_ref = y_ref[nonnan_mask]
                 if y_ref_err is not None:
