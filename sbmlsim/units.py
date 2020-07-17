@@ -165,7 +165,8 @@ class Units(object):
 
     @classmethod
     def unitDefinitionToString(cls, udef: libsbml.UnitDefinition) -> str:
-        """ Formating of units.
+        """ Formating of SBML unitDefinitions.
+
         Units have the general format
             (multiplier * 10^scale *ukind)^exponent
             (m * 10^s *k)^e

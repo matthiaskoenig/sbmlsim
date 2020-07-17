@@ -12,38 +12,33 @@ from sbmlsim.examples.experiments.midazolam import MIDAZOLAM_PATH
 RESULTS_PATH = MIDAZOLAM_PATH / "results"
 
 
-def fitlq_mid1ohiv() -> Tuple[OptimizationResult, OptimizationProblem]:
+def fit_lsq(problem_factory) -> Tuple[OptimizationResult, OptimizationProblem]:
     """Local least square fitting."""
-    problem = op_mid1oh_iv()
+    problem = problem_factory()
     opt_res = run_optimization(
         problem=problem, size=20, seed=1236,
         optimizer=OptimizerType.LEAST_SQUARE,
-        weighting_local=WeightingLocalType.ONE_OVER_WEIGHTING,
-        weighting_global=ResidualType.NO_WEIGHTING,
-        # parameters for least square optimization
-
+        weighting_local=WeightingLocalType.ABSOLUTE_ONE_OVER_WEIGHTING,
+        residual_type=ResidualType.ABSOLUTE_NORMED_RESIDUALS,
     )
     return opt_res, problem
 
 
-def fitde_mid1ohiv() -> Tuple[OptimizationResult, OptimizationProblem]:
+def fit_de(problem_factory) -> Tuple[OptimizationResult, OptimizationProblem]:
     """Global differential evolution fitting."""
-    problem = op_mid1oh_iv()
+    problem = problem_factory()
     opt_res = run_optimization(
         problem=problem, size=1, seed=1234,
         optimizer=OptimizerType.DIFFERENTIAL_EVOLUTION,
-        weighting_local=WeightingLocalType.ONE_OVER_WEIGHTING,
-        weighting_global=ResidualType.NO_WEIGHTING,
+        weighting_local=WeightingLocalType.ABSOLUTE_ONE_OVER_WEIGHTING,
+        residual_type=ResidualType.ABSOLUTE_NORMED_RESIDUALS,
     )
     return opt_res, problem
 
 
 if __name__ == "__main__":
-    opt_res_lq, problem = fitlq_mid1ohiv()
+    opt_res_lq, problem = fit_lsq(problem_factory=op_mid1oh_iv)
     analyze_optimization(opt_res_lq, problem=problem)
 
-    opt_res_de, problem = fitde_mid1ohiv()
+    opt_res_de, problem = fit_de(problem_factory=op_mid1oh_iv)
     analyze_optimization(opt_res_de, problem=problem)
-
-
-# TODO: FIX this

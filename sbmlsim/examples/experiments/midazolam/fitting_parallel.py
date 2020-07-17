@@ -11,33 +11,30 @@ RESULTS_PATH = MIDAZOLAM_PATH / "results"
 
 
 def fit_lsq(problem_factory,
-            weighting_local: WeightingLocalType,
-            residual_type: ResidualType) -> Tuple[OptimizationResult, OptimizationProblem]:
+            weighting_local: WeightingLocalType = WeightingLocalType.ABSOLUTE_ONE_OVER_WEIGHTING,
+            residual_type: ResidualType = ResidualType.ABSOLUTE_NORMED_RESIDUALS
+            ) -> Tuple[OptimizationResult, OptimizationProblem]:
     """Local least square fitting."""
     problem = problem_factory()
     opt_res = run_optimization_parallel(
         problem=problem, size=50, seed=1236,
-        n_cores=16,
+        n_cores=10,
         optimizer=OptimizerType.LEAST_SQUARE,
         weighting_local=weighting_local,
         residual_type=residual_type,
-
-        # parameters for least square optimization
-        sampling=SamplingType.LOGUNIFORM_LHS,
-        diff_step=0.05
     )
     return opt_res, problem
 
 
 def fit_de(problem_factory,
-           weighting_local: WeightingLocalType,
-           residual_type: ResidualType
+           weighting_local: WeightingLocalType = WeightingLocalType.ABSOLUTE_ONE_OVER_WEIGHTING,
+           residual_type: ResidualType = ResidualType.ABSOLUTE_NORMED_RESIDUALS
            ) -> Tuple[OptimizationResult, OptimizationProblem]:
     """Global differential evolution fitting."""
     problem = problem_factory()
     opt_res = run_optimization_parallel(
-        problem=problem, size=500, seed=1234,
-        # n_cores=16,
+        problem=problem, size=10, seed=1234,
+        n_cores=10,
         optimizer=OptimizerType.DIFFERENTIAL_EVOLUTION,
         weighting_local=weighting_local,
         residual_type=residual_type,
@@ -58,6 +55,7 @@ if __name__ == "__main__":
             p.mkdir(parents=True)
 
     # TODO: save problem (serializable part & results)
+    # TODO: run on cluster
     # json_str = opt_res_lq.to_json()
     # print(json_str)
     # opt_res2 = OptimizationResult.from_json(json_str)
