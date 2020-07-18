@@ -64,11 +64,13 @@ class MatplotlibFigureSerializer(object):
             xax = plot.xaxis  # type: Axis
             yax = plot.yaxis  # type: Axis
 
-
-
             # units
-            xunit = xax.unit
-            yunit = yax.unit
+            if xax is None:
+                logger.error(f"No xaxis in plot: {subplot}:{plot}")
+            if yax is None:
+                logger.error(f"No yaxis in plot: {subplot}:{plot}")
+            xunit = xax.unit if xax else None
+            yunit = yax.unit if yax else None
 
             for curve in plot.curves:
                 # TODO: sort by order
@@ -102,7 +104,6 @@ class MatplotlibFigureSerializer(object):
                     y_min = xres.dim_min(data.index).to(yunit)
                     y_max = xres.dim_max(data.index).to(yunit)
                 # print(y_std)
-
 
                 xerr = None
                 if curve.xerr is not None:

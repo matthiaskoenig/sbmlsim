@@ -105,8 +105,7 @@ setup(
         "Sphinx",
         "sphinx_rtd_theme",
         "recommonmark",
-        "pytest>=5.3.2",
-        "pytest-cov>=2.8.1",
+
     ] + install_ray,
     extras_require={},
     **setup_kwargs)
