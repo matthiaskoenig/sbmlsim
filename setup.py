@@ -85,12 +85,9 @@ setup(
 
         "python-libsbml-experimental>=5.18.1",
         "python-libsedml>=2.0.10",
-        # "python-libsedml>=2.0.9",
         "python-libcombine>=0.2.7",
-        # "python-libcombine==0.2.3",
         "python-libnuml>=1.1.1",
-        # "libroadrunner>=2.0.0",
-        "libroadrunner<2.0.0",
+        "libroadrunner>=2.0.0",
 
         "psutil>=5.6.3",
         "setproctitle>=1.1.10",
