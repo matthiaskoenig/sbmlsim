@@ -21,17 +21,24 @@ kwargs_sim = {'marker': None, 'linestyle': '-', 'linewidth': 2}
 # global settings for plots
 
 # FIXME: add global settings for plots:
-plt.rcParams.update({
-    'axes.labelsize': 'large',
-    'axes.labelweight': 'bold',
-    'axes.titlesize': 'medium',
-    'axes.titleweight': 'bold',
-    'legend.fontsize': 'small',
-    'xtick.labelsize': 'large',
-    'ytick.labelsize': 'large',
-    'figure.facecolor': '1.00',
-    'figure.dpi': '72',
-})
+
+
+# plt.rcParams.update({
+#     # figure settings
+#     'figure.facecolor': '1.00',
+#     'figure.dpi': '300',
+#     # axes title
+#     'axes.titlesize': 'medium',
+#     'axes.titleweight': 'bold',
+#     # axes label
+#     'axes.labelsize': 'large',
+#     'axes.labelweight': 'bold',
+#     # axes ticksize
+#     'xtick.labelsize': 'large',
+#     'ytick.labelsize': 'large',
+#     # legend
+#     'legend.fontsize': 10,  # small
+# })
 
 
 class MatplotlibFigureSerializer(object):
