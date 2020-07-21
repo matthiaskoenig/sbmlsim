@@ -329,12 +329,20 @@ class Plot(BasePlotObject):
         if curves is None:
             curves = list()
         self.legend = legend
+
+        if xaxis is not None:
+            if not isinstance(xaxis, Axis):
+                raise ValueError(f"'xaxis' must be of type Axis but: '{type(xaxis)}'")
+        if yaxis is not None:
+            if not isinstance(yaxis, Axis):
+                raise ValueError(f"'yaxis' must be of type Axis but: '{type(yaxis)}'")
+
         self.xaxis = xaxis
         self.yaxis = yaxis
         self.curves = curves
         self._figure = None  # type: Figure
 
-    def __str__(self):
+    def __str__(self) -> str:
         return f"<Plot: {self.xaxis} ~ {self.yaxis} ({len(self.curves)} curves)>"
 
     def to_dict(self):

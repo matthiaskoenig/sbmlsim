@@ -68,9 +68,13 @@ class MatplotlibFigureSerializer(object):
 
             # units
             if xax is None:
-                logger.error(f"No xaxis in plot: {subplot}")
+                logger.warning(f"No xaxis in plot: {subplot}")
             if yax is None:
-                logger.error(f"No yaxis in plot: {subplot}")
+                logger.warning(f"No yaxis in plot: {subplot}")
+            if (not xax) or (not yax):
+                if len(plot.curves) > 0:
+                    raise ValueError(f"xaxis and yaxis are required for plotting curves, but "
+                                     f"'xaxis={xax}' and 'yaxis={yax}'.")
 
             xunit = xax.unit if xax else None
             yunit = yax.unit if yax else None
