@@ -241,7 +241,11 @@ class SimulationExperiment(object):
         self._figures = self.figures()
 
         # create outputs
-        if output_path is not None:
+        if output_path is None:
+            if save_results:
+                logger.error("'output_path' required to save results.")
+
+        else:
             if not Path.exists(output_path):
                 Path.mkdir(output_path, parents=True)
                 logging.info(f"'output_path' created: '{output_path}'")
@@ -389,7 +393,8 @@ class SimulationExperiment(object):
             logger.warning(f"No results in SimulationExperiment: '{self.sid}'")
         else:
             for rkey, result in self.results.items():
-                result.to_netcdf(results_path / f"{self.sid}_{rkey}.h5")
+                result.to_netcdf(results_path / f"{self.sid}_{rkey}.nc")
+                result.to_tsv(results_path / f"{self.sid}_{rkey}.tsv")
 
     @timeit
     def save_figures(self, results_path):

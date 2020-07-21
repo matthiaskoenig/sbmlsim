@@ -144,21 +144,33 @@ class XResult:
                 ds[key].attrs["units"] = udict[key]
         return XResult(xdataset=ds, udict=udict, ureg=ureg)
 
-    def to_netcdf(self, path):
+    def to_netcdf(self, path_nc):
         """Store results as netcdf."""
-        self.xds.to_netcdf(path)
+        self.xds.to_netcdf(path_nc)
 
+    def to_tsv(self, path_tsv):
         '''
         if self._df is not None:
             with pd.HDFStore(path, complib="zlib", complevel=9) as store:
                 for k, frame in enumerate([self._df]):
                     key = "df{}".format(k)
                     store.put(key, frame)
-        
-        if self._df is not None:
-            path_tsv = f"{str(path)}.tsv"
-            self._df.to_csv(path_tsv, sep="\t", index=False)
         '''
+        xds = self.xds  # type: xr.Dataset
+
+        # Check if data can be converted to DataFrame (only timecourse data)
+        if (len(xds.dims) == 2):
+            for dim in xds.dims:
+                if dim == "_time":
+                    continue
+                else:
+                    if xds.dims[dim] > 1:
+                        logger.warning("No TSV created for higher dimensional data.")
+                        return
+
+        data = {v: xds[v].values.flatten() for v in xds.keys()}
+        df = pd.DataFrame(data)
+        df.to_csv(path_tsv, sep="\t", index=False)
 
     @staticmethod
     def from_netcdf(path):
