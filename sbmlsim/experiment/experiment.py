@@ -400,14 +400,19 @@ class SimulationExperiment(object):
         paths = []
         for fkey, fig in self._figures.items():
             path_svg = results_path / f"{self.sid}_{fkey}.svg"
+            path_png = results_path / f"{self.sid}_{fkey}.png"
 
             if isinstance(fig, Figure):
                 fig_mpl = MatplotlibFigureSerializer.to_figure(fig)
             else:
                 fig_mpl = fig
 
-            fig_mpl.savefig(path_svg, dpi=150, bbox_inches="tight")
+            fig_mpl.savefig(path_svg, bbox_inches="tight")
+            fig_mpl.savefig(path_png, bbox_inches="tight")
+            # fig_mpl.savefig(path_svg, dpi=72)
+            # fig_mpl.savefig(path_png, dpi=72)
 
+            # only returns SVG paths
             paths.append(path_svg)
         return paths
 

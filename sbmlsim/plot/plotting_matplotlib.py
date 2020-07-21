@@ -22,24 +22,24 @@ kwargs_sim = {'marker': None, 'linestyle': '-', 'linewidth': 2}
 
 # FIXME: add global settings for plots:
 
-
-# plt.rcParams.update({
-#     # figure settings
-#     'figure.facecolor': '1.00',
-#     'figure.dpi': '300',
-#     # axes title
-#     'axes.titlesize': 'medium',
-#     'axes.titleweight': 'bold',
-#     # axes label
-#     'axes.labelsize': 'large',
-#     'axes.labelweight': 'bold',
-#     # axes ticksize
-#     'xtick.labelsize': 'large',
-#     'ytick.labelsize': 'large',
-#     # legend
-#     'legend.fontsize': 10,  # small
-# })
-
+matplotlib_rcparams = {
+    # figure settings
+    'figure.facecolor': '1.00',
+    'figure.dpi': '72',
+    # axes title
+    'axes.titlesize': 14,   # 'large',
+    'axes.titleweight': 'bold',
+    # axes label
+    'axes.labelsize': 13,  # 'medium',
+    'axes.labelweight': 'bold',
+    # axes ticksize
+    'xtick.labelsize': 11,  # 'medium',
+    'ytick.labelsize': 'medium',
+    # legend
+    'legend.fontsize': 10  # 'small' # 10,  # small
+}
+plt.rcParams.update(matplotlib_rcparams)
+logger.info("Setting plot settings in library")
 
 class MatplotlibFigureSerializer(object):
 
@@ -48,7 +48,8 @@ class MatplotlibFigureSerializer(object):
 
         # create new figure
         fig = plt.figure(figsize=(figure.width, figure.height))  # type: plt.Figure
-        fig.subplots_adjust(wspace=0.3, hspace=0.3)
+        fig.subplots_adjust(wspace=0.05*Figure.panel_width, hspace=0.05*Figure.panel_height)
+        # fig.subplots_adjust(wspace=0.5 * Figure.panel_width, hspace=0.5 * Figure.panel_height)
 
         # create grid for figure
         gs = GridSpec(figure.num_rows, figure.num_cols, figure=fig)

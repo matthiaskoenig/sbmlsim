@@ -508,8 +508,8 @@ class Figure(BasePlotObject):
     A reference to the experiment is required, so the plot can
     resolve the datasets and the simulations.
     """
-    panel_width = 7.0
-    panel_height = 7.0
+    panel_width = 5
+    panel_height = 3.75
 
     def __init__(self, experiment, sid: str, name: str = None,
                  subplots: List[SubPlot] = None,
