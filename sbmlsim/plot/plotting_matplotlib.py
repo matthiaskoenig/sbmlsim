@@ -18,38 +18,19 @@ logger = logging.getLogger(__name__)
 kwargs_data = {'marker': 's', 'linestyle': '--', 'linewidth': 1, 'capsize': 3}
 kwargs_sim = {'marker': None, 'linestyle': '-', 'linewidth': 2}
 
-# global settings for plots
-
-# FIXME: add global settings for plots:
-
-matplotlib_rcparams = {
-    # figure settings
-    'figure.facecolor': '1.00',
-    'figure.dpi': '72',
-    # axes title
-    'axes.titlesize': 14,   # 'large',
-    'axes.titleweight': 'bold',
-    # axes label
-    'axes.labelsize': 13,  # 'medium',
-    'axes.labelweight': 'bold',
-    # axes ticksize
-    'xtick.labelsize': 11,  # 'medium',
-    'ytick.labelsize': 'medium',
-    # legend
-    'legend.fontsize': 10  # 'small' # 10,  # small
-}
-plt.rcParams.update(matplotlib_rcparams)
-logger.info("Setting plot settings in library")
 
 class MatplotlibFigureSerializer(object):
+    """
+    Serializing figure to matplotlib figure.
+    """
 
     def to_figure(figure: Figure) -> plt.Figure:
         """Convert sbmlsim.Figure to matplotlib figure."""
 
         # create new figure
-        fig = plt.figure(figsize=(figure.width, figure.height))  # type: plt.Figure
-        fig.subplots_adjust(wspace=0.05*Figure.panel_width, hspace=0.05*Figure.panel_height)
-        # fig.subplots_adjust(wspace=0.5 * Figure.panel_width, hspace=0.5 * Figure.panel_height)
+        fig = plt.figure(figsize=(figure.width, figure.height),
+                         dpi=Figure.fig_dpi, facecolor=Figure.fig_facecolor)  # type: plt.Figure
+
 
         # create grid for figure
         gs = GridSpec(figure.num_rows, figure.num_cols, figure=fig)
@@ -77,8 +58,12 @@ class MatplotlibFigureSerializer(object):
             # units
             if xax is None:
                 logger.warning(f"No xaxis in plot: {subplot}")
+                ax.spines['bottom'].set_color(Figure.fig_facecolor)
+                ax.spines['top'].set_color(Figure.fig_facecolor)
             if yax is None:
                 logger.warning(f"No yaxis in plot: {subplot}")
+                ax.spines['right'].set_color(Figure.fig_facecolor)
+                ax.spines['left'].set_color(Figure.fig_facecolor)
             if (not xax) or (not yax):
                 if len(plot.curves) > 0:
                     raise ValueError(f"xaxis and yaxis are required for plotting curves, but "
@@ -164,6 +149,24 @@ class MatplotlibFigureSerializer(object):
                 if not yax.ticks_visible:
                     ax.set_yticklabels([])  # hide ticks
 
+            # figure styling
+            ax.title.set_fontsize(Figure.axes_titlesize)
+            ax.title.set_fontweight(Figure.axes_titleweight)
+            ax.xaxis.label.set_fontsize(Figure.axes_labelsize)
+            ax.xaxis.label.set_fontweight(Figure.axes_labelweight)
+            ax.yaxis.label.set_fontsize(Figure.axes_labelsize)
+            ax.yaxis.label.set_fontweight(Figure.axes_labelweight)
+            ax.tick_params(axis='x', labelsize=Figure.xtick_labelsize)
+            ax.tick_params(axis='y', labelsize=Figure.ytick_labelsize)
+
+            # hide none-existing axes
+            if xax is None:
+                ax.tick_params(axis='x', colors=Figure.fig_facecolor)
+                ax.xaxis.label.set_color(Figure.fig_facecolor)
+            if yax is None:
+                ax.tick_params(axis='y', colors=Figure.fig_facecolor)
+                ax.yaxis.label.set_color(Figure.fig_facecolor)
+
             xgrid = xax.grid if xax else None
             ygrid = yax.grid if yax else None
 
@@ -177,8 +180,9 @@ class MatplotlibFigureSerializer(object):
                 ax.grid(False)
 
             if plot.legend:
-                ax.legend()
+                ax.legend(fontsize=Figure.legend_fontsize)
 
+        fig.subplots_adjust(wspace=0.3, hspace=0.3)
         return fig
 
 

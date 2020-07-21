@@ -414,8 +414,6 @@ class SimulationExperiment(object):
 
             fig_mpl.savefig(path_svg, bbox_inches="tight")
             fig_mpl.savefig(path_png, bbox_inches="tight")
-            # fig_mpl.savefig(path_svg, dpi=72)
-            # fig_mpl.savefig(path_png, dpi=72)
 
             # only returns SVG paths
             paths.append(path_svg)

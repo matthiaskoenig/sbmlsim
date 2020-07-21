@@ -316,7 +316,8 @@ class Plot(BasePlotObject):
                  legend: bool = False,
                  xaxis: Axis = None,
                  yaxis: Axis = None,
-                 curves: List[Curve] = None):
+                 curves: List[Curve] = None,
+                 facecolor=1.0):
         """
         :param sid:
         :param name: title of the plot
@@ -329,6 +330,7 @@ class Plot(BasePlotObject):
         if curves is None:
             curves = list()
         self.legend = legend
+        self.facecolor = facecolor
 
         if xaxis is not None:
             if not isinstance(xaxis, Axis):
@@ -354,6 +356,7 @@ class Plot(BasePlotObject):
             "xaxis": self.xaxis,
             "yaxis": self.yaxis,
             "curves": self.curves,
+            "facecolor": self.facecolor,
         }
         return d
 
@@ -489,7 +492,7 @@ class SubPlot(BasePlotObject):
     A SubPlot is a locate plot in a figure.
     """
     def __init__(self, plot: Plot,
-                 row: None, col: None,
+                 row: int=None, col: int=None,
                  row_span: int = 1,
                  col_span: int = 1):
         self.plot = plot
@@ -508,8 +511,17 @@ class Figure(BasePlotObject):
     A reference to the experiment is required, so the plot can
     resolve the datasets and the simulations.
     """
-    panel_width = 5
-    panel_height = 3.75
+    fig_dpi = 72
+    fig_facecolor = "white"
+    panel_width = 7
+    panel_height = 5
+    axes_titlesize = 20
+    axes_titleweight = 'bold'
+    axes_labelsize = 18
+    axes_labelweight = 'bold'
+    xtick_labelsize = 15
+    ytick_labelsize = 15
+    legend_fontsize = 13
 
     def __init__(self, experiment, sid: str, name: str = None,
                  subplots: List[SubPlot] = None,
@@ -524,9 +536,9 @@ class Figure(BasePlotObject):
         self.num_rows = num_rows
         self.num_cols = num_cols
 
-        if width == None:
+        if width is None:
             width = num_cols * Figure.panel_width
-        if height == None:
+        if height is None:
             height = num_rows * Figure.panel_height
         self.width = width
         self.height = height
@@ -580,7 +592,7 @@ class Figure(BasePlotObject):
         num_plots = len(plots)
         return Figure(sid=sid,
                       num_rows=num_plots, num_cols=1,
-                      height=num_rows*5.0, width=num_cols*5.0,
+                      height=num_plots*Figure.panel_height, width=Figure.panel_width,
                       subplots=[
                         SubPlot(plot, row=(k+1), col=1) for k, plot in enumerate(plots)
                       ])
