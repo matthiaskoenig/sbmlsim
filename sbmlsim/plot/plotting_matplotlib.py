@@ -19,6 +19,8 @@ kwargs_data = {'marker': 's', 'linestyle': '--', 'linewidth': 1, 'capsize': 3}
 kwargs_sim = {'marker': None, 'linestyle': '-', 'linewidth': 2}
 
 # global settings for plots
+
+# FIXME: add global settings for plots:
 plt.rcParams.update({
     'axes.labelsize': 'large',
     'axes.labelweight': 'bold',
@@ -66,9 +68,10 @@ class MatplotlibFigureSerializer(object):
 
             # units
             if xax is None:
-                logger.error(f"No xaxis in plot: {subplot}:{plot}")
+                logger.error(f"No xaxis in plot: {subplot}")
             if yax is None:
-                logger.error(f"No yaxis in plot: {subplot}:{plot}")
+                logger.error(f"No yaxis in plot: {subplot}")
+
             xunit = xax.unit if xax else None
             yunit = yax.unit if yax else None
 
@@ -129,23 +132,34 @@ class MatplotlibFigureSerializer(object):
             if plot.name:
                 ax.set_title(plot.name)
 
-            if plot.xaxis:
+            if xax:
                 ax.set_xscale(get_scale(xax))
                 ax.set_xlim(xmin=xax.min, xmax=xax.max)
-                if xax.name:
-                    ax.set_xlabel(f"{xax.name} [{xax.unit}]")
 
-            if plot.yaxis:
+                if xax.label_visible:
+                    if xax.name:
+                        ax.set_xlabel(f"{xax.name} [{xax.unit}]")
+                if not xax.ticks_visible:
+                    ax.set_xticklabels([])  # hide ticks
+
+            if yax:
                 ax.set_yscale(get_scale(yax))
                 ax.set_ylim(ymin=yax.min, ymax=yax.max)
-                if yax.name:
-                    ax.set_ylabel(f"{yax.name} [{yax.unit}]")
 
-            if xax.grid and xax.grid:
+                if yax.label_visible:
+                    if yax.name:
+                        ax.set_ylabel(f"{yax.name} [{yax.unit}]")
+                if not yax.ticks_visible:
+                    ax.set_yticklabels([])  # hide ticks
+
+            xgrid = xax.grid if xax else None
+            ygrid = yax.grid if yax else None
+
+            if xgrid and ygrid:
                 ax.grid(True, axis="both")
-            elif xax.grid:
+            elif xgrid:
                 ax.grid(True, axis="x")
-            elif yax.grid:
+            elif ygrid:
                 ax.grid(True, axis="y")
             else:
                 ax.grid(False)

@@ -23,8 +23,7 @@ from matplotlib.colors import to_rgba, to_hex
 logger = logging.getLogger(__name__)
 
 
-
-class Base(object):
+class BasePlotObject(object):
     """Base class for plotting objects."""
     def __init__(self, sid: str, name: str):
         self.sid = sid
@@ -83,13 +82,15 @@ class Fill(object):
     second_color: ColorType = None
 
 
-class Style(Base):
+class Style(BasePlotObject):
     def __init__(self, sid: str = None,
                  name: str = None,
                  base_style: 'Style' = None,
                  line: Line = None,
                  marker: Marker = None,
                  fill: Fill = None):
+
+        # FIXME: base_style not handled
         super(Style, self).__init__(sid, name)
         self.line = line
         self.marker = marker
@@ -135,6 +136,8 @@ class Style(Base):
                 kwargs["color"] = self.line.color
             if self.line.type:
                 kwargs["linestyle"] = Style.SEDML2MPL_LINESTYLE_MAPPING[self.line.type]
+            #else:
+            #    kwargs["linestyle"] = LineType.NONE
             if self.line.thickness:
                 kwargs["linewidth"] = self.line.thickness
         if self.marker:
@@ -194,7 +197,7 @@ class Style(Base):
         return Style(line=line, marker=marker, fill=None)
 
 
-class Axis(Base):
+class Axis(BasePlotObject):
 
     class AxisScale(Enum):
         LINEAR = 1
@@ -202,7 +205,8 @@ class Axis(Base):
 
     def __init__(self, name: str = None, unit: str = None,
                  scale: AxisScale = AxisScale.LINEAR,
-                 min: float = None, max: float = None, grid: bool = False):
+                 min: float = None, max: float = None, grid: bool = False,
+                 label_visible=True, ticks_visible=True):
         """ Axis object.
 
         :param name:
@@ -210,6 +214,9 @@ class Axis(Base):
         :param scale: Scale of the axis, i.e. "linear" or "log" axis.
         :param min: lower axis bound
         :param max: upper axis bound
+        :param grid: show grid lines along the axis
+        :param label_visible: show/hide the label text
+        :param ticks_visible: show/hide axis ticks
         """
         super(Axis, self).__init__(None, name)
         if unit is None:
@@ -219,6 +226,11 @@ class Axis(Base):
         self.min = min
         self.max = max
         self.grid = grid
+        self.label_visible = label_visible
+        self.ticks_visible = ticks_visible
+
+    def __str__(self):
+        return {self.label}
 
     @property
     def scale(self):
@@ -240,7 +252,7 @@ class Axis(Base):
         return f"{self.name} [{self.unit}]"
 
 
-class AbstractCurve(Base):
+class AbstractCurve(BasePlotObject):
     def __init__(self, sid: str, name: str,
                  x: Data, order: int, style: Style, yaxis: Axis):
         """
@@ -295,7 +307,7 @@ class Curve(AbstractCurve):
         return d
 
 
-class Plot(Base):
+class Plot(BasePlotObject):
     """ Plot panel.
     A plot is the basic element of a plot. This corresponds to a single
     panel or axes combination in a plot. Multiple plots create a figure.
@@ -321,6 +333,9 @@ class Plot(Base):
         self.yaxis = yaxis
         self.curves = curves
         self._figure = None  # type: Figure
+
+    def __str__(self):
+        return f"<Plot: {self.xaxis} ~ {self.yaxis} ({len(self.curves)} curves)>"
 
     def to_dict(self):
         """ Convert to dictionary. """
@@ -461,7 +476,7 @@ class Plot(Base):
         )
 
 
-class SubPlot(Base):
+class SubPlot(BasePlotObject):
     """
     A SubPlot is a locate plot in a figure.
     """
@@ -475,8 +490,11 @@ class SubPlot(Base):
         self.row_span = row_span
         self.col_span = col_span
 
+    def __str__(self):
+        return f"<Subplot[{self.row},{self.col}] {self.plot}>"
 
-class Figure(Base):
+
+class Figure(BasePlotObject):
     """A figure consists of multiple subplots.
 
     A reference to the experiment is required, so the plot can
