@@ -152,6 +152,11 @@ class MatplotlibFigureSerializer(object):
                 if not yax.ticks_visible:
                     ax.set_yticklabels([])  # hide ticks
 
+            # recompute the ax.dataLim
+            # ax.relim()
+            # update ax.viewLim using the new dataLim
+            # ax.autoscale_view()
+
             # figure styling
             ax.title.set_fontsize(Figure.axes_titlesize)
             ax.title.set_fontweight(Figure.axes_titleweight)
@@ -184,6 +189,8 @@ class MatplotlibFigureSerializer(object):
 
             if plot.legend:
                 ax.legend(fontsize=Figure.legend_fontsize)
+
+
 
         fig.subplots_adjust(wspace=0.3, hspace=0.3)
         return fig
