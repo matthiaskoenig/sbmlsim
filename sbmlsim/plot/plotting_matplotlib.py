@@ -188,9 +188,7 @@ class MatplotlibFigureSerializer(object):
                 ax.grid(False)
 
             if plot.legend:
-                ax.legend(fontsize=Figure.legend_fontsize)
-
-
+                ax.legend(fontsize=Figure.legend_fontsize, loc=Figure.legend_loc)
 
         fig.subplots_adjust(wspace=0.3, hspace=0.3)
         return fig

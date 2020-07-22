@@ -524,6 +524,7 @@ class Figure(BasePlotObject):
     xtick_labelsize = 15
     ytick_labelsize = 15
     legend_fontsize = 13
+    legend_loc = 'best'
 
     def __init__(self, experiment, sid: str, name: str = None,
                  subplots: List[SubPlot] = None,
