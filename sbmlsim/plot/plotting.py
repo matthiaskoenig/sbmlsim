@@ -502,7 +502,7 @@ class SubPlot(BasePlotObject):
         self.col_span = col_span
 
     def __str__(self):
-        return f"<Subplot[{self.row},{self.col}] {self.plot}>"
+        return f"<Subplot[{self.row},{self.col}]>"
 
 
 class Figure(BasePlotObject):
@@ -515,6 +515,8 @@ class Figure(BasePlotObject):
     fig_facecolor = "white"
     panel_width = 7
     panel_height = 5
+    fig_titlesize = 30
+    fig_titleweight = 'bold'
     axes_titlesize = 20
     axes_titleweight = 'bold'
     axes_labelsize = 18
@@ -551,6 +553,9 @@ class Figure(BasePlotObject):
         """Number of available spots for plots."""
         return self.num_cols * self.num_rows
 
+    def set_title(self, title):
+        self.name = title
+
     def create_plots(self, xaxis: Axis=None,
                      yaxis: Axis=None, legend: bool=True) -> List[Plot]:
         """Template function for creating plots"""
@@ -565,7 +570,15 @@ class Figure(BasePlotObject):
         self.add_plots(plots)
         return plots
 
-    def add_plots(self, plots: List[Plot]):
+    def get_plots(self) -> List[Plot]:
+        """Returns list of plots."""
+        return [subplot.plot for subplot in self.subplots]
+
+    def add_plots(self, plots: List[Plot]) -> None:
+        """Add plots to figure.
+
+        For every plot a subplot is generated.
+        """
         if len(plots) > self.num_cols*self.num_rows:
             raise ValueError("Too many plots for figure")
         ridx = 1
@@ -586,9 +599,7 @@ class Figure(BasePlotObject):
 
     @staticmethod
     def from_plots(sid, plots: List[Plot]) -> 'Figure':
-        """
-        Create figure object from list of plots.
-        """
+        """Create figure object from list of plots."""
         num_plots = len(plots)
         return Figure(sid=sid,
                       num_rows=num_plots, num_cols=1,

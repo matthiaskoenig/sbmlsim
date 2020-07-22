@@ -31,6 +31,9 @@ class MatplotlibFigureSerializer(object):
         fig = plt.figure(figsize=(figure.width, figure.height),
                          dpi=Figure.fig_dpi, facecolor=Figure.fig_facecolor)  # type: plt.Figure
 
+        if figure.name:
+            fig.suptitle(figure.name, fontsize=Figure.fig_titlesize,
+                         fontweight=Figure.fig_titleweight)
 
         # create grid for figure
         gs = GridSpec(figure.num_rows, figure.num_cols, figure=fig)
