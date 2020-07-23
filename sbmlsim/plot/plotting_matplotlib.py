@@ -159,7 +159,7 @@ class MatplotlibFigureSerializer(object):
 
                 if y_std is not None:
                     # areas can be very slow to render!
-                    # ax.plot(x.magnitude, y.magnitude + y_std.magnitude, label="__nolabel__", **kwargs)
+                    # ax.plot(x.magnitude, y.magnitude, label="curve.name", **kwargs)
                     y_ip = interp(x=x_ip, xp=x.magnitude, fp=y.magnitude)
                     y_std_ip = interp(x=x_ip, xp=x.magnitude, fp=y_std.magnitude)
 
@@ -171,7 +171,7 @@ class MatplotlibFigureSerializer(object):
                     )
 
                 if (xerr is None) and (yerr is None):
-                    if y_std is not None:
+                    if y_std is None:
                         # single trajectory
                         ax.plot(x.magnitude, y.magnitude, label=curve.name, **kwargs)
                 elif yerr is not None:

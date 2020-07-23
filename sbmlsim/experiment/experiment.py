@@ -422,8 +422,8 @@ class SimulationExperiment(object):
     def show_figures(self, mpl_figures: Dict[str, FigureMPL]):
         # plt.show()
         pool = multiprocessing.Pool()
-        # pool.map(self._show_figure, mpl_figures.values())
-        pool.map_async(self._show_figure, mpl_figures.values())
+        pool.map(self._show_figure, mpl_figures.values())
+        # pool.map_async(self._show_figure, mpl_figures.values())
 
     @staticmethod
     def _show_figure(args):
