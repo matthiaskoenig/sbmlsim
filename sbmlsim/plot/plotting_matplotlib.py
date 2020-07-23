@@ -91,7 +91,7 @@ class MatplotlibFigureSerializer(object):
                 # if isinstance(x, XResult):
                 #    x_mean = x.mean(dim=self._op_dims(), skipna=True).values * self.ureg(self.udict[key])
 
-                x_std = None
+                x_std, x_min, x_max = None, None, None
                 if curve.x.dtype == Data.Types.TASK:
                     data = curve.x
                     xres = data.experiment.results[data.task_id]  # type: XResult
@@ -99,7 +99,7 @@ class MatplotlibFigureSerializer(object):
                     x_min = xres.dim_min(data.index).to(xunit)
                     x_max = xres.dim_max(data.index).to(xunit)
 
-                y_std = None
+                y_std, y_min, y_max = None, None, None
                 if curve.y.dtype == Data.Types.TASK:
                     data = curve.y
                     xres = data.experiment.results[data.task_id]  # type: XResult
@@ -116,20 +116,34 @@ class MatplotlibFigureSerializer(object):
                 if curve.yerr is not None:
                     yerr = curve.yerr.get_data(to_units=yunit)
 
-                if (xerr is None) and (yerr is None):
-                    ax.plot(x.magnitude, y.magnitude, label=curve.name, **kwargs)
-                elif yerr is not None:
-                    ax.errorbar(x.magnitude, y.magnitude, yerr.magnitude,
-                                label=curve.name, **kwargs)
+                if (y_min is not None) and (y_max is not None):
+                    ax.fill_between(x.magnitude, y_min.magnitude, y_max.magnitude,
+                                    color=kwargs.get("color", "black"),
+                                    alpha=0.1, label="__nolabel__")
 
                 if y_std is not None:
                     # ax.plot(x.magnitude, y.magnitude + y_std.magnitude, label="__nolabel__", **kwargs)
                     ax.fill_between(x.magnitude, y.magnitude - y_std.magnitude,
-                                    y.magnitude + y_std.magnitude,
-                                    alpha=0.4, label="__nolabel__")
+                                    y.magnitude + y_std.magnitude, color=kwargs.get("color", "black"),
+                                    alpha=0.25, label="__nolabel__")
+
+                if (xerr is None) and (yerr is None):
+                    # FIXME: hack only plot if single curve (i.e. single timecourse)
+                    xds = xres.xds
+                    if len(xds.dims) == 2:
+                        for dim in xds.dims:
+                            if dim == "_time":
+                                continue
+                            else:
+                                if xds.dims[dim] == 1:
+                                    # only plot timecourses, no scan mean
+                                    ax.plot(x.magnitude, y.magnitude, label=curve.name, **kwargs)
+                elif yerr is not None:
+                    ax.errorbar(x.magnitude, y.magnitude, yerr.magnitude,
+                                label=curve.name, **kwargs)
 
             # plot settings
-            if plot.name:
+            if plot.name and plot.title_visible:
                 ax.set_title(plot.name)
 
             if xax:

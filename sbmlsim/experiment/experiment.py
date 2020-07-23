@@ -240,6 +240,7 @@ class SimulationExperiment(object):
         # FIXME (executed 2 times)
         self._figures = self.figures()
 
+
         # create outputs
         if output_path is None:
             if save_results:
@@ -257,15 +258,18 @@ class SimulationExperiment(object):
             if save_results:
                 self.save_results(output_path)
 
-            # save figure
-            self.save_figures(output_path)
-
             # serialization
             self.to_json(output_path / f"{self.sid}.json")
 
-        # display figures
+        # create figures
+        mpl_figures = self.create_mpl_figures()
         if show_figures:
             plt.show()
+        if output_path:
+            # save figure
+            # FIXME: run in separate thread/process
+            logger.info("Saving figures")
+            self.save_figures(output_path, mpl_figures=mpl_figures)
 
         return ExperimentResult(experiment=self, output_path=output_path)
 
@@ -396,24 +400,38 @@ class SimulationExperiment(object):
                 result.to_netcdf(results_path / f"{self.sid}_{rkey}.nc")
                 result.to_tsv(results_path / f"{self.sid}_{rkey}.tsv")
 
+
     @timeit
-    def save_figures(self, results_path):
-        """ Save figures.
-        :param results_path:
+    def create_mpl_figures(self) -> Dict[str, FigureMPL]:
+        """ Create matplotlib figures.
+
         :return:
         """
-        paths = []
+        mpl_figures = {}
         for fkey, fig in self._figures.items():
-            path_svg = results_path / f"{self.sid}_{fkey}.svg"
-            path_png = results_path / f"{self.sid}_{fkey}.png"
-
             if isinstance(fig, Figure):
                 fig_mpl = MatplotlibFigureSerializer.to_figure(fig)
             else:
                 fig_mpl = fig
 
+            mpl_figures[fkey] = fig_mpl
+
+        return mpl_figures
+
+
+    @timeit
+    def save_figures(self, results_path: Path, mpl_figures: Dict[str, FigureMPL]) -> List[Path]:
+        """ Save matplotlib figures.
+
+        :param results_path:
+        :return:
+        """
+        paths = []
+        for fkey, fig_mpl in mpl_figures.items():
+            path_svg = results_path / f"{self.sid}_{fkey}.svg"
+
             fig_mpl.savefig(path_svg, bbox_inches="tight")
-            fig_mpl.savefig(path_png, bbox_inches="tight")
+            # fig_mpl.savefig(path_png, bbox_inches="tight")
 
             # only returns SVG paths
             paths.append(path_svg)

@@ -8,6 +8,8 @@ The general workflow of generating plotting information is the following.
 
 
 """
+import copy
+
 from typing import List, Dict
 import logging
 import pandas as pd
@@ -229,6 +231,13 @@ class Axis(BasePlotObject):
         self.label_visible = label_visible
         self.ticks_visible = ticks_visible
 
+    def __copy__(self):
+        print(f"copy axis: {self}")
+
+        return Axis(name=self.name, unit=self.unit, scale=self.scale,
+                 min=self.min, max=self.max, grid=self.grid,
+                 label_visible=self.label_visible, ticks_visible=self.ticks_visible)
+
     def __str__(self):
         return {self.label}
 
@@ -317,7 +326,7 @@ class Plot(BasePlotObject):
                  xaxis: Axis = None,
                  yaxis: Axis = None,
                  curves: List[Curve] = None,
-                 facecolor=1.0):
+                 facecolor=1.0, title_visible=True):
         """
         :param sid:
         :param name: title of the plot
@@ -331,6 +340,7 @@ class Plot(BasePlotObject):
             curves = list()
         self.legend = legend
         self.facecolor = facecolor
+        self.title_visible = title_visible
 
         if xaxis is not None:
             if not isinstance(xaxis, Axis):
@@ -343,6 +353,17 @@ class Plot(BasePlotObject):
         self.yaxis = yaxis
         self.curves = curves
         self._figure = None  # type: Figure
+
+    def __copy__(self):
+        print(f"copy plot: {self}")
+        return Plot(sid=self.sid, name=self.name,
+                    xaxis=Axis.__copy__(self.xaxis), yaxis=Axis.__copy__(self.yaxis),
+                    curves=self.curves, facecolor=self.facecolor)
+
+    #def __deepcopy__(self, memo):
+    #    return Plot(copy.deepcopy(self.sid, self.name,
+    #                              self.xaxis, self.yaxis, self.curves,
+    #                              self.facecolor, memo))
 
     def __str__(self) -> str:
         return f"<Plot: {self.xaxis} ~ {self.yaxis} ({len(self.curves)} curves)>"
@@ -384,9 +405,17 @@ class Plot(BasePlotObject):
         self.name = name
 
     def set_xaxis(self, label: str, unit: str=None, **kwargs):
+        """Set axis with all axes attributes.
+
+        All argument of Axis are supported.
+        """
         self.xaxis = Axis(name=label, unit=unit, **kwargs)
 
     def set_yaxis(self, label: str, unit: str=None, **kwargs):
+        """Set axis with all axes attributes.
+
+        All argument of Axis are supported.
+        """
         self.yaxis = Axis(name=label, unit=unit, **kwargs)
 
     def add_curve(self, curve: Curve):
@@ -568,23 +597,36 @@ class Figure(BasePlotObject):
             # create plot
             p = Plot(sid=f"plot{k}", xaxis=xax, yaxis=yax, legend=legend)
             plots.append(p)
-        self.add_plots(plots)
+        self.add_plots(plots, copy_plots=False)
         return plots
+
+    @property
+    def plots(self):
+        return self.get_plots()
 
     def get_plots(self) -> List[Plot]:
         """Returns list of plots."""
         return [subplot.plot for subplot in self.subplots]
 
-    def add_plots(self, plots: List[Plot]) -> None:
+    # FIXME
+    def add_plots(self, plots: List[Plot], copy_plots: bool = False) -> None:
         """Add plots to figure.
 
         For every plot a subplot is generated.
         """
-        if len(plots) > self.num_cols*self.num_rows:
+
+        # FIXME: handle correct copying of plots
+        if copy_plots:
+            new_plots = [copy.copy(p) for p in plots]
+        else:
+            new_plots = plots
+        
+        
+        if len(new_plots) > self.num_cols*self.num_rows:
             raise ValueError("Too many plots for figure")
         ridx = 1
         cidx = 1
-        for k, plot in enumerate(plots):
+        for k, plot in enumerate(new_plots):
             self.subplots.append(
                 SubPlot(plot=plot, row=ridx, col=cidx, row_span=1, col_span=1)
             )
