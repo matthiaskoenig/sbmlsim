@@ -217,7 +217,7 @@ class SimulationExperiment(object):
 
     @timeit
     def run(self, simulator, output_path: Path = None, show_figures: bool = True,
-            save_results: bool = False) -> 'ExperimentResult':
+            save_results: bool = False, reduced_selections: bool = True) -> 'ExperimentResult':
         """
         Executes given experiment and stores results.
         Returns info dictionary.
@@ -229,7 +229,7 @@ class SimulationExperiment(object):
         self._figures = self.figures()
 
         # run simulations
-        self._run_tasks(simulator)  # sets self._results
+        self._run_tasks(simulator, reduced_selections=reduced_selections)  # sets self._results
         # FIXME
         # self._figures = self.figures()
 
@@ -274,7 +274,7 @@ class SimulationExperiment(object):
         return ExperimentResult(experiment=self, output_path=output_path)
 
     @timeit
-    def _run_tasks(self, simulator):
+    def _run_tasks(self, simulator, reduced_selections:bool = True):
         """Run simulations & scans.
 
         This should not be called directly, but the results of the simulations
@@ -295,15 +295,18 @@ class SimulationExperiment(object):
             model = self._models[model_id]
             simulator.set_model(model=model)
 
-            # set selections based on data
-
-            selections = set()
-            for d in self._data.values():  # type: Data
-                if d.is_task():
-                    selections.add(d.index)
-            selections = sorted(list(selections))
-            print(f"Setting selections: {selections}")
-            simulator.set_timecourse_selections(selections=selections)
+            if reduced_selections:
+                # set selections based on data
+                selections = set()
+                for d in self._data.values():  # type: Data
+                    if d.is_task():
+                        selections.add(d.index)
+                selections = sorted(list(selections))
+                print(f"Setting selections: {selections}")
+                simulator.set_timecourse_selections(selections=selections)
+            else:
+                # use the complete selection
+                simulator.set_timecourse_selections(selections=None)
 
             for task_key in task_keys:  # type: str
                 task = self._tasks[task_key]

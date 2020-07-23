@@ -232,14 +232,12 @@ class Axis(BasePlotObject):
         self.ticks_visible = ticks_visible
 
     def __copy__(self):
-        print(f"copy axis: {self}")
-
         return Axis(name=self.name, unit=self.unit, scale=self.scale,
                  min=self.min, max=self.max, grid=self.grid,
                  label_visible=self.label_visible, ticks_visible=self.ticks_visible)
 
     def __str__(self):
-        return {self.label}
+        return self.name
 
     @property
     def scale(self):
@@ -355,7 +353,6 @@ class Plot(BasePlotObject):
         self._figure = None  # type: Figure
 
     def __copy__(self):
-        print(f"copy plot: {self}")
         return Plot(sid=self.sid, name=self.name,
                     xaxis=Axis.__copy__(self.xaxis), yaxis=Axis.__copy__(self.yaxis),
                     curves=self.curves, facecolor=self.facecolor)
@@ -365,8 +362,8 @@ class Plot(BasePlotObject):
     #                              self.xaxis, self.yaxis, self.curves,
     #                              self.facecolor, memo))
 
-    def __str__(self) -> str:
-        return f"<Plot: {self.xaxis} ~ {self.yaxis} ({len(self.curves)} curves)>"
+    #def __str__(self) -> str:
+    #   return f"<Plot: {self.xaxis} ~ {self.yaxis} ({len(self.curves)} curves)>"
 
     def to_dict(self):
         """ Convert to dictionary. """

@@ -53,7 +53,7 @@ class Source:
                 path = Path(source).resolve()
             path = path.resolve()
             if not path.exists():
-                raise IOError(f"Path '{source}' for model source '{source}' "
+                raise IOError(f"Path '{path}' for model source '{source}' "
                               f"does not exist.")
 
         return Source(source, path, content)

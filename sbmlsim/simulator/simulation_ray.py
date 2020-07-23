@@ -43,7 +43,19 @@ class SimulatorActor(SimulatorWorker):
 
     def set_timecourse_selections(self, selections):
         try:
-            self.r.timeCourseSelections = selections
+            if selections is None:
+                # FIXME: this should be calculated before
+                r_model = self.r.model  # type: roadrunner.ExecutableModel
+                self.r.timeCourseSelections = ["time"] \
+                                         + r_model.getFloatingSpeciesIds() \
+                                         + r_model.getBoundarySpeciesIds() \
+                                         + r_model.getGlobalParameterIds() \
+                                         + r_model.getReactionIds() \
+                                         + r_model.getCompartmentIds()
+                self.r.timeCourseSelections += [f'[{key}]' for key in (
+                    r_model.getFloatingSpeciesIds() + r_model.getBoundarySpeciesIds())]
+            else:
+                self.r.timeCourseSelections = selections
         except RuntimeError as err:
             print(f"ERROR: {err}")
             raise(err)

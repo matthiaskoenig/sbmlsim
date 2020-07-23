@@ -141,7 +141,7 @@ class RoadrunnerSBMLModel(AbstractModel):
     def set_timecourse_selections(cls, r: roadrunner.RoadRunner,
                                   selections: List[str] = None) -> None:
         """ Sets the full model selections. """
-        if not selections:
+        if selections is None:
             r_model = r.model  # type: roadrunner.ExecutableModel
 
             r.timeCourseSelections = ["time"] \
