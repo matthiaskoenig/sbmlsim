@@ -49,7 +49,6 @@ class XResult:
             return getattr(self.xds, name)
 
     # TODO: general dimension reduction (for complete dataset)
-
     '''
     def dim_op(self, f_op, key=None):
         data = self.xds[key] if key else self.xds
@@ -60,6 +59,22 @@ class XResult:
         else:
             return res
     '''
+
+    def is_timecourse(self) -> bool:
+        """Check if timecourse"""
+        result = True
+        xds = self.xds
+        if len(xds.dims) == 2:
+            for dim in xds.dims:
+                if dim == "_time":
+                    continue
+                else:
+                    if xds.dims[dim] != 1:
+                        result = False
+        else:
+            return False
+        return result
+
     def to_mean_dataframe(self):
         res = {}
         for col in self.xds:

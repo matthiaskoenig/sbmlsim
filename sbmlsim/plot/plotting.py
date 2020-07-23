@@ -541,8 +541,8 @@ class Figure(BasePlotObject):
     fig_facecolor = "white"
     panel_width = 7
     panel_height = 5
-    fig_titlesize = 30
-    fig_titleweight = 'bold'
+    fig_titlesize = 25
+    fig_titleweight = "bold"
     axes_titlesize = 20
     axes_titleweight = 'bold'
     axes_labelsize = 18

@@ -93,6 +93,7 @@ setup(
         "setproctitle>=1.1.10",
 
         "matplotlib>=3.3.0",
+        "plotly",
         "altair>=4.0.0",
         "seaborn>=0.10.0",
 

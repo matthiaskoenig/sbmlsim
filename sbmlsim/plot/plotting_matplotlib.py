@@ -4,13 +4,19 @@ import pandas as pd
 import numpy as np
 import xarray as xr
 import itertools
+from scipy import interpolate
+
+import matplotlib
 
 from sbmlsim.result import XResult
 from sbmlsim.data import DataSet, Data
 from sbmlsim.plot import Figure, SubPlot, Plot, Curve, Axis
 
+
 from matplotlib.pyplot import GridSpec
 from matplotlib import pyplot as plt
+from matplotlib.pyplot import Figure as FigureMPL
+
 from sbmlsim.utils import deprecated
 
 logger = logging.getLogger(__name__)
@@ -19,11 +25,25 @@ kwargs_data = {'marker': 's', 'linestyle': '--', 'linewidth': 1, 'capsize': 3}
 kwargs_sim = {'marker': None, 'linestyle': '-', 'linewidth': 2}
 
 
+def interp(x, xp, fp):
+    """ Interpolation for speedup of plots
+
+    :param x:
+    :param xp:
+    :param fp:
+    :return:
+    """
+    # y = np.interp(x=x, xp=xp, fp=fp)
+    tck = interpolate.splrep(xp, fp, s=0)
+
+    y = interpolate.splev(x, tck, der=0)
+    return y
+
+
 class MatplotlibFigureSerializer(object):
     """
     Serializing figure to matplotlib figure.
     """
-
     def to_figure(figure: Figure) -> plt.Figure:
         """Convert sbmlsim.Figure to matplotlib figure."""
 
@@ -95,17 +115,19 @@ class MatplotlibFigureSerializer(object):
                 if curve.x.dtype == Data.Types.TASK:
                     data = curve.x
                     xres = data.experiment.results[data.task_id]  # type: XResult
-                    x_std = xres.dim_std(data.index).to(xunit)
-                    x_min = xres.dim_min(data.index).to(xunit)
-                    x_max = xres.dim_max(data.index).to(xunit)
+                    if not xres.is_timecourse():
+                        x_std = xres.dim_std(data.index).to(xunit)
+                        x_min = xres.dim_min(data.index).to(xunit)
+                        x_max = xres.dim_max(data.index).to(xunit)
 
                 y_std, y_min, y_max = None, None, None
                 if curve.y.dtype == Data.Types.TASK:
                     data = curve.y
                     xres = data.experiment.results[data.task_id]  # type: XResult
-                    y_std = xres.dim_std(data.index).to(yunit)
-                    y_min = xres.dim_min(data.index).to(yunit)
-                    y_max = xres.dim_max(data.index).to(yunit)
+                    if not xres.is_timecourse():
+                        y_std = xres.dim_std(data.index).to(yunit)
+                        y_min = xres.dim_min(data.index).to(yunit)
+                        y_max = xres.dim_max(data.index).to(yunit)
                 # print(y_std)
 
                 xerr = None
@@ -116,28 +138,42 @@ class MatplotlibFigureSerializer(object):
                 if curve.yerr is not None:
                     yerr = curve.yerr.get_data(to_units=yunit)
 
+
+                # use interpolation
+                # show_figures            4.7645 [s]
+                # save_figures           26.8983 [s]
+                # run                    32.5651 [s]
+                # run_experiments        32.5654 [s]
+                x_ip = np.linspace(start=x.magnitude[0], stop=x.magnitude[-1], num=100)
+
                 if (y_min is not None) and (y_max is not None):
-                    ax.fill_between(x.magnitude, y_min.magnitude, y_max.magnitude,
-                                    color=kwargs.get("color", "black"),
-                                    alpha=0.1, label="__nolabel__")
+                    # areas can be very slow to render!
+                    # ax.fill_between(x.magnitude, y_min.magnitude, y_max.magnitude,
+                    ax.fill_between(
+                        x_ip,
+                        interp(x_ip, x.magnitude, y_min.magnitude),
+                        interp(x_ip, x.magnitude, y_max.magnitude),
+                        color=kwargs.get("color", "black"),
+                        alpha=0.1, label="__nolabel__"
+                    )
 
                 if y_std is not None:
+                    # areas can be very slow to render!
                     # ax.plot(x.magnitude, y.magnitude + y_std.magnitude, label="__nolabel__", **kwargs)
-                    ax.fill_between(x.magnitude, y.magnitude - y_std.magnitude,
-                                    y.magnitude + y_std.magnitude, color=kwargs.get("color", "black"),
-                                    alpha=0.25, label="__nolabel__")
+                    y_ip = interp(x=x_ip, xp=x.magnitude, fp=y.magnitude)
+                    y_std_ip = interp(x=x_ip, xp=x.magnitude, fp=y_std.magnitude)
+
+                    # ax.fill_between(x.magnitude, y.magnitude - y_std.magnitude, y.magnitude + y_std.magnitude,
+                    ax.fill_between(
+                        x_ip, y_ip - y_std_ip, y_ip + y_std_ip,
+                        color=kwargs.get("color", "black"),
+                        alpha=0.25, label="__nolabel__"
+                    )
 
                 if (xerr is None) and (yerr is None):
-                    # FIXME: hack only plot if single curve (i.e. single timecourse)
-                    xds = xres.xds
-                    if len(xds.dims) == 2:
-                        for dim in xds.dims:
-                            if dim == "_time":
-                                continue
-                            else:
-                                if xds.dims[dim] == 1:
-                                    # only plot timecourses, no scan mean
-                                    ax.plot(x.magnitude, y.magnitude, label=curve.name, **kwargs)
+                    if y_std is not None:
+                        # single trajectory
+                        ax.plot(x.magnitude, y.magnitude, label=curve.name, **kwargs)
                 elif yerr is not None:
                     ax.errorbar(x.magnitude, y.magnitude, yerr.magnitude,
                                 label=curve.name, **kwargs)

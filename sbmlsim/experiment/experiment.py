@@ -3,6 +3,7 @@ from pathlib import Path
 import json
 from typing import Dict, List
 from collections import defaultdict
+import multiprocessing
 
 from dataclasses import dataclass
 
@@ -17,8 +18,7 @@ from sbmlsim.units import UnitRegistry, Units
 from sbmlsim.fit import FitMapping, FitData
 
 from sbmlsim.plot import Figure
-from sbmlsim.plot.plotting_matplotlib import plt, MatplotlibFigureSerializer
-from matplotlib.pyplot import Figure as FigureMPL
+from sbmlsim.plot.plotting_matplotlib import MatplotlibFigureSerializer, FigureMPL, plt
 
 logger = logging.getLogger(__name__)
 
@@ -264,11 +264,8 @@ class SimulationExperiment(object):
         # create figures
         mpl_figures = self.create_mpl_figures()
         if show_figures:
-            plt.show()
+            self.show_figures(mpl_figures=mpl_figures)
         if output_path:
-            # save figure
-            # FIXME: run in separate thread/process
-            logger.info("Saving figures")
             self.save_figures(output_path, mpl_figures=mpl_figures)
 
         return ExperimentResult(experiment=self, output_path=output_path)
@@ -421,6 +418,17 @@ class SimulationExperiment(object):
 
         return mpl_figures
 
+    @timeit
+    def show_figures(self, mpl_figures: Dict[str, FigureMPL]):
+        # plt.show()
+        pool = multiprocessing.Pool()
+        # pool.map(self._show_figure, mpl_figures.values())
+        pool.map_async(self._show_figure, mpl_figures.values())
+
+    @staticmethod
+    def _show_figure(args):
+        fig_mpl = args  # type: FigureMPL
+        fig_mpl.show()
 
     @timeit
     def save_figures(self, results_path: Path, mpl_figures: Dict[str, FigureMPL]) -> List[Path]:
@@ -430,15 +438,26 @@ class SimulationExperiment(object):
         :return:
         """
         paths = []
+        input = []
         for fkey, fig_mpl in mpl_figures.items():
             path_svg = results_path / f"{self.sid}_{fkey}.svg"
-
             fig_mpl.savefig(path_svg, bbox_inches="tight")
             # fig_mpl.savefig(path_png, bbox_inches="tight")
 
-            # only returns SVG paths
+            input.append([path_svg, fig_mpl])
             paths.append(path_svg)
+
+        # multiprocessing of figures
+        pool = multiprocessing.Pool()
+        pool.map(self._save_figure, input)
+        # pool.map_async(self._save_figure, input)
+
         return paths
+
+    @staticmethod
+    def _save_figure(args):
+        path_svg, fig_mpl = args
+        fig_mpl.savefig(path_svg, bbox_inches="tight")
 
 
 # FIXME: deprecated, remove
