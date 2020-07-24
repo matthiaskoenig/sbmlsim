@@ -5,7 +5,7 @@ import xarray as xr
 from pathlib import Path
 
 from sbmlsim.experiment import SimulationExperiment
-from sbmlsim.data import DataSet, load_pkdb_dataframe
+from sbmlsim.data import DataSet, Data, load_pkdb_dataframe
 from sbmlsim.model import AbstractModel, RoadrunnerSBMLModel
 from sbmlsim.simulation import Timecourse, TimecourseSim, ScanSim, Dimension
 from sbmlsim.task import Task
@@ -84,6 +84,10 @@ class DoseResponseExperiment(SimulationExperiment):
                                                          ureg=self.ureg)
 
         return dsets
+
+    def datagenerators(self) -> None:
+        for key in ["time", "glu", "ins", "epi", "gamma"]:
+            Data(experiment=self, task="task_glc_scan", index=key)
 
     @timeit
     def tasks(self) -> Dict[str, Task]:

@@ -27,7 +27,53 @@
       "type": "ScanSim"
     }
   },
-  "data": {},
+  "data": {
+    "task_glc_scan__time": {
+      "type": "TASK",
+      "index": "time",
+      "unit": null,
+      "task": "task_glc_scan",
+      "dataset": null,
+      "function": null,
+      "variables": null
+    },
+    "task_glc_scan__glu": {
+      "type": "TASK",
+      "index": "glu",
+      "unit": null,
+      "task": "task_glc_scan",
+      "dataset": null,
+      "function": null,
+      "variables": null
+    },
+    "task_glc_scan__ins": {
+      "type": "TASK",
+      "index": "ins",
+      "unit": null,
+      "task": "task_glc_scan",
+      "dataset": null,
+      "function": null,
+      "variables": null
+    },
+    "task_glc_scan__epi": {
+      "type": "TASK",
+      "index": "epi",
+      "unit": null,
+      "task": "task_glc_scan",
+      "dataset": null,
+      "function": null,
+      "variables": null
+    },
+    "task_glc_scan__gamma": {
+      "type": "TASK",
+      "index": "gamma",
+      "unit": null,
+      "task": "task_glc_scan",
+      "dataset": null,
+      "function": null,
+      "variables": null
+    }
+  },
   "figures": {
     "fig1": "Figure"
   }
