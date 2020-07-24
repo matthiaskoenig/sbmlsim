@@ -84,7 +84,7 @@ setup(
         "pint>=0.14",
 
         "python-libsbml-experimental>=5.18.1",
-        "python-libsedml>=2.0.10",
+        "python-libsedml>=2.0.11",
         "python-libcombine>=0.2.7",
         "python-libnuml>=1.1.1",
         "libroadrunner>=2.0.0",
