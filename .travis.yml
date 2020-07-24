@@ -6,7 +6,9 @@ matrix:
     python: 3.7
 
 before_install: sudo apt-get install -y libhdf5-serial-dev
-install: pip install -r requirements.txt
+install:
+  - pip install -r requirements.txt
+  - pip install -r requirements-test.txt
 script: pytest --cov=sbmlsim
 after_success: pip install codecov; codecov
 cache:
