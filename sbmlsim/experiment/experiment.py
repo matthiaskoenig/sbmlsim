@@ -267,6 +267,7 @@ class SimulationExperiment(object):
             self.show_figures(mpl_figures=mpl_figures)
         if output_path:
             self.save_figures(output_path, mpl_figures=mpl_figures)
+            self.clear_figures(mpl_figures=mpl_figures)
 
         return ExperimentResult(experiment=self, output_path=output_path)
 
@@ -420,9 +421,13 @@ class SimulationExperiment(object):
 
     @timeit
     def show_figures(self, mpl_figures: Dict[str, FigureMPL]):
-        # plt.show()
-        pool = multiprocessing.Pool()
-        pool.map(self._show_figure, mpl_figures.values())
+
+        for fig_key, fig_mpl in mpl_figures.items():
+            fig_mpl.show()
+
+        # multiprocessing with matplotlib creates issues
+        # pool = multiprocessing.Pool()
+        # pool.map(self._show_figure, mpl_figures.values())
         # pool.map_async(self._show_figure, mpl_figures.values())
 
     @staticmethod
@@ -439,7 +444,7 @@ class SimulationExperiment(object):
         """
         paths = []
         input = []
-        for fkey, fig_mpl in mpl_figures.items():
+        for fkey, fig_mpl in mpl_figures.items():  # type
             path_svg = results_path / f"{self.sid}_{fkey}.svg"
             fig_mpl.savefig(path_svg, bbox_inches="tight")
             # fig_mpl.savefig(path_png, bbox_inches="tight")
@@ -447,12 +452,16 @@ class SimulationExperiment(object):
             input.append([path_svg, fig_mpl])
             paths.append(path_svg)
 
-        # multiprocessing of figures
-        pool = multiprocessing.Pool()
-        pool.map(self._save_figure, input)
+        # multiprocessing of figures (problems in travis)
+        # pool = multiprocessing.Pool()
+        # pool.map(self._save_figure, input)
         # pool.map_async(self._save_figure, input)
 
         return paths
+
+    def clear_figures(self, mpl_figures: Dict[str, FigureMPL]):
+        for fig_key, fig_mpl in mpl_figures.items():
+            plt.close(fig_mpl)
 
     @staticmethod
     def _save_figure(args):

@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # -*- encoding: utf-8 -*-
 """
-sbmlutils pip package
+sbmlsim pip package
 """
 import io
 import re

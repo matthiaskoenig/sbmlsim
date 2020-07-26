@@ -10,10 +10,9 @@ from typing import Dict, List
 from pathlib import Path
 from enum import Enum
 
-from sbmlsim.experiment import SimulationExperiment, ExperimentResult
 from sbmlsim import __version__
+from sbmlsim.experiment import SimulationExperiment, ExperimentResult
 from sbmlsim import BASE_PATH
-
 
 TEMPLATE_PATH = BASE_PATH / "experiment" / "templates"
 logger = logging.getLogger(__name__)
