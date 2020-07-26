@@ -8,6 +8,7 @@ import tempfile
 import libsbml
 import pandas as pd
 from pathlib import Path
+from typing import Dict
 
 import http.client as httplib
 
@@ -30,7 +31,7 @@ class DataDescriptionParser(object):
     SUPPORTED_FORMATS = [FORMAT_NUML, FORMAT_CSV, FORMAT_TSV]
 
     @classmethod
-    def parse(cls, dd: libsedml.SedDataDescription, workingDir=None):
+    def parse(cls, dd: libsedml.SedDataDescription, workingDir=None) -> Dict[str, pd.Series]:
         """ Parses single DataDescription.
 
         Returns dictionary of data sources {DataSource.id, slice_data}

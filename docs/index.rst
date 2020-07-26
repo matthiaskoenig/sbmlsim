@@ -9,7 +9,7 @@ Contents:
 .. toctree::
    :maxdepth: 2
 
-   introduction
+   overview
    notebooks/simjson.rst
 
 

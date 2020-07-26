@@ -11,6 +11,10 @@ cover
 *~
 __pycache__
 
+# cached model state
+*.xml.dat
+*.state
+
 .ipynb_checkpoints/
 .pytest_cache
 
@@ -18,4 +22,7 @@ __pycache__
 docs/_build/
 
 
-sbmlsim/examples/repressilator/RepressilatorExperiment/RepressilatorExperiment_task_tc.h5
+sbmlsim/examples/experiments/repressilator/RepressilatorExperiment/RepressilatorExperiment_task_tc.h5
+
+sbmlsim/examples/experiments/midazolam/results/
+sbmlsim/examples/experiments/midazolam/results_fit/

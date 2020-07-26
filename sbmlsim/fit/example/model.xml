@@ -1,0 +1,4119 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Created by COPASI version 4.27 (Build 214) on 2020-03-03 09:31 with libSBML version 5.17.0. -->
+<sbml xmlns="http://www.sbml.org/sbml/level2/version4" level="2" version="4">
+  <model metaid="COPASI0" id="Pritchard2002_glycolysis" name="Pritchard2002_glycolysis">
+    <notes>
+      <body xmlns="http://www.w3.org/1999/xhtml">
+        <p>from:      <br/>
+        <b>Schemes of fluc control in a model of        <em>Saccharomyces cerevisiae</em>
+            glycolysis        </b></p>
+        <p>
+          <b>Pritchard, L and Kell, DB</b>
+          <em>Eur. J. Biochem.</em>
+          269(2002), 3894-3904.      <br/>
+          It represents a modified version of      <b>Teusink et al.</b>
+          <em>Eur. J. Biochem.</em>
+          267(2000), 5313-5329.      <br/>
+          The model is a translation from the GEPASI file encoded by Leighton Pritchard.      <br/>
+          This version uses the Vmaxes found by the best fit (R1) of Table 1 of the 
+	Pritchard and Kell paper and simulates a decrease of external glucose  concentration from 100 to 2 mM.      <br/>
+          To reproduce the values in table 2 of the publication, set      <em>GLCo</em>
+          to 50 mM and compute the steady state.      </p>
+          <br/>
+          <p>To the extent possible under law, all copyright and related or neighbouring rights to this encoded model have been dedicated to the public domain worldwide. Please refer to      <a href="http://creativecommons.org/publicdomain/zero/1.0/" title="Creative Commons CC0">CC0 Public Domain Dedication</a>
+          for more information.      </p>
+          <p>In summary, you are entitled to use this encoded model in absolutely any manner you deem suitable, verbatim, or with modification, alone or embedded it in a larger context, redistribute it, commercially or not, in a restricted way or not.</p>
+          <br/>
+          <p>To cite BioModels Database, please use:      <a href="http://www.ncbi.nlm.nih.gov/pubmed/20587024" class="external">Li C, Donizelli M, Rodriguez N, Dharuri H, Endler L, Chelliah V, Li L, He E, Henry A, Stefan MI, Snoep JL, Hucka M, Le Novère N, Laibe C (2010) BioModels Database: An enhanced, curated and annotated resource for published quantitative kinetic models. BMC Syst Biol., 4:92.</a></p>
+        </body>
+      </notes>
+    <annotation>
+      <rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#" xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:dcterms="http://purl.org/dc/terms/" xmlns:vCard="http://www.w3.org/2001/vcard-rdf/3.0#" xmlns:bqbiol="http://biomodels.net/biology-qualifiers/" xmlns:bqmodel="http://biomodels.net/model-qualifiers/">
+        <rdf:Description rdf:about="#COPASI0">
+          <dc:creator>
+            <rdf:Bag>
+              <rdf:li rdf:parseType="Resource">
+                <vCard:N rdf:parseType="Resource">
+                  <vCard:Family>Mendes</vCard:Family>
+                  <vCard:Given>Pedro</vCard:Given>
+                </vCard:N>
+                <vCard:EMAIL>mendes@vbi.vt.edu</vCard:EMAIL>
+                <vCard:ORG rdf:parseType="Resource">
+                  <vCard:Orgname>Virginia Bioinformatics Institute</vCard:Orgname>
+                </vCard:ORG>
+              </rdf:li>
+              <rdf:li rdf:parseType="Resource">
+                <vCard:N rdf:parseType="Resource">
+                  <vCard:Family>Endler</vCard:Family>
+                  <vCard:Given>Lukas</vCard:Given>
+                </vCard:N>
+                <vCard:EMAIL>lukas@ebi.ac.uk</vCard:EMAIL>
+                <vCard:ORG rdf:parseType="Resource">
+                  <vCard:Orgname>EMBL-EBI</vCard:Orgname>
+                </vCard:ORG>
+              </rdf:li>
+            </rdf:Bag>
+          </dc:creator>
+          <dcterms:created rdf:parseType="Resource">
+            <dcterms:W3CDTF>2006-09-14T10:35:04Z</dcterms:W3CDTF>
+          </dcterms:created>
+          <dcterms:modified rdf:parseType="Resource">
+            <dcterms:W3CDTF>2016-04-08T15:39:10Z</dcterms:W3CDTF>
+          </dcterms:modified>
+          <bqbiol:is>
+            <rdf:Bag>
+              <rdf:li rdf:resource="http://identifiers.org/biomodels.db/BIOMD0000000172"/>
+            </rdf:Bag>
+          </bqbiol:is>
+          <bqbiol:is>
+            <rdf:Bag>
+              <rdf:li rdf:resource="http://identifiers.org/biomodels.db/MODEL8293171637"/>
+            </rdf:Bag>
+          </bqbiol:is>
+          <bqbiol:isPartOf>
+            <rdf:Bag>
+              <rdf:li rdf:resource="http://identifiers.org/kegg.pathway/sce00010"/>
+            </rdf:Bag>
+          </bqbiol:isPartOf>
+          <bqbiol:isVersionOf>
+            <rdf:Bag>
+              <rdf:li rdf:resource="http://identifiers.org/go/GO:0006096"/>
+            </rdf:Bag>
+          </bqbiol:isVersionOf>
+          <bqbiol:hasTaxon>
+            <rdf:Bag>
+              <rdf:li rdf:resource="http://identifiers.org/taxonomy/4932"/>
+            </rdf:Bag>
+          </bqbiol:hasTaxon>
+          <bqmodel:isDerivedFrom>
+            <rdf:Bag>
+              <rdf:li rdf:resource="http://identifiers.org/biomodels.db/BIOMD0000000172"/>
+              <rdf:li rdf:resource="http://identifiers.org/biomodels.db/MODEL8293171637"/>
+              <rdf:li rdf:resource="http://identifiers.org/kegg.pathway/sce00010"/>
+              <rdf:li rdf:resource="http://identifiers.org/go/GO:0006096"/>
+              <rdf:li rdf:resource="http://identifiers.org/taxonomy/4932"/>
+              <rdf:li rdf:resource="http://identifiers.org/biomodels.db/BIOMD0000000064"/>
+            </rdf:Bag>
+          </bqmodel:isDerivedFrom>
+          <bqbiol:isDescribedBy>
+            <rdf:Bag>
+              <rdf:li rdf:resource="http://identifiers.org/biomodels.db/BIOMD0000000064"/>
+              <rdf:li rdf:resource="http://identifiers.org/pubmed/12180966"/>
+            </rdf:Bag>
+          </bqbiol:isDescribedBy>
+        </rdf:Description>
+      </rdf:RDF>
+      <COPASI xmlns="http://www.copasi.org/static/sbml">
+        <rdf:RDF xmlns:CopasiMT="http://www.copasi.org/RDF/MiriamTerms#" xmlns:bqbiol="http://biomodels.net/biology-qualifiers/" xmlns:bqmodel="http://biomodels.net/model-qualifiers/" xmlns:dcterms="http://purl.org/dc/terms/" xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#" xmlns:vCard="http://www.w3.org/2001/vcard-rdf/3.0#">
+          <rdf:Description rdf:about="#COPASI0">
+            <bqbiol:hasTaxon>
+              <rdf:Bag>
+                <rdf:li rdf:resource="http://identifiers.org/taxonomy/4932"/>
+              </rdf:Bag>
+            </bqbiol:hasTaxon>
+            <bqmodel:isDerivedFrom>
+              <rdf:Bag>
+                <rdf:li rdf:resource="http://identifiers.org/biomodels.db/BIOMD0000000064"/>
+              </rdf:Bag>
+            </bqmodel:isDerivedFrom>
+            <dcterms:bibliographicCitation>
+              <rdf:Bag>
+                <rdf:li>
+                  <rdf:Description>
+                    <CopasiMT:isDescribedBy rdf:resource="http://identifiers.org/pubmed/12180966"/>
+                  </rdf:Description>
+                </rdf:li>
+              </rdf:Bag>
+            </dcterms:bibliographicCitation>
+            <dcterms:created>
+              <rdf:Description>
+                <dcterms:W3CDTF>2006-09-14T10:35:04Z</dcterms:W3CDTF>
+              </rdf:Description>
+            </dcterms:created>
+            <dcterms:creator>
+              <rdf:Bag>
+                <rdf:li>
+                  <rdf:Description>
+                    <vCard:EMAIL>lukas@ebi.ac.uk</vCard:EMAIL>
+                    <vCard:N>
+                      <rdf:Description>
+                        <vCard:Family>Endler</vCard:Family>
+                        <vCard:Given>Lukas</vCard:Given>
+                      </rdf:Description>
+                    </vCard:N>
+                    <vCard:ORG>
+                      <rdf:Description>
+                        <vCard:Orgname>EMBL-EBI</vCard:Orgname>
+                      </rdf:Description>
+                    </vCard:ORG>
+                  </rdf:Description>
+                </rdf:li>
+                <rdf:li>
+                  <rdf:Description>
+                    <vCard:EMAIL>mendes@vbi.vt.edu</vCard:EMAIL>
+                    <vCard:N>
+                      <rdf:Description>
+                        <vCard:Family>Mendes</vCard:Family>
+                        <vCard:Given>Pedro</vCard:Given>
+                      </rdf:Description>
+                    </vCard:N>
+                    <vCard:ORG>
+                      <rdf:Description>
+                        <vCard:Orgname>Virginia Bioinformatics Institute</vCard:Orgname>
+                      </rdf:Description>
+                    </vCard:ORG>
+                  </rdf:Description>
+                </rdf:li>
+              </rdf:Bag>
+            </dcterms:creator>
+            <dcterms:modified>
+              <rdf:Description>
+                <dcterms:W3CDTF>2016-04-08T15:39:10Z</dcterms:W3CDTF>
+              </rdf:Description>
+            </dcterms:modified>
+            <CopasiMT:is>
+              <rdf:Bag>
+                <rdf:li rdf:resource="http://identifiers.org/biomodels.db/MODEL8293171637"/>
+              </rdf:Bag>
+            </CopasiMT:is>
+            <CopasiMT:is>
+              <rdf:Bag>
+                <rdf:li rdf:resource="http://identifiers.org/biomodels.db/BIOMD0000000172"/>
+              </rdf:Bag>
+            </CopasiMT:is>
+            <CopasiMT:isPartOf>
+              <rdf:Bag>
+                <rdf:li rdf:resource="http://identifiers.org/kegg.pathway/sce00010"/>
+              </rdf:Bag>
+            </CopasiMT:isPartOf>
+            <CopasiMT:isVersionOf>
+              <rdf:Bag>
+                <rdf:li rdf:resource="http://identifiers.org/go/GO:0006096"/>
+              </rdf:Bag>
+            </CopasiMT:isVersionOf>
+          </rdf:Description>
+        </rdf:RDF>
+      </COPASI>
+    </annotation>
+    <listOfFunctionDefinitions>
+      <functionDefinition metaid="COPASI55" id="Constant_flux__irreversible" name="Constant flux (irreversible)">
+        <annotation>
+          <COPASI xmlns="http://www.copasi.org/static/sbml">
+            <rdf:RDF xmlns:dcterms="http://purl.org/dc/terms/" xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">
+              <rdf:Description rdf:about="#COPASI55">
+                <dcterms:created>
+                  <rdf:Description>
+                    <dcterms:W3CDTF>2019-12-04T10:19:52Z</dcterms:W3CDTF>
+                  </rdf:Description>
+                </dcterms:created>
+              </rdf:Description>
+            </rdf:RDF>
+          </COPASI>
+        </annotation>
+        <math xmlns="http://www.w3.org/1998/Math/MathML">
+          <lambda>
+            <bvar>
+              <ci> v </ci>
+            </bvar>
+            <ci> v </ci>
+          </lambda>
+        </math>
+      </functionDefinition>
+      <functionDefinition metaid="COPASI56" id="Function_for_glucose_transport__1" name="Function for glucose transport [1]">
+        <annotation>
+          <COPASI xmlns="http://www.copasi.org/static/sbml">
+            <rdf:RDF xmlns:dcterms="http://purl.org/dc/terms/" xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">
+              <rdf:Description rdf:about="#COPASI56">
+                <dcterms:created>
+                  <rdf:Description>
+                    <dcterms:W3CDTF>2019-12-09T09:33:31Z</dcterms:W3CDTF>
+                  </rdf:Description>
+                </dcterms:created>
+              </rdf:Description>
+            </rdf:RDF>
+          </COPASI>
+        </annotation>
+        <math xmlns="http://www.w3.org/1998/Math/MathML">
+          <lambda>
+            <bvar>
+              <ci> GLCi </ci>
+            </bvar>
+            <bvar>
+              <ci> GLCo </ci>
+            </bvar>
+            <bvar>
+              <ci> Kglc_1 </ci>
+            </bvar>
+            <bvar>
+              <ci> Ki_1 </ci>
+            </bvar>
+            <bvar>
+              <ci> Vmax_1 </ci>
+            </bvar>
+            <apply>
+              <divide/>
+              <apply>
+                <divide/>
+                <apply>
+                  <times/>
+                  <ci> Vmax_1 </ci>
+                  <apply>
+                    <minus/>
+                    <ci> GLCo </ci>
+                    <ci> GLCi </ci>
+                  </apply>
+                </apply>
+                <ci> Kglc_1 </ci>
+              </apply>
+              <apply>
+                <plus/>
+                <cn> 1 </cn>
+                <apply>
+                  <divide/>
+                  <apply>
+                    <plus/>
+                    <ci> GLCo </ci>
+                    <ci> GLCi </ci>
+                  </apply>
+                  <ci> Kglc_1 </ci>
+                </apply>
+                <apply>
+                  <divide/>
+                  <apply>
+                    <times/>
+                    <ci> Ki_1 </ci>
+                    <ci> GLCo </ci>
+                    <ci> GLCi </ci>
+                  </apply>
+                  <apply>
+                    <power/>
+                    <ci> Kglc_1 </ci>
+                    <cn> 2 </cn>
+                  </apply>
+                </apply>
+              </apply>
+            </apply>
+          </lambda>
+        </math>
+      </functionDefinition>
+      <functionDefinition metaid="COPASI57" id="Function_for_hexokinase__1" name="Function for hexokinase [1]">
+        <annotation>
+          <COPASI xmlns="http://www.copasi.org/static/sbml">
+            <rdf:RDF xmlns:dcterms="http://purl.org/dc/terms/" xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">
+              <rdf:Description rdf:about="#COPASI57">
+                <dcterms:created>
+                  <rdf:Description>
+                    <dcterms:W3CDTF>2019-12-09T09:33:31Z</dcterms:W3CDTF>
+                  </rdf:Description>
+                </dcterms:created>
+              </rdf:Description>
+            </rdf:RDF>
+          </COPASI>
+        </annotation>
+        <math xmlns="http://www.w3.org/1998/Math/MathML">
+          <lambda>
+            <bvar>
+              <ci> ADP </ci>
+            </bvar>
+            <bvar>
+              <ci> ATP </ci>
+            </bvar>
+            <bvar>
+              <ci> G6P </ci>
+            </bvar>
+            <bvar>
+              <ci> GLCi </ci>
+            </bvar>
+            <bvar>
+              <ci> Kadp_2 </ci>
+            </bvar>
+            <bvar>
+              <ci> Katp_2 </ci>
+            </bvar>
+            <bvar>
+              <ci> Keq_2 </ci>
+            </bvar>
+            <bvar>
+              <ci> Kg6p_2 </ci>
+            </bvar>
+            <bvar>
+              <ci> Kglc_2 </ci>
+            </bvar>
+            <bvar>
+              <ci> Vmax_2 </ci>
+            </bvar>
+            <apply>
+              <divide/>
+              <apply>
+                <times/>
+                <ci> Vmax_2 </ci>
+                <apply>
+                  <minus/>
+                  <apply>
+                    <divide/>
+                    <apply>
+                      <times/>
+                      <ci> GLCi </ci>
+                      <ci> ATP </ci>
+                    </apply>
+                    <apply>
+                      <times/>
+                      <ci> Kglc_2 </ci>
+                      <ci> Katp_2 </ci>
+                    </apply>
+                  </apply>
+                  <apply>
+                    <divide/>
+                    <apply>
+                      <times/>
+                      <ci> G6P </ci>
+                      <ci> ADP </ci>
+                    </apply>
+                    <apply>
+                      <times/>
+                      <ci> Kglc_2 </ci>
+                      <ci> Katp_2 </ci>
+                      <ci> Keq_2 </ci>
+                    </apply>
+                  </apply>
+                </apply>
+              </apply>
+              <apply>
+                <times/>
+                <apply>
+                  <plus/>
+                  <cn> 1 </cn>
+                  <apply>
+                    <divide/>
+                    <ci> GLCi </ci>
+                    <ci> Kglc_2 </ci>
+                  </apply>
+                  <apply>
+                    <divide/>
+                    <ci> G6P </ci>
+                    <ci> Kg6p_2 </ci>
+                  </apply>
+                </apply>
+                <apply>
+                  <plus/>
+                  <cn> 1 </cn>
+                  <apply>
+                    <divide/>
+                    <ci> ATP </ci>
+                    <ci> Katp_2 </ci>
+                  </apply>
+                  <apply>
+                    <divide/>
+                    <ci> ADP </ci>
+                    <ci> Kadp_2 </ci>
+                  </apply>
+                </apply>
+              </apply>
+            </apply>
+          </lambda>
+        </math>
+      </functionDefinition>
+      <functionDefinition metaid="COPASI58" id="Function_for_phosphofructosekinase__1" name="Function for phosphofructosekinase [1]">
+        <annotation>
+          <COPASI xmlns="http://www.copasi.org/static/sbml">
+            <rdf:RDF xmlns:dcterms="http://purl.org/dc/terms/" xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">
+              <rdf:Description rdf:about="#COPASI58">
+                <dcterms:created>
+                  <rdf:Description>
+                    <dcterms:W3CDTF>2019-12-09T09:33:31Z</dcterms:W3CDTF>
+                  </rdf:Description>
+                </dcterms:created>
+              </rdf:Description>
+            </rdf:RDF>
+          </COPASI>
+        </annotation>
+        <math xmlns="http://www.w3.org/1998/Math/MathML">
+          <lambda>
+            <bvar>
+              <ci> AMP </ci>
+            </bvar>
+            <bvar>
+              <ci> ATP </ci>
+            </bvar>
+            <bvar>
+              <ci> Camp_4 </ci>
+            </bvar>
+            <bvar>
+              <ci> Catp_4 </ci>
+            </bvar>
+            <bvar>
+              <ci> Cf16_4 </ci>
+            </bvar>
+            <bvar>
+              <ci> Cf26_4 </ci>
+            </bvar>
+            <bvar>
+              <ci> Ciatp_4 </ci>
+            </bvar>
+            <bvar>
+              <ci> F16bP </ci>
+            </bvar>
+            <bvar>
+              <ci> F26bP </ci>
+            </bvar>
+            <bvar>
+              <ci> F6P </ci>
+            </bvar>
+            <bvar>
+              <ci> Kamp_4 </ci>
+            </bvar>
+            <bvar>
+              <ci> Katp_4 </ci>
+            </bvar>
+            <bvar>
+              <ci> Kf16_4 </ci>
+            </bvar>
+            <bvar>
+              <ci> Kf26_4 </ci>
+            </bvar>
+            <bvar>
+              <ci> Kf6p_4 </ci>
+            </bvar>
+            <bvar>
+              <ci> Kiatp_4 </ci>
+            </bvar>
+            <bvar>
+              <ci> L0_4 </ci>
+            </bvar>
+            <bvar>
+              <ci> Vmax_4 </ci>
+            </bvar>
+            <bvar>
+              <ci> gR_4 </ci>
+            </bvar>
+            <apply>
+              <times/>
+              <ci> Vmax_4 </ci>
+              <apply>
+                <divide/>
+                <apply>
+                  <times/>
+                  <ci> gR_4 </ci>
+                  <apply>
+                    <divide/>
+                    <ci> F6P </ci>
+                    <ci> Kf6p_4 </ci>
+                  </apply>
+                  <apply>
+                    <divide/>
+                    <ci> ATP </ci>
+                    <ci> Katp_4 </ci>
+                  </apply>
+                  <apply>
+                    <plus/>
+                    <cn> 1 </cn>
+                    <apply>
+                      <divide/>
+                      <ci> F6P </ci>
+                      <ci> Kf6p_4 </ci>
+                    </apply>
+                    <apply>
+                      <divide/>
+                      <ci> ATP </ci>
+                      <ci> Katp_4 </ci>
+                    </apply>
+                    <apply>
+                      <divide/>
+                      <apply>
+                        <times/>
+                        <apply>
+                          <divide/>
+                          <apply>
+                            <times/>
+                            <ci> gR_4 </ci>
+                            <ci> F6P </ci>
+                          </apply>
+                          <ci> Kf6p_4 </ci>
+                        </apply>
+                        <ci> ATP </ci>
+                      </apply>
+                      <ci> Katp_4 </ci>
+                    </apply>
+                  </apply>
+                </apply>
+                <apply>
+                  <plus/>
+                  <apply>
+                    <power/>
+                    <apply>
+                      <plus/>
+                      <cn> 1 </cn>
+                      <apply>
+                        <divide/>
+                        <ci> F6P </ci>
+                        <ci> Kf6p_4 </ci>
+                      </apply>
+                      <apply>
+                        <divide/>
+                        <ci> ATP </ci>
+                        <ci> Katp_4 </ci>
+                      </apply>
+                      <apply>
+                        <divide/>
+                        <apply>
+                          <times/>
+                          <apply>
+                            <divide/>
+                            <apply>
+                              <times/>
+                              <ci> gR_4 </ci>
+                              <ci> F6P </ci>
+                            </apply>
+                            <ci> Kf6p_4 </ci>
+                          </apply>
+                          <ci> ATP </ci>
+                        </apply>
+                        <ci> Katp_4 </ci>
+                      </apply>
+                    </apply>
+                    <cn> 2 </cn>
+                  </apply>
+                  <apply>
+                    <times/>
+                    <ci> L0_4 </ci>
+                    <apply>
+                      <power/>
+                      <apply>
+                        <divide/>
+                        <apply>
+                          <plus/>
+                          <cn> 1 </cn>
+                          <apply>
+                            <divide/>
+                            <apply>
+                              <times/>
+                              <ci> Ciatp_4 </ci>
+                              <ci> ATP </ci>
+                            </apply>
+                            <ci> Kiatp_4 </ci>
+                          </apply>
+                        </apply>
+                        <apply>
+                          <plus/>
+                          <cn> 1 </cn>
+                          <apply>
+                            <divide/>
+                            <ci> ATP </ci>
+                            <ci> Kiatp_4 </ci>
+                          </apply>
+                        </apply>
+                      </apply>
+                      <cn> 2 </cn>
+                    </apply>
+                    <apply>
+                      <power/>
+                      <apply>
+                        <divide/>
+                        <apply>
+                          <plus/>
+                          <cn> 1 </cn>
+                          <apply>
+                            <divide/>
+                            <apply>
+                              <times/>
+                              <ci> Camp_4 </ci>
+                              <ci> AMP </ci>
+                            </apply>
+                            <ci> Kamp_4 </ci>
+                          </apply>
+                        </apply>
+                        <apply>
+                          <plus/>
+                          <cn> 1 </cn>
+                          <apply>
+                            <divide/>
+                            <ci> AMP </ci>
+                            <ci> Kamp_4 </ci>
+                          </apply>
+                        </apply>
+                      </apply>
+                      <cn> 2 </cn>
+                    </apply>
+                    <apply>
+                      <power/>
+                      <apply>
+                        <divide/>
+                        <apply>
+                          <plus/>
+                          <cn> 1 </cn>
+                          <apply>
+                            <divide/>
+                            <apply>
+                              <times/>
+                              <ci> Cf26_4 </ci>
+                              <ci> F26bP </ci>
+                            </apply>
+                            <ci> Kf26_4 </ci>
+                          </apply>
+                          <apply>
+                            <divide/>
+                            <apply>
+                              <times/>
+                              <ci> Cf16_4 </ci>
+                              <ci> F16bP </ci>
+                            </apply>
+                            <ci> Kf16_4 </ci>
+                          </apply>
+                        </apply>
+                        <apply>
+                          <plus/>
+                          <cn> 1 </cn>
+                          <apply>
+                            <divide/>
+                            <ci> F26bP </ci>
+                            <ci> Kf26_4 </ci>
+                          </apply>
+                          <apply>
+                            <divide/>
+                            <ci> F16bP </ci>
+                            <ci> Kf16_4 </ci>
+                          </apply>
+                        </apply>
+                      </apply>
+                      <cn> 2 </cn>
+                    </apply>
+                    <apply>
+                      <power/>
+                      <apply>
+                        <plus/>
+                        <cn> 1 </cn>
+                        <apply>
+                          <divide/>
+                          <apply>
+                            <times/>
+                            <ci> Catp_4 </ci>
+                            <ci> ATP </ci>
+                          </apply>
+                          <ci> Katp_4 </ci>
+                        </apply>
+                      </apply>
+                      <cn> 2 </cn>
+                    </apply>
+                  </apply>
+                </apply>
+              </apply>
+            </apply>
+          </lambda>
+        </math>
+      </functionDefinition>
+      <functionDefinition metaid="COPASI59" id="Function_for_enolase__1" name="Function for enolase [1]">
+        <annotation>
+          <COPASI xmlns="http://www.copasi.org/static/sbml">
+            <rdf:RDF xmlns:dcterms="http://purl.org/dc/terms/" xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">
+              <rdf:Description rdf:about="#COPASI59">
+                <dcterms:created>
+                  <rdf:Description>
+                    <dcterms:W3CDTF>2019-12-09T09:33:31Z</dcterms:W3CDTF>
+                  </rdf:Description>
+                </dcterms:created>
+              </rdf:Description>
+            </rdf:RDF>
+          </COPASI>
+        </annotation>
+        <math xmlns="http://www.w3.org/1998/Math/MathML">
+          <lambda>
+            <bvar>
+              <ci> Keq_10 </ci>
+            </bvar>
+            <bvar>
+              <ci> Kp2g_10 </ci>
+            </bvar>
+            <bvar>
+              <ci> Kpep_10 </ci>
+            </bvar>
+            <bvar>
+              <ci> P2G </ci>
+            </bvar>
+            <bvar>
+              <ci> PEP </ci>
+            </bvar>
+            <bvar>
+              <ci> Vmax_10 </ci>
+            </bvar>
+            <apply>
+              <divide/>
+              <apply>
+                <times/>
+                <ci> Vmax_10 </ci>
+                <apply>
+                  <minus/>
+                  <apply>
+                    <divide/>
+                    <ci> P2G </ci>
+                    <ci> Kp2g_10 </ci>
+                  </apply>
+                  <apply>
+                    <divide/>
+                    <ci> PEP </ci>
+                    <apply>
+                      <times/>
+                      <ci> Kp2g_10 </ci>
+                      <ci> Keq_10 </ci>
+                    </apply>
+                  </apply>
+                </apply>
+              </apply>
+              <apply>
+                <plus/>
+                <cn> 1 </cn>
+                <apply>
+                  <divide/>
+                  <ci> P2G </ci>
+                  <ci> Kp2g_10 </ci>
+                </apply>
+                <apply>
+                  <divide/>
+                  <ci> PEP </ci>
+                  <ci> Kpep_10 </ci>
+                </apply>
+              </apply>
+            </apply>
+          </lambda>
+        </math>
+      </functionDefinition>
+      <functionDefinition metaid="COPASI60" id="Function_for_phosphoglyceromutase__1" name="Function for phosphoglyceromutase [1]">
+        <annotation>
+          <COPASI xmlns="http://www.copasi.org/static/sbml">
+            <rdf:RDF xmlns:dcterms="http://purl.org/dc/terms/" xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">
+              <rdf:Description rdf:about="#COPASI60">
+                <dcterms:created>
+                  <rdf:Description>
+                    <dcterms:W3CDTF>2019-12-09T09:33:31Z</dcterms:W3CDTF>
+                  </rdf:Description>
+                </dcterms:created>
+              </rdf:Description>
+            </rdf:RDF>
+          </COPASI>
+        </annotation>
+        <math xmlns="http://www.w3.org/1998/Math/MathML">
+          <lambda>
+            <bvar>
+              <ci> Keq_9 </ci>
+            </bvar>
+            <bvar>
+              <ci> Kp2g_9 </ci>
+            </bvar>
+            <bvar>
+              <ci> Kp3g_9 </ci>
+            </bvar>
+            <bvar>
+              <ci> P2G </ci>
+            </bvar>
+            <bvar>
+              <ci> P3G </ci>
+            </bvar>
+            <bvar>
+              <ci> Vmax_9 </ci>
+            </bvar>
+            <apply>
+              <divide/>
+              <apply>
+                <times/>
+                <ci> Vmax_9 </ci>
+                <apply>
+                  <minus/>
+                  <apply>
+                    <divide/>
+                    <ci> P3G </ci>
+                    <ci> Kp3g_9 </ci>
+                  </apply>
+                  <apply>
+                    <divide/>
+                    <ci> P2G </ci>
+                    <apply>
+                      <times/>
+                      <ci> Kp3g_9 </ci>
+                      <ci> Keq_9 </ci>
+                    </apply>
+                  </apply>
+                </apply>
+              </apply>
+              <apply>
+                <plus/>
+                <cn> 1 </cn>
+                <apply>
+                  <divide/>
+                  <ci> P3G </ci>
+                  <ci> Kp3g_9 </ci>
+                </apply>
+                <apply>
+                  <divide/>
+                  <ci> P2G </ci>
+                  <ci> Kp2g_9 </ci>
+                </apply>
+              </apply>
+            </apply>
+          </lambda>
+        </math>
+      </functionDefinition>
+      <functionDefinition metaid="COPASI61" id="Function_for_phosphoglucose_isomerase__1" name="Function for phosphoglucose isomerase [1]">
+        <annotation>
+          <COPASI xmlns="http://www.copasi.org/static/sbml">
+            <rdf:RDF xmlns:dcterms="http://purl.org/dc/terms/" xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">
+              <rdf:Description rdf:about="#COPASI61">
+                <dcterms:created>
+                  <rdf:Description>
+                    <dcterms:W3CDTF>2019-12-09T09:33:31Z</dcterms:W3CDTF>
+                  </rdf:Description>
+                </dcterms:created>
+              </rdf:Description>
+            </rdf:RDF>
+          </COPASI>
+        </annotation>
+        <math xmlns="http://www.w3.org/1998/Math/MathML">
+          <lambda>
+            <bvar>
+              <ci> F6P </ci>
+            </bvar>
+            <bvar>
+              <ci> G6P </ci>
+            </bvar>
+            <bvar>
+              <ci> Keq_3 </ci>
+            </bvar>
+            <bvar>
+              <ci> Kf6p_3 </ci>
+            </bvar>
+            <bvar>
+              <ci> Kg6p_3 </ci>
+            </bvar>
+            <bvar>
+              <ci> Vmax_3 </ci>
+            </bvar>
+            <apply>
+              <divide/>
+              <apply>
+                <times/>
+                <ci> Vmax_3 </ci>
+                <apply>
+                  <minus/>
+                  <apply>
+                    <divide/>
+                    <ci> G6P </ci>
+                    <ci> Kg6p_3 </ci>
+                  </apply>
+                  <apply>
+                    <divide/>
+                    <ci> F6P </ci>
+                    <apply>
+                      <times/>
+                      <ci> Kg6p_3 </ci>
+                      <ci> Keq_3 </ci>
+                    </apply>
+                  </apply>
+                </apply>
+              </apply>
+              <apply>
+                <plus/>
+                <cn> 1 </cn>
+                <apply>
+                  <divide/>
+                  <ci> G6P </ci>
+                  <ci> Kg6p_3 </ci>
+                </apply>
+                <apply>
+                  <divide/>
+                  <ci> F6P </ci>
+                  <ci> Kf6p_3 </ci>
+                </apply>
+              </apply>
+            </apply>
+          </lambda>
+        </math>
+      </functionDefinition>
+      <functionDefinition metaid="COPASI62" id="Function_for_fructosebisphosphate_aldolase__1" name="Function for fructosebisphosphate aldolase [1]">
+        <annotation>
+          <COPASI xmlns="http://www.copasi.org/static/sbml">
+            <rdf:RDF xmlns:dcterms="http://purl.org/dc/terms/" xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">
+              <rdf:Description rdf:about="#COPASI62">
+                <dcterms:created>
+                  <rdf:Description>
+                    <dcterms:W3CDTF>2019-12-09T09:33:31Z</dcterms:W3CDTF>
+                  </rdf:Description>
+                </dcterms:created>
+              </rdf:Description>
+            </rdf:RDF>
+          </COPASI>
+        </annotation>
+        <math xmlns="http://www.w3.org/1998/Math/MathML">
+          <lambda>
+            <bvar>
+              <ci> DHAP </ci>
+            </bvar>
+            <bvar>
+              <ci> F16bP </ci>
+            </bvar>
+            <bvar>
+              <ci> GAP </ci>
+            </bvar>
+            <bvar>
+              <ci> Kdhap_5 </ci>
+            </bvar>
+            <bvar>
+              <ci> Keq_5 </ci>
+            </bvar>
+            <bvar>
+              <ci> Kf16bp_5 </ci>
+            </bvar>
+            <bvar>
+              <ci> Kgap_5 </ci>
+            </bvar>
+            <bvar>
+              <ci> Kigap_5 </ci>
+            </bvar>
+            <bvar>
+              <ci> Vmax_5 </ci>
+            </bvar>
+            <apply>
+              <divide/>
+              <apply>
+                <times/>
+                <ci> Vmax_5 </ci>
+                <apply>
+                  <minus/>
+                  <apply>
+                    <divide/>
+                    <ci> F16bP </ci>
+                    <ci> Kf16bp_5 </ci>
+                  </apply>
+                  <apply>
+                    <divide/>
+                    <apply>
+                      <times/>
+                      <ci> DHAP </ci>
+                      <ci> GAP </ci>
+                    </apply>
+                    <apply>
+                      <times/>
+                      <ci> Kf16bp_5 </ci>
+                      <ci> Keq_5 </ci>
+                    </apply>
+                  </apply>
+                </apply>
+              </apply>
+              <apply>
+                <plus/>
+                <cn> 1 </cn>
+                <apply>
+                  <divide/>
+                  <ci> F16bP </ci>
+                  <ci> Kf16bp_5 </ci>
+                </apply>
+                <apply>
+                  <divide/>
+                  <ci> DHAP </ci>
+                  <ci> Kdhap_5 </ci>
+                </apply>
+                <apply>
+                  <divide/>
+                  <ci> GAP </ci>
+                  <ci> Kgap_5 </ci>
+                </apply>
+                <apply>
+                  <divide/>
+                  <apply>
+                    <times/>
+                    <ci> F16bP </ci>
+                    <ci> GAP </ci>
+                  </apply>
+                  <apply>
+                    <times/>
+                    <ci> Kf16bp_5 </ci>
+                    <ci> Kigap_5 </ci>
+                  </apply>
+                </apply>
+                <apply>
+                  <divide/>
+                  <apply>
+                    <times/>
+                    <ci> DHAP </ci>
+                    <ci> GAP </ci>
+                  </apply>
+                  <apply>
+                    <times/>
+                    <ci> Kdhap_5 </ci>
+                    <ci> Kgap_5 </ci>
+                  </apply>
+                </apply>
+              </apply>
+            </apply>
+          </lambda>
+        </math>
+      </functionDefinition>
+      <functionDefinition metaid="COPASI63" id="Function_for_glyceraldehyde_phosphate_dehydrogenase__1" name="Function for glyceraldehyde phosphate dehydrogenase [1]">
+        <annotation>
+          <COPASI xmlns="http://www.copasi.org/static/sbml">
+            <rdf:RDF xmlns:dcterms="http://purl.org/dc/terms/" xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">
+              <rdf:Description rdf:about="#COPASI63">
+                <dcterms:created>
+                  <rdf:Description>
+                    <dcterms:W3CDTF>2019-12-09T09:33:31Z</dcterms:W3CDTF>
+                  </rdf:Description>
+                </dcterms:created>
+              </rdf:Description>
+            </rdf:RDF>
+          </COPASI>
+        </annotation>
+        <math xmlns="http://www.w3.org/1998/Math/MathML">
+          <lambda>
+            <bvar>
+              <ci> BPG </ci>
+            </bvar>
+            <bvar>
+              <ci> C_7 </ci>
+            </bvar>
+            <bvar>
+              <ci> GAP </ci>
+            </bvar>
+            <bvar>
+              <ci> Kbpg_7 </ci>
+            </bvar>
+            <bvar>
+              <ci> Kgap_7 </ci>
+            </bvar>
+            <bvar>
+              <ci> Knad_7 </ci>
+            </bvar>
+            <bvar>
+              <ci> Knadh_7 </ci>
+            </bvar>
+            <bvar>
+              <ci> NAD </ci>
+            </bvar>
+            <bvar>
+              <ci> NADH </ci>
+            </bvar>
+            <bvar>
+              <ci> Vmaxf_7 </ci>
+            </bvar>
+            <bvar>
+              <ci> Vmaxr_7 </ci>
+            </bvar>
+            <apply>
+              <divide/>
+              <apply>
+                <times/>
+                <ci> C_7 </ci>
+                <apply>
+                  <minus/>
+                  <apply>
+                    <divide/>
+                    <apply>
+                      <times/>
+                      <ci> Vmaxf_7 </ci>
+                      <ci> GAP </ci>
+                      <ci> NAD </ci>
+                    </apply>
+                    <apply>
+                      <times/>
+                      <ci> Kgap_7 </ci>
+                      <ci> Knad_7 </ci>
+                    </apply>
+                  </apply>
+                  <apply>
+                    <divide/>
+                    <apply>
+                      <times/>
+                      <ci> Vmaxr_7 </ci>
+                      <ci> BPG </ci>
+                      <ci> NADH </ci>
+                    </apply>
+                    <apply>
+                      <times/>
+                      <ci> Kbpg_7 </ci>
+                      <ci> Knadh_7 </ci>
+                    </apply>
+                  </apply>
+                </apply>
+              </apply>
+              <apply>
+                <times/>
+                <apply>
+                  <plus/>
+                  <cn> 1 </cn>
+                  <apply>
+                    <divide/>
+                    <ci> GAP </ci>
+                    <ci> Kgap_7 </ci>
+                  </apply>
+                  <apply>
+                    <divide/>
+                    <ci> BPG </ci>
+                    <ci> Kbpg_7 </ci>
+                  </apply>
+                </apply>
+                <apply>
+                  <plus/>
+                  <cn> 1 </cn>
+                  <apply>
+                    <divide/>
+                    <ci> NAD </ci>
+                    <ci> Knad_7 </ci>
+                  </apply>
+                  <apply>
+                    <divide/>
+                    <ci> NADH </ci>
+                    <ci> Knadh_7 </ci>
+                  </apply>
+                </apply>
+              </apply>
+            </apply>
+          </lambda>
+        </math>
+      </functionDefinition>
+      <functionDefinition metaid="COPASI64" id="Function_for_3_phosphoglycerate_kinase__1" name="Function for 3-phosphoglycerate kinase [1]">
+        <annotation>
+          <COPASI xmlns="http://www.copasi.org/static/sbml">
+            <rdf:RDF xmlns:dcterms="http://purl.org/dc/terms/" xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">
+              <rdf:Description rdf:about="#COPASI64">
+                <dcterms:created>
+                  <rdf:Description>
+                    <dcterms:W3CDTF>2019-12-09T09:33:31Z</dcterms:W3CDTF>
+                  </rdf:Description>
+                </dcterms:created>
+              </rdf:Description>
+            </rdf:RDF>
+          </COPASI>
+        </annotation>
+        <math xmlns="http://www.w3.org/1998/Math/MathML">
+          <lambda>
+            <bvar>
+              <ci> ADP </ci>
+            </bvar>
+            <bvar>
+              <ci> ATP </ci>
+            </bvar>
+            <bvar>
+              <ci> BPG </ci>
+            </bvar>
+            <bvar>
+              <ci> Kadp_8 </ci>
+            </bvar>
+            <bvar>
+              <ci> Katp_8 </ci>
+            </bvar>
+            <bvar>
+              <ci> Kbpg_8 </ci>
+            </bvar>
+            <bvar>
+              <ci> Keq_8 </ci>
+            </bvar>
+            <bvar>
+              <ci> Kp3g_8 </ci>
+            </bvar>
+            <bvar>
+              <ci> P3G </ci>
+            </bvar>
+            <bvar>
+              <ci> Vmax_8 </ci>
+            </bvar>
+            <apply>
+              <divide/>
+              <apply>
+                <times/>
+                <ci> Vmax_8 </ci>
+                <apply>
+                  <divide/>
+                  <apply>
+                    <minus/>
+                    <apply>
+                      <times/>
+                      <ci> Keq_8 </ci>
+                      <ci> BPG </ci>
+                      <ci> ADP </ci>
+                    </apply>
+                    <apply>
+                      <times/>
+                      <ci> P3G </ci>
+                      <ci> ATP </ci>
+                    </apply>
+                  </apply>
+                  <apply>
+                    <times/>
+                    <ci> Kp3g_8 </ci>
+                    <ci> Katp_8 </ci>
+                  </apply>
+                </apply>
+              </apply>
+              <apply>
+                <times/>
+                <apply>
+                  <plus/>
+                  <cn> 1 </cn>
+                  <apply>
+                    <divide/>
+                    <ci> BPG </ci>
+                    <ci> Kbpg_8 </ci>
+                  </apply>
+                  <apply>
+                    <divide/>
+                    <ci> P3G </ci>
+                    <ci> Kp3g_8 </ci>
+                  </apply>
+                </apply>
+                <apply>
+                  <plus/>
+                  <cn> 1 </cn>
+                  <apply>
+                    <divide/>
+                    <ci> ADP </ci>
+                    <ci> Kadp_8 </ci>
+                  </apply>
+                  <apply>
+                    <divide/>
+                    <ci> ATP </ci>
+                    <ci> Katp_8 </ci>
+                  </apply>
+                </apply>
+              </apply>
+            </apply>
+          </lambda>
+        </math>
+      </functionDefinition>
+      <functionDefinition metaid="COPASI65" id="Function_for_pyruvate_decarboxylase__1" name="Function for pyruvate decarboxylase [1]">
+        <annotation>
+          <COPASI xmlns="http://www.copasi.org/static/sbml">
+            <rdf:RDF xmlns:dcterms="http://purl.org/dc/terms/" xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">
+              <rdf:Description rdf:about="#COPASI65">
+                <dcterms:created>
+                  <rdf:Description>
+                    <dcterms:W3CDTF>2019-12-09T09:33:31Z</dcterms:W3CDTF>
+                  </rdf:Description>
+                </dcterms:created>
+              </rdf:Description>
+            </rdf:RDF>
+          </COPASI>
+        </annotation>
+        <math xmlns="http://www.w3.org/1998/Math/MathML">
+          <lambda>
+            <bvar>
+              <ci> Kpyr_12 </ci>
+            </bvar>
+            <bvar>
+              <ci> PYR </ci>
+            </bvar>
+            <bvar>
+              <ci> Vmax_12 </ci>
+            </bvar>
+            <bvar>
+              <ci> nH_12 </ci>
+            </bvar>
+            <apply>
+              <divide/>
+              <apply>
+                <times/>
+                <ci> Vmax_12 </ci>
+                <apply>
+                  <power/>
+                  <apply>
+                    <divide/>
+                    <ci> PYR </ci>
+                    <ci> Kpyr_12 </ci>
+                  </apply>
+                  <ci> nH_12 </ci>
+                </apply>
+              </apply>
+              <apply>
+                <plus/>
+                <cn> 1 </cn>
+                <apply>
+                  <power/>
+                  <apply>
+                    <divide/>
+                    <ci> PYR </ci>
+                    <ci> Kpyr_12 </ci>
+                  </apply>
+                  <ci> nH_12 </ci>
+                </apply>
+              </apply>
+            </apply>
+          </lambda>
+        </math>
+      </functionDefinition>
+      <functionDefinition metaid="COPASI66" id="Function_for_pyruvate_kinase__1" name="Function for pyruvate kinase [1]">
+        <annotation>
+          <COPASI xmlns="http://www.copasi.org/static/sbml">
+            <rdf:RDF xmlns:dcterms="http://purl.org/dc/terms/" xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">
+              <rdf:Description rdf:about="#COPASI66">
+                <dcterms:created>
+                  <rdf:Description>
+                    <dcterms:W3CDTF>2019-12-09T09:33:31Z</dcterms:W3CDTF>
+                  </rdf:Description>
+                </dcterms:created>
+              </rdf:Description>
+            </rdf:RDF>
+          </COPASI>
+        </annotation>
+        <math xmlns="http://www.w3.org/1998/Math/MathML">
+          <lambda>
+            <bvar>
+              <ci> ADP </ci>
+            </bvar>
+            <bvar>
+              <ci> ATP </ci>
+            </bvar>
+            <bvar>
+              <ci> Kadp_11 </ci>
+            </bvar>
+            <bvar>
+              <ci> Katp_11 </ci>
+            </bvar>
+            <bvar>
+              <ci> Keq_11 </ci>
+            </bvar>
+            <bvar>
+              <ci> Kpep_11 </ci>
+            </bvar>
+            <bvar>
+              <ci> Kpyr_11 </ci>
+            </bvar>
+            <bvar>
+              <ci> PEP </ci>
+            </bvar>
+            <bvar>
+              <ci> PYR </ci>
+            </bvar>
+            <bvar>
+              <ci> Vmax_11 </ci>
+            </bvar>
+            <apply>
+              <divide/>
+              <apply>
+                <times/>
+                <ci> Vmax_11 </ci>
+                <apply>
+                  <minus/>
+                  <apply>
+                    <divide/>
+                    <apply>
+                      <times/>
+                      <ci> PEP </ci>
+                      <ci> ADP </ci>
+                    </apply>
+                    <apply>
+                      <times/>
+                      <ci> Kpep_11 </ci>
+                      <ci> Kadp_11 </ci>
+                    </apply>
+                  </apply>
+                  <apply>
+                    <divide/>
+                    <apply>
+                      <times/>
+                      <ci> PYR </ci>
+                      <ci> ATP </ci>
+                    </apply>
+                    <apply>
+                      <times/>
+                      <ci> Kpep_11 </ci>
+                      <ci> Kadp_11 </ci>
+                      <ci> Keq_11 </ci>
+                    </apply>
+                  </apply>
+                </apply>
+              </apply>
+              <apply>
+                <times/>
+                <apply>
+                  <plus/>
+                  <cn> 1 </cn>
+                  <apply>
+                    <divide/>
+                    <ci> PEP </ci>
+                    <ci> Kpep_11 </ci>
+                  </apply>
+                  <apply>
+                    <divide/>
+                    <ci> PYR </ci>
+                    <ci> Kpyr_11 </ci>
+                  </apply>
+                </apply>
+                <apply>
+                  <plus/>
+                  <cn> 1 </cn>
+                  <apply>
+                    <divide/>
+                    <ci> ADP </ci>
+                    <ci> Kadp_11 </ci>
+                  </apply>
+                  <apply>
+                    <divide/>
+                    <ci> ATP </ci>
+                    <ci> Katp_11 </ci>
+                  </apply>
+                </apply>
+              </apply>
+            </apply>
+          </lambda>
+        </math>
+      </functionDefinition>
+      <functionDefinition metaid="COPASI67" id="Function_for_Succinate_Branch__1" name="Function for Succinate_Branch [1]">
+        <annotation>
+          <COPASI xmlns="http://www.copasi.org/static/sbml">
+            <rdf:RDF xmlns:dcterms="http://purl.org/dc/terms/" xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">
+              <rdf:Description rdf:about="#COPASI67">
+                <dcterms:created>
+                  <rdf:Description>
+                    <dcterms:W3CDTF>2019-12-09T09:33:31Z</dcterms:W3CDTF>
+                  </rdf:Description>
+                </dcterms:created>
+              </rdf:Description>
+            </rdf:RDF>
+          </COPASI>
+        </annotation>
+        <math xmlns="http://www.w3.org/1998/Math/MathML">
+          <lambda>
+            <bvar>
+              <ci> AcAld </ci>
+            </bvar>
+            <bvar>
+              <ci> k_19 </ci>
+            </bvar>
+            <apply>
+              <times/>
+              <ci> k_19 </ci>
+              <ci> AcAld </ci>
+            </apply>
+          </lambda>
+        </math>
+      </functionDefinition>
+      <functionDefinition metaid="COPASI68" id="Function_for_alcohol_dehydrogenase__1" name="Function for alcohol dehydrogenase [1]">
+        <annotation>
+          <COPASI xmlns="http://www.copasi.org/static/sbml">
+            <rdf:RDF xmlns:dcterms="http://purl.org/dc/terms/" xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">
+              <rdf:Description rdf:about="#COPASI68">
+                <dcterms:created>
+                  <rdf:Description>
+                    <dcterms:W3CDTF>2019-12-09T09:33:31Z</dcterms:W3CDTF>
+                  </rdf:Description>
+                </dcterms:created>
+              </rdf:Description>
+            </rdf:RDF>
+          </COPASI>
+        </annotation>
+        <math xmlns="http://www.w3.org/1998/Math/MathML">
+          <lambda>
+            <bvar>
+              <ci> AcAld </ci>
+            </bvar>
+            <bvar>
+              <ci> EtOH </ci>
+            </bvar>
+            <bvar>
+              <ci> Kacald_13 </ci>
+            </bvar>
+            <bvar>
+              <ci> Keq_13 </ci>
+            </bvar>
+            <bvar>
+              <ci> Ketoh_13 </ci>
+            </bvar>
+            <bvar>
+              <ci> Kiacald_13 </ci>
+            </bvar>
+            <bvar>
+              <ci> Kietoh_13 </ci>
+            </bvar>
+            <bvar>
+              <ci> Kinad_13 </ci>
+            </bvar>
+            <bvar>
+              <ci> Kinadh_13 </ci>
+            </bvar>
+            <bvar>
+              <ci> Knad_13 </ci>
+            </bvar>
+            <bvar>
+              <ci> Knadh_13 </ci>
+            </bvar>
+            <bvar>
+              <ci> NAD </ci>
+            </bvar>
+            <bvar>
+              <ci> NADH </ci>
+            </bvar>
+            <bvar>
+              <ci> Vmax_13 </ci>
+            </bvar>
+            <apply>
+              <divide/>
+              <apply>
+                <times/>
+                <ci> Vmax_13 </ci>
+                <apply>
+                  <minus/>
+                  <apply>
+                    <divide/>
+                    <apply>
+                      <times/>
+                      <ci> EtOH </ci>
+                      <ci> NAD </ci>
+                    </apply>
+                    <apply>
+                      <times/>
+                      <ci> Ketoh_13 </ci>
+                      <ci> Kinad_13 </ci>
+                    </apply>
+                  </apply>
+                  <apply>
+                    <divide/>
+                    <apply>
+                      <times/>
+                      <ci> AcAld </ci>
+                      <ci> NADH </ci>
+                    </apply>
+                    <apply>
+                      <times/>
+                      <ci> Ketoh_13 </ci>
+                      <ci> Kinad_13 </ci>
+                      <ci> Keq_13 </ci>
+                    </apply>
+                  </apply>
+                </apply>
+              </apply>
+              <apply>
+                <plus/>
+                <cn> 1 </cn>
+                <apply>
+                  <divide/>
+                  <ci> NAD </ci>
+                  <ci> Kinad_13 </ci>
+                </apply>
+                <apply>
+                  <divide/>
+                  <apply>
+                    <times/>
+                    <ci> EtOH </ci>
+                    <ci> Knad_13 </ci>
+                  </apply>
+                  <apply>
+                    <times/>
+                    <ci> Kinad_13 </ci>
+                    <ci> Ketoh_13 </ci>
+                  </apply>
+                </apply>
+                <apply>
+                  <divide/>
+                  <apply>
+                    <times/>
+                    <ci> AcAld </ci>
+                    <ci> Knadh_13 </ci>
+                  </apply>
+                  <apply>
+                    <times/>
+                    <ci> Kinadh_13 </ci>
+                    <ci> Kacald_13 </ci>
+                  </apply>
+                </apply>
+                <apply>
+                  <divide/>
+                  <ci> NADH </ci>
+                  <ci> Kinadh_13 </ci>
+                </apply>
+                <apply>
+                  <divide/>
+                  <apply>
+                    <times/>
+                    <ci> EtOH </ci>
+                    <ci> NAD </ci>
+                  </apply>
+                  <apply>
+                    <times/>
+                    <ci> Kinad_13 </ci>
+                    <ci> Ketoh_13 </ci>
+                  </apply>
+                </apply>
+                <apply>
+                  <divide/>
+                  <apply>
+                    <times/>
+                    <ci> NAD </ci>
+                    <ci> AcAld </ci>
+                    <ci> Knadh_13 </ci>
+                  </apply>
+                  <apply>
+                    <times/>
+                    <ci> Kinad_13 </ci>
+                    <ci> Kinadh_13 </ci>
+                    <ci> Kacald_13 </ci>
+                  </apply>
+                </apply>
+                <apply>
+                  <divide/>
+                  <apply>
+                    <times/>
+                    <ci> EtOH </ci>
+                    <ci> NADH </ci>
+                    <ci> Knad_13 </ci>
+                  </apply>
+                  <apply>
+                    <times/>
+                    <ci> Kinad_13 </ci>
+                    <ci> Kinadh_13 </ci>
+                    <ci> Ketoh_13 </ci>
+                  </apply>
+                </apply>
+                <apply>
+                  <divide/>
+                  <apply>
+                    <times/>
+                    <ci> AcAld </ci>
+                    <ci> NADH </ci>
+                  </apply>
+                  <apply>
+                    <times/>
+                    <ci> Kacald_13 </ci>
+                    <ci> Kinadh_13 </ci>
+                  </apply>
+                </apply>
+                <apply>
+                  <divide/>
+                  <apply>
+                    <times/>
+                    <ci> EtOH </ci>
+                    <ci> NAD </ci>
+                    <ci> AcAld </ci>
+                  </apply>
+                  <apply>
+                    <times/>
+                    <ci> Kinad_13 </ci>
+                    <ci> Kiacald_13 </ci>
+                    <ci> Ketoh_13 </ci>
+                  </apply>
+                </apply>
+                <apply>
+                  <divide/>
+                  <apply>
+                    <times/>
+                    <ci> EtOH </ci>
+                    <ci> AcAld </ci>
+                    <ci> NADH </ci>
+                  </apply>
+                  <apply>
+                    <times/>
+                    <ci> Kietoh_13 </ci>
+                    <ci> Kinadh_13 </ci>
+                    <ci> Kacald_13 </ci>
+                  </apply>
+                </apply>
+              </apply>
+            </apply>
+          </lambda>
+        </math>
+      </functionDefinition>
+      <functionDefinition metaid="COPASI69" id="Function_for_glycerol_3_phosphate_dehydrogenase__1" name="Function for glycerol-3-phosphate dehydrogenase [1]">
+        <annotation>
+          <COPASI xmlns="http://www.copasi.org/static/sbml">
+            <rdf:RDF xmlns:dcterms="http://purl.org/dc/terms/" xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">
+              <rdf:Description rdf:about="#COPASI69">
+                <dcterms:created>
+                  <rdf:Description>
+                    <dcterms:W3CDTF>2019-12-09T09:33:31Z</dcterms:W3CDTF>
+                  </rdf:Description>
+                </dcterms:created>
+              </rdf:Description>
+            </rdf:RDF>
+          </COPASI>
+        </annotation>
+        <math xmlns="http://www.w3.org/1998/Math/MathML">
+          <lambda>
+            <bvar>
+              <ci> DHAP </ci>
+            </bvar>
+            <bvar>
+              <ci> Glycerol </ci>
+            </bvar>
+            <bvar>
+              <ci> Kdhap_16 </ci>
+            </bvar>
+            <bvar>
+              <ci> Keq_16 </ci>
+            </bvar>
+            <bvar>
+              <ci> Kglycerol_16 </ci>
+            </bvar>
+            <bvar>
+              <ci> Knad_16 </ci>
+            </bvar>
+            <bvar>
+              <ci> Knadh_16 </ci>
+            </bvar>
+            <bvar>
+              <ci> NAD </ci>
+            </bvar>
+            <bvar>
+              <ci> NADH </ci>
+            </bvar>
+            <bvar>
+              <ci> Vmax_16 </ci>
+            </bvar>
+            <apply>
+              <divide/>
+              <apply>
+                <times/>
+                <ci> Vmax_16 </ci>
+                <apply>
+                  <minus/>
+                  <apply>
+                    <times/>
+                    <apply>
+                      <divide/>
+                      <ci> DHAP </ci>
+                      <ci> Kdhap_16 </ci>
+                    </apply>
+                    <apply>
+                      <divide/>
+                      <ci> NADH </ci>
+                      <ci> Knadh_16 </ci>
+                    </apply>
+                  </apply>
+                  <apply>
+                    <times/>
+                    <apply>
+                      <divide/>
+                      <ci> Glycerol </ci>
+                      <ci> Kdhap_16 </ci>
+                    </apply>
+                    <apply>
+                      <divide/>
+                      <ci> NAD </ci>
+                      <ci> Knadh_16 </ci>
+                    </apply>
+                    <apply>
+                      <divide/>
+                      <cn> 1 </cn>
+                      <ci> Keq_16 </ci>
+                    </apply>
+                  </apply>
+                </apply>
+              </apply>
+              <apply>
+                <times/>
+                <apply>
+                  <plus/>
+                  <cn> 1 </cn>
+                  <apply>
+                    <divide/>
+                    <ci> DHAP </ci>
+                    <ci> Kdhap_16 </ci>
+                  </apply>
+                  <apply>
+                    <divide/>
+                    <ci> Glycerol </ci>
+                    <ci> Kglycerol_16 </ci>
+                  </apply>
+                </apply>
+                <apply>
+                  <plus/>
+                  <cn> 1 </cn>
+                  <apply>
+                    <divide/>
+                    <ci> NADH </ci>
+                    <ci> Knadh_16 </ci>
+                  </apply>
+                  <apply>
+                    <divide/>
+                    <ci> NAD </ci>
+                    <ci> Knad_16 </ci>
+                  </apply>
+                </apply>
+              </apply>
+            </apply>
+          </lambda>
+        </math>
+      </functionDefinition>
+    </listOfFunctionDefinitions>
+    <listOfUnitDefinitions>
+      <unitDefinition id="time" name="time">
+        <listOfUnits>
+          <unit kind="second" exponent="1" scale="0" multiplier="60"/>
+        </listOfUnits>
+      </unitDefinition>
+      <unitDefinition id="substance" name="substance">
+        <listOfUnits>
+          <unit kind="mole" exponent="1" scale="-3" multiplier="1"/>
+        </listOfUnits>
+      </unitDefinition>
+    </listOfUnitDefinitions>
+    <listOfCompartments>
+      <compartment metaid="COPASI1" id="cell" name="cytosol" spatialDimensions="3" size="1" constant="true">
+        <annotation>
+          <rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#" xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:dcterms="http://purl.org/dc/terms/" xmlns:vCard="http://www.w3.org/2001/vcard-rdf/3.0#" xmlns:bqbiol="http://biomodels.net/biology-qualifiers/" xmlns:bqmodel="http://biomodels.net/model-qualifiers/">
+            <rdf:Description rdf:about="#COPASI1">
+              <bqbiol:is>
+                <rdf:Bag>
+                  <rdf:li rdf:resource="http://identifiers.org/go/GO:0005829"/>
+                </rdf:Bag>
+              </bqbiol:is>
+            </rdf:Description>
+          </rdf:RDF>
+          <COPASI xmlns="http://www.copasi.org/static/sbml">
+            <rdf:RDF xmlns:CopasiMT="http://www.copasi.org/RDF/MiriamTerms#" xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">
+              <rdf:Description rdf:about="#COPASI1">
+                <CopasiMT:is>
+                  <rdf:Bag>
+                    <rdf:li rdf:resource="http://identifiers.org/go/GO:0005829"/>
+                  </rdf:Bag>
+                </CopasiMT:is>
+              </rdf:Description>
+            </rdf:RDF>
+          </COPASI>
+        </annotation>
+      </compartment>
+      <compartment metaid="COPASI2" id="ext" name="exterior" spatialDimensions="3" size="1" constant="true">
+        <annotation>
+          <rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#" xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:dcterms="http://purl.org/dc/terms/" xmlns:vCard="http://www.w3.org/2001/vcard-rdf/3.0#" xmlns:bqbiol="http://biomodels.net/biology-qualifiers/" xmlns:bqmodel="http://biomodels.net/model-qualifiers/">
+            <rdf:Description rdf:about="#COPASI2">
+              <bqbiol:is>
+                <rdf:Bag>
+                  <rdf:li rdf:resource="http://identifiers.org/go/GO:0005576"/>
+                </rdf:Bag>
+              </bqbiol:is>
+            </rdf:Description>
+          </rdf:RDF>
+          <COPASI xmlns="http://www.copasi.org/static/sbml">
+            <rdf:RDF xmlns:CopasiMT="http://www.copasi.org/RDF/MiriamTerms#" xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">
+              <rdf:Description rdf:about="#COPASI2">
+                <CopasiMT:is>
+                  <rdf:Bag>
+                    <rdf:li rdf:resource="http://identifiers.org/go/GO:0005576"/>
+                  </rdf:Bag>
+                </CopasiMT:is>
+              </rdf:Description>
+            </rdf:RDF>
+          </COPASI>
+        </annotation>
+      </compartment>
+    </listOfCompartments>
+    <listOfSpecies>
+      <species metaid="COPASI3" id="GLCo" name="Glc(ext)" compartment="ext" initialConcentration="2.005" boundaryCondition="true" constant="true">
+        <annotation>
+          <rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#" xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:dcterms="http://purl.org/dc/terms/" xmlns:vCard="http://www.w3.org/2001/vcard-rdf/3.0#" xmlns:bqbiol="http://biomodels.net/biology-qualifiers/" xmlns:bqmodel="http://biomodels.net/model-qualifiers/">
+            <rdf:Description rdf:about="#COPASI3">
+              <bqbiol:is>
+                <rdf:Bag>
+                  <rdf:li rdf:resource="http://identifiers.org/chebi/CHEBI:4167"/>
+                </rdf:Bag>
+              </bqbiol:is>
+              <bqbiol:is>
+                <rdf:Bag>
+                  <rdf:li rdf:resource="http://identifiers.org/kegg.compound/C00031"/>
+                </rdf:Bag>
+              </bqbiol:is>
+            </rdf:Description>
+          </rdf:RDF>
+          <COPASI xmlns="http://www.copasi.org/static/sbml">
+            <rdf:RDF xmlns:CopasiMT="http://www.copasi.org/RDF/MiriamTerms#" xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">
+              <rdf:Description rdf:about="#COPASI3">
+                <CopasiMT:is>
+                  <rdf:Bag>
+                    <rdf:li rdf:resource="http://identifiers.org/chebi/CHEBI:4167"/>
+                    <rdf:li rdf:resource="http://identifiers.org/kegg.compound/C00031"/>
+                  </rdf:Bag>
+                </CopasiMT:is>
+              </rdf:Description>
+            </rdf:RDF>
+          </COPASI>
+        </annotation>
+      </species>
+      <species metaid="COPASI4" id="GLCi" name="Glc(int)" compartment="cell" initialConcentration="0.0976522310645631" boundaryCondition="false" constant="false">
+        <annotation>
+          <rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#" xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:dcterms="http://purl.org/dc/terms/" xmlns:vCard="http://www.w3.org/2001/vcard-rdf/3.0#" xmlns:bqbiol="http://biomodels.net/biology-qualifiers/" xmlns:bqmodel="http://biomodels.net/model-qualifiers/">
+            <rdf:Description rdf:about="#COPASI4">
+              <bqbiol:is>
+                <rdf:Bag>
+                  <rdf:li rdf:resource="http://identifiers.org/chebi/CHEBI:4167"/>
+                </rdf:Bag>
+              </bqbiol:is>
+              <bqbiol:is>
+                <rdf:Bag>
+                  <rdf:li rdf:resource="http://identifiers.org/kegg.compound/C00031"/>
+                </rdf:Bag>
+              </bqbiol:is>
+            </rdf:Description>
+          </rdf:RDF>
+          <COPASI xmlns="http://www.copasi.org/static/sbml">
+            <rdf:RDF xmlns:CopasiMT="http://www.copasi.org/RDF/MiriamTerms#" xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">
+              <rdf:Description rdf:about="#COPASI4">
+                <CopasiMT:is>
+                  <rdf:Bag>
+                    <rdf:li rdf:resource="http://identifiers.org/chebi/CHEBI:4167"/>
+                    <rdf:li rdf:resource="http://identifiers.org/kegg.compound/C00031"/>
+                  </rdf:Bag>
+                </CopasiMT:is>
+              </rdf:Description>
+            </rdf:RDF>
+          </COPASI>
+        </annotation>
+      </species>
+      <species metaid="COPASI5" id="ATP" name="ATP" compartment="cell" initialConcentration="2.52512746499271" boundaryCondition="false" constant="false">
+        <annotation>
+          <rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#" xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:dcterms="http://purl.org/dc/terms/" xmlns:vCard="http://www.w3.org/2001/vcard-rdf/3.0#" xmlns:bqbiol="http://biomodels.net/biology-qualifiers/" xmlns:bqmodel="http://biomodels.net/model-qualifiers/">
+            <rdf:Description rdf:about="#COPASI5">
+              <bqbiol:is>
+                <rdf:Bag>
+                  <rdf:li rdf:resource="http://identifiers.org/kegg.compound/C00002"/>
+                </rdf:Bag>
+              </bqbiol:is>
+              <bqbiol:is>
+                <rdf:Bag>
+                  <rdf:li rdf:resource="http://identifiers.org/chebi/CHEBI:15422"/>
+                </rdf:Bag>
+              </bqbiol:is>
+            </rdf:Description>
+          </rdf:RDF>
+          <COPASI xmlns="http://www.copasi.org/static/sbml">
+            <rdf:RDF xmlns:CopasiMT="http://www.copasi.org/RDF/MiriamTerms#" xmlns:dcterms="http://purl.org/dc/terms/" xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">
+              <rdf:Description rdf:about="#COPASI5">
+                <dcterms:created>
+                  <rdf:Description>
+                    <dcterms:W3CDTF>2017-08-06T13:53:37Z</dcterms:W3CDTF>
+                  </rdf:Description>
+                </dcterms:created>
+                <CopasiMT:is>
+                  <rdf:Bag>
+                    <rdf:li rdf:resource="http://identifiers.org/chebi/CHEBI:15422"/>
+                    <rdf:li rdf:resource="http://identifiers.org/kegg.compound/C00002"/>
+                  </rdf:Bag>
+                </CopasiMT:is>
+              </rdf:Description>
+            </rdf:RDF>
+          </COPASI>
+        </annotation>
+      </species>
+      <species metaid="COPASI6" id="G6P" name="Glu6P" compartment="cell" initialConcentration="2.67504014044787" boundaryCondition="false" constant="false">
+        <annotation>
+          <rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#" xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:dcterms="http://purl.org/dc/terms/" xmlns:vCard="http://www.w3.org/2001/vcard-rdf/3.0#" xmlns:bqbiol="http://biomodels.net/biology-qualifiers/" xmlns:bqmodel="http://biomodels.net/model-qualifiers/">
+            <rdf:Description rdf:about="#COPASI6">
+              <bqbiol:is>
+                <rdf:Bag>
+                  <rdf:li rdf:resource="http://identifiers.org/kegg.compound/C00668"/>
+                </rdf:Bag>
+              </bqbiol:is>
+              <bqbiol:is>
+                <rdf:Bag>
+                  <rdf:li rdf:resource="http://identifiers.org/chebi/CHEBI:17665"/>
+                </rdf:Bag>
+              </bqbiol:is>
+            </rdf:Description>
+          </rdf:RDF>
+          <COPASI xmlns="http://www.copasi.org/static/sbml">
+            <rdf:RDF xmlns:CopasiMT="http://www.copasi.org/RDF/MiriamTerms#" xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">
+              <rdf:Description rdf:about="#COPASI6">
+                <CopasiMT:is>
+                  <rdf:Bag>
+                    <rdf:li rdf:resource="http://identifiers.org/chebi/CHEBI:17665"/>
+                    <rdf:li rdf:resource="http://identifiers.org/kegg.compound/C00668"/>
+                  </rdf:Bag>
+                </CopasiMT:is>
+              </rdf:Description>
+            </rdf:RDF>
+          </COPASI>
+        </annotation>
+      </species>
+      <species metaid="COPASI7" id="ADP" name="ADP" compartment="cell" initialConcentration="1.28198768168719" boundaryCondition="false" constant="false">
+        <annotation>
+          <rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#" xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:dcterms="http://purl.org/dc/terms/" xmlns:vCard="http://www.w3.org/2001/vcard-rdf/3.0#" xmlns:bqbiol="http://biomodels.net/biology-qualifiers/" xmlns:bqmodel="http://biomodels.net/model-qualifiers/">
+            <rdf:Description rdf:about="#COPASI7">
+              <bqbiol:is>
+                <rdf:Bag>
+                  <rdf:li rdf:resource="http://identifiers.org/kegg.compound/C00008"/>
+                </rdf:Bag>
+              </bqbiol:is>
+              <bqbiol:is>
+                <rdf:Bag>
+                  <rdf:li rdf:resource="http://identifiers.org/chebi/CHEBI:16761"/>
+                </rdf:Bag>
+              </bqbiol:is>
+            </rdf:Description>
+          </rdf:RDF>
+          <COPASI xmlns="http://www.copasi.org/static/sbml">
+            <rdf:RDF xmlns:CopasiMT="http://www.copasi.org/RDF/MiriamTerms#" xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">
+              <rdf:Description rdf:about="#COPASI7">
+                <CopasiMT:is>
+                  <rdf:Bag>
+                    <rdf:li rdf:resource="http://identifiers.org/chebi/CHEBI:16761"/>
+                    <rdf:li rdf:resource="http://identifiers.org/kegg.compound/C00008"/>
+                  </rdf:Bag>
+                </CopasiMT:is>
+              </rdf:Description>
+            </rdf:RDF>
+          </COPASI>
+        </annotation>
+      </species>
+      <species metaid="COPASI8" id="F6P" name="Fru6-P" compartment="cell" initialConcentration="0.624976405532373" boundaryCondition="false" constant="false">
+        <annotation>
+          <rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#" xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:dcterms="http://purl.org/dc/terms/" xmlns:vCard="http://www.w3.org/2001/vcard-rdf/3.0#" xmlns:bqbiol="http://biomodels.net/biology-qualifiers/" xmlns:bqmodel="http://biomodels.net/model-qualifiers/">
+            <rdf:Description rdf:about="#COPASI8">
+              <bqbiol:is>
+                <rdf:Bag>
+                  <rdf:li rdf:resource="http://identifiers.org/chebi/CHEBI:16084"/>
+                </rdf:Bag>
+              </bqbiol:is>
+              <bqbiol:is>
+                <rdf:Bag>
+                  <rdf:li rdf:resource="http://identifiers.org/kegg.compound/C05345"/>
+                </rdf:Bag>
+              </bqbiol:is>
+            </rdf:Description>
+          </rdf:RDF>
+          <COPASI xmlns="http://www.copasi.org/static/sbml">
+            <rdf:RDF xmlns:CopasiMT="http://www.copasi.org/RDF/MiriamTerms#" xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">
+              <rdf:Description rdf:about="#COPASI8">
+                <CopasiMT:is>
+                  <rdf:Bag>
+                    <rdf:li rdf:resource="http://identifiers.org/chebi/CHEBI:16084"/>
+                    <rdf:li rdf:resource="http://identifiers.org/kegg.compound/C05345"/>
+                  </rdf:Bag>
+                </CopasiMT:is>
+              </rdf:Description>
+            </rdf:RDF>
+          </COPASI>
+        </annotation>
+      </species>
+      <species metaid="COPASI9" id="F16bP" name="Fru1,6-P2" compartment="cell" initialConcentration="3.27464097492818" boundaryCondition="false" constant="false">
+        <annotation>
+          <rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#" xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:dcterms="http://purl.org/dc/terms/" xmlns:vCard="http://www.w3.org/2001/vcard-rdf/3.0#" xmlns:bqbiol="http://biomodels.net/biology-qualifiers/" xmlns:bqmodel="http://biomodels.net/model-qualifiers/">
+            <rdf:Description rdf:about="#COPASI9">
+              <bqbiol:is>
+                <rdf:Bag>
+                  <rdf:li rdf:resource="http://identifiers.org/chebi/CHEBI:28013"/>
+                </rdf:Bag>
+              </bqbiol:is>
+              <bqbiol:is>
+                <rdf:Bag>
+                  <rdf:li rdf:resource="http://identifiers.org/kegg.compound/C05378"/>
+                </rdf:Bag>
+              </bqbiol:is>
+            </rdf:Description>
+          </rdf:RDF>
+          <COPASI xmlns="http://www.copasi.org/static/sbml">
+            <rdf:RDF xmlns:CopasiMT="http://www.copasi.org/RDF/MiriamTerms#" xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">
+              <rdf:Description rdf:about="#COPASI9">
+                <CopasiMT:is>
+                  <rdf:Bag>
+                    <rdf:li rdf:resource="http://identifiers.org/chebi/CHEBI:28013"/>
+                    <rdf:li rdf:resource="http://identifiers.org/kegg.compound/C05378"/>
+                  </rdf:Bag>
+                </CopasiMT:is>
+              </rdf:Description>
+            </rdf:RDF>
+          </COPASI>
+        </annotation>
+      </species>
+      <species metaid="COPASI10" id="AMP" name="AMP" compartment="cell" initialConcentration="0.292884853320091" boundaryCondition="false" constant="false">
+        <annotation>
+          <rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#" xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:dcterms="http://purl.org/dc/terms/" xmlns:vCard="http://www.w3.org/2001/vcard-rdf/3.0#" xmlns:bqbiol="http://biomodels.net/biology-qualifiers/" xmlns:bqmodel="http://biomodels.net/model-qualifiers/">
+            <rdf:Description rdf:about="#COPASI10">
+              <bqbiol:is>
+                <rdf:Bag>
+                  <rdf:li rdf:resource="http://identifiers.org/chebi/CHEBI:16027"/>
+                </rdf:Bag>
+              </bqbiol:is>
+              <bqbiol:is>
+                <rdf:Bag>
+                  <rdf:li rdf:resource="http://identifiers.org/kegg.compound/C00020"/>
+                </rdf:Bag>
+              </bqbiol:is>
+            </rdf:Description>
+          </rdf:RDF>
+          <COPASI xmlns="http://www.copasi.org/static/sbml">
+            <rdf:RDF xmlns:CopasiMT="http://www.copasi.org/RDF/MiriamTerms#" xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">
+              <rdf:Description rdf:about="#COPASI10">
+                <CopasiMT:is>
+                  <rdf:Bag>
+                    <rdf:li rdf:resource="http://identifiers.org/chebi/CHEBI:16027"/>
+                    <rdf:li rdf:resource="http://identifiers.org/kegg.compound/C00020"/>
+                  </rdf:Bag>
+                </CopasiMT:is>
+              </rdf:Description>
+            </rdf:RDF>
+          </COPASI>
+        </annotation>
+      </species>
+      <species metaid="COPASI11" id="F26bP" name="Fru2,6-P2" compartment="cell" initialConcentration="0.02" boundaryCondition="true" constant="true">
+        <annotation>
+          <rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#" xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:dcterms="http://purl.org/dc/terms/" xmlns:vCard="http://www.w3.org/2001/vcard-rdf/3.0#" xmlns:bqbiol="http://biomodels.net/biology-qualifiers/" xmlns:bqmodel="http://biomodels.net/model-qualifiers/">
+            <rdf:Description rdf:about="#COPASI11">
+              <bqbiol:is>
+                <rdf:Bag>
+                  <rdf:li rdf:resource="http://identifiers.org/chebi/CHEBI:28602"/>
+                </rdf:Bag>
+              </bqbiol:is>
+              <bqbiol:is>
+                <rdf:Bag>
+                  <rdf:li rdf:resource="http://identifiers.org/kegg.compound/C00665"/>
+                </rdf:Bag>
+              </bqbiol:is>
+            </rdf:Description>
+          </rdf:RDF>
+          <COPASI xmlns="http://www.copasi.org/static/sbml">
+            <rdf:RDF xmlns:CopasiMT="http://www.copasi.org/RDF/MiriamTerms#" xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">
+              <rdf:Description rdf:about="#COPASI11">
+                <CopasiMT:is>
+                  <rdf:Bag>
+                    <rdf:li rdf:resource="http://identifiers.org/chebi/CHEBI:28602"/>
+                    <rdf:li rdf:resource="http://identifiers.org/kegg.compound/C00665"/>
+                  </rdf:Bag>
+                </CopasiMT:is>
+              </rdf:Description>
+            </rdf:RDF>
+          </COPASI>
+        </annotation>
+      </species>
+      <species metaid="COPASI12" id="DHAP" name="glycerone phosphate" compartment="cell" initialConcentration="1.00415254899644" boundaryCondition="false" constant="false">
+        <annotation>
+          <rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#" xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:dcterms="http://purl.org/dc/terms/" xmlns:vCard="http://www.w3.org/2001/vcard-rdf/3.0#" xmlns:bqbiol="http://biomodels.net/biology-qualifiers/" xmlns:bqmodel="http://biomodels.net/model-qualifiers/">
+            <rdf:Description rdf:about="#COPASI12">
+              <bqbiol:is>
+                <rdf:Bag>
+                  <rdf:li rdf:resource="http://identifiers.org/kegg.compound/C00111"/>
+                </rdf:Bag>
+              </bqbiol:is>
+              <bqbiol:is>
+                <rdf:Bag>
+                  <rdf:li rdf:resource="http://identifiers.org/chebi/CHEBI:16108"/>
+                </rdf:Bag>
+              </bqbiol:is>
+            </rdf:Description>
+          </rdf:RDF>
+          <COPASI xmlns="http://www.copasi.org/static/sbml">
+            <rdf:RDF xmlns:CopasiMT="http://www.copasi.org/RDF/MiriamTerms#" xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">
+              <rdf:Description rdf:about="#COPASI12">
+                <CopasiMT:is>
+                  <rdf:Bag>
+                    <rdf:li rdf:resource="http://identifiers.org/chebi/CHEBI:16108"/>
+                    <rdf:li rdf:resource="http://identifiers.org/kegg.compound/C00111"/>
+                  </rdf:Bag>
+                </CopasiMT:is>
+              </rdf:Description>
+            </rdf:RDF>
+          </COPASI>
+        </annotation>
+      </species>
+      <species metaid="COPASI13" id="GAP" name="Gra3P" compartment="cell" initialConcentration="0.0451809175780963" boundaryCondition="false" constant="false">
+        <annotation>
+          <rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#" xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:dcterms="http://purl.org/dc/terms/" xmlns:vCard="http://www.w3.org/2001/vcard-rdf/3.0#" xmlns:bqbiol="http://biomodels.net/biology-qualifiers/" xmlns:bqmodel="http://biomodels.net/model-qualifiers/">
+            <rdf:Description rdf:about="#COPASI13">
+              <bqbiol:is>
+                <rdf:Bag>
+                  <rdf:li rdf:resource="http://identifiers.org/kegg.compound/C00118"/>
+                </rdf:Bag>
+              </bqbiol:is>
+              <bqbiol:is>
+                <rdf:Bag>
+                  <rdf:li rdf:resource="http://identifiers.org/chebi/CHEBI:29052"/>
+                </rdf:Bag>
+              </bqbiol:is>
+            </rdf:Description>
+          </rdf:RDF>
+          <COPASI xmlns="http://www.copasi.org/static/sbml">
+            <rdf:RDF xmlns:CopasiMT="http://www.copasi.org/RDF/MiriamTerms#" xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">
+              <rdf:Description rdf:about="#COPASI13">
+                <CopasiMT:is>
+                  <rdf:Bag>
+                    <rdf:li rdf:resource="http://identifiers.org/chebi/CHEBI:29052"/>
+                    <rdf:li rdf:resource="http://identifiers.org/kegg.compound/C00118"/>
+                  </rdf:Bag>
+                </CopasiMT:is>
+              </rdf:Description>
+            </rdf:RDF>
+          </COPASI>
+        </annotation>
+      </species>
+      <species metaid="COPASI14" id="NAD" name="NAD" compartment="cell" initialConcentration="1.50329030201531" boundaryCondition="false" constant="false">
+        <annotation>
+          <rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#" xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:dcterms="http://purl.org/dc/terms/" xmlns:vCard="http://www.w3.org/2001/vcard-rdf/3.0#" xmlns:bqbiol="http://biomodels.net/biology-qualifiers/" xmlns:bqmodel="http://biomodels.net/model-qualifiers/">
+            <rdf:Description rdf:about="#COPASI14">
+              <bqbiol:is>
+                <rdf:Bag>
+                  <rdf:li rdf:resource="http://identifiers.org/kegg.compound/C00003"/>
+                </rdf:Bag>
+              </bqbiol:is>
+              <bqbiol:is>
+                <rdf:Bag>
+                  <rdf:li rdf:resource="http://identifiers.org/chebi/CHEBI:15846"/>
+                </rdf:Bag>
+              </bqbiol:is>
+            </rdf:Description>
+          </rdf:RDF>
+          <COPASI xmlns="http://www.copasi.org/static/sbml">
+            <rdf:RDF xmlns:CopasiMT="http://www.copasi.org/RDF/MiriamTerms#" xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">
+              <rdf:Description rdf:about="#COPASI14">
+                <CopasiMT:is>
+                  <rdf:Bag>
+                    <rdf:li rdf:resource="http://identifiers.org/chebi/CHEBI:15846"/>
+                    <rdf:li rdf:resource="http://identifiers.org/kegg.compound/C00003"/>
+                  </rdf:Bag>
+                </CopasiMT:is>
+              </rdf:Description>
+            </rdf:RDF>
+          </COPASI>
+        </annotation>
+      </species>
+      <species metaid="COPASI15" id="BPG" name="Gri2,3P2" compartment="cell" initialConcentration="0.000736873499865602" boundaryCondition="false" constant="false">
+        <annotation>
+          <rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#" xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:dcterms="http://purl.org/dc/terms/" xmlns:vCard="http://www.w3.org/2001/vcard-rdf/3.0#" xmlns:bqbiol="http://biomodels.net/biology-qualifiers/" xmlns:bqmodel="http://biomodels.net/model-qualifiers/">
+            <rdf:Description rdf:about="#COPASI15">
+              <bqbiol:is>
+                <rdf:Bag>
+                  <rdf:li rdf:resource="http://identifiers.org/chebi/CHEBI:16001"/>
+                </rdf:Bag>
+              </bqbiol:is>
+              <bqbiol:is>
+                <rdf:Bag>
+                  <rdf:li rdf:resource="http://identifiers.org/kegg.compound/C00236"/>
+                </rdf:Bag>
+              </bqbiol:is>
+            </rdf:Description>
+          </rdf:RDF>
+          <COPASI xmlns="http://www.copasi.org/static/sbml">
+            <rdf:RDF xmlns:CopasiMT="http://www.copasi.org/RDF/MiriamTerms#" xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">
+              <rdf:Description rdf:about="#COPASI15">
+                <CopasiMT:is>
+                  <rdf:Bag>
+                    <rdf:li rdf:resource="http://identifiers.org/chebi/CHEBI:16001"/>
+                    <rdf:li rdf:resource="http://identifiers.org/kegg.compound/C00236"/>
+                  </rdf:Bag>
+                </CopasiMT:is>
+              </rdf:Description>
+            </rdf:RDF>
+          </COPASI>
+        </annotation>
+      </species>
+      <species metaid="COPASI16" id="NADH" name="NADH" compartment="cell" initialConcentration="0.0867096979846952" boundaryCondition="false" constant="false">
+        <annotation>
+          <rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#" xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:dcterms="http://purl.org/dc/terms/" xmlns:vCard="http://www.w3.org/2001/vcard-rdf/3.0#" xmlns:bqbiol="http://biomodels.net/biology-qualifiers/" xmlns:bqmodel="http://biomodels.net/model-qualifiers/">
+            <rdf:Description rdf:about="#COPASI16">
+              <bqbiol:is>
+                <rdf:Bag>
+                  <rdf:li rdf:resource="http://identifiers.org/chebi/CHEBI:16908"/>
+                </rdf:Bag>
+              </bqbiol:is>
+              <bqbiol:is>
+                <rdf:Bag>
+                  <rdf:li rdf:resource="http://identifiers.org/kegg.compound/C00004"/>
+                </rdf:Bag>
+              </bqbiol:is>
+            </rdf:Description>
+          </rdf:RDF>
+          <COPASI xmlns="http://www.copasi.org/static/sbml">
+            <rdf:RDF xmlns:CopasiMT="http://www.copasi.org/RDF/MiriamTerms#" xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">
+              <rdf:Description rdf:about="#COPASI16">
+                <CopasiMT:is>
+                  <rdf:Bag>
+                    <rdf:li rdf:resource="http://identifiers.org/chebi/CHEBI:16908"/>
+                    <rdf:li rdf:resource="http://identifiers.org/kegg.compound/C00004"/>
+                  </rdf:Bag>
+                </CopasiMT:is>
+              </rdf:Description>
+            </rdf:RDF>
+          </COPASI>
+        </annotation>
+      </species>
+      <species metaid="COPASI17" id="P3G" name="Gri3P" compartment="cell" initialConcentration="0.885688538360659" boundaryCondition="false" constant="false">
+        <annotation>
+          <rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#" xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:dcterms="http://purl.org/dc/terms/" xmlns:vCard="http://www.w3.org/2001/vcard-rdf/3.0#" xmlns:bqbiol="http://biomodels.net/biology-qualifiers/" xmlns:bqmodel="http://biomodels.net/model-qualifiers/">
+            <rdf:Description rdf:about="#COPASI17">
+              <bqbiol:is>
+                <rdf:Bag>
+                  <rdf:li rdf:resource="http://identifiers.org/kegg.compound/C00197"/>
+                </rdf:Bag>
+              </bqbiol:is>
+              <bqbiol:is>
+                <rdf:Bag>
+                  <rdf:li rdf:resource="http://identifiers.org/chebi/CHEBI:17794"/>
+                </rdf:Bag>
+              </bqbiol:is>
+            </rdf:Description>
+          </rdf:RDF>
+          <COPASI xmlns="http://www.copasi.org/static/sbml">
+            <rdf:RDF xmlns:CopasiMT="http://www.copasi.org/RDF/MiriamTerms#" xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">
+              <rdf:Description rdf:about="#COPASI17">
+                <CopasiMT:is>
+                  <rdf:Bag>
+                    <rdf:li rdf:resource="http://identifiers.org/chebi/CHEBI:17794"/>
+                    <rdf:li rdf:resource="http://identifiers.org/kegg.compound/C00197"/>
+                  </rdf:Bag>
+                </CopasiMT:is>
+              </rdf:Description>
+            </rdf:RDF>
+          </COPASI>
+        </annotation>
+      </species>
+      <species metaid="COPASI18" id="P2G" name="Gri2P" compartment="cell" initialConcentration="0.127695817386632" boundaryCondition="false" constant="false">
+        <annotation>
+          <rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#" xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:dcterms="http://purl.org/dc/terms/" xmlns:vCard="http://www.w3.org/2001/vcard-rdf/3.0#" xmlns:bqbiol="http://biomodels.net/biology-qualifiers/" xmlns:bqmodel="http://biomodels.net/model-qualifiers/">
+            <rdf:Description rdf:about="#COPASI18">
+              <bqbiol:is>
+                <rdf:Bag>
+                  <rdf:li rdf:resource="http://identifiers.org/chebi/CHEBI:17835"/>
+                </rdf:Bag>
+              </bqbiol:is>
+              <bqbiol:is>
+                <rdf:Bag>
+                  <rdf:li rdf:resource="http://identifiers.org/kegg.compound/C00631"/>
+                </rdf:Bag>
+              </bqbiol:is>
+            </rdf:Description>
+          </rdf:RDF>
+          <COPASI xmlns="http://www.copasi.org/static/sbml">
+            <rdf:RDF xmlns:CopasiMT="http://www.copasi.org/RDF/MiriamTerms#" xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">
+              <rdf:Description rdf:about="#COPASI18">
+                <CopasiMT:is>
+                  <rdf:Bag>
+                    <rdf:li rdf:resource="http://identifiers.org/chebi/CHEBI:17835"/>
+                    <rdf:li rdf:resource="http://identifiers.org/kegg.compound/C00631"/>
+                  </rdf:Bag>
+                </CopasiMT:is>
+              </rdf:Description>
+            </rdf:RDF>
+          </COPASI>
+        </annotation>
+      </species>
+      <species metaid="COPASI19" id="PEP" name="phosphoenolpyruvate" compartment="cell" initialConcentration="0.0632352144936527" boundaryCondition="false" constant="false">
+        <annotation>
+          <rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#" xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:dcterms="http://purl.org/dc/terms/" xmlns:vCard="http://www.w3.org/2001/vcard-rdf/3.0#" xmlns:bqbiol="http://biomodels.net/biology-qualifiers/" xmlns:bqmodel="http://biomodels.net/model-qualifiers/">
+            <rdf:Description rdf:about="#COPASI19">
+              <bqbiol:is>
+                <rdf:Bag>
+                  <rdf:li rdf:resource="http://identifiers.org/chebi/CHEBI:18021"/>
+                </rdf:Bag>
+              </bqbiol:is>
+              <bqbiol:is>
+                <rdf:Bag>
+                  <rdf:li rdf:resource="http://identifiers.org/kegg.compound/C00074"/>
+                </rdf:Bag>
+              </bqbiol:is>
+            </rdf:Description>
+          </rdf:RDF>
+          <COPASI xmlns="http://www.copasi.org/static/sbml">
+            <rdf:RDF xmlns:CopasiMT="http://www.copasi.org/RDF/MiriamTerms#" xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">
+              <rdf:Description rdf:about="#COPASI19">
+                <CopasiMT:is>
+                  <rdf:Bag>
+                    <rdf:li rdf:resource="http://identifiers.org/chebi/CHEBI:18021"/>
+                    <rdf:li rdf:resource="http://identifiers.org/kegg.compound/C00074"/>
+                  </rdf:Bag>
+                </CopasiMT:is>
+              </rdf:Description>
+            </rdf:RDF>
+          </COPASI>
+        </annotation>
+      </species>
+      <species metaid="COPASI20" id="PYR" name="pyruvate" compartment="cell" initialConcentration="1.81531251192736" boundaryCondition="false" constant="false">
+        <annotation>
+          <rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#" xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:dcterms="http://purl.org/dc/terms/" xmlns:vCard="http://www.w3.org/2001/vcard-rdf/3.0#" xmlns:bqbiol="http://biomodels.net/biology-qualifiers/" xmlns:bqmodel="http://biomodels.net/model-qualifiers/">
+            <rdf:Description rdf:about="#COPASI20">
+              <bqbiol:is>
+                <rdf:Bag>
+                  <rdf:li rdf:resource="http://identifiers.org/kegg.compound/C00022"/>
+                </rdf:Bag>
+              </bqbiol:is>
+              <bqbiol:is>
+                <rdf:Bag>
+                  <rdf:li rdf:resource="http://identifiers.org/chebi/CHEBI:15361"/>
+                </rdf:Bag>
+              </bqbiol:is>
+            </rdf:Description>
+          </rdf:RDF>
+          <COPASI xmlns="http://www.copasi.org/static/sbml">
+            <rdf:RDF xmlns:CopasiMT="http://www.copasi.org/RDF/MiriamTerms#" xmlns:dcterms="http://purl.org/dc/terms/" xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">
+              <rdf:Description rdf:about="#COPASI20">
+                <dcterms:created>
+                  <rdf:Description>
+                    <dcterms:W3CDTF>2017-08-06T13:53:22Z</dcterms:W3CDTF>
+                  </rdf:Description>
+                </dcterms:created>
+                <CopasiMT:is>
+                  <rdf:Bag>
+                    <rdf:li rdf:resource="http://identifiers.org/chebi/CHEBI:15361"/>
+                    <rdf:li rdf:resource="http://identifiers.org/kegg.compound/C00022"/>
+                  </rdf:Bag>
+                </CopasiMT:is>
+              </rdf:Description>
+            </rdf:RDF>
+          </COPASI>
+        </annotation>
+      </species>
+      <species metaid="COPASI21" id="AcAld" name="acetaldehyde" compartment="cell" initialConcentration="0.178140579850657" boundaryCondition="false" constant="false">
+        <annotation>
+          <rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#" xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:dcterms="http://purl.org/dc/terms/" xmlns:vCard="http://www.w3.org/2001/vcard-rdf/3.0#" xmlns:bqbiol="http://biomodels.net/biology-qualifiers/" xmlns:bqmodel="http://biomodels.net/model-qualifiers/">
+            <rdf:Description rdf:about="#COPASI21">
+              <bqbiol:is>
+                <rdf:Bag>
+                  <rdf:li rdf:resource="http://identifiers.org/kegg.compound/C00084"/>
+                </rdf:Bag>
+              </bqbiol:is>
+              <bqbiol:is>
+                <rdf:Bag>
+                  <rdf:li rdf:resource="http://identifiers.org/chebi/CHEBI:15343"/>
+                </rdf:Bag>
+              </bqbiol:is>
+            </rdf:Description>
+          </rdf:RDF>
+          <COPASI xmlns="http://www.copasi.org/static/sbml">
+            <rdf:RDF xmlns:CopasiMT="http://www.copasi.org/RDF/MiriamTerms#" xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">
+              <rdf:Description rdf:about="#COPASI21">
+                <CopasiMT:is>
+                  <rdf:Bag>
+                    <rdf:li rdf:resource="http://identifiers.org/chebi/CHEBI:15343"/>
+                    <rdf:li rdf:resource="http://identifiers.org/kegg.compound/C00084"/>
+                  </rdf:Bag>
+                </CopasiMT:is>
+              </rdf:Description>
+            </rdf:RDF>
+          </COPASI>
+        </annotation>
+      </species>
+      <species metaid="COPASI22" id="CO2" name="CO2" compartment="cell" initialConcentration="1" boundaryCondition="true" constant="true">
+        <annotation>
+          <rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#" xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:dcterms="http://purl.org/dc/terms/" xmlns:vCard="http://www.w3.org/2001/vcard-rdf/3.0#" xmlns:bqbiol="http://biomodels.net/biology-qualifiers/" xmlns:bqmodel="http://biomodels.net/model-qualifiers/">
+            <rdf:Description rdf:about="#COPASI22">
+              <bqbiol:is>
+                <rdf:Bag>
+                  <rdf:li rdf:resource="http://identifiers.org/kegg.compound/C00011"/>
+                </rdf:Bag>
+              </bqbiol:is>
+              <bqbiol:is>
+                <rdf:Bag>
+                  <rdf:li rdf:resource="http://identifiers.org/chebi/CHEBI:16526"/>
+                </rdf:Bag>
+              </bqbiol:is>
+            </rdf:Description>
+          </rdf:RDF>
+          <COPASI xmlns="http://www.copasi.org/static/sbml">
+            <rdf:RDF xmlns:CopasiMT="http://www.copasi.org/RDF/MiriamTerms#" xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">
+              <rdf:Description rdf:about="#COPASI22">
+                <CopasiMT:is>
+                  <rdf:Bag>
+                    <rdf:li rdf:resource="http://identifiers.org/chebi/CHEBI:16526"/>
+                    <rdf:li rdf:resource="http://identifiers.org/kegg.compound/C00011"/>
+                  </rdf:Bag>
+                </CopasiMT:is>
+              </rdf:Description>
+            </rdf:RDF>
+          </COPASI>
+        </annotation>
+      </species>
+      <species metaid="COPASI23" id="EtOH" name="ethanol" compartment="cell" initialConcentration="50" boundaryCondition="true" constant="true">
+        <annotation>
+          <rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#" xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:dcterms="http://purl.org/dc/terms/" xmlns:vCard="http://www.w3.org/2001/vcard-rdf/3.0#" xmlns:bqbiol="http://biomodels.net/biology-qualifiers/" xmlns:bqmodel="http://biomodels.net/model-qualifiers/">
+            <rdf:Description rdf:about="#COPASI23">
+              <bqbiol:is>
+                <rdf:Bag>
+                  <rdf:li rdf:resource="http://identifiers.org/chebi/CHEBI:16236"/>
+                </rdf:Bag>
+              </bqbiol:is>
+              <bqbiol:is>
+                <rdf:Bag>
+                  <rdf:li rdf:resource="http://identifiers.org/kegg.compound/C00469"/>
+                </rdf:Bag>
+              </bqbiol:is>
+            </rdf:Description>
+          </rdf:RDF>
+          <COPASI xmlns="http://www.copasi.org/static/sbml">
+            <rdf:RDF xmlns:CopasiMT="http://www.copasi.org/RDF/MiriamTerms#" xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">
+              <rdf:Description rdf:about="#COPASI23">
+                <CopasiMT:is>
+                  <rdf:Bag>
+                    <rdf:li rdf:resource="http://identifiers.org/chebi/CHEBI:16236"/>
+                    <rdf:li rdf:resource="http://identifiers.org/kegg.compound/C00469"/>
+                  </rdf:Bag>
+                </CopasiMT:is>
+              </rdf:Description>
+            </rdf:RDF>
+          </COPASI>
+        </annotation>
+      </species>
+      <species metaid="COPASI24" id="Glycerol" name="glycerol" compartment="cell" initialConcentration="0.15" boundaryCondition="true" constant="true">
+        <annotation>
+          <rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#" xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:dcterms="http://purl.org/dc/terms/" xmlns:vCard="http://www.w3.org/2001/vcard-rdf/3.0#" xmlns:bqbiol="http://biomodels.net/biology-qualifiers/" xmlns:bqmodel="http://biomodels.net/model-qualifiers/">
+            <rdf:Description rdf:about="#COPASI24">
+              <bqbiol:is>
+                <rdf:Bag>
+                  <rdf:li rdf:resource="http://identifiers.org/chebi/CHEBI:17754"/>
+                </rdf:Bag>
+              </bqbiol:is>
+              <bqbiol:is>
+                <rdf:Bag>
+                  <rdf:li rdf:resource="http://identifiers.org/kegg.compound/C00116"/>
+                </rdf:Bag>
+              </bqbiol:is>
+            </rdf:Description>
+          </rdf:RDF>
+          <COPASI xmlns="http://www.copasi.org/static/sbml">
+            <rdf:RDF xmlns:CopasiMT="http://www.copasi.org/RDF/MiriamTerms#" xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">
+              <rdf:Description rdf:about="#COPASI24">
+                <CopasiMT:is>
+                  <rdf:Bag>
+                    <rdf:li rdf:resource="http://identifiers.org/chebi/CHEBI:17754"/>
+                    <rdf:li rdf:resource="http://identifiers.org/kegg.compound/C00116"/>
+                  </rdf:Bag>
+                </CopasiMT:is>
+              </rdf:Description>
+            </rdf:RDF>
+          </COPASI>
+        </annotation>
+      </species>
+      <species metaid="COPASI25" id="Glycogen" name="glycogen" compartment="cell" initialConcentration="0" boundaryCondition="true" constant="true">
+        <annotation>
+          <rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#" xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:dcterms="http://purl.org/dc/terms/" xmlns:vCard="http://www.w3.org/2001/vcard-rdf/3.0#" xmlns:bqbiol="http://biomodels.net/biology-qualifiers/" xmlns:bqmodel="http://biomodels.net/model-qualifiers/">
+            <rdf:Description rdf:about="#COPASI25">
+              <bqbiol:is>
+                <rdf:Bag>
+                  <rdf:li rdf:resource="http://identifiers.org/kegg.compound/C00182"/>
+                </rdf:Bag>
+              </bqbiol:is>
+              <bqbiol:is>
+                <rdf:Bag>
+                  <rdf:li rdf:resource="http://identifiers.org/chebi/CHEBI:28087"/>
+                </rdf:Bag>
+              </bqbiol:is>
+            </rdf:Description>
+          </rdf:RDF>
+          <COPASI xmlns="http://www.copasi.org/static/sbml">
+            <rdf:RDF xmlns:CopasiMT="http://www.copasi.org/RDF/MiriamTerms#" xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">
+              <rdf:Description rdf:about="#COPASI25">
+                <CopasiMT:is>
+                  <rdf:Bag>
+                    <rdf:li rdf:resource="http://identifiers.org/chebi/CHEBI:28087"/>
+                    <rdf:li rdf:resource="http://identifiers.org/kegg.compound/C00182"/>
+                  </rdf:Bag>
+                </CopasiMT:is>
+              </rdf:Description>
+            </rdf:RDF>
+          </COPASI>
+        </annotation>
+      </species>
+      <species metaid="COPASI26" id="Trehalose" name="trehalose" compartment="cell" initialConcentration="0" boundaryCondition="true" constant="true">
+        <annotation>
+          <rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#" xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:dcterms="http://purl.org/dc/terms/" xmlns:vCard="http://www.w3.org/2001/vcard-rdf/3.0#" xmlns:bqbiol="http://biomodels.net/biology-qualifiers/" xmlns:bqmodel="http://biomodels.net/model-qualifiers/">
+            <rdf:Description rdf:about="#COPASI26">
+              <bqbiol:is>
+                <rdf:Bag>
+                  <rdf:li rdf:resource="http://identifiers.org/kegg.compound/C01083"/>
+                </rdf:Bag>
+              </bqbiol:is>
+              <bqbiol:is>
+                <rdf:Bag>
+                  <rdf:li rdf:resource="http://identifiers.org/chebi/CHEBI:16551"/>
+                </rdf:Bag>
+              </bqbiol:is>
+            </rdf:Description>
+          </rdf:RDF>
+          <COPASI xmlns="http://www.copasi.org/static/sbml">
+            <rdf:RDF xmlns:CopasiMT="http://www.copasi.org/RDF/MiriamTerms#" xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">
+              <rdf:Description rdf:about="#COPASI26">
+                <CopasiMT:is>
+                  <rdf:Bag>
+                    <rdf:li rdf:resource="http://identifiers.org/chebi/CHEBI:16551"/>
+                    <rdf:li rdf:resource="http://identifiers.org/kegg.compound/C01083"/>
+                  </rdf:Bag>
+                </CopasiMT:is>
+              </rdf:Description>
+            </rdf:RDF>
+          </COPASI>
+        </annotation>
+      </species>
+      <species metaid="COPASI27" id="Succinate" name="succinate" compartment="cell" initialConcentration="0" boundaryCondition="true" constant="true">
+        <annotation>
+          <rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#" xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:dcterms="http://purl.org/dc/terms/" xmlns:vCard="http://www.w3.org/2001/vcard-rdf/3.0#" xmlns:bqbiol="http://biomodels.net/biology-qualifiers/" xmlns:bqmodel="http://biomodels.net/model-qualifiers/">
+            <rdf:Description rdf:about="#COPASI27">
+              <bqbiol:is>
+                <rdf:Bag>
+                  <rdf:li rdf:resource="http://identifiers.org/chebi/CHEBI:30031"/>
+                </rdf:Bag>
+              </bqbiol:is>
+              <bqbiol:is>
+                <rdf:Bag>
+                  <rdf:li rdf:resource="http://identifiers.org/kegg.compound/C00042"/>
+                </rdf:Bag>
+              </bqbiol:is>
+            </rdf:Description>
+          </rdf:RDF>
+          <COPASI xmlns="http://www.copasi.org/static/sbml">
+            <rdf:RDF xmlns:CopasiMT="http://www.copasi.org/RDF/MiriamTerms#" xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">
+              <rdf:Description rdf:about="#COPASI27">
+                <CopasiMT:is>
+                  <rdf:Bag>
+                    <rdf:li rdf:resource="http://identifiers.org/chebi/CHEBI:30031"/>
+                    <rdf:li rdf:resource="http://identifiers.org/kegg.compound/C00042"/>
+                  </rdf:Bag>
+                </CopasiMT:is>
+              </rdf:Description>
+            </rdf:RDF>
+          </COPASI>
+        </annotation>
+      </species>
+    </listOfSpecies>
+    <listOfParameters>
+      <parameter metaid="COPASI28" id="hexokinase_Vmax_2" name="hexokinase_Vmax_2" value="184.911" constant="true">
+        <annotation>
+          <COPASI xmlns="http://www.copasi.org/static/sbml">
+            <rdf:RDF xmlns:dcterms="http://purl.org/dc/terms/" xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">
+              <rdf:Description rdf:about="#COPASI28">
+                <dcterms:created>
+                  <rdf:Description>
+                    <dcterms:W3CDTF>2020-03-03T08:31:41Z</dcterms:W3CDTF>
+                  </rdf:Description>
+                </dcterms:created>
+              </rdf:Description>
+            </rdf:RDF>
+          </COPASI>
+        </annotation>
+      </parameter>
+      <parameter metaid="COPASI29" id="phosphofructosekinase_Vmax_4" name="phosphofructosekinase_Vmax_4" value="119.87" constant="true">
+        <annotation>
+          <COPASI xmlns="http://www.copasi.org/static/sbml">
+            <rdf:RDF xmlns:dcterms="http://purl.org/dc/terms/" xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">
+              <rdf:Description rdf:about="#COPASI29">
+                <dcterms:created>
+                  <rdf:Description>
+                    <dcterms:W3CDTF>2020-03-03T08:31:41Z</dcterms:W3CDTF>
+                  </rdf:Description>
+                </dcterms:created>
+              </rdf:Description>
+            </rdf:RDF>
+          </COPASI>
+        </annotation>
+      </parameter>
+      <parameter metaid="COPASI30" id="init_Fru1_6_P2" name="init_Fru1_6_P2" value="3.27464097492818" constant="true">
+        <annotation>
+          <COPASI xmlns="http://www.copasi.org/static/sbml">
+            <rdf:RDF xmlns:dcterms="http://purl.org/dc/terms/" xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">
+              <rdf:Description rdf:about="#COPASI30">
+                <dcterms:created>
+                  <rdf:Description>
+                    <dcterms:W3CDTF>2020-03-03T08:31:41Z</dcterms:W3CDTF>
+                  </rdf:Description>
+                </dcterms:created>
+              </rdf:Description>
+            </rdf:RDF>
+          </COPASI>
+        </annotation>
+      </parameter>
+      <parameter metaid="COPASI31" id="ATPase_k1" name="ATPase_k1" value="45.106" constant="true">
+        <annotation>
+          <COPASI xmlns="http://www.copasi.org/static/sbml">
+            <rdf:RDF xmlns:dcterms="http://purl.org/dc/terms/" xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">
+              <rdf:Description rdf:about="#COPASI31">
+                <dcterms:created>
+                  <rdf:Description>
+                    <dcterms:W3CDTF>2020-03-03T08:31:41Z</dcterms:W3CDTF>
+                  </rdf:Description>
+                </dcterms:created>
+              </rdf:Description>
+            </rdf:RDF>
+          </COPASI>
+        </annotation>
+      </parameter>
+      <parameter metaid="COPASI32" id="init_Glc_ext" name="init_Glc_ext" value="2.005" constant="true">
+        <annotation>
+          <COPASI xmlns="http://www.copasi.org/static/sbml">
+            <rdf:RDF xmlns:dcterms="http://purl.org/dc/terms/" xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">
+              <rdf:Description rdf:about="#COPASI32">
+                <dcterms:created>
+                  <rdf:Description>
+                    <dcterms:W3CDTF>2020-03-03T08:31:41Z</dcterms:W3CDTF>
+                  </rdf:Description>
+                </dcterms:created>
+              </rdf:Description>
+            </rdf:RDF>
+          </COPASI>
+        </annotation>
+      </parameter>
+      <parameter metaid="COPASI33" id="observable_Fru1_6_P2" name="observable_Fru1_6_P2" value="3.27464097492818" constant="false">
+        <annotation>
+          <COPASI xmlns="http://www.copasi.org/static/sbml">
+            <rdf:RDF xmlns:dcterms="http://purl.org/dc/terms/" xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">
+              <rdf:Description rdf:about="#COPASI33">
+                <dcterms:created>
+                  <rdf:Description>
+                    <dcterms:W3CDTF>2020-03-03T08:31:41Z</dcterms:W3CDTF>
+                  </rdf:Description>
+                </dcterms:created>
+              </rdf:Description>
+            </rdf:RDF>
+          </COPASI>
+        </annotation>
+      </parameter>
+      <parameter metaid="COPASI34" id="observable_Glc_int" name="observable_Glc_int" value="0.0976522310645631" constant="false">
+        <annotation>
+          <COPASI xmlns="http://www.copasi.org/static/sbml">
+            <rdf:RDF xmlns:dcterms="http://purl.org/dc/terms/" xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">
+              <rdf:Description rdf:about="#COPASI34">
+                <dcterms:created>
+                  <rdf:Description>
+                    <dcterms:W3CDTF>2020-03-03T08:31:41Z</dcterms:W3CDTF>
+                  </rdf:Description>
+                </dcterms:created>
+              </rdf:Description>
+            </rdf:RDF>
+          </COPASI>
+        </annotation>
+      </parameter>
+      <parameter metaid="COPASI35" id="observable_pyruvate" name="observable_pyruvate" value="1.81531251192736" constant="false">
+        <annotation>
+          <COPASI xmlns="http://www.copasi.org/static/sbml">
+            <rdf:RDF xmlns:dcterms="http://purl.org/dc/terms/" xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">
+              <rdf:Description rdf:about="#COPASI35">
+                <dcterms:created>
+                  <rdf:Description>
+                    <dcterms:W3CDTF>2020-03-03T08:31:41Z</dcterms:W3CDTF>
+                  </rdf:Description>
+                </dcterms:created>
+              </rdf:Description>
+            </rdf:RDF>
+          </COPASI>
+        </annotation>
+      </parameter>
+    </listOfParameters>
+    <listOfInitialAssignments>
+      <initialAssignment symbol="GLCo">
+        <math xmlns="http://www.w3.org/1998/Math/MathML">
+          <ci> init_Glc_ext </ci>
+        </math>
+      </initialAssignment>
+      <initialAssignment symbol="F16bP">
+        <math xmlns="http://www.w3.org/1998/Math/MathML">
+          <ci> init_Fru1_6_P2 </ci>
+        </math>
+      </initialAssignment>
+    </listOfInitialAssignments>
+    <listOfRules>
+      <assignmentRule variable="observable_pyruvate">
+        <math xmlns="http://www.w3.org/1998/Math/MathML">
+          <ci> PYR </ci>
+        </math>
+      </assignmentRule>
+      <assignmentRule variable="observable_Glc_int">
+        <math xmlns="http://www.w3.org/1998/Math/MathML">
+          <ci> GLCi </ci>
+        </math>
+      </assignmentRule>
+      <assignmentRule variable="observable_Fru1_6_P2">
+        <math xmlns="http://www.w3.org/1998/Math/MathML">
+          <ci> F16bP </ci>
+        </math>
+      </assignmentRule>
+    </listOfRules>
+    <listOfReactions>
+      <reaction metaid="COPASI36" id="HXT" name="glucose transport" reversible="true">
+        <annotation>
+          <rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#" xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:dcterms="http://purl.org/dc/terms/" xmlns:vCard="http://www.w3.org/2001/vcard-rdf/3.0#" xmlns:bqbiol="http://biomodels.net/biology-qualifiers/" xmlns:bqmodel="http://biomodels.net/model-qualifiers/">
+            <rdf:Description rdf:about="#COPASI36">
+              <bqbiol:isVersionOf>
+                <rdf:Bag>
+                  <rdf:li rdf:resource="http://identifiers.org/go/GO:0015758"/>
+                </rdf:Bag>
+              </bqbiol:isVersionOf>
+            </rdf:Description>
+          </rdf:RDF>
+          <COPASI xmlns="http://www.copasi.org/static/sbml">
+            <rdf:RDF xmlns:CopasiMT="http://www.copasi.org/RDF/MiriamTerms#" xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">
+              <rdf:Description rdf:about="#COPASI36">
+                <CopasiMT:isVersionOf>
+                  <rdf:Bag>
+                    <rdf:li rdf:resource="http://identifiers.org/go/GO:0015758"/>
+                  </rdf:Bag>
+                </CopasiMT:isVersionOf>
+              </rdf:Description>
+            </rdf:RDF>
+          </COPASI>
+        </annotation>
+        <listOfReactants>
+          <speciesReference species="GLCo" stoichiometry="1"/>
+        </listOfReactants>
+        <listOfProducts>
+          <speciesReference species="GLCi" stoichiometry="1"/>
+        </listOfProducts>
+        <kineticLaw>
+          <math xmlns="http://www.w3.org/1998/Math/MathML">
+            <apply>
+              <ci> Function_for_glucose_transport__1 </ci>
+              <ci> GLCi </ci>
+              <ci> GLCo </ci>
+              <ci> Kglc_1 </ci>
+              <ci> Ki_1 </ci>
+              <ci> Vmax_1 </ci>
+            </apply>
+          </math>
+          <listOfParameters>
+            <parameter id="Kglc_1" name="Kglc_1" value="1.1918"/>
+            <parameter id="Ki_1" name="Ki_1" value="0.91"/>
+            <parameter id="Vmax_1" name="Vmax_1" value="97.24"/>
+          </listOfParameters>
+        </kineticLaw>
+      </reaction>
+      <reaction metaid="COPASI37" id="HK" name="hexokinase" reversible="true">
+        <annotation>
+          <rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#" xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:dcterms="http://purl.org/dc/terms/" xmlns:vCard="http://www.w3.org/2001/vcard-rdf/3.0#" xmlns:bqbiol="http://biomodels.net/biology-qualifiers/" xmlns:bqmodel="http://biomodels.net/model-qualifiers/">
+            <rdf:Description rdf:about="#COPASI37">
+              <bqbiol:is>
+                <rdf:Bag>
+                  <rdf:li rdf:resource="http://identifiers.org/kegg.reaction/R02848"/>
+                </rdf:Bag>
+              </bqbiol:is>
+              <bqbiol:isVersionOf>
+                <rdf:Bag>
+                  <rdf:li rdf:resource="http://identifiers.org/ec-code/2.7.1.1"/>
+                </rdf:Bag>
+              </bqbiol:isVersionOf>
+              <bqbiol:isVersionOf>
+                <rdf:Bag>
+                  <rdf:li rdf:resource="http://identifiers.org/go/GO:0004396"/>
+                </rdf:Bag>
+              </bqbiol:isVersionOf>
+            </rdf:Description>
+          </rdf:RDF>
+          <COPASI xmlns="http://www.copasi.org/static/sbml">
+            <rdf:RDF xmlns:CopasiMT="http://www.copasi.org/RDF/MiriamTerms#" xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">
+              <rdf:Description rdf:about="#COPASI37">
+                <CopasiMT:is>
+                  <rdf:Bag>
+                    <rdf:li rdf:resource="http://identifiers.org/kegg.reaction/R02848"/>
+                  </rdf:Bag>
+                </CopasiMT:is>
+                <CopasiMT:isVersionOf>
+                  <rdf:Bag>
+                    <rdf:li rdf:resource="http://identifiers.org/ec-code/2.7.1.1"/>
+                    <rdf:li rdf:resource="http://identifiers.org/go/GO:0004396"/>
+                  </rdf:Bag>
+                </CopasiMT:isVersionOf>
+              </rdf:Description>
+            </rdf:RDF>
+          </COPASI>
+        </annotation>
+        <listOfReactants>
+          <speciesReference species="GLCi" stoichiometry="1"/>
+          <speciesReference species="ATP" stoichiometry="1"/>
+        </listOfReactants>
+        <listOfProducts>
+          <speciesReference species="G6P" stoichiometry="1"/>
+          <speciesReference species="ADP" stoichiometry="1"/>
+        </listOfProducts>
+        <kineticLaw>
+          <math xmlns="http://www.w3.org/1998/Math/MathML">
+            <apply>
+              <times/>
+              <ci> cell </ci>
+              <apply>
+                <ci> Function_for_hexokinase__1 </ci>
+                <ci> ADP </ci>
+                <ci> ATP </ci>
+                <ci> G6P </ci>
+                <ci> GLCi </ci>
+                <ci> Kadp_2 </ci>
+                <ci> Katp_2 </ci>
+                <ci> Keq_2 </ci>
+                <ci> Kg6p_2 </ci>
+                <ci> Kglc_2 </ci>
+                <ci> hexokinase_Vmax_2 </ci>
+              </apply>
+            </apply>
+          </math>
+          <listOfParameters>
+            <parameter id="Kadp_2" name="Kadp_2" value="0.23"/>
+            <parameter id="Katp_2" name="Katp_2" value="0.15"/>
+            <parameter id="Keq_2" name="Keq_2" value="2000"/>
+            <parameter id="Kg6p_2" name="Kg6p_2" value="30"/>
+            <parameter id="Kglc_2" name="Kglc_2" value="0.08"/>
+          </listOfParameters>
+        </kineticLaw>
+      </reaction>
+      <reaction metaid="COPASI38" id="PGI" name="phosphoglucose isomerase" reversible="true">
+        <annotation>
+          <rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#" xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:dcterms="http://purl.org/dc/terms/" xmlns:vCard="http://www.w3.org/2001/vcard-rdf/3.0#" xmlns:bqbiol="http://biomodels.net/biology-qualifiers/" xmlns:bqmodel="http://biomodels.net/model-qualifiers/">
+            <rdf:Description rdf:about="#COPASI38">
+              <bqbiol:is>
+                <rdf:Bag>
+                  <rdf:li rdf:resource="http://identifiers.org/kegg.reaction/R00771"/>
+                </rdf:Bag>
+              </bqbiol:is>
+              <bqbiol:isVersionOf>
+                <rdf:Bag>
+                  <rdf:li rdf:resource="http://identifiers.org/go/GO:0004347"/>
+                </rdf:Bag>
+              </bqbiol:isVersionOf>
+              <bqbiol:isVersionOf>
+                <rdf:Bag>
+                  <rdf:li rdf:resource="http://identifiers.org/ec-code/5.3.1.9"/>
+                </rdf:Bag>
+              </bqbiol:isVersionOf>
+            </rdf:Description>
+          </rdf:RDF>
+          <COPASI xmlns="http://www.copasi.org/static/sbml">
+            <rdf:RDF xmlns:CopasiMT="http://www.copasi.org/RDF/MiriamTerms#" xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">
+              <rdf:Description rdf:about="#COPASI38">
+                <CopasiMT:is>
+                  <rdf:Bag>
+                    <rdf:li rdf:resource="http://identifiers.org/kegg.reaction/R00771"/>
+                  </rdf:Bag>
+                </CopasiMT:is>
+                <CopasiMT:isVersionOf>
+                  <rdf:Bag>
+                    <rdf:li rdf:resource="http://identifiers.org/ec-code/5.3.1.9"/>
+                    <rdf:li rdf:resource="http://identifiers.org/go/GO:0004347"/>
+                  </rdf:Bag>
+                </CopasiMT:isVersionOf>
+              </rdf:Description>
+            </rdf:RDF>
+          </COPASI>
+        </annotation>
+        <listOfReactants>
+          <speciesReference species="G6P" stoichiometry="1"/>
+        </listOfReactants>
+        <listOfProducts>
+          <speciesReference species="F6P" stoichiometry="1"/>
+        </listOfProducts>
+        <kineticLaw>
+          <math xmlns="http://www.w3.org/1998/Math/MathML">
+            <apply>
+              <times/>
+              <ci> cell </ci>
+              <apply>
+                <ci> Function_for_phosphoglucose_isomerase__1 </ci>
+                <ci> F6P </ci>
+                <ci> G6P </ci>
+                <ci> Keq_3 </ci>
+                <ci> Kf6p_3 </ci>
+                <ci> Kg6p_3 </ci>
+                <ci> Vmax_3 </ci>
+              </apply>
+            </apply>
+          </math>
+          <listOfParameters>
+            <parameter id="Keq_3" name="Keq_3" value="0.29"/>
+            <parameter id="Kf6p_3" name="Kf6p_3" value="0.3"/>
+            <parameter id="Kg6p_3" name="Kg6p_3" value="1.4"/>
+            <parameter id="Vmax_3" name="Vmax_3" value="1056"/>
+          </listOfParameters>
+        </kineticLaw>
+      </reaction>
+      <reaction metaid="COPASI39" id="PFK" name="phosphofructosekinase" reversible="false">
+        <annotation>
+          <rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#" xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:dcterms="http://purl.org/dc/terms/" xmlns:vCard="http://www.w3.org/2001/vcard-rdf/3.0#" xmlns:bqbiol="http://biomodels.net/biology-qualifiers/" xmlns:bqmodel="http://biomodels.net/model-qualifiers/">
+            <rdf:Description rdf:about="#COPASI39">
+              <bqbiol:is>
+                <rdf:Bag>
+                  <rdf:li rdf:resource="http://identifiers.org/kegg.reaction/R00756"/>
+                </rdf:Bag>
+              </bqbiol:is>
+              <bqbiol:isVersionOf>
+                <rdf:Bag>
+                  <rdf:li rdf:resource="http://identifiers.org/ec-code/2.7.1.11"/>
+                </rdf:Bag>
+              </bqbiol:isVersionOf>
+              <bqbiol:isVersionOf>
+                <rdf:Bag>
+                  <rdf:li rdf:resource="http://identifiers.org/go/GO:0003872"/>
+                </rdf:Bag>
+              </bqbiol:isVersionOf>
+            </rdf:Description>
+          </rdf:RDF>
+          <COPASI xmlns="http://www.copasi.org/static/sbml">
+            <rdf:RDF xmlns:CopasiMT="http://www.copasi.org/RDF/MiriamTerms#" xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">
+              <rdf:Description rdf:about="#COPASI39">
+                <CopasiMT:is>
+                  <rdf:Bag>
+                    <rdf:li rdf:resource="http://identifiers.org/kegg.reaction/R00756"/>
+                  </rdf:Bag>
+                </CopasiMT:is>
+                <CopasiMT:isVersionOf>
+                  <rdf:Bag>
+                    <rdf:li rdf:resource="http://identifiers.org/ec-code/2.7.1.11"/>
+                    <rdf:li rdf:resource="http://identifiers.org/go/GO:0003872"/>
+                  </rdf:Bag>
+                </CopasiMT:isVersionOf>
+              </rdf:Description>
+            </rdf:RDF>
+          </COPASI>
+        </annotation>
+        <listOfReactants>
+          <speciesReference species="ATP" stoichiometry="1"/>
+          <speciesReference species="F6P" stoichiometry="1"/>
+        </listOfReactants>
+        <listOfProducts>
+          <speciesReference species="ADP" stoichiometry="1"/>
+          <speciesReference species="F16bP" stoichiometry="1"/>
+        </listOfProducts>
+        <listOfModifiers>
+          <modifierSpeciesReference species="AMP"/>
+          <modifierSpeciesReference species="F26bP"/>
+        </listOfModifiers>
+        <kineticLaw>
+          <math xmlns="http://www.w3.org/1998/Math/MathML">
+            <apply>
+              <times/>
+              <ci> cell </ci>
+              <apply>
+                <ci> Function_for_phosphofructosekinase__1 </ci>
+                <ci> AMP </ci>
+                <ci> ATP </ci>
+                <ci> Camp_4 </ci>
+                <ci> Catp_4 </ci>
+                <ci> Cf16_4 </ci>
+                <ci> Cf26_4 </ci>
+                <ci> Ciatp_4 </ci>
+                <ci> F16bP </ci>
+                <ci> F26bP </ci>
+                <ci> F6P </ci>
+                <ci> Kamp_4 </ci>
+                <ci> Katp_4 </ci>
+                <ci> Kf16_4 </ci>
+                <ci> Kf26_4 </ci>
+                <ci> Kf6p_4 </ci>
+                <ci> Kiatp_4 </ci>
+                <ci> L0_4 </ci>
+                <ci> phosphofructosekinase_Vmax_4 </ci>
+                <ci> gR_4 </ci>
+              </apply>
+            </apply>
+          </math>
+          <listOfParameters>
+            <parameter id="Camp_4" name="Camp_4" value="0.0845"/>
+            <parameter id="Catp_4" name="Catp_4" value="3"/>
+            <parameter id="Cf16_4" name="Cf16_4" value="0.397"/>
+            <parameter id="Cf26_4" name="Cf26_4" value="0.0174"/>
+            <parameter id="Ciatp_4" name="Ciatp_4" value="100"/>
+            <parameter id="Kamp_4" name="Kamp_4" value="0.0995"/>
+            <parameter id="Katp_4" name="Katp_4" value="0.71"/>
+            <parameter id="Kf16_4" name="Kf16_4" value="0.111"/>
+            <parameter id="Kf26_4" name="Kf26_4" value="0.000682"/>
+            <parameter id="Kf6p_4" name="Kf6p_4" value="0.1"/>
+            <parameter id="Kiatp_4" name="Kiatp_4" value="0.65"/>
+            <parameter id="L0_4" name="L0_4" value="0.66"/>
+            <parameter id="gR_4" name="gR_4" value="5.12"/>
+          </listOfParameters>
+        </kineticLaw>
+      </reaction>
+      <reaction metaid="COPASI40" id="ALD" name="fructosebisphosphate aldolase" reversible="true">
+        <annotation>
+          <rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#" xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:dcterms="http://purl.org/dc/terms/" xmlns:vCard="http://www.w3.org/2001/vcard-rdf/3.0#" xmlns:bqbiol="http://biomodels.net/biology-qualifiers/" xmlns:bqmodel="http://biomodels.net/model-qualifiers/">
+            <rdf:Description rdf:about="#COPASI40">
+              <bqbiol:is>
+                <rdf:Bag>
+                  <rdf:li rdf:resource="http://identifiers.org/kegg.reaction/R01068"/>
+                </rdf:Bag>
+              </bqbiol:is>
+              <bqbiol:isVersionOf>
+                <rdf:Bag>
+                  <rdf:li rdf:resource="http://identifiers.org/go/GO:0004332"/>
+                </rdf:Bag>
+              </bqbiol:isVersionOf>
+              <bqbiol:isVersionOf>
+                <rdf:Bag>
+                  <rdf:li rdf:resource="http://identifiers.org/ec-code/4.1.2.13"/>
+                </rdf:Bag>
+              </bqbiol:isVersionOf>
+            </rdf:Description>
+          </rdf:RDF>
+          <COPASI xmlns="http://www.copasi.org/static/sbml">
+            <rdf:RDF xmlns:CopasiMT="http://www.copasi.org/RDF/MiriamTerms#" xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">
+              <rdf:Description rdf:about="#COPASI40">
+                <CopasiMT:is>
+                  <rdf:Bag>
+                    <rdf:li rdf:resource="http://identifiers.org/kegg.reaction/R01068"/>
+                  </rdf:Bag>
+                </CopasiMT:is>
+                <CopasiMT:isVersionOf>
+                  <rdf:Bag>
+                    <rdf:li rdf:resource="http://identifiers.org/ec-code/4.1.2.13"/>
+                    <rdf:li rdf:resource="http://identifiers.org/go/GO:0004332"/>
+                  </rdf:Bag>
+                </CopasiMT:isVersionOf>
+              </rdf:Description>
+            </rdf:RDF>
+          </COPASI>
+        </annotation>
+        <listOfReactants>
+          <speciesReference species="F16bP" stoichiometry="1"/>
+        </listOfReactants>
+        <listOfProducts>
+          <speciesReference species="DHAP" stoichiometry="1"/>
+          <speciesReference species="GAP" stoichiometry="1"/>
+        </listOfProducts>
+        <kineticLaw>
+          <math xmlns="http://www.w3.org/1998/Math/MathML">
+            <apply>
+              <times/>
+              <ci> cell </ci>
+              <apply>
+                <ci> Function_for_fructosebisphosphate_aldolase__1 </ci>
+                <ci> DHAP </ci>
+                <ci> F16bP </ci>
+                <ci> GAP </ci>
+                <ci> Kdhap_5 </ci>
+                <ci> Keq_5 </ci>
+                <ci> Kf16bp_5 </ci>
+                <ci> Kgap_5 </ci>
+                <ci> Kigap_5 </ci>
+                <ci> Vmax_5 </ci>
+              </apply>
+            </apply>
+          </math>
+          <listOfParameters>
+            <parameter id="Kdhap_5" name="Kdhap_5" value="2"/>
+            <parameter id="Keq_5" name="Keq_5" value="0.069"/>
+            <parameter id="Kf16bp_5" name="Kf16bp_5" value="0.3"/>
+            <parameter id="Kgap_5" name="Kgap_5" value="2.4"/>
+            <parameter id="Kigap_5" name="Kigap_5" value="10"/>
+            <parameter id="Vmax_5" name="Vmax_5" value="94.69"/>
+          </listOfParameters>
+        </kineticLaw>
+      </reaction>
+      <reaction metaid="COPASI41" id="TPI" name="triosephosphate isomerase" reversible="true">
+        <annotation>
+          <rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#" xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:dcterms="http://purl.org/dc/terms/" xmlns:vCard="http://www.w3.org/2001/vcard-rdf/3.0#" xmlns:bqbiol="http://biomodels.net/biology-qualifiers/" xmlns:bqmodel="http://biomodels.net/model-qualifiers/">
+            <rdf:Description rdf:about="#COPASI41">
+              <bqbiol:is>
+                <rdf:Bag>
+                  <rdf:li rdf:resource="http://identifiers.org/kegg.reaction/R01015"/>
+                </rdf:Bag>
+              </bqbiol:is>
+              <bqbiol:isVersionOf>
+                <rdf:Bag>
+                  <rdf:li rdf:resource="http://identifiers.org/go/GO:0004807"/>
+                </rdf:Bag>
+              </bqbiol:isVersionOf>
+              <bqbiol:isVersionOf>
+                <rdf:Bag>
+                  <rdf:li rdf:resource="http://identifiers.org/ec-code/5.3.1.1"/>
+                </rdf:Bag>
+              </bqbiol:isVersionOf>
+            </rdf:Description>
+          </rdf:RDF>
+          <COPASI xmlns="http://www.copasi.org/static/sbml">
+            <rdf:RDF xmlns:CopasiMT="http://www.copasi.org/RDF/MiriamTerms#" xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">
+              <rdf:Description rdf:about="#COPASI41">
+                <CopasiMT:is>
+                  <rdf:Bag>
+                    <rdf:li rdf:resource="http://identifiers.org/kegg.reaction/R01015"/>
+                  </rdf:Bag>
+                </CopasiMT:is>
+                <CopasiMT:isVersionOf>
+                  <rdf:Bag>
+                    <rdf:li rdf:resource="http://identifiers.org/ec-code/5.3.1.1"/>
+                    <rdf:li rdf:resource="http://identifiers.org/go/GO:0004807"/>
+                  </rdf:Bag>
+                </CopasiMT:isVersionOf>
+              </rdf:Description>
+            </rdf:RDF>
+          </COPASI>
+        </annotation>
+        <listOfReactants>
+          <speciesReference species="DHAP" stoichiometry="1"/>
+        </listOfReactants>
+        <listOfProducts>
+          <speciesReference species="GAP" stoichiometry="1"/>
+        </listOfProducts>
+        <kineticLaw>
+          <math xmlns="http://www.w3.org/1998/Math/MathML">
+            <apply>
+              <times/>
+              <ci> cell </ci>
+              <apply>
+                <minus/>
+                <apply>
+                  <times/>
+                  <ci> k1 </ci>
+                  <ci> DHAP </ci>
+                </apply>
+                <apply>
+                  <times/>
+                  <ci> k2 </ci>
+                  <ci> GAP </ci>
+                </apply>
+              </apply>
+            </apply>
+          </math>
+          <listOfParameters>
+            <parameter id="k1" name="k1" value="450000"/>
+            <parameter id="k2" name="k2" value="10000000"/>
+          </listOfParameters>
+        </kineticLaw>
+      </reaction>
+      <reaction metaid="COPASI42" id="GAPDH" name="glyceraldehyde phosphate dehydrogenase" reversible="true">
+        <annotation>
+          <rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#" xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:dcterms="http://purl.org/dc/terms/" xmlns:vCard="http://www.w3.org/2001/vcard-rdf/3.0#" xmlns:bqbiol="http://biomodels.net/biology-qualifiers/" xmlns:bqmodel="http://biomodels.net/model-qualifiers/">
+            <rdf:Description rdf:about="#COPASI42">
+              <bqbiol:is>
+                <rdf:Bag>
+                  <rdf:li rdf:resource="http://identifiers.org/kegg.reaction/R01061"/>
+                </rdf:Bag>
+              </bqbiol:is>
+              <bqbiol:isVersionOf>
+                <rdf:Bag>
+                  <rdf:li rdf:resource="http://identifiers.org/go/GO:0004365"/>
+                </rdf:Bag>
+              </bqbiol:isVersionOf>
+              <bqbiol:isVersionOf>
+                <rdf:Bag>
+                  <rdf:li rdf:resource="http://identifiers.org/ec-code/1.2.1.12"/>
+                </rdf:Bag>
+              </bqbiol:isVersionOf>
+            </rdf:Description>
+          </rdf:RDF>
+          <COPASI xmlns="http://www.copasi.org/static/sbml">
+            <rdf:RDF xmlns:CopasiMT="http://www.copasi.org/RDF/MiriamTerms#" xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">
+              <rdf:Description rdf:about="#COPASI42">
+                <CopasiMT:is>
+                  <rdf:Bag>
+                    <rdf:li rdf:resource="http://identifiers.org/kegg.reaction/R01061"/>
+                  </rdf:Bag>
+                </CopasiMT:is>
+                <CopasiMT:isVersionOf>
+                  <rdf:Bag>
+                    <rdf:li rdf:resource="http://identifiers.org/ec-code/1.2.1.12"/>
+                    <rdf:li rdf:resource="http://identifiers.org/go/GO:0004365"/>
+                  </rdf:Bag>
+                </CopasiMT:isVersionOf>
+              </rdf:Description>
+            </rdf:RDF>
+          </COPASI>
+        </annotation>
+        <listOfReactants>
+          <speciesReference species="GAP" stoichiometry="1"/>
+          <speciesReference species="NAD" stoichiometry="1"/>
+        </listOfReactants>
+        <listOfProducts>
+          <speciesReference species="BPG" stoichiometry="1"/>
+          <speciesReference species="NADH" stoichiometry="1"/>
+        </listOfProducts>
+        <kineticLaw>
+          <math xmlns="http://www.w3.org/1998/Math/MathML">
+            <apply>
+              <times/>
+              <ci> cell </ci>
+              <apply>
+                <ci> Function_for_glyceraldehyde_phosphate_dehydrogenase__1 </ci>
+                <ci> BPG </ci>
+                <ci> C_7 </ci>
+                <ci> GAP </ci>
+                <ci> Kbpg_7 </ci>
+                <ci> Kgap_7 </ci>
+                <ci> Knad_7 </ci>
+                <ci> Knadh_7 </ci>
+                <ci> NAD </ci>
+                <ci> NADH </ci>
+                <ci> Vmaxf_7 </ci>
+                <ci> Vmaxr_7 </ci>
+              </apply>
+            </apply>
+          </math>
+          <listOfParameters>
+            <parameter id="C_7" name="C_7" value="1"/>
+            <parameter id="Kbpg_7" name="Kbpg_7" value="0.0098"/>
+            <parameter id="Kgap_7" name="Kgap_7" value="0.21"/>
+            <parameter id="Knad_7" name="Knad_7" value="0.09"/>
+            <parameter id="Knadh_7" name="Knadh_7" value="0.06"/>
+            <parameter id="Vmaxf_7" name="Vmaxf_7" value="1152"/>
+            <parameter id="Vmaxr_7" name="Vmaxr_7" value="6719"/>
+          </listOfParameters>
+        </kineticLaw>
+      </reaction>
+      <reaction metaid="COPASI43" id="PGK" name="3-phosphoglycerate kinase" reversible="true">
+        <annotation>
+          <rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#" xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:dcterms="http://purl.org/dc/terms/" xmlns:vCard="http://www.w3.org/2001/vcard-rdf/3.0#" xmlns:bqbiol="http://biomodels.net/biology-qualifiers/" xmlns:bqmodel="http://biomodels.net/model-qualifiers/">
+            <rdf:Description rdf:about="#COPASI43">
+              <bqbiol:is>
+                <rdf:Bag>
+                  <rdf:li rdf:resource="http://identifiers.org/kegg.reaction/R01512"/>
+                </rdf:Bag>
+              </bqbiol:is>
+              <bqbiol:isVersionOf>
+                <rdf:Bag>
+                  <rdf:li rdf:resource="http://identifiers.org/go/GO:0004618"/>
+                </rdf:Bag>
+              </bqbiol:isVersionOf>
+              <bqbiol:isVersionOf>
+                <rdf:Bag>
+                  <rdf:li rdf:resource="http://identifiers.org/ec-code/2.7.2.3"/>
+                </rdf:Bag>
+              </bqbiol:isVersionOf>
+            </rdf:Description>
+          </rdf:RDF>
+          <COPASI xmlns="http://www.copasi.org/static/sbml">
+            <rdf:RDF xmlns:CopasiMT="http://www.copasi.org/RDF/MiriamTerms#" xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">
+              <rdf:Description rdf:about="#COPASI43">
+                <CopasiMT:is>
+                  <rdf:Bag>
+                    <rdf:li rdf:resource="http://identifiers.org/kegg.reaction/R01512"/>
+                  </rdf:Bag>
+                </CopasiMT:is>
+                <CopasiMT:isVersionOf>
+                  <rdf:Bag>
+                    <rdf:li rdf:resource="http://identifiers.org/ec-code/2.7.2.3"/>
+                    <rdf:li rdf:resource="http://identifiers.org/go/GO:0004618"/>
+                  </rdf:Bag>
+                </CopasiMT:isVersionOf>
+              </rdf:Description>
+            </rdf:RDF>
+          </COPASI>
+        </annotation>
+        <listOfReactants>
+          <speciesReference species="ADP" stoichiometry="1"/>
+          <speciesReference species="BPG" stoichiometry="1"/>
+        </listOfReactants>
+        <listOfProducts>
+          <speciesReference species="ATP" stoichiometry="1"/>
+          <speciesReference species="P3G" stoichiometry="1"/>
+        </listOfProducts>
+        <kineticLaw>
+          <math xmlns="http://www.w3.org/1998/Math/MathML">
+            <apply>
+              <times/>
+              <ci> cell </ci>
+              <apply>
+                <ci> Function_for_3_phosphoglycerate_kinase__1 </ci>
+                <ci> ADP </ci>
+                <ci> ATP </ci>
+                <ci> BPG </ci>
+                <ci> Kadp_8 </ci>
+                <ci> Katp_8 </ci>
+                <ci> Kbpg_8 </ci>
+                <ci> Keq_8 </ci>
+                <ci> Kp3g_8 </ci>
+                <ci> P3G </ci>
+                <ci> Vmax_8 </ci>
+              </apply>
+            </apply>
+          </math>
+          <listOfParameters>
+            <parameter id="Kadp_8" name="Kadp_8" value="0.2"/>
+            <parameter id="Katp_8" name="Katp_8" value="0.3"/>
+            <parameter id="Kbpg_8" name="Kbpg_8" value="0.003"/>
+            <parameter id="Keq_8" name="Keq_8" value="3200"/>
+            <parameter id="Kp3g_8" name="Kp3g_8" value="0.53"/>
+            <parameter id="Vmax_8" name="Vmax_8" value="1288"/>
+          </listOfParameters>
+        </kineticLaw>
+      </reaction>
+      <reaction metaid="COPASI44" id="PGM" name="phosphoglyceromutase" reversible="true">
+        <annotation>
+          <rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#" xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:dcterms="http://purl.org/dc/terms/" xmlns:vCard="http://www.w3.org/2001/vcard-rdf/3.0#" xmlns:bqbiol="http://biomodels.net/biology-qualifiers/" xmlns:bqmodel="http://biomodels.net/model-qualifiers/">
+            <rdf:Description rdf:about="#COPASI44">
+              <bqbiol:is>
+                <rdf:Bag>
+                  <rdf:li rdf:resource="http://identifiers.org/kegg.reaction/R01518"/>
+                </rdf:Bag>
+              </bqbiol:is>
+              <bqbiol:isVersionOf>
+                <rdf:Bag>
+                  <rdf:li rdf:resource="http://identifiers.org/ec-code/5.4.2.1"/>
+                </rdf:Bag>
+              </bqbiol:isVersionOf>
+              <bqbiol:isVersionOf>
+                <rdf:Bag>
+                  <rdf:li rdf:resource="http://identifiers.org/go/GO:0004619"/>
+                </rdf:Bag>
+              </bqbiol:isVersionOf>
+            </rdf:Description>
+          </rdf:RDF>
+          <COPASI xmlns="http://www.copasi.org/static/sbml">
+            <rdf:RDF xmlns:CopasiMT="http://www.copasi.org/RDF/MiriamTerms#" xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">
+              <rdf:Description rdf:about="#COPASI44">
+                <CopasiMT:is>
+                  <rdf:Bag>
+                    <rdf:li rdf:resource="http://identifiers.org/kegg.reaction/R01518"/>
+                  </rdf:Bag>
+                </CopasiMT:is>
+                <CopasiMT:isVersionOf>
+                  <rdf:Bag>
+                    <rdf:li rdf:resource="http://identifiers.org/ec-code/5.4.2.1"/>
+                    <rdf:li rdf:resource="http://identifiers.org/go/GO:0004619"/>
+                  </rdf:Bag>
+                </CopasiMT:isVersionOf>
+              </rdf:Description>
+            </rdf:RDF>
+          </COPASI>
+        </annotation>
+        <listOfReactants>
+          <speciesReference species="P3G" stoichiometry="1"/>
+        </listOfReactants>
+        <listOfProducts>
+          <speciesReference species="P2G" stoichiometry="1"/>
+        </listOfProducts>
+        <kineticLaw>
+          <math xmlns="http://www.w3.org/1998/Math/MathML">
+            <apply>
+              <times/>
+              <ci> cell </ci>
+              <apply>
+                <ci> Function_for_phosphoglyceromutase__1 </ci>
+                <ci> Keq_9 </ci>
+                <ci> Kp2g_9 </ci>
+                <ci> Kp3g_9 </ci>
+                <ci> P2G </ci>
+                <ci> P3G </ci>
+                <ci> Vmax_9 </ci>
+              </apply>
+            </apply>
+          </math>
+          <listOfParameters>
+            <parameter id="Keq_9" name="Keq_9" value="0.19"/>
+            <parameter id="Kp2g_9" name="Kp2g_9" value="0.08"/>
+            <parameter id="Kp3g_9" name="Kp3g_9" value="1.2"/>
+            <parameter id="Vmax_9" name="Vmax_9" value="2585"/>
+          </listOfParameters>
+        </kineticLaw>
+      </reaction>
+      <reaction metaid="COPASI45" id="ENO" name="enolase" reversible="true">
+        <annotation>
+          <rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#" xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:dcterms="http://purl.org/dc/terms/" xmlns:vCard="http://www.w3.org/2001/vcard-rdf/3.0#" xmlns:bqbiol="http://biomodels.net/biology-qualifiers/" xmlns:bqmodel="http://biomodels.net/model-qualifiers/">
+            <rdf:Description rdf:about="#COPASI45">
+              <bqbiol:is>
+                <rdf:Bag>
+                  <rdf:li rdf:resource="http://identifiers.org/kegg.reaction/R00658"/>
+                </rdf:Bag>
+              </bqbiol:is>
+              <bqbiol:isVersionOf>
+                <rdf:Bag>
+                  <rdf:li rdf:resource="http://identifiers.org/ec-code/4.2.1.11"/>
+                </rdf:Bag>
+              </bqbiol:isVersionOf>
+              <bqbiol:isVersionOf>
+                <rdf:Bag>
+                  <rdf:li rdf:resource="http://identifiers.org/go/GO:0004634"/>
+                </rdf:Bag>
+              </bqbiol:isVersionOf>
+            </rdf:Description>
+          </rdf:RDF>
+          <COPASI xmlns="http://www.copasi.org/static/sbml">
+            <rdf:RDF xmlns:CopasiMT="http://www.copasi.org/RDF/MiriamTerms#" xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">
+              <rdf:Description rdf:about="#COPASI45">
+                <CopasiMT:is>
+                  <rdf:Bag>
+                    <rdf:li rdf:resource="http://identifiers.org/kegg.reaction/R00658"/>
+                  </rdf:Bag>
+                </CopasiMT:is>
+                <CopasiMT:isVersionOf>
+                  <rdf:Bag>
+                    <rdf:li rdf:resource="http://identifiers.org/ec-code/4.2.1.11"/>
+                    <rdf:li rdf:resource="http://identifiers.org/go/GO:0004634"/>
+                  </rdf:Bag>
+                </CopasiMT:isVersionOf>
+              </rdf:Description>
+            </rdf:RDF>
+          </COPASI>
+        </annotation>
+        <listOfReactants>
+          <speciesReference species="P2G" stoichiometry="1"/>
+        </listOfReactants>
+        <listOfProducts>
+          <speciesReference species="PEP" stoichiometry="1"/>
+        </listOfProducts>
+        <kineticLaw>
+          <math xmlns="http://www.w3.org/1998/Math/MathML">
+            <apply>
+              <times/>
+              <ci> cell </ci>
+              <apply>
+                <ci> Function_for_enolase__1 </ci>
+                <ci> Keq_10 </ci>
+                <ci> Kp2g_10 </ci>
+                <ci> Kpep_10 </ci>
+                <ci> P2G </ci>
+                <ci> PEP </ci>
+                <ci> Vmax_10 </ci>
+              </apply>
+            </apply>
+          </math>
+          <listOfParameters>
+            <parameter id="Keq_10" name="Keq_10" value="6.7"/>
+            <parameter id="Kp2g_10" name="Kp2g_10" value="0.04"/>
+            <parameter id="Kpep_10" name="Kpep_10" value="0.5"/>
+            <parameter id="Vmax_10" name="Vmax_10" value="201.6"/>
+          </listOfParameters>
+        </kineticLaw>
+      </reaction>
+      <reaction metaid="COPASI46" id="PYK" name="pyruvate kinase" reversible="true">
+        <annotation>
+          <rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#" xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:dcterms="http://purl.org/dc/terms/" xmlns:vCard="http://www.w3.org/2001/vcard-rdf/3.0#" xmlns:bqbiol="http://biomodels.net/biology-qualifiers/" xmlns:bqmodel="http://biomodels.net/model-qualifiers/">
+            <rdf:Description rdf:about="#COPASI46">
+              <bqbiol:is>
+                <rdf:Bag>
+                  <rdf:li rdf:resource="http://identifiers.org/kegg.reaction/R00200"/>
+                </rdf:Bag>
+              </bqbiol:is>
+              <bqbiol:isVersionOf>
+                <rdf:Bag>
+                  <rdf:li rdf:resource="http://identifiers.org/go/GO:0004743"/>
+                </rdf:Bag>
+              </bqbiol:isVersionOf>
+              <bqbiol:isVersionOf>
+                <rdf:Bag>
+                  <rdf:li rdf:resource="http://identifiers.org/ec-code/2.7.1.40"/>
+                </rdf:Bag>
+              </bqbiol:isVersionOf>
+            </rdf:Description>
+          </rdf:RDF>
+          <COPASI xmlns="http://www.copasi.org/static/sbml">
+            <rdf:RDF xmlns:CopasiMT="http://www.copasi.org/RDF/MiriamTerms#" xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">
+              <rdf:Description rdf:about="#COPASI46">
+                <CopasiMT:is>
+                  <rdf:Bag>
+                    <rdf:li rdf:resource="http://identifiers.org/kegg.reaction/R00200"/>
+                  </rdf:Bag>
+                </CopasiMT:is>
+                <CopasiMT:isVersionOf>
+                  <rdf:Bag>
+                    <rdf:li rdf:resource="http://identifiers.org/ec-code/2.7.1.40"/>
+                    <rdf:li rdf:resource="http://identifiers.org/go/GO:0004743"/>
+                  </rdf:Bag>
+                </CopasiMT:isVersionOf>
+              </rdf:Description>
+            </rdf:RDF>
+          </COPASI>
+        </annotation>
+        <listOfReactants>
+          <speciesReference species="ADP" stoichiometry="1"/>
+          <speciesReference species="PEP" stoichiometry="1"/>
+        </listOfReactants>
+        <listOfProducts>
+          <speciesReference species="ATP" stoichiometry="1"/>
+          <speciesReference species="PYR" stoichiometry="1"/>
+        </listOfProducts>
+        <kineticLaw>
+          <math xmlns="http://www.w3.org/1998/Math/MathML">
+            <apply>
+              <times/>
+              <ci> cell </ci>
+              <apply>
+                <ci> Function_for_pyruvate_kinase__1 </ci>
+                <ci> ADP </ci>
+                <ci> ATP </ci>
+                <ci> Kadp_11 </ci>
+                <ci> Katp_11 </ci>
+                <ci> Keq_11 </ci>
+                <ci> Kpep_11 </ci>
+                <ci> Kpyr_11 </ci>
+                <ci> PEP </ci>
+                <ci> PYR </ci>
+                <ci> Vmax_11 </ci>
+              </apply>
+            </apply>
+          </math>
+          <listOfParameters>
+            <parameter id="Kadp_11" name="Kadp_11" value="0.53"/>
+            <parameter id="Katp_11" name="Katp_11" value="1.5"/>
+            <parameter id="Keq_11" name="Keq_11" value="6500"/>
+            <parameter id="Kpep_11" name="Kpep_11" value="0.14"/>
+            <parameter id="Kpyr_11" name="Kpyr_11" value="21"/>
+            <parameter id="Vmax_11" name="Vmax_11" value="1000"/>
+          </listOfParameters>
+        </kineticLaw>
+      </reaction>
+      <reaction metaid="COPASI47" id="PDC" name="pyruvate decarboxylase" reversible="false">
+        <annotation>
+          <rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#" xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:dcterms="http://purl.org/dc/terms/" xmlns:vCard="http://www.w3.org/2001/vcard-rdf/3.0#" xmlns:bqbiol="http://biomodels.net/biology-qualifiers/" xmlns:bqmodel="http://biomodels.net/model-qualifiers/">
+            <rdf:Description rdf:about="#COPASI47">
+              <bqbiol:is>
+                <rdf:Bag>
+                  <rdf:li rdf:resource="http://identifiers.org/kegg.reaction/R00636"/>
+                </rdf:Bag>
+              </bqbiol:is>
+              <bqbiol:isVersionOf>
+                <rdf:Bag>
+                  <rdf:li rdf:resource="http://identifiers.org/go/GO:0004737"/>
+                </rdf:Bag>
+              </bqbiol:isVersionOf>
+              <bqbiol:isVersionOf>
+                <rdf:Bag>
+                  <rdf:li rdf:resource="http://identifiers.org/ec-code/4.1.1.1"/>
+                </rdf:Bag>
+              </bqbiol:isVersionOf>
+            </rdf:Description>
+          </rdf:RDF>
+          <COPASI xmlns="http://www.copasi.org/static/sbml">
+            <rdf:RDF xmlns:CopasiMT="http://www.copasi.org/RDF/MiriamTerms#" xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">
+              <rdf:Description rdf:about="#COPASI47">
+                <CopasiMT:is>
+                  <rdf:Bag>
+                    <rdf:li rdf:resource="http://identifiers.org/kegg.reaction/R00636"/>
+                  </rdf:Bag>
+                </CopasiMT:is>
+                <CopasiMT:isVersionOf>
+                  <rdf:Bag>
+                    <rdf:li rdf:resource="http://identifiers.org/ec-code/4.1.1.1"/>
+                    <rdf:li rdf:resource="http://identifiers.org/go/GO:0004737"/>
+                  </rdf:Bag>
+                </CopasiMT:isVersionOf>
+              </rdf:Description>
+            </rdf:RDF>
+          </COPASI>
+        </annotation>
+        <listOfReactants>
+          <speciesReference species="PYR" stoichiometry="1"/>
+        </listOfReactants>
+        <listOfProducts>
+          <speciesReference species="AcAld" stoichiometry="1"/>
+          <speciesReference species="CO2" stoichiometry="1"/>
+        </listOfProducts>
+        <kineticLaw>
+          <math xmlns="http://www.w3.org/1998/Math/MathML">
+            <apply>
+              <times/>
+              <ci> cell </ci>
+              <apply>
+                <ci> Function_for_pyruvate_decarboxylase__1 </ci>
+                <ci> Kpyr_12 </ci>
+                <ci> PYR </ci>
+                <ci> Vmax_12 </ci>
+                <ci> nH_12 </ci>
+              </apply>
+            </apply>
+          </math>
+          <listOfParameters>
+            <parameter id="Kpyr_12" name="Kpyr_12" value="4.33"/>
+            <parameter id="Vmax_12" name="Vmax_12" value="857.8"/>
+            <parameter id="nH_12" name="nH_12" value="1.9"/>
+          </listOfParameters>
+        </kineticLaw>
+      </reaction>
+      <reaction metaid="COPASI48" id="ADH" name="alcohol dehydrogenase" reversible="true">
+        <annotation>
+          <rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#" xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:dcterms="http://purl.org/dc/terms/" xmlns:vCard="http://www.w3.org/2001/vcard-rdf/3.0#" xmlns:bqbiol="http://biomodels.net/biology-qualifiers/" xmlns:bqmodel="http://biomodels.net/model-qualifiers/">
+            <rdf:Description rdf:about="#COPASI48">
+              <bqbiol:is>
+                <rdf:Bag>
+                  <rdf:li rdf:resource="http://identifiers.org/kegg.reaction/R00754"/>
+                </rdf:Bag>
+              </bqbiol:is>
+              <bqbiol:isVersionOf>
+                <rdf:Bag>
+                  <rdf:li rdf:resource="http://identifiers.org/ec-code/1.1.1.1"/>
+                </rdf:Bag>
+              </bqbiol:isVersionOf>
+              <bqbiol:isVersionOf>
+                <rdf:Bag>
+                  <rdf:li rdf:resource="http://identifiers.org/go/GO:0004022"/>
+                </rdf:Bag>
+              </bqbiol:isVersionOf>
+            </rdf:Description>
+          </rdf:RDF>
+          <COPASI xmlns="http://www.copasi.org/static/sbml">
+            <rdf:RDF xmlns:CopasiMT="http://www.copasi.org/RDF/MiriamTerms#" xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">
+              <rdf:Description rdf:about="#COPASI48">
+                <CopasiMT:is>
+                  <rdf:Bag>
+                    <rdf:li rdf:resource="http://identifiers.org/kegg.reaction/R00754"/>
+                  </rdf:Bag>
+                </CopasiMT:is>
+                <CopasiMT:isVersionOf>
+                  <rdf:Bag>
+                    <rdf:li rdf:resource="http://identifiers.org/ec-code/1.1.1.1"/>
+                    <rdf:li rdf:resource="http://identifiers.org/go/GO:0004022"/>
+                  </rdf:Bag>
+                </CopasiMT:isVersionOf>
+              </rdf:Description>
+            </rdf:RDF>
+          </COPASI>
+        </annotation>
+        <listOfReactants>
+          <speciesReference species="NAD" stoichiometry="1"/>
+          <speciesReference species="EtOH" stoichiometry="1"/>
+        </listOfReactants>
+        <listOfProducts>
+          <speciesReference species="NADH" stoichiometry="1"/>
+          <speciesReference species="AcAld" stoichiometry="1"/>
+        </listOfProducts>
+        <kineticLaw>
+          <math xmlns="http://www.w3.org/1998/Math/MathML">
+            <apply>
+              <times/>
+              <ci> cell </ci>
+              <apply>
+                <ci> Function_for_alcohol_dehydrogenase__1 </ci>
+                <ci> AcAld </ci>
+                <ci> EtOH </ci>
+                <ci> Kacald_13 </ci>
+                <ci> Keq_13 </ci>
+                <ci> Ketoh_13 </ci>
+                <ci> Kiacald_13 </ci>
+                <ci> Kietoh_13 </ci>
+                <ci> Kinad_13 </ci>
+                <ci> Kinadh_13 </ci>
+                <ci> Knad_13 </ci>
+                <ci> Knadh_13 </ci>
+                <ci> NAD </ci>
+                <ci> NADH </ci>
+                <ci> Vmax_13 </ci>
+              </apply>
+            </apply>
+          </math>
+          <listOfParameters>
+            <parameter id="Kacald_13" name="Kacald_13" value="1.11"/>
+            <parameter id="Keq_13" name="Keq_13" value="6.9e-05"/>
+            <parameter id="Ketoh_13" name="Ketoh_13" value="17"/>
+            <parameter id="Kiacald_13" name="Kiacald_13" value="1.1"/>
+            <parameter id="Kietoh_13" name="Kietoh_13" value="90"/>
+            <parameter id="Kinad_13" name="Kinad_13" value="0.92"/>
+            <parameter id="Kinadh_13" name="Kinadh_13" value="0.031"/>
+            <parameter id="Knad_13" name="Knad_13" value="0.17"/>
+            <parameter id="Knadh_13" name="Knadh_13" value="0.11"/>
+            <parameter id="Vmax_13" name="Vmax_13" value="209.5"/>
+          </listOfParameters>
+        </kineticLaw>
+      </reaction>
+      <reaction metaid="COPASI49" id="ATPase" name="ATPase" reversible="false">
+        <annotation>
+          <rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#" xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:dcterms="http://purl.org/dc/terms/" xmlns:vCard="http://www.w3.org/2001/vcard-rdf/3.0#" xmlns:bqbiol="http://biomodels.net/biology-qualifiers/" xmlns:bqmodel="http://biomodels.net/model-qualifiers/">
+            <rdf:Description rdf:about="#COPASI49">
+              <bqbiol:isVersionOf>
+                <rdf:Bag>
+                  <rdf:li rdf:resource="http://identifiers.org/go/GO:0016887"/>
+                </rdf:Bag>
+              </bqbiol:isVersionOf>
+            </rdf:Description>
+          </rdf:RDF>
+          <COPASI xmlns="http://www.copasi.org/static/sbml">
+            <rdf:RDF xmlns:CopasiMT="http://www.copasi.org/RDF/MiriamTerms#" xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">
+              <rdf:Description rdf:about="#COPASI49">
+                <CopasiMT:isVersionOf>
+                  <rdf:Bag>
+                    <rdf:li rdf:resource="http://identifiers.org/go/GO:0016887"/>
+                  </rdf:Bag>
+                </CopasiMT:isVersionOf>
+              </rdf:Description>
+            </rdf:RDF>
+          </COPASI>
+        </annotation>
+        <listOfReactants>
+          <speciesReference species="ATP" stoichiometry="1"/>
+        </listOfReactants>
+        <listOfProducts>
+          <speciesReference species="ADP" stoichiometry="1"/>
+        </listOfProducts>
+        <kineticLaw>
+          <math xmlns="http://www.w3.org/1998/Math/MathML">
+            <apply>
+              <times/>
+              <ci> cell </ci>
+              <ci> ATPase_k1 </ci>
+              <ci> ATP </ci>
+            </apply>
+          </math>
+        </kineticLaw>
+      </reaction>
+      <reaction metaid="COPASI50" id="AK" name="AK" reversible="true">
+        <annotation>
+          <rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#" xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:dcterms="http://purl.org/dc/terms/" xmlns:vCard="http://www.w3.org/2001/vcard-rdf/3.0#" xmlns:bqbiol="http://biomodels.net/biology-qualifiers/" xmlns:bqmodel="http://biomodels.net/model-qualifiers/">
+            <rdf:Description rdf:about="#COPASI50">
+              <bqbiol:is>
+                <rdf:Bag>
+                  <rdf:li rdf:resource="http://identifiers.org/kegg.reaction/R00127"/>
+                </rdf:Bag>
+              </bqbiol:is>
+              <bqbiol:isVersionOf>
+                <rdf:Bag>
+                  <rdf:li rdf:resource="http://identifiers.org/ec-code/2.7.4.3"/>
+                </rdf:Bag>
+              </bqbiol:isVersionOf>
+              <bqbiol:isVersionOf>
+                <rdf:Bag>
+                  <rdf:li rdf:resource="http://identifiers.org/go/GO:0004017"/>
+                </rdf:Bag>
+              </bqbiol:isVersionOf>
+            </rdf:Description>
+          </rdf:RDF>
+          <COPASI xmlns="http://www.copasi.org/static/sbml">
+            <rdf:RDF xmlns:CopasiMT="http://www.copasi.org/RDF/MiriamTerms#" xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">
+              <rdf:Description rdf:about="#COPASI50">
+                <CopasiMT:is>
+                  <rdf:Bag>
+                    <rdf:li rdf:resource="http://identifiers.org/kegg.reaction/R00127"/>
+                  </rdf:Bag>
+                </CopasiMT:is>
+                <CopasiMT:isVersionOf>
+                  <rdf:Bag>
+                    <rdf:li rdf:resource="http://identifiers.org/ec-code/2.7.4.3"/>
+                    <rdf:li rdf:resource="http://identifiers.org/go/GO:0004017"/>
+                  </rdf:Bag>
+                </CopasiMT:isVersionOf>
+              </rdf:Description>
+            </rdf:RDF>
+          </COPASI>
+        </annotation>
+        <listOfReactants>
+          <speciesReference species="ADP" stoichiometry="2"/>
+        </listOfReactants>
+        <listOfProducts>
+          <speciesReference species="ATP" stoichiometry="1"/>
+          <speciesReference species="AMP" stoichiometry="1"/>
+        </listOfProducts>
+        <kineticLaw>
+          <math xmlns="http://www.w3.org/1998/Math/MathML">
+            <apply>
+              <times/>
+              <ci> cell </ci>
+              <apply>
+                <minus/>
+                <apply>
+                  <times/>
+                  <ci> k1 </ci>
+                  <apply>
+                    <power/>
+                    <ci> ADP </ci>
+                    <cn> 2 </cn>
+                  </apply>
+                </apply>
+                <apply>
+                  <times/>
+                  <ci> k2 </ci>
+                  <ci> ATP </ci>
+                  <ci> AMP </ci>
+                </apply>
+              </apply>
+            </apply>
+          </math>
+          <listOfParameters>
+            <parameter id="k1" name="k1" value="45"/>
+            <parameter id="k2" name="k2" value="100"/>
+          </listOfParameters>
+        </kineticLaw>
+      </reaction>
+      <reaction metaid="COPASI51" id="G3PDH" name="glycerol-3-phosphate dehydrogenase" reversible="false">
+        <annotation>
+          <rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#" xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:dcterms="http://purl.org/dc/terms/" xmlns:vCard="http://www.w3.org/2001/vcard-rdf/3.0#" xmlns:bqbiol="http://biomodels.net/biology-qualifiers/" xmlns:bqmodel="http://biomodels.net/model-qualifiers/">
+            <rdf:Description rdf:about="#COPASI51">
+              <bqbiol:hasPart>
+                <rdf:Bag>
+                  <rdf:li rdf:resource="http://identifiers.org/kegg.reaction/R00842"/>
+                </rdf:Bag>
+              </bqbiol:hasPart>
+              <bqbiol:hasPart>
+                <rdf:Bag>
+                  <rdf:li rdf:resource="http://identifiers.org/kegg.reaction/R07298"/>
+                </rdf:Bag>
+              </bqbiol:hasPart>
+              <bqbiol:hasVersion>
+                <rdf:Bag>
+                  <rdf:li rdf:resource="http://identifiers.org/ec-code/1.1.1.8"/>
+                </rdf:Bag>
+              </bqbiol:hasVersion>
+              <bqbiol:hasVersion>
+                <rdf:Bag>
+                  <rdf:li rdf:resource="http://identifiers.org/ec-code/3.1.3.21"/>
+                </rdf:Bag>
+              </bqbiol:hasVersion>
+              <bqbiol:isVersionOf>
+                <rdf:Bag>
+                  <rdf:li rdf:resource="http://identifiers.org/go/GO:0006114"/>
+                </rdf:Bag>
+              </bqbiol:isVersionOf>
+            </rdf:Description>
+          </rdf:RDF>
+          <COPASI xmlns="http://www.copasi.org/static/sbml">
+            <rdf:RDF xmlns:CopasiMT="http://www.copasi.org/RDF/MiriamTerms#" xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">
+              <rdf:Description rdf:about="#COPASI51">
+                <CopasiMT:hasPart>
+                  <rdf:Bag>
+                    <rdf:li rdf:resource="http://identifiers.org/kegg.reaction/R00842"/>
+                    <rdf:li rdf:resource="http://identifiers.org/kegg.reaction/R07298"/>
+                  </rdf:Bag>
+                </CopasiMT:hasPart>
+                <CopasiMT:hasVersion>
+                  <rdf:Bag>
+                    <rdf:li rdf:resource="http://identifiers.org/ec-code/1.1.1.8"/>
+                    <rdf:li rdf:resource="http://identifiers.org/ec-code/3.1.3.21"/>
+                  </rdf:Bag>
+                </CopasiMT:hasVersion>
+                <CopasiMT:isVersionOf>
+                  <rdf:Bag>
+                    <rdf:li rdf:resource="http://identifiers.org/go/GO:0006114"/>
+                  </rdf:Bag>
+                </CopasiMT:isVersionOf>
+              </rdf:Description>
+            </rdf:RDF>
+          </COPASI>
+        </annotation>
+        <listOfReactants>
+          <speciesReference species="DHAP" stoichiometry="1"/>
+          <speciesReference species="NADH" stoichiometry="1"/>
+        </listOfReactants>
+        <listOfProducts>
+          <speciesReference species="NAD" stoichiometry="1"/>
+          <speciesReference species="Glycerol" stoichiometry="1"/>
+        </listOfProducts>
+        <kineticLaw>
+          <math xmlns="http://www.w3.org/1998/Math/MathML">
+            <apply>
+              <times/>
+              <ci> cell </ci>
+              <apply>
+                <ci> Function_for_glycerol_3_phosphate_dehydrogenase__1 </ci>
+                <ci> DHAP </ci>
+                <ci> Glycerol </ci>
+                <ci> Kdhap_16 </ci>
+                <ci> Keq_16 </ci>
+                <ci> Kglycerol_16 </ci>
+                <ci> Knad_16 </ci>
+                <ci> Knadh_16 </ci>
+                <ci> NAD </ci>
+                <ci> NADH </ci>
+                <ci> Vmax_16 </ci>
+              </apply>
+            </apply>
+          </math>
+          <listOfParameters>
+            <parameter id="Kdhap_16" name="Kdhap_16" value="0.4"/>
+            <parameter id="Keq_16" name="Keq_16" value="4300"/>
+            <parameter id="Kglycerol_16" name="Kglycerol_16" value="1"/>
+            <parameter id="Knad_16" name="Knad_16" value="0.93"/>
+            <parameter id="Knadh_16" name="Knadh_16" value="0.023"/>
+            <parameter id="Vmax_16" name="Vmax_16" value="47.11"/>
+          </listOfParameters>
+        </kineticLaw>
+      </reaction>
+      <reaction metaid="COPASI52" id="Glycogen_Branch" name="Glycogen_Branch" reversible="false">
+        <annotation>
+          <rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#" xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:dcterms="http://purl.org/dc/terms/" xmlns:vCard="http://www.w3.org/2001/vcard-rdf/3.0#" xmlns:bqbiol="http://biomodels.net/biology-qualifiers/" xmlns:bqmodel="http://biomodels.net/model-qualifiers/">
+            <rdf:Description rdf:about="#COPASI52">
+              <bqbiol:isVersionOf>
+                <rdf:Bag>
+                  <rdf:li rdf:resource="http://identifiers.org/go/GO:0005978"/>
+                </rdf:Bag>
+              </bqbiol:isVersionOf>
+            </rdf:Description>
+          </rdf:RDF>
+          <COPASI xmlns="http://www.copasi.org/static/sbml">
+            <rdf:RDF xmlns:CopasiMT="http://www.copasi.org/RDF/MiriamTerms#" xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">
+              <rdf:Description rdf:about="#COPASI52">
+                <CopasiMT:isVersionOf>
+                  <rdf:Bag>
+                    <rdf:li rdf:resource="http://identifiers.org/go/GO:0005978"/>
+                  </rdf:Bag>
+                </CopasiMT:isVersionOf>
+              </rdf:Description>
+            </rdf:RDF>
+          </COPASI>
+        </annotation>
+        <listOfReactants>
+          <speciesReference species="ATP" stoichiometry="1"/>
+          <speciesReference species="G6P" stoichiometry="1"/>
+        </listOfReactants>
+        <listOfProducts>
+          <speciesReference species="ADP" stoichiometry="1"/>
+          <speciesReference species="Glycogen" stoichiometry="1"/>
+        </listOfProducts>
+        <kineticLaw>
+          <math xmlns="http://www.w3.org/1998/Math/MathML">
+            <apply>
+              <times/>
+              <ci> cell </ci>
+              <apply>
+                <ci> Constant_flux__irreversible </ci>
+                <ci> v </ci>
+              </apply>
+            </apply>
+          </math>
+          <listOfParameters>
+            <parameter id="v" name="v" value="6"/>
+          </listOfParameters>
+        </kineticLaw>
+      </reaction>
+      <reaction metaid="COPASI53" id="Trehalose_Branch" name="Trehalose_Branch" reversible="false">
+        <annotation>
+          <rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#" xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:dcterms="http://purl.org/dc/terms/" xmlns:vCard="http://www.w3.org/2001/vcard-rdf/3.0#" xmlns:bqbiol="http://biomodels.net/biology-qualifiers/" xmlns:bqmodel="http://biomodels.net/model-qualifiers/">
+            <rdf:Description rdf:about="#COPASI53">
+              <bqbiol:isVersionOf>
+                <rdf:Bag>
+                  <rdf:li rdf:resource="http://identifiers.org/go/GO:0005992"/>
+                </rdf:Bag>
+              </bqbiol:isVersionOf>
+            </rdf:Description>
+          </rdf:RDF>
+          <COPASI xmlns="http://www.copasi.org/static/sbml">
+            <rdf:RDF xmlns:CopasiMT="http://www.copasi.org/RDF/MiriamTerms#" xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">
+              <rdf:Description rdf:about="#COPASI53">
+                <CopasiMT:isVersionOf>
+                  <rdf:Bag>
+                    <rdf:li rdf:resource="http://identifiers.org/go/GO:0005992"/>
+                  </rdf:Bag>
+                </CopasiMT:isVersionOf>
+              </rdf:Description>
+            </rdf:RDF>
+          </COPASI>
+        </annotation>
+        <listOfReactants>
+          <speciesReference species="ATP" stoichiometry="1"/>
+          <speciesReference species="G6P" stoichiometry="2"/>
+        </listOfReactants>
+        <listOfProducts>
+          <speciesReference species="ADP" stoichiometry="1"/>
+          <speciesReference species="Trehalose" stoichiometry="1"/>
+        </listOfProducts>
+        <kineticLaw>
+          <math xmlns="http://www.w3.org/1998/Math/MathML">
+            <apply>
+              <times/>
+              <ci> cell </ci>
+              <apply>
+                <ci> Constant_flux__irreversible </ci>
+                <ci> v </ci>
+              </apply>
+            </apply>
+          </math>
+          <listOfParameters>
+            <parameter id="v" name="v" value="2.4"/>
+          </listOfParameters>
+        </kineticLaw>
+      </reaction>
+      <reaction metaid="COPASI54" id="Succinate_Branch" name="Succinate_Branch" reversible="false">
+        <annotation>
+          <rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#" xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:dcterms="http://purl.org/dc/terms/" xmlns:vCard="http://www.w3.org/2001/vcard-rdf/3.0#" xmlns:bqbiol="http://biomodels.net/biology-qualifiers/" xmlns:bqmodel="http://biomodels.net/model-qualifiers/">
+            <rdf:Description rdf:about="#COPASI54">
+              <bqbiol:isVersionOf>
+                <rdf:Bag>
+                  <rdf:li rdf:resource="http://identifiers.org/go/GO:0006105"/>
+                </rdf:Bag>
+              </bqbiol:isVersionOf>
+            </rdf:Description>
+          </rdf:RDF>
+          <COPASI xmlns="http://www.copasi.org/static/sbml">
+            <rdf:RDF xmlns:CopasiMT="http://www.copasi.org/RDF/MiriamTerms#" xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">
+              <rdf:Description rdf:about="#COPASI54">
+                <CopasiMT:isVersionOf>
+                  <rdf:Bag>
+                    <rdf:li rdf:resource="http://identifiers.org/go/GO:0006105"/>
+                  </rdf:Bag>
+                </CopasiMT:isVersionOf>
+              </rdf:Description>
+            </rdf:RDF>
+          </COPASI>
+        </annotation>
+        <listOfReactants>
+          <speciesReference species="NAD" stoichiometry="3"/>
+          <speciesReference species="AcAld" stoichiometry="2"/>
+        </listOfReactants>
+        <listOfProducts>
+          <speciesReference species="NADH" stoichiometry="3"/>
+          <speciesReference species="Succinate" stoichiometry="1"/>
+        </listOfProducts>
+        <kineticLaw>
+          <math xmlns="http://www.w3.org/1998/Math/MathML">
+            <apply>
+              <times/>
+              <ci> cell </ci>
+              <apply>
+                <ci> Function_for_Succinate_Branch__1 </ci>
+                <ci> AcAld </ci>
+                <ci> k_19 </ci>
+              </apply>
+            </apply>
+          </math>
+          <listOfParameters>
+            <parameter id="k_19" name="k_19" value="21.4"/>
+          </listOfParameters>
+        </kineticLaw>
+      </reaction>
+    </listOfReactions>
+  </model>
+</sbml>

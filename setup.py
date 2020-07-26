@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # -*- encoding: utf-8 -*-
 """
-sbmlutils pip package
+sbmlsim pip package
 """
 import io
 import re
@@ -32,6 +32,14 @@ else:
 # description from markdown
 long_description = read('README.rst')
 setup_kwargs['long_description'] = long_description
+
+# ray not supported on windows
+if os.name == 'nt':
+    install_ray = []
+else:
+    install_ray = [
+        "ray>=0.8.6",
+    ]
 
 setup(
     name='sbmlsim',
@@ -66,30 +74,36 @@ setup(
     # List run-time dependencies here.  These will be installed by pip when
     install_requires=[
         "pip>=19.3.1",
-        "numpy>=1.18.1",
-        "scipy>=1.4.1",
-        "sympy>=1.5.1"
-        "pandas>=0.25.3",
-        "tables>0.3.6",
+        "numpy>=1.19.0",
+        "scipy>=1.5.1",
+        "sympy>=1.6.1",
+        "pandas>=1.0.5",
+        "tables>=0.3.6",
+        "xarray>=0.15.1",
+        "bottleneck>=1.3.2",
+        "pint>=0.14",
 
         "python-libsbml-experimental>=5.18.1",
-        "python-libsedml>=2.0.9",
-        "python-libcombine>=0.2.3",
+        "python-libsedml>=2.0.11",
+        "python-libcombine>=0.2.7",
         "python-libnuml>=1.1.1",
-        "libroadrunner>=1.6.0",
+        "libroadrunner>=2.0.0",
+
         "psutil>=5.6.3",
         "setproctitle>=1.1.10",
-        "ray>=0.8.0",
-        "cached-property>=1.5.1",
-        "matplotlib>=3.1",
+
+        "matplotlib>=3.3.0",
+        "plotly",
         "altair>=4.0.0",
-        "pint>=0.9",
+        "seaborn>=0.10.0",
+
         "coloredlogs",
+        "pyDOE>=0.3.8",
+
         "Sphinx",
         "sphinx_rtd_theme",
         "recommonmark",
-        "pytest>=5.3.2",
-        "pytest-cov>=2.8.1",
-    ],
+
+    ] + install_ray,
     extras_require={},
     **setup_kwargs)

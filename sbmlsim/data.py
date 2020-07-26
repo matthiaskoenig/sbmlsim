@@ -1,14 +1,16 @@
-
 from enum import Enum
 import logging
 from typing import Dict
 import pandas as pd
 import numpy as np
-from pint import Quantity, UnitRegistry
-from sbmlsim.processing import mathml
-from sbmlsim.result import Result
+from sbmlsim.units import Quantity, UnitRegistry
+from sbmlsim.combine import mathml
+from sbmlsim.result import XResult
+from sbmlsim.utils import deprecated
+from sbmlsim.units import DimensionalityError
 
 logger = logging.getLogger(__name__)
+
 
 class Data(object):
     """Main data generator class which uses data either from
@@ -19,8 +21,6 @@ class Data(object):
     # Possible Data:
     # simulation result: access via id
     # Dataset access via id
-
-    # FIXME: must also handle all the unit conversions
     """
     class Types(Enum):
         TASK = 1
@@ -28,23 +28,35 @@ class Data(object):
         FUNCTION = 3
 
     def __init__(self, experiment,
-                 index: str, unit: str=None,
+                 index: str,
                  task: str = None,
                  dataset: str = None,
                  function=None, variables=None):
         self.experiment = experiment
         self.index = index
-        self.unit = unit
         self.task_id = task
         self.dset_id = dataset
         self.function = function
         self.variables = variables
+        self.unit = None
+
+        if (not self.task_id) and (not self.dset_id) and (not self.function):
+            raise ValueError(f"Either 'task_id', 'dset_id' or 'function' "
+                             f"required for Data.")
 
         # register data in simulation
         if experiment._data is None:
             experiment._data = {}
 
         experiment._data[self.sid] = self
+
+    def __str__(self):
+        if self.is_task():
+            return f"Data(index={self.index}, task_id={self.task_id})|Task"
+        elif self.is_dataset():
+            return f"Data(index={self.index}, dset_id={self.dset_id})|DataSet"
+        elif self.is_function():
+            return f"Data(index={self.index}, function={self.function})|Function"
 
     @property
     def sid(self):
@@ -57,6 +69,14 @@ class Data(object):
 
         return sid
 
+    def is_task(self):
+        return self.task_id is not None
+
+    def is_dataset(self):
+        return self.dset_id is not None
+
+    def is_function(self):
+        return self.function is not None
 
     @property
     def dtype(self):
@@ -88,13 +108,13 @@ class Data(object):
         }
         return d
 
-    @property
-    def data(self):
-        """Returns actual data from the data object"""
-        # FIXME: data caching & store conversion factors
+    def get_data(self, to_units: str = None):
+        """Returns actual data from the data object.
 
+        :param to_units: units to convert to
+        :return:
+        """
         # Necessary to resolve the data
-
         if self.dtype == Data.Types.DATASET:
             # read dataset data
             dset = self.experiment._datasets[self.dset_id]
@@ -108,14 +128,31 @@ class Data(object):
                 uindex = self.index[:-3]
             else:
                 uindex = self.index
+
+            if self.index not in dset.columns:
+                error_msg = f"Data column with key '{self.index}' does not " \
+                            f"exist in dataset: '{self.dset_id}'."
+                logger.error(error_msg)
+                raise KeyError(error_msg)
+            try:
+                self.unit = dset.udict[uindex]
+            except KeyError as err:
+                logger.error(f"Units missing for key '{uindex}' in dataset: "
+                             f"'{self.dset_id}'. Add missing units to dataset.")
+                raise err
             x = dset[self.index].values * dset.ureg(dset.udict[uindex])
 
         elif self.dtype == Data.Types.TASK:
             # read results of task
-            result = self.experiment.results[self.task_id]  # type: Result
-            if not isinstance(result, Result):
+            xres = self.experiment.results[self.task_id]  # type: XResult
+            if not isinstance(xres, XResult):
                 raise ValueError("Only Result objects supported in task data.")
-            x = result.mean[self.index].values * result.ureg(result.udict[self.index])
+
+            self.unit = xres.udict[self.index]
+            # FIXME: complete data must be kept
+            x = xres.dim_mean(self.index)
+            # x = xres[self.index]
+
         elif self.dtype == Data.Types.FUNCTION:
             # evaluate with actual data
             astnode = mathml.formula_to_astnode(self.function)
@@ -128,13 +165,21 @@ class Data(object):
                     variables[k] = v.data
 
             x = mathml.evaluate(astnode=astnode, variables=variables)
+            self.unit = str(x.units)  # check if this is correct
 
-        # convert units
-        if self.unit:
-            x = x.to(self.unit)
+        # convert units to requested units
+        if to_units is not None:
+            try:
+                x = x.to(to_units)
+            except DimensionalityError as err:
+                logger.error(f"Could not convert data '{str(self)}' with "
+                             f"content '{x}' to "
+                             f"units '{to_units}'")
+                raise err
 
         return x
 
+    data = property(get_data)
 
 class DataFunction(object):
     """ Functional data calculation.
@@ -148,8 +193,6 @@ class DataFunction(object):
         self.index = index
         self.formula = formula
         self.variables = variables
-
-
 
 
 class DataSeries(pd.Series):
@@ -212,6 +255,9 @@ class DataSet(pd.DataFrame):
         """
         if not isinstance(ureg, UnitRegistry):
             raise ValueError(f"ureg must be a UnitRegistry, but '{ureg}' is '{type(ureg)}'")
+        if df.empty:
+            raise ValueError(f"DataFrame cannot be empty, check DataFrame: {df}")
+
         if udict is None:
             udict = {}
 
@@ -226,6 +272,9 @@ class DataSet(pd.DataFrame):
                 if len(units) > 1:
                     logger.error(f"Column '{key}' units are not unique: "
                                  f"'{units}'")
+                elif len(units) == 0:
+                    logger.error(f"Column '{key}' units are missing: '{units}'")
+                    print(df.head())
                 item_key = key[0:-5]
                 if item_key not in df.columns:
                     logger.error(f"Missing * column '{item_key}' for unit "
@@ -235,7 +284,7 @@ class DataSet(pd.DataFrame):
 
             elif key == "unit":
                 # add unit to "mean" and "value"
-                for key in ["mean", "value"]:
+                for key in ["mean", "value", "median"]:
                     if (key in df.columns) and not (f"{key}_unit" in df.columns):
                         # FIXME: probably not a good idea to add columns while iterating over them
                         df[f"{key}_unit"] = df.unit
@@ -268,7 +317,19 @@ class DataSet(pd.DataFrame):
         return dset
 
     def unit_conversion(self, key, factor: Quantity):
-        """Also converts the corresponding errors"""
+        """Converts the units of the given key in the dataset.
+
+        The quantity in the dataset is multiplied with the conversion factor.
+        In addition to the key, also the respective error measures are
+        converted with the same factor, i.e.
+        - key
+        - key_sd
+        - key_se
+
+        :param key: column key in dataset (this column is unit converted)
+        :param factor: multiplicative Quantity factor for conversion
+        :return: None
+        """
         if key in self.columns:
             if key not in self.udict:
                 raise ValueError(
@@ -301,27 +362,43 @@ class DataSet(pd.DataFrame):
             logger.error(f"Key '{key}' not in DataSet, unit conversion not applied: '{factor}'")
 
 
+# @deprecated
 def load_pkdb_dataframe(sid, data_path, sep="\t", comment="#", **kwargs) -> pd.DataFrame:
-    """ Loads data from given pkdb figure/table id.
+    """ Loads TSV data from PKDB figure or table id.
 
-    :param sid:
-    :param data_path:
+    This is a simple helper functions to directly loading the TSV data.
+    It is recommended to use `pkdb_analysis` methods instead.
+
+    This function will be removed.
+
+    E.g. for 'Amchin1999_Tab1' the file
+        data_path / 'Amchin1999' / '.Amchin1999.tsv'
+    is loaded.
+
+    :param sid: figure or table id
+    :param data_path: base path of data
     :param sep: separator
     :param comment: comment characters
     :param kwargs: additional kwargs for csv parsing
     :return: pandas DataFrame
     """
     study = sid.split('_')[0]
-    path = data_path / study / f'{sid}.tsv'
+    path = data_path / study / f'.{sid}.tsv'
 
-    if not path.exists():
-        path = data_path / study / f'.{sid}.tsv'
+    df = pd.read_csv(path, sep=sep, comment=comment, **kwargs)
+    df = df.dropna(how='all')  # drop all NA rows
+    return df
 
-    return pd.read_csv(path, sep=sep, comment=comment, **kwargs)
-
-
+# @deprecated
 def load_pkdb_dataframes_by_substance(sid, data_path, **kwargs) -> Dict[str, pd.DataFrame]:
-    """ Load dataframes from given pkdb figure/table id split on substance.
+    """ Load dataframes from given PKDB figure/table id split on substance.
+
+    The DataFrame is split on the 'substance' key.
+
+    This is a simple helper functions to directly loading the TSV data.
+    It is recommended to use `pkdb_analysis` methods instead.
+
+    This function will be removed.
 
     :param sid:
     :param data_path:
@@ -333,15 +410,3 @@ def load_pkdb_dataframes_by_substance(sid, data_path, **kwargs) -> Dict[str, pd.
     for substance in df.substance.unique():
         frames[substance] = df[df.substance == substance]
     return frames
-
-
-if __name__ == "__main__":
-    f1 = DataFunction(
-        index="test", formula="(x + y + z)/x",
-        variables={
-         'x': 0.1 * np.ones(shape=[1, 10]),
-         'y': 3.0 * np.ones(shape=[1, 10]),
-         'z': 2.0 * np.ones(shape=[1, 10]),
-        })
-    res = f1.data()
-    print(res)

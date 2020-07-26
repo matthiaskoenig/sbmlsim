@@ -1,0 +1,51 @@
+study	subject	n	intervention	measurement	substance	tissue	mean	mean_pm	se	sd	unit	time	time_unit
+Kupferschmidt1995	all	8	iv	concentration	midazolam	plasma	94.46728	85.077896	9.38938400000001	26.5571883902579	ug/l	0.0833333333333333	hr
+Kupferschmidt1995	all	8	iv	concentration	midazolam	plasma	90.30245	83.776886	6.52556399999999	18.4570822218672	ug/l	0.166666666666667	hr
+Kupferschmidt1995	all	8	iv	concentration	midazolam	plasma	81.22094	76.71305	4.50789	12.7502383513721	ug/l	0.333333333333333	hr
+Kupferschmidt1995	all	8	iv	concentration	midazolam	plasma	65.85739	61.8279	4.02949	11.3971188148935	ug/l	0.666666666666667	hr
+Kupferschmidt1995	all	8	iv	concentration	midazolam	plasma	53.773014	49.46953	4.303484	12.1720908765112	ug/l	1.0	hr
+Kupferschmidt1995	all	8	iv	concentration	midazolam	plasma	39.505432	36.706455	2.798977	7.91670246834072	ug/l	1.5	hr
+Kupferschmidt1995	all	8	iv	concentration	midazolam	plasma	31.385576	28.449478	2.936098	8.30453922411304	ug/l	2.0	hr
+Kupferschmidt1995	all	8	iv	concentration	midazolam	plasma	25.246828	23.469355	1.777473	5.02745284670399	ug/l	2.5	hr
+Kupferschmidt1995	all	8	iv	concentration	midazolam	plasma	16.725609	14.950441	1.775168	5.02093332218144	ug/l	3.5	hr
+Kupferschmidt1995	all	8	iv	concentration	midazolam	plasma	10.330828	8.828883	1.501945	4.24814197787692	ug/l	5.0	hr
+Kupferschmidt1995	all	8	iv	concentration	midazolam	plasma	5.652145	4.9670405	0.6851045	1.93776815108568	ug/l	7.0	hr
+Kupferschmidt1995	all	8	iv	concentration	midazolam	plasma	3.43168	2.6785269	0.7531531	2.13023865712668	ug/l	9.0	hr
+Kupferschmidt1995	all	8	iv	concentration	midazolam	plasma	0.27296436	na	na	na	ug/l	24.0	hr
+Kupferschmidt1995	all	8	GRAP1, GRAP2, iv	concentration	midazolam	plasma	99.7956	94.06706	5.72854	16.2027579211935	ug/l	0.0833333333333333	hr
+Kupferschmidt1995	all	8	GRAP1, GRAP2, iv	concentration	midazolam	plasma	93.58187	99.62548	6.04361	17.0939104553873	ug/l	0.166666666666667	hr
+Kupferschmidt1995	all	8	GRAP1, GRAP2, iv	concentration	midazolam	plasma	82.10839	85.21949	3.11109999999999	8.79951962779785	ug/l	0.333333333333333	hr
+Kupferschmidt1995	all	8	GRAP1, GRAP2, iv	concentration	midazolam	plasma	67.359856	71.45842	4.09856400000001	11.5924895901083	ug/l	0.666666666666667	hr
+Kupferschmidt1995	all	8	GRAP1, GRAP2, iv	concentration	midazolam	plasma	53.84106	56.915054	3.073994	8.69456801090704	ug/l	1.0	hr
+Kupferschmidt1995	all	8	GRAP1, GRAP2, iv	concentration	midazolam	plasma	41.691456	44.28654	2.595084	7.34000597659484	ug/l	1.5	hr
+Kupferschmidt1995	all	8	GRAP1, GRAP2, iv	concentration	midazolam	plasma	31.385319	33.434734	2.049415	5.79662097586171	ug/l	2.0	hr
+Kupferschmidt1995	all	8	GRAP1, GRAP2, iv	concentration	midazolam	plasma	25.246572	27.432083	2.185511	6.18155859383117	ug/l	2.5	hr
+Kupferschmidt1995	all	8	GRAP1, GRAP2, iv	concentration	midazolam	plasma	16.79417	18.637642	1.843472	5.2141262085101	ug/l	3.5	hr
+Kupferschmidt1995	all	8	GRAP1, GRAP2, iv	concentration	midazolam	plasma	10.399134	12.038202	1.639068	4.63598439050349	ug/l	5.0	hr
+Kupferschmidt1995	all	8	GRAP1, GRAP2, iv	concentration	midazolam	plasma	5.7201934	6.67698	0.9567866	2.70620117203368	ug/l	7.0	hr
+Kupferschmidt1995	all	8	GRAP1, GRAP2, iv	concentration	midazolam	plasma	3.431167	4.388723	0.957556	2.70837736386346	ug/l	9.0	hr
+Kupferschmidt1995	all	8	GRAP1, GRAP2, iv	concentration	midazolam	plasma	1.0243218	1.0293008	0.00497899999999984	0.0140827386541108	ug/l	24.0	hr
+Kupferschmidt1995	all	8	po	concentration	midazolam	plasma	7.9037876	na	na	na	ug/l	0.166666666666667	hr
+Kupferschmidt1995	all	8	po	concentration	midazolam	plasma	45.507675	na	na	na	ug/l	0.333333333333333	hr
+Kupferschmidt1995	all	8	po	concentration	midazolam	plasma	48.372475	na	na	na	ug/l	0.666666666666667	hr
+Kupferschmidt1995	all	8	po	concentration	midazolam	plasma	40.20202	34.95696	5.24506	14.8352699749212	ug/l	1.0	hr
+Kupferschmidt1995	all	8	po	concentration	midazolam	plasma	36.393116	31.420364	4.972752	14.0650666414359	ug/l	1.5	hr
+Kupferschmidt1995	all	8	po	concentration	midazolam	plasma	32.038914	26.52103	5.517884	15.606932776803	ug/l	2.0	hr
+Kupferschmidt1995	all	8	po	concentration	midazolam	plasma	24.687777	18.966219	5.721558	16.1830098430086	ug/l	2.5	hr
+Kupferschmidt1995	all	8	po	concentration	midazolam	plasma	15.298513	11.416534	3.881979	10.9798947012951	ug/l	3.5	hr
+Kupferschmidt1995	all	8	po	concentration	midazolam	plasma	6.9368615	5.3692493	1.5676122	4.43387686756305	ug/l	5.0	hr
+Kupferschmidt1995	all	8	po	concentration	midazolam	plasma	3.553602	2.1903493	1.3632527	3.85586091456348	ug/l	7.0	hr
+Kupferschmidt1995	all	8	po	concentration	midazolam	plasma	1.056243	na	na	na	ug/l	9.0	hr
+Kupferschmidt1995	all	8	po	concentration	midazolam	plasma	0.06760707	na	na	na	ug/l	24.0	hr
+Kupferschmidt1995	all	8	GRAP1, GRAP2, po	concentration	midazolam	plasma	0.07000024	na	na	na	ug/l	0.0833333333333333	hr
+Kupferschmidt1995	all	8	GRAP1, GRAP2, po	concentration	midazolam	plasma	21.938366	na	na	na	ug/l	0.333333333333333	hr
+Kupferschmidt1995	all	8	GRAP1, GRAP2, po	concentration	midazolam	plasma	46.669987	59.816616	13.146629	37.1842820625749	ug/l	0.666666666666667	hr
+Kupferschmidt1995	all	8	GRAP1, GRAP2, po	concentration	midazolam	plasma	68.6763	82.70934	14.03304	39.6914309786483	ug/l	1.0	hr
+Kupferschmidt1995	all	8	GRAP1, GRAP2, po	concentration	midazolam	plasma	62.891582	69.226906	6.335324	17.9190022456555	ug/l	1.5	hr
+Kupferschmidt1995	all	8	GRAP1, GRAP2, po	concentration	midazolam	plasma	59.4914	65.96296	6.47156	18.3043358434224	ug/l	2.0	hr
+Kupferschmidt1995	all	8	GRAP1, GRAP2, po	concentration	midazolam	plasma	43.284508	49.34769	6.063182	17.1492684310728	ug/l	2.5	hr
+Kupferschmidt1995	all	8	GRAP1, GRAP2, po	concentration	midazolam	plasma	25.789148	31.443783	5.654635	15.9937230145392	ug/l	3.5	hr
+Kupferschmidt1995	all	8	GRAP1, GRAP2, po	concentration	midazolam	plasma	11.569185	14.430562	2.861377	8.09319632092488	ug/l	5.0	hr
+Kupferschmidt1995	all	8	GRAP1, GRAP2, po	concentration	midazolam	plasma	5.6654897	6.9599385	1.2944488	3.66125409751515	ug/l	7.0	hr
+Kupferschmidt1995	all	8	GRAP1, GRAP2, po	concentration	midazolam	plasma	1.2604316	2.4186409	1.1582093	3.2759106002533	ug/l	9.0	hr
+Kupferschmidt1995	all	8	GRAP1, GRAP2, po	concentration	midazolam	plasma	0.0	na	na	na	ug/l	24.0	hr

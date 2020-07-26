@@ -2,6 +2,18 @@ import warnings
 import functools
 import time
 import inspect
+import hashlib
+
+
+def md5_for_path(path):
+    """Calculates MD5 of file content."""
+
+    # Open,close, read file and calculate MD5 on its contents
+    with open(path, "rb") as f_check:
+        # read contents of the file
+        data = f_check.read()
+        # pipe contents of the file through
+        return hashlib.md5(data).hexdigest()
 
 
 def deprecated(func):
@@ -20,7 +32,7 @@ def deprecated(func):
 
 
 def timeit(method):
-    """Tming decorator"""
+    """Timing decorator"""
     def timed(*args, **kw):
         ts = time.time()
         result = method(*args, **kw)
@@ -30,7 +42,7 @@ def timeit(method):
             name = kw.get('log_name', method.__name__.upper())
             kw['log_time'][name] = int((te - ts) * 1000)
         else:
-            print('{}  {:2.2f} ms'.format(method.__name__, (te - ts) * 1000))
+            print('{:20}  {:8.4f} [s]'.format(method.__name__, (te - ts)))
         return result
 
     return timed
@@ -40,4 +52,3 @@ def function_name():
     """Returns current function name"""
     frame = inspect.currentframe()
     return inspect.getframeinfo(frame).function
-

@@ -1,10 +1,9 @@
-from typing import Dict, List
+from typing import Dict
 from pathlib import Path
-import pandas as pd
 
 from sbmlsim.experiment import SimulationExperiment
 from sbmlsim.data import Data, DataSet
-from sbmlsim.timecourse import Timecourse, TimecourseSim
+from sbmlsim.simulation.timecourse import Timecourse, TimecourseSim
 from sbmlsim.plotting import Figure, Axis
 
 from sbmlsim.experiment import ExperimentResult

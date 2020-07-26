@@ -1,0 +1,553 @@
+{
+  "experiment_id": "DemoExperiment",
+  "base_path": "/home/mkoenig/git/sbmlsim/sbmlsim/examples/experiments/demo",
+  "data_path": "/home/mkoenig/git/sbmlsim/sbmlsim/examples/experiments/demo",
+  "models": {
+    "model": {
+      "sid": null,
+      "name": null,
+      "language": "SBML",
+      "language_type": "SBML",
+      "source": {
+        "source": "/home/mkoenig/git/sbmlsim/sbmlsim/tests/data/models/Koenig_demo_14.xml",
+        "path": "/home/mkoenig/git/sbmlsim/sbmlsim/tests/data/models/Koenig_demo_14.xml",
+        "content": null
+      },
+      "changes": {}
+    }
+  },
+  "tasks": {
+    "task_scan_init": {
+      "model": "model",
+      "simulation": "scan_init"
+    }
+  },
+  "simulations": {
+    "scan_init": {
+      "type": "ScanSim"
+    }
+  },
+  "data": {
+    "task_scan_init__time": {
+      "type": "TASK",
+      "index": "time",
+      "unit": "min",
+      "task": "task_scan_init",
+      "dataset": null,
+      "function": null,
+      "variables": null
+    },
+    "task_scan_init__[e__A]": {
+      "type": "TASK",
+      "index": "[e__A]",
+      "unit": "mM",
+      "task": "task_scan_init",
+      "dataset": null,
+      "function": null,
+      "variables": null
+    },
+    "task_scan_init__[e__B]": {
+      "type": "TASK",
+      "index": "[e__B]",
+      "unit": "mM",
+      "task": "task_scan_init",
+      "dataset": null,
+      "function": null,
+      "variables": null
+    },
+    "task_scan_init__[e__C]": {
+      "type": "TASK",
+      "index": "[e__C]",
+      "unit": "mM",
+      "task": "task_scan_init",
+      "dataset": null,
+      "function": null,
+      "variables": null
+    },
+    "task_scan_init__[c__A]": {
+      "type": "TASK",
+      "index": "[c__A]",
+      "unit": "mM",
+      "task": "task_scan_init",
+      "dataset": null,
+      "function": null,
+      "variables": null
+    },
+    "task_scan_init__[c__B]": {
+      "type": "TASK",
+      "index": "[c__B]",
+      "unit": "mM",
+      "task": "task_scan_init",
+      "dataset": null,
+      "function": null,
+      "variables": null
+    },
+    "task_scan_init__[c__C]": {
+      "type": "TASK",
+      "index": "[c__C]",
+      "unit": "mM",
+      "task": "task_scan_init",
+      "dataset": null,
+      "function": null,
+      "variables": null
+    }
+  },
+  "figures": {
+    "Fig1": {
+      "sid": "Fig1",
+      "name": null,
+      "num_rows": 2,
+      "num_cols": 2,
+      "width": 10.0,
+      "height": 10.0,
+      "subplots": [
+        {
+          "plot": {
+            "sid": "plot0",
+            "name": null,
+            "legend": true,
+            "xaxis": {
+              "sid": null,
+              "name": "time",
+              "unit": "min",
+              "_scale": "LINEAR",
+              "min": null,
+              "max": null,
+              "grid": false
+            },
+            "yaxis": {
+              "sid": null,
+              "name": "data",
+              "unit": "mM",
+              "_scale": "LINEAR",
+              "min": null,
+              "max": null,
+              "grid": false
+            },
+            "curves": [
+              {
+                "sid": "plot0_curve1",
+                "name": "[e__A]",
+                "order": null,
+                "style": {
+                  "sid": null,
+                  "name": null,
+                  "line": {
+                    "type": "SOLID",
+                    "color": null,
+                    "thickness": 2.0
+                  },
+                  "marker": {
+                    "size": null,
+                    "type": null,
+                    "fill": null,
+                    "line_color": null,
+                    "line_thickness": null
+                  },
+                  "fill": null
+                },
+                "x": "task_scan_init__time",
+                "y": "task_scan_init__[e__A]",
+                "xerr": null,
+                "yerr": null,
+                "yaxis": null
+              },
+              {
+                "sid": "plot0_curve2",
+                "name": "[e__B]",
+                "order": null,
+                "style": {
+                  "sid": null,
+                  "name": null,
+                  "line": {
+                    "type": "SOLID",
+                    "color": null,
+                    "thickness": 2.0
+                  },
+                  "marker": {
+                    "size": null,
+                    "type": null,
+                    "fill": null,
+                    "line_color": null,
+                    "line_thickness": null
+                  },
+                  "fill": null
+                },
+                "x": "task_scan_init__time",
+                "y": "task_scan_init__[e__B]",
+                "xerr": null,
+                "yerr": null,
+                "yaxis": null
+              },
+              {
+                "sid": "plot0_curve3",
+                "name": "[e__C]",
+                "order": null,
+                "style": {
+                  "sid": null,
+                  "name": null,
+                  "line": {
+                    "type": "SOLID",
+                    "color": null,
+                    "thickness": 2.0
+                  },
+                  "marker": {
+                    "size": null,
+                    "type": null,
+                    "fill": null,
+                    "line_color": null,
+                    "line_thickness": null
+                  },
+                  "fill": null
+                },
+                "x": "task_scan_init__time",
+                "y": "task_scan_init__[e__C]",
+                "xerr": null,
+                "yerr": null,
+                "yaxis": null
+              },
+              {
+                "sid": "plot0_curve4",
+                "name": "[c__A]",
+                "order": null,
+                "style": {
+                  "sid": null,
+                  "name": null,
+                  "line": {
+                    "type": "SOLID",
+                    "color": null,
+                    "thickness": 2.0
+                  },
+                  "marker": {
+                    "size": null,
+                    "type": null,
+                    "fill": null,
+                    "line_color": null,
+                    "line_thickness": null
+                  },
+                  "fill": null
+                },
+                "x": "task_scan_init__time",
+                "y": "task_scan_init__[c__A]",
+                "xerr": null,
+                "yerr": null,
+                "yaxis": null
+              },
+              {
+                "sid": "plot0_curve5",
+                "name": "[c__B]",
+                "order": null,
+                "style": {
+                  "sid": null,
+                  "name": null,
+                  "line": {
+                    "type": "SOLID",
+                    "color": null,
+                    "thickness": 2.0
+                  },
+                  "marker": {
+                    "size": null,
+                    "type": null,
+                    "fill": null,
+                    "line_color": null,
+                    "line_thickness": null
+                  },
+                  "fill": null
+                },
+                "x": "task_scan_init__time",
+                "y": "task_scan_init__[c__B]",
+                "xerr": null,
+                "yerr": null,
+                "yaxis": null
+              },
+              {
+                "sid": "plot0_curve6",
+                "name": "[c__C]",
+                "order": null,
+                "style": {
+                  "sid": null,
+                  "name": null,
+                  "line": {
+                    "type": "SOLID",
+                    "color": null,
+                    "thickness": 2.0
+                  },
+                  "marker": {
+                    "size": null,
+                    "type": null,
+                    "fill": null,
+                    "line_color": null,
+                    "line_thickness": null
+                  },
+                  "fill": null
+                },
+                "x": "task_scan_init__time",
+                "y": "task_scan_init__[c__C]",
+                "xerr": null,
+                "yerr": null,
+                "yaxis": null
+              }
+            ]
+          },
+          "row": 1,
+          "col": 1,
+          "row_span": 1,
+          "col_span": 1
+        },
+        {
+          "plot": {
+            "sid": "plot1",
+            "name": null,
+            "legend": true,
+            "xaxis": {
+              "sid": null,
+              "name": "time",
+              "unit": "min",
+              "_scale": "LINEAR",
+              "min": null,
+              "max": null,
+              "grid": false
+            },
+            "yaxis": {
+              "sid": null,
+              "name": "data",
+              "unit": "mM",
+              "_scale": "LINEAR",
+              "min": null,
+              "max": null,
+              "grid": false
+            },
+            "curves": []
+          },
+          "row": 1,
+          "col": 2,
+          "row_span": 1,
+          "col_span": 1
+        },
+        {
+          "plot": {
+            "sid": "plot2",
+            "name": null,
+            "legend": true,
+            "xaxis": {
+              "sid": null,
+              "name": "time",
+              "unit": "min",
+              "_scale": "LINEAR",
+              "min": null,
+              "max": null,
+              "grid": false
+            },
+            "yaxis": {
+              "sid": null,
+              "name": "data",
+              "unit": "mM",
+              "_scale": "LOG10",
+              "min": null,
+              "max": null,
+              "grid": false
+            },
+            "curves": [
+              {
+                "sid": "plot2_curve1",
+                "name": "[e__A]",
+                "order": null,
+                "style": {
+                  "sid": null,
+                  "name": null,
+                  "line": {
+                    "type": "SOLID",
+                    "color": null,
+                    "thickness": 2.0
+                  },
+                  "marker": {
+                    "size": null,
+                    "type": null,
+                    "fill": null,
+                    "line_color": null,
+                    "line_thickness": null
+                  },
+                  "fill": null
+                },
+                "x": "task_scan_init__time",
+                "y": "task_scan_init__[e__A]",
+                "xerr": null,
+                "yerr": null,
+                "yaxis": null
+              },
+              {
+                "sid": "plot2_curve2",
+                "name": "[e__B]",
+                "order": null,
+                "style": {
+                  "sid": null,
+                  "name": null,
+                  "line": {
+                    "type": "SOLID",
+                    "color": null,
+                    "thickness": 2.0
+                  },
+                  "marker": {
+                    "size": null,
+                    "type": null,
+                    "fill": null,
+                    "line_color": null,
+                    "line_thickness": null
+                  },
+                  "fill": null
+                },
+                "x": "task_scan_init__time",
+                "y": "task_scan_init__[e__B]",
+                "xerr": null,
+                "yerr": null,
+                "yaxis": null
+              },
+              {
+                "sid": "plot2_curve3",
+                "name": "[e__C]",
+                "order": null,
+                "style": {
+                  "sid": null,
+                  "name": null,
+                  "line": {
+                    "type": "SOLID",
+                    "color": null,
+                    "thickness": 2.0
+                  },
+                  "marker": {
+                    "size": null,
+                    "type": null,
+                    "fill": null,
+                    "line_color": null,
+                    "line_thickness": null
+                  },
+                  "fill": null
+                },
+                "x": "task_scan_init__time",
+                "y": "task_scan_init__[e__C]",
+                "xerr": null,
+                "yerr": null,
+                "yaxis": null
+              },
+              {
+                "sid": "plot2_curve4",
+                "name": "[c__A]",
+                "order": null,
+                "style": {
+                  "sid": null,
+                  "name": null,
+                  "line": {
+                    "type": "SOLID",
+                    "color": null,
+                    "thickness": 2.0
+                  },
+                  "marker": {
+                    "size": null,
+                    "type": null,
+                    "fill": null,
+                    "line_color": null,
+                    "line_thickness": null
+                  },
+                  "fill": null
+                },
+                "x": "task_scan_init__time",
+                "y": "task_scan_init__[c__A]",
+                "xerr": null,
+                "yerr": null,
+                "yaxis": null
+              },
+              {
+                "sid": "plot2_curve5",
+                "name": "[c__B]",
+                "order": null,
+                "style": {
+                  "sid": null,
+                  "name": null,
+                  "line": {
+                    "type": "SOLID",
+                    "color": null,
+                    "thickness": 2.0
+                  },
+                  "marker": {
+                    "size": null,
+                    "type": null,
+                    "fill": null,
+                    "line_color": null,
+                    "line_thickness": null
+                  },
+                  "fill": null
+                },
+                "x": "task_scan_init__time",
+                "y": "task_scan_init__[c__B]",
+                "xerr": null,
+                "yerr": null,
+                "yaxis": null
+              },
+              {
+                "sid": "plot2_curve6",
+                "name": "[c__C]",
+                "order": null,
+                "style": {
+                  "sid": null,
+                  "name": null,
+                  "line": {
+                    "type": "SOLID",
+                    "color": null,
+                    "thickness": 2.0
+                  },
+                  "marker": {
+                    "size": null,
+                    "type": null,
+                    "fill": null,
+                    "line_color": null,
+                    "line_thickness": null
+                  },
+                  "fill": null
+                },
+                "x": "task_scan_init__time",
+                "y": "task_scan_init__[c__C]",
+                "xerr": null,
+                "yerr": null,
+                "yaxis": null
+              }
+            ]
+          },
+          "row": 2,
+          "col": 1,
+          "row_span": 1,
+          "col_span": 1
+        },
+        {
+          "plot": {
+            "sid": "plot3",
+            "name": null,
+            "legend": true,
+            "xaxis": {
+              "sid": null,
+              "name": "time",
+              "unit": "min",
+              "_scale": "LINEAR",
+              "min": null,
+              "max": null,
+              "grid": false
+            },
+            "yaxis": {
+              "sid": null,
+              "name": "data",
+              "unit": "mM",
+              "_scale": "LINEAR",
+              "min": null,
+              "max": null,
+              "grid": false
+            },
+            "curves": []
+          },
+          "row": 2,
+          "col": 2,
+          "row_span": 1,
+          "col_span": 1
+        }
+      ]
+    }
+  }
+}

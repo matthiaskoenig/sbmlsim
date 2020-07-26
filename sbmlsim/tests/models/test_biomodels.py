@@ -1,7 +1,7 @@
 """
 Testing temiriam module
 """
-from sbmlsim.models import model_resources
+from sbmlsim.model import model_resources
 import roadrunner
 
 

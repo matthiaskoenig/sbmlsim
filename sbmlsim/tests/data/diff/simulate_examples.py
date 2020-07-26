@@ -1,14 +1,13 @@
 from pathlib import Path
 import pandas as pd
 
-from typing import List
-
-from sbmlsim.diff import DataSetsComparison, get_json_files
+from sbmlsim.diff import DataSetsComparison, get_files_by_extension
+from sbmlsim.simulator import SimulatorSerial as Simulator
+from sbmlsim.model import RoadrunnerSBMLModel
+from sbmlsim.simulation import TimecourseSim
 from matplotlib import pyplot as plt
-from sbmlsim.simulation_serial import SimulatorSerial as Simulator
+
 from sbmlsim.tests.constants import DATA_PATH, MODEL_REPRESSILATOR
-from sbmlsim.models import RoadrunnerSBMLModel
-from sbmlsim.timecourse import TimecourseSim, Timecourse
 
 
 def run_simulations(create_files=True):
@@ -21,15 +20,16 @@ def run_simulations(create_files=True):
                           absolute_tolerance=1E-16,
                           relative_tolerance=1E-13)
 
-    simulations = get_json_files(diff_path)
+    simulations = get_files_by_extension(diff_path)
     for simulation_key, json_path in simulations.items():
 
         tsv_path = diff_path / "sbmlsim" / f"{simulation_key}.tsv"
         tcsim = TimecourseSim.from_json(json_path)
         # print(tcsim)
-        result = simulator.timecourses([tcsim])
+        xres = simulator.run_timecourse(tcsim)
         if create_files:
-            result.mean.to_csv(tsv_path, sep="\t", index=False)
+            df = xres.to_mean_dataframe()
+            df.to_csv(tsv_path, sep="\t", index=False)
 
 
 def run_comparisons(create_files=True):
@@ -39,7 +39,7 @@ def run_comparisons(create_files=True):
     """
     diff_path = Path(DATA_PATH) / "diff"
 
-    simulation_keys = get_json_files(diff_path)
+    simulation_keys = get_files_by_extension(diff_path)
     print(simulation_keys)
 
     for simulation_key in simulation_keys.keys():
@@ -68,7 +68,5 @@ def run_comparisons(create_files=True):
 
 
 if __name__ == "__main__":
-
     run_simulations()
     run_comparisons()
-

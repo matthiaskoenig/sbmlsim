@@ -1,18 +1,17 @@
 """
-Managing units and units conversions in models.
-
-FIXME: have a look at uncertainties
-https://pythonhosted.org/uncertainties/
+Manages units and units conversions in models.
 """
 from typing import Dict, List
 from pathlib import Path
-import pint
+
 import logging
 import libsbml
-from sbmlsim.tests.constants import MODEL_REPRESSILATOR, MODEL_GLCWB
-from pprint import pprint
-from pint.errors import UndefinedUnitError
+# Disable Pint's old fallback behavior (must come before importing Pint)
+import os
+os.environ['PINT_ARRAY_PROTOCOL_FALLBACK'] = "0"
 
+import pint
+from pint.errors import UndefinedUnitError, DimensionalityError
 from pint import Quantity, UnitRegistry
 
 import warnings
@@ -41,8 +40,9 @@ class Units(object):
         ureg.define('none = count')
         ureg.define('item = count')
         ureg.define('percent = 0.01*count')
-        ureg.define('IU = 0.0347 * mg')  # IU for insulin ! (FIXME better handling of general IU)
-        ureg.define('IU/ml = 0.0347 * mg/ml')  # IU for insulin ! (FIXME better handling of general IU)
+        # FIXME: manual conversion
+        ureg.define('IU = 0.0347 * mg')  # IU for insulin ! FIXME better handling of general IU
+        ureg.define('IU/ml = 0.0347 * mg/ml')  # IU for insulin ! FIXME better handling of general IU
         return ureg
 
     @classmethod
@@ -81,7 +81,7 @@ class Units(object):
         """ Get pint unit dictionary for given model.
 
         :param model_path: path to SBML model
-        :return:
+        :return: udict, ureg
         """
         if isinstance(model_path, Path):
             doc = libsbml.readSBMLFromFile(str(model_path))  # type: libsbml.SBMLDocument
@@ -130,9 +130,9 @@ class Units(object):
                     if substance_uid and volume_uid:
                         udict[f"[{sid}]"] = f"{substance_uid}/{volume_uid}"
                     else:
-                        logger.warning(f"substance or volume unit missing, "
-                                       f"impossible to determine concentration "
-                                       f"unit for [{sid}])")
+                        logger.warning(f"Substance or volume unit missing, "
+                                       f"cannot determine concentration "
+                                       f"unit for '[{sid}]')")
                         udict[f"[{sid}]"] = ''
 
                 elif isinstance(element, (libsbml.Compartment, libsbml.Parameter)):
@@ -148,7 +148,8 @@ class Units(object):
                             uid = udef_test.getId()
                             break
                     if uid is None:
-                        logger.warning(f"DerivedUnit not found in UnitDefinitions: {Units.unitDefinitionToString(udef)}")
+                        logger.warning(f"DerivedUnit not in UnitDefinitions: "
+                                       f"'{Units.unitDefinitionToString(udef)}'")
                         udict[sid] = Units.unitDefinitionToString(udef)
                     else:
                         udict[sid] = uid
@@ -162,10 +163,10 @@ class Units(object):
 
         return udict, ureg
 
-
     @classmethod
     def unitDefinitionToString(cls, udef: libsbml.UnitDefinition) -> str:
-        """ Formating of units.
+        """ Formating of SBML unitDefinitions.
+
         Units have the general format
             (multiplier * 10^scale *ukind)^exponent
             (m * 10^s *k)^e
@@ -229,32 +230,35 @@ class Units(object):
         """ Calculate the two floats are identical. """
         return abs(a - b) <= max(rel_tol * max(abs(a), abs(b)), abs_tol)
 
+    @staticmethod
+    def normalize_changes(changes: Dict, udict: Dict, ureg: UnitRegistry) -> Dict[str, Quantity]:
+        """Normalizes all changes to units in units dictionary.
 
-if __name__ == "__main__":
-    ureg = pint.UnitRegistry()
+        :param changes:
+        :param udict:
+        :param ureg:
+        :return:
+        """
+        Q_ = ureg.Quantity
+        changes_normed = {}
+        for key, item in changes.items():
+            if hasattr(item, "units"):
+                try:
+                    # convert to model units
+                    item = item.to(udict[key])
+                except DimensionalityError as err:
+                    logger.error(f"DimensionalityError "
+                                 f"'{key} = {item}'. {err}")
+                    raise err
+                except KeyError as err:
+                    logger.error(
+                        f"KeyError: '{key}' does not exist in unit "
+                        f"dictionary of model.")
+                    raise err
+            else:
+                item = Q_(item, udict[key])
+                logger.warning(f"No units provided, assuming dictionary units: "
+                               f"{key} = {item}")
+            changes_normed[key] = item
 
-    udict, ureg = Units.get_units_from_sbml(MODEL_GLCWB)
-    from pprint import pprint
-    # pprint(udict)
-    # print(ureg["mmole_per_min"])
-
-    q1 = 1 * ureg("mole/s")
-    print(q1)
-    print(q1.to("mmole_per_min"))
-
-    print('-' * 80)
-
-    q2 = ureg("(mole)/(60000.0*s)")
-    print(q2)
-    print(q2.to("mmole_per_min"))
-
-
-
-
-
-
-
-
-
-
-
+        return changes_normed

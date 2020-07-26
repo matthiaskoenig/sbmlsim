@@ -1,39 +1,49 @@
-
-
 import pandas as pd
 
-from sbmlsim.models import RoadrunnerSBMLModel
-from sbmlsim.result import Result
+from sbmlsim.model import RoadrunnerSBMLModel
+from sbmlsim.result import XResult
 from sbmlsim.tests.constants import MODEL_REPRESSILATOR
 
 
 def test_result():
     r = RoadrunnerSBMLModel(source=MODEL_REPRESSILATOR)._model
     dfs = []
-    for _ in range(10):
-        s = r.simulate(0, 10, steps=10)
+    num_sim = 10
+    num_steps = 20
+    for _ in range(num_sim):
+        s = r.simulate(0, 10, steps=num_steps)
         dfs.append(pd.DataFrame(s, columns=s.colnames))
 
-    result = Result(dfs)
-    assert result
-    assert result.nframes == 10
-    assert result.nrow == 11
-    assert result.data is not None
+    xres = XResult.from_dfs(dfs)
+
+    assert xres
+    # check dimensions
+    assert len(xres.dims) == 2
+    assert "_time" in xres.dims
+    assert "_dfs" in xres.dims
+
+    # check coordinates
+    assert "_time" in xres.coords
+    assert "_dfs" in xres.coords
+    assert len(xres.coords["_time"]) == (num_steps + 1)
+    assert len(xres.coords["_dfs"]) == num_sim
+
+    assert xres.X is not None
+    assert xres.Y is not None
 
 
-def test_hdf5(tmp_path):
+def test_netcdf(tmp_path):
     r = RoadrunnerSBMLModel(source=MODEL_REPRESSILATOR)._model
     dfs = []
     for _ in range(10):
         s = r.simulate(0, 10, steps=10)
         dfs.append(pd.DataFrame(s, columns=s.colnames))
 
-    result = Result(dfs)
-    h5_path = tmp_path / "result.h5"
-    result.to_hdf5(h5_path)
+    xres = XResult.from_dfs(dfs)
+    nc_path = tmp_path / "result.nc"
+    xres.to_netcdf(nc_path)
 
-    result2 = Result.from_hdf5(h5_path)
-    assert result
-    assert result.nframes == 10
-    assert result.nrow == 11
-    assert result.data is not None
+    xres2 = XResult.from_netcdf(nc_path)
+    assert xres is not None
+    assert len(xres.dims) == len(xres2.dims)
+

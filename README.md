@@ -54,6 +54,11 @@ and can be started from within `jupyterlab`
 ```
 
 ## Release notes
+### 0.1.3
+* improved parameter fitting
+* improved plotting
+* improved parallelization
+
 ### 0.1.1
 * dropping py3.6 support (using dataclasses and typing)
 

@@ -1,6 +1,8 @@
-import pytest
-
-from sbmlsim.report import create_report
+from sbmlsim.experiment import ExperimentReport, ExperimentRunner
+from sbmlsim.examples.experiments.glucose.experiments.dose_response import \
+    DoseResponseExperiment
+from sbmlsim.simulator import SimulatorSerial
+from sbmlsim.examples.experiments.glucose import BASE_PATH, DATA_PATH
 
 
 def test_glucose_report(tmp_path):
@@ -9,17 +11,14 @@ def test_glucose_report(tmp_path):
     :param tmp_path:
     :return:
     """
-    from sbmlsim.examples.glucose.experiments.dose_response import DoseResponseExperiment
-    from sbmlsim.examples.glucose import BASE_PATH, DATA_PATH
-
-    results = []
-    exp = DoseResponseExperiment(
+    runner = ExperimentRunner(
+        [DoseResponseExperiment],
         base_path=BASE_PATH,
-        data_path=DATA_PATH
+        data_path=DATA_PATH,
+        simulator=SimulatorSerial(),
     )
-    info = exp.run(
+    results = runner.run_experiments(
         output_path=tmp_path / "results",
         show_figures=False
     )
-    results.append(info)
-    create_report(results, output_path=tmp_path)
+    ExperimentReport(results).create_report(output_path=tmp_path / "results")

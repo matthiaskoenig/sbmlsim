@@ -1,0 +1,80 @@
+<html>
+<head>
+</head>
+<body>
+
+        <a href="../index.html">Experiments</a>
+
+        <h1>{{ exp_id }}</h1>
+
+        <h2>Model</h2>
+        <p>
+        <ul>
+            <li><strong>SBML</strong>: <a href="{{ model_path }}">{{ model_path }}</a></li>
+            </li>
+            {% if report_path %}
+            <li><strong>HTML</strong>: <a href="{{ report_path }}">{{
+                report_path }}</a></li>
+            {% endif %}
+        </ul>
+        </p>
+
+        <h2>Datasets</h2>
+        <p>
+        <ul>
+            {% for dset_id in datasets %}
+            <li><a href="{{results_path}}/{{ exp_id }}_{{ dset_id }}.tsv">{{results_path}}/{{
+                exp_id }}_{{ dset_id }}.tsv</a></li>
+            {% endfor %}
+        </ul>
+        </p>
+
+        <h2>Figures</h2>
+        <p>
+        <ul>
+            {% for fig_id in figures %}
+            <li><a href="{{results_path}}/{{ exp_id }}_{{ fig_id }}.svg">{{results_path}}/{{
+                exp_id }}_{{ fig_id }}.svg</a></li>
+            {% endfor %}
+        </ul>
+        </p>
+
+
+        <h2><a href="{{ exp_id }}.html">{{ exp_id }}</a></h2>
+        {% for fig_id, meta in figures.items() %}
+        <h3>{{ fig_id }}</h3>
+        <p>
+        <table>
+            <tr>
+                <td>
+                    <a href="{{ exp_id }}.html"><img
+                            src="{{results_path}}/{{ exp_id }}_{{ fig_id }}.svg"/></a>
+                </td>
+                <td>
+                    {% if meta %}
+                    {% for k, v in meta.items() %}
+                    {% if v %}
+                    <strong>{{ k }}</strong>: {{ v }}<br/>
+                    {% endif %}
+                    {% endfor %}
+                    {% endif %}
+                </td>
+            </tr>
+        </table>
+        </p>
+
+
+        {% endfor %}
+        <h2>Code</h2>
+        <p>
+            <a href="{{ code_path }}">{{ code_path }}</a>
+
+        <pre>
+  <code>
+{{ code }}
+  </code>
+</pre>
+        </p>
+
+</body>
+</html>

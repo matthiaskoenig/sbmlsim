@@ -1,8 +1,14 @@
-######################################################################################################################
-# KISAO MAPPINGS
-######################################################################################################################
+import logging
+from collections import namedtuple
 
-KISAOS_CVODE = [  # 'cvode'
+import libsedml
+
+logger = logging.getLogger(__name__)
+
+# ----------------
+# KISAO MAPPINGS
+# ----------------
+KISAOS_CVODE = [
     'KISAO:0000019',  # CVODE
     'KISAO:0000433',  # CVODE-like method
     'KISAO:0000407',
@@ -12,21 +18,17 @@ KISAOS_CVODE = [  # 'cvode'
     "KISAO:0000288",  # "BDF" cvode, stiff=true
     "KISAO:0000280",  # "Adams-Moulton" cvode, stiff=false
 ]
-
-KISAOS_RK4 = [  # 'rk4'
+KISAOS_RK4 = [
     'KISAO:0000032',  # RK4 explicit fourth-order Runge-Kutta method
     'KISAO:0000064',  # Runge-Kutta based method
 ]
-
-KISAOS_RK45 = [  # 'rk45'
+KISAOS_RK45 = [
     'KISAO:0000086',  # RKF45 embedded Runge-Kutta-Fehlberg 5(4) method
 ]
-
-KISAOS_LSODA = [  # 'lsoda'
+KISAOS_LSODA = [
     'KISAO:0000088',  # roadrunner doesn't have an lsoda solver so use cvode
 ]
-
-KISAOS_GILLESPIE = [  # 'gillespie'
+KISAOS_GILLESPIE = [
     'KISAO:0000241',  # Gillespie-like method
     'KISAO:0000029',
     'KISAO:0000319',
@@ -62,8 +64,7 @@ KISAOS_GILLESPIE = [  # 'gillespie'
     'KISAO:0000075',
     'KISAO:0000278',
 ]
-
-KISAOS_NLEQ = [  # 'nleq'
+KISAOS_NLEQ = [
     'KISAO:0000099',
     'KISAO:0000274',
     'KISAO:0000282',
@@ -101,3 +102,68 @@ KISAOS_ALGORITHMPARAMETERS = {
     'KISAO:0000487': ('minimum_damping', float),  # [nleq] minimum damping value
     'KISAO:0000488': ('seed', int),  # the seed for stochastic runs of the algorithm
 }
+
+
+def is_supported_algorithm_for_simulation_type(kisao, simType):
+    """ Check Algorithm Kisao Id is supported for simulation.
+
+    :return: is supported
+    :rtype: bool
+    """
+    supported = []
+    if simType == libsedml.SEDML_SIMULATION_UNIFORMTIMECOURSE:
+        supported = KISAOS_UNIFORMTIMECOURSE
+    elif simType == libsedml.SEDML_SIMULATION_ONESTEP:
+        supported = KISAOS_ONESTEP
+    elif simType == libsedml.SEDML_SIMULATION_STEADYSTATE:
+        supported = KISAOS_STEADYSTATE
+    return kisao in supported
+
+
+def integrator_from_kisao(kisao):
+    """ RoadRunner integrator name for algorithm KisaoID.
+
+    :param kisao: KisaoID
+    :type kisao: str
+    :return: RoadRunner integrator name.
+    :rtype: str
+    """
+    if kisao in KISAOS_NLEQ:
+        return 'nleq2'
+    if kisao in KISAOS_CVODE:
+        return 'cvode'
+    if kisao in KISAOS_GILLESPIE:
+        return 'gillespie'
+    if kisao in KISAOS_RK4:
+        return 'rk4'
+    if kisao in KISAOS_RK45:
+        return 'rk45'
+    if kisao in KISAOS_LSODA:
+        logger.warn('Roadrunner does not support LSODA. Using CVODE instead.')
+        return 'cvode'  # just use cvode
+    return None
+
+
+def algorithm_parameter_to_parameter_key(par):
+    """ Resolve the mapping between parameter keys and roadrunner integrator keys."""
+    ParameterKey = namedtuple('ParameterKey', 'key value dtype')
+    kisao = par.getKisaoID()
+    value = par.getValue()
+
+    if kisao in KISAOS_ALGORITHMPARAMETERS:
+        # algorithm parameter is in the list of parameters
+        key, dtype = KISAOS_ALGORITHMPARAMETERS[kisao]
+        if dtype is bool:
+            # transform manually ! (otherwise all strings give True)
+            if value == 'true':
+                value = True
+            elif value == 'false':
+                value = False
+        else:
+            # cast to data type of parameter
+            value = dtype(value)
+        return ParameterKey(key, value, dtype)
+    else:
+        # algorithm parameter not supported
+        logger.warning(f"Unsupported AlgorithmParameter: {kisao} = {value})")
+        return None
