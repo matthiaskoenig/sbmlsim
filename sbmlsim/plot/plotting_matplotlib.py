@@ -33,10 +33,15 @@ def interp(x, xp, fp):
     :param fp:
     :return:
     """
-    # y = np.interp(x=x, xp=xp, fp=fp)
-    tck = interpolate.splrep(xp, fp, s=0)
-
-    y = interpolate.splev(x, tck, der=0)
+    y = np.interp(x=x, xp=xp, fp=fp)
+    # better spline interpolation, but NaN issues with zero values
+    # tck, fp, ier, msg = interpolate.splrep(xp, fp, full_output=True)
+    # if ier > 0:
+    #     logger.error(f"Spline fitting failed: '{msg}'")
+    #
+    # y = interpolate.splev(x, tck, der=0)
+    if not np.all(np.isfinite(y)):
+        logger.error(f"NaN or Inf values in interpolation: {fp} -> {y}")
     return y
 
 
@@ -128,7 +133,6 @@ class MatplotlibFigureSerializer(object):
                         y_std = xres.dim_std(data.index).to(yunit)
                         y_min = xres.dim_min(data.index).to(yunit)
                         y_max = xres.dim_max(data.index).to(yunit)
-                # print(y_std)
 
                 xerr = None
                 if curve.xerr is not None:
@@ -160,12 +164,22 @@ class MatplotlibFigureSerializer(object):
                 if y_std is not None:
                     # areas can be very slow to render!
                     # ax.plot(x.magnitude, y.magnitude, label="curve.name", **kwargs)
-                    y_ip = interp(x=x_ip, xp=x.magnitude, fp=y.magnitude)
-                    y_std_ip = interp(x=x_ip, xp=x.magnitude, fp=y_std.magnitude)
+
+                    if not np.all(np.isfinite(y_std)):
+                        logger.error(f"Not all values finite in y_std: {y_std}")
+
+                    y_std_up = interp(x=x_ip, xp=x.magnitude, fp=y.magnitude+y_std.magnitude)
+                    y_std_down = interp(x=x_ip, xp=x.magnitude, fp=y.magnitude-y_std.magnitude)
 
                     # ax.fill_between(x.magnitude, y.magnitude - y_std.magnitude, y.magnitude + y_std.magnitude,
                     ax.fill_between(
-                        x_ip, y_ip - y_std_ip, y_ip + y_std_ip,
+                        x_ip, y_std_down, y_std_up,
+                        color=kwargs.get("color", "black"),
+                        alpha=0.25, label="__nolabel__"
+                    )
+                    ax.fill_between(
+                        x.magnitude, y.magnitude - y_std.magnitude,
+                        y.magnitude + y_std.magnitude,
                         color=kwargs.get("color", "black"),
                         alpha=0.25, label="__nolabel__"
                     )
