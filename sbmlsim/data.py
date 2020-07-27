@@ -121,7 +121,7 @@ class Data(object):
             if not isinstance(dset, DataSet):
                 raise ValueError(dset)
             if dset.empty:
-                logger.error(f"Empty dataset in adding data: {dset}")
+                logger.error(f"Adding empty dataset '{dset}' for '{self.dset_id}'.")
 
             # data with units
             if self.index.endswith("_se") or self.index.endswith("_sd"):
@@ -290,7 +290,8 @@ class DataSet(pd.DataFrame):
                         df[f"{key}_unit"] = df.unit
                         unit_keys = df.unit.unique()
                         if len(df.unit.unique()) > 1:
-                            logger.error("More than 1 unit in 'unit' column !")
+                            logger.error(f"More than 1 unit in 'unit' column can create issues in "
+                                         f"unit conversion!, '{df.unit.unique()}'")
                         udict[key] = unit_keys[0]
 
                         # rename the sd and se columns to mean_sd and mean_se

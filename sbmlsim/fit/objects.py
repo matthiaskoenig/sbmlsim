@@ -36,6 +36,12 @@ class FitExperiment(object):
         if mappings is None:
             mappings = []
 
+        if len(mappings) > len(set(mappings)):
+            raise ValueError(
+                f"Duplicate fit mapping keys are not allowed. Use weighting for "
+                f"changing weights of single mappings: {self.experiment_class.__name__}: '{sorted(mappings)}'"
+            )
+
         self.mappings = mappings
         if isinstance(weights, (float, int)):
             self.weights = [weights] * len(mappings)
@@ -76,7 +82,7 @@ class FitMapping(object):
     """Mapping of reference data to obeservables in the model."""
 
     def __init__(self, experiment: 'sbmlsim.experiment.SimulationExperiment',
-                 reference: 'FitData', observable: 'FitData'):
+                 reference: 'FitData', observable: 'FitData', count: int=None):
         """FitMapping.
 
         :param reference: reference data (mostly experimental data)
@@ -85,6 +91,7 @@ class FitMapping(object):
         self.experiment = experiment
         self.reference = reference
         self.observable = observable
+        self.count = count
 
 
 class FitParameter(object):
