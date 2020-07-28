@@ -254,7 +254,7 @@ class MatplotlibFigureSerializer(object):
             if plot.legend:
                 ax.legend(fontsize=Figure.legend_fontsize, loc=Figure.legend_loc)
 
-        fig.subplots_adjust(wspace=0.3, hspace=0.3)
+        fig.subplots_adjust(wspace=Figure.fig_subplots_wspace, hspace=Figure.fig_subplots_hspace)
         return fig
 
 

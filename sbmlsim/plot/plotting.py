@@ -539,6 +539,8 @@ class Figure(BasePlotObject):
     """
     fig_dpi = 72
     fig_facecolor = "white"
+    fig_subplots_wspace = 0.15  # vertical spacing of subplots (fraction of axes)
+    fig_subplots_hspace = 0.15  # horizontal spacing of subplots (fraction of axes)
     panel_width = 7
     panel_height = 5
     fig_titlesize = 25

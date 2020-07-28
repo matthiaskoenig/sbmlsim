@@ -290,8 +290,8 @@ class DataSet(pd.DataFrame):
                         df[f"{key}_unit"] = df.unit
                         unit_keys = df.unit.unique()
                         if len(df.unit.unique()) > 1:
-                            logger.error(f"More than 1 unit in 'unit' column can create issues in "
-                                         f"unit conversion!, '{df.unit.unique()}'")
+                            logger.error(f"More than one unit in 'unit' column will create issues in "
+                                         f"unit conversion, filter data to reduce units: '{df.unit.unique()}'")
                         udict[key] = unit_keys[0]
 
                         # rename the sd and se columns to mean_sd and mean_se
@@ -317,7 +317,7 @@ class DataSet(pd.DataFrame):
         dset.ureg = ureg
         return dset
 
-    def unit_conversion(self, key, factor: Quantity):
+    def unit_conversion(self, key, factor: Quantity, filter=None):
         """Converts the units of the given key in the dataset.
 
         The quantity in the dataset is multiplied with the conversion factor.
@@ -409,5 +409,5 @@ def load_pkdb_dataframes_by_substance(sid, data_path, **kwargs) -> Dict[str, pd.
     df = load_pkdb_dataframe(sid=sid, data_path=data_path, na_values=['na'], **kwargs)
     frames = {}
     for substance in df.substance.unique():
-        frames[substance] = df[df.substance == substance]
+        frames[substance] = df.copy()[df.substance == substance]
     return frames
