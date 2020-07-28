@@ -4,9 +4,6 @@ import pandas as pd
 import numpy as np
 import xarray as xr
 import itertools
-from scipy import interpolate
-
-import matplotlib
 
 from sbmlsim.result import XResult
 from sbmlsim.data import DataSet, Data
@@ -148,7 +145,13 @@ class MatplotlibFigureSerializer(object):
                 # save_figures           26.8983 [s]
                 # run                    32.5651 [s]
                 # run_experiments        32.5654 [s]
-                x_ip = np.linspace(start=x.magnitude[0], stop=x.magnitude[-1], num=100)
+
+                xmin, xmax = x.magnitude[0], x.magnitude[-1]
+                if xax.min is not None:
+                    xmin = xax.min
+                if xax.max is not None:
+                    xmax = xax.max
+                x_ip = np.linspace(start=x.magnitude[0], stop=x.magnitude[-1], num=Figure._area_interpolation_points)
 
                 if (y_min is not None) and (y_max is not None):
                     # areas can be very slow to render!
@@ -174,12 +177,6 @@ class MatplotlibFigureSerializer(object):
                     # ax.fill_between(x.magnitude, y.magnitude - y_std.magnitude, y.magnitude + y_std.magnitude,
                     ax.fill_between(
                         x_ip, y_std_down, y_std_up,
-                        color=kwargs.get("color", "black"),
-                        alpha=0.25, label="__nolabel__"
-                    )
-                    ax.fill_between(
-                        x.magnitude, y.magnitude - y_std.magnitude,
-                        y.magnitude + y_std.magnitude,
                         color=kwargs.get("color", "black"),
                         alpha=0.25, label="__nolabel__"
                     )

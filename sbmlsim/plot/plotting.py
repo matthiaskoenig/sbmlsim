@@ -553,6 +553,7 @@ class Figure(BasePlotObject):
     ytick_labelsize = 15
     legend_fontsize = 13
     legend_loc = 'best'
+    _area_interpolation_points = 300
 
     def __init__(self, experiment, sid: str, name: str = None,
                  subplots: List[SubPlot] = None,
