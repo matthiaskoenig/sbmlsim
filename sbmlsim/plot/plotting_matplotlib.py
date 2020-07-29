@@ -110,6 +110,7 @@ class MatplotlibFigureSerializer(object):
 
                 # additional data exists in xres
                 # FIXME: get access to the full data matrix and support plotting
+                # FIXME: this does not plot the single lines !!! (same problem with full data access)
                 # if isinstance(x, XResult):
                 #    x_mean = x.mean(dim=self._op_dims(), skipna=True).values * self.ureg(self.udict[key])
 

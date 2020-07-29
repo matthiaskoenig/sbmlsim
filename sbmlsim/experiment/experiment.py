@@ -295,7 +295,7 @@ class SimulationExperiment(object):
 
             if reduced_selections:
                 # set selections based on data
-                selections = set()
+                selections = {"time"}
                 for d in self._data.values():  # type: Data
                     if d.is_task():
                         selections.add(d.index)
