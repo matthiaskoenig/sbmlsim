@@ -38,6 +38,18 @@ class ModelSensitivity(object):
             exclude_filter=None,
             exclude_zero: bool = True,
             zero_eps: float = 1E-8) -> ScanSim:
+        """ Creates a parameter sensitivity scan for given TimecourseSimulation.
+
+        :param model: model for execution (needed to select parameters)
+        :param simulation: timecourse simulation to scan
+        :param difference: change in parameters, i.e. every parameter (which is not excluded) is changed to
+                           '(1.0 - difference) * value' and '(1.0 + difference) * value'
+        :param stype: which sensitivity (parameters or species)
+        :param exclude_filter: filter function which defines which parameters should be excluded from scan
+        :param exclude_zero: parameters with a value of abs(value)<zero_eps are excluded from scan
+        :param zero_eps: epsilon for zero values
+        :return:
+        """
 
         dim = ModelSensitivity.create_difference_dimension(
             model=model,
@@ -51,7 +63,7 @@ class ModelSensitivity(object):
             dimensions=[
                 dim,
             ],
-            mapping = {'dim_sens': 0}
+            mapping={'dim_sens': 0}
         )
         return scan
 
@@ -133,6 +145,7 @@ class ModelSensitivity(object):
             exclude_zero: bool = True,
             zero_eps: float = 1E-8) -> Dimension:
         """Creates list of dimensions for sampling parameter values.
+
         Only parameters relevant for "GU_", "LI_" and "KI_" models are
         sampled.
 

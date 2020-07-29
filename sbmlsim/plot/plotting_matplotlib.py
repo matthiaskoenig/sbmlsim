@@ -147,11 +147,11 @@ class MatplotlibFigureSerializer(object):
                 # run_experiments        32.5654 [s]
 
                 xmin, xmax = x.magnitude[0], x.magnitude[-1]
-                if xax.min is not None:
+                if (xax.min is not None) and (xax.min > xmin):
                     xmin = xax.min
-                if xax.max is not None:
+                if (xax.max is not None) and (xax.max < xmax):
                     xmax = xax.max
-                x_ip = np.linspace(start=x.magnitude[0], stop=x.magnitude[-1], num=Figure._area_interpolation_points)
+                x_ip = np.linspace(start=xmin, stop=xmax, num=Figure._area_interpolation_points)
 
                 if (y_min is not None) and (y_max is not None):
                     # areas can be very slow to render!
@@ -196,10 +196,9 @@ class MatplotlibFigureSerializer(object):
             if xax:
                 ax.set_xscale(get_scale(xax))
                 ax.set_xlim(xmin=xax.min, xmax=xax.max)
-
                 if xax.label_visible:
                     if xax.name:
-                        ax.set_xlabel(f"{xax.name} [{xax.unit}]")
+                        ax.set_xlabel(f"{xax.name} [{xax.unit if len(xax.unit)>0 else '-'}]")
                 if not xax.ticks_visible:
                     ax.set_xticklabels([])  # hide ticks
 
@@ -209,7 +208,7 @@ class MatplotlibFigureSerializer(object):
 
                 if yax.label_visible:
                     if yax.name:
-                        ax.set_ylabel(f"{yax.name} [{yax.unit}]")
+                        ax.set_ylabel(f"{yax.name} [{yax.unit if len(yax.unit)>0 else '-'}]")
                 if not yax.ticks_visible:
                     ax.set_yticklabels([])  # hide ticks
 
