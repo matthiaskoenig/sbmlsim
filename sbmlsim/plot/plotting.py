@@ -410,15 +410,25 @@ class Plot(BasePlotObject):
 
     def set_xaxis(self, label: str, unit: str=None, **kwargs):
         """Set axis with all axes attributes.
-
         All argument of Axis are supported.
+
+        :param label:
+        :param unit:
+        :keyword label_visible:
+        :param kwargs:
+        :return:
         """
         self.xaxis = Axis(name=label, unit=unit, **kwargs)
 
     def set_yaxis(self, label: str, unit: str=None, **kwargs):
         """Set axis with all axes attributes.
-
         All argument of Axis are supported.
+
+        :param label:
+        :param unit:
+        :keyword label_visible:
+        :param kwargs:
+        :return:
         """
         self.yaxis = Axis(name=label, unit=unit, **kwargs)
 

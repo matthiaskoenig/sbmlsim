@@ -1,6 +1,7 @@
 from enum import Enum
 import logging
-from typing import Dict
+from pathlib import Path
+from typing import Dict, List
 import pandas as pd
 import numpy as np
 from sbmlsim.units import Quantity, UnitRegistry
@@ -364,7 +365,7 @@ class DataSet(pd.DataFrame):
 
 
 # @deprecated
-def load_pkdb_dataframe(sid, data_path, sep="\t", comment="#", **kwargs) -> pd.DataFrame:
+def load_pkdb_dataframe(sid, data_path: [Path, List[Path]], sep="\t", comment="#", **kwargs) -> pd.DataFrame:
     """ Loads TSV data from PKDB figure or table id.
 
     This is a simple helper functions to directly loading the TSV data.
@@ -377,14 +378,23 @@ def load_pkdb_dataframe(sid, data_path, sep="\t", comment="#", **kwargs) -> pd.D
     is loaded.
 
     :param sid: figure or table id
-    :param data_path: base path of data
+    :param data_path: base path of data or iterable of data_paths
     :param sep: separator
     :param comment: comment characters
     :param kwargs: additional kwargs for csv parsing
     :return: pandas DataFrame
     """
     study = sid.split('_')[0]
-    path = data_path / study / f'.{sid}.tsv'
+    if isinstance(data_path, Path):
+        data_path = [data_path]
+
+    for p in data_path:
+        path = p / study / f'.{sid}.tsv'
+        if path.exists():
+            # use the first path which exists
+            break
+    if not path.exists():
+        ValueError(f"file path not found in data_path: {data_path}")
 
     df = pd.read_csv(path, sep=sep, comment=comment, **kwargs)
     df = df.dropna(how='all')  # drop all NA rows

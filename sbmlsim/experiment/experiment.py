@@ -54,9 +54,13 @@ class SimulationExperiment(object):
         self.base_path = base_path
 
         if data_path:
-            data_path = Path(data_path).resolve()
-            if not data_path.exists():
-                raise IOError(f"data_path '{data_path}' does not exist")
+            if isinstance(data_path, (list, tuple, set)):
+                data_path = [Path(p).resolve() for p in data_path]
+            else:
+                data_path = [Path(data_path).resolve()]
+            for p in data_path:
+                if not p.exists():
+                    raise IOError(f"data_path '{p}' does not exist")
         else:
             logger.warning(
                 "No 'data_path' provided, reading of datasets may fail.")
