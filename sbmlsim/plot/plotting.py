@@ -161,6 +161,13 @@ class Style(BasePlotObject):
 
     @staticmethod
     def from_mpl_kwargs(**kwargs) -> 'Style':
+        """
+
+        :keyword alpha: alpha setting
+        :keyword color: color setting
+        :param kwargs:
+        :return:
+        """
 
         # FIXME: handle alpha colors
         # https://matplotlib.org/3.1.0/tutorials/colors/colors.html
