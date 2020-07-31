@@ -21,6 +21,7 @@ from sbmlsim.experiment import ExperimentRunner
 from sbmlsim.model import RoadrunnerSBMLModel
 from sbmlsim.fit.objects import FitExperiment, FitParameter
 from sbmlsim.fit.sampling import SamplingType, create_samples
+from sbmlsim.units import DimensionalityError
 from sbmlsim.utils import timeit
 
 logger = logging.getLogger(__name__)
@@ -186,8 +187,16 @@ class OptimizationProblem(object):
 
                 # prepare data
                 data_ref = mapping.reference.get_data()
-                data_ref.x = data_ref.x.to(obs_x_unit)
-                data_ref.y = data_ref.y.to(obs_y_unit)
+                try:
+                    data_ref.x = data_ref.x.to(obs_x_unit)
+                except DimensionalityError as e:
+                    logger.error(f"{sid}.{mapping_id}: Unit convertion fails for '{data_ref.x}' to '{obs_x_unit}")
+                    raise e
+                try:
+                    data_ref.y = data_ref.y.to(obs_y_unit)
+                except DimensionalityError as e:
+                    logger.error(f"{sid}.{mapping_id}: Unit convertion fails for '{data_ref.y}' to '{obs_y_unit}'.")
+                    raise e
                 x_ref = data_ref.x.magnitude
                 y_ref = data_ref.y.magnitude
 
@@ -500,7 +509,7 @@ class OptimizationProblem(object):
                 res_abs = 5.0 * self.y_references[k]  # total error
 
             res_abs_normed = res_abs / self.y_references[k].mean()  # FIXME: why strange values here?
-            res_rel = res_abs / self.y_references[k]
+            res_rel = res_abs / self.y_references[k]  # FIXME: RuntimeWarning: invalid value encountered in true_divide
             res_rel[np.isnan(res_rel)] = 0  # no cost contribution
             res_rel[np.isinf(res_rel)] = 0
 

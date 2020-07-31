@@ -133,11 +133,14 @@ class FitData(object):
                  xid: str, yid: str,
                  xid_sd: str=None, xid_se: str=None,
                  yid_sd: str=None, yid_se: str=None,
-                 dataset: str=None, task: str=None, function: str=None):
+                 dataset: str=None, task: str=None, function: str=None, count: int=None):
 
         self.dset_id = dataset
         self.task_id = task
         self.function = function
+
+        # FIXME: support setting count on FitData
+        self.count = count
 
         # actual Data
         # FIXME: simplify

@@ -513,7 +513,8 @@ class Plot(BasePlotObject):
         # label
         if label != "__nolabel__":
             count_label = ""
-            if count:
+            # FIXME: count label
+            if count and isinstance(count, int):
                 count_label = f" (n={count})"
             label = f"{label}{yerr_label}{count_label}"
 
