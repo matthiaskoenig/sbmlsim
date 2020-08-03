@@ -40,6 +40,10 @@ class ScanSim(AbstractSim):
             # handling the simple simulation case
             dimensions = [Dimension("dim0", index=np.arange(1))]
         self.dimensions = dimensions
+        dimension_keys = [dim.dimension for dim in self.dimensions]
+        if len(dimension_keys) > len(set(dimension_keys)):
+            raise ValueError(f"duplicate dimension keys in scan: {dimension_keys}")
+
         if mapping is None:
             # if no mapping is provided than the changes map on the
             # initial part of the simulation

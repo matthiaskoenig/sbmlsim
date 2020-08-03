@@ -287,13 +287,15 @@ class AbstractCurve(BasePlotObject):
 class Curve(AbstractCurve):
     def __init__(self,
                  x: Data, y: Data, xerr: Data=None, yerr: Data=None,
-                 single_lines: bool=False,
+                 single_lines: bool = False,
+                 dim_reductions: List[str] = None,
                  order=None, style: Style=None, yaxis=None, **kwargs):
         super(Curve, self).__init__(None, None, x, order, style, yaxis)
         self.y = y
         self.xerr = xerr
         self.yerr = yerr
         self.single_lines = single_lines
+        self.dim_reductions = dim_reductions
 
         if "label" in kwargs:
             self.name = kwargs["label"]
@@ -460,7 +462,7 @@ class Plot(BasePlotObject):
         return d
 
     def curve(self, x: Data, y: Data, xerr: Data=None, yerr: Data=None,
-              single_lines: bool = False, **kwargs):
+              single_lines: bool = False, dim_reductions: List[str] = None, **kwargs):
         """Adds curves to the plot.
 
         Data can be high-dimensional data from a scan.
@@ -477,7 +479,7 @@ class Plot(BasePlotObject):
     def add_data(self,
                  xid: str, yid: str, yid_sd=None, yid_se=None, count: int=None,
                  dataset: str=None, task: str=None,
-                 label='__nolabel__', single_lines=False,
+                 label='__nolabel__', single_lines=False, dim_reduction=None,
                  **kwargs):
         """Wrapper around plotting."""
         if yid_sd and yid_se:
@@ -517,6 +519,7 @@ class Plot(BasePlotObject):
             yerr=yerr,
             label=label,
             single_lines=single_lines,
+            dim_reduction=dim_reduction,
             **kwargs
         )
 
