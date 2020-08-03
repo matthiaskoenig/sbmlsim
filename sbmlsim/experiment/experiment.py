@@ -23,6 +23,15 @@ from sbmlsim.plot.plotting_matplotlib import MatplotlibFigureSerializer, FigureM
 logger = logging.getLogger(__name__)
 
 
+class ExperimentDict(dict):
+
+    def __getitem__(self, k):
+        try:
+            return super().__getitem__(k)
+        except KeyError:
+            raise KeyError(f"Key '{k}' not in {sorted(self.keys())}")
+
+
 class SimulationExperiment(object):
     """Generic simulation experiment.
 
@@ -74,52 +83,71 @@ class SimulationExperiment(object):
 
         # settings
         self.settings = kwargs
-        self._models = None  # instances are loaded by runner !
+
+        # init variables
+        self._models = ExperimentDict()  # instances are loaded by runner !
+        self._data = ExperimentDict()
+        self._datasets = ExperimentDict()
+        self._fit_mappings = ExperimentDict()
+        self._simulations = ExperimentDict()
+        self._tasks = ExperimentDict()
+        self._results = ExperimentDict()
+        self._figures = ExperimentDict()
 
     def initialize(self):
         """
         :return:
         """
-        # load everything once, never call this function again
-        self._data = {}
-        self._datasets = self.datasets()
-        self._simulations = self.simulations()
+        # process all information necessary to run the simulations, i.e.,
+        # all data required from the model
+        self._datasets = self.datasets()  # storage of datasets
+        self._simulations = self.simulations()  # storage of simulation definition
         self._tasks = self.tasks()
         self._fit_mappings = self.fit_mappings()  # type: Dict[str, FitMapping]
         self.datagenerators()  # definition of data accessed later on (sets self._data)
 
-        # task results
-        self._results = None
-        # processing
-        self._functions = None
-
-        # figures
-        self._figures = None
-        self._figures_mpl = None
-
-        # validation
+        # validation of information
         self._check_keys()
         self._check_types()
+
+        print(self)
+
+    def __str__(self):
+        info = [
+            "-" * 80,
+            f"{self.__class__.__name__}: {self.sid}",
+            "-" * 80,
+            f"{'data':20} {list(self._data.keys())}",
+            f"{'datasets':20} {list(self._datasets.keys())}",
+            f"{'fit_mappings':20} {list(self._fit_mappings.keys())}",
+            f"{'simulations':20} {list(self._simulations.keys())}",
+            f"{'tasks':20} {list(self._tasks.keys())}",
+            f"{'results':20} {list(self._results.keys())}",
+            f"{'figures':20} {list(self._figures.keys())}",
+            "-" * 80,
+        ]
+        return "\n".join(info)
+
 
     # --- MODELS --------------------------------------------------------------
     def models(self) -> Dict[str, AbstractModel]:
         logger.debug(f"No models defined for '{self.sid}'.")
-        return {}
+        return ExperimentDict()
 
     # --- DATASETS ------------------------------------------------------------
     def datasets(self) -> Dict[str, DataSet]:
         """Dataset definition (experimental data)"""
-        return {}
+        return ExperimentDict()
 
     # --- TASKS ---------------------------------------------------------------
     def tasks(self) -> Dict[str, Task]:
         """Task definitions."""
-        return {}
+        return ExperimentDict()
 
     # --- SIMULATIONS ---------------------------------------------------------
     def simulations(self) -> Dict[str, AbstractSim]:
         """Simulation definitions."""
-        return {}
+        return ExperimentDict()
 
     # --- FITTING -------------------------------------------------------------
     def fit_mappings(self) -> Dict[str, FitMapping]:
@@ -127,16 +155,26 @@ class SimulationExperiment(object):
 
         Used for the optimization of parameters.
         """
-        return {}
+        return ExperimentDict()
 
     # --- FUNCTIONS -----------------------------------------------------------
     def datagenerators(self) -> None:
-        """DataGenerator definitions including functions."""
+        """DataGenerator definitions including functions.
+
+        All data which is accessed in a simulation result must be defined in a
+        data generator.
+        """
         return
 
     # --- RESULTS -------------------------------------------------------------
     @property
     def results(self) -> Dict[str, XResult]:
+        """Accessing the simulation results.
+
+        Results are mapped on tasks based on the task_ids.
+        :return:
+        """
+
         if self._results is None:
             self._run_tasks(self.simulator)
         return self._results
@@ -145,22 +183,11 @@ class SimulationExperiment(object):
     def figures(self) -> Dict[str, Figure]:
         """ sbmlsim figures.
 
-        These figures register their data automatically, whereas mpl figures
-        have to manually register data via the datagenerators to ensure data
-        is available.
+        Selections accessed in figures and analyses must be registered beforehand
+        via datagenerators.
 
-        These figures do not have access to concrete data, but only abstract
+        Most figures do not require access to concrete data, but only abstract
         data concepts.
-        """
-        return {}
-
-    def figures_mpl(self) -> Dict[str, FigureMPL]:
-        """ matplotlib figures.
-
-        Figures which require access to actual data, or manual manipulation
-        of matplotlib figure properties.
-        These are concrete instances of figures with data, but bound
-        to a plotting framework, here matplotlib.
         """
         return {}
 
@@ -226,22 +253,13 @@ class SimulationExperiment(object):
         Executes given experiment and stores results.
         Returns info dictionary.
         """
-        # some of the figures require actual numerical results!
-        # this results in execution of the tasks! On the other hand we
-        # want to register the data before running the tasks.
-        # FIXME (executed 2 times)
-        self._figures = self.figures()
-
         # run simulations
         self._run_tasks(simulator, reduced_selections=reduced_selections)  # sets self._results
-        # FIXME
-        # self._figures = self.figures()
 
         # evaluate mappings
         self.evaluate_mappings()
 
         # some of the figures require actual numerical results!
-        # FIXME (executed 2 times)
         self._figures = self.figures()
 
 
@@ -276,7 +294,7 @@ class SimulationExperiment(object):
         return ExperimentResult(experiment=self, output_path=output_path)
 
     @timeit
-    def _run_tasks(self, simulator, reduced_selections:bool = True):
+    def _run_tasks(self, simulator, reduced_selections: bool = True):
         """Run simulations & scans.
 
         This should not be called directly, but the results of the simulations
@@ -284,7 +302,7 @@ class SimulationExperiment(object):
         This allows to hash executed simulations.
         """
         if self._results is None:
-            self._results = {}
+            self._results = ExperimentDict()
 
         # get all tasks for given model
         model_tasks = defaultdict(list)

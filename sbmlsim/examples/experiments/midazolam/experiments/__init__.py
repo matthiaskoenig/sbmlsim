@@ -1,8 +1,10 @@
 from typing import Dict, Tuple
 from collections import namedtuple
 
-from sbmlsim.experiment import SimulationExperiment
+from sbmlsim.experiment import SimulationExperiment, ExperimentDict
 from sbmlsim.model import AbstractModel
+from sbmlsim.simulation import TimecourseSim
+from sbmlsim.simulation.sensititvity import ModelSensitivity
 from sbmlsim.task import Task
 
 from ...midazolam import MODEL_PATH
@@ -11,18 +13,50 @@ from ...midazolam import MODEL_PATH
 MolecularWeights = namedtuple('MolecularWeights', 'mid mid1oh')
 
 
+def exclude_parameters_midazolam(pid: str) -> bool:
+    """Filter for excluding parameter ids in sensitivity."""
+    if pid.startswith("Mr_"):
+        return True
+    if pid.startswith("conversion_"):
+        return True
+    if pid.startswith("F_"):
+        return True
+    if pid.startswith("BP_"):
+        return True
+
+    return False
+
+
 class MidazolamSimulationExperiment(SimulationExperiment):
     """Base class for all GlucoseSimulationExperiments. """
     def models(self) -> Dict[str, AbstractModel]:
-        return {
+        return ExperimentDict({
             "model": MODEL_PATH
-        }
+        })
 
     def tasks(self) -> Dict[str, Task]:
         if self.simulations():
-            return {
+            return ExperimentDict({
                 f"task_{key}": Task(model="model", simulation=key) for key in self.simulations()
-            }
+            })
+
+    def simulations(self, simulations=None) -> Dict[str, TimecourseSim]:
+        if simulations is None:
+            return simulations
+
+        # injecting additional scan dimension for timecourse simulation
+        for sim_key, sim in simulations.copy().items():
+            if isinstance(sim, TimecourseSim):
+                scan = ModelSensitivity.difference_sensitivity_scan(
+                    model=self._models["model"],
+                    simulation=sim,
+                    difference=0.5,
+                    exclude_filter=exclude_parameters_midazolam
+                )
+                simulations[f"{sim_key}_sensitivity"] = scan
+
+        # print("Simulation keys:", simulations.keys())
+        return simulations
 
     @property
     def Mr(self):

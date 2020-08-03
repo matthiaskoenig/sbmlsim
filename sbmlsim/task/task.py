@@ -18,6 +18,9 @@ class Task(object):
         self.model_id = model
         self.simulation_id = simulation
 
+    def __repr__(self):
+        return f"<sbmlsim.task.Task: {self.model_id}|{self.simulation_id}>"
+
     def to_dict(self):
         """ Convert to dictionary. """
         d = {

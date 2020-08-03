@@ -41,11 +41,11 @@ class Kupferschmidt1995(MidazolamSimulationExperiment):
         return dsets
 
     def simulations(self) -> Dict[str, TimecourseSim]:
-        return {
-            **self.simulation_mid()
-        }
+        return super(Kupferschmidt1995, self).simulations(
+            simulations={**self.simulations_mid()}
+        )
 
-    def simulation_mid(self) -> Dict[str, TimecourseSim]:
+    def simulations_mid(self) -> Dict[str, TimecourseSim]:
         """ Kupferschmidt1995
 
         - midazolam, iv, 5 [mg]
@@ -99,55 +99,56 @@ class Kupferschmidt1995(MidazolamSimulationExperiment):
         }
 
     def figure_mid(self):
-        title = f"{self.sid}"
         unit_time = "min"
         unit_mid = "nmol/ml"
         unit_mid1oh = "nmol/ml"
 
         fig = Figure(self, sid="Fig1",
-                     num_rows=2, num_cols=4,
-                     height=15, width=35)
+                     num_rows=2, num_cols=2, name=self.sid)
         plots = fig.create_plots(
             Axis("time", unit=unit_time),
             legend=True
         )
 
         # set titles and labs
-        plots[0].set_title(f"{title} (midazolam iv, 5 [mg])")
-        plots[1].set_title(f"{title} (midazolam iv, 5 [mg] + Grapefruit Juice)")
-        plots[2].set_title(f"{title} (midazolam po, 15 [mg])")
-        plots[3].set_title(f"{title} (midazolam po, 15 [mg] + Grapefruit Juice)")
-        for k in (0, 1, 2, 3):
+        plots[0].set_title("midazolam iv, 5 [mg]")
+        plots[1].set_title("midazolam iv, 5 [mg] + Grapefruit Juice")
+        plots[2].set_title("midazolam po, 15 [mg]")
+        plots[3].set_title("midazolam po, 15 [mg] + Grapefruit Juice")
+        for k in (0, 1):
             plots[k].set_yaxis("midazolam", unit_mid)
-        for k in (4, 5, 6, 7):
+            plots[k].xaxis.label_visible = False
+        for k in (2, 3):
             plots[k].set_yaxis("1-hydroxymidazolam", unit_mid1oh)
 
         # simulation
         plot_dict = {
-            "mid_iv_c": {'plot': (0, 4), 'label':'mid (ve blood; control)', "color": "black"},
-            "mid_po_c": {'plot': (2, 6), 'label':'mid (ve blood; control)', "color": "black"},
+            "mid_iv_c": {'plot': (0, 1), 'label': 'mid (ve blood; control)', "color": "black"},
+            "mid_po_c": {'plot': (2, 3), 'label': 'mid (ve blood; control)', "color": "black"},
         }
 
         for key, value in plot_dict.items():
-            #plot midazolam
-            p = plots[value["plot"][0]]
-            p.add_data(task=f"task_{key}", xid='time', yid='[Cve_mid]',
-                       label=value['label'], color=value['color'], linewidth=2)
-            #plot 1-hydroxymidazolam
-            p = plots[value["plot"][1]]
-            p.add_data(task=f"task_{key}", xid='time', yid='[Cve_mid1oh]',
-                       label=value['label'], color=value['color'], linewidth=2)
+            for suffix in ["_sensitivity", ""]:
+                task_id = f"task_{key}{suffix}"
+                # plot midazolam
+                p = plots[value["plot"][0]]
+                p.add_data(task=task_id, xid='time', yid='[Cve_mid]',
+                           label=value['label'], color=value['color'], linewidth=2)
+                # plot 1-hydroxymidazolam
+                p = plots[value["plot"][1]]
+                p.add_data(task=task_id, xid='time', yid='[Cve_mid1oh]',
+                           label=value['label'], color=value['color'], linewidth=2)
 
         # plot data
         data_def = {
-            "Fig1_midazolam_iv_control": {'plot': plots[0], 'key': 'control', 'color': 'black'},
-            "Fig1_midazolam_po_control": {'plot': plots[2], 'key': 'control', 'color': 'black'},
-            "Fig2_1-hydroxymidazolam_iv_control": {'plot': plots[4], 'key': 'control', 'color': 'black'},
-            "Fig2_1-hydroxymidazolam_po_control": {'plot': plots[6], 'key': 'control', 'color': 'black'},
+            "Fig1_midazolam_iv_control": {'plot': 0, 'key': 'control', 'color': 'black'},
+            "Fig1_midazolam_po_control": {'plot': 1, 'key': 'control', 'color': 'black'},
+            "Fig2_1-hydroxymidazolam_iv_control": {'plot': 2, 'key': 'control', 'color': 'black'},
+            "Fig2_1-hydroxymidazolam_po_control": {'plot': 3, 'key': 'control', 'color': 'black'},
         }
 
         for dset_key, dset_info in data_def.items():
-            p = dset_info['plot']
+            p = plots[dset_info['plot']]
             p.add_data(dataset=dset_key,
                        xid="time", yid="mean", yid_sd="mean_sd",
                        count=None, color=dset_info['color'],

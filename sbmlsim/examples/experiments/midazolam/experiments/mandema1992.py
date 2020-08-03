@@ -41,7 +41,7 @@ class Mandema1992(MidazolamSimulationExperiment):
         """
         Q_ = self.Q_
 
-        bodyweight = Q_(69, 'kg') # avg. bodyweight of 8 individuals (sd=6kg)
+        bodyweight = Q_(69, 'kg')  # avg. bodyweight of 8 individuals (sd=6kg)
         # mid_iv = Q_(0.1, 'mg/kg') * bodyweight
         mid_Ri = Q_(0.1, 'mg/kg') * bodyweight / Q_(15, 'min')
 
@@ -107,29 +107,27 @@ class Mandema1992(MidazolamSimulationExperiment):
     def figures(self) -> Dict[str, Figure]:
         return {
             **self.figure_mid(),
-            **self.figure_injection(),
         }
 
     def figure_mid(self):
-        title = f"{self.sid}"
         unit_time = "min"
         unit_mid = "nmol/ml"
         unit_mid1oh = "nmol/ml"
 
         fig = Figure(self, sid="Fig1",
-                     num_rows=2, num_cols=3,
-                     height=15, width=20)
+                     num_rows=2, num_cols=3, name=self.sid)
         plots = fig.create_plots(
             Axis("time", unit=unit_time),
             legend=True
         )
 
         # simulation
-        plots[0].set_title(f"{title} (midazolam iv, 0.1 [mg/kg])")
-        plots[1].set_title(f"{title} (1-hydroxymidazolam iv, 0.15 [mg/kg])")
-        plots[2].set_title(f"{title} (midazolam po, 7.5 [mg])")
+        plots[0].set_title("midazolam iv, 0.1 [mg/kg]")
+        plots[1].set_title("1-hydroxymidazolam iv, 0.15 [mg/kg]")
+        plots[2].set_title("midazolam po, 7.5 [mg]")
         for k in (0, 1, 2):
             plots[k].set_yaxis("midazolam", unit_mid)
+            plots[k].xaxis.label_visible = False
         for k in (3, 4, 5):
             plots[k].set_yaxis("1-hydroxymidazolam", unit_mid1oh)
 
@@ -143,11 +141,11 @@ class Mandema1992(MidazolamSimulationExperiment):
             # plot midazolam
             p = plot[0]
             p.add_data(task=f"task_{key}", xid="time", yid="[Cve_mid]",
-                       label="mid (ve blood)")
+                       label="mid (ve blood)", color="black")
             #plot 1-hydroxymidazolam
             p = plot[1]
             p.add_data(task=f"task_{key}", xid="time", yid="[Cve_mid1oh]",
-                       label="mid1oh (ve blood)")
+                       label="mid1oh (ve blood)", color="black")
 
         # plot data
         data_def = {
@@ -164,36 +162,3 @@ class Mandema1992(MidazolamSimulationExperiment):
                        count=None, color="black", label=dset_info['key'])
 
         return {"fig1": fig}
-
-    def figure_injection(self):
-        title = f"{self.sid}"
-        unit_time = "min"
-        unit = "nmol/ml"
-        unit_rate = "mmole_per_min"
-        unit_amount = "mmole"
-
-        fig = Figure(self, sid="Fig1",
-                     num_rows=2, num_cols=2,
-                     height=10, width=10)
-        plots = fig.create_plots(
-            Axis("time", unit=unit_time),
-            legend=True
-        )
-
-        # simulation
-        for k in (0, 1, 2, 3):
-            plots[k].set_title(f"{title} (1-hydroxymidazolam iv)")
-        plots[0].set_yaxis("IVDOSE_mid1oh", 'mg')
-        plots[1].set_yaxis("rate", unit_rate)
-        plots[2].set_yaxis("amount", unit_amount)
-
-        plots[0].add_data(task='task_mid1oh_iv', xid='time', yid="IVDOSE_mid1oh",
-                          label="IVDOSE_mid1oh", color="black")
-        # plots[1].add_data(task='task_mid1oh_iv', xid='time', yid="injection_mid1oh",
-        #                  label="injection_mid1oh", color="blue")
-        # plots[1].add_data(task='task_mid1oh_iv', xid='time', yid="infusion_mid1oh",
-        #                  label="infusion_mid1oh", color="darkorange")
-        plots[2].add_data(task='task_mid1oh_iv', xid='time', yid="Aurine_mid1oh",
-                          label="mid1oh (urine)", color="darkgrey")
-
-        return {"fig2": fig}
