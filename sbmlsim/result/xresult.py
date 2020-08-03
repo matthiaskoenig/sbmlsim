@@ -62,11 +62,8 @@ class XResult:
         """Dimensions for reducing operations."""
         return [dim_id for dim_id in self.dims if dim_id != "_time"]
 
-    # -------------------
-    # import and export
-    # -------------------
     @classmethod
-    def from_dfs(cls, dfs: List[pd.DataFrame], scan: ScanSim=None,
+    def from_dfs(cls, dfs: List[pd.DataFrame], scan: ScanSim = None,
                  udict: Dict = None, ureg: UnitRegistry = None) -> 'XResult':
         """Structure is based on the underlying scan."""
         if isinstance(dfs, pd.DataFrame):
@@ -80,7 +77,7 @@ class XResult:
 
         # add time dimension
         shape = [len(df)]
-        dims = ["_time"]  # FIXME: internal dimensions different for other simulation types
+        dims = ["_time"]
         coords = {"_time": df.time.values}
         columns = df.columns
         del df
@@ -101,16 +98,16 @@ class XResult:
         indices = Dimension.indices_from_dimensions(dimensions)
         data_dict = {col: np.empty(shape=shape) for col in columns}
         for k_df, df in enumerate(dfs):
-            for k_col, column in enumerate(columns):
-
-                # FIXME: speedup by restructuring data
+            for column in columns:
                 index = tuple([...] + list(indices[k_df]))  # trick to get the ':' in first time dimension
-                data_dict[column][index] = df[column].values
+                data = data_dict[column]
+                data[index] = df[column].values
 
         # Create the DataSet
         ds = xr.Dataset({key: xr.DataArray(data=data, dims=dims, coords=coords) for key, data in data_dict.items()})
         for key in data_dict:
             if key in udict:
+                # set units attribute
                 ds[key].attrs["units"] = udict[key]
         return XResult(xdataset=ds, udict=udict, ureg=ureg)
 

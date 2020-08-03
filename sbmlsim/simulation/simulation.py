@@ -52,7 +52,7 @@ class Dimension(object):
 
     @staticmethod
     def indices_from_dimensions(dimensions: List['Dimension']):
-        """Indices of all combinations of dimenions"""
+        """Indices of all combinations of dimensions"""
         index_vecs = [dim.index for dim in dimensions]
         return list(itertools.product(*index_vecs))
 

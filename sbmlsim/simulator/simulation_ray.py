@@ -5,6 +5,7 @@ import roadrunner
 from typing import List
 import pandas as pd
 import tempfile
+import numpy as np
 
 from sbmlsim.model import RoadrunnerSBMLModel, AbstractModel
 from sbmlsim.simulator import SimulatorSerial
@@ -117,9 +118,12 @@ class SimulatorParallel(SimulatorSerial):
             sim.strip_units()
 
         # Split simulations in chunks for actors
+        # !simulation have to stay in same order to reconstruct dimensions!
+        chunk_indices = np.array_split(np.arange(len(simulations)), self.actor_count)
         chunks = [[] for _ in range(self.actor_count)]
-        for k, tc_sim in enumerate(simulations):
-            chunks[k % self.actor_count].append(tc_sim)
+        for k, indices in enumerate(chunk_indices):
+            for index in indices:
+                chunks[k].append(simulations[index])
 
         tc_ids = []
         for k, simulator in enumerate(self.simulators):
@@ -128,6 +132,7 @@ class SimulatorParallel(SimulatorSerial):
 
         results = ray.get(tc_ids)
         # flatten list of lists [[df, df], [df, df], ...]
+        # indices = [k for sublist in chunks_indices for k in sublist]
         return [df for sublist in results for df in sublist]
 
     @staticmethod
