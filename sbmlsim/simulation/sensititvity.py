@@ -262,7 +262,7 @@ class ModelSensitivity(object):
 
 if __name__ == "__main__":
     from pprint import pprint
-    from sbmlsim.tests.constants import MODEL_REPRESSILATOR
+    from sbmlsim.tests import MODEL_REPRESSILATOR
 
     print("Loading model")
     model = RoadrunnerSBMLModel(MODEL_REPRESSILATOR)

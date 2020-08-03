@@ -21,17 +21,11 @@ class XResult:
     A wrapper around xr.Dataset which adds unit support via
     dictionary lookups.
     """
-    class XResultType(Enum):
-        TIMECOURSE = 1
-        STEADYSTATE = 2
 
-    def __init__(self, xdataset: xr.Dataset,
-                 udict: Dict = None, ureg: UnitRegistry=None,
-                 type: XResultType = XResultType.TIMECOURSE):
+    def __init__(self, xdataset: xr.Dataset, udict: Dict = None, ureg: UnitRegistry=None):
         self.xds = xdataset
         self.udict = udict
         self.ureg = ureg
-        self.type = type
 
     def __getitem__(self, key) -> xr.DataArray:
         return self.xds[key]
@@ -45,39 +39,8 @@ class XResult:
             # forward lookup to xds
             return getattr(self.xds, name)
 
-    # TODO: general dimension reduction (for complete dataset)
-    '''
-    def dim_op(self, f_op, key=None):
-        data = self.xds[key] if key else self.xds
-        f = getattr(data, "f_op")
-        res = f(dim=self._redop_dims(), skipna=True)
-        if key: 
-            return res.values * self.ureg(self.udict[key])
-        else:
-            return res
-    '''
-
-    def is_timecourse(self) -> bool:
-        """Check if timecourse"""
-        # FIXME: better implementation necessary
-        result = True
-        xds = self.xds
-        if len(xds.dims) == 2:
-            for dim in xds.dims:
-                if dim == "_time":
-                    continue
-                else:
-                    if xds.dims[dim] != 1:
-                        result = False
-        else:
-            return False
-        return result
-
-    def to_mean_dataframe(self):
-        res = {}
-        for col in self.xds:
-            res[col] = self.dim_mean(key=col)
-        return pd.DataFrame(res)
+    def __str__(self):
+        return f"<XResult: {self.xds.__repr__()},\n{self.udict}>"
 
     def dim_mean(self, key):
         """Mean over all added dimensions"""
@@ -97,10 +60,7 @@ class XResult:
 
     def _redop_dims(self) -> List[str]:
         """Dimensions for reducing operations."""
-        if self.type == self.XResultType.TIMECOURSE:
-            return [dim_id for dim_id in self.dims if dim_id != "_time"]
-        else:
-            return [dim_id for dim_id in self.dims if dim_id != "_time"]
+        return [dim_id for dim_id in self.dims if dim_id != "_time"]
 
     # -------------------
     # import and export
@@ -148,12 +108,6 @@ class XResult:
                 data_dict[column][index] = df[column].values
 
         # Create the DataSet
-        _df = None
-        if len(dfs) == 1:
-            # store a copy of single timecourse for serialization
-            # FIXME: this is a hack for now
-            _df = dfs[0].copy()
-
         ds = xr.Dataset({key: xr.DataArray(data=data, dims=dims, coords=coords) for key, data in data_dict.items()})
         for key in data_dict:
             if key in udict:
@@ -164,28 +118,41 @@ class XResult:
         """Store results as netcdf."""
         self.xds.to_netcdf(path_nc)
 
-    def to_tsv(self, path_tsv):
-        """
-        if self._df is not None:
-            with pd.HDFStore(path, complib="zlib", complevel=9) as store:
-                for k, frame in enumerate([self._df]):
-                    key = "df{}".format(k)
-                    store.put(key, frame)
-        """
-        xds = self.xds  # type: xr.Dataset
-
-        # Check if data can be converted to DataFrame (only timecourse data)
+    def is_timecourse(self) -> bool:
+        """Check if timecourse"""
+        # FIXME: better implementation necessary
+        is_tc = True
+        xds = self.xds
         if len(xds.dims) == 2:
             for dim in xds.dims:
                 if dim == "_time":
                     continue
                 else:
-                    if xds.dims[dim] > 1:
-                        logger.warning("No TSV created for higher dimensional data.")
-                        return
+                    if xds.dims[dim] != 1:
+                        is_tc = False
+        else:
+            return False
+        return is_tc
 
-        data = {v: xds[v].values.flatten() for v in xds.keys()}
+    def to_mean_dataframe(self):
+        res = {}
+        for col in self.xds:
+            res[col] = self.dim_mean(key=col)
+        return pd.DataFrame(res)
+
+    def to_dataframe(self):
+        if not self.is_timecourse():
+            # only timecourse data can be converted to DataFrame
+            logger.warning("Higher dimensional data, data will be mean.")
+            return
+
+        data = {v: self.xds[v].values.flatten() for v in self.xds.keys()}
         df = pd.DataFrame(data)
+        return df
+
+    def to_tsv(self, path_tsv):
+        """Write data to tsv. """
+        df = self.to_dataframe()
         df.to_csv(path_tsv, sep="\t", index=False)
 
     @staticmethod
@@ -197,7 +164,8 @@ class XResult:
 
 if __name__ == "__main__":
     from sbmlsim.model import RoadrunnerSBMLModel
-    from sbmlsim.tests.constants import MODEL_REPRESSILATOR
+    from sbmlsim.tests import MODEL_REPRESSILATOR
+
     r = RoadrunnerSBMLModel(source=MODEL_REPRESSILATOR)._model
     dfs = []
     for _ in range(10):

@@ -5,7 +5,7 @@ import numpy as np
 from sbmlsim.simulator import SimulatorSerial as Simulator
 from sbmlsim.simulation import Timecourse, TimecourseSim, ScanSim, Dimension
 from sbmlsim.plot.plotting_matplotlib import plt, add_line
-from sbmlsim.tests.constants import MODEL_REPRESSILATOR
+from sbmlsim.tests import MODEL_REPRESSILATOR
 
 
 def test_plotting():

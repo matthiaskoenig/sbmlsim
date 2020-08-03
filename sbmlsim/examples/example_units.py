@@ -9,7 +9,7 @@ import numpy as np
 from sbmlsim.simulator.simulation_serial import SimulatorSerial as Simulator
 from sbmlsim.simulation import Timecourse, TimecourseSim, ScanSim, Dimension
 from sbmlsim.result import XResult
-from sbmlsim.tests.constants import MODEL_DEMO
+from sbmlsim.tests import MODEL_DEMO
 from sbmlsim.plot.plotting_matplotlib import add_line
 
 

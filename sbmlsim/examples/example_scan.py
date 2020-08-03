@@ -7,7 +7,7 @@ from sbmlsim.simulation import Timecourse, TimecourseSim, ScanSim, Dimension
 from sbmlsim.simulator import SimulatorSerial
 from sbmlsim.result import XResult
 
-from sbmlsim.tests.constants import MODEL_REPRESSILATOR
+from sbmlsim.tests import MODEL_REPRESSILATOR
 
 
 def run_scan0d() -> XResult:

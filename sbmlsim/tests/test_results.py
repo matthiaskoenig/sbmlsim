@@ -2,7 +2,7 @@ import pandas as pd
 
 from sbmlsim.model import RoadrunnerSBMLModel
 from sbmlsim.result import XResult
-from sbmlsim.tests.constants import MODEL_REPRESSILATOR
+from sbmlsim.tests import MODEL_REPRESSILATOR
 
 
 def test_result():

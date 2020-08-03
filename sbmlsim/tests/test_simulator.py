@@ -4,7 +4,7 @@ from sbmlsim.simulator import SimulatorSerial
 from sbmlsim.simulator.simulation_ray import SimulatorParallel
 from sbmlsim.model import RoadrunnerSBMLModel
 
-from sbmlsim.tests.constants import MODEL_REPRESSILATOR
+from sbmlsim.tests import MODEL_REPRESSILATOR
 
 
 def _tolerance_test(r: roadrunner.RoadRunner,

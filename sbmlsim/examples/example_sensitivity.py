@@ -6,7 +6,7 @@ from sbmlsim.simulation import TimecourseSim, Timecourse, ScanSim, Dimension
 from sbmlsim.simulation.sensititvity import ModelSensitivity
 
 from sbmlsim.plot.plotting_matplotlib import add_line, plt
-from sbmlsim.tests.constants import MODEL_REPRESSILATOR
+from sbmlsim.tests import MODEL_REPRESSILATOR
 
 
 def plot_results(xres):

@@ -9,7 +9,7 @@ from sbmlsim.simulation import Timecourse, TimecourseSim
 from sbmlsim.plot.plotting_matplotlib import add_line, plt
 from sbmlsim.result import XResult
 
-from sbmlsim.tests.constants import MODEL_REPRESSILATOR
+from sbmlsim.tests import MODEL_REPRESSILATOR
 
 import pandas as pd
 

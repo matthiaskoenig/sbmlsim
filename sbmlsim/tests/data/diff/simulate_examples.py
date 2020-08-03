@@ -7,7 +7,7 @@ from sbmlsim.model import RoadrunnerSBMLModel
 from sbmlsim.simulation import TimecourseSim
 from matplotlib import pyplot as plt
 
-from sbmlsim.tests.constants import DATA_PATH, MODEL_REPRESSILATOR
+from sbmlsim.tests import DATA_PATH, MODEL_REPRESSILATOR
 
 
 def run_simulations(create_files=True):
