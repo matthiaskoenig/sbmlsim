@@ -1,6 +1,5 @@
 """
-Helpers for working with simulation results.
-Handles the storage of simulations.
+Module for encoding simulation results and processed data.
 """
 from typing import List, Dict
 import logging
@@ -19,10 +18,8 @@ logger = logging.getLogger(__name__)
 
 class XResult:
     """
-    Always check if returned quantities have units or not!
-
-    FIXME: write the units in the attrs
-    FIXME: helper method for to DataFrame
+    A wrapper around xr.Dataset which adds unit support via
+    dictionary lookups.
     """
     class XResultType(Enum):
         TIMECOURSE = 1
@@ -62,6 +59,7 @@ class XResult:
 
     def is_timecourse(self) -> bool:
         """Check if timecourse"""
+        # FIXME: better implementation necessary
         result = True
         xds = self.xds
         if len(xds.dims) == 2:
@@ -104,6 +102,9 @@ class XResult:
         else:
             return [dim_id for dim_id in self.dims if dim_id != "_time"]
 
+    # -------------------
+    # import and export
+    # -------------------
     @classmethod
     def from_dfs(cls, dfs: List[pd.DataFrame], scan: ScanSim=None,
                  udict: Dict = None, ureg: UnitRegistry = None) -> 'XResult':
@@ -164,17 +165,17 @@ class XResult:
         self.xds.to_netcdf(path_nc)
 
     def to_tsv(self, path_tsv):
-        '''
+        """
         if self._df is not None:
             with pd.HDFStore(path, complib="zlib", complevel=9) as store:
                 for k, frame in enumerate([self._df]):
                     key = "df{}".format(k)
                     store.put(key, frame)
-        '''
+        """
         xds = self.xds  # type: xr.Dataset
 
         # Check if data can be converted to DataFrame (only timecourse data)
-        if (len(xds.dims) == 2):
+        if len(xds.dims) == 2:
             for dim in xds.dims:
                 if dim == "_time":
                     continue
@@ -205,3 +206,4 @@ if __name__ == "__main__":
 
     xres = XResult.from_dfs(dfs)
     print(xres)
+

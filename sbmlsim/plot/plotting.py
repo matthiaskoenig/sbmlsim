@@ -477,25 +477,15 @@ class Plot(BasePlotObject):
     def add_data(self,
                  xid: str, yid: str, yid_sd=None, yid_se=None, count: int=None,
                  dataset: str=None, task: str=None,
-                 label='__nolabel__',
-                 xf=1.0, yf=1.0, single_lines=False,
+                 label='__nolabel__', single_lines=False,
                  **kwargs):
-        """Wrapper around plotting.
-
-        """
+        """Wrapper around plotting."""
         if yid_sd and yid_se:
             raise ValueError("Set either 'yid_sd' or 'yid_se', not both.")
         if dataset is not None and task is not None:
             raise ValueError("Set either 'dataset' or 'task', not both.")
         if dataset is None and task is None:
             raise ValueError("Set either 'dataset' or 'task'.")
-
-        for f in [xf, yf]:
-            if hasattr(f, "magnitude"):
-                f = f.magnitude
-                if abs(f-1.0) > 1E-8:
-                    # FIXME: fix scaling factors
-                    raise ValueError("Scaling factors not supported yet !!!")
 
         # experiment to resolve data
         experiment = self.experiment

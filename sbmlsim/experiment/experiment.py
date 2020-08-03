@@ -1,7 +1,7 @@
 import logging
 from pathlib import Path
 import json
-from typing import Dict, List
+from typing import Dict, List, Iterable
 from collections import defaultdict
 import multiprocessing
 
@@ -165,6 +165,18 @@ class SimulationExperiment(object):
         data generator.
         """
         return
+
+    def add_selections(self, selections: Iterable[str], task_ids: str = None):
+        """Add selections to given tasks.
+
+        Selections are necessary to access data from simulations.
+        """
+        if task_ids is None:
+            task_ids = self._tasks.keys()
+
+        for task_id in task_ids:
+            for selection in selections:
+                Data(self, index=selection, task=task_id)
 
     # --- RESULTS -------------------------------------------------------------
     @property

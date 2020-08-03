@@ -41,20 +41,23 @@ class PKScanExperiment(MidazolamSimulationExperiment):
 
         return tcscans
 
-    def datagenerators(self) -> None:
-        for sim_key in self._simulations:
-            for selection in ["time", "[Cve_mid]", "[Cve_mid1oh]", "IVDOSE_mid",
-                              "PODOSE_mid"]:
-                Data(self, index=selection, task=f"task_{sim_key}")
+    def datagenerators(self) -> Dict[str, DataGenerator]:
+        self.add_selections(selections=[
+            "time", "[Cve_mid]", "[Cve_mid1oh]", "IVDOSE_mid", "PODOSE_mid"
+        ])
+
+        # add some custom data calculation
+
+
 
     def figures(self) -> Dict[str, Figure]:
         return {
-            **self.fig1(),
-            # **self.Fig2(),
+            **self.fig_timecourse(),
+            **self.fig_dose(),
             # **self.Fig3(),
         }
 
-    def fig1(self) -> Dict[str, Figure]:
+    def fig_timecourse(self) -> Dict[str, Figure]:
         unit_time = "min"
         unit_mid = "nmol/ml"
         unit_mid1oh = "nmol/ml"
@@ -86,6 +89,36 @@ class PKScanExperiment(MidazolamSimulationExperiment):
                                 color="black")
 
         return ExperimentDict({"fig1": fig})
+
+    def fig_dose(self) -> Dict[str, Figure]:
+        fig_id = "fig_dose"
+        unit_time = "min"
+        unit_mid = "nmol/ml"
+        unit_mid1oh = "nmol/ml"
+        unit_dose = "mg"
+
+        fig = Figure(self, sid=fig_id,
+                     num_rows=1, num_cols=2, name=self.sid)
+        plots = fig.create_plots(
+            legend=True
+        )
+
+        # set titles and labs
+        plots[0].set_title("scan po")
+        plots[1].set_title("scan iv")
+        for k in (0, 1):
+            plots[k].set_xaxis("dose", unit_dose)
+            plots[k].set_yaxis("concentration", unit_mid)
+
+        # simulation
+        for k, sim_id in enumerate(["po_scan", "iv_scan"]):
+            task_id = f"task_{sim_id}"
+            xid = f"{sim_id.split('_')[0].upper()}DOSE_mid"
+            for sid in ["mid", "mid1oh"]:
+                plots[k].add_data(task=task_id, xid=xid, yid=f'[Cve_{sid}]',
+                                  color="black", linestyle="")
+
+        return ExperimentDict({fig_id: fig})
 
     '''
     def Fig3(self) -> Dict[str, Figure]:
