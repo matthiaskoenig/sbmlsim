@@ -265,9 +265,8 @@ class OptimizationProblem(object):
                         else:
                             raise ValueError(f"Local weighting not supported: {self.weighting_local}")
                     else:
-                        logger.warning(f"Using local weighting '{self.weighting_local}', but "
-                                       f"no errors exist in reference data. Using default "
-                                       f"weights of 1.0 for all data points.")
+                        logger.warning(f"'{sid}.{mapping_id}': Using '{self.weighting_local}' with "
+                                       f"no errors in reference data.")
 
                 if False:
                     print("-" * 80)
@@ -508,9 +507,11 @@ class OptimizationProblem(object):
                 logger.error(f"RuntimeError in ODE integration (residuals for {x}): {err}")
                 res_abs = 5.0 * self.y_references[k]  # total error
 
-            res_abs_normed = res_abs / self.y_references[k].mean()  # FIXME: why strange values here?
-            res_rel = res_abs / self.y_references[k]  # FIXME: RuntimeWarning: invalid value encountered in true_divide
-            res_rel[np.isnan(res_rel)] = 0  # no cost contribution
+            res_abs_normed = res_abs / self.y_references[k].mean()
+            with np.errstate(invalid='ignore'):
+                res_rel = res_abs / self.y_references[k]
+            # no cost contribution of zero values
+            res_rel[np.isnan(res_rel)] = 0
             res_rel[np.isinf(res_rel)] = 0
 
             # select correct residuals
