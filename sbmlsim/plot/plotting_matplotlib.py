@@ -46,7 +46,8 @@ class MatplotlibFigureSerializer(object):
     """
     Serializing figure to matplotlib figure.
     """
-    def to_figure(figure: Figure) -> plt.Figure:
+    @staticmethod
+    def to_figure(figure: Figure) -> FigureMPL:
         """Convert sbmlsim.Figure to matplotlib figure."""
 
         # create new figure
@@ -194,22 +195,32 @@ class MatplotlibFigureSerializer(object):
             if plot.name and plot.title_visible:
                 ax.set_title(plot.name)
 
+            def unit_str(ax: Axis):
+                return ax.unit if len(str(ax.unit)) > 0 else '-'
+
             if xax:
                 ax.set_xscale(get_scale(xax))
-                ax.set_xlim(xmin=xax.min, xmax=xax.max)
+
+                if (xax.min is not None) or (xax.max is not None):
+                    # (None, None) locks the axis limits to defaults [0,1]
+                    ax.set_xlim(xmin=xax.min, xmax=xax.max)
+
                 if xax.label_visible:
                     if xax.name:
-                        ax.set_xlabel(f"{xax.name} [{xax.unit if len(xax.unit)>0 else '-'}]")
+                        ax.set_xlabel(f"{xax.name} [{unit_str(xax)}]")
                 if not xax.ticks_visible:
                     ax.set_xticklabels([])  # hide ticks
 
             if yax:
                 ax.set_yscale(get_scale(yax))
-                ax.set_ylim(ymin=yax.min, ymax=yax.max)
+
+                if (yax.min is not None) or (yax.max is not None):
+                    # (None, None) locks the axis limits to defaults [0,1]
+                    ax.set_ylim(ymin=yax.min, ymax=yax.max)
 
                 if yax.label_visible:
                     if yax.name:
-                        ax.set_ylabel(f"{yax.name} [{yax.unit if len(yax.unit)>0 else '-'}]")
+                        ax.set_ylabel(f"{yax.name} [{unit_str(yax)}]")
                 if not yax.ticks_visible:
                     ax.set_yticklabels([])  # hide ticks
 

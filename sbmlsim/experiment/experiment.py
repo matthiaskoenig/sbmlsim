@@ -110,7 +110,7 @@ class SimulationExperiment(object):
         self._check_keys()
         self._check_types()
 
-        print(self)
+        # print(self)
 
     def __str__(self):
         info = [
