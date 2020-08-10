@@ -1,7 +1,7 @@
 """
 Definition of FitProblem.
 """
-from typing import List, Dict, Iterable, Set
+from typing import List, Dict, Iterable, Set, Union
 import logging
 import numpy as np
 
@@ -133,7 +133,8 @@ class FitData(object):
                  xid: str, yid: str,
                  xid_sd: str=None, xid_se: str=None,
                  yid_sd: str=None, yid_se: str=None,
-                 dataset: str=None, task: str=None, function: str=None, count: int=None):
+                 count: Union[int, str] = None,
+                 dataset: str=None, task: str=None, function: str=None):
 
         self.dset_id = dataset
         self.task_id = task
@@ -153,15 +154,23 @@ class FitData(object):
         self.y_sd = None
         self.y_se = None
         if xid_sd:
+            if xid_sd.endswith("se"):
+                logger.warning("SD error column ends with 'se', check names.")
             self.x_sd = Data(experiment=experiment, index=xid_sd, task=self.task_id,
                              dataset=self.dset_id, function=self.function)
         if xid_se:
+            if xid_se.endswith("sd"):
+                logger.warning("SE error column ends with 'sd', check names.")
             self.x_se = Data(experiment=experiment, index=xid_se, task=self.task_id,
                              dataset=self.dset_id, function=self.function)
         if yid_sd:
+            if yid_sd.endswith("se"):
+                logger.warning("SD error column ends with 'se', check names.")
             self.y_sd = Data(experiment=experiment, index=yid_sd, task=self.task_id,
                              dataset=self.dset_id, function=self.function)
         if yid_se:
+            if yid_se.endswith("sd"):
+                logger.warning("SE error column ends with 'sd', check names.")
             self.y_se = Data(experiment=experiment, index=yid_se, task=self.task_id,
                              dataset=self.dset_id, function=self.function)
 

@@ -139,9 +139,10 @@ class XResult:
 
     def to_dataframe(self):
         if not self.is_timecourse():
-            # only timecourse data can be converted to DataFrame
+            # only timecourse data can be uniquely converted to DataFrame
+            # higher dimensional data will be flattened.
             logger.warning("Higher dimensional data, data will be mean.")
-            return
+
 
         data = {v: self.xds[v].values.flatten() for v in self.xds.keys()}
         df = pd.DataFrame(data)
@@ -150,7 +151,10 @@ class XResult:
     def to_tsv(self, path_tsv):
         """Write data to tsv. """
         df = self.to_dataframe()
-        df.to_csv(path_tsv, sep="\t", index=False)
+        if df is not None:
+            df.to_csv(path_tsv, sep="\t", index=False)
+        else:
+            logger.warning("Could not write TSV")
 
     @staticmethod
     def from_netcdf(path):

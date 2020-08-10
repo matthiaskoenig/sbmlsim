@@ -496,9 +496,13 @@ class Plot(BasePlotObject):
         yerr = None
         yerr_label = ''
         if yid_sd:
+            if yid_sd.endswith("se"):
+                logger.warning("SD error column ends with 'se', check names.")
             yerr_label = "±SD"
             yerr = Data(experiment, yid_sd, dataset=dataset, task=task)
         elif yid_se:
+            if yid_se.endswith("sd"):
+                logger.warning("SE error column ends with 'sd', check names.")
             yerr_label = "±SE"
             yerr = Data(experiment, yid_se, dataset=dataset, task=task)
 
