@@ -3,7 +3,7 @@ Runner for SimulationExperiments.
 """
 
 from pathlib import Path
-from typing import List, Iterable
+from typing import List, Iterable, Tuple
 import logging
 
 
@@ -83,8 +83,10 @@ class ExperimentRunner(object):
             output_path.mkdir(parents=True)
 
         exp_results = []
-        for sid, experiment in self.experiments.items():
+        for sid, experiment in self.experiments.items():  # type: SimulationExperiment
             logger.info(f"Running SimulationExperiment: {sid}")
+
+            # ExperimentResult used to create report
             result = experiment.run(
                 simulator=self.simulator,
                 output_path=output_path / sid,

@@ -274,7 +274,6 @@ class SimulationExperiment(object):
         # some of the figures require actual numerical results!
         self._figures = self.figures()
 
-
         # create outputs
         if output_path is None:
             if save_results:
@@ -533,3 +532,10 @@ class ExperimentResult:
     """Result of a simulation experiment"""
     experiment: SimulationExperiment
     output_path: Path
+
+    def to_dict(self):
+        """Information needed for the report"""
+        d = {
+            'output_path': self.output_path,
+
+        }

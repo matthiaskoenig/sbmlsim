@@ -2,22 +2,23 @@
 Run some example experiments.
 """
 from pathlib import Path
-from sbmlsim.experiment import ExperimentReport, ExperimentRunner
+from sbmlsim.experiment import ExperimentRunner
+from sbmlsim.reports.report import ExperimentReport
 from sbmlsim.simulator import SimulatorSerial
 from sbmlsim.simulator.simulation_ray import SimulatorParallel
 from sbmlsim.utils import timeit
 
 from sbmlsim.examples.experiments.midazolam.experiments.mandema1992 import Mandema1992
 from sbmlsim.examples.experiments.midazolam.experiments.kupferschmidt1995 import Kupferschmidt1995
-from sbmlsim.examples.experiments.midazolam.experiments.pkscan import PKScanExperiment
+# from sbmlsim.examples.experiments.midazolam.experiments.pkscan import PKScanExperiment
 
 
 @timeit
 def midazolam_experiment():
     BASE_PATH = Path(__file__).parent
     runner = ExperimentRunner(
-        # [Mandema1992, Kupferschmidt1995, PKScanExperiment],
-        [PKScanExperiment],
+        [Mandema1992, Kupferschmidt1995],
+        # [PKScanExperiment],
         # simulator=SimulatorSerial(),
         simulator=SimulatorParallel(),
         base_path=BASE_PATH,
@@ -27,6 +28,7 @@ def midazolam_experiment():
         output_path=BASE_PATH / "results",
         show_figures=True
     )
+
     report = ExperimentReport(results)
     report.create_report(output_path=BASE_PATH / "results")
 

@@ -100,6 +100,8 @@ setup(
         "coloredlogs",
         "pyDOE>=0.3.8",
 
+        "pylatex",
+
         "Sphinx",
         "sphinx_rtd_theme",
         "recommonmark",

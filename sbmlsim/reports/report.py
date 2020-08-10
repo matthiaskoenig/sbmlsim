@@ -14,15 +14,61 @@ from sbmlsim import __version__
 from sbmlsim.experiment import SimulationExperiment, ExperimentResult
 from sbmlsim import BASE_PATH
 
-TEMPLATE_PATH = BASE_PATH / "experiment" / "templates"
 logger = logging.getLogger(__name__)
+TEMPLATE_PATH = BASE_PATH / "experiment" / "templates"
+
+class ReportResult:
+
+    def __init__(self):
+        self.report_results= OrderedDict()  # type: OrderedDict[str, Dict]
+
+    def add_experiment_result(self, exp_result: ExperimentResult):
+        """Retrieves information for report from the ExperimentResult.
+
+        :param ExperimentResult:
+        :return:
+        """
+        experiment = exp_result.experiment  # type: SimulationExperiment
+        output_path = exp_result.output_path
+        exp_id = experiment.sid
+        exp_abs_path = output_path / exp_id
+        exp_rel_path = os.path.relpath(str(output_path), str(exp_abs_path))
+
+        # model links
+        models = {}
+        for model_key, model_path in experiment.model():
+            models[model_key] = os.path.relpath(
+                model_path, str(exp_abs_path)
+            )
+
+        # code path
+        code_path = sys.modules[experiment.__module__].__file__
+        with open(code_path, "r") as f_code:
+            code = f_code.read()
+        code_path = os.path.relpath(code_path, str(exp_abs_path))
+
+        datasets = {key: exp_rel_path / key for key in experiment._datasets.keys()}
+
+        # parse meta data for figures (mapping based on figure keys)
+        figures = {key: exp_rel_path / key for key in experiment._figures.keys()}
+
+        self.report_results[exp_id] = {
+            'exp_id': exp_id,
+            'exp_rel_path': exp_rel_path,
+            'models': models,
+            'datasets': datasets,
+            'figures': figures,
+            'code_path': code_path,
+            'code': code,
+        }
 
 
-class ExperimentReport(object):
+class ExperimentReport:
 
     class ReportType(Enum):
         MARKDOWN = 1
         HTML = 2
+        LATEX = 3
 
     def __init__(self, results: List[ExperimentResult],
                  metadata: Dict = None,
