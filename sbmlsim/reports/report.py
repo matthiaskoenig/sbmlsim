@@ -9,18 +9,20 @@ from collections import OrderedDict
 from typing import Dict, List
 from pathlib import Path
 from enum import Enum
+from pprint import pprint
 
 from sbmlsim import __version__
 from sbmlsim.experiment import SimulationExperiment, ExperimentResult
 from sbmlsim import BASE_PATH
 
 logger = logging.getLogger(__name__)
-TEMPLATE_PATH = BASE_PATH / "experiment" / "templates"
+TEMPLATE_PATH = BASE_PATH / "reports" / "templates"
 
-class ReportResult:
+
+class ReportResults:
 
     def __init__(self):
-        self.report_results= OrderedDict()  # type: OrderedDict[str, Dict]
+        self.data = OrderedDict()  # type: OrderedDict[str, Dict]
 
     def add_experiment_result(self, exp_result: ExperimentResult):
         """Retrieves information for report from the ExperimentResult.
@@ -29,32 +31,30 @@ class ReportResult:
         :return:
         """
         experiment = exp_result.experiment  # type: SimulationExperiment
-        output_path = exp_result.output_path
+        abs_path = exp_result.output_path
+        rel_path = Path(".")
         exp_id = experiment.sid
-        exp_abs_path = output_path / exp_id
-        exp_rel_path = os.path.relpath(str(output_path), str(exp_abs_path))
 
         # model links
         models = {}
-        for model_key, model_path in experiment.model():
-            models[model_key] = os.path.relpath(
-                model_path, str(exp_abs_path)
-            )
+        for model_key, model_path in experiment.models().items():
+            models[model_key] = Path(os.path.relpath(
+                model_path, str(abs_path)
+            ))
 
         # code path
         code_path = sys.modules[experiment.__module__].__file__
         with open(code_path, "r") as f_code:
             code = f_code.read()
-        code_path = os.path.relpath(code_path, str(exp_abs_path))
+        code_path = Path(os.path.relpath(code_path, str(abs_path)))
 
-        datasets = {key: exp_rel_path / key for key in experiment._datasets.keys()}
+        datasets = {key: rel_path / f"{exp_id}_{key}.tsv" for key in experiment._datasets.keys()}
 
         # parse meta data for figures (mapping based on figure keys)
-        figures = {key: exp_rel_path / key for key in experiment._figures.keys()}
+        figures = {key: rel_path / f"{exp_id}_{key}.svg" for key in experiment._figures.keys()}
 
-        self.report_results[exp_id] = {
+        self.data[exp_id] = {
             'exp_id': exp_id,
-            'exp_rel_path': exp_rel_path,
             'models': models,
             'datasets': datasets,
             'figures': figures,
@@ -70,14 +70,12 @@ class ExperimentReport:
         HTML = 2
         LATEX = 3
 
-    def __init__(self, results: List[ExperimentResult],
+    def __init__(self, results: ReportResults,
                  metadata: Dict = None,
                  template_path=TEMPLATE_PATH):
-        self.results = results
-        if metadata is None:
-            metadata = dict()
 
-        self.metadata = metadata
+        self.results = results
+        self.metadata = metadata if metadata else dict()
         self.template_path = template_path
 
     def create_report(self, output_path: Path, report_type: ReportType=ReportType.HTML):
@@ -110,44 +108,16 @@ class ExperimentReport:
 
         # report for simulation experiment
         exp_ids = OrderedDict()
-        for exp_result in self.results:  # type: ExperimentResult
-            experiment = exp_result.experiment  # type: SimulationExperiment
-            exp_id = experiment.sid
+        for exp_id, context in self.results.data.items():
+            pprint(context)
 
-            # relative paths to output path
-            model_path = ""  # FIXME os.path.relpath(str(exp_result.model_path), output_path)
-            data_path = os.path.relpath(str(experiment.data_path), os.path.join(output_path, exp_id))
-            results_path = os.path.relpath(str(exp_result.output_path), os.path.join(output_path, exp_id))
-
-            # code path
-            code_path = sys.modules[experiment.__module__].__file__
-            with open(code_path, "r") as f_code:
-                code = f_code.read()
-            code_path = os.path.relpath(code_path, os.path.join(output_path, exp_id))
-
-            # parse meta data for figures (mapping based on figure keys)
-            figures_keys = sorted(experiment._figures.keys())
-            figures = {key: self.metadata.get(f"{exp_id}_{key}", None) for key in figures_keys}
-
-            context = {
-                'exp_id': exp_id,
-                'results_path': results_path,  # prefix path for all results (figures, json, ...)
-                'model_path': model_path,
-                'data_path': data_path,
-                'code_path': code_path,
-                'datasets': sorted(experiment._datasets.keys()),
-                'simulations': sorted(experiment._simulations.keys()),
-                'figures': figures,
-                'code': code,
-            }
-            exp_ids[exp_id] = context
             write_report(name=f"{exp_id}/{exp_id}", context=context,
                          template_str=f"experiment.{suffix}")
 
         # index file
-        context = {
-            'version': __version__,
-            'exp_ids': exp_ids,
-        }
-        write_report(name="index", context=context,
-                     template_str=f'index.{suffix}')
+        # context = {
+        #     'version': __version__,
+        #     'exp_ids': exp_ids,
+        # }
+        # write_report(name="index", context=context,
+        #              template_str=f'index.{suffix}')

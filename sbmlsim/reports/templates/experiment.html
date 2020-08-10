@@ -1,80 +1,117 @@
+<!DOCTYPE html>
 <html>
-<head>
+<head><meta http-equiv="content-type" content="text/html; charset=utf-8" />
+    <title>{{exp_id}}</title>
+<link href="https://fonts.googleapis.com/css?family=Roboto:100,300,400,500,700,900" rel="stylesheet">
+<link href="https://cdn.jsdelivr.net/npm/@mdi/font@4.x/css/materialdesignicons.min.css" rel="stylesheet">
+<!--<link href="https://cdn.jsdelivr.net/npm/vuetify@2.x/dist/vuetify.min.css" rel="stylesheet">-->
+
+
+<link rel="stylesheet" href="//cdnjs.cloudflare.com/ajax/libs/highlight.js/10.1.2/styles/default.min.css">
+
+<!-- and it's easy to individually load additional languages -->
+    <!--
+<script charset="UTF-8" src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/10.1.2/languages/go.min.js"></script>
+-->
+
+
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, minimal-ui">
+
 </head>
+
 <body>
+<div id="app">
+    <!-- Vue app-->
+    <v-app>
+        <v-content>
 
-        <a href="../index.html">Experiments</a>
+            <a href="../index.html">Experiments</a>
+            <h1>{{ exp_id }}</h1>
 
-        <h1>{{ exp_id }}</h1>
+            <h2>Models</h2>
+            <p>
+            <ul>
+                {% for model_id, model_path in models.items() %}
+                <li><strong>{{model_id}}</strong>: <a href="{{model_path}}">{{model_path}}</a></li>
+                {% endfor %}
+            </ul>
+            </p>
 
-        <h2>Model</h2>
-        <p>
-        <ul>
-            <li><strong>SBML</strong>: <a href="{{ model_path }}">{{ model_path }}</a></li>
-            </li>
-            {% if report_path %}
-            <li><strong>HTML</strong>: <a href="{{ report_path }}">{{
-                report_path }}</a></li>
-            {% endif %}
-        </ul>
-        </p>
+            <h2>Datasets</h2>
+            <p>
+            <ul>
+                {% for dset_id, dset_path in datasets.items() %}
+                <li><strong>{{dset_id}}</strong>: <a href="{{dset_path}}">{{dset_path}}</a></li>
+                {% endfor %}
+            </ul>
+            </p>
 
-        <h2>Datasets</h2>
-        <p>
-        <ul>
-            {% for dset_id in datasets %}
-            <li><a href="{{results_path}}/{{ exp_id }}_{{ dset_id }}.tsv">{{results_path}}/{{
-                exp_id }}_{{ dset_id }}.tsv</a></li>
+            <h2>Figures</h2>
+            <p>
+            <ul>
+                {% for fig_id, fig_path in figures.items() %}
+                <li><strong>{{fig_id}}</strong>: <a href="{{fig_path}}">{{fig_path}}</a></li>
+                {% endfor %}
+            </ul>
+            </p>
+
+            {% for fig_id, fig_path in figures.items() %}
+            <h3>{{ fig_id }}</h3>
+            <p>
+            <table>
+                <tr>
+                    <td>
+                        <img src="{{fig_path}}" width="600"/>
+                    </td>
+                    <!--
+                    <td>
+                        {% if meta %}
+                        {% for k, v in meta.items() %}
+                        {% if v %}
+                        <strong>{{ k }}</strong>: {{ v }}<br/>
+                        {% endif %}
+                        {% endfor %}
+                        {% endif %}
+                    </td>
+                    -->
+                </tr>
+            </table>
+            </p>
             {% endfor %}
-        </ul>
-        </p>
 
-        <h2>Figures</h2>
-        <p>
-        <ul>
-            {% for fig_id in figures %}
-            <li><a href="{{results_path}}/{{ exp_id }}_{{ fig_id }}.svg">{{results_path}}/{{
-                exp_id }}_{{ fig_id }}.svg</a></li>
-            {% endfor %}
-        </ul>
-        </p>
+            <h2>Code</h2>
+            <p>
+                <a href="{{ code_path }}">{{ code_path }}</a>
+            <pre>
+<code class="python">{{ code }}</code>
+        </pre>
+            </p>
+        </v-content>
+    </v-app>
 
-
-        <h2><a href="{{ exp_id }}.html">{{ exp_id }}</a></h2>
-        {% for fig_id, meta in figures.items() %}
-        <h3>{{ fig_id }}</h3>
-        <p>
-        <table>
-            <tr>
-                <td>
-                    <a href="{{ exp_id }}.html"><img
-                            src="{{results_path}}/{{ exp_id }}_{{ fig_id }}.svg"/></a>
-                </td>
-                <td>
-                    {% if meta %}
-                    {% for k, v in meta.items() %}
-                    {% if v %}
-                    <strong>{{ k }}</strong>: {{ v }}<br/>
-                    {% endif %}
-                    {% endfor %}
-                    {% endif %}
-                </td>
-            </tr>
-        </table>
-        </p>
+</div>
 
 
-        {% endfor %}
-        <h2>Code</h2>
-        <p>
-            <a href="{{ code_path }}">{{ code_path }}</a>
+<!-- loading dependencies -->
+<script src="https://cdn.jsdelivr.net/npm/vue@2.6.11"></script>
+<script src="https://cdn.jsdelivr.net/npm/vuetify@2.2.6/dist/vuetify.js"></script>
+<link href="https://fonts.googleapis.com/css?family=Roboto:100,300,400,500,700,900" rel="stylesheet">
+<link href="https://cdn.jsdelivr.net/npm/@mdi/font@4.x/css/materialdesignicons.min.css" rel="stylesheet">
 
-        <pre>
-  <code>
-{{ code }}
-  </code>
-</pre>
-        </p>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/10.1.2/highlight.min.js"></script>
+<script>hljs.initHighlightingOnLoad();</script>
+
+<script>
+    const app = new Vue({
+        el: '#app',
+        vuetify: new Vuetify(),
+        delimiters: ['${', '}'],
+        data() {
+            return {}
+        }
+    })
+</script>
+
 
 </body>
 </html>

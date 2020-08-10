@@ -3,7 +3,7 @@ Run some example experiments.
 """
 from pathlib import Path
 from sbmlsim.experiment import ExperimentRunner
-from sbmlsim.reports.report import ExperimentReport
+from sbmlsim.reports.report import ExperimentReport, ReportResults
 from sbmlsim.simulator import SimulatorSerial
 from sbmlsim.simulator.simulation_ray import SimulatorParallel
 from sbmlsim.utils import timeit
@@ -28,8 +28,11 @@ def midazolam_experiment():
         output_path=BASE_PATH / "results",
         show_figures=True
     )
+    report_results = ReportResults()
+    for exp_result in results:
+        report_results.add_experiment_result(exp_result=exp_result)
 
-    report = ExperimentReport(results)
+    report = ExperimentReport(report_results)
     report.create_report(output_path=BASE_PATH / "results")
 
 

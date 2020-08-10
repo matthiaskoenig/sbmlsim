@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html>
+<link href="https://fonts.googleapis.com/css?family=Roboto:100,300,400,500,700,900" rel="stylesheet">
+<link href="https://cdn.jsdelivr.net/npm/@mdi/font@4.x/css/materialdesignicons.min.css" rel="stylesheet">
+<link href="https://cdn.jsdelivr.net/npm/vuetify@2.x/dist/vuetify.min.css" rel="stylesheet">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, minimal-ui">
+</head>
+
+<body>
+
+    <div id="app">
+        <!-- Vue app-->
+
+        <v-app>
+            <v-content>
+                <v-app-bar color="indigo" dense dark app clipped-left>
+                    <v-app-bar-nav-icon></v-app-bar-nav-icon>
+                    <v-toolbar-title>Sales report ${date}</v-toolbar-title>
+                    <v-spacer></v-spacer>
+                </v-app-bar>
+                <v-container fluid>
+                    <v-row>
+                        <v-col>
+                            <v-card>
+                                <v-toolbar dense flat>
+                                    <v-toolbar-title>Sales per country</v-toolbar-title>
+                                </v-toolbar>
+                                <v-card-title>
+                                </v-card-title>
+                                <ve-histogram :data="chartData" :settings="chartSettings">
+                                </ve-histogram>
+                            </v-card>
+                        </v-col>
+                    </v-row>
+                </v-container>
+            </v-content>
+        </v-app>
+
+    </div>
+
+
+
+    <!-- loading dependencies -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/echarts/4.8.0/echarts.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/vue@2.6.11"></script>
+    <script src="https://cdn.jsdelivr.net/npm/vuetify@2.2.6/dist/vuetify.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/v-charts@1.19.0/lib/index.min.js"></script>
+    <link href="https://fonts.googleapis.com/css?family=Roboto:100,300,400,500,700,900" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/@mdi/font@4.x/css/materialdesignicons.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/v-charts/lib/style.min.css">
+
+    <script>
+        const app = new Vue({
+            el: '#app',
+            vuetify: new Vuetify(),
+            delimiters: ['${', '}'],
+            data() {
+                return {
+                    date: {{date}},
+                    chartSettings: {
+                        dimension: {{dimension}},
+                        metrics: {{metrics}}
+                    },
+                    chartData: {
+                        columns: {{columns}},
+                        rows: {{rows}}
+                    }
+
+                }
+            }
+        })
+    </script>
+</body>
+
+</html>
