@@ -11,6 +11,7 @@ from typing import Dict, List
 from pathlib import Path
 from enum import Enum
 from pprint import pprint
+import json
 
 from sbmlsim import __version__
 from sbmlsim.experiment import SimulationExperiment, ExperimentResult
@@ -26,6 +27,20 @@ class ReportResults:
 
     def __init__(self):
         self.data = OrderedDict()  # type: OrderedDict[str, Dict]
+
+    def to_json(self, json_path: Path):
+        """Write to JSON"""
+        with open(json_path, "w") as fp:
+            json.dumps(self.data, indent=2)
+
+    @staticmethod
+    def from_json(self, json_path: Path):
+        """Read from JSON"""
+        with open(json_path, "r") as fp:
+            data = json.load(fp)
+        results = ReportResults()
+        results.data = data
+        return results
 
     def add_experiment_result(self, exp_result: ExperimentResult):
         """Retrieves information for report from the ExperimentResult.
