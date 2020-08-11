@@ -41,7 +41,7 @@
             <p>
             <ul>
                 {% for fig_id, fig_path in figures.items() %}
-                <li><strong>{{fig_id}}</strong>: <a href="{{fig_path}}">{{fig_path}}</a></li>
+                <li><strong>{{fig_id}}</strong>: <a href="{{fig_path}}.svg">{{fig_path}}.svg</a></li>
                 {% endfor %}
             </ul>
             </p>
@@ -52,8 +52,8 @@
             <table>
                 <tr>
                     <td>
-                        <!--<v-img src="{{fig_path}}" max-width="600" width="600"></v-img>-->
-                        <img src="{{fig_path}}" width="600">
+                        <!--<v-img src="{{fig_path}}.svg" max-width="600" width="600"></v-img>-->
+                        <img src="{{fig_path}}.svg" width="600">
                     </td>
                     <!--
                     <td>

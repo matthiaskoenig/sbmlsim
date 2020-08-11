@@ -306,7 +306,7 @@ def executeCombineArchive(omexPath,
     :param omexPath: OMEX Combine archive
     :param workingDir: directory to extract archive to
     :param printPython: boolean switch to print executed python code
-    :param createOutputs: boolean flag if outputs should be created, i.e. reports and plots
+    :param createOutputs: boolean flag if outputs should be created, i.e. report and plots
     :param saveOutputs: flag if the outputs should be saved to file
     :param outputDir: directory where the outputs should be written
     :param plottingEngin: string of which plotting engine to use; uses set plotting engine otherwise

@@ -3,7 +3,7 @@ Run some example experiments.
 """
 from pathlib import Path
 from sbmlsim.experiment import ExperimentRunner
-from sbmlsim.reports.report import ExperimentReport, ReportResults
+from sbmlsim.report.experiment_report import ExperimentReport, ReportResults
 from sbmlsim.simulator import SimulatorSerial
 from sbmlsim.simulator.simulation_ray import SimulatorParallel
 from sbmlsim.utils import timeit

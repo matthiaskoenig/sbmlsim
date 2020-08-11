@@ -1,6 +1,7 @@
 """
 Create markdown report of simulation experiments.
 """
+import shutil
 import sys
 import os
 import logging
@@ -16,10 +17,12 @@ from sbmlsim.experiment import SimulationExperiment, ExperimentResult
 from sbmlsim import BASE_PATH
 
 logger = logging.getLogger(__name__)
-TEMPLATE_PATH = BASE_PATH / "reports" / "templates"
+TEMPLATE_PATH = BASE_PATH / "report" / "templates"
 
 
 class ReportResults:
+
+    # FIXME: support filters
 
     def __init__(self):
         self.data = OrderedDict()  # type: OrderedDict[str, Dict]
@@ -51,7 +54,7 @@ class ReportResults:
         datasets = {key: rel_path / f"{exp_id}_{key}.tsv" for key in experiment._datasets.keys()}
 
         # parse meta data for figures (mapping based on figure keys)
-        figures = {key: rel_path / f"{exp_id}_{key}.svg" for key in experiment._figures.keys()}
+        figures = {key: rel_path / f"{exp_id}_{key}" for key in experiment._figures.keys()}
 
         self.data[exp_id] = {
             'exp_id': exp_id,
@@ -73,18 +76,27 @@ class ExperimentReport:
     def __init__(self, results: ReportResults,
                  metadata: Dict = None,
                  template_path=TEMPLATE_PATH):
+        if isinstance(results, list):
+            # FIXME: just a bugfix for handling the old outputs
+            report_results = ReportResults()
+            for exp_result in results:
+                report_results.add_experiment_result(exp_result=exp_result)
+        else:
+            report_results = results
 
-        self.data_dict = results.data  # dictionary of exp_ids and information for report rendering
+        self.data_dict = report_results.data  # dictionary of exp_ids and information for report rendering
         self.metadata = metadata if metadata else dict()
         self.template_path = template_path
 
-    def create_report(self, output_path: Path, report_type: ReportType=ReportType.HTML):
+    def create_report(self, output_path: Path, filename=None,
+                      report_type: ReportType=ReportType.HTML, f_filter_context=None,
+                      **kwargs):
         """ Create report of SimulationExperiments.
 
         Processes ExperimentResults to generate overall report.
 
-        All relative paths only can be resolved in the reports if the
-        paths are below the reports or at the same level in the file
+        All relative paths only can be resolved in the report if the
+        paths are below the report or at the same level in the file
         hierarchy.
         """
         env = jinja2.Environment(loader=jinja2.FileSystemLoader(str(self.template_path)),
@@ -92,12 +104,12 @@ class ExperimentReport:
                                  trim_blocks=True,
                                  lstrip_blocks=True)
 
-        def write_report(name: str, context: Dict, template_str: str):
+        def write_report(filename: str, context: Dict, template_str: str):
             """Writes the report file from given context and template."""
             template = env.get_template(template_str)
             text = template.render(context)
             suffix = template_str.split(".")[-1]
-            out_file = output_path / f'{name}.{suffix}'
+            out_file = output_path / f'{filename}.{suffix}'
             with open(out_file, "w") as f_out:
                 f_out.write(text)
 
@@ -105,7 +117,7 @@ class ExperimentReport:
             suffix = "html"
         elif report_type == self.ReportType.MARKDOWN:
             suffix = "md"
-        elif report_type == self.ReportType.MARKDOWN:
+        elif report_type == self.ReportType.LATEX:
             suffix = "tex"
 
         if report_type in [self.ReportType.HTML, self.ReportType.MARKDOWN]:
@@ -120,5 +132,28 @@ class ExperimentReport:
             'version': __version__,
             'data': self.data_dict,
         }
-        write_report(name="index", context=context,
+
+        filename = filename if filename is not None else "index"
+        # for latex report the pngs have to be collected with correct paths
+        # adapt context
+        if report_type == self.ReportType.LATEX:
+            pprint(context)
+            if f_filter_context:
+                # filter subset of figures
+                # FIXME: more robust
+                f_filter_context(self.data_dict)
+            print("after filter")
+            pprint(context)
+
+            # collect and copy figures
+
+            context["latex_path_prefix"] = kwargs.get("latex_path_prefix", "")
+            figure_base_path = output_path / f"{filename}_figures"
+            if not figure_base_path.exists():
+                figure_base_path.mkdir(parents=True)
+            for exp_id, exp_context in self.data_dict.items():
+                for fig_id, fig_path in exp_context["figures"].items():
+                    shutil.copy(str(output_path / exp_id / f"{fig_path}.png"), str(figure_base_path / f"{fig_path}.png"))
+
+        write_report(filename=filename, context=context,
                      template_str=f'index.{suffix}')

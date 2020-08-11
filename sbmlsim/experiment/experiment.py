@@ -260,7 +260,9 @@ class SimulationExperiment(object):
 
     @timeit
     def run(self, simulator, output_path: Path = None, show_figures: bool = True,
-            save_results: bool = False, reduced_selections: bool = True) -> 'ExperimentResult':
+            save_results: bool = False,
+            figure_formats: List[str] = None,
+            reduced_selections: bool = True) -> 'ExperimentResult':
         """
         Executes given experiment and stores results.
         Returns info dictionary.
@@ -299,7 +301,7 @@ class SimulationExperiment(object):
         if show_figures:
             self.show_figures(mpl_figures=mpl_figures)
         if output_path:
-            self.save_figures(output_path, mpl_figures=mpl_figures)
+            self.save_figures(output_path, mpl_figures=mpl_figures, figure_formats=figure_formats)
             self.clear_figures(mpl_figures=mpl_figures)
 
         return ExperimentResult(experiment=self, output_path=output_path)
@@ -469,26 +471,24 @@ class SimulationExperiment(object):
         fig_mpl.show()
 
     @timeit
-    def save_figures(self, results_path: Path, mpl_figures: Dict[str, FigureMPL]) -> List[Path]:
+    def save_figures(self, results_path: Path, mpl_figures: Dict[str, FigureMPL],
+                     figure_formats: List[str] = None) -> Dict[str, List[Path]]:
         """ Save matplotlib figures.
 
         :param results_path:
         :return:
         """
-        paths = []
-        input = []
+        if figure_formats == None:
+            # default to SVG output
+            figure_formats = ["svg"]
+        paths = defaultdict(list)
         for fkey, fig_mpl in mpl_figures.items():  # type
-            path_svg = results_path / f"{self.sid}_{fkey}.svg"
-            fig_mpl.savefig(path_svg, bbox_inches="tight")
-            # fig_mpl.savefig(path_png, bbox_inches="tight")
 
-            input.append([path_svg, fig_mpl])
-            paths.append(path_svg)
+            for format in figure_formats:
+                fig_path = results_path / f"{self.sid}_{fkey}.{format}"
+                fig_mpl.savefig(fig_path, bbox_inches="tight")
 
-        # multiprocessing of figures (problems in travis)
-        # pool = multiprocessing.Pool()
-        # pool.map(self._save_figure, input)
-        # pool.map_async(self._save_figure, input)
+                paths[format].append(fig_path)
 
         return paths
 

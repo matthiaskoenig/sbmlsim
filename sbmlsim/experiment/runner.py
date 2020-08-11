@@ -77,6 +77,7 @@ class ExperimentRunner(object):
     def run_experiments(self, output_path: Path,
                         show_figures: bool = False,
                         save_results: bool = False,
+                        figure_formats: List[str] = None,
                         reduced_selections: bool = True) -> List:
         """Run the experiments."""
         if not output_path.exists():
@@ -92,6 +93,7 @@ class ExperimentRunner(object):
                 output_path=output_path / sid,
                 show_figures=show_figures,
                 save_results=save_results,
+                figure_formats=figure_formats,
                 reduced_selections=reduced_selections
             )
             exp_results.append(result)
