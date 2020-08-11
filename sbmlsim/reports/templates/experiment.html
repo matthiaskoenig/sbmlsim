@@ -1,22 +1,13 @@
 <!DOCTYPE html>
 <html>
-<head><meta http-equiv="content-type" content="text/html; charset=utf-8" />
+<head>
+    <meta http-equiv="content-type" content="text/html; charset=utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, minimal-ui">
     <title>{{exp_id}}</title>
-<link href="https://fonts.googleapis.com/css?family=Roboto:100,300,400,500,700,900" rel="stylesheet">
-<link href="https://cdn.jsdelivr.net/npm/@mdi/font@4.x/css/materialdesignicons.min.css" rel="stylesheet">
-<!--<link href="https://cdn.jsdelivr.net/npm/vuetify@2.x/dist/vuetify.min.css" rel="stylesheet">-->
-
-
-<link rel="stylesheet" href="//cdnjs.cloudflare.com/ajax/libs/highlight.js/10.1.2/styles/default.min.css">
-
-<!-- and it's easy to individually load additional languages -->
-    <!--
-<script charset="UTF-8" src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/10.1.2/languages/go.min.js"></script>
--->
-
-
-<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, minimal-ui">
-
+    <link href="https://fonts.googleapis.com/css?family=Roboto:100,300,400,500,700,900" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/@mdi/font@4.x/css/materialdesignicons.min.css" rel="stylesheet">
+    <!--<link href="https://cdn.jsdelivr.net/npm/vuetify@2.x/dist/vuetify.min.css" rel="stylesheet">-->
+    <link rel="stylesheet" href="//cdnjs.cloudflare.com/ajax/libs/highlight.js/10.1.2/styles/default.min.css">
 </head>
 
 <body>
@@ -61,7 +52,8 @@
             <table>
                 <tr>
                     <td>
-                        <img src="{{fig_path}}" width="600"/>
+                        <!--<v-img src="{{fig_path}}" max-width="600" width="600"></v-img>-->
+                        <img src="{{fig_path}}" width="600">
                     </td>
                     <!--
                     <td>
@@ -86,9 +78,9 @@
 <code class="python">{{ code }}</code>
         </pre>
             </p>
+
         </v-content>
     </v-app>
-
 </div>
 
 

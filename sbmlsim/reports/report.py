@@ -74,7 +74,7 @@ class ExperimentReport:
                  metadata: Dict = None,
                  template_path=TEMPLATE_PATH):
 
-        self.results = results
+        self.data_dict = results.data  # dictionary of exp_ids and information for report rendering
         self.metadata = metadata if metadata else dict()
         self.template_path = template_path
 
@@ -105,19 +105,20 @@ class ExperimentReport:
             suffix = "html"
         elif report_type == self.ReportType.MARKDOWN:
             suffix = "md"
+        elif report_type == self.ReportType.MARKDOWN:
+            suffix = "tex"
 
-        # report for simulation experiment
-        exp_ids = OrderedDict()
-        for exp_id, context in self.results.data.items():
-            pprint(context)
-
-            write_report(name=f"{exp_id}/{exp_id}", context=context,
-                         template_str=f"experiment.{suffix}")
+        if report_type in [self.ReportType.HTML, self.ReportType.MARKDOWN]:
+            # report for individual simulation experiment
+            for exp_id, context in self.data_dict.items():
+                pprint(context)
+                write_report(name=f"{exp_id}/{exp_id}", context=context,
+                             template_str=f"experiment.{suffix}")
 
         # index file
-        # context = {
-        #     'version': __version__,
-        #     'exp_ids': exp_ids,
-        # }
-        # write_report(name="index", context=context,
-        #              template_str=f'index.{suffix}')
+        context = {
+            'version': __version__,
+            'data': self.data_dict,
+        }
+        write_report(name="index", context=context,
+                     template_str=f'index.{suffix}')
