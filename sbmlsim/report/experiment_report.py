@@ -139,7 +139,7 @@ class ExperimentReport:
             # report for individual simulation experiment
             for exp_id, context in self.data_dict.items():
                 pprint(context)
-                write_report(name=f"{exp_id}/{exp_id}", context=context,
+                write_report(filename=f"{exp_id}/{exp_id}", context=context,
                              template_str=f"experiment.{suffix}")
 
         # index file
