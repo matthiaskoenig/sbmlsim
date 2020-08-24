@@ -599,6 +599,10 @@ class OptimizationProblem(object):
             filepath = output_path / "03_costs_mappings.svg"
             fig.savefig(filepath, bbox_inches="tight")
 
+        return cost_df
+
+
+
     @timeit
     def plot_fits(self, x, output_path: Path = None, show_plots: bool = True):
         """ Plot fitted curves with experimental data.
