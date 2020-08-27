@@ -82,7 +82,7 @@ class FitMapping(object):
     """Mapping of reference data to obeservables in the model."""
 
     def __init__(self, experiment: 'sbmlsim.experiment.SimulationExperiment',
-                 reference: 'FitData', observable: 'FitData', count: int=None):
+                 reference: 'FitData', observable: 'FitData', count: int = None):
         """FitMapping.
 
         :param reference: reference data (mostly experimental data)

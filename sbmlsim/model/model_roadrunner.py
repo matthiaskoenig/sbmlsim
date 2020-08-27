@@ -171,7 +171,7 @@ class RoadrunnerSBMLModel(AbstractModel):
         for key, value in kwargs.items():
             if key not in RoadrunnerSBMLModel.IntegratorSettingKeys:
                 logger.debug(f"Unsupported integrator key for roadrunner "
-                               f"integrator: '{key}'")
+                             f"integrator: '{key}'")
                 continue
 
             # adapt the absolute_tolerance relative to the amounts
@@ -180,7 +180,7 @@ class RoadrunnerSBMLModel(AbstractModel):
                 # tolerances
                 value = min(value, value * min(r.model.getCompartmentVolumes()))
             integrator.setValue(key, value)
-            logger.debug(f"Integrator setting: '{key} = {value}'")
+            logger.info(f"Integrator setting: '{key} = {value}'")
         return integrator
 
     @staticmethod

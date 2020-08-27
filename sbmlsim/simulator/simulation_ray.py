@@ -92,6 +92,8 @@ class SimulatorParallel(SimulatorSerial):
         if model is not None:
             self.set_model(model=model)
 
+
+
     def set_model(self, model):
         super(SimulatorParallel, self).set_model(model)
         if model:
@@ -102,6 +104,8 @@ class SimulatorParallel(SimulatorSerial):
             for simulator in self.simulators:
                 simulator.set_model.remote(state_path)
             self.set_timecourse_selections(self.r.selections)
+
+        # FIXME: set integrator settings
 
     def set_timecourse_selections(self, selections):
         for simulator in self.simulators:
