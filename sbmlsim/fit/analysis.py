@@ -149,6 +149,9 @@ class OptimizationResult(ObjectJSONEncoder):
         pd.set_option('display.max_columns', None)
         pd.set_option('display.expand_frame_repr', False)
 
+        if output_path is not None:
+            tsv_path = output_path / "00_fit_report.tsv"
+            self.df_fits.to_csv(tsv_path, sep="\t", index=False)
         info = [
             "\n",
             "-" * 80,

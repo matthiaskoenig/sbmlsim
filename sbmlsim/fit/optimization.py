@@ -599,6 +599,9 @@ class OptimizationProblem(object):
             filepath = output_path / "03_costs_mappings.svg"
             fig.savefig(filepath, bbox_inches="tight")
 
+            tsv_path = output_path / "03_costs_mappings.tsv"
+            cost_df.to_csv(tsv_path, sep="\t", index=False)
+
         return cost_df
 
 
