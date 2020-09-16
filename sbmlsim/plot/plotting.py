@@ -450,6 +450,8 @@ class Plot(BasePlotObject):
                 d["linestyle"] = "-"
             if "linewidth" not in d:
                 d["linewidth"] = 2.0
+            if "alpha" not in d:
+                d["alpha"] = 0.8
 
         elif dtype == Data.Types.DATASET:
             if "linestyle" not in d:
