@@ -107,6 +107,8 @@ class TimecourseSim(AbstractSim):
                 self.timecourses.append(Timecourse(**tc))
             else:
                 self.timecourses.append(tc)
+        if len(self.timecourses) == 0:
+            logger.error("No timecourses in simulation")
 
         self.selections = deepcopy(selections)
         self.reset = reset
