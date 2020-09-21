@@ -82,6 +82,9 @@ class OptimizationProblem(object):
         self.opid = opid
         self.fit_experiments = FitExperiment.reduce(fit_experiments)
         self.parameters = fit_parameters
+        if self.parameters is None or len(self.parameters) == 0:
+            logger.error(f"{opid}: parameters in optimization problem cannot be empty, "
+                         f"but '{self.parameters}'")
 
         # parameter information
         self.pids = [p.pid for p in self.parameters]
@@ -94,6 +97,25 @@ class OptimizationProblem(object):
         # paths
         self.base_path = base_path
         self.data_path = data_path
+
+    def __repr__(self):
+        return f"<OptimizationProblem: {self.opid}>"
+
+    def __str__(self):
+        """String representation."""
+        info = []
+        info.append("-"*80)
+        info.append(f"{self.__class__.__name__}: {self.opid}")
+        info.append("-" * 80)
+        info.append("Experiments")
+
+        # FIXME: full serialization of experiments!
+        # FIXME: runner only available after initialization
+        info.extend([f"\t{e}" for e in self.fit_experiments])
+        info.append("Parameters")
+        info.extend([f"\t{p}" for p in self.parameters])
+        info.append("-" * 80)
+        return "\n".join(info)
 
     def initialize(self, weighting_local: WeightingLocalType, residual_type: ResidualType):
         # weighting in fitting and handling of residuals
@@ -299,25 +321,6 @@ class OptimizationProblem(object):
         :return:
         """
         self.runner.set_simulator(simulator)
-
-    def __repr__(self):
-        return f"<OptimizationProblem: {self.opid}>"
-
-    def __str__(self):
-        """String representation."""
-        info = []
-        info.append("-"*80)
-        info.append(self.__class__.__name__)
-        info.append("-" * 80)
-        info.append("Experiments")
-
-        # FIXME: full serialization of experiments!
-        # FIXME: runner only available after initialization
-        info.extend([f"\t{e}" for e in self.runner.experiments])
-        info.append("Parameters")
-        info.extend([f"\t{p}" for p in self.parameters])
-        info.append("-" * 80)
-        return "\n".join(info)
 
     def report(self, output_path=None):
         """Print and write report."""

@@ -293,9 +293,6 @@ class SimulationExperiment(object):
             if save_results:
                 self.save_results(output_path)
 
-            # serialization
-            self.to_json(output_path / f"{self.sid}.json")
-
         # create figures
         mpl_figures = self.create_mpl_figures()
         if show_figures:
@@ -303,6 +300,11 @@ class SimulationExperiment(object):
         if output_path:
             self.save_figures(output_path, mpl_figures=mpl_figures, figure_formats=figure_formats)
             self.clear_figures(mpl_figures=mpl_figures)
+
+        # only perform serialization after data evaluation (to access units)
+        if output_path:
+            # serialization
+            self.to_json(output_path / f"{self.sid}.json")
 
         return ExperimentResult(experiment=self, output_path=output_path)
 
