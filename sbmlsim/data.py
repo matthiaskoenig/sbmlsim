@@ -98,6 +98,9 @@ class Data(object):
 
     def to_dict(self):
         """ Convert to dictionary. """
+        # FIXME: ensure that the data is evaluated (via get_data) before it is serialized.
+        # Currently only the plotted variables are evaluated (-> units can not be resolved for the remainder).
+
         d = {
             "type": self.dtype,
             "index": self.index,
