@@ -166,7 +166,7 @@ class SimulationExperiment(object):
         """
         return
 
-    def add_selections(self, selections: Iterable[str], task_ids: str = None):
+    def add_selections(self, selections: Iterable[str], task_ids: Iterable[str] = None):
         """Add selections to given tasks.
 
         Selections are necessary to access data from simulations.
@@ -335,9 +335,12 @@ class SimulationExperiment(object):
                 selections = {"time"}
                 for d in self._data.values():  # type: Data
                     if d.is_task():
-                        selections.add(d.index)
+                        # check if selection is for current model
+                        task = self._tasks[d.task_id]
+                        if task.model_id == model_id:
+                            selections.add(d.index)
                 selections = sorted(list(selections))
-                print(f"Setting selections: {selections}")
+                print(f"Selections for model '{model_id}': {selections}")
                 simulator.set_timecourse_selections(selections=selections)
             else:
                 # use the complete selection

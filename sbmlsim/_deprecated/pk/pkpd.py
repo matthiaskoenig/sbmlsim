@@ -50,7 +50,6 @@ def _set_initial_values(r: roadrunner.RoadRunner, sid, value, method="concentrat
 
     species_ids = r.model.getFloatingSpeciesIds() + r.model.getBoundarySpeciesIds()
     species_keys = get_species_keys(sid, species_ids)
-
     changeset = {}
 
     for key in species_keys:
@@ -80,7 +79,8 @@ def get_species_keys(skey, species_ids):
     keys = []
     for species_id in species_ids:
         # use regular expression to find ids
-        pattern = r'^A[a-z]+(_blood)*\_{}$'.format(skey)
+        # This pattern is not very robust !!! FIXME (e.g. blood vs. plasma)
+        pattern = r'^A[a-z]+(_plasma)*\_{}$'.format(skey)
         match = re.search(pattern, species_id)
         if match:
             # print("match:", species_id)

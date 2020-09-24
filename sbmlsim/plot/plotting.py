@@ -10,7 +10,7 @@ The general workflow of generating plotting information is the following.
 """
 import copy
 
-from typing import List, Dict
+from typing import List, Dict, Union
 import logging
 import pandas as pd
 from dataclasses import dataclass
@@ -479,7 +479,7 @@ class Plot(BasePlotObject):
         self.add_curve(curve)
 
     def add_data(self,
-                 xid: str, yid: str, yid_sd=None, yid_se=None, count: int=None,
+                 xid: str, yid: str, yid_sd=None, yid_se=None, count: Union[int, str]=None,
                  dataset: str=None, task: str=None,
                  label='__nolabel__', single_lines=False, dim_reduction=None,
                  **kwargs):
