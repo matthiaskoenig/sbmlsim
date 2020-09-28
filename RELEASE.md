@@ -11,7 +11,7 @@ Steps for release are
 * github: create release from master branch
 
 ## pypi
-* release on [pypi](https://pypi.python.org/pypi/sbmlutils)
+* release on [pypi](https://pypi.python.org/pypi/sbmlsim)
 ```
 git branch master
 git pull

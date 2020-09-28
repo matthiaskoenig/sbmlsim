@@ -2,11 +2,15 @@
 Interacting with model resources to retrieve models.
 This currently includes BioModels, but can easily be extended to other models.
 """
+import logging
 import re
 from dataclasses import dataclass
 from pathlib import Path
 
 import requests
+
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -93,17 +97,21 @@ def model_from_url(url: str) -> str:
     response.raise_for_status()
     model_str = response.content
 
+    # file download
+
     # bytes array in py3
     return str(model_str.decode("utf-8"))
 
 
 # --- BioModels ---
-def parse_biomodels_mid(text) -> str:
-    """Resolve biomodel id from string."""
-
-    pattern = "((BIOMD|MODEL)\d{10})|(BMID\d{12})"
+def parse_biomodels_mid(text: str) -> str:
+    """Parses biomodel id from string."""
+    pattern = r"((BIOMD|MODEL)\d{10})|(BMID\d{12})"
     match = re.search(pattern, text)
-    mid = match.group(0)
+    if match:
+        mid = match.group(0)
+    else:
+        raise ValueError(f"Biomodel id pattern '{pattern}' not found in string: 'text'")
     return mid
 
 
@@ -113,5 +121,22 @@ def model_from_biomodels(mid: str) -> str:
     :param mid: biomodels id
     :return: SBML string
     """
-    url = f"https://www.ebi.ac.uk/biomodels-main/download?mid={mid}"
+    # query file information
+    url = f"https://www.ebi.ac.uk/biomodels/{mid}?format=json"
+    r = requests.get(url)
+    r.raise_for_status()
+
+    # query main file
+    json = r.json()
+    try:
+        filename = json["files"]["main"][0]["name"]
+        url = (
+            f"https://www.ebi.ac.uk/biomodels/model/download/{mid}?filename={filename}"
+        )
+    except (TypeError, KeyError) as err:
+        logger.error(
+            f"Filename of 'main' file could not be resolved from response: " f"'{json}'"
+        )
+        raise err
+
     return model_from_url(url)
