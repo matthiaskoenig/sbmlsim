@@ -1,50 +1,63 @@
+<!DOCTYPE html>
 <html>
 <head>
-    <link rel="stylesheet" type="text/css" href="https://cdnjs.cloudflare.com/ajax/libs/fullPage.js/3.0.8/fullpage.min.css"/>
+    <meta http-equiv="content-type" content="text/html; charset=utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, minimal-ui">
+    <title></title>
+    <link href="https://fonts.googleapis.com/css?family=Roboto:100,300,400,500,700,900" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/@mdi/font@4.x/css/materialdesignicons.min.css" rel="stylesheet">
+    <!--<link href="https://cdn.jsdelivr.net/npm/vuetify@2.x/dist/vuetify.min.css" rel="stylesheet">-->
+    <link rel="stylesheet" href="//cdnjs.cloudflare.com/ajax/libs/highlight.js/10.1.2/styles/default.min.css">
 </head>
 <body>
 
-<!--
-<h1>Simulation Experiments</h1>
-<ul id="menu">
-    <li data-menuanchor="Bagger2011" class="active"><a href="#Bagger2011">First section</a></li>
-    <li data-menuanchor="secondPage"><a href="#secondPage">Second section</a></li>
-    <li data-menuanchor="thirdPage"><a href="#thirdPage">Third section</a></li>
-    <li data-menuanchor="fourthPage"><a href="#fourthPage">Fourth section</a></li>
-</ul>
--->
-
-<div id="fullpage">
+<body>
+<div id="app">
+    <!-- Vue app-->
+    <v-app>
+        <v-content>
+            <h1>Simulation Experiments</h1>
         <div class="section">
         <h2><a href="DoseResponseExperiment/DoseResponseExperiment.html">DoseResponseExperiment</a></h2>
+
             <h3>fig1</h3>
             <p>
-            <table><tr><td>
-                <a href="DoseResponseExperiment/DoseResponseExperiment.html"><img src="./DoseResponseExperiment/DoseResponseExperiment_fig1.svg" width="50%"/></a>
-            </td><td>
-            </td></tr>
+            <table>
+            <tr>
+                <td>
+                <a href="DoseResponseExperiment/DoseResponseExperiment.html"><img src="./DoseResponseExperiment/DoseResponseExperiment_fig1.svg" width="300"/></a>
+                </td>
+            </tr>
             </table>
             </p>
-
         </div>
 
-    <div class= ‘section fp-auto-height’>Footer</div>
-</div>
-<script src="https://ajax.googleapis.com/ajax/libs/jquery/3.3.1/jquery.min.js"></script>
-<script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/fullPage.js/3.0.8/fullpage.extensions.min.js"></script>
-<script type="text/javascript">
-    $(document).ready(function() {
-	$('#fullpage').fullpage({
-		//options here
-        anchors: ['DoseResponseExperiment'],
-		autoScrolling:true,
-        scrollOverflow: true,
-		scrollHorizontally: true
-	});
 
-	//methods
-	//$.fn.fullpage.setAllowScrolling(false);
-});
+</v-content>
+    </v-app>
+</div>
+
+
+<!-- loading dependencies -->
+<script src="https://cdn.jsdelivr.net/npm/vue@2.6.11"></script>
+<script src="https://cdn.jsdelivr.net/npm/vuetify@2.2.6/dist/vuetify.js"></script>
+<link href="https://fonts.googleapis.com/css?family=Roboto:100,300,400,500,700,900" rel="stylesheet">
+<link href="https://cdn.jsdelivr.net/npm/@mdi/font@4.x/css/materialdesignicons.min.css" rel="stylesheet">
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/10.1.2/highlight.min.js"></script>
+<script>hljs.initHighlightingOnLoad();</script>
+
+<script>
+    const app = new Vue({
+        el: '#app',
+        vuetify: new Vuetify(),
+        delimiters: ['${', '}'],
+        data() {
+            return {}
+        }
+    })
 </script>
+
+
 </body>
 </html>

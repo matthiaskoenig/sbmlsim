@@ -1,7 +1,7 @@
 {
   "experiment_id": "DoseResponseExperiment",
-  "base_path": "/home/mkoenig/git/sbmlsim/sbmlsim/examples/experiments/glucose",
-  "data_path": "/home/mkoenig/git/sbmlsim/sbmlsim/examples/experiments/glucose/data",
+  "base_path": "/home/mkoenig/git/sbmlsim/src/sbmlsim/examples/experiments/glucose",
+  "data_path": "[PosixPath('/home/mkoenig/git/sbmlsim/src/sbmlsim/examples/experiments/glucose/data')]",
   "models": {
     "model1": {
       "sid": null,
@@ -9,8 +9,8 @@
       "language": "SBML",
       "language_type": "SBML",
       "source": {
-        "source": "/home/mkoenig/git/sbmlsim/sbmlsim/examples/experiments/glucose/model/liver_glucose.xml",
-        "path": "/home/mkoenig/git/sbmlsim/sbmlsim/examples/experiments/glucose/model/liver_glucose.xml",
+        "source": "/home/mkoenig/git/sbmlsim/src/sbmlsim/examples/experiments/glucose/model/liver_glucose.xml",
+        "path": "/home/mkoenig/git/sbmlsim/src/sbmlsim/examples/experiments/glucose/model/liver_glucose.xml",
         "content": null
       },
       "changes": {}
