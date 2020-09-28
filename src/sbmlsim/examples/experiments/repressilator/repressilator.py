@@ -15,7 +15,7 @@ from sbmlsim.simulator.simulation_ray import SimulatorParallel, SimulatorSerial
 from sbmlsim.task import Task
 from sbmlsim.plot import Figure, Axis
 
-from sbmlsim.tests import MODEL_REPRESSILATOR
+from sbmlsim.test import MODEL_REPRESSILATOR
 
 
 class RepressilatorExperiment(SimulationExperiment):

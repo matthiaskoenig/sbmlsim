@@ -1,7 +1,7 @@
 """
 Testing reading of numl files
 """
-from sbmlsim.tests import DATA_PATH
+from sbmlsim.test import DATA_PATH
 from sbmlsim.combine.sedml.numl import NumlParser
 
 BASE_DIR = DATA_PATH / 'sedml' / 'data'

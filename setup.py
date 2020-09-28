@@ -81,7 +81,7 @@ setup(
         "tables>=0.3.6",
         "xarray>=0.15.1",
         "bottleneck>=1.3.2",
-        "pint>=0.14",
+        "pint>=0.16.1",
 
         "python-libsbml-experimental>=5.18.1",
         "python-libsedml>=2.0.11",

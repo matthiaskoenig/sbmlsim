@@ -3,7 +3,7 @@ Testing of SED-ML data support, i.e., DataDescription.
 """
 from pathlib import Path
 import os
-from sbmlsim.tests import DATA_PATH
+from sbmlsim.test import DATA_PATH
 
 from sbmlsim.combine.sedml.data import DataDescriptionParser
 from sbmlsim.combine.sedml.utils import SEDMLTools

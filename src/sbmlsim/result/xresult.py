@@ -165,7 +165,7 @@ class XResult:
 
 if __name__ == "__main__":
     from sbmlsim.model import RoadrunnerSBMLModel
-    from sbmlsim.tests import MODEL_REPRESSILATOR
+    from sbmlsim.test import MODEL_REPRESSILATOR
 
     r = RoadrunnerSBMLModel(source=MODEL_REPRESSILATOR)._model
     dfs = []

@@ -6,7 +6,7 @@ from sbmlsim.result import XResult
 from sbmlsim.simulation import ScanSim, TimecourseSim, Timecourse, Dimension
 from sbmlsim.simulator import SimulatorSerial
 from sbmlsim.simulator.simulation_ray import SimulatorParallel
-from sbmlsim.tests import MODEL_MIDAZOLAM, MODEL_REPRESSILATOR
+from sbmlsim.test import MODEL_MIDAZOLAM, MODEL_REPRESSILATOR
 
 
 class DataGeneratorFunction:
