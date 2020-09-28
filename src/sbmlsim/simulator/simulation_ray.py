@@ -1,5 +1,4 @@
 import logging
-import tempfile
 from typing import List
 
 import numpy as np
@@ -8,8 +7,6 @@ import psutil
 import ray
 import roadrunner
 
-from sbmlsim.model import AbstractModel, RoadrunnerSBMLModel
-from sbmlsim.result import XResult
 from sbmlsim.simulation import TimecourseSim
 from sbmlsim.simulator import SimulatorSerial
 from sbmlsim.simulator.simulation import SimulatorWorker
