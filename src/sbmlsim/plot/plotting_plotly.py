@@ -1,20 +1,10 @@
-import itertools
 import logging
-from typing import List
 
 import numpy as np
-import pandas as pd
-import plotly.offline as py
 import plotly.tools as tls
-import xarray as xr
 
-from sbmlsim.data import Data, DataSet
 from sbmlsim.plot import Axis, Curve, Figure, Plot, SubPlot
 from sbmlsim.plot.plotting_matplotlib import MatplotlibFigureSerializer
-from sbmlsim.result import XResult
-
-
-# py.init_notebook_mode()
 
 
 logger = logging.getLogger(__name__)
@@ -24,15 +14,12 @@ kwargs_sim = {"marker": None, "linestyle": "-", "linewidth": 2}
 
 
 class PlotlyFigureSerializer:
-    """
-    Serializing figure to matplotlib figure.
-    """
+    """Serializing figure to matplotlib figure."""
 
     def to_figure(figure: Figure):
         """Convert sbmlsim.Figure to figure."""
 
         fig_mpl = MatplotlibFigureSerializer.to_figure(figure)
-
         fig_plotly = tls.mpl_to_plotly(fig_mpl)
         return fig_plotly
 

@@ -2,15 +2,14 @@
 Manages units and units conversions in models.
 """
 import logging
-
-# Disable Pint's old fallback behavior (must come before importing Pint)
 import os
 from pathlib import Path
-from typing import Dict, List
+from typing import Dict
 
 import libsbml
 
 
+# Disable Pint's old fallback behavior (must come before importing Pint)
 os.environ["PINT_ARRAY_PROTOCOL_FALLBACK"] = "0"
 
 import warnings
@@ -27,7 +26,7 @@ with warnings.catch_warnings():
 logger = logging.getLogger(__name__)
 
 
-class Units(object):
+class Units:
 
     UNIT_ABBREVIATIONS = {
         "kilogram": "kg",
