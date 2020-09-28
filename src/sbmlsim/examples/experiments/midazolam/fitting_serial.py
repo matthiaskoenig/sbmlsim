@@ -2,13 +2,23 @@
 Defines the parameter fitting problems
 """
 from typing import Tuple
-from sbmlsim.fit.fit import run_optimization, analyze_optimization
-from sbmlsim.fit.optimization import SamplingType, OptimizerType, \
-    WeightingLocalType, ResidualType, OptimizationProblem
-from sbmlsim.fit.analysis import OptimizationResult
 
-from sbmlsim.examples.experiments.midazolam.fitting_problems import op_mid1oh_iv, op_mandema1992
 from sbmlsim.examples.experiments.midazolam import MIDAZOLAM_PATH
+from sbmlsim.examples.experiments.midazolam.fitting_problems import (
+    op_mandema1992,
+    op_mid1oh_iv,
+)
+from sbmlsim.fit.analysis import OptimizationResult
+from sbmlsim.fit.fit import analyze_optimization, run_optimization
+from sbmlsim.fit.optimization import (
+    OptimizationProblem,
+    OptimizerType,
+    ResidualType,
+    SamplingType,
+    WeightingLocalType,
+)
+
+
 RESULTS_PATH = MIDAZOLAM_PATH / "results"
 
 

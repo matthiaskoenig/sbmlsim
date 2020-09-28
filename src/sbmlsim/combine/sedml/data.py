@@ -1,20 +1,21 @@
 """
 Reading NUML, CSV and TSV data from DataDescriptions
 """
-import os
+import http.client as httplib
+import importlib
 import logging
-import warnings
+import os
 import tempfile
-import libsbml
-import pandas as pd
+import warnings
 from pathlib import Path
 from typing import Dict
 
-import http.client as httplib
-
+import libsbml
 import libsedml
-import importlib
+import pandas as pd
+
 from .numl import NumlParser
+
 
 logger = logging.getLogger('sedml-data')
 

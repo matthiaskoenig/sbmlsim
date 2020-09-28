@@ -1,9 +1,11 @@
 import pytest
 
-from sbmlsim.examples.experiments.midazolam import fitting_serial
-from sbmlsim.examples.experiments.midazolam import fitting_parallel
-
-from sbmlsim.examples.experiments.midazolam.fitting_problems import op_mid1oh_iv, op_mandema1992, op_kupferschmidt1995
+from sbmlsim.examples.experiments.midazolam import fitting_parallel, fitting_serial
+from sbmlsim.examples.experiments.midazolam.fitting_problems import (
+    op_kupferschmidt1995,
+    op_mandema1992,
+    op_mid1oh_iv,
+)
 
 
 def test_fit1(tmp_path):

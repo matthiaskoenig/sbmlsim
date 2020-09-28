@@ -4,14 +4,17 @@ Helpers for calculating model sensitivities.
 Allows to get sets of changes from given model instance.
 """
 import logging
-from typing import Dict
-from sbmlsim.model import AbstractModel, RoadrunnerSBMLModel
-from sbmlsim.simulation import ScanSim, Dimension, Timecourse, TimecourseSim
-from sbmlsim.units import Units
 from copy import deepcopy
+from enum import Enum
+from typing import Dict
+
 import libsbml
 import numpy as np
-from enum import Enum
+
+from sbmlsim.model import AbstractModel, RoadrunnerSBMLModel
+from sbmlsim.simulation import Dimension, ScanSim, Timecourse, TimecourseSim
+from sbmlsim.units import Units
+
 
 logger = logging.getLogger(__name__)
 
@@ -262,6 +265,7 @@ class ModelSensitivity(object):
 
 if __name__ == "__main__":
     from pprint import pprint
+
     from sbmlsim.test import MODEL_REPRESSILATOR
 
     print("Loading model")

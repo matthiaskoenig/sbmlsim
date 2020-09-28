@@ -1,14 +1,16 @@
-from enum import Enum
 import logging
+from enum import Enum
 from pathlib import Path
 from typing import Dict, List
-import pandas as pd
+
 import numpy as np
-from sbmlsim.units import Quantity, UnitRegistry
+import pandas as pd
+
 from sbmlsim.combine import mathml
 from sbmlsim.result import XResult
+from sbmlsim.units import DimensionalityError, Quantity, UnitRegistry
 from sbmlsim.utils import deprecated
-from sbmlsim.units import DimensionalityError
+
 
 logger = logging.getLogger(__name__)
 

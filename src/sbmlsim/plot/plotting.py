@@ -9,18 +9,18 @@ The general workflow of generating plotting information is the following.
 
 """
 import copy
-
-from typing import List, Dict, Union
 import logging
-import pandas as pd
+from copy import deepcopy
 from dataclasses import dataclass
 from enum import Enum
-from copy import deepcopy
+from typing import Dict, List, Union
 
+import pandas as pd
+from matplotlib.colors import to_hex, to_rgba
+
+from sbmlsim.data import Data, DataSet
 from sbmlsim.result import XResult
-from sbmlsim.data import DataSet, Data
 
-from matplotlib.colors import to_rgba, to_hex
 
 logger = logging.getLogger(__name__)
 

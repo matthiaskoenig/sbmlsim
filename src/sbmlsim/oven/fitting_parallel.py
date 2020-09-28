@@ -1,14 +1,14 @@
 """
 Defines the parameter fitting problems
 """
+from sbmlsim.examples.experiments.midazolam import MIDAZOLAM_PATH
+from sbmlsim.examples.experiments.midazolam.experiments.mandema1992 import Mandema1992
 from sbmlsim.fit import FitExperiment, FitParameter, run_optimization
-from sbmlsim.fit.optimization import OptimizationProblem, SamplingType, OptimizerType
+from sbmlsim.fit.optimization import OptimizationProblem, OptimizerType, SamplingType
 from sbmlsim.simulator import SimulatorSerial
 from sbmlsim.simulator.simulation_ray import SimulatorParallel
 
-from sbmlsim.examples.experiments.midazolam.experiments.mandema1992 import Mandema1992
 
-from sbmlsim.examples.experiments.midazolam import MIDAZOLAM_PATH
 RESULTS_PATH = MIDAZOLAM_PATH / "results"
 DATA_PATH = MIDAZOLAM_PATH / "data"
 

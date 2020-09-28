@@ -1,13 +1,14 @@
 """
 Definition of parameter fitting problems
 """
+from sbmlsim.examples.experiments.midazolam import MIDAZOLAM_PATH
+from sbmlsim.examples.experiments.midazolam.experiments.kupferschmidt1995 import (
+    Kupferschmidt1995,
+)
+from sbmlsim.examples.experiments.midazolam.experiments.mandema1992 import Mandema1992
 from sbmlsim.fit import FitExperiment, FitParameter
 from sbmlsim.fit.optimization import OptimizationProblem
 
-from sbmlsim.examples.experiments.midazolam.experiments.mandema1992 import Mandema1992
-from sbmlsim.examples.experiments.midazolam.experiments.kupferschmidt1995 import Kupferschmidt1995
-
-from sbmlsim.examples.experiments.midazolam import MIDAZOLAM_PATH
 
 exp_kwargs = {
     "base_path": MIDAZOLAM_PATH,

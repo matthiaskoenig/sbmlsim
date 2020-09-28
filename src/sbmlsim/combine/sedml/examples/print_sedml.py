@@ -34,9 +34,12 @@
 ## 
 
 from __future__ import print_function
-import sys
+
 import os.path
+import sys
+
 import libsedml
+
 
 def main (args):
   """Usage: print_sedml input-filename

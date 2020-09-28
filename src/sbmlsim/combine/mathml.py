@@ -2,11 +2,11 @@
 Helper functions for evaluation of MathML expressions.
 Using sympy to evalutate the expressions.
 """
-from typing import Set, Dict, Tuple
 import logging
+from typing import Dict, Set, Tuple
 
 import libsbml
-from sympy import Symbol, sympify, lambdify
+from sympy import Symbol, lambdify, sympify
 
 
 def formula_to_astnode(formula: str) -> libsbml.ASTNode:

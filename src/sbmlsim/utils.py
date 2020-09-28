@@ -1,8 +1,8 @@
-import warnings
 import functools
-import time
-import inspect
 import hashlib
+import inspect
+import time
+import warnings
 
 
 def md5_for_path(path):

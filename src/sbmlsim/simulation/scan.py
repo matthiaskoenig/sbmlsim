@@ -1,11 +1,13 @@
-import logging
-import numpy as np
 import itertools
+import logging
 from copy import deepcopy
 from typing import Dict, List
 
+import numpy as np
+
 from sbmlsim.simulation import AbstractSim, Dimension
-from sbmlsim.units import Units, UnitRegistry
+from sbmlsim.units import UnitRegistry, Units
+
 
 logger = logging.getLogger()
 
@@ -122,9 +124,11 @@ class ScanSim(AbstractSim):
 
 
 if __name__ == "__main__":
-    from sbmlsim.simulation import TimecourseSim, Timecourse
-    import numpy as np
     import warnings
+
+    import numpy as np
+
+    from sbmlsim.simulation import Timecourse, TimecourseSim
     from sbmlsim.units import Quantity, UnitRegistry
 
     with warnings.catch_warnings():

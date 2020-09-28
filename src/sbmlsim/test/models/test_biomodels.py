@@ -1,8 +1,9 @@
 """
 Testing temiriam module
 """
-from sbmlsim.model import model_resources
 import roadrunner
+
+from sbmlsim.model import model_resources
 
 
 def test_from_url():

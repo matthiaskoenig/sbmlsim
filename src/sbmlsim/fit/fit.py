@@ -1,8 +1,8 @@
 from pathlib import Path
 
-from sbmlsim.simulator import SimulatorSerial
-from sbmlsim.fit.optimization import OptimizationProblem
 from sbmlsim.fit.analysis import OptimizationResult
+from sbmlsim.fit.optimization import OptimizationProblem
+from sbmlsim.simulator import SimulatorSerial
 from sbmlsim.utils import timeit
 
 

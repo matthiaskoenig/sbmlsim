@@ -5,9 +5,10 @@ Allows to test semi-automatically for problems with the various models.
 Used to benchmark the simulation results.
 """
 
-import pandas as pd
-from typing import List
 import logging
+from typing import List
+
+import pandas as pd
 from matplotlib import pyplot as plt
 
 from sbmlsim.utils import timeit

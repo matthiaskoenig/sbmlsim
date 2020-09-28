@@ -1,18 +1,21 @@
+import itertools
 import logging
 from typing import List
-import pandas as pd
-import numpy as np
-import xarray as xr
-import itertools
 
-import plotly.tools as tls
+import numpy as np
+import pandas as pd
 import plotly.offline as py
+import plotly.tools as tls
+import xarray as xr
+
+from sbmlsim.data import Data, DataSet
+from sbmlsim.plot import Axis, Curve, Figure, Plot, SubPlot
+from sbmlsim.plot.plotting_matplotlib import MatplotlibFigureSerializer
+from sbmlsim.result import XResult
+
+
 # py.init_notebook_mode()
 
-from sbmlsim.result import XResult
-from sbmlsim.data import DataSet, Data
-from sbmlsim.plot import Figure, SubPlot, Plot, Curve, Axis
-from sbmlsim.plot.plotting_matplotlib import MatplotlibFigureSerializer
 
 logger = logging.getLogger(__name__)
 
@@ -50,13 +53,12 @@ if __name__ == "__main__":
     # plotly.offline.plot(fig_plotly)
     #
     import plotly
-    import plotly.graph_objs as go
     # plotly.offline.plot({
     #     "data": [go.Scatter(x=[1, 2, 3, 4], y=[1, 2, 3, 4])],
     #     "layout": go.Layout(title="Chart1")
     # }, auto_open=True)
-
     import plotly.graph_objects as go
+    import plotly.graph_objs as go
 
     # fig = go.Figure(
     #     data=[go.Bar(y=[2, 1, 3])],

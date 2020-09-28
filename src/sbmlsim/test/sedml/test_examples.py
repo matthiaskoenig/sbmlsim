@@ -1,9 +1,13 @@
-from sbmlsim.combine.sedml.examples import create_dependent_variable, create_nested_algoritm
+import importlib
 
-import pytest
 import libsbml
 import libsedml
-import importlib
+import pytest
+
+from sbmlsim.combine.sedml.examples import (
+    create_dependent_variable,
+    create_nested_algoritm,
+)
 
 
 @pytest.fixture()

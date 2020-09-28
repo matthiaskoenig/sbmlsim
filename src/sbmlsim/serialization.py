@@ -1,11 +1,12 @@
 """
 Helpers for JSON serialization of experiments.
 """
-from json import JSONEncoder
-from enum import Enum
-from numpy import ndarray
-from matplotlib.pyplot import Figure as MPLFigure
 import json
+from enum import Enum
+from json import JSONEncoder
+
+from matplotlib.pyplot import Figure as MPLFigure
+from numpy import ndarray
 
 
 class ObjectJSONEncoder(JSONEncoder):

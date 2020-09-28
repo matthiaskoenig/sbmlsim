@@ -18,10 +18,10 @@ points are accidentally close to each other. Therefore, Latin
 hypercube sampling provides a better coverage of the space.
 """
 
-from __future__ import print_function, division
+from __future__ import division, print_function
 
-from samples import Sample, SampleParameter
 from multiscale.util.util_classes import EnumType
+from samples import Sample, SampleParameter
 
 
 class SamplingType(EnumType):

@@ -1,9 +1,10 @@
-from typing import Dict, Callable
+from typing import Callable, Dict
 
 import numpy as np
+
 from sbmlsim.data import DataSet
 from sbmlsim.result import XResult
-from sbmlsim.simulation import ScanSim, TimecourseSim, Timecourse, Dimension
+from sbmlsim.simulation import Dimension, ScanSim, Timecourse, TimecourseSim
 from sbmlsim.simulator import SimulatorSerial
 from sbmlsim.simulator.simulation_ray import SimulatorParallel
 from sbmlsim.test import MODEL_MIDAZOLAM, MODEL_REPRESSILATOR

@@ -1,12 +1,11 @@
 """
 Template functions to run the example cases.
 """
+import importlib
 import os
 import warnings
-import libsedml
 import zipfile
 
-import importlib
 import libcombine
 import libsedml
 

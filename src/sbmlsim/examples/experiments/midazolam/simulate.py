@@ -2,14 +2,18 @@
 Run some example experiments.
 """
 from pathlib import Path
+
+from sbmlsim.examples.experiments.midazolam.experiments.kupferschmidt1995 import (
+    Kupferschmidt1995,
+)
+from sbmlsim.examples.experiments.midazolam.experiments.mandema1992 import Mandema1992
 from sbmlsim.experiment import ExperimentRunner
 from sbmlsim.report.experiment_report import ExperimentReport, ReportResults
 from sbmlsim.simulator import SimulatorSerial
 from sbmlsim.simulator.simulation_ray import SimulatorParallel
 from sbmlsim.utils import timeit
 
-from sbmlsim.examples.experiments.midazolam.experiments.mandema1992 import Mandema1992
-from sbmlsim.examples.experiments.midazolam.experiments.kupferschmidt1995 import Kupferschmidt1995
+
 # from sbmlsim.examples.experiments.midazolam.experiments.pkscan import PKScanExperiment
 
 

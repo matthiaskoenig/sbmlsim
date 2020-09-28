@@ -14,14 +14,18 @@ from __future__ import absolute_import, print_function
 
 import os
 import shutil
+import tempfile
 import warnings
 import zipfile
-import tempfile
+
+
 try:
     import libcombine
 except ImportError:
     import tecombine as libcombine
+
 import pprint
+
 
 MANIFEST_PATTERN = "manifest.xml"
 METADAT_PATTERN = "metadata.*"

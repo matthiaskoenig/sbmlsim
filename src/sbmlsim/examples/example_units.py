@@ -2,15 +2,15 @@
 Example for handling units in simulations and results.
 """
 from pprint import pprint
-from matplotlib import pyplot as plt
+
 import numpy as np
+from matplotlib import pyplot as plt
 
-
-from sbmlsim.simulator.simulation_serial import SimulatorSerial as Simulator
-from sbmlsim.simulation import Timecourse, TimecourseSim, ScanSim, Dimension
-from sbmlsim.result import XResult
-from sbmlsim.test import MODEL_DEMO
 from sbmlsim.plot.plotting_matplotlib import add_line
+from sbmlsim.result import XResult
+from sbmlsim.simulation import Dimension, ScanSim, Timecourse, TimecourseSim
+from sbmlsim.simulator.simulation_serial import SimulatorSerial as Simulator
+from sbmlsim.test import MODEL_DEMO
 
 
 def run_demo_example():

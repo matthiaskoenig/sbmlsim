@@ -2,16 +2,18 @@
 Sampling of parameter values
 """
 import logging
+from enum import Enum
 from typing import List
+
 import numpy as np
 import pandas as pd
-from enum import Enum
-from pyDOE import lhs
-
 from matplotlib import pyplot as plt
+from pyDOE import lhs
 
 from sbmlsim.fit.objects import FitParameter
 from sbmlsim.utils import timeit
+
+
 logger = logging.getLogger(__name__)
 
 

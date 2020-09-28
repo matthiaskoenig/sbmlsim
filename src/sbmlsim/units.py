@@ -1,20 +1,24 @@
 """
 Manages units and units conversions in models.
 """
-from typing import Dict, List
-from pathlib import Path
-
 import logging
-import libsbml
 # Disable Pint's old fallback behavior (must come before importing Pint)
 import os
+from pathlib import Path
+from typing import Dict, List
+
+import libsbml
+
+
 os.environ['PINT_ARRAY_PROTOCOL_FALLBACK'] = "0"
 
-import pint
-from pint.errors import UndefinedUnitError, DimensionalityError
-from pint import Quantity, UnitRegistry
-
 import warnings
+
+import pint
+from pint import Quantity, UnitRegistry
+from pint.errors import DimensionalityError, UndefinedUnitError
+
+
 with warnings.catch_warnings():
     warnings.simplefilter("ignore")
     Quantity([])

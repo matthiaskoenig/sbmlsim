@@ -1,16 +1,18 @@
 """
 Definition of timecourse simulations and timecourse definitions.
 """
-from pathlib import Path
 import json
-from typing import List, Tuple
-from copy import deepcopy
 import logging
+from copy import deepcopy
+from pathlib import Path
+from typing import List, Tuple
+
 import numpy as np
 
-from sbmlsim.units import Units
 from sbmlsim.serialization import ObjectJSONEncoder
 from sbmlsim.simulation import AbstractSim, Dimension
+from sbmlsim.units import Units
+
 
 logger = logging.getLogger(__name__)
 

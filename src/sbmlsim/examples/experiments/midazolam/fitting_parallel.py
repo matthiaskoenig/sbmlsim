@@ -1,11 +1,21 @@
 from typing import Tuple
 
-from sbmlsim.fit.mpfit import run_optimization_parallel
-from sbmlsim.fit.fit import analyze_optimization, OptimizationResult
-from sbmlsim.fit.optimization import OptimizationProblem, SamplingType, \
-    OptimizerType, WeightingLocalType, ResidualType
 from sbmlsim.examples.experiments.midazolam import MIDAZOLAM_PATH
-from sbmlsim.examples.experiments.midazolam.fitting_problems import op_mid1oh_iv, op_mandema1992, op_kupferschmidt1995
+from sbmlsim.examples.experiments.midazolam.fitting_problems import (
+    op_kupferschmidt1995,
+    op_mandema1992,
+    op_mid1oh_iv,
+)
+from sbmlsim.fit.fit import OptimizationResult, analyze_optimization
+from sbmlsim.fit.mpfit import run_optimization_parallel
+from sbmlsim.fit.optimization import (
+    OptimizationProblem,
+    OptimizerType,
+    ResidualType,
+    SamplingType,
+    WeightingLocalType,
+)
+
 
 RESULTS_PATH = MIDAZOLAM_PATH / "results"
 

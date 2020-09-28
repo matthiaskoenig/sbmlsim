@@ -94,36 +94,40 @@ Notice
 The main maintainer for SED-ML support is Matthias König.
 Please let changes to this file be reviewed and make sure that all SED-ML related tests are working.
 """
-from __future__ import  absolute_import, print_function, division
+from __future__ import absolute_import, division, print_function
 
-import sys
-import platform
-import tempfile
-import shutil
-import traceback
-import os.path
-import warnings
 import datetime
-import zipfile
-import re
-import numpy as np
-from collections import namedtuple
-import jinja2
-
-import libsedml
 import importlib
+import os.path
+import platform
+import re
+import shutil
+import sys
+import tempfile
+import traceback
+import warnings
+import zipfile
+from collections import namedtuple
+
+import jinja2
+import libsedml
+import numpy as np
+
+
 importlib.reload(libsedml)
 
 
-from tellurium.utils import omex
-from sbmlsim.oven.mathml import evaluableMathML
 import tellurium as te
+from tellurium.utils import omex
+
+from sbmlsim.oven.mathml import evaluableMathML
+
 
 try:
     # required imports in generated python code
-    import pandas
     import matplotlib.pyplot as plt
     import mpl_toolkits.mplot3d
+    import pandas
 except ImportError:
     warnings.warn("Dependencies for SEDML code execution not fulfilled.")
     print(traceback.format_exc())
@@ -1983,7 +1987,8 @@ def fix_endpoints(x, y, color, tag, fig):
 ##################################################################################################
 if __name__ == "__main__":
     import os
-    from tellurium.tests.testdata import SEDML_TEST_DIR, OMEX_TEST_DIR
+
+    from tellurium.tests.testdata import OMEX_TEST_DIR, SEDML_TEST_DIR
 
 
     def testInput(sedmlInput):

@@ -1,11 +1,13 @@
 """
 Definition of FitProblem.
 """
-from typing import List, Dict, Iterable, Set, Union
 import logging
+from typing import Dict, Iterable, List, Set, Union
+
 import numpy as np
 
 from sbmlsim.data import Data
+
 
 logger = logging.getLogger(__name__)
 

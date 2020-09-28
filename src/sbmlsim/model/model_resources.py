@@ -2,10 +2,11 @@
 Interacting with model resources to retrieve models.
 This currently includes BioModels, but can easily be extended to other models.
 """
-from pathlib import Path
 import re
-import requests
 from dataclasses import dataclass
+from pathlib import Path
+
+import requests
 
 
 @dataclass

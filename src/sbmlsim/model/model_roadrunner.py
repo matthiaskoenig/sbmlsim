@@ -1,16 +1,18 @@
-from typing import List, Dict
-from pathlib import Path
 import logging
-import roadrunner
-import libsbml
-import pandas as pd
-import numpy as np
 import tempfile
+from pathlib import Path
+from typing import Dict, List
+
+import libsbml
+import numpy as np
+import pandas as pd
+import roadrunner
 
 from sbmlsim.model import AbstractModel
 from sbmlsim.model.model_resources import Source
-from sbmlsim.units import Units, UnitRegistry, Quantity
+from sbmlsim.units import Quantity, UnitRegistry, Units
 from sbmlsim.utils import md5_for_path
+
 
 logger = logging.getLogger(__name__)
 

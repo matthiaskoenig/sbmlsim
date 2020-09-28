@@ -2,11 +2,13 @@
 Run some example experiments.
 """
 from pathlib import Path
+
+from sbmlsim.examples.experiments.glucose.experiments.dose_response import (
+    DoseResponseExperiment,
+)
 from sbmlsim.experiment import ExperimentReport, ExperimentRunner
 from sbmlsim.simulator import SimulatorSerial
 from sbmlsim.utils import timeit
-
-from sbmlsim.examples.experiments.glucose.experiments.dose_response import DoseResponseExperiment
 
 
 @timeit

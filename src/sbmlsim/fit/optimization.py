@@ -1,28 +1,29 @@
-from typing import List, Dict, Iterable, Set, Tuple
-import numpy as np
-import scipy
-from scipy import optimize
-from scipy import interpolate
-from collections import defaultdict
-from pathlib import Path
-from enum import Enum
-from copy import deepcopy
-import time
-import pandas as pd
 import logging
+import time
+from collections import defaultdict
+from copy import deepcopy
 from dataclasses import dataclass
+from enum import Enum
+from pathlib import Path
+from typing import Dict, Iterable, List, Set, Tuple
+
+import numpy as np
+import pandas as pd
+import scipy
 import seaborn as sns
 from matplotlib import pyplot as plt
+from scipy import interpolate, optimize
 
 from sbmlsim.data import Data
-from sbmlsim.simulator import SimulatorSerial
-from sbmlsim.simulation import TimecourseSim
 from sbmlsim.experiment import ExperimentRunner
-from sbmlsim.model import RoadrunnerSBMLModel
 from sbmlsim.fit.objects import FitExperiment, FitParameter
 from sbmlsim.fit.sampling import SamplingType, create_samples
+from sbmlsim.model import RoadrunnerSBMLModel
+from sbmlsim.simulation import TimecourseSim
+from sbmlsim.simulator import SimulatorSerial
 from sbmlsim.units import DimensionalityError
 from sbmlsim.utils import timeit
+
 
 logger = logging.getLogger(__name__)
 

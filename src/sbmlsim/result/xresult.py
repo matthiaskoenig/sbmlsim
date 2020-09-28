@@ -1,16 +1,17 @@
 """
 Module for encoding simulation results and processed data.
 """
-from typing import List, Dict
 import logging
+from enum import Enum
+from typing import Dict, List
+
 import numpy as np
 import pandas as pd
 import xarray as xr
-from enum import Enum
 
-from sbmlsim.simulation import ScanSim, Dimension
-from sbmlsim.utils import deprecated, timeit
+from sbmlsim.simulation import Dimension, ScanSim
 from sbmlsim.units import UnitRegistry
+from sbmlsim.utils import deprecated, timeit
 
 
 logger = logging.getLogger(__name__)

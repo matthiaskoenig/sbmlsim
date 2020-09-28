@@ -29,14 +29,14 @@ in the SBML so that no additional conversions of units are necessary.
 # in SBML models. It will be necessary to change the model structure to allow for that.
 # For instance via replacement of initial assignments via fixed parameters.
 # The replacements have to be performed in the model when these parameters are set.
-from __future__ import print_function, division
+from __future__ import division, print_function
 
 import math
-import numpy as np
-
-from samples import SampleParameter
 from enum import Enum
+
+import numpy as np
 from multiscale.util.util_classes import EnumType
+from samples import SampleParameter
 
 
 class DistributionType(EnumType, Enum):

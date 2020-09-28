@@ -1,18 +1,23 @@
 """
 Parallel execution of timecourses
 """
-import time
-import roadrunner
 import tempfile
+import time
+
 import numpy as np
+import roadrunner
 
 from sbmlsim.model import RoadrunnerSBMLModel
-from sbmlsim.simulation import TimecourseSim, Timecourse, ScanSim, Dimension
+from sbmlsim.simulation import Dimension, ScanSim, Timecourse, TimecourseSim
 from sbmlsim.simulator import SimulatorSerial
-from sbmlsim.simulator.simulation_ray import SimulatorParallel, SimulatorActor, ray, cpu_count
+from sbmlsim.simulator.simulation_ray import (
+    SimulatorActor,
+    SimulatorParallel,
+    cpu_count,
+    ray,
+)
+from sbmlsim.test import MODEL_GLCWB, MODEL_REPRESSILATOR
 from sbmlsim.units import Units
-
-from sbmlsim.test import MODEL_REPRESSILATOR, MODEL_GLCWB
 
 
 def example_single_actor():

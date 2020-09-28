@@ -1,9 +1,9 @@
 import pytest
 import roadrunner
+
+from sbmlsim.model import RoadrunnerSBMLModel
 from sbmlsim.simulator import SimulatorSerial
 from sbmlsim.simulator.simulation_ray import SimulatorParallel
-from sbmlsim.model import RoadrunnerSBMLModel
-
 from sbmlsim.test import MODEL_REPRESSILATOR
 
 

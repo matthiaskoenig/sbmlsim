@@ -3,10 +3,9 @@ Example shows basic model simulations and plotting.
 """
 import numpy as np
 
-from sbmlsim.simulation import Timecourse, TimecourseSim, ScanSim, Dimension
-from sbmlsim.simulator import SimulatorSerial
 from sbmlsim.result import XResult
-
+from sbmlsim.simulation import Dimension, ScanSim, Timecourse, TimecourseSim
+from sbmlsim.simulator import SimulatorSerial
 from sbmlsim.test import MODEL_REPRESSILATOR
 
 

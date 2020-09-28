@@ -1,5 +1,5 @@
-from sbmlsim.examples.experiments.repressilator import repressilator
 from sbmlsim.examples.experiments.glucose import glucose
+from sbmlsim.examples.experiments.repressilator import repressilator
 
 
 def test_repressilator_experiment(tmp_path):

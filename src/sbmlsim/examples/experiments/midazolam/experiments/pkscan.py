@@ -3,16 +3,17 @@
 Dose-dependency of pharmacokinetic parameters.
 """
 from typing import Dict
-import pandas as pd
-import numpy as np
 
+import numpy as np
+import pandas as pd
+
+from sbmlsim.data import Data, DataSet
 from sbmlsim.experiment import ExperimentDict
-from sbmlsim.data import DataSet, Data
 from sbmlsim.plot import Curve
+from sbmlsim.plot.plotting_matplotlib import Axis, Figure
 from sbmlsim.result import XResult
 from sbmlsim.result.datagenerator import DataGenerator
-from sbmlsim.simulation import Timecourse, TimecourseSim, ScanSim, Dimension
-from sbmlsim.plot.plotting_matplotlib import Figure, Axis
+from sbmlsim.simulation import Dimension, ScanSim, Timecourse, TimecourseSim
 
 from . import MidazolamSimulationExperiment
 

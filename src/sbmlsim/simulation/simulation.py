@@ -1,11 +1,12 @@
 """
 Abstract base simulation.
 """
-from typing import List, Dict, Iterable
 import abc
-from abc import ABC
-import numpy as np
 import itertools
+from abc import ABC
+from typing import Dict, Iterable, List
+
+import numpy as np
 
 
 class Dimension(object):

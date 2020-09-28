@@ -1,5 +1,5 @@
-from sbmlsim.simulation.timecourse import Timecourse, TimecourseSim
 from sbmlsim.examples import example_timecourse
+from sbmlsim.simulation.timecourse import Timecourse, TimecourseSim
 
 
 def test_timecourse():

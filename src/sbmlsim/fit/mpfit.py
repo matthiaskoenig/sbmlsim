@@ -20,15 +20,17 @@ Since these are independent processes, they now have independent Global Interpre
 contend for other lower-level (OS) resources. That's the "multiprocessing" part.
 -------------------------------------------------------------------------------
 """
-import os
-import multiprocessing
-import numpy as np
 import logging
+import multiprocessing
+import os
 
+import numpy as np
+
+from sbmlsim.fit.analysis import OptimizationResult
 from sbmlsim.fit.fit import run_optimization
 from sbmlsim.fit.optimization import OptimizationProblem
-from sbmlsim.fit.analysis import OptimizationResult
 from sbmlsim.utils import timeit
+
 
 logger = logging.getLogger(__name__)
 

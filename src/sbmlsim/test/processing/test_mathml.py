@@ -1,6 +1,13 @@
-import pytest
 import numpy as np
-from sbmlsim.combine.mathml import formula_to_astnode, _get_variables, parse_mathml_str, evaluate
+import pytest
+
+from sbmlsim.combine.mathml import (
+    _get_variables,
+    evaluate,
+    formula_to_astnode,
+    parse_mathml_str,
+)
+
 
 def test_variables_1():
     astnode = formula_to_astnode("x + y")

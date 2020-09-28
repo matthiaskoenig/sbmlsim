@@ -1,6 +1,6 @@
-from matplotlib import pyplot as plt
 import lhsmdu
 import pandas as pd
+from matplotlib import pyplot as plt
 
 
 def lhsmdu_runtime():

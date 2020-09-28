@@ -1,13 +1,12 @@
-from typing import Dict
 from pathlib import Path
+from typing import Dict
 
-from sbmlsim.experiment import SimulationExperiment
 from sbmlsim.data import Data, DataSet
-from sbmlsim.simulation.timecourse import Timecourse, TimecourseSim
-from sbmlsim.plotting import Figure, Axis
-
-from sbmlsim.experiment import ExperimentResult
+from sbmlsim.experiment import ExperimentResult, SimulationExperiment
 from sbmlsim.models import RoadrunnerSBMLModel
+from sbmlsim.plotting import Axis, Figure
+from sbmlsim.simulation.timecourse import Timecourse, TimecourseSim
+
 
 class RepressilatorExperiment(SimulationExperiment):
 

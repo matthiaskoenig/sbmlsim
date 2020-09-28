@@ -1,14 +1,16 @@
 """
 Testing of SED-ML data support, i.e., DataDescription.
 """
-from pathlib import Path
+import importlib
 import os
-from sbmlsim.test import DATA_PATH
+from pathlib import Path
+
+import libsedml
 
 from sbmlsim.combine.sedml.data import DataDescriptionParser
 from sbmlsim.combine.sedml.utils import SEDMLTools
-import importlib
-import libsedml
+from sbmlsim.test import DATA_PATH
+
 
 # ---------------------------------------------------------------------------------
 BASE_DIR = DATA_PATH / 'sedml' / 'data'

@@ -2,7 +2,9 @@
 Interactive plots with altair
 """
 import altair as alt
+
 from sbmlsim.result import XResult
+
 
 def lineplot(result):
     source = result.mean
@@ -76,10 +78,14 @@ def add_line(ax, data, yid, xid="time", color='black', label='', xf=1.0, **kwarg
 
 
 if __name__ == "__main__":
-    from sbmlsim.test import MODEL_REPRESSILATOR
     from sbmlsim.models.model import load_model
     from sbmlsim.parametrization import ChangeSet
-    from sbmlsim.simulator.simulation_serial import TimecourseSimulation, Timecourse, timecourses
+    from sbmlsim.simulator.simulation_serial import (
+        Timecourse,
+        TimecourseSimulation,
+        timecourses,
+    )
+    from sbmlsim.test import MODEL_REPRESSILATOR
     r = load_model(MODEL_REPRESSILATOR)
 
     # parameter sensitivity

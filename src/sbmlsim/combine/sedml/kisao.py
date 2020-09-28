@@ -3,6 +3,7 @@ from collections import namedtuple
 
 import libsedml
 
+
 logger = logging.getLogger(__name__)
 
 # ----------------

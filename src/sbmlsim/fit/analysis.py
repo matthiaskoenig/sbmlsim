@@ -1,20 +1,19 @@
-from typing import List, Dict, Iterable, Set, Tuple
-
-
-from pathlib import Path
 import json
-
+import logging
 import time
+from pathlib import Path
+from typing import Dict, Iterable, List, Set, Tuple
+
 import numpy as np
 import pandas as pd
-import logging
 import seaborn as sns
 from scipy.optimize import OptimizeResult
 
-from sbmlsim.plot.plotting_matplotlib import plt
 from sbmlsim.fit.objects import FitParameter
+from sbmlsim.plot.plotting_matplotlib import plt
 from sbmlsim.serialization import ObjectJSONEncoder
 from sbmlsim.utils import timeit
+
 
 logger = logging.getLogger(__name__)
 

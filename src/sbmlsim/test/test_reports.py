@@ -1,8 +1,9 @@
-from sbmlsim.experiment import ExperimentReport, ExperimentRunner
-from sbmlsim.examples.experiments.glucose.experiments.dose_response import \
-    DoseResponseExperiment
-from sbmlsim.simulator import SimulatorSerial
 from sbmlsim.examples.experiments.glucose import BASE_PATH, DATA_PATH
+from sbmlsim.examples.experiments.glucose.experiments.dose_response import (
+    DoseResponseExperiment,
+)
+from sbmlsim.experiment import ExperimentReport, ExperimentRunner
+from sbmlsim.simulator import SimulatorSerial
 
 
 def test_glucose_report(tmp_path):

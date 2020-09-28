@@ -1,20 +1,19 @@
+import itertools
 import logging
 from typing import List
-import pandas as pd
+
 import numpy as np
+import pandas as pd
 import xarray as xr
-import itertools
-
-from sbmlsim.result import XResult
-from sbmlsim.data import DataSet, Data
-from sbmlsim.plot import Figure, SubPlot, Plot, Curve, Axis
-
-
-from matplotlib.pyplot import GridSpec
 from matplotlib import pyplot as plt
 from matplotlib.pyplot import Figure as FigureMPL
+from matplotlib.pyplot import GridSpec
 
+from sbmlsim.data import Data, DataSet
+from sbmlsim.plot import Axis, Curve, Figure, Plot, SubPlot
+from sbmlsim.result import XResult
 from sbmlsim.utils import deprecated
+
 
 logger = logging.getLogger(__name__)
 

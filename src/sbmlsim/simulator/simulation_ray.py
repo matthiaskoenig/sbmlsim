@@ -1,16 +1,17 @@
 import logging
-import ray
-import psutil
-import roadrunner
-from typing import List
-import pandas as pd
 import tempfile
-import numpy as np
+from typing import List
 
-from sbmlsim.model import RoadrunnerSBMLModel, AbstractModel
-from sbmlsim.simulator import SimulatorSerial
-from sbmlsim.simulation import TimecourseSim
+import numpy as np
+import pandas as pd
+import psutil
+import ray
+import roadrunner
+
+from sbmlsim.model import AbstractModel, RoadrunnerSBMLModel
 from sbmlsim.result import XResult
+from sbmlsim.simulation import TimecourseSim
+from sbmlsim.simulator import SimulatorSerial
 from sbmlsim.simulator.simulation import SimulatorWorker
 
 

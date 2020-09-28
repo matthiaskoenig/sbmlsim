@@ -3,15 +3,14 @@ Examples for model changes.
 
 For instance clamping species to given formulas.
 """
-from sbmlsim.model import RoadrunnerSBMLModel, ModelChange
-from sbmlsim.simulator import SimulatorSerial as Simulator
-from sbmlsim.simulation import Timecourse, TimecourseSim
+import pandas as pd
+
+from sbmlsim.model import ModelChange, RoadrunnerSBMLModel
 from sbmlsim.plot.plotting_matplotlib import add_line, plt
 from sbmlsim.result import XResult
-
+from sbmlsim.simulation import Timecourse, TimecourseSim
+from sbmlsim.simulator import SimulatorSerial as Simulator
 from sbmlsim.test import MODEL_REPRESSILATOR
-
-import pandas as pd
 
 
 def run_model_change_example1():

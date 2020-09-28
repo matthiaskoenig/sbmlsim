@@ -33,9 +33,11 @@
 ## ------------------------------------------------------------------------ -.
 ## 
 
-import sys
 import os.path
+import sys
+
 import libsedml
+
 
 def main (args):
   """Usage: echo_sedml input-filename output-filename

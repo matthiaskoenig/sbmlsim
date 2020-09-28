@@ -5,10 +5,10 @@ Model can be in different formats, main supported format being SBML.
 Other formats could be supported like CellML or NeuroML.
 
 """
-from typing import List, Tuple, Dict
-from pathlib import Path
-from enum import Enum
 import logging
+from enum import Enum
+from pathlib import Path
+from typing import Dict, List, Tuple
 
 from sbmlsim.model.model_resources import Source
 

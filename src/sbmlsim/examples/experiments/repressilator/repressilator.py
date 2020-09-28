@@ -1,20 +1,25 @@
 """
 Example simulation experiment.
 """
-import numpy as np
-from typing import Dict
 from pathlib import Path
+from typing import Dict
 
+import numpy as np
 
-from sbmlsim.experiment import SimulationExperiment, ExperimentRunner
-from sbmlsim.model import AbstractModel, RoadrunnerSBMLModel
 from sbmlsim.data import Data
-from sbmlsim.simulation import Timecourse, TimecourseSim, AbstractSim, ScanSim, Dimension
+from sbmlsim.experiment import ExperimentRunner, SimulationExperiment
+from sbmlsim.model import AbstractModel, RoadrunnerSBMLModel
+from sbmlsim.plot import Axis, Figure
+from sbmlsim.simulation import (
+    AbstractSim,
+    Dimension,
+    ScanSim,
+    Timecourse,
+    TimecourseSim,
+)
 from sbmlsim.simulation.sensititvity import ModelSensitivity, SensitivityType
 from sbmlsim.simulator.simulation_ray import SimulatorParallel, SimulatorSerial
 from sbmlsim.task import Task
-from sbmlsim.plot import Figure, Axis
-
 from sbmlsim.test import MODEL_REPRESSILATOR
 
 

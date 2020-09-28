@@ -3,7 +3,9 @@ Methods specific to pkdb models
 """
 import logging
 import re
+
 import roadrunner
+
 
 logger = logging.getLogger(__name__)
 

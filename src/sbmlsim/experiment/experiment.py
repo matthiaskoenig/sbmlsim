@@ -1,24 +1,23 @@
-import logging
-from pathlib import Path
 import json
-from typing import Dict, List, Iterable
-from collections import defaultdict
+import logging
 import multiprocessing
-
+from collections import defaultdict
 from dataclasses import dataclass
+from pathlib import Path
+from typing import Dict, Iterable, List
 
-from sbmlsim.task import Task
-from sbmlsim.simulation import AbstractSim, TimecourseSim, ScanSim
-from sbmlsim.serialization import ObjectJSONEncoder
-from sbmlsim.result import XResult
-from sbmlsim.data import DataSet, Data
+from sbmlsim.data import Data, DataSet
+from sbmlsim.fit import FitData, FitMapping
 from sbmlsim.model import AbstractModel
-from sbmlsim.utils import timeit
-from sbmlsim.units import UnitRegistry, Units
-from sbmlsim.fit import FitMapping, FitData
-
 from sbmlsim.plot import Figure
-from sbmlsim.plot.plotting_matplotlib import MatplotlibFigureSerializer, FigureMPL, plt
+from sbmlsim.plot.plotting_matplotlib import FigureMPL, MatplotlibFigureSerializer, plt
+from sbmlsim.result import XResult
+from sbmlsim.serialization import ObjectJSONEncoder
+from sbmlsim.simulation import AbstractSim, ScanSim, TimecourseSim
+from sbmlsim.task import Task
+from sbmlsim.units import UnitRegistry, Units
+from sbmlsim.utils import timeit
+
 
 logger = logging.getLogger(__name__)
 

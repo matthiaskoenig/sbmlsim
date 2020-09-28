@@ -2,11 +2,13 @@
 Classes for running simulations with SBML models.
 """
 import logging
+
 import pandas as pd
 
 from sbmlsim.model import ModelChange
-from sbmlsim.simulation import Timecourse, TimecourseSim, ScanSim
 from sbmlsim.result import XResult
+from sbmlsim.simulation import ScanSim, Timecourse, TimecourseSim
+
 
 logger = logging.getLogger(__name__)
 

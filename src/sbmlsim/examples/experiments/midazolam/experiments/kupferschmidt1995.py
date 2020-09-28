@@ -1,8 +1,8 @@
 from typing import Dict, List
 
 from sbmlsim.data import DataSet, load_pkdb_dataframes_by_substance
-from sbmlsim.fit import FitMapping, FitData
-from sbmlsim.plot import Figure, Axis
+from sbmlsim.fit import FitData, FitMapping
+from sbmlsim.plot import Axis, Figure
 from sbmlsim.simulation import Timecourse, TimecourseSim
 
 from . import MidazolamSimulationExperiment

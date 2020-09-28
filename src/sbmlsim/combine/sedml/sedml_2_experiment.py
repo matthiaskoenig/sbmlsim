@@ -92,26 +92,25 @@ XML transformation changes of the model, i.e.,
 - Change.ChangeXML
 are supported.
 """
-import re
-import logging
-import warnings
-import numpy as np
-from typing import Dict, List
-from collections import namedtuple
-from pathlib import Path
-import libsedml
 import importlib
-from collections import OrderedDict
+import logging
+import re
+import warnings
+from collections import OrderedDict, namedtuple
+from pathlib import Path
+from typing import Dict, List
 
-from sbmlsim.combine.sedml.kisao import \
-    is_supported_algorithm_for_simulation_type
-from sbmlsim.models import model_resources
+import libsedml
+import numpy as np
+
 from sbmlsim.combine.sedml.data import DataDescriptionParser
+from sbmlsim.combine.sedml.kisao import is_supported_algorithm_for_simulation_type
+from sbmlsim.combine.sedml.task import Stack, TaskNode, TaskTree
 from sbmlsim.combine.sedml.utils import SEDMLTools
+from sbmlsim.models import model_resources
 from sbmlsim.models.model import AbstractModel
-
-from sbmlsim.combine.sedml.task import TaskTree, TaskNode, Stack
 from sbmlsim.units import UnitRegistry
+
 
 logger = logging.getLogger(__file__)
 '''

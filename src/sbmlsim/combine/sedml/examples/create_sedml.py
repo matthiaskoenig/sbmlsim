@@ -33,8 +33,9 @@
 ## ------------------------------------------------------------------------ -.
 ## 
 
-import sys
 import os.path
+import sys
+
 import libsedml
 
 

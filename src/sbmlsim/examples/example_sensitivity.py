@@ -1,11 +1,10 @@
 """
 Example shows basic model simulations and plotting.
 """
-from sbmlsim.simulator import SimulatorSerial as Simulator
-from sbmlsim.simulation import TimecourseSim, Timecourse, ScanSim, Dimension
-from sbmlsim.simulation.sensititvity import ModelSensitivity
-
 from sbmlsim.plot.plotting_matplotlib import add_line, plt
+from sbmlsim.simulation import Dimension, ScanSim, Timecourse, TimecourseSim
+from sbmlsim.simulation.sensititvity import ModelSensitivity
+from sbmlsim.simulator import SimulatorSerial as Simulator
 from sbmlsim.test import MODEL_REPRESSILATOR
 
 

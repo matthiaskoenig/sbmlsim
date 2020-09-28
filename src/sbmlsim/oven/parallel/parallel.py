@@ -7,11 +7,12 @@ requirements
     python-libsbml-experimental
     pandas
 """
-import roadrunner
-import libsbml
-import ray
-import pandas as pd
 import time
+
+import libsbml
+import pandas as pd
+import ray
+import roadrunner
 from pint import UnitRegistry
 
 

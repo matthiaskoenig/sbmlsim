@@ -1,12 +1,12 @@
 from pathlib import Path
-import pandas as pd
 
-from sbmlsim.diff import DataSetsComparison, get_files_by_extension
-from sbmlsim.simulator import SimulatorSerial as Simulator
-from sbmlsim.model import RoadrunnerSBMLModel
-from sbmlsim.simulation import TimecourseSim
+import pandas as pd
 from matplotlib import pyplot as plt
 
+from sbmlsim.diff import DataSetsComparison, get_files_by_extension
+from sbmlsim.model import RoadrunnerSBMLModel
+from sbmlsim.simulation import TimecourseSim
+from sbmlsim.simulator import SimulatorSerial as Simulator
 from sbmlsim.test import DATA_PATH, MODEL_REPRESSILATOR
 
 

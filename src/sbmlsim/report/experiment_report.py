@@ -1,21 +1,22 @@
 """
 Create markdown report of simulation experiments.
 """
+import json
+import logging
+import os
 import shutil
 import sys
-import os
-import logging
-import jinja2
 from collections import OrderedDict
-from typing import Dict, List
-from pathlib import Path
 from enum import Enum
+from pathlib import Path
 from pprint import pprint
-import json
+from typing import Dict, List
 
-from sbmlsim import __version__
-from sbmlsim.experiment import SimulationExperiment, ExperimentResult
-from sbmlsim import BASE_PATH
+import jinja2
+
+from sbmlsim import BASE_PATH, __version__
+from sbmlsim.experiment import ExperimentResult, SimulationExperiment
+
 
 logger = logging.getLogger(__name__)
 TEMPLATE_PATH = BASE_PATH / "report" / "templates"

@@ -1,18 +1,18 @@
+from pathlib import Path
 from typing import Dict
+
 import numpy as np
 import pandas as pd
 import xarray as xr
-from pathlib import Path
+from matplotlib.pyplot import Figure
 
+from sbmlsim.data import Data, DataSet, load_pkdb_dataframe
 from sbmlsim.experiment import SimulationExperiment
-from sbmlsim.data import DataSet, Data, load_pkdb_dataframe
 from sbmlsim.model import AbstractModel, RoadrunnerSBMLModel
-from sbmlsim.simulation import Timecourse, TimecourseSim, ScanSim, Dimension
+from sbmlsim.plot.plotting_matplotlib import add_data, plt
+from sbmlsim.simulation import Dimension, ScanSim, Timecourse, TimecourseSim
 from sbmlsim.task import Task
 from sbmlsim.utils import timeit
-
-from matplotlib.pyplot import Figure
-from sbmlsim.plot.plotting_matplotlib import add_data, plt
 
 
 class DoseResponseExperiment(SimulationExperiment):
