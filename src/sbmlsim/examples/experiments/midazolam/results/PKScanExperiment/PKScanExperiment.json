@@ -1,0 +1,583 @@
+{
+  "experiment_id": "PKScanExperiment",
+  "base_path": "/home/mkoenig/git/sbmlsim/sbmlsim/examples/experiments/midazolam",
+  "data_path": "[PosixPath('/home/mkoenig/git/sbmlsim/sbmlsim/examples/experiments/midazolam/data')]",
+  "models": {
+    "model": {
+      "sid": null,
+      "name": null,
+      "language": "SBML",
+      "language_type": "SBML",
+      "source": {
+        "source": "/home/mkoenig/git/sbmlsim/sbmlsim/examples/experiments/midazolam/model/midazolam_body_flat.xml",
+        "path": "/home/mkoenig/git/sbmlsim/sbmlsim/examples/experiments/midazolam/model/midazolam_body_flat.xml",
+        "content": null
+      },
+      "changes": {}
+    }
+  },
+  "tasks": {
+    "task_po_scan": {
+      "model": "model",
+      "simulation": "po_scan"
+    },
+    "task_iv_scan": {
+      "model": "model",
+      "simulation": "iv_scan"
+    }
+  },
+  "simulations": {
+    "po_scan": {
+      "type": "ScanSim"
+    },
+    "iv_scan": {
+      "type": "ScanSim"
+    }
+  },
+  "data": {
+    "task_po_scan__time": {
+      "type": "TASK",
+      "index": "time",
+      "unit": null,
+      "task": "task_po_scan",
+      "dataset": null,
+      "function": null,
+      "variables": null
+    },
+    "task_po_scan__[Cve_mid]": {
+      "type": "TASK",
+      "index": "[Cve_mid]",
+      "unit": null,
+      "task": "task_po_scan",
+      "dataset": null,
+      "function": null,
+      "variables": null
+    },
+    "task_po_scan__[Cve_mid1oh]": {
+      "type": "TASK",
+      "index": "[Cve_mid1oh]",
+      "unit": null,
+      "task": "task_po_scan",
+      "dataset": null,
+      "function": null,
+      "variables": null
+    },
+    "task_po_scan__IVDOSE_mid": {
+      "type": "TASK",
+      "index": "IVDOSE_mid",
+      "unit": null,
+      "task": "task_po_scan",
+      "dataset": null,
+      "function": null,
+      "variables": null
+    },
+    "task_po_scan__PODOSE_mid": {
+      "type": "TASK",
+      "index": "PODOSE_mid",
+      "unit": null,
+      "task": "task_po_scan",
+      "dataset": null,
+      "function": null,
+      "variables": null
+    },
+    "task_iv_scan__time": {
+      "type": "TASK",
+      "index": "time",
+      "unit": null,
+      "task": "task_iv_scan",
+      "dataset": null,
+      "function": null,
+      "variables": null
+    },
+    "task_iv_scan__[Cve_mid]": {
+      "type": "TASK",
+      "index": "[Cve_mid]",
+      "unit": null,
+      "task": "task_iv_scan",
+      "dataset": null,
+      "function": null,
+      "variables": null
+    },
+    "task_iv_scan__[Cve_mid1oh]": {
+      "type": "TASK",
+      "index": "[Cve_mid1oh]",
+      "unit": null,
+      "task": "task_iv_scan",
+      "dataset": null,
+      "function": null,
+      "variables": null
+    },
+    "task_iv_scan__IVDOSE_mid": {
+      "type": "TASK",
+      "index": "IVDOSE_mid",
+      "unit": null,
+      "task": "task_iv_scan",
+      "dataset": null,
+      "function": null,
+      "variables": null
+    },
+    "task_iv_scan__PODOSE_mid": {
+      "type": "TASK",
+      "index": "PODOSE_mid",
+      "unit": null,
+      "task": "task_iv_scan",
+      "dataset": null,
+      "function": null,
+      "variables": null
+    }
+  },
+  "figures": {
+    "fig1": {
+      "sid": "Fig1",
+      "name": "PKScanExperiment",
+      "num_rows": 2,
+      "num_cols": 2,
+      "width": 14,
+      "height": 10,
+      "subplots": [
+        {
+          "plot": {
+            "sid": "plot0",
+            "name": "scan po",
+            "legend": true,
+            "xaxis": {
+              "sid": null,
+              "name": "time",
+              "unit": "min",
+              "_scale": "LINEAR",
+              "min": null,
+              "max": null,
+              "grid": false,
+              "label_visible": false,
+              "ticks_visible": true
+            },
+            "yaxis": {
+              "sid": null,
+              "name": "midazolam",
+              "unit": "nmol/ml",
+              "_scale": "LINEAR",
+              "min": null,
+              "max": null,
+              "grid": false,
+              "label_visible": true,
+              "ticks_visible": true
+            },
+            "curves": [
+              {
+                "sid": "plot0_curve1",
+                "name": "__nolabel__",
+                "order": null,
+                "style": {
+                  "sid": null,
+                  "name": null,
+                  "line": {
+                    "type": "SOLID",
+                    "color": "#000000ff",
+                    "thickness": 2.0
+                  },
+                  "marker": {
+                    "size": null,
+                    "type": null,
+                    "fill": "#000000ff",
+                    "line_color": null,
+                    "line_thickness": null
+                  },
+                  "fill": null
+                },
+                "x": "task_po_scan__time",
+                "y": "task_po_scan__[Cve_mid]",
+                "xerr": null,
+                "yerr": null,
+                "yaxis": null
+              }
+            ],
+            "facecolor": 1.0
+          },
+          "row": 1,
+          "col": 1,
+          "row_span": 1,
+          "col_span": 1
+        },
+        {
+          "plot": {
+            "sid": "plot1",
+            "name": "scan iv",
+            "legend": true,
+            "xaxis": {
+              "sid": null,
+              "name": "time",
+              "unit": "min",
+              "_scale": "LINEAR",
+              "min": null,
+              "max": null,
+              "grid": false,
+              "label_visible": false,
+              "ticks_visible": true
+            },
+            "yaxis": {
+              "sid": null,
+              "name": "midazolam",
+              "unit": "nmol/ml",
+              "_scale": "LINEAR",
+              "min": null,
+              "max": null,
+              "grid": false,
+              "label_visible": true,
+              "ticks_visible": true
+            },
+            "curves": [
+              {
+                "sid": "plot1_curve1",
+                "name": "__nolabel__",
+                "order": null,
+                "style": {
+                  "sid": null,
+                  "name": null,
+                  "line": {
+                    "type": "SOLID",
+                    "color": "#000000ff",
+                    "thickness": 2.0
+                  },
+                  "marker": {
+                    "size": null,
+                    "type": null,
+                    "fill": "#000000ff",
+                    "line_color": null,
+                    "line_thickness": null
+                  },
+                  "fill": null
+                },
+                "x": "task_iv_scan__time",
+                "y": "task_iv_scan__[Cve_mid]",
+                "xerr": null,
+                "yerr": null,
+                "yaxis": null
+              }
+            ],
+            "facecolor": 1.0
+          },
+          "row": 1,
+          "col": 2,
+          "row_span": 1,
+          "col_span": 1
+        },
+        {
+          "plot": {
+            "sid": "plot2",
+            "name": null,
+            "legend": true,
+            "xaxis": {
+              "sid": null,
+              "name": "time",
+              "unit": "min",
+              "_scale": "LINEAR",
+              "min": null,
+              "max": null,
+              "grid": false,
+              "label_visible": true,
+              "ticks_visible": true
+            },
+            "yaxis": {
+              "sid": null,
+              "name": "1-hydroxymidazolam",
+              "unit": "nmol/ml",
+              "_scale": "LINEAR",
+              "min": null,
+              "max": null,
+              "grid": false,
+              "label_visible": true,
+              "ticks_visible": true
+            },
+            "curves": [
+              {
+                "sid": "plot2_curve1",
+                "name": "__nolabel__",
+                "order": null,
+                "style": {
+                  "sid": null,
+                  "name": null,
+                  "line": {
+                    "type": "SOLID",
+                    "color": "#000000ff",
+                    "thickness": 2.0
+                  },
+                  "marker": {
+                    "size": null,
+                    "type": null,
+                    "fill": "#000000ff",
+                    "line_color": null,
+                    "line_thickness": null
+                  },
+                  "fill": null
+                },
+                "x": "task_po_scan__time",
+                "y": "task_po_scan__[Cve_mid1oh]",
+                "xerr": null,
+                "yerr": null,
+                "yaxis": null
+              }
+            ],
+            "facecolor": 1.0
+          },
+          "row": 2,
+          "col": 1,
+          "row_span": 1,
+          "col_span": 1
+        },
+        {
+          "plot": {
+            "sid": "plot3",
+            "name": null,
+            "legend": true,
+            "xaxis": {
+              "sid": null,
+              "name": "time",
+              "unit": "min",
+              "_scale": "LINEAR",
+              "min": null,
+              "max": null,
+              "grid": false,
+              "label_visible": true,
+              "ticks_visible": true
+            },
+            "yaxis": {
+              "sid": null,
+              "name": "1-hydroxymidazolam",
+              "unit": "nmol/ml",
+              "_scale": "LINEAR",
+              "min": null,
+              "max": null,
+              "grid": false,
+              "label_visible": true,
+              "ticks_visible": true
+            },
+            "curves": [
+              {
+                "sid": "plot3_curve1",
+                "name": "__nolabel__",
+                "order": null,
+                "style": {
+                  "sid": null,
+                  "name": null,
+                  "line": {
+                    "type": "SOLID",
+                    "color": "#000000ff",
+                    "thickness": 2.0
+                  },
+                  "marker": {
+                    "size": null,
+                    "type": null,
+                    "fill": "#000000ff",
+                    "line_color": null,
+                    "line_thickness": null
+                  },
+                  "fill": null
+                },
+                "x": "task_iv_scan__time",
+                "y": "task_iv_scan__[Cve_mid1oh]",
+                "xerr": null,
+                "yerr": null,
+                "yaxis": null
+              }
+            ],
+            "facecolor": 1.0
+          },
+          "row": 2,
+          "col": 2,
+          "row_span": 1,
+          "col_span": 1
+        }
+      ]
+    },
+    "fig_dose": {
+      "sid": "fig_dose",
+      "name": "PKScanExperiment",
+      "num_rows": 1,
+      "num_cols": 2,
+      "width": 14,
+      "height": 5,
+      "subplots": [
+        {
+          "plot": {
+            "sid": "plot0",
+            "name": "scan po",
+            "legend": true,
+            "xaxis": {
+              "sid": null,
+              "name": "dose",
+              "unit": "mg",
+              "_scale": "LINEAR",
+              "min": null,
+              "max": null,
+              "grid": false,
+              "label_visible": true,
+              "ticks_visible": true
+            },
+            "yaxis": {
+              "sid": null,
+              "name": "concentration",
+              "unit": "nmol/ml",
+              "_scale": "LINEAR",
+              "min": null,
+              "max": null,
+              "grid": false,
+              "label_visible": true,
+              "ticks_visible": true
+            },
+            "curves": [
+              {
+                "sid": "plot0_curve1",
+                "name": "__nolabel__",
+                "order": null,
+                "style": {
+                  "sid": null,
+                  "name": null,
+                  "line": {
+                    "type": "NONE",
+                    "color": "#000000ff",
+                    "thickness": 2.0
+                  },
+                  "marker": {
+                    "size": null,
+                    "type": null,
+                    "fill": "#000000ff",
+                    "line_color": null,
+                    "line_thickness": null
+                  },
+                  "fill": null
+                },
+                "x": "task_po_scan__PODOSE_mid",
+                "y": "task_po_scan__[Cve_mid]",
+                "xerr": null,
+                "yerr": null,
+                "yaxis": null
+              },
+              {
+                "sid": "plot0_curve2",
+                "name": "__nolabel__",
+                "order": null,
+                "style": {
+                  "sid": null,
+                  "name": null,
+                  "line": {
+                    "type": "NONE",
+                    "color": "#000000ff",
+                    "thickness": 2.0
+                  },
+                  "marker": {
+                    "size": null,
+                    "type": null,
+                    "fill": "#000000ff",
+                    "line_color": null,
+                    "line_thickness": null
+                  },
+                  "fill": null
+                },
+                "x": "task_po_scan__PODOSE_mid",
+                "y": "task_po_scan__[Cve_mid1oh]",
+                "xerr": null,
+                "yerr": null,
+                "yaxis": null
+              }
+            ],
+            "facecolor": 1.0
+          },
+          "row": 1,
+          "col": 1,
+          "row_span": 1,
+          "col_span": 1
+        },
+        {
+          "plot": {
+            "sid": "plot1",
+            "name": "scan iv",
+            "legend": true,
+            "xaxis": {
+              "sid": null,
+              "name": "dose",
+              "unit": "mg",
+              "_scale": "LINEAR",
+              "min": null,
+              "max": null,
+              "grid": false,
+              "label_visible": true,
+              "ticks_visible": true
+            },
+            "yaxis": {
+              "sid": null,
+              "name": "concentration",
+              "unit": "nmol/ml",
+              "_scale": "LINEAR",
+              "min": null,
+              "max": null,
+              "grid": false,
+              "label_visible": true,
+              "ticks_visible": true
+            },
+            "curves": [
+              {
+                "sid": "plot1_curve1",
+                "name": "__nolabel__",
+                "order": null,
+                "style": {
+                  "sid": null,
+                  "name": null,
+                  "line": {
+                    "type": "NONE",
+                    "color": "#000000ff",
+                    "thickness": 2.0
+                  },
+                  "marker": {
+                    "size": null,
+                    "type": null,
+                    "fill": "#000000ff",
+                    "line_color": null,
+                    "line_thickness": null
+                  },
+                  "fill": null
+                },
+                "x": "task_iv_scan__IVDOSE_mid",
+                "y": "task_iv_scan__[Cve_mid]",
+                "xerr": null,
+                "yerr": null,
+                "yaxis": null
+              },
+              {
+                "sid": "plot1_curve2",
+                "name": "__nolabel__",
+                "order": null,
+                "style": {
+                  "sid": null,
+                  "name": null,
+                  "line": {
+                    "type": "NONE",
+                    "color": "#000000ff",
+                    "thickness": 2.0
+                  },
+                  "marker": {
+                    "size": null,
+                    "type": null,
+                    "fill": "#000000ff",
+                    "line_color": null,
+                    "line_thickness": null
+                  },
+                  "fill": null
+                },
+                "x": "task_iv_scan__IVDOSE_mid",
+                "y": "task_iv_scan__[Cve_mid1oh]",
+                "xerr": null,
+                "yerr": null,
+                "yaxis": null
+              }
+            ],
+            "facecolor": 1.0
+          },
+          "row": 1,
+          "col": 2,
+          "row_span": 1,
+          "col_span": 1
+        }
+      ]
+    }
+  }
+}

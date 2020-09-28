@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta http-equiv="content-type" content="text/html; charset=utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, minimal-ui">
+    <title>{{exp_id}}</title>
+    <link href="https://fonts.googleapis.com/css?family=Roboto:100,300,400,500,700,900" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/@mdi/font@4.x/css/materialdesignicons.min.css" rel="stylesheet">
+    <!--<link href="https://cdn.jsdelivr.net/npm/vuetify@2.x/dist/vuetify.min.css" rel="stylesheet">-->
+    <link rel="stylesheet" href="//cdnjs.cloudflare.com/ajax/libs/highlight.js/10.1.2/styles/default.min.css">
+</head>
+
+<body>
+<div id="app">
+    <!-- Vue app-->
+    <v-app>
+        <v-content>
+
+            <a href="../index.html">Experiments</a>
+            <h1>{{ exp_id }}</h1>
+
+            <h2>Models</h2>
+            <p>
+            <ul>
+                {% for model_id, model_path in models.items() %}
+                <li><strong>{{model_id}}</strong>: <a href="{{model_path}}">{{model_path}}</a></li>
+                {% endfor %}
+            </ul>
+            </p>
+
+            <h2>Datasets</h2>
+            <p>
+            <ul>
+                {% for dset_id, dset_path in datasets.items() %}
+                <li><strong>{{dset_id}}</strong>: <a href="{{dset_path}}">{{dset_path}}</a></li>
+                {% endfor %}
+            </ul>
+            </p>
+
+            <h2>Figures</h2>
+            <p>
+            <ul>
+                {% for fig_id, fig_path in figures.items() %}
+                <li><strong>{{fig_id}}</strong>: <a href="{{fig_path}}.svg">{{fig_path}}.svg</a></li>
+                {% endfor %}
+            </ul>
+            </p>
+
+            {% for fig_id, fig_path in figures.items() %}
+            <h3>{{ fig_id }}</h3>
+            <p>
+            <table>
+                <tr>
+                    <td>
+                        <!--<v-img src="{{fig_path}}.svg" max-width="600" width="600"></v-img>-->
+                        <img src="{{fig_path}}.svg" width="600">
+                    </td>
+                    <!--
+                    <td>
+                        {% if meta %}
+                        {% for k, v in meta.items() %}
+                        {% if v %}
+                        <strong>{{ k }}</strong>: {{ v }}<br/>
+                        {% endif %}
+                        {% endfor %}
+                        {% endif %}
+                    </td>
+                    -->
+                </tr>
+            </table>
+            </p>
+            {% endfor %}
+
+            <h2>Code</h2>
+            <p>
+                <a href="{{ code_path }}">{{ code_path }}</a>
+            <pre>
+<code class="python">{{ code }}</code>
+        </pre>
+            </p>
+
+        </v-content>
+    </v-app>
+</div>
+
+
+<!-- loading dependencies -->
+<script src="https://cdn.jsdelivr.net/npm/vue@2.6.11"></script>
+<script src="https://cdn.jsdelivr.net/npm/vuetify@2.2.6/dist/vuetify.js"></script>
+<link href="https://fonts.googleapis.com/css?family=Roboto:100,300,400,500,700,900" rel="stylesheet">
+<link href="https://cdn.jsdelivr.net/npm/@mdi/font@4.x/css/materialdesignicons.min.css" rel="stylesheet">
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/10.1.2/highlight.min.js"></script>
+<script>hljs.initHighlightingOnLoad();</script>
+
+<script>
+    const app = new Vue({
+        el: '#app',
+        vuetify: new Vuetify(),
+        delimiters: ['${', '}'],
+        data() {
+            return {}
+        }
+    })
+</script>
+
+
+</body>
+</html>

@@ -1,0 +1,13 @@
+study	subject	n	intervention	measurement	substance	tissue	mean	mean_pm	mean_se	mean_sd	time	time_unit	mean_unit
+Kupferschmidt1995	all	8	GRAP1, GRAP2, po	concentration	midazolam	plasma	2.1487758159180767e-07				0.0833333333333333	hr	mole/meter^3
+Kupferschmidt1995	all	8	GRAP1, GRAP2, po	concentration	midazolam	plasma	6.73435266815648e-05				0.33333333333333304	hr	mole/meter^3
+Kupferschmidt1995	all	8	GRAP1, GRAP2, po	concentration	midazolam	plasma	0.00014326142223913948	59.816616	4.035580228874536e-05	0.0001141434458343818	0.666666666666667	hr	mole/meter^3
+Kupferschmidt1995	all	8	GRAP1, GRAP2, po	concentration	midazolam	plasma	0.00021081352373468232	82.70934	4.3076790845018533e-05	0.00012183956367306886	1.0	hr	mole/meter^3
+Kupferschmidt1995	all	8	GRAP1, GRAP2, po	concentration	midazolam	plasma	0.00019305635298740202	69.226906	1.944734903366813e-05	5.5005409511233456e-05	1.5	hr	mole/meter^3
+Kupferschmidt1995	all	8	GRAP1, GRAP2, po	concentration	midazolam	plasma	0.0001826189189852901	65.96296	1.986554848849488e-05	5.618825619281941e-05	2.0	hr	mole/meter^3
+Kupferschmidt1995	all	8	GRAP1, GRAP2, po	concentration	midazolam	plasma	0.00013286912158345815	49.34769	1.8611963114854743e-05	5.264258131883058e-05	2.5	hr	mole/meter^3
+Kupferschmidt1995	all	8	GRAP1, GRAP2, po	concentration	midazolam	plasma	7.916415363080474e-05	31.443783000000003	1.7357858967117703e-05	4.909543913011468e-05	3.5	hr	mole/meter^3
+Kupferschmidt1995	all	8	GRAP1, GRAP2, po	concentration	midazolam	plasma	3.551357100758822e-05	14.430562	8.783480882100144e-06	2.484343557662164e-05	5.0	hr	mole/meter^3
+Kupferschmidt1995	all	8	GRAP1, GRAP2, po	concentration	midazolam	plasma	1.7391179305518035e-05	6.9599385	3.973529628447238e-06	1.12388389820828e-05	7.0	hr	mole/meter^3
+Kupferschmidt1995	all	8	GRAP1, GRAP2, po	concentration	midazolam	plasma	3.869108076913632e-06	2.4186408999999998	3.5553194297782464e-06	1.0055961912321957e-05	9.0	hr	mole/meter^3
+Kupferschmidt1995	all	8	GRAP1, GRAP2, po	concentration	midazolam	plasma	0.0				24.0	hr	mole/meter^3

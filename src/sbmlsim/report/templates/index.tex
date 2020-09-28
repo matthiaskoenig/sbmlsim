@@ -1,0 +1,10 @@
+{% for exp_id, context in data.items() %}
+
+    \paragraph{{ '{' }}{{exp_id}}{{ '}' }}
+    {% for fig_id, fig_path in context.figures.items() %}
+    \begin{figure}[ht!]
+        \includegraphics[width=.8\textwidth]{{ '{' }}{{latex_path_prefix}}/{{fig_path}}.png{{ '}' }}
+    \end{figure}
+    {% endfor %}
+{% endfor %}
+
