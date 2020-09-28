@@ -1,5 +1,6 @@
 import pytest
 
+
 try:
     import ray
 except ImportError:

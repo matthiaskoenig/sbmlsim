@@ -29,9 +29,9 @@ def fit_lsq(
     problem = problem_factory()
     opt_res = run_optimization_parallel(
         problem=problem,
-        size=50,
+        size=5,
         seed=1236,
-        n_cores=10,
+        n_cores=1,
         optimizer=OptimizerType.LEAST_SQUARE,
         weighting_local=weighting_local,
         residual_type=residual_type,
@@ -48,9 +48,9 @@ def fit_de(
     problem = problem_factory()
     opt_res = run_optimization_parallel(
         problem=problem,
-        size=10,
+        size=1,
         seed=1234,
-        n_cores=10,
+        n_cores=1,
         optimizer=OptimizerType.DIFFERENTIAL_EVOLUTION,
         weighting_local=weighting_local,
         residual_type=residual_type,
