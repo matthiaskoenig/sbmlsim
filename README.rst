@@ -104,6 +104,5 @@ Or via cloning the repository and installing via::
     cd sbmlutils
     pip install -e .
 
-```
 
 © 2019-2020 Matthias König
