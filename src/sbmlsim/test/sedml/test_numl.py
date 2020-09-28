@@ -5,7 +5,7 @@ from sbmlsim.combine.sedml.numl import NumlParser
 from sbmlsim.test import DATA_PATH
 
 
-BASE_DIR = DATA_PATH / 'sedml' / 'data'
+BASE_DIR = DATA_PATH / "sedml" / "data"
 
 SOURCE_NUML = BASE_DIR / "./oscli.xml"
 SOURCE_NUML_1D = BASE_DIR / "./numlData1D.xml"

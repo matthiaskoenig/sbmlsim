@@ -14,9 +14,7 @@ def run_timecourse_examples():
 
     # 1. simple timecourse simulation
     print("*** simple timecourse ***")
-    tc_sim = TimecourseSim(
-        Timecourse(start=0, end=100, steps=100)
-    )
+    tc_sim = TimecourseSim(Timecourse(start=0, end=100, steps=100))
     xr1 = simulator.run_timecourse(tc_sim)
     print(tc_sim)
 
@@ -30,10 +28,12 @@ def run_timecourse_examples():
 
     # 3. combined timecourses
     print("*** combined timecourse ***")
-    tc_sim = TimecourseSim([
+    tc_sim = TimecourseSim(
+        [
             Timecourse(start=0, end=100, steps=100),
             Timecourse(start=0, end=100, steps=100, changes={"X": 10, "Y": 20}),
-        ])
+        ]
+    )
     xr3 = simulator.run_timecourse(tc_sim)
     print(tc_sim)
 

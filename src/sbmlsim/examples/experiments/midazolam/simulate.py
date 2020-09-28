@@ -29,8 +29,7 @@ def midazolam_experiment():
         data_path=BASE_PATH / "data",
     )
     results = runner.run_experiments(
-        output_path=BASE_PATH / "results",
-        show_figures=True
+        output_path=BASE_PATH / "results", show_figures=True
     )
     report_results = ReportResults()
     for exp_result in results:

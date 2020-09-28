@@ -14,7 +14,7 @@ from sbmlsim.test import MODEL_REPRESSILATOR
 
 
 def run_model_change_example1():
-    """ Manually clamping species.
+    """Manually clamping species.
 
     :return:
     """
@@ -48,11 +48,11 @@ def run_model_change_example1():
     s5 = pd.DataFrame(s5, columns=s5.colnames)
     s5.time = s5.time + 400.0
 
-    plt.plot(s1.time, s1.X, 'o-')
-    plt.plot(s2.time, s2.X, 'o-')
-    plt.plot(s3.time, s3.X, 'o-')
-    plt.plot(s4.time, s4.X, 'o-')
-    plt.plot(s5.time, s5.X, 'o-')
+    plt.plot(s1.time, s1.X, "o-")
+    plt.plot(s2.time, s2.X, "o-")
+    plt.plot(s3.time, s3.X, "o-")
+    plt.plot(s4.time, s4.X, "o-")
+    plt.plot(s5.time, s5.X, "o-")
     plt.show()
 
 
@@ -61,21 +61,38 @@ def run_model_clamp1():
     simulator = Simulator(MODEL_REPRESSILATOR)
 
     # setting a species as boundary condition
-    tcsim = TimecourseSim([
+    tcsim = TimecourseSim(
+        [
             Timecourse(start=0, end=100, steps=100),
-            Timecourse(start=0, end=300, steps=100,
-                       model_changes={ModelChange.CLAMP_SPECIES: {"X": True}}),
-            Timecourse(start=0, end=200, steps=100,
-                       model_changes={ModelChange.CLAMP_SPECIES: {"X": False}}),
-        ])
+            Timecourse(
+                start=0,
+                end=300,
+                steps=100,
+                model_changes={ModelChange.CLAMP_SPECIES: {"X": True}},
+            ),
+            Timecourse(
+                start=0,
+                end=200,
+                steps=100,
+                model_changes={ModelChange.CLAMP_SPECIES: {"X": False}},
+            ),
+        ]
+    )
     xres = simulator.run_timecourse(tcsim)
 
     # create figure
     fig, ax1 = plt.subplots(nrows=1, ncols=1, figsize=(5, 5))
 
     for sid in ["X", "Y", "Z"]:
-        add_line(ax1, xres, xid="time", yid=sid,
-                 xunit="second", yunit="dimensionless", label=sid)
+        add_line(
+            ax1,
+            xres,
+            xid="time",
+            yid=sid,
+            xunit="second",
+            yunit="dimensionless",
+            label=sid,
+        )
 
     for ax in (ax1,):
         ax.legend()
@@ -85,18 +102,30 @@ def run_model_clamp1():
 
 
 def run_model_clamp2():
-
-
     def plot_result(result: XResult, title: str = None) -> None:
         # create figure
         fig, (ax1) = plt.subplots(nrows=1, ncols=1, figsize=(5, 5))
         fig.subplots_adjust(wspace=0.3, hspace=0.3)
 
-        add_line(ax=ax1, xres=result, xid='time', yid="X", label="X",
-                 xunit="second", yunit="dimensionless")
-        add_line(ax=ax1, xres=result, xid='time', yid="Y", label="Y",
-                 xunit="second", yunit="dimensionless",
-                 color="darkblue")
+        add_line(
+            ax=ax1,
+            xres=result,
+            xid="time",
+            yid="X",
+            label="X",
+            xunit="second",
+            yunit="dimensionless",
+        )
+        add_line(
+            ax=ax1,
+            xres=result,
+            xid="time",
+            yid="Y",
+            label="Y",
+            xunit="second",
+            yunit="dimensionless",
+            color="darkblue",
+        )
 
         if title:
             ax1.set_title(title)
@@ -106,15 +135,25 @@ def run_model_clamp2():
 
     # reference simulation
     simulator = Simulator(MODEL_REPRESSILATOR)
-    tcsim = TimecourseSim([
-        Timecourse(start=0, end=220, steps=300, changes={"X": 10}),
-        # clamp simulation
-        Timecourse(start=0, end=200, steps=200,
-                   model_changes={ModelChange.CLAMP_SPECIES: {'X': True}}),
-        # free simulation
-        Timecourse(start=0, end=400, steps=400,
-                   model_changes={ModelChange.CLAMP_SPECIES: {'X': False}}),
-    ])
+    tcsim = TimecourseSim(
+        [
+            Timecourse(start=0, end=220, steps=300, changes={"X": 10}),
+            # clamp simulation
+            Timecourse(
+                start=0,
+                end=200,
+                steps=200,
+                model_changes={ModelChange.CLAMP_SPECIES: {"X": True}},
+            ),
+            # free simulation
+            Timecourse(
+                start=0,
+                end=400,
+                steps=400,
+                model_changes={ModelChange.CLAMP_SPECIES: {"X": False}},
+            ),
+        ]
+    )
     result = simulator.run_timecourse(tcsim)
     assert isinstance(result, XResult)
     plot_result(result, "clamp experiment (220-420)")

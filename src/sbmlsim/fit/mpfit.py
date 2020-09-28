@@ -36,8 +36,13 @@ logger = logging.getLogger(__name__)
 
 
 @timeit
-def run_optimization_parallel(problem: OptimizationProblem, size: int, n_cores: int = None,
-                              seed: int = None, **kwargs) -> OptimizationResult:
+def run_optimization_parallel(
+    problem: OptimizationProblem,
+    size: int,
+    n_cores: int = None,
+    seed: int = None,
+    **kwargs,
+) -> OptimizationResult:
     """Run optimization in parallel
 
     :param problem: uninitialized optimization problem (pickable)
@@ -49,11 +54,13 @@ def run_optimization_parallel(problem: OptimizationProblem, size: int, n_cores: 
     """
     # set number of cores
     if n_cores is None:
-        n_cores = max(1, multiprocessing.cpu_count()-1)
+        n_cores = max(1, multiprocessing.cpu_count() - 1)
         logger.warning(f"Running {n_cores} workers")
-    if size < 2*n_cores:
-        logger.warning(f"Less simulations then 2 * cores: '{size} < {n_cores}',"
-                       f"increasing number of simulations to '{2 * n_cores}'.")
+    if size < 2 * n_cores:
+        logger.warning(
+            f"Less simulations then 2 * cores: '{size} < {n_cores}',"
+            f"increasing number of simulations to '{2 * n_cores}'."
+        )
         size = 2 * n_cores
 
     sizes = [len(c) for c in np.array_split(range(size), n_cores)]
@@ -70,12 +77,7 @@ def run_optimization_parallel(problem: OptimizationProblem, size: int, n_cores: 
 
     args_list = []
     for k in range(n_cores):
-        d = {
-            'problem': problem,
-            'size': sizes[k],
-            'seed': seeds[k],
-            **kwargs
-        }
+        d = {"problem": problem, "size": sizes[k], "seed": seeds[k], **kwargs}
         args_list.append(d)
 
     opt_results = pool.map(worker, args_list)
@@ -87,5 +89,5 @@ def run_optimization_parallel(problem: OptimizationProblem, size: int, n_cores: 
 def worker(kwargs) -> OptimizationResult:
     """ Worker for running optimization problem. """
     while True:
-        print(f'{os.getpid()} <worker>')
+        print(f"{os.getpid()} <worker>")
         return run_optimization(**kwargs)

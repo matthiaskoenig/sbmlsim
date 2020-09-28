@@ -19,11 +19,11 @@ from sbmlsim.result import XResult
 
 logger = logging.getLogger(__name__)
 
-kwargs_data = {'marker': 's', 'linestyle': '--', 'linewidth': 1, 'capsize': 3}
-kwargs_sim = {'marker': None, 'linestyle': '-', 'linewidth': 2}
+kwargs_data = {"marker": "s", "linestyle": "--", "linewidth": 1, "capsize": 3}
+kwargs_sim = {"marker": None, "linestyle": "-", "linewidth": 2}
 
 
-class PlotlyFigureSerializer():
+class PlotlyFigureSerializer:
     """
     Serializing figure to matplotlib figure.
     """
@@ -35,7 +35,6 @@ class PlotlyFigureSerializer():
 
         fig_plotly = tls.mpl_to_plotly(fig_mpl)
         return fig_plotly
-
 
 
 if __name__ == "__main__":
@@ -53,6 +52,7 @@ if __name__ == "__main__":
     # plotly.offline.plot(fig_plotly)
     #
     import plotly
+
     # plotly.offline.plot({
     #     "data": [go.Scatter(x=[1, 2, 3, 4], y=[1, 2, 3, 4])],
     #     "layout": go.Layout(title="Chart1")
@@ -66,16 +66,14 @@ if __name__ == "__main__":
     # )
     # fig.show()
     fig = go.Figure(
-        data=[go.Scatter(x=x, y=y*100)],
-        layout_title_text="A Figure Displayed with fig.show()"
+        data=[go.Scatter(x=x, y=y * 100)],
+        layout_title_text="A Figure Displayed with fig.show()",
     )
 
     # pip install ipython, nbformat
     # fig.show(renderer="iframe")
 
-    with open('p_graph.html', 'a') as f:
-        f.write(fig.to_html(full_html=False, include_plotlyjs='cdn'))
-        f.write(fig.to_html(full_html=False, include_plotlyjs='cdn'))
-        f.write(fig.to_html(full_html=False, include_plotlyjs='cdn'))
-
-
+    with open("p_graph.html", "a") as f:
+        f.write(fig.to_html(full_html=False, include_plotlyjs="cdn"))
+        f.write(fig.to_html(full_html=False, include_plotlyjs="cdn"))
+        f.write(fig.to_html(full_html=False, include_plotlyjs="cdn"))

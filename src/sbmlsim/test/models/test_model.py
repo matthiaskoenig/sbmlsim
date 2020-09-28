@@ -6,17 +6,23 @@ from sbmlsim.test import MODEL_REPRESSILATOR
 
 
 def test_abstractmodel_creation():
-    model = AbstractModel(sid="model1", source=MODEL_REPRESSILATOR,
-                          language_type=AbstractModel.LanguageType.SBML)
+    model = AbstractModel(
+        sid="model1",
+        source=MODEL_REPRESSILATOR,
+        language_type=AbstractModel.LanguageType.SBML,
+    )
     assert model
     assert model.sid == "model1"
     assert model.source.source == MODEL_REPRESSILATOR
 
 
 def test_abstractmodel_creation_with_changes():
-    model = AbstractModel(sid="model1", source=MODEL_REPRESSILATOR,
-                          language_type=AbstractModel.LanguageType.SBML,
-                          changes=[])
+    model = AbstractModel(
+        sid="model1",
+        source=MODEL_REPRESSILATOR,
+        language_type=AbstractModel.LanguageType.SBML,
+        changes=[],
+    )
     assert model
     assert len(model.changes) == 0
 
@@ -52,7 +58,7 @@ def test_species_df():
 
 def test_copy_model():
     r = RoadrunnerSBMLModel.load_roadrunner_model(MODEL_REPRESSILATOR)
-    r['X'] = 100.0
+    r["X"] = 100.0
     r_copy = RoadrunnerSBMLModel.copy_roadrunner_model(r)
     assert r_copy
     assert isinstance(r_copy, roadrunner.RoadRunner)

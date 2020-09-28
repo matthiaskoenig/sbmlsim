@@ -8,8 +8,12 @@ from sbmlsim.utils import timeit
 
 @timeit
 def run_optimization(
-        problem: OptimizationProblem,
-        size: int = 5, seed: int = None, verbose=False, **kwargs) -> OptimizationResult:
+    problem: OptimizationProblem,
+    size: int = 5,
+    seed: int = None,
+    verbose=False,
+    **kwargs
+) -> OptimizationResult:
     """Runs the given optimization problem.
 
     This changes the internal state of the optimization problem
@@ -35,19 +39,29 @@ def run_optimization(
     problem.set_simulator(simulator)
 
     # optimize
-    fits, trajectories = problem.optimize(size=size, seed=seed, verbose=verbose, **kwargs)
+    fits, trajectories = problem.optimize(
+        size=size, seed=seed, verbose=verbose, **kwargs
+    )
 
     # process results and plots
-    return OptimizationResult(parameters=problem.parameters, fits=fits, trajectories=trajectories)
+    return OptimizationResult(
+        parameters=problem.parameters, fits=fits, trajectories=trajectories
+    )
 
 
-def analyze_optimization(opt_result: OptimizationResult,
-                         output_path: Path=None, problem: OptimizationProblem=None,
-                         show_plots=True,
-                         weighting_local=None, residual_type=None,
-                         variable_step_size=True, absolute_tolerance=1E-6, relative_tolerance=1E-6):
+def analyze_optimization(
+    opt_result: OptimizationResult,
+    output_path: Path = None,
+    problem: OptimizationProblem = None,
+    show_plots=True,
+    weighting_local=None,
+    residual_type=None,
+    variable_step_size=True,
+    absolute_tolerance=1e-6,
+    relative_tolerance=1e-6,
+):
     # write report (additional folders based on runs)
-    
+
     if output_path is not None:
         output_path.mkdir(parents=True, exist_ok=True)
 
@@ -71,11 +85,15 @@ def analyze_optimization(opt_result: OptimizationResult,
         problem.absolute_tolerance = absolute_tolerance
         problem.relative_tolerance = relative_tolerance
 
-
         problem.report(output_path=output_path)
-        problem.plot_fits(x=opt_result.xopt, output_path=output_path, show_plots=show_plots)
-        problem.plot_costs(x=opt_result.xopt, output_path=output_path, show_plots=show_plots)
-        problem.plot_residuals(x=opt_result.xopt, output_path=output_path, show_plots=show_plots)
+        problem.plot_fits(
+            x=opt_result.xopt, output_path=output_path, show_plots=show_plots
+        )
+        problem.plot_costs(
+            x=opt_result.xopt, output_path=output_path, show_plots=show_plots
+        )
+        problem.plot_residuals(
+            x=opt_result.xopt, output_path=output_path, show_plots=show_plots
+        )
 
     opt_result.plot_correlation(output_path=output_path, show_plots=show_plots)
-

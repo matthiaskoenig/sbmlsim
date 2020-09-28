@@ -18,7 +18,7 @@ logger = logging.getLogger(__name__)
 
 
 class Timecourse(ObjectJSONEncoder):
-    """ Simulation definition.
+    """Simulation definition.
 
     Definition of all information necessary to run a single timecourse simulation.
 
@@ -28,9 +28,16 @@ class Timecourse(ObjectJSONEncoder):
     Changesets and selections are deepcopied for persistance
 
     """
-    def __init__(self, start: float, end: float, steps: int,
-                 changes: dict = None, model_changes: dict = None):
-        """ Create a time course definition for simulation.
+
+    def __init__(
+        self,
+        start: float,
+        end: float,
+        steps: int,
+        changes: dict = None,
+        model_changes: dict = None,
+    ):
+        """Create a time course definition for simulation.
 
         :param start: start time
         :param end: end time
@@ -74,25 +81,28 @@ class Timecourse(ObjectJSONEncoder):
 
     def normalize(self, udict, ureg):
         """ Normalize values to model units for all changes."""
-        self.changes = Units.normalize_changes(
-            self.changes, udict=udict, ureg=ureg
-        )
+        self.changes = Units.normalize_changes(self.changes, udict=udict, ureg=ureg)
 
     def strip_units(self):
-        """ Stripping units for parallel simulation.
+        """Stripping units for parallel simulation.
         All changes must be normalized before stripping !.
         """
         self.changes = {k: v.magnitude for k, v in self.changes.items()}
 
 
 class TimecourseSim(AbstractSim):
-    """ Timecourse simulation consisting of multiple concatenated timecourses.
+    """Timecourse simulation consisting of multiple concatenated timecourses.
 
     In case of a single timecourse, only the single timecourse is executed.
     """
-    def __init__(self, timecourses: List[Timecourse],
-                 selections: list = None, reset: bool = True,
-                 time_offset: float = 0.0):
+
+    def __init__(
+        self,
+        timecourses: List[Timecourse],
+        selections: list = None,
+        reset: bool = True,
+        time_offset: float = 0.0,
+    ):
         """
         :param timecourses:
         :param selections:
@@ -126,16 +136,12 @@ class TimecourseSim(AbstractSim):
         t_offset = self.time_offset
         time_vecs = []
         for tc in self.timecourses:
-            time_vecs.append(
-                np.linspace(tc.start, tc.end, num=tc.steps + 1) + t_offset
-            )
+            time_vecs.append(np.linspace(tc.start, tc.end, num=tc.steps + 1) + t_offset)
             t_offset += tc.end
         return np.concatenate(time_vecs)
 
     def dimensions(self) -> List[Dimension]:
-        return [
-            Dimension(dimension="time", index=self.time)
-        ]
+        return [Dimension(dimension="time", index=self.time)]
 
     def normalize(self, udict, ureg):
         """Normalize timecourse simulation."""
@@ -150,16 +156,16 @@ class TimecourseSim(AbstractSim):
     def to_dict(self):
         """ Convert to dictionary. """
         d = {
-            'type': self.__class__.__name__,
-            'selections': self.selections,
-            'reset': self.reset,
-            'time_offset': self.time_offset,
-            'timecourses': [tc.to_dict() for tc in self.timecourses]
+            "type": self.__class__.__name__,
+            "selections": self.selections,
+            "reset": self.reset,
+            "time_offset": self.time_offset,
+            "timecourses": [tc.to_dict() for tc in self.timecourses],
         }
         return d
 
     def to_json(self, path=None):
-        """ Convert definition to JSON for exchange.
+        """Convert definition to JSON for exchange.
 
         :param path: path for file, if None JSON str is returned
         :return:
@@ -171,8 +177,8 @@ class TimecourseSim(AbstractSim):
                 json.dump(self, fp=f_json, cls=ObjectJSONEncoder, indent=2)
 
     @staticmethod
-    def from_json(json_info: Tuple[str, Path]) -> 'TimecourseSim':
-        """ Load TimecourseSim from Path or str
+    def from_json(json_info: Tuple[str, Path]) -> "TimecourseSim":
+        """Load TimecourseSim from Path or str
 
         :param json_info:
         :return:
@@ -187,10 +193,5 @@ class TimecourseSim(AbstractSim):
         return TimecourseSim(**d)
 
     def __str__(self):
-        lines = [
-            "-" * 40,
-            f"{self.__class__.__name__}",
-            "-" * 40,
-            self.to_json()
-        ]
+        lines = ["-" * 40, f"{self.__class__.__name__}", "-" * 40, self.to_json()]
         return "\n".join(lines)

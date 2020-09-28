@@ -23,7 +23,9 @@ class XResult:
     dictionary lookups.
     """
 
-    def __init__(self, xdataset: xr.Dataset, udict: Dict = None, ureg: UnitRegistry=None):
+    def __init__(
+        self, xdataset: xr.Dataset, udict: Dict = None, ureg: UnitRegistry = None
+    ):
         self.xds = xdataset
         self.udict = udict
         self.ureg = ureg
@@ -33,7 +35,7 @@ class XResult:
 
     def __getattr__(self, name):
         """Provide dot access to keys."""
-        if name in {'xds', 'scan', 'udict', 'ureg'}:
+        if name in {"xds", "scan", "udict", "ureg"}:
             # local field lookup
             return getattr(self, name)
         else:
@@ -45,27 +47,40 @@ class XResult:
 
     def dim_mean(self, key):
         """Mean over all added dimensions"""
-        return self.xds[key].mean(dim=self._redop_dims(), skipna=True).values * self.ureg(self.udict[key])
+        return self.xds[key].mean(
+            dim=self._redop_dims(), skipna=True
+        ).values * self.ureg(self.udict[key])
 
     def dim_std(self, key):
         """Standard deviation over all added dimensions"""
-        return self.xds[key].std(dim=self._redop_dims(), skipna=True).values * self.ureg(self.udict[key])
+        return self.xds[key].std(
+            dim=self._redop_dims(), skipna=True
+        ).values * self.ureg(self.udict[key])
 
     def dim_min(self, key):
         """Minimum over all added dimensions"""
-        return self.xds[key].min(dim=self._redop_dims(), skipna=True).values * self.ureg(self.udict[key])
+        return self.xds[key].min(
+            dim=self._redop_dims(), skipna=True
+        ).values * self.ureg(self.udict[key])
 
     def dim_max(self, key):
         """Maximum over all added dimensions"""
-        return self.xds[key].max(dim=self._redop_dims(), skipna=True).values * self.ureg(self.udict[key])
+        return self.xds[key].max(
+            dim=self._redop_dims(), skipna=True
+        ).values * self.ureg(self.udict[key])
 
     def _redop_dims(self) -> List[str]:
         """Dimensions for reducing operations."""
         return [dim_id for dim_id in self.dims if dim_id != "_time"]
 
     @classmethod
-    def from_dfs(cls, dfs: List[pd.DataFrame], scan: ScanSim = None,
-                 udict: Dict = None, ureg: UnitRegistry = None) -> 'XResult':
+    def from_dfs(
+        cls,
+        dfs: List[pd.DataFrame],
+        scan: ScanSim = None,
+        udict: Dict = None,
+        ureg: UnitRegistry = None,
+    ) -> "XResult":
         """Structure is based on the underlying scan."""
         if isinstance(dfs, pd.DataFrame):
             dfs = [dfs]
@@ -100,12 +115,19 @@ class XResult:
         data_dict = {col: np.empty(shape=shape) for col in columns}
         for k_df, df in enumerate(dfs):
             for column in columns:
-                index = tuple([...] + list(indices[k_df]))  # trick to get the ':' in first time dimension
+                index = tuple(
+                    [...] + list(indices[k_df])
+                )  # trick to get the ':' in first time dimension
                 data = data_dict[column]
                 data[index] = df[column].values
 
         # Create the DataSet
-        ds = xr.Dataset({key: xr.DataArray(data=data, dims=dims, coords=coords) for key, data in data_dict.items()})
+        ds = xr.Dataset(
+            {
+                key: xr.DataArray(data=data, dims=dims, coords=coords)
+                for key, data in data_dict.items()
+            }
+        )
         for key in data_dict:
             if key in udict:
                 # set units attribute
@@ -144,7 +166,6 @@ class XResult:
             # higher dimensional data will be flattened.
             logger.warning("Higher dimensional data, data will be mean.")
 
-
         data = {v: self.xds[v].values.flatten() for v in self.xds.keys()}
         df = pd.DataFrame(data)
         return df
@@ -176,4 +197,3 @@ if __name__ == "__main__":
 
     xres = XResult.from_dfs(dfs)
     print(xres)
-

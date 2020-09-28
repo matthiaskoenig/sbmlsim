@@ -26,4 +26,3 @@ def test_fit3(tmp_path):
 def test_fit4(tmp_path):
     opt_res = fitting_parallel.fit_de(problem_factory=op_mid1oh_iv)
     assert opt_res is not None
-

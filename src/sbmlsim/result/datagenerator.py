@@ -11,7 +11,9 @@ from sbmlsim.test import MODEL_MIDAZOLAM, MODEL_REPRESSILATOR
 
 
 class DataGeneratorFunction:
-    def __call__(self, xresults: Dict[str, XResult], dsets: Dict[str, DataSet] = None) -> Dict[str, XResult]:
+    def __call__(
+        self, xresults: Dict[str, XResult], dsets: Dict[str, DataSet] = None
+    ) -> Dict[str, XResult]:
         raise NotImplementedError
 
 
@@ -43,7 +45,13 @@ class DataGenerator:
     - Cumulative processing: mean, sd, ...
     - Complex processing, such as pharmacokinetics calculation.
     """
-    def __init__(self, f: DataGeneratorFunction, xresults: Dict[str, XResult], dsets: Dict[str, DataSet]=None):
+
+    def __init__(
+        self,
+        f: DataGeneratorFunction,
+        xresults: Dict[str, XResult],
+        dsets: Dict[str, DataSet] = None,
+    ):
         self.xresults = xresults
         self.dsets = dsets
         self.f = f
@@ -59,21 +67,30 @@ def run_scan() -> XResult:
     Q_ = simulator.ureg.Quantity
 
     scan = ScanSim(
-        simulation=TimecourseSim([
-            Timecourse(start=0, end=1000, steps=200, changes={
-            }),
-        ]),
+        simulation=TimecourseSim(
+            [
+                Timecourse(start=0, end=1000, steps=200, changes={}),
+            ]
+        ),
         dimensions=[
-            Dimension("dim_dose", changes={
-                'IVDOSE_mid': Q_(np.linspace(start=0, stop=100, num=10), "mg"),
-            }),
-            Dimension("dim_bw", changes={
-                'BW': Q_(np.linspace(start=65, stop=100, num=5), "kg"),
-                # 'BW': Q_(np.random.normal(loc=75.0, scale=5.0, size=20), "kg"),
-            })
-        ]
+            Dimension(
+                "dim_dose",
+                changes={
+                    "IVDOSE_mid": Q_(np.linspace(start=0, stop=100, num=10), "mg"),
+                },
+            ),
+            Dimension(
+                "dim_bw",
+                changes={
+                    "BW": Q_(np.linspace(start=65, stop=100, num=5), "kg"),
+                    # 'BW': Q_(np.random.normal(loc=75.0, scale=5.0, size=20), "kg"),
+                },
+            ),
+        ],
     )
-    simulator.set_timecourse_selections(selections=["time", "IVDOSE_mid", "BW", "[Cve_mid]"])
+    simulator.set_timecourse_selections(
+        selections=["time", "IVDOSE_mid", "BW", "[Cve_mid]"]
+    )
     return simulator.run_scan(scan)
 
 
@@ -90,23 +107,17 @@ if __name__ == "__main__":
     xres1 = res_first["res1"]
     print(xres1)
 
-
     from matplotlib import pyplot as plt
 
     # plt.plot(res_first['res1']["IVDOSE_mid"], res_last['res1']["Cve_mid"], 'o')
     # plt.show()
-    x = (res_first['res1']["IVDOSE_mid"]).mean(dim="dim_bw")
-    y = (res_last['res1']['[Cve_mid]']).mean(dim="dim_bw")
-    ystd = (res_last['res1']['[Cve_mid]']).std(dim="dim_bw")
+    x = (res_first["res1"]["IVDOSE_mid"]).mean(dim="dim_bw")
+    y = (res_last["res1"]["[Cve_mid]"]).mean(dim="dim_bw")
+    ystd = (res_last["res1"]["[Cve_mid]"]).std(dim="dim_bw")
 
     print("x", x)
     print("y", y)
     print("ystd", ystd)
 
-    plt.errorbar(
-        x=x,
-        y=y,
-        yerr=ystd,
-        marker='o', linestyle="", color="black")
+    plt.errorbar(x=x, y=y, yerr=ystd, marker="o", linestyle="", color="black")
     plt.show()
-

@@ -22,9 +22,8 @@ ray.init(ignore_reinit_error=True)
 
 @ray.remote
 class SimulatorActorState(object):
-    """Ray actor to execute simulations.
+    """Ray actor to execute simulations."""
 
-    """
     def __init__(self, state_path, ureg):
         print("Start loading model")
         ts = time.time()
@@ -49,10 +48,9 @@ class SimulatorActorState(object):
         return results
 
 
-
 if __name__ == "__main__":
 
-    actor_count = 10   # cores to run this on
+    actor_count = 10  # cores to run this on
 
     # sending the SBML to every core, every core needs to read the SBML
     # sending as string to avoid parallel IO by 30 cores
@@ -77,5 +75,7 @@ if __name__ == "__main__":
         results = ray.get(tc_ids)
 
     # Run parallel simulations
-    simulators = [SimulatorActorState.remote("test.dat", ureg) for _ in range(actor_count)]
+    simulators = [
+        SimulatorActorState.remote("test.dat", ureg) for _ in range(actor_count)
+    ]
     run_simulations(simulators)

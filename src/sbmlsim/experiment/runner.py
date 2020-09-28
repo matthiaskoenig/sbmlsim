@@ -19,10 +19,15 @@ logger = logging.getLogger(__name__)
 class ExperimentRunner(object):
     """Class for running simulation experiments."""
 
-    def __init__(self, experiment_classes: Iterable[SimulationExperiment],
-                 base_path: Path, data_path: Path,
-                 simulator: SimulatorAbstract = None,
-                 ureg: UnitRegistry = None, **kwargs):
+    def __init__(
+        self,
+        experiment_classes: Iterable[SimulationExperiment],
+        base_path: Path,
+        data_path: Path,
+        simulator: SimulatorAbstract = None,
+        ureg: UnitRegistry = None,
+        **kwargs,
+    ):
 
         # single UnitRegistry per runner
         if not ureg:
@@ -59,7 +64,7 @@ class ExperimentRunner(object):
                 base_path=self.base_path,
                 data_path=self.data_path,
                 ureg=self.ureg,
-                **kwargs
+                **kwargs,
             )
             self.experiments[experiment.sid] = experiment
 
@@ -67,18 +72,23 @@ class ExperimentRunner(object):
             _models = {}
             for model_id, source in experiment.models().items():
                 if source not in self.models:
-                    self.models[source] = RoadrunnerSBMLModel(source=source, ureg=self.ureg)
+                    self.models[source] = RoadrunnerSBMLModel(
+                        source=source, ureg=self.ureg
+                    )
                 _models[model_id] = self.models[source]
 
             experiment._models = _models
             experiment.initialize()
 
     @timeit
-    def run_experiments(self, output_path: Path,
-                        show_figures: bool = False,
-                        save_results: bool = False,
-                        figure_formats: List[str] = None,
-                        reduced_selections: bool = True) -> List:
+    def run_experiments(
+        self,
+        output_path: Path,
+        show_figures: bool = False,
+        save_results: bool = False,
+        figure_formats: List[str] = None,
+        reduced_selections: bool = True,
+    ) -> List:
         """Run the experiments."""
         if not output_path.exists():
             output_path.mkdir(parents=True)
@@ -94,8 +104,7 @@ class ExperimentRunner(object):
                 show_figures=show_figures,
                 save_results=save_results,
                 figure_formats=figure_formats,
-                reduced_selections=reduced_selections
+                reduced_selections=reduced_selections,
             )
             exp_results.append(result)
         return exp_results
-

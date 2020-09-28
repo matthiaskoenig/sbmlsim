@@ -21,8 +21,7 @@ def glucose_experiment():
         data_path=BASE_PATH / "data",
     )
     results = runner.run_experiments(
-        output_path=BASE_PATH / "results",
-        show_figures=False
+        output_path=BASE_PATH / "results", show_figures=False
     )
     report = ExperimentReport(results)
     report.create_report(output_path=BASE_PATH / "results")

@@ -18,9 +18,12 @@ class ScanSim(AbstractSim):
     FIXME: probably not necessary to make this a simulation.
     """
 
-    def __init__(self, simulation: AbstractSim,
-                 dimensions: List[Dimension] = None,
-                 mapping: Dict[str, int] = None):
+    def __init__(
+        self,
+        simulation: AbstractSim,
+        dimensions: List[Dimension] = None,
+        mapping: Dict[str, int] = None,
+    ):
         """Scanning a simulation.
 
         Parameters or initial conditions can be scanned.
@@ -51,13 +54,16 @@ class ScanSim(AbstractSim):
             # initial part of the simulation
             mapping = {dim.dimension: 0 for dim in self.dimensions}
         if len(mapping) != len(dimensions):
-            raise ValueError(f"mapping '{mapping}' incompatible with dimensions "
-                             f"'{dimensions}'.")
+            raise ValueError(
+                f"mapping '{mapping}' incompatible with dimensions " f"'{dimensions}'."
+            )
         self.mapping = mapping
 
     def __repr__(self):
-        return f"Scan({self.simulation.__class__.__name__}: " \
-               f"[{', '.join([str(d) for d in self.dimensions])}])"
+        return (
+            f"Scan({self.simulation.__class__.__name__}: "
+            f"[{', '.join([str(d) for d in self.dimensions])}])"
+        )
 
     def dimensions(self):
         return self.dimensions
@@ -83,7 +89,9 @@ class ScanSim(AbstractSim):
 
         # normalize changes in all dimensions
         for scan_dim in self.dimensions:
-            scan_dim.changes = Units.normalize_changes(scan_dim.changes, udict=udict, ureg=ureg)
+            scan_dim.changes = Units.normalize_changes(
+                scan_dim.changes, udict=udict, ureg=ureg
+            )
 
     def to_simulations(self):
         """Flattens the scan to individual simulations.
@@ -115,8 +123,8 @@ class ScanSim(AbstractSim):
 
             simulations.append(sim_new)
 
-        #print(simulations)
-        #for sim in simulations:
+        # print(simulations)
+        # for sim in simulations:
         #    print("-" * 80)
         #    print(sim)
 
@@ -137,25 +145,38 @@ if __name__ == "__main__":
 
     ureg = UnitRegistry()
     Q_ = ureg.Quantity
-    udict = {k: "dimensionless" for k in ['X', '[X]', 'n', 'Y']}
+    udict = {k: "dimensionless" for k in ["X", "[X]", "n", "Y"]}
 
     scan2d = ScanSim(
-        simulation=TimecourseSim([
-            Timecourse(start=0, end=100, steps=100,
-                       changes={'X': Q_(10, "dimensionless")}),
-            Timecourse(start=0, end=60, steps=100,
-                       changes={'[X]': Q_(10, "dimensionless")}),
-            Timecourse(start=0, end=60, steps=100,
-                       changes={'X': Q_(10, "dimensionless")}),
-        ]),
+        simulation=TimecourseSim(
+            [
+                Timecourse(
+                    start=0, end=100, steps=100, changes={"X": Q_(10, "dimensionless")}
+                ),
+                Timecourse(
+                    start=0, end=60, steps=100, changes={"[X]": Q_(10, "dimensionless")}
+                ),
+                Timecourse(
+                    start=0, end=60, steps=100, changes={"X": Q_(10, "dimensionless")}
+                ),
+            ]
+        ),
         dimensions=[
-            Dimension("dim1", index=range(8), changes={
-                'n': Q_(np.linspace(start=2, stop=10, num=8), "dimensionless"),
-            }),
-            Dimension("dim2", index=range(4), changes={
-                'Y': Q_(np.linspace(start=10, stop=20, num=4), "dimensionless"),
-            }),
-        ]
+            Dimension(
+                "dim1",
+                index=range(8),
+                changes={
+                    "n": Q_(np.linspace(start=2, stop=10, num=8), "dimensionless"),
+                },
+            ),
+            Dimension(
+                "dim2",
+                index=range(4),
+                changes={
+                    "Y": Q_(np.linspace(start=10, stop=20, num=4), "dimensionless"),
+                },
+            ),
+        ],
     )
     indices, sims = scan2d.to_simulations()
     scan2d.normalize(udict=udict, ureg=ureg)

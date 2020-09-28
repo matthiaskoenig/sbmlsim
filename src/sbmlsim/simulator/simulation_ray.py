@@ -32,6 +32,7 @@ class SimulatorActor(SimulatorWorker):
 
     An actor is essentially a stateful worker
     """
+
     def __init__(self, path_state=None):
         """State contains model, integrator settings and selections."""
         self.r = None
@@ -48,19 +49,26 @@ class SimulatorActor(SimulatorWorker):
             if selections is None:
                 # FIXME: this should be calculated before
                 r_model = self.r.model  # type: roadrunner.ExecutableModel
-                self.r.timeCourseSelections = ["time"] \
-                                         + r_model.getFloatingSpeciesIds() \
-                                         + r_model.getBoundarySpeciesIds() \
-                                         + r_model.getGlobalParameterIds() \
-                                         + r_model.getReactionIds() \
-                                         + r_model.getCompartmentIds()
-                self.r.timeCourseSelections += [f'[{key}]' for key in (
-                    r_model.getFloatingSpeciesIds() + r_model.getBoundarySpeciesIds())]
+                self.r.timeCourseSelections = (
+                    ["time"]
+                    + r_model.getFloatingSpeciesIds()
+                    + r_model.getBoundarySpeciesIds()
+                    + r_model.getGlobalParameterIds()
+                    + r_model.getReactionIds()
+                    + r_model.getCompartmentIds()
+                )
+                self.r.timeCourseSelections += [
+                    f"[{key}]"
+                    for key in (
+                        r_model.getFloatingSpeciesIds()
+                        + r_model.getBoundarySpeciesIds()
+                    )
+                ]
             else:
                 self.r.timeCourseSelections = selections
         except RuntimeError as err:
             print(f"ERROR: {err}")
-            raise(err)
+            raise (err)
 
     def work(self, simulations):
         """Run a bunch of simulations on a single worker."""
@@ -74,8 +82,9 @@ class SimulatorParallel(SimulatorSerial):
     """
     Parallel simulator
     """
+
     def __init__(self, model=None, **kwargs):
-        """ Initialize parallel simulator with multiple workers.
+        """Initialize parallel simulator with multiple workers.
 
         :param model: model source or model
         :param actor_count: int,
@@ -83,7 +92,7 @@ class SimulatorParallel(SimulatorSerial):
         if "actor_count" in kwargs:
             self.actor_count = kwargs.pop("actor_count")
         else:
-            self.actor_count = max(cpu_count()-1, 1)
+            self.actor_count = max(cpu_count() - 1, 1)
 
         # Create actors once
         logger.warning(f"Creating '{self.actor_count}' SimulationActors")
@@ -92,8 +101,6 @@ class SimulatorParallel(SimulatorSerial):
         super(SimulatorParallel, self).__init__(model=None, **kwargs)
         if model is not None:
             self.set_model(model=model)
-
-
 
     def set_model(self, model):
         super(SimulatorParallel, self).set_model(model)
@@ -113,7 +120,7 @@ class SimulatorParallel(SimulatorSerial):
             simulator.set_timecourse_selections.remote(selections)
 
     def _timecourses(self, simulations: List[TimecourseSim]) -> List[pd.DataFrame]:
-        """ Run all simulations with given model and collect the results.
+        """Run all simulations with given model and collect the results.
 
         :param simulations: List[TimecourseSim]
         :return: Result
@@ -144,4 +151,4 @@ class SimulatorParallel(SimulatorSerial):
     def _create_chunks(l, n):
         """Yield successive n-sized chunks from l."""
         for i in range(0, len(l), n):
-            yield l[i:i + n]
+            yield l[i : i + n]

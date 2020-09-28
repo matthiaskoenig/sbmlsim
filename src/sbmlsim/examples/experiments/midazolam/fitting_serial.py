@@ -26,7 +26,9 @@ def fit_lsq(problem_factory) -> Tuple[OptimizationResult, OptimizationProblem]:
     """Local least square fitting."""
     problem = problem_factory()
     opt_res = run_optimization(
-        problem=problem, size=20, seed=1236,
+        problem=problem,
+        size=20,
+        seed=1236,
         optimizer=OptimizerType.LEAST_SQUARE,
         weighting_local=WeightingLocalType.ABSOLUTE_ONE_OVER_WEIGHTING,
         residual_type=ResidualType.ABSOLUTE_NORMED_RESIDUALS,
@@ -38,7 +40,9 @@ def fit_de(problem_factory) -> Tuple[OptimizationResult, OptimizationProblem]:
     """Global differential evolution fitting."""
     problem = problem_factory()
     opt_res = run_optimization(
-        problem=problem, size=1, seed=1234,
+        problem=problem,
+        size=1,
+        seed=1234,
         optimizer=OptimizerType.DIFFERENTIAL_EVOLUTION,
         weighting_local=WeightingLocalType.ABSOLUTE_ONE_OVER_WEIGHTING,
         residual_type=ResidualType.ABSOLUTE_NORMED_RESIDUALS,

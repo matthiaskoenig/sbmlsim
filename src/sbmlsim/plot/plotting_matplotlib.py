@@ -17,12 +17,12 @@ from sbmlsim.utils import deprecated
 
 logger = logging.getLogger(__name__)
 
-kwargs_data = {'marker': 's', 'linestyle': '--', 'linewidth': 1, 'capsize': 3}
-kwargs_sim = {'marker': None, 'linestyle': '-', 'linewidth': 2}
+kwargs_data = {"marker": "s", "linestyle": "--", "linewidth": 1, "capsize": 3}
+kwargs_sim = {"marker": None, "linestyle": "-", "linewidth": 2}
 
 
 def interp(x, xp, fp):
-    """ Interpolation for speedup of plots
+    """Interpolation for speedup of plots
 
     :param x:
     :param xp:
@@ -45,17 +45,24 @@ class MatplotlibFigureSerializer(object):
     """
     Serializing figure to matplotlib figure.
     """
+
     @staticmethod
     def to_figure(figure: Figure) -> FigureMPL:
         """Convert sbmlsim.Figure to matplotlib figure."""
 
         # create new figure
-        fig = plt.figure(figsize=(figure.width, figure.height),
-                         dpi=Figure.fig_dpi, facecolor=Figure.fig_facecolor)  # type: plt.Figure
+        fig = plt.figure(
+            figsize=(figure.width, figure.height),
+            dpi=Figure.fig_dpi,
+            facecolor=Figure.fig_facecolor,
+        )  # type: plt.Figure
 
         if figure.name:
-            fig.suptitle(figure.name, fontsize=Figure.fig_titlesize,
-                         fontweight=Figure.fig_titleweight)
+            fig.suptitle(
+                figure.name,
+                fontsize=Figure.fig_titlesize,
+                fontweight=Figure.fig_titleweight,
+            )
 
         # create grid for figure
         gs = GridSpec(figure.num_rows, figure.num_cols, figure=fig)
@@ -73,7 +80,7 @@ class MatplotlibFigureSerializer(object):
             ridx = subplot.row - 1
             cidx = subplot.col - 1
             ax = fig.add_subplot(
-                gs[ridx:ridx+subplot.row_span, cidx:cidx+subplot.col_span]
+                gs[ridx : ridx + subplot.row_span, cidx : cidx + subplot.col_span]
             )  # type: plt.Axes
 
             plot = subplot.plot
@@ -83,16 +90,18 @@ class MatplotlibFigureSerializer(object):
             # units
             if xax is None:
                 logger.warning(f"No xaxis in plot: {subplot}")
-                ax.spines['bottom'].set_color(Figure.fig_facecolor)
-                ax.spines['top'].set_color(Figure.fig_facecolor)
+                ax.spines["bottom"].set_color(Figure.fig_facecolor)
+                ax.spines["top"].set_color(Figure.fig_facecolor)
             if yax is None:
                 logger.warning(f"No yaxis in plot: {subplot}")
-                ax.spines['right'].set_color(Figure.fig_facecolor)
-                ax.spines['left'].set_color(Figure.fig_facecolor)
+                ax.spines["right"].set_color(Figure.fig_facecolor)
+                ax.spines["left"].set_color(Figure.fig_facecolor)
             if (not xax) or (not yax):
                 if len(plot.curves) > 0:
-                    raise ValueError(f"xaxis and yaxis are required for plotting curves, but "
-                                     f"'xaxis={xax}' and 'yaxis={yax}'.")
+                    raise ValueError(
+                        f"xaxis and yaxis are required for plotting curves, but "
+                        f"'xaxis={xax}' and 'yaxis={yax}'."
+                    )
 
             xunit = xax.unit if xax else None
             yunit = yax.unit if yax else None
@@ -140,7 +149,6 @@ class MatplotlibFigureSerializer(object):
                 if curve.yerr is not None:
                     yerr = curve.yerr.get_data(to_units=yunit)
 
-
                 # use interpolation
                 # show_figures            4.7645 [s]
                 # save_figures           26.8983 [s]
@@ -152,7 +160,9 @@ class MatplotlibFigureSerializer(object):
                     xmin = xax.min
                 if (xax.max is not None) and (xax.max < xmax):
                     xmax = xax.max
-                x_ip = np.linspace(start=xmin, stop=xmax, num=Figure._area_interpolation_points)
+                x_ip = np.linspace(
+                    start=xmin, stop=xmax, num=Figure._area_interpolation_points
+                )
 
                 if (y_min is not None) and (y_max is not None):
                     # areas can be very slow to render!
@@ -162,7 +172,8 @@ class MatplotlibFigureSerializer(object):
                         interp(x_ip, x.magnitude, y_min.magnitude),
                         interp(x_ip, x.magnitude, y_max.magnitude),
                         color=kwargs.get("color", "black"),
-                        alpha=0.1, label="__nolabel__"
+                        alpha=0.1,
+                        label="__nolabel__",
                     )
 
                 if y_std is not None:
@@ -172,14 +183,21 @@ class MatplotlibFigureSerializer(object):
                     if not np.all(np.isfinite(y_std)):
                         logger.error(f"Not all values finite in y_std: {y_std}")
 
-                    y_std_up = interp(x=x_ip, xp=x.magnitude, fp=y.magnitude+y_std.magnitude)
-                    y_std_down = interp(x=x_ip, xp=x.magnitude, fp=y.magnitude-y_std.magnitude)
+                    y_std_up = interp(
+                        x=x_ip, xp=x.magnitude, fp=y.magnitude + y_std.magnitude
+                    )
+                    y_std_down = interp(
+                        x=x_ip, xp=x.magnitude, fp=y.magnitude - y_std.magnitude
+                    )
 
                     # ax.fill_between(x.magnitude, y.magnitude - y_std.magnitude, y.magnitude + y_std.magnitude,
                     ax.fill_between(
-                        x_ip, y_std_down, y_std_up,
+                        x_ip,
+                        y_std_down,
+                        y_std_up,
                         color=kwargs.get("color", "black"),
-                        alpha=0.25, label="__nolabel__"
+                        alpha=0.25,
+                        label="__nolabel__",
                     )
 
                 if (xerr is None) and (yerr is None):
@@ -187,15 +205,20 @@ class MatplotlibFigureSerializer(object):
                         # single trajectory
                         ax.plot(x.magnitude, y.magnitude, label=curve.name, **kwargs)
                 elif yerr is not None:
-                    ax.errorbar(x.magnitude, y.magnitude, yerr.magnitude,
-                                label=curve.name, **kwargs)
+                    ax.errorbar(
+                        x.magnitude,
+                        y.magnitude,
+                        yerr.magnitude,
+                        label=curve.name,
+                        **kwargs,
+                    )
 
             # plot settings
             if plot.name and plot.title_visible:
                 ax.set_title(plot.name)
 
             def unit_str(ax: Axis):
-                return ax.unit if len(str(ax.unit)) > 0 else '-'
+                return ax.unit if len(str(ax.unit)) > 0 else "-"
 
             if xax:
                 ax.set_xscale(get_scale(xax))
@@ -235,15 +258,15 @@ class MatplotlibFigureSerializer(object):
             ax.xaxis.label.set_fontweight(Figure.axes_labelweight)
             ax.yaxis.label.set_fontsize(Figure.axes_labelsize)
             ax.yaxis.label.set_fontweight(Figure.axes_labelweight)
-            ax.tick_params(axis='x', labelsize=Figure.xtick_labelsize)
-            ax.tick_params(axis='y', labelsize=Figure.ytick_labelsize)
+            ax.tick_params(axis="x", labelsize=Figure.xtick_labelsize)
+            ax.tick_params(axis="y", labelsize=Figure.ytick_labelsize)
 
             # hide none-existing axes
             if xax is None:
-                ax.tick_params(axis='x', colors=Figure.fig_facecolor)
+                ax.tick_params(axis="x", colors=Figure.fig_facecolor)
                 ax.xaxis.label.set_color(Figure.fig_facecolor)
             if yax is None:
-                ax.tick_params(axis='y', colors=Figure.fig_facecolor)
+                ax.tick_params(axis="y", colors=Figure.fig_facecolor)
                 ax.yaxis.label.set_color(Figure.fig_facecolor)
 
             xgrid = xax.grid if xax else None
@@ -261,17 +284,27 @@ class MatplotlibFigureSerializer(object):
             if plot.legend:
                 ax.legend(fontsize=Figure.legend_fontsize, loc=Figure.legend_loc)
 
-        fig.subplots_adjust(wspace=Figure.fig_subplots_wspace, hspace=Figure.fig_subplots_hspace)
+        fig.subplots_adjust(
+            wspace=Figure.fig_subplots_wspace, hspace=Figure.fig_subplots_hspace
+        )
         return fig
 
 
-def add_line(ax: plt.Axes, xres: XResult,
-             xid: str, yid: str,
-             xunit, yunit,
-             yres: XResult = None,
-             xf=1.0, yf=1.0, all_lines=False,
-             label='__nolabel__', **kwargs):
-    """ Adding information from a simulation result to a matplotlib figure.
+def add_line(
+    ax: plt.Axes,
+    xres: XResult,
+    xid: str,
+    yid: str,
+    xunit,
+    yunit,
+    yres: XResult = None,
+    xf=1.0,
+    yf=1.0,
+    all_lines=False,
+    label="__nolabel__",
+    **kwargs,
+):
+    """Adding information from a simulation result to a matplotlib figure.
 
     This is deprecated the sbmlsim.plot.plotting Figure, Plot, Curves, ...
     should be used.
@@ -288,8 +321,9 @@ def add_line(ax: plt.Axes, xres: XResult,
     :return:
     """
     if not isinstance(xres, XResult):
-        raise ValueError(f"Only XResult supported in plotting, but found: "
-                         f"'{type(xres)}'")
+        raise ValueError(
+            f"Only XResult supported in plotting, but found: " f"'{type(xres)}'"
+        )
 
     # mean data with units
     x = xres.dim_mean(xid)
@@ -311,7 +345,7 @@ def add_line(ax: plt.Axes, xres: XResult,
 
     # get next color
     prop_cycler = ax._get_lines.prop_cycler
-    color = kwargs.get("color", next(prop_cycler)['color'])
+    color = kwargs.get("color", next(prop_cycler)["color"])
     kwargs["color"] = color
 
     if all_lines:
@@ -341,31 +375,70 @@ def add_line(ax: plt.Axes, xres: XResult,
         ysd_down = y - ystd
         ysd_down[ysd_down < ymin] = ymin[ysd_down < ymin]
 
-        ax.fill_between(x.magnitude, ysd_down.magnitude, ysd_up.magnitude,
-                        color=color, alpha=0.4, label="__nolabel__")
-        ax.fill_between(x.magnitude, ysd_up.magnitude, ymax.magnitude,
-                        color=color, alpha=0.1, label="__nolabel__")
-        ax.fill_between(x.magnitude, ysd_down.magnitude, ymin.magnitude,
-                        color=color, alpha=0.1, label="__nolabel__")
+        ax.fill_between(
+            x.magnitude,
+            ysd_down.magnitude,
+            ysd_up.magnitude,
+            color=color,
+            alpha=0.4,
+            label="__nolabel__",
+        )
+        ax.fill_between(
+            x.magnitude,
+            ysd_up.magnitude,
+            ymax.magnitude,
+            color=color,
+            alpha=0.1,
+            label="__nolabel__",
+        )
+        ax.fill_between(
+            x.magnitude,
+            ysd_down.magnitude,
+            ymin.magnitude,
+            color=color,
+            alpha=0.1,
+            label="__nolabel__",
+        )
 
-        ax.plot(x.magnitude, ysd_up.magnitude, '-', label="__nolabel__",
-                alpha=0.8, **kwargs)
-        ax.plot(x.magnitude, ysd_down.magnitude, '-', label="__nolabel__",
-                alpha=0.8, **kwargs)
-        ax.plot(x.magnitude, ymin.magnitude, '-', label="__nolabel__",
-                alpha=0.6, **kwargs)
-        ax.plot(x.magnitude, ymax.magnitude, '-', label="__nolabel__",
-                alpha=0.6, **kwargs)
+        ax.plot(
+            x.magnitude, ysd_up.magnitude, "-", label="__nolabel__", alpha=0.8, **kwargs
+        )
+        ax.plot(
+            x.magnitude,
+            ysd_down.magnitude,
+            "-",
+            label="__nolabel__",
+            alpha=0.8,
+            **kwargs,
+        )
+        ax.plot(
+            x.magnitude, ymin.magnitude, "-", label="__nolabel__", alpha=0.6, **kwargs
+        )
+        ax.plot(
+            x.magnitude, ymax.magnitude, "-", label="__nolabel__", alpha=0.6, **kwargs
+        )
 
         # curve
-        ax.plot(x.magnitude, y.magnitude, '-', label=label, **kwargs)
+        ax.plot(x.magnitude, y.magnitude, "-", label=label, **kwargs)
 
 
 @deprecated
-def add_data(ax: plt.Axes, data: DataSet,
-             xid: str, yid: str, yid_sd=None, yid_se=None, count=None,
-             xunit=None, yunit=None, xf=1.0, yf=1.0, label='__nolabel__', **kwargs):
-    """ Add experimental data to a matplotlib axes.
+def add_data(
+    ax: plt.Axes,
+    data: DataSet,
+    xid: str,
+    yid: str,
+    yid_sd=None,
+    yid_se=None,
+    count=None,
+    xunit=None,
+    yunit=None,
+    xf=1.0,
+    yf=1.0,
+    label="__nolabel__",
+    **kwargs,
+):
+    """Add experimental data to a matplotlib axes.
 
     This is deprecated the plotting Figure, Plot, Curves, should be used
     instead.
@@ -388,16 +461,16 @@ def add_data(ax: plt.Axes, data: DataSet,
     if dset.empty:
         logger.error(f"Empty dataset in adding data: {dset}")
 
-    if abs(xf-1.0) > 1E-8:
+    if abs(xf - 1.0) > 1e-8:
         logger.warning("xf attributes are deprecated, use units instead.")
-    if abs(yf - 1.0) > 1E-8:
+    if abs(yf - 1.0) > 1e-8:
         logger.warning("yf attributes are deprecated, use units instead.")
 
     # add default styles
-    if 'marker' not in kwargs:
-        kwargs['marker'] = 's'
-    if 'linestyle' not in kwargs:
-        kwargs['linestyle'] = '--'
+    if "marker" not in kwargs:
+        kwargs["marker"] = "s"
+    if "linestyle" not in kwargs:
+        kwargs["linestyle"] = "--"
 
     # data with units
     x = dset[xid].values * dset.ureg(dset.udict[xid]) * xf
@@ -428,11 +501,8 @@ def add_data(ax: plt.Axes, data: DataSet,
 
     # plot
     if y_err is not None:
-        if 'capsize' not in kwargs:
-            kwargs['capsize'] = 3
+        if "capsize" not in kwargs:
+            kwargs["capsize"] = 3
         ax.errorbar(x.magnitude, y.magnitude, y_err.magnitude, label=label, **kwargs)
     else:
         ax.plot(x, y, label=label, **kwargs)
-
-
-

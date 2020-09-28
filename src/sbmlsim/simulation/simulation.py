@@ -14,8 +14,9 @@ class Dimension(object):
     The dimension defines how the dimension is called,
     the index is the corresponding index of the dimension.
     """
-    def __init__(self, dimension: str, index: np.ndarray=None, changes: Dict=None):
-        """ Dimension.
+
+    def __init__(self, dimension: str, index: np.ndarray = None, changes: Dict = None):
+        """Dimension.
 
         If no index is provided the index is calculated from the changes.
         So in most cases the index can be left empty (e.g., for scanning of
@@ -39,27 +40,27 @@ class Dimension(object):
                 if isinstance(values, Iterable):
                     n = len(values)
                     if num != 1 and num != n:
-                        raise ValueError(f"All changes must have same length: '{changes}'")
+                        raise ValueError(
+                            f"All changes must have same length: '{changes}'"
+                        )
                     num = n
             index = np.arange(num)
         self.index = index
 
     def __repr__(self):
-        return f"Dim({self.dimension}({len(self)}), " \
-               f"{list(self.changes.keys())})"
+        return f"Dim({self.dimension}({len(self)}), " f"{list(self.changes.keys())})"
 
     def __len__(self):
         return len(self.index)
 
     @staticmethod
-    def indices_from_dimensions(dimensions: List['Dimension']):
+    def indices_from_dimensions(dimensions: List["Dimension"]):
         """Indices of all combinations of dimensions"""
         index_vecs = [dim.index for dim in dimensions]
         return list(itertools.product(*index_vecs))
 
 
 class AbstractSim(ABC):
-
     @abc.abstractmethod
     def dimensions(self) -> List[Dimension]:
         """Returns the dimensions of the simulation."""
@@ -72,6 +73,6 @@ class AbstractSim(ABC):
     def to_dict(self):
         """ Convert to dictionary. """
         d = {
-            'type': self.__class__.__name__,
+            "type": self.__class__.__name__,
         }
         return d

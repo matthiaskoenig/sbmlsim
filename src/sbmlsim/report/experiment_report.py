@@ -57,9 +57,7 @@ class ReportResults:
         # model links
         models = {}
         for model_key, model_path in experiment.models().items():
-            models[model_key] = Path(os.path.relpath(
-                model_path, str(abs_path)
-            ))
+            models[model_key] = Path(os.path.relpath(model_path, str(abs_path)))
 
         # code path
         code_path = sys.modules[experiment.__module__].__file__
@@ -67,31 +65,34 @@ class ReportResults:
             code = f_code.read()
         code_path = Path(os.path.relpath(code_path, str(abs_path)))
 
-        datasets = {key: rel_path / f"{exp_id}_{key}.tsv" for key in experiment._datasets.keys()}
+        datasets = {
+            key: rel_path / f"{exp_id}_{key}.tsv" for key in experiment._datasets.keys()
+        }
 
         # parse meta data for figures (mapping based on figure keys)
-        figures = {key: rel_path / f"{exp_id}_{key}" for key in experiment._figures.keys()}
+        figures = {
+            key: rel_path / f"{exp_id}_{key}" for key in experiment._figures.keys()
+        }
 
         self.data[exp_id] = {
-            'exp_id': exp_id,
-            'models': models,
-            'datasets': datasets,
-            'figures': figures,
-            'code_path': code_path,
-            'code': code,
+            "exp_id": exp_id,
+            "models": models,
+            "datasets": datasets,
+            "figures": figures,
+            "code_path": code_path,
+            "code": code,
         }
 
 
 class ExperimentReport:
-
     class ReportType(Enum):
         MARKDOWN = 1
         HTML = 2
         LATEX = 3
 
-    def __init__(self, results: ReportResults,
-                 metadata: Dict = None,
-                 template_path=TEMPLATE_PATH):
+    def __init__(
+        self, results: ReportResults, metadata: Dict = None, template_path=TEMPLATE_PATH
+    ):
         if isinstance(results, list):
             # FIXME: just a bugfix for handling the old outputs
             report_results = ReportResults()
@@ -100,14 +101,21 @@ class ExperimentReport:
         else:
             report_results = results
 
-        self.data_dict = report_results.data  # dictionary of exp_ids and information for report rendering
+        self.data_dict = (
+            report_results.data
+        )  # dictionary of exp_ids and information for report rendering
         self.metadata = metadata if metadata else dict()
         self.template_path = template_path
 
-    def create_report(self, output_path: Path, filename=None,
-                      report_type: ReportType=ReportType.HTML, f_filter_context=None,
-                      **kwargs):
-        """ Create report of SimulationExperiments.
+    def create_report(
+        self,
+        output_path: Path,
+        filename=None,
+        report_type: ReportType = ReportType.HTML,
+        f_filter_context=None,
+        **kwargs,
+    ):
+        """Create report of SimulationExperiments.
 
         Processes ExperimentResults to generate overall report.
 
@@ -115,17 +123,19 @@ class ExperimentReport:
         paths are below the report or at the same level in the file
         hierarchy.
         """
-        env = jinja2.Environment(loader=jinja2.FileSystemLoader(str(self.template_path)),
-                                 extensions=['jinja2.ext.autoescape'],
-                                 trim_blocks=True,
-                                 lstrip_blocks=True)
+        env = jinja2.Environment(
+            loader=jinja2.FileSystemLoader(str(self.template_path)),
+            extensions=["jinja2.ext.autoescape"],
+            trim_blocks=True,
+            lstrip_blocks=True,
+        )
 
         def write_report(filename: str, context: Dict, template_str: str):
             """Writes the report file from given context and template."""
             template = env.get_template(template_str)
             text = template.render(context)
             suffix = template_str.split(".")[-1]
-            out_file = output_path / f'{filename}.{suffix}'
+            out_file = output_path / f"{filename}.{suffix}"
             with open(out_file, "w") as f_out:
                 f_out.write(text)
 
@@ -140,13 +150,16 @@ class ExperimentReport:
             # report for individual simulation experiment
             for exp_id, context in self.data_dict.items():
                 # pprint(context)
-                write_report(filename=f"{exp_id}/{exp_id}", context=context,
-                             template_str=f"experiment.{suffix}")
+                write_report(
+                    filename=f"{exp_id}/{exp_id}",
+                    context=context,
+                    template_str=f"experiment.{suffix}",
+                )
 
         # index file
         context = {
-            'version': __version__,
-            'data': self.data_dict,
+            "version": __version__,
+            "data": self.data_dict,
         }
 
         filename = filename if filename is not None else "index"
@@ -168,7 +181,9 @@ class ExperimentReport:
                 figure_base_path.mkdir(parents=True)
             for exp_id, exp_context in self.data_dict.items():
                 for fig_id, fig_path in exp_context["figures"].items():
-                    shutil.copy(str(output_path / exp_id / f"{fig_path}.png"), str(figure_base_path / f"{fig_path}.png"))
+                    shutil.copy(
+                        str(output_path / exp_id / f"{fig_path}.png"),
+                        str(figure_base_path / f"{fig_path}.png"),
+                    )
 
-        write_report(filename=filename, context=context,
-                     template_str=f'index.{suffix}')
+        write_report(filename=filename, context=context, template_str=f"index.{suffix}")

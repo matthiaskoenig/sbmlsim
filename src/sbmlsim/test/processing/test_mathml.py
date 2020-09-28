@@ -13,8 +13,8 @@ def test_variables_1():
     astnode = formula_to_astnode("x + y")
     variables = _get_variables(astnode)
     assert len(variables) == 2
-    assert 'x' in variables
-    assert 'y' in variables
+    assert "x" in variables
+    assert "y" in variables
 
 
 def test_variables_2():
@@ -22,13 +22,13 @@ def test_variables_2():
     variables = _get_variables(astnode)
     print(variables)
     assert len(variables) == 2
-    assert 'x' in variables
-    assert 'y' in variables
+    assert "x" in variables
+    assert "y" in variables
 
 
 def test_evaluate():
     astnode = formula_to_astnode("x + 2.5 * y")
-    res = evaluate(astnode=astnode, variables={'x': 1.0, 'y': 2.0})
+    res = evaluate(astnode=astnode, variables={"x": 1.0, "y": 2.0})
     assert res == pytest.approx(6.0)
 
 
@@ -37,9 +37,9 @@ def test_evaluate_array():
     res = evaluate(
         astnode=astnode,
         variables={
-            'x': np.array([1.0, 2.0]),
-            'y': np.array([2.0, 3.0]),
-        }
+            "x": np.array([1.0, 2.0]),
+            "y": np.array([2.0, 3.0]),
+        },
     )
     assert np.allclose(res, np.array([6.0, 9.5]))
 
@@ -79,4 +79,3 @@ def test_mathml_str():
               </math>
     """
     expr = parse_mathml_str(mathml_str)
-

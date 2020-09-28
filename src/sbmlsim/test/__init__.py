@@ -7,7 +7,7 @@ The files are located in the data directory.
 from pathlib import Path
 
 TEST_PATH = Path(__file__).parents[0]  # directory of test files
-DATA_PATH = TEST_PATH / 'data'  # directory of data for tests
+DATA_PATH = TEST_PATH / "data"  # directory of data for tests
 
 MODEL_PATH = DATA_PATH / "models"
 MODEL_REPRESSILATOR = MODEL_PATH / "repressilator.xml"

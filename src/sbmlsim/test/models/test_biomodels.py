@@ -13,11 +13,11 @@ def test_from_url():
 
 
 def test_from_urn1():
-    """ Check that string is returned.
+    """Check that string is returned.
 
     :return:
     """
-    urn = 'urn:miriam:biomodels.db:BIOMD0000000139'
+    urn = "urn:miriam:biomodels.db:BIOMD0000000139"
     sbml = model_resources.model_from_urn(urn)
     assert sbml is not None
     # check that string
@@ -25,11 +25,11 @@ def test_from_urn1():
 
 
 def test_from_urn2():
-    """ Check that model can be loaded in roadrunner.
+    """Check that model can be loaded in roadrunner.
 
     :return:
     """
-    urn = 'urn:miriam:biomodels.db:BIOMD0000000139'
+    urn = "urn:miriam:biomodels.db:BIOMD0000000139"
     sbml = model_resources.model_from_urn(urn)
 
     print("*" * 80)

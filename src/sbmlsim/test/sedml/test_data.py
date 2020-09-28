@@ -13,7 +13,7 @@ from sbmlsim.test import DATA_PATH
 
 
 # ---------------------------------------------------------------------------------
-BASE_DIR = DATA_PATH / 'sedml' / 'data'
+BASE_DIR = DATA_PATH / "sedml" / "data"
 
 SOURCE_CSV = BASE_DIR / "oscli.csv"
 SOURCE_TSV = BASE_DIR / "oscli.tsv"
@@ -25,17 +25,18 @@ SEDML_READ_NUML_1D = BASE_DIR / "reading-numlData1D.xml"
 SEDML_READ_NUML_2D = BASE_DIR / "reading-numlData2D.xml"
 SEDML_READ_NUML_2DRC = BASE_DIR / "reading-numlData2DRC.xml"
 
-OMEX_PLOT_CSV = BASE_DIR / 'omex' / "plot_csv.omex"
-OMEX_PLOT_CSV_WITH_MODEL = BASE_DIR / 'omex', "plot_csv_with_model.omex"
-OMEX_PLOT_NUML = BASE_DIR / 'omex' / "plot_numl.omex"
-OMEX_PLOT_NUML_WITH_MODEL = BASE_DIR / 'omex', "plot_numl_with_model.omex"
+OMEX_PLOT_CSV = BASE_DIR / "omex" / "plot_csv.omex"
+OMEX_PLOT_CSV_WITH_MODEL = BASE_DIR / "omex", "plot_csv_with_model.omex"
+OMEX_PLOT_NUML = BASE_DIR / "omex" / "plot_numl.omex"
+OMEX_PLOT_NUML_WITH_MODEL = BASE_DIR / "omex", "plot_numl_with_model.omex"
 
 SOURCE_CSV_PARAMETERS = BASE_DIR / "parameters.csv"
 SEDML_CSV_PARAMETERS = BASE_DIR / "parameter-from-data-csv.xml"
-OMEX_CSV_PARAMETERS = BASE_DIR / 'omex', "parameter_from_data_csv.omex"
+OMEX_CSV_PARAMETERS = BASE_DIR / "omex", "parameter_from_data_csv.omex"
 
-OMEX_CSV_JWS_ADLUNG2017_FIG2G = BASE_DIR / 'omex' / "jws_adlung2017_fig2g.omex"
+OMEX_CSV_JWS_ADLUNG2017_FIG2G = BASE_DIR / "omex" / "jws_adlung2017_fig2g.omex"
 # ---------------------------------------------------------------------------------
+
 
 def test_load_csv():
     data = DataDescriptionParser._load_csv(SOURCE_CSV)
@@ -59,12 +60,12 @@ def test_load_csv_parameters():
 
 
 def _parseDataDescriptions(sedml_path):
-    """ Test helper functions.
+    """Test helper functions.
 
     Tries to parse all DataDescriptions in the SED-ML file.
     """
     importlib.reload(libsedml)
-    print('parseDataDescriptions:', sedml_path)
+    print("parseDataDescriptions:", sedml_path)
 
     # load sedml document
     sedml_path_str = sedml_path
@@ -127,32 +128,32 @@ def test_parse_numl_1D():
     data_sources = _parseDataDescriptions(SEDML_READ_NUML_1D)
     assert data_sources is not None
     assert len(data_sources) == 6
-    assert 'data_s_glu' in data_sources
-    assert 'data_s_pyr' in data_sources
-    assert 'data_s_acetate' in data_sources
-    assert 'data_s_acetald' in data_sources
-    assert 'data_s_EtOH' in data_sources
-    assert 'data_x' in data_sources
-    assert len(data_sources['data_s_glu']) == 1
+    assert "data_s_glu" in data_sources
+    assert "data_s_pyr" in data_sources
+    assert "data_s_acetate" in data_sources
+    assert "data_s_acetald" in data_sources
+    assert "data_s_EtOH" in data_sources
+    assert "data_x" in data_sources
+    assert len(data_sources["data_s_glu"]) == 1
 
 
 def test_parse_numl_2D():
     data_sources = _parseDataDescriptions(SEDML_READ_NUML_2D)
     assert data_sources is not None
     assert len(data_sources) == 4
-    assert 'dataBL' in data_sources
-    assert 'dataB' in data_sources
-    assert 'dataS1' in data_sources
-    assert 'dataTime' in data_sources
-    assert len(data_sources['dataB']) == 6
+    assert "dataBL" in data_sources
+    assert "dataB" in data_sources
+    assert "dataS1" in data_sources
+    assert "dataTime" in data_sources
+    assert len(data_sources["dataB"]) == 6
 
 
 def test_parse_numl_2DRC():
     data_sources = _parseDataDescriptions(SEDML_READ_NUML_2DRC)
     assert data_sources is not None
     assert len(data_sources) == 4
-    assert 'dataBL' in data_sources
-    assert 'dataB' in data_sources
-    assert 'dataS1' in data_sources
-    assert 'dataTime' in data_sources
-    assert len(data_sources['dataB']) == 6
+    assert "dataBL" in data_sources
+    assert "dataB" in data_sources
+    assert "dataS1" in data_sources
+    assert "dataTime" in data_sources
+    assert len(data_sources["dataB"]) == 6

@@ -53,9 +53,10 @@ class DistributionParameterType(EnumType, Enum):
 
 
 class Distribution(object):
-    """ Class handles the distribution parameters.
-        For every distributed parameter a single Distribution object is generated.
+    """Class handles the distribution parameters.
+    For every distributed parameter a single Distribution object is generated.
     """
+
     # TODO: generate subclasses for the different distribution types, i.e. NormalDistribution, LogNormalDistribution
     class DistException(Exception):
         pass
@@ -72,8 +73,8 @@ class Distribution(object):
 
     @property
     def key(self):
-        """ Return the common key of the parameters.
-         I.e. the key of the parameter which is set via the distribution. """
+        """Return the common key of the parameters.
+        I.e. the key of the parameter which is set via the distribution."""
         return self.parameters.values()[0].key
 
     @property
@@ -87,18 +88,26 @@ class Distribution(object):
     def samples(self, n_samples=1):
         """ Create samples from the distribution. """
         if self.distribution_type == DistributionType.CONSTANT:
-            data = self.parameters[DistributionParameterType.MEAN].value * np.ones(n_samples)
+            data = self.parameters[DistributionParameterType.MEAN].value * np.ones(
+                n_samples
+            )
 
         elif self.distribution_type == DistributionType.NORMAL:
-            data = np.random.normal(self.parameters[DistributionParameterType.MEAN].value,
-                                    self.parameters[DistributionParameterType.STD].value,
-                                    n_samples)
+            data = np.random.normal(
+                self.parameters[DistributionParameterType.MEAN].value,
+                self.parameters[DistributionParameterType.STD].value,
+                n_samples,
+            )
         elif self.distribution_type == DistributionType.LOGNORMAL:
-            data = np.random.lognormal(self.parameters[DistributionParameterType.MEANLOG].value,
-                                       self.parameters[DistributionParameterType.STDLOG].value,
-                                       n_samples)
+            data = np.random.lognormal(
+                self.parameters[DistributionParameterType.MEANLOG].value,
+                self.parameters[DistributionParameterType.STDLOG].value,
+                n_samples,
+            )
         else:
-            raise Distribution.DistException('DistType not supported: {}'.format(self.distribution_type))
+            raise Distribution.DistException(
+                "DistType not supported: {}".format(self.distribution_type)
+            )
 
         if n_samples == 1:
             return data[0]
@@ -106,15 +115,23 @@ class Distribution(object):
 
     def mean(self):
         """ Mean value of distribution for mean sampling. """
-        if self.distribution_type in (DistributionType.CONSTANT, DistributionType.NORMAL, DistributionType.LOGNORMAL):
+        if self.distribution_type in (
+            DistributionType.CONSTANT,
+            DistributionType.NORMAL,
+            DistributionType.LOGNORMAL,
+        ):
             return self.parameters[DistributionParameterType.MEAN].value
         else:
-            raise Distribution.DistException('DistType not supported: {}'.format(self.distribution_type))
+            raise Distribution.DistException(
+                "DistType not supported: {}".format(self.distribution_type)
+            )
 
     def convert_lognormal_mean_std(self):
         """ Convert lognormal mean, std => meanlog and stdlog. """
-        if DistributionParameterType.MEAN in self.parameters and \
-                DistributionParameterType.STD in self.parameters:
+        if (
+            DistributionParameterType.MEAN in self.parameters
+            and DistributionParameterType.STD in self.parameters
+        ):
             # get the old sample parameter
             sp_mean = self.parameters[DistributionParameterType.MEAN]
             sp_std = self.parameters[DistributionParameterType.STD]
@@ -122,10 +139,12 @@ class Distribution(object):
             meanlog = Distribution.calc_meanlog(sp_mean.value, sp_std.value)
             stdlog = Distribution.calc_stdlog(sp_mean.value, sp_std.value)
             # store new parameters
-            self.parameters[DistributionParameterType.MEANLOG] = SampleParameter(sp_mean.key, meanlog,
-                                                                                 sp_mean.unit, sp_mean.parameter_type)
-            self.parameters[DistributionParameterType.STDLOG] = SampleParameter(sp_std.key, stdlog,
-                                                                                sp_std.unit, sp_std.parameter_type)
+            self.parameters[DistributionParameterType.MEANLOG] = SampleParameter(
+                sp_mean.key, meanlog, sp_mean.unit, sp_mean.parameter_type
+            )
+            self.parameters[DistributionParameterType.STDLOG] = SampleParameter(
+                sp_std.key, stdlog, sp_std.unit, sp_std.parameter_type
+            )
             # remove old paramters
             # del self.parameters[DistParsType.MEAN]
             # del self.parameters[DistParsType.STD]
@@ -134,22 +153,28 @@ class Distribution(object):
         """ Check consistency of the defined distributions. """
         if self.distribution_type == DistributionType.CONSTANT:
             if len(self.parameters) != 1:
-                raise Distribution.DistException('Constant distribution has 1 parameter.')
+                raise Distribution.DistException(
+                    "Constant distribution has 1 parameter."
+                )
             self.parameters[DistributionParameterType.MEAN]
 
         elif self.distribution_type == DistributionType.NORMAL:
             if len(self.parameters) != 2:
-                raise Distribution.DistException('Normal distribution has 2 parameter.')
+                raise Distribution.DistException("Normal distribution has 2 parameter.")
             self.parameters[DistributionParameterType.MEAN]
             self.parameters[DistributionParameterType.STD]
 
         elif self.distribution_type == DistributionType.LOGNORMAL:
             if len(self.parameters) < 2:
-                raise Distribution.DistException('LogNormal distribution has 2 parameter.')
+                raise Distribution.DistException(
+                    "LogNormal distribution has 2 parameter."
+                )
             self.parameters[DistributionParameterType.MEANLOG]
             self.parameters[DistributionParameterType.STDLOG]
         else:
-            raise Distribution.DistException('DistType not supported: {}'.format(self.distribution_type))
+            raise Distribution.DistException(
+                "DistType not supported: {}".format(self.distribution_type)
+            )
 
     def check_parameters(self):
         """ Check consistency of parameters within distribution. """
@@ -164,11 +189,17 @@ class Distribution(object):
                 parameter_type = p.parameter_type
                 continue
             if p.key != key:
-                raise Distribution.DistException('All parameters of distribution need same key')
+                raise Distribution.DistException(
+                    "All parameters of distribution need same key"
+                )
             if p.unit != unit:
-                raise Distribution.DistException('All parameters of distribution need same unit')
+                raise Distribution.DistException(
+                    "All parameters of distribution need same unit"
+                )
             if p.parameter_type != parameter_type:
-                raise Distribution.DistException('All parameters of distribution need same parameter_type')
+                raise Distribution.DistException(
+                    "All parameters of distribution need same parameter_type"
+                )
 
         if self.distribution_type == DistributionType.CONSTANT:
             pass
@@ -180,11 +211,11 @@ class Distribution(object):
             pass
 
     def __repr__(self):
-        return '{} : {}'.format(self.distribution_type, self.parameters)
+        return "{} : {}".format(self.distribution_type, self.parameters)
 
     @staticmethod
     def calc_meanlog(mean, std):
-        """ Calculatate meanlog from mean and std.
+        """Calculatate meanlog from mean and std.
         :param mean:
         :param std:
         :return:
@@ -193,7 +224,7 @@ class Distribution(object):
 
     @staticmethod
     def calc_stdlog(mean, std):
-        """ Calculate stdlog from mean and std.
+        """Calculate stdlog from mean and std.
         :param mean:
         :param std:
         :return:

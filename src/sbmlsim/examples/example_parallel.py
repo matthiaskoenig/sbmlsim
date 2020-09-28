@@ -21,7 +21,7 @@ from sbmlsim.units import Units
 
 
 def example_single_actor():
-    """ Creates a single stateful simulator actor and executes timecourse.
+    """Creates a single stateful simulator actor and executes timecourse.
 
     Actors should never created manually !
     Use the SimulatorParallel to run parallel simulations.
@@ -40,10 +40,12 @@ def example_single_actor():
     sa = SimulatorActor.remote(f_state.name)
 
     # run simulation
-    tcsim = TimecourseSim([
-        Timecourse(start=0, end=100, steps=100),
-        Timecourse(start=0, end=100, steps=100, changes={"X": 10, "Y": 20}),
-    ])
+    tcsim = TimecourseSim(
+        [
+            Timecourse(start=0, end=100, steps=100),
+            Timecourse(start=0, end=100, steps=100, changes={"X": 10, "Y": 20}),
+        ]
+    )
 
     tcsim.normalize(udict=udict, ureg=ureg)
     tc_id = sa._timecourse.remote(tcsim)
@@ -68,10 +70,12 @@ def example_multiple_actors():
     simulators = [SimulatorActor.remote(f_state.name) for _ in range(16)]
 
     # define timecourse
-    tcsim = TimecourseSim([
-        Timecourse(start=0, end=100, steps=100),
-        Timecourse(start=0, end=100, steps=100, changes={"X": 10, "Y": 20}),
-    ])
+    tcsim = TimecourseSim(
+        [
+            Timecourse(start=0, end=100, steps=100),
+            Timecourse(start=0, end=100, steps=100, changes={"X": 10, "Y": 20}),
+        ]
+    )
     tcsim.normalize(udict=udict, ureg=ureg)
 
     # run simulation on simulators
@@ -90,15 +94,21 @@ def example_parallel_timecourse(nsim=40, actor_count=15):
     # collect all simulation definitions (see also the ensemble functions)
 
     scan = ScanSim(
-        simulation=TimecourseSim([
-            Timecourse(start=0, end=100, steps=100,
-                       changes={
-                           'IVDOSE_som': 0.0,  # [mg]
-                           'PODOSE_som': 0.0,  # [mg]
-                           'Ri_som': 10.0E-6,  # [mg/min]
-                       })
-        ]),
-        dimensions=[Dimension("dim1", index=np.arange(nsim))]
+        simulation=TimecourseSim(
+            [
+                Timecourse(
+                    start=0,
+                    end=100,
+                    steps=100,
+                    changes={
+                        "IVDOSE_som": 0.0,  # [mg]
+                        "PODOSE_som": 0.0,  # [mg]
+                        "Ri_som": 10.0e-6,  # [mg/min]
+                    },
+                )
+            ]
+        ),
+        dimensions=[Dimension("dim1", index=np.arange(nsim))],
     )
 
     def message(info, time):
@@ -110,35 +120,31 @@ def example_parallel_timecourse(nsim=40, actor_count=15):
     simulator_defs = [
         {
             "key": "parallel",
-            'simulator': SimulatorParallel,
-            'kwargs': {'actor_count': actor_count}
+            "simulator": SimulatorParallel,
+            "kwargs": {"actor_count": actor_count},
         },
-        {
-            "key": "serial",
-            'simulator': SimulatorSerial,
-            'kwargs': {}
-        },
+        {"key": "serial", "simulator": SimulatorSerial, "kwargs": {}},
     ]
     print("-" * 80)
     print(f"Run '{nsim}' simulations")
     print("-" * 80)
     sim_info = []
     for sim_def in simulator_defs:
-        key = sim_def['key']
+        key = sim_def["key"]
         print("***", key, "***")
-        Simulator = sim_def['simulator']
-        kwargs = sim_def['kwargs']
+        Simulator = sim_def["simulator"]
+        kwargs = sim_def["kwargs"]
 
         # run simulation (with model reading)
         start_time = time.time()
         # create a simulator with 16 parallel actors
         simulator = Simulator(model=MODEL_GLCWB, **kwargs)
-        load_time = time.time()-start_time
+        load_time = time.time() - start_time
         message(f"load", load_time)
 
         start_time = time.time()
         results = simulator.run_scan(scan=scan)
-        sim_time = time.time()-start_time
+        sim_time = time.time() - start_time
         total_time = load_time + sim_time
         message("simulate", sim_time)
         message("total", total_time)
@@ -147,24 +153,29 @@ def example_parallel_timecourse(nsim=40, actor_count=15):
         # run parallel simulation (without model reading)
         start_time = time.time()
         results = simulator.run_scan(scan=scan)
-        repeat_time = time.time()-start_time
+        repeat_time = time.time() - start_time
         message(f"repeat", repeat_time)
         assert len(results.coords["dim1"]) == nsim
 
-        actor_count = kwargs.get('actor_count', 1)
+        actor_count = kwargs.get("actor_count", 1)
         times = {
             "load": load_time,
             "simulate": sim_time,
             "total": total_time,
             "repeat": repeat_time,
         }
-        sim_info.extend([{
-                "key": key,
-                "nsim": nsim,
-                "actor_count": actor_count,
-                "time_type": k,
-                "time": v,
-            } for (k, v) in times.items()])
+        sim_info.extend(
+            [
+                {
+                    "key": key,
+                    "nsim": nsim,
+                    "actor_count": actor_count,
+                    "time_type": k,
+                    "time": v,
+                }
+                for (k, v) in times.items()
+            ]
+        )
 
         print("-" * 80)
 
@@ -177,5 +188,3 @@ if __name__ == "__main__":
 
     sim_info = example_parallel_timecourse(nsim=100, actor_count=15)
     ray.timeline(filename="timeline.json")
-
-

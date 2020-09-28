@@ -21,15 +21,16 @@ class SimulatorSerial(SimulatorAbstract, SimulatorWorker):
     Simulators can run many different models.
     Use the set_model method to set the model to execute.
     """
+
     def __init__(self, model=None, **kwargs):
-        """ Serial simulator.
+        """Serial simulator.
 
         :param model: Path to model or model
         :param kwargs: integrator settings
         """
         self.integrator_settings = {
-            "absolute_tolerance": 1E-14,
-            "relative_tolerance": 1E-14,
+            "absolute_tolerance": 1e-14,
+            "relative_tolerance": 1e-14,
         }
         self.integrator_settings.update(kwargs)
         self.set_model(model)
@@ -46,17 +47,19 @@ class SimulatorSerial(SimulatorAbstract, SimulatorWorker):
                 self.model = model
             else:
                 # handle path, urn, ...
-                self.model = RoadrunnerSBMLModel(source=model, settings=self.integrator_settings)
+                self.model = RoadrunnerSBMLModel(
+                    source=model, settings=self.integrator_settings
+                )
 
             self.set_integrator_settings(**self.integrator_settings)
 
     def set_integrator_settings(self, **kwargs):
         if isinstance(self.model, RoadrunnerSBMLModel):
-            RoadrunnerSBMLModel.set_integrator_settings(
-                self.model.r, **kwargs
-            )
+            RoadrunnerSBMLModel.set_integrator_settings(self.model.r, **kwargs)
         else:
-            logger.warning("Integrator settings can only be set on RoadrunnerSBMLModel.")
+            logger.warning(
+                "Integrator settings can only be set on RoadrunnerSBMLModel."
+            )
 
     def set_timecourse_selections(self, selections):
         RoadrunnerSBMLModel.set_timecourse_selections(self.r, selections=selections)
@@ -76,8 +79,9 @@ class SimulatorSerial(SimulatorAbstract, SimulatorWorker):
     def run_timecourse(self, simulation: TimecourseSim) -> XResult:
         """ Run single timecourse."""
         if not isinstance(simulation, TimecourseSim):
-            raise ValueError(f"'run_timecourse' requires TimecourseSim, but "
-                             f"'{type(simulation)}'")
+            raise ValueError(
+                f"'run_timecourse' requires TimecourseSim, but " f"'{type(simulation)}'"
+            )
         scan = ScanSim(simulation=simulation)
         return self.run_scan(scan)
 
@@ -93,16 +97,12 @@ class SimulatorSerial(SimulatorAbstract, SimulatorWorker):
         dfs = self._timecourses(simulations)
 
         # based on the indices the result structure must be created
-        return XResult.from_dfs(
-            dfs=dfs,
-            scan=scan,
-            udict=self.udict,
-            ureg=self.ureg
-        )
+        return XResult.from_dfs(dfs=dfs, scan=scan, udict=self.udict, ureg=self.ureg)
 
     def _timecourses(self, simulations: List[TimecourseSim]) -> List[pd.DataFrame]:
         if len(simulations) > 1:
             logger.warning(
                 "Use of SimulatorSerial to run multiple timecourses. "
-                "Use SimulatorParallel instead.")
+                "Use SimulatorParallel instead."
+            )
         return [self._timecourse(sim) for sim in simulations]

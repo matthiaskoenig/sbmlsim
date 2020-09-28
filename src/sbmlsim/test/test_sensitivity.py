@@ -14,8 +14,7 @@ def test_sensitivity():
     model = RoadrunnerSBMLModel(MODEL_REPRESSILATOR)
 
     p_ref = ModelSensitivity.reference_dict(
-        model=model,
-        stype=SensitivityType.PARAMETER_SENSITIVITY
+        model=model, stype=SensitivityType.PARAMETER_SENSITIVITY
     )
     assert len(p_ref) == 7
     p_keys = ["KM", "eff", "n", "ps_0", "ps_a", "tau_mRNA", "tau_prot"]
@@ -23,8 +22,7 @@ def test_sensitivity():
         assert key in p_ref
 
     s_ref = ModelSensitivity.reference_dict(
-        model=model,
-        stype=SensitivityType.SPECIES_SENSITIVITY
+        model=model, stype=SensitivityType.SPECIES_SENSITIVITY
     )
     assert len(s_ref) == 1
     s_keys = ["Y"]
@@ -32,8 +30,7 @@ def test_sensitivity():
         assert key in s_ref
 
     all_ref = ModelSensitivity.reference_dict(
-        model=model,
-        stype=SensitivityType.All_SENSITIVITY
+        model=model, stype=SensitivityType.All_SENSITIVITY
     )
     print(all_ref)
     assert len(all_ref) == 8
@@ -45,11 +42,10 @@ def test_sensitivity():
 def test_sensitivity_change():
     model = RoadrunnerSBMLModel(MODEL_REPRESSILATOR)
     p_ref = ModelSensitivity.reference_dict(
-        model=model,
-        stype=SensitivityType.PARAMETER_SENSITIVITY
+        model=model, stype=SensitivityType.PARAMETER_SENSITIVITY
     )
     plus = ModelSensitivity.apply_change_to_dict(p_ref, change=0.1)
     minus = ModelSensitivity.apply_change_to_dict(p_ref, change=-0.1)
     for key in ["KM", "eff", "n", "ps_0", "ps_a", "tau_mRNA", "tau_prot"]:
-        assert pytest.approx(1.1*p_ref[key].magnitude, plus[key].magnitude)
+        assert pytest.approx(1.1 * p_ref[key].magnitude, plus[key].magnitude)
         assert pytest.approx(0.9 * p_ref[key].magnitude, minus[key].magnitude)

@@ -6,20 +6,21 @@ from matplotlib import pyplot as plt
 def lhsmdu_runtime():
     runtimes = []
     import time
+
     for k in range(0, 7):
         ts = time.time()
-        samples = 2**k
-        lhsmdu.sample(2, samples)  # Latin Hypercube Sampling of two variables, and 10 samples each
+        samples = 2 ** k
+        lhsmdu.sample(
+            2, samples
+        )  # Latin Hypercube Sampling of two variables, and 10 samples each
         te = time.time()
-        res = {'samples': samples, 'time': te-ts}
+        res = {"samples": samples, "time": te - ts}
         print(res)
-        runtimes.append(
-            res
-        )
+        runtimes.append(res)
     df = pd.DataFrame(runtimes)
     fig, axes = plt.subplots(nrows=2, ncols=1, figsize=(5, 10))
     for ax in axes:
-        ax.plot(df.samples, df.time, '-o', markersize=10)
+        ax.plot(df.samples, df.time, "-o", markersize=10)
         ax.set_xlabel("sample size")
         ax.set_ylabel("runtime [s]")
         ax.grid(True)

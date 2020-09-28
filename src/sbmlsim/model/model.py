@@ -21,6 +21,7 @@ class AbstractModel(object):
 
     Depending on the model language different subclasses are implemented.
     """
+
     class LanguageType(Enum):
         SBML = 1
         CELLML = 2
@@ -33,26 +34,31 @@ class AbstractModel(object):
     def __repr__(self):
         return f"{self.language_type.name}({self.source.source}, changes={len(self.changes)})"
 
-    def __init__(self, source: str,
-                 sid: str = None, name: str = None,
-                 language: str = None,
-                 language_type: LanguageType = None,
-                 base_path: Path = None,
-                 changes: Dict = None,
-                 selections: List[str] = None,
-                 ):
+    def __init__(
+        self,
+        source: str,
+        sid: str = None,
+        name: str = None,
+        language: str = None,
+        language_type: LanguageType = None,
+        base_path: Path = None,
+        changes: Dict = None,
+        selections: List[str] = None,
+    ):
 
         if not language and not language_type:
-            raise ValueError("Either 'language' or 'language_type' argument are"
-                             "required")
+            raise ValueError(
+                "Either 'language' or 'language_type' argument are" "required"
+            )
         if language and language_type:
-            raise ValueError("Either 'language' or 'language_type' can be set,"
-                             "but not both.")
+            raise ValueError(
+                "Either 'language' or 'language_type' can be set," "but not both."
+            )
 
         # parse language_type
         if language:
             if isinstance(language, str):
-                if 'sbml' in language:
+                if "sbml" in language:
                     language_type = AbstractModel.LanguageType.SBML
                 else:
                     raise ValueError(f"Unsupported model language: '{language}'")
@@ -80,7 +86,6 @@ class AbstractModel(object):
             "changes": self.changes,
         }
         return d
-
 
     '''
     # SED-ML HANDLING

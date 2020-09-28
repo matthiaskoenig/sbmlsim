@@ -48,6 +48,7 @@ class WeightingLocalType(Enum):
     This decides how the data points within a single fit mapping are
     weighted. One can account for the errors or not.
     """
+
     NO_WEIGHTING = 1  # data points are weighted equally
     ABSOLUTE_ONE_OVER_WEIGHTING = 2  # data points are weighted as 1/(error-min(error))
     RELATIVE_ONE_OVER_WEIGHTING = 2  # data points are weighted as 1/(error-min(error))
@@ -60,17 +61,25 @@ class ResidualType(Enum):
 
     Relative residuals make different fit mappings comparable.
     """
+
     ABSOLUTE_RESIDUALS = 1  # (no local effects)
     RELATIVE_RESIDUALS = 2  # (local effects) induces local weighting by normalizing every residual by absolute value
-    ABSOLUTE_NORMED_RESIDUALS = 3  # (no local effects) absolute residuals normed per mean reference data
+    ABSOLUTE_NORMED_RESIDUALS = (
+        3  # (no local effects) absolute residuals normed per mean reference data
+    )
 
 
 class OptimizationProblem(object):
     """Parameter optimization problem."""
 
-    def __init__(self, opid, fit_experiments: Iterable[FitExperiment],
-                 fit_parameters: Iterable[FitParameter],
-                 base_path=None, data_path=None):
+    def __init__(
+        self,
+        opid,
+        fit_experiments: Iterable[FitExperiment],
+        fit_parameters: Iterable[FitParameter],
+        base_path=None,
+        data_path=None,
+    ):
         """Optimization problem.
 
         The problem must be pickable for parallelization !
@@ -84,8 +93,10 @@ class OptimizationProblem(object):
         self.fit_experiments = FitExperiment.reduce(fit_experiments)
         self.parameters = fit_parameters
         if self.parameters is None or len(self.parameters) == 0:
-            logger.error(f"{opid}: parameters in optimization problem cannot be empty, "
-                         f"but '{self.parameters}'")
+            logger.error(
+                f"{opid}: parameters in optimization problem cannot be empty, "
+                f"but '{self.parameters}'"
+            )
 
         # parameter information
         self.pids = [p.pid for p in self.parameters]
@@ -105,7 +116,7 @@ class OptimizationProblem(object):
     def __str__(self):
         """String representation."""
         info = []
-        info.append("-"*80)
+        info.append("-" * 80)
         info.append(f"{self.__class__.__name__}: {self.opid}")
         info.append("-" * 80)
         info.append("Experiments")
@@ -118,7 +129,9 @@ class OptimizationProblem(object):
         info.append("-" * 80)
         return "\n".join(info)
 
-    def initialize(self, weighting_local: WeightingLocalType, residual_type: ResidualType):
+    def initialize(
+        self, weighting_local: WeightingLocalType, residual_type: ResidualType
+    ):
         # weighting in fitting and handling of residuals
         if weighting_local is None:
             raise ValueError("'weighting_local' is required.")
@@ -136,7 +149,7 @@ class OptimizationProblem(object):
         self.runner = ExperimentRunner(
             experiment_classes=exp_classes,
             base_path=self.base_path,
-            data_path=self.data_path
+            data_path=self.data_path,
         )
 
         # prepare reference data for all mappings (full length lists)
@@ -181,26 +194,35 @@ class OptimizationProblem(object):
 
                 # sanity checks
                 if mapping_id not in sim_experiment._fit_mappings:
-                    raise ValueError(f"Mapping key '{mapping_id}' not defined in "
-                                     f"SimulationExperiment '{sim_experiment}'.")
+                    raise ValueError(
+                        f"Mapping key '{mapping_id}' not defined in "
+                        f"SimulationExperiment '{sim_experiment}'."
+                    )
 
                 mapping = sim_experiment._fit_mappings[mapping_id]  # type: FitMapping
 
                 if mapping.observable.task_id is None:
-                    raise ValueError(f"Only observables from tasks supported: "
-                                     f"'{mapping.observable}'")
+                    raise ValueError(
+                        f"Only observables from tasks supported: "
+                        f"'{mapping.observable}'"
+                    )
                 if mapping.reference.dset_id is None:
-                    raise ValueError(f"Only references from datasets supported: "
-                                     f"'{mapping.reference}'")
+                    raise ValueError(
+                        f"Only references from datasets supported: "
+                        f"'{mapping.reference}'"
+                    )
 
                 task_id = mapping.observable.task_id
                 task = sim_experiment._tasks[task_id]
-                model = sim_experiment._models[task.model_id]  # type: RoadrunnerSBMLModel
+                model = sim_experiment._models[
+                    task.model_id
+                ]  # type: RoadrunnerSBMLModel
                 simulation = sim_experiment._simulations[task.simulation_id]
 
                 if not isinstance(simulation, TimecourseSim):
-                    raise ValueError(f"Only TimecourseSims supported in fitting: "
-                                     f"'{simulation}")
+                    raise ValueError(
+                        f"Only TimecourseSims supported in fitting: " f"'{simulation}"
+                    )
 
                 # observable units
                 obs_xid = mapping.observable.x.index
@@ -213,12 +235,16 @@ class OptimizationProblem(object):
                 try:
                     data_ref.x = data_ref.x.to(obs_x_unit)
                 except DimensionalityError as e:
-                    logger.error(f"{sid}.{mapping_id}: Unit convertion fails for '{data_ref.x}' to '{obs_x_unit}")
+                    logger.error(
+                        f"{sid}.{mapping_id}: Unit convertion fails for '{data_ref.x}' to '{obs_x_unit}"
+                    )
                     raise e
                 try:
                     data_ref.y = data_ref.y.to(obs_y_unit)
                 except DimensionalityError as e:
-                    logger.error(f"{sid}.{mapping_id}: Unit convertion fails for '{data_ref.y}' to '{obs_y_unit}'.")
+                    logger.error(
+                        f"{sid}.{mapping_id}: Unit convertion fails for '{data_ref.y}' to '{obs_y_unit}'."
+                    )
                     raise e
                 x_ref = data_ref.x.magnitude
                 y_ref = data_ref.y.magnitude
@@ -248,10 +274,12 @@ class OptimizationProblem(object):
 
                 # remove zero values for relative errors (no inf residuals)
                 if self.residual_type == ResidualType.RELATIVE_RESIDUALS:
-                    nonzero_mask = (y_ref != 0.0)
+                    nonzero_mask = y_ref != 0.0
                     if not np.all(nonzero_mask):
-                        logger.debug(f"Zero (0.0) values in y data in experiment '{sid}' "
-                                       f"mapping '{mapping_id}' removed: {y_ref}")
+                        logger.debug(
+                            f"Zero (0.0) values in y data in experiment '{sid}' "
+                            f"mapping '{mapping_id}' removed: {y_ref}"
+                        )
                         x_ref = x_ref[nonzero_mask]
                         if y_ref_err is not None:
                             y_ref_err = y_ref_err[nonzero_mask]
@@ -260,7 +288,9 @@ class OptimizationProblem(object):
                 # remove NaN from y-data
                 nonnan_mask = ~np.isnan(y_ref)
                 if not np.all(nonnan_mask):
-                    logger.debug(f"Removing NaN values in '{sid}:{mapping_id}' y data: {y_ref}")
+                    logger.debug(
+                        f"Removing NaN values in '{sid}:{mapping_id}' y data: {y_ref}"
+                    )
                 x_ref = x_ref[nonnan_mask]
                 y_ref = y_ref[nonnan_mask]
                 if y_ref_err is not None:
@@ -268,28 +298,50 @@ class OptimizationProblem(object):
 
                 # at this point all x_ref, y_ref and y_ref_err (if not None) should be numerical
                 if np.any(~np.isfinite(x_ref)):
-                    raise ValueError(f"{fit_experiment}.{mapping_id}: NaN or INF in x_ref: {x_ref}")
+                    raise ValueError(
+                        f"{fit_experiment}.{mapping_id}: NaN or INF in x_ref: {x_ref}"
+                    )
                 if np.any(~np.isfinite(y_ref)):
-                    raise ValueError(f"{fit_experiment}.{mapping_id}: NaN or INF in y_ref: {y_ref}")
+                    raise ValueError(
+                        f"{fit_experiment}.{mapping_id}: NaN or INF in y_ref: {y_ref}"
+                    )
                 if y_ref_err is not None:
                     if np.any(~np.isfinite(y_ref_err)):
-                        raise ValueError(f"{fit_experiment}.{mapping_id}: NaN or INF in y_ref_err: {y_ref_err}")
+                        raise ValueError(
+                            f"{fit_experiment}.{mapping_id}: NaN or INF in y_ref_err: {y_ref_err}"
+                        )
 
                 # calculate local weights based on errors
                 weights = np.ones_like(y_ref)  # local weights are by default 1.0
 
                 if self.weighting_local != WeightingLocalType.NO_WEIGHTING:
                     if y_ref_err is not None:
-                        if self.weighting_local == WeightingLocalType.ABSOLUTE_ONE_OVER_WEIGHTING:
-                            weights = 1.0 / y_ref_err  # the larger the error, the smaller the weight
-                            weights = weights / np.max(weights)  # normalize maximal weight to 1.0, weights in (0, 1]
-                        elif self.weighting_local == WeightingLocalType.RELATIVE_ONE_OVER_WEIGHTING:
-                            weights = y_ref / y_ref_err  # the larger the error, the smaller the weight
+                        if (
+                            self.weighting_local
+                            == WeightingLocalType.ABSOLUTE_ONE_OVER_WEIGHTING
+                        ):
+                            weights = (
+                                1.0 / y_ref_err
+                            )  # the larger the error, the smaller the weight
+                            weights = weights / np.max(
+                                weights
+                            )  # normalize maximal weight to 1.0, weights in (0, 1]
+                        elif (
+                            self.weighting_local
+                            == WeightingLocalType.RELATIVE_ONE_OVER_WEIGHTING
+                        ):
+                            weights = (
+                                y_ref / y_ref_err
+                            )  # the larger the error, the smaller the weight
                         else:
-                            raise ValueError(f"Local weighting not supported: {self.weighting_local}")
+                            raise ValueError(
+                                f"Local weighting not supported: {self.weighting_local}"
+                            )
                     else:
-                        logger.warning(f"'{sid}.{mapping_id}': Using '{self.weighting_local}' with "
-                                       f"no errors in reference data.")
+                        logger.warning(
+                            f"'{sid}.{mapping_id}': Using '{self.weighting_local}' with "
+                            f"no errors in reference data."
+                        )
 
                 if False:
                     print("-" * 80)
@@ -332,16 +384,20 @@ class OptimizationProblem(object):
             with open(filepath, "w") as fout:
                 fout.write(info)
 
-    def optimize(self, size=10, seed=None, verbose=False,
-                 optimizer: OptimizerType=OptimizerType.LEAST_SQUARE,
-                 sampling: SamplingType=SamplingType.UNIFORM,
-                 weighting_local: WeightingLocalType = WeightingLocalType.NO_WEIGHTING,
-                 residual_type: ResidualType = ResidualType.ABSOLUTE_RESIDUALS,
-                 variable_step_size=True,
-                 relative_tolerance=1E-6,
-                 absolute_tolerance=1E-8,
-
-                 **kwargs) -> Tuple[List[scipy.optimize.OptimizeResult], List]:
+    def optimize(
+        self,
+        size=10,
+        seed=None,
+        verbose=False,
+        optimizer: OptimizerType = OptimizerType.LEAST_SQUARE,
+        sampling: SamplingType = SamplingType.UNIFORM,
+        weighting_local: WeightingLocalType = WeightingLocalType.NO_WEIGHTING,
+        residual_type: ResidualType = ResidualType.ABSOLUTE_RESIDUALS,
+        variable_step_size=True,
+        relative_tolerance=1e-6,
+        absolute_tolerance=1e-8,
+        **kwargs,
+    ) -> Tuple[List[scipy.optimize.OptimizeResult], List]:
         """Run parameter optimization"""
         # additional settings for optimization
         self.weighting_local = weighting_local
@@ -371,7 +427,9 @@ class OptimizationProblem(object):
                 x0 = None
             if verbose:
                 print(f"[{k+1}/{size}] x0={x0}")
-            fit, trajectory = self._optimize_single(x0=x0, optimizer=optimizer, **kwargs)
+            fit, trajectory = self._optimize_single(
+                x0=x0, optimizer=optimizer, **kwargs
+            )
             if verbose:
                 print("\t{:8.4f} [s]".format(fit.duration))
 
@@ -380,9 +438,10 @@ class OptimizationProblem(object):
         return fits, trajectories
 
     @timeit
-    def _optimize_single(self, x0=None, optimizer=OptimizerType.LEAST_SQUARE,
-                         **kwargs) -> Tuple[scipy.optimize.OptimizeResult, List]:
-        """ Runs single optimization with x0 start values.
+    def _optimize_single(
+        self, x0=None, optimizer=OptimizerType.LEAST_SQUARE, **kwargs
+    ) -> Tuple[scipy.optimize.OptimizeResult, List]:
+        """Runs single optimization with x0 start values.
 
         :param x0: parameter start vector (important for deterministic optimizers)
         :param optimizer: optimization algorithm and method
@@ -421,7 +480,7 @@ class OptimizationProblem(object):
                 opt_result.x = x0log
             te = time.time()
             opt_result.x0 = x0  # store start value
-            opt_result.duration = (te - ts)
+            opt_result.duration = te - ts
             opt_result.x = np.power(10, opt_result.x)
             return opt_result, deepcopy(self._trajectory)
 
@@ -430,7 +489,10 @@ class OptimizationProblem(object):
             # https://docs.scipy.org/doc/scipy/reference/generated/scipy.optimize.differential_evolution.html#scipy.optimize.differential_evolution
             ts = time.time()
             try:
-                de_bounds_log = [(np.log10(p.lower_bound), np.log10(p.upper_bound)) for k, p in enumerate(self.parameters)]
+                de_bounds_log = [
+                    (np.log10(p.lower_bound), np.log10(p.upper_bound))
+                    for k, p in enumerate(self.parameters)
+                ]
                 opt_result = optimize.differential_evolution(
                     func=self.cost_least_square, bounds=de_bounds_log, **kwargs
                 )
@@ -440,7 +502,7 @@ class OptimizationProblem(object):
                 opt_result.x = x0log
             te = time.time()
             opt_result.x0 = x0  # store start value
-            opt_result.duration = (te - ts)
+            opt_result.duration = te - ts
             opt_result.cost = self.cost_least_square(opt_result.x)
             opt_result.x = np.power(10, opt_result.x)
             return opt_result, deepcopy(self._trajectory)
@@ -499,7 +561,8 @@ class OptimizationProblem(object):
                 f = interpolate.interp1d(
                     x=df[self.xid_observable[k]],
                     y=df[self.yid_observable[k]],
-                    copy=False, assume_sorted=True
+                    copy=False,
+                    assume_sorted=True,
                 )
                 y_obsip = f(self.x_references[k])
 
@@ -508,11 +571,13 @@ class OptimizationProblem(object):
 
             except RuntimeError as err:
                 # something went wrong in the integration (setting high residuals & cost)
-                logger.error(f"RuntimeError in ODE integration (residuals for {x}): {err}")
+                logger.error(
+                    f"RuntimeError in ODE integration (residuals for {x}): {err}"
+                )
                 res_abs = 5.0 * self.y_references[k]  # total error
 
             res_abs_normed = res_abs / self.y_references[k].mean()
-            with np.errstate(invalid='ignore'):
+            with np.errstate(invalid="ignore"):
                 res_rel = res_abs / self.y_references[k]
             # no cost contribution of zero values
             res_rel[np.isnan(res_rel)] = 0
@@ -528,10 +593,14 @@ class OptimizationProblem(object):
 
             # apply local weighting & user defined weighting (in the cost function the weighted residuals are squared)
             # sum(w_i * r_i^2) = sum((w_i^0.5*r_i)^2)
-            resw = res * np.sqrt(self.weights_local[k]) * np.sqrt(self.weights_global_user[k])  # FIXME: handle square of global weights correctly
+            resw = (
+                res
+                * np.sqrt(self.weights_local[k])
+                * np.sqrt(self.weights_global_user[k])
+            )  # FIXME: handle square of global weights correctly
             parts.append(resw)
 
-            #if False:
+            # if False:
             #    print("residuals:", self.experiment_keys[k], 'mapping_id:', mapping_id, res)
             #    print("residuals weighted:", self.experiment_keys[k], 'mapping_id:', mapping_id, resw)
 
@@ -554,17 +623,16 @@ class OptimizationProblem(object):
         else:
             res_all = np.concatenate(parts)
             # store the local step
-            self._trajectory.append(
-                (deepcopy(x),
-                 0.5 * np.sum(np.power(res_all, 2)))
-            )
+            self._trajectory.append((deepcopy(x), 0.5 * np.sum(np.power(res_all, 2))))
             return res_all
 
     # --------------------------
     # Plotting
     # --------------------------
     @timeit
-    def plot_costs(self, x, xstart=None, output_path: Path=None, show_plots: bool = True):
+    def plot_costs(
+        self, x, xstart=None, output_path: Path = None, show_plots: bool = True
+    ):
         """Plots bar diagram of costs for set of residuals
 
         :param res_data_start:
@@ -584,14 +652,18 @@ class OptimizationProblem(object):
         for k in range(len(self.mapping_keys)):
             for kdata, res_data in enumerate([res_data_start, res_data_fit]):
 
-                data.append({
-                    'id': f"{self.experiment_keys[k]}_{self.mapping_keys[k]}",
-                    'experiment': self.experiment_keys[k],
-                    'mapping': self.mapping_keys[k],
-                    'cost': res_data['cost'][k],
-                    'type': types[kdata]
-                })
-        cost_df = pd.DataFrame(data, columns=["id", "experiment", "mapping", "cost", "type"])
+                data.append(
+                    {
+                        "id": f"{self.experiment_keys[k]}_{self.mapping_keys[k]}",
+                        "experiment": self.experiment_keys[k],
+                        "mapping": self.mapping_keys[k],
+                        "cost": res_data["cost"][k],
+                        "type": types[kdata],
+                    }
+                )
+        cost_df = pd.DataFrame(
+            data, columns=["id", "experiment", "mapping", "cost", "type"]
+        )
 
         fig, ax = plt.subplots(nrows=1, ncols=1, figsize=(5, 5))
         sns.set_color_codes("pastel")
@@ -608,11 +680,9 @@ class OptimizationProblem(object):
 
         return cost_df
 
-
-
     @timeit
     def plot_fits(self, x, output_path: Path = None, show_plots: bool = True):
-        """ Plot fitted curves with experimental data.
+        """Plot fitted curves with experimental data.
 
         Overview of all fit mappings.
 
@@ -620,7 +690,9 @@ class OptimizationProblem(object):
         :return:
         """
         n_plots = len(self.mapping_keys)
-        fig, axes = plt.subplots(nrows=n_plots, ncols=2, figsize=(10, 5*n_plots), squeeze=False)
+        fig, axes = plt.subplots(
+            nrows=n_plots, ncols=2, figsize=(10, 5 * n_plots), squeeze=False
+        )
 
         # residual data and simulations of optimal paraemters
         res_data = self.residuals(xlog=np.log10(x), complete_data=True)
@@ -643,8 +715,8 @@ class OptimizationProblem(object):
                 ax.set_ylabel(y_id)
 
                 # calculated data in residuals
-                x_obs = res_data['x_obs'][k]
-                y_obs = res_data['y_obs'][k]
+                x_obs = res_data["x_obs"][k]
+                y_obs = res_data["y_obs"][k]
 
                 # FIXME: add residuals
 
@@ -652,8 +724,14 @@ class OptimizationProblem(object):
                 if y_ref_err is None:
                     ax.plot(x_ref, y_ref, "s", color="black", label="reference_data")
                 else:
-                    ax.errorbar(x_ref, y_ref, yerr=y_ref_err,
-                                 marker="s", color="black", label=f"reference_data ± {y_ref_err_type}")
+                    ax.errorbar(
+                        x_ref,
+                        y_ref,
+                        yerr=y_ref_err,
+                        marker="s",
+                        color="black",
+                        label=f"reference_data ± {y_ref_err_type}",
+                    )
                 # plot simulation
                 ax.plot(x_obs, y_obs, "-", color="blue", label="observable")
                 ax.legend()
@@ -667,8 +745,10 @@ class OptimizationProblem(object):
             fig.savefig(output_path / f"00_fits_{self.opid}.svg", bbox_inches="tight")
 
     @timeit
-    def plot_residuals(self, x, xstart=None, output_path: Path = None, show_plots: bool = True):
-        """ Plot residual data.
+    def plot_residuals(
+        self, x, xstart=None, output_path: Path = None, show_plots: bool = True
+    ):
+        """Plot residual data.
 
         :param res_data_start: initial residual data
         :return:
@@ -681,7 +761,9 @@ class OptimizationProblem(object):
         res_data_fit = self.residuals(xlog=np.log10(x), complete_data=True)
 
         for k, mapping_id in enumerate(self.mapping_keys):
-            fig, ((a1, a2), (a3, a4), (a5, a6)) = plt.subplots(nrows=3, ncols=2, figsize=(10, 10))
+            fig, ((a1, a2), (a3, a4), (a5, a6)) = plt.subplots(
+                nrows=3, ncols=2, figsize=(10, 10)
+            )
 
             axes = [(a1, a3, a5), (a2, a4, a6)]
             if titles is None:
@@ -703,16 +785,16 @@ class OptimizationProblem(object):
 
                 # calculated data in residuals
 
-                x_obs = res_data['x_obs'][k]
-                y_obs = res_data['y_obs'][k]
-                y_obsip = res_data['y_obsip'][k]
+                x_obs = res_data["x_obs"][k]
+                y_obs = res_data["y_obs"][k]
+                y_obsip = res_data["y_obsip"][k]
 
-                res = res_data['residuals'][k]
-                res_weighted = res_data['residuals_weighted'][k]
-                res_abs = res_data['res_abs'][k]
-                res_rel = res_data['res_rel'][k]
+                res = res_data["residuals"][k]
+                res_weighted = res_data["residuals_weighted"][k]
+                res_abs = res_data["res_abs"][k]
+                res_rel = res_data["res_rel"][k]
 
-                cost = res_data['cost'][k]
+                cost = res_data["cost"][k]
 
                 for ax in (ax1, ax2, ax3):
                     ax.axhline(y=0, color="black")
@@ -722,31 +804,60 @@ class OptimizationProblem(object):
                 if y_ref_err is None:
                     ax1.plot(x_ref, y_ref, "s", color="black", label="reference_data")
                 else:
-                    ax1.errorbar(x_ref, y_ref, yerr=y_ref_err,
-                                 marker="s", color="black", label="reference_data")
+                    ax1.errorbar(
+                        x_ref,
+                        y_ref,
+                        yerr=y_ref_err,
+                        marker="s",
+                        color="black",
+                        label="reference_data",
+                    )
 
                 ax1.plot(x_obs, y_obs, "-", color="blue", label="observable")
                 ax1.plot(x_ref, y_obsip, "o", color="blue", label="interpolation")
                 for ax in (ax1, ax2):
-                    ax.plot(x_ref, res_abs, "o", color="darkorange",
-                            label="obs-ref")
-                ax1.fill_between(x_ref, res_abs, np.zeros_like(res),
-                                 alpha=0.4, color="darkorange", label="__nolabel__")
+                    ax.plot(x_ref, res_abs, "o", color="darkorange", label="obs-ref")
+                ax1.fill_between(
+                    x_ref,
+                    res_abs,
+                    np.zeros_like(res),
+                    alpha=0.4,
+                    color="darkorange",
+                    label="__nolabel__",
+                )
 
-
-                ax2.plot(x_ref, res_weighted, "o", color="darkgreen",
-                         label="weighted residuals")
-                ax2.fill_between(x_ref, res_weighted,
-                                 np.zeros_like(res_weighted), alpha=0.4, color="darkgreen",
-                                 label="__nolabel__")
-
+                ax2.plot(
+                    x_ref,
+                    res_weighted,
+                    "o",
+                    color="darkgreen",
+                    label="weighted residuals",
+                )
+                ax2.fill_between(
+                    x_ref,
+                    res_weighted,
+                    np.zeros_like(res_weighted),
+                    alpha=0.4,
+                    color="darkgreen",
+                    label="__nolabel__",
+                )
 
                 res_weighted2 = np.power(res_weighted, 2)
-                ax3.plot(x_ref, res_weighted2, "o", color="darkred",
-                         label="(weighted residuals)^2")
-                ax3.fill_between(x_ref, res_weighted2,
-                                 np.zeros_like(res), alpha=0.4, color="darkred",
-                                 label="__nolabel__")
+                ax3.plot(
+                    x_ref,
+                    res_weighted2,
+                    "o",
+                    color="darkred",
+                    label="(weighted residuals)^2",
+                )
+                ax3.fill_between(
+                    x_ref,
+                    res_weighted2,
+                    np.zeros_like(res),
+                    alpha=0.4,
+                    color="darkred",
+                    label="__nolabel__",
+                )
 
                 for ax in (ax1, ax2):
                     plt.setp(ax.get_xticklabels(), visible=False)
@@ -777,5 +888,7 @@ class OptimizationProblem(object):
             if show_plots:
                 plt.show()
             if output_path is not None:
-                fig.savefig(output_path / f"06_residuals_{sid}_{mapping_id}.svg",
-                            bbox_inches="tight")
+                fig.savefig(
+                    output_path / f"06_residuals_{sid}_{mapping_id}.svg",
+                    bbox_inches="tight",
+                )

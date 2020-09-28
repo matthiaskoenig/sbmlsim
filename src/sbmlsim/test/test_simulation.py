@@ -33,9 +33,9 @@ def test_timecourse_simulation():
     assert len(s.time) == 101
     assert s.PX[0] == 10.0
 
-    tcsim = TimecourseSim(timecourses=[
-        Timecourse(start=0, end=100, steps=100, changes={"[X]": 10.0})
-    ])
+    tcsim = TimecourseSim(
+        timecourses=[Timecourse(start=0, end=100, steps=100, changes={"[X]": 10.0})]
+    )
     tcsim.normalize(udict=simulator.udict, ureg=simulator.ureg)
     s = simulator._timecourse(tcsim)
     assert s is not None
@@ -44,13 +44,24 @@ def test_timecourse_simulation():
 def test_timecourse_combined():
     simulator = Simulator(MODEL_REPRESSILATOR)
 
-    s = simulator._timecourse(simulation=TimecourseSim([
-            Timecourse(start=0, end=100, steps=100),
-            Timecourse(start=0, end=50, steps=100,
-                       model_changes={ModelChange.CLAMP_SPECIES: {"X": True}}),
-            Timecourse(start=0, end=100, steps=100,
-                       model_changes={ModelChange.CLAMP_SPECIES: {"X": False}}),
-        ])
+    s = simulator._timecourse(
+        simulation=TimecourseSim(
+            [
+                Timecourse(start=0, end=100, steps=100),
+                Timecourse(
+                    start=0,
+                    end=50,
+                    steps=100,
+                    model_changes={ModelChange.CLAMP_SPECIES: {"X": True}},
+                ),
+                Timecourse(
+                    start=0,
+                    end=100,
+                    steps=100,
+                    model_changes={ModelChange.CLAMP_SPECIES: {"X": False}},
+                ),
+            ]
+        )
     )
     assert isinstance(s, pd.DataFrame)
     assert "time" in s

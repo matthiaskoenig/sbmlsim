@@ -12,6 +12,7 @@ import requests
 @dataclass
 class Source:
     """Class for keeping track of the resolved sources."""
+
     source: str
     path: Path = None  # if source is a path
     content: Path = None  # if source is something which has to be resolved
@@ -31,7 +32,7 @@ class Source:
         return d
 
     @classmethod
-    def from_source(cls, source: str, base_dir: Path = None) -> 'Source':
+    def from_source(cls, source: str, base_dir: Path = None) -> "Source":
         """Resolves the source string.
 
         # FIXME: handle the case of models given as strings.
@@ -54,18 +55,19 @@ class Source:
                 path = Path(source).resolve()
             path = path.resolve()
             if not path.exists():
-                raise IOError(f"Path '{path}' for model source '{source}' "
-                              f"does not exist.")
+                raise IOError(
+                    f"Path '{path}' for model source '{source}' " f"does not exist."
+                )
 
         return Source(source, path, content)
 
 
 def is_urn(source):
-    return source.lower().startswith('urn')
+    return source.lower().startswith("urn")
 
 
 def is_http(source):
-    return source.lower().startswith('http')
+    return source.lower().startswith("http")
 
 
 def model_from_urn(urn: str) -> str:
@@ -80,7 +82,7 @@ def model_from_urn(urn: str) -> str:
 
 
 def model_from_url(url: str) -> str:
-    """ Get model string from given URL
+    """Get model string from given URL
 
     Handles redirects of the download page.
 
@@ -104,12 +106,12 @@ def parse_biomodels_mid(text) -> str:
     mid = match.group(0)
     return mid
 
+
 def model_from_biomodels(mid: str) -> str:
-    """ Get SBML string from given BioModels identifier.
+    """Get SBML string from given BioModels identifier.
 
     :param mid: biomodels id
     :return: SBML string
     """
     url = f"https://www.ebi.ac.uk/biomodels-main/download?mid={mid}"
     return model_from_url(url)
-

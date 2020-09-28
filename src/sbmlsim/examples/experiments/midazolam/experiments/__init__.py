@@ -10,7 +10,7 @@ from sbmlsim.task import Task
 from ...midazolam import MODEL_PATH
 
 
-MolecularWeights = namedtuple('MolecularWeights', 'mid mid1oh')
+MolecularWeights = namedtuple("MolecularWeights", "mid mid1oh")
 
 
 def exclude_parameters_midazolam(pid: str) -> bool:
@@ -29,16 +29,18 @@ def exclude_parameters_midazolam(pid: str) -> bool:
 
 class MidazolamSimulationExperiment(SimulationExperiment):
     """Base class for all GlucoseSimulationExperiments. """
+
     def models(self) -> Dict[str, AbstractModel]:
-        return ExperimentDict({
-            "model": MODEL_PATH
-        })
+        return ExperimentDict({"model": MODEL_PATH})
 
     def tasks(self) -> Dict[str, Task]:
         if self.simulations():
-            return ExperimentDict({
-                f"task_{key}": Task(model="model", simulation=key) for key in self.simulations()
-            })
+            return ExperimentDict(
+                {
+                    f"task_{key}": Task(model="model", simulation=key)
+                    for key in self.simulations()
+                }
+            )
 
     def simulations(self, simulations=None) -> Dict[str, TimecourseSim]:
         if simulations is None:
@@ -51,7 +53,7 @@ class MidazolamSimulationExperiment(SimulationExperiment):
                     model=self._models["model"],
                     simulation=sim,
                     difference=0.5,
-                    exclude_filter=exclude_parameters_midazolam
+                    exclude_filter=exclude_parameters_midazolam,
                 )
                 simulations[f"{sim_key}_sensitivity"] = scan
 
@@ -61,8 +63,8 @@ class MidazolamSimulationExperiment(SimulationExperiment):
     @property
     def Mr(self):
         return MolecularWeights(
-            mid=self.Q_(325.768, 'g/mole'),
-            mid1oh=self.Q_(341.8, 'g/mole'),
+            mid=self.Q_(325.768, "g/mole"),
+            mid1oh=self.Q_(341.8, "g/mole"),
         )
 
     def default_changes(self: SimulationExperiment) -> Dict:
@@ -70,10 +72,9 @@ class MidazolamSimulationExperiment(SimulationExperiment):
         Q_ = self.Q_
 
         changes = {
-            'KI__MID1OHEX_Vmax': Q_(14.259652024532818, 'mmole/min'),
-            'KI__MID1OHEX_Km': Q_(0.7051197538875393, 'mM'),
-            'ftissue_mid1oh': Q_(99.23248555491428, 'liter/min'),
-            'fup_mid1oh': Q_(0.19507488419734886, 'dimensionless'),
+            "KI__MID1OHEX_Vmax": Q_(14.259652024532818, "mmole/min"),
+            "KI__MID1OHEX_Km": Q_(0.7051197538875393, "mM"),
+            "ftissue_mid1oh": Q_(99.23248555491428, "liter/min"),
+            "fup_mid1oh": Q_(0.19507488419734886, "dimensionless"),
         }
         return changes
-

@@ -15,14 +15,14 @@ logger = logging.getLogger(__name__)
 
 class SimulatorAbstract(object):
     def run_timecourse(self, simulation: TimecourseSim) -> XResult:
-        """ Must be implemented by simulator.
+        """Must be implemented by simulator.
 
         :return:
         """
         raise NotImplementedError("Use concrete implementation")
 
     def run_scan(self, scan: ScanSim) -> XResult:
-        """ Must be implemented by simulator.
+        """Must be implemented by simulator.
 
         :return:
         """
@@ -30,9 +30,8 @@ class SimulatorAbstract(object):
 
 
 class SimulatorWorker(object):
-
     def _timecourse(self, simulation: TimecourseSim) -> pd.DataFrame:
-        """ Timecourse simulation.
+        """Timecourse simulation.
 
         Requires for all timecourse definitions to be unit NORMALIZED
         before being sent here ! The changes have no units any more
@@ -69,7 +68,8 @@ class SimulatorWorker(object):
                         raise ValueError(
                             f"Unsupported model change: "
                             f"'{key}': {value}. Supported changes are: "
-                            f"['{ModelChange.CLAMP_SPECIES}']")
+                            f"['{ModelChange.CLAMP_SPECIES}']"
+                        )
 
             # run simulation
             integrator = self.r.integrator

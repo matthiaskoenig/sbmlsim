@@ -25,8 +25,14 @@ class SamplingType(Enum):
 
 
 @timeit
-def create_samples(parameters: List[FitParameter], size, sampling=SamplingType.LOGUNIFORM,
-            seed=None, min_bound=1E-10, max_bound=1E10) -> pd.DataFrame:
+def create_samples(
+    parameters: List[FitParameter],
+    size,
+    sampling=SamplingType.LOGUNIFORM,
+    seed=None,
+    min_bound=1e-10,
+    max_bound=1e10,
+) -> pd.DataFrame:
     """Create samples from given parameter information.
 
     :param parameters:
@@ -75,12 +81,12 @@ def create_samples(parameters: List[FitParameter], size, sampling=SamplingType.L
 
         # stretch sampling dimension from [0, 1) to [lb, ub)
         if sampling in {SamplingType.UNIFORM, SamplingType.UNIFORM_LHS}:
-            x[:, k] = lb + x[:, k] * (ub-lb)
+            x[:, k] = lb + x[:, k] * (ub - lb)
         elif sampling in {SamplingType.LOGUNIFORM, SamplingType.LOGUNIFORM_LHS}:
             lb_log = np.log10(lb)
             ub_log = np.log10(ub)
             # samples are in log space
-            values_log = lb_log + x[:, k] * (ub_log-lb_log)
+            values_log = lb_log + x[:, k] * (ub_log - lb_log)
             # parameter values in real space
             x[:, k] = np.power(10, values_log)
 
@@ -103,8 +109,16 @@ def plot_samples(samples):
         # start point
         df = samples[key]
         ax.set_title(key)
-        ax.plot(df[pids[0]], df[pids[1]], markersize=10, alpha=0.9, label=key,
-                    linestyle="None", marker="s", color="black")
+        ax.plot(
+            df[pids[0]],
+            df[pids[1]],
+            markersize=10,
+            alpha=0.9,
+            label=key,
+            linestyle="None",
+            marker="s",
+            color="black",
+        )
 
         # ax.legend()
         ax.set_xscale("log")
@@ -112,9 +126,10 @@ def plot_samples(samples):
 
     plt.show()
 
+
 def example1():
     parameters = [
-        FitParameter(parameter_id="p1", lower_bound=10, upper_bound=1E4),
+        FitParameter(parameter_id="p1", lower_bound=10, upper_bound=1e4),
         FitParameter(parameter_id="p2", lower_bound=1, upper_bound=1e3),
         FitParameter(parameter_id="p3", lower_bound=1, upper_bound=1e3),
     ]
@@ -126,8 +141,9 @@ def example1():
         SamplingType.LOGUNIFORM_LHS,
     ]:
         print(f"* {sampling.name} *")
-        df = create_samples(parameters=parameters, size=10,
-                            sampling=sampling, seed=1234)
+        df = create_samples(
+            parameters=parameters, size=10, sampling=sampling, seed=1234
+        )
         samples[sampling.name] = df
 
     print(samples)

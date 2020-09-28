@@ -34,14 +34,15 @@ class ModelSensitivity(object):
 
     @staticmethod
     def difference_sensitivity_scan(
-            model: RoadrunnerSBMLModel,
-            simulation: TimecourseSim,
-            difference: float = 0.1,
-            stype: SensitivityType = SensitivityType.PARAMETER_SENSITIVITY,
-            exclude_filter=None,
-            exclude_zero: bool = True,
-            zero_eps: float = 1E-8) -> ScanSim:
-        """ Creates a parameter sensitivity scan for given TimecourseSimulation.
+        model: RoadrunnerSBMLModel,
+        simulation: TimecourseSim,
+        difference: float = 0.1,
+        stype: SensitivityType = SensitivityType.PARAMETER_SENSITIVITY,
+        exclude_filter=None,
+        exclude_zero: bool = True,
+        zero_eps: float = 1e-8,
+    ) -> ScanSim:
+        """Creates a parameter sensitivity scan for given TimecourseSimulation.
 
         :param model: model for execution (needed to select parameters)
         :param simulation: timecourse simulation to scan
@@ -57,58 +58,66 @@ class ModelSensitivity(object):
         dim = ModelSensitivity.create_difference_dimension(
             model=model,
             changes=simulation.timecourses[0].changes,
-            difference=difference, stype=stype,
-            exclude_filter=exclude_filter, exclude_zero=exclude_zero,
-            zero_eps=zero_eps
+            difference=difference,
+            stype=stype,
+            exclude_filter=exclude_filter,
+            exclude_zero=exclude_zero,
+            zero_eps=zero_eps,
         )
         scan = ScanSim(
             simulation=simulation,
             dimensions=[
                 dim,
             ],
-            mapping={'dim_sens': 0}
+            mapping={"dim_sens": 0},
         )
         return scan
 
     @staticmethod
     def distribution_sensitivity_scan(
-            model: RoadrunnerSBMLModel,
-            simulation: TimecourseSim,
-            cv: float = 0.1,
-            size: int = 10,
-            distribution: DistributionType = DistributionType.NORMAL_DISTRIBUTION,
-            stype: SensitivityType = SensitivityType.PARAMETER_SENSITIVITY,
-            exclude_filter=None,
-            exclude_zero: bool = True,
-            zero_eps: float = 1E-8) -> ScanSim:
+        model: RoadrunnerSBMLModel,
+        simulation: TimecourseSim,
+        cv: float = 0.1,
+        size: int = 10,
+        distribution: DistributionType = DistributionType.NORMAL_DISTRIBUTION,
+        stype: SensitivityType = SensitivityType.PARAMETER_SENSITIVITY,
+        exclude_filter=None,
+        exclude_zero: bool = True,
+        zero_eps: float = 1e-8,
+    ) -> ScanSim:
 
         dim = ModelSensitivity.create_sampling_dimension(
             model=model,
             changes=simulation.timecourses[0].changes,
-            cv=cv, size=size, distribution=distribution, stype=stype,
-            exclude_filter=exclude_filter, exclude_zero=exclude_zero,
-            zero_eps=zero_eps
+            cv=cv,
+            size=size,
+            distribution=distribution,
+            stype=stype,
+            exclude_filter=exclude_filter,
+            exclude_zero=exclude_zero,
+            zero_eps=zero_eps,
         )
         scan = ScanSim(
             simulation=simulation,
             dimensions=[
                 dim,
             ],
-            mapping = {'dim_sens': 0}
+            mapping={"dim_sens": 0},
         )
         return scan
 
     @staticmethod
     def create_sampling_dimension(
-            model: RoadrunnerSBMLModel,
-            changes: Dict = None,
-            cv: float = 0.1,
-            size: int = 10,
-            distribution: DistributionType = DistributionType.NORMAL_DISTRIBUTION,
-            stype: SensitivityType = SensitivityType.PARAMETER_SENSITIVITY,
-            exclude_filter=None,
-            exclude_zero: bool = True,
-            zero_eps: float = 1E-8) -> Dimension:
+        model: RoadrunnerSBMLModel,
+        changes: Dict = None,
+        cv: float = 0.1,
+        size: int = 10,
+        distribution: DistributionType = DistributionType.NORMAL_DISTRIBUTION,
+        stype: SensitivityType = SensitivityType.PARAMETER_SENSITIVITY,
+        exclude_filter=None,
+        exclude_zero: bool = True,
+        zero_eps: float = 1e-8,
+    ) -> Dimension:
         """Creates list of dimensions for sampling parameter values.
         Only parameters relevant for "GU_", "LI_" and "KI_" models are
         sampled.
@@ -121,7 +130,7 @@ class ModelSensitivity(object):
             stype=stype,
             exclude_filter=exclude_filter,
             exclude_zero=exclude_zero,
-            zero_eps=zero_eps
+            zero_eps=zero_eps,
         )
         Q_ = model.Q_
 
@@ -140,13 +149,14 @@ class ModelSensitivity(object):
 
     @staticmethod
     def create_difference_dimension(
-            model: RoadrunnerSBMLModel,
-            changes: Dict = None,
-            difference: float = 0.1,
-            stype: SensitivityType = SensitivityType.PARAMETER_SENSITIVITY,
-            exclude_filter=None,
-            exclude_zero: bool = True,
-            zero_eps: float = 1E-8) -> Dimension:
+        model: RoadrunnerSBMLModel,
+        changes: Dict = None,
+        difference: float = 0.1,
+        stype: SensitivityType = SensitivityType.PARAMETER_SENSITIVITY,
+        exclude_filter=None,
+        exclude_zero: bool = True,
+        zero_eps: float = 1e-8,
+    ) -> Dimension:
         """Creates list of dimensions for sampling parameter values.
 
         Only parameters relevant for "GU_", "LI_" and "KI_" models are
@@ -160,7 +170,7 @@ class ModelSensitivity(object):
             stype=stype,
             exclude_filter=exclude_filter,
             exclude_zero=exclude_zero,
-            zero_eps=zero_eps
+            zero_eps=zero_eps,
         )
         Q_ = model.Q_
 
@@ -168,7 +178,7 @@ class ModelSensitivity(object):
         index = 0
         num_pars = len(p_ref)
         for key, value in p_ref.items():
-            values = np.ones(shape=(2*num_pars,)) * value.magnitude
+            values = np.ones(shape=(2 * num_pars,)) * value.magnitude
             # change parameters in correct position
             values[index] = value.magnitude * (1.0 + difference)
             values[index + num_pars] = value.magnitude * (1.0 - difference)
@@ -178,12 +188,13 @@ class ModelSensitivity(object):
 
     @staticmethod
     def reference_dict(
-            model: RoadrunnerSBMLModel,
-            changes: Dict = None,
-            stype: SensitivityType = SensitivityType.PARAMETER_SENSITIVITY,
-            exclude_filter=None,
-            exclude_zero: bool = True,
-            zero_eps: float = 1E-8) -> Dict:
+        model: RoadrunnerSBMLModel,
+        changes: Dict = None,
+        stype: SensitivityType = SensitivityType.PARAMETER_SENSITIVITY,
+        exclude_filter=None,
+        exclude_zero: bool = True,
+        zero_eps: float = 1e-8,
+    ) -> Dict:
         """Returns keys and values dict for sensitivity analysis.
 
         Values are based on the reference state of the model with the applied
@@ -209,22 +220,29 @@ class ModelSensitivity(object):
             except AttributeError as err:
                 logger.error(
                     f"Change is not a Quantity with unit: '{key} = {item}'. "
-                    f"Add units to all changes.")
+                    f"Add units to all changes."
+                )
                 raise err
 
-        doc = libsbml.readSBMLFromString(model.r.getSBML())  # type: libsbml.SBMLDocument
+        doc = libsbml.readSBMLFromString(
+            model.r.getSBML()
+        )  # type: libsbml.SBMLDocument
         sbml_model = doc.getModel()  # type: libsbml.Model
 
         ids = []
 
-        if stype in {SensitivityType.PARAMETER_SENSITIVITY,
-                     SensitivityType.All_SENSITIVITY}:
+        if stype in {
+            SensitivityType.PARAMETER_SENSITIVITY,
+            SensitivityType.All_SENSITIVITY,
+        }:
             # constant parameters
             for p in sbml_model.getListOfParameters():  # type: libsbml.Parameter
                 if p.getConstant() is True:
                     ids.append(p.getId())
-        if stype in {SensitivityType.SPECIES_SENSITIVITY,
-                       SensitivityType.All_SENSITIVITY}:
+        if stype in {
+            SensitivityType.SPECIES_SENSITIVITY,
+            SensitivityType.All_SENSITIVITY,
+        }:
             # initial species amount
             for s in sbml_model.getListOfSpecies():  # type: libsbml.Species
                 ids.append(s.getId())
@@ -252,7 +270,7 @@ class ModelSensitivity(object):
 
     @staticmethod
     def apply_change_to_dict(ref_dict, change: float = 0.1):
-        """ Applies relative change to reference dictionary.
+        """Applies relative change to reference dictionary.
 
         :param ref_dict: {key: value} dictionary to change
         :param change: relative change to apply.
@@ -273,12 +291,10 @@ if __name__ == "__main__":
 
     print("Reference dict")
     p_ref = ModelSensitivity.reference_dict(
-        model=model,
-        stype=SensitivityType.PARAMETER_SENSITIVITY
+        model=model, stype=SensitivityType.PARAMETER_SENSITIVITY
     )
     s_ref = ModelSensitivity.reference_dict(
-        model=model,
-        stype=SensitivityType.SPECIES_SENSITIVITY
+        model=model, stype=SensitivityType.SPECIES_SENSITIVITY
     )
 
     print("Apply changes")
@@ -289,4 +305,3 @@ if __name__ == "__main__":
     pprint(s_ref)
     pprint(ModelSensitivity.apply_change_to_dict(s_ref, change=0.1))
     pprint(ModelSensitivity.apply_change_to_dict(s_ref, change=-0.1))
-

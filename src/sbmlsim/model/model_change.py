@@ -10,8 +10,8 @@ class ModelChange(object):
     CLAMP_SPECIES = "clamp_species"
 
     @staticmethod
-    def clamp_species(r: roadrunner.RoadRunner, species_id, formula=True, speed=1E4):
-        """ Clamp/free species to certain value or formula.
+    def clamp_species(r: roadrunner.RoadRunner, species_id, formula=True, speed=1e4):
+        """Clamp/free species to certain value or formula.
 
         This is only an approximative clamp, i.e. not working instantenious.
         Depending on the model kinetics different speed settings are required.

@@ -17,8 +17,9 @@ logger = logging.getLogger(__name__)
 # tissues to identical values (which removes the distribution kinetics).
 # -------------------------------------------------------------------------------------------------
 
+
 def init_concentrations_changes(r: roadrunner.RoadRunner, skey, value: float):
-    """ Changes to set initial concentrations for skey.
+    """Changes to set initial concentrations for skey.
 
     :param r: roadrunner model
     :param skey: substance key
@@ -29,7 +30,7 @@ def init_concentrations_changes(r: roadrunner.RoadRunner, skey, value: float):
 
 
 def init_amounts_changes(r: roadrunner.RoadRunner, skey, value):
-    """ Set initial amounts for skey.
+    """Set initial amounts for skey.
 
     :param r: roadrunner model
     :param skey:
@@ -39,8 +40,10 @@ def init_amounts_changes(r: roadrunner.RoadRunner, skey, value):
     return _set_initial_values(r, skey, value, method="amount")
 
 
-def _set_initial_values(r: roadrunner.RoadRunner, sid, value, method="concentration") -> dict:
-    """ Setting the initial concentration of a distributing substance.
+def _set_initial_values(
+    r: roadrunner.RoadRunner, sid, value, method="concentration"
+) -> dict:
+    """Setting the initial concentration of a distributing substance.
 
     Takes care of all the compartment values so starting close/in steady state.
     Units are in model units
@@ -57,9 +60,9 @@ def _set_initial_values(r: roadrunner.RoadRunner, sid, value, method="concentrat
     for key in species_keys:
 
         if method == "concentration":
-            rkey = f'[{key}]'
+            rkey = f"[{key}]"
 
-        if 'urine' in rkey:
+        if "urine" in rkey:
             logging.debug("urinary values are not set")
             continue
 
@@ -69,7 +72,7 @@ def _set_initial_values(r: roadrunner.RoadRunner, sid, value, method="concentrat
 
 
 def get_species_keys(skey, species_ids):
-    """ Get keys of substance in given list of ids.
+    """Get keys of substance in given list of ids.
 
     Relies on naming patterns of ids. This does not get the species ids of the submodels,
     but only of the top model.
@@ -82,7 +85,7 @@ def get_species_keys(skey, species_ids):
     for species_id in species_ids:
         # use regular expression to find ids
         # This pattern is not very robust !!! FIXME (e.g. blood vs. plasma)
-        pattern = r'^[AC][a-z]+(_plasma)*\_{}$'.format(skey)
+        pattern = r"^[AC][a-z]+(_plasma)*\_{}$".format(skey)
         match = re.search(pattern, species_id)
         if match:
             # print("match:", species_id)

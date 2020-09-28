@@ -26,29 +26,32 @@ from samples import Sample, SampleParameter
 
 class SamplingType(EnumType):
     """ Supported types of sampling. """
+
     DISTRIBUTION = 0
     MEAN = 1
     # LHS = 2
     # MIXED = 3
 
 
-class SamplingException(Exception): 
+class SamplingException(Exception):
     pass
 
 
 class Sampling(object):
-    """ Sample from given distributions via the defined sampling type.
-        If keys are provided only the subset of distributions corresponding
-        to the keys are sampled.
+    """Sample from given distributions via the defined sampling type.
+    If keys are provided only the subset of distributions corresponding
+    to the keys are sampled.
     """
 
-    def __init__(self, distributions, sampling_type=SamplingType.DISTRIBUTION, keys=None):
+    def __init__(
+        self, distributions, sampling_type=SamplingType.DISTRIBUTION, keys=None
+    ):
         self.distributions = distributions
         self.sampling_type = sampling_type
         self.keys = keys
 
     def sample(self, n_samples):
-        """ Creates samples.
+        """Creates samples.
         Master function which switches between methods for sample creation.
         This function should be called from other modules.
         """
@@ -56,14 +59,16 @@ class Sampling(object):
             samples = self.sample_from_distribution(n_samples)
         elif self.sampling_type == SamplingType.MEAN:
             samples = self.sample_from_mean(n_samples)
-    #     elif (sampling_type == SamplingType.LHS):
-    #         samples = _createSamplesByLHS(distributions, n_samples, keys);
-    #     elif (sampling_type == SamplingType.MIXED):
-    #         samples1 = _createSamplesByDistribution(distributions, n_samples/2, keys);
-    #         samples2 = _createSamplesByLHS(distributions, n_samples/2, keys);
-    #         samples = samples1 + samples2
+        #     elif (sampling_type == SamplingType.LHS):
+        #         samples = _createSamplesByLHS(distributions, n_samples, keys);
+        #     elif (sampling_type == SamplingType.MIXED):
+        #         samples1 = _createSamplesByDistribution(distributions, n_samples/2, keys);
+        #         samples2 = _createSamplesByLHS(distributions, n_samples/2, keys);
+        #         samples = samples1 + samples2
         else:
-            raise SamplingException('SamplingType not supported: {}'.format(self.sampling_type))
+            raise SamplingException(
+                "SamplingType not supported: {}".format(self.sampling_type)
+            )
         return samples
 
     def sample_from_distribution(self, n_samples):
@@ -79,8 +84,14 @@ class Sampling(object):
             for dist in self.distributions:
                 if self.keys and (dist.key not in keys):
                     continue
-                s.add_parameter(SampleParameter(dist.key, value=dist.samples(n_samples=1),
-                                                unit=dist.unit, parameter_type=dist.parameter_type))
+                s.add_parameter(
+                    SampleParameter(
+                        dist.key,
+                        value=dist.samples(n_samples=1),
+                        unit=dist.unit,
+                        parameter_type=dist.parameter_type,
+                    )
+                )
             samples.append(s)
         return samples
 
@@ -92,11 +103,16 @@ class Sampling(object):
             for dist in self.distributions:
                 if self.keys and (dist.key not in keys):
                     continue
-                s.add_parameter(SampleParameter(dist.key, value=dist.mean(),
-                                                unit=dist.unit, parameter_type=dist.parameter_type))
+                s.add_parameter(
+                    SampleParameter(
+                        dist.key,
+                        value=dist.mean(),
+                        unit=dist.unit,
+                        parameter_type=dist.parameter_type,
+                    )
+                )
             samples.append(s)
         return samples
-
 
     # def _createSamplesByLHS(dist_data, N, keys=None):
     #     '''

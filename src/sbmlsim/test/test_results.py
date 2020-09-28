@@ -46,4 +46,3 @@ def test_netcdf(tmp_path):
     xres2 = XResult.from_netcdf(nc_path)
     assert xres is not None
     assert len(xres.dims) == len(xres2.dims)
-

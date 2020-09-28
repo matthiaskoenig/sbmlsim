@@ -11,14 +11,16 @@ from sbmlsim.test import DATA_PATH, MODEL_REPRESSILATOR
 
 
 def run_simulations(create_files=True):
-    """ Run all the simulations.
+    """Run all the simulations.
 
     :return:
     """
     diff_path = Path(DATA_PATH) / "diff"
-    simulator = Simulator(RoadrunnerSBMLModel(MODEL_REPRESSILATOR),
-                          absolute_tolerance=1E-16,
-                          relative_tolerance=1E-13)
+    simulator = Simulator(
+        RoadrunnerSBMLModel(MODEL_REPRESSILATOR),
+        absolute_tolerance=1e-16,
+        relative_tolerance=1e-13,
+    )
 
     simulations = get_files_by_extension(diff_path)
     for simulation_key, json_path in simulations.items():
@@ -33,7 +35,7 @@ def run_simulations(create_files=True):
 
 
 def run_comparisons(create_files=True):
-    """ Run comparison of test simulations.
+    """Run comparison of test simulations.
 
     :return:
     """
@@ -53,7 +55,7 @@ def run_comparisons(create_files=True):
         dsc = DataSetsComparison(
             dfs_dict=df_dict,
             columns_filter=None,
-            title=f"{simulation_key} (sbmlsim | jws)"
+            title=f"{simulation_key} (sbmlsim | jws)",
         )
 
         f = dsc.report()

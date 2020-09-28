@@ -27,14 +27,14 @@ from sbmlsim.test import MODEL_DEMO
 
 class DemoExperiment(SimulationExperiment):
     """Simple repressilator experiment."""
+
     def models(self) -> Dict[str, AbstractModel]:
-        return {
-            'model': RoadrunnerSBMLModel(source=MODEL_DEMO, ureg=self.ureg)
-        }
+        return {"model": RoadrunnerSBMLModel(source=MODEL_DEMO, ureg=self.ureg)}
 
     def tasks(self) -> Dict[str, Task]:
         return {
-            f'task_{key}': Task(model='model', simulation=key) for key in self.simulations()
+            f"task_{key}": Task(model="model", simulation=key)
+            for key in self.simulations()
         }
 
     def simulations(self) -> Dict[str, AbstractSim]:
@@ -45,26 +45,26 @@ class DemoExperiment(SimulationExperiment):
     def sim_scans(self) -> Dict[str, AbstractSim]:
         Q_ = self.Q_
         scan_init = ScanSim(
-            simulation=TimecourseSim([
-                Timecourse(start=0, end=10, steps=100,
-                           changes={"[e__A]": Q_(10, "mM")}
-                           ),
-                Timecourse(start=0, end=10, steps=100,
-                           changes={"[e__B]": Q_(10, "mM")}
-                           ),
-            ]),
+            simulation=TimecourseSim(
+                [
+                    Timecourse(
+                        start=0, end=10, steps=100, changes={"[e__A]": Q_(10, "mM")}
+                    ),
+                    Timecourse(
+                        start=0, end=10, steps=100, changes={"[e__B]": Q_(10, "mM")}
+                    ),
+                ]
+            ),
             dimensions=[
                 Dimension(
-                    'dim_init',
-                    changes={
-                    "[e__A]": Q_(np.linspace(5, 15, num=10), "mM")
-                }),
+                    "dim_init", changes={"[e__A]": Q_(np.linspace(5, 15, num=10), "mM")}
+                ),
                 ModelSensitivity.create_difference_dimension(
                     model=self._models["model"],
                     difference=0.5,
-                )
+                ),
             ],
-            mapping={"dim_init": 0, "dim_sens": 0}
+            mapping={"dim_init": 0, "dim_sens": 0},
         )
 
         return {
@@ -79,7 +79,7 @@ class DemoExperiment(SimulationExperiment):
         plots = fig1.create_plots(
             xaxis=Axis("time", unit=unit_time),
             yaxis=Axis("data", unit=unit_data),
-            legend=True
+            legend=True,
         )
         for k in [0, 2]:
             for key in ["[e__A]", "[e__B]", "[e__C]", "[c__A]", "[c__B]", "[c__C]"]:
@@ -87,7 +87,7 @@ class DemoExperiment(SimulationExperiment):
                 plots[k].curve(
                     x=Data(self, "time", task=task_id, unit=unit_time),
                     y=Data(self, key, task=task_id, unit=unit_data),
-                    label=key
+                    label=key,
                 )
         plots[2].yaxis.scale = "log"
 
@@ -102,15 +102,8 @@ def run(output_path):
     data_path = base_path
     simulator = SimulatorParallel()
 
-    exp = DemoExperiment(
-        simulator=simulator,
-        data_path=data_path,
-        base_path=base_path
-    )
-    exp.run(
-        output_path=output_path / "results",
-        show_figures=True
-    )
+    exp = DemoExperiment(simulator=simulator, data_path=data_path, base_path=base_path)
+    exp.run(output_path=output_path / "results", show_figures=True)
 
 
 if __name__ == "__main__":

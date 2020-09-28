@@ -24,24 +24,30 @@ def run_demo_example():
     print("*** setting concentrations and amounts ***")
 
     tc_scan = ScanSim(
-        simulation=TimecourseSim([
-            Timecourse(start=0, end=10, steps=100,
-                   changes={
-                       "[e__A]": Q_(10, "mM"),
-                       "[e__B]": Q_(1, "mmole/litre"),
-                       "[e__C]": Q_(1, "mole/m**3"),
-                       "c__A": Q_(1E-5, "mole"),
-                       "c__B": Q_(10, "µmole"),
-                       "Vmax_bA": Q_(300.0, "mole/min")
-                   }
-            )
-        ]),
+        simulation=TimecourseSim(
+            [
+                Timecourse(
+                    start=0,
+                    end=10,
+                    steps=100,
+                    changes={
+                        "[e__A]": Q_(10, "mM"),
+                        "[e__B]": Q_(1, "mmole/litre"),
+                        "[e__C]": Q_(1, "mole/m**3"),
+                        "c__A": Q_(1e-5, "mole"),
+                        "c__B": Q_(10, "µmole"),
+                        "Vmax_bA": Q_(300.0, "mole/min"),
+                    },
+                )
+            ]
+        ),
         dimensions=[
-            Dimension('dim1', index=np.arange(20),
-                      changes={
-                          "[e__A]": Q_(np.linspace(5, 15, num=20), "mM")
-                      })
-        ]
+            Dimension(
+                "dim1",
+                index=np.arange(20),
+                changes={"[e__A]": Q_(np.linspace(5, 15, num=20), "mM")},
+            )
+        ],
     )
 
     # print(tc_sim)
@@ -66,8 +72,15 @@ def run_demo_example():
         yunit = ax_units["yunit"]
 
         for key in ["[e__A]", "[e__B]", "[e__C]", "[c__A]", "[c__B]", "[c__C]"]:
-            add_line(ax, xres, "time", key, xunit=xunit, yunit=yunit,
-                           label=f"{key} [{yunit}]")
+            add_line(
+                ax,
+                xres,
+                "time",
+                key,
+                xunit=xunit,
+                yunit=yunit,
+                label=f"{key} [{yunit}]",
+            )
         ax.legend()
         ax.set_xlabel(f"time [{xunit}]")
         ax.set_ylabel(f"concentration [{yunit}]")
