@@ -10,16 +10,16 @@ if not ray:
     from sbmlsim.examples import example_parallel
 
 
-@pytest.skip(msg="skipping parallel tests due to hanging CI")
+@pytest.mark.skip(msg="skipping parallel tests due to hanging CI")
 def test_parallel_1():
     example_parallel.example_single_actor()
 
 
-@pytest.skip(msg="skipping parallel tests due to hanging CI")
+@pytest.mark.skip(msg="skipping parallel tests due to hanging CI")
 def test_parallel_2():
     example_parallel.example_multiple_actors()
 
 
-@pytest.skip(msg="skipping parallel tests due to hanging CI")
+@pytest.mark.skip(msg="skipping parallel tests due to hanging CI")
 def test_parallel_3():
     example_parallel.example_parallel_timecourse(nsim=20, actor_count=5)
