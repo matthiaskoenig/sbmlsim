@@ -93,11 +93,19 @@ def model_from_url(url: str) -> str:
     :param url:
     :return:
     """
+    # check for special case of old biomodel urls
+    if url.startswith("https://www.ebi.ac.uk/biomodels-main/download?mid="):
+        mid = parse_biomodels_mid(url)
+        logger.error(
+            f"Use of deprecated biomodels URL '{url}' ,"
+            f"use updated url instead: "
+            f"'https://www.ebi.ac.uk/biomodels/model/download/{mid}?filename={mid}_url.xml'"
+        )
+        return model_from_biomodels(mid)
+
     response = requests.get(url, allow_redirects=True)
     response.raise_for_status()
     model_str = response.content
-
-    # file download
 
     # bytes array in py3
     return str(model_str.decode("utf-8"))

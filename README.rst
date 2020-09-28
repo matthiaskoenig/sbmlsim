@@ -26,7 +26,7 @@ sbmlsim: SBML simulation made easy
    :alt: Documentation Status
 
 .. image:: https://zenodo.org/badge/3597770.svg
-   :target: https://zenodo.org/badge/latestdoi/3597770
+   :target: https://doi.org/10.5281/zenodo.3597770
    :alt: Zenodo DOI
 
 .. image:: https://img.shields.io/badge/code%20style-black-000000.svg
