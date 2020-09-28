@@ -1,6 +1,5 @@
 import json
 import logging
-import multiprocessing
 from collections import defaultdict
 from dataclasses import dataclass
 from pathlib import Path
@@ -486,14 +485,8 @@ class SimulationExperiment(object):
 
     @timeit
     def show_figures(self, mpl_figures: Dict[str, FigureMPL]):
-
         for fig_key, fig_mpl in mpl_figures.items():
             fig_mpl.show()
-
-        # multiprocessing with matplotlib creates issues
-        # pool = multiprocessing.Pool()
-        # pool.map(self._show_figure, mpl_figures.values())
-        # pool.map_async(self._show_figure, mpl_figures.values())
 
     @staticmethod
     def _show_figure(args):
