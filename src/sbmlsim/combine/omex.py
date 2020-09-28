@@ -31,12 +31,19 @@ MANIFEST_PATTERN = "manifest.xml"
 METADAT_PATTERN = "metadata.*"
 
 
-
 class Entry(object):
     """ Helper class to store content to create an OmexEntry."""
 
-    def __init__(self, location, format=None, formatKey=None, master=False, description=None, creators=None):
-        """ Create entry from information.
+    def __init__(
+        self,
+        location,
+        format=None,
+        formatKey=None,
+        master=False,
+        description=None,
+        creators=None,
+    ):
+        """Create entry from information.
 
         If format and formatKey are provided the format is used.
 
@@ -48,7 +55,9 @@ class Entry(object):
         :param creators: iterator over Creator objects
         """
         if (formatKey is None) and (format is None):
-            raise ValueError("Either 'formatKey' or 'format' must be specified for Entry.")
+            raise ValueError(
+                "Either 'formatKey' or 'format' must be specified for Entry."
+            )
         if format is None:
             format = libcombine.KnownFormats.lookupFormat(formatKey=formatKey)
 
@@ -61,9 +70,11 @@ class Entry(object):
 
     def __str__(self):
         if self.master:
-            return '<*master* Entry {} | {}>'.format(self.master, self.location, self.format)
+            return "<*master* Entry {} | {}>".format(
+                self.master, self.location, self.format
+            )
         else:
-            return '<Entry {} | {}>'.format(self.master, self.location, self.format)
+            return "<Entry {} | {}>".format(self.master, self.location, self.format)
 
 
 class Creator(object):
@@ -76,8 +87,10 @@ class Creator(object):
         self.email = email
 
 
-def combineArchiveFromDirectory(directory, omexPath, creators=None, creators_for_all=False):
-    """ Creates a COMBINE archive from a given folder.
+def combineArchiveFromDirectory(
+    directory, omexPath, creators=None, creators_for_all=False
+):
+    """Creates a COMBINE archive from a given folder.
 
     The file types are inferred,
     in case of existing manifest or metadata information this should be reused.
@@ -94,11 +107,19 @@ def combineArchiveFromDirectory(directory, omexPath, creators=None, creators_for
 
     print(manifest_path)
     if os.path.exists(manifest_path):
-        warnings.warn("Manifest file exists in directory, but not used in COMBINE archive creation: %s".format(manifest_path))
+        warnings.warn(
+            "Manifest file exists in directory, but not used in COMBINE archive creation: %s".format(
+                manifest_path
+            )
+        )
 
     # add the base entry
     entries = [
-        Entry(location=".", format="http://identifiers.org/combine.specifications/omex", master=False)
+        Entry(
+            location=".",
+            format="http://identifiers.org/combine.specifications/omex",
+            master=False,
+        )
     ]
 
     # iterate over all locations & guess format
@@ -113,7 +134,9 @@ def combineArchiveFromDirectory(directory, omexPath, creators=None, creators_for
                 master = True
 
             entries.append(
-                Entry(location=location, format=format, master=master, creators=creators)
+                Entry(
+                    location=location, format=format, master=master, creators=creators
+                )
             )
 
     # create additional metadata if available
@@ -121,13 +144,13 @@ def combineArchiveFromDirectory(directory, omexPath, creators=None, creators_for
     # write all the entries
     combineArchiveFromEntries(omexPath=omexPath, entries=entries, workingDir=directory)
 
-
     from pprint import pprint
+
     pprint(entries)
 
 
 def combineArchiveFromEntries(omexPath, entries, workingDir):
-    """ Creates combine archive from given entries.
+    """Creates combine archive from given entries.
 
     Overwrites existing combine archive at omexPath.
 
@@ -137,12 +160,12 @@ def combineArchiveFromEntries(omexPath, entries, workingDir):
     """
     _addEntriesToArchive(omexPath, entries, workingDir=workingDir, add_entries=False)
     print("*" * 80)
-    print('Archive created:\n\t', omexPath)
+    print("Archive created:\n\t", omexPath)
     print("*" * 80)
 
 
 def addEntriesToCombineArchive(omexPath, entries, workingDir):
-    """ Adds entries to
+    """Adds entries to
 
     :param omexPath:
     :param entries: iteratable of Entry
@@ -151,7 +174,7 @@ def addEntriesToCombineArchive(omexPath, entries, workingDir):
     """
     _addEntriesToArchive(omexPath, entries, workingDir=workingDir, add_entries=True)
     print("*" * 80)
-    print('Archive updated:\n\t', omexPath)
+    print("Archive updated:\n\t", omexPath)
     print("*" * 80)
 
 
@@ -164,9 +187,8 @@ def _addEntriesToArchive(omexPath, entries, workingDir, add_entries):
     :return:
     """
     omexPath = os.path.abspath(omexPath)
-    print('omexPath:', omexPath)
-    print('workingDir:', workingDir)
-
+    print("omexPath:", omexPath)
+    print("workingDir:", workingDir)
 
     if not os.path.exists(workingDir):
         raise IOError("Working directory does not exist: {}".format(workingDir))
@@ -189,7 +211,7 @@ def _addEntriesToArchive(omexPath, entries, workingDir, add_entries):
     # timestamp
     time_now = libcombine.OmexDescription.getCurrentDateAndTime()
 
-    print('*'*80)
+    print("*" * 80)
     for entry in entries:
         print(entry)
         location = entry.location
@@ -218,13 +240,12 @@ def _addEntriesToArchive(omexPath, entries, workingDir, add_entries):
 
             archive.addMetadata(location, omex_d)
 
-
     archive.writeToFile(omexPath)
     archive.cleanUp()
 
 
 def extractCombineArchive(omexPath, directory, method="zip"):
-    """ Extracts combine archive at given path to directory.
+    """Extracts combine archive at given path to directory.
 
     The zip method extracts all entries in the zip, the omex method
     only extracts the entries listed in the manifest.
@@ -239,7 +260,7 @@ def extractCombineArchive(omexPath, directory, method="zip"):
         raise ValueError("Method is not supported: {}".format(method))
 
     if method == "zip":
-        zip_ref = zipfile.ZipFile(omexPath, 'r')
+        zip_ref = zipfile.ZipFile(omexPath, "r")
         zip_ref.extractall(directory)
         zip_ref.close()
 
@@ -258,7 +279,7 @@ def extractCombineArchive(omexPath, directory, method="zip"):
 
 
 def getLocationsByFormat(omexPath, formatKey=None, method="omex"):
-    """ Returns locations to files with given format in the archive.
+    """Returns locations to files with given format in the archive.
 
     Uses the libcombine KnownFormats for formatKey, e.g., 'sed-ml' or 'sbml'.
     Files which have a master=True have higher priority and are listed first.
@@ -308,7 +329,9 @@ def getLocationsByFormat(omexPath, formatKey=None, method="omex"):
                     location = os.path.relpath(file_path, tmp_dir)
                     # guess the format
                     format = libcombine.KnownFormats.guessFormat(file_path)
-                    if libcombine.KnownFormats.isFormat(formatKey=formatKey, format=format):
+                    if libcombine.KnownFormats.isFormat(
+                        formatKey=formatKey, format=format
+                    ):
                         locations.append(location)
                     # print(format, "\t", location)
 
@@ -319,7 +342,7 @@ def getLocationsByFormat(omexPath, formatKey=None, method="omex"):
 
 
 def listContents(omexPath, method="omex"):
-    """ Returns list of contents of the combine archive.
+    """Returns list of contents of the combine archive.
 
     :param omexPath:
     :param method: method to extract content, only 'omex' supported
@@ -354,7 +377,7 @@ def listContents(omexPath, method="omex"):
 
 
 def printContents(omexPath):
-    """ Prints contents of archive.
+    """Prints contents of archive.
 
     :param omexPath:
     :return:

@@ -59,7 +59,7 @@ def create_dependent_variable_example(path: Path):
     dg.setName("d[S1]/dt")
     var = dg.createDependentVariable()
     var.setId("v2")
-    var.setTerm('urn:sedml:symbol:rateOfChange')
+    var.setTerm("urn:sedml:symbol:rateOfChange")
     var.setName("d[S1]/dt")
     var.setTaskReference("task1")
     var.setTarget("/sbml:sbml/sbml:model/sbml:listOfSpecies/sbml:species[@id='S1']")
@@ -86,4 +86,4 @@ def create_dependent_variable_example(path: Path):
 
 
 if __name__ == "__main__":
-    create_dependent_variable_example(Path('dependent_example.xml'))
+    create_dependent_variable_example(Path("dependent_example.xml"))

@@ -23,7 +23,7 @@ class NumlParser(object):
 
     @classmethod
     def read_numl_document(cls, path):
-        """ Helper to read external numl document and check for errors
+        """Helper to read external numl document and check for errors
 
         :param path: path of file
         :return:
@@ -50,7 +50,7 @@ class NumlParser(object):
 
     @classmethod
     def load_numl_data(cls, path) -> pd.DataFrame:
-        """ Reading NuML data from file.
+        """Reading NuML data from file.
 
         This loads the complete numl data.
         For more information see: https://github.com/numl/numl
@@ -71,7 +71,7 @@ class NumlParser(object):
         Nrc = doc_numl.getNumResultComponents()
         rcs = doc_numl.getResultComponents()
 
-        logger.info('\nNumResultComponents:', Nrc)
+        logger.info("\nNumResultComponents:", Nrc)
         for k in range(Nrc):
             rc = rcs.get(k)  # parse ResultComponent
             rc_id = rc.getId()
@@ -82,8 +82,10 @@ class NumlParser(object):
 
             # data
             dimension = rc.getDimension()
-            assert (isinstance(dimension, libnuml.Dimension))
-            data = [cls._parse_dimension(dimension.get(k)) for k in range(dimension.size())]
+            assert isinstance(dimension, libnuml.Dimension)
+            data = [
+                cls._parse_dimension(dimension.get(k)) for k in range(dimension.size())
+            ]
 
             # create data frame
             flat_data = []
@@ -102,9 +104,9 @@ class NumlParser(object):
             # convert data types to actual data types
             for entry in data_types:
                 for cid, dtype in entry.items():
-                    if dtype == 'double':
+                    if dtype == "double":
                         df[cid] = df[cid].astype(np.float64)
-                    elif dtype == 'string':
+                    elif dtype == "string":
                         df[cid] = df[cid].astype(str)
 
             # convert all the individual columns to the corresponding data types
@@ -115,8 +117,10 @@ class NumlParser(object):
         return results
 
     @classmethod
-    def parse_dimension_description(cls, description, library: Library=Library.LIBNUML):
-        """ Parses the given dimension description.
+    def parse_dimension_description(
+        cls, description, library: Library = Library.LIBNUML
+    ):
+        """Parses the given dimension description.
 
         Returns dictionary of { key: dtype }
 
@@ -130,7 +134,10 @@ class NumlParser(object):
             importlib.reload(libsedml)
             assert description.getTypeCode() == libsedml.NUML_DIMENSIONDESCRIPTION
 
-        info = [cls._parse_description(description.get(k), library=library) for k in range(description.size())]
+        info = [
+            cls._parse_description(description.get(k), library=library)
+            for k in range(description.size())
+        ]
 
         flat_info = []
         for entry in info:
@@ -140,8 +147,10 @@ class NumlParser(object):
         return flat_info
 
     @classmethod
-    def _parse_description(cls, d, info=None, entry=None, library: Library=Library.LIBNUML):
-        """ Parses the recursive DimensionDescription, TupleDescription, AtomicDescription.
+    def _parse_description(
+        cls, d, info=None, entry=None, library: Library = Library.LIBNUML
+    ):
+        """Parses the recursive DimensionDescription, TupleDescription, AtomicDescription.
 
         This gets the dimension information from NuML.
 
@@ -160,47 +169,70 @@ class NumlParser(object):
         type_code = d.getTypeCode()
         if library == cls.Library.LIBNUML:
             importlib.reload(libnuml)
-            assert (type_code in [libnuml.NUML_COMPOSITEDESCRIPTION,
-                                  libnuml.NUML_ATOMICDESCRIPTION,
-                                  libnuml.NUML_TUPLEDESCRIPTION])
+            assert type_code in [
+                libnuml.NUML_COMPOSITEDESCRIPTION,
+                libnuml.NUML_ATOMICDESCRIPTION,
+                libnuml.NUML_TUPLEDESCRIPTION,
+            ]
             # if type_code == libnuml.NUML_COMPOSITEDESCRIPTION:
             #    d = libnuml.CompositeDescription(d)
         elif library == cls.Library.LIBSEDML:
             importlib.reload(libsedml)
-            assert (type_code in [libsedml.NUML_COMPOSITEDESCRIPTION,
-                                  libsedml.NUML_ATOMICDESCRIPTION,
-                                  libsedml.NUML_TUPLEDESCRIPTION])
-            #if type_code == libsedml.NUML_COMPOSITEDESCRIPTION:
+            assert type_code in [
+                libsedml.NUML_COMPOSITEDESCRIPTION,
+                libsedml.NUML_ATOMICDESCRIPTION,
+                libsedml.NUML_TUPLEDESCRIPTION,
+            ]
+            # if type_code == libsedml.NUML_COMPOSITEDESCRIPTION:
             #    d = libnuml.CompositeDescription(d)
 
         if info is None:
             info = []
         if entry is None:
             entry = []
-        print('typecode:', type_code)
-        print('type:', type(d))
-        print('object', object)
+        print("typecode:", type_code)
+        print("type:", type(d))
+        print("object", object)
 
-        if (library == cls.Library.LIBNUML and type_code == libnuml.NUML_COMPOSITEDESCRIPTION) or \
-                (library == cls.Library.LIBSEDML and type_code == libsedml.NUML_COMPOSITEDESCRIPTION):
+        if (
+            library == cls.Library.LIBNUML
+            and type_code == libnuml.NUML_COMPOSITEDESCRIPTION
+        ) or (
+            library == cls.Library.LIBSEDML
+            and type_code == libsedml.NUML_COMPOSITEDESCRIPTION
+        ):
 
             content = {d.getId(): d.getIndexType()}
             info.append(content)
             # print('\t* CompositeDescription:', content)
             if d.isContentCompositeDescription():
                 for k in range(d.size()):
-                    info = cls._parse_description(d.getCompositeDescription(k), info, list(entry), library=library)
+                    info = cls._parse_description(
+                        d.getCompositeDescription(k), info, list(entry), library=library
+                    )
             elif d.isContentAtomicDescription():
-                info = cls._parse_description(d.getAtomicDescription(), info, entry, library=library)
+                info = cls._parse_description(
+                    d.getAtomicDescription(), info, entry, library=library
+                )
 
-        elif (library == cls.Library.LIBNUML and type_code == libnuml.NUML_ATOMICDESCRIPTION) or \
-                (library == cls.Library.LIBSEDML and type_code == libsedml.NUML_ATOMICDESCRIPTION):
+        elif (
+            library == cls.Library.LIBNUML
+            and type_code == libnuml.NUML_ATOMICDESCRIPTION
+        ) or (
+            library == cls.Library.LIBSEDML
+            and type_code == libsedml.NUML_ATOMICDESCRIPTION
+        ):
             content = {d.getId(): d.getValueType()}
             info.append(content)
             # print('\t* AtomicDescription:', content)
 
-        elif (library == cls.Library.LIBNUML and type_code == libnuml.NUML_TUPLEDESCRIPTION) or \
-                (library == cls.Library.LIBSEDML and type_code == libsedml.NUML_TUPLEDESCRIPTION):
+        elif (
+            library == cls.Library.LIBNUML
+            and type_code == libnuml.NUML_TUPLEDESCRIPTION
+        ) or (
+            library == cls.Library.LIBSEDML
+            and type_code == libsedml.NUML_TUPLEDESCRIPTION
+        ):
             tuple_des = d.getTupleDescription()
             Natomic = d.size()
             valueTypes = []
@@ -217,8 +249,10 @@ class NumlParser(object):
         return info
 
     @classmethod
-    def _parse_dimension(cls, d, data=None, entry=None, library: Library=Library.LIBNUML):
-        """ Parses the recursive CompositeValue, Tuple, AtomicValue.
+    def _parse_dimension(
+        cls, d, data=None, entry=None, library: Library = Library.LIBNUML
+    ):
+        """Parses the recursive CompositeValue, Tuple, AtomicValue.
 
         This gets the actual data from NuML.
 
@@ -238,8 +272,12 @@ class NumlParser(object):
         type_code = d.getTypeCode()
         # print('typecode:', type_code)
 
-        if (library == cls.Library.LIBNUML and type_code == libnuml.NUML_COMPOSITEVALUE) or \
-                (library == cls.Library.LIBSEDML and type_code == libsedml.NUML_COMPOSITEVALUE):
+        if (
+            library == cls.Library.LIBNUML and type_code == libnuml.NUML_COMPOSITEVALUE
+        ) or (
+            library == cls.Library.LIBSEDML
+            and type_code == libsedml.NUML_COMPOSITEVALUE
+        ):
 
             indexValue = d.getIndexValue()
             entry.append(indexValue)
@@ -248,12 +286,17 @@ class NumlParser(object):
             if d.isContentCompositeValue():
                 for k in range(d.size()):
                     # make copy, so every entry is own entry
-                    data = cls._parse_dimension(d.getCompositeValue(k), data, list(entry))
+                    data = cls._parse_dimension(
+                        d.getCompositeValue(k), data, list(entry)
+                    )
             elif d.isContentAtomicValue():
                 data = cls._parse_dimension(d.getAtomicValue(), data, entry)
 
-        elif (library == cls.Library.LIBNUML and type_code == libnuml.NUML_ATOMICVALUE) or \
-                (library == cls.Library.LIBSEDML and type_code == libsedml.NUML_ATOMICVALUE):
+        elif (
+            library == cls.Library.LIBNUML and type_code == libnuml.NUML_ATOMICVALUE
+        ) or (
+            library == cls.Library.LIBSEDML and type_code == libsedml.NUML_ATOMICVALUE
+        ):
             # Data is converted to correct
             # value = d.getDoubleValue()
             value = d.getValue()
@@ -262,8 +305,9 @@ class NumlParser(object):
             data.append(entry)
             # print('\t* AtomicValue:', value)
 
-        elif (library == cls.Library.LIBNUML and type_code == libnuml.NUML_TUPLE) or \
-                (library == cls.Library.LIBSEDML and type_code == libsedml.NUML_TUPLE):
+        elif (library == cls.Library.LIBNUML and type_code == libnuml.NUML_TUPLE) or (
+            library == cls.Library.LIBSEDML and type_code == libsedml.NUML_TUPLE
+        ):
             tuple = d.getTuple()
             Natomic = d.size()
             values = []

@@ -152,11 +152,15 @@ class SEDMLParser(object):
             mid = sed_model.getId()
             source = model_sources[mid]
             sed_changes = model_changes[mid]
-            self.models[mid] = self.parse_model(sed_model, source=source, sed_changes=sed_changes)
+            self.models[mid] = self.parse_model(
+                sed_model, source=source, sed_changes=sed_changes
+            )
 
         # --- DataDescriptions ---
         self.data_descriptions = {}
-        for sed_dd in sed_doc.getListOfDataDescriptions():  # type: libsedml.SedDataDescription
+        for (
+            sed_dd
+        ) in sed_doc.getListOfDataDescriptions():  # type: libsedml.SedDataDescription
             did = sed_dd.getId()
             self.data_descriptions[did] = DataDescriptionParser.parse(
                 sed_dd, self.working_dir
@@ -170,10 +174,13 @@ class SEDMLParser(object):
             self.tasks[tid] = self.parse_task(sed_task)
 
     # --- MODELS ---
-    def parse_model(self, sed_model: libsedml.SedModel,
-                    source: str,
-                    sed_changes: List[libsedml.SedChange]) -> AbstractModel:
-        """ Convert SedModel to AbstractModel.
+    def parse_model(
+        self,
+        sed_model: libsedml.SedModel,
+        source: str,
+        sed_changes: List[libsedml.SedChange],
+    ) -> AbstractModel:
+        """Convert SedModel to AbstractModel.
 
         :param sed_model:
         :return:
@@ -192,7 +199,7 @@ class SEDMLParser(object):
             base_path=self.working_dir,
             changes=changes,
             selections=None,
-            ureg=self.ureg
+            ureg=self.ureg,
         )
 
         return model
@@ -200,20 +207,21 @@ class SEDMLParser(object):
     def resolve_model_changes(self):
         """Resolves the original model sources and full change lists.
 
-         Going through the tree of model upwards until root is reached and
-         collecting changes on the way (example models m* and changes c*)
-         m1 (source) -> m2 (c1, c2) -> m3 (c3, c4)
-         resolves to
-         m1 (source) []
-         m2 (source) [c1,c2]
-         m3 (source) [c1,c2,c3,c4]
-         The order of changes is important (at least between nodes on different
-         levels of hierarchies), because later changes of derived models could
-         reverse earlier changes.
+        Going through the tree of model upwards until root is reached and
+        collecting changes on the way (example models m* and changes c*)
+        m1 (source) -> m2 (c1, c2) -> m3 (c3, c4)
+        resolves to
+        m1 (source) []
+        m2 (source) [c1,c2]
+        m3 (source) [c1,c2,c3,c4]
+        The order of changes is important (at least between nodes on different
+        levels of hierarchies), because later changes of derived models could
+        reverse earlier changes.
 
-         Uses recursive search strategy, which should be okay as long as the
-         model tree hierarchy is not getting to deep.
-         """
+        Uses recursive search strategy, which should be okay as long as the
+        model tree hierarchy is not getting to deep.
+        """
+
         def findSource(mid, changes):
             """
             Recursive search for original model and store the
@@ -259,7 +267,7 @@ class SEDMLParser(object):
         return model_sources, all_changes
 
     def parse_change(self, sed_change: libsedml.SedChange) -> Dict:
-        """ Parses the change.
+        """Parses the change.
 
         Currently only a limited subset of model changes is supported.
         Namely changes of parameters and concentrations within a
@@ -277,7 +285,7 @@ class SEDMLParser(object):
 
             logger.error("ComputeChange not implemented correctly")
             # TODO: implement compute change with model
-            '''
+            """
             # TODO: general calculation on model with amounts and concentrations
             variables = {}
             for par in sed_change.getListOfParameters():  # type: libsedml.SedParameter
@@ -295,7 +303,7 @@ class SEDMLParser(object):
 
             # value is calculated with the current state of model
             value = evaluableMathML(sed_change.getMath(), variables=variables)
-            '''
+            """
             value = -1.0
             return {xpath: value}
 
@@ -311,22 +319,26 @@ class SEDMLParser(object):
         sim_type = sed_sim.getTypeCode()
         algorithm = sed_sim.getAlgorithm()
         if algorithm is None:
-            logger.warning(f"Algorithm missing on simulation, defaulting to "
-                           f"'cvode: KISAO:0000019'")
+            logger.warning(
+                f"Algorithm missing on simulation, defaulting to "
+                f"'cvode: KISAO:0000019'"
+            )
             algorithm = sed_sim.createAlgorithm()
             algorithm.setKisaoID("KISAO:0000019")
 
         kisao = algorithm.getKisaoID()
 
         # is supported algorithm
-        if not is_supported_algorithm_for_simulation_type(kisao=kisao, sim_type=sim_type):
-            logger.error(f"Algorithm '{kisao}' unsupported for simulation "
-                         f"'{sed_sim.getId()}' of  type '{sim_type}'")
-
-
+        if not is_supported_algorithm_for_simulation_type(
+            kisao=kisao, sim_type=sim_type
+        ):
+            logger.error(
+                f"Algorithm '{kisao}' unsupported for simulation "
+                f"'{sed_sim.getId()}' of  type '{sim_type}'"
+            )
 
         # TODO: handle all the algorithm parameters
-        '''
+        """
         # set integrator/solver
         integratorName = SEDMLCodeFactory.integrator_from_kisao(kisao)
         if not integratorName:
@@ -387,18 +399,16 @@ class SEDMLParser(object):
                 "if {model}.conservedMoietyAnalysis == True: {model}.conservedMoietyAnalysis = False".format(
                     model=mid))
 
-        '''
-
-
-
-
+        """
 
     def parse_task(self, sed_task: libsedml.SedAbstractTask):
         """ Parse arbitrary task (repeated or simple, or simple repeated)."""
         # If no DataGenerator references the task, no execution is necessary
         dgs = SEDMLParser.data_generators_for_task(sed_task)
         if len(dgs) == 0:
-            logger.warning(f"Task '{sed_task.getId()}' is not used in any DataGenerator.")
+            logger.warning(
+                f"Task '{sed_task.getId()}' is not used in any DataGenerator."
+            )
 
         # tasks contain other subtasks, which can contain subtasks. This
         # results in a tree of task dependencies where the
@@ -430,13 +440,14 @@ class SEDMLParser(object):
             else:
                 logger.error("Unsupported task: {}".format(task_type))
 
-
     def _parse_simple_task(self, node: TaskNode):
         raise NotImplementedError
         return
 
     def _parse_simple_repeated_task(self, node: TaskNode):
-        raise NotImplementedError(f"Task type is not supported: {node.task.getTypeCode()}")
+        raise NotImplementedError(
+            f"Task type is not supported: {node.task.getTypeCode()}"
+        )
         # TODO: implement
         return
 
@@ -446,7 +457,9 @@ class SEDMLParser(object):
         return
 
     @staticmethod
-    def data_generators_for_task(sed_task: libsedml.SedTask) -> List[libsedml.SedDataGenerator]:
+    def data_generators_for_task(
+        sed_task: libsedml.SedTask,
+    ) -> List[libsedml.SedDataGenerator]:
         """ Get the DataGenerators which reference the given task."""
         sed_dgs = []
         for sed_dg in doc.getListOfDataGenerators():  # type: libsedml.SedDataGenerator
@@ -458,7 +471,7 @@ class SEDMLParser(object):
         return sed_dgs
 
     def selections_for_task(self, sed_task: libsedml.SedTask):
-        """ Populate variable lists from the data generators for the given task.
+        """Populate variable lists from the data generators for the given task.
 
         These are the timeCourseSelections and steadyStateSelections
         in RoadRunner.
@@ -467,7 +480,9 @@ class SEDMLParser(object):
         """
         model_id = sed_task.getModelReference()
         selections = set()
-        for sed_dg in self.doc.getListOfDataGenerators():  # type: libsedml.SedDataGenerator
+        for (
+            sed_dg
+        ) in self.doc.getListOfDataGenerators():  # type: libsedml.SedDataGenerator
             for var in sed_dg.getListOfVariables():
                 if var.getTaskReference() == sed_task.getId():
                     # FIXME: resolve with model
@@ -490,13 +505,13 @@ class SEDMLParser(object):
             subtasks = [st for (stOrder, st) in sorted(zip(subtask_order, subtasks))]
         return subtasks
 
+
 if __name__ == "__main__":
 
     base_path = Path(__file__).parent
     sedml_path = base_path / "experiments" / "repressilator_sedml.xml"
     results = SEDMLTools.read_sedml_document(str(sedml_path), working_dir=base_path)
-    doc = results['doc']
+    doc = results["doc"]
     sed_parser = SEDMLParser(doc, working_dir=base_path)
     print(sed_parser.models)
     print(sed_parser.data_descriptions)
-

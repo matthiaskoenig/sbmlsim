@@ -2,6 +2,7 @@
 Manages units and units conversions in models.
 """
 import logging
+
 # Disable Pint's old fallback behavior (must come before importing Pint)
 import os
 from pathlib import Path
@@ -10,7 +11,7 @@ from typing import Dict, List
 import libsbml
 
 
-os.environ['PINT_ARRAY_PROTOCOL_FALLBACK'] = "0"
+os.environ["PINT_ARRAY_PROTOCOL_FALLBACK"] = "0"
 
 import warnings
 
@@ -29,29 +30,33 @@ logger = logging.getLogger(__name__)
 class Units(object):
 
     UNIT_ABBREVIATIONS = {
-        'kilogram': 'kg',
-        'meter': 'm',
-        'metre': 'm',
-        'second': 's',
-        'dimensionless': '',
-        'katal': 'kat',
-        'gram': 'g',
+        "kilogram": "kg",
+        "meter": "m",
+        "metre": "m",
+        "second": "s",
+        "dimensionless": "",
+        "katal": "kat",
+        "gram": "g",
     }
 
     @classmethod
     def default_ureg(cls):
         ureg = pint.UnitRegistry()
-        ureg.define('none = count')
-        ureg.define('item = count')
-        ureg.define('percent = 0.01*count')
+        ureg.define("none = count")
+        ureg.define("item = count")
+        ureg.define("percent = 0.01*count")
         # FIXME: manual conversion
-        ureg.define('IU = 0.0347 * mg')  # IU for insulin ! FIXME better handling of general IU
-        ureg.define('IU/ml = 0.0347 * mg/ml')  # IU for insulin ! FIXME better handling of general IU
+        ureg.define(
+            "IU = 0.0347 * mg"
+        )  # IU for insulin ! FIXME better handling of general IU
+        ureg.define(
+            "IU/ml = 0.0347 * mg/ml"
+        )  # IU for insulin ! FIXME better handling of general IU
         return ureg
 
     @classmethod
     def ureg_from_sbml(cls, doc: libsbml.SBMLDocument, ureg: UnitRegistry = None):
-        """ Creates a pint unit registry for the given SBML.
+        """Creates a pint unit registry for the given SBML.
 
         :param model_path:
         :return:
@@ -72,7 +77,9 @@ class Units(object):
                 q2 = ureg(udef_str)
                 # check if identical
                 if q1 != q2:
-                    logger.error(f"SBML uid '{uid}' defined differently in UnitsRegistry: '{uid} = {q1} != {q2}")
+                    logger.error(
+                        f"SBML uid '{uid}' defined differently in UnitsRegistry: '{uid} = {q1} != {q2}"
+                    )
             except UndefinedUnitError as err:
 
                 definition = f"{uid} = {udef_str}"
@@ -81,14 +88,16 @@ class Units(object):
         return ureg
 
     @classmethod
-    def get_units_from_sbml(cls, model_path: Path, ureg: UnitRegistry=None):
-        """ Get pint unit dictionary for given model.
+    def get_units_from_sbml(cls, model_path: Path, ureg: UnitRegistry = None):
+        """Get pint unit dictionary for given model.
 
         :param model_path: path to SBML model
         :return: udict, ureg
         """
         if isinstance(model_path, Path):
-            doc = libsbml.readSBMLFromFile(str(model_path))  # type: libsbml.SBMLDocument
+            doc = libsbml.readSBMLFromFile(
+                str(model_path)
+            )  # type: libsbml.SBMLDocument
         elif isinstance(model_path, str):
             doc = libsbml.readSBMLFromFile(model_path)
 
@@ -127,17 +136,21 @@ class Units(object):
                     substance_uid = element.getSubstanceUnits()
                     udict[sid] = substance_uid
 
-                    compartment = model.getCompartment(element.getCompartment())  # type: libsbml.Compartment
+                    compartment = model.getCompartment(
+                        element.getCompartment()
+                    )  # type: libsbml.Compartment
                     volume_uid = compartment.getUnits()
 
                     # store concentration
                     if substance_uid and volume_uid:
                         udict[f"[{sid}]"] = f"{substance_uid}/{volume_uid}"
                     else:
-                        logger.warning(f"Substance or volume unit missing, "
-                                       f"cannot determine concentration "
-                                       f"unit for '[{sid}]')")
-                        udict[f"[{sid}]"] = ''
+                        logger.warning(
+                            f"Substance or volume unit missing, "
+                            f"cannot determine concentration "
+                            f"unit for '[{sid}]')"
+                        )
+                        udict[f"[{sid}]"] = ""
 
                 elif isinstance(element, (libsbml.Compartment, libsbml.Parameter)):
                     udict[sid] = element.getUnits()
@@ -147,13 +160,19 @@ class Units(object):
                         continue
                     uid = None
                     # find the correct unit definition
-                    for udef_test in model.getListOfUnitDefinitions():  # type: libsbml.UnitDefinition
+                    for (
+                        udef_test
+                    ) in (
+                        model.getListOfUnitDefinitions()
+                    ):  # type: libsbml.UnitDefinition
                         if libsbml.UnitDefinition_areEquivalent(udef_test, udef):
                             uid = udef_test.getId()
                             break
                     if uid is None:
-                        logger.warning(f"DerivedUnit not in UnitDefinitions: "
-                                       f"'{Units.unitDefinitionToString(udef)}'")
+                        logger.warning(
+                            f"DerivedUnit not in UnitDefinitions: "
+                            f"'{Units.unitDefinitionToString(udef)}'"
+                        )
                         udict[sid] = Units.unitDefinitionToString(udef)
                     else:
                         udict[sid] = uid
@@ -169,7 +188,7 @@ class Units(object):
 
     @classmethod
     def unitDefinitionToString(cls, udef: libsbml.UnitDefinition) -> str:
-        """ Formating of SBML unitDefinitions.
+        """Formating of SBML unitDefinitions.
 
         Units have the general format
             (multiplier * 10^scale *ukind)^exponent
@@ -177,7 +196,7 @@ class Units(object):
 
         """
         if udef is None:
-            return 'None'
+            return "None"
 
         libsbml.UnitDefinition_reorder(udef)
         # collect formated nominators and denominators
@@ -196,22 +215,22 @@ class Units(object):
 
             # handle m
             if cls._isclose(m, 1.0):
-                m_str = ''
+                m_str = ""
             else:
-                m_str = str(m) + '*'
+                m_str = str(m) + "*"
 
             if cls._isclose(abs(e), 1.0):
-                e_str = ''
+                e_str = ""
             else:
-                e_str = '^' + str(abs(e))
+                e_str = "^" + str(abs(e))
 
             if cls._isclose(s, 0.0):
-                string = '{}{}{}'.format(m_str, k_str, e_str)
+                string = "{}{}{}".format(m_str, k_str, e_str)
             else:
-                if e_str == '':
-                    string = '({}10^{})*{}'.format(m_str, s, k_str)
+                if e_str == "":
+                    string = "({}10^{})*{}".format(m_str, s, k_str)
                 else:
-                    string = '(({}10^{})*{}){}'.format(m_str, s, k_str, e_str)
+                    string = "(({}10^{})*{}){}".format(m_str, s, k_str, e_str)
 
             # collect the terms
             if e >= 0.0:
@@ -219,15 +238,15 @@ class Units(object):
             else:
                 denom.append(string)
 
-        nom_str = ' * '.join(nom)
-        denom_str = ' * '.join(denom)
+        nom_str = " * ".join(nom)
+        denom_str = " * ".join(denom)
         if (len(nom_str) > 0) and (len(denom_str) > 0):
-            return '({})/({})'.format(nom_str, denom_str)
+            return "({})/({})".format(nom_str, denom_str)
         if (len(nom_str) > 0) and (len(denom_str) == 0):
             return nom_str
         if (len(nom_str) == 0) and (len(denom_str) > 0):
-            return '1/({})'.format(denom_str)
-        return ''
+            return "1/({})".format(denom_str)
+        return ""
 
     @staticmethod
     def _isclose(a, b, rel_tol=1e-09, abs_tol=0.0):
@@ -235,7 +254,9 @@ class Units(object):
         return abs(a - b) <= max(rel_tol * max(abs(a), abs(b)), abs_tol)
 
     @staticmethod
-    def normalize_changes(changes: Dict, udict: Dict, ureg: UnitRegistry) -> Dict[str, Quantity]:
+    def normalize_changes(
+        changes: Dict, udict: Dict, ureg: UnitRegistry
+    ) -> Dict[str, Quantity]:
         """Normalizes all changes to units in units dictionary.
 
         :param changes:
@@ -251,18 +272,19 @@ class Units(object):
                     # convert to model units
                     item = item.to(udict[key])
                 except DimensionalityError as err:
-                    logger.error(f"DimensionalityError "
-                                 f"'{key} = {item}'. {err}")
+                    logger.error(f"DimensionalityError " f"'{key} = {item}'. {err}")
                     raise err
                 except KeyError as err:
                     logger.error(
                         f"KeyError: '{key}' does not exist in unit "
-                        f"dictionary of model.")
+                        f"dictionary of model."
+                    )
                     raise err
             else:
                 item = Q_(item, udict[key])
-                logger.warning(f"No units provided, assuming dictionary units: "
-                               f"{key} = {item}")
+                logger.warning(
+                    f"No units provided, assuming dictionary units: " f"{key} = {item}"
+                )
             changes_normed[key] = item
 
         return changes_normed

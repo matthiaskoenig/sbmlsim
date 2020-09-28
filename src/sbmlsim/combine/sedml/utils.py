@@ -13,13 +13,13 @@ import libsedml
 class SEDMLTools(object):
     """ Helper functions to work with sedml. """
 
-    INPUT_TYPE_STR = 'SEDML_STRING'
-    INPUT_TYPE_FILE_SEDML = 'SEDML_FILE'
-    INPUT_TYPE_FILE_COMBINE = 'COMBINE_FILE'  # includes .sedx archives
+    INPUT_TYPE_STR = "SEDML_STRING"
+    INPUT_TYPE_FILE_SEDML = "SEDML_FILE"
+    INPUT_TYPE_FILE_COMBINE = "COMBINE_FILE"  # includes .sedx archives
 
     @classmethod
     def check_sedml_document(cls, doc: libsedml.SedDocument):
-        """ Checks the SedDocument for errors.
+        """Checks the SedDocument for errors.
         Raises IOError if error exists.
         :param doc:
         :type doc:
@@ -42,7 +42,7 @@ class SEDMLTools(object):
 
     @classmethod
     def read_sedml_document(cls, input: str, working_dir):
-        """ Parses SedMLDocument from given input.
+        """Parses SedMLDocument from given input.
 
         :return: dictionary of SedDocument, inputType and working directory.
         :rtype: {doc, inputType, workingDir}
@@ -52,6 +52,7 @@ class SEDMLTools(object):
         if not os.path.exists(input):
             try:
                 from xml.etree import ElementTree
+
                 x = ElementTree.fromstring(input)
                 # is parsable xml string
                 doc = libsedml.readSedMLFromString(input)
@@ -75,7 +76,10 @@ class SEDMLTools(object):
                 # in case of sedx and combine a working directory is created
                 # in which the files are extracted
                 if working_dir is None:
-                    extractDir = os.path.join(os.path.dirname(os.path.realpath(omexPath)), '_te_{}'.format(filename))
+                    extractDir = os.path.join(
+                        os.path.dirname(os.path.realpath(omexPath)),
+                        "_te_{}".format(filename),
+                    )
                 else:
                     extractDir = working_dir
 
@@ -84,7 +88,9 @@ class SEDMLTools(object):
                 # extract the archive to working directory
                 libcombine.CombineArchive.extractArchive(omexPath, extractDir)
                 # get SEDML files from archive
-                sedmlFiles = libcombine.CombineArchive.filePathsFromExtractedArchive(extractDir, filetype='sed-ml')
+                sedmlFiles = libcombine.CombineArchive.filePathsFromExtractedArchive(
+                    extractDir, filetype="sed-ml"
+                )
                 importlib.reload(libsedml)
 
                 if len(sedmlFiles) == 0:
@@ -93,7 +99,9 @@ class SEDMLTools(object):
                 # FIXME: there could be multiple SEDML files in archive (currently only first used)
                 # analogue to executeOMEX
                 if len(sedmlFiles) > 1:
-                    warnings.warn("More than one sedml file in archive, only processing first one.")
+                    warnings.warn(
+                        "More than one sedml file in archive, only processing first one."
+                    )
 
                 sedmlFile = sedmlFiles[0]
                 doc = libsedml.readSedMLFromFile(sedmlFile)
@@ -104,8 +112,10 @@ class SEDMLTools(object):
 
             # SEDML single file
             elif os.path.isfile(input):
-                if extension not in [".sedml", '.xml']:
-                    raise IOError("SEDML file should have [.sedml|.xml] extension:", input)
+                if extension not in [".sedml", ".xml"]:
+                    raise IOError(
+                        "SEDML file should have [.sedml|.xml] extension:", input
+                    )
                 inputType = cls.INPUT_TYPE_FILE_SEDML
                 doc = libsedml.readSedMLFromFile(input)
                 cls.check_sedml_document(doc)
@@ -113,8 +123,4 @@ class SEDMLTools(object):
                 if working_dir is None:
                     working_dir = os.path.dirname(os.path.realpath(input))
 
-        return {'doc': doc,
-                'inputType': inputType,
-                'workingDir': working_dir}
-
-
+        return {"doc": doc, "inputType": inputType, "workingDir": working_dir}

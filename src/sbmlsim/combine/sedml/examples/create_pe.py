@@ -8,21 +8,21 @@ def create_data_description(doc):
     # type: (libsedml.SedDocument) -> None
     # reference our data file
     ddesc = doc.createDataDescription()
-    ddesc.setId('data1')
-    ddesc.setName('Oscli Timecourse data')
-    ddesc.setSource('foo.csv')
+    ddesc.setId("data1")
+    ddesc.setName("Oscli Timecourse data")
+    ddesc.setSource("foo.csv")
 
     # this is timecourse data, time down, observed species concentrations next
     # specify mapping
     timeDesc = libsedml.CompositeDescription()
-    timeDesc.setIndexType('double')
-    timeDesc.setId('time')
-    timeDesc.setName('time')
+    timeDesc.setIndexType("double")
+    timeDesc.setId("time")
+    timeDesc.setName("time")
 
     speciesDesc = timeDesc.createCompositeDescription()
-    speciesDesc.setIndexType('string')
-    speciesDesc.setId('ColumnNames')
-    speciesDesc.setName('ColumnNames')
+    speciesDesc.setIndexType("string")
+    speciesDesc.setId("ColumnNames")
+    speciesDesc.setName("ColumnNames")
 
     concentrationDesc = speciesDesc.createAtomicDescription()
     concentrationDesc.setValueType("double")
@@ -34,15 +34,15 @@ def create_data_description(doc):
     # here we going to extract the 'S1' data
     # create data source
     dsource = ddesc.createDataSource()
-    dsource.setId('dataS1')
+    dsource.setId("dataS1")
     # create slice
     slice = dsource.createSlice()
-    slice.setReference('ColumnNames')
-    slice.setValue('S1')
+    slice.setReference("ColumnNames")
+    slice.setValue("S1")
 
     dtime = ddesc.createDataSource()
-    dtime.setId('dataTime')
-    dtime.setIndexSet('time')
+    dtime.setId("dataTime")
+    dtime.setIndexSet("time")
     # slice = dtime.createSlice()
     # slice.setReference('ColumnNames')
     # slice.setValue('time')
@@ -51,7 +51,7 @@ def create_data_description(doc):
 def create_pe_task(doc):
     # type: (libsedml.SedDocument) -> None
     pe = doc.createParameterEstimationTask()
-    pe.setId('pe1')
+    pe.setId("pe1")
 
     # set algorithm
     alg = pe.createAlgorithm()
@@ -62,9 +62,11 @@ def create_pe_task(doc):
 
     # create fit parameter, to vary 'J2_q'
     fp = pe.createAdjustableParameter()
-    fp.setId('fitParameter1')
-    fp.setModelReference('model1')
-    fp.setTarget("/sbml:sbml/sbml:model/sbml:listOfParameters/sbml:parameter[@id='J2_q']")
+    fp.setId("fitParameter1")
+    fp.setModelReference("model1")
+    fp.setTarget(
+        "/sbml:sbml/sbml:model/sbml:listOfParameters/sbml:parameter[@id='J2_q']"
+    )
     bounds = fp.createBounds()
     bounds.setInitialValue(2.4)
     bounds.setLowerBound(0.0001)
@@ -72,9 +74,11 @@ def create_pe_task(doc):
 
     # create fit parameter, to vary 'J2_q'
     fp = pe.createAdjustableParameter()
-    fp.setId('fitParameter1')
-    fp.setModelReference('model1')
-    fp.setTarget("/sbml:sbml/sbml:model/sbml:listOfParameters/sbml:parameter[@id='J2_q']")
+    fp.setId("fitParameter1")
+    fp.setModelReference("model1")
+    fp.setTarget(
+        "/sbml:sbml/sbml:model/sbml:listOfParameters/sbml:parameter[@id='J2_q']"
+    )
     bounds = fp.createBounds()
     bounds.setInitialValue(2.4)
     bounds.setLowerBound(0.0001)
@@ -82,13 +86,13 @@ def create_pe_task(doc):
 
     # create fit experiment, mapping the data
     fe = pe.createFitExperiment()
-    fe.setId('exp1')
-    fe.setRepresents('TimeCourse')
-    #fe.setSource('dataS1') # is this needed here? NO
+    fe.setId("exp1")
+    fe.setRepresents("TimeCourse")
+    # fe.setSource('dataS1') # is this needed here? NO
 
     # map the first column
     dg = doc.createDataGenerator()
-    dg.setId('s1_conc')
+    dg.setId("s1_conc")
     var = dg.createVariable()
     var.setId("s1")
     var.setModelReference("model1")
@@ -96,39 +100,39 @@ def create_pe_task(doc):
     dg.setMath(libsedml.parseFormula("s1"))
 
     map = fe.createFitMapping()
-    map.setDataSource('dataS1')
-    map.setDataGenerator('s1_conc')
-    map.setType('Variable')
+    map.setDataSource("dataS1")
+    map.setDataGenerator("s1_conc")
+    map.setType("Variable")
     map.setWeight(1)
 
 
 def create_plot(doc):
     # type: (libsedml.SedDocument) -> None
     plot = doc.createParameterEstimationResultPlot()
-    plot.setTaskRef('pe1')
-    plot.setName('Result Plot')
-    plot.setId('plot1')
+    plot.setTaskRef("pe1")
+    plot.setName("Result Plot")
+    plot.setId("plot1")
 
 
 def create_report(doc):
     # type: (libsedml.SedDocument) -> None
     report = doc.createReport()
-    report.setId('report1')
+    report.setId("report1")
     set = report.createDataSet()
-    set.setId('set1')
-    set.setLabel('OBJ')
-    set.setDataReference('pe_obj') # this is 0D data
+    set.setId("set1")
+    set.setLabel("OBJ")
+    set.setDataReference("pe_obj")  # this is 0D data
 
     set = report.createDataSet()
-    set.setId('set2')
-    set.setLabel('FEVAL')
-    set.setDataReference('pe_feval') # this is 1D data
+    set.setId("set2")
+    set.setLabel("FEVAL")
+    set.setDataReference("pe_feval")  # this is 1D data
 
 
 def create_observables(doc):
     # type: (libsedml.SedDocument) -> None
     dg = doc.createDataGenerator()
-    dg.setId('pe_obj')
+    dg.setId("pe_obj")
     var = dg.createVariable()
     var.setId("obj")
     var.setTaskReference("pe1")
@@ -136,13 +140,12 @@ def create_observables(doc):
     dg.setMath(libsedml.parseFormula("obj"))
 
     dg = doc.createDataGenerator()
-    dg.setId('pe_feval')
+    dg.setId("pe_feval")
     var = dg.createVariable()
     var.setId("feval")
     var.setTaskReference("pe1")
     var.setSymbol("sedml:parameterestimation:number_function_evaluations")
     dg.setMath(libsedml.parseFormula("feval"))
-
 
 
 def create_pe_example(file_name):
@@ -169,6 +172,6 @@ def create_pe_example(file_name):
 
 
 if __name__ == "__main__":
-    print('using libSEDML: %s' % libsedml.getLibSEDMLDottedVersion())
-    out_file = 'pe-example.xml'
+    print("using libSEDML: %s" % libsedml.getLibSEDMLDottedVersion())
+    out_file = "pe-example.xml"
     create_pe_example(out_file)

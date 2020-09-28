@@ -17,7 +17,7 @@ import pandas as pd
 from .numl import NumlParser
 
 
-logger = logging.getLogger('sedml-data')
+logger = logging.getLogger("sedml-data")
 
 
 class DataDescriptionParser(object):
@@ -32,8 +32,10 @@ class DataDescriptionParser(object):
     SUPPORTED_FORMATS = [FORMAT_NUML, FORMAT_CSV, FORMAT_TSV]
 
     @classmethod
-    def parse(cls, dd: libsedml.SedDataDescription, workingDir=None) -> Dict[str, pd.Series]:
-        """ Parses single DataDescription.
+    def parse(
+        cls, dd: libsedml.SedDataDescription, workingDir=None
+    ) -> Dict[str, pd.Series]:
+        """Parses single DataDescription.
 
         Returns dictionary of data sources {DataSource.id, slice_data}
 
@@ -42,7 +44,7 @@ class DataDescriptionParser(object):
         :return:
         """
         importlib.reload(libsedml)
-        assert (dd.getTypeCode() == libsedml.SEDML_DATA_DESCRIPTION)
+        assert dd.getTypeCode() == libsedml.SEDML_DATA_DESCRIPTION
 
         did = dd.getId()
         name = dd.getName()
@@ -53,11 +55,11 @@ class DataDescriptionParser(object):
         # -------------------------------
         # FIXME: this must work for absolute paths and URL paths
         if workingDir is None:
-            workingDir = '.'
+            workingDir = "."
 
         # TODO: refactor in general resource module (for resolving anyURI and resource)
         tmp_file = None
-        if source.startswith('http') or source.startswith('HTTP'):
+        if source.startswith("http") or source.startswith("HTTP"):
             conn = httplib.HTTPConnection(source)
             conn.request("GET", "")
             r1 = conn.getresponse()
@@ -85,12 +87,12 @@ class DataDescriptionParser(object):
         format = cls._determine_format(source_path=source_path, format=format)
 
         # log data description
-        logger.info('-' * 80)
-        logger.info('DataDescription: :', dd)
-        logger.info('\tid:', did)
-        logger.info('\tname:', name)
-        logger.info('\tsource', source)
-        logger.info('\tformat', format)
+        logger.info("-" * 80)
+        logger.info("DataDescription: :", dd)
+        logger.info("\tid:", did)
+        logger.info("\tname:", name)
+        logger.info("\tsource", source)
+        logger.info("\tformat", format)
 
         # -------------------------------
         # Parse DimensionDescription
@@ -99,8 +101,9 @@ class DataDescriptionParser(object):
         dim_description = dd.getDimensionDescription()
         data_types = None
         if dim_description is not None:
-            data_types = NumlParser.parse_dimension_description(dim_description,
-                                                                library=NumlParser.Library.LIBSEDML)
+            data_types = NumlParser.parse_dimension_description(
+                dim_description, library=NumlParser.Library.LIBSEDML
+            )
 
         # -------------------------------
         # Load complete data
@@ -122,7 +125,7 @@ class DataDescriptionParser(object):
         elif format == cls.FORMAT_NUML:
             # multiple result components via id
             for result in data:
-                logger.info(result[0])           # rc id
+                logger.info(result[0])  # rc id
                 logger.info(result[1].head(10))  # DataFrame
         logger.info("-" * 80)
 
@@ -135,11 +138,11 @@ class DataDescriptionParser(object):
             dsid = ds.getId()
 
             # log DataSource
-            logger.info('\n\t*** DataSource:', ds)
-            logger.info('\t\tid:', ds.getId())
-            logger.info('\t\tname:', ds.getName())
-            logger.info('\t\tindexSet:', ds.getIndexSet())
-            logger.info('\t\tslices')
+            logger.info("\n\t*** DataSource:", ds)
+            logger.info("\t\tid:", ds.getId())
+            logger.info("\t\tname:", ds.getName())
+            logger.info("\t\tindexSet:", ds.getIndexSet())
+            logger.info("\t\tslices")
 
             # CSV/TSV
             if format in [cls.FORMAT_CSV, cls.FORMAT_TSV]:
@@ -190,7 +193,7 @@ class DataDescriptionParser(object):
         logger.info("DataSources")
         logger.info("-" * 80)
         for key, value in data_sources.items():
-            logger.info('{} : {}; shape={}'.format(key, type(value), value.shape))
+            logger.info("{} : {}; shape={}".format(key, type(value), value.shape))
         logger.info("-" * 80)
 
         # cleanup
@@ -215,7 +218,7 @@ class DataDescriptionParser(object):
             with open(source_path) as unknown_file:
                 start_str = unknown_file.read(1024)
                 start_str = start_str.strip()
-                if start_str.startswith('<'):
+                if start_str.startswith("<"):
                     is_xml = True
 
             if is_xml:
@@ -236,13 +239,17 @@ class DataDescriptionParser(object):
 
         # check supported formats
         if format not in cls.SUPPORTED_FORMATS:
-            raise NotImplementedError("Format '{}' not supported for DataDescription. Format must be in: {}".format(format, cls.SUPPORTED_FORMATS))
+            raise NotImplementedError(
+                "Format '{}' not supported for DataDescription. Format must be in: {}".format(
+                    format, cls.SUPPORTED_FORMATS
+                )
+            )
 
         return format
 
     @classmethod
     def _load_csv(cls, path):
-        """ Read CSV data from file.
+        """Read CSV data from file.
 
         :param path: path of file
         :return: returns pandas DataFrame with data
@@ -251,27 +258,30 @@ class DataDescriptionParser(object):
 
     @classmethod
     def _load_tsv(cls, path):
-        """ Read TSV data from file.
+        """Read TSV data from file.
 
-                :param path: path of file
-                :return: returns pandas DataFrame with data
-                """
+        :param path: path of file
+        :return: returns pandas DataFrame with data
+        """
         return cls._load_sv(path, separator="\t")
 
     @classmethod
     def _load_sv(cls, path, separator):
-        """ Helper function for loading data file from given source.
+        """Helper function for loading data file from given source.
 
         CSV files must have a header. Handles file and online resources.
 
         :param path: path of file.
         :return: pandas data frame
         """
-        df = pd.read_csv(path, sep=separator,
-                         index_col=False,
-                         skip_blank_lines=True,
-                         quotechar='"',
-                         comment="#",
-                         skipinitialspace=True,
-                         na_values="nan")
+        df = pd.read_csv(
+            path,
+            sep=separator,
+            index_col=False,
+            skip_blank_lines=True,
+            quotechar='"',
+            comment="#",
+            skipinitialspace=True,
+            na_values="nan",
+        )
         return df

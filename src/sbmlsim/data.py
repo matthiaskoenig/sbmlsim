@@ -25,16 +25,21 @@ class Data(object):
     # simulation result: access via id
     # Dataset access via id
     """
+
     class Types(Enum):
         TASK = 1
         DATASET = 2
         FUNCTION = 3
 
-    def __init__(self, experiment,
-                 index: str,
-                 task: str = None,
-                 dataset: str = None,
-                 function=None, variables=None):
+    def __init__(
+        self,
+        experiment,
+        index: str,
+        task: str = None,
+        dataset: str = None,
+        function=None,
+        variables=None,
+    ):
         self.experiment = experiment
         self.index = index
         self.task_id = task
@@ -44,8 +49,9 @@ class Data(object):
         self.unit = None
 
         if (not self.task_id) and (not self.dset_id) and (not self.function):
-            raise ValueError(f"Either 'task_id', 'dset_id' or 'function' "
-                             f"required for Data.")
+            raise ValueError(
+                f"Either 'task_id', 'dset_id' or 'function' " f"required for Data."
+            )
 
         # register data in simulation
         if experiment._data is None:
@@ -110,7 +116,7 @@ class Data(object):
             "task": self.task_id,
             "dataset": self.dset_id,
             "function": self.function,
-            "variables": self.variables if self.variables else None
+            "variables": self.variables if self.variables else None,
         }
         return d
 
@@ -136,15 +142,19 @@ class Data(object):
                 uindex = self.index
 
             if self.index not in dset.columns:
-                error_msg = f"Data column with key '{self.index}' does not " \
-                            f"exist in dataset: '{self.dset_id}'."
+                error_msg = (
+                    f"Data column with key '{self.index}' does not "
+                    f"exist in dataset: '{self.dset_id}'."
+                )
                 logger.error(error_msg)
                 raise KeyError(error_msg)
             try:
                 self.unit = dset.udict[uindex]
             except KeyError as err:
-                logger.error(f"Units missing for key '{uindex}' in dataset: "
-                             f"'{self.dset_id}'. Add missing units to dataset.")
+                logger.error(
+                    f"Units missing for key '{uindex}' in dataset: "
+                    f"'{self.dset_id}'. Add missing units to dataset."
+                )
                 raise err
             x = dset[self.index].values * dset.ureg(dset.udict[uindex])
 
@@ -178,23 +188,27 @@ class Data(object):
             try:
                 x = x.to(to_units)
             except DimensionalityError as err:
-                logger.error(f"Could not convert data '{str(self)}' with "
-                             f"content '{x}' to "
-                             f"units '{to_units}'")
+                logger.error(
+                    f"Could not convert data '{str(self)}' with "
+                    f"content '{x}' to "
+                    f"units '{to_units}'"
+                )
                 raise err
 
         return x
 
     data = property(get_data)
 
+
 class DataFunction(object):
-    """ Functional data calculation.
+    """Functional data calculation.
 
     The idea ist to provide an object which can calculate a generic math function
     based on given input symbols.
 
     Important challenge is to handle the correct functional evaluation.
     """
+
     def __init__(self, index, formula, variables):
         self.index = index
         self.formula = formula
@@ -203,8 +217,9 @@ class DataFunction(object):
 
 class DataSeries(pd.Series):
     """DataSet - a pd.Series with additional unit information."""
+
     # additional properties
-    _metadata = ['udict', 'ureg']
+    _metadata = ["udict", "ureg"]
 
     @property
     def _constructor(self):
@@ -222,8 +237,9 @@ class DataSet(pd.DataFrame):
               keys to units. The UnitRegistry is the UnitRegistry conversions
               are calculated on.
     """
+
     # additional properties
-    _metadata = ['udict', 'ureg']
+    _metadata = ["udict", "ureg"]
 
     @property
     def _constructor(self):
@@ -240,11 +256,14 @@ class DataSet(pd.DataFrame):
         """
         return self.ureg.Quantity(
             # downcasting !
-            self[key].values, self.udict[key]
+            self[key].values,
+            self.udict[key],
         )
 
     @classmethod
-    def from_df(cls, df: pd.DataFrame, ureg: UnitRegistry, udict: Dict[str, str]=None) -> 'DataSet':
+    def from_df(
+        cls, df: pd.DataFrame, ureg: UnitRegistry, udict: Dict[str, str] = None
+    ) -> "DataSet":
         """Creates DataSet from given pandas.DataFrame.
 
         The DataFrame can have various formats which should be handled.
@@ -260,7 +279,9 @@ class DataSet(pd.DataFrame):
         :return:
         """
         if not isinstance(ureg, UnitRegistry):
-            raise ValueError(f"ureg must be a UnitRegistry, but '{ureg}' is '{type(ureg)}'")
+            raise ValueError(
+                f"ureg must be a UnitRegistry, but '{ureg}' is '{type(ureg)}'"
+            )
         if df.empty:
             raise ValueError(f"DataFrame cannot be empty, check DataFrame: {df}")
 
@@ -276,15 +297,15 @@ class DataSet(pd.DataFrame):
                 # parse the item and unit in dict
                 units = df[key].unique()
                 if len(units) > 1:
-                    logger.error(f"Column '{key}' units are not unique: "
-                                 f"'{units}'")
+                    logger.error(f"Column '{key}' units are not unique: " f"'{units}'")
                 elif len(units) == 0:
                     logger.error(f"Column '{key}' units are missing: '{units}'")
                     print(df.head())
                 item_key = key[0:-5]
                 if item_key not in df.columns:
-                    logger.error(f"Missing * column '{item_key}' for unit "
-                                 f"column: '{key}'")
+                    logger.error(
+                        f"Missing * column '{item_key}' for unit " f"column: '{key}'"
+                    )
                 else:
                     all_udict[item_key] = units[0]
 
@@ -296,17 +317,22 @@ class DataSet(pd.DataFrame):
                         df[f"{key}_unit"] = df.unit
                         unit_keys = df.unit.unique()
                         if len(df.unit.unique()) > 1:
-                            logger.error(f"More than one unit in 'unit' column will create issues in "
-                                         f"unit conversion, filter data to reduce units: '{df.unit.unique()}'")
+                            logger.error(
+                                f"More than one unit in 'unit' column will create issues in "
+                                f"unit conversion, filter data to reduce units: '{df.unit.unique()}'"
+                            )
                         udict[key] = unit_keys[0]
 
                         # rename the sd and se columns to mean_sd and mean_se
-                        if key == 'mean':
-                            for err_key in ['sd', 'se']:
-                                df.rename(columns={f'{err_key}': f'mean_{err_key}'}, inplace=True)
+                        if key == "mean":
+                            for err_key in ["sd", "se"]:
+                                df.rename(
+                                    columns={f"{err_key}": f"mean_{err_key}"},
+                                    inplace=True,
+                                )
 
                 # remove unit column
-                del df['unit']
+                del df["unit"]
 
         # add external definitions
         if udict:
@@ -341,7 +367,8 @@ class DataSet(pd.DataFrame):
             if key not in self.udict:
                 raise ValueError(
                     f"Unit conversion only possible on keys which have units! "
-                    f"No unit defined for key '{key}'")
+                    f"No unit defined for key '{key}'"
+                )
 
             # unit conversion and simplification
             new_quantity = self.ureg.Quantity(self[key], self.udict[key]) * factor
@@ -354,24 +381,34 @@ class DataSet(pd.DataFrame):
             for err_key in [f"{key}_sd", f"{key}_se"]:
                 if err_key in self.columns:
                     # error keys not stored in udict, only the base quantity
-                    new_err_quantity = self.ureg.Quantity(self[err_key], self.udict[key]) * factor
-                    new_err_quantity = new_err_quantity.to_base_units().to_reduced_units()
+                    new_err_quantity = (
+                        self.ureg.Quantity(self[err_key], self.udict[key]) * factor
+                    )
+                    new_err_quantity = (
+                        new_err_quantity.to_base_units().to_reduced_units()
+                    )
                     self[err_key] = new_err_quantity.magnitude
 
             # updated units
             new_units = new_quantity.units
-            new_units_str = str(new_units).replace("**", "^").replace(" ", "")  # '{:~}'.format(new_units)
+            new_units_str = (
+                str(new_units).replace("**", "^").replace(" ", "")
+            )  # '{:~}'.format(new_units)
             self.udict[key] = new_units_str
 
             if f"{key}_unit" in self.columns:
                 self[f"{key}_unit"] = new_units_str
         else:
-            logger.error(f"Key '{key}' not in DataSet, unit conversion not applied: '{factor}'")
+            logger.error(
+                f"Key '{key}' not in DataSet, unit conversion not applied: '{factor}'"
+            )
 
 
 # @deprecated
-def load_pkdb_dataframe(sid, data_path: [Path, List[Path]], sep="\t", comment="#", **kwargs) -> pd.DataFrame:
-    """ Loads TSV data from PKDB figure or table id.
+def load_pkdb_dataframe(
+    sid, data_path: [Path, List[Path]], sep="\t", comment="#", **kwargs
+) -> pd.DataFrame:
+    """Loads TSV data from PKDB figure or table id.
 
     This is a simple helper functions to directly loading the TSV data.
     It is recommended to use `pkdb_analysis` methods instead.
@@ -389,12 +426,12 @@ def load_pkdb_dataframe(sid, data_path: [Path, List[Path]], sep="\t", comment="#
     :param kwargs: additional kwargs for csv parsing
     :return: pandas DataFrame
     """
-    study = sid.split('_')[0]
+    study = sid.split("_")[0]
     if isinstance(data_path, Path):
         data_path = [data_path]
 
     for p in data_path:
-        path = p / study / f'.{sid}.tsv'
+        path = p / study / f".{sid}.tsv"
         if path.exists():
             # use the first path which exists
             break
@@ -402,12 +439,15 @@ def load_pkdb_dataframe(sid, data_path: [Path, List[Path]], sep="\t", comment="#
         ValueError(f"file path not found in data_path: {data_path}")
 
     df = pd.read_csv(path, sep=sep, comment=comment, **kwargs)
-    df = df.dropna(how='all')  # drop all NA rows
+    df = df.dropna(how="all")  # drop all NA rows
     return df
 
+
 # @deprecated
-def load_pkdb_dataframes_by_substance(sid, data_path, **kwargs) -> Dict[str, pd.DataFrame]:
-    """ Load dataframes from given PKDB figure/table id split on substance.
+def load_pkdb_dataframes_by_substance(
+    sid, data_path, **kwargs
+) -> Dict[str, pd.DataFrame]:
+    """Load dataframes from given PKDB figure/table id split on substance.
 
     The DataFrame is split on the 'substance' key.
 
@@ -421,7 +461,7 @@ def load_pkdb_dataframes_by_substance(sid, data_path, **kwargs) -> Dict[str, pd.
     :param kwargs:
     :return: Dict[substance, pd.DataFrame]
     """
-    df = load_pkdb_dataframe(sid=sid, data_path=data_path, na_values=['na'], **kwargs)
+    df = load_pkdb_dataframe(sid=sid, data_path=data_path, na_values=["na"], **kwargs)
     frames = {}
     for substance in df.substance.unique():
         frames[substance] = df.copy()[df.substance == substance]

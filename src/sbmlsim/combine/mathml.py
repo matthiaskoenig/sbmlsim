@@ -22,6 +22,7 @@ def parse_mathml_str(mathml_str: str):
     astnode = libsbml.readMathMLFromString(mathml_str)  # type: libsbml.ASTNode
     return parse_astnode(astnode)
 
+
 def parse_formula(formula: str):
     astnode = formula_to_astnode(formula)
     return parse_astnode(astnode)
@@ -61,15 +62,15 @@ def expr_from_formula(formula: str):
     # necessary to map the expression trees
     # create symbols
     formula = replace_piecewise(formula)
-    formula = formula.replace("&&", '&')
-    formula = formula.replace("||", '|')
+    formula = formula.replace("&&", "&")
+    formula = formula.replace("||", "|")
 
     # additional methods
     # ns = {}
     # symbols = []
     # exec_('from sbmlsim.processing.mathml_functions import piecewise', ns)
     # from sympy import Symbol
-    #for variable in sorted(variables):
+    # for variable in sorted(variables):
     #    symbol = Symbol(variable)
     #    ns[variable] = symbol
     #    symbols.append(symbol)
@@ -149,25 +150,24 @@ def replace_piecewise(formula):
         if (len(pieces) % 2) == 1:
             pieces.append("True")  # last condition is True
         sympy_pieces = []
-        for k in range(0, int(len(pieces)/2)):
-            sympy_pieces.append(f'({pieces[2*k]}, {pieces[2*k+1]})')
+        for k in range(0, int(len(pieces) / 2)):
+            sympy_pieces.append(f"({pieces[2*k]}, {pieces[2*k+1]})")
         new_str = f"Piecewise({','.join(sympy_pieces)})"
-        formula = formula.replace(formula[index:search_idx+1], new_str)
+        formula = formula.replace(formula[index : search_idx + 1], new_str)
 
     return formula
 
 
 if __name__ == "__main__":
 
-
-
-
     # Piecewise in sympy
     # https://docs.sympy.org/latest/modules/functions/elementary.html#piecewise
     # Piecewise((expr, cond), (expr, cond), … )
     # necessary to do a rewrite of the piecewise function
     expr = expr_from_formula("piecewise(8, x < 4, 0.1, (4 <= x) && (x < 6), 8)")
-    expr = expr_from_formula("Piecewise((8, x < 4), (0.1, (x >= 5) & (x < 6)), (8, True))")
+    expr = expr_from_formula(
+        "Piecewise((8, x < 4), (0.1, (x >= 5) & (x < 6)), (8, True))"
+    )
 
     print(expr)
 
@@ -175,7 +175,7 @@ if __name__ == "__main__":
     expr = parse_formula("x + y")
     print(expr.free_symbols, type(expr))
 
-    '''
+    """
     # evaluate the function with the values
     astnode = libsbml.readMathMLFromString(mathmlStr)
 
@@ -183,7 +183,7 @@ if __name__ == "__main__":
     res = evaluateMathML(astnode,
                          variables={'x': y})
     print('Result:', res)
-    '''
+    """
 
     """
     * The Boolean function symbols '&&' (and), '||' (or), '!' (not),

@@ -18,17 +18,20 @@ class TaskNode(object):
         return len(self.children) == 0
 
     def __str__(self):
-        lines = ["<[{}] {} ({})>".format(self.depth, self.task.getId(),
-                                         self.task.getElementName())]
+        lines = [
+            "<[{}] {} ({})>".format(
+                self.depth, self.task.getId(), self.task.getElementName()
+            )
+        ]
         for child in self.children:
             child_str = child.__str__()
-            lines.extend(
-                ["\t{}".format(line) for line in child_str.split('\n')])
+            lines.extend(["\t{}".format(line) for line in child_str.split("\n")])
         return "\n".join(lines)
 
     def info(self):
-        return "<[{}] {} ({})>".format(self.depth, self.task.getId(),
-                                       self.task.getElementName())
+        return "<[{}] {} ({})>".format(
+            self.depth, self.task.getId(), self.task.getElementName()
+        )
 
     def __iter__(self):
         """ Depth-first iterator which yields TaskNodes."""
@@ -64,13 +67,15 @@ class Stack(object):
 
 
 class TaskTree(object):
-
     @staticmethod
-    def from_sedml_task(sed_task: libsedml.SedDocument, root_task: libsedml.SedAbstractTask) -> TaskNode:
-        """ Creates task tree for given SedTask
+    def from_sedml_task(
+        sed_task: libsedml.SedDocument, root_task: libsedml.SedAbstractTask
+    ) -> TaskNode:
+        """Creates task tree for given SedTask
 
         The task tree is used to resolve the order of all simulations.
         """
+
         def add_children(node):
             typeCode = node.task_id.getTypeCode()
             if typeCode == libsedml.SEDML_TASK:
@@ -81,12 +86,14 @@ class TaskTree(object):
                 for st in subtasks:
                     # get real task for subtask
                     t = sed_task.getTask(st.getTask())
-                    child = TaskNode(t, depth=node.depth+1)
+                    child = TaskNode(t, depth=node.depth + 1)
                     node.add_child(child)
                     # recursive adding of children
                     add_children(child)
             else:
-                raise IOError('Unsupported task type: {}'.format(node.task_id.getElementName()))
+                raise IOError(
+                    "Unsupported task type: {}".format(node.task_id.getElementName())
+                )
 
         # create root
         root = TaskNode(root_task, depth=0)
@@ -100,10 +107,9 @@ class TaskTree(object):
 
 
 class Test(object):
-
     @staticmethod
     def simpleTaskToPython(doc, node: TaskNode):
-        """ Creates the simulation python code for a given taskNode.
+        """Creates the simulation python code for a given taskNode.
 
         The taskNodes are required to handle the relationships between
         RepeatedTasks, SubTasks and SimpleTasks (Task).
@@ -127,15 +133,27 @@ class Test(object):
         simType = simulation.getTypeCode()
         algorithm = simulation.getAlgorithm()
         if algorithm is None:
-            warnings.warn("Algorithm missing on simulation, defaulting to 'cvode: KISAO:0000019'")
+            warnings.warn(
+                "Algorithm missing on simulation, defaulting to 'cvode: KISAO:0000019'"
+            )
             algorithm = simulation.createAlgorithm()
             algorithm.setKisaoID("KISAO:0000019")
         kisao = algorithm.getKisaoID()
 
         # is supported algorithm
-        if not SEDMLCodeFactory.is_supported_algorithm_for_simulation_type(kisao=kisao, simType=simType):
-            warnings.warn("Algorithm {} unsupported for simulation {} type {} in task {}".format(kisao, simulation.getId(), simType, task.getId()))
-            lines.append("# Unsupported Algorithm {} for SimulationType {}".format(kisao, simulation.getElementName()))
+        if not SEDMLCodeFactory.is_supported_algorithm_for_simulation_type(
+            kisao=kisao, simType=simType
+        ):
+            warnings.warn(
+                "Algorithm {} unsupported for simulation {} type {} in task {}".format(
+                    kisao, simulation.getId(), simType, task.getId()
+                )
+            )
+            lines.append(
+                "# Unsupported Algorithm {} for SimulationType {}".format(
+                    kisao, simulation.getElementName()
+                )
+            )
             return lines
 
         # set integrator/solver
@@ -150,13 +168,17 @@ class Test(object):
             lines.append("{}.setIntegrator('{}')".format(mid, integratorName))
 
         # use fixed step by default for stochastic sims
-        if integratorName == 'gillespie':
-            lines.append("{}.integrator.setValue('{}', {})".format(mid, 'variable_step_size', False))
+        if integratorName == "gillespie":
+            lines.append(
+                "{}.integrator.setValue('{}', {})".format(
+                    mid, "variable_step_size", False
+                )
+            )
 
         if kisao == "KISAO:0000288":  # BDF
-            lines.append("{}.integrator.setValue('{}', {})".format(mid, 'stiff', True))
+            lines.append("{}.integrator.setValue('{}', {})".format(mid, "stiff", True))
         elif kisao == "KISAO:0000280":  # Adams-Moulton
-            lines.append("{}.integrator.setValue('{}', {})".format(mid, 'stiff', False))
+            lines.append("{}.integrator.setValue('{}', {})".format(mid, "stiff", False))
 
         # integrator/solver settings (AlgorithmParameters)
         for par in algorithm.getListOfAlgorithmParameters():
@@ -168,20 +190,34 @@ class Test(object):
                 else:
                     value = pkey.value
 
-                if value == str('inf') or pkey.value == float('inf'):
+                if value == str("inf") or pkey.value == float("inf"):
                     value = "float('inf')"
                 else:
                     pass
 
                 if simType is libsedml.SEDML_SIMULATION_STEADYSTATE:
-                    lines.append("{}.steadyStateSolver.setValue('{}', {})".format(mid, pkey.key, value))
+                    lines.append(
+                        "{}.steadyStateSolver.setValue('{}', {})".format(
+                            mid, pkey.key, value
+                        )
+                    )
                 else:
-                    lines.append("{}.integrator.setValue('{}', {})".format(mid, pkey.key, value))
+                    lines.append(
+                        "{}.integrator.setValue('{}', {})".format(mid, pkey.key, value)
+                    )
 
         if simType is libsedml.SEDML_SIMULATION_STEADYSTATE:
-            lines.append("if {model}.conservedMoietyAnalysis == False: {model}.conservedMoietyAnalysis = True".format(model=mid))
+            lines.append(
+                "if {model}.conservedMoietyAnalysis == False: {model}.conservedMoietyAnalysis = True".format(
+                    model=mid
+                )
+            )
         else:
-            lines.append("if {model}.conservedMoietyAnalysis == True: {model}.conservedMoietyAnalysis = False".format(model=mid))
+            lines.append(
+                "if {model}.conservedMoietyAnalysis == True: {model}.conservedMoietyAnalysis = False".format(
+                    model=mid
+                )
+            )
 
         # get parents
         parents = []
@@ -194,7 +230,9 @@ class Test(object):
         # ---------------------------
         selections = SEDMLCodeFactory.selections_for_task(doc=doc, sed_task=node.task)
         for p in parents:
-            selections.update(SEDMLCodeFactory.selections_for_task(doc=doc, sed_task=p.task_id))
+            selections.update(
+                SEDMLCodeFactory.selections_for_task(doc=doc, sed_task=p.task_id)
+            )
 
         # <setValues> of all parents
         # ---------------------------
@@ -220,9 +258,9 @@ class Test(object):
                     mid = var.getModelReference()
                     selection = SEDMLCodeFactory.selectionFromVariable(var, mid)
                     expr = selection.id
-                    if selection.type == 'concentration':
+                    if selection.type == "concentration":
                         expr = "init([{}])".format(selection.id)
-                    elif selection.type == 'amount':
+                    elif selection.type == "amount":
                         expr = "init({})".format(selection.id)
 
                     # create variable
@@ -231,10 +269,13 @@ class Test(object):
                     variables[vid] = "__value__{}".format(vid)
 
                 # value is calculated with the current state of model
-                lines.append(SEDMLCodeFactory.targetToPython(xpath=setValue.getTarget(),
-                                                             value=evaluableMathML(setValue.getMath(), variables=variables),
-                                                             modelId=setValue.getModelReference())
-                             )
+                lines.append(
+                    SEDMLCodeFactory.targetToPython(
+                        xpath=setValue.getTarget(),
+                        value=evaluableMathML(setValue.getMath(), variables=variables),
+                        modelId=setValue.getModelReference(),
+                    )
+                )
 
         # handle result variable
         resultVariable = "{}[0]".format(task.getId())
@@ -254,27 +295,43 @@ class Test(object):
             lines.append("{}.reset()".format(mid))
 
             # throw some points away
-            if abs(outputStartTime - initialTime) > 1E-6:
-                lines.append("{}.simulate(start={}, end={}, points=2)".format(
-                                    mid, initialTime, outputStartTime))
+            if abs(outputStartTime - initialTime) > 1e-6:
+                lines.append(
+                    "{}.simulate(start={}, end={}, points=2)".format(
+                        mid, initialTime, outputStartTime
+                    )
+                )
             # real simulation
-            lines.append("{} = {}.simulate(start={}, end={}, steps={})".format(
-                                    resultVariable, mid, outputStartTime, outputEndTime, numberOfPoints))
+            lines.append(
+                "{} = {}.simulate(start={}, end={}, steps={})".format(
+                    resultVariable, mid, outputStartTime, outputEndTime, numberOfPoints
+                )
+            )
         # -------------------------------------------------------------------------
         # <ONESTEP>
         # -------------------------------------------------------------------------
         elif simType == libsedml.SEDML_SIMULATION_ONESTEP:
             lines.append("{}.timeCourseSelections = {}".format(mid, list(selections)))
             step = simulation.getStep()
-            lines.append("{} = {}.simulate(start={}, end={}, points=2)".format(resultVariable, mid, 0.0, step))
+            lines.append(
+                "{} = {}.simulate(start={}, end={}, points=2)".format(
+                    resultVariable, mid, 0.0, step
+                )
+            )
 
         # -------------------------------------------------------------------------
         # <STEADY STATE>
         # -------------------------------------------------------------------------
         elif simType == libsedml.SEDML_SIMULATION_STEADYSTATE:
-            lines.append("{}.steadyStateSolver.setValue('{}', {})".format(mid, 'allow_presimulation', False))
+            lines.append(
+                "{}.steadyStateSolver.setValue('{}', {})".format(
+                    mid, "allow_presimulation", False
+                )
+            )
             lines.append("{}.steadyStateSelections = {}".format(mid, list(selections)))
-            lines.append("{}.simulate()".format(mid))  # for stability of the steady state solver
+            lines.append(
+                "{}.simulate()".format(mid)
+            )  # for stability of the steady state solver
             lines.append("{} = {}.steadyStateNamedArray()".format(resultVariable, mid))
             # no need to turn this off because it will be checked before the next simulation
             # lines.append("{}.conservedMoietyAnalysis = False".format(mid))
@@ -289,7 +346,7 @@ class Test(object):
 
     @staticmethod
     def repeatedTaskToPython(doc, node):
-        """ Create python for RepeatedTask.
+        """Create python for RepeatedTask.
 
         Must create
         - the ranges (Ranges)
@@ -319,7 +376,11 @@ class Test(object):
 
         # <Range Iteration>
         # iterate master range
-        lines.append("for __k__{}, __value__{} in enumerate(__range__{}):".format(rangeId, rangeId, rangeId))
+        lines.append(
+            "for __k__{}, __value__{} in enumerate(__range__{}):".format(
+                rangeId, rangeId, rangeId
+            )
+        )
 
         # Everything from now on is done in every iteration of the range
         # We have to collect & intent all lines in the loop)
@@ -330,9 +391,15 @@ class Test(object):
         for r in task.getListOfRanges():
             if r.getId() != rangeId:
                 helperRanges[r.getId()] = r
-                if r.getTypeCode() in [libsedml.SEDML_RANGE_UNIFORMRANGE,
-                                       libsedml.SEDML_RANGE_VECTORRANGE]:
-                    forLines.append("__value__{} = __range__{}[__k__{}]".format(r.getId(), r.getId(), rangeId))
+                if r.getTypeCode() in [
+                    libsedml.SEDML_RANGE_UNIFORMRANGE,
+                    libsedml.SEDML_RANGE_VECTORRANGE,
+                ]:
+                    forLines.append(
+                        "__value__{} = __range__{}[__k__{}]".format(
+                            r.getId(), r.getId(), rangeId
+                        )
+                    )
 
                 # <functional range>
                 if r.getTypeCode() == libsedml.SEDML_RANGE_FUNCTIONALRANGE:
@@ -349,7 +416,7 @@ class Test(object):
                         mid = var.getModelReference()
                         selection = SEDMLCodeFactory.selectionFromVariable(var, mid)
                         expr = selection.id
-                        if selection.type == 'concentration':
+                        if selection.type == "concentration":
                             expr = "[{}]".format(selection.id)
                         lines.append("__value__{} = {}['{}']".format(vid, mid, expr))
                         variables[vid] = "__value__{}".format(vid)
@@ -376,17 +443,13 @@ class Test(object):
                 forLines.append("    {}.reset()".format(mid))
 
         # add lines
-        lines.extend('    ' + line for line in forLines)
+        lines.extend("    " + line for line in forLines)
 
         return lines
 
-
-
-
-
     @staticmethod
     def uniformRangeToPython(r):
-        """ Create python lines for uniform range.
+        """Create python lines for uniform range.
         :param r:
         :type r:
         :return:
@@ -396,12 +459,20 @@ class Test(object):
         rId = r.getId()
         rStart = r.getStart()
         rEnd = r.getEnd()
-        rPoints = r.getNumberOfPoints()+1  # One point more than number of points
+        rPoints = r.getNumberOfPoints() + 1  # One point more than number of points
         rType = r.getType()
-        if rType in ['Linear', 'linear']:
-            lines.append("__range__{} = np.linspace(start={}, stop={}, num={})".format(rId, rStart, rEnd, rPoints))
-        elif rType in ['Log', 'log']:
-            lines.append("__range__{} = np.logspace(start={}, stop={}, num={})".format(rId, rStart, rEnd, rPoints))
+        if rType in ["Linear", "linear"]:
+            lines.append(
+                "__range__{} = np.linspace(start={}, stop={}, num={})".format(
+                    rId, rStart, rEnd, rPoints
+                )
+            )
+        elif rType in ["Log", "log"]:
+            lines.append(
+                "__range__{} = np.logspace(start={}, stop={}, num={})".format(
+                    rId, rStart, rEnd, rPoints
+                )
+            )
         else:
             warnings.warn("Unsupported range type in UniformRange: {}".format(rType))
         return lines

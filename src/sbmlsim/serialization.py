@@ -11,7 +11,7 @@ from numpy import ndarray
 
 class ObjectJSONEncoder(JSONEncoder):
     def to_json(self, path=None):
-        """ Convert definition to JSON for exchange.
+        """Convert definition to JSON for exchange.
 
         :param path: path for file, if None JSON str is returned
         :return:

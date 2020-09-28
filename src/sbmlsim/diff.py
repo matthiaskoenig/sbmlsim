@@ -23,22 +23,23 @@ def get_files_by_extension(base_path, extension=".json") -> List[str]:
     Simulation definitions are json files.
     """
     # get all files with extension in given path
-    files = [f for f in base_path.glob('**/*') if f.is_file() and f.suffix == extension]
+    files = [f for f in base_path.glob("**/*") if f.is_file() and f.suffix == extension]
     keys = [f.name[:-5] for f in files]
 
     return dict(zip(keys, files))
 
 
 class DataSetsComparison(object):
-    """ Comparing multiple simulation results.
+    """Comparing multiple simulation results.
 
     Only the subset of identical columns are compared. In the beginning a matching of column
     names is performed to find the subset of columns which can be compared.
 
     The simulations must contain a "time" column with identical time points.
     """
-    eps = 1E-6  # tolerance for comparison
-    eps_plot = 1E-9  # tolerance for plotting
+
+    eps = 1e-6  # tolerance for comparison
+    eps_plot = 1e-9  # tolerance for plotting
 
     @timeit
     def __init__(self, dfs_dict, columns_filter=None, title: str = None):
@@ -57,8 +58,10 @@ class DataSetsComparison(object):
                 Nt = len(df)
 
             if len(df) != Nt:
-                raise ValueError(f"DataFrame have different length (number of rows): "
-                                 f"{len(df)} != {Nt} ({label})")
+                raise ValueError(
+                    f"DataFrame have different length (number of rows): "
+                    f"{len(df)} != {Nt} ({label})"
+                )
 
         # check that time column exist in data frames
         for label, df in dfs_dict.items():
@@ -83,12 +86,12 @@ class DataSetsComparison(object):
 
     @classmethod
     def _process_columns(cls, dataframes):
-        """ Get the intersection and union of columns.
+        """Get the intersection and union of columns.
 
         :param dataframes:
         :return:
         """
-        numerics = ['int16', 'int32', 'int64', 'float16', 'float32', 'float64']
+        numerics = ["int16", "int32", "int64", "float16", "float32", "float64"]
 
         # set of columns from the individual dataframes
         col_union = None
@@ -97,7 +100,9 @@ class DataSetsComparison(object):
             # get all numeric columns
             num_df = df.select_dtypes(include=numerics)
             if len(num_df.columns) < len(df.columns):
-                logger.warning(f"Non-numeric columns in DataFrame: {set(df.columns)-set(num_df.columns)}")
+                logger.warning(
+                    f"Non-numeric columns in DataFrame: {set(df.columns)-set(num_df.columns)}"
+                )
 
             cols = set(num_df.columns)
 
@@ -119,7 +124,7 @@ class DataSetsComparison(object):
 
     @classmethod
     def _filter_dfs(cls, dataframes, columns):
-        """ Filter the dataframes using the column ids occurring in all datasets.
+        """Filter the dataframes using the column ids occurring in all datasets.
         The common set of columns is used for comparison.
 
         :param dataframes:
@@ -132,8 +137,10 @@ class DataSetsComparison(object):
             try:
                 df_filtered = df[columns]
             except KeyError:
-                logger.error(f"Some keys from '{columns}' do not exist in DataFrame columns "
-                             f"'{df.columns}'")
+                logger.error(
+                    f"Some keys from '{columns}' do not exist in DataFrame columns "
+                    f"'{df.columns}'"
+                )
                 raise ValueError
             dfs.append(df_filtered)
             labels.append(label)
@@ -178,7 +185,7 @@ class DataSetsComparison(object):
             "-" * 80,
             "# Elements (Nt, Nx)",
             str(self.diff.shape),
-            "# Maximum column difference (above eps)"
+            "# Maximum column difference (above eps)",
         ]
         diff_max = self.diff_abs.max()
         diff_0 = self.diff_abs.iloc[0]
@@ -190,9 +197,9 @@ class DataSetsComparison(object):
 
         # TODO: fixme
         diff_info = diff_info[diff_max >= DataSetsComparison.eps]
-        with pd.option_context('display.max_rows', None, 'display.max_columns', None):
+        with pd.option_context("display.max_rows", None, "display.max_columns", None):
             lines.append(
-                str(diff_info.sort_values(by=['Delta_rel_max'], ascending=False))
+                str(diff_info.sort_values(by=["Delta_rel_max"], ascending=False))
             )
 
         lines.append("# Maximum initial column difference")
@@ -257,10 +264,10 @@ class DataSetsComparison(object):
 
         for ax in (ax2, ax4):
             ax.set_yscale("log")
-            ax.set_ylim(bottom=1E-10)
+            ax.set_ylim(bottom=1e-10)
 
-            if ax.get_ylim()[1] < 10*DataSetsComparison.eps:
-                ax.set_ylim(top=10*DataSetsComparison.eps)
+            if ax.get_ylim()[1] < 10 * DataSetsComparison.eps:
+                ax.set_ylim(top=10 * DataSetsComparison.eps)
 
         for ax in (ax1, ax3):
             ax.set_ylim(bottom=0)
