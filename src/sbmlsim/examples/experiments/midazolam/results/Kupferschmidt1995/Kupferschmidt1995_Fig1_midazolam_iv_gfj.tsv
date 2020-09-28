@@ -1,0 +1,14 @@
+study	subject	n	intervention	measurement	substance	tissue	mean	mean_pm	mean_se	mean_sd	time	time_unit	mean_unit
+Kupferschmidt1995	all	8	GRAP1, GRAP2, iv	concentration	midazolam	plasma	0.00030633948085754273	94.06706	1.7584722870263498e-05	4.973710714739783e-05	0.0833333333333333	hr	mole/meter^3
+Kupferschmidt1995	all	8	GRAP1, GRAP2, iv	concentration	midazolam	plasma	0.0002872653851820927	99.62548000000001	1.8551883549028753e-05	5.247265064520549e-05	0.166666666666667	hr	mole/meter^3
+Kupferschmidt1995	all	8	GRAP1, GRAP2, iv	concentration	midazolam	plasma	0.00025204559686648164	85.21949000000001	9.550047886839684e-06	2.7011614485762407e-05	0.33333333333333304	hr	mole/meter^3
+Kupferschmidt1995	all	8	GRAP1, GRAP2, iv	concentration	midazolam	plasma	0.00020677247611797353	71.45841999999999	1.258123572603819e-05	3.5585108390352336e-05	0.666666666666667	hr	mole/meter^3
+Kupferschmidt1995	all	8	GRAP1, GRAP2, iv	concentration	midazolam	plasma	0.00016527424424743988	56.915054000000005	9.436144741042703e-06	2.6689447738596295e-05	1.0	hr	mole/meter^3
+Kupferschmidt1995	all	8	GRAP1, GRAP2, iv	concentration	midazolam	plasma	0.00012797897890523316	44.28654	7.96604945851035e-06	2.2531390365520367e-05	1.5	hr	mole/meter^3
+Kupferschmidt1995	all	8	GRAP1, GRAP2, iv	concentration	midazolam	plasma	9.6342547457086e-05	33.434734000000006	6.291026129024336e-06	1.779370894581945e-05	2.0	hr	mole/meter^3
+Kupferschmidt1995	all	8	GRAP1, GRAP2, iv	concentration	midazolam	plasma	7.749862478819282e-05	27.432083000000002	6.7087958301613415e-06	1.897534010041247e-05	2.5	hr	mole/meter^3
+Kupferschmidt1995	all	8	GRAP1, GRAP2, iv	concentration	midazolam	plasma	5.155254659757864e-05	18.637642	5.658849242405639e-06	1.6005642692069506e-05	3.5	hr	mole/meter^3
+Kupferschmidt1995	all	8	GRAP1, GRAP2, iv	concentration	midazolam	plasma	3.192190147589696e-05	12.038202	5.031396576704893e-06	1.423093855290725e-05	5.0	hr	mole/meter^3
+Kupferschmidt1995	all	8	GRAP1, GRAP2, iv	concentration	midazolam	plasma	1.75591015692149e-05	6.67698	2.9370183689005673e-06	8.307142420476166e-06	7.0	hr	mole/meter^3
+Kupferschmidt1995	all	8	GRAP1, GRAP2, iv	concentration	midazolam	plasma	1.053254770265956e-05	4.388723000000001	2.939380172392623e-06	8.313822609536417e-06	9.0	hr	mole/meter^3
+Kupferschmidt1995	all	8	GRAP1, GRAP2, iv	concentration	midazolam	plasma	3.1443290930969273e-06	1.0293008	1.5283883008766482e-08	4.3229349273442443e-08	24.0	hr	mole/meter^3

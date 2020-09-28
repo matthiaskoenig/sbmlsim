@@ -1,0 +1,15 @@
+study	subject	n	intervention	substance	measurement	tissue	mean	mean_pm	mean_se	mean_sd	time	time_unit	mean_unit
+Mandema1992	all	8	iv_1ohmid	1-hydroxymidazolam	concentration	plasma	0.00012161118782913985	58.228928	4.8748461088355764e-05	0.00013788146963193974	5	min	mole/meter^3
+Mandema1992	all	8	iv_1ohmid	1-hydroxymidazolam	concentration	plasma	0.0005472038326506728	242.87311	0.0001633669982445875	0.00046207164912335575	10	min	mole/meter^3
+Mandema1992	all	8	iv_1ohmid	1-hydroxymidazolam	concentration	plasma	0.0005201517261556466	212.20583	0.00010069622586307783	0.00028481193659069806	15	min	mole/meter^3
+Mandema1992	all	8	iv_1ohmid	1-hydroxymidazolam	concentration	plasma	0.00037598595669982446	146.44441	5.246462843768286e-05	0.0001483923781628724	20	min	mole/meter^3
+Mandema1992	all	8	iv_1ohmid	1-hydroxymidazolam	concentration	plasma	0.0002717733469865419	106.3001	3.922753071971914e-05	0.00011095221192446812	25	min	mole/meter^3
+Mandema1992	all	8	iv_1ohmid	1-hydroxymidazolam	concentration	plasma	0.00020573850204798125	82.88189	3.6748010532475135e-05	0.00010393906977051139	35	min	mole/meter^3
+Mandema1992	all	8	iv_1ohmid	1-hydroxymidazolam	concentration	plasma	0.00020742018724400233	76.16391	1.5411614979520188e-05	4.359062984421972e-05	45	min	mole/meter^3
+Mandema1992	all	8	iv_1ohmid	1-hydroxymidazolam	concentration	plasma	0.00017297561732007021	64.05255	1.4422129900526623e-05	4.079194340726244e-05	60	min	mole/meter^3
+Mandema1992	all	8	iv_1ohmid	1-hydroxymidazolam	concentration	plasma	0.00011928810708016384	46.461594	1.6643999414862496e-05	4.707633940925687e-05	90	min	mole/meter^3
+Mandema1992	all	8	iv_1ohmid	1-hydroxymidazolam	concentration	plasma	8.580363370392041e-05	33.0001	1.0744347571679345e-05	3.038960410943885e-05	120	min	mole/meter^3
+Mandema1992	all	8	iv_1ohmid	1-hydroxymidazolam	concentration	plasma	5.041734640140432e-05	19.886967000000002	7.765705090696313e-06	2.196473092130503e-05	150	min	mole/meter^3
+Mandema1992	all	8	iv_1ohmid	1-hydroxymidazolam	concentration	plasma	3.7825509069631363e-05	15.046341	6.195383265067291e-06	1.752319007511495e-05	180	min	mole/meter^3
+Mandema1992	all	8	iv_1ohmid	1-hydroxymidazolam	concentration	plasma	2.1744519309537742e-05	8.154102	2.1118352837916912e-06	5.9731721996725e-06	240	min	mole/meter^3
+Mandema1992	all	8	iv_1ohmid	1-hydroxymidazolam	concentration	plasma	1.2342832065535404e-05	4.687453700000001	1.37119280280866e-06	3.878318916720772e-06	300	min	mole/meter^3
