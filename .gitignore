@@ -20,7 +20,7 @@ __pycache__
 .pytest_cache
 
 # documentation
-docs/_build/
+docs_builder/_build/
 
 
 sbmlsim/examples/experiments/repressilator/RepressilatorExperiment/RepressilatorExperiment_task_tc.h5
