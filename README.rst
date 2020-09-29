@@ -25,7 +25,7 @@ sbmlsim: SBML simulation made easy
    :target: https://sbmlsim.readthedocs.io/en/latest/?badge=latest
    :alt: Documentation Status
 
-.. image:: https://zenodo.org/badge/3597770.svg
+.. image:: https://zenodo.org/badge/DOI/10.5281/zenodo.3597770.svg
    :target: https://doi.org/10.5281/zenodo.3597770
    :alt: Zenodo DOI
 
@@ -51,8 +51,8 @@ If you have any questions or issues please `open an issue <https://github.com/ma
 
 How to cite
 ===========
-.. image:: https://zenodo.org/badge/3597770.svg
-   :target: https://zenodo.org/badge/latestdoi/3597770
+.. image:: https://zenodo.org/badge/DOI/10.5281/zenodo.3597770.svg
+   :target: https://doi.org/10.5281/zenodo.3597770
    :alt: Zenodo DOI
 
 License
@@ -61,7 +61,7 @@ License
 * Source Code: `LGPLv3 <http://opensource.org/licenses/LGPL-3.0>`__
 * Documentation: `CC BY-SA 4.0 <http://creativecommons.org/licenses/by-sa/4.0/>`__
 
-The sbmlutils source is released under both the GPL and LGPL licenses version 2 or
+The sbmlsim source is released under both the GPL and LGPL licenses version 2 or
 later. You may choose which license you choose to use the software under.
 
 This program is free software: you can redistribute it and/or modify it under
@@ -100,8 +100,8 @@ The latest develop version can be installed via::
 
 Or via cloning the repository and installing via::
 
-    git clone https://github.com/matthiaskoenig/sbmlutils.git
-    cd sbmlutils
+    git clone https://github.com/matthiaskoenig/sbmlsim.git
+    cd sbmlsim
     pip install -e .
 
 
