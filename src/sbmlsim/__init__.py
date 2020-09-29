@@ -1,5 +1,6 @@
-# -*- coding: utf-8 -*-
 from pathlib import Path
-from sbmlsim._version import __version__
+
+__author__ = "Matthias Koenig"
+__version__ = "0.1.5a1"
 
 BASE_PATH = Path(__file__).parent

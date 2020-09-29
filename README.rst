@@ -25,7 +25,7 @@ sbmlsim: SBML simulation made easy
    :target: https://sbmlsim.readthedocs.io/en/latest/?badge=latest
    :alt: Documentation Status
 
-.. image:: https://zenodo.org/badge/3597770.svg
+.. image:: https://zenodo.org/badge/DOI/10.5281/zenodo.3597770.svg
    :target: https://doi.org/10.5281/zenodo.3597770
    :alt: Zenodo DOI
 
@@ -51,8 +51,8 @@ If you have any questions or issues please `open an issue <https://github.com/ma
 
 How to cite
 ===========
-.. image:: https://zenodo.org/badge/3597770.svg
-   :target: https://zenodo.org/badge/latestdoi/3597770
+.. image:: https://zenodo.org/badge/DOI/10.5281/zenodo.3597770.svg
+   :target: https://doi.org/10.5281/zenodo.3597770
    :alt: Zenodo DOI
 
 License
