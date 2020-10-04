@@ -25,7 +25,19 @@ logger = logging.getLogger(__name__)
 
 # The colors in the default property cycle have been changed
 # to the category10 color palette used by Vega and d3 originally developed at Tableau.
-DEFAULT_COLORS = ['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728', '#9467bd', '#8c564b', '#e377c2', '#7f7f7f', '#bcbd22', '#17becf']
+DEFAULT_COLORS = [
+    "#1f77b4",
+    "#ff7f0e",
+    "#2ca02c",
+    "#d62728",
+    "#9467bd",
+    "#8c564b",
+    "#e377c2",
+    "#7f7f7f",
+    "#bcbd22",
+    "#17becf",
+]
+
 
 class BasePlotObject(object):
     """Base class for plotting objects."""
@@ -73,6 +85,7 @@ class ColorType(object):
     def __repr__(self):
         return self.color
 
+
 @dataclass
 class Line(object):
     type: LineType
@@ -81,9 +94,9 @@ class Line(object):
 
     def to_dict(self):
         return {
-            'type': self.type,
-            'color': self.color,
-            'thickness': self.thickness,
+            "type": self.type,
+            "color": self.color,
+            "thickness": self.thickness,
         }
 
 
@@ -97,11 +110,11 @@ class Marker(object):
 
     def to_dict(self):
         return {
-            'size': self.size,
-            'type': self.type,
-            'fill': self.fill,
-            'line_color': self.line_color,
-            'line_thickness': self.line_thickness,
+            "size": self.size,
+            "type": self.type,
+            "fill": self.fill,
+            "line_color": self.line_color,
+            "line_thickness": self.line_thickness,
         }
 
 
@@ -591,15 +604,19 @@ class Plot(BasePlotObject):
         # inject default colors if no colors provided
         color = Style.parse_color(
             color=DEFAULT_COLORS[curve.order % len(DEFAULT_COLORS)],
-            alpha=curve.kwargs.get("alpha", 1.0)
+            alpha=curve.kwargs.get("alpha", 1.0),
         )
         style = curve.style  # type: Style
         if (style.line.type != LineType.NONE) and (not style.line.color):
             style.line.color = color
-            logger.warning(f"'{self.sid}.{curve.sid}': undefined line color set to: {color}")
+            logger.warning(
+                f"'{self.sid}.{curve.sid}': undefined line color set to: {color}"
+            )
         if (style.marker.type != MarkerType.NONE) and (not style.marker.fill):
             style.marker.fill = color
-            logger.error(f"'{self.sid}.{curve.sid}': undefined marker fill set to: {color}")
+            logger.error(
+                f"'{self.sid}.{curve.sid}': undefined marker fill set to: {color}"
+            )
 
         self.curves.append(curve)
 
@@ -644,7 +661,7 @@ class Plot(BasePlotObject):
         count: Union[int, str] = None,
         dataset: str = None,
         task: str = None,
-        label: str="__yid__",
+        label: str = "__yid__",
         single_lines=False,
         dim_reduction=None,
         **kwargs,
@@ -664,8 +681,10 @@ class Plot(BasePlotObject):
                 "a curve use 'label=None' instead."
             )
         if label == "__yid__":
-            logger.warning("No label provided on curve, using default label 'yid'. "
-                           "To not plot a label use 'label=None'")
+            logger.warning(
+                "No label provided on curve, using default label 'yid'. "
+                "To not plot a label use 'label=None'"
+            )
 
         # experiment to resolve data
         experiment = self.experiment

@@ -80,7 +80,7 @@ class MatplotlibFigureSerializer(object):
             ridx = subplot.row - 1
             cidx = subplot.col - 1
             ax = fig.add_subplot(
-                gs[ridx: ridx + subplot.row_span, cidx : cidx + subplot.col_span]
+                gs[ridx : ridx + subplot.row_span, cidx : cidx + subplot.col_span]
             )  # type: plt.Axes
 
             plot = subplot.plot
