@@ -11,7 +11,7 @@
 * update release notes in `release-notes`
 * bump version (`bumpversion patch` or `bumpversion` minor)
 * `git push --tags` (triggers release)
-* github: merge develop to master via pull request
+* add release-notes for next version
 
 * test installation in virtualenv from pypi
 ```

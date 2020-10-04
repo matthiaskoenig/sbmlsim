@@ -104,5 +104,8 @@ Or via cloning the repository and installing via::
     cd sbmlsim
     pip install -e .
 
+To install for development use::
 
+    pip install -e .[development]
+    
 © 2019-2020 Matthias König

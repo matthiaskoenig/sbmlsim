@@ -108,6 +108,7 @@ class MatplotlibFigureSerializer(object):
 
             for curve in plot.curves:
                 # TODO: sort by order
+                label = curve.name if curve.name else "__nolabel__"
 
                 kwargs = {}
                 if curve.style:
@@ -203,13 +204,13 @@ class MatplotlibFigureSerializer(object):
                 if (xerr is None) and (yerr is None):
                     if y_std is None:
                         # single trajectory
-                        ax.plot(x.magnitude, y.magnitude, label=curve.name, **kwargs)
+                        ax.plot(x.magnitude, y.magnitude, label=label, **kwargs)
                 elif yerr is not None:
                     ax.errorbar(
                         x.magnitude,
                         y.magnitude,
                         yerr.magnitude,
-                        label=curve.name,
+                        label=label,
                         **kwargs,
                     )
 
@@ -229,7 +230,7 @@ class MatplotlibFigureSerializer(object):
 
                 if xax.label_visible:
                     if xax.name:
-                        ax.set_xlabel(f"{xax.name} [{unit_str(xax)}]")
+                        ax.set_xlabel(xax.name)
                 if not xax.ticks_visible:
                     ax.set_xticklabels([])  # hide ticks
 
@@ -242,7 +243,7 @@ class MatplotlibFigureSerializer(object):
 
                 if yax.label_visible:
                     if yax.name:
-                        ax.set_ylabel(f"{yax.name} [{unit_str(yax)}]")
+                        ax.set_ylabel(yax.name)
                 if not yax.ticks_visible:
                     ax.set_yticklabels([])  # hide ticks
 
