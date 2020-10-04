@@ -334,6 +334,11 @@ class DataSet(pd.DataFrame):
                 # remove unit column
                 del df["unit"]
 
+            elif key in ["count", "n"]:
+                # add special units for count
+                if f"{key}_unit" not in df.columns:
+                    udict[key] = "dimensionless"
+
         # add external definitions
         if udict:
             for key, unit in udict.items():

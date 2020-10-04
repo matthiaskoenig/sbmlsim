@@ -15,11 +15,10 @@ from dataclasses import dataclass
 from enum import Enum
 from typing import Dict, List, Union
 
-import pandas as pd
+import numpy as np
 from matplotlib.colors import to_hex, to_rgba
 
 from sbmlsim.data import Data, DataSet
-from sbmlsim.result import XResult
 
 
 logger = logging.getLogger(__name__)
@@ -445,7 +444,7 @@ class Plot(BasePlotObject):
         """Set title of plot panel."""
         self.name = name
 
-    def set_xaxis(self, label: str, unit: str = None, **kwargs):
+    def set_xaxis(self, label: Union[str, Axis], unit: str = None, **kwargs):
         """Set axis with all axes attributes.
         All argument of Axis are supported.
 
@@ -455,9 +454,12 @@ class Plot(BasePlotObject):
         :param kwargs:
         :return:
         """
-        self.xaxis = Axis(name=label, unit=unit, **kwargs)
+        if isinstance(label, Axis):
+            self.xaxis = label
+        else:
+            self.xaxis = Axis(name=label, unit=unit, **kwargs)
 
-    def set_yaxis(self, label: str, unit: str = None, **kwargs):
+    def set_yaxis(self, label: Union[str, Axis], unit: str = None, **kwargs):
         """Set axis with all axes attributes.
         All argument of Axis are supported.
 
@@ -467,7 +469,10 @@ class Plot(BasePlotObject):
         :param kwargs:
         :return:
         """
-        self.yaxis = Axis(name=label, unit=unit, **kwargs)
+        if isinstance(label, Axis):
+            self.yaxis = label
+        else:
+            self.yaxis = Axis(name=label, unit=unit, **kwargs)
 
     def add_curve(self, curve: Curve):
         """
@@ -530,7 +535,7 @@ class Plot(BasePlotObject):
         count: Union[int, str] = None,
         dataset: str = None,
         task: str = None,
-        label="__nolabel__",
+        label=None,
         single_lines=False,
         dim_reduction=None,
         **kwargs,
@@ -542,6 +547,13 @@ class Plot(BasePlotObject):
             raise ValueError("Set either 'dataset' or 'task', not both.")
         if dataset is None and task is None:
             raise ValueError("Set either 'dataset' or 'task'.")
+        if count is not None and dataset is None:
+            raise ValueError("'count' can only be set on a dataset")
+        if label == "__nolabel__":
+            raise ValueError(
+                "'label' is set to '__nolabel__', to not add a label for "
+                "a curve use 'label=None' instead."
+            )
 
         # experiment to resolve data
         experiment = self.experiment
@@ -549,6 +561,8 @@ class Plot(BasePlotObject):
         # yerr data
         yerr = None
         yerr_label = ""
+        if yid_sd and yid_se:
+            logger.warning("'yid_sd' and 'yid_se' set, using 'yid_sd'.")
         if yid_sd:
             if yid_sd.endswith("se"):
                 logger.warning("SD error column ends with 'se', check names.")
@@ -560,12 +574,30 @@ class Plot(BasePlotObject):
             yerr_label = "±SE"
             yerr = Data(experiment, yid_se, dataset=dataset, task=task)
 
-        # label
-        if label != "__nolabel__":
-            count_label = ""
-            # FIXME: count label
-            if count and isinstance(count, int):
+        if label is not None:
+            # add count information
+            if count is None:
+                count_label = ""
+            else:
+                if isinstance(count, int):
+                    pass
+                if isinstance(count, str):
+                    # resolve count data from dataset
+                    count_data = Data(
+                        experiment, index=count, dataset=dataset, task=task
+                    )
+                    counts = count_data.data
+                    counts_unique = np.unique(counts.magnitude)
+                    if counts_unique.size > 1:
+                        logger.warning(f"count is not unique for dataset: '{counts}'")
+                    count = counts[0].magnitude
+                else:
+                    raise ValueError(
+                        f"'count' must be integer or a column in a "
+                        f"dataset, but type '{type(count)}'."
+                    )
                 count_label = f" (n={count})"
+
             label = f"{label}{yerr_label}{count_label}"
 
         # FIXME: here the data is not resolved yet, it is just the definition
