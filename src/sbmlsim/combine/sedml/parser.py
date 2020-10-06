@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """
 SED-ML support for sbmlsim
 ==========================
@@ -510,7 +509,7 @@ if __name__ == "__main__":
 
     base_path = Path(__file__).parent
     sedml_path = base_path / "experiments" / "repressilator_sedml.xml"
-    results = SEDMLTools.read_sedml_document(str(sedml_path), working_dir=base_path)
+    results = SEDMLTools.read_sedml(str(sedml_path), working_dir=base_path)
     doc = results["doc"]
     sed_parser = SEDMLParser(doc, working_dir=base_path)
     print(sed_parser.models)
