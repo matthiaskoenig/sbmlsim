@@ -76,11 +76,10 @@ class Units:
                 q2 = ureg(udef_str)
                 # check if identical
                 if q1 != q2:
-                    logger.error(
-                        f"SBML uid '{uid}' defined differently in UnitsRegistry: '{uid} = {q1} != {q2}"
+                    logger.warning(
+                        f"SBML uid '{uid}' cannot be looked up in UnitsRegistry: '{uid} = {q1} != {q2}"
                     )
             except UndefinedUnitError as err:
-
                 definition = f"{uid} = {udef_str}"
                 ureg.define(definition)
 
@@ -184,6 +183,19 @@ class Units:
                     logger.debug(f"No element found for id '{sid}'")
 
         return udict, ureg
+
+    @classmethod
+    def unitIdNormalization(cls, uid: str) -> str:
+        # FIXME: this is very specific to the uids in the model
+        uid_in = uid[:]
+        if "__" in uid:
+            uid = "__".join(uid.split("__")[1:])
+        uid = uid.replace("_per_", "/")
+        uid = uid.replace("_", "*")
+        if uid is not uid_in:
+            logger.debug(f"uid normalization: {uid_in} -> {uid}")
+        return uid
+
 
     @classmethod
     def unitDefinitionToString(cls, udef: libsbml.UnitDefinition) -> str:

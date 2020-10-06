@@ -41,6 +41,9 @@ class Source:
 
         # FIXME: handle the case of models given as strings.
         """
+        if isinstance(source, Source):
+            return source
+
         path = None
         content = None
 

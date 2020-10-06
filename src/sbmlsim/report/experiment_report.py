@@ -16,6 +16,7 @@ import jinja2
 
 from sbmlsim import BASE_PATH, __version__
 from sbmlsim.experiment import ExperimentResult, SimulationExperiment
+from sbmlsim.model import AbstractModel
 
 
 logger = logging.getLogger(__name__)
@@ -56,7 +57,12 @@ class ReportResults:
 
         # model links
         models = {}
-        for model_key, model_path in experiment.models().items():
+        for model_key, model in experiment.models().items():
+            if isinstance(model, (Path, str)):
+                model_path = Path(model)
+            elif isinstance(model, AbstractModel):
+                model_path = model.source.path
+
             models[model_key] = Path(os.path.relpath(model_path, str(abs_path)))
 
         # code path

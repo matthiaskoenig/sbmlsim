@@ -8,7 +8,7 @@ Other formats could be supported like CellML or NeuroML.
 import logging
 from enum import Enum
 from pathlib import Path
-from typing import Dict, List, Tuple
+from typing import Dict, List, Tuple, Union
 
 from sbmlsim.model.model_resources import Source
 
@@ -36,7 +36,7 @@ class AbstractModel(object):
 
     def __init__(
         self,
-        source: str,
+        source: Union[str, Path],
         sid: str = None,
         name: str = None,
         language: str = None,
@@ -48,11 +48,11 @@ class AbstractModel(object):
 
         if not language and not language_type:
             raise ValueError(
-                "Either 'language' or 'language_type' argument are" "required"
+                "Either 'language' or 'language_type' argument are required"
             )
         if language and language_type:
             raise ValueError(
-                "Either 'language' or 'language_type' can be set," "but not both."
+                "Either 'language' or 'language_type' can be set, but not both."
             )
 
         # parse language_type
