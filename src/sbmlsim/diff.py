@@ -6,7 +6,8 @@ Used to benchmark the simulation results.
 """
 
 import logging
-from typing import List
+from pathlib import Path
+from typing import List, Dict
 
 import pandas as pd
 from matplotlib import pyplot as plt
@@ -17,14 +18,15 @@ from sbmlsim.utils import timeit
 logger = logging.getLogger(__name__)
 
 
-def get_files_by_extension(base_path, extension=".json") -> List[str]:
-    """Get all simulation definitions in the test directory.
+def get_files_by_extension(base_path: Path, extension: str=".json") -> Dict[str, str]:
+    """Get all files by given extension
 
     Simulation definitions are json files.
     """
     # get all files with extension in given path
     files = [f for f in base_path.glob("**/*") if f.is_file() and f.suffix == extension]
-    keys = [f.name[:-5] for f in files]
+    offset = len(extension)
+    keys = [f.name[:-offset] for f in files]
 
     return dict(zip(keys, files))
 
@@ -37,36 +39,40 @@ class DataSetsComparison(object):
 
     The simulations must contain a "time" column with identical time points.
     """
-
-    eps = 1e-6  # tolerance for comparison
-    eps_plot = 1e-9  # tolerance for plotting
+    tol_abs = 1e-5  # absolute tolerance for comparison
+    tol_rel = 1e-5  # relative tolerance for comparison
+    eps_plot = 1E-3 * tol_abs  # tolerance for plotting
 
     @timeit
-    def __init__(self, dfs_dict, columns_filter=None, title: str = None):
+    def __init__(self, dfs_dict: Dict[str, pd.DataFrame], columns_filter=None,
+                 time_column: bool = True,
+                 title: str = None
+                 ):
         """Initialize the comparison.
 
         :param dfs_dict: data dictionary d[simulator_key] = df_result
         :param columns_filter: function which returns True if in Set or False if should be filtered.
+        :param time_column: flag to check for time column
         """
-        self.title = title
         self.columns_filter = columns_filter
 
-        # check that identical number of timepoints
-        Nt = 0
+        # check that identical number of rows (mostly timepoints)
+        nrow = 0
         for label, df in dfs_dict.items():
-            if Nt == 0:
-                Nt = len(df)
+            if nrow == 0:
+                nrow = len(df)
 
-            if len(df) != Nt:
+            if len(df) != nrow:
                 raise ValueError(
                     f"DataFrame have different length (number of rows): "
-                    f"{len(df)} != {Nt} ({label})"
+                    f"{len(df)} != {nrow} ({label})"
                 )
 
         # check that time column exist in data frames
-        for label, df in dfs_dict.items():
-            if "time" not in df.columns:
-                raise ValueError("'time' column must exist in data ({})".format(label))
+        if time_column:
+            for label, df in dfs_dict.items():
+                if "time" not in df.columns:
+                    raise ValueError(f"'time' column must exist in data ({label})")
 
         # get the subset of columns to compare
         columns, self.col_intersection, self.col_union = self._process_columns(dfs_dict)
@@ -78,11 +84,12 @@ class DataSetsComparison(object):
 
         # get common subset of data
         self.dfs, self.labels = self._filter_dfs(dfs_dict, self.columns)
-        if self.title is None:
-            self.title = " | ".join(self.labels)
+
+        # set title
+        self.title = title if title else " | ".join(self.labels)
 
         # calculate difference
-        self.diff, self.diff_abs, self.diff_rel = self.df_diff()
+        self.diff, self.diff_abs, self.diff_rel, self.diff_tol, self.diff_tol_bool = self.df_diff()
 
     @classmethod
     def _process_columns(cls, dataframes):
@@ -150,42 +157,48 @@ class DataSetsComparison(object):
     def df_diff(self):
         """ DataFrame of all differences between the files.
 
+        https://github.com/sbmlteam/sbml-test-suite/blob/master/cases/semantic/README.md
         Let the following variables be defined:
 
-        * <i>T<sub>a</sub></i> stand for the absolute tolerance for a test case,
-        * <i>T<sub>r</sub></i> stand for the relative tolerance for a test case,
-        * <i>C<sub>ij</sub></i> stand for the expected correct value for row <i>i</i>, column <i>j</i>, of the result data set for the test case
-        * <i>U<sub>ij</sub></i> stand for the corresponding value produced by a given software simulation system run by the user
+        * `abs_tol` stand for the absolute tolerance for a test case,
+        * `rel_tol` stand for the relative tolerance for a test case,
+        * `c_ij` stand for the expected correct value for row `i`, column `j`, of the result data set for the test case
+        * `u_ij` stand for the corresponding value produced by a given software simulation system run by the user
 
-        These absolute and relative tolerances are used in the following way: a data point <i>U<sub>ij</sub></i> is considered to be within tolerances if and only if the following expression is true:
+        These absolute and relative tolerances are used in the following way:
+        a data point `u_ij` is considered to be within tolerances
+        if and only if the following expression is true:
 
-        <p align="center">
-        <i>|C<sub>ij</sub> - U<sub>ij</sub>| &le; (T<sub>a</sub> + T<sub>r</sub> * |C<sub>ij</sub>|)</i>
-        </p>
-
+        |c_ij - u_ij| <= (abs_tol + rel_tol * |c_ij|)
 
         """
-        # TODO: update to multiple comparison, i.e. between more then 2 simulators
+        c = self.dfs[0]
+        u = self.dfs[1]
 
-        diff = self.dfs[0] - self.dfs[1]
+        # difference
+        diff = c - u
 
         # absolute differences between all data frames
         diff_abs = diff.abs()
 
-        # FIXME: handling of small values in comparison
-        https: // github.com / sbmlteam / sbml - test - suite / blob / master / cases / semantic / README.md
-
-
-        # relative differences between all data frames
+        # relative differences between data frames
         diff_rel = 2 * diff_abs / (self.dfs[0].abs() + self.dfs[1].abs())
-
         diff_rel[diff_rel.isnull()] = 0.0
 
-        return diff, diff_abs, diff_rel
+        # difference based on tolerance
+        # |c_ij - u_ij| <= (abs_tol + rel_tol * |c_ij|)
+
+        # > 0 if difference
+        diff_tol = (c-u).abs() - (self.tol_abs + self.tol_rel * c.abs())
+
+        # boolean matrix: True if difference, False if identical
+        diff_tol_bool = diff_tol > 0
+
+        return diff, diff_abs, diff_rel, diff_tol, diff_tol_bool
 
     def is_equal(self):
         """ Check if DataFrames are identical within numerical tolerance."""
-        return abs(self.diff.abs().max().max()) <= DataSetsComparison.eps
+        return not self.diff_tol_bool.any(axis=None)
 
     def __str__(self):
         return f"{self.__class__.__name__} ({self.labels})"
@@ -217,7 +230,7 @@ class DataSetsComparison(object):
         diff_info.columns = ["Delta_abs_0", "Delta_rel_0", "Delta_max", "Delta_rel_max"]
 
         # TODO: fixme
-        diff_info = diff_info[diff_max >= DataSetsComparison.eps]
+        diff_info = diff_info[diff_max >= DataSetsComparison.tol_abs]
         with pd.option_context("display.max_rows", None, "display.max_columns", None):
             lines.append(
                 str(diff_info.sort_values(by=["Delta_rel_max"], ascending=False))
@@ -229,10 +242,11 @@ class DataSetsComparison(object):
         lines.append("# Maximum element difference")
         lines.append(str(self.diff.abs().max().max()))
 
-        lines.append(f"# Datasets are equal (diff <= eps={self.eps})")
+        lines.append(f"# Datasets are equal "
+                     f"(|c_ij - u_ij| <= (tol_abs + tol_rel * |c_ij|))")
         lines.append(str(self.is_equal()).upper())
         lines.append("-" * 80)
-        if not (self.is_equal()):
+        if not self.is_equal():
             logging.warning("Datasets are not equal !")
 
         return "\n".join([str(item) for item in lines])
@@ -250,11 +264,15 @@ class DataSetsComparison(object):
     def plot_diff(self):
         """Plots lines for entries which are above epsilon treshold."""
 
+        import seaborn as sns
+
+
         # FIXME: only plot the top differences, otherwise plotting takes
         # very long
         # filter data
         diff_abs = self.diff_abs.copy()
         diff_rel = self.diff_rel.copy()
+        diff_tol = self.diff_tol.copy()
         diff_max = diff_abs.max()
         column_index = diff_max >= DataSetsComparison.eps_plot
         # column_index = diff_max >= DataSetsComparison.eps
@@ -265,38 +283,41 @@ class DataSetsComparison(object):
         diff_abs = diff_abs.transpose()
 
         # plot all overview
-        f1, ((ax1, ax2), (ax3, ax4)) = plt.subplots(2, 2, figsize=(10, 10))
-        f1.subplots_adjust(wspace=0.3)
+        f1, ((ax1, ax2, ax3, ax4)) = plt.subplots(1, 4, figsize=(20, 4.5))
+        f1.subplots_adjust(wspace=0.35)
+        f1.suptitle(self.title, fontsize=14, fontweight="bold")
+
+        sns.heatmap(data=self.diff_tol_bool, cmap="Blues", vmin=0, vmax=1, ax=ax1)
+        ax1.set_title(f"equal = {str(self.is_equal()).upper()}", fontweight="bold")
+        ax1.set_ylabel(f"Tolerance difference", fontweight="bold")
+
+        # sns.heatmap(data=self.diff_tol, center=0, ax=ax2)
 
         for cid in diff_abs.columns:
-            for ax in (ax1, ax2):
-                ax.plot(diff_abs[cid], label=cid)
+            ax2.plot(diff_tol[cid], label=cid)
+            ax3.plot(diff_abs[cid], label=cid)
+            ax4.plot(diff_rel[cid], label=cid)
 
-            for ax in (ax3, ax4):
-                ax.plot(diff_rel[cid], label=cid)
-
-        for ax in (ax1, ax2):
-            ax.set_title(f"{self.title}")
-            ax.set_ylabel(f"Absolute difference")
+        ax2.set_ylabel(f"Tolerance difference", fontweight="bold")
+        ax3.set_ylabel(f"Absolute difference", fontweight="bold")
+        ax4.set_ylabel(f"Relative difference", fontweight="bold")
 
         for ax in (ax3, ax4):
-            ax.set_ylabel(f"Relative difference")
-            ax.set_xlabel("time index")
-
-        for ax in (ax2, ax4):
+            ax.set_xlabel("time index", fontweight="bold")
             ax.set_yscale("log")
             ax.set_ylim(bottom=1e-10)
 
-            if ax.get_ylim()[1] < 10 * DataSetsComparison.eps:
-                ax.set_ylim(top=10 * DataSetsComparison.eps)
+            if ax.get_ylim()[1] < 10 * DataSetsComparison.tol_abs:
+                ax.set_ylim(top=10 * DataSetsComparison.tol_abs)
 
-        for ax in (ax1, ax3):
-            ax.set_ylim(bottom=0)
-
-        for ax in (ax1, ax2, ax3, ax4):
-            ax.axhline(DataSetsComparison.eps, color="black", linestyle="--")
+        ax2.axhline(0.0, color="black", linestyle="--")
+        for ax in (ax3, ax4):
+            ax.axhline(DataSetsComparison.tol_abs, color="black", linestyle="--")
 
             # ax.legend()
             # ax.set_xlim(right=ax.get_xlim()[1] * 2)
+
+        # ax3.imshow(self.diff_tol, cmap='Greys')
+
 
         return f1
