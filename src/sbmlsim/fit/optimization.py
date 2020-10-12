@@ -236,14 +236,16 @@ class OptimizationProblem(object):
                     data_ref.x = data_ref.x.to(obs_x_unit)
                 except DimensionalityError as e:
                     logger.error(
-                        f"{sid}.{mapping_id}: Unit convertion fails for '{data_ref.x}' to '{obs_x_unit}"
+                        f"{sid}.{mapping_id}: Unit conversion fails for '{data_ref.x}' "
+                        f"to '{obs_x_unit}"
                     )
                     raise e
                 try:
                     data_ref.y = data_ref.y.to(obs_y_unit)
                 except DimensionalityError as e:
                     logger.error(
-                        f"{sid}.{mapping_id}: Unit convertion fails for '{data_ref.y}' to '{obs_y_unit}'."
+                        f"{sid}.{mapping_id}: Unit conversion fails for '{data_ref.y}' "
+                        f"to '{obs_y_unit}'."
                     )
                     raise e
                 x_ref = data_ref.x.magnitude
@@ -261,7 +263,7 @@ class OptimizationProblem(object):
                 else:
                     y_ref_err_type = None
 
-                # handle missing data (0.0 and NaN
+                # handle missing data (0.0 and NaN)
                 if y_ref_err is not None:
                     # remove 0.0 from y-error
                     y_ref_err[(y_ref_err == 0.0)] = np.NAN

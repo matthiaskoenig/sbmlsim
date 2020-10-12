@@ -38,7 +38,6 @@ class RoadrunnerSBMLModel(AbstractModel):
         ureg: UnitRegistry = None,
         settings: Dict = None,
     ):
-        print(f"source: {source}, {type(source)}, {type(source.source)}")
         if isinstance(source, AbstractModel):
             logger.warning("RoadrunnerSBMLModel from AbstractModel")
             # FIXME: add warnings
@@ -100,8 +99,8 @@ class RoadrunnerSBMLModel(AbstractModel):
 
     def get_state_path(self):
         if self.source.is_path():
-            mdf5 = md5_for_path(self.source.path)
-            return Path(f"{self.source.path}_rr{roadrunner.__version__}_{mdf5}.state")
+            md5 = md5_for_path(self.source.path)
+            return Path(f"{self.source.path}_rr{roadrunner.__version__}_{md5}.state")
         else:
             return None
 
@@ -210,7 +209,7 @@ class RoadrunnerSBMLModel(AbstractModel):
                 # tolerances
                 value = min(value, value * min(r.model.getCompartmentVolumes()))
             integrator.setValue(key, value)
-            logger.debug(f"Integrator setting: '{key} = {value}'")
+            logger.info(f"Integrator setting: '{key} = {value}'")
         return integrator
 
     @staticmethod

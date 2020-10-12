@@ -148,7 +148,23 @@ class DataSetsComparison(object):
         return dfs, labels
 
     def df_diff(self):
-        """ DataFrame of all differences between the files."""
+        """ DataFrame of all differences between the files.
+
+        Let the following variables be defined:
+
+        * <i>T<sub>a</sub></i> stand for the absolute tolerance for a test case,
+        * <i>T<sub>r</sub></i> stand for the relative tolerance for a test case,
+        * <i>C<sub>ij</sub></i> stand for the expected correct value for row <i>i</i>, column <i>j</i>, of the result data set for the test case
+        * <i>U<sub>ij</sub></i> stand for the corresponding value produced by a given software simulation system run by the user
+
+        These absolute and relative tolerances are used in the following way: a data point <i>U<sub>ij</sub></i> is considered to be within tolerances if and only if the following expression is true:
+
+        <p align="center">
+        <i>|C<sub>ij</sub> - U<sub>ij</sub>| &le; (T<sub>a</sub> + T<sub>r</sub> * |C<sub>ij</sub>|)</i>
+        </p>
+
+
+        """
         # TODO: update to multiple comparison, i.e. between more then 2 simulators
 
         diff = self.dfs[0] - self.dfs[1]
@@ -156,8 +172,13 @@ class DataSetsComparison(object):
         # absolute differences between all data frames
         diff_abs = diff.abs()
 
+        # FIXME: handling of small values in comparison
+        https: // github.com / sbmlteam / sbml - test - suite / blob / master / cases / semantic / README.md
+
+
         # relative differences between all data frames
         diff_rel = 2 * diff_abs / (self.dfs[0].abs() + self.dfs[1].abs())
+
         diff_rel[diff_rel.isnull()] = 0.0
 
         return diff, diff_abs, diff_rel
