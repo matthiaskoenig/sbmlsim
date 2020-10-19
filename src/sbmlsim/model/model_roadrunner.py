@@ -38,6 +38,7 @@ class RoadrunnerSBMLModel(AbstractModel):
         ureg: UnitRegistry = None,
         settings: Dict = None,
     ):
+        logger.info(f"source: {type(source)}, {source}")
         if isinstance(source, AbstractModel):
             logger.warning("RoadrunnerSBMLModel from AbstractModel")
             # FIXME: add warnings

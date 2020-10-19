@@ -40,7 +40,7 @@ class AbstractModel(object):
         sid: str = None,
         name: str = None,
         language: str = None,
-        language_type: LanguageType = None,
+        language_type: LanguageType = LanguageType.SBML,
         base_path: Path = None,
         changes: Dict = None,
         selections: List[str] = None,
@@ -76,7 +76,10 @@ class AbstractModel(object):
         self.selections = selections
 
     def to_dict(self):
-        """ Convert to dictionary. """
+        """ Convert to dictionary.
+
+        FIXME: normalize changes to model
+        """
         d = {
             "sid": self.sid,
             "name": self.name,

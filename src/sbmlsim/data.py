@@ -166,6 +166,7 @@ class Data(object):
 
             self.unit = xres.udict[self.index]
             # FIXME: complete data must be kept
+            # print(xres)
             x = xres.dim_mean(self.index)
             # x = xres[self.index]
 

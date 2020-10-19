@@ -39,9 +39,9 @@ class DataSetsComparison(object):
 
     The simulations must contain a "time" column with identical time points.
     """
-    tol_abs = 1e-5  # absolute tolerance for comparison
-    tol_rel = 1e-5  # relative tolerance for comparison
-    eps_plot = 1E-3 * tol_abs  # tolerance for plotting
+    tol_abs = 1e-4  # absolute tolerance for comparison
+    tol_rel = 1e-4  # relative tolerance for comparison
+    eps_plot = 1E-5 * tol_abs  # tolerance for plotting
 
     @timeit
     def __init__(self, dfs_dict: Dict[str, pd.DataFrame], columns_filter=None,

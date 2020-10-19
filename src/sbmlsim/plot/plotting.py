@@ -676,10 +676,11 @@ class Plot(BasePlotObject):
         if count is not None and dataset is None:
             raise ValueError("'count' can only be set on a dataset")
         if label == "__nolabel__":
-            raise ValueError(
+            logger.error(
                 "'label' is set to '__nolabel__', to not add a label for "
                 "a curve use 'label=None' instead."
             )
+            label = None
         if label == "__yid__":
             logger.warning(
                 "No label provided on curve, using default label 'yid'. "
