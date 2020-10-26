@@ -30,11 +30,8 @@ class RepressilatorExperiment(SimulationExperiment):
         return {
             "model1": MODEL_REPRESSILATOR,
             "model2": AbstractModel(
-                MODEL_REPRESSILATOR,
-                changes={
-                    "beta": self.Q_(0, "dimensionless")
-                }
-            )
+                MODEL_REPRESSILATOR, changes={"beta": self.Q_(0, "dimensionless")}
+            ),
         }
 
     def tasks(self) -> Dict[str, Task]:
@@ -172,7 +169,6 @@ class RepressilatorExperiment(SimulationExperiment):
                 label="Y sim",
                 color="blue",
             )
-
 
         fig2 = Figure(experiment=self, sid="Fig2", num_rows=2, num_cols=1)
         plots = fig2.create_plots(

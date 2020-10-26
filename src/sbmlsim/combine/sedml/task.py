@@ -18,9 +18,7 @@ class TaskNode(object):
         return len(self.children) == 0
 
     def __str__(self) -> str:
-        lines = [
-            f"<[{self.depth}] {self.task.getId()} ({self.task.getElementName()})>"
-        ]
+        lines = [f"<[{self.depth}] {self.task.getId()} ({self.task.getElementName()})>"]
         for child in self.children:
             child_str = child.__str__()
             lines.extend([f"\t{line}" for line in child_str.split("\n")])
@@ -91,9 +89,7 @@ class TaskTree(object):
                     # recursive adding of children
                     add_children(child)
             else:
-                raise IOError(
-                    "Unsupported task type: {node.task_id.getElementName()}"
-                )
+                raise IOError("Unsupported task type: {node.task_id.getElementName()}")
 
         # create root
         root = TaskNode(root_task, depth=0)

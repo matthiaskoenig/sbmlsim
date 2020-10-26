@@ -5,7 +5,7 @@ import json
 import logging
 from copy import deepcopy
 from pathlib import Path
-from typing import List, Tuple, Dict
+from typing import Dict, List, Tuple
 
 import numpy as np
 

@@ -103,11 +103,11 @@ import libsedml
 import numpy as np
 
 from sbmlsim.combine.sedml.data import DataDescriptionParser
+from sbmlsim.combine.sedml.io import read_sedml
 from sbmlsim.combine.sedml.kisao import is_supported_algorithm_for_simulation_type
 from sbmlsim.combine.sedml.task import Stack, TaskNode, TaskTree
-from sbmlsim.combine.sedml.io import read_sedml
 from sbmlsim.data import DataSet
-from sbmlsim.experiment import SimulationExperiment, ExperimentDict
+from sbmlsim.experiment import ExperimentDict, SimulationExperiment
 from sbmlsim.model import model_resources
 from sbmlsim.model.model import AbstractModel
 from sbmlsim.units import UnitRegistry
@@ -143,10 +143,6 @@ class SEDMLParser(object):
         self.sed_doc = sed_doc  # type: libsedml.SedDocument
         self.working_dir = working_dir
 
-
-
-
-
         # unit registry to handle units throughout the simulation
         self.ureg = UnitRegistry()
 
@@ -176,7 +172,6 @@ class SEDMLParser(object):
             )
         print(f"data_descriptions: {self.data_descriptions}")
 
-
         # Create the experiment class
         def f_models(obj) -> Dict[str, AbstractModel]:
             return ExperimentDict(self.models)
@@ -191,9 +186,9 @@ class SEDMLParser(object):
             "SedmlExperiment",
             (SimulationExperiment,),
             {
-                'models': f_models,
-                'datasets': f_datasets,
-            }
+                "models": f_models,
+                "datasets": f_datasets,
+            },
         )
 
         # --- Simulations ---
@@ -205,7 +200,6 @@ class SEDMLParser(object):
             self.tasks[tid] = self.parse_task(sed_task)
 
         print(f"tasks: {self.tasks}")
-
 
     # --- MODELS ---
     def parse_model(
@@ -481,24 +475,25 @@ class SEDMLParser(object):
     def _parse_simple_task(self, task_node: TaskNode):
         print("parse simple task")
 
-
-
-
         for ksub, subtask in enumerate(subtasks):
             t = doc.getTask(subtask.getTask())
 
             resultVariable = "__subtask__".format(t.getId())
             selections = SEDMLCodeFactory.selectionsForTask(doc=doc, task=task)
             if t.getTypeCode() == libsedml.SEDML_TASK:
-                forLines.extend(SEDMLCodeFactory.subtaskToPython(doc, task=t,
-                                                          selections=selections,
-                                                          resultVariable=resultVariable))
+                forLines.extend(
+                    SEDMLCodeFactory.subtaskToPython(
+                        doc,
+                        task=t,
+                        selections=selections,
+                        resultVariable=resultVariable,
+                    )
+                )
                 forLines.append("{}.extend([__subtask__])".format(task.getId()))
 
             elif t.getTypeCode() == libsedml.SEDML_TASK_REPEATEDTASK:
                 forLines.extend(SEDMLCodeFactory.repeatedTaskToPython(doc, task=t))
                 forLines.append("{}.extend({})".format(task.getId(), t.getId()))
-
 
         return
 
@@ -516,13 +511,15 @@ class SEDMLParser(object):
         raise NotImplementedError
         return
 
-
-    def data_generators_for_task(self,
+    def data_generators_for_task(
+        self,
         sed_task: libsedml.SedTask,
     ) -> List[libsedml.SedDataGenerator]:
         """ Get the DataGenerators which reference the given task."""
         sed_dgs = []
-        for sed_dg in self.sed_doc.getListOfDataGenerators():  # type: libsedml.SedDataGenerator
+        for (
+            sed_dg
+        ) in self.sed_doc.getListOfDataGenerators():  # type: libsedml.SedDataGenerator
             for var in sed_dg.getListOfVariables():  # type: libsedml.SedVariable
                 if var.getTaskReference() == sed_task.getId():
                     sed_dgs.append(sed_dg)
@@ -564,4 +561,3 @@ class SEDMLParser(object):
         if all(subtask_order) is not None:
             subtasks = [st for (stOrder, st) in sorted(zip(subtask_order, subtasks))]
         return subtasks
-

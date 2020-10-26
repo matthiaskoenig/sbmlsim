@@ -1,16 +1,17 @@
 """
 Template functions to run the example cases.
 """
-import logging
 import importlib
+import logging
 import os
 import zipfile
 from pathlib import Path
-from typing import Union, Dict
+from typing import Dict, Union
 from xml.etree import ElementTree
 
 import libcombine
 import libsedml
+
 
 logger = logging.getLogger(__name__)
 
@@ -92,8 +93,10 @@ def read_sedml(source: Union[Path, str], working_dir: Path = None) -> Dict:
             if len(sedml_files) == 0:
                 raise IOError(f"No SEDML files found in archive: {omex_path}")
             elif len(sedml_files) > 1:
-                logger.warning("More than one sedml file in archive, only "
-                               f"processing first file.")
+                logger.warning(
+                    "More than one sedml file in archive, only "
+                    f"processing first file."
+                )
 
             sedml_path = extract_dir / sedml_files[0]
             if not file_path.exists():
@@ -109,8 +112,9 @@ def read_sedml(source: Union[Path, str], working_dir: Path = None) -> Dict:
             print(f"SED-ML from file: {file_path}")
             input_type = INPUT_TYPE_FILE_SEDML
             if file_suffix not in [".sedml", ".xml"]:
-                raise IOError(f"SEDML file must have [.sedml|.xml] extension:"
-                              f"'{source}'")
+                raise IOError(
+                    f"SEDML file must have [.sedml|.xml] extension:" f"'{source}'"
+                )
 
             doc = libsedml.readSedMLFromFile(str(source))
 

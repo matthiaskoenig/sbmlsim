@@ -13,6 +13,7 @@ from typing import Dict, List, Tuple, Union
 from sbmlsim.model.model_resources import Source
 from sbmlsim.units import Units
 
+
 logger = logging.getLogger(__name__)
 
 
@@ -81,8 +82,7 @@ class AbstractModel(object):
         self.changes = Units.normalize_changes(self.changes, udict=udict, ureg=ureg)
 
     def to_dict(self):
-        """ Convert to dictionary.
-        """
+        """Convert to dictionary."""
         d = {
             "sid": self.sid,
             "name": self.name,

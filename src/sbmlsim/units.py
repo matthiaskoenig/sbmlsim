@@ -196,7 +196,6 @@ class Units:
             logger.debug(f"uid normalization: {uid_in} -> {uid}")
         return uid
 
-
     @classmethod
     def unitDefinitionToString(cls, udef: libsbml.UnitDefinition) -> str:
         """Formating of SBML unitDefinitions.

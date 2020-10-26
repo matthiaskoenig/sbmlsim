@@ -7,7 +7,7 @@ Used to benchmark the simulation results.
 
 import logging
 from pathlib import Path
-from typing import List, Dict
+from typing import Dict, List
 
 import pandas as pd
 from matplotlib import pyplot as plt
@@ -18,7 +18,7 @@ from sbmlsim.utils import timeit
 logger = logging.getLogger(__name__)
 
 
-def get_files_by_extension(base_path: Path, extension: str=".json") -> Dict[str, str]:
+def get_files_by_extension(base_path: Path, extension: str = ".json") -> Dict[str, str]:
     """Get all files by given extension
 
     Simulation definitions are json files.
@@ -39,15 +39,19 @@ class DataSetsComparison(object):
 
     The simulations must contain a "time" column with identical time points.
     """
+
     tol_abs = 1e-4  # absolute tolerance for comparison
     tol_rel = 1e-4  # relative tolerance for comparison
-    eps_plot = 1E-5 * tol_abs  # tolerance for plotting
+    eps_plot = 1e-5 * tol_abs  # tolerance for plotting
 
     @timeit
-    def __init__(self, dfs_dict: Dict[str, pd.DataFrame], columns_filter=None,
-                 time_column: bool = True,
-                 title: str = None
-                 ):
+    def __init__(
+        self,
+        dfs_dict: Dict[str, pd.DataFrame],
+        columns_filter=None,
+        time_column: bool = True,
+        title: str = None,
+    ):
         """Initialize the comparison.
 
         :param dfs_dict: data dictionary d[simulator_key] = df_result
@@ -89,7 +93,13 @@ class DataSetsComparison(object):
         self.title = title if title else " | ".join(self.labels)
 
         # calculate difference
-        self.diff, self.diff_abs, self.diff_rel, self.diff_tol, self.diff_tol_bool = self.df_diff()
+        (
+            self.diff,
+            self.diff_abs,
+            self.diff_rel,
+            self.diff_tol,
+            self.diff_tol_bool,
+        ) = self.df_diff()
 
     @classmethod
     def _process_columns(cls, dataframes):
@@ -155,7 +165,7 @@ class DataSetsComparison(object):
         return dfs, labels
 
     def df_diff(self):
-        """ DataFrame of all differences between the files.
+        """DataFrame of all differences between the files.
 
         https://github.com/sbmlteam/sbml-test-suite/blob/master/cases/semantic/README.md
         Let the following variables be defined:
@@ -189,7 +199,7 @@ class DataSetsComparison(object):
         # |c_ij - u_ij| <= (abs_tol + rel_tol * |c_ij|)
 
         # > 0 if difference
-        diff_tol = (c-u).abs() - (self.tol_abs + self.tol_rel * c.abs())
+        diff_tol = (c - u).abs() - (self.tol_abs + self.tol_rel * c.abs())
 
         # boolean matrix: True if difference, False if identical
         diff_tol_bool = diff_tol > 0
@@ -242,8 +252,9 @@ class DataSetsComparison(object):
         lines.append("# Maximum element difference")
         lines.append(str(self.diff.abs().max().max()))
 
-        lines.append(f"# Datasets are equal "
-                     f"(|c_ij - u_ij| <= (tol_abs + tol_rel * |c_ij|))")
+        lines.append(
+            f"# Datasets are equal " f"(|c_ij - u_ij| <= (tol_abs + tol_rel * |c_ij|))"
+        )
         lines.append(str(self.is_equal()).upper())
         lines.append("-" * 80)
         if not self.is_equal():
@@ -265,7 +276,6 @@ class DataSetsComparison(object):
         """Plots lines for entries which are above epsilon treshold."""
 
         import seaborn as sns
-
 
         # FIXME: only plot the top differences, otherwise plotting takes
         # very long
@@ -318,6 +328,5 @@ class DataSetsComparison(object):
             # ax.set_xlim(right=ax.get_xlim()[1] * 2)
 
         # ax3.imshow(self.diff_tol, cmap='Greys')
-
 
         return f1

@@ -7,7 +7,9 @@ from sbmlsim.examples.experiments.midazolam.experiments.kupferschmidt1995 import
     Kupferschmidt1995,
 )
 from sbmlsim.examples.experiments.midazolam.experiments.mandema1992 import Mandema1992
-from sbmlsim.examples.experiments.midazolam.experiments.model_change import MidazolamModelChangeExperiment
+from sbmlsim.examples.experiments.midazolam.experiments.model_change import (
+    MidazolamModelChangeExperiment,
+)
 from sbmlsim.experiment import ExperimentRunner
 from sbmlsim.report.experiment_report import ExperimentReport, ReportResults
 from sbmlsim.simulator import SimulatorSerial
