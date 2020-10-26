@@ -8,7 +8,7 @@ from pathlib import Path
 import libsedml
 
 from sbmlsim.combine.sedml.data import DataDescriptionParser
-from sbmlsim.combine.sedml.io import read_sedml
+from sbmlsim.combine.sedml.io import check_sedml, read_sedml
 from sbmlsim.test import DATA_DIR
 
 
@@ -74,7 +74,7 @@ def _parseDataDescriptions(sedml_path):
     assert os.path.exists(sedml_path_str)
 
     doc_sedml = libsedml.readSedMLFromFile(sedml_path_str)
-    SEDMLTools.check_sedml(doc_sedml)
+    check_sedml(doc_sedml)
 
     # parse DataDescriptions
     list_dd = doc_sedml.getListOfDataDescriptions()

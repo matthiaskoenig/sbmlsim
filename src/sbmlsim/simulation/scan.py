@@ -5,7 +5,7 @@ from typing import Dict, List
 
 import numpy as np
 
-from sbmlsim.simulation import AbstractSim, Dimension
+from sbmlsim.simulation import AbstractSim, Dimension, TimecourseSim
 from sbmlsim.units import UnitRegistry, Units
 
 

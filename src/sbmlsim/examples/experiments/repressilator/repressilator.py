@@ -30,7 +30,7 @@ class RepressilatorExperiment(SimulationExperiment):
         return {
             "model1": MODEL_REPRESSILATOR,
             "model2": AbstractModel(
-                MODEL_REPRESSILATOR, changes={"beta": self.Q_(0, "dimensionless")}
+                MODEL_REPRESSILATOR, changes={"X": self.Q_(100, "dimensionless")}
             ),
         }
 
