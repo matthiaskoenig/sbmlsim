@@ -1,6 +1,7 @@
 import json
 import logging
 from collections import defaultdict
+from copy import deepcopy
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Dict, Iterable, List
@@ -86,7 +87,7 @@ class SimulationExperiment(object):
         self.settings = kwargs
 
         # init variables
-        self._models = ExperimentDict()  # instances are loaded by runner !
+        self._models = ExperimentDict()
         self._data = ExperimentDict()
         self._datasets = ExperimentDict()
         self._fit_mappings = ExperimentDict()
@@ -131,7 +132,7 @@ class SimulationExperiment(object):
 
     # --- MODELS --------------------------------------------------------------
     def models(self) -> Dict[str, AbstractModel]:
-        logger.debug(f"No models defined for '{self.sid}'.")
+        """Model definition"""
         return ExperimentDict()
 
     # --- DATASETS ------------------------------------------------------------
@@ -352,9 +353,14 @@ class SimulationExperiment(object):
 
         # execute all tasks for given model
         for model_id, task_keys in model_tasks.items():
+
+            model = self._models[model_id]  # type: AbstractModel
+
             # load model in simulator
-            model = self._models[model_id]
             simulator.set_model(model=model)
+
+            # normalize model changes (these must be set in simulation!)
+            model.normalize(udict=simulator.udict, ureg=simulator.ureg)
 
             if reduced_selections:
                 # set selections based on data
@@ -374,7 +380,10 @@ class SimulationExperiment(object):
 
             for task_key in task_keys:  # type: str
                 task = self._tasks[task_key]
-                sim = self._simulations[task.simulation_id]
+
+                # copy simulation definition for injecting model changes
+                sim = deepcopy(self._simulations[task.simulation_id])
+                sim.add_model_changes(model.changes)
                 if isinstance(sim, TimecourseSim):
                     self._results[task_key] = simulator.run_timecourse(sim)
                 elif isinstance(sim, ScanSim):

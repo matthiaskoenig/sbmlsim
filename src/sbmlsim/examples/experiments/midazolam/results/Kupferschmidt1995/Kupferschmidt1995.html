@@ -66,8 +66,8 @@
 <code class="python">from typing import Dict, List
 
 from sbmlsim.data import DataSet, load_pkdb_dataframes_by_substance
-from sbmlsim.fit import FitMapping, FitData
-from sbmlsim.plot import Figure, Axis
+from sbmlsim.fit import FitData, FitMapping
+from sbmlsim.plot import Axis, Figure
 from sbmlsim.simulation import Timecourse, TimecourseSim
 
 from . import MidazolamSimulationExperiment
@@ -78,7 +78,8 @@ class Kupferschmidt1995(MidazolamSimulationExperiment):
         dsets = {}
         for fig_id in ["Fig1", "Fig2"]:
             dframes = load_pkdb_dataframes_by_substance(
-                f"{self.sid}_{fig_id}", data_path=self.data_path)
+                f"{self.sid}_{fig_id}", data_path=self.data_path
+            )
             for substance, df in dframes.items():
                 dset = DataSet.from_df(df, self.ureg)
                 if substance == "midazolam":
@@ -102,7 +103,9 @@ class Kupferschmidt1995(MidazolamSimulationExperiment):
                     else:
                         type = "control"
 
-                    dsets[f"{fig_id}_{substance}_{route}_{type}"] = dset[dset.intervention == intervention]
+                    dsets[f"{fig_id}_{substance}_{route}_{type}"] = dset[
+                        dset.intervention == intervention
+                    ]
         return dsets
 
     def simulations(self) -> Dict[str, TimecourseSim]:
@@ -111,7 +114,7 @@ class Kupferschmidt1995(MidazolamSimulationExperiment):
         )
 
     def simulations_mid(self) -> Dict[str, TimecourseSim]:
-        """ Kupferschmidt1995
+        """Kupferschmidt1995
 
         - midazolam, iv, 5 [mg]
         - midazolam, po, 15 [mg]
@@ -120,60 +123,91 @@ class Kupferschmidt1995(MidazolamSimulationExperiment):
 
         """
         Q_ = self.Q_
-        bodyweight = Q_(70, 'kg') # avg. bodyweight of 8 individuals. (se=1kg)
-        mid_iv = Q_(5, 'mg')
-        mid_po = Q_(15, 'mg')
+        bodyweight = Q_(70, "kg")  # avg. bodyweight of 8 individuals. (se=1kg)
+        mid_iv = Q_(5, "mg")
+        mid_po = Q_(15, "mg")
 
         sim_def = {
-            "mid_iv_c": {'end': 1500, 'steps': 3000, 'dose': {'IVDOSE_mid': mid_iv}, 'change': self.default_changes()},
-            "mid_po_c": {'end': 1500, 'steps': 3000, 'dose': {'PODOSE_mid': mid_po}, 'change': self.default_changes()},
+            "mid_iv_c": {
+                "end": 1500,
+                "steps": 3000,
+                "dose": {"IVDOSE_mid": mid_iv},
+                "change": self.default_changes(),
+            },
+            "mid_po_c": {
+                "end": 1500,
+                "steps": 3000,
+                "dose": {"PODOSE_mid": mid_po},
+                "change": self.default_changes(),
+            },
         }
         tcsims = {}
         for key, value in sim_def.items():
-            tcsims[key] = TimecourseSim([
-                Timecourse(start=0, end=value['end'], steps=value['steps'],
-                           changes={**value['change'],
-                                    **value['dose'],
-                                    "BW": bodyweight}
-                           )
-        ])
+            tcsims[key] = TimecourseSim(
+                [
+                    Timecourse(
+                        start=0,
+                        end=value["end"],
+                        steps=value["steps"],
+                        changes={**value["change"], **value["dose"], "BW": bodyweight},
+                    )
+                ]
+            )
 
         return tcsims
 
     def fit_mappings(self) -> Dict[str, FitMapping]:
         # fit mapping: which data maps on which simulation
         fit_dict = {
-            "fm_mid_iv": {"ref": "Fig1_midazolam_iv_control", "obs": "task_mid_iv_c", "yid": "[Cve_mid]"},
-            "fm_mid1oh_iv": {"ref": "Fig2_1-hydroxymidazolam_iv_control", "obs": "task_mid_iv_c", "yid": "[Cve_mid1oh]"},
-            "fm_mid_po": {"ref": "Fig1_midazolam_po_control", "obs": "task_mid_po_c", "yid": "[Cve_mid]"},
-            "fm_mid1oh_po": {"ref": "Fig2_1-hydroxymidazolam_po_control", "obs": "task_mid_po_c", "yid": "[Cve_mid1oh]"},
+            "fm_mid_iv": {
+                "ref": "Fig1_midazolam_iv_control",
+                "obs": "task_mid_iv_c",
+                "yid": "[Cve_mid]",
+            },
+            "fm_mid1oh_iv": {
+                "ref": "Fig2_1-hydroxymidazolam_iv_control",
+                "obs": "task_mid_iv_c",
+                "yid": "[Cve_mid1oh]",
+            },
+            "fm_mid_po": {
+                "ref": "Fig1_midazolam_po_control",
+                "obs": "task_mid_po_c",
+                "yid": "[Cve_mid]",
+            },
+            "fm_mid1oh_po": {
+                "ref": "Fig2_1-hydroxymidazolam_po_control",
+                "obs": "task_mid_po_c",
+                "yid": "[Cve_mid1oh]",
+            },
         }
 
         mappings = {}
         for key, values in fit_dict.items():
             mappings[key] = FitMapping(
                 self,
-                reference=FitData(self, dataset=values["ref"], xid="time", yid="mean", yid_sd="mean_sd"),
-                observable=FitData(self, task=values["obs"], xid="time", yid=values["yid"])
+                reference=FitData(
+                    self,
+                    dataset=values["ref"],
+                    xid="time",
+                    yid="mean",
+                    yid_sd="mean_sd",
+                ),
+                observable=FitData(
+                    self, task=values["obs"], xid="time", yid=values["yid"]
+                ),
             )
         return mappings
 
     def figures(self) -> Dict[str, Figure]:
-        return {
-            **self.figure_mid()
-        }
+        return {**self.figure_mid()}
 
     def figure_mid(self):
         unit_time = "min"
         unit_mid = "nmol/ml"
         unit_mid1oh = "nmol/ml"
 
-        fig = Figure(self, sid="Fig1",
-                     num_rows=2, num_cols=2, name=self.sid)
-        plots = fig.create_plots(
-            Axis("time", unit=unit_time),
-            legend=True
-        )
+        fig = Figure(self, sid="Fig1", num_rows=2, num_cols=2, name=self.sid)
+        plots = fig.create_plots(Axis("time", unit=unit_time), legend=True)
 
         # set titles and labs
         plots[0].set_title("midazolam iv, 5 [mg]")
@@ -188,8 +222,16 @@ class Kupferschmidt1995(MidazolamSimulationExperiment):
 
         # simulation
         plot_dict = {
-            "mid_iv_c": {'plot': (0, 1), 'label': 'mid (ve blood; control)', "color": "black"},
-            "mid_po_c": {'plot': (2, 3), 'label': 'mid (ve blood; control)', "color": "black"},
+            "mid_iv_c": {
+                "plot": (0, 1),
+                "label": "mid (ve blood; control)",
+                "color": "black",
+            },
+            "mid_po_c": {
+                "plot": (2, 3),
+                "label": "mid (ve blood; control)",
+                "color": "black",
+            },
         }
 
         for key, value in plot_dict.items():
@@ -197,29 +239,63 @@ class Kupferschmidt1995(MidazolamSimulationExperiment):
                 task_id = f"task_{key}{suffix}"
                 # plot midazolam
                 p = plots[value["plot"][0]]
-                p.add_data(task=task_id, xid='time', yid='[Cve_mid]',
-                           label=value['label'], color=value['color'], linewidth=2)
+                p.add_data(
+                    task=task_id,
+                    xid="time",
+                    yid="[Cve_mid]",
+                    label=value["label"],
+                    color=value["color"],
+                    linewidth=2,
+                )
                 # plot 1-hydroxymidazolam
                 p = plots[value["plot"][1]]
-                p.add_data(task=task_id, xid='time', yid='[Cve_mid1oh]',
-                           label=value['label'], color=value['color'], linewidth=2)
+                p.add_data(
+                    task=task_id,
+                    xid="time",
+                    yid="[Cve_mid1oh]",
+                    label=value["label"],
+                    color=value["color"],
+                    linewidth=2,
+                )
 
         # plot data
         data_def = {
-            "Fig1_midazolam_iv_control": {'plot': 0, 'key': 'control', 'color': 'black'},
-            "Fig1_midazolam_po_control": {'plot': 1, 'key': 'control', 'color': 'black'},
-            "Fig2_1-hydroxymidazolam_iv_control": {'plot': 2, 'key': 'control', 'color': 'black'},
-            "Fig2_1-hydroxymidazolam_po_control": {'plot': 3, 'key': 'control', 'color': 'black'},
+            "Fig1_midazolam_iv_control": {
+                "plot": 0,
+                "key": "control",
+                "color": "black",
+            },
+            "Fig1_midazolam_po_control": {
+                "plot": 1,
+                "key": "control",
+                "color": "black",
+            },
+            "Fig2_1-hydroxymidazolam_iv_control": {
+                "plot": 2,
+                "key": "control",
+                "color": "black",
+            },
+            "Fig2_1-hydroxymidazolam_po_control": {
+                "plot": 3,
+                "key": "control",
+                "color": "black",
+            },
         }
 
         for dset_key, dset_info in data_def.items():
-            p = plots[dset_info['plot']]
-            p.add_data(dataset=dset_key,
-                       xid="time", yid="mean", yid_sd="mean_sd",
-                       count=None, color=dset_info['color'],
-                       label=dset_info['key'])
+            p = plots[dset_info["plot"]]
+            p.add_data(
+                dataset=dset_key,
+                xid="time",
+                yid="mean",
+                yid_sd="mean_sd",
+                count=None,
+                color=dset_info["color"],
+                label=dset_info["key"],
+            )
 
-        return {"fig1": fig}</code>
+        return {"fig1": fig}
+</code>
         </pre>
             </p>
 

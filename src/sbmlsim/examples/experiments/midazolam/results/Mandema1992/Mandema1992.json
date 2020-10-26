@@ -1,7 +1,7 @@
 {
   "experiment_id": "Mandema1992",
-  "base_path": "/home/mkoenig/git/sbmlsim/sbmlsim/examples/experiments/midazolam",
-  "data_path": "[PosixPath('/home/mkoenig/git/sbmlsim/sbmlsim/examples/experiments/midazolam/data')]",
+  "base_path": "/home/mkoenig/git/sbmlsim/src/sbmlsim/examples/experiments/midazolam",
+  "data_path": "[PosixPath('/home/mkoenig/git/sbmlsim/src/sbmlsim/examples/experiments/midazolam/data')]",
   "models": {
     "model": {
       "sid": null,
@@ -9,8 +9,8 @@
       "language": "SBML",
       "language_type": "SBML",
       "source": {
-        "source": "/home/mkoenig/git/sbmlsim/sbmlsim/examples/experiments/midazolam/model/midazolam_body_flat.xml",
-        "path": "/home/mkoenig/git/sbmlsim/sbmlsim/examples/experiments/midazolam/model/midazolam_body_flat.xml",
+        "source": "/home/mkoenig/git/sbmlsim/src/sbmlsim/examples/experiments/midazolam/model/midazolam_body_flat.xml",
+        "path": "/home/mkoenig/git/sbmlsim/src/sbmlsim/examples/experiments/midazolam/model/midazolam_body_flat.xml",
         "content": null
       },
       "changes": {}
@@ -250,7 +250,7 @@
     "Fig1A_midazolam__time": {
       "type": "DATASET",
       "index": "time",
-      "unit": null,
+      "unit": "min",
       "task": null,
       "dataset": "Fig1A_midazolam",
       "function": null,
@@ -259,7 +259,7 @@
     "Fig1A_midazolam__mean": {
       "type": "DATASET",
       "index": "mean",
-      "unit": null,
+      "unit": "mole/meter^3",
       "task": null,
       "dataset": "Fig1A_midazolam",
       "function": null,
@@ -268,7 +268,7 @@
     "Fig1A_midazolam__mean_sd": {
       "type": "DATASET",
       "index": "mean_sd",
-      "unit": null,
+      "unit": "mole/meter^3",
       "task": null,
       "dataset": "Fig1A_midazolam",
       "function": null,
@@ -277,7 +277,7 @@
     "task_mid_iv__time": {
       "type": "TASK",
       "index": "time",
-      "unit": null,
+      "unit": "min",
       "task": "task_mid_iv",
       "dataset": null,
       "function": null,
@@ -286,7 +286,7 @@
     "task_mid_iv__[Cve_mid]": {
       "type": "TASK",
       "index": "[Cve_mid]",
-      "unit": null,
+      "unit": "mmole/litre",
       "task": "task_mid_iv",
       "dataset": null,
       "function": null,
@@ -295,7 +295,7 @@
     "Fig3A_midazolam__time": {
       "type": "DATASET",
       "index": "time",
-      "unit": null,
+      "unit": "min",
       "task": null,
       "dataset": "Fig3A_midazolam",
       "function": null,
@@ -304,7 +304,7 @@
     "Fig3A_midazolam__mean": {
       "type": "DATASET",
       "index": "mean",
-      "unit": null,
+      "unit": "mole/meter^3",
       "task": null,
       "dataset": "Fig3A_midazolam",
       "function": null,
@@ -313,7 +313,7 @@
     "Fig3A_midazolam__mean_sd": {
       "type": "DATASET",
       "index": "mean_sd",
-      "unit": null,
+      "unit": "mole/meter^3",
       "task": null,
       "dataset": "Fig3A_midazolam",
       "function": null,
@@ -322,7 +322,7 @@
     "task_mid_po__time": {
       "type": "TASK",
       "index": "time",
-      "unit": null,
+      "unit": "min",
       "task": "task_mid_po",
       "dataset": null,
       "function": null,
@@ -331,7 +331,7 @@
     "task_mid_po__[Cve_mid]": {
       "type": "TASK",
       "index": "[Cve_mid]",
-      "unit": null,
+      "unit": "mmole/litre",
       "task": "task_mid_po",
       "dataset": null,
       "function": null,
@@ -340,7 +340,7 @@
     "Fig1A_1-hydroxymidazolam__time": {
       "type": "DATASET",
       "index": "time",
-      "unit": null,
+      "unit": "min",
       "task": null,
       "dataset": "Fig1A_1-hydroxymidazolam",
       "function": null,
@@ -349,7 +349,7 @@
     "Fig1A_1-hydroxymidazolam__mean": {
       "type": "DATASET",
       "index": "mean",
-      "unit": null,
+      "unit": "mole/meter^3",
       "task": null,
       "dataset": "Fig1A_1-hydroxymidazolam",
       "function": null,
@@ -358,7 +358,7 @@
     "Fig1A_1-hydroxymidazolam__mean_sd": {
       "type": "DATASET",
       "index": "mean_sd",
-      "unit": null,
+      "unit": "mole/meter^3",
       "task": null,
       "dataset": "Fig1A_1-hydroxymidazolam",
       "function": null,
@@ -367,7 +367,7 @@
     "task_mid_iv__[Cve_mid1oh]": {
       "type": "TASK",
       "index": "[Cve_mid1oh]",
-      "unit": null,
+      "unit": "mmole/litre",
       "task": "task_mid_iv",
       "dataset": null,
       "function": null,
@@ -376,7 +376,7 @@
     "Fig2A_1-hydroxymidazolam__time": {
       "type": "DATASET",
       "index": "time",
-      "unit": null,
+      "unit": "min",
       "task": null,
       "dataset": "Fig2A_1-hydroxymidazolam",
       "function": null,
@@ -385,7 +385,7 @@
     "Fig2A_1-hydroxymidazolam__mean": {
       "type": "DATASET",
       "index": "mean",
-      "unit": null,
+      "unit": "mole/meter^3",
       "task": null,
       "dataset": "Fig2A_1-hydroxymidazolam",
       "function": null,
@@ -394,7 +394,7 @@
     "Fig2A_1-hydroxymidazolam__mean_sd": {
       "type": "DATASET",
       "index": "mean_sd",
-      "unit": null,
+      "unit": "mole/meter^3",
       "task": null,
       "dataset": "Fig2A_1-hydroxymidazolam",
       "function": null,
@@ -403,7 +403,7 @@
     "task_mid1oh_iv__time": {
       "type": "TASK",
       "index": "time",
-      "unit": null,
+      "unit": "min",
       "task": "task_mid1oh_iv",
       "dataset": null,
       "function": null,
@@ -412,7 +412,7 @@
     "task_mid1oh_iv__[Cve_mid1oh]": {
       "type": "TASK",
       "index": "[Cve_mid1oh]",
-      "unit": null,
+      "unit": "mmole/litre",
       "task": "task_mid1oh_iv",
       "dataset": null,
       "function": null,
@@ -421,7 +421,7 @@
     "Fig3A_1-hydroxymidazolam__time": {
       "type": "DATASET",
       "index": "time",
-      "unit": null,
+      "unit": "min",
       "task": null,
       "dataset": "Fig3A_1-hydroxymidazolam",
       "function": null,
@@ -430,7 +430,7 @@
     "Fig3A_1-hydroxymidazolam__mean": {
       "type": "DATASET",
       "index": "mean",
-      "unit": null,
+      "unit": "mole/meter^3",
       "task": null,
       "dataset": "Fig3A_1-hydroxymidazolam",
       "function": null,
@@ -439,7 +439,7 @@
     "Fig3A_1-hydroxymidazolam__mean_sd": {
       "type": "DATASET",
       "index": "mean_sd",
-      "unit": null,
+      "unit": "mole/meter^3",
       "task": null,
       "dataset": "Fig3A_1-hydroxymidazolam",
       "function": null,
@@ -448,7 +448,7 @@
     "task_mid_po__[Cve_mid1oh]": {
       "type": "TASK",
       "index": "[Cve_mid1oh]",
-      "unit": null,
+      "unit": "mmole/litre",
       "task": "task_mid_po",
       "dataset": null,
       "function": null,
@@ -457,7 +457,7 @@
     "task_mid1oh_iv__[Cve_mid]": {
       "type": "TASK",
       "index": "[Cve_mid]",
-      "unit": null,
+      "unit": "mmole/litre",
       "task": "task_mid1oh_iv",
       "dataset": null,
       "function": null,
@@ -477,12 +477,12 @@
           "plot": {
             "sid": "plot0",
             "name": "midazolam iv, 0.1 [mg/kg]",
-            "legend": true,
             "xaxis": {
-              "sid": null,
-              "name": "time",
+              "sid": "plot0_xaxis",
+              "name": "time [min]",
+              "label": "time",
               "unit": "min",
-              "_scale": "LINEAR",
+              "scale": "LINEAR",
               "min": null,
               "max": null,
               "grid": false,
@@ -490,21 +490,28 @@
               "ticks_visible": true
             },
             "yaxis": {
-              "sid": null,
-              "name": "midazolam",
+              "sid": "plot0_yaxis",
+              "name": "midazolam [nmol/ml]",
+              "label": "midazolam",
               "unit": "nmol/ml",
-              "_scale": "LINEAR",
+              "scale": "LINEAR",
               "min": null,
               "max": null,
               "grid": false,
               "label_visible": true,
               "ticks_visible": true
             },
+            "legend": true,
+            "facecolor": "#ffffffff",
             "curves": [
               {
-                "sid": "plot0_curve1",
+                "sid": "plot0_curve0",
                 "name": "mid (ve blood)",
-                "order": null,
+                "x": "task_mid_iv__time",
+                "y": "task_mid_iv__[Cve_mid]",
+                "xerr": null,
+                "yerr": null,
+                "yaxis": null,
                 "style": {
                   "sid": null,
                   "name": null,
@@ -515,23 +522,23 @@
                   },
                   "marker": {
                     "size": null,
-                    "type": null,
+                    "type": "NONE",
                     "fill": "#000000ff",
                     "line_color": null,
                     "line_thickness": null
                   },
                   "fill": null
                 },
-                "x": "task_mid_iv__time",
-                "y": "task_mid_iv__[Cve_mid]",
-                "xerr": null,
-                "yerr": null,
-                "yaxis": null
+                "order": 0
               },
               {
-                "sid": "plot0_curve2",
+                "sid": "plot0_curve1",
                 "name": "mid\u00b1SD",
-                "order": null,
+                "x": "Fig1A_midazolam__time",
+                "y": "Fig1A_midazolam__mean",
+                "xerr": null,
+                "yerr": "Fig1A_midazolam__mean_sd",
+                "yaxis": null,
                 "style": {
                   "sid": null,
                   "name": null,
@@ -549,14 +556,9 @@
                   },
                   "fill": null
                 },
-                "x": "Fig1A_midazolam__time",
-                "y": "Fig1A_midazolam__mean",
-                "xerr": null,
-                "yerr": "Fig1A_midazolam__mean_sd",
-                "yaxis": null
+                "order": 1
               }
-            ],
-            "facecolor": 1.0
+            ]
           },
           "row": 1,
           "col": 1,
@@ -567,12 +569,12 @@
           "plot": {
             "sid": "plot1",
             "name": "1-hydroxymidazolam iv, 0.15 [mg/kg]",
-            "legend": true,
             "xaxis": {
-              "sid": null,
-              "name": "time",
+              "sid": "plot1_xaxis",
+              "name": "time [min]",
+              "label": "time",
               "unit": "min",
-              "_scale": "LINEAR",
+              "scale": "LINEAR",
               "min": null,
               "max": null,
               "grid": false,
@@ -580,21 +582,28 @@
               "ticks_visible": true
             },
             "yaxis": {
-              "sid": null,
-              "name": "midazolam",
+              "sid": "plot1_yaxis",
+              "name": "midazolam [nmol/ml]",
+              "label": "midazolam",
               "unit": "nmol/ml",
-              "_scale": "LINEAR",
+              "scale": "LINEAR",
               "min": null,
               "max": null,
               "grid": false,
               "label_visible": true,
               "ticks_visible": true
             },
+            "legend": true,
+            "facecolor": "#ffffffff",
             "curves": [
               {
-                "sid": "plot1_curve1",
+                "sid": "plot1_curve0",
                 "name": "mid (ve blood)",
-                "order": null,
+                "x": "task_mid1oh_iv__time",
+                "y": "task_mid1oh_iv__[Cve_mid]",
+                "xerr": null,
+                "yerr": null,
+                "yaxis": null,
                 "style": {
                   "sid": null,
                   "name": null,
@@ -605,21 +614,16 @@
                   },
                   "marker": {
                     "size": null,
-                    "type": null,
+                    "type": "NONE",
                     "fill": "#000000ff",
                     "line_color": null,
                     "line_thickness": null
                   },
                   "fill": null
                 },
-                "x": "task_mid1oh_iv__time",
-                "y": "task_mid1oh_iv__[Cve_mid]",
-                "xerr": null,
-                "yerr": null,
-                "yaxis": null
+                "order": 0
               }
-            ],
-            "facecolor": 1.0
+            ]
           },
           "row": 1,
           "col": 2,
@@ -630,12 +634,12 @@
           "plot": {
             "sid": "plot2",
             "name": "midazolam po, 7.5 [mg]",
-            "legend": true,
             "xaxis": {
-              "sid": null,
-              "name": "time",
+              "sid": "plot2_xaxis",
+              "name": "time [min]",
+              "label": "time",
               "unit": "min",
-              "_scale": "LINEAR",
+              "scale": "LINEAR",
               "min": null,
               "max": null,
               "grid": false,
@@ -643,21 +647,28 @@
               "ticks_visible": true
             },
             "yaxis": {
-              "sid": null,
-              "name": "midazolam",
+              "sid": "plot2_yaxis",
+              "name": "midazolam [nmol/ml]",
+              "label": "midazolam",
               "unit": "nmol/ml",
-              "_scale": "LINEAR",
+              "scale": "LINEAR",
               "min": null,
               "max": null,
               "grid": false,
               "label_visible": true,
               "ticks_visible": true
             },
+            "legend": true,
+            "facecolor": "#ffffffff",
             "curves": [
               {
-                "sid": "plot2_curve1",
+                "sid": "plot2_curve0",
                 "name": "mid (ve blood)",
-                "order": null,
+                "x": "task_mid_po__time",
+                "y": "task_mid_po__[Cve_mid]",
+                "xerr": null,
+                "yerr": null,
+                "yaxis": null,
                 "style": {
                   "sid": null,
                   "name": null,
@@ -668,23 +679,23 @@
                   },
                   "marker": {
                     "size": null,
-                    "type": null,
+                    "type": "NONE",
                     "fill": "#000000ff",
                     "line_color": null,
                     "line_thickness": null
                   },
                   "fill": null
                 },
-                "x": "task_mid_po__time",
-                "y": "task_mid_po__[Cve_mid]",
-                "xerr": null,
-                "yerr": null,
-                "yaxis": null
+                "order": 0
               },
               {
-                "sid": "plot2_curve2",
+                "sid": "plot2_curve1",
                 "name": "mid\u00b1SD",
-                "order": null,
+                "x": "Fig3A_midazolam__time",
+                "y": "Fig3A_midazolam__mean",
+                "xerr": null,
+                "yerr": "Fig3A_midazolam__mean_sd",
+                "yaxis": null,
                 "style": {
                   "sid": null,
                   "name": null,
@@ -702,14 +713,9 @@
                   },
                   "fill": null
                 },
-                "x": "Fig3A_midazolam__time",
-                "y": "Fig3A_midazolam__mean",
-                "xerr": null,
-                "yerr": "Fig3A_midazolam__mean_sd",
-                "yaxis": null
+                "order": 1
               }
-            ],
-            "facecolor": 1.0
+            ]
           },
           "row": 1,
           "col": 3,
@@ -720,12 +726,12 @@
           "plot": {
             "sid": "plot3",
             "name": null,
-            "legend": true,
             "xaxis": {
-              "sid": null,
-              "name": "time",
+              "sid": "plot3_xaxis",
+              "name": "time [min]",
+              "label": "time",
               "unit": "min",
-              "_scale": "LINEAR",
+              "scale": "LINEAR",
               "min": null,
               "max": null,
               "grid": false,
@@ -733,21 +739,28 @@
               "ticks_visible": true
             },
             "yaxis": {
-              "sid": null,
-              "name": "1-hydroxymidazolam",
+              "sid": "plot3_yaxis",
+              "name": "1-hydroxymidazolam [nmol/ml]",
+              "label": "1-hydroxymidazolam",
               "unit": "nmol/ml",
-              "_scale": "LINEAR",
+              "scale": "LINEAR",
               "min": null,
               "max": null,
               "grid": false,
               "label_visible": true,
               "ticks_visible": true
             },
+            "legend": true,
+            "facecolor": "#ffffffff",
             "curves": [
               {
-                "sid": "plot3_curve1",
+                "sid": "plot3_curve0",
                 "name": "mid1oh (ve blood)",
-                "order": null,
+                "x": "task_mid_iv__time",
+                "y": "task_mid_iv__[Cve_mid1oh]",
+                "xerr": null,
+                "yerr": null,
+                "yaxis": null,
                 "style": {
                   "sid": null,
                   "name": null,
@@ -758,23 +771,23 @@
                   },
                   "marker": {
                     "size": null,
-                    "type": null,
+                    "type": "NONE",
                     "fill": "#000000ff",
                     "line_color": null,
                     "line_thickness": null
                   },
                   "fill": null
                 },
-                "x": "task_mid_iv__time",
-                "y": "task_mid_iv__[Cve_mid1oh]",
-                "xerr": null,
-                "yerr": null,
-                "yaxis": null
+                "order": 0
               },
               {
-                "sid": "plot3_curve2",
+                "sid": "plot3_curve1",
                 "name": "mid1oh\u00b1SD",
-                "order": null,
+                "x": "Fig1A_1-hydroxymidazolam__time",
+                "y": "Fig1A_1-hydroxymidazolam__mean",
+                "xerr": null,
+                "yerr": "Fig1A_1-hydroxymidazolam__mean_sd",
+                "yaxis": null,
                 "style": {
                   "sid": null,
                   "name": null,
@@ -792,14 +805,9 @@
                   },
                   "fill": null
                 },
-                "x": "Fig1A_1-hydroxymidazolam__time",
-                "y": "Fig1A_1-hydroxymidazolam__mean",
-                "xerr": null,
-                "yerr": "Fig1A_1-hydroxymidazolam__mean_sd",
-                "yaxis": null
+                "order": 1
               }
-            ],
-            "facecolor": 1.0
+            ]
           },
           "row": 2,
           "col": 1,
@@ -810,12 +818,12 @@
           "plot": {
             "sid": "plot4",
             "name": null,
-            "legend": true,
             "xaxis": {
-              "sid": null,
-              "name": "time",
+              "sid": "plot4_xaxis",
+              "name": "time [min]",
+              "label": "time",
               "unit": "min",
-              "_scale": "LINEAR",
+              "scale": "LINEAR",
               "min": null,
               "max": null,
               "grid": false,
@@ -823,21 +831,28 @@
               "ticks_visible": true
             },
             "yaxis": {
-              "sid": null,
-              "name": "1-hydroxymidazolam",
+              "sid": "plot4_yaxis",
+              "name": "1-hydroxymidazolam [nmol/ml]",
+              "label": "1-hydroxymidazolam",
               "unit": "nmol/ml",
-              "_scale": "LINEAR",
+              "scale": "LINEAR",
               "min": null,
               "max": null,
               "grid": false,
               "label_visible": true,
               "ticks_visible": true
             },
+            "legend": true,
+            "facecolor": "#ffffffff",
             "curves": [
               {
-                "sid": "plot4_curve1",
+                "sid": "plot4_curve0",
                 "name": "mid1oh (ve blood)",
-                "order": null,
+                "x": "task_mid1oh_iv__time",
+                "y": "task_mid1oh_iv__[Cve_mid1oh]",
+                "xerr": null,
+                "yerr": null,
+                "yaxis": null,
                 "style": {
                   "sid": null,
                   "name": null,
@@ -848,23 +863,23 @@
                   },
                   "marker": {
                     "size": null,
-                    "type": null,
+                    "type": "NONE",
                     "fill": "#000000ff",
                     "line_color": null,
                     "line_thickness": null
                   },
                   "fill": null
                 },
-                "x": "task_mid1oh_iv__time",
-                "y": "task_mid1oh_iv__[Cve_mid1oh]",
-                "xerr": null,
-                "yerr": null,
-                "yaxis": null
+                "order": 0
               },
               {
-                "sid": "plot4_curve2",
+                "sid": "plot4_curve1",
                 "name": "mid1oh\u00b1SD",
-                "order": null,
+                "x": "Fig2A_1-hydroxymidazolam__time",
+                "y": "Fig2A_1-hydroxymidazolam__mean",
+                "xerr": null,
+                "yerr": "Fig2A_1-hydroxymidazolam__mean_sd",
+                "yaxis": null,
                 "style": {
                   "sid": null,
                   "name": null,
@@ -882,14 +897,9 @@
                   },
                   "fill": null
                 },
-                "x": "Fig2A_1-hydroxymidazolam__time",
-                "y": "Fig2A_1-hydroxymidazolam__mean",
-                "xerr": null,
-                "yerr": "Fig2A_1-hydroxymidazolam__mean_sd",
-                "yaxis": null
+                "order": 1
               }
-            ],
-            "facecolor": 1.0
+            ]
           },
           "row": 2,
           "col": 2,
@@ -900,12 +910,12 @@
           "plot": {
             "sid": "plot5",
             "name": null,
-            "legend": true,
             "xaxis": {
-              "sid": null,
-              "name": "time",
+              "sid": "plot5_xaxis",
+              "name": "time [min]",
+              "label": "time",
               "unit": "min",
-              "_scale": "LINEAR",
+              "scale": "LINEAR",
               "min": null,
               "max": null,
               "grid": false,
@@ -913,21 +923,28 @@
               "ticks_visible": true
             },
             "yaxis": {
-              "sid": null,
-              "name": "1-hydroxymidazolam",
+              "sid": "plot5_yaxis",
+              "name": "1-hydroxymidazolam [nmol/ml]",
+              "label": "1-hydroxymidazolam",
               "unit": "nmol/ml",
-              "_scale": "LINEAR",
+              "scale": "LINEAR",
               "min": null,
               "max": null,
               "grid": false,
               "label_visible": true,
               "ticks_visible": true
             },
+            "legend": true,
+            "facecolor": "#ffffffff",
             "curves": [
               {
-                "sid": "plot5_curve1",
+                "sid": "plot5_curve0",
                 "name": "mid1oh (ve blood)",
-                "order": null,
+                "x": "task_mid_po__time",
+                "y": "task_mid_po__[Cve_mid1oh]",
+                "xerr": null,
+                "yerr": null,
+                "yaxis": null,
                 "style": {
                   "sid": null,
                   "name": null,
@@ -938,23 +955,23 @@
                   },
                   "marker": {
                     "size": null,
-                    "type": null,
+                    "type": "NONE",
                     "fill": "#000000ff",
                     "line_color": null,
                     "line_thickness": null
                   },
                   "fill": null
                 },
-                "x": "task_mid_po__time",
-                "y": "task_mid_po__[Cve_mid1oh]",
-                "xerr": null,
-                "yerr": null,
-                "yaxis": null
+                "order": 0
               },
               {
-                "sid": "plot5_curve2",
+                "sid": "plot5_curve1",
                 "name": "mid1oh\u00b1SD",
-                "order": null,
+                "x": "Fig3A_1-hydroxymidazolam__time",
+                "y": "Fig3A_1-hydroxymidazolam__mean",
+                "xerr": null,
+                "yerr": "Fig3A_1-hydroxymidazolam__mean_sd",
+                "yaxis": null,
                 "style": {
                   "sid": null,
                   "name": null,
@@ -972,14 +989,9 @@
                   },
                   "fill": null
                 },
-                "x": "Fig3A_1-hydroxymidazolam__time",
-                "y": "Fig3A_1-hydroxymidazolam__mean",
-                "xerr": null,
-                "yerr": "Fig3A_1-hydroxymidazolam__mean_sd",
-                "yaxis": null
+                "order": 1
               }
-            ],
-            "facecolor": 1.0
+            ]
           },
           "row": 2,
           "col": 3,

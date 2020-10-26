@@ -7,6 +7,7 @@ from sbmlsim.examples.experiments.midazolam.experiments.kupferschmidt1995 import
     Kupferschmidt1995,
 )
 from sbmlsim.examples.experiments.midazolam.experiments.mandema1992 import Mandema1992
+from sbmlsim.examples.experiments.midazolam.experiments.model_change import MidazolamModelChangeExperiment
 from sbmlsim.experiment import ExperimentRunner
 from sbmlsim.report.experiment_report import ExperimentReport, ReportResults
 from sbmlsim.simulator import SimulatorSerial
@@ -21,7 +22,8 @@ from sbmlsim.utils import timeit
 def midazolam_experiment():
     BASE_PATH = Path(__file__).parent
     runner = ExperimentRunner(
-        [Mandema1992, Kupferschmidt1995],
+        # [Mandema1992, Kupferschmidt1995],
+        [MidazolamModelChangeExperiment],
         # [PKScanExperiment],
         # simulator=SimulatorSerial(),
         simulator=SimulatorParallel(),

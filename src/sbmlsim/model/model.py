@@ -11,7 +11,7 @@ from pathlib import Path
 from typing import Dict, List, Tuple, Union
 
 from sbmlsim.model.model_resources import Source
-
+from sbmlsim.units import Units
 
 logger = logging.getLogger(__name__)
 
@@ -75,10 +75,13 @@ class AbstractModel(object):
         self.changes = changes
         self.selections = selections
 
+    def normalize(self, udict, ureg):
+        """ Normalize values to model units for all changes."""
+        print("Normalizing model changes")
+        self.changes = Units.normalize_changes(self.changes, udict=udict, ureg=ureg)
+
     def to_dict(self):
         """ Convert to dictionary.
-
-        FIXME: normalize changes to model
         """
         d = {
             "sid": self.sid,

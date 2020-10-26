@@ -79,6 +79,15 @@ class ScanSim(AbstractSim):
         """Indices of all combinations."""
         return Dimension.indices_from_dimensions(self.dimensions)
 
+    def add_model_changes(self, changes: Dict):
+        if self.simulation and isinstance(self.simulation, TimecourseSim):
+            if self.simulation.timecourses:
+                tc = self.simulation.timecourses[0]
+                tc.changes = {
+                    **changes,
+                    **tc.changes,
+                }
+
     def normalize(self, udict: Dict, ureg: UnitRegistry):
         """Normalizes the scan.
         Requires normalization of timecourse simulation as well

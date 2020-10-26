@@ -38,10 +38,9 @@ class RoadrunnerSBMLModel(AbstractModel):
         ureg: UnitRegistry = None,
         settings: Dict = None,
     ):
-        logger.info(f"source: {type(source)}, {source}")
+        logger.debug(f"source: {type(source)}, {source}")
         if isinstance(source, AbstractModel):
-            logger.warning("RoadrunnerSBMLModel from AbstractModel")
-            # FIXME: add warnings
+            logger.debug("RoadrunnerSBMLModel from AbstractModel")
             super(RoadrunnerSBMLModel, self).__init__(
                 source=source.source,
                 language_type=source.language_type,
@@ -52,7 +51,7 @@ class RoadrunnerSBMLModel(AbstractModel):
                 selections=selections,
             )
         else:
-            logger.warning("RoadrunnerSBMLModel from source")
+            logger.debug("RoadrunnerSBMLModel from source")
             super(RoadrunnerSBMLModel, self).__init__(
                 source=source,
                 language_type=AbstractModel.LanguageType.SBML,
@@ -210,7 +209,7 @@ class RoadrunnerSBMLModel(AbstractModel):
                 # tolerances
                 value = min(value, value * min(r.model.getCompartmentVolumes()))
             integrator.setValue(key, value)
-            logger.info(f"Integrator setting: '{key} = {value}'")
+            logger.debug(f"Integrator setting: '{key} = {value}'")
         return integrator
 
     @staticmethod

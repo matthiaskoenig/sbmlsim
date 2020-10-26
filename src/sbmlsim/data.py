@@ -452,6 +452,8 @@ def load_pkdb_dataframe(
         ValueError(f"file path not found in data_path: {data_path}")
 
     df = pd.read_csv(path, sep=sep, comment=comment, **kwargs)
+    # FIXME: handle unnecessary UnitStrippedWarning: The unit of the quantity is stripped when downcasting to ndarray.
+    # At this point we only work with numpy arrays, units not important here
     df = df.dropna(how="all")  # drop all NA rows
     return df
 
