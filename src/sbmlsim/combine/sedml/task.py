@@ -2,9 +2,9 @@ import libsedml
 
 
 class TaskNode(object):
-    """ Tree implementation of task tree. """
+    """Tree implementation of task tree. """
 
-    def __init__(self, task, depth):
+    def __init__(self, task: libsedml.SedAbstractTask, depth: int):
         self.task = task
         self.depth = depth
         self.children = []
@@ -17,21 +17,15 @@ class TaskNode(object):
     def is_leaf(self):
         return len(self.children) == 0
 
-    def __str__(self):
-        lines = [
-            "<[{}] {} ({})>".format(
-                self.depth, self.task.getId(), self.task.getElementName()
-            )
-        ]
+    def __str__(self) -> str:
+        lines = [f"<[{self.depth}] {self.task.getId()} ({self.task.getElementName()})>"]
         for child in self.children:
             child_str = child.__str__()
-            lines.extend(["\t{}".format(line) for line in child_str.split("\n")])
+            lines.extend([f"\t{line}" for line in child_str.split("\n")])
         return "\n".join(lines)
 
-    def info(self):
-        return "<[{}] {} ({})>".format(
-            self.depth, self.task.getId(), self.task.getElementName()
-        )
+    def info(self) -> str:
+        return f"<[{self.depth}] {self.task.getId()} ({self.task.getElementName()})>"
 
     def __iter__(self):
         """ Depth-first iterator which yields TaskNodes."""
@@ -39,6 +33,9 @@ class TaskNode(object):
         for child in self.children:
             for node in child:
                 yield node
+
+    def __repr__(self) -> str:
+        return self.info()
 
 
 class Stack(object):
@@ -77,12 +74,13 @@ class TaskTree(object):
         """
 
         def add_children(node):
-            typeCode = node.task_id.getTypeCode()
+            """Adds task children to given node"""
+            typeCode = node.task.getTypeCode()
             if typeCode == libsedml.SEDML_TASK:
                 return  # no children
             elif typeCode == libsedml.SEDML_TASK_REPEATEDTASK:
                 # add the ordered list of subtasks as children
-                subtasks = TaskTree.get_ordered_subtasks(node.task_id)
+                subtasks = TaskTree.get_ordered_subtasks(node.task)
                 for st in subtasks:
                     # get real task for subtask
                     t = sed_task.getTask(st.getTask())
@@ -91,9 +89,7 @@ class TaskTree(object):
                     # recursive adding of children
                     add_children(child)
             else:
-                raise IOError(
-                    "Unsupported task type: {}".format(node.task_id.getElementName())
-                )
+                raise IOError("Unsupported task type: {node.task_id.getElementName()}")
 
         # create root
         root = TaskNode(root_task, depth=0)

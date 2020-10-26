@@ -166,6 +166,7 @@ class Data(object):
 
             self.unit = xres.udict[self.index]
             # FIXME: complete data must be kept
+            # print(xres)
             x = xres.dim_mean(self.index)
             # x = xres[self.index]
 
@@ -360,9 +361,16 @@ class DataSet(pd.DataFrame):
         The quantity in the dataset is multiplied with the conversion factor.
         In addition to the key, also the respective error measures are
         converted with the same factor, i.e.
-        - key
-        - key_sd
-        - key_se
+        - {key}
+        - {key}_sd
+        - {key}_se
+        - {key}_min
+        - {key}_max
+
+        FIXME: in addition base keys should be updated in the table,
+        i.e. if key in [mean, median, min, max, sd, se, cv] then the other
+        keys should be updated;
+        use default set of keys for automatic conversion
 
         :param key: column key in dataset (this column is unit converted)
         :param factor: multiplicative Quantity factor for conversion
@@ -383,7 +391,7 @@ class DataSet(pd.DataFrame):
             self[key] = new_quantity.magnitude
 
             # update error measures
-            for err_key in [f"{key}_sd", f"{key}_se"]:
+            for err_key in [f"{key}_sd", f"{key}_se", f"{key}_min", f"{key}_max"]:
                 if err_key in self.columns:
                     # error keys not stored in udict, only the base quantity
                     new_err_quantity = (
@@ -444,6 +452,8 @@ def load_pkdb_dataframe(
         ValueError(f"file path not found in data_path: {data_path}")
 
     df = pd.read_csv(path, sep=sep, comment=comment, **kwargs)
+    # FIXME: handle unnecessary UnitStrippedWarning: The unit of the quantity is stripped when downcasting to ndarray.
+    # At this point we only work with numpy arrays, units not important here
     df = df.dropna(how="all")  # drop all NA rows
     return df
 

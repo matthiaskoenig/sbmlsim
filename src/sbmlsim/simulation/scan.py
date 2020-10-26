@@ -5,7 +5,7 @@ from typing import Dict, List
 
 import numpy as np
 
-from sbmlsim.simulation import AbstractSim, Dimension
+from sbmlsim.simulation import AbstractSim, Dimension, TimecourseSim
 from sbmlsim.units import UnitRegistry, Units
 
 
@@ -78,6 +78,15 @@ class ScanSim(AbstractSim):
     def indices(self):
         """Indices of all combinations."""
         return Dimension.indices_from_dimensions(self.dimensions)
+
+    def add_model_changes(self, changes: Dict):
+        if self.simulation and isinstance(self.simulation, TimecourseSim):
+            if self.simulation.timecourses:
+                tc = self.simulation.timecourses[0]
+                tc.changes = {
+                    **changes,
+                    **tc.changes,
+                }
 
     def normalize(self, udict: Dict, ureg: UnitRegistry):
         """Normalizes the scan.

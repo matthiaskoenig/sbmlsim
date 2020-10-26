@@ -27,13 +27,19 @@ class RepressilatorExperiment(SimulationExperiment):
     """Simple repressilator experiment."""
 
     def models(self) -> Dict[str, AbstractModel]:
-        return {"model1": MODEL_REPRESSILATOR}
+        return {
+            "model1": MODEL_REPRESSILATOR,
+            "model2": AbstractModel(
+                MODEL_REPRESSILATOR, changes={"X": self.Q_(100, "dimensionless")}
+            ),
+        }
 
     def tasks(self) -> Dict[str, Task]:
-        return {
-            f"task_{key}": Task(model="model1", simulation=key)
-            for key in self.simulations()
-        }
+        tasks = dict()
+        for model in ["model1", "model2"]:
+            for sim_key in self.simulations():
+                tasks[f"task_{model}_{sim_key}"] = Task(model=model, simulation=sim_key)
+        return tasks
 
     def simulations(self) -> Dict[str, AbstractSim]:
         return {
@@ -109,9 +115,10 @@ class RepressilatorExperiment(SimulationExperiment):
 
         :return:
         """
-        for selection in ["X", "Y", "Z"]:
-            # accessed data
-            Data(self, task="task_tc", index=selection)
+        for model in ["model1", "model2"]:
+            for selection in ["X", "Y", "Z"]:
+                # accessed data
+                Data(self, task=f"task_{model}_tc", index=selection)
 
         # Define functions (data generators)
         Data(
@@ -119,9 +126,9 @@ class RepressilatorExperiment(SimulationExperiment):
             index="f1",
             function="(sin(X)+Y+Z)/max(X)",
             variables={
-                "X": "task_tc__X",
-                "Y": "task_tc__Y",
-                "Z": "task_tc__Z",
+                "X": "task_model1_tc__X",
+                "Y": "task_model1_tc__Y",
+                "Z": "task_model1_tc__Z",
             },
         )
         Data(
@@ -129,7 +136,7 @@ class RepressilatorExperiment(SimulationExperiment):
             index="f2",
             function="Y/max(Y)",
             variables={
-                "Y": "task_tc__Y",
+                "Y": "task_model1_tc__Y",
             },
         )
         # FIXME: arbitrary processing
@@ -148,18 +155,20 @@ class RepressilatorExperiment(SimulationExperiment):
             legend=True,
         )
         plots[0].set_title(f"{self.sid}_{fig1.sid}")
-        plots[0].curve(
-            x=Data(self, "time", task="task_tc"),
-            y=Data(self, "X", task="task_tc"),
-            label="X sim",
-            color="black",
-        )
-        plots[0].curve(
-            x=Data(self, "time", task="task_tc"),
-            y=Data(self, "Y", task="task_tc"),
-            label="Y sim",
-            color="blue",
-        )
+        for model in ["model1", "model2"]:
+            task_id = f"task_{model}_tc"
+            plots[0].curve(
+                x=Data(self, "time", task=task_id),
+                y=Data(self, "X", task=task_id),
+                label="X sim",
+                color="black",
+            )
+            plots[0].curve(
+                x=Data(self, "time", task=task_id),
+                y=Data(self, "Y", task=task_id),
+                label="Y sim",
+                color="blue",
+            )
 
         fig2 = Figure(experiment=self, sid="Fig2", num_rows=2, num_cols=1)
         plots = fig2.create_plots(

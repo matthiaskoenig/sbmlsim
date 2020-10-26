@@ -4,7 +4,7 @@ Testing DataSet and Data functionality.
 import pandas as pd
 
 from sbmlsim.data import DataSet, load_pkdb_dataframe
-from sbmlsim.test import DATA_PATH
+from sbmlsim.test import DATA_DIR
 from sbmlsim.units import UnitRegistry
 
 
@@ -16,7 +16,7 @@ def test_dataset():
 
 
 def test_Faber1978_Fig1():
-    data_path = DATA_PATH / "datasets"
+    data_path = DATA_DIR / "datasets"
     df = load_pkdb_dataframe(sid="Faber1978_Fig1", data_path=data_path)
     dset = DataSet.from_df(df, ureg=UnitRegistry())
     assert "cpep" in dset.udict
@@ -30,7 +30,7 @@ def test_Faber1978_Fig1():
 
 
 def test_Allonen1981_Fig3A():
-    data_path = DATA_PATH / "datasets"
+    data_path = DATA_DIR / "datasets"
     df = load_pkdb_dataframe(sid="Allonen1981_Fig3A", data_path=data_path)
     for substance in df.substance.unique():
         dset = DataSet.from_df(df[df.substance == substance], ureg=UnitRegistry())
@@ -50,7 +50,7 @@ def test_Allonen1981_Fig3A():
 
 
 def test_unit_conversion1():
-    data_path = DATA_PATH / "datasets"
+    data_path = DATA_DIR / "datasets"
     df = load_pkdb_dataframe(sid="Allonen1981_Fig3A", data_path=data_path)
 
     ureg = UnitRegistry()

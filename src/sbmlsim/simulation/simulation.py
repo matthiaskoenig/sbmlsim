@@ -70,6 +70,10 @@ class AbstractSim(ABC):
     def normalize(self, udict, ureg):
         pass
 
+    @abc.abstractmethod
+    def add_model_changes(self, changes: Dict):
+        pass
+
     def to_dict(self):
         """ Convert to dictionary. """
         d = {

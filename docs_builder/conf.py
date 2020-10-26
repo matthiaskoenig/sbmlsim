@@ -20,7 +20,7 @@ on_rtd = os.environ.get('READTHEDOCS') == 'True'
 # -- Project information -----------------------------------------------------
 
 project = 'sbmlsim'
-copyright = '2019, Matthias König'
+copyright = '2019-2020, Matthias König'
 author = 'Matthias König'
 
 

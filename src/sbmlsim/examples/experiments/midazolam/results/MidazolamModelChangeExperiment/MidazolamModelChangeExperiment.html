@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta http-equiv="content-type" content="text/html; charset=utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, minimal-ui">
+    <title>MidazolamModelChangeExperiment</title>
+    <link href="https://fonts.googleapis.com/css?family=Roboto:100,300,400,500,700,900" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/@mdi/font@4.x/css/materialdesignicons.min.css" rel="stylesheet">
+    <!--<link href="https://cdn.jsdelivr.net/npm/vuetify@2.x/dist/vuetify.min.css" rel="stylesheet">-->
+    <link rel="stylesheet" href="//cdnjs.cloudflare.com/ajax/libs/highlight.js/10.1.2/styles/default.min.css">
+</head>
+
+<body>
+<div id="app">
+    <!-- Vue app-->
+    <v-app>
+        <v-content>
+
+            <a href="../index.html">Experiments</a>
+            <h1>MidazolamModelChangeExperiment</h1>
+
+            <h2>Models</h2>
+            <p>
+            <ul>
+                <li><strong>model</strong>: <a href="../../model/midazolam_body_flat.xml">../../model/midazolam_body_flat.xml</a></li>
+                <li><strong>model_with_changes</strong>: <a href="../../model/midazolam_body_flat.xml">../../model/midazolam_body_flat.xml</a></li>
+            </ul>
+            </p>
+
+            <h2>Datasets</h2>
+            <p>
+            <ul>
+            </ul>
+            </p>
+
+            <h2>Figures</h2>
+            <p>
+            <ul>
+            </ul>
+            </p>
+
+
+            <h2>Code</h2>
+            <p>
+                <a href="../../experiments/model_change.py">../../experiments/model_change.py</a>
+            <pre>
+<code class="python">from typing import Dict, List
+
+from sbmlsim.data import DataSet, load_pkdb_dataframes_by_substance
+from sbmlsim.experiment import ExperimentDict
+from sbmlsim.fit import FitData, FitMapping
+from sbmlsim.model import AbstractModel
+from sbmlsim.plot import Axis, Figure
+from sbmlsim.simulation import Timecourse, TimecourseSim
+from sbmlsim.task import Task
+
+from . import MidazolamSimulationExperiment
+
+from ...midazolam import MODEL_PATH
+
+
+class MidazolamModelChangeExperiment(MidazolamSimulationExperiment):
+
+    def models(self) -> Dict[str, AbstractModel]:
+        Q_ = self.Q_
+        return ExperimentDict(
+            {
+                "model": MODEL_PATH,
+                "model_with_changes": AbstractModel(
+                    source=MODEL_PATH,
+                    changes={
+                        "[Cve_mid]": Q_(10, 'nM'),
+                        "PODOSE_mid": Q_(0.1, 'g')
+                    }),
+
+             })
+
+    def simulations(self) -> Dict[str, TimecourseSim]:
+        Q_ = self.Q_
+        bodyweight = Q_(75, 'kg')
+        tcsims = {}
+        tcsims["sim1"] = TimecourseSim(
+            [
+                Timecourse(
+                    start=0,
+                    end=100,
+                    steps=600,
+                    changes={
+                        **self.default_changes(),
+                        "Ri_mid": Q_(0.1, "mg/kg") * bodyweight / Q_(15, "min"),
+                        "BW": bodyweight,
+                    },
+                ),
+            ]
+        )
+
+        return tcsims
+
+    def tasks(self) -> Dict[str, Task]:
+        tasks = {}
+        for sim_key in self.simulations():
+            for model_key in self.models():
+                tasks[f"task_{model_key}_{sim_key}"] =Task(model=model_key, simulation=sim_key)
+        return ExperimentDict(tasks)
+
+</code>
+        </pre>
+            </p>
+
+        </v-content>
+    </v-app>
+</div>
+
+
+<!-- loading dependencies -->
+<script src="https://cdn.jsdelivr.net/npm/vue@2.6.11"></script>
+<script src="https://cdn.jsdelivr.net/npm/vuetify@2.2.6/dist/vuetify.js"></script>
+<link href="https://fonts.googleapis.com/css?family=Roboto:100,300,400,500,700,900" rel="stylesheet">
+<link href="https://cdn.jsdelivr.net/npm/@mdi/font@4.x/css/materialdesignicons.min.css" rel="stylesheet">
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/10.1.2/highlight.min.js"></script>
+<script>hljs.initHighlightingOnLoad();</script>
+
+<script>
+    const app = new Vue({
+        el: '#app',
+        vuetify: new Vuetify(),
+        delimiters: ['${', '}'],
+        data() {
+            return {}
+        }
+    })
+</script>
+
+
+</body>
+</html>

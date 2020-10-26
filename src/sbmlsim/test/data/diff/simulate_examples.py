@@ -7,7 +7,7 @@ from sbmlsim.diff import DataSetsComparison, get_files_by_extension
 from sbmlsim.model import RoadrunnerSBMLModel
 from sbmlsim.simulation import TimecourseSim
 from sbmlsim.simulator import SimulatorSerial as Simulator
-from sbmlsim.test import DATA_PATH, MODEL_REPRESSILATOR
+from sbmlsim.test import DATA_DIR, MODEL_REPRESSILATOR
 
 
 def run_simulations(create_files=True):
@@ -15,7 +15,7 @@ def run_simulations(create_files=True):
 
     :return:
     """
-    diff_path = Path(DATA_PATH) / "diff"
+    diff_path = Path(DATA_DIR) / "diff"
     simulator = Simulator(
         RoadrunnerSBMLModel(MODEL_REPRESSILATOR),
         absolute_tolerance=1e-16,
@@ -39,7 +39,7 @@ def run_comparisons(create_files=True):
 
     :return:
     """
-    diff_path = Path(DATA_PATH) / "diff"
+    diff_path = Path(DATA_DIR) / "diff"
 
     simulation_keys = get_files_by_extension(diff_path)
     print(simulation_keys)

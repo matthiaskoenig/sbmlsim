@@ -50,6 +50,10 @@ class MatplotlibFigureSerializer(object):
     def to_figure(figure: Figure) -> FigureMPL:
         """Convert sbmlsim.Figure to matplotlib figure."""
 
+        # FIXME: UserWarning: Warning: converting a masked element to nan.
+        #   return array(a, dtype, copy=False, order=order)
+        # Issue with converting elements
+
         # create new figure
         fig = plt.figure(
             figsize=(figure.width, figure.height),

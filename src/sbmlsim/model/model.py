@@ -8,9 +8,10 @@ Other formats could be supported like CellML or NeuroML.
 import logging
 from enum import Enum
 from pathlib import Path
-from typing import Dict, List, Tuple
+from typing import Dict, List, Tuple, Union
 
 from sbmlsim.model.model_resources import Source
+from sbmlsim.units import Units
 
 
 logger = logging.getLogger(__name__)
@@ -36,11 +37,11 @@ class AbstractModel(object):
 
     def __init__(
         self,
-        source: str,
+        source: Union[str, Path],
         sid: str = None,
         name: str = None,
         language: str = None,
-        language_type: LanguageType = None,
+        language_type: LanguageType = LanguageType.SBML,
         base_path: Path = None,
         changes: Dict = None,
         selections: List[str] = None,
@@ -48,11 +49,11 @@ class AbstractModel(object):
 
         if not language and not language_type:
             raise ValueError(
-                "Either 'language' or 'language_type' argument are" "required"
+                "Either 'language' or 'language_type' argument are required"
             )
         if language and language_type:
             raise ValueError(
-                "Either 'language' or 'language_type' can be set," "but not both."
+                "Either 'language' or 'language_type' can be set, but not both."
             )
 
         # parse language_type
@@ -75,8 +76,13 @@ class AbstractModel(object):
         self.changes = changes
         self.selections = selections
 
+    def normalize(self, udict, ureg):
+        """ Normalize values to model units for all changes."""
+        print("Normalizing model changes")
+        self.changes = Units.normalize_changes(self.changes, udict=udict, ureg=ureg)
+
     def to_dict(self):
-        """ Convert to dictionary. """
+        """Convert to dictionary."""
         d = {
             "sid": self.sid,
             "name": self.name,

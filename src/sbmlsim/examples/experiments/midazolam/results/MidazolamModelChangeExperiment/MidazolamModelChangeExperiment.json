@@ -1,0 +1,110 @@
+{
+  "experiment_id": "MidazolamModelChangeExperiment",
+  "base_path": "/home/mkoenig/git/sbmlsim/src/sbmlsim/examples/experiments/midazolam",
+  "data_path": "[PosixPath('/home/mkoenig/git/sbmlsim/src/sbmlsim/examples/experiments/midazolam/data')]",
+  "models": {
+    "model": {
+      "sid": null,
+      "name": null,
+      "language": "SBML",
+      "language_type": "SBML",
+      "source": {
+        "source": "/home/mkoenig/git/sbmlsim/src/sbmlsim/examples/experiments/midazolam/model/midazolam_body_flat.xml",
+        "path": "/home/mkoenig/git/sbmlsim/src/sbmlsim/examples/experiments/midazolam/model/midazolam_body_flat.xml",
+        "content": null
+      },
+      "changes": {}
+    },
+    "model_with_changes": {
+      "sid": null,
+      "name": null,
+      "language": "SBML",
+      "language_type": "SBML",
+      "source": {
+        "source": "/home/mkoenig/git/sbmlsim/src/sbmlsim/examples/experiments/midazolam/model/midazolam_body_flat.xml",
+        "path": "/home/mkoenig/git/sbmlsim/src/sbmlsim/examples/experiments/midazolam/model/midazolam_body_flat.xml",
+        "content": null
+      },
+      "changes": {
+        "[Cve_mid]": {
+          "_magnitude": 1.0000000000000003e-05,
+          "_units": "millimole / liter",
+          "_Quantity__used": false,
+          "_Quantity__handling": null
+        },
+        "PODOSE_mid": {
+          "_magnitude": 100.0,
+          "_units": "milligram",
+          "_Quantity__used": false,
+          "_Quantity__handling": null
+        }
+      }
+    }
+  },
+  "tasks": {
+    "task_model_sim1": {
+      "model": "model",
+      "simulation": "sim1"
+    },
+    "task_model_with_changes_sim1": {
+      "model": "model_with_changes",
+      "simulation": "sim1"
+    }
+  },
+  "simulations": {
+    "sim1": {
+      "type": "TimecourseSim",
+      "selections": null,
+      "reset": true,
+      "time_offset": 0.0,
+      "timecourses": [
+        {
+          "start": 0,
+          "end": 100,
+          "steps": 600,
+          "changes": {
+            "KI__MID1OHEX_Vmax": {
+              "_magnitude": 14.259652024532818,
+              "_units": "millimole / minute",
+              "_Quantity__used": false,
+              "_Quantity__handling": null
+            },
+            "KI__MID1OHEX_Km": {
+              "_magnitude": 0.7051197538875393,
+              "_units": "millimolar",
+              "_Quantity__used": false,
+              "_Quantity__handling": null
+            },
+            "ftissue_mid1oh": {
+              "_magnitude": 99.23248555491428,
+              "_units": "liter / minute",
+              "_Quantity__used": false,
+              "_Quantity__handling": null
+            },
+            "fup_mid1oh": {
+              "_magnitude": 0.19507488419734886,
+              "_units": "dimensionless",
+              "_Quantity__used": false,
+              "_Quantity__handling": null
+            },
+            "Ri_mid": {
+              "_magnitude": 0.5,
+              "_units": "milligram / minute",
+              "_Quantity__used": false,
+              "_Quantity__handling": null
+            },
+            "BW": {
+              "_magnitude": 75,
+              "_units": "kilogram",
+              "_Quantity__used": false,
+              "_Quantity__handling": null
+            }
+          },
+          "model_changes": {}
+        }
+      ]
+    }
+  },
+  "data": {},
+  "figures": {}
+}

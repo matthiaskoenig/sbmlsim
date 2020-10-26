@@ -72,6 +72,9 @@ class ExperimentRunner(object):
             _models = {}
             for model_id, source in experiment.models().items():
                 if source not in self.models:
+                    # not cashed yet, cash the model for lookup
+                    # FIXME: add changes to the model
+                    print("source", source, type(source))
                     self.models[source] = RoadrunnerSBMLModel(
                         source=source, ureg=self.ureg
                     )

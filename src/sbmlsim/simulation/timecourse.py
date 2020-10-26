@@ -5,7 +5,7 @@ import json
 import logging
 from copy import deepcopy
 from pathlib import Path
-from typing import List, Tuple
+from typing import Dict, List, Tuple
 
 import numpy as np
 
@@ -142,6 +142,14 @@ class TimecourseSim(AbstractSim):
 
     def dimensions(self) -> List[Dimension]:
         return [Dimension(dimension="time", index=self.time)]
+
+    def add_model_changes(self, changes: Dict):
+        if self.timecourses:
+            tc = self.timecourses[0]
+            tc.changes = {
+                **changes,
+                **tc.changes,
+            }
 
     def normalize(self, udict, ureg):
         """Normalize timecourse simulation."""

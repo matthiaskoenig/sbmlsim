@@ -6,6 +6,7 @@ cover
 .tox
 .cache
 .coverage
+coverage.xml
 .coverage*
 .benchmark
 *.pyc

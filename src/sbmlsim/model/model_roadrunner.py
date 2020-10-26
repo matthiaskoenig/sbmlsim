@@ -1,7 +1,7 @@
 import logging
 import tempfile
 from pathlib import Path
-from typing import Dict, List
+from typing import Dict, List, Union
 
 import libsbml
 import numpy as np
@@ -29,7 +29,7 @@ class RoadrunnerSBMLModel(AbstractModel):
 
     def __init__(
         self,
-        source: str,
+        source: Union[str, Path, AbstractModel],
         base_path: Path = None,
         changes: Dict = None,
         sid: str = None,
@@ -38,15 +38,29 @@ class RoadrunnerSBMLModel(AbstractModel):
         ureg: UnitRegistry = None,
         settings: Dict = None,
     ):
-        super(RoadrunnerSBMLModel, self).__init__(
-            source=source,
-            language_type=AbstractModel.LanguageType.SBML,
-            changes=changes,
-            sid=sid,
-            name=name,
-            base_path=base_path,
-            selections=selections,
-        )
+        logger.debug(f"source: {type(source)}, {source}")
+        if isinstance(source, AbstractModel):
+            logger.debug("RoadrunnerSBMLModel from AbstractModel")
+            super(RoadrunnerSBMLModel, self).__init__(
+                source=source.source,
+                language_type=source.language_type,
+                changes=source.changes,
+                sid=source.sid,
+                name=source.name,
+                base_path=source.base_path,
+                selections=selections,
+            )
+        else:
+            logger.debug("RoadrunnerSBMLModel from source")
+            super(RoadrunnerSBMLModel, self).__init__(
+                source=source,
+                language_type=AbstractModel.LanguageType.SBML,
+                changes=changes,
+                sid=sid,
+                name=name,
+                base_path=base_path,
+                selections=selections,
+            )
         if self.language_type != AbstractModel.LanguageType.SBML:
             raise ValueError(
                 f"{self.__class__.__name__} only supports "
@@ -85,8 +99,8 @@ class RoadrunnerSBMLModel(AbstractModel):
 
     def get_state_path(self):
         if self.source.is_path():
-            mdf5 = md5_for_path(self.source.path)
-            return Path(f"{self.source.path}_rr{roadrunner.__version__}_{mdf5}.state")
+            md5 = md5_for_path(self.source.path)
+            return Path(f"{self.source.path}_rr{roadrunner.__version__}_{md5}.state")
         else:
             return None
 
