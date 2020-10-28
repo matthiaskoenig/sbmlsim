@@ -91,7 +91,7 @@ class ExperimentRunner(object):
         save_results: bool = False,
         figure_formats: List[str] = None,
         reduced_selections: bool = True,
-    ) -> List:
+    ) -> List['ExperimentResult']:
         """Run the experiments."""
         if not output_path.exists():
             output_path.mkdir(parents=True)
