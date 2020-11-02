@@ -51,6 +51,8 @@ class DataSetsComparison(object):
         columns_filter=None,
         time_column: bool = True,
         title: str = None,
+        selections: Dict[str, str] = None,
+        factors: Dict[str, float] = None
     ):
         """Initialize the comparison.
 
@@ -78,6 +80,33 @@ class DataSetsComparison(object):
                 if "time" not in df.columns:
                     raise ValueError(f"'time' column must exist in data ({label})")
 
+        # handle selections replacements
+        pd.set_option('display.max_columns', None)
+        if selections:
+            if factors is None:
+                factors = {}
+            # use the first keys for comparison
+            colnames = list(selections.values())[0]
+            for key, sel_keys in selections.items():
+                print("***", key, "***")
+                df = dfs_dict[key]
+                # get subset
+                df_new = df[sel_keys]
+                # apply factors
+                fs = factors.get(key, [1.0]*len(sel_keys))
+                for k, sel in enumerate(sel_keys):
+                    print(f"scaling: '{sel}' * {fs[k]}")
+                    # df_new[sel] = fs[k] * df_new[sel]
+                    df_new.loc[:, sel] *= fs[k]
+
+                # do renaming
+                df_new = df_new.rename(columns=dict(zip(sel_keys, colnames)))
+                # store updated df
+                print(df_new.head())
+                dfs_dict[key] = df_new
+
+
+
         # get the subset of columns to compare
         columns, self.col_intersection, self.col_union = self._process_columns(dfs_dict)
 
@@ -85,6 +114,8 @@ class DataSetsComparison(object):
         if columns_filter:
             columns = [col for col in columns if columns_filter(col)]
         self.columns = columns
+        logger.info(f"Comparing: {self.columns}")
+
 
         # get common subset of data
         self.dfs, self.labels = self._filter_dfs(dfs_dict, self.columns)
