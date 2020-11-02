@@ -381,9 +381,13 @@ class SimulationExperiment(object):
             for task_key in task_keys:  # type: str
                 task = self._tasks[task_key]
 
+                sim = self._simulations[task.simulation_id]  # type: Union[ScanSim, TimecourseSim]
+                # normalization before running to ensure correct serialization
+                sim.normalize(udict=simulator.udict, ureg=simulator.ureg)
                 # copy simulation definition for injecting model changes
-                sim = deepcopy(self._simulations[task.simulation_id])
+                sim = deepcopy(sim)
                 sim.add_model_changes(model.changes)
+
                 if isinstance(sim, TimecourseSim):
                     self._results[task_key] = simulator.run_timecourse(sim)
                 elif isinstance(sim, ScanSim):

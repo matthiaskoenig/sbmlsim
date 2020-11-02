@@ -65,7 +65,7 @@
           "changes": {
             "KI__MID1OHEX_Vmax": {
               "_magnitude": 14.259652024532818,
-              "_units": "millimole / minute",
+              "_units": "mmole_per_min",
               "_Quantity__used": false,
               "_Quantity__handling": null
             },
@@ -76,8 +76,8 @@
               "_Quantity__handling": null
             },
             "ftissue_mid1oh": {
-              "_magnitude": 99.23248555491428,
-              "_units": "liter / minute",
+              "_magnitude": 99.2324855549143,
+              "_units": "l_per_min",
               "_Quantity__used": false,
               "_Quantity__handling": null
             },
@@ -89,7 +89,7 @@
             },
             "Ri_mid": {
               "_magnitude": 0.5,
-              "_units": "milligram / minute",
+              "_units": "mg_per_min",
               "_Quantity__used": false,
               "_Quantity__handling": null
             },
