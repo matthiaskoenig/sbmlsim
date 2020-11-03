@@ -381,7 +381,9 @@ class SimulationExperiment(object):
             for task_key in task_keys:  # type: str
                 task = self._tasks[task_key]
 
-                sim = self._simulations[task.simulation_id]  # type: Union[ScanSim, TimecourseSim]
+                sim = self._simulations[
+                    task.simulation_id
+                ]  # type: Union[ScanSim, TimecourseSim]
                 # normalization before running to ensure correct serialization
                 sim.normalize(udict=simulator.udict, ureg=simulator.ureg)
                 # copy simulation definition for injecting model changes
