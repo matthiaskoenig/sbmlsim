@@ -143,11 +143,12 @@ class TimecourseSim(AbstractSim):
     def dimensions(self) -> List[Dimension]:
         return [Dimension(dimension="time", index=self.time)]
 
-    def add_model_changes(self, changes: Dict):
+    def add_model_changes(self, mode_changes: Dict) -> None:
+        """Adds model changes to given simulation. """
         if self.timecourses:
             tc = self.timecourses[0]
             tc.changes = {
-                **changes,
+                **mode_changes,
                 **tc.changes,
             }
 

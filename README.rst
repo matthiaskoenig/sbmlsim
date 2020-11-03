@@ -80,7 +80,7 @@ within the research network Systems Medicine of the Liver (**LiSyM**, grant numb
 
 Installation
 ============
-`sbmlsim` is available from `pypi <https://pypi.python.org/pypi/sbmlsim>`__ and
+``sbmlsim`` is available from `pypi <https://pypi.python.org/pypi/sbmlsim>`__ and
 can be installed via::
 
     pip install sbmlsim

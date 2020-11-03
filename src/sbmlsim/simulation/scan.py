@@ -79,12 +79,13 @@ class ScanSim(AbstractSim):
         """Indices of all combinations."""
         return Dimension.indices_from_dimensions(self.dimensions)
 
-    def add_model_changes(self, changes: Dict):
+    def add_model_changes(self, model_changes: Dict) -> None:
+        """Adds model changes to first timecourse."""
         if self.simulation and isinstance(self.simulation, TimecourseSim):
             if self.simulation.timecourses:
                 tc = self.simulation.timecourses[0]
                 tc.changes = {
-                    **changes,
+                    **model_changes,
                     **tc.changes,
                 }
 
