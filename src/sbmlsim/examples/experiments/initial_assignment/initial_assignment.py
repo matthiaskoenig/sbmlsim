@@ -7,7 +7,7 @@ from typing import Dict
 import numpy as np
 
 from sbmlsim.data import Data
-from sbmlsim.experiment import SimulationExperiment, ExperimentRunner
+from sbmlsim.experiment import ExperimentRunner, SimulationExperiment
 from sbmlsim.model import AbstractModel, RoadrunnerSBMLModel
 from sbmlsim.plot import Axis, Figure
 from sbmlsim.simulation import (
@@ -21,6 +21,7 @@ from sbmlsim.simulation.sensititvity import ModelSensitivity, SensitivityType
 from sbmlsim.simulator.simulation_ray import SimulatorParallel, SimulatorSerial
 from sbmlsim.task import Task
 
+
 base_path = Path(__file__).parent
 
 
@@ -30,19 +31,14 @@ class AssignmentExperiment(SimulationExperiment):
     def models(self) -> Dict[str, AbstractModel]:
         return {
             "model": RoadrunnerSBMLModel(
-                source=base_path / "initial_assignment.xml",
-                ureg=self.ureg
+                source=base_path / "initial_assignment.xml", ureg=self.ureg
             ),
             "model_changes": RoadrunnerSBMLModel(
                 source=base_path / "initial_assignment.xml",
                 ureg=self.ureg,
-                changes={
-                    "D": self.Q_(2.0, "mmole")
-                }
-            )
+                changes={"D": self.Q_(2.0, "mmole")},
+            ),
         }
-
-
 
     def tasks(self) -> Dict[str, Task]:
         tasks = {}
@@ -54,30 +50,25 @@ class AssignmentExperiment(SimulationExperiment):
         return tasks
 
     def datagenerators(self) -> None:
-        self.add_selections(selections=[
-            "time", "A1", "[A1]", "D"
-        ])
+        self.add_selections(selections=["time", "A1", "[A1]", "D"])
 
     def simulations(self) -> Dict[str, AbstractSim]:
         Q_ = self.Q_
         tcs = {}
         tcs["sim1"] = TimecourseSim(
-            [
-                Timecourse(
-                    start=0, end=20, steps=200, changes={}
-                )
-            ]
+            [Timecourse(start=0, end=20, steps=200, changes={})]
         )
         tcs["sim2"] = TimecourseSim(
             [
+                Timecourse(start=0, end=10, steps=200, changes={}),
                 Timecourse(
-                    start=0, end=10, steps=200, changes={}
-                ),
-                Timecourse(
-                    start=0, end=10, steps=200, changes={
+                    start=0,
+                    end=10,
+                    steps=200,
+                    changes={
                         "D": Q_(10.0, "mmole"),
-                    }
-                )
+                    },
+                ),
             ]
         )
 
@@ -107,12 +98,27 @@ class AssignmentExperiment(SimulationExperiment):
                     "color": colors[ks],
                     "linestyle": "-" if model_key == "model" else "--",
                 }
-                plots[0].add_data(task=task_key, xid="time", yid="A1",
-                                  label=f"{model_key} {sim_key}", **kwargs)
-                plots[1].add_data(task=task_key, xid="time", yid="[A1]",
-                                  label=f"{model_key} {sim_key}", **kwargs)
-                plots[2].add_data(task=task_key, xid="time", yid="D",
-                                  label=f"{model_key} {sim_key}", **kwargs)
+                plots[0].add_data(
+                    task=task_key,
+                    xid="time",
+                    yid="A1",
+                    label=f"{model_key} {sim_key}",
+                    **kwargs,
+                )
+                plots[1].add_data(
+                    task=task_key,
+                    xid="time",
+                    yid="[A1]",
+                    label=f"{model_key} {sim_key}",
+                    **kwargs,
+                )
+                plots[2].add_data(
+                    task=task_key,
+                    xid="time",
+                    yid="D",
+                    label=f"{model_key} {sim_key}",
+                    **kwargs,
+                )
         return {
             fig1.sid: fig1,
         }
@@ -126,11 +132,9 @@ def run(output_path):
         AssignmentExperiment,
         simulator=SimulatorParallel(),
         base_path=base_path,
-        data_path=base_path
+        data_path=base_path,
     )
-    runner.run_experiments(
-        output_path=output_path / "results", show_figures=True
-    )
+    runner.run_experiments(output_path=output_path / "results", show_figures=True)
 
 
 if __name__ == "__main__":

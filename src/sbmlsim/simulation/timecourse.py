@@ -89,7 +89,9 @@ class Timecourse(ObjectJSONEncoder):
 
     def normalize(self, udict, ureg):
         """ Normalize values to model units for all changes."""
-        self.model_changes = Units.normalize_changes(self.model_changes, udict=udict, ureg=ureg)
+        self.model_changes = Units.normalize_changes(
+            self.model_changes, udict=udict, ureg=ureg
+        )
         self.changes = Units.normalize_changes(self.changes, udict=udict, ureg=ureg)
 
     def strip_units(self):
@@ -134,7 +136,9 @@ class TimecourseSim(AbstractSim):
         else:
             for k, tc in enumerate(self.timecourses):
                 if k > 0 and tc.model_changes:
-                    logger.error(f"'model_changes' only allowed on first timecourse: {tc}")
+                    logger.error(
+                        f"'model_changes' only allowed on first timecourse: {tc}"
+                    )
 
         self.selections = deepcopy(selections)
         self.reset = reset

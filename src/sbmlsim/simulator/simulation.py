@@ -4,14 +4,13 @@ Classes for running simulations with SBML models.
 import logging
 
 import pandas as pd
+from roadrunner import RoadRunner, SelectionRecord
 
 from sbmlsim.model import ModelChange
 from sbmlsim.result import XResult
 from sbmlsim.simulation import ScanSim, Timecourse, TimecourseSim
 
-from roadrunner import RoadRunner
 
-from roadrunner import SelectionRecord
 logger = logging.getLogger(__name__)
 
 
