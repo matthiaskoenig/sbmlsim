@@ -58,7 +58,7 @@ class ExperimentRunner(object):
 
     @timeit
     def initialize(self, experiment_classes, **kwargs):
-        if not isinstance(experiment_classes, (list, tuple)):
+        if not isinstance(experiment_classes, (list, tuple, set)):
             experiment_classes = [experiment_classes]
 
         for exp_class in experiment_classes:
