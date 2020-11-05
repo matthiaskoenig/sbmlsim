@@ -354,13 +354,9 @@ class SimulationExperiment(object):
         # execute all tasks for given model
         for model_id, task_keys in model_tasks.items():
 
-            model = self._models[model_id]  # type: AbstractModel
-
             # load model in simulator
+            model = self._models[model_id]  # type: AbstractModel
             simulator.set_model(model=model)
-
-            # normalize model changes (these must be set in simulation!)
-            model.normalize(udict=simulator.udict, ureg=simulator.ureg)
 
             if reduced_selections:
                 # set selections based on data
@@ -372,11 +368,14 @@ class SimulationExperiment(object):
                         if task.model_id == model_id:
                             selections.add(d.index)
                 selections = sorted(list(selections))
-                print(f"Selections for model '{model_id}': {selections}")
+                # print(f"Selections for model '{model_id}': {selections}")
                 simulator.set_timecourse_selections(selections=selections)
             else:
                 # use the complete selection
                 simulator.set_timecourse_selections(selections=None)
+
+            # normalize model changes (these must be set in simulation!)
+            model.normalize(udict=simulator.udict, ureg=simulator.ureg)
 
             for task_key in task_keys:  # type: str
                 task = self._tasks[task_key]
@@ -384,9 +383,11 @@ class SimulationExperiment(object):
                 sim = self._simulations[
                     task.simulation_id
                 ]  # type: Union[ScanSim, TimecourseSim]
+
                 # normalization before running to ensure correct serialization
                 sim.normalize(udict=simulator.udict, ureg=simulator.ureg)
-                # copy simulation definition for injecting model changes
+
+                # inject model changes (copy to create independent)
                 sim = deepcopy(sim)
                 sim.add_model_changes(model.changes)
 

@@ -9,7 +9,9 @@ from sbmlsim.model import ModelChange
 from sbmlsim.result import XResult
 from sbmlsim.simulation import ScanSim, Timecourse, TimecourseSim
 
+from roadrunner import RoadRunner
 
+from roadrunner import SelectionRecord
 logger = logging.getLogger(__name__)
 
 
@@ -33,8 +35,8 @@ class SimulatorWorker(object):
     def _timecourse(self, simulation: TimecourseSim) -> pd.DataFrame:
         """Timecourse simulation.
 
-        Requires for all timecourse definitions to be unit NORMALIZED
-        before being sent here ! The changes have no units any more
+        Requires for all timecourse definitions in the timecourse simulation
+        to be unit normalized. The changes have no units any more
         for parallel simulations.
         You should never call this function directly!
 
@@ -49,17 +51,28 @@ class SimulatorWorker(object):
 
         frames = []
         t_offset = simulation.time_offset
-        for tc in simulation.timecourses:
+        for k, tc in enumerate(simulation.timecourses):
+            # print(tc.to_dict())
 
-            # apply changes
-            for key, item in tc.changes.items():
-                try:
-                    self.r[key] = item.magnitude
-                except AttributeError as err:
-                    self.r[key] = item
+            if k == 0 and tc.model_changes:
+                # [1] apply model changes of first simulation
+                logger.warning("Applying model changes")
+                for key, item in tc.model_changes.items():
+                    try:
+                        self.r[key] = item.magnitude
+                    except AttributeError as err:
+                        self.r[key] = item
 
-            # model changes are applied to model
-            if len(tc.model_changes) > 0:
+                # [2] re-evaluate initial assignments
+                # https://github.com/sys-bio/roadrunner/issues/710
+                logger.warning("Reavaluate initial conditions")
+                # FIXME: how to re-evalutate initial assignments
+                # self.r.reset(SelectionRecord.INITIAL_GLOBAL_PARAMETER)
+                # self.r.reset(SelectionRecord.DEPENDENT_INITIAL_GLOBAL_PARAMETER)
+
+            # [3] apply model manipulations
+            # model manipulations are applied to model
+            if len(tc.model_manipulations) > 0:
                 for key, value in tc.model_changes.items():
                     if key == ModelChange.CLAMP_SPECIES:
                         for sid, formula in value.items():
@@ -70,6 +83,15 @@ class SimulatorWorker(object):
                             f"'{key}': {value}. Supported changes are: "
                             f"['{ModelChange.CLAMP_SPECIES}']"
                         )
+
+            # [4] apply changes
+            for key, item in tc.changes.items():
+                try:
+                    self.r[key] = item.magnitude
+                    # logger.warning(f"Set: {key} = {item.magnitude}")
+                except AttributeError as err:
+                    self.r[key] = item
+                    # logger.warning(f"Set: {key} = {item}")
 
             # run simulation
             integrator = self.r.integrator

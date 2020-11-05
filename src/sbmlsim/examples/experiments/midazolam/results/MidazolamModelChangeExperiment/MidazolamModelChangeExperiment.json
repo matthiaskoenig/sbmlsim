@@ -100,7 +100,8 @@
               "_Quantity__handling": null
             }
           },
-          "model_changes": {}
+          "model_changes": {},
+          "model_manipulations": {}
         }
       ]
     }

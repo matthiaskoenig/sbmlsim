@@ -82,12 +82,7 @@ class ScanSim(AbstractSim):
     def add_model_changes(self, model_changes: Dict) -> None:
         """Adds model changes to first timecourse."""
         if self.simulation and isinstance(self.simulation, TimecourseSim):
-            if self.simulation.timecourses:
-                tc = self.simulation.timecourses[0]
-                tc.changes = {
-                    **model_changes,
-                    **tc.changes,
-                }
+            self.simulation.add_model_changes(model_changes)
 
     def normalize(self, udict: Dict, ureg: UnitRegistry):
         """Normalizes the scan.

@@ -25,7 +25,7 @@ class Timecourse(ObjectJSONEncoder):
     A single simulation consists of multiple changes which are applied,
     all simulations are performed and collected.
 
-    Changesets and selections are deepcopied for persistance
+    Changesets and selections are deep copied for persistence.
 
     """
 
@@ -36,6 +36,7 @@ class Timecourse(ObjectJSONEncoder):
         steps: int,
         changes: dict = None,
         model_changes: dict = None,
+        model_manipulations: dict = None,
     ):
         """Create a time course definition for simulation.
 
@@ -43,22 +44,26 @@ class Timecourse(ObjectJSONEncoder):
         :param end: end time
         :param steps: simulation steps
         :param changes: parameter and initial condition changes
-        :param model_changes: changes to model structure
+        :param model_changes: model parameter and initial condition changes
+        :param model_manipulations: model structure changes
         """
         # Create empty changes and model changes for serialization
         if changes is None:
             changes = {}
         if model_changes is None:
             model_changes = {}
+        if model_manipulations is None:
+            model_manipulations = {}
 
         self.start = start
         self.end = end
         self.steps = steps
         self.changes = deepcopy(changes)
         self.model_changes = deepcopy(model_changes)
+        self.model_manipulations = deepcopy(model_manipulations)
 
     def __repr__(self):
-        return f"Timecourse([{self.start},{self.end}])"
+        return f"Timecourse([{self.start}:{self.end}])"
 
     def to_dict(self):
         """ Convert to dictionary. """
@@ -76,11 +81,15 @@ class Timecourse(ObjectJSONEncoder):
     def add_model_change(self, sid: str, change):
         self.model_changes[sid] = change
 
+    def add_model_changes(self, model_changes):
+        self.model_changes.update(model_changes)
+
     def remove_model_change(self, sid: str):
         del self.model_changes[sid]
 
     def normalize(self, udict, ureg):
         """ Normalize values to model units for all changes."""
+        self.model_changes = Units.normalize_changes(self.model_changes, udict=udict, ureg=ureg)
         self.changes = Units.normalize_changes(self.changes, udict=udict, ureg=ureg)
 
     def strip_units(self):
@@ -119,8 +128,13 @@ class TimecourseSim(AbstractSim):
                 self.timecourses.append(Timecourse(**tc))
             else:
                 self.timecourses.append(tc)
+
         if len(self.timecourses) == 0:
             logger.error("No timecourses in simulation")
+        else:
+            for k, tc in enumerate(self.timecourses):
+                if k > 0 and tc.model_changes:
+                    logger.error(f"'model_changes' only allowed on first timecourse: {tc}")
 
         self.selections = deepcopy(selections)
         self.reset = reset
@@ -143,14 +157,11 @@ class TimecourseSim(AbstractSim):
     def dimensions(self) -> List[Dimension]:
         return [Dimension(dimension="time", index=self.time)]
 
-    def add_model_changes(self, mode_changes: Dict) -> None:
+    def add_model_changes(self, model_changes: Dict) -> None:
         """Adds model changes to given simulation. """
         if self.timecourses:
-            tc = self.timecourses[0]
-            tc.changes = {
-                **mode_changes,
-                **tc.changes,
-            }
+            tc = self.timecourses[0]  # type: Timecourse
+            tc.add_model_changes(model_changes)
 
     def normalize(self, udict, ureg):
         """Normalize timecourse simulation."""
