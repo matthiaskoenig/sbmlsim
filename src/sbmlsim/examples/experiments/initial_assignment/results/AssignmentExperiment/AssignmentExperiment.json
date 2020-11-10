@@ -78,7 +78,7 @@
       "timecourses": [
         {
           "start": 0,
-          "end": 10,
+          "end": 20,
           "steps": 200,
           "changes": {},
           "model_changes": {},
@@ -90,7 +90,7 @@
           "steps": 200,
           "changes": {
             "D": {
-              "_magnitude": 10.0,
+              "_magnitude": 3.0,
               "_units": "millimole",
               "_Quantity__used": false,
               "_Quantity__handling": null

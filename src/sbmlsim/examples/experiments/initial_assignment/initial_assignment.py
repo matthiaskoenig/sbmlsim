@@ -60,13 +60,13 @@ class AssignmentExperiment(SimulationExperiment):
         )
         tcs["sim2"] = TimecourseSim(
             [
-                Timecourse(start=0, end=10, steps=200, changes={}),
+                Timecourse(start=0, end=20, steps=200, changes={}),
                 Timecourse(
                     start=0,
                     end=10,
                     steps=200,
                     changes={
-                        "D": Q_(10.0, "mmole"),
+                        "D": Q_(3.0, "mmole"),
                     },
                 ),
             ]
