@@ -125,8 +125,9 @@ def process_optimization_result(
             x=xopt, output_path=results_path, show_plots=show_plots
         )
 
-    opt_result.plot_correlation(
-        path=results_path / "04_parameter_correlation", show_plots=show_plots
-    )
+    if opt_result.size > 1:
+        opt_result.plot_correlation(
+            path=results_path / "04_parameter_correlation", show_plots=show_plots
+        )
 
     # TODO: overall HTML report for simple overview

@@ -65,12 +65,12 @@ def run_optimization_parallel(
 
     logger.info(f"Running {n_cores} workers")
     # FIXME: remove this bugfix
-    if size < 2 * n_cores:
+    if size < n_cores:
         logger.warning(
-            f"Less simulations then 2 * cores: '{size} < {n_cores}', "
-            f"increasing number of simulations to '{2 * n_cores}'."
+            f"Less simulations then cores: '{size} < {n_cores}', "
+            f"increasing number of simulations to '{n_cores}'."
         )
-        size = 2 * n_cores
+        size = n_cores
 
     sizes = [len(c) for c in np.array_split(range(size), n_cores)]
 
@@ -92,11 +92,11 @@ def run_optimization_parallel(
         opt_results = pool.map(worker, args_list)
 
     # combine simulation results
-    print("--- FINISHED OPTIMIZATION---\n")
+    print("\n--- FINISHED OPTIMIZATION ---\n")
     return OptimizationResult.combine(opt_results)
 
 
 def worker(kwargs) -> OptimizationResult:
     """ Worker for running optimization problem. """
-    print(f"worker<{os.getpid()}> running optimization ...")
+    print(f"worker <{os.getpid()}> running optimization ...")
     return run_optimization(**kwargs)
