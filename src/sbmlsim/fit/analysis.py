@@ -1,8 +1,10 @@
 import json
 import logging
 import time
+import datetime
+import uuid
 from pathlib import Path
-from typing import Dict, Iterable, List, Set, Tuple
+from typing import Dict, Iterable, List, Set, Tuple, Union
 
 import numpy as np
 import pandas as pd
@@ -11,7 +13,7 @@ from scipy.optimize import OptimizeResult
 
 from sbmlsim.fit.objects import FitParameter
 from sbmlsim.plot.plotting_matplotlib import plt
-from sbmlsim.serialization import ObjectJSONEncoder
+from sbmlsim.serialization import ObjectJSONEncoder, from_json, to_json
 from sbmlsim.utils import timeit
 
 
@@ -23,9 +25,10 @@ class OptimizationResult(ObjectJSONEncoder):
 
     def __init__(
         self,
-        parameters: List[FitParameter],
+        parameters: Union[List[FitParameter], Iterable[FitParameter]],
         fits: List[OptimizeResult],
         trajectories: List,
+        sid: str = None
     ):
         """Result of an optimization.
 
@@ -36,6 +39,12 @@ class OptimizationResult(ObjectJSONEncoder):
         :param fits:
         :param trajectories:
         """
+        if sid:
+            self.sid = sid
+        else:
+            uuid_str = str(uuid.uuid4())
+            self.sid = "{:%Y%m%d_%H%M%S}".format(datetime.datetime.now()) + f"__{uuid_str}"
+
         self.parameters = parameters
         self.fits = fits
         self.trajectories = trajectories
@@ -46,25 +55,32 @@ class OptimizationResult(ObjectJSONEncoder):
             self.parameters, self.trajectories
         )
 
+    def to_tsv(self, path: Path):
+        """Store fit results as TSV."""
+        self.df_fits.to_csv(path, sep="\t", index=False)
+
     def to_dict(self):
-        """ Convert to dictionary. """
+        """Convert to dictionary."""
         d = dict()
-        for key in ["parameters", "fits", "trajectories"]:
+        for key in ["sid", "parameters", "fits", "trajectories"]:
             d[key] = self.__dict__[key]
         return d
 
+    def to_json(self, path: Path):
+        """Store OptimizationResult as json.
+
+        Uses the to_dict method.
+        """
+        return to_json(self, path=path)
+
     @staticmethod
-    def from_json(json_info: Tuple[str, Path]) -> "TimecourseSim":
-        """Load OptimizationResult from Path or str
+    def from_json(json_info: Tuple[str, Path]) -> "OptimizationResult":
+        """Load OptimizationResult from Path or str.
 
         :param json_info:
         :return:
         """
-        if isinstance(json_info, Path):
-            with open(json_info, "r") as f_json:
-                d = json.load(f_json)
-        else:
-            d = json.loads(json_info)
+        d = from_json(json_info)
         return OptimizationResult(**d)
 
     def __str__(self):
@@ -152,32 +168,35 @@ class OptimizationResult(ObjectJSONEncoder):
 
         return df
 
-    def report(self, output_path: Path = None, print_output=True):
+    def report(self, path: Path = None, print_output=True) -> str:
         """ Readable report of optimization. """
         pd.set_option("display.max_columns", None)
         pd.set_option("display.expand_frame_repr", False)
-
-        if output_path is not None:
-            tsv_path = output_path / "00_fit_report.tsv"
-            self.df_fits.to_csv(tsv_path, sep="\t", index=False)
         info = [
             "\n",
             "-" * 80,
-            "Optimization Results",
+            f"Optimization Results: {self.sid}",
             "-" * 80,
             str(self.df_fits),
             "-" * 80,
             "Optimal parameters:",
         ]
+        pd.reset_option("display.max_columns")
+        pd.reset_option("display.expand_frame_repr")
 
         xopt = self.xopt
         fitted_pars = {}
         for k, p in enumerate(self.parameters):
             opt_value = xopt[k]
             if abs(opt_value - p.lower_bound) / p.lower_bound < 0.05:
-                logger.error(f"Optimal parameter '{p.pid}' within 5% of lower bound!")
+                msg = f"!Optimal parameter '{p.pid}' within 5% of lower bound!"
+                logger.error(msg)
+                info.append(f"\t>>> {msg} <<<")
+
             if abs(opt_value - p.upper_bound) / p.upper_bound < 0.05:
-                logger.error(f"Optimal parameter '{p.pid}' within 5% of upper bound!")
+                msg = f"!Optimal parameter '{p.pid}' within 5% of upper bound!"
+                logger.error(msg)
+                info.append(f"\t>>> {msg} <<<")
             fitted_pars[p.pid] = (opt_value, p.unit, p.lower_bound, p.upper_bound)
 
         for key, value in fitted_pars.items():
@@ -188,21 +207,30 @@ class OptimizationResult(ObjectJSONEncoder):
             )
         info.append("-" * 80)
         info = "\n".join(info)
+
         if print_output:
             print(info)
 
-        if output_path is not None:
-            filepath = output_path / "00_fit_report.txt"
-            with open(filepath, "w") as fout:
+        if path:
+            with open(path, "w") as fout:
                 fout.write(info)
 
+        return info
+
+    @staticmethod
+    def _save_fig(fig, path: Path, show_plots: bool = True):
+        if show_plots:
+            plt.show()
+        if path:
+            fig.savefig(path, bbox_inches="tight")
+
     @timeit
-    def plot_waterfall(self, output_path: Path = None, show_plots: bool = True):
+    def plot_waterfall(self, path: Path = None, show_plots: bool = True):
         """Creates waterfall plot for the fit results.
 
         Plots the optimization runs sorted by cost.
         """
-        fig, ax = plt.subplots(nrows=1, ncols=1, figsize=(10, 10))
+        fig, ax = plt.subplots(nrows=1, ncols=1, figsize=(5, 5))
         ax.plot(
             range(self.size),
             1 + (self.df_fits.cost - self.df_fits.cost.iloc[0]),
@@ -210,20 +238,18 @@ class OptimizationResult(ObjectJSONEncoder):
             color="black",
         )
         ax.set_xlabel("index (Ordered optimizer run)")
-        ax.set_ylabel("Offsetted cost value (relative to best start)")
+        ax.set_ylabel("Offset cost value (relative to best start)")
         ax.set_yscale("log")
         ax.set_title("Waterfall plot")
-        if show_plots:
-            plt.show()
-
-        if output_path is not None:
-            filepath = output_path / "01_waterfall.svg"
-            fig.savefig(filepath, bbox_inches="tight")
+        self._save_fig(fig, path=path, show_plots=show_plots)
 
     @timeit
-    def plot_traces(self, output_path: Path = None, show_plots: bool = True):
-        """Plots optimization traces."""
-        fig, ax = plt.subplots(nrows=1, ncols=1, figsize=(10, 10))
+    def plot_traces(self, path: Path = None, show_plots: bool = True):
+        """Plots optimization traces.
+
+        Optimization time course of costs.
+        """
+        fig, ax = plt.subplots(nrows=1, ncols=1, figsize=(5, 5))
 
         for run in range(self.size):
             df_run = self.df_traces[self.df_traces.run == run]
@@ -238,21 +264,16 @@ class OptimizationResult(ObjectJSONEncoder):
         ax.set_ylabel("cost")
         ax.set_yscale("log")
         ax.set_title("Traces")
-        if show_plots:
-            plt.show()
 
-        if output_path is not None:
-            filepath = output_path / "02_traces.svg"
-            fig.savefig(filepath, bbox_inches="tight")
+        self._save_fig(fig, path=path, show_plots=show_plots)
 
     @timeit
     def plot_correlation(
         self,
-        output_path: Path = None,
+        path: Path = None,
         show_plots: bool = True,
-        output_format: str = "png",
     ):
-        """Process the optimization results."""
+        """Plot correlation of parameters for analysis."""
         df = self.df_fits
 
         pids = [p.pid for p in self.parameters]
@@ -393,8 +414,4 @@ class OptimizationResult(ObjectJSONEncoder):
                     axes[ky][kx].set_xlim(axes[kx][ky].get_xlim())
                     axes[ky][kx].set_ylim(axes[kx][ky].get_ylim())
 
-        if show_plots:
-            plt.show()
-        if output_path is not None:
-            filepath = output_path / f"04_parameter_landscape.{output_format}"
-            fig.savefig(filepath, bbox_inches="tight")
+        self._save_fig(fig=fig, path=path, show_plots=show_plots)

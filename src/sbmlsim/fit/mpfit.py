@@ -25,6 +25,7 @@ import multiprocessing
 import os
 
 import numpy as np
+from copy import deepcopy
 
 from sbmlsim.fit.analysis import OptimizationResult
 from sbmlsim.fit.fit import run_optimization
@@ -52,6 +53,8 @@ def run_optimization_parallel(
 
     :return:
     """
+    print(problem)
+
     # set number of cores
     cpu_count = multiprocessing.cpu_count()
     if n_cores is None:
@@ -61,9 +64,10 @@ def run_optimization_parallel(
         logger.error(f"More cores then cpus requested, reducing cores to '{n_cores}'")
 
     logger.info(f"Running {n_cores} workers")
+    # FIXME: remove this bugfix
     if size < 2 * n_cores:
         logger.warning(
-            f"Less simulations then 2 * cores: '{size} < {n_cores}',"
+            f"Less simulations then 2 * cores: '{size} < {n_cores}', "
             f"increasing number of simulations to '{2 * n_cores}'."
         )
         size = 2 * n_cores
@@ -88,11 +92,11 @@ def run_optimization_parallel(
         opt_results = pool.map(worker, args_list)
 
     # combine simulation results
+    print("--- FINISHED OPTIMIZATION---\n")
     return OptimizationResult.combine(opt_results)
 
 
 def worker(kwargs) -> OptimizationResult:
     """ Worker for running optimization problem. """
-    while True:
-        print(f"{os.getpid()} <worker>")
-        return run_optimization(**kwargs)
+    print(f"worker<{os.getpid()}> running optimization ...")
+    return run_optimization(**kwargs)

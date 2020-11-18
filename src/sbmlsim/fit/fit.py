@@ -1,9 +1,12 @@
 from pathlib import Path
+import logging
 
 from sbmlsim.fit.analysis import OptimizationResult
 from sbmlsim.fit.optimization import OptimizationProblem, OptimizationAnalysis
 from sbmlsim.simulator import SimulatorSerial
 from sbmlsim.utils import timeit
+
+logger = logging.getLogger(__name__)
 
 
 @timeit
@@ -49,59 +52,81 @@ def run_optimization(
     )
 
 
-def analyze_optimization(
+def process_optimization_result(
     opt_result: OptimizationResult,
-    output_path: Path = None,
+    output_path: Path,
     problem: OptimizationProblem = None,
     show_plots=True,
+
     weighting_local=None,
     residual_type=None,
     variable_step_size=True,
     absolute_tolerance=1e-6,
     relative_tolerance=1e-6,
 ):
-    # write report (additional folders based on runs)
+    """Processes the optimization results.
 
-    if output_path is not None:
-        output_path.mkdir(parents=True, exist_ok=True)
+    Creates reports and stores figures and results.
+    """
+    results_path = output_path / opt_result.sid
+    if not results_path.exists():
+        logger.warning(f"create output directory: '{results_path}'")
+        results_path.mkdir(parents=True, exist_ok=True)
 
-    opt_result.report(output_path=output_path)
-
-    # FIXME: save and load the results
-    # opt_result.save(output_path=output_path)
-
-    if opt_result.size > 1:
-        opt_result.plot_waterfall(output_path=output_path, show_plots=show_plots)
-    opt_result.plot_traces(output_path=output_path, show_plots=show_plots)
-
-    # plot top fit
+    problem_info = ""
     if problem:
-
-        # FIXME: problem references not initialized on multi-core and don't have a simulator yet
+        # FIXME: problem not initialized on multi-core and no simulator is assigned.
+        # This should happen automatically, to ensure correct behavior
         problem.initialize(weighting_local=weighting_local, residual_type=residual_type)
-        print(f"xmodel: {problem.xmodel}")
-
-        # FIXME: tolerances
         problem.set_simulator(simulator=SimulatorSerial())
         problem.variable_step_size = variable_step_size
         problem.absolute_tolerance = absolute_tolerance
         problem.relative_tolerance = relative_tolerance
 
-        problem.report(output_path=output_path)
-
-        optimization_analyzer = OptimizationAnalysis(optimization_problem=problem)
-        optimization_analyzer.plot_costs(
-            x=opt_result.xopt, output_path=output_path, show_plots=show_plots
+        problem_info = problem.report(
+            path=None,
+            print_output=False,
         )
+
+    # write report
+    result_info = opt_result.report(
+        path=None,
+        print_output=True,
+    )
+    info = problem_info + result_info
+    with open(results_path / "00_report.txt", "w") as f_report:
+        f_report.write(info)
+
+    opt_result.to_json(path=results_path / "01_optimization_result.json")
+    opt_result.to_tsv(path=results_path / "01_optimization_result.tsv")
+
+    if opt_result.size > 1:
+        opt_result.plot_waterfall(
+            path=results_path / "02_waterfall.svg", show_plots=show_plots
+
+        )
+    opt_result.plot_traces(
+        path=results_path / "02_traces.svg", show_plots=show_plots)
+
+    # plot top fit
+    if problem:
+        xopt = opt_result.xopt
+        optimization_analyzer = OptimizationAnalysis(optimization_problem=problem)
+
+        df_costs = optimization_analyzer.plot_costs(
+            x=xopt, path=results_path / "03_cost_improvement.svg", show_plots=show_plots
+        )
+        df_costs.to_csv(results_path / "03_cost_improvement.tsv", sep="\t", index=False)
 
         optimization_analyzer.plot_fits(
-            x=opt_result.xopt, output_path=output_path, show_plots=show_plots
+            x=xopt, path=results_path / "05_fits.svg", show_plots=show_plots
         )
-
         optimization_analyzer.plot_residuals(
-            x=opt_result.xopt, output_path=output_path, show_plots=show_plots
+            x=xopt, output_path=results_path, show_plots=show_plots
         )
 
+    opt_result.plot_correlation(
+        path=results_path / "04_parameter_correlation", show_plots=show_plots
+    )
 
-
-    opt_result.plot_correlation(output_path=output_path, show_plots=show_plots)
+    # TODO: overall HTML report for simple overview

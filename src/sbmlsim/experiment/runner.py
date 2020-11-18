@@ -47,7 +47,7 @@ class ExperimentRunner(object):
     def set_simulator(self, simulator):
         """Set simulator on the runner and experiments."""
         if simulator is None:
-            logger.warning(
+            logger.debug(
                 f"No simulator set in ExperimentRunner. This warning can be "
                 f"ignored for parameter fitting which provides a simulator."
             )
@@ -62,7 +62,7 @@ class ExperimentRunner(object):
             experiment_classes = [experiment_classes]
 
         for exp_class in experiment_classes:
-            logger.info(f"Initialize SimulationExperiment: {exp_class.__name__}")
+            logger.debug(f"Initialize SimulationExperiment: {exp_class.__name__}")
             experiment = exp_class(
                 base_path=self.base_path,
                 data_path=self.data_path,

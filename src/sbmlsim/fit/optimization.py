@@ -120,14 +120,21 @@ class OptimizationProblem(object):
         info.append(f"{self.__class__.__name__}: {self.opid}")
         info.append("-" * 80)
         info.append("Experiments")
-
-        # FIXME: full serialization of experiments!
-        # FIXME: runner only available after initialization
         info.extend([f"\t{e}" for e in self.fit_experiments])
         info.append("Parameters")
         info.extend([f"\t{p}" for p in self.parameters])
         info.append("-" * 80)
-        return "\n".join(info)
+        return "\n".join(info) + "\n"
+
+    def report(self, path: Path = None, print_output: bool = True) -> str:
+        """Print and write report."""
+        info = self.__str__()
+        if print_output:
+            print(info)
+        if path:
+            with open(path, "w") as f:
+                f.write(info)
+        return info
 
     def initialize(
         self, weighting_local: WeightingLocalType, residual_type: ResidualType
@@ -137,8 +144,8 @@ class OptimizationProblem(object):
             raise ValueError("'weighting_local' is required.")
         if residual_type is None:
             raise ValueError("'residual_type' is required.")
-        logger.info(f"weighting_local: {weighting_local}")
-        logger.info(f"residual_type: {residual_type}")
+        logger.debug(f"weighting_local: {weighting_local}")
+        logger.debug(f"residual_type: {residual_type}")
 
         self.weighting_local = weighting_local
         self.residual_type = residual_type
@@ -389,15 +396,6 @@ class OptimizationProblem(object):
         """
         self.runner.set_simulator(simulator)
 
-    def report(self, output_path=None):
-        """Print and write report."""
-        info = str(self)
-        print(info)
-        if output_path is not None:
-            filepath = output_path / "00_fit_problem.txt"
-            with open(filepath, "w") as fout:
-                fout.write(info)
-
     def optimize(
         self,
         size=10,
@@ -591,8 +589,10 @@ class OptimizationProblem(object):
                 res_abs = 5.0 * self.y_references[k]  # total error
 
             res_abs_normed = res_abs / self.y_references[k].mean()
-            with np.errstate(invalid="ignore"):
+
+            with np.errstate(divide="ignore", invalid="ignore"):
                 res_rel = res_abs / self.y_references[k]
+
             # no cost contribution of zero values
             res_rel[np.isnan(res_rel)] = 0
             res_rel[np.isinf(res_rel)] = 0
@@ -647,8 +647,15 @@ class OptimizationAnalysis:
     def __init__(self, optimization_problem: OptimizationProblem):
         self.op = optimization_problem
 
+    @staticmethod
+    def _save_fig(fig, path: Path, show_plots: bool = True):
+        if show_plots:
+            plt.show()
+        if path is not None:
+            fig.savefig(path, bbox_inches="tight")
+
     @timeit
-    def plot_fits(self, x, output_path: Path = None, show_plots: bool = True):
+    def plot_fits(self, x, path: Path = None, show_plots: bool = True):
         """Plot fitted curves with experimental data.
 
         Overview of all fit mappings.
@@ -706,10 +713,7 @@ class OptimizationAnalysis:
             axes[k][1].set_yscale("log")
             axes[k][1].set_ylim(bottom=0.3 * np.nanmin(y_ref))
 
-        if show_plots:
-            plt.show()
-        if output_path is not None:
-            fig.savefig(output_path / f"00_fits_{self.op.opid}.svg", bbox_inches="tight")
+        self._save_fig(fig, path=path, show_plots=show_plots)
 
     @timeit
     def plot_residuals(
@@ -849,6 +853,7 @@ class OptimizationAnalysis:
                     # ylim2 = ax2.get_ylim()
                     # # for ax in axes:
                     # #    ax.set_ylim([min(ylim1[0], ylim2[0]), max(ylim1[1],ylim2[1])])
+
             if show_plots:
                 plt.show()
             if output_path is not None:
@@ -859,7 +864,7 @@ class OptimizationAnalysis:
 
     @timeit
     def plot_costs(
-        self, x, output_path: Path = None, show_plots: bool = True
+        self, x, path: Path = None, show_plots: bool = True
     ):
         """Plot cost function comparison"""
         xparameters = {
@@ -890,7 +895,6 @@ class OptimizationAnalysis:
             data, columns=["id", "experiment", "mapping", "cost", "type"]
         )
 
-
         min_cost = np.min([
             np.min(costs["fit"]),
             np.min(costs["model"]),
@@ -920,7 +924,6 @@ class OptimizationAnalysis:
                 alpha=0.7,
         )
 
-
         ax.set_xlabel("initial cost")
         ax.set_ylabel("fit cost")
         ax.set_xscale("log")
@@ -935,12 +938,7 @@ class OptimizationAnalysis:
         # ax.set_xscale("log")
         if show_plots:
             plt.show()
-
-        if output_path:
-            filepath = output_path / "03_costs_mappings.svg"
-            fig.savefig(filepath, bbox_inches="tight")
-
-            tsv_path = output_path / "03_costs_mappings.tsv"
-            cost_df.to_csv(tsv_path, sep="\t", index=False)
+        if path:
+            fig.savefig(path, bbox_inches="tight")
 
         return cost_df

@@ -6,7 +6,7 @@ from sbmlsim.examples.experiments.midazolam.fitting_problems import (
     op_mandema1992,
     op_mid1oh_iv,
 )
-from sbmlsim.fit.fit import OptimizationResult, analyze_optimization
+from sbmlsim.fit.fit import OptimizationResult, process_optimization_result
 from sbmlsim.fit.mpfit import run_optimization_parallel
 from sbmlsim.fit.optimization import (
     OptimizationProblem,
@@ -89,7 +89,7 @@ if __name__ == "__main__":
 
     if 1:
         opt_res_lsq, problem = fit_lsq(problem_factory, **fit_kwargs)
-        analyze_optimization(
+        process_optimization_result(
             opt_res_lsq, problem=problem, output_path=fit_path_lsq, **fit_kwargs
         )
 

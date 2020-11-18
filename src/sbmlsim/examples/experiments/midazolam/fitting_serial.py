@@ -9,7 +9,7 @@ from sbmlsim.examples.experiments.midazolam.fitting_problems import (
     op_mid1oh_iv,
 )
 from sbmlsim.fit.analysis import OptimizationResult
-from sbmlsim.fit.fit import analyze_optimization, run_optimization
+from sbmlsim.fit.fit import process_optimization_result, run_optimization
 from sbmlsim.fit.optimization import (
     OptimizationProblem,
     OptimizerType,
@@ -52,7 +52,7 @@ def fit_de(problem_factory) -> Tuple[OptimizationResult, OptimizationProblem]:
 
 if __name__ == "__main__":
     opt_res_lq, problem = fit_lsq(problem_factory=op_mid1oh_iv)
-    analyze_optimization(opt_res_lq, problem=problem)
+    process_optimization_result(opt_res_lq, problem=problem)
 
     opt_res_de, problem = fit_de(problem_factory=op_mid1oh_iv)
-    analyze_optimization(opt_res_de, problem=problem)
+    process_optimization_result(opt_res_de, problem=problem)

@@ -24,7 +24,6 @@ class SamplingType(Enum):
     UNIFORM_LHS = 4
 
 
-@timeit
 def create_samples(
     parameters: List[FitParameter],
     size,
