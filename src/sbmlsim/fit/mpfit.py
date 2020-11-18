@@ -22,10 +22,10 @@ contend for other lower-level (OS) resources. That's the "multiprocessing" part.
 """
 import logging
 import multiprocessing
+from multiprocessing import Lock
 import os
 
 import numpy as np
-from copy import deepcopy
 
 from sbmlsim.fit.analysis import OptimizationResult
 from sbmlsim.fit.fit import run_optimization
@@ -34,7 +34,7 @@ from sbmlsim.utils import timeit
 
 
 logger = logging.getLogger(__name__)
-
+lock = Lock()
 
 @timeit
 def run_optimization_parallel(
@@ -63,7 +63,8 @@ def run_optimization_parallel(
         n_cores = max(1, multiprocessing.cpu_count() - 1)
         logger.error(f"More cores then cpus requested, reducing cores to '{n_cores}'")
 
-    logger.info(f"Running {n_cores} workers")
+    print("\n--- STARTING OPTIMIZATION ---\n")
+    print(f"Running {n_cores} workers")
     # FIXME: remove this bugfix
     if size < n_cores:
         logger.warning(
@@ -98,5 +99,10 @@ def run_optimization_parallel(
 
 def worker(kwargs) -> OptimizationResult:
     """ Worker for running optimization problem. """
-    print(f"worker <{os.getpid()}> running optimization ...")
+    lock.acquire()
+    try:
+        print(f"worker <{os.getpid()}> running optimization ...")
+    finally:
+        lock.release()
+
     return run_optimization(**kwargs)

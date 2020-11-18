@@ -55,7 +55,7 @@ class SimulatorWorker(object):
 
             if k == 0 and tc.model_changes:
                 # [1] apply model changes of first simulation
-                logger.warning("Applying model changes")
+                logger.debug("Applying model changes")
                 for key, item in tc.model_changes.items():
                     if key.startswith("init"):
                         logger.error(
@@ -79,7 +79,7 @@ class SimulatorWorker(object):
                         init_key = key
                         self.r[key] = value
 
-                    logger.warning(f"\t{init_key} = {item}")
+                    logger.debug(f"\t{init_key} = {item}")
 
                 # [2] re-evaluate initial assignments
                 # https://github.com/sys-bio/roadrunner/issues/710

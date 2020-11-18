@@ -18,7 +18,6 @@ from sbmlsim.fit.optimization import (
     WeightingLocalType,
 )
 
-
 RESULTS_PATH = MIDAZOLAM_PATH / "results"
 
 

@@ -58,7 +58,7 @@ def create_samples(
         # Latin-Hypercube sampling
         # https://pythonhosted.org/pyDOE/randomized.html#latin-hypercube
         # “maximin” or “m”: maximize the minimum distance between points, but place the point in a randomized location within its interval
-        x = lhs(n=len(parameters), samples=size, criterion="maximin")
+        x = lhs(n=len(parameters), samples=size)  # criterion="maximin"
     else:
         raise ValueError(f"Unsupported SamplingType: '{sampling}'")
 
