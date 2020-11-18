@@ -1,0 +1,7 @@
+id	experiment	mapping	cost	type
+Kupferschmidt1995_fm_mid_iv	Kupferschmidt1995	fm_mid_iv	0.8943920414001927	model
+Kupferschmidt1995_fm_mid1oh_iv	Kupferschmidt1995	fm_mid1oh_iv	17.78735083240562	model
+Kupferschmidt1995_fm_mid_iv	Kupferschmidt1995	fm_mid_iv	0.6725528697298495	initial
+Kupferschmidt1995_fm_mid1oh_iv	Kupferschmidt1995	fm_mid1oh_iv	721.1016595683622	initial
+Kupferschmidt1995_fm_mid_iv	Kupferschmidt1995	fm_mid_iv	0.1459896479262593	fit
+Kupferschmidt1995_fm_mid1oh_iv	Kupferschmidt1995	fm_mid1oh_iv	0.17433757850288908	fit

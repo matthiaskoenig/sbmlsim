@@ -117,7 +117,7 @@ class TimecourseSim(AbstractSim):
         """
         :param timecourses:
         :param selections:
-        :param reset: resetToOrigin at beginning of simulation
+        :param reset: complete reset of model
         :param time_offset: time shift of simulation
         """
         if isinstance(timecourses, Timecourse):

@@ -1,8 +1,8 @@
 --------------------------------------------------------------------------------
-OptimizationProblem
+OptimizationProblem: mid1oh_iv
 --------------------------------------------------------------------------------
 Experiments
-	Kupferschmidt1995
+	FitExperiment(<class 'sbmlsim.examples.experiments.midazolam.experiments.kupferschmidt1995.Kupferschmidt1995'> ['fm_mid_iv', 'fm_mid1oh_iv'])
 Parameters
 	FitParameter<LI__MIDIM_Vmax = 0.1 [1e-05 - 1000.0]>
 	FitParameter<LI__MID1OHEX_Vmax = 0.1 [1e-05 - 1000.0]>

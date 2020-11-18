@@ -29,7 +29,7 @@ def fit_lsq(
     problem = problem_factory()
     opt_res = run_optimization_parallel(
         problem=problem,
-        size=5,
+        size=1,
         seed=1236,
         n_cores=1,
         optimizer=OptimizerType.LEAST_SQUARE,
@@ -87,14 +87,13 @@ if __name__ == "__main__":
         "residual_type": ResidualType.ABSOLUTE_NORMED_RESIDUALS,
     }
 
-    if 0:
+    if 1:
         opt_res_lsq, problem = fit_lsq(problem_factory, **fit_kwargs)
         analyze_optimization(
             opt_res_lsq, problem=problem, output_path=fit_path_lsq, **fit_kwargs
         )
 
-    if 1:
-
+    if 0:
         opt_res_de, problem = fit_de(problem_factory, **fit_kwargs)
         analyze_optimization(
             opt_res_de, problem=problem, output_path=fit_path_de, **fit_kwargs

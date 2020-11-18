@@ -1,7 +1,7 @@
 from pathlib import Path
 
 from sbmlsim.fit.analysis import OptimizationResult
-from sbmlsim.fit.optimization import OptimizationProblem
+from sbmlsim.fit.optimization import OptimizationProblem, OptimizationAnalysis
 from sbmlsim.simulator import SimulatorSerial
 from sbmlsim.utils import timeit
 
@@ -76,9 +76,11 @@ def analyze_optimization(
 
     # plot top fit
     if problem:
-        # FIMXE: problem references not initialized on multi-core and don't have a simulator yet
 
+        # FIXME: problem references not initialized on multi-core and don't have a simulator yet
         problem.initialize(weighting_local=weighting_local, residual_type=residual_type)
+        print(f"xmodel: {problem.xmodel}")
+
         # FIXME: tolerances
         problem.set_simulator(simulator=SimulatorSerial())
         problem.variable_step_size = variable_step_size
@@ -86,14 +88,20 @@ def analyze_optimization(
         problem.relative_tolerance = relative_tolerance
 
         problem.report(output_path=output_path)
-        problem.plot_fits(
+
+        optimization_analyzer = OptimizationAnalysis(optimization_problem=problem)
+        optimization_analyzer.plot_costs(
             x=opt_result.xopt, output_path=output_path, show_plots=show_plots
         )
-        problem.plot_costs(
+
+        optimization_analyzer.plot_fits(
             x=opt_result.xopt, output_path=output_path, show_plots=show_plots
         )
-        problem.plot_residuals(
+
+        optimization_analyzer.plot_residuals(
             x=opt_result.xopt, output_path=output_path, show_plots=show_plots
         )
+
+
 
     opt_result.plot_correlation(output_path=output_path, show_plots=show_plots)
