@@ -1,9 +1,9 @@
 import functools
 import hashlib
 import inspect
+import os
 import time
 import warnings
-import os
 
 
 def md5_for_path(path):
@@ -48,7 +48,11 @@ def timeit(method):
             name = kw.get("log_name", method.__name__.upper())
             kw["log_time"][name] = int((te - ts) * 1000)
         else:
-            print("{:20}  {:8.4f} [s]".format(f"{method.__name__} <{os.getpid()}>", (te - ts)))
+            print(
+                "{:20}  {:8.4f} [s]".format(
+                    f"{method.__name__} <{os.getpid()}>", (te - ts)
+                )
+            )
         return result
 
     return timed

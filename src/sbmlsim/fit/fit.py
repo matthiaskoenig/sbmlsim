@@ -1,10 +1,11 @@
-from pathlib import Path
 import logging
+from pathlib import Path
 
 from sbmlsim.fit.analysis import OptimizationResult
-from sbmlsim.fit.optimization import OptimizationProblem, OptimizationAnalysis
+from sbmlsim.fit.optimization import OptimizationAnalysis, OptimizationProblem
 from sbmlsim.simulator import SimulatorSerial
 from sbmlsim.utils import timeit
+
 
 logger = logging.getLogger(__name__)
 
@@ -15,7 +16,7 @@ def run_optimization(
     size: int = 5,
     seed: int = None,
     verbose=False,
-    **kwargs
+    **kwargs,
 ) -> OptimizationResult:
     """Runs the given optimization problem.
 
@@ -57,7 +58,6 @@ def process_optimization_result(
     output_path: Path,
     problem: OptimizationProblem = None,
     show_plots=True,
-
     weighting_local=None,
     residual_type=None,
     variable_step_size=True,
@@ -103,10 +103,8 @@ def process_optimization_result(
     if opt_result.size > 1:
         opt_result.plot_waterfall(
             path=results_path / "02_waterfall.svg", show_plots=show_plots
-
         )
-    opt_result.plot_traces(
-        path=results_path / "02_traces.svg", show_plots=show_plots)
+    opt_result.plot_traces(path=results_path / "02_traces.svg", show_plots=show_plots)
 
     # plot top fit
     if problem:

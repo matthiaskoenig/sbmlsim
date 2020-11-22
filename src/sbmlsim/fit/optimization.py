@@ -716,16 +716,16 @@ class OptimizationAnalysis:
         self._save_fig(fig, path=path, show_plots=show_plots)
 
     @timeit
-    def plot_residuals(
-        self, x, output_path: Path = None, show_plots: bool = True
-    ):
+    def plot_residuals(self, x, output_path: Path = None, show_plots: bool = True):
         """Plot residual data.
 
         :param res_data_start: initial residual data
         :return:
         """
         titles = ["model", "fit"]
-        res_data_start = self.op.residuals(xlog=np.log10(self.op.xmodel), complete_data=True)
+        res_data_start = self.op.residuals(
+            xlog=np.log10(self.op.xmodel), complete_data=True
+        )
         res_data_fit = self.op.residuals(xlog=np.log10(x), complete_data=True)
 
         for k, mapping_id in enumerate(self.op.mapping_keys):
@@ -863,9 +863,7 @@ class OptimizationAnalysis:
                 )
 
     @timeit
-    def plot_costs(
-        self, x, path: Path = None, show_plots: bool = True
-    ):
+    def plot_costs(self, x, path: Path = None, show_plots: bool = True):
         """Plot cost function comparison"""
         xparameters = {
             # model parameters
@@ -873,7 +871,7 @@ class OptimizationAnalysis:
             # initial values of fit parameter
             "initial": self.op.x0,
             # provided parameters
-            "fit": x
+            "fit": x,
         }
         data = []
         costs = {}
@@ -895,23 +893,40 @@ class OptimizationAnalysis:
             data, columns=["id", "experiment", "mapping", "cost", "type"]
         )
 
-        min_cost = np.min([
-            np.min(costs["fit"]),
-            np.min(costs["model"]),
-            np.min(costs["initial"]),
-        ])
-        max_cost = np.max([
-            np.max(costs["fit"]),
-            np.max(costs["model"]),
-            np.max(costs["initial"]),
-        ])
+        min_cost = np.min(
+            [
+                np.min(costs["fit"]),
+                np.min(costs["model"]),
+                np.min(costs["initial"]),
+            ]
+        )
+        max_cost = np.max(
+            [
+                np.max(costs["fit"]),
+                np.max(costs["model"]),
+                np.max(costs["initial"]),
+            ]
+        )
 
         fig, ax = plt.subplots(nrows=1, ncols=1, figsize=(5, 5))
 
-        ax.plot([min_cost* 0.5, max_cost*2], [min_cost * 0.5, max_cost*2], '--', color="black")
+        ax.plot(
+            [min_cost * 0.5, max_cost * 2],
+            [min_cost * 0.5, max_cost * 2],
+            "--",
+            color="black",
+        )
         # ax.plot(costs["initial"], costs["fit"], linestyle="", marker="s", label="initial")
-        ax.plot(costs["model"], costs["fit"], linestyle="", marker="o", label="model",
-                color="black", markersize="10", alpha=0.8)
+        ax.plot(
+            costs["model"],
+            costs["fit"],
+            linestyle="",
+            marker="o",
+            label="model",
+            color="black",
+            markersize="10",
+            alpha=0.8,
+        )
 
         for k, mapping_key in enumerate(self.op.mapping_keys):
             ax.annotate(
@@ -922,7 +937,7 @@ class OptimizationAnalysis:
                 ),
                 fontsize="x-small",
                 alpha=0.7,
-        )
+            )
 
         ax.set_xlabel("initial cost")
         ax.set_ylabel("fit cost")

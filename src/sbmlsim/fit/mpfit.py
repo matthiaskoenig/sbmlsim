@@ -22,8 +22,8 @@ contend for other lower-level (OS) resources. That's the "multiprocessing" part.
 """
 import logging
 import multiprocessing
-from multiprocessing import Lock
 import os
+from multiprocessing import Lock
 
 import numpy as np
 
@@ -35,6 +35,7 @@ from sbmlsim.utils import timeit
 
 logger = logging.getLogger(__name__)
 lock = Lock()
+
 
 @timeit
 def run_optimization_parallel(

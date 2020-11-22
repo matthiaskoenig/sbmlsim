@@ -104,7 +104,6 @@ class Mandema1992(MidazolamSimulationExperiment):
                     changes={
                         "BW": bodyweight,
                         "PODOSE_mid": mid_po,
-
                     },
                 )
             ]

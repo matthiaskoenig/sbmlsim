@@ -1,7 +1,7 @@
+import datetime
 import json
 import logging
 import time
-import datetime
 import uuid
 from pathlib import Path
 from typing import Dict, Iterable, List, Set, Tuple, Union
@@ -28,7 +28,7 @@ class OptimizationResult(ObjectJSONEncoder):
         parameters: Union[List[FitParameter], Iterable[FitParameter]],
         fits: List[OptimizeResult],
         trajectories: List,
-        sid: str = None
+        sid: str = None,
     ):
         """Result of an optimization.
 
@@ -43,7 +43,9 @@ class OptimizationResult(ObjectJSONEncoder):
             self.sid = sid
         else:
             uuid_str = str(uuid.uuid4())
-            self.sid = "{:%Y%m%d_%H%M%S}".format(datetime.datetime.now()) + f"__{uuid_str}"
+            self.sid = (
+                "{:%Y%m%d_%H%M%S}".format(datetime.datetime.now()) + f"__{uuid_str}"
+            )
 
         self.parameters = parameters
         self.fits = fits

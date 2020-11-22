@@ -5,7 +5,7 @@ import json
 from enum import Enum
 from json import JSONEncoder
 from pathlib import Path
-from typing import Tuple, Dict
+from typing import Dict, Tuple
 
 from matplotlib.pyplot import Figure as MPLFigure
 from numpy import ndarray

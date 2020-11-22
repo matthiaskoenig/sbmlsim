@@ -33,7 +33,7 @@ class MidazolamSimulationExperiment(SimulationExperiment):
     def models(self) -> Dict[str, AbstractModel]:
         Q_ = self.Q_
         models = {
-            'model': AbstractModel(
+            "model": AbstractModel(
                 source=MODEL_PATH,
                 language_type=AbstractModel.LanguageType.SBML,
                 changes={
@@ -41,7 +41,8 @@ class MidazolamSimulationExperiment(SimulationExperiment):
                     "KI__MID1OHEX_Km": Q_(0.7051197538875393, "mM"),
                     "ftissue_mid1oh": Q_(99.23248555491428, "liter/min"),
                     "fup_mid1oh": Q_(0.19507488419734886, "dimensionless"),
-                })
+                },
+            )
         }
         return ExperimentDict(models)
 
