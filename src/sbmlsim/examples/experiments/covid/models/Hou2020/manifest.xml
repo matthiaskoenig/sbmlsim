@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<omexManifest xmlns="http://identifiers.org/combine.specifications/omex-manifest">
+	<content location="Hou2020.sedml" format="http://identifiers.org/combine.specifications/sed-ml"/>
+	<content location="Hou2020.cps" format="http://purl.org/NET/mediatypes/application/xml"/>
+	<content location="Hou2020.omex" format="http://identifiers.org/combine.specifications/omex"/>
+	<content location="Hou2020.xml" format="http://identifiers.org/combine.specifications/sbml.level-3.version-1"/>
+</omexManifest>

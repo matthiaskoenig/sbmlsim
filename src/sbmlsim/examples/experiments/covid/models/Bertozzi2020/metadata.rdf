@@ -1,0 +1,11 @@
+<rdf:RDF
+    xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"
+    xmlns:dcterms="http://purl.org/dc/terms/" > 
+  <rdf:Description rdf:about="file:///">
+    <dcterms:modified>2020-11-23T10:51:00.882Z</dcterms:modified>
+    <dcterms:creator>libCombineArchive</dcterms:creator>
+    <dcterms:created>2020-11-23T10:51:00.350Z</dcterms:created>
+    <dcterms:provenance>This model was downloaded from BioModels (http://www.ebi.ac.uk/biomodels/) on Mon Nov 23 10:51:00 GMT 2020</dcterms:provenance>
+    <dcterms:license>http://creativecommons.org/publicdomain/zero/1.0/</dcterms:license>
+  </rdf:Description>
+</rdf:RDF>

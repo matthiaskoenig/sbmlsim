@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<omexManifest xmlns="http://identifiers.org/combine.specifications/omex-manifest">
+	<content location="Cuadros2020.omex" format="http://identifiers.org/combine.specifications/omex"/>
+	<content location="Cuadros2020.cps" format="http://purl.org/NET/mediatypes/application/xml"/>
+	<content location="Cuadros2020.xml" format="http://identifiers.org/combine.specifications/sbml.level-3.version-1"/>
+	<content location="Cuadros2020.sedml" format="http://identifiers.org/combine.specifications/sed-ml"/>
+</omexManifest>

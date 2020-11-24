@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<omexManifest xmlns="http://identifiers.org/combine.specifications/omex-manifest">
+	<content location="Carcione2020.xml" format="http://identifiers.org/combine.specifications/sbml.level-3.version-1"/>
+	<content location="Carcione2020.cps" format="http://purl.org/NET/mediatypes/application/xml"/>
+	<content location="Carcione2020.sedml" format="http://identifiers.org/combine.specifications/sed-ml"/>
+	<content location="Carcione2020.omex" format="http://identifiers.org/combine.specifications/omex"/>
+</omexManifest>

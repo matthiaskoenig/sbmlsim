@@ -1,0 +1,193 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta http-equiv="content-type" content="text/html; charset=utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, minimal-ui">
+    <title>Cuadros2020</title>
+    <link href="https://fonts.googleapis.com/css?family=Roboto:100,300,400,500,700,900" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/@mdi/font@4.x/css/materialdesignicons.min.css" rel="stylesheet">
+    <!--<link href="https://cdn.jsdelivr.net/npm/vuetify@2.x/dist/vuetify.min.css" rel="stylesheet">-->
+    <link rel="stylesheet" href="//cdnjs.cloudflare.com/ajax/libs/highlight.js/10.1.2/styles/default.min.css">
+</head>
+
+<body>
+<div id="app">
+    <!-- Vue app-->
+    <v-app>
+        <v-content>
+
+            <a href="../index.html">Experiments</a>
+            <h1>Cuadros2020</h1>
+
+            <h2>Models</h2>
+            <p>
+            <ul>
+                <li><strong>model</strong>: <a href="../../models/Cuadros2020/Cuadros2020.xml">../../models/Cuadros2020/Cuadros2020.xml</a></li>
+            </ul>
+            </p>
+
+            <h2>Datasets</h2>
+            <p>
+            <ul>
+            </ul>
+            </p>
+
+            <h2>Figures</h2>
+            <p>
+            <ul>
+                <li><strong>plot_1</strong>: <a href="Cuadros2020_plot_1.svg">Cuadros2020_plot_1.svg</a></li>
+                <li><strong>plot_3</strong>: <a href="Cuadros2020_plot_3.svg">Cuadros2020_plot_3.svg</a></li>
+            </ul>
+            </p>
+
+            <h3>plot_1</h3>
+            <p>
+            <table>
+                <tr>
+                    <td>
+                        <!--<v-img src="Cuadros2020_plot_1.svg" max-width="600" width="600"></v-img>-->
+                        <img src="Cuadros2020_plot_1.svg" width="600">
+                    </td>
+                    <!--
+                    <td>
+                    </td>
+                    -->
+                </tr>
+            </table>
+            </p>
+            <h3>plot_3</h3>
+            <p>
+            <table>
+                <tr>
+                    <td>
+                        <!--<v-img src="Cuadros2020_plot_3.svg" max-width="600" width="600"></v-img>-->
+                        <img src="Cuadros2020_plot_3.svg" width="600">
+                    </td>
+                    <!--
+                    <td>
+                    </td>
+                    -->
+                </tr>
+            </table>
+            </p>
+
+            <h2>Code</h2>
+            <p>
+                <a href="../../experiments/cuadros2020.py">../../experiments/cuadros2020.py</a>
+            <pre>
+<code class="python">from pathlib import Path
+from typing import Dict
+
+from sbmlsim.model import AbstractModel
+from sbmlsim.plot import Axis, Figure
+from sbmlsim.simulation import Timecourse, TimecourseSim
+from sbmlsim.experiment import SimulationExperiment, ExperimentDict
+from sbmlsim.task import Task
+
+
+class Cuadros2020(SimulationExperiment):
+
+    def models(self) -> Dict[str, AbstractModel]:
+        Q_ = self.Q_
+        models = {
+            "model": AbstractModel(
+                source=Path(__file__).parent / ".." / "models" / "Cuadros2020" / "Cuadros2020.xml",
+                language_type=AbstractModel.LanguageType.SBML,
+                changes={},
+            )
+        }
+        return ExperimentDict(models)
+
+    def tasks(self) -> Dict[str, Task]:
+        if self.simulations():
+            return ExperimentDict(
+                {
+                    f"task_{key}": Task(model="model", simulation=key)
+                    for key in self.simulations()
+                }
+            )
+
+    def simulations(self) -> Dict[str, TimecourseSim]:
+        Q_ = self.Q_
+
+        tcsims = {}
+        tcsims["sim1"] = TimecourseSim(
+            [
+                Timecourse(
+                    start=0,
+                    end=75,
+                    steps=74,
+                    changes={},
+                )
+            ]
+        )
+        return tcsims
+
+    def figures(self) -> Dict[str, Figure]:
+        return {**self.figure_plot_1()}
+
+    def figure_plot_1(self):
+        unit_time = "time"
+        unit_y = "substance"
+
+        fig_1 = Figure(self, sid="plot_1", name=f"{self.sid} (plot_1)")
+        plots = fig_1.create_plots(Axis("time", unit=unit_time), legend=True)
+        plots[0].set_yaxis("Total_cumulative_cases", unit_y)
+
+        # simulation
+        plots[0].add_data(
+            task="task_sim1",
+            xid="time",
+            yid="Total_cumulative_cases",
+            label="Total_cumulative_cases",
+            color="black",
+            linewidth=2,
+        )
+
+        fig_3 = Figure(self, sid="plot_3", name=f"{self.sid} (plot_3)")
+        plots = fig_3.create_plots(Axis("time", unit=unit_time), legend=True)
+        plots[0].set_yaxis("Total_deaths", unit_y)
+
+        # simulation
+        plots[0].add_data(
+            task="task_sim1",
+            xid="time",
+            yid="Total_deaths",
+            label="Total_deaths",
+            color="black",
+            linewidth=2,
+        )
+
+        return {"plot_1": fig_1, "plot_3": fig_3}
+</code>
+        </pre>
+            </p>
+
+        </v-content>
+    </v-app>
+</div>
+
+
+<!-- loading dependencies -->
+<script src="https://cdn.jsdelivr.net/npm/vue@2.6.11"></script>
+<script src="https://cdn.jsdelivr.net/npm/vuetify@2.2.6/dist/vuetify.js"></script>
+<link href="https://fonts.googleapis.com/css?family=Roboto:100,300,400,500,700,900" rel="stylesheet">
+<link href="https://cdn.jsdelivr.net/npm/@mdi/font@4.x/css/materialdesignicons.min.css" rel="stylesheet">
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/10.1.2/highlight.min.js"></script>
+<script>hljs.initHighlightingOnLoad();</script>
+
+<script>
+    const app = new Vue({
+        el: '#app',
+        vuetify: new Vuetify(),
+        delimiters: ['${', '}'],
+        data() {
+            return {}
+        }
+    })
+</script>
+
+
+</body>
+</html>
