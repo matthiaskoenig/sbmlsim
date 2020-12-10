@@ -117,9 +117,30 @@ class OptimizationResult(ObjectJSONEncoder):
         return len(self.df_fits)
 
     @property
-    def xopt(self):
-        """Optimal parameters"""
+    def xopt(self) -> np.ndarray:
+        """Numerical values of optimal parameters."""
         return self.df_fits.x.iloc[0]
+
+    @property
+    def xopt_fit_parameters(self) -> List[FitParameter]:
+        """Optimal parameters as Fit parameters."""
+        return self._x_as_fit_parameters(x=self.xopt)
+
+    def _x_as_fit_parameters(self, x) -> List[FitParameter]:
+        """Converts numerical parameter vector to fit parameters."""
+        fit_pars = []
+        for k, p in enumerate(self.parameters):
+            fit_pars.append(
+                FitParameter(
+                    pid=p.pid,
+                    start_value=x[k],
+                    lower_bound=p.lower_bound,
+                    upper_bound=p.upper_bound,
+                    unit=p.unit
+                )
+            )
+        return fit_pars
+
 
     @staticmethod
     def process_traces(parameters: List[FitParameter], trajectories):

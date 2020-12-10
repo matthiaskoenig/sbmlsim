@@ -21,14 +21,14 @@ op_kwargs = {
     "fit_parameters": [
         # distribution parameters
         FitParameter(
-            parameter_id="ftissue_mid1oh",
+            pid="ftissue_mid1oh",
             start_value=1.0,
             lower_bound=1,
             upper_bound=1e5,
             unit="liter/min",
         ),
         FitParameter(
-            parameter_id="fup_mid1oh",
+            pid="fup_mid1oh",
             start_value=0.1,
             lower_bound=0.01,
             upper_bound=0.3,
@@ -36,7 +36,7 @@ op_kwargs = {
         ),
         # mid1oh kinetics
         FitParameter(
-            parameter_id="KI__MID1OHEX_Vmax",
+            pid="KI__MID1OHEX_Vmax",
             start_value=100,
             lower_bound=1e-1,
             upper_bound=1e4,

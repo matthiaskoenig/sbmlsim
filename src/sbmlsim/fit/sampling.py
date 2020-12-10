@@ -128,9 +128,9 @@ def plot_samples(samples):
 
 def example1():
     parameters = [
-        FitParameter(parameter_id="p1", lower_bound=10, upper_bound=1e4),
-        FitParameter(parameter_id="p2", lower_bound=1, upper_bound=1e3),
-        FitParameter(parameter_id="p3", lower_bound=1, upper_bound=1e3),
+        FitParameter(pid="p1", lower_bound=10, upper_bound=1e4),
+        FitParameter(pid="p2", lower_bound=1, upper_bound=1e3),
+        FitParameter(pid="p3", lower_bound=1, upper_bound=1e3),
     ]
     samples = {}
     for sampling in [

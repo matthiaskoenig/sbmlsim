@@ -5,7 +5,7 @@ import json
 import logging
 from copy import deepcopy
 from pathlib import Path
-from typing import Dict, List, Tuple
+from typing import Dict, List, Tuple, Union
 
 import numpy as np
 
@@ -188,12 +188,8 @@ class TimecourseSim(AbstractSim):
         }
         return d
 
-    def to_json(self, path=None):
-        """Convert definition to JSON for exchange.
-
-        :param path: path for file, if None JSON str is returned
-        :return:
-        """
+    def to_json(self, path: Path = None) -> str:
+        """Convert definition to JSON."""
         if path is None:
             return json.dumps(self, cls=ObjectJSONEncoder, indent=2)
         else:
@@ -201,12 +197,8 @@ class TimecourseSim(AbstractSim):
                 json.dump(self, fp=f_json, cls=ObjectJSONEncoder, indent=2)
 
     @staticmethod
-    def from_json(json_info: Tuple[str, Path]) -> "TimecourseSim":
-        """Load TimecourseSim from Path or str
-
-        :param json_info:
-        :return:
-        """
+    def from_json(json_info: Union[str, Path]) -> "TimecourseSim":
+        """Load from JSON."""
         if isinstance(json_info, Path):
             with open(json_info, "r") as f_json:
                 d = json.load(f_json)
