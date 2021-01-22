@@ -4,12 +4,13 @@ Definition of FitProblem.
 import json
 import logging
 from pathlib import Path
-from typing import Dict, Iterable, List, Set, Union, Tuple
+from typing import Dict, Iterable, List, Set, Tuple, Union
 
 import numpy as np
 
 from sbmlsim.data import Data
 from sbmlsim.serialization import ObjectJSONEncoder
+
 
 logger = logging.getLogger(__name__)
 

@@ -136,11 +136,10 @@ class OptimizationResult(ObjectJSONEncoder):
                     start_value=x[k],
                     lower_bound=p.lower_bound,
                     upper_bound=p.upper_bound,
-                    unit=p.unit
+                    unit=p.unit,
                 )
             )
         return fit_pars
-
 
     @staticmethod
     def process_traces(parameters: List[FitParameter], trajectories):
