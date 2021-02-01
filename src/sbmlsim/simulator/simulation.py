@@ -122,7 +122,10 @@ class SimulatorWorker(object):
 
             df = pd.DataFrame(s, columns=s.colnames)
             df.time = df.time + t_offset
-            frames.append(df)
+
             t_offset += tc.end
+            if not tc.discard:
+                # discard timecourses (pre-simulation)
+                frames.append(df)
 
         return pd.concat(frames, sort=False)

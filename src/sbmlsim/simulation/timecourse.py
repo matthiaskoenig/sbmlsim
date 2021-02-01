@@ -37,6 +37,7 @@ class Timecourse(ObjectJSONEncoder):
         changes: dict = None,
         model_changes: dict = None,
         model_manipulations: dict = None,
+        discard: bool = False,
     ):
         """Create a time course definition for simulation.
 
@@ -46,6 +47,7 @@ class Timecourse(ObjectJSONEncoder):
         :param changes: parameter and initial condition changes
         :param model_changes: model parameter and initial condition changes
         :param model_manipulations: model structure changes
+        :param discard: discards simulation from results (e.g. pre-simulations)
         """
         # Create empty changes and model changes for serialization
         if changes is None:
@@ -61,6 +63,7 @@ class Timecourse(ObjectJSONEncoder):
         self.changes = deepcopy(changes)
         self.model_changes = deepcopy(model_changes)
         self.model_manipulations = deepcopy(model_manipulations)
+        self.discard = discard
 
     def __repr__(self):
         return f"Timecourse([{self.start}:{self.end}])"
