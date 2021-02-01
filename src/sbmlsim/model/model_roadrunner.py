@@ -87,6 +87,9 @@ class RoadrunnerSBMLModel(AbstractModel):
             ureg = Units.default_ureg()
         self.udict, self.ureg = self.parse_units(ureg)
 
+        # normalize model changes
+        self.normalize(ureg=self.ureg, udict=self.udict)
+
     @property
     def Q_(self) -> Quantity:
         """Quantity to create quantities for model changes."""

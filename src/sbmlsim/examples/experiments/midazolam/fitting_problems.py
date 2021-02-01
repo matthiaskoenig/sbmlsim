@@ -34,21 +34,21 @@ def op_kupferschmidt1995() -> OptimizationProblem:
         fit_parameters=[
             # liver
             FitParameter(
-                parameter_id="LI__MIDIM_Vmax",
+                pid="LI__MIDIM_Vmax",
                 start_value=0.1,
                 lower_bound=VMAX_BOUNDS[0],
                 upper_bound=VMAX_BOUNDS[1],
                 unit="mmole_per_min",
             ),
             FitParameter(
-                parameter_id="LI__MID1OHEX_Vmax",
+                pid="LI__MID1OHEX_Vmax",
                 start_value=0.1,
                 lower_bound=VMAX_BOUNDS[0],
                 upper_bound=VMAX_BOUNDS[1],
                 unit="mmole_per_min",
             ),
             FitParameter(
-                parameter_id="LI__MIDOH_Vmax",
+                pid="LI__MIDOH_Vmax",
                 start_value=100,
                 lower_bound=VMAX_BOUNDS[0],
                 upper_bound=VMAX_BOUNDS[1],
@@ -63,14 +63,14 @@ def op_kupferschmidt1995() -> OptimizationProblem:
             #             unit="mM"),
             # kidneys (determined via 1-OH fits)
             FitParameter(
-                parameter_id="KI__MID1OHEX_Vmax",
+                pid="KI__MID1OHEX_Vmax",
                 start_value=100,
                 lower_bound=VMAX_BOUNDS[0],
                 upper_bound=VMAX_BOUNDS[1] * 10,
                 unit="mmole/min",
             ),
             FitParameter(
-                parameter_id="KI__MID1OHEX_Km",
+                pid="KI__MID1OHEX_Km",
                 start_value=100,
                 lower_bound=KM_BOUNDS[0],
                 upper_bound=KM_BOUNDS[1],
@@ -78,7 +78,7 @@ def op_kupferschmidt1995() -> OptimizationProblem:
             ),
             # distribution
             FitParameter(
-                parameter_id="ftissue_mid",
+                pid="ftissue_mid",
                 start_value=50,
                 lower_bound=VMAX_BOUNDS[0],
                 upper_bound=VMAX_BOUNDS[1],
@@ -88,7 +88,7 @@ def op_kupferschmidt1995() -> OptimizationProblem:
             #               lower_bound=0.05, upper_bound=0.3,
             #              unit="dimensionless"),
             FitParameter(
-                parameter_id="ftissue_mid1oh",
+                pid="ftissue_mid1oh",
                 start_value=1.0,
                 lower_bound=VMAX_BOUNDS[0],
                 upper_bound=VMAX_BOUNDS[1],
@@ -109,14 +109,14 @@ def op_mid1oh_iv() -> OptimizationProblem:
         fit_parameters=[
             # distribution parameters
             FitParameter(
-                parameter_id="ftissue_mid1oh",
+                pid="ftissue_mid1oh",
                 start_value=1.0,
                 lower_bound=1,
                 upper_bound=1e5,
                 unit="liter/min",
             ),
             FitParameter(
-                parameter_id="fup_mid1oh",
+                pid="fup_mid1oh",
                 start_value=0.1,
                 lower_bound=0.01,
                 upper_bound=0.5,
@@ -124,7 +124,7 @@ def op_mid1oh_iv() -> OptimizationProblem:
             ),
             # mid1oh kinetics
             FitParameter(
-                parameter_id="KI__MID1OHEX_Vmax",
+                pid="KI__MID1OHEX_Vmax",
                 start_value=100,
                 lower_bound=1e-1,
                 upper_bound=1e4,
@@ -146,21 +146,21 @@ def op_mandema1992() -> OptimizationProblem:
         fit_parameters=[
             # liver
             FitParameter(
-                parameter_id="LI__MIDIM_Vmax",
+                pid="LI__MIDIM_Vmax",
                 start_value=0.1,
                 lower_bound=1e-3,
                 upper_bound=1e6,
                 unit="mmole_per_min",
             ),
             FitParameter(
-                parameter_id="LI__MID1OHEX_Vmax",
+                pid="LI__MID1OHEX_Vmax",
                 start_value=0.1,
                 lower_bound=1e-3,
                 upper_bound=1e6,
                 unit="mmole_per_min",
             ),
             FitParameter(
-                parameter_id="LI__MIDOH_Vmax",
+                pid="LI__MIDOH_Vmax",
                 start_value=100,
                 lower_bound=10,
                 upper_bound=200,
@@ -168,7 +168,7 @@ def op_mandema1992() -> OptimizationProblem:
             ),
             # kidneys
             FitParameter(
-                parameter_id="KI__MID1OHEX_Vmax",
+                pid="KI__MID1OHEX_Vmax",
                 start_value=100,
                 lower_bound=1e-1,
                 upper_bound=1e4,
@@ -176,14 +176,14 @@ def op_mandema1992() -> OptimizationProblem:
             ),
             # distribution
             FitParameter(
-                parameter_id="ftissue_mid",
+                pid="ftissue_mid",
                 start_value=2000,
                 lower_bound=1,
                 upper_bound=1e5,
                 unit="liter/min",
             ),
             FitParameter(
-                parameter_id="fup_mid",
+                pid="fup_mid",
                 start_value=0.1,
                 lower_bound=0.05,
                 upper_bound=0.3,
@@ -191,14 +191,14 @@ def op_mandema1992() -> OptimizationProblem:
             ),
             # distribution parameters
             FitParameter(
-                parameter_id="ftissue_mid1oh",
+                pid="ftissue_mid1oh",
                 start_value=1.0,
                 lower_bound=1,
                 upper_bound=1e5,
                 unit="liter/min",
             ),
             FitParameter(
-                parameter_id="fup_mid1oh",
+                pid="fup_mid1oh",
                 start_value=0.1,
                 lower_bound=0.01,
                 upper_bound=0.3,

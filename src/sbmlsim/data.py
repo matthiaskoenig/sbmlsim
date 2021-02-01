@@ -190,8 +190,15 @@ class Data(object):
                 x = x.to(to_units)
             except DimensionalityError as err:
                 logger.error(
-                    f"Could not convert data '{str(self)}' with "
-                    f"content '{x}' to "
+                    f"Could not convert '{str(self)}' with "
+                    f"data '{x} ({type(x)})' to "
+                    f"units '{to_units}'"
+                )
+                raise err
+            except AttributeError as err:
+                logger.error(
+                    f"Could not convert '{str(self)}' with "
+                    f"data '{x} ({type(x)})' to "
                     f"units '{to_units}'"
                 )
                 raise err

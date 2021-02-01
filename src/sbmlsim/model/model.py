@@ -76,9 +76,10 @@ class AbstractModel(object):
         self.changes = changes
         self.selections = selections
 
+        # normalize parameters at end of initialization
+
     def normalize(self, udict, ureg):
         """ Normalize values to model units for all changes."""
-        print("Normalizing model changes")
         self.changes = Units.normalize_changes(self.changes, udict=udict, ureg=ureg)
 
     def to_dict(self):

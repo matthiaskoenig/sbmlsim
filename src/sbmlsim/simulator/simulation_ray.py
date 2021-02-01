@@ -89,7 +89,10 @@ class SimulatorParallel(SimulatorSerial):
         if "actor_count" in kwargs:
             self.actor_count = kwargs.pop("actor_count")
         else:
+
+            # FIXME: get virtual cores
             self.actor_count = max(cpu_count() - 1, 1)
+        logger.info(f"Using '{self.actor_count}' cpu/core for parallel simulation.")
 
         # Create actors once
         logger.warning(f"Creating '{self.actor_count}' SimulationActors")

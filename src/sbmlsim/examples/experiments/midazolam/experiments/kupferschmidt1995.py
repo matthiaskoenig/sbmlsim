@@ -67,13 +67,11 @@ class Kupferschmidt1995(MidazolamSimulationExperiment):
                 "end": 1500,
                 "steps": 3000,
                 "dose": {"IVDOSE_mid": mid_iv},
-                "change": self.default_changes(),
             },
             "mid_po_c": {
                 "end": 1500,
                 "steps": 3000,
                 "dose": {"PODOSE_mid": mid_po},
-                "change": self.default_changes(),
             },
         }
         tcsims = {}
@@ -84,7 +82,7 @@ class Kupferschmidt1995(MidazolamSimulationExperiment):
                         start=0,
                         end=value["end"],
                         steps=value["steps"],
-                        changes={**value["change"], **value["dose"], "BW": bodyweight},
+                        changes={**value["dose"], "BW": bodyweight},
                     )
                 ]
             )

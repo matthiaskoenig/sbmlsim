@@ -4,9 +4,31 @@ Helpers for JSON serialization of experiments.
 import json
 from enum import Enum
 from json import JSONEncoder
+from pathlib import Path
+from typing import Dict, Tuple, Union
 
 from matplotlib.pyplot import Figure as MPLFigure
 from numpy import ndarray
+
+
+def from_json(json_info: Union[str, Path]) -> Dict:
+    """Loads data from JSON."""
+    if isinstance(json_info, Path):
+        with open(json_info, "r") as f_json:
+            d = json.load(f_json)
+    else:
+        d = json.loads(json_info)
+    return d
+
+
+def to_json(object, path: Path = None):
+    """Serialize to JSON."""
+    if path is None:
+        return json.dumps(object, cls=ObjectJSONEncoder, indent=2)
+    else:
+        with open(path, "w") as f_json:
+            json.dump(object, fp=f_json, cls=ObjectJSONEncoder, indent=2)
+        return None
 
 
 class ObjectJSONEncoder(JSONEncoder):
@@ -24,7 +46,6 @@ class ObjectJSONEncoder(JSONEncoder):
 
     def default(self, o):
         """json encoder"""
-
         if isinstance(o, Enum):
             # handle enums
             return o.name

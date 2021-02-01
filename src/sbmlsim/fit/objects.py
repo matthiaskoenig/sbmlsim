@@ -1,12 +1,15 @@
 """
 Definition of FitProblem.
 """
+import json
 import logging
-from typing import Dict, Iterable, List, Set, Union
+from pathlib import Path
+from typing import Dict, Iterable, List, Set, Tuple, Union
 
 import numpy as np
 
 from sbmlsim.data import Data
+from sbmlsim.serialization import ObjectJSONEncoder
 
 
 logger = logging.getLogger(__name__)
@@ -110,7 +113,7 @@ class FitParameter(object):
 
     def __init__(
         self,
-        parameter_id: str,
+        pid: str,
         start_value: float = None,
         lower_bound: float = -np.Inf,
         upper_bound: float = np.Inf,
@@ -118,13 +121,13 @@ class FitParameter(object):
     ):
         """FitParameter.
 
-        :param parameter_id: id of parameter in the model
+        :param pid: id of parameter in the model
         :param start_value: initial value for fitting
         :param lower_bound: bounds for fitting
         :param upper_bound: bounds for fitting
 
         """
-        self.pid = parameter_id
+        self.pid = pid
         self.start_value = start_value
         self.lower_bound = lower_bound
         self.upper_bound = upper_bound
@@ -135,11 +138,29 @@ class FitParameter(object):
                 f"model units."
             )
 
-    def __str__(self):
+    def __repr__(self):
         return (
             f"{self.__class__.__name__}<{self.pid} = {self.start_value} "
             f"[{self.lower_bound} - {self.upper_bound}]>"
         )
+
+    def to_json(self, path: Path = None) -> str:
+        """Serialize to JSON."""
+        if path is None:
+            return json.dumps(self, cls=ObjectJSONEncoder, indent=2)
+        else:
+            with open(path, "w") as f_json:
+                json.dump(self, fp=f_json, cls=ObjectJSONEncoder, indent=2)
+
+    @staticmethod
+    def from_json(json_info: Union[str, Path]) -> "TimecourseSim":
+        """Load from JSON."""
+        if isinstance(json_info, Path):
+            with open(json_info, "r") as f_json:
+                d = json.load(f_json)
+        else:
+            d = json.loads(json_info)
+        return FitParameter(**d)
 
 
 class FitData(object):

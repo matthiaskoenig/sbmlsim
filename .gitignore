@@ -24,7 +24,6 @@ __pycache__
 docs_builder/_build/
 
 
-sbmlsim/examples/experiments/repressilator/RepressilatorExperiment/RepressilatorExperiment_task_tc.h5
-
-sbmlsim/examples/experiments/midazolam/results/
-sbmlsim/examples/experiments/midazolam/results_fit/
+src/sbmlsim/examples/experiments/repressilator/RepressilatorExperiment/RepressilatorExperiment_task_tc.h5
+src/sbmlsim/examples/experiments/midazolam/results/
+src/sbmlsim/examples/experiments/midazolam/results_fit/

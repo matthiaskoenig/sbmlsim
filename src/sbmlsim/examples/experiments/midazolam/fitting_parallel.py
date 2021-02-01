@@ -6,7 +6,7 @@ from sbmlsim.examples.experiments.midazolam.fitting_problems import (
     op_mandema1992,
     op_mid1oh_iv,
 )
-from sbmlsim.fit.fit import OptimizationResult, analyze_optimization
+from sbmlsim.fit.fit import OptimizationResult, process_optimization_result
 from sbmlsim.fit.mpfit import run_optimization_parallel
 from sbmlsim.fit.optimization import (
     OptimizationProblem,
@@ -29,9 +29,9 @@ def fit_lsq(
     problem = problem_factory()
     opt_res = run_optimization_parallel(
         problem=problem,
-        size=5,
+        size=2,
         seed=1236,
-        n_cores=1,
+        n_cores=2,
         optimizer=OptimizerType.LEAST_SQUARE,
         weighting_local=weighting_local,
         residual_type=residual_type,
@@ -48,9 +48,9 @@ def fit_de(
     problem = problem_factory()
     opt_res = run_optimization_parallel(
         problem=problem,
-        size=1,
+        size=2,
         seed=1234,
-        n_cores=1,
+        n_cores=2,
         optimizer=OptimizerType.DIFFERENTIAL_EVOLUTION,
         weighting_local=weighting_local,
         residual_type=residual_type,
@@ -87,14 +87,13 @@ if __name__ == "__main__":
         "residual_type": ResidualType.ABSOLUTE_NORMED_RESIDUALS,
     }
 
-    if 0:
+    if 1:
         opt_res_lsq, problem = fit_lsq(problem_factory, **fit_kwargs)
-        analyze_optimization(
+        process_optimization_result(
             opt_res_lsq, problem=problem, output_path=fit_path_lsq, **fit_kwargs
         )
 
-    if 1:
-
+    if 0:
         opt_res_de, problem = fit_de(problem_factory, **fit_kwargs)
         analyze_optimization(
             opt_res_de, problem=problem, output_path=fit_path_de, **fit_kwargs

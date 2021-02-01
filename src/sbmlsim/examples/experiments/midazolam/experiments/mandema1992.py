@@ -59,9 +59,8 @@ class Mandema1992(MidazolamSimulationExperiment):
                     end=15,
                     steps=600,
                     changes={
-                        **self.default_changes(),
-                        "Ri_mid": mid_Ri,
                         "BW": bodyweight,
+                        "Ri_mid": mid_Ri,
                     },
                 ),
                 Timecourse(
@@ -69,9 +68,7 @@ class Mandema1992(MidazolamSimulationExperiment):
                     end=300,
                     steps=600,
                     changes={
-                        **self.default_changes(),
                         "Ri_mid": Q_(0, "mg_per_min"),
-                        "BW": bodyweight,
                     },
                 ),
             ]
@@ -83,10 +80,9 @@ class Mandema1992(MidazolamSimulationExperiment):
                     end=15,
                     steps=100,
                     changes={
-                        **self.default_changes(),
+                        "BW": bodyweight,
                         # 'IVDOSE_mid1oh': mid1oh_iv
                         "Ri_mid1oh": mid1oh_Ri,
-                        "BW": bodyweight,
                     },
                 ),
                 Timecourse(
@@ -106,9 +102,8 @@ class Mandema1992(MidazolamSimulationExperiment):
                     end=315,
                     steps=700,
                     changes={
-                        **self.default_changes(),
-                        "PODOSE_mid": mid_po,
                         "BW": bodyweight,
+                        "PODOSE_mid": mid_po,
                     },
                 )
             ]

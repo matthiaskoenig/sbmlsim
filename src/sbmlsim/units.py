@@ -76,7 +76,7 @@ class Units:
                 q2 = ureg(udef_str)
                 # check if identical
                 if q1 != q2:
-                    logger.warning(
+                    logger.debug(
                         f"SBML uid '{uid}' cannot be looked up in UnitsRegistry: '{uid} = {q1} != {q2}"
                     )
             except UndefinedUnitError as err:

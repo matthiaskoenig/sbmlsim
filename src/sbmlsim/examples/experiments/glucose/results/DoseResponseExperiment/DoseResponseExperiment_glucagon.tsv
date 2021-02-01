@@ -1,32 +1,32 @@
 study	reference	condition	hormone	glc_unit	glc	mean	mean_se	mean_unit
-DoseResponse	Degn2004	normal	glucagon	mM	5.2251199999999995	56.8402536585367	1.6342536585365834	pM
-DoseResponse	Degn2004	normal	glucagon	mM	5.2172	62.17598048780489	4.086078048780502	pM
-DoseResponse	Degn2004	normal	glucagon	mM	5.18385	51.97720000000006	2.454409756097566	pM
-DoseResponse	Degn2004	normal	glucagon	mM	5.21855	47.910985365853634	4.905356097560986	pM
+DoseResponse	Degn2004	normal	glucagon	mM	5.22512	56.8402536585367	1.6342536585365834	pM
+DoseResponse	Degn2004	normal	glucagon	mM	5.2172	62.17598048780491	4.086078048780502	pM
+DoseResponse	Degn2004	normal	glucagon	mM	5.18385	51.97720000000005	2.4544097560975655	pM
+DoseResponse	Degn2004	normal	glucagon	mM	5.21855	47.91098536585364	4.905356097560986	pM
 DoseResponse	Degn2004	normal	glucagon	mM	5.17659	49.98682926829276	2.450087804878047	pM
-DoseResponse	Degn2004	normal	glucagon	mM	5.1097	39.79840975609742	2.449229268292676	pM
-DoseResponse	Degn2004	normal	glucagon	mM	4.91045	40.646185365853775	5.313278048780474	pM
-DoseResponse	Degn2004	normal	glucagon	mM	4.98384	33.72973658536585	4.906224390243909	pM
-DoseResponse	Degn2004	normal	glucagon	mM	5.006165	30.08265365853658	4.500029268292673	pM
-DoseResponse	Degn2004	normal	glucagon	mM	5.053999999999999	28.068107317073174	4.903629268292668	pM
-DoseResponse	Degn2004	normal	glucagon	mM	4.96978	27.690409756097576	3.6772878048780564	pM
+DoseResponse	Degn2004	normal	glucagon	mM	5.1097	39.79840975609741	2.4492292682926764	pM
+DoseResponse	Degn2004	normal	glucagon	mM	4.91045	40.646185365853775	5.313278048780473	pM
+DoseResponse	Degn2004	normal	glucagon	mM	4.98384	33.72973658536585	4.90622439024391	pM
+DoseResponse	Degn2004	normal	glucagon	mM	5.006165	30.082653658536586	4.500029268292672	pM
+DoseResponse	Degn2004	normal	glucagon	mM	5.054	28.068107317073174	4.903629268292668	pM
+DoseResponse	Degn2004	normal	glucagon	mM	4.96978	27.690409756097576	3.6772878048780555	pM
 DoseResponse	Degn2004	normal	glucagon	mM	5.07303	27.7240780487805	4.086936585365862	pM
-DoseResponse	Degn2004	normal	glucagon	mM	4.4347900000000005	28.16479999999999	4.495717073170743	pM
-DoseResponse	Degn2004	normal	glucagon	mM	4.0437	38.823297560975575	4.086936585365862	pM
+DoseResponse	Degn2004	normal	glucagon	mM	4.43479	28.16479999999999	4.495717073170744	pM
+DoseResponse	Degn2004	normal	glucagon	mM	4.0437	38.82329756097558	4.086936585365862	pM
 DoseResponse	Degn2004	normal	glucagon	mM	3.887055	44.1685073170732	3.2702341463414646	pM
 DoseResponse	Degn2004	normal	glucagon	mM	3.91784	45.42680000000012	3.6798926829268277	pM
-DoseResponse	Degn2004	normal	glucagon	mM	3.5566050000000002	57.72040975609763	7.357180487804884	pM
-DoseResponse	Degn2004	normal	glucagon	mM	3.4254800000000003	79.00976585365845	4.496585365853668	pM
-DoseResponse	Degn2004	normal	glucagon	mM	3.34979	89.25948292682942	10.629141463414626	pM
-DoseResponse	Degn2004	normal	glucagon	mM	3.3592699999999995	107.68651707317072	11.854614634146348	pM
+DoseResponse	Degn2004	normal	glucagon	mM	3.556605	57.72040975609763	7.357180487804884	pM
+DoseResponse	Degn2004	normal	glucagon	mM	3.42548	79.00976585365844	4.496585365853668	pM
+DoseResponse	Degn2004	normal	glucagon	mM	3.34979	89.25948292682942	10.629141463414625	pM
+DoseResponse	Degn2004	normal	glucagon	mM	3.35927	107.68651707317072	11.854614634146348	pM
 DoseResponse	Degn2004	normal	glucagon	mM	2.98529	134.28915121951232	16.758253658536578	pM
-DoseResponse	Degn2004	normal	glucagon	mM	3.0373099999999997	173.9718731707318	23.70836097560974	pM
+DoseResponse	Degn2004	normal	glucagon	mM	3.03731	173.97187317073178	23.70836097560974	pM
 DoseResponse	Degn2004	normal	glucagon	mM	3.554005	131.89949268292665	16.350331707317093	pM
-DoseResponse	Degn2004	normal	glucagon	mM	4.01096	77.56284878048776	9.809853658536579	pM
-DoseResponse	Degn2004	normal	glucagon	mM	4.148315	56.74875121951229	3.6807512195121874	pM
-DoseResponse	Degn2004	normal	glucagon	mM	4.46464	56.7780975609757	3.6772878048780564	pM
-DoseResponse	Degn2004	normal	glucagon	mM	4.589185	52.720517073170704	5.31240975609755	pM
-DoseResponse	Degn2004	normal	glucagon	mM	4.80751	42.943473170731615	4.0852097560975436	pM
+DoseResponse	Degn2004	normal	glucagon	mM	4.01096	77.56284878048776	9.809853658536577	pM
+DoseResponse	Degn2004	normal	glucagon	mM	4.148315	56.74875121951229	3.6807512195121883	pM
+DoseResponse	Degn2004	normal	glucagon	mM	4.46464	56.7780975609757	3.6772878048780555	pM
+DoseResponse	Degn2004	normal	glucagon	mM	4.589185	52.7205170731707	5.31240975609755	pM
+DoseResponse	Degn2004	normal	glucagon	mM	4.80751	42.943473170731615	4.085209756097544	pM
 DoseResponse	Israelian2006	normal	glucagon	mM	5.45	76.194	11.356	pM
 DoseResponse	Israelian2006	normal	glucagon	mM	5.43	72.896	12.851999999999999	pM
 DoseResponse	Israelian2006	normal	glucagon	mM	3.95	83.062	11.356	pM
@@ -34,23 +34,23 @@ DoseResponse	Israelian2006	normal	glucagon	mM	3.21	113.42399999999999	22.712	pM
 DoseResponse	Israelian2006	normal	glucagon	mM	3.18	130.526	27.233999999999998	pM
 DoseResponse	Israelian2006	normal	glucagon	mM	3.21	145.01	29.511999999999997	pM
 DoseResponse	Lerche2009	normal	glucagon	mM	5.00136	21.093872	3.191852	pM
-DoseResponse	Lerche2009	normal	glucagon	mM	4.9611	16.097946	3.6081819999999993	pM
+DoseResponse	Lerche2009	normal	glucagon	mM	4.9611	16.097945999999997	3.6081819999999993	pM
 DoseResponse	Lerche2009	normal	glucagon	mM	4.64256	18.040808	2.49798	pM
 DoseResponse	Lerche2009	normal	glucagon	mM	4.45498	24.008148	5.8285860000000005	pM
-DoseResponse	Lerche2009	normal	glucagon	mM	4.2428300000000005	25.812255999999998	6.244882	pM
+DoseResponse	Lerche2009	normal	glucagon	mM	4.24283	25.812256	6.244882	pM
 DoseResponse	Lerche2009	normal	glucagon	mM	4.01431	33.028586	9.297946	pM
-DoseResponse	Lerche2009	normal	glucagon	mM	4.2605699999999995	42.048989999999996	9.991817999999999	pM
-DoseResponse	Lerche2009	normal	glucagon	mM	3.8437900000000003	52.318384	11.240807999999998	pM
+DoseResponse	Lerche2009	normal	glucagon	mM	4.26057	42.048989999999996	9.991817999999999	pM
+DoseResponse	Lerche2009	normal	glucagon	mM	3.84379	52.318384	11.240808	pM
 DoseResponse	Lerche2009	normal	glucagon	mM	3.83627	48.43266	7.63266	pM
-DoseResponse	Lerche2009	normal	glucagon	mM	3.6487	64.53060599999999	13.461246	pM
+DoseResponse	Lerche2009	normal	glucagon	mM	3.6487	64.530606	13.461246	pM
 DoseResponse	Lerche2009	normal	glucagon	mM	3.8131	54.4	7.63266	pM
 DoseResponse	Lerche2009	normal	glucagon	mM	3.65826	68.83266	9.436734	pM
-DoseResponse	Lerche2009	normal	glucagon	mM	3.95362	54.677542	11.240807999999998	pM
-DoseResponse	Levy1998	normal	glucagon	mM	4.4	92.22841951219505		pM
+DoseResponse	Lerche2009	normal	glucagon	mM	3.95362	54.677542	11.240808	pM
+DoseResponse	Levy1998	normal	glucagon	mM	4.4	92.22841951219506		pM
 DoseResponse	Levy1998	normal	glucagon	mM	3.9	115.24521951219529		pM
-DoseResponse	Levy1998	normal	glucagon	mM	3.3	121.04902439024399		pM
+DoseResponse	Levy1998	normal	glucagon	mM	3.3	121.04902439024397		pM
 DoseResponse	Levy1998	normal	glucagon	mM	2.8	201.40940487804863		pM
-DoseResponse	Levy1998	normal	glucagon	mM	2.2	250.2829073170733		pM
+DoseResponse	Levy1998	normal	glucagon	mM	2.2	250.28290731707327		pM
 DoseResponse	Butler1991	normal	glucagon	mM	5.44	45.92		pM
 DoseResponse	Butler1991	normal	glucagon	mM	8.65	46.77		pM
 DoseResponse	Butler1991	normal	glucagon	mM	8.63	42.11		pM

@@ -5,7 +5,7 @@ import json
 import logging
 from copy import deepcopy
 from pathlib import Path
-from typing import Dict, List, Tuple
+from typing import Dict, List, Tuple, Union
 
 import numpy as np
 
@@ -25,7 +25,7 @@ class Timecourse(ObjectJSONEncoder):
     A single simulation consists of multiple changes which are applied,
     all simulations are performed and collected.
 
-    Changesets and selections are deepcopied for persistance
+    Changesets and selections are deep copied for persistence.
 
     """
 
@@ -36,6 +36,8 @@ class Timecourse(ObjectJSONEncoder):
         steps: int,
         changes: dict = None,
         model_changes: dict = None,
+        model_manipulations: dict = None,
+        discard: bool = False,
     ):
         """Create a time course definition for simulation.
 
@@ -43,22 +45,28 @@ class Timecourse(ObjectJSONEncoder):
         :param end: end time
         :param steps: simulation steps
         :param changes: parameter and initial condition changes
-        :param model_changes: changes to model structure
+        :param model_changes: model parameter and initial condition changes
+        :param model_manipulations: model structure changes
+        :param discard: discards simulation from results (e.g. pre-simulations)
         """
         # Create empty changes and model changes for serialization
         if changes is None:
             changes = {}
         if model_changes is None:
             model_changes = {}
+        if model_manipulations is None:
+            model_manipulations = {}
 
         self.start = start
         self.end = end
         self.steps = steps
         self.changes = deepcopy(changes)
         self.model_changes = deepcopy(model_changes)
+        self.model_manipulations = deepcopy(model_manipulations)
+        self.discard = discard
 
     def __repr__(self):
-        return f"Timecourse([{self.start},{self.end}])"
+        return f"Timecourse([{self.start}:{self.end}])"
 
     def to_dict(self):
         """ Convert to dictionary. """
@@ -76,11 +84,17 @@ class Timecourse(ObjectJSONEncoder):
     def add_model_change(self, sid: str, change):
         self.model_changes[sid] = change
 
+    def add_model_changes(self, model_changes):
+        self.model_changes.update(model_changes)
+
     def remove_model_change(self, sid: str):
         del self.model_changes[sid]
 
     def normalize(self, udict, ureg):
         """ Normalize values to model units for all changes."""
+        self.model_changes = Units.normalize_changes(
+            self.model_changes, udict=udict, ureg=ureg
+        )
         self.changes = Units.normalize_changes(self.changes, udict=udict, ureg=ureg)
 
     def strip_units(self):
@@ -106,7 +120,7 @@ class TimecourseSim(AbstractSim):
         """
         :param timecourses:
         :param selections:
-        :param reset: resetToOrigin at beginning of simulation
+        :param reset: complete reset of model
         :param time_offset: time shift of simulation
         """
         if isinstance(timecourses, Timecourse):
@@ -119,8 +133,15 @@ class TimecourseSim(AbstractSim):
                 self.timecourses.append(Timecourse(**tc))
             else:
                 self.timecourses.append(tc)
+
         if len(self.timecourses) == 0:
             logger.error("No timecourses in simulation")
+        else:
+            for k, tc in enumerate(self.timecourses):
+                if k > 0 and tc.model_changes:
+                    logger.error(
+                        f"'model_changes' only allowed on first timecourse: {tc}"
+                    )
 
         self.selections = deepcopy(selections)
         self.reset = reset
@@ -143,14 +164,11 @@ class TimecourseSim(AbstractSim):
     def dimensions(self) -> List[Dimension]:
         return [Dimension(dimension="time", index=self.time)]
 
-    def add_model_changes(self, mode_changes: Dict) -> None:
+    def add_model_changes(self, model_changes: Dict) -> None:
         """Adds model changes to given simulation. """
         if self.timecourses:
-            tc = self.timecourses[0]
-            tc.changes = {
-                **mode_changes,
-                **tc.changes,
-            }
+            tc = self.timecourses[0]  # type: Timecourse
+            tc.add_model_changes(model_changes)
 
     def normalize(self, udict, ureg):
         """Normalize timecourse simulation."""
@@ -173,12 +191,8 @@ class TimecourseSim(AbstractSim):
         }
         return d
 
-    def to_json(self, path=None):
-        """Convert definition to JSON for exchange.
-
-        :param path: path for file, if None JSON str is returned
-        :return:
-        """
+    def to_json(self, path: Path = None) -> str:
+        """Convert definition to JSON."""
         if path is None:
             return json.dumps(self, cls=ObjectJSONEncoder, indent=2)
         else:
@@ -186,12 +200,8 @@ class TimecourseSim(AbstractSim):
                 json.dump(self, fp=f_json, cls=ObjectJSONEncoder, indent=2)
 
     @staticmethod
-    def from_json(json_info: Tuple[str, Path]) -> "TimecourseSim":
-        """Load TimecourseSim from Path or str
-
-        :param json_info:
-        :return:
-        """
+    def from_json(json_info: Union[str, Path]) -> "TimecourseSim":
+        """Load from JSON."""
         if isinstance(json_info, Path):
             with open(json_info, "r") as f_json:
                 d = json.load(f_json)

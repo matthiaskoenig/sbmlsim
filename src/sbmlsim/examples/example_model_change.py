@@ -68,13 +68,13 @@ def run_model_clamp1():
                 start=0,
                 end=300,
                 steps=100,
-                model_changes={ModelChange.CLAMP_SPECIES: {"X": True}},
+                model_manipulations={ModelChange.CLAMP_SPECIES: {"X": True}},
             ),
             Timecourse(
                 start=0,
                 end=200,
                 steps=100,
-                model_changes={ModelChange.CLAMP_SPECIES: {"X": False}},
+                model_manipulations={ModelChange.CLAMP_SPECIES: {"X": False}},
             ),
         ]
     )
@@ -143,14 +143,14 @@ def run_model_clamp2():
                 start=0,
                 end=200,
                 steps=200,
-                model_changes={ModelChange.CLAMP_SPECIES: {"X": True}},
+                model_manipulations={ModelChange.CLAMP_SPECIES: {"X": True}},
             ),
             # free simulation
             Timecourse(
                 start=0,
                 end=400,
                 steps=400,
-                model_changes={ModelChange.CLAMP_SPECIES: {"X": False}},
+                model_manipulations={ModelChange.CLAMP_SPECIES: {"X": False}},
             ),
         ]
     )
