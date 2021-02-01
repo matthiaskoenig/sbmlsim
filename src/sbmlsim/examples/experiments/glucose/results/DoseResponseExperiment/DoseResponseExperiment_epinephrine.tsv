@@ -1,20 +1,20 @@
 study	reference	condition	hormone	glc_unit	glc	mean	mean_se	mean_unit
-DoseResponse	Degn2004	normal	epinephrine	mM	5.2251199999999995	1101.6394	196.7212	pM
+DoseResponse	Degn2004	normal	epinephrine	mM	5.22512	1101.6394	196.7212	pM
 DoseResponse	Degn2004	normal	epinephrine	mM	5.200525	836.06555	206.55737	pM
-DoseResponse	Degn2004	normal	epinephrine	mM	5.21855	727.8688400000001	186.88526000000002	pM
-DoseResponse	Degn2004	normal	epinephrine	mM	4.98384	570.4918200000001	137.70492	pM
-DoseResponse	Degn2004	normal	epinephrine	mM	5.07303	570.4918200000001	98.36069	pM
-DoseResponse	Degn2004	normal	epinephrine	mM	4.0437	629.5081799999999	98.3606600000001	pM
+DoseResponse	Degn2004	normal	epinephrine	mM	5.21855	727.86884	186.88526	pM
+DoseResponse	Degn2004	normal	epinephrine	mM	4.98384	570.49182	137.70492	pM
+DoseResponse	Degn2004	normal	epinephrine	mM	5.07303	570.49182	98.36069	pM
+DoseResponse	Degn2004	normal	epinephrine	mM	4.0437	629.50818	98.3606600000001	pM
 DoseResponse	Degn2004	normal	epinephrine	mM	3.91784	747.54095	147.54095	pM
-DoseResponse	Degn2004	normal	epinephrine	mM	3.4254800000000003	2203.2788100000002	226.22962	pM
-DoseResponse	Degn2004	normal	epinephrine	mM	3.3592699999999995	2813.11475	501.63940999999994	pM
+DoseResponse	Degn2004	normal	epinephrine	mM	3.42548	2203.27881	226.22962	pM
+DoseResponse	Degn2004	normal	epinephrine	mM	3.35927	2813.11475	501.63941	pM
 DoseResponse	Degn2004	normal	epinephrine	mM	2.98529	4583.60645	590.16382	pM
-DoseResponse	Degn2004	normal	epinephrine	mM	3.0373099999999997	4957.37695	718.03271	pM
+DoseResponse	Degn2004	normal	epinephrine	mM	3.03731	4957.37695	718.03271	pM
 DoseResponse	Degn2004	normal	epinephrine	mM	3.554005	2901.6394	649.18042	pM
-DoseResponse	Degn2004	normal	epinephrine	mM	4.01096	1681.9671600000001	157.37695	pM
-DoseResponse	Degn2004	normal	epinephrine	mM	4.148315	1259.0163599999998	118.03272	pM
+DoseResponse	Degn2004	normal	epinephrine	mM	4.01096	1681.96716	157.37695	pM
+DoseResponse	Degn2004	normal	epinephrine	mM	4.148315	1259.01636	118.03272	pM
 DoseResponse	Degn2004	normal	epinephrine	mM	4.46464	1042.62292	157.37701	pM
-DoseResponse	Degn2004	normal	epinephrine	mM	4.80751	1140.9836400000002	88.52465999999978	pM
+DoseResponse	Degn2004	normal	epinephrine	mM	4.80751	1140.98364	88.5246599999998	pM
 DoseResponse	Israelian2006	normal	epinephrine	mM	5.45	97.28	26.72	pM
 DoseResponse	Israelian2006	normal	epinephrine	mM	5.43	86.58	17.79	pM
 DoseResponse	Israelian2006	normal	epinephrine	mM	3.95	200.5	35.6	pM
@@ -30,19 +30,19 @@ DoseResponse	Jones1998	normal	epinephrine	mM	3.0	2081.37	474.43	pM
 DoseResponse	Jones1998	normal	epinephrine	mM	3.05	2475.46	279.3	pM
 DoseResponse	Lerche2009	normal	epinephrine	mM	5.00136	158.2576995	20.769514	pM
 DoseResponse	Lerche2009	normal	epinephrine	mM	4.64256	155.128255	18.7949245	pM
-DoseResponse	Lerche2009	normal	epinephrine	mM	4.2428300000000005	224.20024700000002	78.139702	pM
-DoseResponse	Lerche2009	normal	epinephrine	mM	4.2605699999999995	160.7314	22.7567475	pM
+DoseResponse	Lerche2009	normal	epinephrine	mM	4.24283	224.200247	78.139702	pM
+DoseResponse	Lerche2009	normal	epinephrine	mM	4.26057	160.7314	22.7567475	pM
 DoseResponse	Lerche2009	normal	epinephrine	mM	3.83627	281.238966	91.0072065	pM
 DoseResponse	Lerche2009	normal	epinephrine	mM	3.8131	174.2474545	36.5952785	pM
-DoseResponse	Lerche2009	normal	epinephrine	mM	3.95362	150.343046	10.882014999999999	pM
+DoseResponse	Lerche2009	normal	epinephrine	mM	3.95362	150.343046	10.882015	pM
 DoseResponse	Levy1998	normal	epinephrine	mM	5.0	188.44753		pM
 DoseResponse	Levy1998	normal	epinephrine	mM	4.4	249.12009		pM
-DoseResponse	Levy1998	normal	epinephrine	mM	3.9	405.60101000000003		pM
+DoseResponse	Levy1998	normal	epinephrine	mM	3.9	405.60101		pM
 DoseResponse	Levy1998	normal	epinephrine	mM	3.3	945.3764		pM
 DoseResponse	Levy1998	normal	epinephrine	mM	2.8	3289.42114		pM
-DoseResponse	Levy1998	normal	epinephrine	mM	2.2	5138.5776399999995		pM
+DoseResponse	Levy1998	normal	epinephrine	mM	2.2	5138.57764		pM
 DoseResponse	Levy1998	normal	epinephrine	mM	4.4	328.99088		pM
-DoseResponse	Levy1998	normal	epinephrine	mM	3.9	485.41085999999996		pM
+DoseResponse	Levy1998	normal	epinephrine	mM	3.9	485.41086		pM
 DoseResponse	Levy1998	normal	epinephrine	mM	3.3	865.47516		pM
 DoseResponse	Levy1998	normal	epinephrine	mM	2.8	3241.54736		pM
 DoseResponse	Levy1998	normal	epinephrine	mM	2.2	5553.7168		pM
