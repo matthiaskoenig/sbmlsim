@@ -5,6 +5,13 @@ import os
 import time
 import warnings
 
+from depinfo import print_dependencies
+
+
+def show_versions() -> None:
+    """Print dependency information."""
+    print_dependencies("sbmlsim")
+
 
 def md5_for_path(path):
     """Calculates MD5 of file content."""

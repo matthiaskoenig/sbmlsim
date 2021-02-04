@@ -9,18 +9,17 @@ import sys
 from collections import OrderedDict
 from enum import Enum
 from pathlib import Path
-from pprint import pprint
 from typing import Dict, List
 
 import jinja2
 
-from sbmlsim import BASE_PATH, __version__
+from sbmlsim import RESOURCES_DIR, __version__
 from sbmlsim.experiment import ExperimentResult, SimulationExperiment
 from sbmlsim.model import AbstractModel
 
 
 logger = logging.getLogger(__name__)
-TEMPLATE_PATH = BASE_PATH / "report" / "templates"
+TEMPLATE_PATH = RESOURCES_DIR / "templates"
 
 
 class ReportResults:

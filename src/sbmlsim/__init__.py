@@ -1,6 +1,10 @@
 from pathlib import Path
 
-__version__ = "0.1.12"
+__author__ = "Matthias Koenig"
 __version__ = "0.1.12"
 
+
+from sbmlsim.utils import show_versions
+
 BASE_PATH = Path(__file__).parent
+RESOURCES_DIR = BASE_PATH / "resources"
