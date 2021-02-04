@@ -7,7 +7,7 @@
 ## make release
 * sort imports (`isort src/sbmlsim`)
 * code formating (`black src/sbmlsim`)
-* make sure all tests run (`tox --`)
+* make sure all tests run (`tox`)
 * update release notes in `release-notes`
 * bump version (`bumpversion patch` or `bumpversion` minor)
 * `git push --tags` (triggers release)

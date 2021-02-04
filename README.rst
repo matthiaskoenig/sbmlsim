@@ -51,9 +51,17 @@ If you have any questions or issues please `open an issue <https://github.com/ma
 
 How to cite
 ===========
+
 .. image:: https://zenodo.org/badge/DOI/10.5281/zenodo.3597770.svg
    :target: https://doi.org/10.5281/zenodo.3597770
    :alt: Zenodo DOI
+
+Contributing
+============
+
+Contributions are always welcome! Please read the `contributing guidelines
+<https://github.com/matthiaskoenig/sbmlsim/blob/develop/.github/CONTRIBUTING.rst>`__ to
+get started.
 
 License
 =======
