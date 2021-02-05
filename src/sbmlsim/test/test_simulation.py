@@ -79,7 +79,7 @@ def test_timecourse_concat():
 
     s = simulator._timecourse(
         simulation=TimecourseSim(
-            [tc, tc, tc]
+            [tc]*3
         )
     )
     assert isinstance(s, pd.DataFrame)
