@@ -131,6 +131,10 @@ class TimecourseSim(AbstractSim):
 
         self.timecourses = []
         for tc in timecourses:
+            if not tc:
+                # remove empty elements (allows for cleaner syntax)
+                continue
+
             if isinstance(tc, dict):
                 # construct from dict
                 tc = self.timecourses.append(Timecourse(**tc))
