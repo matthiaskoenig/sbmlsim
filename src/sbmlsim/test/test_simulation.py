@@ -116,5 +116,5 @@ def test_timecourse_discard():
     assert isinstance(s, pd.DataFrame)
     assert "time" in s
     assert len(s.time) == 101
-    assert s.time.values[0] == 100.0
-    assert s.time.values[-1] == 200.0
+    assert s.time.values[0] == 0.0
+    assert s.time.values[-1] == 100.0

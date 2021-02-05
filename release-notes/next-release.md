@@ -19,3 +19,5 @@ of timecourse definitions in multiple simulations. E.g. repeated timecourse `[tc
         )
     )
 ```
+
+- Fix #82, bugfix; remove time shift from discarded simulations

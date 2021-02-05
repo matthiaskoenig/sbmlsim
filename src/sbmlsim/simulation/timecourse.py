@@ -41,6 +41,9 @@ class Timecourse(ObjectJSONEncoder):
     ):
         """Create a time course definition for simulation.
 
+        Discarded simulations do not add time shifts, i.e. a pre-simulation
+        does not increase the time of simulation.
+
         :param start: start time
         :param end: end time
         :param steps: simulation steps
