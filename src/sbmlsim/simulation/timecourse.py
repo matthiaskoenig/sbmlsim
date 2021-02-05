@@ -6,7 +6,7 @@ import logging
 from copy import deepcopy
 from pathlib import Path
 from typing import Dict, List, Tuple, Union
-
+from copy import deepcopy
 import numpy as np
 
 from sbmlsim.serialization import ObjectJSONEncoder
@@ -130,9 +130,10 @@ class TimecourseSim(AbstractSim):
         for tc in timecourses:
             if isinstance(tc, dict):
                 # construct from dict
-                self.timecourses.append(Timecourse(**tc))
-            else:
-                self.timecourses.append(tc)
+                tc = self.timecourses.append(Timecourse(**tc))
+
+            # make a copy to ensure independence of instances
+            self.timecourses.append(deepcopy(tc))
 
         if len(self.timecourses) == 0:
             logger.error("No timecourses in simulation")

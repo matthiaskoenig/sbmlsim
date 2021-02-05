@@ -68,6 +68,29 @@ def test_timecourse_combined():
     assert s.time.values[-1] == 250.0
 
 
+def test_timecourse_concat():
+    """Reuse of timecourses."""
+    simulator = Simulator(MODEL_REPRESSILATOR)
+    tc = Timecourse(
+                    start=0,
+                    end=50,
+                    steps=100,
+                    changes={"X": 10})
+
+    s = simulator._timecourse(
+        simulation=TimecourseSim(
+            [tc, tc, tc]
+        )
+    )
+    assert isinstance(s, pd.DataFrame)
+    assert "time" in s
+    assert s.time.values[-1] == 150.0
+    assert len(s) == 3 * 101
+    assert s.X.values[0] == 10.0
+    assert s.X.values[101] == 10.0
+    assert s.X.values[202] == 10.0
+
+
 def test_timecourse_discard():
     """Test discarding pre-simulation."""
     simulator = Simulator(MODEL_REPRESSILATOR)
