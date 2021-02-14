@@ -42,6 +42,18 @@ class OptimizerType(Enum):
     DIFFERENTIAL_EVOLUTION = 2
 
 
+class FittingType(Enum):
+    """Type of fitting (absolute changes or relative changes to baseline).
+
+    Decides how to fit the data. If the various datasets have large offsets
+    a fitting of the relative changes to baseline can work.
+    As baseline the simulations should contain a pre-simulation.
+    """
+    ABSOLUTE_VALUES = 1  # absolute values are use
+    ABSOLUTE_CHANGES_BASELINE = 2  # relative values in respect to baseline are used
+    RELATIVE_CHANGES_BASELINE = 3  # relative values in respect to baseline are used
+
+
 class WeightingLocalType(Enum):
     """Weighting of the data points within a single fit mapping.
 
@@ -114,7 +126,10 @@ class OptimizationProblem(object):
         return f"<OptimizationProblem: {self.opid}>"
 
     def __str__(self):
-        """String representation."""
+        """String representation.
+
+        This can be run before initialization.
+        """
         info = []
         info.append("-" * 80)
         info.append(f"{self.__class__.__name__}: {self.opid}")
@@ -123,12 +138,38 @@ class OptimizationProblem(object):
         info.extend([f"\t{e}" for e in self.fit_experiments])
         info.append("Parameters")
         info.extend([f"\t{p}" for p in self.parameters])
-        info.append("-" * 80)
-        return "\n".join(info) + "\n"
+        # info.append("-" * 80)
+        return "\n".join(info)
 
     def report(self, path: Path = None, print_output: bool = True) -> str:
-        """Print and write report."""
-        info = self.__str__()
+        """Print and write report.
+        This can only be called after initialization
+        """
+        core_info = self.__str__()
+        all_info = [
+            core_info,
+            f"Settings",
+            f"\tfitting_type: {self.fitting_type}",
+            f"\tresidual_type: {self.residual_type}",
+            f"\tweighting local: {self.weighting_local}",
+            f"Data",
+        ]
+        for key in [
+            "experiment_keys",
+            "mapping_keys",
+            "xid_observable",
+            "yid_observable",
+            "x_references",
+            "y_references",
+            "y_errors",
+            "y_errors_type",
+            "weights_local",
+            "weights_global_user",
+        ]:
+            all_info.append(f"\t{key}: {str(getattr(self, key))}")
+
+        info = "\n".join(all_info)
+
         if print_output:
             print(info)
         if path:
@@ -137,16 +178,23 @@ class OptimizationProblem(object):
         return info
 
     def initialize(
-        self, weighting_local: WeightingLocalType, residual_type: ResidualType
+        self,
+        fitting_type: FittingType, weighting_local: WeightingLocalType, residual_type: ResidualType
     ):
         # weighting in fitting and handling of residuals
         if weighting_local is None:
             raise ValueError("'weighting_local' is required.")
         if residual_type is None:
             raise ValueError("'residual_type' is required.")
+        if fitting_type is None:
+            logger.warning("No FittingType provided for fitting, defaulting to absolute")
+            fitting_type = FittingType.ABSOLUTE_VALUES
+
+        logger.debug(f"fitting_type: {fitting_type}")
         logger.debug(f"weighting_local: {weighting_local}")
         logger.debug(f"residual_type: {residual_type}")
 
+        self.fitting_type = fitting_type
         self.weighting_local = weighting_local
         self.residual_type = residual_type
 
@@ -259,6 +307,10 @@ class OptimizationProblem(object):
                 x_ref = data_ref.x.magnitude
                 y_ref = data_ref.y.magnitude
 
+                if self.fitting_type == FittingType.ABSOLUTE_CHANGES_BASELINE:
+                    # Use absolute changes to baseline, which is the first point
+                    y_ref = y_ref - y_ref[0]  # FIXME: will break if first data point is bad;
+
                 # Use errors for weighting (tries SD and falls back on SE)
                 # FIXME: SE & SD not handled uniquely, i.e., slightly different weighting
                 y_ref_err = None
@@ -283,6 +335,7 @@ class OptimizationProblem(object):
                         y_ref_err[np.isnan(y_ref_err)] = np.nanmax(y_ref_err)
 
                 # remove zero values for relative errors (no inf residuals)
+                # FIXME: check how this works with the relative changes (due to 0.0 at first data point)
                 if self.residual_type == ResidualType.RELATIVE_RESIDUALS:
                     nonzero_mask = y_ref != 0.0
                     if not np.all(nonzero_mask):
@@ -320,6 +373,8 @@ class OptimizationProblem(object):
                         raise ValueError(
                             f"{fit_experiment}.{mapping_id}: NaN or INF in y_ref_err: {y_ref_err}"
                         )
+
+                # FIXME: relative_changes to baseline errors;
 
                 # calculate local weights based on errors
                 weights = np.ones_like(y_ref)  # local weights are by default 1.0
@@ -403,6 +458,7 @@ class OptimizationProblem(object):
         verbose=False,
         optimizer: OptimizerType = OptimizerType.LEAST_SQUARE,
         sampling: SamplingType = SamplingType.UNIFORM,
+        fitting_type: FittingType = FittingType.ABSOLUTE_VALUES,
         weighting_local: WeightingLocalType = WeightingLocalType.NO_WEIGHTING,
         residual_type: ResidualType = ResidualType.ABSOLUTE_RESIDUALS,
         variable_step_size=True,
@@ -412,6 +468,7 @@ class OptimizationProblem(object):
     ) -> Tuple[List[scipy.optimize.OptimizeResult], List]:
         """Run parameter optimization"""
         # additional settings for optimization
+        self.fitting_type = fitting_type
         self.weighting_local = weighting_local
         self.residual_type = residual_type
         self.variable_step_size = variable_step_size
@@ -577,6 +634,8 @@ class OptimizationProblem(object):
                     assume_sorted=True,
                 )
                 y_obsip = f(self.x_references[k])
+                if self.fitting_type == FittingType.ABSOLUTE_CHANGES_BASELINE:
+                    y_obsip = y_obsip - y_obsip[0]
 
                 # calculate absolute & relative residuals
                 res_abs = y_obsip - self.y_references[k]

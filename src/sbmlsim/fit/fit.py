@@ -31,12 +31,25 @@ def run_optimization(
     :param kwargs: additional arguments for optimizer, e.g. xtol
     :return: list of optimization results
     """
+    if "n_cores" in kwargs:
+        # remove parallel arguments
+        logger.warning(
+            "Parameter 'n_cores' does not have any effect in serial "
+            "optimization."
+        )
+        kwargs.pop("n_cores")
+
     # here the additional information must be injected
+    fitting_type = kwargs["fitting_type"]
     weighting_local = kwargs["weighting_local"]
     residual_type = kwargs["residual_type"]
 
     # initialize problem, which calculates errors
-    problem.initialize(weighting_local=weighting_local, residual_type=residual_type)
+    problem.initialize(
+        fitting_type=fitting_type,
+        weighting_local=weighting_local,
+        residual_type=residual_type
+    )
 
     # new simulator instance
     simulator = SimulatorSerial(**kwargs)  # sets tolerances
@@ -58,6 +71,7 @@ def process_optimization_result(
     output_path: Path,
     problem: OptimizationProblem = None,
     show_plots=True,
+    fitting_type=None,
     weighting_local=None,
     residual_type=None,
     variable_step_size=True,
@@ -77,7 +91,7 @@ def process_optimization_result(
     if problem:
         # FIXME: problem not initialized on multi-core and no simulator is assigned.
         # This should happen automatically, to ensure correct behavior
-        problem.initialize(weighting_local=weighting_local, residual_type=residual_type)
+        problem.initialize(fitting_type=fitting_type, weighting_local=weighting_local, residual_type=residual_type)
         problem.set_simulator(simulator=SimulatorSerial())
         problem.variable_step_size = variable_step_size
         problem.absolute_tolerance = absolute_tolerance

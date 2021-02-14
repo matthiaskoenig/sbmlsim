@@ -197,7 +197,8 @@ class OptimizationResult(ObjectJSONEncoder):
         info = [
             "\n",
             "-" * 80,
-            f"Optimization Results: {self.sid}",
+            "-" * 80,
+            f"Optimization results: {self.sid}",
             "-" * 80,
             str(self.df_fits),
             "-" * 80,

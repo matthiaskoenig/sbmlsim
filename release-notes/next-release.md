@@ -21,3 +21,5 @@ of timecourse definitions in multiple simulations. E.g. repeated timecourse `[tc
 ```
 
 - Fix #82, bugfix; remove time shift from discarded simulations
+- Fix #83, allow empty timecourses in timecoursesim
+- Fix #86, dependency update ray>=1.2.0

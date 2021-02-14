@@ -28,6 +28,7 @@ class SimulatorSerial(SimulatorAbstract, SimulatorWorker):
         :param model: Path to model or model
         :param kwargs: integrator settings
         """
+        # default settings
         self.integrator_settings = {
             "absolute_tolerance": 1e-14,
             "relative_tolerance": 1e-14,
