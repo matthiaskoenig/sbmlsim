@@ -62,6 +62,12 @@ class ExperimentRunner(object):
             experiment_classes = [experiment_classes]
 
         for exp_class in experiment_classes:
+            if not isinstance(exp_class, type):
+                raise ValueError(
+                    f"All 'experiment_classes' must be a class definition deriving from "
+                    f"'SimulationExperiment', but '{exp_class}' is "
+                    f"'{type(exp_class)}'.")
+
             logger.debug(f"Initialize SimulationExperiment: {exp_class.__name__}")
             experiment = exp_class(
                 base_path=self.base_path,

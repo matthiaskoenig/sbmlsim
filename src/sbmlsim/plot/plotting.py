@@ -722,7 +722,7 @@ class Plot(BasePlotObject):
                     counts_unique = np.unique(counts.magnitude)
                     if counts_unique.size > 1:
                         logger.warning(f"count is not unique for dataset: '{counts}'")
-                    count = counts[0].magnitude
+                    count = int(counts[0].magnitude)
                 else:
                     raise ValueError(
                         f"'count' must be integer or a column in a "
