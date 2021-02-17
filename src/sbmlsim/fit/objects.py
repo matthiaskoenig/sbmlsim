@@ -189,8 +189,29 @@ class FitData(object):
         self.task_id = task
         self.function = function
 
-        # FIXME: support setting count on FitData
-        self.count = count
+        if count is not None:
+            if dataset is None:
+                raise ValueError("'count' can only be set on FitData with dataset")
+            else:
+                # FIXME: remove duplication with add_data in plotting
+                if isinstance(count, int):
+                    pass
+                elif isinstance(count, str):
+                    # resolve count data from dataset
+                    count_data = Data(
+                        experiment, index=count, dataset=dataset, task=task
+                    )
+                    counts = count_data.data
+                    counts_unique = np.unique(counts.magnitude)
+                    if counts_unique.size > 1:
+                        logger.warning(f"count is not unique for dataset: '{counts}'")
+                    count = int(counts[0].magnitude)
+                else:
+                    raise ValueError(
+                        f"'count' must be integer or a column in a "
+                        f"dataset, but type '{type(count)}'."
+                    )
+                self.count = count
 
         # actual Data
         # FIXME: simplify

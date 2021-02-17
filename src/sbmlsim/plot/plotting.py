@@ -711,6 +711,7 @@ class Plot(BasePlotObject):
             if count is None:
                 count_label = ""
             else:
+                # FIXME: this is duplicated in FitData
                 if isinstance(count, int):
                     pass
                 elif isinstance(count, str):
