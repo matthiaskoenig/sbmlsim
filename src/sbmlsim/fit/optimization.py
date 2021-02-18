@@ -63,7 +63,7 @@ class WeightingLocalType(Enum):
 
     NO_WEIGHTING = 1  # data points are weighted equally
     ABSOLUTE_ONE_OVER_WEIGHTING = 2  # data points are weighted as 1/(error-min(error))
-    RELATIVE_ONE_OVER_WEIGHTING = 2  # data points are weighted as 1/(error-min(error))
+    RELATIVE_ONE_OVER_WEIGHTING = 3  # FIXME: check that this is working and documented
 
 
 class ResidualType(Enum):
@@ -243,10 +243,9 @@ class OptimizationProblem(object):
                 fit_experiment.mappings = list(sim_experiment._fit_mappings.keys())
                 fit_experiment.weights = [1.0] * len(fit_experiment.mappings)
 
+
             # collect information for single mapping
             for k, mapping_id in enumerate(fit_experiment.mappings):
-                # user defined weight of fit mapping
-                weight_global_user = fit_experiment.weights[k]
 
                 # sanity checks
                 if mapping_id not in sim_experiment._fit_mappings:
@@ -268,6 +267,25 @@ class OptimizationProblem(object):
                         f"'{mapping.reference}'"
                     )
 
+                if fit_experiment.use_mapping_weights:
+                    # use provided mapping weights
+                    weight = mapping.weight
+                    if weight is None:
+                        raise ValueError(
+                            f"If `use_mapping_weights` is set on a FitExperiment "
+                            f"then all mappings must have a weight. But "
+                            f"weight '{weight}' in {mapping}.")
+                else:
+                    weight = fit_experiment.weights[k]
+                if weight < 0:
+                    raise ValueError(
+                        f"Mapping weights must be positive but "
+                        f"weight '{mapping.weight}' in {mapping}"
+                    )
+                weight_global_user = weight
+
+                print(fit_experiment, weight_global_user)
+
                 task_id = mapping.observable.task_id
                 task = sim_experiment._tasks[task_id]
                 model = sim_experiment._models[
@@ -277,7 +295,7 @@ class OptimizationProblem(object):
 
                 if not isinstance(simulation, TimecourseSim):
                     raise ValueError(
-                        f"Only TimecourseSims supported in fitting: " f"'{simulation}"
+                        f"Only TimecourseSims supported in fitting: '{simulation}"
                     )
 
                 # observable units
@@ -408,7 +426,7 @@ class OptimizationProblem(object):
                             f"no errors in reference data."
                         )
 
-                if False:
+                if True:
                     print("-" * 80)
                     print(f"{fit_experiment}.{mapping_id}")
                     print(f"weights: {weights}")

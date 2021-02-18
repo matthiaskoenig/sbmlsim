@@ -4,7 +4,7 @@ Definition of FitProblem.
 import json
 import logging
 from pathlib import Path
-from typing import Dict, Iterable, List, Set, Tuple, Union
+from typing import Dict, Iterable, List, Set, Tuple, Union, Optional
 
 import numpy as np
 
@@ -16,56 +16,83 @@ logger = logging.getLogger(__name__)
 
 
 class FitExperiment(object):
-    """
-    A Simulation Experiment used in a fitting.
+    """A parameter fitting experiment.
+
+    A parameter fitting experiment consists of multiple mapping (reference data to
+    observable). The individual mappings can be weighted differently in the fitting.
     """
 
     def __init__(
         self,
         experiment,
         mappings: List[str] = None,
-        weights: List[float] = 1.0,
-        fit_parameters: Dict[str, List["FitParameter"]] = None,
+        weights: Union[float, List[float]] = None,
+        use_mapping_weights: bool = False,
+        fit_parameters: Dict[str, List["FitParameter"]] = None
     ):
         """A Simulation experiment used in a fitting.
 
         weights must be updated according to the mappings
 
         :param experiment:
-        :param weights: weight of mappings
         :param mappings: mappings to use from experiments (None uses all mappings)
+        :param weights: weight of mappings, the larger the value the larger the weight
+        :param use_mapping_weights: uses weights of mapping
         :param fit_parameters: LOCAL parameters only changed in this simulation
                                 experiment
         """
+        self._weights = None
         self.experiment_class = experiment
-
-        if (weights is None) or (mappings is None):
-            weights = []
-        if mappings is None:
-            mappings = []
 
         if len(mappings) > len(set(mappings)):
             raise ValueError(
                 f"Duplicate fit mapping keys are not allowed. Use weighting for "
                 f"changing weights of single mappings: {self.experiment_class.__name__}: '{sorted(mappings)}'"
             )
-
         self.mappings = mappings
-        if isinstance(weights, (float, int)):
-            self.weights = [weights] * len(mappings)
-        else:
-            # list of weights
-            if len(weights) != len(mappings):
-                raise ValueError(
-                    f"Mapping weights '{weights}' must have same length as "
-                    f"mappings '{mappings}'."
-                )
-            self.weights = weights
+        self.weights = weights
+        self.use_mapping_weights = use_mapping_weights
         if fit_parameters is None:
             self.fit_parameters = {}
         else:
-            ValueError("Local parameters in FitExperiment not yet supported.")
-            # FIXME: implement
+            self.fit_parameters = fit_parameters
+            # TODO: implement
+            raise ValueError("Local parameters in FitExperiment not yet supported, see "
+                       "https://github.com/matthiaskoenig/sbmlsim/issues/85")
+
+    @property
+    def weights(self) -> List[float]:
+        """Weights of fit mappings."""
+        return self._weights
+
+    @property.setter
+    def weights(self, weights: Union[float, List[float]] = None) -> None:
+        """Set weights for mappings in fit experiment."""
+        if self.use_mapping_weights:
+            if weights is not None:
+                raise ValueError(
+                    f"Either 'weights' can be set on a FitExperiment or the weight of "
+                    f"the FitMapping can be used via the 'use_mapping_weights=True' "
+                    f"flag. Weights were provided: '{weights}' in {str(self)}"
+                )
+
+            # have to be calculated dynamically
+            return None
+
+        # weights processing
+        if weights is None:
+            weights = 1.0
+
+        if isinstance(weights, (float, int)):
+            return [weights] * len(self.mappings)
+        elif isinstance(weights, (list, tuple)):
+            # list of weights
+            if len(weights) != len(self.mappings):
+                raise ValueError(
+                    f"Mapping weights '{weights}' must have same length as "
+                    f"mappings '{self.mappings}'."
+                )
+            return weights
 
     @staticmethod
     def reduce(fit_experiments: Iterable["FitExperiment"]) -> List["FitExperiment"]:
@@ -84,28 +111,46 @@ class FitExperiment(object):
         return list(red_experiments.values())
 
     def __str__(self):
+        # FIXME: print weights
         return f"{self.__class__.__name__}({self.experiment_class} {self.mappings})"
 
 
 class FitMapping(object):
-    """Mapping of reference data to obeservables in the model."""
+    """Mapping of reference data to observable data.
+
+    In the optimization the difference between the reference data
+    (ground truth) and the observable (predicted data) is minimized.
+    The weight allows to weight the FitMapping.
+    """
 
     def __init__(
         self,
         experiment: "sbmlsim.experiment.SimulationExperiment",
         reference: "FitData",
         observable: "FitData",
-        count: int = None,
+        weight: float = None,
     ):
         """FitMapping.
 
+        To use the weight in the fit mapping the `use_mapping_weights` flag
+        must be set on the FitExperiment.
+
         :param reference: reference data (mostly experimental data)
         :param observable: observable in model
+        :param weight: weight of fit mapping (default=1.0)
         """
         self.experiment = experiment
         self.reference = reference
         self.observable = observable
-        self.count = count
+        self._weight = weight
+
+    @property
+    def weight(self):
+        """Returns defined weight or count of the reference."""
+        if self._weight is not None:
+            return self._weight
+        else:
+            return self.reference.count
 
 
 class FitParameter(object):
