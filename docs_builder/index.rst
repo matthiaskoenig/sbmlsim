@@ -11,6 +11,7 @@ Contents:
 
    overview
    notebooks/simjson.rst
+   notebooks/parameter_fitting.rst
 
 
 

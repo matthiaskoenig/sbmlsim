@@ -34,8 +34,7 @@ def run_optimization(
     if "n_cores" in kwargs:
         # remove parallel arguments
         logger.warning(
-            "Parameter 'n_cores' does not have any effect in serial "
-            "optimization."
+            "Parameter 'n_cores' does not have any effect in serial " "optimization."
         )
         kwargs.pop("n_cores")
 
@@ -49,9 +48,7 @@ def run_optimization(
         fitting_type=fitting_type,
         weighting_local=weighting_local,
         residual_type=residual_type
-
         # FIXME: support counts
-
     )
 
     # new simulator instance
@@ -94,7 +91,11 @@ def process_optimization_result(
     if problem:
         # FIXME: problem not initialized on multi-core and no simulator is assigned.
         # This should happen automatically, to ensure correct behavior
-        problem.initialize(fitting_type=fitting_type, weighting_local=weighting_local, residual_type=residual_type)
+        problem.initialize(
+            fitting_type=fitting_type,
+            weighting_local=weighting_local,
+            residual_type=residual_type,
+        )
         problem.set_simulator(simulator=SimulatorSerial())
         problem.variable_step_size = variable_step_size
         problem.absolute_tolerance = absolute_tolerance

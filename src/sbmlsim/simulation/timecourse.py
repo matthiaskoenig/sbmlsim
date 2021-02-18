@@ -6,7 +6,7 @@ import logging
 from copy import deepcopy
 from pathlib import Path
 from typing import Dict, List, Tuple, Union
-from copy import deepcopy
+
 import numpy as np
 
 from sbmlsim.serialization import ObjectJSONEncoder

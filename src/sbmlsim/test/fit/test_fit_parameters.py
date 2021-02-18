@@ -11,8 +11,8 @@ def test_paramter():
     )
     assert p.pid == "p1"
     assert p.start_value == 1.0
-    assert p.lower_bound == 1E-2
-    assert p.upper_bound == 1E2
+    assert p.lower_bound == 1e-2
+    assert p.upper_bound == 1e2
     assert p.unit == "dimensionless"
 
 

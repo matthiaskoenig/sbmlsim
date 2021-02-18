@@ -49,6 +49,7 @@ class FittingType(Enum):
     a fitting of the relative changes to baseline can work.
     As baseline the simulations should contain a pre-simulation.
     """
+
     ABSOLUTE_VALUES = 1  # absolute values are use
     ABSOLUTE_CHANGES_BASELINE = 2  # relative values in respect to baseline are used
     RELATIVE_CHANGES_BASELINE = 3  # relative values in respect to baseline are used
@@ -163,8 +164,9 @@ class OptimizationProblem(object):
             "y_references",
             "y_errors",
             "y_errors_type",
-            "weights_local",
-            "weights_global_user",
+            "weights",
+            "weights_points",
+            "weights_curve",
         ]:
             all_info.append(f"\t{key}: {str(getattr(self, key))}")
 
@@ -179,7 +181,9 @@ class OptimizationProblem(object):
 
     def initialize(
         self,
-        fitting_type: FittingType, weighting_local: WeightingLocalType, residual_type: ResidualType
+        fitting_type: FittingType,
+        weighting_local: WeightingLocalType,
+        residual_type: ResidualType,
     ):
         # weighting in fitting and handling of residuals
         if weighting_local is None:
@@ -187,7 +191,9 @@ class OptimizationProblem(object):
         if residual_type is None:
             raise ValueError("'residual_type' is required.")
         if fitting_type is None:
-            logger.warning("No FittingType provided for fitting, defaulting to absolute")
+            logger.warning(
+                "No FittingType provided for fitting, defaulting to absolute"
+            )
             fitting_type = FittingType.ABSOLUTE_VALUES
 
         logger.debug(f"fitting_type: {fitting_type}")
@@ -216,8 +222,9 @@ class OptimizationProblem(object):
         self.y_references = []
         self.y_errors = []
         self.y_errors_type = []
-        self.weights_local = []  # weights for data points
-        self.weights_global_user = []  # user defined weights per mapping
+        self.weights = []  # total weights for points (errors + user)
+        self.weights_points = []  # weights for data points based on errors
+        self.weights_curve = []  # user defined weights per mapping/curve
 
         self.models = []
         self.xmodel = np.empty(shape=(len(self.pids)))
@@ -243,7 +250,6 @@ class OptimizationProblem(object):
                 fit_experiment.mappings = list(sim_experiment._fit_mappings.keys())
                 fit_experiment.weights = [1.0] * len(fit_experiment.mappings)
 
-
             # collect information for single mapping
             for k, mapping_id in enumerate(fit_experiment.mappings):
 
@@ -267,24 +273,24 @@ class OptimizationProblem(object):
                         f"'{mapping.reference}'"
                     )
 
+                # get weight for curve
                 if fit_experiment.use_mapping_weights:
                     # use provided mapping weights
-                    weight = mapping.weight
-                    if weight is None:
+                    weight_curve = mapping.weight
+                    if weight_curve is None:
                         raise ValueError(
                             f"If `use_mapping_weights` is set on a FitExperiment "
                             f"then all mappings must have a weight. But "
-                            f"weight '{weight}' in {mapping}.")
+                            f"weight '{weight_curve}' in {mapping}."
+                        )
                 else:
-                    weight = fit_experiment.weights[k]
-                if weight < 0:
+                    weight_curve = fit_experiment.weights[k]
+
+                if weight_curve < 0:
                     raise ValueError(
                         f"Mapping weights must be positive but "
                         f"weight '{mapping.weight}' in {mapping}"
                     )
-                weight_global_user = weight
-
-                print(fit_experiment, weight_global_user)
 
                 task_id = mapping.observable.task_id
                 task = sim_experiment._tasks[task_id]
@@ -327,7 +333,9 @@ class OptimizationProblem(object):
 
                 if self.fitting_type == FittingType.ABSOLUTE_CHANGES_BASELINE:
                     # Use absolute changes to baseline, which is the first point
-                    y_ref = y_ref - y_ref[0]  # FIXME: will break if first data point is bad;
+                    y_ref = (
+                        y_ref - y_ref[0]
+                    )  # FIXME: will break if first data point is bad;
 
                 # Use errors for weighting (tries SD and falls back on SE)
                 # FIXME: SE & SD not handled uniquely, i.e., slightly different weighting
@@ -394,28 +402,28 @@ class OptimizationProblem(object):
 
                 # FIXME: relative_changes to baseline errors;
 
-                # calculate local weights based on errors
-                weights = np.ones_like(y_ref)  # local weights are by default 1.0
-
-                if self.weighting_local != WeightingLocalType.NO_WEIGHTING:
+                # calculate local weights based on errors (i.e. weights for data
+                # points
+                # FIXME: the weights must be normalized for a mapping based on data points;
+                # FIXME: also make sure that data points with error contribute
+                # correctly compared to no errors
+                weight_points = np.ones_like(y_ref)  # local weights are by default 1.0
+                if self.weighting_local == WeightingLocalType.NO_WEIGHTING:
+                    pass
+                else:
                     if y_ref_err is not None:
                         if (
                             self.weighting_local
                             == WeightingLocalType.ABSOLUTE_ONE_OVER_WEIGHTING
                         ):
-                            weights = (
-                                1.0 / y_ref_err
-                            )  # the larger the error, the smaller the weight
-                            weights = weights / np.max(
-                                weights
-                            )  # normalize maximal weight to 1.0, weights in (0, 1]
+                            # the larger the error, the smaller the weight
+                            weight_points = 1.0 / y_ref_err
                         elif (
                             self.weighting_local
                             == WeightingLocalType.RELATIVE_ONE_OVER_WEIGHTING
                         ):
-                            weights = (
-                                y_ref / y_ref_err
-                            )  # the larger the error, the smaller the weight
+                            # the larger the error, the smaller the weight
+                            weight_points = y_ref / y_ref_err
                         else:
                             raise ValueError(
                                 f"Local weighting not supported: {self.weighting_local}"
@@ -426,12 +434,16 @@ class OptimizationProblem(object):
                             f"no errors in reference data."
                         )
 
-                if True:
-                    print("-" * 80)
-                    print(f"{fit_experiment}.{mapping_id}")
-                    print(f"weights: {weights}")
-                    print(f"y_ref: {y_ref}")
-                    print(f"y_ref_err: {y_ref_err}")
+                    # normalize weights to mean=1.0 for given curve
+                    # this makes the weights comparable
+                    weight_points = weight_points / np.mean(weight_points)
+
+                    # apply local weighting & user defined weighting
+                    # (in the cost function the weighted residuals are squared)
+                    # sum(w_i * r_i^2) = sum((w_i^0.5*r_i)^2)
+                    weight = np.sqrt(weight_points * weight_curve)
+                    if np.any(weight < 0):
+                        raise ValueError("Negative weights encountered.")
 
                 # store initial model parameters
                 for k, pid in enumerate(self.pids):
@@ -458,8 +470,19 @@ class OptimizationProblem(object):
                 self.y_references.append(y_ref)
                 self.y_errors.append(y_ref_err)
                 self.y_errors_type.append(y_ref_err_type)
-                self.weights_local.append(weights)
-                self.weights_global_user.append(weight_global_user)
+                self.weights_points.append(weight_points)
+                self.weights_curve.append(weight_curve)
+                self.weights.append(weight)
+
+                # debug info
+                if False:
+                    print("-" * 80)
+                    print(f"{fit_experiment}.{mapping_id}")
+                    print(f"weight: {weight}")
+                    print(f"weight_curve: {weight_curve}")
+                    print(f"weight_points: {weight_points}")
+                    print(f"y_ref: {y_ref}")
+                    print(f"y_ref_err: {y_ref_err}")
 
     def set_simulator(self, simulator):
         """Sets the simulator on the runner and the experiments.
@@ -613,6 +636,8 @@ class OptimizationProblem(object):
         # see https://github.com/scipy/scipy/issues/7632
         # print(f"\t{xlog}")
         x = np.power(10, xlog)
+
+        # FIXME: handle parts better
         parts = []
         if complete_data:
             residual_data = defaultdict(list)
@@ -642,6 +667,7 @@ class OptimizationProblem(object):
             # logger.warning(f"Running simulation: {k} - {self.experiment_keys[k]} - {mapping_id}")
 
             try:
+                # FIXME: just simulate at the requested timepoints with step
                 df = simulator._timecourses([simulation])[0]
 
                 # interpolation of simulation results
@@ -682,22 +708,11 @@ class OptimizationProblem(object):
             elif self.residual_type == ResidualType.RELATIVE_RESIDUALS:
                 res = res_rel
 
-            # apply local weighting & user defined weighting (in the cost function the weighted residuals are squared)
-            # sum(w_i * r_i^2) = sum((w_i^0.5*r_i)^2)
-            resw = (
-                res
-                * np.sqrt(self.weights_local[k])
-                * np.sqrt(self.weights_global_user[k])
-            )  # FIXME: handle square of global weights correctly
+            resw = res * self.weights[k]
             parts.append(resw)
-
-            # if False:
-            #    print("residuals:", self.experiment_keys[k], 'mapping_id:', mapping_id, res)
-            #    print("residuals weighted:", self.experiment_keys[k], 'mapping_id:', mapping_id, resw)
 
             # for post_processing
             if complete_data:
-
                 residual_data["x_obs"].append(df[self.xid_observable[k]])
                 residual_data["y_obs"].append(df[self.yid_observable[k]])
                 residual_data["y_obsip"].append(y_obsip)
@@ -817,7 +832,7 @@ class OptimizationAnalysis:
             # global reference data
             sid = self.op.experiment_keys[k]
             mapping_id = self.op.mapping_keys[k]
-            weights = self.op.weights_local[k]
+            weights = self.op.weights_points[k]
             x_ref = self.op.x_references[k]
             y_ref = self.op.y_references[k]
             y_ref_err = self.op.y_errors[k]

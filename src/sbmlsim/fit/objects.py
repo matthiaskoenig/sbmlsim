@@ -3,8 +3,9 @@ Definition of FitProblem.
 """
 import json
 import logging
+import math
 from pathlib import Path
-from typing import Dict, Iterable, List, Set, Tuple, Union, Optional
+from typing import Dict, Iterable, List, Optional, Set, Tuple, Union
 
 import numpy as np
 
@@ -28,7 +29,7 @@ class FitExperiment(object):
         mappings: List[str] = None,
         weights: Union[float, List[float]] = None,
         use_mapping_weights: bool = False,
-        fit_parameters: Dict[str, List["FitParameter"]] = None
+        fit_parameters: Dict[str, List["FitParameter"]] = None,
     ):
         """A Simulation experiment used in a fitting.
 
@@ -50,22 +51,25 @@ class FitExperiment(object):
                 f"changing weights of single mappings: {self.experiment_class.__name__}: '{sorted(mappings)}'"
             )
         self.mappings = mappings
-        self.weights = weights
         self.use_mapping_weights = use_mapping_weights
+        self.weights = weights
+
         if fit_parameters is None:
             self.fit_parameters = {}
         else:
             self.fit_parameters = fit_parameters
             # TODO: implement
-            raise ValueError("Local parameters in FitExperiment not yet supported, see "
-                       "https://github.com/matthiaskoenig/sbmlsim/issues/85")
+            raise ValueError(
+                "Local parameters in FitExperiment not yet supported, see "
+                "https://github.com/matthiaskoenig/sbmlsim/issues/85"
+            )
 
     @property
     def weights(self) -> List[float]:
         """Weights of fit mappings."""
         return self._weights
 
-    @property.setter
+    @weights.setter
     def weights(self, weights: Union[float, List[float]] = None) -> None:
         """Set weights for mappings in fit experiment."""
         if self.use_mapping_weights:
@@ -154,7 +158,12 @@ class FitMapping(object):
 
 
 class FitParameter(object):
-    """Parameter adjusted in a parameter optimization."""
+    """Parameter adjusted in a parameter optimization.
+
+    The bounds define the box in which the parameter can be varied.
+    The start value is the initial value in the parameter fitting for
+    algorithms which use it.
+    """
 
     def __init__(
         self,
@@ -164,13 +173,12 @@ class FitParameter(object):
         upper_bound: float = np.Inf,
         unit: str = None,
     ):
-        """FitParameter.
+        """Initialize FitParameter.
 
         :param pid: id of parameter in the model
         :param start_value: initial value for fitting
         :param lower_bound: bounds for fitting
         :param upper_bound: bounds for fitting
-
         """
         self.pid = pid
         self.start_value = start_value
@@ -178,19 +186,38 @@ class FitParameter(object):
         self.upper_bound = upper_bound
         self.unit = unit
         if unit is None:
-            logger.error(
+            logger.warning(
                 f"No unit provided for FitParameter '{self.pid}', assuming "
                 f"model units."
             )
 
-    def __repr__(self):
+    def __eq__(self, other: "FitParameter") -> bool:
+        """Check for equality.
+
+        Uses `math.isclose` for all comparisons of numerical values.
+        """
+        if not isinstance(other, FitParameter):
+            return NotImplemented
+
+        return (
+            self.pid == other.pid
+            and math.isclose(self.start_value, other.start_value)
+            and math.isclose(self.lower_bound, self.upper_bound)
+            and math.isclose(self.unit, other.unit)
+        )
+
+    def __repr__(self) -> str:
+        """Get string representation."""
         return (
             f"{self.__class__.__name__}<{self.pid} = {self.start_value} "
             f"[{self.lower_bound} - {self.upper_bound}]>"
         )
 
-    def to_json(self, path: Path = None) -> str:
-        """Serialize to JSON."""
+    def to_json(self, path: Path = None) -> Optional[str]:
+        """Serialize to JSON.
+
+        Serializes to file if path is provided, otherwise returns JSON string.
+        """
         if path is None:
             return json.dumps(self, cls=ObjectJSONEncoder, indent=2)
         else:
@@ -198,7 +225,7 @@ class FitParameter(object):
                 json.dump(self, fp=f_json, cls=ObjectJSONEncoder, indent=2)
 
     @staticmethod
-    def from_json(json_info: Union[str, Path]) -> "TimecourseSim":
+    def from_json(json_info: Union[str, Path]) -> "FitParameter":
         """Load from JSON."""
         if isinstance(json_info, Path):
             with open(json_info, "r") as f_json:
@@ -342,7 +369,7 @@ class FitData(object):
 
     def get_data(self) -> Dict:
         """Returns actual data."""
-        result = FitDataResult()
+        result = FitDataInitialized()
         for key in ["x", "y", "x_sd", "x_se", "y_sd", "y_se"]:
             d = getattr(self, key)
             if d is not None:
@@ -351,7 +378,12 @@ class FitData(object):
         return result
 
 
-class FitDataResult(object):
+class FitDataInitialized(object):
+    """Initialized FitData with actual data content.
+
+    Data is create from simulation experiment.
+    """
+
     def __init__(self):
         self.x = None
         self.y = None
