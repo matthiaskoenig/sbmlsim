@@ -729,6 +729,7 @@ class OptimizationProblem(object):
         else:
             res_all = np.concatenate(parts)
             # store the local step
+            # FIXME
             self._trajectory.append((deepcopy(x), 0.5 * np.sum(np.power(res_all, 2))))
             return res_all
 
@@ -745,6 +746,7 @@ class OptimizationAnalysis:
             plt.show()
         if path is not None:
             fig.savefig(path, bbox_inches="tight")
+        plt.close(fig)
 
     @timeit
     def plot_fits(self, x, path: Path = None, show_plots: bool = True):

@@ -9,6 +9,7 @@ from typing import Dict, Iterable, List, Set, Tuple, Union
 import numpy as np
 import pandas as pd
 import seaborn as sns
+from matplotlib.figure import Figure
 from scipy.optimize import OptimizeResult
 
 from sbmlsim.fit.objects import FitParameter
@@ -241,11 +242,12 @@ class OptimizationResult(ObjectJSONEncoder):
         return info
 
     @staticmethod
-    def _save_fig(fig, path: Path, show_plots: bool = True):
+    def _save_fig(fig: Figure, path: Path, show_plots: bool = True):
         if show_plots:
             plt.show()
         if path:
             fig.savefig(path, bbox_inches="tight")
+        plt.close(fig)
 
     @timeit
     def plot_waterfall(self, path: Path = None, show_plots: bool = True):
