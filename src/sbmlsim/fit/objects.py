@@ -81,7 +81,7 @@ class FitExperiment(object):
                 )
 
             # have to be calculated dynamically
-            return None
+            self._weights = None
 
         # weights processing
         if weights is None:
@@ -96,7 +96,7 @@ class FitExperiment(object):
                     f"Mapping weights '{weights}' must have same length as "
                     f"mappings '{self.mappings}'."
                 )
-            return weights
+            self._weights = weights
 
     @staticmethod
     def reduce(fit_experiments: Iterable["FitExperiment"]) -> List["FitExperiment"]:
@@ -202,8 +202,9 @@ class FitParameter(object):
         return (
             self.pid == other.pid
             and math.isclose(self.start_value, other.start_value)
-            and math.isclose(self.lower_bound, self.upper_bound)
-            and math.isclose(self.unit, other.unit)
+            and math.isclose(self.lower_bound, other.lower_bound)
+            and math.isclose(self.upper_bound, other.upper_bound)
+            and self.unit == other.unit
         )
 
     def __repr__(self) -> str:

@@ -6,7 +6,7 @@ def test_timecourse():
     example_timecourse.run_timecourse_examples()
 
 
-def test_json():
+def test_serialization():
     tcsim = TimecourseSim(
         [
             Timecourse(0, 100, steps=101),
@@ -16,6 +16,7 @@ def test_json():
     )
     jsonstr = tcsim.to_json()
     assert jsonstr
+    print(jsonstr)
 
     tcsim2 = TimecourseSim.from_json(jsonstr)
     assert tcsim2

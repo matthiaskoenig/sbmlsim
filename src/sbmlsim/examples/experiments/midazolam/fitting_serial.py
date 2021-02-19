@@ -15,7 +15,7 @@ from sbmlsim.fit.optimization import (
     OptimizerType,
     ResidualType,
     SamplingType,
-    WeightingLocalType,
+    WeightingLocalType, FittingType,
 )
 
 
@@ -30,8 +30,9 @@ def fit_lsq(problem_factory) -> Tuple[OptimizationResult, OptimizationProblem]:
         size=20,
         seed=1236,
         optimizer=OptimizerType.LEAST_SQUARE,
-        weighting_local=WeightingLocalType.ABSOLUTE_ONE_OVER_WEIGHTING,
+        fitting_type=FittingType.ABSOLUTE_VALUES,
         residual_type=ResidualType.ABSOLUTE_NORMED_RESIDUALS,
+        weighting_local=WeightingLocalType.ABSOLUTE_ONE_OVER_WEIGHTING,
     )
     return opt_res, problem
 
@@ -43,9 +44,9 @@ def fit_de(problem_factory) -> Tuple[OptimizationResult, OptimizationProblem]:
         problem=problem,
         size=1,
         seed=1234,
-        optimizer=OptimizerType.DIFFERENTIAL_EVOLUTION,
-        weighting_local=WeightingLocalType.ABSOLUTE_ONE_OVER_WEIGHTING,
+        fitting_type=FittingType.ABSOLUTE_VALUES,
         residual_type=ResidualType.ABSOLUTE_NORMED_RESIDUALS,
+        weighting_local=WeightingLocalType.ABSOLUTE_ONE_OVER_WEIGHTING,
     )
     return opt_res, problem
 

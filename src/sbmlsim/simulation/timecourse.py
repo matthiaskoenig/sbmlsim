@@ -137,7 +137,7 @@ class TimecourseSim(AbstractSim):
 
             if isinstance(tc, dict):
                 # construct from dict
-                tc = self.timecourses.append(Timecourse(**tc))
+                tc = Timecourse(**tc)
 
             # make a copy to ensure independence of instances
             self.timecourses.append(deepcopy(tc))
