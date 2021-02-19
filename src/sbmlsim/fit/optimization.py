@@ -102,7 +102,7 @@ class OptimizationProblem(object):
         :param fit_experiments:
         :param fit_parameters:
         """
-        self.opid = opid
+        self.opid: str = opid
         self.fit_experiments = FitExperiment.reduce(fit_experiments)
         self.parameters = fit_parameters
         if self.parameters is None or len(self.parameters) == 0:

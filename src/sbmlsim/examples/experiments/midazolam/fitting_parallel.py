@@ -1,4 +1,4 @@
-from typing import Tuple
+from typing import Callable, Tuple
 
 from sbmlsim.examples.experiments.midazolam import MIDAZOLAM_PATH
 from sbmlsim.examples.experiments.midazolam.fitting_problems import (
@@ -9,6 +9,7 @@ from sbmlsim.examples.experiments.midazolam.fitting_problems import (
 from sbmlsim.fit.fit import OptimizationResult, process_optimization_result
 from sbmlsim.fit.mpfit import run_optimization_parallel
 from sbmlsim.fit.optimization import (
+    FittingType,
     OptimizationProblem,
     OptimizerType,
     ResidualType,
@@ -19,41 +20,41 @@ from sbmlsim.fit.optimization import (
 
 RESULTS_PATH = MIDAZOLAM_PATH / "results"
 
+fit_kwargs = {
+    "fitting_type": FittingType.ABSOLUTE_VALUES,
+    "residual_type": ResidualType.ABSOLUTE_NORMED_RESIDUALS,
+    "weighting_local": WeightingLocalType.ABSOLUTE_ONE_OVER_WEIGHTING,
+    "absolute_tolerance": 1e-6,
+    "relative_tolerance": 1e-6,
+}
+
 
 def fit_lsq(
-    problem_factory,
-    weighting_local: WeightingLocalType = WeightingLocalType.ABSOLUTE_ONE_OVER_WEIGHTING,
-    residual_type: ResidualType = ResidualType.ABSOLUTE_NORMED_RESIDUALS,
+    problem_factory: Callable,
 ) -> Tuple[OptimizationResult, OptimizationProblem]:
     """Local least square fitting."""
-    problem = problem_factory()
+    problem: OptimizationProblem = problem_factory()
     opt_res = run_optimization_parallel(
         problem=problem,
         size=2,
         seed=1236,
         n_cores=2,
         optimizer=OptimizerType.LEAST_SQUARE,
-        weighting_local=weighting_local,
-        residual_type=residual_type,
+        **fit_kwargs
     )
     return opt_res, problem
 
 
-def fit_de(
-    problem_factory,
-    weighting_local: WeightingLocalType = WeightingLocalType.ABSOLUTE_ONE_OVER_WEIGHTING,
-    residual_type: ResidualType = ResidualType.ABSOLUTE_NORMED_RESIDUALS,
-) -> Tuple[OptimizationResult, OptimizationProblem]:
+def fit_de(problem_factory: Callable) -> Tuple[OptimizationResult, OptimizationProblem]:
     """Global differential evolution fitting."""
-    problem = problem_factory()
+    problem: OptimizationProblem = problem_factory()
     opt_res = run_optimization_parallel(
         problem=problem,
         size=2,
         seed=1234,
         n_cores=2,
         optimizer=OptimizerType.DIFFERENTIAL_EVOLUTION,
-        weighting_local=weighting_local,
-        residual_type=residual_type,
+        **fit_kwargs
     )
     return opt_res, problem
 
@@ -81,11 +82,6 @@ if __name__ == "__main__":
         problem_factory = op_mid1oh_iv
     elif fit_id == "kupferschmidt1995":
         problem_factory = op_kupferschmidt1995
-
-    fit_kwargs = {
-        "weighting_local": WeightingLocalType.ABSOLUTE_ONE_OVER_WEIGHTING,
-        "residual_type": ResidualType.ABSOLUTE_NORMED_RESIDUALS,
-    }
 
     if 1:
         opt_res_lsq, problem = fit_lsq(problem_factory, **fit_kwargs)

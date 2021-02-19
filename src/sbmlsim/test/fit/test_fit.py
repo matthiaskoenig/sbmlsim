@@ -9,6 +9,7 @@ from sbmlsim.examples.experiments.midazolam.fitting_problems import (
 
 
 def test_fit1(tmp_path):
+    print(op_mid1oh_iv)
     opt_res = fitting_serial.fit_lsq(problem_factory=op_mid1oh_iv)
     assert opt_res is not None
 

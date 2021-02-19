@@ -80,23 +80,26 @@ class FitExperiment(object):
                     f"flag. Weights were provided: '{weights}' in {str(self)}"
                 )
 
-            # have to be calculated dynamically
-            self._weights = None
+            # have to be calculated dynamically, storing None to ensure this happens
+            weights_processed = [None] * len(self.mappings)
 
-        # weights processing
-        if weights is None:
-            weights = 1.0
+        else:
+            # weights processing
+            if weights is None:
+                weights = 1.0
 
-        if isinstance(weights, (float, int)):
-            return [weights] * len(self.mappings)
-        elif isinstance(weights, (list, tuple)):
-            # list of weights
-            if len(weights) != len(self.mappings):
-                raise ValueError(
-                    f"Mapping weights '{weights}' must have same length as "
-                    f"mappings '{self.mappings}'."
-                )
-            self._weights = weights
+            if isinstance(weights, (float, int)):
+                weights_processed = [weights] * len(self.mappings)
+            elif isinstance(weights, (list, tuple)):
+                # list of weights
+                if len(weights) != len(self.mappings):
+                    raise ValueError(
+                        f"Mapping weights '{weights}' must have same length as "
+                        f"mappings '{self.mappings}'."
+                    )
+                weights_processed = weights
+
+        self._weights = weights_processed
 
     @staticmethod
     def reduce(fit_experiments: Iterable["FitExperiment"]) -> List["FitExperiment"]:
@@ -114,9 +117,10 @@ class FitExperiment(object):
 
         return list(red_experiments.values())
 
-    def __str__(self):
-        # FIXME: print weights
-        return f"{self.__class__.__name__}({self.experiment_class} {self.mappings})"
+    def __str__(self) -> str:
+        """String representation."""
+        print("weights", self.weights)
+        return f"{self.__class__.__name__}({self.experiment_class} {list(zip(self.mappings, self.weights))})"
 
 
 class FitMapping(object):

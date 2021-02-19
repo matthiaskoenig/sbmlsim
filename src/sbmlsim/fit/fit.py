@@ -47,8 +47,7 @@ def run_optimization(
     problem.initialize(
         fitting_type=fitting_type,
         weighting_local=weighting_local,
-        residual_type=residual_type
-        # FIXME: support counts
+        residual_type=residual_type,
     )
 
     # new simulator instance
