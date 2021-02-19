@@ -25,3 +25,4 @@ of timecourse definitions in multiple simulations. E.g. repeated timecourse `[tc
 - Fix #86, dependency update ray>=1.2.0
 - Fix #87, weighting by counts in parameter fitting
 - Fix #88, bugfix figure closing in parameter fitting
+- adding mypy configuration
