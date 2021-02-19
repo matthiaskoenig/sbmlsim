@@ -21,18 +21,7 @@ from sbmlsim.fit.optimization import (
 )
 
 
-RESULTS_PATH = MIDAZOLAM_PATH / "results"
-
-fit_kwargs = {
-    "fitting_type": FittingType.ABSOLUTE_VALUES,
-    "residual_type": ResidualType.ABSOLUTE_NORMED_RESIDUALS,
-    "weighting_local": WeightingLocalType.ABSOLUTE_ONE_OVER_WEIGHTING,
-    "absolute_tolerance": 1e-6,
-    "relative_tolerance": 1e-6,
-}
-
-
-def fit_lsq(problem_factory) -> Tuple[OptimizationResult, OptimizationProblem]:
+def fit_lsq(problem_factory, **fit_kwargs) -> Tuple[OptimizationResult, OptimizationProblem]:
     """Local least square fitting."""
     problem: OptimizationProblem = problem_factory()
     print(problem)
@@ -46,7 +35,7 @@ def fit_lsq(problem_factory) -> Tuple[OptimizationResult, OptimizationProblem]:
     return opt_res, problem
 
 
-def fit_de(problem_factory) -> Tuple[OptimizationResult, OptimizationProblem]:
+def fit_de(problem_factory, **fit_kwargs) -> Tuple[OptimizationResult, OptimizationProblem]:
     """Global differential evolution fitting."""
     problem = problem_factory()
     opt_res = run_optimization(problem=problem, size=1, seed=1234, **fit_kwargs)
@@ -54,13 +43,21 @@ def fit_de(problem_factory) -> Tuple[OptimizationResult, OptimizationProblem]:
 
 
 if __name__ == "__main__":
+    fit_kwargs = {
+        "fitting_type": FittingType.ABSOLUTE_VALUES,
+        "residual_type": ResidualType.ABSOLUTE_NORMED_RESIDUALS,
+        "weighting_local": WeightingLocalType.ABSOLUTE_ONE_OVER_WEIGHTING,
+        "absolute_tolerance": 1e-6,
+        "relative_tolerance": 1e-6,
+    }
+
     output_path = Path(__file__).parent / "results_fit"
-    opt_res_lq, problem = fit_lsq(problem_factory=op_mid1oh_iv)
+    opt_res_lq, problem = fit_lsq(problem_factory=op_mid1oh_iv, **fit_kwargs)
     process_optimization_result(
         opt_res_lq, problem=problem, output_path=output_path, **fit_kwargs
     )
 
-    opt_res_de, problem = fit_de(problem_factory=op_mid1oh_iv)
+    opt_res_de, problem = fit_de(problem_factory=op_mid1oh_iv, **fit_kwargs)
     process_optimization_result(
         opt_res_de, problem=problem, output_path=output_path, **fit_kwargs
     )
