@@ -54,6 +54,8 @@ class MidazolamSimulationExperiment(SimulationExperiment):
                     for key in self.simulations()
                 }
             )
+        else:
+            return {}
 
     def simulations(self, simulations=None) -> Dict[str, TimecourseSim]:
         if simulations is None:

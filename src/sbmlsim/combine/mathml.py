@@ -88,8 +88,9 @@ def evaluate(astnode: libsbml.ASTNode, variables: Dict):
     return res
 
 
-def _get_variables(astnode: libsbml.ASTNode, variables=None) -> Set:
+def _get_variables(astnode: libsbml.ASTNode, variables=None) -> Set[str]:
     """Adds variable names to the variables."""
+    variables: Set
     if variables is None:
         variables = set()
 

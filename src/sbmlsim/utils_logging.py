@@ -1,7 +1,5 @@
-"""
-Helpers related to logging
-"""
-import coloredlogs
+"""Helpers related to logging."""
+import coloredlogs  # type: ignore
 
 
 coloredlogs.install(level="INFO", fmt="%(levelname)s %(message)s")

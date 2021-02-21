@@ -42,7 +42,7 @@ def check_sedml(doc: libsedml.SedDocument) -> str:
     if errorlog.getNumFailsWithSeverity(libsedml.LIBSEDML_SEV_GENERAL_WARNING) > 0:
         logger.warning(msg)
     print(f"errors: {msg}")
-    return msg
+    return str(msg)
 
 
 def read_sedml(source: Union[Path, str], working_dir: Path = None) -> Dict:

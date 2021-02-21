@@ -30,7 +30,7 @@ logger = logging.getLogger(__name__)
 
 @dataclass
 class RuntimeErrorOptimizeResult:
-    status: str = -1
+    status: str = "-1"
     success: bool = False
     duration: float = -1.0
     cost: float = np.Inf

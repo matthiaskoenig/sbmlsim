@@ -21,7 +21,7 @@ print("-" * 80)
 # Changing initial value of D (re-evalutating initial assignments)
 model = roadrunner.RoadRunner(
     "initial_assignment.xml"
-)  # type: roadrunner.ExecutableModel
+)
 model.selections = ["time", "D", "A1", "[A1]"]
 
 # Setting initial value of D

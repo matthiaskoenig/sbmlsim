@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-from setuptools import setup
+from setuptools import setup  # type: ignore
 
 
 if __name__ == "__main__":

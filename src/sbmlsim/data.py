@@ -131,7 +131,9 @@ class Data(object):
             # read dataset data
             dset = self.experiment._datasets[self.dset_id]
             if not isinstance(dset, DataSet):
-                raise ValueError(dset)
+                raise ValueError(f"DataSet '{self.dset_id}' is not a DataSet, but "
+                                 f"type '{type(dset)}'\n"
+                                 f"{dset}")
             if dset.empty:
                 logger.error(f"Adding empty dataset '{dset}' for '{self.dset_id}'.")
 
@@ -257,7 +259,7 @@ class DataSet(pd.DataFrame):
     def _constructor_sliced(self):
         return DataSeries
 
-    def get_quantity(self, key):
+    def get_quantity(self, key: str):
         """Returns quantity for given key.
 
         Requires using the numpy data instead of the series.
@@ -267,6 +269,14 @@ class DataSet(pd.DataFrame):
             self[key].values,
             self.udict[key],
         )
+
+    def __repr__(self) -> str:
+        """Return DataFrame with all columns."""
+        pd.set_option("max_columns", None)
+        s = super().__repr__()
+        pd.reset_option("max_columns")
+        return s
+
 
     @classmethod
     def from_df(

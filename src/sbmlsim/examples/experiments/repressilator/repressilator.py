@@ -2,7 +2,7 @@
 Example simulation experiment.
 """
 from pathlib import Path
-from typing import Dict
+from typing import Dict, Union
 
 import numpy as np
 
@@ -26,7 +26,7 @@ from sbmlsim.test import MODEL_REPRESSILATOR
 class RepressilatorExperiment(SimulationExperiment):
     """Simple repressilator experiment."""
 
-    def models(self) -> Dict[str, AbstractModel]:
+    def models(self) -> Dict[str, Union[Path, AbstractModel]]:
         return {
             "model1": MODEL_REPRESSILATOR,
             "model2": AbstractModel(

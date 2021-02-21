@@ -1,5 +1,5 @@
 from pathlib import Path
-from typing import Dict
+from typing import Dict, Union
 
 import numpy as np
 import pandas as pd
@@ -10,6 +10,7 @@ from sbmlsim.data import Data, DataSet, load_pkdb_dataframe
 from sbmlsim.experiment import SimulationExperiment
 from sbmlsim.model import AbstractModel, RoadrunnerSBMLModel
 from sbmlsim.plot.plotting_matplotlib import add_data, plt
+from sbmlsim.result import XResult
 from sbmlsim.simulation import Dimension, ScanSim, Timecourse, TimecourseSim
 from sbmlsim.task import Task
 from sbmlsim.utils import timeit
@@ -19,7 +20,7 @@ class DoseResponseExperiment(SimulationExperiment):
     """Hormone dose-response curves."""
 
     @timeit
-    def models(self) -> Dict[str, AbstractModel]:
+    def models(self) -> Dict[str, Union[AbstractModel, Path]]:
         return {"model1": Path(__file__).parent.parent / "model" / "liver_glucose.xml"}
 
     @timeit
@@ -145,7 +146,7 @@ class DoseResponseExperiment(SimulationExperiment):
 
         # FIXME: this must be simpler
         glc_vec = tcscan.dimensions[0].changes["[glc_ext]"]
-        xres = self.results["task_glc_scan"]  # type: Result
+        xres = self.results["task_glc_scan"]  # type: XResult
 
         # we already have all the data ordered, we only want the steady state value
 

@@ -68,13 +68,12 @@ class Entry(object):
         self.description = description
         self.creators = creators
 
-    def __str__(self):
+    def __str__(self) -> str:
+        """String representation of entry."""
         if self.master:
-            return "<*master* Entry {} | {}>".format(
-                self.master, self.location, self.format
-            )
+            return f"<*master* Entry {self.location} | {self.format}>"
         else:
-            return "<Entry {} | {}>".format(self.master, self.location, self.format)
+            return f"<Entry {self.location} | {self.format}>"
 
 
 class Creator(object):
@@ -108,9 +107,8 @@ def combineArchiveFromDirectory(
     print(manifest_path)
     if os.path.exists(manifest_path):
         warnings.warn(
-            "Manifest file exists in directory, but not used in COMBINE archive creation: %s".format(
-                manifest_path
-            )
+            f"Manifest file exists in directory, but not used in COMBINE "
+            f"archive creation: {manifest_path}"
         )
 
     # add the base entry

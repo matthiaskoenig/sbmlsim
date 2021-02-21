@@ -91,7 +91,7 @@ class OptimizationResult(ObjectJSONEncoder):
         return info
 
     @staticmethod
-    def combine(opt_results: List[OptimizeResult]):
+    def combine(opt_results: List[OptimizeResult]) -> OptimizeResult:
         # FIXME: check that the parameters are fitting
         parameters = opt_results[0].parameters
         pids = {p.pid for p in parameters}

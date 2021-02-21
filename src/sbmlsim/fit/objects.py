@@ -195,7 +195,7 @@ class FitParameter(object):
                 f"model units."
             )
 
-    def __eq__(self, other: "FitParameter") -> bool:
+    def __eq__(self, other: object) -> bool:
         """Check for equality.
 
         Uses `math.isclose` for all comparisons of numerical values.
@@ -223,11 +223,10 @@ class FitParameter(object):
 
         Serializes to file if path is provided, otherwise returns JSON string.
         """
-        if path is None:
-            return json.dumps(self, cls=ObjectJSONEncoder, indent=2)
-        else:
+        if path:
             with open(path, "w") as f_json:
                 json.dump(self, fp=f_json, cls=ObjectJSONEncoder, indent=2)
+        return json.dumps(self, cls=ObjectJSONEncoder, indent=2)
 
     @staticmethod
     def from_json(json_info: Union[str, Path]) -> "FitParameter":
@@ -249,7 +248,7 @@ class FitData(object):
 
     def __init__(
         self,
-        experiment: "SimulationExperiment",
+        experiment: "sbmlutils.experiment.SimulationExperiment",
         xid: str,
         yid: str,
         xid_sd: str = None,

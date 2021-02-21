@@ -1,4 +1,4 @@
-from typing import Callable, Tuple
+from typing import Callable, Tuple, Any
 
 from sbmlsim.examples.experiments.midazolam import MIDAZOLAM_PATH
 from sbmlsim.examples.experiments.midazolam.fitting_problems import (
@@ -18,19 +18,8 @@ from sbmlsim.fit.optimization import (
 )
 
 
-RESULTS_PATH = MIDAZOLAM_PATH / "results"
-
-fit_kwargs = {
-    "fitting_type": FittingType.ABSOLUTE_VALUES,
-    "residual_type": ResidualType.ABSOLUTE_NORMED_RESIDUALS,
-    "weighting_local": WeightingLocalType.ABSOLUTE_ONE_OVER_WEIGHTING,
-    "absolute_tolerance": 1e-6,
-    "relative_tolerance": 1e-6,
-}
-
-
 def fit_lsq(
-    problem_factory: Callable,
+    problem_factory: Callable, **fit_kwargs: Any
 ) -> Tuple[OptimizationResult, OptimizationProblem]:
     """Local least square fitting."""
     problem: OptimizationProblem = problem_factory()
@@ -45,7 +34,7 @@ def fit_lsq(
     return opt_res, problem
 
 
-def fit_de(problem_factory: Callable) -> Tuple[OptimizationResult, OptimizationProblem]:
+def fit_de(problem_factory: Callable, **fit_kwargs: Any) -> Tuple[OptimizationResult, OptimizationProblem]:
     """Global differential evolution fitting."""
     problem: OptimizationProblem = problem_factory()
     opt_res = run_optimization_parallel(
@@ -60,6 +49,16 @@ def fit_de(problem_factory: Callable) -> Tuple[OptimizationResult, OptimizationP
 
 
 if __name__ == "__main__":
+
+    RESULTS_PATH = MIDAZOLAM_PATH / "results"
+
+    fit_kwargs = {
+        "fitting_type": FittingType.ABSOLUTE_VALUES,
+        "residual_type": ResidualType.ABSOLUTE_NORMED_RESIDUALS,
+        "weighting_local": WeightingLocalType.ABSOLUTE_ONE_OVER_WEIGHTING,
+        "absolute_tolerance": 1e-6,
+        "relative_tolerance": 1e-6,
+    }
 
     # fit_id = "mid1oh_iv"
     fit_id = "kupferschmidt1995"
@@ -91,6 +90,6 @@ if __name__ == "__main__":
 
     if 0:
         opt_res_de, problem = fit_de(problem_factory, **fit_kwargs)
-        analyze_optimization(
+        process_optimization_result(
             opt_res_de, problem=problem, output_path=fit_path_de, **fit_kwargs
         )
