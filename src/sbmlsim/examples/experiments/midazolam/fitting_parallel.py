@@ -1,4 +1,4 @@
-from typing import Callable, Tuple, Any
+from typing import Any, Callable, Tuple
 
 from sbmlsim.examples.experiments.midazolam import MIDAZOLAM_PATH
 from sbmlsim.examples.experiments.midazolam.fitting_problems import (
@@ -34,7 +34,9 @@ def fit_lsq(
     return opt_res, problem
 
 
-def fit_de(problem_factory: Callable, **fit_kwargs: Any) -> Tuple[OptimizationResult, OptimizationProblem]:
+def fit_de(
+    problem_factory: Callable, **fit_kwargs: Any
+) -> Tuple[OptimizationResult, OptimizationProblem]:
     """Global differential evolution fitting."""
     problem: OptimizationProblem = problem_factory()
     opt_res = run_optimization_parallel(

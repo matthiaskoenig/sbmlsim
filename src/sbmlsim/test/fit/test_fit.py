@@ -86,7 +86,9 @@ fit_kwargs_default = {
 
 
 def test_process_optimization(tmp_path):
-    opt_res, problem = fitting_serial.fit_lsq(problem_factory=op_mid1oh_iv, **fit_kwargs_default)
+    opt_res, problem = fitting_serial.fit_lsq(
+        problem_factory=op_mid1oh_iv, **fit_kwargs_default
+    )
     process_optimization_result(
         opt_res, problem=problem, output_path=tmp_path, **fit_kwargs_default
     )
@@ -103,10 +105,14 @@ def test_fit_de_serial():
 
 
 def test_fit_lsq_parallel():
-    opt_res = fitting_parallel.fit_lsq(problem_factory=op_mid1oh_iv, **fit_kwargs_default)
+    opt_res = fitting_parallel.fit_lsq(
+        problem_factory=op_mid1oh_iv, **fit_kwargs_default
+    )
     assert opt_res is not None
 
 
 def test_fit_de_parallel():
-    opt_res = fitting_parallel.fit_de(problem_factory=op_mid1oh_iv, **fit_kwargs_default)
+    opt_res = fitting_parallel.fit_de(
+        problem_factory=op_mid1oh_iv, **fit_kwargs_default
+    )
     assert opt_res is not None

@@ -131,9 +131,11 @@ class Data(object):
             # read dataset data
             dset = self.experiment._datasets[self.dset_id]
             if not isinstance(dset, DataSet):
-                raise ValueError(f"DataSet '{self.dset_id}' is not a DataSet, but "
-                                 f"type '{type(dset)}'\n"
-                                 f"{dset}")
+                raise ValueError(
+                    f"DataSet '{self.dset_id}' is not a DataSet, but "
+                    f"type '{type(dset)}'\n"
+                    f"{dset}"
+                )
             if dset.empty:
                 logger.error(f"Adding empty dataset '{dset}' for '{self.dset_id}'.")
 
@@ -276,7 +278,6 @@ class DataSet(pd.DataFrame):
         s = super().__repr__()
         pd.reset_option("max_columns")
         return s
-
 
     @classmethod
     def from_df(

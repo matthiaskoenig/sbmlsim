@@ -21,7 +21,9 @@ from sbmlsim.fit.optimization import (
 )
 
 
-def fit_lsq(problem_factory, **fit_kwargs) -> Tuple[OptimizationResult, OptimizationProblem]:
+def fit_lsq(
+    problem_factory, **fit_kwargs
+) -> Tuple[OptimizationResult, OptimizationProblem]:
     """Local least square fitting."""
     problem: OptimizationProblem = problem_factory()
     print(problem)
@@ -35,7 +37,9 @@ def fit_lsq(problem_factory, **fit_kwargs) -> Tuple[OptimizationResult, Optimiza
     return opt_res, problem
 
 
-def fit_de(problem_factory, **fit_kwargs) -> Tuple[OptimizationResult, OptimizationProblem]:
+def fit_de(
+    problem_factory, **fit_kwargs
+) -> Tuple[OptimizationResult, OptimizationProblem]:
     """Global differential evolution fitting."""
     problem = problem_factory()
     opt_res = run_optimization(problem=problem, size=1, seed=1234, **fit_kwargs)
