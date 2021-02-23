@@ -213,6 +213,9 @@ class Style(BasePlotObject):
         # https://matplotlib.org/3.1.0/tutorials/colors/colors.html
         if color is None:
             return None
+        elif color.startswith("#"):
+            # FIXME: inject alpha if missing
+            pass
         else:
             color = to_rgba(color, alpha)
             color = to_hex(color, keep_alpha=True)

@@ -1,10 +1,12 @@
+"""SimulationExperiments and helpers."""
+
 import json
 import logging
 from collections import defaultdict
 from copy import deepcopy
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Dict, Iterable, List
+from typing import Dict, Iterable, List, Union
 
 from sbmlsim.data import Data, DataSet
 from sbmlsim.fit import FitData, FitMapping
@@ -23,7 +25,10 @@ logger = logging.getLogger(__name__)
 
 
 class ExperimentDict(dict):
+    """Dictionary for experiments."""
+
     def __getitem__(self, k):
+        """Get item k."""
         try:
             return super().__getitem__(k)
         except KeyError:
@@ -96,8 +101,12 @@ class SimulationExperiment(object):
         self._results = ExperimentDict()
         self._figures = ExperimentDict()
 
-    def initialize(self):
-        """
+    def initialize(self) -> None:
+        """Initialize SimulationExperiment.
+
+        Initialization must be separated from object construction due to
+        the parallel execution of the problem later on.
+        Certain objects cannot be serialized and must be initialized.
         :return:
         """
         # process all information necessary to run the simulations, i.e.,
@@ -114,7 +123,8 @@ class SimulationExperiment(object):
 
         # print(self)
 
-    def __str__(self):
+    def __str__(self) -> str:
+        """Get string representation."""
         info = [
             "-" * 80,
             f"{self.__class__.__name__}: {self.sid}",
@@ -130,47 +140,56 @@ class SimulationExperiment(object):
         ]
         return "\n".join(info)
 
-    # --- MODELS --------------------------------------------------------------
     def models(self) -> Dict[str, AbstractModel]:
-        """Model definition"""
+        """Model definitions.
+
+        The child classes fill out the information.
+        """
         return ExperimentDict()
 
-    # --- DATASETS ------------------------------------------------------------
     def datasets(self) -> Dict[str, DataSet]:
-        """Dataset definition (experimental data)"""
+        """Dataset definitions (experimental data).
+
+        The child classes fill out the information.
+        """
         return ExperimentDict()
 
-    # --- TASKS ---------------------------------------------------------------
     def tasks(self) -> Dict[str, Task]:
-        """Task definitions."""
+        """Tasks definitions.
+
+        The child classes fill out the information.
+        """
         return ExperimentDict()
 
-    # --- SIMULATIONS ---------------------------------------------------------
     def simulations(self) -> Dict[str, AbstractSim]:
-        """Simulation definitions."""
+        """Simulations definitions.
+
+        The child classes fill out the information.
+        """
         return ExperimentDict()
 
-    # --- FITTING -------------------------------------------------------------
     def fit_mappings(self) -> Dict[str, FitMapping]:
         """Fit mappings, mapping reference data on observables.
 
         Used for the optimization of parameters.
+        The child classes fill out the information.
         """
         return ExperimentDict()
 
-    # --- FUNCTIONS -----------------------------------------------------------
     def datagenerators(self) -> None:
         """DataGenerator definitions including functions.
 
         All data which is accessed in a simulation result must be defined in a
         data generator.
         """
-        return
+        return None
 
     def add_selections(self, selections: Iterable[str], task_ids: Iterable[str] = None):
         """Add selections to given tasks.
 
         Selections are necessary to access data from simulations.
+        Here these selections are added to the tasks. If no tasks are given,
+        the selections are added to all tasks.
         """
         if task_ids is None:
             task_ids = self._tasks.keys()
@@ -179,22 +198,24 @@ class SimulationExperiment(object):
             for selection in selections:
                 Data(self, index=selection, task=task_id)
 
-    # --- RESULTS -------------------------------------------------------------
+    # --- RESULTS ---------------------------------------------------------------------
     @property
     def results(self) -> Dict[str, XResult]:
         """Accessing the simulation results.
 
-        Results are mapped on tasks based on the task_ids.
-        :return:
+        Results are mapped on tasks based on the task_ids. E.g.
+        to get the results for the task with id 'task_glciv' use
+        ```
+            simexp.results["task_glciv"]
+            self.results["task_glciv"]
+        ```
         """
-
         if self._results is None:
             self._run_tasks(self.simulator)
         return self._results
 
-    # --- FIGURES -------------------------------------------------------------
     def figures(self) -> Dict[str, Figure]:
-        """sbmlsim figures.
+        """Figure definition.
 
         Selections accessed in figures and analyses must be registered beforehand
         via datagenerators.
@@ -204,9 +225,9 @@ class SimulationExperiment(object):
         """
         return {}
 
-    # --- VALIDATION ----------------------------------------------------------
+    # --- VALIDATION ------------------------------------------------------------------
     def _check_keys(self):
-        """Check that everything is okay with the experiment."""
+        """Check keys in information dictionaries."""
         # string keys for main objects must be unique on SimulationExperiment
         all_keys = dict()
         allowed_types = dict
@@ -221,9 +242,11 @@ class SimulationExperiment(object):
 
             if not isinstance(field, allowed_types):
                 raise ValueError(
-                    f"SimulationExperiment '{self.sid}': '{field_key} must be a '{allowed_types}', but '{field}' is type '{type(field)}'. "
-                    f"Check that the respective definition returns an object of type '{allowed_types}. "
-                    f"Often simply the return statement is missing (returning NoneType)."
+                    f"SimulationExperiment '{self.sid}': '{field_key} must be a "
+                    f"'{allowed_types}', but '{field}' is type '{type(field)}'. "
+                    f"Check that the respective definition returns an object of type "
+                    f"'{allowed_types}. Often simply the return statement is missing "
+                    f"(returning NoneType)."
                 )
             for key in getattr(self, field_key).keys():
                 if not isinstance(key, str):
@@ -238,7 +261,7 @@ class SimulationExperiment(object):
                     all_keys[key] = field_key
 
     def _check_types(self):
-        """Check that correct types"""
+        """Check for correctness of types."""
         for key, dset in self._datasets.items():
             if not isinstance(dset, DataSet):
                 raise ValueError(
@@ -274,7 +297,7 @@ class SimulationExperiment(object):
                     f"mapping '{key}' has type: '{type(mapping)}'"
                 )
 
-    # --- EXECUTE -------------------------------------------------------------
+    # --- EXECUTE ---------------------------------------------------------------------
 
     @timeit
     def run(
@@ -286,10 +309,8 @@ class SimulationExperiment(object):
         figure_formats: List[str] = None,
         reduced_selections: bool = True,
     ) -> "ExperimentResult":
-        """
-        Executes given experiment and stores results.
-        Returns info dictionary.
-        """
+        """Executes given experiment and stores results."""
+
         # run simulations
         self._run_tasks(
             simulator, reduced_selections=reduced_selections
@@ -321,12 +342,12 @@ class SimulationExperiment(object):
         # create figures
         mpl_figures = self.create_mpl_figures()
         if show_figures:
-            self.show_figures(mpl_figures=mpl_figures)
+            self.show_mpl_figures(mpl_figures=mpl_figures)
         if output_path:
-            self.save_figures(
+            self.save_mpl_figures(
                 output_path, mpl_figures=mpl_figures, figure_formats=figure_formats
             )
-            self.clear_figures(mpl_figures=mpl_figures)
+        self.close_mpl_figures(mpl_figures=mpl_figures)
 
         # only perform serialization after data evaluation (to access units)
         if output_path:
@@ -337,7 +358,7 @@ class SimulationExperiment(object):
 
     @timeit
     def _run_tasks(self, simulator, reduced_selections: bool = True):
-        """Run simulations & scans.
+        """Run simulations and scans.
 
         This should not be called directly, but the results of the simulations
         should be requested by the results property.
@@ -424,16 +445,14 @@ class SimulationExperiment(object):
 
     def to_dict(self):
         """Convert to dictionary.
+
         This is the basis for the JSON serialization.
         """
         # FIXME: resolve paths relative to base_paths
-        # FIXME: ordered dict
-
         return {
             "experiment_id": self.sid,
             "base_path": str(self.base_path) if self.base_path else None,
             "data_path": str(self.data_path) if self.data_path else None,
-            # "unit_registry": self.ureg,
             "models": {k: v.to_dict() for k, v in self._models.items()},
             "tasks": {k: v.to_dict() for k, v in self._tasks.items()},
             "simulations": {k: v.to_dict() for k, v in self._simulations.items()},
@@ -442,16 +461,18 @@ class SimulationExperiment(object):
         }
 
     @classmethod
-    def from_json(cls, json_info) -> "SimulationExperiment":
-        """Load experiment from json path or str"""
+    def from_json(cls, json_info: Union[Path, str]) -> "SimulationExperiment":
+        """Load experiment from json path or str."""
         # FIXME: update serialization
         if isinstance(json_info, Path):
             with open(json_info, "r") as f_json:
                 d = json.load(f_json)
-        else:
+        elif isinstance(json_info, str):
             d = json.loads(json_info)
+        else:
+            raise ValueError("Unsupported json format.")
 
-        return JSONExperiment.from_dict(d)
+        return SimulationExperiment.from_dict(d)
 
     @timeit
     def save_datasets(self, results_path):
@@ -469,8 +490,8 @@ class SimulationExperiment(object):
                 )
 
     @timeit
-    def save_results(self, results_path):
-        """Save results (mean timecourse)
+    def save_results(self, results_path: Path) -> None:
+        """Save results (mean timecourse).
 
         :param results_path:
         :return:
@@ -483,102 +504,67 @@ class SimulationExperiment(object):
                 result.to_tsv(results_path / f"{self.sid}_{rkey}.tsv")
 
     @timeit
-    def create_mpl_figures(self) -> Dict[str, FigureMPL]:
-        """Create matplotlib figures.
-
-        :return:
-        """
+    def create_mpl_figures(self) -> Dict[str, Union[FigureMPL, Figure]]:
+        """Create matplotlib figures."""
         mpl_figures = {}
-        for fkey, fig in self._figures.items():
+        for fig_key, fig in self._figures.items():
             if isinstance(fig, Figure):
                 fig_mpl = MatplotlibFigureSerializer.to_figure(fig)
-            else:
+            elif isinstance(fig, FigureMPL):
                 fig_mpl = fig
 
-            mpl_figures[fkey] = fig_mpl
+            mpl_figures[fig_key] = fig_mpl
 
         return mpl_figures
 
     @timeit
-    def show_figures(self, mpl_figures: Dict[str, FigureMPL]):
-        for fig_key, fig_mpl in mpl_figures.items():
+    def show_mpl_figures(self, mpl_figures: Dict[str, FigureMPL]) -> None:
+        """Show matplotlib figures."""
+        for _, fig_mpl in mpl_figures.items():
             fig_mpl.show()
 
-    @staticmethod
-    def _show_figure(args):
-        fig_mpl = args  # type: FigureMPL
-        fig_mpl.show()
-
     @timeit
-    def save_figures(
+    def save_mpl_figures(
         self,
         results_path: Path,
         mpl_figures: Dict[str, FigureMPL],
         figure_formats: List[str] = None,
     ) -> Dict[str, List[Path]]:
-        """Save matplotlib figures.
-
-        :param results_path:
-        :return:
-        """
-        if figure_formats == None:
+        """Save matplotlib figures."""
+        if figure_formats is None:
             # default to SVG output
             figure_formats = ["svg"]
         paths = defaultdict(list)
         for fkey, fig_mpl in mpl_figures.items():  # type
 
-            for format in figure_formats:
-                fig_path = results_path / f"{self.sid}_{fkey}.{format}"
+            for fig_format in figure_formats:
+                fig_path = results_path / f"{self.sid}_{fkey}.{fig_format}"
                 fig_mpl.savefig(fig_path, bbox_inches="tight")
 
-                paths[format].append(fig_path)
+                paths[fig_format].append(fig_path)
 
         return paths
 
-    def clear_figures(self, mpl_figures: Dict[str, FigureMPL]):
-        for fig_key, fig_mpl in mpl_figures.items():
-            plt.close(fig_mpl)
-
     @staticmethod
-    def _save_figure(args):
-        path_svg, fig_mpl = args
-        fig_mpl.savefig(path_svg, bbox_inches="tight")
-
-
-# FIXME: deprecated, remove
-class JSONExperiment(SimulationExperiment):
-    """An experiment loaded from JSON serialization."""
-
-    @property
-    def simulations(self):
-        return self._simulations
-
-    @classmethod
-    def from_dict(self, d) -> "JSONExperiment":
-        experiment = JSONExperiment(model_path=None, data_path=None)
-        experiment.sid = d["experiment_id"]
-        # parse simulation definitions
-        simulations = {}
-        for key, data in d["simulations"].items():
-            tcsim = TimecourseSim(**data)
-            for tc in tcsim.timecourses:
-                # parse the serialized magnitudes
-                tc.changes = {k: v["_magnitude"] for k, v in tc.changes.items()}
-            simulations[key] = tcsim
-        experiment._simulations = simulations
-
-        return experiment
+    def close_mpl_figures(self, mpl_figures: Dict[str, FigureMPL]):
+        """Close matplotlib figures."""
+        for _, fig_mpl in mpl_figures.items():
+            plt.close(fig_mpl)
 
 
 @dataclass
 class ExperimentResult:
-    """Result of a simulation experiment"""
+    """Result of a simulation experiment."""
 
     experiment: SimulationExperiment
     output_path: Path
 
-    def to_dict(self):
-        """Information needed for the report"""
+    def to_dict(self) -> Dict:
+        """Conversion to dictionary.
+
+        Used in serialization and required for reports.
+        """
         d = {
             "output_path": self.output_path,
         }
+        return d
