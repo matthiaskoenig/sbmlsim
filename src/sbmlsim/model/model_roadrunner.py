@@ -1,7 +1,9 @@
+"""RoadRunner model."""
+
 import logging
 import tempfile
 from pathlib import Path
-from typing import Dict, List, Union
+from typing import Dict, List, Union, Optional
 
 import libsbml
 import numpy as np
@@ -100,7 +102,11 @@ class RoadrunnerSBMLModel(AbstractModel):
         """Roadrunner instance."""
         return self._model
 
-    def get_state_path(self):
+    def get_state_path(self) -> Optional[Path]:
+        """Get path of the state file.
+
+        The state file is a binary file which allows fast model loading.
+        """
         if self.source.is_path():
             md5 = md5_for_path(self.source.path)
             return Path(f"{self.source.path}_rr{roadrunner.__version__}_{md5}.state")
@@ -111,7 +117,7 @@ class RoadrunnerSBMLModel(AbstractModel):
     def load_roadrunner_model(
         cls, source: Source, state_path: Path = None
     ) -> roadrunner.RoadRunner:
-        """Loads model from given source
+        """Load model from given source.
 
         :param source: path to SBML model or SBML string
         :param state_path: path to rr state
@@ -153,7 +159,7 @@ class RoadrunnerSBMLModel(AbstractModel):
         return r2
 
     def parse_units(self, ureg):
-        """Parse units from SBML model"""
+        """Parse units from SBML model."""
         if self.source.is_content():
             model_path = self.source.content
         elif self.source.is_path():
@@ -165,9 +171,9 @@ class RoadrunnerSBMLModel(AbstractModel):
     def set_timecourse_selections(
         cls, r: roadrunner.RoadRunner, selections: List[str] = None
     ) -> None:
-        """ Sets the full model selections. """
+        """Set the model selections for timecourse simulation."""
         if selections is None:
-            r_model = r.model  # type: roadrunner.ExecutableModel
+            r_model: roadrunner.ExecutableModel = r.model
 
             r.timeCourseSelections = (
                 ["time"]
@@ -217,7 +223,7 @@ class RoadrunnerSBMLModel(AbstractModel):
 
     @staticmethod
     def set_default_settings(r: roadrunner.RoadRunner, **kwargs):
-        """ Set default settings of integrator. """
+        """Set default settings of integrator."""
         RoadrunnerSBMLModel.set_integrator_settings(
             r,
             variable_step_size=True,
@@ -228,8 +234,8 @@ class RoadrunnerSBMLModel(AbstractModel):
 
     @staticmethod
     def parameter_df(r: roadrunner.RoadRunner) -> pd.DataFrame:
-        """
-        Create GlobalParameter DataFrame.
+        """Create GlobalParameter DataFrame.
+
         :return: pandas DataFrame
         """
         r_model = r.model  # type: roadrunner.ExecutableModel
@@ -253,8 +259,8 @@ class RoadrunnerSBMLModel(AbstractModel):
 
     @staticmethod
     def species_df(r: roadrunner.RoadRunner) -> pd.DataFrame:
-        """
-        Create FloatingSpecies DataFrame.
+        """Create FloatingSpecies DataFrame.
+
         :return: pandas DataFrame
         """
         r_model = r.model  # type: roadrunner.ExecutableModel

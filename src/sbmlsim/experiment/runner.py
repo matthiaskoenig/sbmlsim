@@ -1,12 +1,18 @@
-"""
-Runner for SimulationExperiments.
+"""Runner for SimulationExperiments.
+
+The ExperimentRunner is used to execute simulation experiments.
+This includes
+- loading of datasets
+- loading of models
+- running tasks (simulation on models)
+- creating outputs
 """
 
 import logging
 from pathlib import Path
-from typing import Iterable, List, Tuple
+from typing import Iterable, List
 
-from sbmlsim.experiment import SimulationExperiment
+from sbmlsim.experiment import SimulationExperiment, ExperimentResult
 from sbmlsim.model import RoadrunnerSBMLModel
 from sbmlsim.simulator.simulation import SimulatorAbstract
 from sbmlsim.units import UnitRegistry, Units
@@ -48,8 +54,8 @@ class ExperimentRunner(object):
         """Set simulator on the runner and experiments."""
         if simulator is None:
             logger.debug(
-                f"No simulator set in ExperimentRunner. This warning can be "
-                f"ignored for parameter fitting which provides a simulator."
+                "No simulator set in ExperimentRunner. This warning can be "
+                "ignored for parameter fitting which provides a simulator."
             )
         else:
             self.simulator = simulator  # type: SimulatorAbstract
@@ -58,6 +64,11 @@ class ExperimentRunner(object):
 
     @timeit
     def initialize(self, experiment_classes, **kwargs):
+        """Initialize ExperimentRunner.
+
+        Initialization is required in addition to construction to allow serialization
+        of information for parallelization.
+        """
         if not isinstance(experiment_classes, (list, tuple, set)):
             experiment_classes = [experiment_classes]
 
@@ -99,7 +110,7 @@ class ExperimentRunner(object):
         save_results: bool = False,
         figure_formats: List[str] = None,
         reduced_selections: bool = True,
-    ) -> List["ExperimentResult"]:
+    ) -> List[ExperimentResult]:
         """Run the experiments."""
         if not output_path.exists():
             output_path.mkdir(parents=True)

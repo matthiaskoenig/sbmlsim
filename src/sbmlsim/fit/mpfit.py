@@ -1,7 +1,6 @@
-#!/usr/bin/python
-"""
-Module for running parameter fits in parallel using multiprocessing
+"""Module for running parameter fits in parallel.
 
+The implementation uses multiprocessing.
 Starts processes on the n_cores which run optimization problems.
 
 -------------------------------------------------------------------------------
@@ -45,7 +44,7 @@ def run_optimization_parallel(
     seed: int = None,
     **kwargs,
 ) -> OptimizationResult:
-    """Run optimization in parallel
+    """Run optimization in parallel.
 
     :param problem: uninitialized optimization problem (pickable)
     :param n_cores: number of workers
@@ -99,7 +98,7 @@ def run_optimization_parallel(
 
 
 def worker(kwargs) -> OptimizationResult:
-    """ Worker for running optimization problem. """
+    """Worker for running optimization problem."""
     lock.acquire()
     try:
         print(f"worker <{os.getpid()}> running optimization ...")

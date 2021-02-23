@@ -1,14 +1,14 @@
-"""
+"""Models.
+
 Functions for model loading, model manipulation and settings on the integrator.
 Model can be in different formats, main supported format being SBML.
 
 Other formats could be supported like CellML or NeuroML.
-
 """
 import logging
 from enum import Enum
 from pathlib import Path
-from typing import Dict, List, Tuple, Union
+from typing import Dict, List, Tuple, Union, Optional
 
 from sbmlsim.model.model_resources import Source
 from sbmlsim.units import Units
@@ -24,25 +24,30 @@ class AbstractModel(object):
     """
 
     class LanguageType(Enum):
+        """Language types."""
+
         SBML = 1
         CELLML = 2
 
     class SourceType(Enum):
+        """Source types."""
+
         PATH = 1
         URN = 2
         URL = 3
 
-    def __repr__(self):
+    def __repr__(self) -> str:
+        """Get string representation."""
         return f"{self.language_type.name}({self.source.source}, changes={len(self.changes)})"
 
     def __init__(
         self,
         source: Union[str, Path],
-        sid: str = None,
-        name: str = None,
-        language: str = None,
+        sid: Optional[str] = None,
+        name: Optional[str] = None,
+        language: Optional[str] = None,
         language_type: LanguageType = LanguageType.SBML,
-        base_path: Path = None,
+        base_path: Optional[Path] = None,
         changes: Dict = None,
         selections: List[str] = None,
     ):
@@ -79,7 +84,7 @@ class AbstractModel(object):
         # normalize parameters at end of initialization
 
     def normalize(self, udict, ureg):
-        """ Normalize values to model units for all changes."""
+        """Normalize values to model units for all changes."""
         self.changes = Units.normalize_changes(self.changes, udict=udict, ureg=ureg)
 
     def to_dict(self):

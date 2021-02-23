@@ -1,3 +1,5 @@
+"""Run optimizations."""
+
 import logging
 from pathlib import Path
 
@@ -18,7 +20,7 @@ def run_optimization(
     verbose=False,
     **kwargs,
 ) -> OptimizationResult:
-    """Runs the given optimization problem.
+    """Run the given optimization problem.
 
     This changes the internal state of the optimization problem
     and provides simple access to parameters and costs after
@@ -77,7 +79,7 @@ def process_optimization_result(
     absolute_tolerance=1e-6,
     relative_tolerance=1e-6,
 ):
-    """Processes the optimization results.
+    """Process the optimization results.
 
     Creates reports and stores figures and results.
     """

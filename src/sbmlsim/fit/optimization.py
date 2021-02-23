@@ -1,3 +1,5 @@
+"""Optimization of parameter fitting problem."""
+
 import logging
 import time
 from collections import defaultdict
@@ -30,6 +32,8 @@ logger = logging.getLogger(__name__)
 
 @dataclass
 class RuntimeErrorOptimizeResult:
+    """Error in opimization."""
+
     status: str = "-1"
     success: bool = False
     duration: float = -1.0
@@ -38,6 +42,10 @@ class RuntimeErrorOptimizeResult:
 
 
 class OptimizerType(Enum):
+    """Type of optimization.
+
+    Least square
+    """
     LEAST_SQUARE = 1
     DIFFERENTIAL_EVOLUTION = 2
 

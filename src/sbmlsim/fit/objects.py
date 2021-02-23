@@ -1,16 +1,15 @@
-"""
-Definition of FitProblem.
-"""
+"""Definition of Objects used in FitProblems and optimization."""
 import json
 import logging
 import math
 from pathlib import Path
-from typing import Dict, Iterable, List, Optional, Set, Tuple, Union
+from typing import Dict, Iterable, List, Optional, Union
 
 import numpy as np
 
 from sbmlsim.data import Data
 from sbmlsim.serialization import ObjectJSONEncoder
+# from sbmlsim.experiment import SimulationExperiment
 
 
 logger = logging.getLogger(__name__)
@@ -31,9 +30,9 @@ class FitExperiment(object):
         use_mapping_weights: bool = False,
         fit_parameters: Dict[str, List["FitParameter"]] = None,
     ):
-        """A Simulation experiment used in a fitting.
+        """Initialize simulation experiment used in a fitting.
 
-        weights must be updated according to the mappings
+        The weights must be updated according to the mappings.
 
         :param experiment:
         :param mappings: mappings to use from experiments (None uses all mappings)
@@ -103,7 +102,7 @@ class FitExperiment(object):
 
     @staticmethod
     def reduce(fit_experiments: Iterable["FitExperiment"]) -> List["FitExperiment"]:
-        """Collects fit mappings of multiple FitExperiments"""
+        """Collect fit mappings of multiple FitExperiments."""
         red_experiments = {}
         for fit_exp in fit_experiments:
             sid = fit_exp.experiment_class.__name__
@@ -118,7 +117,7 @@ class FitExperiment(object):
         return list(red_experiments.values())
 
     def __str__(self) -> str:
-        """String representation."""
+        """Get string representation."""
         print("weights", self.weights)
         return f"{self.__class__.__name__}({self.experiment_class} {list(zip(self.mappings, self.weights))})"
 
@@ -133,7 +132,7 @@ class FitMapping(object):
 
     def __init__(
         self,
-        experiment: "sbmlsim.experiment.SimulationExperiment",
+        experiment: "SimulationExperiment",
         reference: "FitData",
         observable: "FitData",
         weight: float = None,
@@ -153,8 +152,8 @@ class FitMapping(object):
         self._weight = weight
 
     @property
-    def weight(self):
-        """Returns defined weight or count of the reference."""
+    def weight(self) -> float:
+        """Return defined weight or count of the reference."""
         if self._weight is not None:
             return self._weight
         else:
@@ -248,7 +247,7 @@ class FitData(object):
 
     def __init__(
         self,
-        experiment: "sbmlutils.experiment.SimulationExperiment",
+        experiment: "SimulationExperiment",
         xid: str,
         yid: str,
         xid_sd: str = None,
@@ -350,17 +349,21 @@ class FitData(object):
                 function=self.function,
             )
 
-    def is_task(self):
+    def is_task(self) -> bool:
+        """Check if FitData comes from a task (simulation)."""
         return self.task_id is not None
 
-    def is_dataset(self):
+    def is_dataset(self) -> bool:
+        """Check if FitData comes from a dataset."""
         return self.dset_id is not None
 
-    def is_function(self):
+    def is_function(self) -> bool:
+        """Check if FitData comes from a function."""
         return self.function is not None
 
     @property
     def dtype(self):
+        """Get data type."""
         if self.task_id:
             dtype = Data.Types.TASK
         elif self.dset_id:
@@ -372,7 +375,10 @@ class FitData(object):
         return dtype
 
     def get_data(self) -> Dict:
-        """Returns actual data."""
+        """Return actual data.
+
+        Numerical values are resolved using the executed simulation experiment.
+        """
         result = FitDataInitialized()
         for key in ["x", "y", "x_sd", "x_se", "y_sd", "y_se"]:
             d = getattr(self, key)
@@ -396,5 +402,6 @@ class FitDataInitialized(object):
         self.y_sd = None
         self.y_se = None
 
-    def __str__(self):
+    def __str__(self) -> str:
+        """Get string representation."""
         return str(self.__dict__)

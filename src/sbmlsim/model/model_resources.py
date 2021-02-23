@@ -1,4 +1,5 @@
-"""
+"""Model resources.
+
 Interacting with model resources to retrieve models.
 This currently includes BioModels, but can easily be extended to other models.
 """
@@ -6,6 +7,7 @@ import logging
 import re
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Dict, Optional
 
 import requests
 
@@ -18,26 +20,31 @@ class Source:
     """Class for keeping track of the resolved sources."""
 
     source: str
-    path: Path = None  # if source is a path
-    content: Path = None  # if source is something which has to be resolved
+    path: Optional[Path] = None  # if source is a path
+    content: Optional[Path] = None  # if source is something which has to be resolved
 
-    def is_path(self):
+    def is_path(self) -> bool:
+        """Check if the source is a Path."""
         return self.path is not None
 
-    def is_content(self):
+    def is_content(self) -> bool:
+        """Check if the source is Content."""
         return self.content is not None
 
-    def to_dict(self):
-        # add keys individually for order!
-        d = dict()
-        d["source"] = str(self.source)
-        d["path"] = str(self.path) if self.path else None
-        d["content"] = self.content
-        return d
+    def to_dict(self) -> Dict[str, str]:
+        """Convert to dict.
+
+        Used for serialization.
+        """
+        return {
+            "source": str(self.source),
+            "path": str(self.path) if self.path else None,
+            "content": str(self.content),
+        }
 
     @classmethod
     def from_source(cls, source: str, base_dir: Path = None) -> "Source":
-        """Resolves the source string.
+        """Resolve the source string.
 
         # FIXME: handle the case of models given as strings.
         """
@@ -69,16 +76,18 @@ class Source:
         return Source(source, path, content)
 
 
-def is_urn(source):
+def is_urn(source: str) -> bool:
+    """Check if urn source."""
     return source.lower().startswith("urn")
 
 
-def is_http(source):
+def is_http(source: str) -> bool:
+    """Check if http source."""
     return source.lower().startswith("http")
 
 
 def model_from_urn(urn: str) -> str:
-    """ Get model string from given URN"""
+    """Get model string from given URN."""
     if "biomodel" in urn:
         mid = parse_biomodels_mid(urn)
         content = model_from_biomodels(mid)
@@ -89,7 +98,7 @@ def model_from_urn(urn: str) -> str:
 
 
 def model_from_url(url: str) -> str:
-    """Get model string from given URL
+    """Get model string from given URL.
 
     Handles redirects of the download page.
 
@@ -116,7 +125,7 @@ def model_from_url(url: str) -> str:
 
 # --- BioModels ---
 def parse_biomodels_mid(text: str) -> str:
-    """Parses biomodel id from string."""
+    """Parse biomodel id from string."""
     pattern = r"((BIOMD|MODEL)\d{10})|(BMID\d{12})"
     match = re.search(pattern, text)
     if match:

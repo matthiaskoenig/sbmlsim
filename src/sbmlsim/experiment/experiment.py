@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import Dict, Iterable, List, Union
 
 from sbmlsim.data import Data, DataSet
-from sbmlsim.fit import FitData, FitMapping
+from sbmlsim.fit import FitMapping
 from sbmlsim.model import AbstractModel
 from sbmlsim.plot import Figure
 from sbmlsim.plot.plotting_matplotlib import FigureMPL, MatplotlibFigureSerializer, plt
@@ -141,46 +141,48 @@ class SimulationExperiment(object):
         return "\n".join(info)
 
     def models(self) -> Dict[str, AbstractModel]:
-        """Model definitions.
+        """Define model definitions.
 
         The child classes fill out the information.
         """
         return ExperimentDict()
 
     def datasets(self) -> Dict[str, DataSet]:
-        """Dataset definitions (experimental data).
+        """Define dataset definitions (experimental data).
 
         The child classes fill out the information.
         """
         return ExperimentDict()
 
     def tasks(self) -> Dict[str, Task]:
-        """Tasks definitions.
+        """Define task definitions.
 
         The child classes fill out the information.
         """
         return ExperimentDict()
 
     def simulations(self) -> Dict[str, AbstractSim]:
-        """Simulations definitions.
+        """Define simulation definitions.
 
         The child classes fill out the information.
         """
         return ExperimentDict()
 
     def fit_mappings(self) -> Dict[str, FitMapping]:
-        """Fit mappings, mapping reference data on observables.
+        """Define fit mappings.
 
+        Mapping reference data on observables.
         Used for the optimization of parameters.
         The child classes fill out the information.
         """
         return ExperimentDict()
 
     def datagenerators(self) -> None:
-        """DataGenerator definitions including functions.
+        """Define DataGenerators including functions.
 
         All data which is accessed in a simulation result must be defined in a
-        data generator.
+        data generator. The data generators are important for defining the
+        selections of a simulation experiment.
         """
         return None
 
@@ -201,7 +203,7 @@ class SimulationExperiment(object):
     # --- RESULTS ---------------------------------------------------------------------
     @property
     def results(self) -> Dict[str, XResult]:
-        """Accessing the simulation results.
+        """Access simulation results.
 
         Results are mapped on tasks based on the task_ids. E.g.
         to get the results for the task with id 'task_glciv' use
@@ -309,7 +311,7 @@ class SimulationExperiment(object):
         figure_formats: List[str] = None,
         reduced_selections: bool = True,
     ) -> "ExperimentResult":
-        """Executes given experiment and stores results."""
+        """Execute given experiment and store results."""
 
         # run simulations
         self._run_tasks(
@@ -317,7 +319,7 @@ class SimulationExperiment(object):
         )  # sets self._results
 
         # evaluate mappings
-        self.evaluate_mappings()
+        self.evaluate_fit_mappings()
 
         # some of the figures require actual numerical results!
         self._figures = self.figures()
@@ -419,9 +421,9 @@ class SimulationExperiment(object):
                 else:
                     raise ValueError(f"Unsupported simulation type: " f"{type(sim)}")
 
-    def evaluate_mappings(self):
-        """Evaluates the fit mappings."""
-        for key, mapping in self._fit_mappings.items():
+    def evaluate_fit_mappings(self):
+        """Evaluate fit mappings."""
+        for _, mapping in self._fit_mappings.items():
             for fit_data in [mapping.reference, mapping.observable]:
                 # Get actual data from the results
                 fit_data.get_data()
@@ -475,12 +477,8 @@ class SimulationExperiment(object):
         return SimulationExperiment.from_dict(d)
 
     @timeit
-    def save_datasets(self, results_path):
-        """Save datasets
-
-        :param results_path:
-        :return:
-        """
+    def save_datasets(self, results_path: Path) -> None:
+        """Save datasets."""
         if self._datasets is None:
             logger.warning(f"No datasets in SimulationExperiment: '{self.sid}'")
         else:
@@ -545,8 +543,8 @@ class SimulationExperiment(object):
 
         return paths
 
-    @staticmethod
-    def close_mpl_figures(self, mpl_figures: Dict[str, FigureMPL]):
+    @classmethod
+    def close_mpl_figures(cls, mpl_figures: Dict[str, FigureMPL]):
         """Close matplotlib figures."""
         for _, fig_mpl in mpl_figures.items():
             plt.close(fig_mpl)

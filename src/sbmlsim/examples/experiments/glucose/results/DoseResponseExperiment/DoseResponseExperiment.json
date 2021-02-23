@@ -11,7 +11,7 @@
       "source": {
         "source": "/home/mkoenig/git/sbmlsim/src/sbmlsim/examples/experiments/glucose/model/liver_glucose.xml",
         "path": "/home/mkoenig/git/sbmlsim/src/sbmlsim/examples/experiments/glucose/model/liver_glucose.xml",
-        "content": null
+        "content": "None"
       },
       "changes": {}
     }

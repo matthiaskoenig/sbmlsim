@@ -1,3 +1,9 @@
+"""Model changes.
+
+Model changes are structural changes to the model structure.
+Changes of values and initial conditions are encoded via
+the changes instead.
+"""
 import logging
 
 import roadrunner
@@ -7,6 +13,11 @@ logger = logging.getLogger(__name__)
 
 
 class ModelChange(object):
+    """ModelChange.
+
+    Structural change to a model.
+    """
+
     CLAMP_SPECIES = "clamp_species"
 
     @staticmethod

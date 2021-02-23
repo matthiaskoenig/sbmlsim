@@ -1,10 +1,12 @@
+"""Analysis of fitting results."""
+
 import datetime
 import json
 import logging
 import time
 import uuid
 from pathlib import Path
-from typing import Dict, Iterable, List, Set, Tuple, Union
+from typing import Dict, Iterable, List, Set, Tuple, Union, Optional
 
 import numpy as np
 import pandas as pd
@@ -22,7 +24,7 @@ logger = logging.getLogger(__name__)
 
 
 class OptimizationResult(ObjectJSONEncoder):
-    """Result of optimization problem"""
+    """Result of optimization problem."""
 
     def __init__(
         self,
@@ -31,7 +33,7 @@ class OptimizationResult(ObjectJSONEncoder):
         trajectories: List,
         sid: str = None,
     ):
-        """Result of an optimization.
+        """Initialize optimization result.
 
         Provides access to the FitParameters, the individual fits, and
         the trajectories of the fits.
@@ -86,12 +88,14 @@ class OptimizationResult(ObjectJSONEncoder):
         d = from_json(json_info)
         return OptimizationResult(**d)
 
-    def __str__(self):
+    def __str__(self) -> str:
+        """Get string representation."""
         info = f"<OptimizationResult: n={self.size}>"
         return info
 
     @staticmethod
     def combine(opt_results: List[OptimizeResult]) -> OptimizeResult:
+        """Combine results from multiple parameter fitting experiments."""
         # FIXME: check that the parameters are fitting
         parameters = opt_results[0].parameters
         pids = {p.pid for p in parameters}
@@ -114,7 +118,7 @@ class OptimizationResult(ObjectJSONEncoder):
 
     @property
     def size(self):
-        """Number of optimizations in result."""
+        """Get number of optimization runs in result."""
         return len(self.df_fits)
 
     @property
@@ -128,7 +132,7 @@ class OptimizationResult(ObjectJSONEncoder):
         return self._x_as_fit_parameters(x=self.xopt)
 
     def _x_as_fit_parameters(self, x) -> List[FitParameter]:
-        """Converts numerical parameter vector to fit parameters."""
+        """Convert numerical parameter vector to fit parameters."""
         fit_pars = []
         for k, p in enumerate(self.parameters):
             fit_pars.append(
@@ -191,8 +195,8 @@ class OptimizationResult(ObjectJSONEncoder):
 
         return df
 
-    def report(self, path: Path = None, print_output=True) -> str:
-        """ Readable report of optimization. """
+    def report(self, path: Optional[Path] = None, print_output: bool = True) -> str:
+        """Report of optimization."""
         pd.set_option("display.max_columns", None)
         pd.set_option("display.expand_frame_repr", False)
         info = [
@@ -251,7 +255,7 @@ class OptimizationResult(ObjectJSONEncoder):
 
     @timeit
     def plot_waterfall(self, path: Path = None, show_plots: bool = True):
-        """Creates waterfall plot for the fit results.
+        """Create waterfall plot for the fit results.
 
         Plots the optimization runs sorted by cost.
         """
@@ -269,8 +273,8 @@ class OptimizationResult(ObjectJSONEncoder):
         self._save_fig(fig, path=path, show_plots=show_plots)
 
     @timeit
-    def plot_traces(self, path: Path = None, show_plots: bool = True):
-        """Plots optimization traces.
+    def plot_traces(self, path: Path = None, show_plots: bool = True) -> None:
+        """Plot optimization traces.
 
         Optimization time course of costs.
         """
@@ -433,8 +437,8 @@ class OptimizationResult(ObjectJSONEncoder):
                     ax.set_yscale("log")
 
         # correct scatter limits
-        for kx, pidx in enumerate(pids):
-            for ky, pidy in enumerate(pids):
+        for kx, _pidx in enumerate(pids):
+            for ky, _pidy in enumerate(pids):
                 if kx < ky:
                     axes[ky][kx].set_xlim(axes[kx][ky].get_xlim())
                     axes[ky][kx].set_ylim(axes[kx][ky].get_ylim())
