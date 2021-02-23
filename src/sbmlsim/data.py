@@ -326,8 +326,8 @@ class DataSet(pd.DataFrame):
                 units = df[key].unique()
                 if len(units) > 1:
                     logger.error(
-                        f"Column '{key}' units are not unique: '{units}' "
-                        f"in '{df.study_id.values[0]}"
+                        f"Column '{key}' units are not unique: '{units}' in \n"
+                        f"{df}"
                     )
                 elif len(units) == 0:
                     logger.error(f"Column '{key}' units are missing: '{units}'")

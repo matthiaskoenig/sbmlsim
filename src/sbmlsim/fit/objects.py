@@ -46,7 +46,8 @@ class FitExperiment:
         if len(mappings) > len(set(mappings)):
             raise ValueError(
                 f"Duplicate fit mapping keys are not allowed. Use weighting for "
-                f"changing weights of single mappings: {self.experiment_class.__name__}: '{sorted(mappings)}'"
+                f"changing weights of single mappings: "
+                f"{self.experiment_class.__name__}: '{sorted(mappings)}'"
             )
         self.mappings = mappings
         self.use_mapping_weights = use_mapping_weights
@@ -70,17 +71,24 @@ class FitExperiment:
     @weights.setter
     def weights(self, weights: Union[float, List[float]] = None) -> None:
         """Set weights for mappings in fit experiment."""
-        if self.use_mapping_weights:
-            if weights is not None:
-                raise ValueError(
+
+        if self.use_mapping_weights is True:
+            mapping_weights = [None] * len(self.mappings)
+            # no weights provided use default empty weights
+            if weights == None:
+                weights_processed = mapping_weights
+            else:
+                weights_processed = weights
+
+            # all weights have to be None, i.e [None, ..., None].
+            # the weights are calculated dynamically by evalutating the fit mappings.
+            if weights_processed != mapping_weights:
+                logger.error(
                     f"Either 'weights' can be set on a FitExperiment or the weight of "
                     f"the FitMapping can be used via the 'use_mapping_weights=True' "
-                    f"flag. Weights were provided: '{weights}' in {str(self)}"
+                    f"flag.\n"
+                    f"Weights were provided: '{weights}' in {str(self)}"
                 )
-
-            # have to be calculated dynamically, storing None to ensure this happens
-            weights_processed = [None] * len(self.mappings)
-
         else:
             # weights processing
             if weights is None:
@@ -101,7 +109,7 @@ class FitExperiment:
 
     @staticmethod
     def reduce(fit_experiments: Iterable["FitExperiment"]) -> List["FitExperiment"]:
-        """Collect fit mappings of multiple FitExperiments."""
+        """Collect fit mappings of multiple FitExperiments if these can be combined."""
         red_experiments = {}
         for fit_exp in fit_experiments:
             sid = fit_exp.experiment_class.__name__
@@ -109,16 +117,32 @@ class FitExperiment:
                 red_experiments[sid] = fit_exp
             else:
                 # combine the experiments
+                # FIXME: THIS IS BROKEN, i.e. the weights have to be combined correctly
+
                 red_exp = red_experiments[sid]
                 red_exp.mappings = red_exp.mappings + fit_exp.mappings
                 red_exp.weights = red_exp.weights + fit_exp.weights
 
         return list(red_experiments.values())
 
+    def __repr__(self) -> str:
+        """Get representation."""
+        return f"{self.__class__.__name__}({self.experiment_class.__name__} " \
+               f"{[f'{m} x {w}' for (m,w) in list(zip(self.mappings, self.weights))]})"
+
     def __str__(self) -> str:
-        """Get string representation."""
-        print("weights", self.weights)
-        return f"{self.__class__.__name__}({self.experiment_class} {list(zip(self.mappings, self.weights))})"
+        """Get string."""
+        info = [
+            "-" * 80,
+            f"FitExperiment",
+            "-" * 80,
+            f"experiment: {self.experiment_class.__name__}",
+            f"mappings: {self.mappings}",
+            f"weights: {self.weights}",
+            f"use_mapping_weights: {self.use_mapping_weights}",
+            f"fit_parameters: {self.fit_parameters}",
+        ]
+        return "\n".join(info)
 
 
 class FitMapping:

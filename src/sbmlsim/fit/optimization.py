@@ -114,7 +114,8 @@ class OptimizationProblem(object):
         :param fit_parameters:
         """
         self.opid: str = opid
-        self.fit_experiments = FitExperiment.reduce(fit_experiments)
+        # self.fit_experiments = FitExperiment.reduce(fit_experiments)
+        self.fit_experiments = fit_experiments
         self.parameters = fit_parameters
         if self.parameters is None or len(self.parameters) == 0:
             logger.error(
@@ -245,7 +246,7 @@ class OptimizationProblem(object):
         self.selections = []
 
         # Collect information for simulations
-        for fit_experiment in self.fit_experiments:
+        for fit_experiment in self.fit_experiments:  # type: FitExperiment
 
             # get simulation experiment
             sid = fit_experiment.experiment_class.__name__
@@ -265,12 +266,13 @@ class OptimizationProblem(object):
 
             # collect information for single mapping
             for k, mapping_id in enumerate(fit_experiment.mappings):
-
                 # sanity checks
                 if mapping_id not in sim_experiment._fit_mappings:
                     raise ValueError(
                         f"Mapping key '{mapping_id}' not defined in "
-                        f"SimulationExperiment '{sim_experiment}'."
+                        f"SimulationExperiment\n"
+                        f"{sim_experiment}\n"
+                        f"{fit_experiment}"
                     )
 
                 mapping: FitMapping = sim_experiment._fit_mappings[mapping_id]
@@ -290,6 +292,7 @@ class OptimizationProblem(object):
                 if fit_experiment.use_mapping_weights:
                     # use provided mapping weights
                     weight_curve = mapping.weight
+                    fit_experiment.weights[k] = weight_curve
                     if weight_curve is None:
                         raise ValueError(
                             f"If `use_mapping_weights` is set on a FitExperiment "
@@ -498,6 +501,9 @@ class OptimizationProblem(object):
                     print(f"weight_points: {weight_points}")
                     print(f"y_ref: {y_ref}")
                     print(f"y_ref_err: {y_ref_err}")
+
+            # Print mappings with calculated weights
+            print(fit_experiment)
 
     def set_simulator(self, simulator):
         """Set the simulator on the runner and the experiments.

@@ -127,7 +127,7 @@ class SimulationExperiment(object):
         """Get string representation."""
         info = [
             "-" * 80,
-            f"{self.__class__.__name__}: {self.sid}",
+            f"SimulationExperiment: {self.__class__.__name__}: {self.sid}",
             "-" * 80,
             f"{'data':20} {list(self._data.keys())}",
             f"{'datasets':20} {list(self._datasets.keys())}",
