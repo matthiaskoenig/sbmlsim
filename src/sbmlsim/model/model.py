@@ -8,7 +8,7 @@ Other formats could be supported like CellML or NeuroML.
 import logging
 from enum import Enum
 from pathlib import Path
-from typing import Dict, List, Tuple, Union, Optional
+from typing import Dict, List, Optional, Tuple, Union
 
 from sbmlsim.model.model_resources import Source
 from sbmlsim.units import Units

@@ -1,6 +1,4 @@
-"""
-Serial simulator.
-"""
+"""Serial simulator."""
 import logging
 from typing import List
 
@@ -17,13 +15,15 @@ logger = logging.getLogger(__name__)
 
 
 class SimulatorSerial(SimulatorAbstract, SimulatorWorker):
-    """
-    Simulators can run many different models.
-    Use the set_model method to set the model to execute.
+    """Serial simulator using a single core.
+
+    A single simulator can run many different models.
+    See the parallel simulator to run simulations on multiple
+    cores.
     """
 
     def __init__(self, model=None, **kwargs):
-        """Serial simulator.
+        """Initialize serial simulator.
 
         :param model: Path to model or model
         :param kwargs: integrator settings
@@ -37,7 +37,7 @@ class SimulatorSerial(SimulatorAbstract, SimulatorWorker):
         self.set_model(model)
 
     def set_model(self, model):
-        """Set model for simulator and updates the integrator settings
+        """Set model for simulator and updates the integrator settings.
 
         This should handle caching and state saving.
         """
@@ -78,7 +78,7 @@ class SimulatorSerial(SimulatorAbstract, SimulatorWorker):
         return self.model.udict
 
     def run_timecourse(self, simulation: TimecourseSim) -> XResult:
-        """ Run single timecourse."""
+        """Run single timecourse."""
         if not isinstance(simulation, TimecourseSim):
             raise ValueError(
                 f"'run_timecourse' requires TimecourseSim, but " f"'{type(simulation)}'"

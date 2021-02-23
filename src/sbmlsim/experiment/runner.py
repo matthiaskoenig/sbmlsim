@@ -12,7 +12,7 @@ import logging
 from pathlib import Path
 from typing import Iterable, List
 
-from sbmlsim.experiment import SimulationExperiment, ExperimentResult
+from sbmlsim.experiment import ExperimentResult, SimulationExperiment
 from sbmlsim.model import RoadrunnerSBMLModel
 from sbmlsim.simulator.simulation import SimulatorAbstract
 from sbmlsim.units import UnitRegistry, Units

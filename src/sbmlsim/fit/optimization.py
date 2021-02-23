@@ -18,7 +18,7 @@ from scipy import interpolate, optimize
 
 from sbmlsim.data import Data
 from sbmlsim.experiment import ExperimentRunner
-from sbmlsim.fit.objects import FitExperiment, FitParameter
+from sbmlsim.fit.objects import FitExperiment, FitMapping, FitParameter
 from sbmlsim.fit.sampling import SamplingType, create_samples
 from sbmlsim.model import RoadrunnerSBMLModel
 from sbmlsim.simulation import TimecourseSim
@@ -46,6 +46,7 @@ class OptimizerType(Enum):
 
     Least square
     """
+
     LEAST_SQUARE = 1
     DIFFERENTIAL_EVOLUTION = 2
 
@@ -76,7 +77,9 @@ class WeightingLocalType(Enum):
 
 
 class ResidualType(Enum):
-    """How are the residuals calculated? Are the absolute residuals used,
+    """Handling of the residuals.
+
+    How are the residuals calculated? Are the absolute residuals used,
     or are the residuals normalized based on the data points, i.e., relative
     residuals.
 
@@ -131,11 +134,12 @@ class OptimizationProblem(object):
         self.base_path = base_path
         self.data_path = data_path
 
-    def __repr__(self):
+    def __repr__(self) -> str:
+        """Get representation."""
         return f"<OptimizationProblem: {self.opid}>"
 
-    def __str__(self):
-        """String representation.
+    def __str__(self) -> str:
+        """Get string representation.
 
         This can be run before initialization.
         """
@@ -147,21 +151,21 @@ class OptimizationProblem(object):
         info.extend([f"\t{e}" for e in self.fit_experiments])
         info.append("Parameters")
         info.extend([f"\t{p}" for p in self.parameters])
-        # info.append("-" * 80)
         return "\n".join(info)
 
     def report(self, path: Path = None, print_output: bool = True) -> str:
         """Print and write report.
-        This can only be called after initialization
+
+        Can only be called after initialization.
         """
         core_info = self.__str__()
         all_info = [
             core_info,
-            f"Settings",
+            "Settings",
             f"\tfitting_type: {self.fitting_type}",
             f"\tresidual_type: {self.residual_type}",
             f"\tweighting local: {self.weighting_local}",
-            f"Data",
+            "Data",
         ]
         for key in [
             "experiment_keys",
@@ -193,6 +197,7 @@ class OptimizationProblem(object):
         weighting_local: WeightingLocalType,
         residual_type: ResidualType,
     ):
+        """Initialize Optimization problem."""
         # weighting in fitting and handling of residuals
         if weighting_local is None:
             raise ValueError("'weighting_local' is required.")
@@ -268,7 +273,7 @@ class OptimizationProblem(object):
                         f"SimulationExperiment '{sim_experiment}'."
                     )
 
-                mapping = sim_experiment._fit_mappings[mapping_id]  # type: FitMapping
+                mapping: FitMapping = sim_experiment._fit_mappings[mapping_id]
 
                 if mapping.observable.task_id is None:
                     raise ValueError(
@@ -495,7 +500,7 @@ class OptimizationProblem(object):
                     print(f"y_ref_err: {y_ref_err}")
 
     def set_simulator(self, simulator):
-        """Sets the simulator on the runner and the experiments.
+        """Set the simulator on the runner and the experiments.
 
         :param simulator:
         :return:
@@ -517,7 +522,8 @@ class OptimizationProblem(object):
         absolute_tolerance=1e-8,
         **kwargs,
     ) -> Tuple[List[scipy.optimize.OptimizeResult], List]:
-        """Run parameter optimization"""
+        """Run parameter optimization."""
+
         # additional settings for optimization
         self.fitting_type = fitting_type
         self.weighting_local = weighting_local
@@ -559,9 +565,9 @@ class OptimizationProblem(object):
 
     @timeit
     def _optimize_single(
-        self, x0=None, optimizer=OptimizerType.LEAST_SQUARE, **kwargs
+        self, x0: np.ndarray = None, optimizer=OptimizerType.LEAST_SQUARE, **kwargs
     ) -> Tuple[scipy.optimize.OptimizeResult, List]:
-        """Runs single optimization with x0 start values.
+        """Run single optimization with x0 start values.
 
         :param x0: parameter start vector (important for deterministic optimizers)
         :param optimizer: optimization algorithm and method
@@ -630,12 +636,13 @@ class OptimizationProblem(object):
         else:
             raise ValueError(f"optimizer is not supported: {optimizer}")
 
-    def cost_least_square(self, xlog):
+    def cost_least_square(self, xlog: np.ndarray) -> float:
+        """Get least square costs for parameters."""
         res_weighted = self.residuals(xlog)
         return 0.5 * np.sum(np.power(res_weighted, 2))
 
-    def residuals(self, xlog, complete_data=False):
-        """Calculates residuals for given parameter vector.
+    def residuals(self, xlog: np.ndarray, complete_data=False):
+        """Calculate residuals for given parameter vector.
 
         :param x: logarithmic parameter vector
         :param complete_data: boolean flag to return additional information
@@ -656,10 +663,10 @@ class OptimizationProblem(object):
         simulator = self.runner.simulator  # type: SimulatorSerial
         Q_ = self.runner.Q_
 
-        for k, mapping_id in enumerate(self.mapping_keys):
-            # Overwrite initial changes in the simulation
+        for k, _ in enumerate(self.mapping_keys):
+            # update initial changes
             changes = {
-                self.pids[i]: Q_(value, self.punits[i]) for i, value in enumerate(x)
+                self.pids[ix]: Q_(value, self.punits[ix]) for ix, value in enumerate(x)
             }
             self.simulations[k].timecourses[0].changes.update(changes)
 
@@ -674,8 +681,6 @@ class OptimizationProblem(object):
             simulation.normalize(udict=simulator.udict, ureg=simulator.ureg)
 
             # run simulation
-            # logger.warning(f"Running simulation: {k} - {self.experiment_keys[k]} - {mapping_id}")
-
             try:
                 # FIXME: just simulate at the requested timepoints with step
                 df = simulator._timecourses([simulation])[0]
@@ -967,8 +972,11 @@ class OptimizationAnalysis:
                 )
 
     @timeit
-    def plot_costs(self, x, path: Path = None, show_plots: bool = True):
-        """Plot cost function comparison"""
+    def plot_costs(self, x, path: Path = None, show_plots: bool = True) -> pd.DataFrame:
+        """Plot cost function comparison.
+
+        # FIXME: separate calculation of cost DataFrame
+        """
         xparameters = {
             # model parameters
             "model": self.op.xmodel,
@@ -982,7 +990,7 @@ class OptimizationAnalysis:
         for key, xpar in xparameters.items():
             res_data = self.op.residuals(xlog=np.log10(xpar), complete_data=True)
             costs[key] = res_data["cost"]
-            for k, mapping_key in enumerate(self.op.mapping_keys):
+            for k, _ in enumerate(self.op.mapping_keys):
                 data.append(
                     {
                         "id": f"{self.op.experiment_keys[k]}_{self.op.mapping_keys[k]}",
@@ -1032,9 +1040,9 @@ class OptimizationAnalysis:
             alpha=0.8,
         )
 
-        for k, mapping_key in enumerate(self.op.mapping_keys):
+        for k, exp_key in enumerate(self.op.experiment_keys):
             ax.annotate(
-                f"{self.op.experiment_keys[k]}",
+                exp_key,
                 xy=(
                     costs["model"][k],
                     costs["fit"][k],

@@ -1,7 +1,7 @@
 """Sampling of parameter values."""
 import logging
 from enum import Enum
-from typing import List, Dict
+from typing import Dict, Iterable, List
 
 import numpy as np
 import pandas as pd
@@ -28,7 +28,7 @@ class SamplingType(Enum):
 
 
 def create_samples(
-    parameters: List[FitParameter],
+    parameters: Iterable[FitParameter],
     size,
     sampling=SamplingType.LOGUNIFORM,
     seed=None,
