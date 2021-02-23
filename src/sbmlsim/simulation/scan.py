@@ -1,11 +1,13 @@
-import itertools
+"""Scan simulation.
+
+Allows scans over other simulations.
+"""
+
 import logging
 from copy import deepcopy
 from typing import Dict, List
 
-import numpy as np
-
-from sbmlsim.simulation import AbstractSim, Dimension, TimecourseSim
+from sbmlsim.simulation import AbstractSim, Dimension
 from sbmlsim.units import UnitRegistry, Units
 
 
@@ -24,7 +26,7 @@ class ScanSim(AbstractSim):
         dimensions: List[Dimension] = None,
         mapping: Dict[str, int] = None,
     ):
-        """Scanning a simulation.
+        """Scan a simulation.
 
         Parameters or initial conditions can be scanned.
         Multiple parameters will result in a multi-dimensional scan.
@@ -59,16 +61,18 @@ class ScanSim(AbstractSim):
             )
         self.mapping = mapping
 
-    def __repr__(self):
+    def __repr__(self) -> str:
+        """Get representation."""
         return (
             f"Scan({self.simulation.__class__.__name__}: "
             f"[{', '.join([str(d) for d in self.dimensions])}])"
         )
 
-    def dimensions(self):
+    def dimensions(self) -> List[Dimension]:
+        """Get dimensions."""
         return self.dimensions
 
-    def get_dimension(self, key):
+    def get_dimension(self, key: str) -> Dimension:
         """Get dimension by key."""
         for dim in self.dimensions:
             if dim.dimension == dim:
@@ -76,16 +80,17 @@ class ScanSim(AbstractSim):
         raise KeyError(f"Dimension with key '{key}' does not exist.")
 
     def indices(self):
-        """Indices of all combinations."""
+        """Get indices of all combinations."""
         return Dimension.indices_from_dimensions(self.dimensions)
 
     def add_model_changes(self, model_changes: Dict) -> None:
-        """Adds model changes to first timecourse."""
+        """Add model changes to first timecourse."""
         if self.simulation and isinstance(self.simulation, TimecourseSim):
             self.simulation.add_model_changes(model_changes)
 
     def normalize(self, udict: Dict, ureg: UnitRegistry):
-        """Normalizes the scan.
+        """Normalize scan.
+
         Requires normalization of timecourse simulation as well
         as all dimensions in the scan.
         """
@@ -99,11 +104,10 @@ class ScanSim(AbstractSim):
             )
 
     def to_simulations(self):
-        """Flattens the scan to individual simulations.
+        """Flatten the scan to individual simulations.
+
         Here the changes are appended.
-
         Scan should be normalized before calling this function.
-
         Necessary to track the results.
         """
         # create all combinations of the scan
@@ -138,7 +142,6 @@ class ScanSim(AbstractSim):
 
 if __name__ == "__main__":
     import warnings
-
     import numpy as np
 
     from sbmlsim.simulation import Timecourse, TimecourseSim

@@ -1,6 +1,4 @@
-"""
-Classes for running simulations with SBML models.
-"""
+"""Classes for running simulations with SBML models."""
 import logging
 
 import pandas as pd
@@ -14,23 +12,13 @@ from sbmlsim.simulation import ScanSim, Timecourse, TimecourseSim
 logger = logging.getLogger(__name__)
 
 
-class SimulatorAbstract(object):
-    def run_timecourse(self, simulation: TimecourseSim) -> XResult:
-        """Must be implemented by simulator.
-
-        :return:
-        """
-        raise NotImplementedError("Use concrete implementation")
-
-    def run_scan(self, scan: ScanSim) -> XResult:
-        """Must be implemented by simulator.
-
-        :return:
-        """
-        raise NotImplementedError("Use concrete implementation")
-
-
 class SimulatorWorker(object):
+    """Worker running simulations.
+
+    Implements the timecourse simulation once which can be reused by
+    the different simulators.
+    """
+
     def _timecourse(self, simulation: TimecourseSim) -> pd.DataFrame:
         """Timecourse simulation.
 
@@ -40,7 +28,7 @@ class SimulatorWorker(object):
         You should never call this function directly!
 
         :param simulation: Simulation definition(s)
-        :return:
+        :return: DataFrame with results
         """
         if isinstance(simulation, Timecourse):
             simulation = TimecourseSim(timecourses=[simulation])
@@ -51,7 +39,6 @@ class SimulatorWorker(object):
         frames = []
         t_offset = simulation.time_offset
         for k, tc in enumerate(simulation.timecourses):
-            # print(tc.to_dict())
 
             if k == 0 and tc.model_changes:
                 # [1] apply model changes of first simulation
@@ -59,20 +46,20 @@ class SimulatorWorker(object):
                 for key, item in tc.model_changes.items():
                     if key.startswith("init"):
                         logger.error(
-                            "Initial model changes should be provided "
-                            "without 'init': '{key} = {item}'"
+                            f"Initial model changes should be provided "
+                            f"without 'init': '{key} = {item}'"
                         )
                     # FIXME: implement model changes via init
                     # init_key = f"init({key})"
                     init_key = key
                     try:
                         value = item.magnitude
-                    except AttributeError as err:
+                    except AttributeError:
                         value = item
 
                     try:
                         self.r[init_key] = value
-                    except RuntimeError as err:
+                    except RuntimeError:
                         logger.error(f"roadrunner RuntimeError: '{init_key} = {item}'")
                         # boundary condition=true species, trying direct fallback
                         # see https://github.com/sys-bio/roadrunner/issues/711
@@ -109,7 +96,7 @@ class SimulatorWorker(object):
                 logger.debug("Applying simulation changes")
                 try:
                     self.r[key] = item.magnitude
-                except AttributeError as err:
+                except AttributeError:
                     self.r[key] = item
                 logger.debug(f"\t{key} = {item}")
 

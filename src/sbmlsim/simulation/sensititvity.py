@@ -1,12 +1,11 @@
-"""
-Helpers for calculating model sensitivities.
+"""Helpers for calculating model sensitivities.
 
 Allows to get sets of changes from given model instance.
 """
 import logging
 from copy import deepcopy
 from enum import Enum
-from typing import Dict
+from typing import Dict, Iterable
 
 import libsbml
 import numpy as np
@@ -20,12 +19,19 @@ logger = logging.getLogger(__name__)
 
 
 class SensitivityType(Enum):
+    """Type of sensitivity."""
+
     PARAMETER_SENSITIVITY = 1
     SPECIES_SENSITIVITY = 2
     All_SENSITIVITY = 3
 
 
 class DistributionType(Enum):
+    """Type of supported distributions.
+
+    # FIXME: support lognormal
+    """
+
     NORMAL_DISTRIBUTION = 1
 
 
@@ -42,7 +48,7 @@ class ModelSensitivity(object):
         exclude_zero: bool = True,
         zero_eps: float = 1e-8,
     ) -> ScanSim:
-        """Creates a parameter sensitivity scan for given TimecourseSimulation.
+        """Create a parameter sensitivity scan for given TimecourseSimulation.
 
         :param model: model for execution (needed to select parameters)
         :param simulation: timecourse simulation to scan
@@ -85,7 +91,7 @@ class ModelSensitivity(object):
         exclude_zero: bool = True,
         zero_eps: float = 1e-8,
     ) -> ScanSim:
-
+        """Get sensitivity scan based on distributions for values."""
         dim = ModelSensitivity.create_sampling_dimension(
             model=model,
             changes=simulation.timecourses[0].changes,
@@ -118,7 +124,8 @@ class ModelSensitivity(object):
         exclude_zero: bool = True,
         zero_eps: float = 1e-8,
     ) -> Dimension:
-        """Creates list of dimensions for sampling parameter values.
+        """Create list of dimensions for sampling parameter values.
+
         Only parameters relevant for "GU_", "LI_" and "KI_" models are
         sampled.
 
@@ -145,7 +152,7 @@ class ModelSensitivity(object):
                 raise ValueError(f"Unsupported distribution: {distribution}")
             changes[key] = Q_(values, value.units)
 
-        return Dimension(f"dim_sens", changes=changes)
+        return Dimension("dim_sens", changes=changes)
 
     @staticmethod
     def create_difference_dimension(
@@ -157,7 +164,7 @@ class ModelSensitivity(object):
         exclude_zero: bool = True,
         zero_eps: float = 1e-8,
     ) -> Dimension:
-        """Creates list of dimensions for sampling parameter values.
+        """Create list of dimensions for sampling parameter values.
 
         Only parameters relevant for "GU_", "LI_" and "KI_" models are
         sampled.
@@ -184,7 +191,7 @@ class ModelSensitivity(object):
             values[index + num_pars] = value.magnitude * (1.0 - difference)
             changes[key] = Q_(values, value.units)
             index += 1
-        return Dimension(f"dim_sens", changes=changes)
+        return Dimension("dim_sens", changes=changes)
 
     @staticmethod
     def reference_dict(
@@ -195,7 +202,7 @@ class ModelSensitivity(object):
         exclude_zero: bool = True,
         zero_eps: float = 1e-8,
     ) -> Dict:
-        """Returns keys and values dict for sensitivity analysis.
+        """Get key:value dict for sensitivity analysis.
 
         Values are based on the reference state of the model with the applied
         changes. Values in current model state are used.
@@ -247,8 +254,9 @@ class ModelSensitivity(object):
             for s in sbml_model.getListOfSpecies():  # type: libsbml.Species
                 ids.append(s.getId())
 
-        def value_dict(ids):
+        def value_dict(ids: Iterable[str]):
             """Key: value dict from current model state.
+
             Non-zero and exclude filtering is applied.
             """
             udict = model.udict
@@ -270,7 +278,7 @@ class ModelSensitivity(object):
 
     @staticmethod
     def apply_change_to_dict(ref_dict, change: float = 0.1):
-        """Applies relative change to reference dictionary.
+        """Apply relative change to reference dictionary.
 
         :param ref_dict: {key: value} dictionary to change
         :param change: relative change to apply.

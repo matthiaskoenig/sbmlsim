@@ -1,6 +1,4 @@
-"""
-Create markdown report of simulation experiments.
-"""
+"""Create report of simulation experiments."""
 import json
 import logging
 import os
@@ -23,20 +21,20 @@ TEMPLATE_PATH = RESOURCES_DIR / "templates"
 
 
 class ReportResults:
-
-    # FIXME: support filters
+    """Results for a ExperimentReport."""
 
     def __init__(self):
-        self.data = OrderedDict()  # type: OrderedDict[str, Dict]
+        """Construct ReportResults."""
+        self.data: Dict[str, Dict] = {}
 
     def to_json(self, json_path: Path):
-        """Write to JSON"""
+        """Write to JSON."""
         with open(json_path, "w") as fp:
-            json.dumps(self.data, indent=2)
+            json.dump(fp, self.data, indent=2)
 
     @staticmethod
-    def from_json(self, json_path: Path):
-        """Read from JSON"""
+    def from_json(json_path: Path) -> List[ExperimentResult]:
+        """Read from JSON."""
         with open(json_path, "r") as fp:
             data = json.load(fp)
         results = ReportResults()
@@ -44,12 +42,8 @@ class ReportResults:
         return results
 
     def add_experiment_result(self, exp_result: ExperimentResult):
-        """Retrieves information for report from the ExperimentResult.
-
-        :param ExperimentResult:
-        :return:
-        """
-        experiment = exp_result.experiment  # type: SimulationExperiment
+        """Retrieve information for report from the ExperimentResult."""
+        experiment: SimulationExperiment = exp_result.experiment
         abs_path = exp_result.output_path
         rel_path = Path(".")
         exp_id = experiment.sid
@@ -90,7 +84,11 @@ class ReportResults:
 
 
 class ExperimentReport:
+    """Report for an experiment."""
+
     class ReportType(Enum):
+        """Type of report."""
+
         MARKDOWN = 1
         HTML = 2
         LATEX = 3
@@ -98,6 +96,7 @@ class ExperimentReport:
     def __init__(
         self, results: ReportResults, metadata: Dict = None, template_path=TEMPLATE_PATH
     ):
+        """Construct an ExperimentReport."""
         if isinstance(results, list):
             # FIXME: just a bugfix for handling the old outputs
             report_results = ReportResults()
@@ -136,7 +135,7 @@ class ExperimentReport:
         )
 
         def write_report(filename: str, context: Dict, template_str: str):
-            """Writes the report file from given context and template."""
+            """Write the report file from given context and template."""
             template = env.get_template(template_str)
             text = template.render(context)
             suffix = template_str.split(".")[-1]
@@ -185,7 +184,7 @@ class ExperimentReport:
             if not figure_base_path.exists():
                 figure_base_path.mkdir(parents=True)
             for exp_id, exp_context in self.data_dict.items():
-                for fig_id, fig_path in exp_context["figures"].items():
+                for fig_path in exp_context["figures"].values():
                     shutil.copy(
                         str(output_path / exp_id / f"{fig_path}.png"),
                         str(figure_base_path / f"{fig_path}.png"),

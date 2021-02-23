@@ -1,16 +1,15 @@
-"""
-Abstract base simulation.
-"""
+"""Abstract base simulation."""
 import abc
 import itertools
 from abc import ABC
-from typing import Dict, Iterable, List
+from typing import Dict, Iterable, List, Any
 
 import numpy as np
 
 
 class Dimension(object):
-    """Defines dimension for a simulation or scan.
+    """Define dimension for a simulation or scan.
+
     The dimension defines how the dimension is called,
     the index is the corresponding index of the dimension.
     """
@@ -36,7 +35,7 @@ class Dimension(object):
         if index is None:
             # figure out index from changes
             num = 1
-            for key, values in changes.items():
+            for values in changes.values():
                 if isinstance(values, Iterable):
                     n = len(values)
                     if num != 1 and num != n:
@@ -47,35 +46,45 @@ class Dimension(object):
             index = np.arange(num)
         self.index = index
 
-    def __repr__(self):
+    def __repr__(self) -> str:
+        """Get representation."""
         return f"Dim({self.dimension}({len(self)}), " f"{list(self.changes.keys())})"
 
-    def __len__(self):
+    def __len__(self) -> int:
+        """Get length."""
         return len(self.index)
 
     @staticmethod
     def indices_from_dimensions(dimensions: List["Dimension"]):
-        """Indices of all combinations of dimensions"""
+        """Get indices of all combinations of dimensions."""
         index_vecs = [dim.index for dim in dimensions]
         return list(itertools.product(*index_vecs))
 
 
 class AbstractSim(ABC):
+    """AbstractSim.
+
+    Base class of simulations.
+    """
+
     @abc.abstractmethod
     def dimensions(self) -> List[Dimension]:
-        """Returns the dimensions of the simulation."""
+        """Get dimension of the simulation."""
         pass
 
     @abc.abstractmethod
-    def normalize(self, udict, ureg):
+    def normalize(self, udict: Dict[str, Any], ureg) -> None:
+        """Normalize simulation."""
         pass
 
     @abc.abstractmethod
-    def add_model_changes(self, changes: Dict):
+    def add_model_changes(self, changes: Dict) -> None:
+        """Add model changes to model."""
         pass
 
-    def to_dict(self):
-        """ Convert to dictionary. """
+    @abc.abstractmethod
+    def to_dict(self) -> Dict[str, str]:
+        """Convert to dictionary."""
         d = {
             "type": self.__class__.__name__,
         }

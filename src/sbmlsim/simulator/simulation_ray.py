@@ -1,5 +1,8 @@
+"""Parallel simulation using ray."""
+
 import logging
-from typing import List
+from pathlib import Path
+from typing import List, Iterator
 
 import numpy as np
 import pandas as pd
@@ -36,16 +39,20 @@ class SimulatorActor(SimulatorWorker):
         if path_state is not None:
             self.set_model(path_state)
 
-    def set_model(self, path_state):
-        self.r = roadrunner.RoadRunner()  # type: roadrunner.RoadRunner
+    def set_model(self, path_state: Path) -> None:
+        """Set model using the Path to a state file.
+
+        Faster to load the state.
+        """
+        self.r: roadrunner.RoadRunner = roadrunner.RoadRunner()
         if path_state is not None:
             self.r.loadState(str(path_state))
 
-    def set_timecourse_selections(self, selections):
+    def set_timecourse_selections(self, selections: Iterator[str]):
+        """Set the timecourse selections."""
         try:
             if selections is None:
-                # FIXME: this should be calculated before
-                r_model = self.r.model  # type: roadrunner.ExecutableModel
+                r_model: roadrunner.ExecutableModel = self.r.model
                 self.r.timeCourseSelections = (
                     ["time"]
                     + r_model.getFloatingSpeciesIds()
@@ -76,8 +83,10 @@ class SimulatorActor(SimulatorWorker):
 
 
 class SimulatorParallel(SimulatorSerial):
-    """
-    Parallel simulator
+    """Parallel simulator.
+
+    The parallel simulator is a subclass of the SimulatorSerial reusing the
+    logic for running simulations.
     """
 
     def __init__(self, model=None, **kwargs):
@@ -103,6 +112,7 @@ class SimulatorParallel(SimulatorSerial):
             self.set_model(model=model)
 
     def set_model(self, model):
+        """Set model."""
         super(SimulatorParallel, self).set_model(model)
         if model:
             if not self.model.state_path:
@@ -115,7 +125,8 @@ class SimulatorParallel(SimulatorSerial):
 
         # FIXME: set integrator settings
 
-    def set_timecourse_selections(self, selections):
+    def set_timecourse_selections(self, selections: Iterator[str]):
+        """Set the timecourse selections."""
         for simulator in self.simulators:
             simulator.set_timecourse_selections.remote(selections)
 
@@ -148,7 +159,7 @@ class SimulatorParallel(SimulatorSerial):
         return [df for sublist in results for df in sublist]
 
     @staticmethod
-    def _create_chunks(l, n):
-        """Yield successive n-sized chunks from l."""
-        for i in range(0, len(l), n):
-            yield l[i : i + n]
+    def _create_chunks(item, size: int):
+        """Yield successive sized chunks from item."""
+        for i in range(0, len(item), size):
+            yield item[i: i + size]

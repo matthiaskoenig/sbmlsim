@@ -849,7 +849,7 @@ class OptimizationAnalysis:
             # global reference data
             sid = self.op.experiment_keys[k]
             mapping_id = self.op.mapping_keys[k]
-            weights = self.op.weights_points[k]
+            # weights = self.op.weights_points[k]
             x_ref = self.op.x_references[k]
             y_ref = self.op.y_references[k]
             y_ref_err = self.op.y_errors[k]
@@ -869,7 +869,7 @@ class OptimizationAnalysis:
                 res = res_data["residuals"][k]
                 res_weighted = res_data["residuals_weighted"][k]
                 res_abs = res_data["res_abs"][k]
-                res_rel = res_data["res_rel"][k]
+                # res_rel = res_data["res_rel"][k]
 
                 cost = res_data["cost"][k]
 

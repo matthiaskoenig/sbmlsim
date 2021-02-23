@@ -10,11 +10,11 @@ This includes
 
 import logging
 from pathlib import Path
-from typing import Iterable, List
+from typing import Iterable, List, Optional
 
 from sbmlsim.experiment import ExperimentResult, SimulationExperiment
 from sbmlsim.model import RoadrunnerSBMLModel
-from sbmlsim.simulator.simulation import SimulatorAbstract
+from sbmlsim.simulator import SimulatorSerial
 from sbmlsim.units import UnitRegistry, Units
 from sbmlsim.utils import timeit
 
@@ -30,7 +30,7 @@ class ExperimentRunner(object):
         experiment_classes: Iterable[SimulationExperiment],
         base_path: Path,
         data_path: Path,
-        simulator: SimulatorAbstract = None,
+        simulator: SimulatorSerial = None,
         ureg: UnitRegistry = None,
         **kwargs,
     ):
@@ -46,19 +46,20 @@ class ExperimentRunner(object):
         self.data_path = data_path
         self.experiments = {}
         self.models = {}
+        self.simulator: Optional[SimulatorSerial] = None
 
         self.initialize(experiment_classes, **kwargs)
         self.set_simulator(simulator)
 
-    def set_simulator(self, simulator):
+    def set_simulator(self, simulator: SimulatorSerial) -> None:
         """Set simulator on the runner and experiments."""
         if simulator is None:
             logger.debug(
                 "No simulator set in ExperimentRunner. This warning can be "
-                "ignored for parameter fitting which provides a simulator."
+                "ignored in parameter fitting."
             )
         else:
-            self.simulator = simulator  # type: SimulatorAbstract
+            self.simulator: SimulatorSerial = simulator
             for experiment in self.experiments.values():
                 experiment.simulator = simulator
 
@@ -75,8 +76,8 @@ class ExperimentRunner(object):
         for exp_class in experiment_classes:
             if not isinstance(exp_class, type):
                 raise ValueError(
-                    f"All 'experiment_classes' must be a class definition deriving from "
-                    f"'SimulationExperiment', but '{exp_class}' is "
+                    f"All 'experiment_classes' must be a class definition deriving "
+                    f"from 'SimulationExperiment', but '{exp_class}' is "
                     f"'{type(exp_class)}'."
                 )
 

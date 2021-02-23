@@ -3,7 +3,7 @@ import json
 import logging
 import math
 from pathlib import Path
-from typing import Dict, Iterable, List, Optional, Union
+from typing import Dict, Iterable, List, Optional, Union, Any
 
 import numpy as np
 
@@ -11,13 +11,10 @@ from sbmlsim.data import Data
 from sbmlsim.serialization import ObjectJSONEncoder
 
 
-# from sbmlsim.experiment import SimulationExperiment
-
-
 logger = logging.getLogger(__name__)
 
 
-class FitExperiment(object):
+class FitExperiment:
     """A parameter fitting experiment.
 
     A parameter fitting experiment consists of multiple mapping (reference data to
@@ -124,7 +121,7 @@ class FitExperiment(object):
         return f"{self.__class__.__name__}({self.experiment_class} {list(zip(self.mappings, self.weights))})"
 
 
-class FitMapping(object):
+class FitMapping:
     """Mapping of reference data to observable data.
 
     In the optimization the difference between the reference data
@@ -134,7 +131,7 @@ class FitMapping(object):
 
     def __init__(
         self,
-        experiment: "SimulationExperiment",
+        experiment: Any,  # SimulationExperiment (avoid circular import)
         reference: "FitData",
         observable: "FitData",
         weight: float = None,
@@ -162,7 +159,7 @@ class FitMapping(object):
             return self.reference.count
 
 
-class FitParameter(object):
+class FitParameter:
     """Parameter adjusted in a parameter optimization.
 
     The bounds define the box in which the parameter can be varied.
@@ -240,7 +237,7 @@ class FitParameter(object):
         return FitParameter(**d)
 
 
-class FitData(object):
+class FitData:
     """Data used in a fit.
 
     This is either data from a dataset, a simulation results from
@@ -249,17 +246,17 @@ class FitData(object):
 
     def __init__(
         self,
-        experiment: "SimulationExperiment",
+        experiment: Any,  # SimulationExperiment (avoid circular import)
         xid: str,
         yid: str,
-        xid_sd: str = None,
-        xid_se: str = None,
-        yid_sd: str = None,
-        yid_se: str = None,
-        count: Union[int, str] = None,
-        dataset: str = None,
-        task: str = None,
-        function: str = None,
+        xid_sd: Optional[str] = None,
+        xid_se: Optional[str] = None,
+        yid_sd: Optional[str] = None,
+        yid_se: Optional[str] = None,
+        count: Optional[Union[int, str]] = None,
+        dataset: Optional[str] = None,
+        task: Optional[str] = None,
+        function: Optional[str] = None,
     ):
 
         self.dset_id = dataset

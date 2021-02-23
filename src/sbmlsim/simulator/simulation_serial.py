@@ -1,20 +1,20 @@
 """Serial simulator."""
 import logging
-from typing import List
+from typing import List, Dict
 
 import pandas as pd
+from roadrunner import roadrunner
 
 from sbmlsim.model import AbstractModel, RoadrunnerSBMLModel
 from sbmlsim.result import XResult
 from sbmlsim.simulation import ScanSim, TimecourseSim
-from sbmlsim.simulator.simulation import SimulatorAbstract, SimulatorWorker
-from sbmlsim.utils import timeit
+from sbmlsim.simulator.simulation import SimulatorWorker
 
 
 logger = logging.getLogger(__name__)
 
 
-class SimulatorSerial(SimulatorAbstract, SimulatorWorker):
+class SimulatorSerial(SimulatorWorker):
     """Serial simulator using a single core.
 
     A single simulator can run many different models.
@@ -55,6 +55,7 @@ class SimulatorSerial(SimulatorAbstract, SimulatorWorker):
             self.set_integrator_settings(**self.integrator_settings)
 
     def set_integrator_settings(self, **kwargs):
+        """Set settings in the integrator."""
         if isinstance(self.model, RoadrunnerSBMLModel):
             RoadrunnerSBMLModel.set_integrator_settings(self.model.r, **kwargs)
         else:
@@ -63,18 +64,22 @@ class SimulatorSerial(SimulatorAbstract, SimulatorWorker):
             )
 
     def set_timecourse_selections(self, selections):
+        """Set timecourse selection in model."""
         RoadrunnerSBMLModel.set_timecourse_selections(self.r, selections=selections)
 
     @property
-    def r(self):
+    def r(self) -> roadrunner.ExecutableModel:
+        """Get the RoadRunner model."""
         return self.model._model
 
     @property
     def ureg(self):
+        """Get the unit registry."""
         return self.model.ureg
 
     @property
-    def udict(self):
+    def udict(self) -> Dict:
+        """Get the unit dictionary."""
         return self.model.udict
 
     def run_timecourse(self, simulation: TimecourseSim) -> XResult:
@@ -87,7 +92,7 @@ class SimulatorSerial(SimulatorAbstract, SimulatorWorker):
         return self.run_scan(scan)
 
     def run_scan(self, scan: ScanSim) -> XResult:
-        """ Run a scan simulation."""
+        """Run a scan simulation."""
         # normalize the scan (simulation and dimensions)
         scan.normalize(udict=self.udict, ureg=self.ureg)
 

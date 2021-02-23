@@ -1,4 +1,8 @@
-class Task(object):
+"""Tasks."""
+from typing import Dict
+
+
+class Task:
     """Tasks combine models with simulations.
 
     This allows to execute the same simulation with different
@@ -22,11 +26,12 @@ class Task(object):
         self.model_id = model
         self.simulation_id = simulation
 
-    def __repr__(self):
+    def __repr__(self) -> str:
+        """Get representation."""
         return f"<sbmlsim.task.Task: {self.model_id}|{self.simulation_id}>"
 
-    def to_dict(self):
-        """ Convert to dictionary. """
+    def to_dict(self) -> Dict[str, str]:
+        """Convert to dictionary."""
         d = {
             "model": self.model_id,
             "simulation": self.simulation_id,

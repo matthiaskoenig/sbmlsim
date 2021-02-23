@@ -1,8 +1,7 @@
-"""
-Methods specific to pkdb models
-"""
+"""Methods specific to pkdb models."""
 import logging
 import re
+from typing import Dict
 
 import roadrunner
 
@@ -19,31 +18,19 @@ logger = logging.getLogger(__name__)
 
 
 def init_concentrations_changes(r: roadrunner.RoadRunner, skey, value: float):
-    """Changes to set initial concentrations for skey.
-
-    :param r: roadrunner model
-    :param skey: substance key
-    :param value: new value in model units
-    :return:
-    """
+    """Get changes to set initial concentrations for skey."""
     return _set_initial_values(r, skey, value, method="concentration")
 
 
 def init_amounts_changes(r: roadrunner.RoadRunner, skey, value):
-    """Set initial amounts for skey.
-
-    :param r: roadrunner model
-    :param skey:
-    :param value:
-    :return:
-    """
+    """Set initial amounts for skey."""
     return _set_initial_values(r, skey, value, method="amount")
 
 
 def _set_initial_values(
     r: roadrunner.RoadRunner, sid, value, method="concentration"
-) -> dict:
-    """Setting the initial concentration of a distributing substance.
+) -> Dict:
+    """Set the initial concentration of a distributing substance.
 
     Takes care of all the compartment values so starting close/in steady state.
     Units are in model units
