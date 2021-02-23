@@ -1,6 +1,4 @@
-"""
-Helpers for JSON serialization of experiments.
-"""
+"""Helpers for JSON serialization of experiments."""
 import json
 from enum import Enum
 from json import JSONEncoder
@@ -12,7 +10,7 @@ from numpy import ndarray
 
 
 def from_json(json_info: Union[str, Path]) -> Dict:
-    """Loads data from JSON."""
+    """Load data from JSON."""
     if isinstance(json_info, Path):
         with open(json_info, "r") as f_json:
             d = json.load(f_json)
@@ -32,6 +30,8 @@ def to_json(object, path: Path = None):
 
 
 class ObjectJSONEncoder(JSONEncoder):
+    """Class for encoding in JSON."""
+
     def to_json(self, path=None):
         """Convert definition to JSON for exchange.
 
@@ -45,7 +45,7 @@ class ObjectJSONEncoder(JSONEncoder):
                 json.dump(self, fp=f_json, cls=ObjectJSONEncoder, indent=2)
 
     def default(self, o):
-        """json encoder"""
+        """JSON encoder."""
         if isinstance(o, Enum):
             # handle enums
             return o.name

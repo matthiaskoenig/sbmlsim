@@ -1,5 +1,6 @@
-"""
-Manages units and units conversions in models.
+"""Manage units and units conversions.
+
+Used for model and data unit conversions.
 """
 import logging
 import os
@@ -12,11 +13,11 @@ import libsbml
 # Disable Pint's old fallback behavior (must come before importing Pint)
 os.environ["PINT_ARRAY_PROTOCOL_FALLBACK"] = "0"
 
-import warnings
+import warnings  # noqa: E402
 
-import pint
-from pint import Quantity, UnitRegistry
-from pint.errors import DimensionalityError, UndefinedUnitError
+import pint  # noqa: E402
+from pint import Quantity, UnitRegistry  # noqa: E402
+from pint.errors import DimensionalityError, UndefinedUnitError  # noqa: E402
 
 
 with warnings.catch_warnings():
@@ -27,6 +28,10 @@ logger = logging.getLogger(__name__)
 
 
 class Units:
+    """Units class.
+
+    Container for unit related functionality.
+    """
 
     UNIT_ABBREVIATIONS = {
         "kilogram": "kg",
@@ -39,7 +44,8 @@ class Units:
     }
 
     @classmethod
-    def default_ureg(cls):
+    def default_ureg(cls) -> pint.UnitRegistry:
+        """Get default unit registry."""
         ureg = pint.UnitRegistry()
         ureg.define("none = count")
         ureg.define("item = count")
@@ -55,18 +61,20 @@ class Units:
 
     @classmethod
     def ureg_from_sbml(cls, doc: libsbml.SBMLDocument, ureg: UnitRegistry = None):
-        """Creates a pint unit registry for the given SBML.
+        """Create a pint unit registry for the given SBML.
 
         :param model_path:
         :return:
         """
         # get all units defined in the model (unit definitions)
-        model = doc.getModel()  # type: libsbml.Model
+        model: libsbml.Model = doc.getModel()
 
         # add all UnitDefinitions to unit registry
         if not ureg:
             ureg = Units.default_ureg()
-        for udef in model.getListOfUnitDefinitions():  # type: libsbml.UnitDefinition
+
+        udef: libsbml.UnitDefinition
+        for udef in model.getListOfUnitDefinitions():
             uid = udef.getId()
             udef_str = cls.unitDefinitionToString(udef)
             try:
@@ -77,9 +85,10 @@ class Units:
                 # check if identical
                 if q1 != q2:
                     logger.debug(
-                        f"SBML uid '{uid}' cannot be looked up in UnitsRegistry: '{uid} = {q1} != {q2}"
+                        f"SBML uid '{uid}' cannot be looked up in UnitsRegistry: "
+                        f"'{uid} = {q1} != {q2}"
                     )
-            except UndefinedUnitError as err:
+            except UndefinedUnitError:
                 definition = f"{uid} = {udef_str}"
                 ureg.define(definition)
 
@@ -186,6 +195,7 @@ class Units:
 
     @classmethod
     def unitIdNormalization(cls, uid: str) -> str:
+        """Normalize unit ids."""
         # FIXME: this is very specific to the uids in the model
         uid_in = uid[:]
         if "__" in uid:
@@ -198,7 +208,7 @@ class Units:
 
     @classmethod
     def unitDefinitionToString(cls, udef: libsbml.UnitDefinition) -> str:
-        """Formating of SBML unitDefinitions.
+        """Format SBML unitDefinition as string.
 
         Units have the general format
             (multiplier * 10^scale *ukind)^exponent
@@ -260,14 +270,14 @@ class Units:
 
     @staticmethod
     def _isclose(a, b, rel_tol=1e-09, abs_tol=0.0):
-        """ Calculate the two floats are identical. """
+        """Calculate the two floats are identical."""
         return abs(a - b) <= max(rel_tol * max(abs(a), abs(b)), abs_tol)
 
     @staticmethod
     def normalize_changes(
         changes: Dict, udict: Dict, ureg: UnitRegistry
     ) -> Dict[str, Quantity]:
-        """Normalizes all changes to units in units dictionary.
+        """Normalize all changes to units in units dictionary.
 
         :param changes:
         :param udict:

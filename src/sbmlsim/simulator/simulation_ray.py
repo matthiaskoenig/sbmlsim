@@ -2,7 +2,7 @@
 
 import logging
 from pathlib import Path
-from typing import List, Iterator
+from typing import Iterator, List
 
 import numpy as np
 import pandas as pd
@@ -162,4 +162,4 @@ class SimulatorParallel(SimulatorSerial):
     def _create_chunks(item, size: int):
         """Yield successive sized chunks from item."""
         for i in range(0, len(item), size):
-            yield item[i: i + size]
+            yield item[i : i + size]

@@ -2,7 +2,7 @@
 import abc
 import itertools
 from abc import ABC
-from typing import Dict, Iterable, List, Any
+from typing import Any, Dict, Iterable, List
 
 import numpy as np
 
@@ -82,7 +82,6 @@ class AbstractSim(ABC):
         """Add model changes to model."""
         pass
 
-    @abc.abstractmethod
     def to_dict(self) -> Dict[str, str]:
         """Convert to dictionary."""
         d = {

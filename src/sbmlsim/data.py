@@ -1,3 +1,4 @@
+"""Module handling data (experiment and simulation)."""
 import logging
 from enum import Enum
 from pathlib import Path
@@ -16,17 +17,17 @@ logger = logging.getLogger(__name__)
 
 
 class Data(object):
-    """Main data generator class which uses data either from
+    """Data.
+
+    Main data generator class which uses data either from
     experimental data, simulations or via function calculations.
 
-    Alls transformation of data and a tree of data operations.
-
-    # Possible Data:
-    # simulation result: access via id
-    # Dataset access via id
+    All transformation of data and a tree of data operations.
     """
 
     class Types(Enum):
+        """Data types."""
+
         TASK = 1
         DATASET = 2
         FUNCTION = 3
@@ -50,7 +51,7 @@ class Data(object):
 
         if (not self.task_id) and (not self.dset_id) and (not self.function):
             raise ValueError(
-                f"Either 'task_id', 'dset_id' or 'function' " f"required for Data."
+                "Either 'task_id', 'dset_id' or 'function' required for Data."
             )
 
         # register data in simulation
@@ -59,7 +60,8 @@ class Data(object):
 
         experiment._data[self.sid] = self
 
-    def __str__(self):
+    def __str__(self) -> str:
+        """Get string."""
         if self.is_task():
             return f"Data(index={self.index}, task_id={self.task_id})|Task"
         elif self.is_dataset():
@@ -68,7 +70,8 @@ class Data(object):
             return f"Data(index={self.index}, function={self.function})|Function"
 
     @property
-    def sid(self):
+    def sid(self) -> str:
+        """Get id."""
         if self.task_id:
             sid = f"{self.task_id}__{self.index}"
         elif self.dset_id:
@@ -78,17 +81,21 @@ class Data(object):
 
         return sid
 
-    def is_task(self):
+    def is_task(self) -> bool:
+        """Check if task."""
         return self.task_id is not None
 
-    def is_dataset(self):
+    def is_dataset(self) -> bool:
+        """Check if dataset."""
         return self.dset_id is not None
 
     def is_function(self):
+        """Check if function."""
         return self.function is not None
 
     @property
-    def dtype(self):
+    def dtype(self) -> str:
+        """Get data type."""
         if self.task_id:
             dtype = Data.Types.TASK
         elif self.dset_id:
@@ -105,9 +112,10 @@ class Data(object):
     # TODO: storage of definitions on simulation.
 
     def to_dict(self):
-        """ Convert to dictionary. """
-        # FIXME: ensure that the data is evaluated (via get_data) before it is serialized.
-        # Currently only the plotted variables are evaluated (-> units can not be resolved for the remainder).
+        """Convert to dictionary."""
+        # FIXME: ensure that the data is evaluated (via get_data) before
+        #        it is serialized. Currently only the plotted variables are
+        #        evaluated (-> units can not be resolved for the remainder).
 
         d = {
             "type": self.dtype,
@@ -121,7 +129,7 @@ class Data(object):
         return d
 
     def get_data(self, to_units: str = None):
-        """Returns actual data from the data object.
+        """Return actual data from the data object.
 
         :param to_units: units to convert to
         :return:
@@ -243,11 +251,12 @@ class DataSeries(pd.Series):
 
 
 class DataSet(pd.DataFrame):
-    """
-    DataSet - a pd.DataFrame with additional unit information in the form
-              of a unit dictionary 'udict' (Dict[str, str]) mapping column
-              keys to units. The UnitRegistry is the UnitRegistry conversions
-              are calculated on.
+    """DataSet.
+
+     pd.DataFrame with additional unit information in the form
+    of a unit dictionary 'udict' (Dict[str, str]) mapping column
+    keys to units. The UnitRegistry is the UnitRegistry conversions
+    are calculated on.
     """
 
     # additional properties
@@ -262,7 +271,7 @@ class DataSet(pd.DataFrame):
         return DataSeries
 
     def get_quantity(self, key: str):
-        """Returns quantity for given key.
+        """Return quantity for given key.
 
         Requires using the numpy data instead of the series.
         """
@@ -283,7 +292,7 @@ class DataSet(pd.DataFrame):
     def from_df(
         cls, df: pd.DataFrame, ureg: UnitRegistry, udict: Dict[str, str] = None
     ) -> "DataSet":
-        """Creates DataSet from given pandas.DataFrame.
+        """Create DataSet from given pandas.DataFrame.
 
         The DataFrame can have various formats which should be handled.
         Standard formats are
@@ -377,7 +386,7 @@ class DataSet(pd.DataFrame):
         return dset
 
     def unit_conversion(self, key, factor: Quantity, filter=None):
-        """Converts the units of the given key in the dataset.
+        """Convert the units of the given key in the dataset.
 
         The quantity in the dataset is multiplied with the conversion factor.
         In addition to the key, also the respective error measures are
@@ -442,7 +451,7 @@ class DataSet(pd.DataFrame):
 def load_pkdb_dataframe(
     sid, data_path: [Path, List[Path]], sep="\t", comment="#", **kwargs
 ) -> pd.DataFrame:
-    """Loads TSV data from PKDB figure or table id.
+    """Load TSV data from PKDB figure or table id.
 
     This is a simple helper functions to directly loading the TSV data.
     It is recommended to use `pkdb_analysis` methods instead.

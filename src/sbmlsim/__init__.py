@@ -1,3 +1,4 @@
+"""sbmlsim package."""
 from pathlib import Path
 
 __author__ = "Matthias Koenig"

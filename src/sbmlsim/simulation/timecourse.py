@@ -3,7 +3,7 @@ import json
 import logging
 from copy import deepcopy
 from pathlib import Path
-from typing import Dict, List, Tuple, Union, Optional
+from typing import Dict, List, Optional, Tuple, Union
 
 import numpy as np
 
@@ -174,7 +174,8 @@ class TimecourseSim(AbstractSim):
         for tc in self.timecourses:
             time_vecs.append(np.linspace(tc.start, tc.end, num=tc.steps + 1) + t_offset)
             t_offset += tc.end
-        return np.concatenate(time_vecs)
+        res: np.ndarray = np.concatenate(time_vecs)
+        return res
 
     def dimensions(self) -> List[Dimension]:
         """Get dimensions."""

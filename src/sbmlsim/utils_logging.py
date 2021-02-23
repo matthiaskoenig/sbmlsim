@@ -6,7 +6,7 @@ coloredlogs.install(level="INFO", fmt="%(levelname)s %(message)s")
 
 
 class bcolors:
-    """ Colors for styling log. """
+    """Colors for styling log."""
 
     HEADER = "\033[95m"
     OKBLUE = "\033[94m"

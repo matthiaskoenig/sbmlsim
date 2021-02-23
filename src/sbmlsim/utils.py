@@ -1,3 +1,4 @@
+"""Utility functions."""
 import functools
 import hashlib
 import inspect
@@ -14,7 +15,7 @@ def show_versions() -> None:
 
 
 def md5_for_path(path):
-    """Calculates MD5 of file content."""
+    """Calculate MD5 of file content."""
 
     # Open,close, read file and calculate MD5 on its contents
     with open(path, "rb") as f_check:
@@ -25,9 +26,12 @@ def md5_for_path(path):
 
 
 def deprecated(func):
-    """This is a decorator which can be used to mark functions
+    """Get decorator for deprecation.
+
+    This is a decorator which can be used to mark functions
     as deprecated. It will result in a warning being emitted
-    when the function is used."""
+    when the function is used.
+    """
 
     @functools.wraps(func)
     def new_func(*args, **kwargs):
@@ -44,7 +48,7 @@ def deprecated(func):
 
 
 def timeit(method):
-    """Timing decorator"""
+    """Time function via timing decorator."""
 
     def timed(*args, **kw):
         ts = time.time()
@@ -66,6 +70,6 @@ def timeit(method):
 
 
 def function_name():
-    """Returns current function name"""
+    """Get current function name."""
     frame = inspect.currentframe()
     return inspect.getframeinfo(frame).function

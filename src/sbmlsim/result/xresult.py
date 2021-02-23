@@ -1,6 +1,4 @@
-"""
-Module for encoding simulation results and processed data.
-"""
+"""Module for encoding simulation results and processed data."""
 import logging
 from enum import Enum
 from typing import Dict, List
@@ -18,7 +16,8 @@ logger = logging.getLogger(__name__)
 
 
 class XResult:
-    """
+    """Result of simulations.
+
     A wrapper around xr.Dataset which adds unit support via
     dictionary lookups.
     """
@@ -31,6 +30,7 @@ class XResult:
         self.ureg = ureg
 
     def __getitem__(self, key) -> xr.DataArray:
+        """Get item."""
         return self.xds[key]
 
     def __getattr__(self, name):
@@ -42,29 +42,30 @@ class XResult:
             # forward lookup to xds
             return getattr(self.xds, name)
 
-    def __str__(self):
+    def __str__(self) -> str:
+        """Get string."""
         return f"<XResult: {self.xds.__repr__()},\n{self.udict}>"
 
     def dim_mean(self, key):
-        """Mean over all added dimensions"""
+        """Get mean over all added dimensions."""
         return self.xds[key].mean(
             dim=self._redop_dims(), skipna=True
         ).values * self.ureg(self.udict[key])
 
     def dim_std(self, key):
-        """Standard deviation over all added dimensions"""
+        """Get standard deviation over all added dimensions."""
         return self.xds[key].std(
             dim=self._redop_dims(), skipna=True
         ).values * self.ureg(self.udict[key])
 
     def dim_min(self, key):
-        """Minimum over all added dimensions"""
+        """Get minimum over all added dimensions."""
         return self.xds[key].min(
             dim=self._redop_dims(), skipna=True
         ).values * self.ureg(self.udict[key])
 
     def dim_max(self, key):
-        """Maximum over all added dimensions"""
+        """Get maximum over all added dimensions."""
         return self.xds[key].max(
             dim=self._redop_dims(), skipna=True
         ).values * self.ureg(self.udict[key])
@@ -139,7 +140,7 @@ class XResult:
         self.xds.to_netcdf(path_nc)
 
     def is_timecourse(self) -> bool:
-        """Check if timecourse"""
+        """Check if timecourse."""
         # FIXME: better implementation necessary
         is_tc = True
         xds = self.xds
@@ -154,13 +155,15 @@ class XResult:
             return False
         return is_tc
 
-    def to_mean_dataframe(self):
+    def to_mean_dataframe(self) -> pd.DataFrame:
+        """Convert to DataFrame with mean data."""
         res = {}
         for col in self.xds:
             res[col] = self.dim_mean(key=col)
         return pd.DataFrame(res)
 
-    def to_dataframe(self):
+    def to_dataframe(self) -> pd.DataFrame:
+        """Convert to DataFrame."""
         if not self.is_timecourse():
             # only timecourse data can be uniquely converted to DataFrame
             # higher dimensional data will be flattened.
@@ -171,7 +174,7 @@ class XResult:
         return df
 
     def to_tsv(self, path_tsv):
-        """Write data to tsv. """
+        """Write data to tsv."""
         df = self.to_dataframe()
         if df is not None:
             df.to_csv(path_tsv, sep="\t", index=False)
@@ -180,7 +183,7 @@ class XResult:
 
     @staticmethod
     def from_netcdf(path):
-        """Read from netCDF"""
+        """Read from netCDF."""
         ds = xr.open_dataset(path)
         return XResult(xdataset=ds)
 

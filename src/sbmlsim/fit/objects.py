@@ -3,7 +3,7 @@ import json
 import logging
 import math
 from pathlib import Path
-from typing import Dict, Iterable, List, Optional, Union, Any
+from typing import Any, Dict, Iterable, List, Optional, Union
 
 import numpy as np
 

@@ -1,7 +1,6 @@
-"""
-Helpers for numerical comparison of simulation results between different simulators.
-Allows to test semi-automatically for problems with the various models.
+"""Helpers for numerical comparison of simulation results between different simulators.
 
+Allows to test semi-automatically for problems with the various models.
 Used to benchmark the simulation results.
 """
 
@@ -19,7 +18,7 @@ logger = logging.getLogger(__name__)
 
 
 def get_files_by_extension(base_path: Path, extension: str = ".json") -> Dict[str, str]:
-    """Get all files by given extension
+    """Get all files by given extension.
 
     Simulation definitions are json files.
     """
@@ -141,7 +140,7 @@ class DataSetsComparison(object):
         # set of columns from the individual dataframes
         col_union = None
         col_intersection = None
-        for path, df in dataframes.items():
+        for _path, df in dataframes.items():
             # get all numeric columns
             num_df = df.select_dtypes(include=numerics)
             if len(num_df.columns) < len(df.columns):
@@ -170,6 +169,7 @@ class DataSetsComparison(object):
     @classmethod
     def _filter_dfs(cls, dataframes, columns):
         """Filter the dataframes using the column ids occurring in all datasets.
+
         The common set of columns is used for comparison.
 
         :param dataframes:
@@ -193,7 +193,7 @@ class DataSetsComparison(object):
         return dfs, labels
 
     def df_diff(self):
-        """DataFrame of all differences between the files.
+        """Dataframe of all differences between the files.
 
         https://github.com/sbmlteam/sbml-test-suite/blob/master/cases/semantic/README.md
         Let the following variables be defined:
@@ -235,21 +235,20 @@ class DataSetsComparison(object):
         return diff, diff_abs, diff_rel, diff_tol, diff_tol_bool
 
     def is_equal(self):
-        """ Check if DataFrames are identical within numerical tolerance."""
+        """Check if DataFrames are identical within numerical tolerance."""
         return not self.diff_tol_bool.any(axis=None)
 
-    def __str__(self):
+    def __str__(self) -> str:
+        """Get string."""
         return f"{self.__class__.__name__} ({self.labels})"
 
     def __repr__(self):
+        """Get representation."""
         return f"{self.__class__.__name__} [{self.id}] ({self.labels})"
 
     @timeit
-    def report_str(self):
-        """
-
-        :return:
-        """
+    def report_str(self) -> str:
+        """Get report as string."""
         lines = [
             "-" * 80,
             str(self),
@@ -281,7 +280,7 @@ class DataSetsComparison(object):
         lines.append(str(self.diff.abs().max().max()))
 
         lines.append(
-            f"# Datasets are equal " f"(|c_ij - u_ij| <= (tol_abs + tol_rel * |c_ij|))"
+            "# Datasets are equal (|c_ij - u_ij| <= (tol_abs + tol_rel * |c_ij|))"
         )
         lines.append(str(self.is_equal()).upper())
         lines.append("-" * 80)
@@ -292,6 +291,7 @@ class DataSetsComparison(object):
 
     @timeit
     def report(self):
+        """Report."""
         # print report
         print(self.report_str())
 
@@ -301,7 +301,7 @@ class DataSetsComparison(object):
 
     @timeit
     def plot_diff(self):
-        """Plots lines for entries which are above epsilon treshold."""
+        """Plot lines for entries which are above epsilon treshold."""
 
         import seaborn as sns
 
@@ -327,7 +327,7 @@ class DataSetsComparison(object):
 
         sns.heatmap(data=self.diff_tol_bool, cmap="Blues", vmin=0, vmax=1, ax=ax1)
         ax1.set_title(f"equal = {str(self.is_equal()).upper()}", fontweight="bold")
-        ax1.set_ylabel(f"Tolerance difference", fontweight="bold")
+        ax1.set_ylabel("Tolerance difference", fontweight="bold")
 
         # sns.heatmap(data=self.diff_tol, center=0, ax=ax2)
 
@@ -336,9 +336,9 @@ class DataSetsComparison(object):
             ax3.plot(diff_abs[cid], label=cid)
             ax4.plot(diff_rel[cid], label=cid)
 
-        ax2.set_ylabel(f"Tolerance difference", fontweight="bold")
-        ax3.set_ylabel(f"Absolute difference", fontweight="bold")
-        ax4.set_ylabel(f"Relative difference", fontweight="bold")
+        ax2.set_ylabel("Tolerance difference", fontweight="bold")
+        ax3.set_ylabel("Absolute difference", fontweight="bold")
+        ax4.set_ylabel("Relative difference", fontweight="bold")
 
         for ax in (ax3, ax4):
             ax.set_xlabel("time index", fontweight="bold")
