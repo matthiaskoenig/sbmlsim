@@ -410,6 +410,7 @@ class OptimizationProblem(object):
 
                 # FIXME: relative_changes to baseline errors;
 
+                # --- WEIGHTS ---
                 # calculate local weights based on errors (i.e. weights for data
                 # points
                 # FIXME: the weights must be normalized for a mapping based on data points;
@@ -442,17 +443,18 @@ class OptimizationProblem(object):
                             f"no errors in reference data."
                         )
 
-                    # normalize weights to mean=1.0 for given curve
-                    # this makes the weights comparable
-                    weight_points = weight_points / np.mean(weight_points)
+                # normalize weights to mean=1.0 for given curve
+                # this makes the weights comparable
+                weight_points = weight_points / np.mean(weight_points)
 
-                    # apply local weighting & user defined weighting
-                    # (in the cost function the weighted residuals are squared)
-                    # sum(w_i * r_i^2) = sum((w_i^0.5*r_i)^2)
-                    weight = np.sqrt(weight_points * weight_curve)
-                    if np.any(weight < 0):
-                        raise ValueError("Negative weights encountered.")
+                # apply local weighting & user defined weighting
+                # (in the cost function the weighted residuals are squared)
+                # sum(w_i * r_i^2) = sum((w_i^0.5*r_i)^2)
+                weight = np.sqrt(weight_points * weight_curve)
+                if np.any(weight < 0):
+                    raise ValueError("Negative weights encountered.")
 
+                # --- STORE INITIAL PARAMETERS ---
                 # store initial model parameters
                 for k, pid in enumerate(self.pids):
                     pid_value = model.r[pid]
