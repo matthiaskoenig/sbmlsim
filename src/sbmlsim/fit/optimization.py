@@ -7,7 +7,7 @@ from copy import deepcopy
 from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path
-from typing import Dict, Iterable, List, Set, Tuple
+from typing import Dict, Iterable, List, Set, Tuple, Sized, Collection
 
 import numpy as np
 import pandas as pd
@@ -99,8 +99,8 @@ class OptimizationProblem(object):
     def __init__(
         self,
         opid,
-        fit_experiments: Iterable[FitExperiment],
-        fit_parameters: Iterable[FitParameter],
+        fit_experiments: Collection[FitExperiment],
+        fit_parameters: Collection[FitParameter],
         base_path=None,
         data_path=None,
     ):
