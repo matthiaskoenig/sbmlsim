@@ -94,7 +94,7 @@ class OptimizationResult(ObjectJSONEncoder):
         return info
 
     @staticmethod
-    def combine(opt_results: List[OptimizeResult]) -> OptimizeResult:
+    def combine(opt_results: List["OptimizationResult"]) -> "OptimizationResult":
         """Combine results from multiple parameter fitting experiments."""
         # FIXME: check that the parameters are fitting
         parameters = opt_results[0].parameters

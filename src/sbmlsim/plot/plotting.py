@@ -13,7 +13,7 @@ import logging
 from copy import deepcopy
 from dataclasses import dataclass
 from enum import Enum
-from typing import Dict, List, Union
+from typing import Dict, List, Optional, Union
 
 import numpy as np
 from matplotlib.colors import to_hex, to_rgba
@@ -203,24 +203,37 @@ class Style(BasePlotObject):
         return kwargs
 
     @staticmethod
-    def parse_color(color: str, alpha: float = 1.0) -> ColorType:
+    def parse_color(color: str, alpha: float = 1.0) -> Optional[ColorType]:
         """Parse given color and add alpha information.
 
         :param color:
         :param alpha:
         :return: ColorType or None
         """
-        # https://matplotlib.org/3.1.0/tutorials/colors/colors.html
+        # https://matplotlib.org/stable/tutorials/colors/colors.html
         if color is None:
             return None
+
         elif color.startswith("#"):
-            # FIXME: inject alpha if missing
-            pass
+            # handle hex colors
+            if len(color) == 7:
+                # parse alpha
+                color_hex = color + "%02x" % round(alpha * 255)
+            elif len(color) == 9:
+                color_hex = color
+                if alpha != 1.0:
+                    logger.warning(
+                        f"alpha ignored for hex colors with alpha channel: "
+                        f"'{color}', alpha={alpha}."
+                    )
+            else:
+                logger.error(f"Incorrect hex color: '{color}'")
+
         else:
             color = to_rgba(color, alpha)
-            color = to_hex(color, keep_alpha=True)
+            color_hex = to_hex(color, keep_alpha=True)
 
-        return ColorType(color)
+        return ColorType(color_hex)
 
     @staticmethod
     def from_mpl_kwargs(**kwargs) -> "Style":

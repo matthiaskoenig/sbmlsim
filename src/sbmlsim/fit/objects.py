@@ -75,7 +75,7 @@ class FitExperiment:
         if self.use_mapping_weights is True:
             mapping_weights = [None] * len(self.mappings)
             # no weights provided use default empty weights
-            if weights == None:
+            if weights is None:
                 weights_processed = mapping_weights
             else:
                 weights_processed = weights
@@ -127,14 +127,16 @@ class FitExperiment:
 
     def __repr__(self) -> str:
         """Get representation."""
-        return f"{self.__class__.__name__}({self.experiment_class.__name__} " \
-               f"{[f'{m} x {w}' for (m,w) in list(zip(self.mappings, self.weights))]})"
+        return (
+            f"{self.__class__.__name__}({self.experiment_class.__name__} "
+            f"{[f'{m} x {w}' for (m,w) in list(zip(self.mappings, self.weights))]})"
+        )
 
     def __str__(self) -> str:
         """Get string."""
         info = [
             "-" * 80,
-            f"FitExperiment",
+            "FitExperiment",
             "-" * 80,
             f"experiment: {self.experiment_class.__name__}",
             f"mappings: {self.mappings}",

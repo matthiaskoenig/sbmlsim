@@ -27,3 +27,4 @@ of timecourse definitions in multiple simulations. E.g. repeated timecourse `[tc
 - Fix #88, bugfix figure closing in parameter fitting
 - adding mypy configuration
 - many flake8 fixes and type annotations
+- Fix #91, support hex colors in plot

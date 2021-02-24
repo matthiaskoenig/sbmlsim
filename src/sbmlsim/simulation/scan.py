@@ -4,9 +4,10 @@ Allows scans over other simulations.
 """
 
 import logging
-import numpy as np
 from copy import deepcopy
 from typing import Dict, List
+
+import numpy as np
 
 from sbmlsim.simulation import AbstractSim, Dimension
 from sbmlsim.units import UnitRegistry, Units
@@ -88,6 +89,7 @@ class ScanSim(AbstractSim):
         """Add model changes to first timecourse."""
         # import here to avoid circular import
         from sbmlsim.simulation import TimecourseSim
+
         if self.simulation and isinstance(self.simulation, TimecourseSim):
             self.simulation.add_model_changes(model_changes)
 
