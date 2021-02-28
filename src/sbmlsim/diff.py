@@ -94,9 +94,9 @@ class DataSetsComparison(object):
                 # apply factors
                 fs = factors.get(key, [1.0] * len(sel_keys))
                 for k, sel in enumerate(sel_keys):
-                    print(f"scaling: '{sel}' * {fs[k]}")
+                    print(f"scaling: '{sel}' * {fs[k]}")  # type: ignore
                     # df_new[sel] = fs[k] * df_new[sel]
-                    df_new.loc[:, sel] *= fs[k]
+                    df_new.loc[:, sel] *= fs[k]  # type: ignore
 
                 # do renaming
                 df_new = df_new.rename(columns=dict(zip(sel_keys, colnames)))

@@ -10,7 +10,7 @@ This includes
 
 import logging
 from pathlib import Path
-from typing import Iterable, List, Optional
+from typing import Dict, Iterable, List, Optional
 
 from sbmlsim.experiment import ExperimentResult, SimulationExperiment
 from sbmlsim.model import RoadrunnerSBMLModel

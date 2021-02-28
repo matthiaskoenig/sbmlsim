@@ -103,10 +103,11 @@ class XResult:
         if scan is None:
             dimensions = [Dimension("_dfs", index=np.arange(num_dfs))]
         else:
-            dimensions = scan.dimensions
+            dimensions = scan.dimensions  # type: ignore
 
         # add additional dimensions
-        for dimension in dimensions:  # type: Dimension
+        dimension: Dimension
+        for dimension in dimensions:
             shape.append(len(dimension))
             dim_id = dimension.dimension
             coords[dim_id] = dimension.index

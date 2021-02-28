@@ -35,7 +35,7 @@ class SimulatorSerial(SimulatorWorker):
         }
         self.integrator_settings.update(kwargs)
         self.set_model(model)
-        self.model: Optional[AbstractModel, RoadrunnerSBMLModel] = None
+        # self.model: Optional[AbstractModel, RoadrunnerSBMLModel] = None
 
     def set_model(self, model):
         """Set model for simulator and updates the integrator settings.

@@ -58,7 +58,7 @@ class Source:
             if is_urn(source):
                 content = model_from_urn(source)
             elif is_http(source):
-                content = model_from_url()
+                content = model_from_url(url=source)
 
         # is path
         if content is None:
