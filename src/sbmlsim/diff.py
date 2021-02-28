@@ -27,7 +27,7 @@ def get_files_by_extension(base_path: Path, extension: str = ".json") -> Dict[st
     offset = len(extension)
     keys = [f.name[:-offset] for f in files]
 
-    return dict(zip(keys, files))
+    return dict(zip(keys, files))  # type: ignore
 
 
 class DataSetsComparison(object):

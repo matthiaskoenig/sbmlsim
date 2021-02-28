@@ -12,12 +12,16 @@ from sbmlsim.simulation import ScanSim, Timecourse, TimecourseSim
 logger = logging.getLogger(__name__)
 
 
-class SimulatorWorker(object):
+class SimulatorWorker:
     """Worker running simulations.
 
     Implements the timecourse simulation once which can be reused by
     the different simulators.
     """
+
+    def __init__(self):
+        """Init placeholder."""
+        self.r = None
 
     def _timecourse(self, simulation: TimecourseSim) -> pd.DataFrame:
         """Timecourse simulation.

@@ -399,7 +399,7 @@ class FitData:
             raise ValueError("DataType could not be determined!")
         return dtype
 
-    def get_data(self) -> Dict:
+    def get_data(self) -> 'FitDataInitialized':
         """Return actual data.
 
         Numerical values are resolved using the executed simulation experiment.
@@ -413,7 +413,7 @@ class FitData:
         return result
 
 
-class FitDataInitialized(object):
+class FitDataInitialized:
     """Initialized FitData with actual data content.
 
     Data is create from simulation experiment.

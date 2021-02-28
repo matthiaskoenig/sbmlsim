@@ -44,7 +44,7 @@ class ExperimentRunner(object):
         # initialize experiments
         self.base_path = base_path
         self.data_path = data_path
-        self.experiments = {}
+        self.experiments: Dict[str, SimulationExperiment] = {}
         self.models = {}
         self.simulator: Optional[SimulatorSerial] = None
 

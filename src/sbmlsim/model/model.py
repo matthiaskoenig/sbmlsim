@@ -74,7 +74,7 @@ class AbstractModel(object):
         self.language = language
         self.language_type = language_type
         self.base_path = base_path
-        self.source = Source.from_source(source, base_dir=base_path)  # type: Source
+        self.source: Source = Source.from_source(source, base_dir=base_path)
 
         if changes is None:
             changes = {}

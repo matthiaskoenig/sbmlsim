@@ -63,11 +63,12 @@ class Data(object):
     def __str__(self) -> str:
         """Get string."""
         if self.is_task():
-            return f"Data(index={self.index}, task_id={self.task_id})|Task"
+            s = f"Data(index={self.index}, task_id={self.task_id})|Task"
         elif self.is_dataset():
-            return f"Data(index={self.index}, dset_id={self.dset_id})|DataSet"
+            s = f"Data(index={self.index}, dset_id={self.dset_id})|DataSet"
         elif self.is_function():
-            return f"Data(index={self.index}, function={self.function})|Function"
+            s = f"Data(index={self.index}, function={self.function})|Function"
+        return s
 
     @property
     def sid(self) -> str:
@@ -286,7 +287,7 @@ class DataSet(pd.DataFrame):
         pd.set_option("max_columns", None)
         s = super().__repr__()
         pd.reset_option("max_columns")
-        return s
+        return str(s)
 
     @classmethod
     def from_df(

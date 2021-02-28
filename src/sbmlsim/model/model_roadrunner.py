@@ -3,7 +3,7 @@
 import logging
 import tempfile
 from pathlib import Path
-from typing import Dict, List, Optional, Union
+from typing import Dict, List, Optional, Union, Tuple
 
 import libsbml
 import numpy as np
@@ -158,7 +158,7 @@ class RoadrunnerSBMLModel(AbstractModel):
         r2.loadState(filename)
         return r2
 
-    def parse_units(self, ureg):
+    def parse_units(self, ureg: UnitRegistry) -> Tuple[Dict[str, str], UnitRegistry]:
         """Parse units from SBML model."""
         if self.source.is_content():
             model_path = self.source.content
@@ -170,7 +170,7 @@ class RoadrunnerSBMLModel(AbstractModel):
     @classmethod
     def set_timecourse_selections(
         cls, r: roadrunner.RoadRunner, selections: List[str] = None
-    ) -> None:
+    ) -> List[str]:
         """Set the model selections for timecourse simulation."""
         if selections is None:
             r_model: roadrunner.ExecutableModel = r.model
@@ -194,7 +194,7 @@ class RoadrunnerSBMLModel(AbstractModel):
         return selections
 
     @staticmethod
-    def set_integrator_settings(r: roadrunner.RoadRunner, **kwargs) -> None:
+    def set_integrator_settings(r: roadrunner.RoadRunner, **kwargs) -> roadrunner.Integrator:
         """Set integrator settings.
 
         Keys are:
@@ -204,7 +204,7 @@ class RoadrunnerSBMLModel(AbstractModel):
             relative_tolerance [float]
 
         """
-        integrator = r.getIntegrator()
+        integrator: roadrunner.Integrator = r.getIntegrator()
         for key, value in kwargs.items():
             if key not in RoadrunnerSBMLModel.IntegratorSettingKeys:
                 logger.debug(

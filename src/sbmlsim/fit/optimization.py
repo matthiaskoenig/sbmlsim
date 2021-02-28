@@ -7,7 +7,7 @@ from copy import deepcopy
 from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path
-from typing import Dict, Iterable, List, Set, Tuple, Sized, Collection
+from typing import Collection, Dict, Iterable, List, Set, Sized, Tuple
 
 import numpy as np
 import pandas as pd
@@ -253,11 +253,11 @@ class OptimizationProblem(object):
             sim_experiment = self.runner.experiments[sid]
 
             # FIXME: selections should be based on fit mappings
-            selections = set()
+            selections_set: Set[str] = set()
             for d in sim_experiment._data.values():  # type: Data
                 if d.is_task():
-                    selections.add(d.index)
-            selections = list(selections)
+                    selections_set.add(d.index)
+            selections: List[str] = list(selections_set)
 
             # use all fit_mappings if None are provided
             if fit_experiment.mappings is None:

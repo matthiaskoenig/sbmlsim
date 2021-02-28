@@ -30,10 +30,10 @@ class ReportResults:
     def to_json(self, json_path: Path):
         """Write to JSON."""
         with open(json_path, "w") as fp:
-            json.dump(fp, self.data, indent=2)
+            json.dump(fp, self.data, indent=2)  # type: ignore
 
     @staticmethod
-    def from_json(json_path: Path) -> List[ExperimentResult]:
+    def from_json(json_path: Path) -> 'ReportResults':
         """Read from JSON."""
         with open(json_path, "r") as fp:
             data = json.load(fp)
@@ -54,7 +54,7 @@ class ReportResults:
             if isinstance(model, (Path, str)):
                 model_path = Path(model)
             elif isinstance(model, AbstractModel):
-                model_path = model.source.path
+                model_path = model.source.path  # type: ignore
 
             models[model_key] = Path(os.path.relpath(model_path, str(abs_path)))
 
@@ -62,7 +62,7 @@ class ReportResults:
         code_path = sys.modules[experiment.__module__].__file__
         with open(code_path, "r") as f_code:
             code = f_code.read()
-        code_path = Path(os.path.relpath(code_path, str(abs_path)))
+        code_path = Path(os.path.relpath(code_path, str(abs_path)))  # type: ignore
 
         datasets = {
             key: rel_path / f"{exp_id}_{key}.tsv" for key in experiment._datasets.keys()

@@ -1,6 +1,6 @@
 """Serial simulator."""
 import logging
-from typing import Dict, List
+from typing import Dict, List, Optional
 
 import pandas as pd
 from roadrunner import roadrunner
@@ -35,6 +35,7 @@ class SimulatorSerial(SimulatorWorker):
         }
         self.integrator_settings.update(kwargs)
         self.set_model(model)
+        self.model: Optional[AbstractModel, RoadrunnerSBMLModel] = None
 
     def set_model(self, model):
         """Set model for simulator and updates the integrator settings.
@@ -78,7 +79,7 @@ class SimulatorSerial(SimulatorWorker):
         return self.model.ureg
 
     @property
-    def udict(self) -> Dict:
+    def udict(self) -> Dict[str, str]:
         """Get the unit dictionary."""
         return self.model.udict
 
