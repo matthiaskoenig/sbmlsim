@@ -33,7 +33,7 @@ class ReportResults:
             json.dump(fp, self.data, indent=2)  # type: ignore
 
     @staticmethod
-    def from_json(json_path: Path) -> 'ReportResults':
+    def from_json(json_path: Path) -> "ReportResults":
         """Read from JSON."""
         with open(json_path, "r") as fp:
             data = json.load(fp)

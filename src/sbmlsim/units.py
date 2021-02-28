@@ -95,7 +95,9 @@ class Units:
         return ureg
 
     @classmethod
-    def get_units_from_sbml(cls, model_path: Path, ureg: UnitRegistry = None) -> Tuple[Dict[str, str], UnitRegistry]:
+    def get_units_from_sbml(
+        cls, model_path: Path, ureg: UnitRegistry = None
+    ) -> Tuple[Dict[str, str], UnitRegistry]:
         """Get pint unit dictionary for given model.
 
         :param model_path: path to SBML model

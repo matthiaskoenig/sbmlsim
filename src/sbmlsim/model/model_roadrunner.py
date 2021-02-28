@@ -3,7 +3,7 @@
 import logging
 import tempfile
 from pathlib import Path
-from typing import Dict, List, Optional, Union, Tuple
+from typing import Dict, List, Optional, Tuple, Union
 
 import libsbml
 import numpy as np
@@ -194,7 +194,9 @@ class RoadrunnerSBMLModel(AbstractModel):
         return selections
 
     @staticmethod
-    def set_integrator_settings(r: roadrunner.RoadRunner, **kwargs) -> roadrunner.Integrator:
+    def set_integrator_settings(
+        r: roadrunner.RoadRunner, **kwargs
+    ) -> roadrunner.Integrator:
         """Set integrator settings.
 
         Keys are:
