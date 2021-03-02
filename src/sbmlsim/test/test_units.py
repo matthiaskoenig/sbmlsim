@@ -40,35 +40,33 @@ def test_ureg_from_doc(sbml_path: Path) -> None:
     assert isinstance(ureg, UnitRegistry)
 
 
-# TODO: specific test cases
-
 def create_udef_examples() -> List[Tuple[libsbml.UnitDefinition, str]]:
     """Create example UnitDefinitions for testing."""
+    udef0 = libsbml.UnitDefinition(3, 1)
+
     # s
-    u1 = libsbml.Unit(3, 1)
+    udef1 = libsbml.UnitDefinition(3, 1)
+    u1: libsbml.Unit = udef1.createUnit()
     u1.setId("u1")
     u1.setKind(libsbml.UNIT_KIND_SECOND)
+    u1.setMultiplier(1.0)
+    u1.setExponent(1)
+    u1.setScale(0)
 
     # 1/mmole
-    u2 = libsbml.Unit(3, 1)
+    udef2 = libsbml.UnitDefinition(3, 1)
+    u2: libsbml.Unit = udef2.createUnit()
     u2.setId("u2")
     u2.setKind(libsbml.UNIT_KIND_MOLE)
-    u2.setExponent(-3)
+    u2.setMultiplier(1.0)
+    u2.setExponent(-1)
+    u2.setScale(-3)
 
-    udef1 = libsbml.UnitDefinition(3, 1)
-    udef2 = libsbml.UnitDefinition(3, 1)
-    udef2.addUnit(u1)
-    udef3 = libsbml.UnitDefinition(3, 1)
-    udef3.addUnit(u2)
-    udef4 = libsbml.UnitDefinition(3, 1)
-    udef4.addUnit(u1)
-    udef4.addUnit(u2)
     return [
         (None, "None"),
-        (udef1, ""),
-        (udef2, "s"),
-        (udef3, "1/mmole"),
-        (udef4, "s/mmole"),
+        (udef0, ""),
+        (udef1, "s"),
+        (udef2, "1/((10^-3)*mole)"),
     ]
 
 
@@ -77,6 +75,8 @@ udef_examples = create_udef_examples()
 
 @pytest.mark.parametrize("udef, s", udef_examples)
 def test_udef_to_str(udef: libsbml.UnitDefinition, s: str) -> None:
+    stest = libsbml.UnitDefinition_printUnits(udef)
+    print(stest)
     s2 = Units.udef_to_str(udef)
     assert s2 == s
 
