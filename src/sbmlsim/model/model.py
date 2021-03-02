@@ -11,8 +11,7 @@ from pathlib import Path
 from typing import Dict, List, Optional, Tuple, Union
 
 from sbmlsim.model.model_resources import Source
-from sbmlsim.units import Units
-
+from sbmlsim.units import Units, UnitsInformation
 
 logger = logging.getLogger(__name__)
 
@@ -83,9 +82,9 @@ class AbstractModel(object):
 
         # normalize parameters at end of initialization
 
-    def normalize(self, udict, ureg):
+    def normalize(self, uinfo: UnitsInformation):
         """Normalize values to model units for all changes."""
-        self.changes = Units.normalize_changes(self.changes, udict=udict, ureg=ureg)
+        self.changes = UnitsInformation.normalize_changes(self.changes, uinfo=uinfo)
 
     def to_dict(self):
         """Convert to dictionary."""

@@ -9,35 +9,45 @@ import pytest
 
 from sbmlsim.examples import example_units
 from sbmlsim.test import MODEL_DEMO, MODEL_REPRESSILATOR
-from sbmlsim.units import Units, UnitRegistry
+from sbmlsim.units import Units, UnitsInformation, UnitRegistry
 
 sbml_paths = [MODEL_DEMO, MODEL_REPRESSILATOR]
 
 
 def test_default_ureg() -> None:
     """Test creation of default unit registry."""
-    ureg = Units.default_ureg()
+    ureg = UnitsInformation._default_ureg()
     assert ureg
     assert isinstance(ureg, UnitRegistry)
+
+
+def check_uinfo(uinfo: UnitsInformation) -> None:
+    """Check UnitsInformation."""
+    assert uinfo
+    assert isinstance(uinfo, UnitsInformation)
+    assert uinfo.udict
+    assert isinstance(uinfo.udict, dict)
+    assert uinfo.ureg
+    assert isinstance(uinfo.ureg, UnitRegistry)
 
 
 @pytest.mark.parametrize("sbml_path", sbml_paths)
 def test_units_from_sbml(sbml_path: Path) -> None:
     """Test reading units from SBML models."""
-    udict, ureg = Units.units_from_sbml(sbml_path)
-    assert udict
-    assert isinstance(udict, dict)
-    assert ureg
-    assert isinstance(ureg, UnitRegistry)
+    uinfo = UnitsInformation.from_sbml_path(sbml_path)
+    check_uinfo(uinfo)
 
 
 @pytest.mark.parametrize("sbml_path", sbml_paths)
-def test_ureg_from_doc(sbml_path: Path) -> None:
-    """Test creation of unit registry from given model."""
-    doc = libsbml.readSBMLFromFile(str(sbml_path))
-    ureg = Units._ureg_from_doc(doc)
-    assert ureg
-    assert isinstance(ureg, UnitRegistry)
+def test_units_from_doc(sbml_path: Path) -> None:
+    """Test reading units from SBML models."""
+    doc: libsbml.SBMLDocument = libsbml.readSBMLFromFile(str(sbml_path))
+    uinfo = UnitsInformation.from_sbml_doc(doc)
+    check_uinfo(uinfo)
+
+
+def test_example_units() -> None:
+    example_units.run_demo_example()
 
 
 def create_udef_examples() -> List[Tuple[libsbml.UnitDefinition, str]]:
@@ -84,6 +94,3 @@ def test_udef_to_str(udef: libsbml.UnitDefinition, s: str) -> None:
 # def test_normalize_changes() -> None:
 #     Units.normalize_changes()
 
-
-def test_example_units():
-    example_units.run_demo_example()

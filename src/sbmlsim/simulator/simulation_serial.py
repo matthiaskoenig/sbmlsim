@@ -9,7 +9,7 @@ from sbmlsim.model import AbstractModel, RoadrunnerSBMLModel
 from sbmlsim.result import XResult
 from sbmlsim.simulation import ScanSim, TimecourseSim
 from sbmlsim.simulator.simulation import SimulatorWorker
-
+from sbmlsim.units import UnitsInformation
 
 logger = logging.getLogger(__name__)
 
@@ -74,14 +74,9 @@ class SimulatorSerial(SimulatorWorker):
         return self.model._model
 
     @property
-    def ureg(self):
+    def uinfo(self) -> UnitsInformation:
         """Get the unit registry."""
-        return self.model.ureg
-
-    @property
-    def udict(self) -> Dict[str, str]:
-        """Get the unit dictionary."""
-        return self.model.udict
+        return self.model.uinfo
 
     def run_timecourse(self, simulation: TimecourseSim) -> XResult:
         """Run single timecourse."""

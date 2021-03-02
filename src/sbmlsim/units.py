@@ -3,10 +3,12 @@
 Used for model and data unit conversions.
 """
 import logging
+from collections import UserDict
+
 import numpy as np
 import os
 from pathlib import Path
-from typing import Dict, Tuple
+from typing import Dict, Tuple, Optional
 import libsbml
 
 
@@ -28,43 +30,33 @@ logger = logging.getLogger(__name__)
 UdictType = Dict[str, str]
 
 
-class Units:
-    """Units class.
+class UnitsInformation:
+    """Storage of units information.
 
-    Container for unit related functionality.
-    Allows to read the unit information from SBML models and provides
-    helpers for the unit conversion.
+    Used for models or datasets.
     """
 
-    @classmethod
-    def default_ureg(cls) -> pint.UnitRegistry:
-        """Get default unit registry."""
-        ureg = pint.UnitRegistry()
-        ureg.define("none = count")
-        ureg.define("item = count")
-        ureg.define("percent = 0.01*count")
+    def __init__(self, udict: UdictType, ureg: UnitRegistry):
+        """Initialize UnitsInformation."""
+        self.udict: UdictType = udict
+        self.ureg: UnitRegistry = ureg
 
-        # FIXME: manual conversion
-        ureg.define(
-            "IU = 0.0347 * mg"
-        )  # IU for insulin ! FIXME better handling of general IU
-        ureg.define(
-            "IU/ml = 0.0347 * mg/ml"
-        )  # IU for insulin ! FIXME better handling of general IU
-        return ureg
+    def __getter__(self, key: str) -> str:
+        """Get value for key. """
+        return self.udict[key]
 
-    @classmethod
-    def units_from_sbml(
-        cls, model_path: Path, ureg: UnitRegistry = None
-    ) -> Tuple[UdictType, UnitRegistry]:
-        """Get pint unit dictionary for given model.
+    def __setter__(self, key: str, value: str) -> None:
+        """Set value for key."""
+        self.udict[key] = value
 
-        :param model_path: path to SBML model
-        :return: udict, ureg
+    def __iter__(self):
+        return self.udict.__iter__()
 
-        # FIXME: don't store the uid, but the parsed unit-definition
-        # TODO: cache information
-        """
+    @staticmethod
+    def from_sbml_path(
+        model_path: Path, ureg: Optional[UnitRegistry] = None
+    ) -> 'UnitsInformation':
+        """Get pint UnitsInformation for model."""
         doc: libsbml.SBMLDocument
         if isinstance(model_path, Path):
             doc = libsbml.readSBMLFromFile(str(model_path))
@@ -73,11 +65,15 @@ class Units:
         else:
             raise ValueError(f"model_path not supported: '{type(model_path)}'")
 
-        # parse unit registry
-        ureg = cls._ureg_from_doc(doc, ureg)
+        return UnitsInformation.from_sbml_doc(doc, ureg=ureg)
 
-        # get all units defined in the model (unit definitions)
+    @staticmethod
+    def from_sbml_doc(doc: libsbml.SBMLDocument, ureg: Optional[UnitRegistry] = None) -> 'UnitsInformation':
+        """Get pint UnitsInformation for model in document."""
+
+        # parse unit registry
         model: libsbml.Model = doc.getModel()
+        ureg = UnitsInformation._ureg_from_model(model=model, ureg=ureg)
 
         # create sid to unit mapping
         udict: Dict[str, str] = {}
@@ -130,7 +126,7 @@ class Units:
                 elif isinstance(element, (libsbml.Compartment, libsbml.Parameter)):
                     udict[sid] = element.getUnits()
                 else:
-                    udef: libsbml.UnidDefinition = element.getDerivedUnitDefinition()
+                    udef: libsbml.UnitDefinition = element.getDerivedUnitDefinition()
                     if udef is None:
                         continue
                     uid = None
@@ -159,21 +155,21 @@ class Units:
                     # elements in packages
                     logger.debug(f"No element found for id '{sid}'")
 
-        return udict, ureg
+        return UnitsInformation(udict=udict, ureg=ureg)
 
     @classmethod
-    def _ureg_from_doc(cls, doc: libsbml.SBMLDocument, ureg: UnitRegistry = None):
+    def _ureg_from_model(cls, model: libsbml.Model, ureg: Optional[UnitRegistry] = None) -> UnitRegistry:
         """Create a pint unit registry from the given SBML."""
-        model: libsbml.Model = doc.getModel()
 
-        if not ureg:
-            ureg = Units.default_ureg()
+        if ureg is None:
+            ureg = cls._default_ureg()
 
         # add all UnitDefinitions to unit registry
         udef: libsbml.UnitDefinition
         for udef in model.getListOfUnitDefinitions():
             uid = udef.getId()
-            udef_str = cls.udef_to_str(udef)
+            # FIXME: what is going on here
+            udef_str = Units.udef_to_str(udef)
             try:
                 # check if existing unit registry definition
                 q1 = ureg(uid)
@@ -192,6 +188,66 @@ class Units:
                 ureg.define(definition)
 
         return ureg
+
+    @staticmethod
+    def _default_ureg() -> pint.UnitRegistry:
+        """Get default unit registry."""
+        ureg = pint.UnitRegistry()
+        ureg.define("none = count")
+        ureg.define("item = count")
+        ureg.define("percent = 0.01*count")
+
+        # FIXME: manual conversion
+        ureg.define(
+            "IU = 0.0347 * mg"
+        )  # IU for insulin ! FIXME better handling of general IU
+        ureg.define(
+            "IU/ml = 0.0347 * mg/ml"
+        )  # IU for insulin ! FIXME better handling of general IU
+        return ureg
+
+    @staticmethod
+    def normalize_changes(
+        changes: Dict[str, Quantity], uinfo: 'UnitsInformation'
+    ) -> Dict[str, Quantity]:
+        """Normalize all changes to units in given units dictionary.
+
+        This is a major helper function allowing to convert changes
+        to the requested units.
+        """
+        Q_ = uinfo.ureg.Quantity
+        changes_normed = {}
+        for key, item in changes.items():
+            if hasattr(item, "units"):
+                try:
+                    # convert to model units
+                    item = item.to(uinfo[key])
+                except DimensionalityError as err:
+                    logger.error(f"DimensionalityError " f"'{key} = {item}'. {err}")
+                    raise err
+                except KeyError as err:
+                    logger.error(
+                        f"KeyError: '{key}' does not exist in unit "
+                        f"dictionary of model."
+                    )
+                    raise err
+            else:
+                item = Q_(item, uinfo[key])
+                logger.warning(
+                    f"No units provided, assuming dictionary units: " f"{key} = {item}"
+                )
+            changes_normed[key] = item
+
+        return changes_normed
+
+
+class Units:
+    """Units class.
+
+    Container for unit related functionality.
+    Allows to read the unit information from SBML models and provides
+    helpers for the unit conversion.
+    """
 
     # abbreviation dictionary for string representation
     _units_abbreviation = {
@@ -270,40 +326,6 @@ class Units:
         if (len(nom_str) == 0) and (len(denom_str) > 0):
             return "1/({})".format(denom_str)
         return ""
-
-    @staticmethod
-    def normalize_changes(
-        changes: Dict[str, Quantity], udict: UdictType, ureg: UnitRegistry
-    ) -> Dict[str, Quantity]:
-        """Normalize all changes to units in given units dictionary.
-
-        This is a major helper function allowing to convert changes
-        to the requested units.
-        """
-        Q_ = ureg.Quantity
-        changes_normed = {}
-        for key, item in changes.items():
-            if hasattr(item, "units"):
-                try:
-                    # convert to model units
-                    item = item.to(udict[key])
-                except DimensionalityError as err:
-                    logger.error(f"DimensionalityError " f"'{key} = {item}'. {err}")
-                    raise err
-                except KeyError as err:
-                    logger.error(
-                        f"KeyError: '{key}' does not exist in unit "
-                        f"dictionary of model."
-                    )
-                    raise err
-            else:
-                item = Q_(item, udict[key])
-                logger.warning(
-                    f"No units provided, assuming dictionary units: " f"{key} = {item}"
-                )
-            changes_normed[key] = item
-
-        return changes_normed
 
     # @classmethod
     # def unitIdNormalization(cls, uid: str) -> str:
