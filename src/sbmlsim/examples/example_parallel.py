@@ -31,7 +31,7 @@ def example_single_actor():
     # create state file
     r = roadrunner.RoadRunner(str(MODEL_REPRESSILATOR))
     RoadrunnerSBMLModel.set_timecourse_selections(r)
-    udict, ureg = Units.get_units_from_sbml(str(MODEL_REPRESSILATOR))
+    udict, ureg = Units.units_from_sbml(str(MODEL_REPRESSILATOR))
 
     f_state = tempfile.NamedTemporaryFile(suffix=".dat")
     r.saveState(f_state.name)
@@ -61,7 +61,7 @@ def example_multiple_actors():
     # create state file
     r = roadrunner.RoadRunner(str(MODEL_REPRESSILATOR))
     RoadrunnerSBMLModel.set_timecourse_selections(r)
-    udict, ureg = Units.get_units_from_sbml(str(MODEL_REPRESSILATOR))
+    udict, ureg = Units.units_from_sbml(str(MODEL_REPRESSILATOR))
 
     f_state = tempfile.NamedTemporaryFile(suffix=".dat")
     r.saveState(f_state.name)

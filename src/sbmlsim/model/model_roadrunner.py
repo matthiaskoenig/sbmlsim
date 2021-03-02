@@ -165,7 +165,7 @@ class RoadrunnerSBMLModel(AbstractModel):
         elif self.source.is_path():
             model_path = self.source.path
 
-        return Units.get_units_from_sbml(model_path, ureg)
+        return Units.units_from_sbml(model_path, ureg)
 
     @classmethod
     def set_timecourse_selections(
