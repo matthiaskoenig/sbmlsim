@@ -3,6 +3,7 @@ import logging
 from typing import Dict, List, Optional
 
 import pandas as pd
+from pint import Quantity
 from roadrunner import roadrunner
 
 from sbmlsim.model import AbstractModel, RoadrunnerSBMLModel
@@ -10,6 +11,7 @@ from sbmlsim.result import XResult
 from sbmlsim.simulation import ScanSim, TimecourseSim
 from sbmlsim.simulator.simulation import SimulatorWorker
 from sbmlsim.units import UnitsInformation
+
 
 logger = logging.getLogger(__name__)
 
@@ -75,8 +77,13 @@ class SimulatorSerial(SimulatorWorker):
 
     @property
     def uinfo(self) -> UnitsInformation:
-        """Get the unit registry."""
+        """Get model unit information."""
         return self.model.uinfo
+
+    @property
+    def Q_(self) -> Quantity:
+        """Get model unit information."""
+        return self.model.uinfo.ureg.Quantity
 
     def run_timecourse(self, simulation: TimecourseSim) -> XResult:
         """Run single timecourse."""
@@ -90,7 +97,7 @@ class SimulatorSerial(SimulatorWorker):
     def run_scan(self, scan: ScanSim) -> XResult:
         """Run a scan simulation."""
         # normalize the scan (simulation and dimensions)
-        scan.normalize(udict=self.udict, ureg=self.ureg)
+        scan.normalize(uinfo=self.uinfo)
 
         # create all possible combinations of the scan
         indices, simulations = scan.to_simulations()
@@ -99,7 +106,7 @@ class SimulatorSerial(SimulatorWorker):
         dfs = self._timecourses(simulations)
 
         # based on the indices the result structure must be created
-        return XResult.from_dfs(dfs=dfs, scan=scan, udict=self.udict, ureg=self.ureg)
+        return XResult.from_dfs(dfs=dfs, scan=scan, uinfo=self.uinfo)
 
     def _timecourses(self, simulations: List[TimecourseSim]) -> List[pd.DataFrame]:
         if len(simulations) > 1:

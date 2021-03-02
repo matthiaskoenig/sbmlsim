@@ -12,7 +12,7 @@ import numpy as np
 
 from sbmlsim.model import AbstractModel, RoadrunnerSBMLModel
 from sbmlsim.simulation import Dimension, ScanSim, Timecourse, TimecourseSim
-from sbmlsim.units import Units
+from sbmlsim.units import Units, UnitsInformation
 
 
 logger = logging.getLogger(__name__)
@@ -220,7 +220,7 @@ class ModelSensitivity(object):
         if changes is None:
             changes = {}
         else:
-            Units.normalize_changes(changes, udict=model.udict, ureg=model.ureg)
+            UnitsInformation.normalize_changes(changes, model.uinfo)
         for key, item in changes.items():
             try:
                 model.r[key] = item.magnitude
@@ -231,10 +231,8 @@ class ModelSensitivity(object):
                 )
                 raise err
 
-        doc = libsbml.readSBMLFromString(
-            model.r.getSBML()
-        )  # type: libsbml.SBMLDocument
-        sbml_model = doc.getModel()  # type: libsbml.Model
+        doc: libsbml.SBMLDocument = libsbml.readSBMLFromString(model.r.getSBML())
+        sbml_model: libsbml.Model = doc.getModel()
 
         ids = []
 
@@ -243,7 +241,8 @@ class ModelSensitivity(object):
             SensitivityType.All_SENSITIVITY,
         }:
             # constant parameters
-            for p in sbml_model.getListOfParameters():  # type: libsbml.Parameter
+            p: libsbml.Parameter
+            for p in sbml_model.getListOfParameters():
                 if p.getConstant() is True:
                     ids.append(p.getId())
         if stype in {
@@ -251,7 +250,8 @@ class ModelSensitivity(object):
             SensitivityType.All_SENSITIVITY,
         }:
             # initial species amount
-            for s in sbml_model.getListOfSpecies():  # type: libsbml.Species
+            s: libsbml.Species
+            for s in sbml_model.getListOfSpecies():
                 ids.append(s.getId())
 
         def value_dict(ids: Iterable[str]):
@@ -259,9 +259,6 @@ class ModelSensitivity(object):
 
             Non-zero and exclude filtering is applied.
             """
-            udict = model.udict
-            Q_ = model.Q_
-
             d = {}
             for id in sorted(ids):
                 if exclude_filter and exclude_filter(id):
@@ -271,7 +268,7 @@ class ModelSensitivity(object):
                 if exclude_zero:
                     if np.abs(value) < zero_eps:
                         continue
-                d[id] = Q_(value, udict[id])
+                d[id] = model.Q_(value, model.uinfo[id])
             return d
 
         return value_dict(ids)

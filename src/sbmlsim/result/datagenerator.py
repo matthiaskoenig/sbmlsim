@@ -27,7 +27,7 @@ class DataGeneratorIndexingFunction(DataGeneratorFunction):
         results = {}
         for key, xres in xresults.items():
             xds_new = xres.xds.isel({self.dimension: self.index})
-            xres_new = XResult(xdataset=xds_new, udict=xres.udict, ureg=xres.ureg)
+            xres_new = XResult(xdataset=xds_new, uinfo=xres.uinfo)
             results[key] = xres_new
 
         return results

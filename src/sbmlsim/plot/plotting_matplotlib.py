@@ -478,15 +478,15 @@ def add_data(
         kwargs["linestyle"] = "--"
 
     # data with units
-    x = dset[xid].values * dset.ureg(dset.udict[xid]) * xf
-    y = dset[yid].values * dset.ureg(dset.udict[yid]) * yf
+    x = dset[xid].values * dset.uinfo.ureg(dset.uinfo[xid]) * xf
+    y = dset[yid].values * dset.uinfo.ureg(dset.uinfo[yid]) * yf
     y_err = None
     y_err_type = None
     if yid_sd:
-        y_err = dset[yid_sd].values * dset.ureg(dset.udict[yid]) * yf
+        y_err = dset[yid_sd].values * dset.uinfo.ureg(dset.uinfo[yid]) * yf
         y_err_type = "SD"
     elif yid_se:
-        y_err = dset[yid_se].values * dset.ureg(dset.udict[yid]) * yf
+        y_err = dset[yid_se].values * dset.uinfo.ureg(dset.uinfo[yid]) * yf
         y_err_type = "SE"
 
     # convert

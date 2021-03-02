@@ -17,8 +17,7 @@ def run_demo_example():
     """ Run various timecourses. """
     simulator = Simulator(MODEL_DEMO)
     # build quantities using the unit registry for the model
-    Q_ = simulator.ureg.Quantity
-    pprint(simulator.udict)
+    Q_ = simulator.Q_
 
     # 1. simple timecourse simulation
     print("*** setting concentrations and amounts ***")

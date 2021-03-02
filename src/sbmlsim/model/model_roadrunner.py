@@ -12,7 +12,7 @@ import roadrunner
 
 from sbmlsim.model import AbstractModel
 from sbmlsim.model.model_resources import Source
-from sbmlsim.units import Quantity, UnitRegistry, Units, UdictType, UnitsInformation
+from sbmlsim.units import Quantity, UdictType, UnitRegistry, Units, UnitsInformation
 from sbmlsim.utils import md5_for_path
 
 
@@ -91,7 +91,7 @@ class RoadrunnerSBMLModel(AbstractModel):
     @property
     def Q_(self) -> Quantity:
         """Quantity to create quantities for model changes."""
-        return self.ureg.Quantity
+        return self.uinfo.ureg.Quantity
 
     @property
     def r(self) -> roadrunner.RoadRunner:

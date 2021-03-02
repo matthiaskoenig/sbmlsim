@@ -310,9 +310,7 @@ class OptimizationProblem(object):
 
                 task_id = mapping.observable.task_id
                 task = sim_experiment._tasks[task_id]
-                model = sim_experiment._models[
-                    task.model_id
-                ]  # type: RoadrunnerSBMLModel
+                model: RoadrunnerSBMLModel = sim_experiment._models[task.model_id]
                 simulation = sim_experiment._simulations[task.simulation_id]
 
                 if not isinstance(simulation, TimecourseSim):
@@ -323,8 +321,8 @@ class OptimizationProblem(object):
                 # observable units
                 obs_xid = mapping.observable.x.index
                 obs_yid = mapping.observable.y.index
-                obs_x_unit = model.udict[obs_xid]
-                obs_y_unit = model.udict[obs_yid]
+                obs_x_unit = model.uinfo[obs_xid]
+                obs_y_unit = model.uinfo[obs_yid]
 
                 # prepare data
                 data_ref = mapping.reference.get_data()
@@ -683,8 +681,8 @@ class OptimizationProblem(object):
             simulator.set_timecourse_selections(selections=self.selections[k])
 
             # FIXME: normalize simulations and parameters once outside of loop
-            simulation = self.simulations[k]  # type: TimecourseSim
-            simulation.normalize(udict=simulator.udict, ureg=simulator.ureg)
+            simulation: TimecourseSim = self.simulations[k]
+            simulation.normalize(uinfo=simulator.uinfo)
 
             # run simulation
             try:

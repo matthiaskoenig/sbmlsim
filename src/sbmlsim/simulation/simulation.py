@@ -6,6 +6,8 @@ from typing import Any, Dict, Iterable, List
 
 import numpy as np
 
+from sbmlsim.units import UnitsInformation
+
 
 class Dimension(object):
     """Define dimension for a simulation or scan.
@@ -73,7 +75,7 @@ class AbstractSim(ABC):
         pass
 
     @abc.abstractmethod
-    def normalize(self, udict: Dict[str, Any], ureg) -> None:
+    def normalize(self, uinfo: UnitsInformation) -> None:
         """Normalize simulation."""
         pass
 

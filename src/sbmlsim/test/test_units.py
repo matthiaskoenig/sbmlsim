@@ -2,14 +2,15 @@
 Test units.
 """
 from pathlib import Path
-from typing import Tuple, List
+from typing import List, Tuple
 
 import libsbml
 import pytest
 
 from sbmlsim.examples import example_units
 from sbmlsim.test import MODEL_DEMO, MODEL_REPRESSILATOR
-from sbmlsim.units import Units, UnitsInformation, UnitRegistry
+from sbmlsim.units import UnitRegistry, Units, UnitsInformation
+
 
 sbml_paths = [MODEL_DEMO, MODEL_REPRESSILATOR]
 
@@ -93,4 +94,3 @@ def test_udef_to_str(udef: libsbml.UnitDefinition, s: str) -> None:
 
 # def test_normalize_changes() -> None:
 #     Units.normalize_changes()
-

@@ -8,7 +8,7 @@ import pandas as pd
 import xarray as xr
 
 from sbmlsim.simulation import Dimension, ScanSim
-from sbmlsim.units import UnitRegistry
+from sbmlsim.units import UnitRegistry, UnitsInformation
 from sbmlsim.utils import deprecated, timeit
 
 
@@ -22,12 +22,9 @@ class XResult:
     dictionary lookups.
     """
 
-    def __init__(
-        self, xdataset: xr.Dataset, udict: Dict = None, ureg: UnitRegistry = None
-    ):
+    def __init__(self, xdataset: xr.Dataset, uinfo: UnitsInformation = None):
         self.xds = xdataset
-        self.udict = udict
-        self.ureg = ureg
+        self.uinfo = uinfo
 
     def __getitem__(self, key) -> xr.DataArray:
         """Get item."""
@@ -35,7 +32,7 @@ class XResult:
 
     def __getattr__(self, name):
         """Provide dot access to keys."""
-        if name in {"xds", "scan", "udict", "ureg"}:
+        if name in {"xds", "scan", "uinfo"}:
             # local field lookup
             return getattr(self, name)
         else:
@@ -44,31 +41,31 @@ class XResult:
 
     def __str__(self) -> str:
         """Get string."""
-        return f"<XResult: {self.xds.__repr__()},\n{self.udict}>"
+        return f"<XResult: {self.xds.__repr__()},\n{self.uinfo}>"
 
     def dim_mean(self, key):
         """Get mean over all added dimensions."""
         return self.xds[key].mean(
             dim=self._redop_dims(), skipna=True
-        ).values * self.ureg(self.udict[key])
+        ).values * self.uinfo.ureg(self.uinfo[key])
 
     def dim_std(self, key):
         """Get standard deviation over all added dimensions."""
         return self.xds[key].std(
             dim=self._redop_dims(), skipna=True
-        ).values * self.ureg(self.udict[key])
+        ).values * self.uinfo.ureg(self.uinfo[key])
 
     def dim_min(self, key):
         """Get minimum over all added dimensions."""
         return self.xds[key].min(
             dim=self._redop_dims(), skipna=True
-        ).values * self.ureg(self.udict[key])
+        ).values * self.uinfo.ureg(self.uinfo[key])
 
     def dim_max(self, key):
         """Get maximum over all added dimensions."""
         return self.xds[key].max(
             dim=self._redop_dims(), skipna=True
-        ).values * self.ureg(self.udict[key])
+        ).values * self.uinfo.ureg(self.uinfo[key])
 
     def _redop_dims(self) -> List[str]:
         """Dimensions for reducing operations."""
@@ -79,15 +76,17 @@ class XResult:
         cls,
         dfs: List[pd.DataFrame],
         scan: ScanSim = None,
-        udict: Dict = None,
-        ureg: UnitRegistry = None,
+        uinfo: UnitsInformation = None,
     ) -> "XResult":
-        """Structure is based on the underlying scan."""
+        """Create XResult from DataFrames.
+
+        Structure is based on the underlying scans
+        """
         if isinstance(dfs, pd.DataFrame):
             dfs = [dfs]
 
-        if udict is None:
-            udict = {}
+        if uinfo is None:
+            uinfo = UnitsInformation(udict={}, ureg=None)
 
         df = dfs[0]
         num_dfs = len(dfs)
@@ -131,10 +130,10 @@ class XResult:
             }
         )
         for key in data_dict:
-            if key in udict:
+            if key in uinfo:
                 # set units attribute
-                ds[key].attrs["units"] = udict[key]
-        return XResult(xdataset=ds, udict=udict, ureg=ureg)
+                ds[key].attrs["units"] = uinfo[key]
+        return XResult(xdataset=ds, uinfo=uinfo)
 
     def to_netcdf(self, path_nc):
         """Store results as netcdf."""

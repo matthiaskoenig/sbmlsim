@@ -3,13 +3,13 @@
 Used for model and data unit conversions.
 """
 import logging
-from collections import UserDict
-
-import numpy as np
 import os
+from collections import MutableMapping
 from pathlib import Path
-from typing import Dict, Tuple, Optional
+from typing import Dict, Optional, Tuple
+
 import libsbml
+import numpy as np
 
 
 # Disable Pint's old fallback behavior (must come before importing Pint)
@@ -30,45 +30,55 @@ logger = logging.getLogger(__name__)
 UdictType = Dict[str, str]
 
 
-class UnitsInformation:
+class UnitsInformation(MutableMapping):
     """Storage of units information.
 
     Used for models or datasets.
     """
 
-    def __init__(self, udict: UdictType, ureg: UnitRegistry):
-        """Initialize UnitsInformation."""
+    def __init__(self, udict: UdictType, ureg: UnitRegistry, *args, **kwargs):
+        """Initialize UnitsInformation.
+
+        Behaves like a dict which allows to lookup units by id.
+        """
         self.udict: UdictType = udict
         self.ureg: UnitRegistry = ureg
+        self.update(dict(*args, **kwargs))
 
-    def __getter__(self, key: str) -> str:
-        """Get value for key. """
-        return self.udict[key]
+    def __getitem__(self, key: str):
+        return self.udict[self._keytransform(key)]
 
-    def __setter__(self, key: str, value: str) -> None:
-        """Set value for key."""
-        self.udict[key] = value
+    def __setitem__(self, key: str, value):
+        self.udict[self._keytransform(key)] = value
+
+    def __delitem__(self, key):
+        del self.udict[self._keytransform(key)]
 
     def __iter__(self):
-        return self.udict.__iter__()
+        return iter(self.udict)
+
+    def __len__(self):
+        return len(self.udict)
+
+    def _keytransform(self, key):
+        return key
+
+    @property
+    def Q_(self):
+        return self.ureg.Quantity
 
     @staticmethod
     def from_sbml_path(
         model_path: Path, ureg: Optional[UnitRegistry] = None
-    ) -> 'UnitsInformation':
+    ) -> "UnitsInformation":
         """Get pint UnitsInformation for model."""
-        doc: libsbml.SBMLDocument
-        if isinstance(model_path, Path):
-            doc = libsbml.readSBMLFromFile(str(model_path))
-        elif isinstance(model_path, str):
-            doc = libsbml.readSBMLFromFile(model_path)
-        else:
-            raise ValueError(f"model_path not supported: '{type(model_path)}'")
-
+        doc: libsbml.SBMLDocument = libsbml.readSBMLFromFile(str(model_path))
         return UnitsInformation.from_sbml_doc(doc, ureg=ureg)
 
     @staticmethod
-    def from_sbml_doc(doc: libsbml.SBMLDocument, ureg: Optional[UnitRegistry] = None) -> 'UnitsInformation':
+    def from_sbml_doc(
+        doc: libsbml.SBMLDocument, ureg: Optional[UnitRegistry] = None
+    ) -> "UnitsInformation":
         """Get pint UnitsInformation for model in document."""
 
         # parse unit registry
@@ -158,7 +168,9 @@ class UnitsInformation:
         return UnitsInformation(udict=udict, ureg=ureg)
 
     @classmethod
-    def _ureg_from_model(cls, model: libsbml.Model, ureg: Optional[UnitRegistry] = None) -> UnitRegistry:
+    def _ureg_from_model(
+        cls, model: libsbml.Model, ureg: Optional[UnitRegistry] = None
+    ) -> UnitRegistry:
         """Create a pint unit registry from the given SBML."""
 
         if ureg is None:
@@ -208,7 +220,7 @@ class UnitsInformation:
 
     @staticmethod
     def normalize_changes(
-        changes: Dict[str, Quantity], uinfo: 'UnitsInformation'
+        changes: Dict[str, Quantity], uinfo: "UnitsInformation"
     ) -> Dict[str, Quantity]:
         """Normalize all changes to units in given units dictionary.
 

@@ -17,7 +17,7 @@ from sbmlsim.simulator.simulation_ray import (
     ray,
 )
 from sbmlsim.test import MODEL_GLCWB, MODEL_REPRESSILATOR
-from sbmlsim.units import Units
+from sbmlsim.units import Units, UnitsInformation
 
 
 def example_single_actor():
@@ -31,7 +31,7 @@ def example_single_actor():
     # create state file
     r = roadrunner.RoadRunner(str(MODEL_REPRESSILATOR))
     RoadrunnerSBMLModel.set_timecourse_selections(r)
-    udict, ureg = Units.units_from_sbml(str(MODEL_REPRESSILATOR))
+    uinfo = UnitsInformation.from_sbml_path(MODEL_REPRESSILATOR)
 
     f_state = tempfile.NamedTemporaryFile(suffix=".dat")
     r.saveState(f_state.name)
@@ -47,7 +47,7 @@ def example_single_actor():
         ]
     )
 
-    tcsim.normalize(udict=udict, ureg=ureg)
+    tcsim.normalize(uinfo=uinfo)
     tc_id = sa._timecourse.remote(tcsim)
     results = ray.get(tc_id)
     return results
@@ -61,7 +61,7 @@ def example_multiple_actors():
     # create state file
     r = roadrunner.RoadRunner(str(MODEL_REPRESSILATOR))
     RoadrunnerSBMLModel.set_timecourse_selections(r)
-    udict, ureg = Units.units_from_sbml(str(MODEL_REPRESSILATOR))
+    uinfo = UnitsInformation.from_sbml_path(MODEL_REPRESSILATOR)
 
     f_state = tempfile.NamedTemporaryFile(suffix=".dat")
     r.saveState(f_state.name)
@@ -76,7 +76,7 @@ def example_multiple_actors():
             Timecourse(start=0, end=100, steps=100, changes={"X": 10, "Y": 20}),
         ]
     )
-    tcsim.normalize(udict=udict, ureg=ureg)
+    tcsim.normalize(uinfo=uinfo)
 
     # run simulation on simulators
     tc_ids = [s._timecourse.remote(tcsim) for s in simulators]
