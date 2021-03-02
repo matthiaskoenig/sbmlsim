@@ -77,7 +77,7 @@ def create_udef_examples() -> List[Tuple[libsbml.UnitDefinition, str]]:
         (None, "None"),
         (udef0, ""),
         (udef1, "s"),
-        (udef2, "1/((10^-3)*mole)"),
+        (udef2, "1/(10E-3*mole)"),
     ]
 
 
