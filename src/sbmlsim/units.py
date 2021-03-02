@@ -63,6 +63,11 @@ class UnitsInformation(MutableMapping):
     def _keytransform(self, key):
         return key
 
+    def __str__(self) -> str:
+        """Get string."""
+        items = [f"{k}: {self[k]}" for k in self.keys()]
+        return "\n".join(items)
+
     @property
     def Q_(self):
         return self.ureg.Quantity
@@ -87,8 +92,7 @@ class UnitsInformation(MutableMapping):
 
         # create sid to unit mapping
         udict: Dict[str, str] = {}
-        if not model.isPopulatedAllElementIdList():
-            model.populateAllElementIdList()
+
 
         # add time unit
         time_uid: str = model.getTimeUnits()
@@ -99,7 +103,11 @@ class UnitsInformation(MutableMapping):
         # FIXME: get pint units here
         udict["time"] = time_uid
 
+        # get all objects in model
+        if not model.isPopulatedAllElementIdList():
+            model.populateAllElementIdList()
         sid_list: libsbml.IdList = model.getAllElementIdList()
+
         for k in range(sid_list.size()):
             sid = sid_list.at(k)
             element: libsbml.SBase = model.getElementBySId(sid)
@@ -352,3 +360,10 @@ class Units:
     #     if uid is not uid_in:
     #         logger.debug(f"uid normalization: {uid_in} -> {uid}")
     #     return uid
+
+
+if __name__ == "__main__":
+    from sbmlsim.test import MODEL_DEMO
+    uinfo = UnitsInformation.from_sbml_path(MODEL_DEMO)
+    print(uinfo)
+

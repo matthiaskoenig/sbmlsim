@@ -259,7 +259,7 @@ class DataSet(pd.DataFrame):
     """
 
     # additional properties
-    _metadata = ["uinfo"]
+    _metadata = ["uinfo", "Q_"]
 
     @property
     def _constructor(self):
@@ -274,7 +274,7 @@ class DataSet(pd.DataFrame):
 
         Requires using the numpy data instead of the series.
         """
-        return self.ureg.Quantity(
+        return self.uinfo.ureg.Quantity(
             self[key].values,
             self.uinfo[key],
         )
@@ -379,6 +379,7 @@ class DataSet(pd.DataFrame):
 
         dset = DataSet(df)
         dset.uinfo = UnitsInformation(all_udict, ureg=ureg)
+        dset.Q_ = dset.uinfo.ureg.Quantity
         return dset
 
     def unit_conversion(self, key, factor: Quantity):
