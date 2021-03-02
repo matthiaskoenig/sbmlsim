@@ -6,7 +6,6 @@ import logging
 import os
 from pathlib import Path
 from typing import Dict, Tuple
-
 import libsbml
 
 
@@ -102,35 +101,43 @@ class Units:
 
         :param model_path: path to SBML model
         :return: udict, ureg
+
+
+        # FIXME: don't store the uid, but the parsed unit-definition
+
         """
+        doc: libsbml.SBMLDocument
         if isinstance(model_path, Path):
-            doc = libsbml.readSBMLFromFile(
-                str(model_path)
-            )  # type: libsbml.SBMLDocument
+            doc = libsbml.readSBMLFromFile(str(model_path))
         elif isinstance(model_path, str):
             doc = libsbml.readSBMLFromFile(model_path)
+        else:
+            raise ValueError(f"model_path not supported: '{type(model_path)}'")
 
         # parse unit registry
         ureg = cls.ureg_from_sbml(doc, ureg)
 
         # get all units defined in the model (unit definitions)
-        model = doc.getModel()  # type: libsbml.Model
+        model: libsbml.Model = doc.getModel()
 
         # create sid to unit mapping
-        udict = {}
+        udict: Dict[str, str] = {}
         if not model.isPopulatedAllElementIdList():
             model.populateAllElementIdList()
 
         # add time unit
-        time_uid = model.getTimeUnits()
+        time_uid: str = model.getTimeUnits()
         if not time_uid:
+            logger.warning("No time units defined in model, falling back to 'second'.")
             time_uid = "second"
+
+        # FIXME: get pint units here
         udict["time"] = time_uid
 
-        sid_list = model.getAllElementIdList()  # type: libsbml.IdList
+        sid_list: libsbml.IdList = model.getAllElementIdList()
         for k in range(sid_list.size()):
             sid = sid_list.at(k)
-            element = model.getElementBySId(sid)  # type: libsbml.SBase
+            element: libsbml.SBase = model.getElementBySId(sid)
             if element:
                 # in case of reactions we have to derive units from the kinetic law
                 if isinstance(element, libsbml.Reaction):
@@ -145,9 +152,9 @@ class Units:
                     substance_uid = element.getSubstanceUnits()
                     udict[sid] = substance_uid
 
-                    compartment = model.getCompartment(
+                    compartment: libsbml.Compartment = model.getCompartment(
                         element.getCompartment()
-                    )  # type: libsbml.Compartment
+                    )
                     volume_uid = compartment.getUnits()
 
                     # store concentration
