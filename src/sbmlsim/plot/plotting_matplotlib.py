@@ -354,7 +354,7 @@ def add_line(
     kwargs["color"] = color
 
     if all_lines:
-        Q_ = xres.ureg.Quantity
+        Q_ = xres.uinfo.Q_
         # iterate over all dimensions besides time
         # all combinations
         dims = xres._redop_dims()
@@ -362,8 +362,8 @@ def add_line(
         indices = list(itertools.product(*index_vecs))
         for k, item in enumerate(indices):
             d = dict(zip(dims, item))
-            xi = Q_(xres[xid].isel(d).values, xres.udict[xid])
-            yi = Q_(xres[yid].isel(d).values, xres.udict[yid])
+            xi = Q_(xres[xid].isel(d).values, xres.uinfo[xid])
+            yi = Q_(xres[yid].isel(d).values, xres.uinfo[yid])
             # FIXME: these conversions should not be necessary
             if xunit:
                 xi = xi.to(xunit)

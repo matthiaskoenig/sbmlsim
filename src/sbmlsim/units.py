@@ -361,9 +361,9 @@ class Units:
                     string = "({}{}{})".format(m_str, k_str, e_str)
             else:
                 if e_str == "":
-                    string = "({}10E{}*{})".format(m_str, s, k_str)
+                    string = "({}10^{}*{})".format(m_str, s, k_str)
                 else:
-                    string = "(({}10E{}*{})^{})".format(m_str, s, k_str, e_str)
+                    string = "(({}10^{}*{})^{})".format(m_str, s, k_str, e_str)
 
             # collect the terms
             if e >= 0.0:

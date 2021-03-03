@@ -74,7 +74,7 @@ class SimulatorWorker:
 
                 # [2] re-evaluate initial assignments
                 # https://github.com/sys-bio/roadrunner/issues/710
-                logger.debug("Reavaluate initial conditions")
+                logger.debug("Reevaluate initial conditions")
                 # FIXME: support initial model changes
                 # self.r.resetAll()
                 self.r.reset(SelectionRecord.DEPENDENT_FLOATING_AMOUNT)

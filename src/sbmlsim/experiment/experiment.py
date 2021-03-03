@@ -370,7 +370,7 @@ class SimulationExperiment(object):
             self._results = ExperimentDict()
 
         # get all tasks for given model
-        model_tasks = defaultdict(list)
+        model_tasks: Dict[str, List[str]] = defaultdict(list)
         for task_key, task in self._tasks.items():
             model_tasks[task.model_id].append(task_key)
 
