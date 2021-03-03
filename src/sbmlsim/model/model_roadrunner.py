@@ -12,7 +12,7 @@ import roadrunner
 
 from sbmlsim.model import AbstractModel
 from sbmlsim.model.model_resources import Source
-from sbmlsim.units import Quantity, UnitRegistry, Units
+from sbmlsim.units import Quantity, UdictType, UnitRegistry, Units, UnitsInformation
 from sbmlsim.utils import md5_for_path
 
 
@@ -83,19 +83,15 @@ class RoadrunnerSBMLModel(AbstractModel):
         if settings is not None:
             RoadrunnerSBMLModel.set_integrator_settings(self._model, **settings)
 
-        # every model has its own unit registry (in a simulation experiment one
-        # global unit registry per experiment should be used)
-        if not ureg:
-            ureg = Units.default_ureg()
-        self.udict, self.ureg = self.parse_units(ureg)
+        self.uinfo = self.parse_units(ureg)
 
         # normalize model changes
-        self.normalize(ureg=self.ureg, udict=self.udict)
+        self.normalize(uinfo=self.uinfo)
 
     @property
     def Q_(self) -> Quantity:
         """Quantity to create quantities for model changes."""
-        return self.ureg.Quantity
+        return self.uinfo.ureg.Quantity
 
     @property
     def r(self) -> roadrunner.RoadRunner:
@@ -158,14 +154,14 @@ class RoadrunnerSBMLModel(AbstractModel):
         r2.loadState(filename)
         return r2
 
-    def parse_units(self, ureg: UnitRegistry) -> Tuple[Dict[str, str], UnitRegistry]:
+    def parse_units(self, ureg: UnitRegistry) -> UnitsInformation:
         """Parse units from SBML model."""
         if self.source.is_content():
             model_path = self.source.content
         elif self.source.is_path():
             model_path = self.source.path
 
-        return Units.get_units_from_sbml(model_path, ureg)
+        return UnitsInformation.from_sbml_path(model_path, ureg)
 
     @classmethod
     def set_timecourse_selections(

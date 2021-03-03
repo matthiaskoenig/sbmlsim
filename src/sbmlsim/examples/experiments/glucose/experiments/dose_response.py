@@ -13,6 +13,7 @@ from sbmlsim.plot.plotting_matplotlib import add_data, plt
 from sbmlsim.result import XResult
 from sbmlsim.simulation import Dimension, ScanSim, Timecourse, TimecourseSim
 from sbmlsim.task import Task
+from sbmlsim.units import UnitsInformation
 from sbmlsim.utils import timeit
 
 
@@ -98,7 +99,7 @@ class DoseResponseExperiment(SimulationExperiment):
                 "mean": df["unit"].unique()[0],
             }
             dsets[hormone_key.lower()] = DataSet.from_df(
-                df, udict=udict, ureg=self.ureg
+                df, ureg=self.ureg, udict=udict
             )
 
         return dsets
@@ -160,8 +161,7 @@ class DoseResponseExperiment(SimulationExperiment):
 
         dose_response["[glc_ext]"] = glc_vec
         df = pd.DataFrame(dose_response)
-        dset = DataSet.from_df(df, udict=model.udict, ureg=self.ureg)
-        print(dset)
+        dset = DataSet.from_df(df, udict=model.uinfo.udict, ureg=self.ureg)
 
         # plot scan results
         kwargs = {"linewidth": 2, "linestyle": "-", "marker": "None", "color": "black"}

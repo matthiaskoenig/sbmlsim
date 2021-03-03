@@ -15,7 +15,7 @@ from typing import Dict, Iterable, List, Optional
 from sbmlsim.experiment import ExperimentResult, SimulationExperiment
 from sbmlsim.model import RoadrunnerSBMLModel
 from sbmlsim.simulator import SimulatorSerial
-from sbmlsim.units import UnitRegistry, Units
+from sbmlsim.units import UnitRegistry, Units, UnitsInformation
 from sbmlsim.utils import timeit
 
 
@@ -31,13 +31,13 @@ class ExperimentRunner(object):
         base_path: Path,
         data_path: Path,
         simulator: SimulatorSerial = None,
-        ureg: UnitRegistry = None,
+        ureg: UnitRegistry = None,  # FIXME: is this needed on ExperimentRunner?
         **kwargs,
     ):
 
         # single UnitRegistry per runner
         if not ureg:
-            ureg = Units.default_ureg()
+            ureg = UnitsInformation._default_ureg()
         self.ureg = ureg
         self.Q_ = ureg.Quantity
 

@@ -10,7 +10,7 @@ from typing import Dict, List
 import numpy as np
 
 from sbmlsim.simulation import AbstractSim, Dimension
-from sbmlsim.units import UnitRegistry, Units
+from sbmlsim.units import UnitRegistry, Units, UnitsInformation
 
 
 logger = logging.getLogger()
@@ -93,19 +93,19 @@ class ScanSim(AbstractSim):
         if self.simulation and isinstance(self.simulation, TimecourseSim):
             self.simulation.add_model_changes(model_changes)
 
-    def normalize(self, udict: Dict, ureg: UnitRegistry):
-        """Normalize scan.
+    def normalize(self, uinfo: UnitsInformation):
+        """Normalize units in scan.
 
         Requires normalization of timecourse simulation as well
         as all dimensions in the scan.
         """
         # normalize simulation
-        self.simulation.normalize(udict=udict, ureg=ureg)
+        self.simulation.normalize(uinfo=uinfo)
 
         # normalize changes in all dimensions
         for scan_dim in self.dimensions:
-            scan_dim.changes = Units.normalize_changes(
-                scan_dim.changes, udict=udict, ureg=ureg
+            scan_dim.changes = UnitsInformation.normalize_changes(
+                scan_dim.changes, uinfo=uinfo
             )
 
     def to_simulations(self):

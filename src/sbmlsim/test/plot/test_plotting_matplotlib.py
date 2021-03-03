@@ -11,7 +11,7 @@ from sbmlsim.test import MODEL_REPRESSILATOR
 
 def test_plotting():
     simulator = Simulator(MODEL_REPRESSILATOR)
-    Q_ = simulator.ureg.Quantity
+    Q_ = simulator.Q_
     scan1d = ScanSim(
         simulation=TimecourseSim(
             [

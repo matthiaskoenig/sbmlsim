@@ -3,13 +3,14 @@ import json
 import logging
 from copy import deepcopy
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple, Union
+from typing import Any, Dict, List, Optional, Tuple, Union
 
 import numpy as np
+from pint import Quantity
 
 from sbmlsim.serialization import ObjectJSONEncoder
 from sbmlsim.simulation import AbstractSim, Dimension
-from sbmlsim.units import Units
+from sbmlsim.units import Units, UnitsInformation
 
 
 logger = logging.getLogger(__name__)
@@ -32,8 +33,8 @@ class Timecourse(ObjectJSONEncoder):
         start: float,
         end: float,
         steps: int,
-        changes: dict = None,
-        model_changes: dict = None,
+        changes: Dict[str, Quantity] = None,
+        model_changes: Dict[str, Quantity] = None,
         model_manipulations: dict = None,
         discard: bool = False,
     ):
@@ -67,10 +68,10 @@ class Timecourse(ObjectJSONEncoder):
         self.discard = discard
 
     def __repr__(self) -> str:
-        """Get representation."""
+        """Get string representation."""
         return f"Timecourse([{self.start}:{self.end}])"
 
-    def to_dict(self):
+    def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary."""
         d = dict()
         for key in self.__dict__:
@@ -97,18 +98,21 @@ class Timecourse(ObjectJSONEncoder):
         """Remove model change for id."""
         del self.model_changes[sid]
 
-    def normalize(self, udict, ureg):
+    def normalize(self, uinfo: UnitsInformation) -> None:
         """Normalize values to model units for all changes."""
-        self.model_changes = Units.normalize_changes(
-            self.model_changes, udict=udict, ureg=ureg
+        self.model_changes = UnitsInformation.normalize_changes(
+            changes=self.model_changes, uinfo=uinfo
         )
-        self.changes = Units.normalize_changes(self.changes, udict=udict, ureg=ureg)
+        self.changes = UnitsInformation.normalize_changes(
+            changes=self.changes, uinfo=uinfo
+        )
 
-    def strip_units(self):
-        """Strip units for parallel simulation.
+    def strip_units(self) -> None:
+        """Strip units from changes for parallel simulation.
 
         All changes must be normalized before stripping !.
         """
+        self.model_changes = {k: v.magnitude for k, v in self.model_changes.items()}
         self.changes = {k: v.magnitude for k, v in self.changes.items()}
 
 
@@ -187,17 +191,17 @@ class TimecourseSim(AbstractSim):
             tc = self.timecourses[0]  # type: Timecourse
             tc.add_model_changes(model_changes)
 
-    def normalize(self, udict, ureg):
+    def normalize(self, uinfo: UnitsInformation) -> None:
         """Normalize timecourse simulation."""
         for tc in self.timecourses:
-            tc.normalize(udict=udict, ureg=ureg)
+            tc.normalize(uinfo=uinfo)
 
-    def strip_units(self):
+    def strip_units(self) -> None:
         """Strip units from simulation."""
         for tc in self.timecourses:
             tc.strip_units()
 
-    def to_dict(self):
+    def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary."""
         d = {
             "type": self.__class__.__name__,

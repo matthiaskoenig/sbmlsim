@@ -398,17 +398,17 @@ class SimulationExperiment(object):
                 simulator.set_timecourse_selections(selections=None)
 
             # normalize model changes (these must be set in simulation!)
-            model.normalize(udict=simulator.udict, ureg=simulator.ureg)
+            model.normalize(uinfo=model.uinfo)
 
             for task_key in task_keys:  # type: str
                 task = self._tasks[task_key]
 
-                sim = self._simulations[
+                sim: Union[ScanSim, TimecourseSim] = self._simulations[
                     task.simulation_id
-                ]  # type: Union[ScanSim, TimecourseSim]
+                ]
 
                 # normalization before running to ensure correct serialization
-                sim.normalize(udict=simulator.udict, ureg=simulator.ureg)
+                sim.normalize(uinfo=simulator.uinfo)
 
                 # inject model changes (copy to create independent)
                 sim = deepcopy(sim)

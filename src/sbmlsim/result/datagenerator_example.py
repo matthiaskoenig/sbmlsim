@@ -11,7 +11,7 @@ from sbmlsim.test import MODEL_MIDAZOLAM
 def example_scan() -> XResult:
     """Run scan and return results."""
     simulator = SimulatorParallel(model=MODEL_MIDAZOLAM)
-    Q_ = simulator.ureg.Quantity
+    Q_ = simulator.Q_
 
     scan = ScanSim(
         simulation=TimecourseSim(

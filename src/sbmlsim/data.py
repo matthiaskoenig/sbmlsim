@@ -9,7 +9,7 @@ import pandas as pd
 
 from sbmlsim.combine import mathml
 from sbmlsim.result import XResult
-from sbmlsim.units import DimensionalityError, Quantity, UnitRegistry
+from sbmlsim.units import DimensionalityError, Quantity, UnitRegistry, UnitsInformation
 from sbmlsim.utils import deprecated
 
 
@@ -162,22 +162,22 @@ class Data(object):
                 logger.error(error_msg)
                 raise KeyError(error_msg)
             try:
-                self.unit = dset.udict[uindex]
+                self.unit = dset.uinfo[uindex]
             except KeyError as err:
                 logger.error(
                     f"Units missing for key '{uindex}' in dataset: "
                     f"'{self.dset_id}'. Add missing units to dataset."
                 )
                 raise err
-            x = dset[self.index].values * dset.ureg(dset.udict[uindex])
+            x = dset[self.index].values * dset.uinfo.ureg(dset.uinfo[uindex])
 
         elif self.dtype == Data.Types.TASK:
             # read results of task
-            xres = self.experiment.results[self.task_id]  # type: XResult
+            xres: XResult = self.experiment.results[self.task_id]
             if not isinstance(xres, XResult):
                 raise ValueError("Only Result objects supported in task data.")
 
-            self.unit = xres.udict[self.index]
+            self.unit = xres.uinfo[self.index]
             # FIXME: complete data must be kept
             # print(xres)
             x = xres.dim_mean(self.index)
@@ -240,7 +240,7 @@ class DataSeries(pd.Series):
     """DataSet - a pd.Series with additional unit information."""
 
     # additional properties
-    _metadata = ["udict", "ureg"]
+    _metadata = ["uinfo"]
 
     @property
     def _constructor(self):
@@ -255,13 +255,11 @@ class DataSet(pd.DataFrame):
     """DataSet.
 
      pd.DataFrame with additional unit information in the form
-    of a unit dictionary 'udict' (Dict[str, str]) mapping column
-    keys to units. The UnitRegistry is the UnitRegistry conversions
-    are calculated on.
+    of UnitInformations.
     """
 
     # additional properties
-    _metadata = ["udict", "ureg"]
+    _metadata = ["uinfo", "Q_"]
 
     @property
     def _constructor(self):
@@ -276,10 +274,9 @@ class DataSet(pd.DataFrame):
 
         Requires using the numpy data instead of the series.
         """
-        return self.ureg.Quantity(
-            # downcasting !
+        return self.uinfo.ureg.Quantity(
             self[key].values,
-            self.udict[key],
+            self.uinfo[key],
         )
 
     def __repr__(self) -> str:
@@ -303,9 +300,9 @@ class DataSet(pd.DataFrame):
            'mean', 'value', 'sd' and 'se' columns
 
         :param df: pandas.DataFrame
-        :param udict: optional unit dictionary
-        :param ureg:
-        :return:
+        :param uinfo: optional units information
+
+        :return: dataset
         """
         if not isinstance(ureg, UnitRegistry):
             raise ValueError(
@@ -318,7 +315,7 @@ class DataSet(pd.DataFrame):
             udict = {}
 
         # all units from udict and DataFrame
-        all_udict = {}
+        all_udict: Dict[str, str] = {}
 
         for key in df.columns:
             # handle '*_unit columns'
@@ -381,11 +378,11 @@ class DataSet(pd.DataFrame):
                     setattr(df, f"{key}_unit", unit)
 
         dset = DataSet(df)
-        dset.udict = all_udict
-        dset.ureg = ureg
+        dset.uinfo = UnitsInformation(all_udict, ureg=ureg)
+        dset.Q_ = dset.uinfo.ureg.Quantity
         return dset
 
-    def unit_conversion(self, key, factor: Quantity, filter=None):
+    def unit_conversion(self, key, factor: Quantity):
         """Convert the units of the given key in the dataset.
 
         The quantity in the dataset is multiplied with the conversion factor.
@@ -407,14 +404,14 @@ class DataSet(pd.DataFrame):
         :return: None
         """
         if key in self.columns:
-            if key not in self.udict:
+            if key not in self.uinfo:
                 raise ValueError(
                     f"Unit conversion only possible on keys which have units! "
                     f"No unit defined for key '{key}'"
                 )
 
             # unit conversion and simplification
-            new_quantity = self.ureg.Quantity(self[key], self.udict[key]) * factor
+            new_quantity = self.uinfo.Q_(self[key], self.uinfo[key]) * factor
             new_quantity = new_quantity.to_base_units().to_reduced_units()
 
             # updated values
@@ -425,7 +422,7 @@ class DataSet(pd.DataFrame):
                 if err_key in self.columns:
                     # error keys not stored in udict, only the base quantity
                     new_err_quantity = (
-                        self.ureg.Quantity(self[err_key], self.udict[key]) * factor
+                        self.uinfo.Q_(self[err_key], self.uinfo[key]) * factor
                     )
                     new_err_quantity = (
                         new_err_quantity.to_base_units().to_reduced_units()
@@ -437,7 +434,7 @@ class DataSet(pd.DataFrame):
             new_units_str = (
                 str(new_units).replace("**", "^").replace(" ", "")
             )  # '{:~}'.format(new_units)
-            self.udict[key] = new_units_str
+            self.uinfo[key] = new_units_str
 
             if f"{key}_unit" in self.columns:
                 self[f"{key}_unit"] = new_units_str
