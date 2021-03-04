@@ -28,7 +28,7 @@ class OptimizationResult(ObjectJSONEncoder):
 
     def __init__(
         self,
-        parameters: Union[List[FitParameter], Iterable[FitParameter]],
+        parameters: Union[List[FitParameter], List[Dict]],
         fits: List[OptimizeResult],
         trajectories: List,
         sid: str = None,
@@ -37,6 +37,8 @@ class OptimizationResult(ObjectJSONEncoder):
 
         Provides access to the FitParameters, the individual fits, and
         the trajectories of the fits.
+
+        # FIXME: store for which problem
 
         :param parameters:
         :param fits:
@@ -49,9 +51,18 @@ class OptimizationResult(ObjectJSONEncoder):
             self.sid = (
                 "{:%Y%m%d_%H%M%S}".format(datetime.datetime.now()) + f"__{uuid_str}"
             )
+        self.parameters: List[FitParameter] = []
+        for p in parameters:
+            if isinstance(p, Dict):
+                p = FitParameter(**p)
+            self.parameters.append(p)
 
-        self.parameters = parameters
-        self.fits = fits
+        self.fits: List[OptimizeResult] = []
+        for fit in fits:
+            if isinstance(fit, Dict):
+                fit = OptimizeResult(**fit)
+            self.fits.append(fit)
+
         self.trajectories = trajectories
 
         # create data frame from results
@@ -79,7 +90,7 @@ class OptimizationResult(ObjectJSONEncoder):
         return to_json(self, path=path)
 
     @staticmethod
-    def from_json(json_info: Tuple[str, Path]) -> "OptimizationResult":
+    def from_json(json_info: Union[str, Path]) -> "OptimizationResult":
         """Load OptimizationResult from Path or str.
 
         :param json_info:

@@ -32,7 +32,7 @@ def to_json(object, path: Path = None):
 class ObjectJSONEncoder(JSONEncoder):
     """Class for encoding in JSON."""
 
-    def to_json(self, path=None):
+    def to_json(self, path: Path = None):
         """Convert definition to JSON for exchange.
 
         :param path: path for file, if None JSON str is returned

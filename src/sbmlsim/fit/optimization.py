@@ -21,6 +21,7 @@ from sbmlsim.experiment import ExperimentRunner
 from sbmlsim.fit.objects import FitExperiment, FitMapping, FitParameter
 from sbmlsim.fit.sampling import SamplingType, create_samples
 from sbmlsim.model import RoadrunnerSBMLModel
+from sbmlsim.serialization import ObjectJSONEncoder
 from sbmlsim.simulation import TimecourseSim
 from sbmlsim.simulator import SimulatorSerial
 from sbmlsim.units import DimensionalityError
@@ -93,7 +94,7 @@ class ResidualType(Enum):
     )
 
 
-class OptimizationProblem(object):
+class OptimizationProblem(ObjectJSONEncoder):
     """Parameter optimization problem."""
 
     def __init__(
@@ -153,6 +154,30 @@ class OptimizationProblem(object):
         info.append("Parameters")
         info.extend([f"\t{p}" for p in self.parameters])
         return "\n".join(info)
+
+    def to_dict(self):
+        """Convert to dictionary."""
+        d = dict()
+        for key in ["opid", "fit_experiments", "parameters", "base_path", "data_path"]:
+            d[key] = self.__dict__[key]
+        return d
+
+    def to_json(self, path: Path):
+        """Store OptimizationResult as json.
+
+        Uses the to_dict method.
+        """
+        return to_json(self, path=path)
+
+    @staticmethod
+    def from_json(json_info: Tuple[str, Path]) -> "OptimizationResult":
+        """Load OptimizationResult from Path or str.
+
+        :param json_info:
+        :return:
+        """
+        d = from_json(json_info)
+        return OptimizationResult(**d)
 
     def report(self, path: Path = None, print_output: bool = True) -> str:
         """Print and write report.

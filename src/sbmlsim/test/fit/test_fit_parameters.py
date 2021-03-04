@@ -1,7 +1,8 @@
 from sbmlsim.fit import FitParameter
 
 
-def test_paramter():
+def test_fit_parameter() -> None:
+    """Test FitParameter creation."""
     p = FitParameter(
         pid="p1",
         start_value=1.0,
@@ -16,7 +17,8 @@ def test_paramter():
     assert p.unit == "dimensionless"
 
 
-def test_serialization():
+def test_serialization() -> None:
+    """Test FitParameter serialization."""
     p = FitParameter(
         pid="p1",
         start_value=1.0,

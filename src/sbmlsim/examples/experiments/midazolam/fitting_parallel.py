@@ -19,15 +19,15 @@ from sbmlsim.fit.optimization import (
 
 
 def fit_lsq(
-    problem_factory: Callable, **fit_kwargs: Any
+    problem_factory: Callable, seed: int=1236, **fit_kwargs: Any
 ) -> Tuple[OptimizationResult, OptimizationProblem]:
     """Local least square fitting."""
     problem: OptimizationProblem = problem_factory()
     opt_res = run_optimization_parallel(
         problem=problem,
-        size=2,
-        seed=1236,
-        n_cores=2,
+        size=10,
+        seed=seed,
+        n_cores=10,
         optimizer=OptimizerType.LEAST_SQUARE,
         **fit_kwargs
     )
@@ -35,14 +35,14 @@ def fit_lsq(
 
 
 def fit_de(
-    problem_factory: Callable, **fit_kwargs: Any
+    problem_factory: Callable, seed: int=1234, **fit_kwargs: Any
 ) -> Tuple[OptimizationResult, OptimizationProblem]:
     """Global differential evolution fitting."""
     problem: OptimizationProblem = problem_factory()
     opt_res = run_optimization_parallel(
         problem=problem,
         size=2,
-        seed=1234,
+        seed=seed,
         n_cores=2,
         optimizer=OptimizerType.DIFFERENTIAL_EVOLUTION,
         **fit_kwargs
@@ -85,10 +85,25 @@ if __name__ == "__main__":
         problem_factory = op_kupferschmidt1995
 
     if 1:
-        opt_res_lsq, problem = fit_lsq(problem_factory, **fit_kwargs)
+        opt_res_lsq1, problem = fit_lsq(problem_factory, seed=1234, **fit_kwargs)
+        opt_res_lsq2, problem = fit_lsq(problem_factory, seed=3298, **fit_kwargs)
+        opt_res_lsq = OptimizationResult.combine([opt_res_lsq1, opt_res_lsq2])
+
+        opt_res_path = fit_path_lsq / f"{opt_res_lsq.sid}.json"
+        opt_res_lsq.to_json(path=opt_res_path)
+        opt_res_lsq = OptimizationResult.from_json(json_info=opt_res_path)
+
+        # FIXME: serialize problem
+        problem_path = fit_path_lsq / f"{opt_res_lsq.sid}.json"
+        problem = problem_factory()
+        problem.to_json()
         process_optimization_result(
             opt_res_lsq, problem=problem, output_path=fit_path_lsq, **fit_kwargs
         )
+
+
+
+
 
     if 0:
         opt_res_de, problem = fit_de(problem_factory, **fit_kwargs)
