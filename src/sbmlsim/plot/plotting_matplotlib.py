@@ -83,13 +83,13 @@ class MatplotlibFigureSerializer(object):
 
             ridx = subplot.row - 1
             cidx = subplot.col - 1
-            ax = fig.add_subplot(
+            ax: plt.Axes = fig.add_subplot(
                 gs[ridx : ridx + subplot.row_span, cidx : cidx + subplot.col_span]
-            )  # type: plt.Axes
+            )
 
             plot = subplot.plot
-            xax = plot.xaxis  # type: Axis
-            yax = plot.yaxis  # type: Axis
+            xax: Axis = plot.xaxis
+            yax: Axis = plot.yaxis
 
             # units
             if xax is None:

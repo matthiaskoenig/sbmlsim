@@ -306,7 +306,10 @@ class Axis(BasePlotObject):
         if unit is None:
             unit = "?"
         if not name:
-            name = f"{label} [{unit}]"
+            if unit != "dimensionless":
+                name = f"{label} [{unit}]"
+            else:
+                name = f"{label} [-]"
 
         self.label = label
         self.name = name
