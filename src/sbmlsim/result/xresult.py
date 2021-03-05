@@ -43,11 +43,18 @@ class XResult:
         """Get string."""
         return f"<XResult: {self.xds.__repr__()},\n{self.uinfo}>"
 
-    def dim_mean(self, key):
+    def dim_mean(self, key: str) -> xr.Dataset:
         """Get mean over all added dimensions."""
-        return self.xds[key].mean(
-            dim=self._redop_dims(), skipna=True
-        ).values * self.uinfo.ureg(self.uinfo[key])
+        try:
+            data = self.xds[key].mean(
+                dim=self._redop_dims(), skipna=True
+            ).values * self.uinfo.ureg(self.uinfo[key])
+        except KeyError as err:
+            logger.error(f"Key '{key}' does not exist in XResult. Add the "
+                         f"key to the experiment via add_selections in "
+                         f"'Experiment.datagenerators'.")
+            raise err
+        return data
 
     def dim_std(self, key):
         """Get standard deviation over all added dimensions."""
