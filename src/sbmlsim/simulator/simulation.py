@@ -99,9 +99,9 @@ class SimulatorWorker:
             for key, item in tc.changes.items():
                 logger.debug("Applying simulation changes")
                 try:
-                    self.r[key] = item.magnitude
+                    self.r[key] = float(item.magnitude)
                 except AttributeError:
-                    self.r[key] = item
+                    self.r[key] = float(item)
                 logger.debug(f"\t{key} = {item}")
 
             # run simulation

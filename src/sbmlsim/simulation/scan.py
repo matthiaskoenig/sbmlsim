@@ -100,6 +100,7 @@ class ScanSim(AbstractSim):
         as all dimensions in the scan.
         """
         # normalize simulation
+        # logger.error("NORMALIZING SCAN")
         self.simulation.normalize(uinfo=uinfo)
 
         # normalize changes in all dimensions

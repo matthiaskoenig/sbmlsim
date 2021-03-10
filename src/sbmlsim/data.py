@@ -382,8 +382,10 @@ class DataSet(pd.DataFrame):
         dset.Q_ = dset.uinfo.ureg.Quantity
         return dset
 
-    def unit_conversion(self, key, factor: Quantity):
+    def unit_conversion(self, key, factor: Quantity) -> None:
         """Convert the units of the given key in the dataset.
+
+        Changes values in place in the DataSet.
 
         The quantity in the dataset is multiplied with the conversion factor.
         In addition to the key, also the respective error measures are

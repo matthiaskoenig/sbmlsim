@@ -193,6 +193,7 @@ class TimecourseSim(AbstractSim):
 
     def normalize(self, uinfo: UnitsInformation) -> None:
         """Normalize timecourse simulation."""
+        # logger.error("NORMALIZING TIMECOURSESIM")
         for tc in self.timecourses:
             tc.normalize(uinfo=uinfo)
 

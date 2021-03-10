@@ -167,6 +167,7 @@ class OptimizationProblem(ObjectJSONEncoder):
 
         Uses the to_dict method.
         """
+        # FIXME
         return to_json(self, path=path)
 
     @staticmethod
@@ -176,6 +177,7 @@ class OptimizationProblem(ObjectJSONEncoder):
         :param json_info:
         :return:
         """
+        # FIXME
         d = from_json(json_info)
         return OptimizationResult(**d)
 
@@ -261,7 +263,7 @@ class OptimizationProblem(ObjectJSONEncoder):
         self.y_references = []
         self.y_errors = []
         self.y_errors_type = []
-        self.weights = []  # total weights for points (errors + user)
+        self.weights = []  # total weights for points (data points and curve weights combined)
         self.weights_points = []  # weights for data points based on errors
         self.weights_curve = []  # user defined weights per mapping/curve
 
@@ -476,7 +478,8 @@ class OptimizationProblem(ObjectJSONEncoder):
 
                 # normalize weights to mean=1.0 for given curve
                 # this makes the weights comparable
-                weight_points = weight_points / np.mean(weight_points)
+                # dividing by number of data points corrects for different number of data points
+                weight_points = weight_points / np.mean(weight_points) / len(weight_points)
 
                 # apply local weighting & user defined weighting
                 # (in the cost function the weighted residuals are squared)
@@ -630,7 +633,7 @@ class OptimizationProblem(ObjectJSONEncoder):
                         fun=self.residuals, x0=x0log, bounds=boundslog, **kwargs
                     )
             except RuntimeError as err:
-                logger.error(f"RuntimeError in ODE integration (optimize): {err}")
+                logger.error(f"RuntimeError in ODE integration (optimize) for '{self.pids} = {x0}': \n{err}")
                 opt_result = RuntimeErrorOptimizeResult()
                 opt_result.x = x0log
             te = time.time()
@@ -652,7 +655,7 @@ class OptimizationProblem(ObjectJSONEncoder):
                     func=self.cost_least_square, bounds=de_bounds_log, **kwargs
                 )
             except RuntimeError as err:
-                logger.error(f"RuntimeError in ODE integration (optimize): {err}")
+                logger.error(f"RuntimeError in ODE integration (optimize) for '{self.pids} = {x0}': \n{err}")
                 opt_result = RuntimeErrorOptimizeResult()
                 opt_result.x = x0log
             te = time.time()
@@ -731,7 +734,7 @@ class OptimizationProblem(ObjectJSONEncoder):
             except RuntimeError as err:
                 # something went wrong in the integration (setting high residuals & cost)
                 logger.error(
-                    f"RuntimeError in ODE integration (residuals for {x}): {err}"
+                    f"RuntimeError in ODE integration ('{self.pids} = {x}'): \n{err}"
                 )
                 res_abs = 5.0 * self.y_references[k]  # total error
 

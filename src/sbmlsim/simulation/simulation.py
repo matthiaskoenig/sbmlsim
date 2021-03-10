@@ -72,17 +72,17 @@ class AbstractSim(ABC):
     @abc.abstractmethod
     def dimensions(self) -> List[Dimension]:
         """Get dimension of the simulation."""
-        pass
+        raise NotImplemented
 
     @abc.abstractmethod
     def normalize(self, uinfo: UnitsInformation) -> None:
         """Normalize simulation."""
-        pass
+        raise NotImplemented
 
     @abc.abstractmethod
     def add_model_changes(self, changes: Dict) -> None:
         """Add model changes to model."""
-        pass
+        raise NotImplemented
 
     def to_dict(self) -> Dict[str, str]:
         """Convert to dictionary."""
