@@ -1,11 +1,13 @@
 <template>
   <div id="app">
    <Report />
+    {{ myJson }}
   </div>
 </template>
 
 <script>
 import Report from "./components/Report";
+import json from './01_optimization_result.json'
 
 export default {
   name: 'app',
@@ -13,7 +15,9 @@ export default {
     Report
   },
   data () {
-    return {}
+    return {
+      myJson: json
+    }
   },
   methods: {}
 }

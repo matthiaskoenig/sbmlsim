@@ -10,11 +10,17 @@ from enum import Enum
 class OptimizationAlgorithmType(Enum):
     """Type of optimization.
 
-    Least square is a local optimization method and works well in combination
-    with many start values, i.e., many repeats of the optimization problem.
+    **least square**
+      Least square is a local optimization method and works well in combination
+      with many start values, i.e., many repeats of the optimization problem. See
+      https://docs.scipy.org/doc/scipy/reference/generated/scipy.optimize.least_squares.html
+      for more information.
 
-    Differential evolution is a global optimization method and normally is run
-    with a limited number of repeats.
+    **differential evolution**
+      Differential evolution is a global optimization method and normally is run
+      with a limited number of repeats. See
+      https://docs.scipy.org/doc/scipy/reference/generated/scipy.optimize.differential_evolution.html#scipy.optimize.differential_evolution
+      for more information.
     """
 
     LEAST_SQUARE = 1
@@ -24,12 +30,14 @@ class OptimizationAlgorithmType(Enum):
 class FittingStrategyType(Enum):
     """Type of fitting strategy (absolute changes or relative changes to baseline).
 
-    Decides how to fit the data. If the various datasets have large offsets
-    a fitting of the relative changes to baseline can work.
+    Decides how to calculate the residuals. Data (reference) and prediction (model)
+    are provided in absolute values. If the various datasets have large offsets at
+    baseline a fitting of the relative changes at baseline can work much better.
+    This is especially the case if different datasets report different baselines.
     As baseline the simulations should contain a pre-simulation.
 
     **absolute values**
-      uses the absolute data values for fitting
+      uses the absolute data values for calculation of the residuals
 
     **absolute changes baseline**
       uses the absolute changes to baseline with baseline being the first data point.

@@ -247,10 +247,7 @@ class FitParameter:
 
         Serializes to file if path is provided, otherwise returns JSON string.
         """
-        if path:
-            with open(path, "w") as f_json:
-                json.dump(self, fp=f_json, cls=ObjectJSONEncoder, indent=2)
-        return json.dumps(self, cls=ObjectJSONEncoder, indent=2)
+        return to_json(object=self, path=path)
 
     @staticmethod
     def from_json(json_info: Union[str, Path]) -> "FitParameter":

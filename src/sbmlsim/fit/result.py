@@ -1,23 +1,14 @@
 import datetime
-import json
 import logging
-import time
 import uuid
 from pathlib import Path
 from typing import Dict, Iterable, List, Optional, Set, Tuple, Union
 
 import numpy as np
 import pandas as pd
-import seaborn as sns
-from matplotlib.figure import Figure
 from scipy.optimize import OptimizeResult
-
 from sbmlsim.fit.objects import FitParameter
-from sbmlsim.fit.optimization import OptimizationProblem
-from sbmlsim.plot.plotting_matplotlib import plt
 from sbmlsim.serialization import ObjectJSONEncoder, from_json, to_json
-from sbmlsim.simulator import SimulatorSerial
-from sbmlsim.utils import timeit
 
 
 logger = logging.getLogger(__name__)
@@ -28,7 +19,7 @@ class OptimizationResult(ObjectJSONEncoder):
 
     def __init__(
         self,
-        parameters: Union[List[FitParameter], List[Dict]],
+        parameters: Iterable[FitParameter],
         fits: List[OptimizeResult],
         trajectories: List,
         sid: str = None,
@@ -82,17 +73,12 @@ class OptimizationResult(ObjectJSONEncoder):
             d[key] = self.__dict__[key]
         return d
 
-    def to_json(self, path: Optional[Path]=None, output_dir: Optional[Path]=None) -> Union[str, Path]:
+    def to_json(self, path: Path) -> Union[str, Path]:
         """Store OptimizationResult as json.
 
         Uses the to_dict method.
         """
-        if path and output_dir:
-            raise IOError("Either provide path or output directory, but not both.")
-        if output_dir:
-            path = output_dir / self.sid
-
-        return to_json(self, path=path)
+        return to_json(object=self, path=path)
 
     @staticmethod
     def from_json(json_info: Union[str, Path]) -> "OptimizationResult":

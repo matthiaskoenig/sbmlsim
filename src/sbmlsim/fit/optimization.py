@@ -5,6 +5,7 @@ import time
 from collections import defaultdict
 from copy import deepcopy
 from dataclasses import dataclass
+import pandas as pd
 
 from pathlib import Path
 from typing import Collection, Dict, Iterable, List, Set, Sized, Tuple, Callable, Union, \
@@ -23,7 +24,7 @@ from sbmlsim.fit.options import (
 )
 
 from sbmlsim.model import RoadrunnerSBMLModel
-from sbmlsim.serialization import ObjectJSONEncoder
+from sbmlsim.serialization import ObjectJSONEncoder, to_json
 from sbmlsim.simulation import TimecourseSim
 from sbmlsim.simulator import SimulatorSerial
 from sbmlsim.units import DimensionalityError
@@ -50,7 +51,7 @@ class OptimizationProblem(ObjectJSONEncoder):
     def __init__(
         self,
         opid: str,
-        fit_experiments: Collection[Callable],
+        fit_experiments: Collection[FitExperiment],
         fit_parameters: Collection[FitParameter],
         base_path: Path = None,
         data_path: Path = None,
@@ -117,7 +118,7 @@ class OptimizationProblem(ObjectJSONEncoder):
 
         Uses the to_dict method.
         """
-        return super().to_json(self, path=path)
+        to_json(object=self, path=path)
 
     @staticmethod
     def from_json(json_info: Tuple[str, Path]) -> "OptimizationResult":
@@ -182,7 +183,8 @@ class OptimizationProblem(ObjectJSONEncoder):
             raise ValueError("'residual_type' is required.")
         if fitting_strategy is None:
             logger.warning(
-                "No FittingType provided for fitting, defaulting to absolute"
+                "No 'FittingStrategyType' provided for fitting, defaulting to "
+                "'ABSOLUTE_VALUES'."
             )
             fitting_strategy = FittingStrategyType.ABSOLUTE_VALUES
 
@@ -322,7 +324,7 @@ class OptimizationProblem(ObjectJSONEncoder):
                 x_ref = data_ref.x.magnitude
                 y_ref = data_ref.y.magnitude
 
-                if self.fitting_strategy == FittingType.ABSOLUTE_CHANGES_BASELINE:
+                if self.fitting_strategy == FittingStrategyType.ABSOLUTE_CHANGES_BASELINE:
                     # Use absolute changes to baseline, which is the first point
                     y_ref = (
                         y_ref - y_ref[0]
@@ -479,7 +481,7 @@ class OptimizationProblem(ObjectJSONEncoder):
                     print(f"y_ref_err: {y_ref_err}")
 
             # Print mappings with calculated weights
-            print(fit_experiment)
+            # print(fit_experiment)
 
     def set_simulator(self, simulator):
         """Set the simulator on the runner and the experiments.
@@ -491,14 +493,13 @@ class OptimizationProblem(ObjectJSONEncoder):
 
     def optimize(
         self,
-        size: Optional[int] = 10,
-        seed: Optional[int] = None,
-        verbose: bool = False,
+        size: Optional[int] = 5,
         algorithm: OptimizationAlgorithmType = OptimizationAlgorithmType.LEAST_SQUARE,
         fitting_strategy: FittingStrategyType = FittingStrategyType.ABSOLUTE_VALUES,
         weighting_points: WeightingPointsType = WeightingPointsType.NO_WEIGHTING,
         residual_type: ResidualType = ResidualType.ABSOLUTE_RESIDUALS,
         sampling: SamplingType = SamplingType.UNIFORM,
+        seed: Optional[int] = None,
         variable_step_size=True,
         relative_tolerance=1e-6,
         absolute_tolerance=1e-8,
@@ -514,6 +515,7 @@ class OptimizationProblem(ObjectJSONEncoder):
         self.relative_tolerance = relative_tolerance
         self.absolute_tolerance = absolute_tolerance
 
+        x_samples: pd.DataFrame
         if algorithm == OptimizationAlgorithmType.LEAST_SQUARE:
             # initial value samples for local optimizer
             x_samples = create_samples(
@@ -533,13 +535,12 @@ class OptimizationProblem(ObjectJSONEncoder):
                 x0 = x_samples.values[k, :]
             else:
                 x0 = None
-            if verbose:
-                print(f"[{k+1}/{size}] x0={x0}")
+
+            logger.debug(f"[{k+1}/{size}] x0={x0}")
             fit, trajectory = self._optimize_single(
-                x0=x0, optimizer=algorithm, **kwargs
+                x0=x0, algorithm=algorithm, **kwargs
             )
-            if verbose:
-                print("\t{:8.4f} [s]".format(fit.duration))
+            logger.debug("\t{:8.4f} [s]".format(fit.duration))
 
             fits.append(fit)
             trajectories.append(trajectory)
@@ -547,15 +548,16 @@ class OptimizationProblem(ObjectJSONEncoder):
 
     @timeit
     def _optimize_single(
-        self, x0: np.ndarray = None, optimizer=OptimizerType.LEAST_SQUARE, **kwargs
+        self, x0: np.ndarray = None, algorithm=OptimizationAlgorithmType.LEAST_SQUARE, **kwargs
     ) -> Tuple[scipy.optimize.OptimizeResult, List]:
         """Run single optimization with x0 start values.
 
         :param x0: parameter start vector (important for deterministic optimizers)
-        :param optimizer: optimization algorithm and method
+        :param algorithm: optimization algorithm and method
         :param kwargs:
         :return:
         """
+        # FIXME: this should not be necessary, handle outside
         if x0 is None:
             x0 = self.x0
 
@@ -563,7 +565,7 @@ class OptimizationProblem(ObjectJSONEncoder):
         x0log = np.log10(x0)
 
         self._trajectory = []
-        if optimizer == OptimizerType.LEAST_SQUARE:
+        if algorithm == OptimizationAlgorithmType.LEAST_SQUARE:
             # scipy least square optimizer
             # https://docs.scipy.org/doc/scipy/reference/generated/scipy.optimize.least_squares.html
             ts = time.time()
@@ -592,7 +594,7 @@ class OptimizationProblem(ObjectJSONEncoder):
             opt_result.x = np.power(10, opt_result.x)
             return opt_result, deepcopy(self._trajectory)
 
-        elif optimizer == OptimizerType.DIFFERENTIAL_EVOLUTION:
+        elif algorithm == OptimizationAlgorithmType.DIFFERENTIAL_EVOLUTION:
             # scipy differential evolution
             # https://docs.scipy.org/doc/scipy/reference/generated/scipy.optimize.differential_evolution.html#scipy.optimize.differential_evolution
             ts = time.time()
@@ -616,7 +618,7 @@ class OptimizationProblem(ObjectJSONEncoder):
             return opt_result, deepcopy(self._trajectory)
 
         else:
-            raise ValueError(f"optimizer is not supported: {optimizer}")
+            raise ValueError(f"optimizer is not supported: {algorithm}")
 
     def cost_least_square(self, xlog: np.ndarray) -> float:
         """Get least square costs for parameters."""
@@ -642,7 +644,7 @@ class OptimizationProblem(ObjectJSONEncoder):
             residual_data = defaultdict(list)
 
         # simulate all mappings for all experiments
-        simulator = self.runner.simulator  # type: SimulatorSerial
+        simulator: SimulatorSerial = self.runner.simulator
         Q_ = self.runner.Q_
 
         for k, _ in enumerate(self.mapping_keys):
@@ -675,14 +677,14 @@ class OptimizationProblem(ObjectJSONEncoder):
                     assume_sorted=True,
                 )
                 y_obsip = f(self.x_references[k])
-                if self.fitting_strategy == FittingType.ABSOLUTE_CHANGES_BASELINE:
+                if self.fitting_strategy == FittingStrategyType.ABSOLUTE_CHANGES_BASELINE:
                     y_obsip = y_obsip - y_obsip[0]
 
                 # calculate absolute & relative residuals
                 res_abs = y_obsip - self.y_references[k]
 
             except RuntimeError as err:
-                # something went wrong in the integration (setting high residuals & cost)
+                # error in integration (setting high residuals & cost)
                 logger.error(
                     f"RuntimeError in ODE integration ('{self.pids} = {x}'): \n{err}"
                 )

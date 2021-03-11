@@ -38,12 +38,7 @@ class ObjectJSONEncoder(JSONEncoder):
         :param path: path for file, if None JSON str is returned
         :return:
         """
-        if path is None:
-            return json.dumps(self, cls=ObjectJSONEncoder, indent=2)
-        else:
-            with open(path, "w") as f_json:
-                json.dump(self, fp=f_json, cls=ObjectJSONEncoder, indent=2)
-            return path
+        return to_json(object=self, path=path)
 
     def default(self, o):
         """JSON encoder."""
@@ -61,6 +56,9 @@ class ObjectJSONEncoder(JSONEncoder):
 
         if hasattr(o, "to_dict"):
             # custom serializer
+            print(type(o))
+            if isinstance(o, type):
+                print(o.__name__)
             return o.to_dict()
 
         if hasattr(o, "__dict__"):

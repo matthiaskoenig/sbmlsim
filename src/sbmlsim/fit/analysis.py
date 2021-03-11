@@ -1,45 +1,17 @@
 """Analysis of fitting results."""
 
-import datetime
-import json
 import logging
-import time
-import uuid
 from pathlib import Path
-from typing import Dict, Iterable, List, Optional, Set, Tuple, Union
 
 import numpy as np
 import pandas as pd
 import seaborn as sns
 from matplotlib.figure import Figure
-from scipy.optimize import OptimizeResult
 
-from sbmlsim.fit.fit import logger
-from sbmlsim.fit.objects import FitParameter
-from sbmlsim.fit.optimization import OptimizationProblem, OptimizationAnalysis
-from sbmlsim.plot.plotting_matplotlib import plt
-from sbmlsim.serialization import ObjectJSONEncoder, from_json, to_json
-from sbmlsim.simulator import SimulatorSerial
-from sbmlsim.utils import timeit
-
-import datetime
-import json
-import logging
-import time
-import uuid
-from pathlib import Path
-from typing import Dict, Iterable, List, Optional, Set, Tuple, Union
-
-import numpy as np
-import pandas as pd
-import seaborn as sns
-from matplotlib.figure import Figure
-from scipy.optimize import OptimizeResult
-
-from sbmlsim.fit.objects import FitParameter
 from sbmlsim.fit.optimization import OptimizationProblem
+from sbmlsim.fit.options import FittingStrategyType, ResidualType, WeightingPointsType
+from sbmlsim.fit.result import OptimizationResult
 from sbmlsim.plot.plotting_matplotlib import plt
-from sbmlsim.serialization import ObjectJSONEncoder, from_json, to_json
 from sbmlsim.simulator import SimulatorSerial
 from sbmlsim.utils import timeit
 
@@ -47,299 +19,115 @@ from sbmlsim.utils import timeit
 logger = logging.getLogger(__name__)
 
 
-class OptimizationResultAnalysis:
+class OptimizationAnalysis:
+    """Class for analyzing optimization results.
 
-    @staticmethod
-    def _save_fig(fig: Figure, path: Path, show_plots: bool = True):
-        if show_plots:
-            plt.show()
-        if path:
-            fig.savefig(path, bbox_inches="tight")
-        plt.close(fig)
+    Creates all plots and results.
+    """
 
-    @timeit
-    def plot_waterfall(self, path: Path = None, show_plots: bool = True):
-        """Create waterfall plot for the fit results.
+    def __init__(
+        self,
+        opt_result: OptimizationResult,
+        output_path: Path,
+        op: OptimizationProblem = None,
+        show_plots: bool = True,
+        fitting_strategy: FittingStrategyType = None,
+        residual_type: ResidualType = None,
+        weighting_points: WeightingPointsType = None,
+        variable_step_size: bool = True,
+        absolute_tolerance: float = 1e-6,
+        relative_tolerance: float = 1e-6,
 
-        Plots the optimization runs sorted by cost.
+    ) -> None:
+        """Construct Optimization analysis."""
+        self.sid = opt_result.sid
+        self.opt_result: OptimizationResult = opt_result
+        # the results directory uses the hash of the OptimizationResult
+        results_dir: Path = output_path / self.sid
+        if not results_dir.exists():
+            logger.warning(f"create output directory: '{results_dir}'")
+            results_dir.mkdir(parents=True, exist_ok=True)
+        self.results_dir = results_dir
+
+        self.fitting_strategy = fitting_strategy
+        self.residual_type = residual_type
+        self.weighting_points = weighting_points
+        self.variable_step_size = variable_step_size
+        self.absolute_tolerance = absolute_tolerance
+        self.relative_tolerance = relative_tolerance
+
+        if op:
+            # FIXME: problem not initialized on multi-core and no simulator is assigned.
+            # This should happen automatically, to ensure correct behavior
+            op.initialize(
+                fitting_strategy=fitting_strategy,
+                weighting_points=weighting_points,
+                residual_type=residual_type,
+            )
+            op.set_simulator(simulator=SimulatorSerial())
+            op.variable_step_size = variable_step_size
+            op.absolute_tolerance = absolute_tolerance
+            op.relative_tolerance = relative_tolerance
+
+        self.op = op
+
+    def analyse(self):
+        """Perform complete analysis.
+
+        Creates all plots and reports.
         """
-        fig, ax = plt.subplots(nrows=1, ncols=1, figsize=(5, 5))
-        ax.plot(
-            range(self.size),
-            1 + (self.df_fits.cost - self.df_fits.cost.iloc[0]),
-            "-o",
-            color="black",
+        problem_info: str = ""
+        if self.op:
+            problem_info = self.op.report(
+                path=None,
+                print_output=False,
+            )
+        # write report
+        result_info = self.opt_result.report(
+            path=None,
+            print_output=True,
         )
-        ax.set_xlabel("index (Ordered optimizer run)")
-        ax.set_ylabel("Offset cost value (relative to best start)")
-        ax.set_yscale("log")
-        ax.set_title("Waterfall plot")
-        self._save_fig(fig, path=path, show_plots=show_plots)
+        info = problem_info + result_info
+        with open(self.results_dir / "00_report.txt", "w") as f_report:
+            f_report.write(info)
 
-    @timeit
-    def plot_traces(self, path: Path = None, show_plots: bool = True) -> None:
-        """Plot optimization traces.
+        self.opt_result.to_json(path=results_dir / "01_optimization_result.json")
+        self.opt_result.to_tsv(path=results_dir / "01_optimization_result.tsv")
 
-        Optimization time course of costs.
-        """
-        fig, ax = plt.subplots(nrows=1, ncols=1, figsize=(5, 5))
+        if self.opt_result.size > 1:
+            self.plot_waterfall(
+                path=self.results_dir / "02_waterfall.svg",
+                show_plots=self.show_plots
+            )
+        self.plot_traces(
+            path=self.results_dir / "02_traces.svg",
+            show_plots=self.show_plots
+        )
 
-        for run in range(self.size):
-            df_run = self.df_traces[self.df_traces.run == run]
-            ax.plot(range(len(df_run)), df_run.cost, "-", alpha=0.8)
-        for run in range(self.size):
-            df_run = self.df_traces[self.df_traces.run == run]
-            ax.plot(
-                len(df_run) - 1, df_run.cost.iloc[-1], "o", color="black", alpha=0.8
+        # plot top fit
+        if self.op:
+            xopt = opt_result.xopt
+            optimization_analyzer = OptimizationAnalysis(
+                optimization_problem=problem)
+
+            df_costs = optimization_analyzer.plot_costs(
+                x=xopt, path=results_dir / "03_cost_improvement.svg",
+                show_plots=show_plots
+            )
+            df_costs.to_csv(results_dir / "03_cost_improvement.tsv", sep="\t",
+                            index=False)
+
+            optimization_analyzer.plot_fits(
+                x=xopt, path=results_dir / "05_fits.svg", show_plots=show_plots
+            )
+            optimization_analyzer.plot_residuals(
+                x=xopt, output_path=results_dir, show_plots=show_plots
             )
 
-        ax.set_xlabel("step")
-        ax.set_ylabel("cost")
-        ax.set_yscale("log")
-        ax.set_title("Traces")
-
-        self._save_fig(fig, path=path, show_plots=show_plots)
-
-    @timeit
-    def plot_correlation(
-        self,
-        path: Path = None,
-        show_plots: bool = True,
-    ):
-        """Plot correlation of parameters for analysis."""
-        df = self.df_fits
-
-        pids = [p.pid for p in self.parameters]
-        sns.set(style="ticks", color_codes=True)
-        # sns_plot = sns.pairplot(data=df[pids + ["cost"]], hue="cost", corner=True)
-
-        npars = len(pids)
-        # x0 =
-        fig, axes = plt.subplots(
-            nrows=npars, ncols=npars, figsize=(5 * npars, 5 * npars)
-        )
-        cost_normed = df.cost - df.cost.min()
-        cost_normed = 1 - cost_normed / cost_normed.max()
-        # print("cost_normed", cost_normed)
-        size = np.power(15 * cost_normed, 2)
-
-        bound_kwargs = {"color": "darkgrey", "linestyle": "--", "alpha": 1.0}
-
-        for kx, pidx in enumerate(pids):
-            for ky, pidy in enumerate(pids):
-                if npars == 1:
-                    ax = axes
-                else:
-                    ax = axes[ky][kx]
-
-                # optimal values
-                if kx > ky:
-                    ax.set_xlabel(pidx)
-                    # ax.set_xlim(self.parameters[kx].lower_bound, self.parameters[kx].upper_bound)
-                    ax.axvline(x=self.parameters[kx].lower_bound, **bound_kwargs)
-                    ax.axvline(x=self.parameters[kx].upper_bound, **bound_kwargs)
-                    ax.set_ylabel(pidy)
-                    # ax.set_ylim(self.parameters[ky].lower_bound, self.parameters[ky].upper_bound)
-                    ax.axhline(y=self.parameters[ky].lower_bound, **bound_kwargs)
-                    ax.axhline(y=self.parameters[ky].upper_bound, **bound_kwargs)
-
-                    # start values
-                    xall = []
-                    yall = []
-                    xstart_all = []
-                    ystart_all = []
-                    for ks in range(len(size)):
-                        x = df.x[ks][kx]
-                        y = df.x[ks][ky]
-                        xall.append(x)
-                        yall.append(y)
-                        if "x0" in df.columns:
-                            xstart = df.x0[ks][kx]
-                            ystart = df.x0[ks][ky]
-                            xstart_all.append(xstart)
-                            ystart_all.append(ystart)
-
-                    # start point
-                    ax.plot(
-                        xstart_all,
-                        ystart_all,
-                        "^",
-                        color="black",
-                        markersize=2,
-                        alpha=0.5,
-                    )
-                    # optimal values
-                    ax.scatter(
-                        df[pidx], df[pidy], c=df.cost, s=size, alpha=0.9, cmap="jet"
-                    ),
-
-                    ax.plot(
-                        self.xopt[kx],
-                        self.xopt[ky],
-                        "s",
-                        color="darkgreen",
-                        markersize=30,
-                        alpha=0.7,
-                    )
-
-                if kx == ky:
-                    ax.set_xlabel(pidx)
-                    ax.axvline(x=self.parameters[kx].lower_bound, **bound_kwargs)
-                    ax.axvline(x=self.parameters[kx].upper_bound, **bound_kwargs)
-                    # ax.set_xlim(self.parameters[kx].lower_bound,
-                    #            self.parameters[kx].upper_bound)
-                    ax.set_ylabel("cost")
-                    ax.plot(
-                        df[pidx],
-                        df.cost,
-                        color="black",
-                        marker="s",
-                        linestyle="None",
-                        alpha=1.0,
-                    )
-
-                # traces (walk through cost function)
-                if kx < ky:
-                    ax.set_xlabel(pidy)
-                    # ax.set_xlim(self.parameters[ky].lower_bound, self.parameters[ky].upper_bound)
-                    ax.axvline(x=self.parameters[ky].lower_bound, **bound_kwargs)
-                    ax.axvline(x=self.parameters[ky].upper_bound, **bound_kwargs)
-                    ax.set_ylabel(pidx)
-                    # ax.set_ylim(self.parameters[kx].lower_bound, self.parameters[kx].upper_bound)
-                    ax.axhline(y=self.parameters[kx].lower_bound, **bound_kwargs)
-                    ax.axhline(y=self.parameters[kx].upper_bound, **bound_kwargs)
-
-                    # ax.plot([ystart, y], [xstart, x], "-", color="black", alpha=0.7)
-
-                    for run in range(self.size):
-                        df_run = self.df_traces[self.df_traces.run == run]
-                        # ax.plot(df_run[pidy], df_run[pidx], '-', color="black", alpha=0.3)
-                        ax.scatter(
-                            df_run[pidy],
-                            df_run[pidx],
-                            c=df_run.cost,
-                            cmap="jet",
-                            marker="s",
-                            alpha=0.8,
-                        )
-
-                    # end point
-                    # ax.plot(yall, xall, "o", color="black", markersize=10, alpha=0.9)
-                    ax.plot(
-                        self.xopt[ky],
-                        self.xopt[kx],
-                        "s",
-                        color="darkgreen",
-                        markersize=30,
-                        alpha=0.7,
-                    )
-
-                ax.set_xscale("log")
-                if kx != ky:
-                    ax.set_yscale("log")
-                if kx == ky:
-                    ax.set_yscale("log")
-
-        # correct scatter limits
-        for kx, _pidx in enumerate(pids):
-            for ky, _pidy in enumerate(pids):
-                if kx < ky:
-                    axes[ky][kx].set_xlim(axes[kx][ky].get_xlim())
-                    axes[ky][kx].set_ylim(axes[kx][ky].get_ylim())
-
-        self._save_fig(fig=fig, path=path, show_plots=show_plots)
-
-
-def process_optimization_result(
-    opt_result: OptimizationResult,
-    output_path: Path,
-    problem: OptimizationProblem = None,
-    show_plots=True,
-    fitting_type=None,
-    weighting_local=None,
-    residual_type=None,
-    variable_step_size=True,
-    absolute_tolerance=1e-6,
-    relative_tolerance=1e-6,
-):
-    """Process the optimization results.
-
-    Creates reports and stores figures and results.
-    """
-    # the results directory uses the hash of the OptimizationResult
-    results_dir: Path = output_path / opt_result.sid
-    if not results_dir.exists():
-        logger.warning(f"create output directory: '{results_dir}'")
-        results_dir.mkdir(parents=True, exist_ok=True)
-
-    problem_info = ""
-    if problem:
-        # FIXME: problem not initialized on multi-core and no simulator is assigned.
-        # This should happen automatically, to ensure correct behavior
-        problem.initialize(
-            fitting_strategy=fitting_type,
-            weighting_points=weighting_local,
-            residual_type=residual_type,
-        )
-        problem.set_simulator(simulator=SimulatorSerial())
-        problem.variable_step_size = variable_step_size
-        problem.absolute_tolerance = absolute_tolerance
-        problem.relative_tolerance = relative_tolerance
-
-        problem_info = problem.report(
-            path=None,
-            print_output=False,
-        )
-
-    # write report
-    result_info = opt_result.report(
-        path=None,
-        print_output=True,
-    )
-    info = problem_info + result_info
-    with open(results_dir / "00_report.txt", "w") as f_report:
-        f_report.write(info)
-
-    opt_result.to_json(path=results_dir / "01_optimization_result.json")
-    opt_result.to_tsv(path=results_dir / "01_optimization_result.tsv")
-
-    if opt_result.size > 1:
-        opt_result.plot_waterfall(
-            path=results_dir / "02_waterfall.svg", show_plots=show_plots
-        )
-    opt_result.plot_traces(path=results_dir / "02_traces.svg", show_plots=show_plots)
-
-    # plot top fit
-    if problem:
-        xopt = opt_result.xopt
-        optimization_analyzer = OptimizationAnalysis(optimization_problem=problem)
-
-        df_costs = optimization_analyzer.plot_costs(
-            x=xopt, path=results_dir / "03_cost_improvement.svg", show_plots=show_plots
-        )
-        df_costs.to_csv(results_dir / "03_cost_improvement.tsv", sep="\t", index=False)
-
-        optimization_analyzer.plot_fits(
-            x=xopt, path=results_dir / "05_fits.svg", show_plots=show_plots
-        )
-        optimization_analyzer.plot_residuals(
-            x=xopt, output_path=results_dir, show_plots=show_plots
-        )
-
-    if opt_result.size > 1:
-        opt_result.plot_correlation(
-            path=results_dir / "04_parameter_correlation", show_plots=show_plots
-        )
-
-    # TODO: overall HTML report for simple overview
-
-
-
-class OptimizationAnalysis:
-    """Class for creating plots and results."""
-
-    def __init__(self, optimization_problem: OptimizationProblem):
-        self.op = optimization_problem
+        if opt_result.size > 1:
+            opt_result.plot_correlation(
+                path=results_dir / "04_parameter_correlation", show_plots=show_plots
+            )
 
     @staticmethod
     def _save_fig(fig, path: Path, show_plots: bool = True):
@@ -348,6 +136,7 @@ class OptimizationAnalysis:
         if path is not None:
             fig.savefig(path, bbox_inches="tight")
         plt.close(fig)
+
 
     @timeit
     def plot_fits(self, x, path: Path = None, show_plots: bool = True):
@@ -655,3 +444,197 @@ class OptimizationAnalysis:
             fig.savefig(path, bbox_inches="tight")
 
         return cost_df
+
+
+
+    @timeit
+    def plot_waterfall(self, path: Path = None, show_plots: bool = True):
+        """Create waterfall plot for the fit results.
+
+        Plots the optimization runs sorted by cost.
+        """
+        fig, ax = plt.subplots(nrows=1, ncols=1, figsize=(5, 5))
+        ax.plot(
+            range(self.size),
+            1 + (self.df_fits.cost - self.df_fits.cost.iloc[0]),
+            "-o",
+            color="black",
+        )
+        ax.set_xlabel("index (Ordered optimizer run)")
+        ax.set_ylabel("Offset cost value (relative to best start)")
+        ax.set_yscale("log")
+        ax.set_title("Waterfall plot")
+        self._save_fig(fig, path=path, show_plots=show_plots)
+
+    @timeit
+    def plot_traces(self, path: Path = None, show_plots: bool = True) -> None:
+        """Plot optimization traces.
+
+        Optimization time course of costs.
+        """
+        fig, ax = plt.subplots(nrows=1, ncols=1, figsize=(5, 5))
+
+        for run in range(self.size):
+            df_run = self.df_traces[self.df_traces.run == run]
+            ax.plot(range(len(df_run)), df_run.cost, "-", alpha=0.8)
+        for run in range(self.size):
+            df_run = self.df_traces[self.df_traces.run == run]
+            ax.plot(
+                len(df_run) - 1, df_run.cost.iloc[-1], "o", color="black", alpha=0.8
+            )
+
+        ax.set_xlabel("step")
+        ax.set_ylabel("cost")
+        ax.set_yscale("log")
+        ax.set_title("Traces")
+
+        self._save_fig(fig, path=path, show_plots=show_plots)
+
+    @timeit
+    def plot_correlation(
+        self,
+        path: Path = None,
+        show_plots: bool = True,
+    ):
+        """Plot correlation of parameters for analysis."""
+        df = self.df_fits
+
+        pids = [p.pid for p in self.parameters]
+        sns.set(style="ticks", color_codes=True)
+        # sns_plot = sns.pairplot(data=df[pids + ["cost"]], hue="cost", corner=True)
+
+        npars = len(pids)
+        # x0 =
+        fig, axes = plt.subplots(
+            nrows=npars, ncols=npars, figsize=(5 * npars, 5 * npars)
+        )
+        cost_normed = df.cost - df.cost.min()
+        cost_normed = 1 - cost_normed / cost_normed.max()
+        # print("cost_normed", cost_normed)
+        size = np.power(15 * cost_normed, 2)
+
+        bound_kwargs = {"color": "darkgrey", "linestyle": "--", "alpha": 1.0}
+
+        for kx, pidx in enumerate(pids):
+            for ky, pidy in enumerate(pids):
+                if npars == 1:
+                    ax = axes
+                else:
+                    ax = axes[ky][kx]
+
+                # optimal values
+                if kx > ky:
+                    ax.set_xlabel(pidx)
+                    # ax.set_xlim(self.parameters[kx].lower_bound, self.parameters[kx].upper_bound)
+                    ax.axvline(x=self.parameters[kx].lower_bound, **bound_kwargs)
+                    ax.axvline(x=self.parameters[kx].upper_bound, **bound_kwargs)
+                    ax.set_ylabel(pidy)
+                    # ax.set_ylim(self.parameters[ky].lower_bound, self.parameters[ky].upper_bound)
+                    ax.axhline(y=self.parameters[ky].lower_bound, **bound_kwargs)
+                    ax.axhline(y=self.parameters[ky].upper_bound, **bound_kwargs)
+
+                    # start values
+                    xall = []
+                    yall = []
+                    xstart_all = []
+                    ystart_all = []
+                    for ks in range(len(size)):
+                        x = df.x[ks][kx]
+                        y = df.x[ks][ky]
+                        xall.append(x)
+                        yall.append(y)
+                        if "x0" in df.columns:
+                            xstart = df.x0[ks][kx]
+                            ystart = df.x0[ks][ky]
+                            xstart_all.append(xstart)
+                            ystart_all.append(ystart)
+
+                    # start point
+                    ax.plot(
+                        xstart_all,
+                        ystart_all,
+                        "^",
+                        color="black",
+                        markersize=2,
+                        alpha=0.5,
+                    )
+                    # optimal values
+                    ax.scatter(
+                        df[pidx], df[pidy], c=df.cost, s=size, alpha=0.9, cmap="jet"
+                    ),
+
+                    ax.plot(
+                        self.xopt[kx],
+                        self.xopt[ky],
+                        "s",
+                        color="darkgreen",
+                        markersize=30,
+                        alpha=0.7,
+                    )
+
+                if kx == ky:
+                    ax.set_xlabel(pidx)
+                    ax.axvline(x=self.parameters[kx].lower_bound, **bound_kwargs)
+                    ax.axvline(x=self.parameters[kx].upper_bound, **bound_kwargs)
+                    # ax.set_xlim(self.parameters[kx].lower_bound,
+                    #            self.parameters[kx].upper_bound)
+                    ax.set_ylabel("cost")
+                    ax.plot(
+                        df[pidx],
+                        df.cost,
+                        color="black",
+                        marker="s",
+                        linestyle="None",
+                        alpha=1.0,
+                    )
+
+                # traces (walk through cost function)
+                if kx < ky:
+                    ax.set_xlabel(pidy)
+                    # ax.set_xlim(self.parameters[ky].lower_bound, self.parameters[ky].upper_bound)
+                    ax.axvline(x=self.parameters[ky].lower_bound, **bound_kwargs)
+                    ax.axvline(x=self.parameters[ky].upper_bound, **bound_kwargs)
+                    ax.set_ylabel(pidx)
+                    # ax.set_ylim(self.parameters[kx].lower_bound, self.parameters[kx].upper_bound)
+                    ax.axhline(y=self.parameters[kx].lower_bound, **bound_kwargs)
+                    ax.axhline(y=self.parameters[kx].upper_bound, **bound_kwargs)
+
+                    # ax.plot([ystart, y], [xstart, x], "-", color="black", alpha=0.7)
+
+                    for run in range(self.size):
+                        df_run = self.df_traces[self.df_traces.run == run]
+                        # ax.plot(df_run[pidy], df_run[pidx], '-', color="black", alpha=0.3)
+                        ax.scatter(
+                            df_run[pidy],
+                            df_run[pidx],
+                            c=df_run.cost,
+                            cmap="jet",
+                            marker="s",
+                            alpha=0.8,
+                        )
+
+                    # end point
+                    # ax.plot(yall, xall, "o", color="black", markersize=10, alpha=0.9)
+                    ax.plot(
+                        self.xopt[ky],
+                        self.xopt[kx],
+                        "s",
+                        color="darkgreen",
+                        markersize=30,
+                        alpha=0.7,
+                    )
+
+                ax.set_xscale("log")
+                if kx != ky:
+                    ax.set_yscale("log")
+                if kx == ky:
+                    ax.set_yscale("log")
+
+        # correct scatter limits
+        for kx, _pidx in enumerate(pids):
+            for ky, _pidy in enumerate(pids):
+                if kx < ky:
+                    axes[ky][kx].set_xlim(axes[kx][ky].get_xlim())
+                    axes[ky][kx].set_ylim(axes[kx][ky].get_ylim())
+
+        self._save_fig(fig=fig, path=path, show_plots=show_plots)

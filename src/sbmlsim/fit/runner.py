@@ -28,8 +28,8 @@ import numpy as np
 
 import logging
 
-from sbmlsim.fit.objects import
-from sbmlsim.fit.analysis import OptimizationResult
+from sbmlsim.fit.optimization import OptimizationProblem
+from sbmlsim.fit.result import OptimizationResult
 from sbmlsim.fit.options import (
     FittingStrategyType, OptimizationAlgorithmType, WeightingPointsType, ResidualType
 )
@@ -45,12 +45,11 @@ lock = multiprocessing.Lock()
 def run_optimization(
     problem: OptimizationProblem,
     size: int = 5,
+    fitting_strategy: FittingStrategyType = FittingStrategyType.ABSOLUTE_VALUES,
+    residual_type: ResidualType = ResidualType.ABSOLUTE_RESIDUALS,
+    weighting_points: WeightingPointsType = WeightingPointsType.NO_WEIGHTING,
     seed: Optional[int] = None,
-    fitting_type: FittingType = FittingType.ABSOLUTE_VALUES,
-    weighting_points: WeightingPointsType
-    verbose: bool = False,
-
-    **kwargs,
+    **kwargs
 ) -> OptimizationResult:
     """Run the given optimization problem in a serial fashion.
 
@@ -58,9 +57,12 @@ def run_optimization(
     the OptimizationResults. The size defines the repeated optimizations
     of the problem. Every repeat uses different initial values.
 
+    :param problem: problem to optimize
     :param size: integer number of optimizations
+    :param weighting_points:
+    :param residual_type:
+    :param fitting_strategy:
     :param seed: integer random seed (for sampling of parameters)
-    :param verbose: boolean
     :param kwargs: additional arguments for optimizer, e.g. xtol
     :return: OptimizationResult
     """
@@ -71,25 +73,20 @@ def run_optimization(
         )
         kwargs.pop("n_cores")
 
-    # here the additional information must be injected
-    fitting_type = kwargs["fitting_type"]
-    weighting_local = kwargs["weighting_local"]
-    residual_type = kwargs["residual_type"]
-
     # initialize problem, which calculates errors
     problem.initialize(
-        fitting_strategy=fitting_type,
-        weighting_points=weighting_local,
+        fitting_strategy=fitting_strategy,
+        weighting_points=weighting_points,
         residual_type=residual_type,
     )
 
-    # new simulator instance
+    # new simulator instance with arguments
     simulator = SimulatorSerial(**kwargs)  # sets tolerances
     problem.set_simulator(simulator)
 
     # optimize
     fits, trajectories = problem.optimize(
-        size=size, seed=seed, verbose=verbose, **kwargs
+        size=size, seed=seed, **kwargs
     )
 
     # process results and plots
@@ -97,25 +94,32 @@ def run_optimization(
         parameters=problem.parameters, fits=fits, trajectories=trajectories
     )
 
+
 @timeit
 def run_optimization_parallel(
     problem: OptimizationProblem,
-    size: int,
-    n_cores: int = None,
-    seed: int = None,
+    size: int = 5,
+    n_cores: Optional[int] = None,
+    fitting_strategy: FittingStrategyType = FittingStrategyType.ABSOLUTE_VALUES,
+    residual_type: ResidualType = ResidualType.ABSOLUTE_RESIDUALS,
+    weighting_points: WeightingPointsType = WeightingPointsType.NO_WEIGHTING,
+    seed: Optional[int] = None,
     **kwargs,
 ) -> OptimizationResult:
     """Run optimization in parallel.
 
+    See run_optimization for more details.
+
     :param problem: uninitialized optimization problem (pickable)
     :param n_cores: number of workers
     :param size: total number of optimizations
-    :param op_dict: optimization problem
+    :param weighting_points:
+    :param residual_type:
+    :param fitting_strategy:
+    :param seed:
 
     :return:
     """
-    print(problem)
-
     # set number of cores
     cpu_count = multiprocessing.cpu_count()
     if n_cores is None:
@@ -126,7 +130,6 @@ def run_optimization_parallel(
 
     print("\n--- STARTING OPTIMIZATION ---\n")
     print(f"Running {n_cores} workers")
-    # FIXME: remove this bugfix
     if size < n_cores:
         logger.warning(
             f"Less simulations then cores: '{size} < {n_cores}', "
@@ -146,7 +149,15 @@ def run_optimization_parallel(
 
     args_list = []
     for k in range(n_cores):
-        d = {"problem": problem, "size": sizes[k], "seed": seeds[k], **kwargs}
+        d = {
+            "problem": problem,
+            "size": sizes[k],
+            "weighting_points": weighting_points,
+            "residual_type": residual_type,
+            "fitting_strategy": fitting_strategy,
+            "seed": seeds[k],
+            **kwargs
+        }
         args_list.append(d)
 
     # worker pool
@@ -167,8 +178,3 @@ def worker(kwargs) -> OptimizationResult:
         lock.release()
 
     return run_optimization(**kwargs)
-
-
-
-
-
