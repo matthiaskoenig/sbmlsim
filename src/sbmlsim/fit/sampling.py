@@ -8,8 +8,9 @@ import pandas as pd
 from matplotlib import pyplot as plt
 from pyDOE import lhs
 
+
+# FIXME: make this independent of the fit parameters
 from sbmlsim.fit.objects import FitParameter
-from sbmlsim.utils import timeit
 
 
 logger = logging.getLogger(__name__)

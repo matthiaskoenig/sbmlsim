@@ -9,15 +9,15 @@ from sbmlsim.examples.experiments.midazolam.fitting_problems import (
     op_mandema1992,
     op_mid1oh_iv,
 )
-from sbmlsim.fit.analysis import OptimizationResult
-from sbmlsim.fit.fit import process_optimization_result, run_optimization
+from sbmlsim.fit.analysis import OptimizationResult, process_optimization_result
+from sbmlsim.fit.fit import run_optimization
 from sbmlsim.fit.optimization import (
     FittingType,
     OptimizationProblem,
     OptimizerType,
     ResidualType,
     SamplingType,
-    WeightingLocalType,
+    WeightingPointsType,
 )
 
 
@@ -50,7 +50,7 @@ if __name__ == "__main__":
     fit_kwargs = {
         "fitting_type": FittingType.ABSOLUTE_VALUES,
         "residual_type": ResidualType.ABSOLUTE_NORMED_RESIDUALS,
-        "weighting_local": WeightingLocalType.ABSOLUTE_ONE_OVER_WEIGHTING,
+        "weighting_local": WeightingPointsType.ABSOLUTE_ONE_OVER_WEIGHTING,
         "absolute_tolerance": 1e-6,
         "relative_tolerance": 1e-6,
     }

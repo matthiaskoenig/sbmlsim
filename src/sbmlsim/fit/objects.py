@@ -3,7 +3,7 @@ import json
 import logging
 import math
 from pathlib import Path
-from typing import Any, Dict, Iterable, List, Optional, Union
+from typing import Any, Dict, Iterable, List, Optional, Union, Callable
 
 import numpy as np
 
@@ -23,7 +23,7 @@ class FitExperiment:
 
     def __init__(
         self,
-        experiment,
+        experiment: Callable,
         mappings: List[str] = None,
         weights: Union[float, List[float]] = None,
         use_mapping_weights: bool = False,

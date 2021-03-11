@@ -1,9 +1,10 @@
-"""Module for running parameter fits in parallel.
+"""Module for running parameter optimizations.
 
-The implementation uses multiprocessing.
-Starts processes on the n_cores which run optimization problems.
+The optimization can run either run serial or in a parallel version.
 
--------------------------------------------------------------------------------
+The parallel optimization uses multiprocessing, i.e. the parallel runner
+starts processes on the n_cores which run optimization problems.
+
 How multiprocessing works, in a nutshell:
 
     Process() spawns (fork or similar on Unix-like systems) a copy of the
@@ -14,27 +15,87 @@ How multiprocessing works, in a nutshell:
     At this point, the original and copy are now different and independent,
     and can run simultaneously.
 
-Since these are independent processes, they now have independent Global Interpreter Locks
-(in CPython) so both can use up to 100% of a CPU on a multi-cpu box, as long as they don't
-contend for other lower-level (OS) resources. That's the "multiprocessing" part.
--------------------------------------------------------------------------------
+Since these are independent processes, they now have independent Global Interpreter
+Locks (in CPython) so both can use up to 100% of a CPU on a multi-cpu box, as long as
+they dont contend for other lower-level (OS) resources. That's the "multiprocessing"
+part.
 """
-import logging
-import multiprocessing
 import os
-from multiprocessing import Lock
+import multiprocessing
+from typing import Optional
 
 import numpy as np
 
+import logging
+
+from sbmlsim.fit.objects import
 from sbmlsim.fit.analysis import OptimizationResult
-from sbmlsim.fit.fit import run_optimization
-from sbmlsim.fit.optimization import OptimizationProblem
+from sbmlsim.fit.options import (
+    FittingStrategyType, OptimizationAlgorithmType, WeightingPointsType, ResidualType
+)
+from sbmlsim.simulator import SimulatorSerial
 from sbmlsim.utils import timeit
 
 
 logger = logging.getLogger(__name__)
-lock = Lock()
+lock = multiprocessing.Lock()
 
+
+@timeit
+def run_optimization(
+    problem: OptimizationProblem,
+    size: int = 5,
+    seed: Optional[int] = None,
+    fitting_type: FittingType = FittingType.ABSOLUTE_VALUES,
+    weighting_points: WeightingPointsType
+    verbose: bool = False,
+
+    **kwargs,
+) -> OptimizationResult:
+    """Run the given optimization problem in a serial fashion.
+
+    The runner executes the given OptimizationProblem and returns
+    the OptimizationResults. The size defines the repeated optimizations
+    of the problem. Every repeat uses different initial values.
+
+    :param size: integer number of optimizations
+    :param seed: integer random seed (for sampling of parameters)
+    :param verbose: boolean
+    :param kwargs: additional arguments for optimizer, e.g. xtol
+    :return: OptimizationResult
+    """
+    if "n_cores" in kwargs:
+        # remove parallel arguments
+        logger.warning(
+            "Parameter 'n_cores' does not have any effect in serial optimization."
+        )
+        kwargs.pop("n_cores")
+
+    # here the additional information must be injected
+    fitting_type = kwargs["fitting_type"]
+    weighting_local = kwargs["weighting_local"]
+    residual_type = kwargs["residual_type"]
+
+    # initialize problem, which calculates errors
+    problem.initialize(
+        fitting_strategy=fitting_type,
+        weighting_points=weighting_local,
+        residual_type=residual_type,
+    )
+
+    # new simulator instance
+    simulator = SimulatorSerial(**kwargs)  # sets tolerances
+    problem.set_simulator(simulator)
+
+    # optimize
+    fits, trajectories = problem.optimize(
+        size=size, seed=seed, verbose=verbose, **kwargs
+    )
+
+    # process results and plots
+    return OptimizationResult(
+        parameters=problem.parameters, fits=fits, trajectories=trajectories
+    )
 
 @timeit
 def run_optimization_parallel(
@@ -106,3 +167,8 @@ def worker(kwargs) -> OptimizationResult:
         lock.release()
 
     return run_optimization(**kwargs)
+
+
+
+
+

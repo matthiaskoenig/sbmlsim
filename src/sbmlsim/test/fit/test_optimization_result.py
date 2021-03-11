@@ -3,12 +3,12 @@ from pathlib import Path
 from sbmlsim.examples.experiments.midazolam import fitting_parallel
 from sbmlsim.examples.experiments.midazolam.fitting_problems import op_mid1oh_iv
 from sbmlsim.fit.analysis import OptimizationResult
-from sbmlsim.fit.optimization import FittingType, ResidualType, WeightingLocalType
+from sbmlsim.fit.optimization import FittingType, ResidualType, WeightingPointsType
 
 fit_kwargs_default = {
     "fitting_type": FittingType.ABSOLUTE_VALUES,
     "residual_type": ResidualType.ABSOLUTE_NORMED_RESIDUALS,
-    "weighting_local": WeightingLocalType.ABSOLUTE_ONE_OVER_WEIGHTING,
+    "weighting_local": WeightingPointsType.ABSOLUTE_ONE_OVER_WEIGHTING,
     "absolute_tolerance": 1e-6,
     "relative_tolerance": 1e-6,
 }

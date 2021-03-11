@@ -14,247 +14,40 @@ import seaborn as sns
 from matplotlib.figure import Figure
 from scipy.optimize import OptimizeResult
 
+from sbmlsim.fit.fit import logger
 from sbmlsim.fit.objects import FitParameter
+from sbmlsim.fit.optimization import OptimizationProblem, OptimizationAnalysis
 from sbmlsim.plot.plotting_matplotlib import plt
 from sbmlsim.serialization import ObjectJSONEncoder, from_json, to_json
+from sbmlsim.simulator import SimulatorSerial
+from sbmlsim.utils import timeit
+
+import datetime
+import json
+import logging
+import time
+import uuid
+from pathlib import Path
+from typing import Dict, Iterable, List, Optional, Set, Tuple, Union
+
+import numpy as np
+import pandas as pd
+import seaborn as sns
+from matplotlib.figure import Figure
+from scipy.optimize import OptimizeResult
+
+from sbmlsim.fit.objects import FitParameter
+from sbmlsim.fit.optimization import OptimizationProblem
+from sbmlsim.plot.plotting_matplotlib import plt
+from sbmlsim.serialization import ObjectJSONEncoder, from_json, to_json
+from sbmlsim.simulator import SimulatorSerial
 from sbmlsim.utils import timeit
 
 
 logger = logging.getLogger(__name__)
 
 
-class OptimizationResult(ObjectJSONEncoder):
-    """Result of optimization problem."""
-
-    def __init__(
-        self,
-        parameters: Union[List[FitParameter], List[Dict]],
-        fits: List[OptimizeResult],
-        trajectories: List,
-        sid: str = None,
-    ):
-        """Initialize optimization result.
-
-        Provides access to the FitParameters, the individual fits, and
-        the trajectories of the fits.
-
-        # FIXME: store for which problem
-
-        :param parameters:
-        :param fits:
-        :param trajectories:
-        """
-        if sid:
-            self.sid = sid
-        else:
-            uuid_str = str(uuid.uuid4())
-            self.sid = (
-                "{:%Y%m%d_%H%M%S}".format(datetime.datetime.now()) + f"__{uuid_str}"
-            )
-        self.parameters: List[FitParameter] = []
-        for p in parameters:
-            if isinstance(p, Dict):
-                p = FitParameter(**p)
-            self.parameters.append(p)
-
-        self.fits: List[OptimizeResult] = []
-        for fit in fits:
-            if isinstance(fit, Dict):
-                fit = OptimizeResult(**fit)
-            self.fits.append(fit)
-
-        self.trajectories = trajectories
-
-        # create data frame from results
-        self.df_fits = OptimizationResult.process_fits(self.parameters, self.fits)
-        self.df_traces = OptimizationResult.process_traces(
-            self.parameters, self.trajectories
-        )
-
-    def to_tsv(self, path: Path):
-        """Store fit results as TSV."""
-        self.df_fits.to_csv(path, sep="\t", index=False)
-
-    def to_dict(self):
-        """Convert to dictionary."""
-        d = dict()
-        for key in ["sid", "parameters", "fits", "trajectories"]:
-            d[key] = self.__dict__[key]
-        return d
-
-    def to_json(self, path: Path):
-        """Store OptimizationResult as json.
-
-        Uses the to_dict method.
-        """
-        return to_json(self, path=path)
-
-    @staticmethod
-    def from_json(json_info: Union[str, Path]) -> "OptimizationResult":
-        """Load OptimizationResult from Path or str.
-
-        :param json_info:
-        :return:
-        """
-        d = from_json(json_info)
-        return OptimizationResult(**d)
-
-    def __str__(self) -> str:
-        """Get string representation."""
-        info = f"<OptimizationResult: n={self.size}>"
-        return info
-
-    @staticmethod
-    def combine(opt_results: List["OptimizationResult"]) -> "OptimizationResult":
-        """Combine results from multiple parameter fitting experiments."""
-        # FIXME: check that the parameters are fitting
-        parameters = opt_results[0].parameters
-        pids = {p.pid for p in parameters}
-
-        fits = []
-        trajectories = []
-        for opt_res in opt_results:
-            pids_next = {p.pid for p in opt_res.parameters}
-            if pids != pids_next:
-                logger.error(
-                    f"Parameters of OptimizationResults do not match: "
-                    f"{pids} != {pids_next}"
-                )
-
-            fits.extend(opt_res.fits)
-            trajectories.extend(opt_res.trajectories)
-        return OptimizationResult(
-            parameters=parameters, fits=fits, trajectories=trajectories
-        )
-
-    @property
-    def size(self):
-        """Get number of optimization runs in result."""
-        return len(self.df_fits)
-
-    @property
-    def xopt(self) -> np.ndarray:
-        """Numerical values of optimal parameters."""
-        return self.df_fits.x.iloc[0]
-
-    @property
-    def xopt_fit_parameters(self) -> List[FitParameter]:
-        """Optimal parameters as Fit parameters."""
-        return self._x_as_fit_parameters(x=self.xopt)
-
-    def _x_as_fit_parameters(self, x) -> List[FitParameter]:
-        """Convert numerical parameter vector to fit parameters."""
-        fit_pars = []
-        for k, p in enumerate(self.parameters):
-            fit_pars.append(
-                FitParameter(
-                    pid=p.pid,
-                    start_value=x[k],
-                    lower_bound=p.lower_bound,
-                    upper_bound=p.upper_bound,
-                    unit=p.unit,
-                )
-            )
-        return fit_pars
-
-    @staticmethod
-    def process_traces(parameters: List[FitParameter], trajectories):
-        """Process the optimization results."""
-        results = []
-        pids = [p.pid for p in parameters]
-        # print(fits)
-        for kt, trajectory in enumerate(trajectories):
-            for step in trajectory:
-                res = {
-                    "run": kt,
-                    "cost": step[1],
-                }
-                # add parameter columns
-                for k, pid in enumerate(pids):
-                    res[pid] = step[0][k]
-                results.append(res)
-        df = pd.DataFrame(results)
-        return df
-
-    @staticmethod
-    def process_fits(parameters: List[FitParameter], fits: List[OptimizeResult]):
-        """Process the optimization results."""
-        results = []
-        pids = [p.pid for p in parameters]
-        # print(fits)
-        for kf, fit in enumerate(fits):
-            res = {
-                "run": kf,
-                # 'status': fit.status,
-                "success": fit.success,
-                "duration": fit.duration,
-                "cost": fit.cost,
-                # 'optimality': fit.optimality,
-            }
-            # add parameter columns
-            for k, pid in enumerate(pids):
-                res[pid] = fit.x[k]
-            res["message"] = fit.message if hasattr(fit, "message") else None
-            res["x"] = fit.x
-            res["x0"] = fit.x0
-
-            results.append(res)
-        df = pd.DataFrame(results)
-        df.sort_values(by=["cost"], inplace=True)
-        # reindex
-        df.index = range(len(df))
-
-        return df
-
-    def report(self, path: Optional[Path] = None, print_output: bool = True) -> str:
-        """Report of optimization."""
-        pd.set_option("display.max_columns", None)
-        pd.set_option("display.expand_frame_repr", False)
-        info = [
-            "\n",
-            "-" * 80,
-            "-" * 80,
-            f"Optimization results: {self.sid}",
-            "-" * 80,
-            str(self.df_fits),
-            "-" * 80,
-            "Optimal parameters:",
-        ]
-        pd.reset_option("display.max_columns")
-        pd.reset_option("display.expand_frame_repr")
-
-        xopt = self.xopt
-        fitted_pars = {}
-        for k, p in enumerate(self.parameters):
-            opt_value = xopt[k]
-            if abs(opt_value - p.lower_bound) / p.lower_bound < 0.05:
-                msg = f"!Optimal parameter '{p.pid}' within 5% of lower bound!"
-                logger.error(msg)
-                info.append(f"\t>>> {msg} <<<")
-
-            if abs(opt_value - p.upper_bound) / p.upper_bound < 0.05:
-                msg = f"!Optimal parameter '{p.pid}' within 5% of upper bound!"
-                logger.error(msg)
-                info.append(f"\t>>> {msg} <<<")
-            fitted_pars[p.pid] = (opt_value, p.unit, p.lower_bound, p.upper_bound)
-
-        for key, value in fitted_pars.items():
-            info.append(
-                "\t'{}': Q_({}, '{}'),  # [{} - {}]".format(
-                    key, value[0], value[1], value[2], value[3]
-                )
-            )
-        info.append("-" * 80)
-        info = "\n".join(info)
-
-        if print_output:
-            print(info)
-
-        if path:
-            with open(path, "w") as fout:
-                fout.write(info)
-
-        return info
+class OptimizationResultAnalysis:
 
     @staticmethod
     def _save_fig(fig: Figure, path: Path, show_plots: bool = True):
@@ -455,3 +248,410 @@ class OptimizationResult(ObjectJSONEncoder):
                     axes[ky][kx].set_ylim(axes[kx][ky].get_ylim())
 
         self._save_fig(fig=fig, path=path, show_plots=show_plots)
+
+
+def process_optimization_result(
+    opt_result: OptimizationResult,
+    output_path: Path,
+    problem: OptimizationProblem = None,
+    show_plots=True,
+    fitting_type=None,
+    weighting_local=None,
+    residual_type=None,
+    variable_step_size=True,
+    absolute_tolerance=1e-6,
+    relative_tolerance=1e-6,
+):
+    """Process the optimization results.
+
+    Creates reports and stores figures and results.
+    """
+    # the results directory uses the hash of the OptimizationResult
+    results_dir: Path = output_path / opt_result.sid
+    if not results_dir.exists():
+        logger.warning(f"create output directory: '{results_dir}'")
+        results_dir.mkdir(parents=True, exist_ok=True)
+
+    problem_info = ""
+    if problem:
+        # FIXME: problem not initialized on multi-core and no simulator is assigned.
+        # This should happen automatically, to ensure correct behavior
+        problem.initialize(
+            fitting_strategy=fitting_type,
+            weighting_points=weighting_local,
+            residual_type=residual_type,
+        )
+        problem.set_simulator(simulator=SimulatorSerial())
+        problem.variable_step_size = variable_step_size
+        problem.absolute_tolerance = absolute_tolerance
+        problem.relative_tolerance = relative_tolerance
+
+        problem_info = problem.report(
+            path=None,
+            print_output=False,
+        )
+
+    # write report
+    result_info = opt_result.report(
+        path=None,
+        print_output=True,
+    )
+    info = problem_info + result_info
+    with open(results_dir / "00_report.txt", "w") as f_report:
+        f_report.write(info)
+
+    opt_result.to_json(path=results_dir / "01_optimization_result.json")
+    opt_result.to_tsv(path=results_dir / "01_optimization_result.tsv")
+
+    if opt_result.size > 1:
+        opt_result.plot_waterfall(
+            path=results_dir / "02_waterfall.svg", show_plots=show_plots
+        )
+    opt_result.plot_traces(path=results_dir / "02_traces.svg", show_plots=show_plots)
+
+    # plot top fit
+    if problem:
+        xopt = opt_result.xopt
+        optimization_analyzer = OptimizationAnalysis(optimization_problem=problem)
+
+        df_costs = optimization_analyzer.plot_costs(
+            x=xopt, path=results_dir / "03_cost_improvement.svg", show_plots=show_plots
+        )
+        df_costs.to_csv(results_dir / "03_cost_improvement.tsv", sep="\t", index=False)
+
+        optimization_analyzer.plot_fits(
+            x=xopt, path=results_dir / "05_fits.svg", show_plots=show_plots
+        )
+        optimization_analyzer.plot_residuals(
+            x=xopt, output_path=results_dir, show_plots=show_plots
+        )
+
+    if opt_result.size > 1:
+        opt_result.plot_correlation(
+            path=results_dir / "04_parameter_correlation", show_plots=show_plots
+        )
+
+    # TODO: overall HTML report for simple overview
+
+
+
+class OptimizationAnalysis:
+    """Class for creating plots and results."""
+
+    def __init__(self, optimization_problem: OptimizationProblem):
+        self.op = optimization_problem
+
+    @staticmethod
+    def _save_fig(fig, path: Path, show_plots: bool = True):
+        if show_plots:
+            plt.show()
+        if path is not None:
+            fig.savefig(path, bbox_inches="tight")
+        plt.close(fig)
+
+    @timeit
+    def plot_fits(self, x, path: Path = None, show_plots: bool = True):
+        """Plot fitted curves with experimental data.
+
+        Overview of all fit mappings.
+
+        :param x: parameters to evaluate
+        :return:
+        """
+        n_plots = len(self.op.mapping_keys)
+        fig, axes = plt.subplots(
+            nrows=n_plots, ncols=2, figsize=(10, 5 * n_plots), squeeze=False
+        )
+
+        # residual data and simulations of optimal paraemters
+        res_data = self.op.residuals(xlog=np.log10(x), complete_data=True)
+
+        for k, mapping_id in enumerate(self.op.mapping_keys):
+
+            # global reference data
+            sid = self.op.experiment_keys[k]
+            mapping_id = self.op.mapping_keys[k]
+            x_ref = self.op.x_references[k]
+            y_ref = self.op.y_references[k]
+            y_ref_err = self.op.y_errors[k]
+            y_ref_err_type = self.op.y_errors_type[k]
+            x_id = self.op.xid_observable[k]
+            y_id = self.op.yid_observable[k]
+
+            for ax in axes[k]:
+                ax.set_title(f"{sid} {mapping_id}")
+                ax.set_xlabel(x_id)
+                ax.set_ylabel(y_id)
+
+                # calculated data in residuals
+                x_obs = res_data["x_obs"][k]
+                y_obs = res_data["y_obs"][k]
+
+                # FIXME: add residuals
+
+                # plot data
+                if y_ref_err is None:
+                    ax.plot(x_ref, y_ref, "s", color="black", label="reference_data")
+                else:
+                    ax.errorbar(
+                        x_ref,
+                        y_ref,
+                        yerr=y_ref_err,
+                        marker="s",
+                        color="black",
+                        label=f"reference_data ± {y_ref_err_type}",
+                    )
+                # plot simulation
+                ax.plot(x_obs, y_obs, "-", color="blue", label="observable")
+                ax.legend()
+
+            axes[k][1].set_yscale("log")
+            axes[k][1].set_ylim(bottom=0.3 * np.nanmin(y_ref))
+
+        self._save_fig(fig, path=path, show_plots=show_plots)
+
+    @timeit
+    def plot_residuals(self, x, output_path: Path = None, show_plots: bool = True):
+        """Plot residual data.
+
+        :param res_data_start: initial residual data
+        :return:
+        """
+        titles = ["model", "fit"]
+        res_data_start = self.op.residuals(
+            xlog=np.log10(self.op.xmodel), complete_data=True
+        )
+        res_data_fit = self.op.residuals(xlog=np.log10(x), complete_data=True)
+
+        for k, mapping_id in enumerate(self.op.mapping_keys):
+            fig, ((a1, a2), (a3, a4), (a5, a6)) = plt.subplots(
+                nrows=3, ncols=2, figsize=(10, 10)
+            )
+
+            axes = [(a1, a3, a5), (a2, a4, a6)]
+            if titles is None:
+                titles = ["Model", "Fit"]
+
+            # global reference data
+            sid = self.op.experiment_keys[k]
+            mapping_id = self.op.mapping_keys[k]
+            # weights = self.op.weights_points[k]
+            x_ref = self.op.x_references[k]
+            y_ref = self.op.y_references[k]
+            y_ref_err = self.op.y_errors[k]
+            x_id = self.op.xid_observable[k]
+            y_id = self.op.yid_observable[k]
+
+            for kdata, res_data in enumerate([res_data_start, res_data_fit]):
+                ax1, ax2, ax3 = axes[kdata]
+                title = titles[kdata]
+
+                # calculated data in residuals
+
+                x_obs = res_data["x_obs"][k]
+                y_obs = res_data["y_obs"][k]
+                y_obsip = res_data["y_obsip"][k]
+
+                res = res_data["residuals"][k]
+                res_weighted = res_data["residuals_weighted"][k]
+                res_abs = res_data["res_abs"][k]
+                # res_rel = res_data["res_rel"][k]
+
+                cost = res_data["cost"][k]
+
+                for ax in (ax1, ax2, ax3):
+                    ax.axhline(y=0, color="black")
+                    ax.set_ylabel(y_id)
+                ax3.set_xlabel(x_id)
+
+                if y_ref_err is None:
+                    ax1.plot(x_ref, y_ref, "s", color="black", label="reference_data")
+                else:
+                    ax1.errorbar(
+                        x_ref,
+                        y_ref,
+                        yerr=y_ref_err,
+                        marker="s",
+                        color="black",
+                        label="reference_data",
+                    )
+
+                ax1.plot(x_obs, y_obs, "-", color="blue", label="observable")
+                ax1.plot(x_ref, y_obsip, "o", color="blue", label="interpolation")
+                for ax in (ax1, ax2):
+                    ax.plot(x_ref, res_abs, "o", color="darkorange", label="obs-ref")
+                ax1.fill_between(
+                    x_ref,
+                    res_abs,
+                    np.zeros_like(res),
+                    alpha=0.4,
+                    color="darkorange",
+                    label="__nolabel__",
+                )
+
+                ax2.plot(
+                    x_ref,
+                    res_weighted,
+                    "o",
+                    color="darkgreen",
+                    label="weighted residuals",
+                )
+                ax2.fill_between(
+                    x_ref,
+                    res_weighted,
+                    np.zeros_like(res_weighted),
+                    alpha=0.4,
+                    color="darkgreen",
+                    label="__nolabel__",
+                )
+
+                res_weighted2 = np.power(res_weighted, 2)
+                ax3.plot(
+                    x_ref,
+                    res_weighted2,
+                    "o",
+                    color="darkred",
+                    label="(weighted residuals)^2",
+                )
+                ax3.fill_between(
+                    x_ref,
+                    res_weighted2,
+                    np.zeros_like(res),
+                    alpha=0.4,
+                    color="darkred",
+                    label="__nolabel__",
+                )
+
+                for ax in (ax1, ax2):
+                    plt.setp(ax.get_xticklabels(), visible=False)
+
+                # ax3.set_xlabel("x")
+                for ax in (ax2, ax3):
+                    ax.set_xlim(ax1.get_xlim())
+
+                if title:
+                    full_title = "{}_{}: {} (cost={:.3e})".format(
+                        sid, mapping_id, title, cost
+                    )
+                    ax1.set_title(full_title)
+                for ax in (ax1, ax2, ax3):
+                    # plt.setp(ax.get_yticklabels(), visible=False)
+                    # ax.set_ylabel("y")
+                    # ax.set_yscale("log")
+                    ax.legend()
+
+            # adapt axes
+            if res_data_fit is not None:
+                for axes in [(a1, a2), (a3, a4), (a5, a6)]:
+                    ax1, ax2 = axes
+                    # ylim1 = ax1.get_ylim()
+                    # ylim2 = ax2.get_ylim()
+                    # # for ax in axes:
+                    # #    ax.set_ylim([min(ylim1[0], ylim2[0]), max(ylim1[1],ylim2[1])])
+
+            if show_plots:
+                plt.show()
+            if output_path is not None:
+                fig.savefig(
+                    output_path / f"06_residuals_{sid}_{mapping_id}.svg",
+                    bbox_inches="tight",
+                )
+
+    @timeit
+    def plot_costs(self, x, path: Path = None, show_plots: bool = True) -> pd.DataFrame:
+        """Plot cost function comparison.
+
+        # FIXME: separate calculation of cost DataFrame
+        """
+        xparameters = {
+            # model parameters
+            "model": self.op.xmodel,
+            # initial values of fit parameter
+            "initial": self.op.x0,
+            # provided parameters
+            "fit": x,
+        }
+        data = []
+        costs = {}
+        for key, xpar in xparameters.items():
+            res_data = self.op.residuals(xlog=np.log10(xpar), complete_data=True)
+            costs[key] = res_data["cost"]
+            for k, _ in enumerate(self.op.mapping_keys):
+                data.append(
+                    {
+                        "id": f"{self.op.experiment_keys[k]}_{self.op.mapping_keys[k]}",
+                        "experiment": self.op.experiment_keys[k],
+                        "mapping": self.op.mapping_keys[k],
+                        "cost": res_data["cost"][k],
+                        "type": key,
+                    }
+                )
+
+        cost_df = pd.DataFrame(
+            data, columns=["id", "experiment", "mapping", "cost", "type"]
+        )
+
+        min_cost = np.min(
+            [
+                np.min(costs["fit"]),
+                np.min(costs["model"]),
+                np.min(costs["initial"]),
+            ]
+        )
+        max_cost = np.max(
+            [
+                np.max(costs["fit"]),
+                np.max(costs["model"]),
+                np.max(costs["initial"]),
+            ]
+        )
+
+        fig, ax = plt.subplots(nrows=1, ncols=1, figsize=(5, 5))
+
+        ax.plot(
+            [min_cost * 0.5, max_cost * 2],
+            [min_cost * 0.5, max_cost * 2],
+            "--",
+            color="black",
+        )
+        # ax.plot(costs["initial"], costs["fit"], linestyle="", marker="s", label="initial")
+        ax.plot(
+            costs["model"],
+            costs["fit"],
+            linestyle="",
+            marker="o",
+            label="model",
+            color="black",
+            markersize="10",
+            alpha=0.8,
+        )
+
+        for k, exp_key in enumerate(self.op.experiment_keys):
+            ax.annotate(
+                exp_key,
+                xy=(
+                    costs["model"][k],
+                    costs["fit"][k],
+                ),
+                fontsize="x-small",
+                alpha=0.7,
+            )
+
+        ax.set_xlabel("initial cost")
+        ax.set_ylabel("fit cost")
+        ax.set_xscale("log")
+        ax.set_yscale("log")
+        ax.grid()
+        ax.set_xlim(min_cost * 0.5, max_cost * 2)
+        ax.set_ylim(min_cost * 0.5, max_cost * 2)
+        ax.legend()
+
+        # sns.set_color_codes("pastel")
+        # sns.barplot(ax=ax, x="cost", y="id", hue="type", data=cost_df)
+        # ax.set_xscale("log")
+        if show_plots:
+            plt.show()
+        if path:
+            fig.savefig(path, bbox_inches="tight")
+
+        return cost_df

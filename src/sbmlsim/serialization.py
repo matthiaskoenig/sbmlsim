@@ -3,7 +3,7 @@ import json
 from enum import Enum
 from json import JSONEncoder
 from pathlib import Path
-from typing import Dict, Tuple, Union
+from typing import Dict, Tuple, Union, Optional
 
 from matplotlib.pyplot import Figure as MPLFigure
 from numpy import ndarray
@@ -19,20 +19,20 @@ def from_json(json_info: Union[str, Path]) -> Dict:
     return d
 
 
-def to_json(object, path: Path = None):
+def to_json(object, path: Path = None) -> Union[str, Path]:
     """Serialize to JSON."""
     if path is None:
         return json.dumps(object, cls=ObjectJSONEncoder, indent=2)
     else:
         with open(path, "w") as f_json:
             json.dump(object, fp=f_json, cls=ObjectJSONEncoder, indent=2)
-        return None
+        return path
 
 
 class ObjectJSONEncoder(JSONEncoder):
     """Class for encoding in JSON."""
 
-    def to_json(self, path: Path = None):
+    def to_json(self, path: Optional[Path] = None) -> Union[str, Path]:
         """Convert definition to JSON for exchange.
 
         :param path: path for file, if None JSON str is returned
@@ -43,6 +43,7 @@ class ObjectJSONEncoder(JSONEncoder):
         else:
             with open(path, "w") as f_json:
                 json.dump(self, fp=f_json, cls=ObjectJSONEncoder, indent=2)
+            return path
 
     def default(self, o):
         """JSON encoder."""
