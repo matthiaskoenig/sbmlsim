@@ -33,7 +33,6 @@ from sbmlsim.fit.result import OptimizationResult
 from sbmlsim.fit.options import (
     FittingStrategyType, OptimizationAlgorithmType, WeightingPointsType, ResidualType
 )
-from sbmlsim.simulator import SimulatorSerial
 from sbmlsim.utils import timeit
 
 
@@ -209,16 +208,10 @@ def _run_optimization_serial(
         fitting_strategy=fitting_strategy,
         weighting_points=weighting_points,
         residual_type=residual_type,
+        absolute_tolerance=absolute_tolerance,
+        relative_tolerance=relative_tolerance,
+        variable_step_size=variable_step_size,
     )
-
-    # set simulator instance with arguments
-    sim_kwargs = {
-        'absolute_tolerance': absolute_tolerance,
-        'relative_tolerance': relative_tolerance,
-        'variable_step_size': variable_step_size,
-    }
-    simulator = SimulatorSerial(**sim_kwargs)  # sets tolerances
-    problem.set_simulator(simulator)
 
     # optimize
     fits, trajectories = problem.optimize(

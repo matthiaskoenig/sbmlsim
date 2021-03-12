@@ -92,6 +92,23 @@ class OptimizationProblem(ObjectJSONEncoder):
         self.weighting_points: Optional[WeightingPointsType] = None
         self.residual_type: Optional[ResidualType] = None
 
+        self.experiment_keys = []
+        self.mapping_keys = []
+        self.xid_observable = []
+        self.yid_observable = []
+        self.x_references = []
+        self.y_references = []
+        self.y_errors = []
+        self.y_errors_type = []
+        self.weights = []  # total weights for points (data points and curve weights)
+        self.weights_points = []  # weights for data points based on errors
+        self.weights_curve = []  # user defined weights per mapping/curve
+
+        self.models = []
+        self.xmodel = np.empty(shape=(len(self.pids)))
+        self.simulations = []
+        self.selections = []
+
     def __repr__(self) -> str:
         """Get representation."""
         return f"<OptimizationProblem: {self.opid}>"
@@ -179,8 +196,22 @@ class OptimizationProblem(ObjectJSONEncoder):
         fitting_strategy: FittingStrategyType,
         weighting_points: WeightingPointsType,
         residual_type: ResidualType,
-    ):
-        """Initialize Optimization problem."""
+        variable_step_size: bool = True,
+        relative_tolerance: float = 1e-6,
+        absolute_tolerance: float = 1e-6,
+    ) -> None:
+        """Initialize Optimization problem.
+
+        Performs precalculations, resolving data, calculating weights.
+        Creates and attaches simulator for the given problem.
+
+        :param fitting_strategy: strategy for fitting (absolute or relative to baseline)
+        :param residual_type: handling of residuals
+        :param weighting_points: weighting of points
+        :param absolute_tolerance: absolute tolerance of simulator
+        :param relative_tolerance: relative tolerance of simulator
+        :param variable_step_size: use variable step size in solver
+        """
         # weighting in fitting and handling of residuals
         if weighting_points is None:
             raise ValueError("'weighting_local' is required.")
@@ -209,24 +240,6 @@ class OptimizationProblem(ObjectJSONEncoder):
             base_path=self.base_path,
             data_path=self.data_path,
         )
-
-        # prepare reference data for all mappings (full length lists)
-        self.experiment_keys = []
-        self.mapping_keys = []
-        self.xid_observable = []
-        self.yid_observable = []
-        self.x_references = []
-        self.y_references = []
-        self.y_errors = []
-        self.y_errors_type = []
-        self.weights = []  # total weights for points (data points and curve weights combined)
-        self.weights_points = []  # weights for data points based on errors
-        self.weights_curve = []  # user defined weights per mapping/curve
-
-        self.models = []
-        self.xmodel = np.empty(shape=(len(self.pids)))
-        self.simulations = []
-        self.selections = []
 
         # Collect information for simulations
         fit_exp: Callable
@@ -487,6 +500,14 @@ class OptimizationProblem(ObjectJSONEncoder):
 
             # Print mappings with calculated weights
             # print(fit_experiment)
+
+        # set simulator instance with arguments
+        simulator = SimulatorSerial(
+            absolute_tolerance=absolute_tolerance,
+            relative_tolerance=relative_tolerance,
+            variable_step_size=variable_step_size,
+        )
+        self.set_simulator(simulator)
 
     def set_simulator(self, simulator):
         """Set the simulator on the runner and the experiments.

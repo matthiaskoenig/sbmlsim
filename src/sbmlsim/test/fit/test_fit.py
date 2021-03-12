@@ -109,7 +109,7 @@ def test_optimization_analysis(tmp_path):
         show_plots=False,
         **fit_kwargs_default
     )
-    op_analysis.analyse()
+    op_analysis.run()
 
 
 def test_fit_lsq_serial() -> None:

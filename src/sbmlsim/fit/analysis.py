@@ -39,7 +39,10 @@ class OptimizationAnalysis:
         relative_tolerance: float = 1e-6,
 
     ) -> None:
-        """Construct Optimization analysis."""
+        """Construct Optimization analysis.
+
+        :param show_plots: boolean flag to display plots
+        """
         self.sid = opt_result.sid
         self.opt_result: OptimizationResult = opt_result
         # the results directory uses the hash of the OptimizationResult
@@ -49,32 +52,31 @@ class OptimizationAnalysis:
             results_dir.mkdir(parents=True, exist_ok=True)
         self.results_dir = results_dir
 
-        self.fitting_strategy = fitting_strategy
-        self.residual_type = residual_type
-        self.weighting_points = weighting_points
-        self.variable_step_size = variable_step_size
-        self.absolute_tolerance = absolute_tolerance
-        self.relative_tolerance = relative_tolerance
+        self.show_plots=show_plots
+        # FIXME: remove
+        # self.fitting_strategy = fitting_strategy
+        # self.residual_type = residual_type
+        # self.weighting_points = weighting_points
+        # self.variable_step_size = variable_step_size
+        # self.absolute_tolerance = absolute_tolerance
+        # self.relative_tolerance = relative_tolerance
 
         if op:
-            # FIXME: problem not initialized on multi-core and no simulator is assigned.
-            # This should happen automatically, to ensure correct behavior
             op.initialize(
                 fitting_strategy=fitting_strategy,
                 weighting_points=weighting_points,
                 residual_type=residual_type,
+                variable_step_size=variable_step_size,
+                absolute_tolerance=absolute_tolerance,
+                relative_tolerance=relative_tolerance,
             )
-            op.set_simulator(simulator=SimulatorSerial())
-            op.variable_step_size = variable_step_size
-            op.absolute_tolerance = absolute_tolerance
-            op.relative_tolerance = relative_tolerance
 
         self.op = op
 
-    def analyse(self):
-        """Perform complete analysis.
+    def run(self) -> None:
+        """Execute complete analysis.
 
-        Creates all plots and reports.
+        This creates all plots and reports.
         """
         problem_info: str = ""
         if self.op:
@@ -91,8 +93,8 @@ class OptimizationAnalysis:
         with open(self.results_dir / "00_report.txt", "w") as f_report:
             f_report.write(info)
 
-        self.opt_result.to_json(path=results_dir / "01_optimization_result.json")
-        self.opt_result.to_tsv(path=results_dir / "01_optimization_result.tsv")
+        self.opt_result.to_json(path=self.results_dir / "01_optimization_result.json")
+        self.opt_result.to_tsv(path=self.results_dir / "01_optimization_result.tsv")
 
         if self.opt_result.size > 1:
             self.plot_waterfall(
@@ -106,27 +108,25 @@ class OptimizationAnalysis:
 
         # plot top fit
         if self.op:
-            xopt = opt_result.xopt
-            optimization_analyzer = OptimizationAnalysis(
-                optimization_problem=problem)
+            xopt = self.opt_result.xopt
 
-            df_costs = optimization_analyzer.plot_costs(
-                x=xopt, path=results_dir / "03_cost_improvement.svg",
-                show_plots=show_plots
+            df_costs = self.plot_costs(
+                x=xopt, path=self.results_dir / "03_cost_improvement.svg",
+                show_plots=self.show_plots
             )
-            df_costs.to_csv(results_dir / "03_cost_improvement.tsv", sep="\t",
+            df_costs.to_csv(self.results_dir / "03_cost_improvement.tsv", sep="\t",
                             index=False)
 
-            optimization_analyzer.plot_fits(
-                x=xopt, path=results_dir / "05_fits.svg", show_plots=show_plots
+            self.plot_fits(
+                x=xopt, path=self.results_dir / "05_fits.svg", show_plots=self.show_plots
             )
-            optimization_analyzer.plot_residuals(
-                x=xopt, output_path=results_dir, show_plots=show_plots
+            self.plot_residuals(
+                x=xopt, output_path=self.results_dir, show_plots=self.show_plots
             )
 
-        if opt_result.size > 1:
-            opt_result.plot_correlation(
-                path=results_dir / "04_parameter_correlation", show_plots=show_plots
+        if self.opt_result.size > 1:
+            self.opt_result.plot_correlation(
+                path=self.results_dir / "04_parameter_correlation", show_plots=self.show_plots
             )
 
     @staticmethod
