@@ -1,4 +1,4 @@
-"""Helpers for calculating model sensitivities.
+"""Helpers for calculating model sensitivities and uncertainties.
 
 Allows to get sets of changes from given model instance.
 """

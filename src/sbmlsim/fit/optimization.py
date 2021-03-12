@@ -8,11 +8,11 @@ from dataclasses import dataclass
 import pandas as pd
 
 from pathlib import Path
-from typing import Collection, Dict, Iterable, List, Set, Sized, Tuple, Callable, Union, \
-    Optional
+from typing import Collection, List, Set, Tuple, Callable, Union, Optional
 
 import numpy as np
 import scipy
+from scipy import interpolate
 
 from sbmlsim.data import Data
 from sbmlsim.experiment import ExperimentRunner
@@ -86,6 +86,11 @@ class OptimizationProblem(ObjectJSONEncoder):
         # paths
         self.base_path = base_path
         self.data_path = data_path
+
+        # set in initialization
+        self.fitting_strategy: Optional[FittingStrategyType] = None
+        self.weighting_points: Optional[WeightingPointsType] = None
+        self.residual_type: Optional[ResidualType] = None
 
     def __repr__(self) -> str:
         """Get representation."""
@@ -495,26 +500,16 @@ class OptimizationProblem(ObjectJSONEncoder):
         self,
         size: Optional[int] = 5,
         algorithm: OptimizationAlgorithmType = OptimizationAlgorithmType.LEAST_SQUARE,
-        fitting_strategy: FittingStrategyType = FittingStrategyType.ABSOLUTE_VALUES,
-        weighting_points: WeightingPointsType = WeightingPointsType.NO_WEIGHTING,
-        residual_type: ResidualType = ResidualType.ABSOLUTE_RESIDUALS,
         sampling: SamplingType = SamplingType.UNIFORM,
         seed: Optional[int] = None,
-        variable_step_size=True,
-        relative_tolerance=1e-6,
-        absolute_tolerance=1e-8,
         **kwargs,
     ) -> Tuple[List[scipy.optimize.OptimizeResult], List]:
-        """Run parameter optimization."""
+        """Run parameter optimization.
 
-        # additional settings for optimization
-        self.fitting_strategy = fitting_strategy
-        self.weighting_points = weighting_points
-        self.residual_type = residual_type
-        self.variable_step_size = variable_step_size
-        self.relative_tolerance = relative_tolerance
-        self.absolute_tolerance = absolute_tolerance
-
+        To change the weighting or handling of residuals reinitialize the optimization
+        algorithm.
+        """
+        # create samples
         x_samples: pd.DataFrame
         if algorithm == OptimizationAlgorithmType.LEAST_SQUARE:
             # initial value samples for local optimizer
@@ -670,7 +665,7 @@ class OptimizationProblem(ObjectJSONEncoder):
                 df = simulator._timecourses([simulation])[0]
 
                 # interpolation of simulation results
-                f = scipy.interpolate.interp1d(
+                f = interpolate.interp1d(
                     x=df[self.xid_observable[k]],
                     y=df[self.yid_observable[k]],
                     copy=False,
@@ -731,6 +726,3 @@ class OptimizationProblem(ObjectJSONEncoder):
             # FIXME
             self._trajectory.append((deepcopy(x), 0.5 * np.sum(np.power(res_all, 2))))
             return res_all
-
-
-

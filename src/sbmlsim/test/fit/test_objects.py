@@ -17,7 +17,7 @@ def test_fit_parameter() -> None:
     assert p.unit == "dimensionless"
 
 
-def test_serialization() -> None:
+def test_fit_parameter_serialization() -> None:
     """Test FitParameter serialization."""
     p = FitParameter(
         pid="p1",

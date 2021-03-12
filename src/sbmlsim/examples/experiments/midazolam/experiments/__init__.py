@@ -4,7 +4,7 @@ from collections import namedtuple
 from sbmlsim.experiment import SimulationExperiment, ExperimentDict
 from sbmlsim.model import AbstractModel
 from sbmlsim.simulation import TimecourseSim
-from sbmlsim.simulation.sensititvity import ModelSensitivity
+from sbmlsim.simulation.sensitivity import ModelSensitivity
 from sbmlsim.task import Task
 
 from ...midazolam import MODEL_PATH

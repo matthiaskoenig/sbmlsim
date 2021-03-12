@@ -8,7 +8,7 @@ from typing import Any, Dict, Iterable, List, Optional, Union, Callable
 import numpy as np
 
 from sbmlsim.data import Data
-from sbmlsim.serialization import ObjectJSONEncoder
+from sbmlsim.serialization import ObjectJSONEncoder, to_json
 
 
 logger = logging.getLogger(__name__)

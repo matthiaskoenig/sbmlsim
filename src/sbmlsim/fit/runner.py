@@ -22,7 +22,7 @@ part.
 """
 import os
 import multiprocessing
-from typing import Optional
+from typing import Optional, List
 
 import numpy as np
 
@@ -45,81 +45,49 @@ lock = multiprocessing.Lock()
 def run_optimization(
     problem: OptimizationProblem,
     size: int = 5,
+    algorithm: OptimizationAlgorithmType = OptimizationAlgorithmType.LEAST_SQUARE,
     fitting_strategy: FittingStrategyType = FittingStrategyType.ABSOLUTE_VALUES,
     residual_type: ResidualType = ResidualType.ABSOLUTE_RESIDUALS,
     weighting_points: WeightingPointsType = WeightingPointsType.NO_WEIGHTING,
     seed: Optional[int] = None,
-    **kwargs
+    variable_step_size: bool = True,
+    relative_tolerance: float = 1e-6,
+    absolute_tolerance: float = 1e-6,
+    n_cores: Optional[int] = 1,
+    serial: bool = False,
+    **kwargs,
 ) -> OptimizationResult:
-    """Run the given optimization problem in a serial fashion.
+    """Run optimization in parallel.
 
     The runner executes the given OptimizationProblem and returns
     the OptimizationResults. The size defines the repeated optimizations
     of the problem. Every repeat uses different initial values.
 
-    :param problem: problem to optimize
+    :param problem: uninitialized problem to optimize (pickable)
     :param size: integer number of optimizations
-    :param weighting_points:
-    :param residual_type:
-    :param fitting_strategy:
+    :param algorithm: optimization algorithm to use
+    :param fitting_strategy: strategy for fitting (absolute or relative to baseline)
+    :param residual_type: handling of residuals
+    :param weighting_points: weighting of points
     :param seed: integer random seed (for sampling of parameters)
+    :param absolute_tolerance: absolute tolerance of simulator
+    :param relative_tolerance: relative tolerance of simulator
+    :param variable_step_size: use variable step size in solver
+    :param n_cores: number of workers
+    :param serial: boolean flag to execute optimization in serial fashion (debugging)
     :param kwargs: additional arguments for optimizer, e.g. xtol
     :return: OptimizationResult
     """
-    if "n_cores" in kwargs:
-        # remove parallel arguments
-        logger.warning(
-            "Parameter 'n_cores' does not have any effect in serial optimization."
+    saved_args = locals()
+    if "fitting_type" in saved_args:
+        raise ValueError(
+            "Deprecated parameter 'fitting_type', use 'fitting_strategy' instead."
         )
-        kwargs.pop("n_cores")
+    if "weighting_local" in saved_args:
+        raise ValueError(
+            "Deprecated parameter 'weighting_local', use 'weighting_points' instead."
+        )
 
-    # initialize problem, which calculates errors
-    problem.initialize(
-        fitting_strategy=fitting_strategy,
-        weighting_points=weighting_points,
-        residual_type=residual_type,
-    )
-
-    # new simulator instance with arguments
-    simulator = SimulatorSerial(**kwargs)  # sets tolerances
-    problem.set_simulator(simulator)
-
-    # optimize
-    fits, trajectories = problem.optimize(
-        size=size, seed=seed, **kwargs
-    )
-
-    # process results and plots
-    return OptimizationResult(
-        parameters=problem.parameters, fits=fits, trajectories=trajectories
-    )
-
-
-@timeit
-def run_optimization_parallel(
-    problem: OptimizationProblem,
-    size: int = 5,
-    n_cores: Optional[int] = None,
-    fitting_strategy: FittingStrategyType = FittingStrategyType.ABSOLUTE_VALUES,
-    residual_type: ResidualType = ResidualType.ABSOLUTE_RESIDUALS,
-    weighting_points: WeightingPointsType = WeightingPointsType.NO_WEIGHTING,
-    seed: Optional[int] = None,
-    **kwargs,
-) -> OptimizationResult:
-    """Run optimization in parallel.
-
-    See run_optimization for more details.
-
-    :param problem: uninitialized optimization problem (pickable)
-    :param n_cores: number of workers
-    :param size: total number of optimizations
-    :param weighting_points:
-    :param residual_type:
-    :param fitting_strategy:
-    :param seed:
-
-    :return:
-    """
     # set number of cores
     cpu_count = multiprocessing.cpu_count()
     if n_cores is None:
@@ -137,36 +105,52 @@ def run_optimization_parallel(
         )
         size = n_cores
 
-    sizes = [len(c) for c in np.array_split(range(size), n_cores)]
+    opt_result: OptimizationResult
+    if serial:
+        # serial parameter fitting
+        saved_args.pop("n_cores")
+        saved_args.pop("serial")
+        kwargs = saved_args.pop("kwargs")
+        opt_result = _run_optimization_serial(**saved_args, **kwargs)
 
-    # setting arguments
-    if seed is not None:
-        # set seed before getting worker seeds
-        np.random.seed(seed)
+    else:
+        # parallel parameter fitting
+        sizes = [len(c) for c in np.array_split(range(size), n_cores)]
 
-    # we require seeds for the workers to get different results
-    seeds = list(np.random.randint(low=1, high=2000, size=n_cores))
+        # setting arguments
+        if seed is not None:
+            # set seed before getting worker seeds
+            np.random.seed(seed)
 
-    args_list = []
-    for k in range(n_cores):
-        d = {
-            "problem": problem,
-            "size": sizes[k],
-            "weighting_points": weighting_points,
-            "residual_type": residual_type,
-            "fitting_strategy": fitting_strategy,
-            "seed": seeds[k],
-            **kwargs
-        }
-        args_list.append(d)
+        # we require seeds for the workers to get different results
+        seeds = list(np.random.randint(low=1, high=2000, size=n_cores))
 
-    # worker pool
-    with multiprocessing.Pool(processes=n_cores) as pool:
-        opt_results = pool.map(worker, args_list)
+        args_list = []
+        for k in range(n_cores):
+            d = {
+                "problem": problem,
+                "size": sizes[k],
+                "algorithm": algorithm,
+                "fitting_strategy": fitting_strategy,
+                "residual_type": residual_type,
+                "weighting_points": weighting_points,
+                "absolute_tolerance": absolute_tolerance,
+                "relative_tolerance": relative_tolerance,
+                "variable_step_size": variable_step_size,
+                "seed": seeds[k],
+                **kwargs
+            }
+            args_list.append(d)
 
-    # combine simulation results
+        # worker pool
+        with multiprocessing.Pool(processes=n_cores) as pool:
+            opt_results: List[OptimizationResult] = pool.map(worker, args_list)
+
+        # combine simulation results
+        opt_result = OptimizationResult.combine(opt_results)
+
     print("\n--- FINISHED OPTIMIZATION ---\n")
-    return OptimizationResult.combine(opt_results)
+    return opt_result
 
 
 def worker(kwargs) -> OptimizationResult:
@@ -177,4 +161,74 @@ def worker(kwargs) -> OptimizationResult:
     finally:
         lock.release()
 
-    return run_optimization(**kwargs)
+    return _run_optimization_serial(**kwargs)
+
+
+@timeit
+def _run_optimization_serial(
+    problem: OptimizationProblem,
+    size: int = 5,
+    algorithm: OptimizationAlgorithmType = OptimizationAlgorithmType.LEAST_SQUARE,
+    fitting_strategy: FittingStrategyType = FittingStrategyType.ABSOLUTE_VALUES,
+    residual_type: ResidualType = ResidualType.ABSOLUTE_RESIDUALS,
+    weighting_points: WeightingPointsType = WeightingPointsType.NO_WEIGHTING,
+    seed: Optional[int] = None,
+    variable_step_size: bool = True,
+    relative_tolerance: float = 1e-6,
+    absolute_tolerance: float = 1e-6,
+    **kwargs
+) -> OptimizationResult:
+    """Run the given optimization problem in a serial fashion.
+
+    This function should not be called directly, but the 'run_optimization'
+    should be used for executing simulations.
+    See run_optimization for more detailed documentation.
+
+    :param problem: uninitialized problem to optimize (pickable)
+    :param size: integer number of optimizations
+    :param algorithm: optimization algorithm to use
+    :param fitting_strategy: strategy for fitting (absolute or relative to baseline)
+    :param residual_type: handling of residuals
+    :param weighting_points: weighting of points
+    :param seed: integer random seed (for sampling of parameters)
+    :param absolute_tolerance: absolute tolerance of simulator
+    :param relative_tolerance: relative tolerance of simulator
+    :param variable_step_size: use variable step size in solver
+    :param kwargs: additional arguments for optimizer, e.g. xtol
+    :return: OptimizationResult
+    """
+    if "n_cores" in kwargs:
+        # remove parallel arguments
+        logger.warning(
+            "Parameter 'n_cores' does not have any effect in serial optimization."
+        )
+        kwargs.pop("n_cores")
+
+    # initialize problem, which calculates errors
+    problem.initialize(
+        fitting_strategy=fitting_strategy,
+        weighting_points=weighting_points,
+        residual_type=residual_type,
+    )
+
+    # set simulator instance with arguments
+    sim_kwargs = {
+        'absolute_tolerance': absolute_tolerance,
+        'relative_tolerance': relative_tolerance,
+        'variable_step_size': variable_step_size,
+    }
+    simulator = SimulatorSerial(**sim_kwargs)  # sets tolerances
+    problem.set_simulator(simulator)
+
+    # optimize
+    fits, trajectories = problem.optimize(
+        size=size,
+        seed=seed,
+        algorithm=algorithm,
+        **kwargs
+    )
+
+    # process results and plots
+    return OptimizationResult(
+        parameters=problem.parameters, fits=fits, trajectories=trajectories
+    )
