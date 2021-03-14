@@ -7,7 +7,7 @@ from typing import List, Optional
 import numpy as np
 import pandas as pd
 import seaborn as sns
-from matplotlib.figure import Figure
+from matplotlib.figure import Figure, Axes
 
 from sbmlsim.fit import FitParameter
 from sbmlsim.fit.optimization import OptimizationProblem
@@ -98,28 +98,34 @@ class OptimizationAnalysis:
             f_report.write(info)
 
         # FIXME: create JSON information for problem
-        self.optres.to_json(path=self.results_dir / "01_optimization_result.json")
-        self.optres.to_tsv(path=self.results_dir / "01_optimization_result.tsv")
+        self.optres.to_json(path=self.results_dir / "optimization_result.json")
+        self.optres.to_tsv(path=self.results_dir / "optimization_result.tsv")
 
         # waterfall plot
         if self.optres.size > 1:
             self.plot_waterfall(
-                path=self.results_dir / f"02_waterfall.{self.image_format}",
+                path=self.results_dir / f"waterfall.{self.image_format}",
             )
         # optimization traces
         self.plot_traces(
-            path=self.results_dir / f"02_traces.{self.image_format}",
+            path=self.results_dir / f"traces.{self.image_format}",
         )
 
         # plot fit results for optimal parameters
         if self.op:
             xopt = self.optres.xopt
 
-            df_costs = self.plot_costs(
+            self.plot_cost_scatter(
                 x=xopt,
+                path=self.results_dir / f"cost_scatter.{self.image_format}",
             )
-            df_costs.to_csv(
-                self.results_dir / "03_cost_improvement.tsv", sep="\t", index=False
+            self.plot_cost_bar(
+                x=xopt,
+                path=self.results_dir / f"cost_bar.{self.image_format}",
+            )
+            self.plot_datapoint_scatter(
+                x=xopt,
+                path=self.results_dir / f"datapoint_scatter.{self.image_format}",
             )
 
             self.plot_fits(
@@ -341,106 +347,221 @@ class OptimizationAnalysis:
                 fig=fig, path=self.results_dir / f"{mapping_id}.{self.image_format}"
             )
 
-    @timeit
-    def plot_costs(self, x, path: Path = None) -> pd.DataFrame:
-        """Plot cost function comparison.
-
-        # FIXME: separate calculation of cost DataFrame
-        """
-        path = self.results_dir / "03_cost_improvement.svg"
-
-        xparameters = {
-            # model parameters
-            "model": self.op.xmodel,
-            # initial values of fit parameter
-            "initial": self.op.x0,
-            # provided parameters
-            "fit": x,
-        }
+    def _cost_df(self, x: np.ndarray) -> pd.DataFrame:
+        """Calculate cost dataframe for given parameter set."""
+        res_data = self.op.residuals(xlog=np.log10(x), complete_data=True)
         data = []
-        costs = {}
-        for key, xpar in xparameters.items():
-            res_data = self.op.residuals(xlog=np.log10(xpar), complete_data=True)
-            costs[key] = res_data["cost"]
-            for k, _ in enumerate(self.op.mapping_keys):
+        for k, _ in enumerate(self.op.mapping_keys):
+            data.append(
+                {
+                    "id": f"{self.op.experiment_keys[k]}_{self.op.mapping_keys[k]}",
+                    "experiment": self.op.experiment_keys[k],
+                    "mapping": self.op.mapping_keys[k],
+                    "cost": res_data["cost"][k],
+                }
+            )
+
+        return pd.DataFrame(
+            data, columns=["id", "experiment", "mapping", "cost"]
+        )
+
+    def _datapoints_df(self, x: np.ndarray) -> pd.DataFrame:
+        """Calculate data point dataframe for given parameter set."""
+        res_data = self.op.residuals(xlog=np.log10(x), complete_data=True)
+
+        data = []
+        for k, _ in enumerate(self.op.mapping_keys):
+            experiment = self.op.experiment_keys[k]
+            mapping = self.op.mapping_keys[k],
+
+            x_ref = self.op.x_references[k]
+            y_ref_err = self.op.y_errors[k]
+            y_ref_err_type = self.op.y_errors_type[k]
+            y_ref = self.op.y_references[k]
+            y_obs = res_data["y_obsip"][k]
+            residuals = res_data["residuals"][k]
+            for ix in range(len(y_obs)):
+                if not y_ref_err_type:
+                    y_err = np.NaN
+                else:
+                    y_err = y_ref_err[ix]
+
                 data.append(
                     {
-                        "id": f"{self.op.experiment_keys[k]}_{self.op.mapping_keys[k]}",
-                        "experiment": self.op.experiment_keys[k],
-                        "mapping": self.op.mapping_keys[k],
-                        "cost": res_data["cost"][k],
-                        "type": key,
+                        "experiment": experiment,
+                        "mapping": mapping,
+                        "x_ref": x_ref[ix],
+                        "y_ref": y_ref[ix],
+                        "y_ref_err": y_err,
+                        "y_obs": y_obs[ix],
+                        "residual": residuals[ix],
                     }
                 )
 
-        cost_df = pd.DataFrame(
-            data, columns=["id", "experiment", "mapping", "cost", "type"]
+        return pd.DataFrame(
+            data, columns=["experiment", "mapping", "x_ref", "y_ref", "y_ref_err",
+                           "y_obs", "residual"]
         )
+
+    @timeit
+    def plot_datapoint_scatter(self, x: np.ndarray, path: Path = None):
+        """Plot cost scatter plot.
+
+        Compares cost of model parameters to the given parameter set.
+        """
+        fig, ax = plt.subplots(nrows=1, ncols=1, figsize=(5, 5))
+
+        dp: pd.DataFrame = self._datapoints_df(x=x)
+
+        ax.plot(
+            dp.y_ref, dp.y_obs,
+            # yerr=dp.y_ref_err,
+            linestyle="",
+            marker="o",
+            # label="model",
+            color="black",
+            markersize="10",
+            alpha=0.7,
+        )
+
+        min_dp = np.min(
+            [
+                np.min(dp.y_ref),
+                np.min(dp.y_obs),
+            ]
+        )
+        max_dp = np.max(
+            [
+                np.max(dp.y_ref),
+                np.max(dp.y_obs),
+            ]
+        )
+
+        ax.plot(
+            [min_dp * 0.5, max_dp * 2],
+            [min_dp * 0.5, max_dp * 2],
+            "--",
+            color="black",
+        )
+
+        for k in range(len(dp)):
+
+            if np.abs(dp.y_ref.values[k]-dp.y_obs.values[k]) / dp.y_ref.values[k] > 0.5:
+                ax.annotate(
+                    dp.experiment.values[k],
+                    xy=(
+                        dp.y_ref.values[k],
+                        dp.y_obs.values[k],
+                    ),
+                    fontsize="x-small",
+                    alpha=0.7,
+                )
+        ax.set_xlabel("experiment")
+        ax.set_ylabel("prediction")
+        ax.set_xscale("log")
+        ax.set_yscale("log")
+        ax.grid()
+        ax.set_title("Datapoint scatter")
+        self._save_fig(fig=fig, path=path)
+
+    @timeit
+    def plot_cost_bar(self, x: np.ndarray, path: Path = None) -> None:
+        """Plot cost comparison.
+
+        Compares model parameters to the given parameter set.
+        """
+
+        costs_x: pd.DataFrame = self._cost_df(x=x)
+
+        fig: Figure
+        ax: Axes
+        fig, ax = plt.subplots(nrows=1, ncols=1, figsize=(5, 5))
+        fig.subplots_adjust(bottom=0.5)
+        ax.set_title("Cost contribution")
+
+        position = list(range(len(costs_x)))
+        ticklabels = [f"{costs_x.experiment[k]}\n{costs_x.mapping[k]}" for k in range(len(costs_x))]
+        ax.bar(
+            position,
+            costs_x.cost,
+            color="black",
+            alpha=0.8
+        )
+        ax.set_xticks(position)
+        ax.set_xticklabels(
+            ticklabels,
+            rotation=90,
+            fontdict={"fontsize": 8}
+        )
+        # ax.grid(True)
+        ax.set_ylabel("cost")
+        # ax.set_yscale("log")
+        self._save_fig(fig=fig, path=path)
+
+
+    @timeit
+    def plot_cost_scatter(self, x: np.ndarray, path: Path = None):
+        """Plot cost scatter plot.
+
+        Compares cost of model parameters to the given parameter set.
+        """
+
+        costs_xmodel: pd.DataFrame = self._cost_df(x=self.op.xmodel)
+        costs_x: pd.DataFrame = self._cost_df(x=x)
 
         min_cost = np.min(
             [
-                np.min(costs["fit"]),
-                np.min(costs["model"]),
-                np.min(costs["initial"]),
+                np.min(costs_xmodel.cost),
+                np.min(costs_x.cost),
             ]
         )
         max_cost = np.max(
             [
-                np.max(costs["fit"]),
-                np.max(costs["model"]),
-                np.max(costs["initial"]),
+                np.max(costs_xmodel.cost),
+                np.max(costs_x.cost),
             ]
         )
 
+        fig: Figure
+        ax: Axes
         fig, ax = plt.subplots(nrows=1, ncols=1, figsize=(5, 5))
-
         ax.plot(
             [min_cost * 0.5, max_cost * 2],
             [min_cost * 0.5, max_cost * 2],
             "--",
             color="black",
         )
-        # ax.plot(costs["initial"], costs["fit"], linestyle="", marker="s", label="initial")
-        ax.plot(
-            costs["model"],
-            costs["fit"],
-            linestyle="",
-            marker="o",
-            label="model",
-            color="black",
-            markersize="10",
-            alpha=0.8,
-        )
+
+        for k, exp_key in enumerate(self.op.experiment_keys):
+            ax.plot(
+                costs_xmodel.cost[k],
+                costs_x.cost[k],
+                linestyle="",
+                marker="o",
+                # label="model",
+                color="tab:red" if costs_xmodel.cost[k] < costs_x.cost[k] else "tab:blue",
+                markersize="10",
+                alpha=0.8,
+            )
 
         for k, exp_key in enumerate(self.op.experiment_keys):
             ax.annotate(
                 exp_key,
                 xy=(
-                    costs["model"][k],
-                    costs["fit"][k],
+                    costs_xmodel.cost[k],
+                    costs_x.cost[k],
                 ),
                 fontsize="x-small",
                 alpha=0.7,
             )
-
         ax.set_xlabel("initial cost")
         ax.set_ylabel("fit cost")
         ax.set_xscale("log")
         ax.set_yscale("log")
         ax.grid()
-        ax.set_xlim(min_cost * 0.5, max_cost * 2)
-        ax.set_ylim(min_cost * 0.5, max_cost * 2)
         ax.legend()
-
-        # sns.set_color_codes("pastel")
-        # sns.barplot(ax=ax, x="cost", y="id", hue="type", data=cost_df)
-        # ax.set_xscale("log")
-        if self.show_plots:
-            plt.show()
-        if path:
-            fig.savefig(path, bbox_inches="tight")
-
-        return cost_df
+        ax.set_title("Cost scatter")
+        self._save_fig(fig=fig, path=path)
 
     @timeit
     def plot_waterfall(self, path: Path):
