@@ -3,19 +3,20 @@ import json
 from enum import Enum
 from json import JSONEncoder
 from pathlib import Path
-from typing import Dict, Tuple, Union, Optional
+from typing import Dict, Tuple, Union, Optional, Any
 
 from matplotlib.pyplot import Figure as MPLFigure
 from numpy import ndarray
 
 
-def from_json(json_info: Union[str, Path]) -> Dict:
+def from_json(json_info: Union[str, Path]) -> Dict[Any, Any]:
     """Load data from JSON."""
+    d: Dict[Any, Any]
     if isinstance(json_info, Path):
         with open(json_info, "r") as f_json:
             d = json.load(f_json)
     else:
-        d: Dict = json.loads(json_info)
+        d = json.loads(json_info)
     return d
 
 

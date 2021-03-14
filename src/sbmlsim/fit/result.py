@@ -1,3 +1,4 @@
+"""Result of optimization."""
 import datetime
 import logging
 import uuid
@@ -35,6 +36,7 @@ class OptimizationResult(ObjectJSONEncoder):
         :param fits:
         :param trajectories:
         """
+        super(OptimizationResult, self).__init__()
         if sid:
             self.sid = sid
         else:
@@ -119,7 +121,7 @@ class OptimizationResult(ObjectJSONEncoder):
         )
 
     @property
-    def size(self):
+    def size(self) -> int:
         """Get number of optimization runs in result."""
         return len(self.df_fits)
 
@@ -246,7 +248,3 @@ class OptimizationResult(ObjectJSONEncoder):
                 fout.write(info)
 
         return info
-
-
-
-

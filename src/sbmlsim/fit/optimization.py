@@ -8,7 +8,7 @@ from dataclasses import dataclass
 import pandas as pd
 
 from pathlib import Path
-from typing import Collection, List, Set, Tuple, Callable, Union, Optional
+from typing import Collection, List, Set, Tuple, Callable, Union, Optional, Any, Dict
 
 import numpy as np
 import scipy
@@ -17,7 +17,6 @@ from scipy import interpolate
 from sbmlsim.data import Data
 from sbmlsim.experiment import ExperimentRunner
 from sbmlsim.fit.objects import FitExperiment, FitMapping, FitParameter
-from sbmlsim.fit.result import OptimizationResult
 from sbmlsim.fit.sampling import SamplingType, create_samples
 from sbmlsim.fit.options import (
     FittingStrategyType, OptimizationAlgorithmType, WeightingPointsType, ResidualType
@@ -65,6 +64,7 @@ class OptimizationProblem(ObjectJSONEncoder):
         :param fit_experiments:
         :param fit_parameters:
         """
+        super(OptimizationProblem, self).__init__()
         self.opid: str = opid
         # self.fit_experiments = FitExperiment.reduce(fit_experiments)
         self.fit_experiments = fit_experiments
@@ -88,6 +88,7 @@ class OptimizationProblem(ObjectJSONEncoder):
         self.data_path = data_path
 
         # set in initialization
+        self.runner: Optional[ExperimentRunner] = None
         self.fitting_strategy: Optional[FittingStrategyType] = None
         self.weighting_points: Optional[WeightingPointsType] = None
         self.residual_type: Optional[ResidualType] = None
@@ -118,17 +119,18 @@ class OptimizationProblem(ObjectJSONEncoder):
 
         This can be run before initialization.
         """
-        info = []
-        info.append("-" * 80)
-        info.append(f"{self.__class__.__name__}: {self.opid}")
-        info.append("-" * 80)
-        info.append("Experiments")
+        info = [
+            "-" * 80,
+            f"{self.__class__.__name__}: {self.opid}",
+            "-" * 80,
+            "Experiments",
+        ]
         info.extend([f"\t{e}" for e in self.fit_experiments])
         info.append("Parameters")
         info.extend([f"\t{p}" for p in self.parameters])
         return "\n".join(info)
 
-    def to_dict(self):
+    def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary."""
         d = dict()
         for key in ["opid", "fit_experiments", "parameters", "base_path", "data_path"]:
@@ -140,18 +142,7 @@ class OptimizationProblem(ObjectJSONEncoder):
 
         Uses the to_dict method.
         """
-        to_json(object=self, path=path)
-
-    @staticmethod
-    def from_json(json_info: Tuple[str, Path]) -> "OptimizationResult":
-        """Load OptimizationResult from Path or str.
-
-        :param json_info:
-        :return:
-        """
-        # FIXME
-        d = super().from_json(json_info)
-        return OptimizationResult(**d)
+        return to_json(object=self, path=path)
 
     def report(self, path: Path = None, print_output: bool = True) -> str:
         """Print and write report.

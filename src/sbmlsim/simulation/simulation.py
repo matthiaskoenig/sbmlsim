@@ -29,7 +29,7 @@ class Dimension(object):
         """
         if index is None and changes is None:
             raise ValueError("Either 'index' or 'changes' required for Dimension.")
-        self.dimension = dimension  # type: str
+        self.dimension: str = dimension
 
         if changes is None:
             changes = {}
@@ -72,17 +72,17 @@ class AbstractSim(ABC):
     @abc.abstractmethod
     def dimensions(self) -> List[Dimension]:
         """Get dimension of the simulation."""
-        raise NotImplemented
+        raise NotImplementedError
 
     @abc.abstractmethod
     def normalize(self, uinfo: UnitsInformation) -> None:
         """Normalize simulation."""
-        raise NotImplemented
+        raise NotImplementedError
 
     @abc.abstractmethod
     def add_model_changes(self, changes: Dict) -> None:
         """Add model changes to model."""
-        raise NotImplemented
+        raise NotImplementedError
 
     def to_dict(self) -> Dict[str, str]:
         """Convert to dictionary."""

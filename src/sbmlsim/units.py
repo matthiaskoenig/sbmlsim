@@ -6,7 +6,7 @@ import logging
 import os
 from collections.abc import MutableMapping
 from pathlib import Path
-from typing import Dict, Optional, Tuple
+from typing import Dict, Optional, Tuple, Iterator
 
 import libsbml
 import numpy as np
@@ -45,22 +45,28 @@ class UnitsInformation(MutableMapping):
         self.ureg: UnitRegistry = ureg
         self.update(dict(*args, **kwargs))
 
-    def __getitem__(self, key: str):
+    def __getitem__(self, key: str) -> str:
+        """Get item."""
         return self.udict[self._keytransform(key)]
 
-    def __setitem__(self, key: str, value):
+    def __setitem__(self, key: str, value: str) -> None:
+        """Set item."""
         self.udict[self._keytransform(key)] = value
 
-    def __delitem__(self, key):
+    def __delitem__(self, key) -> None:
+        """Delete item."""
         del self.udict[self._keytransform(key)]
 
-    def __iter__(self):
+    def __iter__(self) -> Iterator[str]:
+        """Iterate over keys."""
         return iter(self.udict)
 
-    def __len__(self):
+    def __len__(self) -> int:
+        """Get length."""
         return len(self.udict)
 
-    def _keytransform(self, key):
+    def _keytransform(self, key: str) -> str:
+        """Transform key."""
         return key
 
     def __str__(self) -> str:
@@ -70,6 +76,7 @@ class UnitsInformation(MutableMapping):
 
     @property
     def Q_(self):
+        """Get quantity for generating quantities."""
         return self.ureg.Quantity
 
     @staticmethod
@@ -91,7 +98,7 @@ class UnitsInformation(MutableMapping):
 
     @staticmethod
     def model_uid_dict(model: libsbml.Model, ureg: UnitRegistry) -> Dict[str, str]:
-        """Populate the model uid dict for lookup"""
+        """Populate the model uid dict for lookup."""
 
         uid_dict: Dict[str, str] = {}
 
@@ -212,7 +219,7 @@ class UnitsInformation(MutableMapping):
                         continue
 
                     # find the correct unit definition
-                    uid: str = None
+                    uid: Optional[str] = None
                     udef_test: libsbml.UnitDefinition
                     for udef_test in model.getListOfUnitDefinitions():
                         if libsbml.UnitDefinition_areEquivalent(udef_test, udef):
@@ -394,4 +401,3 @@ if __name__ == "__main__":
         print(key, value)
 
     # print(uinfo)
-

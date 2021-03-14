@@ -7,7 +7,7 @@ import logging
 import re
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Dict, Optional
+from typing import Dict, Optional, Union
 
 import requests
 
@@ -21,7 +21,7 @@ class Source:
 
     source: str
     path: Optional[Path] = None  # if source is a path
-    content: Optional[Path] = None  # if source is something which has to be resolved
+    content: Optional[str] = None  # if source is something which has to be resolved
 
     def is_path(self) -> bool:
         """Check if the source is a Path."""
@@ -31,7 +31,7 @@ class Source:
         """Check if the source is Content."""
         return self.content is not None
 
-    def to_dict(self) -> Dict[str, str]:
+    def to_dict(self) -> Dict[str, Optional[str]]:
         """Convert to dict.
 
         Used for serialization.
@@ -43,7 +43,7 @@ class Source:
         }
 
     @classmethod
-    def from_source(cls, source: str, base_dir: Path = None) -> "Source":
+    def from_source(cls, source: Union["Source", str, Path], base_dir: Path = None) -> "Source":
         """Resolve the source string.
 
         # FIXME: handle the case of models given as strings.
@@ -51,8 +51,8 @@ class Source:
         if isinstance(source, Source):
             return source
 
-        path = None
-        content = None
+        path: Optional[Path] = None
+        content: Optional[str] = None
 
         if isinstance(source, str):
             if is_urn(source):

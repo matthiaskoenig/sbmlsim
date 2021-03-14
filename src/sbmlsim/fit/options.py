@@ -1,10 +1,9 @@
-"""
-Main options for the parameter fitting.
+"""Main options for the parameter fitting.
+
+FIXME: check the combination of the parameters and simplify strategies
 """
 
 from enum import Enum
-
-# FIXME: check the combination of the parameters and simplify strategies
 
 
 class OptimizationAlgorithmType(Enum):
@@ -72,6 +71,7 @@ class ResidualType(Enum):
     **absolute normed residuals**
       uses residuals normed per reference data
     """
+
     ABSOLUTE_RESIDUALS = 1
     RELATIVE_RESIDUALS = 2
     ABSOLUTE_NORMED_RESIDUALS = 3
@@ -96,4 +96,3 @@ class WeightingPointsType(Enum):
     NO_WEIGHTING = 1  # data points are weighted equally
     ABSOLUTE_ONE_OVER_WEIGHTING = 2  # data points are weighted as 1/(error-min(error))
     RELATIVE_ONE_OVER_WEIGHTING = 3  # FIXME: check that this is working and documented
-

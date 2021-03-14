@@ -10,7 +10,7 @@ from typing import Dict, List
 import numpy as np
 
 from sbmlsim.simulation import AbstractSim, Dimension
-from sbmlsim.units import UnitRegistry, Units, UnitsInformation
+from sbmlsim.units import UnitsInformation
 
 
 logger = logging.getLogger()
@@ -147,18 +147,15 @@ class ScanSim(AbstractSim):
 
 
 if __name__ == "__main__":
-    import warnings
-
     from sbmlsim.simulation import Timecourse, TimecourseSim
-    from sbmlsim.units import Quantity, UnitRegistry
-
-    with warnings.catch_warnings():
-        warnings.simplefilter("ignore")
-        Quantity([])
+    from sbmlsim.units import UnitRegistry
 
     ureg = UnitRegistry()
     Q_ = ureg.Quantity
-    udict = {k: "dimensionless" for k in ["X", "[X]", "n", "Y"]}
+    uinfo = UnitsInformation(
+        udict={k: "dimensionless" for k in ["X", "[X]", "n", "Y"]},
+        ureg=ureg
+    )
 
     scan2d = ScanSim(
         simulation=TimecourseSim(
@@ -192,4 +189,4 @@ if __name__ == "__main__":
         ],
     )
     indices, sims = scan2d.to_simulations()
-    scan2d.normalize(udict=udict, ureg=ureg)
+    scan2d.normalize(uinfo=uinfo)

@@ -2,11 +2,13 @@
 
 import logging
 from pathlib import Path
+from typing import List
 
 import numpy as np
 import pandas as pd
 import seaborn as sns
 from matplotlib.figure import Figure
+from sbmlsim.fit import FitParameter
 
 from sbmlsim.fit.optimization import OptimizationProblem
 from sbmlsim.fit.options import FittingStrategyType, ResidualType, WeightingPointsType
@@ -37,14 +39,14 @@ class OptimizationAnalysis:
         variable_step_size: bool = True,
         absolute_tolerance: float = 1e-6,
         relative_tolerance: float = 1e-6,
-
+        image_format: str = "svg"
     ) -> None:
         """Construct Optimization analysis.
 
         :param show_plots: boolean flag to display plots
         """
         self.sid = opt_result.sid
-        self.opt_result: OptimizationResult = opt_result
+        self.optres: OptimizationResult = opt_result
         # the results directory uses the hash of the OptimizationResult
         results_dir: Path = output_path / self.sid
         if not results_dir.exists():
@@ -52,7 +54,8 @@ class OptimizationAnalysis:
             results_dir.mkdir(parents=True, exist_ok=True)
         self.results_dir = results_dir
 
-        self.show_plots=show_plots
+        self.image_format = image_format
+        self.show_plots = show_plots
         # FIXME: remove
         # self.fitting_strategy = fitting_strategy
         # self.residual_type = residual_type
@@ -71,21 +74,22 @@ class OptimizationAnalysis:
                 relative_tolerance=relative_tolerance,
             )
 
-        self.op = op
+        self.op: OptimizationProblem = op
 
     def run(self) -> None:
         """Execute complete analysis.
 
         This creates all plots and reports.
         """
+
+        # write report
         problem_info: str = ""
         if self.op:
             problem_info = self.op.report(
                 path=None,
                 print_output=False,
             )
-        # write report
-        result_info = self.opt_result.report(
+        result_info = self.optres.report(
             path=None,
             print_output=True,
         )
@@ -93,66 +97,72 @@ class OptimizationAnalysis:
         with open(self.results_dir / "00_report.txt", "w") as f_report:
             f_report.write(info)
 
-        self.opt_result.to_json(path=self.results_dir / "01_optimization_result.json")
-        self.opt_result.to_tsv(path=self.results_dir / "01_optimization_result.tsv")
+        # FIXME: create JSON information for problem
+        self.optres.to_json(path=self.results_dir / "01_optimization_result.json")
+        self.optres.to_tsv(path=self.results_dir / "01_optimization_result.tsv")
 
-        if self.opt_result.size > 1:
+        # waterfall plot
+        if self.optres.size > 1:
             self.plot_waterfall(
-                path=self.results_dir / "02_waterfall.svg",
-                show_plots=self.show_plots
+                path=self.results_dir / f"02_waterfall.{self.image_format}",
             )
+        # optimization traces
         self.plot_traces(
-            path=self.results_dir / "02_traces.svg",
+            path=self.results_dir / f"02_traces.{self.image_format}",
             show_plots=self.show_plots
         )
 
-        # plot top fit
+        # plot fit results for optimal parameters
         if self.op:
-            xopt = self.opt_result.xopt
+            xopt = self.optres.xopt
 
             df_costs = self.plot_costs(
-                x=xopt, path=self.results_dir / "03_cost_improvement.svg",
-                show_plots=self.show_plots
+                x=xopt,
             )
             df_costs.to_csv(self.results_dir / "03_cost_improvement.tsv", sep="\t",
                             index=False)
 
             self.plot_fits(
-                x=xopt, path=self.results_dir / "05_fits.svg", show_plots=self.show_plots
-            )
-            self.plot_residuals(
-                x=xopt, output_path=self.results_dir, show_plots=self.show_plots
+                x=xopt,
+                path=self.results_dir / "05_fits.svg",
             )
 
-        if self.opt_result.size > 1:
-            self.opt_result.plot_correlation(
+            # plot individual fit mappings
+            self.plot_residuals(
+                x=xopt
+            )
+
+        # correlation plot
+        if self.optres.size > 1:
+            self.optres.plot_correlation(
                 path=self.results_dir / "04_parameter_correlation", show_plots=self.show_plots
             )
 
-    @staticmethod
-    def _save_fig(fig, path: Path, show_plots: bool = True):
-        if show_plots:
+    def _save_fig(self, fig, path: Path) -> None:
+        """Save figure to path."""
+        if self.show_plots:
             plt.show()
         if path is not None:
             fig.savefig(path, bbox_inches="tight")
         plt.close(fig)
 
-
     @timeit
-    def plot_fits(self, x, path: Path = None, show_plots: bool = True):
-        """Plot fitted curves with experimental data.
+    def plot_fits(self, x: np.ndarray, path: Path) -> None:
+        """Plot fitted curves with experimental data for given parameter set x.
 
-        Overview of all fit mappings.
+        Creates an overview of all fit mappings.
 
         :param x: parameters to evaluate
-        :return:
+        :param path: path for figure
+
+        :return: None
         """
         n_plots = len(self.op.mapping_keys)
         fig, axes = plt.subplots(
             nrows=n_plots, ncols=2, figsize=(10, 5 * n_plots), squeeze=False
         )
 
-        # residual data and simulations of optimal paraemters
+        # residual data and simulations of optimal parameters
         res_data = self.op.residuals(xlog=np.log10(x), complete_data=True)
 
         for k, mapping_id in enumerate(self.op.mapping_keys):
@@ -197,13 +207,15 @@ class OptimizationAnalysis:
             axes[k][1].set_yscale("log")
             axes[k][1].set_ylim(bottom=0.3 * np.nanmin(y_ref))
 
-        self._save_fig(fig, path=path, show_plots=show_plots)
+        self._save_fig(fig, path=path)
 
     @timeit
-    def plot_residuals(self, x, output_path: Path = None, show_plots: bool = True):
-        """Plot residual data.
+    def plot_residuals(self, x: np.ndarray) -> None:
+        """Plot residual data for all individual fit mappings.
 
-        :param res_data_start: initial residual data
+        :param path:
+        :param x: parameters to evaluate
+
         :return:
         """
         titles = ["model", "fit"]
@@ -338,20 +350,19 @@ class OptimizationAnalysis:
                     # # for ax in axes:
                     # #    ax.set_ylim([min(ylim1[0], ylim2[0]), max(ylim1[1],ylim2[1])])
 
-            if show_plots:
-                plt.show()
-            if output_path is not None:
-                fig.savefig(
-                    output_path / f"06_residuals_{sid}_{mapping_id}.svg",
-                    bbox_inches="tight",
-                )
+            self._save_fig(
+                fig=fig,
+                path=self.results_dir / f"{mapping_id}.{self.image_format}"
+            )
 
     @timeit
-    def plot_costs(self, x, path: Path = None, show_plots: bool = True) -> pd.DataFrame:
+    def plot_costs(self, x, path: Path = None) -> pd.DataFrame:
         """Plot cost function comparison.
 
         # FIXME: separate calculation of cost DataFrame
         """
+        path = self.results_dir / "03_cost_improvement.svg",
+
         xparameters = {
             # model parameters
             "model": self.op.xmodel,
@@ -438,25 +449,23 @@ class OptimizationAnalysis:
         # sns.set_color_codes("pastel")
         # sns.barplot(ax=ax, x="cost", y="id", hue="type", data=cost_df)
         # ax.set_xscale("log")
-        if show_plots:
+        if self.show_plots:
             plt.show()
         if path:
             fig.savefig(path, bbox_inches="tight")
 
         return cost_df
 
-
-
     @timeit
-    def plot_waterfall(self, path: Path = None, show_plots: bool = True):
+    def plot_waterfall(self, path: Path = None):
         """Create waterfall plot for the fit results.
 
         Plots the optimization runs sorted by cost.
         """
         fig, ax = plt.subplots(nrows=1, ncols=1, figsize=(5, 5))
         ax.plot(
-            range(self.size),
-            1 + (self.df_fits.cost - self.df_fits.cost.iloc[0]),
+            range(self.optres.size),
+            1 + (self.optres.df_fits.cost - self.optres.df_fits.cost.iloc[0]),
             "-o",
             color="black",
         )
@@ -464,7 +473,7 @@ class OptimizationAnalysis:
         ax.set_ylabel("Offset cost value (relative to best start)")
         ax.set_yscale("log")
         ax.set_title("Waterfall plot")
-        self._save_fig(fig, path=path, show_plots=show_plots)
+        self._save_fig(fig, path=path)
 
     @timeit
     def plot_traces(self, path: Path = None, show_plots: bool = True) -> None:
@@ -474,11 +483,11 @@ class OptimizationAnalysis:
         """
         fig, ax = plt.subplots(nrows=1, ncols=1, figsize=(5, 5))
 
-        for run in range(self.size):
-            df_run = self.df_traces[self.df_traces.run == run]
+        for run in range(self.optres.size):
+            df_run = self.op.df_traces[self.df_traces.run == run]
             ax.plot(range(len(df_run)), df_run.cost, "-", alpha=0.8)
         for run in range(self.size):
-            df_run = self.df_traces[self.df_traces.run == run]
+            df_run = self.op.df_traces[self.df_traces.run == run]
             ax.plot(
                 len(df_run) - 1, df_run.cost.iloc[-1], "o", color="black", alpha=0.8
             )
