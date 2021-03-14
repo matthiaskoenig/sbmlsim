@@ -153,8 +153,7 @@ if __name__ == "__main__":
     ureg = UnitRegistry()
     Q_ = ureg.Quantity
     uinfo = UnitsInformation(
-        udict={k: "dimensionless" for k in ["X", "[X]", "n", "Y"]},
-        ureg=ureg
+        udict={k: "dimensionless" for k in ["X", "[X]", "n", "Y"]}, ureg=ureg
     )
 
     scan2d = ScanSim(

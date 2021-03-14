@@ -43,7 +43,9 @@ class Source:
         }
 
     @classmethod
-    def from_source(cls, source: Union["Source", str, Path], base_dir: Path = None) -> "Source":
+    def from_source(
+        cls, source: Union["Source", str, Path], base_dir: Path = None
+    ) -> "Source":
         """Resolve the source string.
 
         # FIXME: handle the case of models given as strings.

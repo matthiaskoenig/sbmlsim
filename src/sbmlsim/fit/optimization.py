@@ -5,23 +5,24 @@ import time
 from collections import defaultdict
 from copy import deepcopy
 from dataclasses import dataclass
-import pandas as pd
-
 from pathlib import Path
-from typing import Collection, List, Set, Tuple, Callable, Union, Optional, Any, Dict
+from typing import Any, Callable, Collection, Dict, List, Optional, Set, Tuple, Union
 
 import numpy as np
+import pandas as pd
 import scipy
-from scipy import interpolate
+from scipy import interpolate, optimize
 
 from sbmlsim.data import Data
 from sbmlsim.experiment import ExperimentRunner
 from sbmlsim.fit.objects import FitExperiment, FitMapping, FitParameter
-from sbmlsim.fit.sampling import SamplingType, create_samples
 from sbmlsim.fit.options import (
-    FittingStrategyType, OptimizationAlgorithmType, WeightingPointsType, ResidualType
+    FittingStrategyType,
+    OptimizationAlgorithmType,
+    ResidualType,
+    WeightingPointsType,
 )
-
+from sbmlsim.fit.sampling import SamplingType, create_samples
 from sbmlsim.model import RoadrunnerSBMLModel
 from sbmlsim.serialization import ObjectJSONEncoder, to_json
 from sbmlsim.simulation import TimecourseSim
@@ -93,22 +94,24 @@ class OptimizationProblem(ObjectJSONEncoder):
         self.weighting_points: Optional[WeightingPointsType] = None
         self.residual_type: Optional[ResidualType] = None
 
-        self.experiment_keys = []
-        self.mapping_keys = []
-        self.xid_observable = []
-        self.yid_observable = []
-        self.x_references = []
-        self.y_references = []
-        self.y_errors = []
-        self.y_errors_type = []
-        self.weights = []  # total weights for points (data points and curve weights)
-        self.weights_points = []  # weights for data points based on errors
-        self.weights_curve = []  # user defined weights per mapping/curve
+        self.experiment_keys: List[str] = []
+        self.mapping_keys: List[str] = []
+        self.xid_observable: List[str] = []
+        self.yid_observable: List[str] = []
+        self.x_references: List[Any] = []
+        self.y_references: List[Any] = []
+        self.y_errors: List[Any] = []
+        self.y_errors_type: List[str] = []
+        self.weights: List[
+            Any
+        ] = []  # total weights for points (data points and curve weights)
+        self.weights_points: List[Any] = []  # weights for data points based on errors
+        self.weights_curve: List[Any] = []  # user defined weights per mapping/curve
 
-        self.models = []
-        self.xmodel = np.empty(shape=(len(self.pids)))
-        self.simulations = []
-        self.selections = []
+        self.models: List[Any] = []
+        self.xmodel: np.ndarray = np.empty(shape=(len(self.pids)))
+        self.simulations: List[Any] = []
+        self.selections: List[Any] = []
 
     def __repr__(self) -> str:
         """Get representation."""
@@ -184,9 +187,9 @@ class OptimizationProblem(ObjectJSONEncoder):
 
     def initialize(
         self,
-        fitting_strategy: FittingStrategyType,
-        weighting_points: WeightingPointsType,
-        residual_type: ResidualType,
+        fitting_strategy: Optional[FittingStrategyType],
+        weighting_points: Optional[WeightingPointsType],
+        residual_type: Optional[ResidualType],
         variable_step_size: bool = True,
         relative_tolerance: float = 1e-6,
         absolute_tolerance: float = 1e-6,
@@ -333,7 +336,10 @@ class OptimizationProblem(ObjectJSONEncoder):
                 x_ref = data_ref.x.magnitude
                 y_ref = data_ref.y.magnitude
 
-                if self.fitting_strategy == FittingStrategyType.ABSOLUTE_CHANGES_BASELINE:
+                if (
+                    self.fitting_strategy
+                    == FittingStrategyType.ABSOLUTE_CHANGES_BASELINE
+                ):
                     # Use absolute changes to baseline, which is the first point
                     y_ref = (
                         y_ref - y_ref[0]
@@ -440,7 +446,9 @@ class OptimizationProblem(ObjectJSONEncoder):
                 # normalize weights to mean=1.0 for given curve
                 # this makes the weights comparable
                 # dividing by number of data points corrects for different number of data points
-                weight_points = weight_points / np.mean(weight_points) / len(weight_points)
+                weight_points = (
+                    weight_points / np.mean(weight_points) / len(weight_points)
+                )
 
                 # apply local weighting & user defined weighting
                 # (in the cost function the weighted residuals are squared)
@@ -515,7 +523,7 @@ class OptimizationProblem(ObjectJSONEncoder):
         sampling: SamplingType = SamplingType.UNIFORM,
         seed: Optional[int] = None,
         **kwargs,
-    ) -> Tuple[List[scipy.optimize.OptimizeResult], List]:
+    ) -> Tuple[List[optimize.OptimizeResult], List]:
         """Run parameter optimization.
 
         To change the weighting or handling of residuals reinitialize the optimization
@@ -555,7 +563,10 @@ class OptimizationProblem(ObjectJSONEncoder):
 
     @timeit
     def _optimize_single(
-        self, x0: np.ndarray = None, algorithm=OptimizationAlgorithmType.LEAST_SQUARE, **kwargs
+        self,
+        x0: np.ndarray = None,
+        algorithm=OptimizationAlgorithmType.LEAST_SQUARE,
+        **kwargs,
     ) -> Tuple[scipy.optimize.OptimizeResult, List]:
         """Run single optimization with x0 start values.
 
@@ -592,7 +603,9 @@ class OptimizationProblem(ObjectJSONEncoder):
                         fun=self.residuals, x0=x0log, bounds=boundslog, **kwargs
                     )
             except RuntimeError as err:
-                logger.error(f"RuntimeError in ODE integration (optimize) for '{self.pids} = {x0}': \n{err}")
+                logger.error(
+                    f"RuntimeError in ODE integration (optimize) for '{self.pids} = {x0}': \n{err}"
+                )
                 opt_result = RuntimeErrorOptimizeResult()
                 opt_result.x = x0log
             te = time.time()
@@ -614,7 +627,9 @@ class OptimizationProblem(ObjectJSONEncoder):
                     func=self.cost_least_square, bounds=de_bounds_log, **kwargs
                 )
             except RuntimeError as err:
-                logger.error(f"RuntimeError in ODE integration (optimize) for '{self.pids} = {x0}': \n{err}")
+                logger.error(
+                    f"RuntimeError in ODE integration (optimize) for '{self.pids} = {x0}': \n{err}"
+                )
                 opt_result = RuntimeErrorOptimizeResult()
                 opt_result.x = x0log
             te = time.time()
@@ -684,7 +699,10 @@ class OptimizationProblem(ObjectJSONEncoder):
                     assume_sorted=True,
                 )
                 y_obsip = f(self.x_references[k])
-                if self.fitting_strategy == FittingStrategyType.ABSOLUTE_CHANGES_BASELINE:
+                if (
+                    self.fitting_strategy
+                    == FittingStrategyType.ABSOLUTE_CHANGES_BASELINE
+                ):
                     y_obsip = y_obsip - y_obsip[0]
 
                 # calculate absolute & relative residuals

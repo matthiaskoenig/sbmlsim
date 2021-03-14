@@ -2,14 +2,14 @@
 
 import logging
 from pathlib import Path
-from typing import List
+from typing import List, Optional
 
 import numpy as np
 import pandas as pd
 import seaborn as sns
 from matplotlib.figure import Figure
-from sbmlsim.fit import FitParameter
 
+from sbmlsim.fit import FitParameter
 from sbmlsim.fit.optimization import OptimizationProblem
 from sbmlsim.fit.options import FittingStrategyType, ResidualType, WeightingPointsType
 from sbmlsim.fit.result import OptimizationResult
@@ -39,7 +39,7 @@ class OptimizationAnalysis:
         variable_step_size: bool = True,
         absolute_tolerance: float = 1e-6,
         relative_tolerance: float = 1e-6,
-        image_format: str = "svg"
+        image_format: str = "svg",
     ) -> None:
         """Construct Optimization analysis.
 
@@ -74,7 +74,7 @@ class OptimizationAnalysis:
                 relative_tolerance=relative_tolerance,
             )
 
-        self.op: OptimizationProblem = op
+        self.op: OptimizationProblem = op  # type: ignore
 
     def run(self) -> None:
         """Execute complete analysis.
@@ -109,7 +109,6 @@ class OptimizationAnalysis:
         # optimization traces
         self.plot_traces(
             path=self.results_dir / f"02_traces.{self.image_format}",
-            show_plots=self.show_plots
         )
 
         # plot fit results for optimal parameters
@@ -119,8 +118,9 @@ class OptimizationAnalysis:
             df_costs = self.plot_costs(
                 x=xopt,
             )
-            df_costs.to_csv(self.results_dir / "03_cost_improvement.tsv", sep="\t",
-                            index=False)
+            df_costs.to_csv(
+                self.results_dir / "03_cost_improvement.tsv", sep="\t", index=False
+            )
 
             self.plot_fits(
                 x=xopt,
@@ -128,15 +128,11 @@ class OptimizationAnalysis:
             )
 
             # plot individual fit mappings
-            self.plot_residuals(
-                x=xopt
-            )
+            self.plot_residuals(x=xopt)
 
         # correlation plot
         if self.optres.size > 1:
-            self.optres.plot_correlation(
-                path=self.results_dir / "04_parameter_correlation", show_plots=self.show_plots
-            )
+            self.plot_correlation(path=self.results_dir / "04_parameter_correlation")
 
     def _save_fig(self, fig, path: Path) -> None:
         """Save figure to path."""
@@ -341,18 +337,8 @@ class OptimizationAnalysis:
                     # ax.set_yscale("log")
                     ax.legend()
 
-            # adapt axes
-            if res_data_fit is not None:
-                for axes in [(a1, a2), (a3, a4), (a5, a6)]:
-                    ax1, ax2 = axes
-                    # ylim1 = ax1.get_ylim()
-                    # ylim2 = ax2.get_ylim()
-                    # # for ax in axes:
-                    # #    ax.set_ylim([min(ylim1[0], ylim2[0]), max(ylim1[1],ylim2[1])])
-
             self._save_fig(
-                fig=fig,
-                path=self.results_dir / f"{mapping_id}.{self.image_format}"
+                fig=fig, path=self.results_dir / f"{mapping_id}.{self.image_format}"
             )
 
     @timeit
@@ -361,7 +347,7 @@ class OptimizationAnalysis:
 
         # FIXME: separate calculation of cost DataFrame
         """
-        path = self.results_dir / "03_cost_improvement.svg",
+        path = self.results_dir / "03_cost_improvement.svg"
 
         xparameters = {
             # model parameters
@@ -457,7 +443,7 @@ class OptimizationAnalysis:
         return cost_df
 
     @timeit
-    def plot_waterfall(self, path: Path = None):
+    def plot_waterfall(self, path: Path):
         """Create waterfall plot for the fit results.
 
         Plots the optimization runs sorted by cost.
@@ -476,7 +462,7 @@ class OptimizationAnalysis:
         self._save_fig(fig, path=path)
 
     @timeit
-    def plot_traces(self, path: Path = None, show_plots: bool = True) -> None:
+    def plot_traces(self, path: Path) -> None:
         """Plot optimization traces.
 
         Optimization time course of costs.
@@ -484,10 +470,11 @@ class OptimizationAnalysis:
         fig, ax = plt.subplots(nrows=1, ncols=1, figsize=(5, 5))
 
         for run in range(self.optres.size):
-            df_run = self.op.df_traces[self.df_traces.run == run]
+            df_run = self.optres.df_traces[self.optres.df_traces.run == run]
             ax.plot(range(len(df_run)), df_run.cost, "-", alpha=0.8)
-        for run in range(self.size):
-            df_run = self.op.df_traces[self.df_traces.run == run]
+
+        for run in range(self.optres.size):
+            df_run = self.optres.df_traces[self.optres.df_traces.run == run]
             ax.plot(
                 len(df_run) - 1, df_run.cost.iloc[-1], "o", color="black", alpha=0.8
             )
@@ -497,29 +484,26 @@ class OptimizationAnalysis:
         ax.set_yscale("log")
         ax.set_title("Traces")
 
-        self._save_fig(fig, path=path, show_plots=show_plots)
+        self._save_fig(fig, path=path)
 
     @timeit
     def plot_correlation(
         self,
-        path: Path = None,
-        show_plots: bool = True,
-    ):
+        path: Path,
+    ) -> None:
         """Plot correlation of parameters for analysis."""
-        df = self.df_fits
+        df = self.optres.df_fits
+        parameters = self.optres.parameters
 
-        pids = [p.pid for p in self.parameters]
-        sns.set(style="ticks", color_codes=True)
-        # sns_plot = sns.pairplot(data=df[pids + ["cost"]], hue="cost", corner=True)
-
+        pids = [p.pid for p in parameters]
         npars = len(pids)
-        # x0 =
+        sns.set(style="ticks", color_codes=True)
         fig, axes = plt.subplots(
             nrows=npars, ncols=npars, figsize=(5 * npars, 5 * npars)
         )
         cost_normed = df.cost - df.cost.min()
         cost_normed = 1 - cost_normed / cost_normed.max()
-        # print("cost_normed", cost_normed)
+
         size = np.power(15 * cost_normed, 2)
 
         bound_kwargs = {"color": "darkgrey", "linestyle": "--", "alpha": 1.0}
@@ -535,12 +519,12 @@ class OptimizationAnalysis:
                 if kx > ky:
                     ax.set_xlabel(pidx)
                     # ax.set_xlim(self.parameters[kx].lower_bound, self.parameters[kx].upper_bound)
-                    ax.axvline(x=self.parameters[kx].lower_bound, **bound_kwargs)
-                    ax.axvline(x=self.parameters[kx].upper_bound, **bound_kwargs)
+                    ax.axvline(x=parameters[kx].lower_bound, **bound_kwargs)
+                    ax.axvline(x=parameters[kx].upper_bound, **bound_kwargs)
                     ax.set_ylabel(pidy)
                     # ax.set_ylim(self.parameters[ky].lower_bound, self.parameters[ky].upper_bound)
-                    ax.axhline(y=self.parameters[ky].lower_bound, **bound_kwargs)
-                    ax.axhline(y=self.parameters[ky].upper_bound, **bound_kwargs)
+                    ax.axhline(y=parameters[ky].lower_bound, **bound_kwargs)
+                    ax.axhline(y=parameters[ky].upper_bound, **bound_kwargs)
 
                     # start values
                     xall = []
@@ -573,8 +557,8 @@ class OptimizationAnalysis:
                     ),
 
                     ax.plot(
-                        self.xopt[kx],
-                        self.xopt[ky],
+                        self.optres.xopt[kx],
+                        self.optres.xopt[ky],
                         "s",
                         color="darkgreen",
                         markersize=30,
@@ -583,8 +567,8 @@ class OptimizationAnalysis:
 
                 if kx == ky:
                     ax.set_xlabel(pidx)
-                    ax.axvline(x=self.parameters[kx].lower_bound, **bound_kwargs)
-                    ax.axvline(x=self.parameters[kx].upper_bound, **bound_kwargs)
+                    ax.axvline(x=parameters[kx].lower_bound, **bound_kwargs)
+                    ax.axvline(x=parameters[kx].upper_bound, **bound_kwargs)
                     # ax.set_xlim(self.parameters[kx].lower_bound,
                     #            self.parameters[kx].upper_bound)
                     ax.set_ylabel("cost")
@@ -600,18 +584,16 @@ class OptimizationAnalysis:
                 # traces (walk through cost function)
                 if kx < ky:
                     ax.set_xlabel(pidy)
-                    # ax.set_xlim(self.parameters[ky].lower_bound, self.parameters[ky].upper_bound)
-                    ax.axvline(x=self.parameters[ky].lower_bound, **bound_kwargs)
-                    ax.axvline(x=self.parameters[ky].upper_bound, **bound_kwargs)
                     ax.set_ylabel(pidx)
-                    # ax.set_ylim(self.parameters[kx].lower_bound, self.parameters[kx].upper_bound)
-                    ax.axhline(y=self.parameters[kx].lower_bound, **bound_kwargs)
-                    ax.axhline(y=self.parameters[kx].upper_bound, **bound_kwargs)
+                    ax.axvline(x=parameters[ky].lower_bound, **bound_kwargs)
+                    ax.axvline(x=parameters[ky].upper_bound, **bound_kwargs)
+                    ax.axhline(y=parameters[kx].lower_bound, **bound_kwargs)
+                    ax.axhline(y=parameters[kx].upper_bound, **bound_kwargs)
 
                     # ax.plot([ystart, y], [xstart, x], "-", color="black", alpha=0.7)
 
-                    for run in range(self.size):
-                        df_run = self.df_traces[self.df_traces.run == run]
+                    for run in range(self.optres.size):
+                        df_run = self.optres.df_traces[self.optres.df_traces.run == run]
                         # ax.plot(df_run[pidy], df_run[pidx], '-', color="black", alpha=0.3)
                         ax.scatter(
                             df_run[pidy],
@@ -625,8 +607,8 @@ class OptimizationAnalysis:
                     # end point
                     # ax.plot(yall, xall, "o", color="black", markersize=10, alpha=0.9)
                     ax.plot(
-                        self.xopt[ky],
-                        self.xopt[kx],
+                        self.optres.xopt[ky],
+                        self.optres.xopt[kx],
                         "s",
                         color="darkgreen",
                         markersize=30,
@@ -646,4 +628,4 @@ class OptimizationAnalysis:
                     axes[ky][kx].set_xlim(axes[kx][ky].get_xlim())
                     axes[ky][kx].set_ylim(axes[kx][ky].get_ylim())
 
-        self._save_fig(fig=fig, path=path, show_plots=show_plots)
+        self._save_fig(fig=fig, path=path)

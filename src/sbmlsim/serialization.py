@@ -3,7 +3,7 @@ import json
 from enum import Enum
 from json import JSONEncoder
 from pathlib import Path
-from typing import Dict, Tuple, Union, Optional, Any
+from typing import Any, Dict, Optional, Tuple, Union
 
 from matplotlib.pyplot import Figure as MPLFigure
 from numpy import ndarray

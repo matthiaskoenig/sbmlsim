@@ -8,6 +8,7 @@ from typing import Dict, Iterable, List, Optional, Set, Tuple, Union
 import numpy as np
 import pandas as pd
 from scipy.optimize import OptimizeResult
+
 from sbmlsim.fit.objects import FitParameter
 from sbmlsim.serialization import ObjectJSONEncoder, from_json, to_json
 
@@ -75,7 +76,7 @@ class OptimizationResult(ObjectJSONEncoder):
             d[key] = self.__dict__[key]
         return d
 
-    def to_json(self, path: Path) -> Union[str, Path]:
+    def to_json(self, path: Optional[Path] = None) -> Union[str, Path]:
         """Store OptimizationResult as json.
 
         Uses the to_dict method.
@@ -128,7 +129,8 @@ class OptimizationResult(ObjectJSONEncoder):
     @property
     def xopt(self) -> np.ndarray:
         """Numerical values of optimal parameters."""
-        return self.df_fits.x.iloc[0]
+        values: np.ndarray = self.df_fits.x.iloc[0]
+        return values
 
     @property
     def xopt_fit_parameters(self) -> List[FitParameter]:
@@ -238,13 +240,13 @@ class OptimizationResult(ObjectJSONEncoder):
                 )
             )
         info.append("-" * 80)
-        info = "\n".join(info)
+        info_str: str = "\n".join(info)
 
         if print_output:
             print(info)
 
         if path:
-            with open(path, "w") as fout:
-                fout.write(info)
+            with open(path, "w") as f_out:
+                f_out.write(info_str)
 
-        return info
+        return info_str

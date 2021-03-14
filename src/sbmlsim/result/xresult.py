@@ -50,9 +50,11 @@ class XResult:
                 dim=self._redop_dims(), skipna=True
             ).values * self.uinfo.ureg(self.uinfo[key])
         except KeyError as err:
-            logger.error(f"Key '{key}' does not exist in XResult. Add the "
-                         f"key to the experiment via add_selections in "
-                         f"'Experiment.datagenerators'.")
+            logger.error(
+                f"Key '{key}' does not exist in XResult. Add the "
+                f"key to the experiment via add_selections in "
+                f"'Experiment.datagenerators'."
+            )
             raise err
         return data
 

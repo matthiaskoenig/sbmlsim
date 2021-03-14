@@ -4,10 +4,12 @@ from sbmlsim.examples.experiments.midazolam.fitting_problems import op_mid1oh_iv
 from sbmlsim.fit.analysis import OptimizationResult
 from sbmlsim.fit.options import (
     FittingStrategyType,
+    OptimizationAlgorithmType,
     ResidualType,
-    WeightingPointsType, OptimizationAlgorithmType
+    WeightingPointsType,
 )
 from sbmlsim.fit.runner import run_optimization
+
 
 fit_kwargs_default = {
     "fitting_strategy": FittingStrategyType.ABSOLUTE_VALUES,
@@ -53,4 +55,3 @@ def test_combine(tmp_path: Path) -> None:
 
     opt_result = OptimizationResult.combine(opt_results)
     assert len(opt_result.fits) == len(opt_results[0].fits) + len(opt_results[1].fits)
-

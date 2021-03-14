@@ -1,16 +1,18 @@
-from typing import Dict, Any
+from typing import Any, Dict
 
 import pytest
 
-from sbmlsim.examples.experiments.midazolam.fitting_problems import (
-    op_mid1oh_iv,
-)
+from sbmlsim.examples.experiments.midazolam.fitting_problems import op_mid1oh_iv
 from sbmlsim.fit.analysis import OptimizationAnalysis
 from sbmlsim.fit.options import (
-    FittingStrategyType, ResidualType, WeightingPointsType, OptimizationAlgorithmType
+    FittingStrategyType,
+    OptimizationAlgorithmType,
+    ResidualType,
+    WeightingPointsType,
 )
 from sbmlsim.fit.result import OptimizationResult
 from sbmlsim.fit.runner import run_optimization
+
 
 fit_kwargs_testdata = [
     # fitting_strategy

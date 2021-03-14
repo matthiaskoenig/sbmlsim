@@ -20,19 +20,21 @@ Locks (in CPython) so both can use up to 100% of a CPU on a multi-cpu box, as lo
 they dont contend for other lower-level (OS) resources. That's the "multiprocessing"
 part.
 """
-import os
+import logging
 import multiprocessing
-from typing import Optional, List
+import os
+from typing import List, Optional
 
 import numpy as np
 
-import logging
-
 from sbmlsim.fit.optimization import OptimizationProblem
-from sbmlsim.fit.result import OptimizationResult
 from sbmlsim.fit.options import (
-    FittingStrategyType, OptimizationAlgorithmType, WeightingPointsType, ResidualType
+    FittingStrategyType,
+    OptimizationAlgorithmType,
+    ResidualType,
+    WeightingPointsType,
 )
+from sbmlsim.fit.result import OptimizationResult
 from sbmlsim.utils import timeit
 
 
@@ -137,7 +139,7 @@ def run_optimization(
                 "relative_tolerance": relative_tolerance,
                 "variable_step_size": variable_step_size,
                 "seed": seeds[k],
-                **kwargs
+                **kwargs,
             }
             args_list.append(d)
 
@@ -160,7 +162,7 @@ def worker(kwargs) -> OptimizationResult:
     finally:
         lock.release()
 
-    return _run_optimization_serial(**kwargs)
+    return _run_optimization_serial(**kwargs)  # type: ignore
 
 
 @timeit
@@ -175,7 +177,7 @@ def _run_optimization_serial(
     variable_step_size: bool = True,
     relative_tolerance: float = 1e-6,
     absolute_tolerance: float = 1e-6,
-    **kwargs
+    **kwargs,
 ) -> OptimizationResult:
     """Run the given optimization problem in a serial fashion.
 
@@ -215,10 +217,7 @@ def _run_optimization_serial(
 
     # optimize
     fits, trajectories = problem.optimize(
-        size=size,
-        seed=seed,
-        algorithm=algorithm,
-        **kwargs
+        size=size, seed=seed, algorithm=algorithm, **kwargs
     )
 
     # process results and plots

@@ -1,13 +1,12 @@
 """Sampling of parameter values."""
 import logging
 from enum import Enum
-from typing import Dict, Iterable, List
+from typing import Dict, Iterable, List, Sized
 
 import numpy as np
 import pandas as pd
 from matplotlib import pyplot as plt
 from pyDOE import lhs
-
 
 # FIXME: make this independent of the fit parameters
 from sbmlsim.fit.objects import FitParameter
@@ -29,7 +28,7 @@ class SamplingType(Enum):
 
 
 def create_samples(
-    parameters: Iterable[FitParameter],
+    parameters: List[FitParameter],
     size,
     sampling=SamplingType.LOGUNIFORM,
     seed=None,

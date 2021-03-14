@@ -6,7 +6,7 @@ import logging
 import os
 from collections.abc import MutableMapping
 from pathlib import Path
-from typing import Dict, Optional, Tuple, Iterator
+from typing import Dict, Iterator, Optional, Tuple
 
 import libsbml
 import numpy as np
@@ -88,12 +88,39 @@ class UnitsInformation(MutableMapping):
         return UnitsInformation.from_sbml_doc(doc, ureg=ureg)
 
     sbml_uids = [
-        "ampere", "farad", "joule", "lux", "radian", "volt",
-        "avogadro", "gram", "katal", "metre", "second", "watt",
-        "becquerel", "gray", "kelvin", "mole", "siemens", "weber",
-        "candela", "henry", "kilogram", "newton", "sievert",
-        "coulomb", "hertz", "litre", "ohm", "steradian",
-        "dimensionless", "item", "lumen", "pascal", "tesla",
+        "ampere",
+        "farad",
+        "joule",
+        "lux",
+        "radian",
+        "volt",
+        "avogadro",
+        "gram",
+        "katal",
+        "metre",
+        "second",
+        "watt",
+        "becquerel",
+        "gray",
+        "kelvin",
+        "mole",
+        "siemens",
+        "weber",
+        "candela",
+        "henry",
+        "kilogram",
+        "newton",
+        "sievert",
+        "coulomb",
+        "hertz",
+        "litre",
+        "ohm",
+        "steradian",
+        "dimensionless",
+        "item",
+        "lumen",
+        "pascal",
+        "tesla",
     ]
 
     @staticmethod
@@ -111,7 +138,7 @@ class UnitsInformation(MutableMapping):
                 logger.debug(f"SBML unit kind can not be used in pint: '{key}'")
 
         # map no units on dimensionless
-        uid_dict[''] = "dimensionless"
+        uid_dict[""] = "dimensionless"
 
         udef: libsbml.UnitDefinition
         for udef in model.getListOfUnitDefinitions():
@@ -200,8 +227,7 @@ class UnitsInformation(MutableMapping):
                     # store concentration
                     if substance_uid and volume_uid:
                         # udict[f"[{sid}]"] = f"{uid_dict[substance_uid]}/{uid_dict[volume_uid]}"
-                        udict[
-                            f"[{sid}]"] = f"{substance_uid}/{volume_uid}"
+                        udict[f"[{sid}]"] = f"{substance_uid}/{volume_uid}"
                     else:
                         logger.warning(
                             f"Substance or volume unit missing, "
@@ -393,6 +419,7 @@ class Units:
 
 if __name__ == "__main__":
     from sbmlsim.test import MODEL_DEMO, MODEL_GLCWB
+
     # uinfo = UnitsInformation.from_sbml_path(MODEL_DEMO)
     ureg = UnitRegistry()
     uinfo = UnitsInformation.from_sbml_path(MODEL_GLCWB, ureg=ureg)
