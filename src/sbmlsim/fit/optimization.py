@@ -233,7 +233,8 @@ class OptimizationProblem(ObjectJSONEncoder):
             sid = fit_experiment.experiment_class.__name__
             sim_experiment = self.runner.experiments[sid]
 
-            # FIXME: selections should be based on fit mappings
+            # FIXME: selections should be based on fit mappings; this will reduce
+            # selections and speed up calculations
             selections_set: Set[str] = set()
             for d in sim_experiment._data.values():  # type: Data
                 if d.is_task():
@@ -326,10 +327,14 @@ class OptimizationProblem(ObjectJSONEncoder):
                 x_ref = data_ref.x.magnitude
                 y_ref = data_ref.y.magnitude
 
-                # FIXME: this should all happen at the end in residual calculation
+                # TODO: implement
                 if self.residual_type == ResidualType.ABSOLUTE_CHANGES_BASELINE:
                     # Use absolute changes to baseline, which is the first point
-                    y_ref = (y_ref - y_ref[0])
+                    # y_ref = (y_ref - y_ref[0])
+                    raise NotImplementedError
+
+                elif self.residual_type == ResidualType.RELATIVE_CHANGES_BASELINE:
+                    raise NotImplementedError
 
                 # Use errors for weighting (tries SD and falls back on SE)
                 y_ref_err = None
@@ -350,7 +355,7 @@ class OptimizationProblem(ObjectJSONEncoder):
                         # handle special case of all NaN errors
                         y_ref_err = None
                     else:
-                        # some NaNs could exist (err is maximal error of all data points)
+                        # some NaNs could exist (err is maximal error of all points)
                         y_ref_err[np.isnan(y_ref_err)] = np.nanmax(y_ref_err)
 
                 # remove zero values for relative errors (no inf residuals)
@@ -370,35 +375,35 @@ class OptimizationProblem(ObjectJSONEncoder):
                 nonnan_mask = ~np.isnan(y_ref)
                 if not np.all(nonnan_mask):
                     logger.debug(
-                        f"Removing NaN values in '{sid}:{mapping_id}' y data: {y_ref}"
+                        f"Removing NaN values in '{sid}.{mapping_id}' y data: '{y_ref}'"
                     )
                 x_ref = x_ref[nonnan_mask]
                 y_ref = y_ref[nonnan_mask]
                 if y_ref_err is not None:
                     y_ref_err = y_ref_err[nonnan_mask]
 
-                # at this point all x_ref, y_ref and y_ref_err (if not None) should be numerical
-                if np.any(~np.isfinite(x_ref)):
-                    raise ValueError(
-                        f"{fit_experiment}.{mapping_id}: NaN or INF in x_ref: {x_ref}"
-                    )
-                if np.any(~np.isfinite(y_ref)):
-                    raise ValueError(
-                        f"{fit_experiment}.{mapping_id}: NaN or INF in y_ref: {y_ref}"
-                    )
-                if y_ref_err is not None:
-                    if np.any(~np.isfinite(y_ref_err)):
+                # at this point all x_ref, y_ref and y_ref_err
+                for data_key, data in [
+                    ("x_ref", x_ref),
+                    ("y_ref", y_ref),
+                    ("y_ref_err", x_ref)
+                ]:
+                    if data_key == y_ref_err and data is None:
+                        # skip test if no error data
+                        continue
+                    if np.any(~np.isfinite(data)):
                         raise ValueError(
-                            f"{fit_experiment}.{mapping_id}: NaN or INF in y_ref_err: {y_ref_err}"
+                            f"{fit_experiment}.{mapping_id}: NaN or INF in "
+                            f"'{data_key}': '{data}'"
                         )
 
                 # --- WEIGHTS ---
 
                 # weight points
-                weight_points: np.ndarray
+                weight_points: np.ndarray = np.ones_like(y_ref)
                 if self.weighting_points == WeightingPointsType.NO_WEIGHTING:
                     # local weights are by default 1.0
-                    weight_points = np.ones_like(y_ref)
+                    pass
                 elif self.weighting_points == WeightingPointsType.ERROR_WEIGHTING:
                     if y_ref_err is None:
                         logger.warning(
@@ -623,7 +628,7 @@ class OptimizationProblem(ObjectJSONEncoder):
     def residuals(self, xlog: np.ndarray, complete_data=False):
         """Calculate residuals for given parameter vector.
 
-        :param x: logarithmic parameter vector
+        :param xlog: logarithmic parameter vector
         :param complete_data: boolean flag to return additional information
         :return: vector of weighted residuals
         """
@@ -672,11 +677,12 @@ class OptimizationProblem(ObjectJSONEncoder):
                     assume_sorted=True,
                 )
                 y_obsip = f(self.x_references[k])
-                if (
-                    self.fitting_strategy
-                    == FittingStrategyType.ABSOLUTE_CHANGES_BASELINE
-                ):
-                    y_obsip = y_obsip - y_obsip[0]
+
+                if self.residual_type == ResidualType.ABSOLUTE_CHANGES_BASELINE:
+                    raise NotImplementedError
+                elif self.residual_type == ResidualType.RELATIVE_CHANGES_BASELINE:
+                    # y_obsip = y_obsip - y_obsip[0]
+                    raise NotImplementedError
 
                 # calculate absolute & relative residuals
                 res_abs = y_obsip - self.y_references[k]
@@ -688,20 +694,18 @@ class OptimizationProblem(ObjectJSONEncoder):
                 )
                 res_abs = 5.0 * self.y_references[k]  # total error
 
-            res_abs_normed = res_abs / self.y_references[k].mean()
-
             with np.errstate(divide="ignore", invalid="ignore"):
                 res_rel = res_abs / self.y_references[k]
-
             # no cost contribution of zero values
             res_rel[np.isnan(res_rel)] = 0
             res_rel[np.isinf(res_rel)] = 0
 
+            # FIXME_remove
+            # res_abs_normed = res_abs / self.y_references[k].mean()
+
             # select correct residuals
-            if self.residual_type == ResidualType.ABSOLUTE_RESIDUALS:
+            if self.residual_type == ResidualType.ABSOLUTE:
                 res = res_abs
-            elif self.residual_type == ResidualType.ABSOLUTE_NORMED_RESIDUALS:
-                res = res_abs_normed
             elif self.residual_type == ResidualType.RELATIVE_RESIDUALS:
                 res = res_rel
 
@@ -716,7 +720,6 @@ class OptimizationProblem(ObjectJSONEncoder):
                 residual_data["residuals"].append(res)
                 residual_data["residuals_weighted"].append(resw)
                 residual_data["res_abs"].append(res_abs)
-                residual_data["res_abs_normed"].append(res_abs_normed)
                 residual_data["res_rel"].append(res_rel)
                 # FIXME: this depends on loss function
                 residual_data["cost"].append(0.5 * np.sum(np.power(resw, 2)))
@@ -726,6 +729,5 @@ class OptimizationProblem(ObjectJSONEncoder):
         else:
             res_all = np.concatenate(parts)
             # store the local step
-            # FIXME
             self._trajectory.append((deepcopy(x), 0.5 * np.sum(np.power(res_all, 2))))
             return res_all
