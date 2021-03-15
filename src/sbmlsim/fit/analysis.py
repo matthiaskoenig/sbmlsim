@@ -2,19 +2,16 @@
 
 import logging
 from pathlib import Path
-from typing import List, Optional
 
 import numpy as np
 import pandas as pd
 import seaborn as sns
 from matplotlib.figure import Figure, Axes
 
-from sbmlsim.fit import FitParameter
 from sbmlsim.fit.optimization import OptimizationProblem
 from sbmlsim.fit.options import FittingStrategyType, ResidualType, WeightingPointsType
 from sbmlsim.fit.result import OptimizationResult
 from sbmlsim.plot.plotting_matplotlib import plt
-from sbmlsim.simulator import SimulatorSerial
 from sbmlsim.utils import timeit
 
 
@@ -127,18 +124,22 @@ class OptimizationAnalysis:
                 x=xopt,
                 path=self.results_dir / f"datapoint_scatter.{self.image_format}",
             )
-
-            self.plot_fits(
+            self.plot_residual_scatter(
                 x=xopt,
-                path=self.results_dir / "05_fits.svg",
+                path=self.results_dir / f"residual_scatter.{self.image_format}",
             )
 
-            # plot individual fit mappings
-            self.plot_residuals(x=xopt)
+            # self.plot_fits(
+            #     x=xopt,
+            #     path=self.results_dir / "05_fits.svg",
+            # )
+            #
+            # # plot individual fit mappings
+            # self.plot_residuals(x=xopt)
 
         # correlation plot
-        if self.optres.size > 1:
-            self.plot_correlation(path=self.results_dir / "04_parameter_correlation")
+        # if self.optres.size > 1:
+        #     self.plot_correlation(path=self.results_dir / "04_parameter_correlation")
 
     def _save_fig(self, fig, path: Path) -> None:
         """Save figure to path."""
@@ -458,6 +459,54 @@ class OptimizationAnalysis:
                 )
         ax.set_xlabel("experiment")
         ax.set_ylabel("prediction")
+        ax.set_xscale("log")
+        ax.set_yscale("log")
+        ax.grid()
+        ax.set_title("Datapoint scatter")
+        self._save_fig(fig=fig, path=path)
+
+    @timeit
+    def plot_residual_scatter(self, x: np.ndarray, path: Path = None):
+        """Plot residual plot."""
+        fig, ax = plt.subplots(nrows=1, ncols=1, figsize=(5, 5))
+
+        dp: pd.DataFrame = self._datapoints_df(x=x)
+
+        ax.plot(
+            dp.y_ref, dp.residual/dp.y_ref,
+            # yerr=dp.y_ref_err,
+            linestyle="",
+            marker="o",
+            # label="model",
+            color="black",
+            markersize="10",
+            alpha=0.7,
+        )
+
+        min_res = np.min(dp.residual / dp.y_ref)
+        max_res = np.max(dp.residual / dp.y_ref)
+
+        ax.plot(
+            [min_res * 0.5, max_res * 2],
+            [0, 0],
+            "--",
+            color="black",
+        )
+
+        for k in range(len(dp)):
+
+            if np.abs(dp.redual/dp.y_ref[k]) > 0.5:
+                ax.annotate(
+                    dp.experiment.values[k],
+                    xy=(
+                        dp.y_ref.values[k],
+                        dp.y_obs.values[k],
+                    ),
+                    fontsize="x-small",
+                    alpha=0.7,
+                )
+        ax.set_xlabel("experiment")
+        ax.set_ylabel("residual (y")
         ax.set_xscale("log")
         ax.set_yscale("log")
         ax.grid()
