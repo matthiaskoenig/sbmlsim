@@ -84,7 +84,6 @@ class OptimizationAnalysis:
         }
         plt.rcParams.update(parameters)
 
-
         # write report
         problem_info: str = ""
         if self.op:
@@ -134,6 +133,10 @@ class OptimizationAnalysis:
                 x=xopt,
                 path=self.results_dir / f"residual_scatter.{self.image_format}",
             )
+            self.plot_residual_boxplot(
+                x=xopt,
+                path=self.results_dir / f"residual_boxplot.{self.image_format}",
+            )
 
             self.plot_fits(
                 x=xopt,
@@ -141,7 +144,7 @@ class OptimizationAnalysis:
             )
 
             # plot individual fit mappings
-            self.plot_residuals(x=xopt)
+            self.plot_fit(x=xopt)
 
         # correlation plot
         # if self.optres.size > 1:
@@ -182,6 +185,7 @@ class OptimizationAnalysis:
         fig, axes = plt.subplots(
             nrows=n_plots, ncols=2, figsize=(10, 5 * n_plots), squeeze=False
         )
+        fig.subplots_adjust(hspace=0.1)
 
         # residual data and simulations of optimal parameters
         res_data = self.op.residuals(xlog=np.log10(x), complete_data=True)
@@ -198,10 +202,10 @@ class OptimizationAnalysis:
             x_id = self.op.xid_observable[k]
             y_id = self.op.yid_observable[k]
 
+            axes[0].set_ylabel(y_id)
             for ax in axes[k]:
                 ax.set_title(f"{sid} {mapping_id}")
                 ax.set_xlabel(x_id)
-                ax.set_ylabel(y_id)
 
                 # calculated data in residuals
                 x_obs = res_data["x_obs"][k]
@@ -211,7 +215,8 @@ class OptimizationAnalysis:
 
                 # plot data
                 if y_ref_err is None:
-                    ax.plot(x_ref, y_ref, "s", color="black", label="reference_data")
+                    ax.plot(x_ref, y_ref, "s", color="black", label="reference_data",
+                            markersize=10)
                 else:
                     ax.errorbar(
                         x_ref,
@@ -220,6 +225,7 @@ class OptimizationAnalysis:
                         marker="s",
                         color="black",
                         label=f"reference_data ± {y_ref_err_type}",
+                        markersize=10
                     )
                 # plot simulation
                 ax.plot(x_obs, y_obs, "-", color="blue", label="observable")
@@ -231,7 +237,7 @@ class OptimizationAnalysis:
         self._save_mpl_figure(fig, path=path)
 
     @timeit
-    def plot_residuals(self, x: np.ndarray) -> None:
+    def plot_fit(self, x: np.ndarray) -> None:
         """Plot residual data for all individual fit mappings.
 
         :param path:
@@ -239,20 +245,13 @@ class OptimizationAnalysis:
 
         :return:
         """
-        titles = ["model", "fit"]
-        res_data_start = self.op.residuals(
-            xlog=np.log10(self.op.xmodel), complete_data=True
-        )
-        res_data_fit = self.op.residuals(xlog=np.log10(x), complete_data=True)
+
+        res_data = self.op.residuals(xlog=np.log10(x), complete_data=True)
 
         for k, mapping_id in enumerate(self.op.mapping_keys):
-            fig, ((a1, a2), (a3, a4), (a5, a6)) = plt.subplots(
-                nrows=3, ncols=2, figsize=(10, 10)
+            fig, ((ax1, ax2), (ax3, ax4)) = plt.subplots(
+                nrows=2, ncols=2, figsize=(10, 10)
             )
-
-            axes = [(a1, a3, a5), (a2, a4, a6)]
-            if titles is None:
-                titles = ["Model", "Fit"]
 
             # global reference data
             sid = self.op.experiment_keys[k]
@@ -264,32 +263,45 @@ class OptimizationAnalysis:
             x_id = self.op.xid_observable[k]
             y_id = self.op.yid_observable[k]
 
-            for kdata, res_data in enumerate([res_data_start, res_data_fit]):
-                ax1, ax2, ax3 = axes[kdata]
-                title = titles[kdata]
+            # calculated data in residuals
+            x_obs = res_data["x_obs"][k]
+            y_obs = res_data["y_obs"][k]
+            y_obsip = res_data["y_obsip"][k]
 
-                # calculated data in residuals
+            res = res_data["residuals"][k]
+            res_weighted = res_data["residuals_weighted"][k]
+            res_weighted2 = np.power(res_weighted, 2)
 
-                x_obs = res_data["x_obs"][k]
-                y_obs = res_data["y_obs"][k]
-                y_obsip = res_data["y_obsip"][k]
+            for ax in (ax1, ax3):
+                ax.axhline(y=0, color="black")
+                ax.set_ylabel(y_id)
+            for ax in (ax3, ax4):
+                ax.set_xlabel(x_id)
 
-                res = res_data["residuals"][k]
-                res_weighted = res_data["residuals_weighted"][k]
-                res_abs = res_data["res_abs"][k]
-                # res_rel = res_data["res_rel"][k]
+            for ax in (ax1, ax2):
+                ax.set_title(f"{sid}.{mapping_id}")
+                plt.setp(ax.get_xticklabels(), visible=False)
 
-                cost = res_data["cost"][k]
+                # residuals
+                ax.plot(x_ref, res, "o", color="darkorange", label="residuals")
+                ax.fill_between(
+                    x_ref,
+                    res,
+                    np.zeros_like(res),
+                    alpha=0.4,
+                    color="darkorange",
+                    label="__nolabel__",
+                )
 
-                for ax in (ax1, ax2, ax3):
-                    ax.axhline(y=0, color="black")
-                    ax.set_ylabel(y_id)
-                ax3.set_xlabel(x_id)
+                # prediction
+                ax.plot(x_obs, y_obs, "-", color="blue", label="observable")
+                ax.plot(x_ref, y_obsip, "o", color="blue", label="interpolation")
 
+                # reference data
                 if y_ref_err is None:
-                    ax1.plot(x_ref, y_ref, "s", color="black", label="reference_data")
+                    ax.plot(x_ref, y_ref, "s", color="black", label="reference_data")
                 else:
-                    ax1.errorbar(
+                    ax.errorbar(
                         x_ref,
                         y_ref,
                         yerr=y_ref_err,
@@ -298,44 +310,16 @@ class OptimizationAnalysis:
                         label="reference_data",
                     )
 
-                ax1.plot(x_obs, y_obs, "-", color="blue", label="observable")
-                ax1.plot(x_ref, y_obsip, "o", color="blue", label="interpolation")
-                for ax in (ax1, ax2):
-                    ax.plot(x_ref, res_abs, "o", color="darkorange", label="obs-ref")
-                ax1.fill_between(
-                    x_ref,
-                    res_abs,
-                    np.zeros_like(res),
-                    alpha=0.4,
-                    color="darkorange",
-                    label="__nolabel__",
-                )
+            for ax in (ax3, ax4):
 
-                ax2.plot(
-                    x_ref,
-                    res_weighted,
-                    "o",
-                    color="darkgreen",
-                    label="weighted residuals",
-                )
-                ax2.fill_between(
-                    x_ref,
-                    res_weighted,
-                    np.zeros_like(res_weighted),
-                    alpha=0.4,
-                    color="darkgreen",
-                    label="__nolabel__",
-                )
-
-                res_weighted2 = np.power(res_weighted, 2)
-                ax3.plot(
+                ax.plot(
                     x_ref,
                     res_weighted2,
                     "o",
-                    color="darkred",
+                    color="red",
                     label="(weighted residuals)^2",
                 )
-                ax3.fill_between(
+                ax.fill_between(
                     x_ref,
                     res_weighted2,
                     np.zeros_like(res),
@@ -344,26 +328,18 @@ class OptimizationAnalysis:
                     label="__nolabel__",
                 )
 
-                for ax in (ax1, ax2):
-                    plt.setp(ax.get_xticklabels(), visible=False)
+                ax.set_xlim(ax1.get_xlim())
 
-                # ax3.set_xlabel("x")
-                for ax in (ax2, ax3):
-                    ax.set_xlim(ax1.get_xlim())
-
-                if title:
-                    full_title = "{}_{}: {} (cost={:.3e})".format(
-                        sid, mapping_id, title, cost
-                    )
-                    ax1.set_title(full_title)
-                for ax in (ax1, ax2, ax3):
-                    # plt.setp(ax.get_yticklabels(), visible=False)
-                    # ax.set_ylabel("y")
-                    # ax.set_yscale("log")
-                    ax.legend()
+            for ax in (ax1, ax2, ax3, ax4):
+                # plt.setp(ax.get_yticklabels(), visible=False)
+                # ax.set_ylabel("y")
+                # ax.set_yscale("log")
+                ax.legend()
+            for ax in (ax2, ax4):
+                ax.set_yscale("log")
 
             self._save_mpl_figure(
-                fig=fig, path=self.results_dir / f"{mapping_id}.{self.image_format}"
+                fig=fig, path=self.results_dir / f"fit_{sid}_{mapping_id}.{self.image_format}"
             )
 
     def _cost_df(self, x: np.ndarray) -> pd.DataFrame:
@@ -519,18 +495,18 @@ class OptimizationAnalysis:
         )
 
         for k in range(len(dp)):
-            # errorbars
-            if dp.y_ref_err is not None:
-                ax.errorbar(
-                    xdata[k], ydata[k],
-                    yerr=dp.y_ref_err[k]/ydata[k],
-                    linestyle="",
-                    marker="",
-                    # label="model",
-                    color="black",
-                    markersize="1",
-                    alpha=0.9,
-                )
+            # # errorbars
+            # if dp.y_ref_err is not None:
+            #     ax.errorbar(
+            #         xdata[k], ydata[k],
+            #         yerr=dp.y_ref_err[k]/ydata[k],
+            #         linestyle="",
+            #         marker="",
+            #         # label="model",
+            #         color="black",
+            #         markersize="1",
+            #         alpha=0.9,
+            #     )
 
             if np.abs(ydata[k]) > 0.5:
                 ax.annotate(
@@ -556,7 +532,6 @@ class OptimizationAnalysis:
 
         Compare costs of all curves.
         """
-
         costs_x: pd.DataFrame = self._cost_df(x=x)
 
         fig, ax = self._create_mpl_figure()
@@ -577,6 +552,7 @@ class OptimizationAnalysis:
         ax.set_yticklabels(
             ticklabels,
             # rotation=60,
+            ha="left",
             fontdict={"fontsize": 8}
         )
         ax.grid(True, axis="x")
@@ -584,6 +560,47 @@ class OptimizationAnalysis:
         ax.set_xscale("log")
         self._save_mpl_figure(fig=fig, path=path)
 
+    def plot_residual_boxplot(self, x: np.ndarray, path: Path = None) -> None:
+        """Plot residual boxplot.
+
+        Compare costs of all curves.
+        """
+        costs_x: pd.DataFrame = self._cost_df(x=x)
+
+        fig, ax = self._create_mpl_figure()
+        fig.subplots_adjust(left=0.5)
+        ax.set_title("Cost contribution")
+
+        position = list(range(len(costs_x)))
+        ticklabels = [f"{costs_x.experiment[k]}|{costs_x.mapping[k]}" for k in range(len(costs_x))]
+
+        res_data = self.op.residuals(xlog=np.log10(x), complete_data=True)
+
+        box_data = []
+        for k, mapping_id in enumerate(self.op.mapping_keys):
+            res_weighted = res_data["residuals_weighted"][k]
+            res_weighted2 = np.power(res_weighted, 2)
+            box_data.append(res_weighted2)
+
+        ax.boxplot(
+            # position,
+            box_data,
+            vert=False
+            # color="black",
+            # alpha=0.8
+        )
+
+        ax.set_yticks(position + 1)
+        ax.set_yticklabels(
+            ticklabels,
+            # rotation=60,
+            ha="left",
+            fontdict={"fontsize": 8}
+        )
+        ax.grid(True, axis="x")
+        ax.set_xlabel("Residuals^2")
+        ax.set_xscale("log")
+        self._save_mpl_figure(fig=fig, path=path)
 
     @timeit
     def plot_cost_scatter(self, x: np.ndarray, path: Path = None):
