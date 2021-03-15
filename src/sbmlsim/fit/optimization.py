@@ -430,7 +430,8 @@ class OptimizationProblem(ObjectJSONEncoder):
                 # apply local weighting & user defined weighting
                 # (in the cost function the weighted residuals are squared)
                 # sum(w_i * r_i^2) = sum((w_i^0.5*r_i)^2)
-                weight = np.sqrt(weight_curve * weight_points)
+                # FIXME: check that correct
+                weight = weight_curve * weight_points
                 if np.any(weight < 0):
                     raise ValueError("Negative weights encountered.")
 
@@ -719,6 +720,7 @@ class OptimizationProblem(ObjectJSONEncoder):
                 residual_data["y_obs"].append(df[self.yid_observable[k]])
                 residual_data["y_obsip"].append(y_obsip)
                 residual_data["residuals"].append(residuals)
+                residual_data["weights_curve"].append(self.weights_curves[k])
                 residual_data["residuals_weighted"].append(residuals_weighted)
                 residual_data["res_abs"].append(res_abs)
                 residual_data["res_rel"].append(res_rel)

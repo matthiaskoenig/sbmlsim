@@ -202,9 +202,9 @@ class OptimizationAnalysis:
             x_id = self.op.xid_observable[k]
             y_id = self.op.yid_observable[k]
 
-            axes[0].set_ylabel(y_id)
             for ax in axes[k]:
                 ax.set_title(f"{sid} {mapping_id}")
+                ax.set_ylabel(y_id)
                 ax.set_xlabel(x_id)
 
                 # calculated data in residuals
@@ -353,11 +353,12 @@ class OptimizationAnalysis:
                     "experiment": self.op.experiment_keys[k],
                     "mapping": self.op.mapping_keys[k],
                     "cost": res_data["cost"][k],
+                    "weight_curve": res_data["weights_curve"][k]
                 }
             )
 
         return pd.DataFrame(
-            data, columns=["id", "experiment", "mapping", "cost"]
+            data, columns=["id", "experiment", "mapping", "cost", "weight_curve"]
         )
 
     def _datapoints_df(self, x: np.ndarray) -> pd.DataFrame:
@@ -534,30 +535,46 @@ class OptimizationAnalysis:
         """
         costs_x: pd.DataFrame = self._cost_df(x=x)
 
-        fig, ax = self._create_mpl_figure()
-        fig.subplots_adjust(left=0.5)
-        ax.set_title("Cost contribution")
+        fig: Figure
+        fig, (ax1, ax2) = plt.subplots(nrows=1, ncols=2, figsize=(7, 5))
+        fig.subplots_adjust(left=0.3)
+
+        fig.suptitle("Curve costs and weights")
 
         position = list(range(len(costs_x)))
         ticklabels = [f"{costs_x.experiment[k]}|{costs_x.mapping[k]}" for k in range(len(costs_x))]
 
-        ax.barh(
+        ax1.barh(
             position,
             costs_x.cost,
             color="black",
             alpha=0.8
         )
 
-        ax.set_yticks(position)
-        ax.set_yticklabels(
+        ax1.set_yticks(position)
+        ax1.set_yticklabels(
             ticklabels,
             # rotation=60,
-            ha="left",
+            ha="right",
             fontdict={"fontsize": 8}
         )
-        ax.grid(True, axis="x")
-        ax.set_xlabel("Cost")
-        ax.set_xscale("log")
+        ax1.grid(True, axis="x")
+        ax1.set_xlabel("Cost")
+        ax1.set_xscale("log")
+
+        ax2.barh(
+            position,
+            costs_x.weight_curve,
+            color="tab:blue",
+            alpha=0.8
+        )
+
+        ax2.set_yticks(position)
+        plt.setp(ax2.get_yticklabels(), visible=False)
+        ax2.grid(True, axis="x")
+        ax2.set_xlabel("Weight curve")
+        # ax1.set_xscale("log")
+
         self._save_mpl_figure(fig=fig, path=path)
 
     def plot_residual_boxplot(self, x: np.ndarray, path: Path = None) -> None:
@@ -569,9 +586,9 @@ class OptimizationAnalysis:
 
         fig, ax = self._create_mpl_figure()
         fig.subplots_adjust(left=0.5)
-        ax.set_title("Cost contribution")
+        ax.set_title("Residual contribution")
 
-        position = list(range(len(costs_x)))
+        position = list(range(1, len(costs_x)+1))
         ticklabels = [f"{costs_x.experiment[k]}|{costs_x.mapping[k]}" for k in range(len(costs_x))]
 
         res_data = self.op.residuals(xlog=np.log10(x), complete_data=True)
@@ -581,6 +598,10 @@ class OptimizationAnalysis:
             res_weighted = res_data["residuals_weighted"][k]
             res_weighted2 = np.power(res_weighted, 2)
             box_data.append(res_weighted2)
+            ax.plot(res_weighted2, (k+0.7)*np.ones_like(res_weighted2),
+                    linestyle="", marker="s", markeredgecolor="black",
+                    color="tab:blue", markersize=3
+                    )
 
         ax.boxplot(
             # position,
@@ -590,11 +611,11 @@ class OptimizationAnalysis:
             # alpha=0.8
         )
 
-        ax.set_yticks(position + 1)
+        ax.set_yticks(position)
         ax.set_yticklabels(
             ticklabels,
             # rotation=60,
-            ha="left",
+            ha="right",
             fontdict={"fontsize": 8}
         )
         ax.grid(True, axis="x")
