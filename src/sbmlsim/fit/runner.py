@@ -29,9 +29,9 @@ import numpy as np
 
 from sbmlsim.fit.optimization import OptimizationProblem
 from sbmlsim.fit.options import (
-    FittingStrategyType,
     OptimizationAlgorithmType,
     ResidualType,
+    WeightingCurvesType,
     WeightingPointsType,
 )
 from sbmlsim.fit.result import OptimizationResult
@@ -47,8 +47,8 @@ def run_optimization(
     problem: OptimizationProblem,
     size: int = 5,
     algorithm: OptimizationAlgorithmType = OptimizationAlgorithmType.LEAST_SQUARE,
-    fitting_strategy: FittingStrategyType = FittingStrategyType.ABSOLUTE_VALUES,
-    residual_type: ResidualType = ResidualType.ABSOLUTE_RESIDUALS,
+    residual_type: ResidualType = ResidualType.ABSOLUTE,
+    weighting_curves: WeightingCurvesType = WeightingCurvesType.NO_WEIGHTING,
     weighting_points: WeightingPointsType = WeightingPointsType.NO_WEIGHTING,
     seed: Optional[int] = None,
     variable_step_size: bool = True,
@@ -67,8 +67,8 @@ def run_optimization(
     :param problem: uninitialized problem to optimize (pickable)
     :param size: integer number of optimizations
     :param algorithm: optimization algorithm to use
-    :param fitting_strategy: strategy for fitting (absolute or relative to baseline)
     :param residual_type: handling of residuals
+    :param weighting_curves: weighting of curves (fit mappings)
     :param weighting_points: weighting of points
     :param seed: integer random seed (for sampling of parameters)
     :param absolute_tolerance: absolute tolerance of simulator
@@ -132,8 +132,8 @@ def run_optimization(
                 "problem": problem,
                 "size": sizes[k],
                 "algorithm": algorithm,
-                "fitting_strategy": fitting_strategy,
                 "residual_type": residual_type,
+                "weighting_curves": weighting_curves,
                 "weighting_points": weighting_points,
                 "absolute_tolerance": absolute_tolerance,
                 "relative_tolerance": relative_tolerance,
@@ -170,8 +170,8 @@ def _run_optimization_serial(
     problem: OptimizationProblem,
     size: int = 5,
     algorithm: OptimizationAlgorithmType = OptimizationAlgorithmType.LEAST_SQUARE,
-    fitting_strategy: FittingStrategyType = FittingStrategyType.ABSOLUTE_VALUES,
-    residual_type: ResidualType = ResidualType.ABSOLUTE_RESIDUALS,
+    residual_type: ResidualType = ResidualType.ABSOLUTE,
+    weighting_curves: WeightingCurvesType = WeightingCurvesType.NO_WEIGHTING,
     weighting_points: WeightingPointsType = WeightingPointsType.NO_WEIGHTING,
     seed: Optional[int] = None,
     variable_step_size: bool = True,
@@ -188,8 +188,8 @@ def _run_optimization_serial(
     :param problem: uninitialized problem to optimize (pickable)
     :param size: integer number of optimizations
     :param algorithm: optimization algorithm to use
-    :param fitting_strategy: strategy for fitting (absolute or relative to baseline)
     :param residual_type: handling of residuals
+    :param weighting_curves: weighting of curves (fit mapping)
     :param weighting_points: weighting of points
     :param seed: integer random seed (for sampling of parameters)
     :param absolute_tolerance: absolute tolerance of simulator
@@ -207,9 +207,9 @@ def _run_optimization_serial(
 
     # initialize problem, which calculates errors
     problem.initialize(
-        fitting_strategy=fitting_strategy,
-        weighting_points=weighting_points,
         residual_type=residual_type,
+        weighting_points=weighting_points,
+        weighting_curves=weighting_curves,
         absolute_tolerance=absolute_tolerance,
         relative_tolerance=relative_tolerance,
         variable_step_size=variable_step_size,

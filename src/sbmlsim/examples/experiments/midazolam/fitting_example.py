@@ -9,9 +9,9 @@ from sbmlsim.examples.experiments.midazolam.fitting_problems import (
 from sbmlsim.fit.analysis import OptimizationAnalysis
 from sbmlsim.fit.optimization import OptimizationProblem
 from sbmlsim.fit.options import (
-    FittingStrategyType,
     OptimizationAlgorithmType,
     ResidualType,
+    WeightingCurvesType,
     WeightingPointsType,
 )
 from sbmlsim.fit.result import OptimizationResult
@@ -23,9 +23,9 @@ def fitting_example(op_factory: Callable, size: int = 10, n_cores: int = 10) -> 
 
     fit_kwargs = {
         "seed": 1234,
-        "fitting_strategy": FittingStrategyType.ABSOLUTE_VALUES,
-        "residual_type": ResidualType.ABSOLUTE_NORMED_RESIDUALS,
-        "weighting_points": WeightingPointsType.ABSOLUTE_ONE_OVER_WEIGHTING,
+        "residual_type": ResidualType.ABSOLUTE,
+        "weighting_curves": WeightingCurvesType.MEAN_AND_POINTS,
+        "weighting_points": WeightingPointsType.ERROR_WEIGHTING,
         "absolute_tolerance": 1e-6,
         "relative_tolerance": 1e-6,
     }

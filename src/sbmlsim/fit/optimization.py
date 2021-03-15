@@ -155,9 +155,9 @@ class OptimizationProblem(ObjectJSONEncoder):
         all_info = [
             core_info,
             "Settings",
-            f"\tfitting_type: {self.fitting_strategy}",
             f"\tresidual_type: {self.residual_type}",
-            f"\tweighting local: {self.weighting_points}",
+            f"\tweighting_curves: {self.weighting_curves}",
+            f"\tweighting_points: {self.weighting_points}",
             "Data",
         ]
         for key in [
@@ -171,7 +171,7 @@ class OptimizationProblem(ObjectJSONEncoder):
             "y_errors_type",
             "weights",
             "weights_points",
-            "weights_curve",
+            "weights_curves",
         ]:
             all_info.append(f"\t{key}: {str(getattr(self, key))}")
 
@@ -359,7 +359,7 @@ class OptimizationProblem(ObjectJSONEncoder):
                         y_ref_err[np.isnan(y_ref_err)] = np.nanmax(y_ref_err)
 
                 # remove zero values for relative errors (no inf residuals)
-                if self.residual_type == ResidualType.RELATIVE_RESIDUALS:
+                if self.residual_type == ResidualType.RELATIVE:
                     nonzero_mask = y_ref != 0.0
                     if not np.all(nonzero_mask):
                         logger.debug(
@@ -388,7 +388,7 @@ class OptimizationProblem(ObjectJSONEncoder):
                     ("y_ref", y_ref),
                     ("y_ref_err", x_ref)
                 ]:
-                    if data_key == y_ref_err and data is None:
+                    if data_key == "y_ref_err" and data is None:
                         # skip test if no error data
                         continue
                     if np.any(~np.isfinite(data)):
@@ -704,25 +704,26 @@ class OptimizationProblem(ObjectJSONEncoder):
             # res_abs_normed = res_abs / self.y_references[k].mean()
 
             # select correct residuals
+            residuals: np.ndarray
             if self.residual_type == ResidualType.ABSOLUTE:
-                res = res_abs
-            elif self.residual_type == ResidualType.RELATIVE_RESIDUALS:
-                res = res_rel
+                residuals = res_abs
+            elif self.residual_type == ResidualType.RELATIVE:
+                residuals = res_rel
 
-            resw = res * self.weights[k]
-            parts.append(resw)
+            residuals_weighted = residuals * self.weights[k]
+            parts.append(residuals_weighted)
 
             # for post_processing
             if complete_data:
                 residual_data["x_obs"].append(df[self.xid_observable[k]])
                 residual_data["y_obs"].append(df[self.yid_observable[k]])
                 residual_data["y_obsip"].append(y_obsip)
-                residual_data["residuals"].append(res)
-                residual_data["residuals_weighted"].append(resw)
+                residual_data["residuals"].append(residuals)
+                residual_data["residuals_weighted"].append(residuals_weighted)
                 residual_data["res_abs"].append(res_abs)
                 residual_data["res_rel"].append(res_rel)
                 # FIXME: this depends on loss function
-                residual_data["cost"].append(0.5 * np.sum(np.power(resw, 2)))
+                residual_data["cost"].append(0.5 * np.sum(np.power(residuals_weighted, 2)))
 
         if complete_data:
             return residual_data

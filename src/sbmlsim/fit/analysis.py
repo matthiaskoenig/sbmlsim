@@ -2,14 +2,17 @@
 
 import logging
 from pathlib import Path
+from typing import Tuple, Any
 
 import numpy as np
 import pandas as pd
 import seaborn as sns
 from matplotlib.figure import Figure, Axes
+import matplotlib
+from matplotlib.lines import Line2D
 
 from sbmlsim.fit.optimization import OptimizationProblem
-from sbmlsim.fit.options import FittingStrategyType, ResidualType, WeightingPointsType
+from sbmlsim.fit.options import ResidualType, WeightingCurvesType, WeightingPointsType
 from sbmlsim.fit.result import OptimizationResult
 from sbmlsim.plot.plotting_matplotlib import plt
 from sbmlsim.utils import timeit
@@ -30,8 +33,8 @@ class OptimizationAnalysis:
         output_path: Path,
         op: OptimizationProblem = None,
         show_plots: bool = True,
-        fitting_strategy: FittingStrategyType = None,
         residual_type: ResidualType = None,
+        weighting_curves: WeightingCurvesType = None,
         weighting_points: WeightingPointsType = None,
         variable_step_size: bool = True,
         absolute_tolerance: float = 1e-6,
@@ -53,19 +56,12 @@ class OptimizationAnalysis:
 
         self.image_format = image_format
         self.show_plots = show_plots
-        # FIXME: remove
-        # self.fitting_strategy = fitting_strategy
-        # self.residual_type = residual_type
-        # self.weighting_points = weighting_points
-        # self.variable_step_size = variable_step_size
-        # self.absolute_tolerance = absolute_tolerance
-        # self.relative_tolerance = relative_tolerance
 
         if op:
             op.initialize(
-                fitting_strategy=fitting_strategy,
-                weighting_points=weighting_points,
                 residual_type=residual_type,
+                weighting_curves=weighting_curves,
+                weighting_points=weighting_points,
                 variable_step_size=variable_step_size,
                 absolute_tolerance=absolute_tolerance,
                 relative_tolerance=relative_tolerance,
@@ -78,6 +74,16 @@ class OptimizationAnalysis:
 
         This creates all plots and reports.
         """
+        rc_params_copy = {**plt.rcParams}
+        from pprint import pprint
+        pprint(rc_params_copy)
+        parameters = {
+            'axes.labelsize': 12,
+            'axes.labelweight': "normal",
+            'axes.titlesize': 14
+        }
+        plt.rcParams.update(parameters)
+
 
         # write report
         problem_info: str = ""
@@ -129,24 +135,36 @@ class OptimizationAnalysis:
                 path=self.results_dir / f"residual_scatter.{self.image_format}",
             )
 
-            # self.plot_fits(
-            #     x=xopt,
-            #     path=self.results_dir / "05_fits.svg",
-            # )
-            #
-            # # plot individual fit mappings
-            # self.plot_residuals(x=xopt)
+            self.plot_fits(
+                x=xopt,
+                path=self.results_dir / "05_fits.svg",
+            )
+
+            # plot individual fit mappings
+            self.plot_residuals(x=xopt)
 
         # correlation plot
         # if self.optres.size > 1:
         #     self.plot_correlation(path=self.results_dir / "04_parameter_correlation")
 
-    def _save_fig(self, fig, path: Path) -> None:
-        """Save figure to path."""
+        # reset parameters
+        plt.rcParams.update(rc_params_copy)
+
+    def _create_mpl_figure(
+        self, width: float = 5.0, height: float = 5.0) -> Tuple[Figure, Axes]:
+        """Create matplotlib figure."""
+        fig, ax = plt.subplots(nrows=1, ncols=1, figsize=(width, height))
+        fig.subplots_adjust(left=0.2, bottom=0.1)
+
+        return fig, ax
+
+    def _save_mpl_figure(self, fig, path: Path) -> None:
+        """Save matplotlib figure to path."""
         if self.show_plots:
             plt.show()
         if path is not None:
-            fig.savefig(path, bbox_inches="tight")
+            # fig.savefig(path, bbox_inches="tight")
+            fig.savefig(path)
         plt.close(fig)
 
     @timeit
@@ -210,7 +228,7 @@ class OptimizationAnalysis:
             axes[k][1].set_yscale("log")
             axes[k][1].set_ylim(bottom=0.3 * np.nanmin(y_ref))
 
-        self._save_fig(fig, path=path)
+        self._save_mpl_figure(fig, path=path)
 
     @timeit
     def plot_residuals(self, x: np.ndarray) -> None:
@@ -344,7 +362,7 @@ class OptimizationAnalysis:
                     # ax.set_yscale("log")
                     ax.legend()
 
-            self._save_fig(
+            self._save_mpl_figure(
                 fig=fig, path=self.results_dir / f"{mapping_id}.{self.image_format}"
             )
 
@@ -410,20 +428,21 @@ class OptimizationAnalysis:
 
         Compares cost of model parameters to the given parameter set.
         """
-        fig, ax = plt.subplots(nrows=1, ncols=1, figsize=(5, 5))
+        fig, ax = self._create_mpl_figure()
 
         dp: pd.DataFrame = self._datapoints_df(x=x)
 
-        ax.plot(
-            dp.y_ref, dp.y_obs,
-            # yerr=dp.y_ref_err,
-            linestyle="",
-            marker="o",
-            # label="model",
-            color="black",
-            markersize="10",
-            alpha=0.7,
-        )
+        for experiment in sorted(dp.experiment.unique()):
+            ax.plot(
+                dp.y_ref[dp.experiment == experiment], dp.y_obs[dp.experiment == experiment],
+                # yerr=dp.y_ref_err,
+                linestyle="",
+                marker="o",
+                # label="model",
+                # color="black",
+                markersize="10",
+                alpha=0.9,
+            )
 
         min_dp = np.min(
             [
@@ -455,37 +474,43 @@ class OptimizationAnalysis:
                         dp.y_obs.values[k],
                     ),
                     fontsize="x-small",
-                    alpha=0.7,
+                    alpha=0.9,
                 )
-        ax.set_xlabel("experiment")
-        ax.set_ylabel("prediction")
+        ax.set_xlabel("Experiment $y_{i,k}$")
+        ax.set_ylabel("Prediction $f{x_{i,k}$")
         ax.set_xscale("log")
         ax.set_yscale("log")
         ax.grid()
-        ax.set_title("Datapoint scatter")
-        self._save_fig(fig=fig, path=path)
+        ax.set_title("Data points")
+        self._save_mpl_figure(fig=fig, path=path)
 
     @timeit
     def plot_residual_scatter(self, x: np.ndarray, path: Path = None):
         """Plot residual plot."""
-        fig, ax = plt.subplots(nrows=1, ncols=1, figsize=(5, 5))
-
+        fig, ax = self._create_mpl_figure()
         dp: pd.DataFrame = self._datapoints_df(x=x)
 
-        ax.plot(
-            dp.y_ref, dp.residual/dp.y_ref,
-            # yerr=dp.y_ref_err,
-            linestyle="",
-            marker="o",
-            # label="model",
-            color="black",
-            markersize="10",
-            alpha=0.7,
+        xdata = dp.y_ref
+        ydata = dp.residual/dp.y_ref
+
+        for experiment in sorted(dp.experiment.unique()):
+            ax.plot(
+                xdata[dp.experiment == experiment], ydata[dp.experiment == experiment],
+                linestyle="",
+                marker="o",
+                # color="black",
+                markersize="10",
+                alpha=0.9,
+            )
+
+        min_res = np.min(ydata)
+        max_res = np.max(ydata)
+
+        ax.fill_between(
+            [min_res * 0.5, max_res * 2, max_res * 2, min_res * 0.5],
+            [-0.5, -0.5, 0.5, 0.5],
+            color="lightgray"
         )
-
-        min_res = np.min(dp.residual / dp.y_ref)
-        max_res = np.max(dp.residual / dp.y_ref)
-
         ax.plot(
             [min_res * 0.5, max_res * 2],
             [0, 0],
@@ -494,58 +519,70 @@ class OptimizationAnalysis:
         )
 
         for k in range(len(dp)):
+            # errorbars
+            if dp.y_ref_err is not None:
+                ax.errorbar(
+                    xdata[k], ydata[k],
+                    yerr=dp.y_ref_err[k]/ydata[k],
+                    linestyle="",
+                    marker="",
+                    # label="model",
+                    color="black",
+                    markersize="1",
+                    alpha=0.9,
+                )
 
-            if np.abs(dp.redual/dp.y_ref[k]) > 0.5:
+            if np.abs(ydata[k]) > 0.5:
                 ax.annotate(
                     dp.experiment.values[k],
                     xy=(
-                        dp.y_ref.values[k],
-                        dp.y_obs.values[k],
+                        xdata[k],
+                        ydata[k],
                     ),
                     fontsize="x-small",
                     alpha=0.7,
                 )
-        ax.set_xlabel("experiment")
-        ax.set_ylabel("residual (y")
+        ax.set_xlabel("Experiment $y_{i,k}$")
+        ax.set_ylabel("Relative residual $\\frac{y_{i,k}-f(x_{i,k})}{y_{i,k}}$")
         ax.set_xscale("log")
-        ax.set_yscale("log")
+        # ax.set_yscale("log")
         ax.grid()
-        ax.set_title("Datapoint scatter")
-        self._save_fig(fig=fig, path=path)
+        ax.set_title("Residuals")
+        self._save_mpl_figure(fig=fig, path=path)
 
     @timeit
     def plot_cost_bar(self, x: np.ndarray, path: Path = None) -> None:
-        """Plot cost comparison.
+        """Plot cost bar plot.
 
-        Compares model parameters to the given parameter set.
+        Compare costs of all curves.
         """
 
         costs_x: pd.DataFrame = self._cost_df(x=x)
 
-        fig: Figure
-        ax: Axes
-        fig, ax = plt.subplots(nrows=1, ncols=1, figsize=(5, 5))
-        fig.subplots_adjust(bottom=0.5)
+        fig, ax = self._create_mpl_figure()
+        fig.subplots_adjust(left=0.5)
         ax.set_title("Cost contribution")
 
         position = list(range(len(costs_x)))
-        ticklabels = [f"{costs_x.experiment[k]}\n{costs_x.mapping[k]}" for k in range(len(costs_x))]
-        ax.bar(
+        ticklabels = [f"{costs_x.experiment[k]}|{costs_x.mapping[k]}" for k in range(len(costs_x))]
+
+        ax.barh(
             position,
             costs_x.cost,
             color="black",
             alpha=0.8
         )
-        ax.set_xticks(position)
-        ax.set_xticklabels(
+
+        ax.set_yticks(position)
+        ax.set_yticklabels(
             ticklabels,
-            rotation=90,
+            # rotation=60,
             fontdict={"fontsize": 8}
         )
-        # ax.grid(True)
-        ax.set_ylabel("cost")
-        # ax.set_yscale("log")
-        self._save_fig(fig=fig, path=path)
+        ax.grid(True, axis="x")
+        ax.set_xlabel("Cost")
+        ax.set_xscale("log")
+        self._save_mpl_figure(fig=fig, path=path)
 
 
     @timeit
@@ -554,7 +591,6 @@ class OptimizationAnalysis:
 
         Compares cost of model parameters to the given parameter set.
         """
-
         costs_xmodel: pd.DataFrame = self._cost_df(x=self.op.xmodel)
         costs_x: pd.DataFrame = self._cost_df(x=x)
 
@@ -571,9 +607,7 @@ class OptimizationAnalysis:
             ]
         )
 
-        fig: Figure
-        ax: Axes
-        fig, ax = plt.subplots(nrows=1, ncols=1, figsize=(5, 5))
+        fig, ax = self._create_mpl_figure()
         ax.plot(
             [min_cost * 0.5, max_cost * 2],
             [min_cost * 0.5, max_cost * 2],
@@ -603,14 +637,23 @@ class OptimizationAnalysis:
                 fontsize="x-small",
                 alpha=0.7,
             )
-        ax.set_xlabel("initial cost")
-        ax.set_ylabel("fit cost")
+        ax.set_xlabel("Initial cost")
+        ax.set_ylabel("Cost after fit")
         ax.set_xscale("log")
         ax.set_yscale("log")
         ax.grid()
-        ax.legend()
-        ax.set_title("Cost scatter")
-        self._save_fig(fig=fig, path=path)
+
+
+        legend_elements = [
+                Line2D([0], [0], marker='o', color='tab:red', label='Increased cost',
+                       markersize=10),
+                Line2D([0], [0], marker='o', color='tab:blue', label='Decreased cost',
+                   markersize=10),
+        ]
+
+        ax.legend(handles=legend_elements)
+        ax.set_title("Cost improvement")
+        self._save_mpl_figure(fig=fig, path=path)
 
     @timeit
     def plot_waterfall(self, path: Path):
@@ -618,18 +661,18 @@ class OptimizationAnalysis:
 
         Plots the optimization runs sorted by cost.
         """
-        fig, ax = plt.subplots(nrows=1, ncols=1, figsize=(5, 5))
+        fig, ax = self._create_mpl_figure()
         ax.plot(
             range(self.optres.size),
             1 + (self.optres.df_fits.cost - self.optres.df_fits.cost.iloc[0]),
             "-o",
             color="black",
         )
-        ax.set_xlabel("index (Ordered optimizer run)")
+        ax.set_xlabel("Index (ordered optimizer run)")
         ax.set_ylabel("Offset cost value (relative to best start)")
         ax.set_yscale("log")
         ax.set_title("Waterfall plot")
-        self._save_fig(fig, path=path)
+        self._save_mpl_figure(fig, path=path)
 
     @timeit
     def plot_traces(self, path: Path) -> None:
@@ -649,12 +692,12 @@ class OptimizationAnalysis:
                 len(df_run) - 1, df_run.cost.iloc[-1], "o", color="black", alpha=0.8
             )
 
-        ax.set_xlabel("step")
-        ax.set_ylabel("cost")
+        ax.set_xlabel("Step")
+        ax.set_ylabel("Cost")
         ax.set_yscale("log")
-        ax.set_title("Traces")
+        ax.set_title("Optimization traces")
 
-        self._save_fig(fig, path=path)
+        self._save_mpl_figure(fig, path=path)
 
     @timeit
     def plot_correlation(
@@ -798,4 +841,4 @@ class OptimizationAnalysis:
                     axes[ky][kx].set_xlim(axes[kx][ky].get_xlim())
                     axes[ky][kx].set_ylim(axes[kx][ky].get_ylim())
 
-        self._save_fig(fig=fig, path=path)
+        self._save_mpl_figure(fig=fig, path=path)

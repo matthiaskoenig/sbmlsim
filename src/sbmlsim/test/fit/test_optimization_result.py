@@ -3,18 +3,18 @@ from pathlib import Path
 from sbmlsim.examples.experiments.midazolam.fitting_problems import op_mid1oh_iv
 from sbmlsim.fit.analysis import OptimizationResult
 from sbmlsim.fit.options import (
-    FittingStrategyType,
     OptimizationAlgorithmType,
     ResidualType,
+    WeightingCurvesType,
     WeightingPointsType,
 )
 from sbmlsim.fit.runner import run_optimization
 
 
 fit_kwargs_default = {
-    "fitting_strategy": FittingStrategyType.ABSOLUTE_VALUES,
-    "residual_type": ResidualType.ABSOLUTE_NORMED_RESIDUALS,
-    "weighting_points": WeightingPointsType.ABSOLUTE_ONE_OVER_WEIGHTING,
+    "residual_type": ResidualType.ABSOLUTE,
+    "weighting_curves": WeightingCurvesType.MEAN_AND_POINTS,
+    "weighting_points": WeightingPointsType.ERROR_WEIGHTING,
     "absolute_tolerance": 1e-6,
     "relative_tolerance": 1e-6,
 }
@@ -49,6 +49,7 @@ def test_combine(tmp_path: Path) -> None:
             size=1,
             n_cores=1,
             serial=True,
+            seed=seed,
             **fit_kwargs_default
         )
         opt_results.append(opt_res)
