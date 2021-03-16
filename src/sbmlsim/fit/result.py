@@ -243,7 +243,7 @@ class OptimizationResult(ObjectJSONEncoder):
         info_str: str = "\n".join(info)
 
         if print_output:
-            print(info)
+            print(info_str)
 
         if path:
             with open(path, "w") as f_out:

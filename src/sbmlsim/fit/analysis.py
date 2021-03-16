@@ -529,7 +529,7 @@ class OptimizationAnalysis:
                     alpha=0.7,
                 )
         ax.set_xlabel("Experiment $y_{i,k}$")
-        ax.set_ylabel("Relative residual $\\frac{y_{i,k}-f(x_{i,k})}{y_{i,k}}$")
+        ax.set_ylabel("Relative residual $\\frac{f(x_{i,k})-y_{i,k}}{y_{i,k}}$")
         ax.set_xscale("log")
         # ax.set_yscale("log")
         ax.grid()
@@ -583,7 +583,7 @@ class OptimizationAnalysis:
         ax2.set_yticks(position)
         plt.setp(ax2.get_yticklabels(), visible=False)
         ax2.grid(True, axis="x")
-        ax2.set_xlabel("Weight curve")
+        ax2.set_xlabel("Weight curve: $w_{k}$")
         # ax1.set_xscale("log")
 
         self._save_mpl_figure(fig=fig, path=path)
@@ -596,7 +596,7 @@ class OptimizationAnalysis:
         costs_x: pd.DataFrame = self._cost_df(x=x)
 
         fig, ax = self._create_mpl_figure()
-        fig.subplots_adjust(left=0.5)
+        fig.subplots_adjust(left=0.5, bottom=0.1)
         if self.show_titles:
             ax.set_title("Residual contribution")
 
@@ -631,7 +631,7 @@ class OptimizationAnalysis:
             fontdict={"fontsize": 8}
         )
         ax.grid(True, axis="x")
-        ax.set_xlabel("Residuals^2")
+        ax.set_xlabel("Weighted residuals^2\n$(w_{k} \cdot w_{i,k} (f(x_{i,k}) - y_{i,k}))^2$")
         ax.set_xscale("log")
         self._save_mpl_figure(fig=fig, path=path)
 

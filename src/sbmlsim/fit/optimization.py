@@ -399,7 +399,7 @@ class OptimizationProblem(ObjectJSONEncoder):
 
                 # --- WEIGHTS ---
 
-                # weight points
+                # weight points (default to 1.0)
                 weight_points: np.ndarray = np.ones_like(y_ref)
                 if self.weighting_points == WeightingPointsType.NO_WEIGHTING:
                     # local weights are by default 1.0
@@ -410,9 +410,18 @@ class OptimizationProblem(ObjectJSONEncoder):
                             f"'{sid}.{mapping_id}': Using '{self.weighting_points}' "
                             f"with no errors in reference data."
                         )
+                        # FIXME: weights must be comparable to datasets with data
+                        # weight_points = 1/y_ref  # assuming an error with CV of 0.5
+                        weight_points = 0.5 * np.ones_like(y_ref)
                     else:
                         # the larger the error, the smaller the weight
-                        weight_points = 1.0 / y_ref_err
+                        # weight_points = 1.0 / y_ref_err
+                        # CV = SD/mean; scaling with 1/CV
+                        # CV = 1 => w=1;
+                        # CV = 0.1 => w=10;
+                        # strategy to make comparable to datasets without error bars
+                        weight_points = y_ref / y_ref_err  # scale with coefficient of variation (CV)
+                        # weight_points = 1.0 / y_ref_err  # scale with coefficient of variation (CV)
 
                 # curve weight
                 weight_curve: float
@@ -700,9 +709,6 @@ class OptimizationProblem(ObjectJSONEncoder):
             # no cost contribution of zero values
             res_rel[np.isnan(res_rel)] = 0
             res_rel[np.isinf(res_rel)] = 0
-
-            # FIXME_remove
-            # res_abs_normed = res_abs / self.y_references[k].mean()
 
             # select correct residuals
             residuals: np.ndarray
