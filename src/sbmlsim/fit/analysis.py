@@ -2,13 +2,13 @@
 
 import logging
 from pathlib import Path
-from typing import Tuple, Any, Dict
+from typing import Any, Dict, Tuple
 
+import matplotlib
 import numpy as np
 import pandas as pd
 import seaborn as sns
-from matplotlib.figure import Figure, Axes
-import matplotlib
+from matplotlib.figure import Axes, Figure
 from matplotlib.lines import Line2D
 
 from sbmlsim.fit.optimization import OptimizationProblem
@@ -85,9 +85,9 @@ class OptimizationAnalysis:
             mpl_parameters = {}
 
         parameters = {
-            'axes.titlesize': 14,
-            'axes.labelsize': 12,
-            'axes.labelweight': "normal",
+            "axes.titlesize": 14,
+            "axes.labelsize": 12,
+            "axes.labelweight": "normal",
         }
         parameters.update(mpl_parameters)
         plt.rcParams.update(parameters)
@@ -162,7 +162,8 @@ class OptimizationAnalysis:
         plt.rcParams.update(rc_params_copy)
 
     def _create_mpl_figure(
-        self, width: float = 5.0, height: float = 5.0) -> Tuple[Figure, Axes]:
+        self, width: float = 5.0, height: float = 5.0
+    ) -> Tuple[Figure, Axes]:
         """Create matplotlib figure."""
         fig, ax = plt.subplots(nrows=1, ncols=1, figsize=(width, height))
         fig.subplots_adjust(left=0.2, bottom=0.1)
@@ -223,8 +224,14 @@ class OptimizationAnalysis:
 
                 # plot data
                 if y_ref_err is None:
-                    ax.plot(x_ref, y_ref, "s", color="black", label="reference_data",
-                            markersize=10)
+                    ax.plot(
+                        x_ref,
+                        y_ref,
+                        "s",
+                        color="black",
+                        label="reference_data",
+                        markersize=10,
+                    )
                 else:
                     ax.errorbar(
                         x_ref,
@@ -233,7 +240,7 @@ class OptimizationAnalysis:
                         marker="s",
                         color="black",
                         label=f"reference_data ± {y_ref_err_type}",
-                        markersize=10
+                        markersize=10,
                     )
                 # plot simulation
                 ax.plot(x_obs, y_obs, "-", color="blue", label="observable")
@@ -347,7 +354,8 @@ class OptimizationAnalysis:
                 ax.set_yscale("log")
 
             self._save_mpl_figure(
-                fig=fig, path=self.results_dir / f"fit_{sid}_{mapping_id}.{self.image_format}"
+                fig=fig,
+                path=self.results_dir / f"fit_{sid}_{mapping_id}.{self.image_format}",
             )
 
     def _cost_df(self, x: np.ndarray) -> pd.DataFrame:
@@ -361,7 +369,7 @@ class OptimizationAnalysis:
                     "experiment": self.op.experiment_keys[k],
                     "mapping": self.op.mapping_keys[k],
                     "cost": res_data["cost"][k],
-                    "weight_curve": res_data["weights_curve"][k]
+                    "weight_curve": res_data["weights_curve"][k],
                 }
             )
 
@@ -376,7 +384,7 @@ class OptimizationAnalysis:
         data = []
         for k, _ in enumerate(self.op.mapping_keys):
             experiment = self.op.experiment_keys[k]
-            mapping = self.op.mapping_keys[k],
+            mapping = (self.op.mapping_keys[k],)
 
             x_ref = self.op.x_references[k]
             y_ref_err = self.op.y_errors[k]
@@ -403,8 +411,16 @@ class OptimizationAnalysis:
                 )
 
         return pd.DataFrame(
-            data, columns=["experiment", "mapping", "x_ref", "y_ref", "y_ref_err",
-                           "y_obs", "residual"]
+            data,
+            columns=[
+                "experiment",
+                "mapping",
+                "x_ref",
+                "y_ref",
+                "y_ref_err",
+                "y_obs",
+                "residual",
+            ],
         )
 
     @timeit
@@ -419,7 +435,8 @@ class OptimizationAnalysis:
 
         for experiment in sorted(dp.experiment.unique()):
             ax.plot(
-                dp.y_ref[dp.experiment == experiment], dp.y_obs[dp.experiment == experiment],
+                dp.y_ref[dp.experiment == experiment],
+                dp.y_obs[dp.experiment == experiment],
                 # yerr=dp.y_ref_err,
                 linestyle="",
                 marker="o",
@@ -451,7 +468,10 @@ class OptimizationAnalysis:
 
         for k in range(len(dp)):
 
-            if np.abs(dp.y_ref.values[k]-dp.y_obs.values[k]) / dp.y_ref.values[k] > 0.5:
+            if (
+                np.abs(dp.y_ref.values[k] - dp.y_obs.values[k]) / dp.y_ref.values[k]
+                > 0.5
+            ):
                 ax.annotate(
                     dp.experiment.values[k],
                     xy=(
@@ -477,11 +497,12 @@ class OptimizationAnalysis:
         dp: pd.DataFrame = self._datapoints_df(x=x)
 
         xdata = dp.y_ref
-        ydata = dp.residual/dp.y_ref
+        ydata = dp.residual / dp.y_ref
 
         for experiment in sorted(dp.experiment.unique()):
             ax.plot(
-                xdata[dp.experiment == experiment], ydata[dp.experiment == experiment],
+                xdata[dp.experiment == experiment],
+                ydata[dp.experiment == experiment],
                 linestyle="",
                 marker="o",
                 # color="black",
@@ -495,7 +516,7 @@ class OptimizationAnalysis:
         ax.fill_between(
             [min_res * 0.5, max_res * 2, max_res * 2, min_res * 0.5],
             [-0.5, -0.5, 0.5, 0.5],
-            color="lightgray"
+            color="lightgray",
         )
         ax.plot(
             [min_res * 0.5, max_res * 2],
@@ -553,32 +574,24 @@ class OptimizationAnalysis:
             fig.suptitle("Curve costs and weights")
 
         position = list(range(len(costs_x)))
-        ticklabels = [f"{costs_x.experiment[k]}|{costs_x.mapping[k]}" for k in range(len(costs_x))]
+        ticklabels = [
+            f"{costs_x.experiment[k]}|{costs_x.mapping[k]}" for k in range(len(costs_x))
+        ]
 
-        ax1.barh(
-            position,
-            costs_x.cost,
-            color="black",
-            alpha=0.8
-        )
+        ax1.barh(position, costs_x.cost, color="black", alpha=0.8)
 
         ax1.set_yticks(position)
         ax1.set_yticklabels(
             ticklabels,
             # rotation=60,
             ha="right",
-            fontdict={"fontsize": 8}
+            fontdict={"fontsize": 8},
         )
         ax1.grid(True, axis="x")
         ax1.set_xlabel("Cost")
         ax1.set_xscale("log")
 
-        ax2.barh(
-            position,
-            costs_x.weight_curve,
-            color="tab:blue",
-            alpha=0.8
-        )
+        ax2.barh(position, costs_x.weight_curve, color="tab:blue", alpha=0.8)
 
         ax2.set_yticks(position)
         plt.setp(ax2.get_yticklabels(), visible=False)
@@ -600,8 +613,10 @@ class OptimizationAnalysis:
         if self.show_titles:
             ax.set_title("Residual contribution")
 
-        position = list(range(1, len(costs_x)+1))
-        ticklabels = [f"{costs_x.experiment[k]}|{costs_x.mapping[k]}" for k in range(len(costs_x))]
+        position = list(range(1, len(costs_x) + 1))
+        ticklabels = [
+            f"{costs_x.experiment[k]}|{costs_x.mapping[k]}" for k in range(len(costs_x))
+        ]
 
         res_data = self.op.residuals(xlog=np.log10(x), complete_data=True)
 
@@ -610,10 +625,15 @@ class OptimizationAnalysis:
             res_weighted = res_data["residuals_weighted"][k]
             res_weighted2 = np.power(res_weighted, 2)
             box_data.append(res_weighted2)
-            ax.plot(res_weighted2, (k+0.7)*np.ones_like(res_weighted2),
-                    linestyle="", marker="s", markeredgecolor="black",
-                    color="tab:blue", markersize=3
-                    )
+            ax.plot(
+                res_weighted2,
+                (k + 0.7) * np.ones_like(res_weighted2),
+                linestyle="",
+                marker="s",
+                markeredgecolor="black",
+                color="tab:blue",
+                markersize=3,
+            )
 
         ax.boxplot(
             # position,
@@ -628,10 +648,12 @@ class OptimizationAnalysis:
             ticklabels,
             # rotation=60,
             ha="right",
-            fontdict={"fontsize": 8}
+            fontdict={"fontsize": 8},
         )
         ax.grid(True, axis="x")
-        ax.set_xlabel("Weighted residuals^2\n$(w_{k} \cdot w_{i,k} (f(x_{i,k}) - y_{i,k}))^2$")
+        ax.set_xlabel(
+            "Weighted residuals^2\n$(w_{k} \cdot w_{i,k} (f(x_{i,k}) - y_{i,k}))^2$"
+        )
         ax.set_xscale("log")
         self._save_mpl_figure(fig=fig, path=path)
 
@@ -674,7 +696,9 @@ class OptimizationAnalysis:
                 linestyle="",
                 marker="o",
                 # label="model",
-                color="tab:red" if costs_xmodel.cost[k] < costs_x.cost[k] else "tab:blue",
+                color="tab:red"
+                if costs_xmodel.cost[k] < costs_x.cost[k]
+                else "tab:blue",
                 markersize="10",
                 alpha=0.8,
             )
@@ -695,12 +719,23 @@ class OptimizationAnalysis:
         ax.set_yscale("log")
         ax.grid()
 
-
         legend_elements = [
-                Line2D([0], [0], marker='o', color='tab:red', label='Increased cost',
-                       markersize=10),
-                Line2D([0], [0], marker='o', color='tab:blue', label='Decreased cost',
-                   markersize=10),
+            Line2D(
+                [0],
+                [0],
+                marker="o",
+                color="tab:red",
+                label="Increased cost",
+                markersize=10,
+            ),
+            Line2D(
+                [0],
+                [0],
+                marker="o",
+                color="tab:blue",
+                label="Decreased cost",
+                markersize=10,
+            ),
         ]
 
         ax.legend(handles=legend_elements)

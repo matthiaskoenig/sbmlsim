@@ -8,7 +8,7 @@ import numpy as np
 
 from sbmlsim.data import Data
 from sbmlsim.experiment import ExperimentRunner, SimulationExperiment
-from sbmlsim.model import AbstractModel, RoadrunnerSBMLModel
+from sbmlsim.model import AbstractModel
 from sbmlsim.plot import Axis, Figure
 from sbmlsim.simulation import (
     AbstractSim,
@@ -17,7 +17,6 @@ from sbmlsim.simulation import (
     Timecourse,
     TimecourseSim,
 )
-from sbmlsim.simulation.sensititvity import ModelSensitivity, SensitivityType
 from sbmlsim.simulator.simulation_ray import SimulatorParallel, SimulatorSerial
 from sbmlsim.task import Task
 from sbmlsim.test import MODEL_REPRESSILATOR
@@ -48,13 +47,8 @@ class RepressilatorExperiment(SimulationExperiment):
         }
 
     def sim_scans(self) -> Dict[str, AbstractSim]:
-        """
-        Simulation time is in [s]
-        :return:
-        """
         Q_ = self.Q_
         unit_data = "dimensionless"
-        # simple timecourse
         tc = TimecourseSim(
             [
                 Timecourse(start=0, end=100, steps=2000),

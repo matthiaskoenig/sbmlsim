@@ -16,10 +16,10 @@ from sbmlsim.fit.runner import run_optimization
 
 fit_kwargs_testdata = []
 for residual_type in [
-        ResidualType.ABSOLUTE,
-        ResidualType.RELATIVE,
-        # ResidualType.ABSOLUTE_CHANGES_BASELINE,
-        # ResidualType.ABSOLUTE_CHANGES_BASELINE,
+    ResidualType.ABSOLUTE,
+    ResidualType.RELATIVE,
+    # ResidualType.ABSOLUTE_CHANGES_BASELINE,
+    # ResidualType.ABSOLUTE_CHANGES_BASELINE,
 ]:
     for weighting_curves in [
         WeightingCurvesType.NO_WEIGHTING,

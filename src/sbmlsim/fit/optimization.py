@@ -19,7 +19,8 @@ from sbmlsim.fit.objects import FitExperiment, FitMapping, FitParameter
 from sbmlsim.fit.options import (
     OptimizationAlgorithmType,
     ResidualType,
-    WeightingPointsType, WeightingCurvesType,
+    WeightingCurvesType,
+    WeightingPointsType,
 )
 from sbmlsim.fit.sampling import SamplingType, create_samples
 from sbmlsim.model import RoadrunnerSBMLModel
@@ -386,7 +387,7 @@ class OptimizationProblem(ObjectJSONEncoder):
                 for data_key, data in [
                     ("x_ref", x_ref),
                     ("y_ref", y_ref),
-                    ("y_ref_err", x_ref)
+                    ("y_ref_err", x_ref),
                 ]:
                     if data_key == "y_ref_err" and data is None:
                         # skip test if no error data
@@ -420,7 +421,9 @@ class OptimizationProblem(ObjectJSONEncoder):
                         # CV = 1 => w=1;
                         # CV = 0.1 => w=10;
                         # strategy to make comparable to datasets without error bars
-                        weight_points = y_ref / y_ref_err  # scale with coefficient of variation (CV)
+                        weight_points = (
+                            y_ref / y_ref_err
+                        )  # scale with coefficient of variation (CV)
                         # weight_points = 1.0 / y_ref_err  # scale with coefficient of variation (CV)
 
                 # curve weight
@@ -432,8 +435,9 @@ class OptimizationProblem(ObjectJSONEncoder):
                 elif self.weighting_curves == WeightingCurvesType.MEAN:
                     weight_curve = weight_curve_user / np.mean(y_ref)
                 elif self.weighting_curves == WeightingCurvesType.MEAN_AND_POINTS:
-                    weight_curve = weight_curve_user / np.mean(y_ref) / len(
-                        weight_points)
+                    weight_curve = (
+                        weight_curve_user / np.mean(y_ref) / len(weight_points)
+                    )
 
                 # total weight
                 # apply local weighting & user defined weighting
@@ -731,7 +735,9 @@ class OptimizationProblem(ObjectJSONEncoder):
                 residual_data["res_abs"].append(res_abs)
                 residual_data["res_rel"].append(res_rel)
                 # FIXME: this depends on loss function
-                residual_data["cost"].append(0.5 * np.sum(np.power(residuals_weighted, 2)))
+                residual_data["cost"].append(
+                    0.5 * np.sum(np.power(residuals_weighted, 2))
+                )
 
         if complete_data:
             return residual_data

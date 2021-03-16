@@ -2,7 +2,7 @@ import pytest
 
 from sbmlsim.examples import example_sensitivity
 from sbmlsim.model import RoadrunnerSBMLModel
-from sbmlsim.simulation.sensititvity import ModelSensitivity, SensitivityType
+from sbmlsim.simulation.sensitivity import ModelSensitivity, SensitivityType
 from sbmlsim.test import MODEL_REPRESSILATOR
 
 
