@@ -1,7 +1,7 @@
 """Module for encoding simulation results and processed data."""
 import logging
 from enum import Enum
-from typing import Dict, List
+from typing import Dict, List, Optional
 
 import numpy as np
 import pandas as pd
@@ -22,7 +22,7 @@ class XResult:
     dictionary lookups.
     """
 
-    def __init__(self, xdataset: xr.Dataset, uinfo: UnitsInformation = None):
+    def __init__(self, xdataset: xr.Dataset, uinfo: Optional[UnitsInformation] = None):
         self.xds = xdataset
         self.uinfo = uinfo
 
@@ -194,7 +194,7 @@ class XResult:
     def from_netcdf(path):
         """Read from netCDF."""
         ds = xr.open_dataset(path)
-        return XResult(xdataset=ds)
+        return XResult(xdataset=ds, uinfo=None)
 
 
 if __name__ == "__main__":

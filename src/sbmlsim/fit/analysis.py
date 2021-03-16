@@ -424,7 +424,7 @@ class OptimizationAnalysis:
         )
 
     @timeit
-    def plot_datapoint_scatter(self, x: np.ndarray, path: Path = None):
+    def plot_datapoint_scatter(self, x: np.ndarray, path: Path):
         """Plot cost scatter plot.
 
         Compares cost of model parameters to the given parameter set.
@@ -491,7 +491,7 @@ class OptimizationAnalysis:
         self._save_mpl_figure(fig=fig, path=path)
 
     @timeit
-    def plot_residual_scatter(self, x: np.ndarray, path: Path = None):
+    def plot_residual_scatter(self, x: np.ndarray, path: Path):
         """Plot residual plot."""
         fig, ax = self._create_mpl_figure()
         dp: pd.DataFrame = self._datapoints_df(x=x)
@@ -559,7 +559,7 @@ class OptimizationAnalysis:
         self._save_mpl_figure(fig=fig, path=path)
 
     @timeit
-    def plot_cost_bar(self, x: np.ndarray, path: Path = None) -> None:
+    def plot_cost_bar(self, x: np.ndarray, path: Path) -> None:
         """Plot cost bar plot.
 
         Compare costs of all curves.
@@ -601,7 +601,7 @@ class OptimizationAnalysis:
 
         self._save_mpl_figure(fig=fig, path=path)
 
-    def plot_residual_boxplot(self, x: np.ndarray, path: Path = None) -> None:
+    def plot_residual_boxplot(self, x: np.ndarray, path: Path) -> None:
         """Plot residual boxplot.
 
         Compare costs of all curves.
@@ -621,7 +621,7 @@ class OptimizationAnalysis:
         res_data = self.op.residuals(xlog=np.log10(x), complete_data=True)
 
         box_data = []
-        for k, mapping_id in enumerate(self.op.mapping_keys):
+        for k, _ in enumerate(self.op.mapping_keys):
             res_weighted = res_data["residuals_weighted"][k]
             res_weighted2 = np.power(res_weighted, 2)
             box_data.append(res_weighted2)
@@ -652,13 +652,13 @@ class OptimizationAnalysis:
         )
         ax.grid(True, axis="x")
         ax.set_xlabel(
-            "Weighted residuals^2\n$(w_{k} \cdot w_{i,k} (f(x_{i,k}) - y_{i,k}))^2$"
+            "Weighted residuals^2\n$(w_{k} \\cdot w_{i,k} (f(x_{i,k}) - y_{i,k}))^2$"
         )
         ax.set_xscale("log")
         self._save_mpl_figure(fig=fig, path=path)
 
     @timeit
-    def plot_cost_scatter(self, x: np.ndarray, path: Path = None):
+    def plot_cost_scatter(self, x: np.ndarray, path: Path):
         """Plot cost scatter plot.
 
         Compares cost of model parameters to the given parameter set.
@@ -689,7 +689,7 @@ class OptimizationAnalysis:
         if self.show_titles:
             ax.set_title("Cost improvement")
 
-        for k, exp_key in enumerate(self.op.experiment_keys):
+        for k, _ in enumerate(self.op.experiment_keys):
             ax.plot(
                 costs_xmodel.cost[k],
                 costs_x.cost[k],

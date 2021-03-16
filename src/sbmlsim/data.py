@@ -2,7 +2,7 @@
 import logging
 from enum import Enum
 from pathlib import Path
-from typing import Dict, List
+from typing import Dict, List, Optional, Union
 
 import numpy as np
 import pandas as pd
@@ -41,13 +41,14 @@ class Data(object):
         function=None,
         variables=None,
     ):
+        """Construct data."""
         self.experiment = experiment
-        self.index = index
-        self.task_id = task
-        self.dset_id = dataset
+        self.index: str = index
+        self.task_id: str = task
+        self.dset_id: str = dataset
         self.function = function
         self.variables = variables
-        self.unit = None
+        self.unit: Optional[str] = None
 
         if (not self.task_id) and (not self.dset_id) and (not self.function):
             raise ValueError(
@@ -62,6 +63,7 @@ class Data(object):
 
     def __str__(self) -> str:
         """Get string."""
+        s: str
         if self.is_task():
             s = f"Data(index={self.index}, task_id={self.task_id})|Task"
         elif self.is_dataset():
@@ -73,6 +75,7 @@ class Data(object):
     @property
     def sid(self) -> str:
         """Get id."""
+        sid: str
         if self.task_id:
             sid = f"{self.task_id}__{self.index}"
         elif self.dset_id:
@@ -95,7 +98,7 @@ class Data(object):
         return self.function is not None
 
     @property
-    def dtype(self) -> str:
+    def dtype(self) -> "Data.Types":
         """Get data type."""
         if self.task_id:
             dtype = Data.Types.TASK
@@ -448,7 +451,7 @@ class DataSet(pd.DataFrame):
 
 # @deprecated
 def load_pkdb_dataframe(
-    sid, data_path: [Path, List[Path]], sep="\t", comment="#", **kwargs
+    sid, data_path: Union[Path, List[Path]], sep="\t", comment="#", **kwargs
 ) -> pd.DataFrame:
     """Load TSV data from PKDB figure or table id.
 
