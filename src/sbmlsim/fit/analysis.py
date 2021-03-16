@@ -2,7 +2,7 @@
 
 import logging
 from pathlib import Path
-from typing import Tuple, Any
+from typing import Tuple, Any, Dict
 
 import numpy as np
 import pandas as pd
@@ -33,6 +33,7 @@ class OptimizationAnalysis:
         output_path: Path,
         op: OptimizationProblem = None,
         show_plots: bool = True,
+        show_titles: bool = True,
         residual_type: ResidualType = None,
         weighting_curves: WeightingCurvesType = None,
         weighting_points: WeightingPointsType = None,
@@ -43,7 +44,9 @@ class OptimizationAnalysis:
     ) -> None:
         """Construct Optimization analysis.
 
-        :param show_plots: boolean flag to display plots
+        :param show_plots: boolean flag to display plots, i.e., call plt.show()
+        :param show_titles: boolean flag to add titles to the panels
+
         """
         self.sid = opt_result.sid
         self.optres: OptimizationResult = opt_result
@@ -56,6 +59,7 @@ class OptimizationAnalysis:
 
         self.image_format = image_format
         self.show_plots = show_plots
+        self.show_titles = show_titles
 
         if op:
             op.initialize(
@@ -69,19 +73,23 @@ class OptimizationAnalysis:
 
         self.op: OptimizationProblem = op  # type: ignore
 
-    def run(self) -> None:
+    def run(self, mpl_parameters: Dict[str, Any] = None) -> None:
         """Execute complete analysis.
 
         This creates all plots and reports.
         """
         rc_params_copy = {**plt.rcParams}
-        from pprint import pprint
-        pprint(rc_params_copy)
+        # from pprint import pprint
+        # pprint(rc_params_copy)
+        if mpl_parameters is None:
+            mpl_parameters = {}
+
         parameters = {
+            'axes.titlesize': 14,
             'axes.labelsize': 12,
             'axes.labelweight': "normal",
-            'axes.titlesize': 14
         }
+        parameters.update(mpl_parameters)
         plt.rcParams.update(parameters)
 
         # write report
@@ -140,15 +148,15 @@ class OptimizationAnalysis:
 
             self.plot_fits(
                 x=xopt,
-                path=self.results_dir / "05_fits.svg",
+                path=self.results_dir / "fits.svg",
             )
 
             # plot individual fit mappings
             self.plot_fit(x=xopt)
 
         # correlation plot
-        # if self.optres.size > 1:
-        #     self.plot_correlation(path=self.results_dir / "04_parameter_correlation")
+        if self.optres.size > 1:
+            self.plot_correlation(path=self.results_dir / "parameter_correlation")
 
         # reset parameters
         plt.rcParams.update(rc_params_copy)
@@ -454,11 +462,12 @@ class OptimizationAnalysis:
                     alpha=0.9,
                 )
         ax.set_xlabel("Experiment $y_{i,k}$")
-        ax.set_ylabel("Prediction $f{x_{i,k}$")
+        ax.set_ylabel("Prediction $f(x_{i,k})$")
         ax.set_xscale("log")
         ax.set_yscale("log")
         ax.grid()
-        ax.set_title("Data points")
+        if self.show_titles:
+            ax.set_title("Data points")
         self._save_mpl_figure(fig=fig, path=path)
 
     @timeit
@@ -524,7 +533,8 @@ class OptimizationAnalysis:
         ax.set_xscale("log")
         # ax.set_yscale("log")
         ax.grid()
-        ax.set_title("Residuals")
+        if self.show_titles:
+            ax.set_title("Residuals")
         self._save_mpl_figure(fig=fig, path=path)
 
     @timeit
@@ -539,7 +549,8 @@ class OptimizationAnalysis:
         fig, (ax1, ax2) = plt.subplots(nrows=1, ncols=2, figsize=(7, 5))
         fig.subplots_adjust(left=0.3)
 
-        fig.suptitle("Curve costs and weights")
+        if self.show_titles:
+            fig.suptitle("Curve costs and weights")
 
         position = list(range(len(costs_x)))
         ticklabels = [f"{costs_x.experiment[k]}|{costs_x.mapping[k]}" for k in range(len(costs_x))]
@@ -586,7 +597,8 @@ class OptimizationAnalysis:
 
         fig, ax = self._create_mpl_figure()
         fig.subplots_adjust(left=0.5)
-        ax.set_title("Residual contribution")
+        if self.show_titles:
+            ax.set_title("Residual contribution")
 
         position = list(range(1, len(costs_x)+1))
         ticklabels = [f"{costs_x.experiment[k]}|{costs_x.mapping[k]}" for k in range(len(costs_x))]
@@ -652,6 +664,8 @@ class OptimizationAnalysis:
             "--",
             color="black",
         )
+        if self.show_titles:
+            ax.set_title("Cost improvement")
 
         for k, exp_key in enumerate(self.op.experiment_keys):
             ax.plot(
@@ -690,7 +704,6 @@ class OptimizationAnalysis:
         ]
 
         ax.legend(handles=legend_elements)
-        ax.set_title("Cost improvement")
         self._save_mpl_figure(fig=fig, path=path)
 
     @timeit
@@ -700,6 +713,8 @@ class OptimizationAnalysis:
         Plots the optimization runs sorted by cost.
         """
         fig, ax = self._create_mpl_figure()
+        if self.show_titles:
+            ax.set_title("Waterfall plot")
         ax.plot(
             range(self.optres.size),
             1 + (self.optres.df_fits.cost - self.optres.df_fits.cost.iloc[0]),
@@ -709,7 +724,6 @@ class OptimizationAnalysis:
         ax.set_xlabel("Index (ordered optimizer run)")
         ax.set_ylabel("Offset cost value (relative to best start)")
         ax.set_yscale("log")
-        ax.set_title("Waterfall plot")
         self._save_mpl_figure(fig, path=path)
 
     @timeit
@@ -719,7 +733,8 @@ class OptimizationAnalysis:
         Optimization time course of costs.
         """
         fig, ax = plt.subplots(nrows=1, ncols=1, figsize=(5, 5))
-
+        if self.show_titles:
+            ax.set_title("Optimization traces")
         for run in range(self.optres.size):
             df_run = self.optres.df_traces[self.optres.df_traces.run == run]
             ax.plot(range(len(df_run)), df_run.cost, "-", alpha=0.8)
@@ -730,10 +745,9 @@ class OptimizationAnalysis:
                 len(df_run) - 1, df_run.cost.iloc[-1], "o", color="black", alpha=0.8
             )
 
-        ax.set_xlabel("Step")
+        ax.set_xlabel("Optimization step")
         ax.set_ylabel("Cost")
         ax.set_yscale("log")
-        ax.set_title("Optimization traces")
 
         self._save_mpl_figure(fig, path=path)
 
