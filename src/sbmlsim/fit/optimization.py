@@ -188,7 +188,7 @@ class OptimizationProblem(ObjectJSONEncoder):
     def initialize(
         self,
         residual_type: Optional[ResidualType],
-        weighting_curves: Optional[WeightingCurvesType],
+        weighting_curves: List[WeightingCurvesType],
         weighting_points: Optional[WeightingPointsType],
         variable_step_size: bool = True,
         relative_tolerance: float = 1e-6,
@@ -200,16 +200,16 @@ class OptimizationProblem(ObjectJSONEncoder):
         Creates and attaches simulator for the given problem.
 
         :param residual_type: handling of residuals
-        :param weighting_curves: weighting of curves (fit mappings)
+        :param weighting_curves: list of options for weighting curves (fit mappings)
         :param weighting_points: weighting of points
         :param absolute_tolerance: absolute tolerance of simulator
         :param relative_tolerance: relative tolerance of simulator
         :param variable_step_size: use variable step size in solver
         """
+        if weighting_curves is None:
+            weighting_curves = []
         if residual_type is None:
             raise ValueError("'residual_type' is required.")
-        if weighting_curves is None:
-            raise ValueError("'weighting_curves' is required.")
         if weighting_points is None:
             raise ValueError("'weighting_points' is required.")
 
@@ -401,49 +401,47 @@ class OptimizationProblem(ObjectJSONEncoder):
                 # --- WEIGHTS ---
 
                 # weight points (default to 1.0)
-                weight_points: np.ndarray = np.ones_like(y_ref)
+                weight_points: np.ndarray
                 if self.weighting_points == WeightingPointsType.NO_WEIGHTING:
                     # local weights are by default 1.0
-                    pass
+                    weight_points = np.ones_like(y_ref)
+
                 elif self.weighting_points == WeightingPointsType.ERROR_WEIGHTING:
-                    if y_ref_err is None:
-                        logger.warning(
-                            f"'{sid}.{mapping_id}': Using '{self.weighting_points}' "
-                            f"with no errors in reference data."
-                        )
-                        # FIXME: weights must be comparable to datasets with data
-                        # weight_points = 1/y_ref  # assuming an error with CV of 0.5
-                        weight_points = 0.5 * np.ones_like(y_ref)
-                    else:
+                    # Challenging to combine datasets with errors and without
+                    # due to the weighting based on the error
+
+                    if y_ref_err is not None:
+                        # Scale with coefficient of variation (1/CV)
                         # the larger the error, the smaller the weight
                         # weight_points = 1.0 / y_ref_err
-                        # CV = SD/mean; scaling with 1/CV
-                        # CV = 1 => w=1;
-                        # CV = 0.1 => w=10;
-                        # strategy to make comparable to datasets without error bars
+                        # CV = SD/mean; scaling with 1/CV (CV=1 -> w=1; CV=0.1 -> w=10);
                         weight_points = (
                             y_ref / y_ref_err
-                        )  # scale with coefficient of variation (CV)
-                        # weight_points = 1.0 / y_ref_err  # scale with coefficient of variation (CV)
+                        )
+                        # weight_points = 1.0 / y_ref_err  # scale with error;
+                    else:
+                        logger.warning(
+                            f"'{sid}.{mapping_id}': Using '{self.weighting_points}' "
+                            f"with no errors in reference data. Check weighting for "
+                            f"consistency!"
+                        )
+                        # Weights must be comparable to datasets with data (1/CV)
+                        # Assuming an error with CV of 0.5 -> w=2
+                        weight_points = 2 * np.ones_like(y_ref)
+                else:
+                    raise ValueError(f"Unsupported WeightingPointsType: '{weighting_points}'")
 
                 # curve weight
-                weight_curve: float
-                if self.weighting_curves == WeightingCurvesType.NO_WEIGHTING:
-                    weight_curve = weight_curve_user
-                elif self.weighting_curves == WeightingCurvesType.POINTS:
-                    weight_curve = weight_curve_user / len(weight_points)
-                elif self.weighting_curves == WeightingCurvesType.MEAN:
-                    weight_curve = weight_curve_user / np.mean(y_ref)
-                elif self.weighting_curves == WeightingCurvesType.MEAN_AND_POINTS:
-                    weight_curve = (
-                        weight_curve_user / np.mean(y_ref) / len(weight_points)
-                    )
+                weight_curve: float = 1.0
+                if WeightingCurvesType.MAPPING in self.weighting_curves:
+                    weight_curve = weight_curve * weight_curve_user
+                if WeightingCurvesType.POINTS in self.weighting_curves:
+                    weight_curve = weight_curve / len(y_ref)
+                # if WeightingCurvesType.MEAN in self.weighting_curves:
+                #     weight_curve = weight_curve_user / np.mean(y_ref)
 
-                # total weight
-                # apply local weighting & user defined weighting
-                # (in the cost function the weighted residuals are squared)
-                # sum(w_i * r_i^2) = sum((w_i^0.5*r_i)^2)
-                # FIXME: check that correct
+                # total weight (apply local weighting & user defined weighting)
+                # w{k} * w{k,i}
                 weight = weight_curve * weight_points
                 if np.any(weight < 0):
                     raise ValueError("Negative weights encountered.")
@@ -698,7 +696,7 @@ class OptimizationProblem(ObjectJSONEncoder):
                     # y_obsip = y_obsip - y_obsip[0]
                     raise NotImplementedError
 
-                # calculate absolute & relative residuals
+                # calculate absolute residuals (f(x_{i}) - y_{i})
                 res_abs = y_obsip - self.y_references[k]
 
             except RuntimeError as err:
@@ -710,7 +708,9 @@ class OptimizationProblem(ObjectJSONEncoder):
 
             with np.errstate(divide="ignore", invalid="ignore"):
                 res_rel = res_abs / self.y_references[k]
+
             # no cost contribution of zero values
+            # FIXME: check this should never happen and remove
             res_rel[np.isnan(res_rel)] = 0
             res_rel[np.isinf(res_rel)] = 0
 
@@ -720,8 +720,16 @@ class OptimizationProblem(ObjectJSONEncoder):
                 residuals = res_abs
             elif self.residual_type == ResidualType.RELATIVE:
                 residuals = res_rel
+            else:
+                raise ValueError(f"ResidualType not supported: '{self.residual_type}'")
 
-            residuals_weighted = residuals * self.weights[k]
+            # weighted residuals
+            # total cost:
+            # 0.5 * sum(residuals_weighted^2)
+            # the square root is required to ensure weighting with w in the squared
+            # residuals;
+            # this is not exactly the definition of typical weights.
+            residuals_weighted = residuals * np.sqrt(self.weights[k])
             parts.append(residuals_weighted)
 
             # for post_processing

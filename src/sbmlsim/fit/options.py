@@ -43,15 +43,21 @@ class ResidualType(Enum):
 
       r(i,k) = y(i,k) - f(xi,k)
 
+    # FIXME: deprecate, does not work due to large relative errors for small data points
     **relative residuals**
-      (local effects) induces local weighting by normalizing every residual by
-      relative value. Relative residuals make different fit mappings comparable.
+      normalize every residual by the corresponding value.
+      Normalized residuals make different fit mappings comparable.
       zero/inf valus are filtered out
 
       if y(i,k) != 0:
         r(i,k) = (y(i,k) - f(xi,k))/y(i,k)
       else:
         r(i,k) = 0
+
+    **normalized residuals**
+      normalizing with 1/mean of the timecourse:
+        r(i,k) = (y(i,k) - f(xi,k))/mean(y(k))
+      This makes timecourses comparable.
 
     **absolute changes baseline**
       uses the absolute changes to baseline with baseline being the first data point.
@@ -60,7 +66,9 @@ class ResidualType(Enum):
 
       r(i,k) = (y(i,k) - ybase(k)) - (f(xi,k) - fbase(k))
 
-     **relative changes baseline**
+     **normalized changes baseline**
+     # FIXME:update
+
       uses the relative changes to baseline with baseline being the first data point.
       This requires appropriate pre-simulations for the model to reach a baseline.
       Data and fits have to be checked carefully.
@@ -74,42 +82,44 @@ class ResidualType(Enum):
     """
 
     ABSOLUTE = 1
-    RELATIVE = 2
-    ABSOLUTE_CHANGES_BASELINE = 3
-    RELATIVE_CHANGES_BASELINE = 4
+    # RELATIVE = 2
+    NORMALIZED = 3
+    ABSOLUTE_CHANGES_BASELINE = 4
+    RELATIVE_CHANGES_BASELINE = 5
 
 
 class WeightingCurvesType(Enum):
-    """Weighting w_{k} of the curves.
+    """Weighting w_{k} of the curves k.
 
-    Users can provide custom weightings for the individual curves.
+    Users can provide set of weightings for the individual curves.
 
-    **no weighting**
-      all curves weighted equally:
+    **no weighting (default)**
+      no weighting option is provided, all curves weighted equally:
 
-      w_{k} = 1.0 * w_{k,user}
+      w_{k} = 1.0
+
+    **mapping**
+      curves k are weighted with the provided user weights in the fit mappings,
+      e.g., counts
+
+      w_{k} = wu_{k}
 
     **points**
       weighting with the number of data points:
 
-      w_{k} = 1.0/count{k} * w_{k,user}
+      w_{k} = 1.0/count{k}
 
-    **mean**
-      weighting with 1/mean of the timecourse:
+    The various options can be combined, i.e.,
+      mapping, points, mean
+    results in
 
-      w_{k} = 1.0/mean{y(k)} * w_{k,user}
-
-    **mean and points**
-      weighting with 1/mean of the timecourse and number of data points:
-
-      w_{k} = 1.0/mean{y(k)}/count{k} * w_{k,user}
+      w_{k} = wu_{k}/count{k}/mean{y(k)}
 
     """
 
-    NO_WEIGHTING = 1
+    MAPPING = 1
     POINTS = 2
-    MEAN = 3
-    MEAN_AND_POINTS = 4
+    # MEAN = 3
 
 
 class WeightingPointsType(Enum):
@@ -126,12 +136,11 @@ class WeightingPointsType(Enum):
     **error weighting**
       data points are weighted as ~1/error
 
+      # FIXME: update documentation
       if yerr{i,k}:
         w_{i,k} = 1.0/yerr{i,k}
       else:
         w_{i,k} = 1.0/yerr{i,k}
-
-    # FIXME: handle missing datapoints
 
     """
 

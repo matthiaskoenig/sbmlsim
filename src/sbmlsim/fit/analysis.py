@@ -30,7 +30,8 @@ class OptimizationAnalysis:
     def __init__(
         self,
         opt_result: OptimizationResult,
-        output_path: Path,
+        output_name: str,
+        output_dir: Path,
         op: OptimizationProblem = None,
         show_plots: bool = True,
         show_titles: bool = True,
@@ -44,6 +45,8 @@ class OptimizationAnalysis:
     ) -> None:
         """Construct Optimization analysis.
 
+        :param output_name: name of the optimization
+        :param output_dir: base path for output
         :param show_plots: boolean flag to display plots, i.e., call plt.show()
         :param show_titles: boolean flag to add titles to the panels
 
@@ -51,7 +54,7 @@ class OptimizationAnalysis:
         self.sid = opt_result.sid
         self.optres: OptimizationResult = opt_result
         # the results directory uses the hash of the OptimizationResult
-        results_dir: Path = output_path / self.sid
+        results_dir: Path = output_dir / self.sid / output_name
         if not results_dir.exists():
             logger.warning(f"create output directory: '{results_dir}'")
             results_dir.mkdir(parents=True, exist_ok=True)
@@ -244,6 +247,7 @@ class OptimizationAnalysis:
                     )
                 # plot simulation
                 ax.plot(x_obs, y_obs, "-", color="blue", label="observable")
+                ax.set_xlim(right=1.1*np.max(x_ref))
                 ax.legend()
 
             axes[k][1].set_yscale("log")
@@ -253,12 +257,16 @@ class OptimizationAnalysis:
 
     @timeit
     def plot_fit(self, x: np.ndarray) -> None:
-        """Plot residual data for all individual fit mappings.
+        """Plot resulting fit for all individual fit mappings.
 
-        :param path:
+        This consists of
+        - data
+        - prediction
+        - residuals
+        - weighed residuals squared
+
+        For better analysis log and linear results are depicted.
         :param x: parameters to evaluate
-
-        :return:
         """
 
         res_data = self.op.residuals(xlog=np.log10(x), complete_data=True)
@@ -346,10 +354,9 @@ class OptimizationAnalysis:
                 ax.set_xlim(ax1.get_xlim())
 
             for ax in (ax1, ax2, ax3, ax4):
-                # plt.setp(ax.get_yticklabels(), visible=False)
-                # ax.set_ylabel("y")
-                # ax.set_yscale("log")
+                ax.set_xlim(right=1.1 * np.max(x_ref))
                 ax.legend()
+
             for ax in (ax2, ax4):
                 ax.set_yscale("log")
 

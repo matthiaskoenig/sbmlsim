@@ -48,7 +48,7 @@ def run_optimization(
     size: int = 5,
     algorithm: OptimizationAlgorithmType = OptimizationAlgorithmType.LEAST_SQUARE,
     residual_type: ResidualType = ResidualType.ABSOLUTE,
-    weighting_curves: WeightingCurvesType = WeightingCurvesType.NO_WEIGHTING,
+    weighting_curves: List[WeightingCurvesType] = None,
     weighting_points: WeightingPointsType = WeightingPointsType.NO_WEIGHTING,
     seed: Optional[int] = None,
     variable_step_size: bool = True,
@@ -68,7 +68,7 @@ def run_optimization(
     :param size: integer number of optimizations
     :param algorithm: optimization algorithm to use
     :param residual_type: handling of residuals
-    :param weighting_curves: weighting of curves (fit mappings)
+    :param weighting_curves: list of options for weighting curves (fit mappings)
     :param weighting_points: weighting of points
     :param seed: integer random seed (for sampling of parameters)
     :param absolute_tolerance: absolute tolerance of simulator
@@ -88,6 +88,9 @@ def run_optimization(
         raise ValueError(
             "Deprecated parameter 'weighting_local', use 'weighting_points' instead."
         )
+
+    if weighting_curves is None:
+        weighting_curves = []
 
     # set number of cores
     cpu_count = multiprocessing.cpu_count()
@@ -171,7 +174,7 @@ def _run_optimization_serial(
     size: int = 5,
     algorithm: OptimizationAlgorithmType = OptimizationAlgorithmType.LEAST_SQUARE,
     residual_type: ResidualType = ResidualType.ABSOLUTE,
-    weighting_curves: WeightingCurvesType = WeightingCurvesType.NO_WEIGHTING,
+    weighting_curves: List[WeightingCurvesType] = None,
     weighting_points: WeightingPointsType = WeightingPointsType.NO_WEIGHTING,
     seed: Optional[int] = None,
     variable_step_size: bool = True,
@@ -189,7 +192,7 @@ def _run_optimization_serial(
     :param size: integer number of optimizations
     :param algorithm: optimization algorithm to use
     :param residual_type: handling of residuals
-    :param weighting_curves: weighting of curves (fit mapping)
+    :param weighting_curves: list of options for weighting curves (fit mappings)
     :param weighting_points: weighting of points
     :param seed: integer random seed (for sampling of parameters)
     :param absolute_tolerance: absolute tolerance of simulator
@@ -198,6 +201,9 @@ def _run_optimization_serial(
     :param kwargs: additional arguments for optimizer, e.g. xtol
     :return: OptimizationResult
     """
+    if weighting_curves is None:
+        weighting_curves = []
+
     if "n_cores" in kwargs:
         # remove parallel arguments
         logger.warning(
