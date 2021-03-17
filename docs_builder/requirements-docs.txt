@@ -1,7 +1,7 @@
-sphinx
-recommonmark>=0.6.0
-sphinx-rtd-theme>=0.4.3
-nbsphinx>=0.4.3
-pypandoc>=1.4
-ipykernel>=5.1.0
-jupyterlab>=3.0.8
+sphinx>=3.4.3
+ipykernel>=5.4.3
+nbsphinx>=0.8.1
+sphinx_rtd_theme>=0.5.1
+pypandoc>=1.5
+sphinx-autoapi>=1.7.0
+jupyterlab>=3.0.7

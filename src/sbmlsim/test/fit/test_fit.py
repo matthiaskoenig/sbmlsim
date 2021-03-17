@@ -5,6 +5,7 @@ import pytest
 from sbmlsim.examples.experiments.midazolam.fitting_problems import op_mid1oh_iv
 from sbmlsim.fit.analysis import OptimizationAnalysis
 from sbmlsim.fit.options import (
+    LossFunctionType,
     OptimizationAlgorithmType,
     ResidualType,
     WeightingCurvesType,
@@ -17,15 +18,15 @@ from sbmlsim.fit.runner import run_optimization
 fit_kwargs_testdata = []
 for residual_type in [
     ResidualType.ABSOLUTE,
-    ResidualType.RELATIVE,
-    # ResidualType.ABSOLUTE_CHANGES_BASELINE,
-    # ResidualType.ABSOLUTE_CHANGES_BASELINE,
+    ResidualType.NORMALIZED,
+    # ResidualType.ABSOLUTE_TO_BASELINE,
+    # ResidualType.NORMALIZED_TO_BASELINE,
 ]:
     for weighting_curves in [
-        WeightingCurvesType.NO_WEIGHTING,
-        WeightingCurvesType.MEAN,
-        WeightingCurvesType.POINTS,
-        WeightingCurvesType.MEAN_AND_POINTS,
+        [],
+        [WeightingCurvesType.POINTS],
+        [WeightingCurvesType.MAPPING],
+        [WeightingCurvesType.POINTS, WeightingCurvesType.MAPPING],
     ]:
         for weighting_points in [
             WeightingPointsType.NO_WEIGHTING,
@@ -33,7 +34,7 @@ for residual_type in [
         ]:
             fit_kwargs_testdata.append(
                 {
-                    "residual_type": residual_type,
+                    "residual": residual_type,
                     "weighting_curves": weighting_curves,
                     "weighting_points": weighting_points,
                     "absolute_tolerance": 1e-6,
@@ -45,19 +46,25 @@ for residual_type in [
 @pytest.mark.parametrize("fit_kwargs", fit_kwargs_testdata)
 def test_fit_settings(fit_kwargs: Dict[str, Any]) -> None:
     """Test various arguments to optimization problem."""
+    op = op_mid1oh_iv()
     opt_result: OptimizationResult = run_optimization(
-        problem=op_mid1oh_iv(),
+        problem=op,
         algorithm=OptimizationAlgorithmType.LEAST_SQUARE,
         size=1,
         n_cores=1,
+        serial=True,
         **fit_kwargs
     )
+
     assert opt_result is not None
+    assert op.residual == fit_kwargs["residual"]
+    assert op.weighting_curves == fit_kwargs["weighting_curves"]
+    assert op.weighting_points == fit_kwargs["weighting_points"]
 
 
 fit_kwargs_default = {
-    "residual_type": ResidualType.ABSOLUTE,
-    "weighting_curves": WeightingCurvesType.MEAN_AND_POINTS,
+    "residual": ResidualType.NORMALIZED,
+    "weighting_curves": [WeightingCurvesType.POINTS],
     "weighting_points": WeightingPointsType.ERROR_WEIGHTING,
     "absolute_tolerance": 1e-6,
     "relative_tolerance": 1e-6,
@@ -75,12 +82,38 @@ def test_optimization_analysis(tmp_path):
     )
     op_analysis = OptimizationAnalysis(
         opt_result=opt_result,
-        output_path=tmp_path,
+        output_dir=tmp_path,
+        output_name="test",
         op=op,
         show_plots=False,
         **fit_kwargs_default
     )
     op_analysis.run()
+
+
+@pytest.mark.parametrize(
+    "loss_function",
+    [
+        LossFunctionType.LINEAR,
+        LossFunctionType.SOFT_L1,
+        LossFunctionType.CAUCHY,
+        LossFunctionType.ARCTAN,
+    ],
+)
+def test_loss_function(loss_function: LossFunctionType) -> None:
+    """Test the various loss functions."""
+    op = op_mid1oh_iv()
+    opt_result: OptimizationResult = run_optimization(
+        problem=op,
+        algorithm=OptimizationAlgorithmType.LEAST_SQUARE,
+        loss_function=loss_function,
+        size=1,
+        n_cores=1,
+        serial=True,
+        **fit_kwargs_default
+    )
+    assert opt_result
+    assert op.loss_function == loss_function
 
 
 def test_fit_lsq_serial() -> None:

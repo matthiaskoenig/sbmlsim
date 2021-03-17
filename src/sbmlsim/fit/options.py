@@ -14,17 +14,15 @@ from enum import Enum
 class OptimizationAlgorithmType(Enum):
     """Type of optimization.
 
-    **least square**
-      Least square is a local optimization method and works well in combination
-      with many start values, i.e., many repeats of the optimization problem. See
-      https://docs.scipy.org/doc/scipy/reference/generated/scipy.optimize.least_squares.html
-      for more information.
+    `least square` : Least square is a local optimization method and works well in
+    combination with many start values, i.e., many repeats of the optimization problem.
+    See https://docs.scipy.org/doc/scipy/reference/generated/scipy.optimize.least_squares.html
+    for more information.
 
-    **differential evolution**
-      Differential evolution is a global optimization method and normally is run
-      with a limited number of repeats. See
-      https://docs.scipy.org/doc/scipy/reference/generated/scipy.optimize.differential_evolution.html#scipy.optimize.differential_evolution
-      for more information.
+    `differential evolution` : Differential evolution is a global optimization method
+    and normally is run with a limited number of repeats. See
+    https://docs.scipy.org/doc/scipy/reference/generated/scipy.optimize.differential_evolution.html#scipy.optimize.differential_evolution
+    for more information.
     """
 
     LEAST_SQUARE = 1
@@ -38,88 +36,94 @@ class ResidualType(Enum):
     or are the residuals normalized based on the data points, i.e., relative
     residuals.
 
-    **absolute (default)**
-      uses the absolute data values for calculation of the residuals
+    `absolute` (default) : uses the absolute data values for calculation of the
+    residuals::
 
-      r(i,k) = y(i,k) - f(xi,k)
+        r(i,k) = y(i,k) - f(xi,k)
 
-    # FIXME: deprecate, does not work due to large relative errors for small data points
-    **relative residuals**
-      normalize every residual by the corresponding value.
-      Normalized residuals make different fit mappings comparable.
-      zero/inf valus are filtered out
+    `normalized` : normalizing residuals of curve with 1/mean of the timecourse::
 
-      if y(i,k) != 0:
-        r(i,k) = (y(i,k) - f(xi,k))/y(i,k)
-      else:
-        r(i,k) = 0
-
-    **normalized residuals**
-      normalizing with 1/mean of the timecourse:
         r(i,k) = (y(i,k) - f(xi,k))/mean(y(k))
-      This makes timecourses comparable.
 
-    **absolute changes baseline**
-      uses the absolute changes to baseline with baseline being the first data point.
-      This requires appropriate pre-simulations for the model to reach a baseline.
-      Data and fits have to be checked carefully.
+    This allows to use time courses with very different absolute values in a single
+    optimization problem.
 
-      r(i,k) = (y(i,k) - ybase(k)) - (f(xi,k) - fbase(k))
+    `absolute_to_baseline` (experimental) : uses the absolute changes to
+    baseline with baseline being the first data point. This requires appropriate
+    pre-simulations for the model to reach a baseline.
+    Data and fits have to be checked carefully.
+    Residuals are calculated as::
 
-     **normalized changes baseline**
-     # FIXME:update
+        r(i,k) = (y(i,k) - ybase(k)) - (f(xi,k) - fbase(k))
 
-      uses the relative changes to baseline with baseline being the first data point.
-      This requires appropriate pre-simulations for the model to reach a baseline.
-      Data and fits have to be checked carefully.
-      zero/inf valus are filtered out
+    `normalized changes baseline` (experimental): Uses the normalized changes to
+    baseline with baseline being the first data point.
+    This requires appropriate pre-simulations for the model to reach a baseline.
+    Data and fits have to be checked carefully.
+    The residuals are calculated as::
 
-      if y(i,k) != 0:
-        r(i,k) = (y(i,k) - ybase(k)) - (f(xi,k) - fbase(k))/y(i,k)
-      else:
-        r(i,k) = 0
-
+        r(i,k) = (y(i,k) - ybase(k)) - (f(xi,k) - fbase(k))/mean(y(k))
     """
 
     ABSOLUTE = 1
-    # RELATIVE = 2
-    NORMALIZED = 3
-    ABSOLUTE_CHANGES_BASELINE = 4
-    RELATIVE_CHANGES_BASELINE = 5
+    NORMALIZED = 2
+    ABSOLUTE_TO_BASELINE = 3
+    NORMALIZED_TO_BASELINE = 4
+
+
+class LossFunctionType(Enum):
+    """Determines the loss function.
+
+    minimize F(x) = 0.5 * sum(rho(residuals_weighted(x)**2)
+
+    The following loss functions are supported are allowed:
+
+    ‘linear’ (default) : rho(z) = z. Gives a standard least-squares problem.
+
+    ‘soft_l1’ : rho(z) = 2 * ((1 + z)**0.5 - 1). The smooth approximation of l1
+    (absolute value) loss. Usually a good choice for robust least squares.
+
+    ‘cauchy’ : rho(z) = ln(1 + z). Severely weakens outliers influence,
+    but may cause difficulties in optimization process.
+
+    ‘arctan’ : rho(z) = arctan(z). Limits a maximum loss on a single residual,
+    has properties similar to ‘cauchy’.
+    """
+
+    LINEAR = 1
+    SOFT_L1 = 2
+    CAUCHY = 3
+    ARCTAN = 4
 
 
 class WeightingCurvesType(Enum):
     """Weighting w_{k} of the curves k.
 
-    Users can provide set of weightings for the individual curves.
-
-    **no weighting (default)**
-      no weighting option is provided, all curves weighted equally:
+    Users can provide set of weightings for the individual curves. By default no
+    weightings are applied, i.e. all curves are weighted equally if no weighting
+    option is provided::
 
       w_{k} = 1.0
 
-    **mapping**
-      curves k are weighted with the provided user weights in the fit mappings,
-      e.g., counts
+    `mapping` : curves k are weighted with the provided user weights in the fit
+    mappings, e.g., counts::
 
-      w_{k} = wu_{k}
+        w_{k} = wu_{k}
 
-    **points**
-      weighting with the number of data points:
+    `points` : weighting with the number of data points. Often time courses
+    contain different number of data points. The residuals should contribute
+    equally per data point::
 
-      w_{k} = 1.0/count{k}
+        w_{k} = 1.0/count{k}
 
-    The various options can be combined, i.e.,
-      mapping, points, mean
-    results in
 
-      w_{k} = wu_{k}/count{k}/mean{y(k)}
+    The various options can be combined, e.g. mapping and points results in::
 
+        w_{k} = wu_{k}/count{k}/mean{y(k)}
     """
 
     MAPPING = 1
     POINTS = 2
-    # MEAN = 3
 
 
 class WeightingPointsType(Enum):
@@ -128,20 +132,17 @@ class WeightingPointsType(Enum):
     This decides how the data points within a single fit mapping are
     weighted.
 
-    **no weighting**
-      all data points are weighted equally
+    `no weighting` (default) : all data points are weighted equally::
 
-      w_{i,k} = 1.0
+        w_{i,k} = 1.0
 
-    **error weighting**
-      data points are weighted as ~1/error
+    `error_weighting`: data points are weighted as ~1/error
 
-      # FIXME: update documentation
+      # FIXME: update documentation, These must probably be normalized also.
       if yerr{i,k}:
         w_{i,k} = 1.0/yerr{i,k}
       else:
         w_{i,k} = 1.0/yerr{i,k}
-
     """
 
     NO_WEIGHTING = 1

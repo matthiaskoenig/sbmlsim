@@ -17,6 +17,7 @@ from sbmlsim.data import Data
 from sbmlsim.experiment import ExperimentRunner
 from sbmlsim.fit.objects import FitExperiment, FitMapping, FitParameter
 from sbmlsim.fit.options import (
+    LossFunctionType,
     OptimizationAlgorithmType,
     ResidualType,
     WeightingCurvesType,
@@ -51,8 +52,8 @@ class OptimizationProblem(ObjectJSONEncoder):
     def __init__(
         self,
         opid: str,
-        fit_experiments: Collection[FitExperiment],
-        fit_parameters: Collection[FitParameter],
+        fit_experiments: List[FitExperiment],
+        fit_parameters: List[FitParameter],
         base_path: Path = None,
         data_path: Path = None,
     ):
@@ -90,7 +91,7 @@ class OptimizationProblem(ObjectJSONEncoder):
 
         # set in initialization
         self.runner: Optional[ExperimentRunner] = None
-        self.residual_type: Optional[ResidualType] = None
+        self.residual: Optional[ResidualType] = None
         self.weighting_curves: Optional[WeightingCurvesType] = None
         self.weighting_points: Optional[WeightingPointsType] = None
 
@@ -156,7 +157,7 @@ class OptimizationProblem(ObjectJSONEncoder):
         all_info = [
             core_info,
             "Settings",
-            f"\tresidual_type: {self.residual_type}",
+            f"\tresidual_type: {self.residual}",
             f"\tweighting_curves: {self.weighting_curves}",
             f"\tweighting_points: {self.weighting_points}",
             "Data",
@@ -187,7 +188,8 @@ class OptimizationProblem(ObjectJSONEncoder):
 
     def initialize(
         self,
-        residual_type: Optional[ResidualType],
+        residual: Optional[ResidualType],
+        loss_function: LossFunctionType,
         weighting_curves: List[WeightingCurvesType],
         weighting_points: Optional[WeightingPointsType],
         variable_step_size: bool = True,
@@ -199,7 +201,8 @@ class OptimizationProblem(ObjectJSONEncoder):
         Performs precalculations, resolving data, calculating weights.
         Creates and attaches simulator for the given problem.
 
-        :param residual_type: handling of residuals
+        :param residual: handling of residuals
+        :param loss_function: loss function for residual transformation
         :param weighting_curves: list of options for weighting curves (fit mappings)
         :param weighting_points: weighting of points
         :param absolute_tolerance: absolute tolerance of simulator
@@ -207,13 +210,21 @@ class OptimizationProblem(ObjectJSONEncoder):
         :param variable_step_size: use variable step size in solver
         """
         if weighting_curves is None:
+            # no weighting by default
             weighting_curves = []
-        if residual_type is None:
+        if isinstance(weighting_curves, WeightingCurvesType):
+            raise TypeError(
+                f"weighting_curves must be a 'List[WeightingCurvesType]', "
+                f"but '{type(weighting_curves)}' given."
+            )
+
+        if residual is None:
             raise ValueError("'residual_type' is required.")
         if weighting_points is None:
             raise ValueError("'weighting_points' is required.")
 
-        self.residual_type = residual_type
+        self.residual = residual
+        self.loss_function = loss_function
         self.weighting_curves = weighting_curves
         self.weighting_points = weighting_points
 
@@ -328,14 +339,12 @@ class OptimizationProblem(ObjectJSONEncoder):
                 x_ref = data_ref.x.magnitude
                 y_ref = data_ref.y.magnitude
 
-                # TODO: implement
-                if self.residual_type == ResidualType.ABSOLUTE_CHANGES_BASELINE:
-                    # Use absolute changes to baseline, which is the first point
-                    # y_ref = (y_ref - y_ref[0])
-                    raise NotImplementedError
-
-                elif self.residual_type == ResidualType.RELATIVE_CHANGES_BASELINE:
-                    raise NotImplementedError
+                if self.residual in [
+                    ResidualType.ABSOLUTE_TO_BASELINE,
+                    ResidualType.NORMALIZED_TO_BASELINE,
+                ]:
+                    # Changes to baseline, which is the first point
+                    y_ref = y_ref - y_ref[0]
 
                 # Use errors for weighting (tries SD and falls back on SE)
                 y_ref_err = None
@@ -358,19 +367,6 @@ class OptimizationProblem(ObjectJSONEncoder):
                     else:
                         # some NaNs could exist (err is maximal error of all points)
                         y_ref_err[np.isnan(y_ref_err)] = np.nanmax(y_ref_err)
-
-                # remove zero values for relative errors (no inf residuals)
-                if self.residual_type == ResidualType.RELATIVE:
-                    nonzero_mask = y_ref != 0.0
-                    if not np.all(nonzero_mask):
-                        logger.debug(
-                            f"Zero (0.0) values in y data in experiment '{sid}' "
-                            f"mapping '{mapping_id}' removed: {y_ref}"
-                        )
-                        x_ref = x_ref[nonzero_mask]
-                        if y_ref_err is not None:
-                            y_ref_err = y_ref_err[nonzero_mask]
-                        y_ref = y_ref[nonzero_mask]
 
                 # remove NaN from y-data
                 nonnan_mask = ~np.isnan(y_ref)
@@ -415,9 +411,10 @@ class OptimizationProblem(ObjectJSONEncoder):
                         # the larger the error, the smaller the weight
                         # weight_points = 1.0 / y_ref_err
                         # CV = SD/mean; scaling with 1/CV (CV=1 -> w=1; CV=0.1 -> w=10);
-                        weight_points = (
-                            y_ref / y_ref_err
-                        )
+                        # The weighting must be normalized to the curve!, i.e. be a
+                        # unitless quantity approximately the same for the different
+                        # datasets.
+                        weight_points = y_ref / y_ref_err
                         # weight_points = 1.0 / y_ref_err  # scale with error;
                     else:
                         logger.warning(
@@ -428,8 +425,11 @@ class OptimizationProblem(ObjectJSONEncoder):
                         # Weights must be comparable to datasets with data (1/CV)
                         # Assuming an error with CV of 0.5 -> w=2
                         weight_points = 2 * np.ones_like(y_ref)
+
                 else:
-                    raise ValueError(f"Unsupported WeightingPointsType: '{weighting_points}'")
+                    raise ValueError(
+                        f"Unsupported WeightingPointsType: '{weighting_points}'"
+                    )
 
                 # curve weight
                 weight_curve: float = 1.0
@@ -681,7 +681,7 @@ class OptimizationProblem(ObjectJSONEncoder):
                 # FIXME: just simulate at the requested timepoints with step
                 df = simulator._timecourses([simulation])[0]
 
-                # interpolation of simulation results
+                # interpolation of simulation results and requested time points
                 f = interpolate.interp1d(
                     x=df[self.xid_observable[k]],
                     y=df[self.yid_observable[k]],
@@ -690,11 +690,12 @@ class OptimizationProblem(ObjectJSONEncoder):
                 )
                 y_obsip = f(self.x_references[k])
 
-                if self.residual_type == ResidualType.ABSOLUTE_CHANGES_BASELINE:
-                    raise NotImplementedError
-                elif self.residual_type == ResidualType.RELATIVE_CHANGES_BASELINE:
-                    # y_obsip = y_obsip - y_obsip[0]
-                    raise NotImplementedError
+                if self.residual in {
+                    ResidualType.ABSOLUTE_TO_BASELINE,
+                    ResidualType.NORMALIZED_TO_BASELINE,
+                }:
+                    # subtract simulation baseline
+                    y_obsip = y_obsip - y_obsip[0]
 
                 # calculate absolute residuals (f(x_{i}) - y_{i})
                 res_abs = y_obsip - self.y_references[k]
@@ -706,22 +707,21 @@ class OptimizationProblem(ObjectJSONEncoder):
                 )
                 res_abs = 5.0 * self.y_references[k]  # total error
 
-            with np.errstate(divide="ignore", invalid="ignore"):
-                res_rel = res_abs / self.y_references[k]
-
-            # no cost contribution of zero values
-            # FIXME: check this should never happen and remove
-            res_rel[np.isnan(res_rel)] = 0
-            res_rel[np.isinf(res_rel)] = 0
+            # with np.errstate(divide="ignore", invalid="ignore"):
+            res_norm = res_abs / np.mean(self.y_references[k])
 
             # select correct residuals
             residuals: np.ndarray
-            if self.residual_type == ResidualType.ABSOLUTE:
+            if self.residual == ResidualType.ABSOLUTE:
                 residuals = res_abs
-            elif self.residual_type == ResidualType.RELATIVE:
-                residuals = res_rel
+            elif self.residual == ResidualType.NORMALIZED:
+                residuals = res_norm
+            elif self.residual == ResidualType.ABSOLUTE_TO_BASELINE:
+                residuals = res_abs
+            elif self.residual == ResidualType.NORMALIZED_TO_BASELINE:
+                residuals = res_norm
             else:
-                raise ValueError(f"ResidualType not supported: '{self.residual_type}'")
+                raise ValueError(f"ResidualType not supported: '{self.residual}'")
 
             # weighted residuals
             # total cost:
@@ -730,6 +730,17 @@ class OptimizationProblem(ObjectJSONEncoder):
             # residuals;
             # this is not exactly the definition of typical weights.
             residuals_weighted = residuals * np.sqrt(self.weights[k])
+
+            # apply loss function
+            if self.loss_function == LossFunctionType.LINEAR:
+                pass
+            elif self.loss_function == LossFunctionType.SOFT_L1:
+                residuals_weighted = 2 * (np.power(1 + residuals_weighted, 0.5) - 1)
+            elif self.loss_function == LossFunctionType.CAUCHY:
+                residuals_weighted = np.log(1 + residuals_weighted)
+            elif self.loss_function == LossFunctionType.ARCTAN:
+                residuals_weighted = np.arctan(residuals_weighted)
+
             parts.append(residuals_weighted)
 
             # for post_processing
@@ -741,8 +752,7 @@ class OptimizationProblem(ObjectJSONEncoder):
                 residual_data["weights_curve"].append(self.weights_curves[k])
                 residual_data["residuals_weighted"].append(residuals_weighted)
                 residual_data["res_abs"].append(res_abs)
-                residual_data["res_rel"].append(res_rel)
-                # FIXME: this depends on loss function
+                residual_data["res_norm"].append(res_norm)
                 residual_data["cost"].append(
                     0.5 * np.sum(np.power(residuals_weighted, 2))
                 )

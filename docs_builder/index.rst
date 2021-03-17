@@ -10,9 +10,8 @@ Contents:
    :maxdepth: 2
 
    overview
-   notebooks/simjson.rst
-   notebooks/parameter_fitting.rst
-
+   notebooks/simjson
+   _autogen/modules
 
 
 Indices and tables

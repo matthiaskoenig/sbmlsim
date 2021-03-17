@@ -12,8 +12,8 @@ from sbmlsim.fit.runner import run_optimization
 
 
 fit_kwargs_default = {
-    "residual_type": ResidualType.ABSOLUTE,
-    "weighting_curves": WeightingCurvesType.MEAN_AND_POINTS,
+    "residual": ResidualType.ABSOLUTE,
+    "weighting_curves": [WeightingCurvesType.POINTS],
     "weighting_points": WeightingPointsType.ERROR_WEIGHTING,
     "absolute_tolerance": 1e-6,
     "relative_tolerance": 1e-6,

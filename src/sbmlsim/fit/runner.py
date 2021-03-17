@@ -29,6 +29,7 @@ import numpy as np
 
 from sbmlsim.fit.optimization import OptimizationProblem
 from sbmlsim.fit.options import (
+    LossFunctionType,
     OptimizationAlgorithmType,
     ResidualType,
     WeightingCurvesType,
@@ -47,7 +48,8 @@ def run_optimization(
     problem: OptimizationProblem,
     size: int = 5,
     algorithm: OptimizationAlgorithmType = OptimizationAlgorithmType.LEAST_SQUARE,
-    residual_type: ResidualType = ResidualType.ABSOLUTE,
+    residual: ResidualType = ResidualType.ABSOLUTE,
+    loss_function: LossFunctionType = LossFunctionType.LINEAR,
     weighting_curves: List[WeightingCurvesType] = None,
     weighting_points: WeightingPointsType = WeightingPointsType.NO_WEIGHTING,
     seed: Optional[int] = None,
@@ -64,10 +66,14 @@ def run_optimization(
     the OptimizationResults. The size defines the repeated optimizations
     of the problem. Every repeat uses different initial values.
 
+    To get access to the optimization problem this has to be initialized with the
+    arguments of the runner.
+
     :param problem: uninitialized problem to optimize (pickable)
     :param size: integer number of optimizations
     :param algorithm: optimization algorithm to use
-    :param residual_type: handling of residuals
+    :param residual: handling of residuals
+    :param loss_function: loss function for handling outliers/residual transformation
     :param weighting_curves: list of options for weighting curves (fit mappings)
     :param weighting_points: weighting of points
     :param seed: integer random seed (for sampling of parameters)
@@ -135,7 +141,8 @@ def run_optimization(
                 "problem": problem,
                 "size": sizes[k],
                 "algorithm": algorithm,
-                "residual_type": residual_type,
+                "residual": residual,
+                "loss_function": loss_function,
                 "weighting_curves": weighting_curves,
                 "weighting_points": weighting_points,
                 "absolute_tolerance": absolute_tolerance,
@@ -173,7 +180,8 @@ def _run_optimization_serial(
     problem: OptimizationProblem,
     size: int = 5,
     algorithm: OptimizationAlgorithmType = OptimizationAlgorithmType.LEAST_SQUARE,
-    residual_type: ResidualType = ResidualType.ABSOLUTE,
+    residual: ResidualType = ResidualType.ABSOLUTE,
+    loss_function: LossFunctionType = LossFunctionType.LINEAR,
     weighting_curves: List[WeightingCurvesType] = None,
     weighting_points: WeightingPointsType = WeightingPointsType.NO_WEIGHTING,
     seed: Optional[int] = None,
@@ -191,7 +199,8 @@ def _run_optimization_serial(
     :param problem: uninitialized problem to optimize (pickable)
     :param size: integer number of optimizations
     :param algorithm: optimization algorithm to use
-    :param residual_type: handling of residuals
+    :param residual: handling of residuals
+    :param loss_function: loss function for handling outliers/residual transformation
     :param weighting_curves: list of options for weighting curves (fit mappings)
     :param weighting_points: weighting of points
     :param seed: integer random seed (for sampling of parameters)
@@ -213,7 +222,8 @@ def _run_optimization_serial(
 
     # initialize problem, which calculates errors
     problem.initialize(
-        residual_type=residual_type,
+        residual=residual,
+        loss_function=loss_function,
         weighting_points=weighting_points,
         weighting_curves=weighting_curves,
         absolute_tolerance=absolute_tolerance,

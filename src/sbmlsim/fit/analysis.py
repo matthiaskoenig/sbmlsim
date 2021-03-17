@@ -2,7 +2,7 @@
 
 import logging
 from pathlib import Path
-from typing import Any, Dict, Tuple
+from typing import Any, Dict, List, Tuple
 
 import matplotlib
 import numpy as np
@@ -12,7 +12,12 @@ from matplotlib.figure import Axes, Figure
 from matplotlib.lines import Line2D
 
 from sbmlsim.fit.optimization import OptimizationProblem
-from sbmlsim.fit.options import ResidualType, WeightingCurvesType, WeightingPointsType
+from sbmlsim.fit.options import (
+    LossFunctionType,
+    ResidualType,
+    WeightingCurvesType,
+    WeightingPointsType,
+)
 from sbmlsim.fit.result import OptimizationResult
 from sbmlsim.plot.plotting_matplotlib import plt
 from sbmlsim.utils import timeit
@@ -35,8 +40,9 @@ class OptimizationAnalysis:
         op: OptimizationProblem = None,
         show_plots: bool = True,
         show_titles: bool = True,
-        residual_type: ResidualType = None,
-        weighting_curves: WeightingCurvesType = None,
+        residual: ResidualType = None,
+        loss_function: LossFunctionType = None,
+        weighting_curves: List[WeightingCurvesType] = None,
         weighting_points: WeightingPointsType = None,
         variable_step_size: bool = True,
         absolute_tolerance: float = 1e-6,
@@ -49,6 +55,14 @@ class OptimizationAnalysis:
         :param output_dir: base path for output
         :param show_plots: boolean flag to display plots, i.e., call plt.show()
         :param show_titles: boolean flag to add titles to the panels
+        :param residual: handling of residuals
+        :param loss_function: loss function for handling outliers/residual transformation
+        :param weighting_curves: list of options for weighting curves (fit mappings)
+        :param weighting_points: weighting of points
+        :param seed: integer random seed (for sampling of parameters)
+        :param absolute_tolerance: absolute tolerance of simulator
+        :param relative_tolerance: relative tolerance of simulator
+        :param variable_step_size: use variable step size in solver
 
         """
         self.sid = opt_result.sid
@@ -66,7 +80,8 @@ class OptimizationAnalysis:
 
         if op:
             op.initialize(
-                residual_type=residual_type,
+                residual=residual,
+                loss_function=loss_function,
                 weighting_curves=weighting_curves,
                 weighting_points=weighting_points,
                 variable_step_size=variable_step_size,
@@ -247,7 +262,7 @@ class OptimizationAnalysis:
                     )
                 # plot simulation
                 ax.plot(x_obs, y_obs, "-", color="blue", label="observable")
-                ax.set_xlim(right=1.1*np.max(x_ref))
+                ax.set_xlim(right=1.1 * np.max(x_ref))
                 ax.legend()
 
             axes[k][1].set_yscale("log")

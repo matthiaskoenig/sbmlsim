@@ -23,8 +23,8 @@ def fitting_example(op_factory: Callable, size: int = 10, n_cores: int = 10) -> 
 
     fit_kwargs = {
         "seed": 1234,
-        "residual_type": ResidualType.ABSOLUTE,
-        "weighting_curves": WeightingCurvesType.MEAN_AND_POINTS,
+        "residual": ResidualType.NORMALIZED,
+        "weighting_curves": [WeightingCurvesType.POINTS],
         "weighting_points": WeightingPointsType.ERROR_WEIGHTING,
         "absolute_tolerance": 1e-6,
         "relative_tolerance": 1e-6,
