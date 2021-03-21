@@ -346,6 +346,7 @@ class OptimizationProblem(ObjectJSONEncoder):
                     # Changes to baseline, which is the first point
                     y_ref = y_ref - y_ref[0]
 
+                # --- errors on data ---
                 # Use errors for weighting (tries SD and falls back on SE)
                 y_ref_err = None
                 if data_ref.y_sd is not None:
@@ -356,6 +357,10 @@ class OptimizationProblem(ObjectJSONEncoder):
                     y_ref_err_type = "SE"
                 else:
                     y_ref_err_type = None
+                # handle special case of all NaN
+                if np.all(np.isnan(y_ref_err)):
+                    y_ref_err = None
+                    y_ref_err_type = None
 
                 # handle missing data (0.0 and NaN)
                 if y_ref_err is not None:
@@ -363,8 +368,14 @@ class OptimizationProblem(ObjectJSONEncoder):
                     y_ref_err[(y_ref_err == 0.0)] = np.NAN
                     if np.all(np.isnan(y_ref_err)):
                         # handle special case of all NaN errors
+                        logger.warning(
+                            f"Errors are all NaN '{sid}.{mapping_id}' y data: "
+                            f"'{y_ref_err}'"
+                        )
                         y_ref_err = None
+                        y_ref_err_type = None
                     else:
+                        # FIXME: this must be based on coefficient of variation
                         # some NaNs could exist (err is maximal error of all points)
                         y_ref_err[np.isnan(y_ref_err)] = np.nanmax(y_ref_err)
 

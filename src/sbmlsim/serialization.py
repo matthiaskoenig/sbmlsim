@@ -57,7 +57,7 @@ class ObjectJSONEncoder(JSONEncoder):
 
         if hasattr(o, "to_dict"):
             # custom serializer
-            print(type(o))
+            # print(type(o))
             if isinstance(o, type):
                 print(o.__name__)
             return o.to_dict()

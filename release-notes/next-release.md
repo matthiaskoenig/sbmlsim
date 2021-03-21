@@ -2,6 +2,7 @@
 - breaking changes in units handling
 - bugfix plotting `dimensionless` units in labels
 - remove deprecated `distrib` and `sampling` functionality.
+- fixed typo in sensitivity
 
 **parameter fitting**
 - refactoring parameter fitting
@@ -18,3 +19,4 @@
   - ‘arctan’ : rho(z) = arctan(z). Limits a maximum loss on a single residual, has properties similar to ‘cauchy’.
 - figures closing in reports (#88)
 - improved parameter fitting plots and results (#32)
+- bugfix all NaN errors (#101)
