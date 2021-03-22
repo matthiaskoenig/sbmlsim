@@ -1,5 +1,5 @@
 """
-COMBINE Archive helper functions and classes based on libcombine.
+COMBINE Archive helper functions and classes based on libCOMBINE.
 
 Here common operations with COMBINE archives are implemented, like
 extracting archives, creating archives from entries or directories,
@@ -10,19 +10,16 @@ When working with COMBINE archives these wrapper functions should be used.
 """
 # FIXME: handle the adding of metadata
 
-from __future__ import absolute_import, print_function
-
 import os
 import shutil
 import tempfile
 import warnings
 import zipfile
+from pathlib import Path
+from typing import List
 
+import libcombine
 
-try:
-    import libcombine
-except ImportError:
-    import tecombine as libcombine
 
 import pprint
 
@@ -31,7 +28,7 @@ MANIFEST_PATTERN = "manifest.xml"
 METADAT_PATTERN = "metadata.*"
 
 
-class Entry(object):
+class Entry:
     """ Helper class to store content to create an OmexEntry."""
 
     def __init__(
@@ -242,71 +239,67 @@ def _addEntriesToArchive(omexPath, entries, workingDir, add_entries):
     archive.cleanUp()
 
 
-def extractCombineArchive(omexPath, directory, method="zip"):
+def extract_combine_archive(omex_path: Path, output_dir: Path, method: str = "zip") -> None:
     """Extracts combine archive at given path to directory.
 
     The zip method extracts all entries in the zip, the omex method
     only extracts the entries listed in the manifest.
     In some archives not all content is listed in the manifest.
 
-    :param omexPath:
-    :param directory:
+    :param omex_path: COMBINE archive
+    :param output_dir: output directory
     :param method: method to extract content, either 'zip' or 'omex'
     :return:
     """
-    if method not in ["zip", "omex"]:
-        raise ValueError("Method is not supported: {}".format(method))
-
     if method == "zip":
-        zip_ref = zipfile.ZipFile(omexPath, "r")
-        zip_ref.extractall(directory)
+        zip_ref = zipfile.ZipFile(omex_path, "r")
+        zip_ref.extractall(output_dir)
         zip_ref.close()
 
     elif method == "omex":
         omex = libcombine.CombineArchive()
-        if omex.initializeFromArchive(omexPath) is None:
-            raise IOError("Invalid Combine Archive: {}", omexPath)
+        if omex.initializeFromArchive(str(omex_path)) is None:
+            raise IOError(f"Invalid COMBINE archive: {omex_path}")
 
         for i in range(omex.getNumEntries()):
             entry = omex.getEntry(i)
             location = entry.getLocation()
-            filename = os.path.join(directory, location)
+            filename = os.path.join(output_dir, location)
             omex.extractEntry(location, filename)
 
         omex.cleanUp()
+    else:
+        raise ValueError(f"Method is not supported '{method}'")
 
 
-def getLocationsByFormat(omexPath, formatKey=None, method="omex"):
+def get_locations_by_format(omex_path: Path, format_key=None, method="omex"):
     """Returns locations to files with given format in the archive.
 
     Uses the libcombine KnownFormats for formatKey, e.g., 'sed-ml' or 'sbml'.
     Files which have a master=True have higher priority and are listed first.
 
-    :param omexPath:
-    :param formatKey:
+    :param omex_path:
+    :param format_key:
     :param method:
     :return:
     """
-    if not formatKey:
+    if not format_key:
         raise ValueError("Format must be specified.")
 
-    if method not in ["zip", "omex"]:
-        raise ValueError("Method is not supported: {}".format(method))
-
-    locations_master = []
-    locations = []
+    locations_master: List[str] = []
+    locations: List[str] = []
 
     if method == "omex":
-        omex = libcombine.CombineArchive()
-        if omex.initializeFromArchive(omexPath) is None:
-            raise IOError("Invalid Combine Archive: {}", omexPath)
+        omex: libcombine.CombineArchive = libcombine.CombineArchive()
+        if omex.initializeFromArchive(str(omex_path)) is None:
+            raise IOError(f"Invalid COMBINE Archive: {omex_path}")
 
         for i in range(omex.getNumEntries()):
-            entry = omex.getEntry(i)
-            format = entry.getFormat()
-            master = entry.getMaster()
-            if libcombine.KnownFormats.isFormat(formatKey, format):
-                loc = entry.getLocation()
+            entry: libcombine.CaContent = omex.getEntry(i)
+            format: str = entry.getFormat()
+            master: bool = entry.getMaster()
+            if libcombine.KnownFormats.isFormat(format_key, format):
+                loc: str = entry.getLocation()
                 if (master is None) or (master is False):
                     locations.append(loc)
                 else:
@@ -318,7 +311,7 @@ def getLocationsByFormat(omexPath, formatKey=None, method="omex"):
         tmp_dir = tempfile.mkdtemp()
 
         try:
-            extractCombineArchive(omexPath, directory=tmp_dir, method="zip")
+            extract_combine_archive(omex_path, directory=tmp_dir, method="zip")
 
             # iterate over all locations & guess format
             for root, dirs, files in os.walk(tmp_dir):
@@ -328,13 +321,16 @@ def getLocationsByFormat(omexPath, formatKey=None, method="omex"):
                     # guess the format
                     format = libcombine.KnownFormats.guessFormat(file_path)
                     if libcombine.KnownFormats.isFormat(
-                        formatKey=formatKey, format=format
+                        formatKey=format_key, format=format
                     ):
                         locations.append(location)
                     # print(format, "\t", location)
 
         finally:
             shutil.rmtree(tmp_dir)
+
+    else:
+        raise ValueError(f"Method is not supported '{method}'")
 
     return locations_master + locations
 
@@ -374,7 +370,7 @@ def listContents(omexPath, method="omex"):
     return contents
 
 
-def printContents(omexPath):
+def print_contents(omexPath):
     """Prints contents of archive.
 
     :param omexPath:

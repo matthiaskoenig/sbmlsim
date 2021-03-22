@@ -305,8 +305,8 @@ def combineArchiveToPython(omexPath):
     tmp_dir = tempfile.mkdtemp()
     pycode = {}
     try:
-        omex.extractCombineArchive(omexPath, directory=tmp_dir, method="zip")
-        locations = omex.getLocationsByFormat(omexPath, "sed-ml")
+        omex.extract_combine_archive(omexPath, directory=tmp_dir, method="zip")
+        locations = omex.get_locations_by_format(omexPath, "sed-ml")
         sedml_files = [os.path.join(tmp_dir, loc) for loc in locations]
 
         for k, sedml_file in enumerate(sedml_files):
@@ -359,17 +359,17 @@ def executeCombineArchive(
                 extractDir = workingDir
 
             # extract
-            omex.extractCombineArchive(omexPath=omexPath, directory=extractDir)
+            omex.extract_combine_archive(omex_path=omexPath, directory=extractDir)
 
             # get sedml locations by omex
-            sedml_locations = omex.getLocationsByFormat(
-                omexPath=omexPath, formatKey="sed-ml", method="omex"
+            sedml_locations = omex.get_locations_by_format(
+                omex_path=omexPath, format_key="sed-ml", method="omex"
             )
             if len(sedml_locations) == 0:
 
                 # falling back to zip archive
-                sedml_locations = omex.getLocationsByFormat(
-                    omexPath=omexPath, formatKey="sed-ml", method="zip"
+                sedml_locations = omex.get_locations_by_format(
+                    omex_path=omexPath, format_key="sed-ml", method="zip"
                 )
                 warnings.warn(
                     "No SED-ML files in COMBINE archive based on manifest '{}'; Guessed SED-ML {}".format(
