@@ -11,9 +11,34 @@
       "source": {
         "source": "/home/mkoenig/git/sbmlsim/src/sbmlsim/examples/experiments/midazolam/model/midazolam_body_flat.xml",
         "path": "/home/mkoenig/git/sbmlsim/src/sbmlsim/examples/experiments/midazolam/model/midazolam_body_flat.xml",
-        "content": null
+        "content": "None"
       },
-      "changes": {}
+      "changes": {
+        "KI__MID1OHEX_Vmax": {
+          "_magnitude": 14.259652024532818,
+          "_units": "mmole_per_min",
+          "_Quantity__used": false,
+          "_Quantity__handling": null
+        },
+        "KI__MID1OHEX_Km": {
+          "_magnitude": 0.7051197538875393,
+          "_units": "millimolar",
+          "_Quantity__used": false,
+          "_Quantity__handling": null
+        },
+        "ftissue_mid1oh": {
+          "_magnitude": 99.2324855549143,
+          "_units": "l_per_min",
+          "_Quantity__used": false,
+          "_Quantity__handling": null
+        },
+        "fup_mid1oh": {
+          "_magnitude": 0.19507488419734886,
+          "_units": "dimensionless",
+          "_Quantity__used": false,
+          "_Quantity__handling": null
+        }
+      }
     }
   },
   "tasks": {
@@ -46,30 +71,6 @@
           "end": 1500,
           "steps": 3000,
           "changes": {
-            "KI__MID1OHEX_Vmax": {
-              "_magnitude": 14.259652024532818,
-              "_units": "mmole_per_min",
-              "_Quantity__used": false,
-              "_Quantity__handling": null
-            },
-            "KI__MID1OHEX_Km": {
-              "_magnitude": 0.7051197538875393,
-              "_units": "millimolar",
-              "_Quantity__used": false,
-              "_Quantity__handling": null
-            },
-            "ftissue_mid1oh": {
-              "_magnitude": 99.2324855549143,
-              "_units": "l_per_min",
-              "_Quantity__used": false,
-              "_Quantity__handling": null
-            },
-            "fup_mid1oh": {
-              "_magnitude": 0.19507488419734886,
-              "_units": "dimensionless",
-              "_Quantity__used": false,
-              "_Quantity__handling": null
-            },
             "IVDOSE_mid": {
               "_magnitude": 5,
               "_units": "milligram",
@@ -83,7 +84,9 @@
               "_Quantity__handling": null
             }
           },
-          "model_changes": {}
+          "model_changes": {},
+          "model_manipulations": {},
+          "discard": false
         }
       ]
     },
@@ -98,30 +101,6 @@
           "end": 1500,
           "steps": 3000,
           "changes": {
-            "KI__MID1OHEX_Vmax": {
-              "_magnitude": 14.259652024532818,
-              "_units": "mmole_per_min",
-              "_Quantity__used": false,
-              "_Quantity__handling": null
-            },
-            "KI__MID1OHEX_Km": {
-              "_magnitude": 0.7051197538875393,
-              "_units": "millimolar",
-              "_Quantity__used": false,
-              "_Quantity__handling": null
-            },
-            "ftissue_mid1oh": {
-              "_magnitude": 99.2324855549143,
-              "_units": "l_per_min",
-              "_Quantity__used": false,
-              "_Quantity__handling": null
-            },
-            "fup_mid1oh": {
-              "_magnitude": 0.19507488419734886,
-              "_units": "dimensionless",
-              "_Quantity__used": false,
-              "_Quantity__handling": null
-            },
             "PODOSE_mid": {
               "_magnitude": 15,
               "_units": "milligram",
@@ -135,7 +114,9 @@
               "_Quantity__handling": null
             }
           },
-          "model_changes": {}
+          "model_changes": {},
+          "model_manipulations": {},
+          "discard": false
         }
       ]
     },

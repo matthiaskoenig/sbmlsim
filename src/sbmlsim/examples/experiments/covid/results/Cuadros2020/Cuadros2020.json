@@ -11,7 +11,7 @@
       "source": {
         "source": "/home/mkoenig/git/sbmlsim/src/sbmlsim/examples/experiments/covid/experiments/../models/Cuadros2020/Cuadros2020.xml",
         "path": "/home/mkoenig/git/sbmlsim/src/sbmlsim/examples/experiments/covid/models/Cuadros2020/Cuadros2020.xml",
-        "content": null
+        "content": "None"
       },
       "changes": {}
     }
@@ -35,7 +35,8 @@
           "steps": 74,
           "changes": {},
           "model_changes": {},
-          "model_manipulations": {}
+          "model_manipulations": {},
+          "discard": false
         }
       ]
     }
@@ -44,7 +45,7 @@
     "task_sim1__time": {
       "type": "TASK",
       "index": "time",
-      "unit": "time",
+      "unit": "(86400.0*s)",
       "task": "task_sim1",
       "dataset": null,
       "function": null,

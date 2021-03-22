@@ -11,9 +11,34 @@
       "source": {
         "source": "/home/mkoenig/git/sbmlsim/src/sbmlsim/examples/experiments/midazolam/model/midazolam_body_flat.xml",
         "path": "/home/mkoenig/git/sbmlsim/src/sbmlsim/examples/experiments/midazolam/model/midazolam_body_flat.xml",
-        "content": null
+        "content": "None"
       },
-      "changes": {}
+      "changes": {
+        "KI__MID1OHEX_Vmax": {
+          "_magnitude": 14.259652024532818,
+          "_units": "mmole_per_min",
+          "_Quantity__used": false,
+          "_Quantity__handling": null
+        },
+        "KI__MID1OHEX_Km": {
+          "_magnitude": 0.7051197538875393,
+          "_units": "millimolar",
+          "_Quantity__used": false,
+          "_Quantity__handling": null
+        },
+        "ftissue_mid1oh": {
+          "_magnitude": 99.2324855549143,
+          "_units": "l_per_min",
+          "_Quantity__used": false,
+          "_Quantity__handling": null
+        },
+        "fup_mid1oh": {
+          "_magnitude": 0.19507488419734886,
+          "_units": "dimensionless",
+          "_Quantity__used": false,
+          "_Quantity__handling": null
+        }
+      }
     }
   },
   "tasks": {
@@ -42,27 +67,9 @@
           "end": 15,
           "steps": 600,
           "changes": {
-            "KI__MID1OHEX_Vmax": {
-              "_magnitude": 14.259652024532818,
-              "_units": "mmole_per_min",
-              "_Quantity__used": false,
-              "_Quantity__handling": null
-            },
-            "KI__MID1OHEX_Km": {
-              "_magnitude": 0.7051197538875393,
-              "_units": "millimolar",
-              "_Quantity__used": false,
-              "_Quantity__handling": null
-            },
-            "ftissue_mid1oh": {
-              "_magnitude": 99.2324855549143,
-              "_units": "l_per_min",
-              "_Quantity__used": false,
-              "_Quantity__handling": null
-            },
-            "fup_mid1oh": {
-              "_magnitude": 0.19507488419734886,
-              "_units": "dimensionless",
+            "BW": {
+              "_magnitude": 69,
+              "_units": "kilogram",
               "_Quantity__used": false,
               "_Quantity__handling": null
             },
@@ -71,59 +78,27 @@
               "_units": "mg_per_min",
               "_Quantity__used": false,
               "_Quantity__handling": null
-            },
-            "BW": {
-              "_magnitude": 69,
-              "_units": "kilogram",
-              "_Quantity__used": false,
-              "_Quantity__handling": null
             }
           },
-          "model_changes": {}
+          "model_changes": {},
+          "model_manipulations": {},
+          "discard": false
         },
         {
           "start": 0,
           "end": 300,
           "steps": 600,
           "changes": {
-            "KI__MID1OHEX_Vmax": {
-              "_magnitude": 14.259652024532818,
-              "_units": "mmole_per_min",
-              "_Quantity__used": false,
-              "_Quantity__handling": null
-            },
-            "KI__MID1OHEX_Km": {
-              "_magnitude": 0.7051197538875393,
-              "_units": "millimolar",
-              "_Quantity__used": false,
-              "_Quantity__handling": null
-            },
-            "ftissue_mid1oh": {
-              "_magnitude": 99.2324855549143,
-              "_units": "l_per_min",
-              "_Quantity__used": false,
-              "_Quantity__handling": null
-            },
-            "fup_mid1oh": {
-              "_magnitude": 0.19507488419734886,
-              "_units": "dimensionless",
-              "_Quantity__used": false,
-              "_Quantity__handling": null
-            },
             "Ri_mid": {
               "_magnitude": 0,
               "_units": "mg_per_min",
               "_Quantity__used": false,
               "_Quantity__handling": null
-            },
-            "BW": {
-              "_magnitude": 69,
-              "_units": "kilogram",
-              "_Quantity__used": false,
-              "_Quantity__handling": null
             }
           },
-          "model_changes": {}
+          "model_changes": {},
+          "model_manipulations": {},
+          "discard": false
         }
       ]
     },
@@ -138,27 +113,9 @@
           "end": 15,
           "steps": 100,
           "changes": {
-            "KI__MID1OHEX_Vmax": {
-              "_magnitude": 14.259652024532818,
-              "_units": "mmole_per_min",
-              "_Quantity__used": false,
-              "_Quantity__handling": null
-            },
-            "KI__MID1OHEX_Km": {
-              "_magnitude": 0.7051197538875393,
-              "_units": "millimolar",
-              "_Quantity__used": false,
-              "_Quantity__handling": null
-            },
-            "ftissue_mid1oh": {
-              "_magnitude": 99.2324855549143,
-              "_units": "l_per_min",
-              "_Quantity__used": false,
-              "_Quantity__handling": null
-            },
-            "fup_mid1oh": {
-              "_magnitude": 0.19507488419734886,
-              "_units": "dimensionless",
+            "BW": {
+              "_magnitude": 69,
+              "_units": "kilogram",
               "_Quantity__used": false,
               "_Quantity__handling": null
             },
@@ -167,15 +124,11 @@
               "_units": "mg_per_min",
               "_Quantity__used": false,
               "_Quantity__handling": null
-            },
-            "BW": {
-              "_magnitude": 69,
-              "_units": "kilogram",
-              "_Quantity__used": false,
-              "_Quantity__handling": null
             }
           },
-          "model_changes": {}
+          "model_changes": {},
+          "model_manipulations": {},
+          "discard": false
         },
         {
           "start": 0,
@@ -189,7 +142,9 @@
               "_Quantity__handling": null
             }
           },
-          "model_changes": {}
+          "model_changes": {},
+          "model_manipulations": {},
+          "discard": false
         }
       ]
     },
@@ -204,27 +159,9 @@
           "end": 315,
           "steps": 700,
           "changes": {
-            "KI__MID1OHEX_Vmax": {
-              "_magnitude": 14.259652024532818,
-              "_units": "mmole_per_min",
-              "_Quantity__used": false,
-              "_Quantity__handling": null
-            },
-            "KI__MID1OHEX_Km": {
-              "_magnitude": 0.7051197538875393,
-              "_units": "millimolar",
-              "_Quantity__used": false,
-              "_Quantity__handling": null
-            },
-            "ftissue_mid1oh": {
-              "_magnitude": 99.2324855549143,
-              "_units": "l_per_min",
-              "_Quantity__used": false,
-              "_Quantity__handling": null
-            },
-            "fup_mid1oh": {
-              "_magnitude": 0.19507488419734886,
-              "_units": "dimensionless",
+            "BW": {
+              "_magnitude": 69,
+              "_units": "kilogram",
               "_Quantity__used": false,
               "_Quantity__handling": null
             },
@@ -233,15 +170,11 @@
               "_units": "milligram",
               "_Quantity__used": false,
               "_Quantity__handling": null
-            },
-            "BW": {
-              "_magnitude": 69,
-              "_units": "kilogram",
-              "_Quantity__used": false,
-              "_Quantity__handling": null
             }
           },
-          "model_changes": {}
+          "model_changes": {},
+          "model_manipulations": {},
+          "discard": false
         }
       ]
     }

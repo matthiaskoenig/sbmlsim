@@ -78,20 +78,23 @@
 <code class="python">from pathlib import Path
 from typing import Dict
 
+from sbmlsim.experiment import ExperimentDict, SimulationExperiment
 from sbmlsim.model import AbstractModel
 from sbmlsim.plot import Axis, Figure
 from sbmlsim.simulation import Timecourse, TimecourseSim
-from sbmlsim.experiment import SimulationExperiment, ExperimentDict
 from sbmlsim.task import Task
 
 
 class Cuadros2020(SimulationExperiment):
-
     def models(self) -> Dict[str, AbstractModel]:
         Q_ = self.Q_
         models = {
             "model": AbstractModel(
-                source=Path(__file__).parent / ".." / "models" / "Cuadros2020" / "Cuadros2020.xml",
+                source=Path(__file__).parent
+                / ".."
+                / "models"
+                / "Cuadros2020"
+                / "Cuadros2020.xml",
                 language_type=AbstractModel.LanguageType.SBML,
                 changes={},
             )

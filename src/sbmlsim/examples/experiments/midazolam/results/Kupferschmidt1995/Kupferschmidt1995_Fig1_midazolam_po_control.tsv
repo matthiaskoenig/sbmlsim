@@ -1,13 +1,13 @@
 study	subject	n	intervention	measurement	substance	tissue	mean	mean_pm	mean_se	mean_sd	time	time_unit	mean_unit
-Kupferschmidt1995	all	8	po	concentration	midazolam	plasma	2.426201345742982e-05				0.166666666666667	hr	mole/meter^3
-Kupferschmidt1995	all	8	po	concentration	midazolam	plasma	0.00013969350887748334				0.33333333333333304	hr	mole/meter^3
+Kupferschmidt1995	all	8	po	concentration	midazolam	plasma	2.4262013457429824e-05				0.166666666666667	hr	mole/meter^3
+Kupferschmidt1995	all	8	po	concentration	midazolam	plasma	0.00013969350887748334				0.333333333333333	hr	mole/meter^3
 Kupferschmidt1995	all	8	po	concentration	midazolam	plasma	0.0001484874972372977				0.666666666666667	hr	mole/meter^3
-Kupferschmidt1995	all	8	po	concentration	midazolam	plasma	0.00012340690307212495	34.956959999999995	1.610059919943027e-05	4.553937150033521e-05	1.0	hr	mole/meter^3
-Kupferschmidt1995	all	8	po	concentration	midazolam	plasma	0.00011171482773016378	31.420364000000003	1.5264703715527614e-05	4.317510204021235e-05	1.5	hr	mole/meter^3
+Kupferschmidt1995	all	8	po	concentration	midazolam	plasma	0.00012340690307212492	34.95696	1.610059919943027e-05	4.553937150033521e-05	1.0	hr	mole/meter^3
+Kupferschmidt1995	all	8	po	concentration	midazolam	plasma	0.00011171482773016378	31.420364	1.5264703715527614e-05	4.317510204021235e-05	1.5	hr	mole/meter^3
 Kupferschmidt1995	all	8	po	concentration	midazolam	plasma	9.834886790599443e-05	26.52103	1.6938078632646543e-05	4.7908121045661324e-05	2.0	hr	mole/meter^3
 Kupferschmidt1995	all	8	po	concentration	midazolam	plasma	7.578330898062424e-05	18.966219	1.75632904398222e-05	4.967648707978867e-05	2.5	hr	mole/meter^3
-Kupferschmidt1995	all	8	po	concentration	midazolam	plasma	4.696137435229979e-05	11.416534	1.1916391419660617e-05	3.370464472046088e-05	3.5	hr	mole/meter^3
-Kupferschmidt1995	all	8	po	concentration	midazolam	plasma	2.1293870177549667e-05	5.3692493	4.812050907394218e-06	1.3610535312133325e-05	5.0	hr	mole/meter^3
-Kupferschmidt1995	all	8	po	concentration	midazolam	plasma	1.0908382652685343e-05	2.1903493	4.1847348419734285e-06	1.1836217536908105e-05	7.0	hr	mole/meter^3
+Kupferschmidt1995	all	8	po	concentration	midazolam	plasma	4.696137435229979e-05	11.416534	1.1916391419660616e-05	3.370464472046088e-05	3.5	hr	mole/meter^3
+Kupferschmidt1995	all	8	po	concentration	midazolam	plasma	2.1293870177549663e-05	5.3692493	4.812050907394218e-06	1.3610535312133327e-05	5.0	hr	mole/meter^3
+Kupferschmidt1995	all	8	po	concentration	midazolam	plasma	1.0908382652685345e-05	2.1903493	4.1847348419734285e-06	1.1836217536908105e-05	7.0	hr	mole/meter^3
 Kupferschmidt1995	all	8	po	concentration	midazolam	plasma	3.242316617961248e-06				9.0	hr	mole/meter^3
 Kupferschmidt1995	all	8	po	concentration	midazolam	plasma	2.0753134132265907e-07				24.0	hr	mole/meter^3

@@ -11,7 +11,7 @@
       "source": {
         "source": "/home/mkoenig/git/sbmlsim/src/sbmlsim/examples/experiments/covid/experiments/../models/Carcione2020/Carcione2020.xml",
         "path": "/home/mkoenig/git/sbmlsim/src/sbmlsim/examples/experiments/covid/models/Carcione2020/Carcione2020.xml",
-        "content": null
+        "content": "None"
       },
       "changes": {}
     }
@@ -35,7 +35,8 @@
           "steps": 8001,
           "changes": {},
           "model_changes": {},
-          "model_manipulations": {}
+          "model_manipulations": {},
+          "discard": false
         }
       ]
     }

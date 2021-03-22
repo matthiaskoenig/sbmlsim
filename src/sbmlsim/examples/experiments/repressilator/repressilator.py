@@ -200,8 +200,8 @@ class RepressilatorExperiment(SimulationExperiment):
         }
 
 
-def run(output_path):
-    """Run the example."""
+def run_repressilator_experiments(output_path: Path) -> Path:
+    """Run the repressilator simulation experiments."""
     base_path = Path(__file__).parent
     data_path = base_path
 
@@ -212,11 +212,10 @@ def run(output_path):
             data_path=data_path,
             base_path=base_path,
         )
-        results = runner.run_experiments(
+        _results = runner.run_experiments(
             output_path=output_path / "results", show_figures=True
         )
 
 
 if __name__ == "__main__":
-    output_path = Path(".")
-    run(output_path=output_path)
+    run_repressilator_experiments(Path(__file__).parent / "results")

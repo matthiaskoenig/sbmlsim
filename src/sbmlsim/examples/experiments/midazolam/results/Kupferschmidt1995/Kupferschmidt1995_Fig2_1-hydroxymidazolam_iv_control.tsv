@@ -1,14 +1,14 @@
 study	subject	n	intervention	measurement	substance	tissue	mean	mean_pm	mean_se	mean_sd	time	time_unit	mean_unit
 Kupferschmidt1995	all	8	iv	concentration	1-hydroxymidazolam	plasma	0.0				0.0	hr	mole/meter^3
-Kupferschmidt1995	all	8	iv	concentration	1-hydroxymidazolam	plasma	4.276379461673492e-06	0.8537540000000001	1.778562024575775e-06	5.030533073353627e-06	0.0833333333333333	hr	mole/meter^3
-Kupferschmidt1995	all	8	iv	concentration	1-hydroxymidazolam	plasma	1.540736980690462e-05	4.1459980000000005	3.2774751316559386e-06	9.270099563056754e-06	0.166666666666667	hr	mole/meter^3
-Kupferschmidt1995	all	8	iv	concentration	1-hydroxymidazolam	plasma	1.57666003510825e-05	4.617182700000001	2.2581664716208305e-06	6.38705930052475e-06	0.33333333333333304	hr	mole/meter^3
-Kupferschmidt1995	all	8	iv	concentration	1-hydroxymidazolam	plasma	1.752420421299005e-05	5.4023585	1.718591281451141e-06	4.860910196808717e-06	0.666666666666667	hr	mole/meter^3
-Kupferschmidt1995	all	8	iv	concentration	1-hydroxymidazolam	plasma	1.6224233469865415e-05	5.0331529999999995	1.4988004681100022e-06	4.239247898584609e-06	1.0	hr	mole/meter^3
-Kupferschmidt1995	all	8	iv	concentration	1-hydroxymidazolam	plasma	1.5063648332358102e-05	4.759460400000001	1.138954359274429e-06	3.221449403619718e-06	1.5	hr	mole/meter^3
+Kupferschmidt1995	all	8	iv	concentration	1-hydroxymidazolam	plasma	4.276379461673492e-06	0.853754	1.778562024575775e-06	5.030533073353627e-06	0.0833333333333333	hr	mole/meter^3
+Kupferschmidt1995	all	8	iv	concentration	1-hydroxymidazolam	plasma	1.540736980690462e-05	4.145998	3.2774751316559386e-06	9.270099563056756e-06	0.166666666666667	hr	mole/meter^3
+Kupferschmidt1995	all	8	iv	concentration	1-hydroxymidazolam	plasma	1.57666003510825e-05	4.6171827	2.25816647162083e-06	6.38705930052475e-06	0.333333333333333	hr	mole/meter^3
+Kupferschmidt1995	all	8	iv	concentration	1-hydroxymidazolam	plasma	1.7524204212990048e-05	5.4023585	1.7185912814511405e-06	4.860910196808717e-06	0.666666666666667	hr	mole/meter^3
+Kupferschmidt1995	all	8	iv	concentration	1-hydroxymidazolam	plasma	1.6224233469865415e-05	5.033153	1.4988004681100026e-06	4.23924789858461e-06	1.0	hr	mole/meter^3
+Kupferschmidt1995	all	8	iv	concentration	1-hydroxymidazolam	plasma	1.5063648332358102e-05	4.7594604	1.138954359274429e-06	3.221449403619718e-06	1.5	hr	mole/meter^3
 Kupferschmidt1995	all	8	iv	concentration	1-hydroxymidazolam	plasma	1.2704025746050319e-05	3.816278	1.5387887653598594e-06	4.352351883198537e-06	2.0	hr	mole/meter^3
-Kupferschmidt1995	all	8	iv	concentration	1-hydroxymidazolam	plasma	1.1183741954359272e-05	3.3512964	1.3788958455236977e-06	3.900106411679051e-06	2.5	hr	mole/meter^3
-Kupferschmidt1995	all	8	iv	concentration	1-hydroxymidazolam	plasma	4.945617905207722e-06	1.07565	1.7986021064950258e-06	5.08721498463616e-06	3.5	hr	mole/meter^3
+Kupferschmidt1995	all	8	iv	concentration	1-hydroxymidazolam	plasma	1.1183741954359272e-05	3.3512964	1.378895845523698e-06	3.900106411679051e-06	2.5	hr	mole/meter^3
+Kupferschmidt1995	all	8	iv	concentration	1-hydroxymidazolam	plasma	4.945617905207722e-06	1.07565	1.798602106495026e-06	5.08721498463616e-06	3.5	hr	mole/meter^3
 Kupferschmidt1995	all	8	iv	concentration	1-hydroxymidazolam	plasma	7.044967232299588e-07	0.08374392	4.5948818022235214e-07	1.2996288324411672e-06	5.0	hr	mole/meter^3
 Kupferschmidt1995	all	8	iv	concentration	1-hydroxymidazolam	plasma	3.7875511995318895e-07	0.027056811	2.9959534523112926e-07	8.473836008994263e-07	7.0	hr	mole/meter^3
 Kupferschmidt1995	all	8	iv	concentration	1-hydroxymidazolam	plasma	0.0				9.0	hr	mole/meter^3

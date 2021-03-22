@@ -3,8 +3,8 @@ from sbmlsim.examples.experiments.repressilator import repressilator
 
 
 def test_repressilator_experiment(tmp_path):
-    repressilator.run(output_path=tmp_path)
+    repressilator.run_repressilator_experiment(output_path=tmp_path)
 
 
 def test_glucose_experiment(tmp_path):
-    glucose.glucose_experiment()
+    glucose.run_glucose_experiment()

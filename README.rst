@@ -34,7 +34,7 @@ sbmlsim: SBML simulation made easy
    :alt: Black
 
 
-sbmlsim is a collection of python utilities to simulate to simplify simulations with
+sbmlsim is a collection of python utilities to to simplify simulations with
 `SBML <http://www.sbml.org>`__ models implemented on top of
 `roadrunner <http://libroadrunner.org/>`__. Source code is available from
 `https://github.com/matthiaskoenig/sbmlsim <https://github.com/matthiaskoenig/sbmlsim>`__.

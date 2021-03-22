@@ -22,7 +22,7 @@
             <h2>Models</h2>
             <p>
             <ul>
-                <li><strong>model</strong>: <a href="../../model/midazolam_body_flat.xml">../../model/midazolam_body_flat.xml</a></li>
+                <li><strong>model</strong>: <a href="../../../../../home/mkoenig/git/sbmlsim/src/sbmlsim/examples/experiments/midazolam/model/midazolam_body_flat.xml">../../../../../home/mkoenig/git/sbmlsim/src/sbmlsim/examples/experiments/midazolam/model/midazolam_body_flat.xml</a></li>
             </ul>
             </p>
 
@@ -61,7 +61,7 @@
 
             <h2>Code</h2>
             <p>
-                <a href="../../experiments/kupferschmidt1995.py">../../experiments/kupferschmidt1995.py</a>
+                <a href="../../../../../home/mkoenig/git/sbmlsim/src/sbmlsim/examples/experiments/midazolam/experiments/kupferschmidt1995.py">../../../../../home/mkoenig/git/sbmlsim/src/sbmlsim/examples/experiments/midazolam/experiments/kupferschmidt1995.py</a>
             <pre>
 <code class="python">from typing import Dict, List
 
@@ -132,13 +132,11 @@ class Kupferschmidt1995(MidazolamSimulationExperiment):
                 "end": 1500,
                 "steps": 3000,
                 "dose": {"IVDOSE_mid": mid_iv},
-                "change": self.default_changes(),
             },
             "mid_po_c": {
                 "end": 1500,
                 "steps": 3000,
                 "dose": {"PODOSE_mid": mid_po},
-                "change": self.default_changes(),
             },
         }
         tcsims = {}
@@ -149,7 +147,7 @@ class Kupferschmidt1995(MidazolamSimulationExperiment):
                         start=0,
                         end=value["end"],
                         steps=value["steps"],
-                        changes={**value["change"], **value["dose"], "BW": bodyweight},
+                        changes={**value["dose"], "BW": bodyweight},
                     )
                 ]
             )

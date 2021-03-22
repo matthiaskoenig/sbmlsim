@@ -4,21 +4,11 @@ Example simulation experiment.
 from pathlib import Path
 from typing import Dict
 
-import numpy as np
-
-from sbmlsim.data import Data
 from sbmlsim.experiment import ExperimentRunner, SimulationExperiment
 from sbmlsim.model import AbstractModel, RoadrunnerSBMLModel
 from sbmlsim.plot import Axis, Figure
-from sbmlsim.simulation import (
-    AbstractSim,
-    Dimension,
-    ScanSim,
-    Timecourse,
-    TimecourseSim,
-)
-from sbmlsim.simulation.sensititvity import ModelSensitivity, SensitivityType
-from sbmlsim.simulator.simulation_ray import SimulatorParallel, SimulatorSerial
+from sbmlsim.simulation import AbstractSim, Timecourse, TimecourseSim
+from sbmlsim.simulator.simulation_ray import SimulatorParallel
 from sbmlsim.task import Task
 
 

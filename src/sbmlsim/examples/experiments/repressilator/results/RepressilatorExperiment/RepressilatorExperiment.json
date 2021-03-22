@@ -11,7 +11,7 @@
       "source": {
         "source": "/home/mkoenig/git/sbmlsim/src/sbmlsim/test/data/models/repressilator.xml",
         "path": "/home/mkoenig/git/sbmlsim/src/sbmlsim/test/data/models/repressilator.xml",
-        "content": null
+        "content": "None"
       },
       "changes": {}
     },
@@ -23,11 +23,11 @@
       "source": {
         "source": "/home/mkoenig/git/sbmlsim/src/sbmlsim/test/data/models/repressilator.xml",
         "path": "/home/mkoenig/git/sbmlsim/src/sbmlsim/test/data/models/repressilator.xml",
-        "content": null
+        "content": "None"
       },
       "changes": {
-        "beta": {
-          "_magnitude": 0,
+        "X": {
+          "_magnitude": 100,
           "_units": "dimensionless",
           "_Quantity__used": false,
           "_Quantity__handling": null
@@ -73,7 +73,9 @@
           "end": 100,
           "steps": 2000,
           "changes": {},
-          "model_changes": {}
+          "model_changes": {},
+          "model_manipulations": {},
+          "discard": false
         },
         {
           "start": 0,
@@ -93,7 +95,9 @@
               "_Quantity__handling": null
             }
           },
-          "model_changes": {}
+          "model_changes": {},
+          "model_manipulations": {},
+          "discard": false
         }
       ]
     },
@@ -229,7 +233,7 @@
             },
             "yaxis": {
               "sid": "plot0_yaxis",
-              "name": "data [dimensionless]",
+              "name": "data [-]",
               "label": "data",
               "unit": "dimensionless",
               "scale": "LINEAR",
@@ -373,7 +377,7 @@
             "name": null,
             "xaxis": {
               "sid": "plot0_xaxis",
-              "name": "data [dimensionless]",
+              "name": "data [-]",
               "label": "data",
               "unit": "dimensionless",
               "scale": "LINEAR",
@@ -385,7 +389,7 @@
             },
             "yaxis": {
               "sid": "plot0_yaxis",
-              "name": "data [dimensionless]",
+              "name": "data [-]",
               "label": "data",
               "unit": "dimensionless",
               "scale": "LINEAR",
@@ -438,7 +442,7 @@
             "name": null,
             "xaxis": {
               "sid": "plot1_xaxis",
-              "name": "data [dimensionless]",
+              "name": "data [-]",
               "label": "data",
               "unit": "dimensionless",
               "scale": "LOG10",
@@ -450,7 +454,7 @@
             },
             "yaxis": {
               "sid": "plot1_yaxis",
-              "name": "data [dimensionless]",
+              "name": "data [-]",
               "label": "data",
               "unit": "dimensionless",
               "scale": "LOG10",
