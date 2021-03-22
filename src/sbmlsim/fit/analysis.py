@@ -793,15 +793,11 @@ class OptimizationAnalysis:
         if self.show_titles:
             ax.set_title("Optimization traces")
         for run in range(self.optres.size):
-            df_run = self.optres.df_traces[
-                self.optres.df_traces.run_demo_experiment == run
-            ]
+            df_run = self.optres.df_traces[self.optres.df_traces.run == run]
             ax.plot(range(len(df_run)), df_run.cost, "-", alpha=0.8)
 
         for run in range(self.optres.size):
-            df_run = self.optres.df_traces[
-                self.optres.df_traces.run_demo_experiment == run
-            ]
+            df_run = self.optres.df_traces[self.optres.df_traces.run == run]
             ax.plot(
                 len(df_run) - 1, df_run.cost.iloc[-1], "o", color="black", alpha=0.8
             )
