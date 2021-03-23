@@ -138,7 +138,7 @@ class Test(object):
 
         # is supported algorithm
         if not SEDMLCodeFactory.is_supported_algorithm_for_simulation_type(
-            kisao=kisao, simType=simType
+            kisao=kisao, sim_type=simType
         ):
             warnings.warn(
                 "Algorithm {} unsupported for simulation {} type {} in task {}".format(

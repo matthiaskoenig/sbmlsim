@@ -1,8 +1,12 @@
 from pathlib import Path
 
+from pprint import pprint
+
 from sbmlsim.combine.sedml.io import read_sedml
 from sbmlsim.combine.sedml.parser import SEDMLParser
-from sbmlsim.experiment import SimulationExperiment
+from sbmlsim.experiment import SimulationExperiment, ExperimentRunner
+from sbmlsim.simulator import SimulatorSerial
+from sbmlsim.simulator.simulation_ray import SimulatorParallel
 
 
 if __name__ == "__main__":
@@ -17,21 +21,35 @@ if __name__ == "__main__":
 
     sed_parser = SEDMLParser(doc, working_dir=working_dir)
 
+    print("*" * 80)
     print("--- MODELS ---")
-    print(sed_parser.models)
+    pprint(sed_parser.models)
 
     print("--- DATA DESCRIPTION ---")
-    print(sed_parser.data_descriptions)
+    pprint(sed_parser.data_descriptions)
 
-    # models ->
+    print("--- SIMULATION ---")
+    pprint(sed_parser.simulations)
 
+    print("*" * 80)
+    # analyze simulation experiment
     print(sed_parser.exp_class)
     exp = sed_parser.exp_class()  # type: SimulationExperiment
     exp.initialize()
+    print(exp.models)
 
-    print("exp_models", exp.models())
-
-    # TODO:
     # execute simulation experiment
+    base_path = Path(__file__).parent
+    data_path = base_path
+    runner = ExperimentRunner(
+        [sed_parser.exp_class],
+        simulator=SimulatorSerial(),
+        data_path=data_path,
+        base_path=base_path,
+    )
+    _results = runner.run_experiments(
+        output_path=base_path / "results", show_figures=True
+    )
 
-    # TODO: write to new SED-ML file
+    # TODO: write experiment to SED-ML file
+    # serialization of experiments

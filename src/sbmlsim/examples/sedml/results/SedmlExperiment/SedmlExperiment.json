@@ -1,0 +1,48 @@
+{
+  "experiment_id": "SedmlExperiment",
+  "base_path": "/home/mkoenig/git/sbmlsim/src/sbmlsim/examples/sedml",
+  "data_path": "[PosixPath('/home/mkoenig/git/sbmlsim/src/sbmlsim/examples/sedml')]",
+  "models": {
+    "model1": {
+      "sid": "model1",
+      "name": "",
+      "language": "SBML",
+      "language_type": "SBML",
+      "source": {
+        "source": "BIOMD0000000012_urn.xml",
+        "path": "/home/mkoenig/git/sbmlsim/src/sbmlsim/examples/sedml/experiments/BIOMD0000000012_urn.xml",
+        "content": "None"
+      },
+      "changes": {}
+    },
+    "model2": {
+      "sid": "model2",
+      "name": "",
+      "language": "SBML",
+      "language_type": "SBML",
+      "source": {
+        "source": "BIOMD0000000012_urn.xml",
+        "path": "/home/mkoenig/git/sbmlsim/src/sbmlsim/examples/sedml/experiments/BIOMD0000000012_urn.xml",
+        "content": "None"
+      },
+      "changes": {
+        "ps_a": {
+          "_magnitude": 0.013,
+          "_units": "dimensionless",
+          "_Quantity__used": false,
+          "_Quantity__handling": null
+        },
+        "ps_0": {
+          "_magnitude": 1.3e-05,
+          "_units": "dimensionless",
+          "_Quantity__used": false,
+          "_Quantity__handling": null
+        }
+      }
+    }
+  },
+  "tasks": {},
+  "simulations": {},
+  "data": {},
+  "figures": {}
+}

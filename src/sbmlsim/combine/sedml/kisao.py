@@ -128,18 +128,18 @@ KISAOS_ALGORITHMPARAMETERS = {
 }
 
 
-def is_supported_algorithm_for_simulation_type(kisao, simType):
+def is_supported_algorithm_for_simulation_type(kisao, sim_type):
     """Check Algorithm Kisao Id is supported for simulation.
 
     :return: is supported
     :rtype: bool
     """
     supported = []
-    if simType == libsedml.SEDML_SIMULATION_UNIFORMTIMECOURSE:
+    if sim_type == libsedml.SEDML_SIMULATION_UNIFORMTIMECOURSE:
         supported = KISAOS_UNIFORMTIMECOURSE
-    elif simType == libsedml.SEDML_SIMULATION_ONESTEP:
+    elif sim_type == libsedml.SEDML_SIMULATION_ONESTEP:
         supported = KISAOS_ONESTEP
-    elif simType == libsedml.SEDML_SIMULATION_STEADYSTATE:
+    elif sim_type == libsedml.SEDML_SIMULATION_STEADYSTATE:
         supported = KISAOS_STEADYSTATE
     return kisao in supported
 
@@ -163,7 +163,7 @@ def integrator_from_kisao(kisao):
     if kisao in KISAOS_RK45:
         return "rk45"
     if kisao in KISAOS_LSODA:
-        logger.warn("Roadrunner does not support LSODA. Using CVODE instead.")
+        logger.warning("Roadrunner does not support LSODA. Using CVODE instead.")
         return "cvode"  # just use cvode
     return None
 

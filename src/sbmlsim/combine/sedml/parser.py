@@ -97,7 +97,7 @@ import re
 import warnings
 from collections import OrderedDict, namedtuple
 from pathlib import Path
-from typing import Dict, List
+from typing import Dict, List, Union
 
 import libsedml
 import numpy as np
@@ -110,6 +110,7 @@ from sbmlsim.data import DataSet
 from sbmlsim.experiment import ExperimentDict, SimulationExperiment
 from sbmlsim.model import model_resources
 from sbmlsim.model.model import AbstractModel
+from sbmlsim.simulation import ScanSim, TimecourseSim, Timecourse
 from sbmlsim.units import UnitRegistry
 
 
@@ -151,27 +152,42 @@ class SEDMLParser(object):
 
         # resolve original model source and changes
         model_sources, model_changes = self.resolve_model_changes()
-        for sed_model in self.sed_doc.getListOfModels():  # type: libsedml.SedModel
+        sed_model: libsedml.SedModel
+        for sed_model in self.sed_doc.getListOfModels():
             mid = sed_model.getId()
             source = model_sources[mid]
             sed_changes = model_changes[mid]
             self.models[mid] = self.parse_model(
                 sed_model, source=source, sed_changes=sed_changes
             )
-
         print(f"models: {self.models}")
 
         # --- DataDescriptions ---
         self.data_descriptions = {}
-        for (
-            sed_dd
-        ) in sed_doc.getListOfDataDescriptions():  # type: libsedml.SedDataDescription
+        sed_dd: libsedml.SedDataDescription
+        for sed_dd in sed_doc.getListOfDataDescriptions():
             did = sed_dd.getId()
             self.data_descriptions[did] = DataDescriptionParser.parse(
                 sed_dd, self.working_dir
             )
-
         print(f"data_descriptions: {self.data_descriptions}")
+
+        # --- Simulations ---
+        self.simulations = {}
+        sed_sim: libsedml.SedSimulation
+        for sed_sim in sed_doc.getListOfSimulations():
+            self.simulations[sed_sim.getId()] = self.parse_simulation(sed_sim)
+        print(f"simulations: {self.simulations}")
+
+        # --- Tasks ---
+        self.tasks = {}
+        sed_task: libsedml.SedTask
+        # for sed_task in sed_doc.getListOfTasks():
+        #     tid = sed_task.getId()
+        #     self.tasks[tid] = self.parse_task(sed_task)
+        print(f"tasks: {self.tasks}")
+
+        # --- Figures ---
 
         # TODO
         # Create the experiment object
@@ -193,17 +209,38 @@ class SEDMLParser(object):
             },
         )
 
-        # --- Simulations ---
 
-        # --- Tasks ---
-        self.tasks = {}
-        for sed_task in sed_doc.getListOfTasks():  # type: libsedml.SedTask
-            tid = sed_task.getId()
-            self.tasks[tid] = self.parse_task(sed_task)
-
-        print(f"tasks: {self.tasks}")
 
     # --- MODELS ---
+    @staticmethod
+    def parse_xpath_target(xpath: str) -> str:
+        """Resolve targets in xpath expression.
+
+        Uses a heuristics to figure out the targets.
+        # FIXME: SED-ML amount/species targets
+        """
+
+        # resolve target
+        xpath = xpath.replace('"', "'")
+        match = re.findall(r"id='(.*?)'", xpath)
+        if (match is None) or (len(match) == 0):
+            warnings.warn(f"xpath could not be resolved: {xpath}")
+        target = match[0]
+
+        if ("model" in xpath) and ("parameter" in xpath):
+            # parameter value change
+            pass
+        elif ("model" in xpath) and ("species" in xpath):
+            # species concentration change
+            pass
+        elif ("model" in xpath) and ("id" in xpath):
+            # other
+            pass
+        else:
+            raise ValueError(f"Unsupported target in xpath: {xpath}")
+
+        return target
+
     def parse_model(
         self,
         sed_model: libsedml.SedModel,
@@ -217,10 +254,12 @@ class SEDMLParser(object):
         :param sed_model:
         :return:
         """
-        changes = OrderedDict()
+        changes = dict()
         for sed_change in sed_changes:
             d = self.parse_change(sed_change)
-            changes.update(d)
+            for xpath, value in d.items():
+                target = self.parse_xpath_target(xpath)
+                changes[target] = value
 
         mid = sed_model.getId()
         model = AbstractModel(
@@ -346,8 +385,8 @@ class SEDMLParser(object):
             # TODO: libsedml.SEDML_CHANGE_CHANGEXML
             return {}
 
-    def parse_simulation(self, sed_sim: libsedml.SedSimulation):
-        """ Parse simulation information. """
+    def parse_simulation(self, sed_sim: libsedml.SedSimulation) -> Union[TimecourseSim]:
+        """ Parse simulation information."""
         sim_type = sed_sim.getTypeCode()
         algorithm = sed_sim.getAlgorithm()
         if algorithm is None:
@@ -369,69 +408,43 @@ class SEDMLParser(object):
                 f"'{sed_sim.getId()}' of  type '{sim_type}'"
             )
 
-        # TODO: handle all the algorithm parameters
-        """
-        # set integrator/solver
-        integratorName = SEDMLCodeFactory.integrator_from_kisao(kisao)
-        if not integratorName:
-            warnings.warn(
-                "No integrator exists for {} in roadrunner".format(kisao))
-            return lines
+        if sim_type == libsedml.SEDML_SIMULATION_UNIFORMTIMECOURSE:
+            initial_time: float = sed_sim.getInitialTime()
+            output_start_time: float = sed_sim.getOutputStartTime()
+            output_end_time: float = sed_sim.getOutputEndTime()
+            number_of_points: int = sed_sim.getNumberOfPoints()
 
-        if simType is libsedml.SEDML_SIMULATION_STEADYSTATE:
-            lines.append(
-                "{}.setSteadyStateSolver('{}')".format(mid, integratorName))
-        else:
-            lines.append("{}.setIntegrator('{}')".format(mid, integratorName))
+            # FIXME: handle time offset correctly (either separate presimulation)
+            # FIXME: impoartant to have the correct numbers of points
+            tcsim = TimecourseSim(
+                timecourses=[
+                    Timecourse(
+                        start=initial_time,
+                        end=output_end_time,
+                        steps=number_of_points-1,
+                    ),
+                ],
+                time_offset=output_start_time
+            )
+            return tcsim
 
-        # use fixed step by default for stochastic sims
-        if integratorName == 'gillespie':
-            lines.append("{}.integrator.setValue('{}', {})".format(mid,
-                                                                   'variable_step_size',
-                                                                   False))
+        elif sim_type == libsedml.SEDML_SIMULATION_ONESTEP:
+            step: float = sed_sim.getStep()
+            tcsim = TimecourseSim(
+                timecourses=[
+                    Timecourse(
+                        start=0,
+                        end=step,
+                        steps=2,
+                    ),
+                ]
+            )
+            return tcsim
 
-        if kisao == "KISAO:0000288":  # BDF
-            lines.append(
-                "{}.integrator.setValue('{}', {})".format(mid, 'stiff', True))
-        elif kisao == "KISAO:0000280":  # Adams-Moulton
-            lines.append(
-                "{}.integrator.setValue('{}', {})".format(mid, 'stiff', False))
+        elif sim_type == libsedml.SEDML_SIMULATION_STEADYSTATE:
+            raise NotImplementedError("steady state simulation not yet supported")
 
-        # integrator/solver settings (AlgorithmParameters)
-        for par in algorithm.getListOfAlgorithmParameters():
-            pkey = SEDMLCodeFactory.algorithm_parameter_to_parameter_key(par)
-            # only set supported algorithm paramters
-            if pkey:
-                if pkey.dtype is str:
-                    value = "'{}'".format(pkey.value)
-                else:
-                    value = pkey.value
-
-                if value == str('inf') or pkey.value == float('inf'):
-                    value = "float('inf')"
-                else:
-                    pass
-
-                if simType is libsedml.SEDML_SIMULATION_STEADYSTATE:
-                    lines.append(
-                        "{}.steadyStateSolver.setValue('{}', {})".format(mid,
-                                                                         pkey.key,
-                                                                         value))
-                else:
-                    lines.append(
-                        "{}.integrator.setValue('{}', {})".format(mid, pkey.key,
-                                                                  value))
-
-        if simType is libsedml.SEDML_SIMULATION_STEADYSTATE:
-            lines.append(
-                "if {model}.conservedMoietyAnalysis == False: {model}.conservedMoietyAnalysis = True".format(
-                    model=mid))
-        else:
-            lines.append(
-                "if {model}.conservedMoietyAnalysis == True: {model}.conservedMoietyAnalysis = False".format(
-                    model=mid))
-
-        """
+        # TODO/FIXME: handle all the algorithm parameters as integrator parameters
 
     def parse_task(self, sed_task: libsedml.SedAbstractTask):
         """ Parse arbitrary task (repeated or simple, or simple repeated)."""
@@ -476,27 +489,9 @@ class SEDMLParser(object):
                 logger.error("Unsupported task: {}".format(task_type))
 
     def _parse_simple_task(self, task_node: TaskNode):
-        print("parse simple task")
+        print("parse simple task - not implemented")
 
-        for ksub, subtask in enumerate(subtasks):
-            t = doc.getTask(subtask.getTask())
 
-            resultVariable = "__subtask__".format(t.getId())
-            selections = SEDMLCodeFactory.selectionsForTask(doc=doc, task=task)
-            if t.getTypeCode() == libsedml.SEDML_TASK:
-                forLines.extend(
-                    SEDMLCodeFactory.subtaskToPython(
-                        doc,
-                        task=t,
-                        selections=selections,
-                        resultVariable=resultVariable,
-                    )
-                )
-                forLines.append("{}.extend([__subtask__])".format(task.getId()))
-
-            elif t.getTypeCode() == libsedml.SEDML_TASK_REPEATEDTASK:
-                forLines.extend(SEDMLCodeFactory.repeatedTaskToPython(doc, task=t))
-                forLines.append("{}.extend({})".format(task.getId(), t.getId()))
 
         return
 
@@ -506,13 +501,33 @@ class SEDMLParser(object):
             f"Task type is not supported: {node.task.getTypeCode()}"
         )
         # TODO: implement
-        return
+
+        # for ksub, subtask in enumerate(subtasks):
+        #     t = doc.getTask(subtask.getTask())
+        #
+        #     resultVariable = "__subtask__".format(t.getId())
+        #     selections = SEDMLCodeFactory.selectionsForTask(doc=doc, task=task)
+        #     if t.getTypeCode() == libsedml.SEDML_TASK:
+        #         forLines.extend(
+        #             SEDMLCodeFactory.subtaskToPython(
+        #                 doc,
+        #                 task=t,
+        #                 selections=selections,
+        #                 resultVariable=resultVariable,
+        #             )
+        #         )
+        #         forLines.append("{}.extend([__subtask__])".format(task.getId()))
+        #
+        #     elif t.getTypeCode() == libsedml.SEDML_TASK_REPEATEDTASK:
+        #         forLines.extend(SEDMLCodeFactory.repeatedTaskToPython(doc, task=t))
+        #         forLines.append("{}.extend({})".format(task.getId(), t.getId()))
+
 
     def _parse_repeated_task(self, node: TaskNode):
         print("repeated task")
         # repeated tasks will be translated into multidimensional scans
         raise NotImplementedError
-        return
+        # TODO: implement
 
     def data_generators_for_task(
         self,
