@@ -10,12 +10,17 @@ if __name__ == "__main__":
     base_path = Path(__file__).parent
     working_dir = base_path / "experiments"
     sedml_path = working_dir / "repressilator_sedml.xml"
+
     doc, working_dir, input_type = read_sedml(
         source=str(sedml_path), working_dir=working_dir
     )
 
     sed_parser = SEDMLParser(doc, working_dir=working_dir)
+
+    print("--- MODELS ---")
     print(sed_parser.models)
+
+    print("--- DATA DESCRIPTION ---")
     print(sed_parser.data_descriptions)
 
     # models ->

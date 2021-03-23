@@ -170,9 +170,11 @@ class SEDMLParser(object):
             self.data_descriptions[did] = DataDescriptionParser.parse(
                 sed_dd, self.working_dir
             )
+
         print(f"data_descriptions: {self.data_descriptions}")
 
-        # Create the experiment class
+        # TODO
+        # Create the experiment object
         def f_models(obj) -> Dict[str, AbstractModel]:
             return ExperimentDict(self.models)
 
@@ -226,6 +228,7 @@ class SEDMLParser(object):
             sid=mid,
             name=sed_model.getName(),
             language=sed_model.getLanguage(),
+            language_type=None,
             base_path=self.working_dir,
             changes=changes,
             selections=None,
