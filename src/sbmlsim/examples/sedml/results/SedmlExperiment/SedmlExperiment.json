@@ -42,7 +42,25 @@
     }
   },
   "tasks": {},
-  "simulations": {},
+  "simulations": {
+    "sim1": {
+      "type": "TimecourseSim",
+      "selections": null,
+      "reset": true,
+      "time_offset": 0.0,
+      "timecourses": [
+        {
+          "start": 0.0,
+          "end": 1000.0,
+          "steps": 999,
+          "changes": {},
+          "model_changes": {},
+          "model_manipulations": {},
+          "discard": false
+        }
+      ]
+    }
+  },
   "data": {},
   "figures": {}
 }

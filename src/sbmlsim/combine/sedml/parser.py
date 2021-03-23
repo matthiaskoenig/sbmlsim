@@ -110,7 +110,7 @@ from sbmlsim.data import DataSet
 from sbmlsim.experiment import ExperimentDict, SimulationExperiment
 from sbmlsim.model import model_resources
 from sbmlsim.model.model import AbstractModel
-from sbmlsim.simulation import ScanSim, TimecourseSim, Timecourse
+from sbmlsim.simulation import ScanSim, TimecourseSim, Timecourse, AbstractSim
 from sbmlsim.units import UnitRegistry
 
 
@@ -187,9 +187,9 @@ class SEDMLParser(object):
         #     self.tasks[tid] = self.parse_task(sed_task)
         print(f"tasks: {self.tasks}")
 
-        # --- Figures ---
+        # --- Figures/Reports ---
+        # TODO: create figures and reports
 
-        # TODO
         # Create the experiment object
         def f_models(obj) -> Dict[str, AbstractModel]:
             return ExperimentDict(self.models)
@@ -200,16 +200,18 @@ class SEDMLParser(object):
             # FIXME: convert to DataSets & add units
             return ExperimentDict(self.data_descriptions)
 
+        def f_simulations(obj) -> Dict[str, AbstractSim]:
+            return ExperimentDict(self.simulations)
+
         self.exp_class = type(
             "SedmlExperiment",
             (SimulationExperiment,),
             {
                 "models": f_models,
                 "datasets": f_datasets,
+                "simulations": f_simulations,
             },
         )
-
-
 
     # --- MODELS ---
     @staticmethod

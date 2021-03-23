@@ -22,21 +22,24 @@ if __name__ == "__main__":
     sed_parser = SEDMLParser(doc, working_dir=working_dir)
 
     print("*" * 80)
-    print("--- MODELS ---")
+    print("\n--- MODELS ---")
     pprint(sed_parser.models)
 
-    print("--- DATA DESCRIPTION ---")
+    print("\n--- DATA DESCRIPTIONS ---")
     pprint(sed_parser.data_descriptions)
 
-    print("--- SIMULATION ---")
+    print("\n--- SIMULATIONS ---")
     pprint(sed_parser.simulations)
+
+    print("\n--- TASKS ---")
+    pprint(sed_parser.tasks)
 
     print("*" * 80)
     # analyze simulation experiment
-    print(sed_parser.exp_class)
+    # print(sed_parser.exp_class)
     exp = sed_parser.exp_class()  # type: SimulationExperiment
     exp.initialize()
-    print(exp.models)
+    print(exp)
 
     # execute simulation experiment
     base_path = Path(__file__).parent
