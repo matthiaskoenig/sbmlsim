@@ -10,18 +10,21 @@ When working with COMBINE archives these wrapper functions should be used.
 """
 # FIXME: handle the adding of metadata
 
+import logging
 import os
+import pprint
 import shutil
 import tempfile
 import warnings
 import zipfile
 from pathlib import Path
-from typing import List, Iterator, Iterable
+from typing import Any, Iterable, Iterator, List
 
 import libcombine
 
 
-import pprint
+logger = logging.getLogger(__name__)
+
 
 class Creator:
     """Helper class to store the creator information.
@@ -29,8 +32,9 @@ class Creator:
     FIXME: reuse sbmlutils creators
     """
 
-    def __init__(self, given_name: str, family_name: str,
-                 organization: str, email: str):
+    def __init__(
+        self, given_name: str, family_name: str, organization: str, email: str
+    ):
         self.given_name = given_name
         self.family_name = family_name
         self.organization = organization
@@ -84,21 +88,39 @@ class Entry:
 class Omex:
     """Combine archive class"""
 
-    MANIFEST_PATTERN = "manifest.xml"
-    METADATA_PATTERN = "metadata.*"
-
     def __init__(self, omex_path: Path, working_dir: Path):
         """Create combine archive."""
+        if not working_dir.exists():
+            raise IOError("Working directory does not exist: {working_dir}")
+
         self.omex_path: Path = omex_path
-        self.working_dir: Path
+        self.working_dir: Path = working_dir
+
+    def __repr__(self) -> str:
+        """Get representation string."""
+        return f"Omex({self.path}, working_dir={self.working_dir})"
+
+    def __str__(self) -> str:
+        """Get contents of archive string."""
+        return pprint.pformat(self.list_contents())
+
+    def _omex_init(self) -> libcombine.CombineArchive:
+        """Initialize omex from archive.
+
+        Call omex.cleanUp after finishing.
+        """
+        omex: libcombine.CombineArchive = libcombine.CombineArchive()
+        if omex.initializeFromArchive(str(self.omex_path)) is None:
+            raise IOError(f"Invalid COMBINE Archive: {self.omex_path}")
+        return omex
 
     @classmethod
     def from_directory(
         cls,
-        directory: Path,
         omex_path: Path,
+        directory: Path,
         creators=None,
-    ):
+    ) -> "Omex":
         """Creates a COMBINE archive from a given folder.
 
         The file types are inferred,
@@ -112,7 +134,7 @@ class Omex:
         :return:
         """
 
-        manifest_path: Path = directory / cls.MANIFEST_PATTERN
+        manifest_path: Path = directory / "manifest.xml"
 
         if manifest_path.exists():
             warnings.warn(
@@ -125,7 +147,7 @@ class Omex:
         entries = [
             Entry(
                 location=".",
-                format="http://identifiers.org/combine.specifications/omex",
+                format="https://identifiers.org/combine.specifications/omex",
                 master=False,
             )
         ]
@@ -143,82 +165,80 @@ class Omex:
 
                 entries.append(
                     Entry(
-                        location=location, format=format, master=master, creators=creators
+                        location=location,
+                        format=format,
+                        master=master,
+                        creators=creators,
                     )
                 )
 
         # create additional metadata if available
 
         # write all the entries
-        return cls.from_entries(entries=entries, omex_path=omex_path, working_dir=directory)
+        return cls.from_entries(
+            omex_path=omex_path, entries=entries, working_dir=directory
+        )
 
     @classmethod
-    def from_entries(cls, omex_path: str, entries: Iterable[Entry], workingDir):
+    def from_entries(
+        cls, omex_path: Path, entries: Iterable[Entry], working_dir: Path
+    ) -> "Omex":
         """Creates combine archive from given entries.
 
-        Overwrites existing combine archive at omexPath.
+        Overwrites existing combine archive at omex_path.
 
+        :param omex_path: Path of archive
         :param entries:
-        :param workingDir:
+        :param working_dir:
         :return:
         """
-        _addEntriesToArchive(omex_path, entries, workingDir=workingDir, add_entries=False)
-        print("*" * 80)
-        print("Archive created:\n\t", omex_path)
-        print("*" * 80)
+        omex = Omex(omex_path=omex_path, working_dir=working_dir)
+        return omex._from_entries(entries, add_entries=False)
 
+    def _from_entries(self, entries: Iterable[Entry], add_entries: bool):
+        """Create archive from given entries.
 
-    @staticmetho
-    def _addEntriesToArchive(entries, workingDir, add_entries: bool):
-        """
-
-        :param archive:
-        :param entries:
-        :param workingDir:
+        :param entries: entries which should be in the archive.
+        :param add_entries: boolean flag to add entries or create new archive
         :return:
         """
-        omexPath = os.path.abspath(omexPath)
-        print("omexPath:", omexPath)
-        print("workingDir:", workingDir)
-
-        if not os.path.exists(workingDir):
-            raise IOError("Working directory does not exist: {}".format(workingDir))
 
         if add_entries is False:
-            if os.path.exists(omexPath):
+            if self.omex_path.exists():
                 # delete the old omex file
-                warnings.warn("Combine archive is overwritten: {}".format(omexPath))
-                os.remove(omexPath)
+                logger.warning(f"Combine archive is overwritten: {self.omex_path}")
+                os.remove(str(self.omex_path))
 
         archive = libcombine.CombineArchive()
 
         if add_entries is True:
             # use existing entries
-            if os.path.exists(omexPath):
+            if self.omex_path.exists():
                 # init archive from existing content
-                if archive.initializeFromArchive(omexPath) is None:
-                    raise IOError("Combine Archive is invalid: ", omexPath)
+                if archive.initializeFromArchive(self.omex_path) is None:
+                    raise IOError(f"Combine Archive is invalid: {self.omex_path}")
 
         # timestamp
         time_now = libcombine.OmexDescription.getCurrentDateAndTime()
 
-        print("*" * 80)
         for entry in entries:
             print(entry)
             location = entry.location
-            path = os.path.join(workingDir, location)
+            path = os.path.join(str(self.working_dir), location)
             if not os.path.exists(path):
-                raise IOError("File does not exist at given location: {}".format(path))
+                raise IOError(f"File does not exist at given location: {path}")
 
             archive.addFile(path, location, entry.format, entry.master)
 
             if entry.description or entry.creators:
-                omex_d = libcombine.OmexDescription()
-                omex_d.setAbout(location)
-                omex_d.setCreated(time_now)
+                omex_description: libcombine.OmexDescription = (
+                    libcombine.OmexDescription()
+                )
+                omex_description.setAbout(location)
+                omex_description.setCreated(time_now)
 
                 if entry.description:
-                    omex_d.setDescription(entry.description)
+                    omex_description.setDescription(entry.description)
 
                 if entry.creators:
                     for c in entry.creators:
@@ -227,27 +247,25 @@ class Omex:
                         creator.setGivenName(c.given_name)
                         creator.setEmail(c.email)
                         creator.setOrganization(c.organization)
-                        omex_d.addCreator(creator)
+                        omex_description.addCreator(creator)
 
-                archive.addMetadata(location, omex_d)
+                archive.addMetadata(location, omex_description)
 
-        archive.writeToFile(omexPath)
+        archive.writeToFile(self.omex_path)
         archive.cleanUp()
 
-
-    def extract(self, working_dir: Path=None, method: str = "zip") -> None:
-        """Extracts combine archive to working directory.
+    def extract(self, output_dir: Path = None, method: str = "zip") -> None:
+        """Extract combine archive to working directory.
 
         The zip method extracts all entries in the zip, the omex method
         only extracts the entries listed in the manifest.
         In some archives not all content is listed in the manifest.
 
-        :param omex_path: COMBINE archive
         :param output_dir: output directory
         :param method: method to extract content, either 'zip' or 'omex'
         :return:
         """
-        if working_dir is None:
+        if output_dir is None:
             output_dir = self.working_dir
 
         if method == "zip":
@@ -256,123 +274,102 @@ class Omex:
             zip_ref.close()
 
         elif method == "omex":
-            omex = libcombine.CombineArchive()
-            if omex.initializeFromArchive(str(omex_path)) is None:
-                raise IOError(f"Invalid COMBINE archive: {omex_path}")
-
-            for i in range(omex.getNumEntries()):
-                entry = omex.getEntry(i)
+            archive: libcombine.CombineArchive = self._omex_init()
+            for i in range(archive.getNumEntries()):
+                entry = archive.getEntry(i)
                 location = entry.getLocation()
                 filename = os.path.join(output_dir, location)
-                omex.extractEntry(location, filename)
+                archive.extractEntry(location, filename)
 
-            omex.cleanUp()
+            archive.cleanUp()
         else:
             raise ValueError(f"Method is not supported '{method}'")
 
+    def locations_by_format(self, format_key: str = None, method="omex"):
+        """Get locations to files with given format in the archive.
 
-def get_locations_by_format(omex_path: Path, format_key=None, method="omex"):
-    """Returns locations to files with given format in the archive.
+        Uses the libcombine KnownFormats for formatKey, e.g., 'sed-ml' or 'sbml'.
+        Files which have a master=True have higher priority and are listed first.
 
-    Uses the libcombine KnownFormats for formatKey, e.g., 'sed-ml' or 'sbml'.
-    Files which have a master=True have higher priority and are listed first.
+        :param omex_path:
+        :param format_key:
+        :param method:
+        :return:
+        """
+        if not format_key:
+            raise ValueError("Format must be specified.")
 
-    :param omex_path:
-    :param format_key:
-    :param method:
-    :return:
-    """
-    if not format_key:
-        raise ValueError("Format must be specified.")
+        locations_master: List[str] = []
+        locations: List[str] = []
 
-    locations_master: List[str] = []
-    locations: List[str] = []
+        if method == "omex":
+            archive: libcombine.CombineArchive = self._omex_init()
 
-    if method == "omex":
-        omex: libcombine.CombineArchive = libcombine.CombineArchive()
-        if omex.initializeFromArchive(str(omex_path)) is None:
-            raise IOError(f"Invalid COMBINE Archive: {omex_path}")
+            for i in range(archive.getNumEntries()):
+                entry: libcombine.CaContent = archive.getEntry(i)
+                format: str = entry.getFormat()
+                master: bool = entry.getMaster()
+                if libcombine.KnownFormats.isFormat(format_key, format):
+                    loc: str = entry.getLocation()
+                    if (master is None) or (master is False):
+                        locations.append(loc)
+                    else:
+                        locations_master.append(loc)
+            archive.cleanUp()
+
+        elif method == "zip":
+            # extract to tmpfile and guess format
+            tmp_dir = tempfile.mkdtemp()
+
+            try:
+                self.extract(output_dir=tmp_dir, method="zip")
+
+                # iterate over all locations & guess format
+                for root, dirs, files in os.walk(tmp_dir):
+                    for file in files:
+                        file_path = os.path.join(root, file)
+                        location = os.path.relpath(file_path, tmp_dir)
+                        # guess the format
+                        format = libcombine.KnownFormats.guessFormat(file_path)
+                        if libcombine.KnownFormats.isFormat(
+                            formatKey=format_key, format=format
+                        ):
+                            locations.append(location)
+
+            finally:
+                shutil.rmtree(tmp_dir)
+
+        else:
+            raise ValueError(f"Method is not supported '{method}'")
+
+        return locations_master + locations
+
+    def list_contents(self, method="omex") -> List[List[Any]]:
+        """Returns list of contents of the combine archive.
+
+        :param omexPath:
+        :param method: method to extract content, only 'omex' supported
+        :return: list of contents
+        """
+        if method not in ["omex"]:
+            raise ValueError("Method is not supported: {method}")
+
+        contents = []
+        omex = self._omex_init()
 
         for i in range(omex.getNumEntries()):
-            entry: libcombine.CaContent = omex.getEntry(i)
-            format: str = entry.getFormat()
-            master: bool = entry.getMaster()
-            if libcombine.KnownFormats.isFormat(format_key, format):
-                loc: str = entry.getLocation()
-                if (master is None) or (master is False):
-                    locations.append(loc)
-                else:
-                    locations_master.append(loc)
-        omex.cleanUp()
+            entry = omex.getEntry(i)
+            location = entry.getLocation()
+            format = entry.getFormat()
+            master = entry.getMaster()
+            info = None
 
-    elif method == "zip":
-        # extract to tmpfile and guess format
-        tmp_dir = tempfile.mkdtemp()
-
-        try:
-            extract_combine_archive(omex_path, output_dir=tmp_dir, method="zip")
-
-            # iterate over all locations & guess format
-            for root, dirs, files in os.walk(tmp_dir):
-                for file in files:
-                    file_path = os.path.join(root, file)
-                    location = os.path.relpath(file_path, tmp_dir)
-                    # guess the format
-                    format = libcombine.KnownFormats.guessFormat(file_path)
-                    if libcombine.KnownFormats.isFormat(
-                        formatKey=format_key, format=format
-                    ):
-                        locations.append(location)
-                    # print(format, "\t", location)
-
-        finally:
-            shutil.rmtree(tmp_dir)
-
-    else:
-        raise ValueError(f"Method is not supported '{method}'")
-
-    return locations_master + locations
-
-
-def listContents(omexPath, method="omex"):
-    """Returns list of contents of the combine archive.
-
-    :param omexPath:
-    :param method: method to extract content, only 'omex' supported
-    :return: list of contents
-    """
-    if method not in ["omex"]:
-        raise ValueError("Method is not supported: {}".format(method))
-
-    contents = []
-    omex = libcombine.CombineArchive()
-    if omex.initializeFromArchive(omexPath) is None:
-        raise IOError("Invalid Combine Archive: {}", omexPath)
-
-    for i in range(omex.getNumEntries()):
-        entry = omex.getEntry(i)
-        location = entry.getLocation()
-        format = entry.getFormat()
-        master = entry.getMaster()
-        info = None
-        try:
             for formatKey in ["sed-ml", "sbml", "sbgn", "cellml"]:
                 if libcombine.KnownFormats_isFormat(formatKey, format):
                     info = omex.extractEntryToString(location)
-        except:
-            pass
 
-        contents.append([i, location, format, master, info])
+            contents.append([i, location, format, master, info])
 
-    omex.cleanUp()
+        omex.cleanUp()
 
-    return contents
-
-
-def print_contents(omexPath):
-    """Prints contents of archive.
-
-    :param omexPath:
-    :return:
-    """
-    pprint.pprint(listContents(omexPath))
+        return contents

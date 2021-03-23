@@ -306,7 +306,7 @@ def combineArchiveToPython(omexPath):
     pycode = {}
     try:
         omex.extract_combine_archive(omexPath, directory=tmp_dir, method="zip")
-        locations = omex.get_locations_by_format(omexPath, "sed-ml")
+        locations = omex.locations_by_format(omexPath, "sed-ml")
         sedml_files = [os.path.join(tmp_dir, loc) for loc in locations]
 
         for k, sedml_file in enumerate(sedml_files):
@@ -362,13 +362,13 @@ def executeCombineArchive(
             omex.extract_combine_archive(omex_path=omexPath, directory=extractDir)
 
             # get sedml locations by omex
-            sedml_locations = omex.get_locations_by_format(
+            sedml_locations = omex.locations_by_format(
                 omex_path=omexPath, format_key="sed-ml", method="omex"
             )
             if len(sedml_locations) == 0:
 
                 # falling back to zip archive
-                sedml_locations = omex.get_locations_by_format(
+                sedml_locations = omex.locations_by_format(
                     omex_path=omexPath, format_key="sed-ml", method="zip"
                 )
                 warnings.warn(

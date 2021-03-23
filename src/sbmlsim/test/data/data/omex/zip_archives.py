@@ -3,7 +3,8 @@ Creates all zip files.
 Manifest exists in folder, so creating combine archives.
 """
 
-from __future__ import print_function, absolute_import
+from __future__ import absolute_import, print_function
+
 import os
 import shutil
 
@@ -35,14 +36,16 @@ def create_zip_from_folder(directory, out_dir, extension):
     :return:
     """
 
-    if not extension.startswith('.'):
+    if not extension.startswith("."):
         extension = "." + extension
     zip_file = os.path.join(out_dir, os.path.basename(directory) + extension)
-    print(directory, '->', zip_file)
-    shutil.make_archive(zip_file, 'zip', directory)  # creates archive with added .zip extension
+    print(directory, "->", zip_file)
+    shutil.make_archive(
+        zip_file, "zip", directory
+    )  # creates archive with added .zip extension
     shutil.move(zip_file + ".zip", zip_file)
 
-    print('-' * 80)
+    print("-" * 80)
 
 
 if __name__ == "__main__":
