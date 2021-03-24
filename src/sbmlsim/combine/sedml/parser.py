@@ -97,7 +97,7 @@ import re
 import warnings
 from collections import OrderedDict, namedtuple
 from pathlib import Path
-from typing import Dict, List, Union
+from typing import Dict, List, Union, Optional
 
 import libsedml
 import numpy as np
@@ -106,11 +106,13 @@ from sbmlsim.combine.sedml.data import DataDescriptionParser
 from sbmlsim.combine.sedml.io import read_sedml
 from sbmlsim.combine.sedml.kisao import is_supported_algorithm_for_simulation_type
 from sbmlsim.combine.sedml.task import Stack, TaskNode, TaskTree
-from sbmlsim.data import DataSet
+from sbmlsim.data import DataSet, Data
 from sbmlsim.experiment import ExperimentDict, SimulationExperiment
 from sbmlsim.model import model_resources
 from sbmlsim.model.model import AbstractModel
+from sbmlsim.plot import Figure, Plot, Axis, Curve
 from sbmlsim.simulation import ScanSim, TimecourseSim, Timecourse, AbstractSim
+from sbmlsim.task import Task
 from sbmlsim.units import UnitRegistry
 
 
@@ -141,11 +143,14 @@ class SEDMLParser(object):
 
     def __init__(self, sed_doc: libsedml.SedDocument, working_dir: Path):
         """Parses information from SedDocument."""
-        self.sed_doc = sed_doc  # type: libsedml.SedDocument
+        self.sed_doc: libsedml.SedDocument = sed_doc
         self.working_dir = working_dir
 
         # unit registry to handle units throughout the simulation
         self.ureg = UnitRegistry()
+
+        # Reference to the experiment class
+        self.exp_class = None
 
         # --- Models ---
         self.models = {}
@@ -173,22 +178,31 @@ class SEDMLParser(object):
         print(f"data_descriptions: {self.data_descriptions}")
 
         # --- Simulations ---
-        self.simulations = {}
+        self.simulations: Dict[str, AbstractSim] = {}
         sed_sim: libsedml.SedSimulation
         for sed_sim in sed_doc.getListOfSimulations():
             self.simulations[sed_sim.getId()] = self.parse_simulation(sed_sim)
         print(f"simulations: {self.simulations}")
 
         # --- Tasks ---
-        self.tasks = {}
+        self.tasks: Dict[str, Task] = {}
         sed_task: libsedml.SedTask
-        # for sed_task in sed_doc.getListOfTasks():
-        #     tid = sed_task.getId()
-        #     self.tasks[tid] = self.parse_task(sed_task)
+        for sed_task in sed_doc.getListOfTasks():
+            self.tasks[sed_task.getId()] = self.parse_task(sed_task)
         print(f"tasks: {self.tasks}")
 
         # --- Figures/Reports ---
-        # TODO: create figures and reports
+        self.figures: Dict[str, Figure] = {}
+        sed_output: libsedml.SedOutput
+        for sed_output in sed_doc.getListOfOutputs():
+
+            type_code = sed_output.getTypeCode()
+            if type_code in [libsedml.SEDML_FIGURE, libsedml.SEDML_OUTPUT_PLOT2D]:
+                self.figures[sed_output.getId()] = self.parse_figure(sed_output)
+            elif type_code == libsedml.SEDML_OUTPUT_REPORT:
+                # FIXME: implement
+                logger.error("Output report not implemented.")
+        print(f"figures: {self.figures}")
 
         # Create the experiment object
         def f_models(obj) -> Dict[str, AbstractModel]:
@@ -203,6 +217,12 @@ class SEDMLParser(object):
         def f_simulations(obj) -> Dict[str, AbstractSim]:
             return ExperimentDict(self.simulations)
 
+        def f_tasks(obj) -> Dict[str, Task]:
+            return ExperimentDict(self.tasks)
+
+        def f_figures(obj) -> Dict[str, Figure]:
+            return ExperimentDict(self.figures)
+
         self.exp_class = type(
             "SedmlExperiment",
             (SimulationExperiment,),
@@ -210,8 +230,31 @@ class SEDMLParser(object):
                 "models": f_models,
                 "datasets": f_datasets,
                 "simulations": f_simulations,
+                "tasks": f_tasks,
+                "figures": f_figures,
             },
         )
+        fig: Figure
+
+        self.experiment: SimulationExperiment = self.exp_class()
+        self.experiment.initialize()
+
+        # self.exp_class._data = None  # FIXME hack
+        for fig in self.figures.values():
+            print(fig)
+            fig.experiment = self.experiment
+
+            # this must happen automatically
+            for plot in fig.plots:
+                for curve in plot.curves:
+                    if curve.x:
+                        curve.x.experiment = experiment
+                        curve.x._register_data()
+                    if curve.y:
+                        curve.y.experiment = experiment
+                        curve.y._register_data()
+                    # FIXME: also for xerr and yerr
+
 
     # --- MODELS ---
     @staticmethod
@@ -448,7 +491,7 @@ class SEDMLParser(object):
 
         # TODO/FIXME: handle all the algorithm parameters as integrator parameters
 
-    def parse_task(self, sed_task: libsedml.SedAbstractTask):
+    def parse_task(self, sed_task: libsedml.SedAbstractTask) -> Task:
         """ Parse arbitrary task (repeated or simple, or simple repeated)."""
         # If no DataGenerator references the task, no execution is necessary
         dgs = self.data_generators_for_task(sed_task)
@@ -478,7 +521,8 @@ class SEDMLParser(object):
 
             # Create simulation for task
             if task_type == libsedml.SEDML_TASK:
-                self._parse_simple_task(task_node=node)
+                task = self._parse_simple_task(task_node=node)
+                return task
 
             # Repeated tasks are multi-dimensional scans
             elif task_type == libsedml.SEDML_TASK_REPEATEDTASK:
@@ -490,12 +534,12 @@ class SEDMLParser(object):
             else:
                 logger.error("Unsupported task: {}".format(task_type))
 
-    def _parse_simple_task(self, task_node: TaskNode):
-        print("parse simple task - not implemented")
-
-
-
-        return
+    def _parse_simple_task(self, task_node: TaskNode) -> Task:
+        """Parse simple task"""
+        sed_task: libsedml.SedTask = task_node.task
+        model_id: str = sed_task.getModelReference()
+        simulation_id: str = sed_task.getSimulationReference()
+        return Task(model=model_id, simulation=simulation_id)
 
     def _parse_simple_repeated_task(self, node: TaskNode):
         print("parse simple repeated task")
@@ -524,6 +568,100 @@ class SEDMLParser(object):
         #         forLines.extend(SEDMLCodeFactory.repeatedTaskToPython(doc, task=t))
         #         forLines.append("{}.extend({})".format(task.getId(), t.getId()))
 
+    def parse_figure(self, sed_output: libsedml.SedOutput) -> Figure:
+        """ Parse simulation information."""
+        type_code = sed_output.getTypeCode()
+        if type_code == libsedml.SEDML_OUTPUT_PLOT2D:
+            sed_plot2d: libsedml.SedPlot = sed_output
+            plots = [
+                self.parse_plot2d(sed_plot2d)
+            ]
+            f = Figure(
+                experiment=None,
+                sid=sed_plot2d.getId(),
+                num_rows=1,
+                num_cols=1,
+            )
+            f.add_plots(plots)
+            return f
+        elif type_code == libsedml.SEDML_FIGURE:
+            raise NotImplementedError
+
+    def parse_plot2d(self, sed_plot2d: libsedml.SedPlot2D) -> Plot:
+        plot = Plot(
+            sid=sed_plot2d.getId(),
+            name=sed_plot2d.getName(),
+            legend=sed_plot2d.getLegend(),
+        )
+        # axis
+        plot.xaxis = self.parse_axis(sed_plot2d.getXAxis())
+        plot.yaxis = self.parse_axis(sed_plot2d.getYAxis())
+
+        # curves
+        curves: List[Curve] = []
+        sed_curve: libsedml.Curve
+        for sed_curve in sed_plot2d.getListOfCurves():
+            curves.append(self.parse_curve(sed_curve))
+        plot.curves = curves
+        return plot
+
+    def parse_axis(self, sed_axis: libsedml.SedAxis) -> Axis:
+        # FIXME: support style on axis
+        if sed_axis is None:
+            axis = Axis()
+        else:
+            axis = Axis(
+                label=sed_axis.getName(),
+                scale=sed_axis.getType(),
+                min=sed_axis.getMin(),
+                max=sed_axis.getMax(),
+                grid=sed_axis.getGrid(),
+            )
+        return axis
+
+    def parse_curve(self, sed_curve: libsedml.SedCurve) -> Curve:
+        x: Data
+        y: Data
+        xerr: Data
+        yerr: Data
+
+        curve = Curve(
+            x=self.data_from_datagenerator(sed_curve.getXDataReference()),
+            y=self.data_from_datagenerator(sed_curve.getYDataReference()),
+            # FIXME: handle errorbars via lower and upper
+            xerr=self.data_from_datagenerator(sed_curve.getXErrorLower()),
+            yerr=self.data_from_datagenerator(sed_curve.getYErrorLower()),
+        )
+        # FIXME: support yaxis
+        # FIXME: support type
+        # FIXME: parse style
+        return curve
+
+    def data_from_datagenerator(self, sed_dg_ref: Optional[str]) -> Optional[Data]:
+        """This must all be evaluated with actual data"""
+        # FIXME: do all the math on the data-generator
+        if not sed_dg_ref:
+            return None
+        sed_dg: libsedml.SedDataGenerator = self.sed_doc.getDataGenerator(sed_dg_ref)
+        print("DataGenerator", sed_dg)
+
+        # sed_dg.getListOfVariables()
+        # sed_dg.getMath()
+        sed_var: libsedml.SedVariable = sed_dg.getVariable(0)
+        task_id = sed_var.getTaskReference()
+
+        sed_symbol = sed_var.isSetSymbol()
+        if sed_var.isSetSymbol():
+            # FIXME: check symbol
+            index = "time"
+        elif sed_var.isSetTarget():
+            index = self.parse_xpath_target(sed_var.getTarget())
+
+        return Data(
+            experiment=self.exp_class,
+            index=index,
+            task=task_id
+        )
 
     def _parse_repeated_task(self, node: TaskNode):
         print("repeated task")

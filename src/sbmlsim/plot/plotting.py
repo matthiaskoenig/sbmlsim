@@ -72,6 +72,17 @@ class MarkerType(Enum):
     VDASH = 13
 
 
+class CurveType(Enum):
+    POINTS = 1
+    BAR = 2
+    BARSTACKED = 3
+    HORIZONTALBAR = 4
+    HORIZONTALBARSTACKED = 5
+    POLARPOINT = 6
+    POLARBAR = 7
+    POLARBARSTACKED = 8
+
+
 class ColorType(object):
     def __init__(self, color: str):
         if color is None:

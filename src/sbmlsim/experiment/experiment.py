@@ -35,7 +35,7 @@ class ExperimentDict(dict):
             raise KeyError(f"Key '{k}' not in {sorted(self.keys())}")
 
 
-class SimulationExperiment(object):
+class SimulationExperiment:
     """Generic simulation experiment.
 
     Consists of models, datasets, simulations, tasks, results, processing, figures

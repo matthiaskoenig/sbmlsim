@@ -56,10 +56,19 @@ class Data(object):
             )
 
         # register data in simulation
-        if experiment._data is None:
-            experiment._data = {}
+        self._register_data()
 
-        experiment._data[self.sid] = self
+    def _register_data(self):
+        """Registers data in simulation."""
+        # FIXME: this creates strange issues
+
+        if self.experiment:
+            if self.experiment._data is None:
+                self.experiment._data = {}
+
+            self.experiment._data[self.sid] = self
+        else:
+            logger.error("No experiment for data, registration failed.")
 
     def __str__(self) -> str:
         """Get string."""

@@ -41,7 +41,16 @@
       }
     }
   },
-  "tasks": {},
+  "tasks": {
+    "task1": {
+      "model": "model1",
+      "simulation": "sim1"
+    },
+    "task2": {
+      "model": "model2",
+      "simulation": "sim1"
+    }
+  },
   "simulations": {
     "sim1": {
       "type": "TimecourseSim",

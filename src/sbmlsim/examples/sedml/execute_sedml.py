@@ -22,7 +22,7 @@ if __name__ == "__main__":
     sed_parser = SEDMLParser(doc, working_dir=working_dir)
 
     print("*" * 80)
-    print("\n--- MODELS ---")
+    print("--- MODELS ---")
     pprint(sed_parser.models)
 
     print("\n--- DATA DESCRIPTIONS ---")
