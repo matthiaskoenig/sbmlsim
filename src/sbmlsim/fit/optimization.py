@@ -357,8 +357,9 @@ class OptimizationProblem(ObjectJSONEncoder):
                     y_ref_err_type = "SE"
                 else:
                     y_ref_err_type = None
+
                 # handle special case of all NaN
-                if np.all(np.isnan(y_ref_err)):
+                if y_ref_err is not None and np.all(np.isnan(y_ref_err)):
                     y_ref_err = None
                     y_ref_err_type = None
 

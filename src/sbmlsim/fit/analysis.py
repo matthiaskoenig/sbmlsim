@@ -96,6 +96,39 @@ class OptimizationAnalysis:
 
         This creates all plots and reports.
         """
+        plots_dir = self.results_dir / "plots"
+        for p in [plots_dir]:
+            p.mkdir()
+
+        # ----------------------
+        # Create HTML report
+        # ----------------------
+        self.html_report(path=self.results_dir / "index.html")
+
+        # ----------------------
+        # Write text report
+        # ----------------------
+        problem_info: str = ""
+        if self.op:
+            problem_info = self.op.report(
+                path=None,
+                print_output=False,
+            )
+        result_info = self.optres.report(
+            path=None,
+            print_output=True,
+        )
+        info = problem_info + result_info
+        with open(self.results_dir / "report.txt", "w") as f_report:
+            f_report.write(info)
+
+        # FIXME: create JSON information for problem
+        self.optres.to_json(path=self.results_dir / "optimization_result.json")
+        self.optres.to_tsv(path=self.results_dir / "optimization_result.tsv")
+
+        # ----------------------
+        # Create figures
+        # ----------------------
         rc_params_copy = {**plt.rcParams}
         # from pprint import pprint
         # pprint(rc_params_copy)
@@ -110,33 +143,14 @@ class OptimizationAnalysis:
         parameters.update(mpl_parameters)
         plt.rcParams.update(parameters)
 
-        # write report
-        problem_info: str = ""
-        if self.op:
-            problem_info = self.op.report(
-                path=None,
-                print_output=False,
-            )
-        result_info = self.optres.report(
-            path=None,
-            print_output=True,
-        )
-        info = problem_info + result_info
-        with open(self.results_dir / "00_report.txt", "w") as f_report:
-            f_report.write(info)
-
-        # FIXME: create JSON information for problem
-        self.optres.to_json(path=self.results_dir / "optimization_result.json")
-        self.optres.to_tsv(path=self.results_dir / "optimization_result.tsv")
-
         # waterfall plot
         if self.optres.size > 1:
             self.plot_waterfall(
-                path=self.results_dir / f"waterfall.{self.image_format}",
+                path=plots_dir / f"waterfall.{self.image_format}",
             )
         # optimization traces
         self.plot_traces(
-            path=self.results_dir / f"traces.{self.image_format}",
+            path=plots_dir / f"traces.{self.image_format}",
         )
 
         # plot fit results for optimal parameters
@@ -145,39 +159,119 @@ class OptimizationAnalysis:
 
             self.plot_cost_scatter(
                 x=xopt,
-                path=self.results_dir / f"cost_scatter.{self.image_format}",
+                path=plots_dir / f"cost_scatter.{self.image_format}",
             )
             self.plot_cost_bar(
                 x=xopt,
-                path=self.results_dir / f"cost_bar.{self.image_format}",
+                path=plots_dir / f"cost_bar.{self.image_format}",
             )
             self.plot_datapoint_scatter(
                 x=xopt,
-                path=self.results_dir / f"datapoint_scatter.{self.image_format}",
+                path=plots_dir / f"datapoint_scatter.{self.image_format}",
             )
             self.plot_residual_scatter(
                 x=xopt,
-                path=self.results_dir / f"residual_scatter.{self.image_format}",
+                path=plots_dir / f"residual_scatter.{self.image_format}",
             )
             self.plot_residual_boxplot(
                 x=xopt,
-                path=self.results_dir / f"residual_boxplot.{self.image_format}",
-            )
-
-            self.plot_fits(
-                x=xopt,
-                path=self.results_dir / "fits.svg",
+                path=plots_dir / f"residual_boxplot.{self.image_format}",
             )
 
             # plot individual fit mappings
-            self.plot_fit(x=xopt)
+            self.plot_fit(output_dir=plots_dir, x=xopt)
+            self.plot_fit_residual(output_dir=plots_dir, x=xopt)
 
         # correlation plot
         if self.optres.size > 1:
-            self.plot_correlation(path=self.results_dir / "parameter_correlation")
+            self.plot_correlation(path=plots_dir / "parameter_correlation")
 
         # reset parameters
         plt.rcParams.update(rc_params_copy)
+
+    def html_report(self, path: Path):
+        """Creates HTML report of the fit."""
+
+        title = f"{self.op.opid} [{self.sid}]"
+
+        parameter_info = []
+        xopt = self.optres.xopt
+        fitted_pars = {}
+        for k, p in enumerate(self.optres.parameters):
+            opt_value = xopt[k]
+            if abs(opt_value - p.lower_bound) / p.lower_bound < 0.05:
+                msg = f"!Optimal parameter '{p.pid}' within 5% of lower bound!"
+                parameter_info.append(f"\t>>> {msg} <<<")
+
+            if abs(opt_value - p.upper_bound) / p.upper_bound < 0.05:
+                msg = f"!Optimal parameter '{p.pid}' within 5% of upper bound!"
+                parameter_info.append(f"\t>>> {msg} <<<")
+
+            fitted_pars[p.pid] = (opt_value, p.unit, p.lower_bound, p.upper_bound)
+
+        for key, value in fitted_pars.items():
+            parameter_info.append(
+                "<strong>{}</strong>: {} {}, [{} - {}]".format(
+                    key, value[0], value[1], value[2], value[3]
+                )
+            )
+        parameters = "<br/>".join(parameter_info)
+
+        fit_images_info = []
+        for k, mapping_id in enumerate(self.op.mapping_keys):
+            sid = self.op.experiment_keys[k]
+
+            fit_images_info.append(
+                f'<p><img src="plots/{sid}_{mapping_id}.{self.image_format}"></p>'
+            )
+        fit_images = "\n".join(fit_images_info)
+
+        html = f"""
+        <html>
+
+        <body>
+        <h1>Parameter fitting: {title}</h1>
+
+        <h2>Optimal parameters</h2>
+        <p>
+        {parameters}
+        </p>
+        <p>
+        <ul>
+            <li><a target="_blank" href="report.txt">report.txt</a></li>
+            <li><a target="_blank" href="optimization_result.json">optimization_result.json</a></li>
+            <li><a target="_blank" href="optimization_result.tsv">optimization_result.tsv</a></li>
+        </p>
+
+        <h2>Optimization Performance</h2>
+        <p>
+        <img src="./plots/traces.svg">
+        <img src="./plots/waterfall.svg">
+        <p>
+
+        <h2>Data point prediction</h2>
+        <p>
+        <img src="./plots/datapoint_scatter.svg">
+        <img src="./plots/residual_scatter.svg">
+        <p>
+
+        <p>
+        <img src="./plots/residual_boxplot.svg">
+        <img src="./plots/cost_bar.svg">
+        <p>
+
+        <h2>Fits</h2>
+        <p>
+        {fit_images}
+        </p>
+
+        <h2>Optimization results</h2>
+        {self.optres.df_fits.to_html()}
+        </body>
+        </html>
+        """
+        with open(path, "w") as f_out:
+            f_out.write(html)
 
     def _create_mpl_figure(
         self, width: float = 5.0, height: float = 5.0
@@ -198,26 +292,23 @@ class OptimizationAnalysis:
         plt.close(fig)
 
     @timeit
-    def plot_fits(self, x: np.ndarray, path: Path) -> None:
+    def plot_fit(self, output_dir: Path, x: np.ndarray) -> None:
         """Plot fitted curves with experimental data for given parameter set x.
 
         Creates an overview of all fit mappings.
 
+        :param output_dir: path to figures
         :param x: parameters to evaluate
-        :param path: path for figure
 
         :return: None
         """
-        n_plots = len(self.op.mapping_keys)
-        fig, axes = plt.subplots(
-            nrows=n_plots, ncols=2, figsize=(10, 5 * n_plots), squeeze=False
-        )
-        fig.subplots_adjust(hspace=0.1)
-
         # residual data and simulations of optimal parameters
         res_data = self.op.residuals(xlog=np.log10(x), complete_data=True)
 
         for k, mapping_id in enumerate(self.op.mapping_keys):
+            fig, [ax1, ax2] = plt.subplots(
+                nrows=1, ncols=2, figsize=(10, 5)
+            )
 
             # global reference data
             sid = self.op.experiment_keys[k]
@@ -229,7 +320,7 @@ class OptimizationAnalysis:
             x_id = self.op.xid_observable[k]
             y_id = self.op.yid_observable[k]
 
-            for ax in axes[k]:
+            for ax in [ax1, ax2]:
                 ax.set_title(f"{sid} {mapping_id}")
                 ax.set_ylabel(y_id)
                 ax.set_xlabel(x_id)
@@ -265,13 +356,13 @@ class OptimizationAnalysis:
                 ax.set_xlim(right=1.1 * np.max(x_ref))
                 ax.legend()
 
-            axes[k][1].set_yscale("log")
-            axes[k][1].set_ylim(bottom=0.3 * np.nanmin(y_ref))
+            ax2.set_yscale("log")
+            ax2.set_ylim(bottom=0.3 * np.nanmin(y_ref))
 
-        self._save_mpl_figure(fig, path=path)
+            self._save_mpl_figure(fig, path=output_dir / f"{sid}_{mapping_id}.{self.image_format}")
 
     @timeit
-    def plot_fit(self, x: np.ndarray) -> None:
+    def plot_fit_residual(self, output_dir: Path, x: np.ndarray) -> None:
         """Plot resulting fit for all individual fit mappings.
 
         This consists of
@@ -377,7 +468,7 @@ class OptimizationAnalysis:
 
             self._save_mpl_figure(
                 fig=fig,
-                path=self.results_dir / f"fit_{sid}_{mapping_id}.{self.image_format}",
+                path=output_dir / f"fit_{sid}_{mapping_id}.{self.image_format}",
             )
 
     def _cost_df(self, x: np.ndarray) -> pd.DataFrame:
@@ -916,7 +1007,7 @@ class OptimizationAnalysis:
 
                     for run in range(self.optres.size):
                         df_run = self.optres.df_traces[
-                            self.optres.df_traces.run_demo_experiment == run
+                            self.optres.df_traces.run == run
                         ]
                         # ax.plot(df_run[pidy], df_run[pidx], '-', color="black", alpha=0.3)
                         ax.scatter(

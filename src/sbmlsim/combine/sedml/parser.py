@@ -248,10 +248,10 @@ class SEDMLParser(object):
             for plot in fig.plots:
                 for curve in plot.curves:
                     if curve.x:
-                        curve.x.experiment = experiment
+                        curve.x.experiment = self.experiment
                         curve.x._register_data()
                     if curve.y:
-                        curve.y.experiment = experiment
+                        curve.y.experiment = self.experiment
                         curve.y._register_data()
                     # FIXME: also for xerr and yerr
 
