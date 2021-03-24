@@ -39,9 +39,6 @@ class AssignmentExperiment(SimulationExperiment):
                 )
         return tasks
 
-    def datagenerators(self) -> None:
-        self.add_selections_data(selections=["time", "A1", "[A1]", "D"])
-
     def simulations(self) -> Dict[str, AbstractSim]:
         Q_ = self.Q_
         tcs = {}
@@ -68,6 +65,8 @@ class AssignmentExperiment(SimulationExperiment):
         unit_time = "min"
         unit_amount = "mmole"
         unit_concentration = "mM"
+
+        self.add_selections_data(selections=["time", "A1", "[A1]", "D"])
 
         fig1 = Figure(experiment=self, sid="Fig1", num_cols=2, num_rows=2)
         plots = fig1.create_plots(

@@ -104,10 +104,6 @@ class DoseResponseExperiment(SimulationExperiment):
 
         return dsets
 
-    def datagenerators(self) -> None:
-        for key in ["time", "glu", "ins", "epi", "gamma"]:
-            Data(experiment=self, task="task_glc_scan", index=key)
-
     @timeit
     def tasks(self) -> Dict[str, Task]:
         """Tasks"""
@@ -130,30 +126,36 @@ class DoseResponseExperiment(SimulationExperiment):
         )
         return {"glc_scan": glc_scan}
 
-    @timeit
-    def figures(self) -> Dict[str, Figure]:
+    def data(self) -> Dict[str, Data]:
+        self.add_selections_data(
+            selections=["time", "glu", "ins", "epi", "gamma"],
+            task_ids=["task_glc_scan"]
+        )
+        return {}
+
+    def figures_mpl(self) -> Dict[str, Figure]:
         xunit = "mM"
         yunit_hormone = "pmol/l"
         yunit_gamma = "dimensionless"
 
-        f, ((ax1, ax2), (ax3, ax4)) = plt.subplots(2, 2, figsize=(10, 10))
-        f.subplots_adjust(wspace=0.3, hspace=0.3)
+        fig_mpl, ((ax1, ax2), (ax3, ax4)) = plt.subplots(2, 2, figsize=(10, 10))
+        fig_mpl.subplots_adjust(wspace=0.3, hspace=0.3)
         axes = (ax1, ax2, ax3, ax4)
 
         # process scan results
         task = self._tasks["task_glc_scan"]
         model = self._models[task.model_id]
-        tcscan = self._simulations[task.simulation_id]  # TimecourseScan Definition
+        tcscan = self._simulations[task.simulation_id]
 
         # FIXME: this must be simpler
         glc_vec = tcscan.dimensions[0].changes["[glc_ext]"]
-        xres = self.results["task_glc_scan"]  # type: XResult
+        xres: XResult = self.results["task_glc_scan"]
 
         # we already have all the data ordered, we only want the steady state value
 
         dose_response = {}
         for sid in ["glu", "epi", "ins", "gamma"]:
-            da = xres[sid]  # type: xr.DataArray
+            da: xr.DataArray = xres[sid]
 
             # get initial time
             head = da.head({"_time": 1}).to_series()
@@ -257,4 +259,4 @@ class DoseResponseExperiment(SimulationExperiment):
 
         ax2.set_xlim(2, 8)
 
-        return {"fig1": f}
+        return {"fig1": fig_mpl}

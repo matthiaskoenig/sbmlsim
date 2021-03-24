@@ -282,6 +282,7 @@ class FitData:
         function: Optional[str] = None,
     ):
 
+        self.experiment = experiment
         self.dset_id = dataset
         self.task_id = task
         self.function = function
@@ -313,14 +314,12 @@ class FitData:
         # actual Data
         # FIXME: simplify
         self.x = Data(
-            experiment=experiment,
             index=xid,
             task=self.task_id,
             dataset=self.dset_id,
             function=self.function,
         )
         self.y = Data(
-            experiment=experiment,
             index=yid,
             task=self.task_id,
             dataset=self.dset_id,
@@ -334,7 +333,6 @@ class FitData:
             if xid_sd.endswith("se"):
                 logger.warning("SD error column ends with 'se', check names.")
             self.x_sd = Data(
-                experiment=experiment,
                 index=xid_sd,
                 task=self.task_id,
                 dataset=self.dset_id,
@@ -344,7 +342,6 @@ class FitData:
             if xid_se.endswith("sd"):
                 logger.warning("SE error column ends with 'sd', check names.")
             self.x_se = Data(
-                experiment=experiment,
                 index=xid_se,
                 task=self.task_id,
                 dataset=self.dset_id,
@@ -354,7 +351,6 @@ class FitData:
             if yid_sd.endswith("se"):
                 logger.warning("SD error column ends with 'se', check names.")
             self.y_sd = Data(
-                experiment=experiment,
                 index=yid_sd,
                 task=self.task_id,
                 dataset=self.dset_id,
@@ -364,7 +360,6 @@ class FitData:
             if yid_se.endswith("sd"):
                 logger.warning("SE error column ends with 'sd', check names.")
             self.y_se = Data(
-                experiment=experiment,
                 index=yid_se,
                 task=self.task_id,
                 dataset=self.dset_id,
@@ -405,7 +400,7 @@ class FitData:
         for key in ["x", "y", "x_sd", "x_se", "y_sd", "y_se"]:
             d = getattr(self, key)
             if d is not None:
-                setattr(result, key, d.data)
+                setattr(result, key, d.get_data(self.experiment))
 
         return result
 

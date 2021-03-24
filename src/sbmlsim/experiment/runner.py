@@ -10,7 +10,7 @@ This includes
 
 import logging
 from pathlib import Path
-from typing import Dict, Iterable, List, Optional, Type
+from typing import Dict, Iterable, List, Optional, Type, Union
 
 from sbmlsim.experiment import ExperimentResult, SimulationExperiment
 from sbmlsim.model import RoadrunnerSBMLModel
@@ -27,7 +27,7 @@ class ExperimentRunner(object):
 
     def __init__(
         self,
-        experiment_classes: List[Type[SimulationExperiment]],
+        experiment_classes: Union[Type[SimulationExperiment], List[Type[SimulationExperiment]]],
         base_path: Path,
         data_path: Path,
         simulator: SimulatorSerial = None,
@@ -88,12 +88,10 @@ class ExperimentRunner(object):
                 ureg=self.ureg,
                 **kwargs,
             )
-            experiment.initialize()
-            self.experiments[experiment.sid] = experiment
 
             # resolve models for experiment
             _models = {}
-            for model_id, source in experiment._models.items():
+            for model_id, source in experiment.models().items():
                 if source not in self.models:
                     # not cashed yet, cash the model for lookup
                     self.models[source] = RoadrunnerSBMLModel(
@@ -101,8 +99,13 @@ class ExperimentRunner(object):
                     )
                 _models[model_id] = self.models[source]
 
+
             # set resolved models in experiment
             experiment._models = _models
+            # only after model loading the unit registry is filled
+            experiment.initialize()
+
+            self.experiments[experiment.sid] = experiment
 
     @timeit
     def run_experiments(

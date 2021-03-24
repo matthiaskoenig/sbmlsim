@@ -180,37 +180,10 @@
     }
   },
   "data": {
-    "Fig1A_midazolam__time": {
-      "type": "DATASET",
-      "index": "time",
-      "unit": "min",
-      "task": null,
-      "dataset": "Fig1A_midazolam",
-      "function": null,
-      "variables": null
-    },
-    "Fig1A_midazolam__mean": {
-      "type": "DATASET",
-      "index": "mean",
-      "unit": "mole/meter^3",
-      "task": null,
-      "dataset": "Fig1A_midazolam",
-      "function": null,
-      "variables": null
-    },
-    "Fig1A_midazolam__mean_sd": {
-      "type": "DATASET",
-      "index": "mean_sd",
-      "unit": "mole/meter^3",
-      "task": null,
-      "dataset": "Fig1A_midazolam",
-      "function": null,
-      "variables": null
-    },
     "task_mid_iv__time": {
       "type": "TASK",
       "index": "time",
-      "unit": "min",
+      "unit": null,
       "task": "task_mid_iv",
       "dataset": null,
       "function": null,
@@ -219,124 +192,34 @@
     "task_mid_iv__[Cve_mid]": {
       "type": "TASK",
       "index": "[Cve_mid]",
-      "unit": "mmole/litre",
+      "unit": null,
       "task": "task_mid_iv",
       "dataset": null,
-      "function": null,
-      "variables": null
-    },
-    "Fig3A_midazolam__time": {
-      "type": "DATASET",
-      "index": "time",
-      "unit": "min",
-      "task": null,
-      "dataset": "Fig3A_midazolam",
-      "function": null,
-      "variables": null
-    },
-    "Fig3A_midazolam__mean": {
-      "type": "DATASET",
-      "index": "mean",
-      "unit": "mole/meter^3",
-      "task": null,
-      "dataset": "Fig3A_midazolam",
-      "function": null,
-      "variables": null
-    },
-    "Fig3A_midazolam__mean_sd": {
-      "type": "DATASET",
-      "index": "mean_sd",
-      "unit": "mole/meter^3",
-      "task": null,
-      "dataset": "Fig3A_midazolam",
-      "function": null,
-      "variables": null
-    },
-    "task_mid_po__time": {
-      "type": "TASK",
-      "index": "time",
-      "unit": "min",
-      "task": "task_mid_po",
-      "dataset": null,
-      "function": null,
-      "variables": null
-    },
-    "task_mid_po__[Cve_mid]": {
-      "type": "TASK",
-      "index": "[Cve_mid]",
-      "unit": "mmole/litre",
-      "task": "task_mid_po",
-      "dataset": null,
-      "function": null,
-      "variables": null
-    },
-    "Fig1A_1-hydroxymidazolam__time": {
-      "type": "DATASET",
-      "index": "time",
-      "unit": "min",
-      "task": null,
-      "dataset": "Fig1A_1-hydroxymidazolam",
-      "function": null,
-      "variables": null
-    },
-    "Fig1A_1-hydroxymidazolam__mean": {
-      "type": "DATASET",
-      "index": "mean",
-      "unit": "mole/meter^3",
-      "task": null,
-      "dataset": "Fig1A_1-hydroxymidazolam",
-      "function": null,
-      "variables": null
-    },
-    "Fig1A_1-hydroxymidazolam__mean_sd": {
-      "type": "DATASET",
-      "index": "mean_sd",
-      "unit": "mole/meter^3",
-      "task": null,
-      "dataset": "Fig1A_1-hydroxymidazolam",
       "function": null,
       "variables": null
     },
     "task_mid_iv__[Cve_mid1oh]": {
       "type": "TASK",
       "index": "[Cve_mid1oh]",
-      "unit": "mmole/litre",
+      "unit": null,
       "task": "task_mid_iv",
       "dataset": null,
-      "function": null,
-      "variables": null
-    },
-    "Fig2A_1-hydroxymidazolam__time": {
-      "type": "DATASET",
-      "index": "time",
-      "unit": "min",
-      "task": null,
-      "dataset": "Fig2A_1-hydroxymidazolam",
-      "function": null,
-      "variables": null
-    },
-    "Fig2A_1-hydroxymidazolam__mean": {
-      "type": "DATASET",
-      "index": "mean",
-      "unit": "mole/meter^3",
-      "task": null,
-      "dataset": "Fig2A_1-hydroxymidazolam",
-      "function": null,
-      "variables": null
-    },
-    "Fig2A_1-hydroxymidazolam__mean_sd": {
-      "type": "DATASET",
-      "index": "mean_sd",
-      "unit": "mole/meter^3",
-      "task": null,
-      "dataset": "Fig2A_1-hydroxymidazolam",
       "function": null,
       "variables": null
     },
     "task_mid1oh_iv__time": {
       "type": "TASK",
       "index": "time",
-      "unit": "min",
+      "unit": null,
+      "task": "task_mid1oh_iv",
+      "dataset": null,
+      "function": null,
+      "variables": null
+    },
+    "task_mid1oh_iv__[Cve_mid]": {
+      "type": "TASK",
+      "index": "[Cve_mid]",
+      "unit": null,
       "task": "task_mid1oh_iv",
       "dataset": null,
       "function": null,
@@ -345,53 +228,35 @@
     "task_mid1oh_iv__[Cve_mid1oh]": {
       "type": "TASK",
       "index": "[Cve_mid1oh]",
-      "unit": "mmole/litre",
+      "unit": null,
       "task": "task_mid1oh_iv",
       "dataset": null,
       "function": null,
       "variables": null
     },
-    "Fig3A_1-hydroxymidazolam__time": {
-      "type": "DATASET",
+    "task_mid_po__time": {
+      "type": "TASK",
       "index": "time",
-      "unit": "min",
-      "task": null,
-      "dataset": "Fig3A_1-hydroxymidazolam",
+      "unit": null,
+      "task": "task_mid_po",
+      "dataset": null,
       "function": null,
       "variables": null
     },
-    "Fig3A_1-hydroxymidazolam__mean": {
-      "type": "DATASET",
-      "index": "mean",
-      "unit": "mole/meter^3",
-      "task": null,
-      "dataset": "Fig3A_1-hydroxymidazolam",
-      "function": null,
-      "variables": null
-    },
-    "Fig3A_1-hydroxymidazolam__mean_sd": {
-      "type": "DATASET",
-      "index": "mean_sd",
-      "unit": "mole/meter^3",
-      "task": null,
-      "dataset": "Fig3A_1-hydroxymidazolam",
+    "task_mid_po__[Cve_mid]": {
+      "type": "TASK",
+      "index": "[Cve_mid]",
+      "unit": null,
+      "task": "task_mid_po",
+      "dataset": null,
       "function": null,
       "variables": null
     },
     "task_mid_po__[Cve_mid1oh]": {
       "type": "TASK",
       "index": "[Cve_mid1oh]",
-      "unit": "mmole/litre",
+      "unit": null,
       "task": "task_mid_po",
-      "dataset": null,
-      "function": null,
-      "variables": null
-    },
-    "task_mid1oh_iv__[Cve_mid]": {
-      "type": "TASK",
-      "index": "[Cve_mid]",
-      "unit": "mmole/litre",
-      "task": "task_mid1oh_iv",
       "dataset": null,
       "function": null,
       "variables": null

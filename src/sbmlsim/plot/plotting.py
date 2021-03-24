@@ -78,9 +78,6 @@ class CurveType(Enum):
     BARSTACKED = 3
     HORIZONTALBAR = 4
     HORIZONTALBARSTACKED = 5
-    POLARPOINT = 6
-    POLARBAR = 7
-    POLARBARSTACKED = 8
 
 
 class ColorType(object):
@@ -314,8 +311,8 @@ class Axis(BasePlotObject):
         super(Axis, self).__init__(sid=None, name=None)
         if label and name:
             ValueError("Either set label or name on Axis.")
-        if unit is None:
-            unit = "?"
+        # if unit is None:
+        #     unit = "?"
         if not name:
             if unit != "dimensionless":
                 name = f"{label} [{unit}]"
@@ -729,12 +726,12 @@ class Plot(BasePlotObject):
             if yid_sd.endswith("se"):
                 logger.warning("SD error column ends with 'se', check names.")
             yerr_label = "±SD"
-            yerr = Data(experiment, yid_sd, dataset=dataset, task=task)
+            yerr = Data(yid_sd, dataset=dataset, task=task)
         elif yid_se:
             if yid_se.endswith("sd"):
                 logger.warning("SE error column ends with 'sd', check names.")
             yerr_label = "±SE"
-            yerr = Data(experiment, yid_se, dataset=dataset, task=task)
+            yerr = Data(yid_se, dataset=dataset, task=task)
 
         if label is not None:
             # add count information
@@ -747,9 +744,9 @@ class Plot(BasePlotObject):
                 elif isinstance(count, str):
                     # resolve count data from dataset
                     count_data = Data(
-                        experiment, index=count, dataset=dataset, task=task
+                        index=count, dataset=dataset, task=task
                     )
-                    counts = count_data.data
+                    counts = count_data.get_data(experiment)
                     counts_unique = np.unique(counts.magnitude)
                     if counts_unique.size > 1:
                         logger.warning(f"count is not unique for dataset: '{counts}'")

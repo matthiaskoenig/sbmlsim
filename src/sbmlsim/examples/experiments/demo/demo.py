@@ -75,6 +75,9 @@ class DemoExperiment(SimulationExperiment):
         unit_time = "min"
         unit_data = "mM"
 
+        selections = ["[e__A]", "[e__B]", "[e__C]", "[c__A]", "[c__B]", "[c__C]"]
+        self.add_selections_data(selections=["time"] + selections)
+
         fig1 = Figure(experiment=self, sid="Fig1", num_cols=2, num_rows=1)
         plots = fig1.create_plots(
             xaxis=Axis("time", unit=unit_time),
@@ -82,11 +85,11 @@ class DemoExperiment(SimulationExperiment):
             legend=True,
         )
         for k in [0, 1]:
-            for key in ["[e__A]", "[e__B]", "[e__C]", "[c__A]", "[c__B]", "[c__C]"]:
+            for key in selections:
                 task_id = "task_scan_init"
                 plots[k].curve(
-                    x=Data(self, "time", task=task_id),
-                    y=Data(self, key, task=task_id),
+                    x=Data("time", task=task_id),
+                    y=Data(key, task=task_id),
                     label=key,
                 )
         plots[1].yaxis.scale = "log"
@@ -102,7 +105,7 @@ def run_demo_experiments(output_path: Path) -> None:
     data_path = base_path
 
     runner = ExperimentRunner(
-        [DemoExperiment],
+        DemoExperiment,
         simulator=SimulatorParallel(),
         data_path=data_path,
         base_path=base_path,

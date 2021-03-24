@@ -107,7 +107,7 @@ from sbmlsim.combine.sedml.io import read_sedml
 from sbmlsim.combine.sedml.kisao import is_supported_algorithm_for_simulation_type
 from sbmlsim.combine.sedml.task import Stack, TaskNode, TaskTree
 from sbmlsim.data import DataSet, Data
-from sbmlsim.experiment import ExperimentDict, SimulationExperiment
+from sbmlsim.experiment import SimulationExperiment
 from sbmlsim.model import model_resources
 from sbmlsim.model.model import AbstractModel
 from sbmlsim.plot import Figure, Plot, Axis, Curve
@@ -191,6 +191,9 @@ class SEDMLParser(object):
             self.tasks[sed_task.getId()] = self.parse_task(sed_task)
         print(f"tasks: {self.tasks}")
 
+        # --- Data ---
+        self.data: Dict[str, Data] = {}
+
         # --- Figures/Reports ---
         self.figures: Dict[str, Figure] = {}
         sed_output: libsedml.SedOutput
@@ -206,25 +209,25 @@ class SEDMLParser(object):
 
         # Create the experiment object
         def f_models(obj) -> Dict[str, AbstractModel]:
-            return ExperimentDict(self.models)
+            return self.models
 
         def f_datasets(obj) -> Dict[str, DataSet]:
             """Dataset definition (experimental data)."""
 
             # FIXME: convert to DataSets & add units
-            return ExperimentDict(self.data_descriptions)
+            return self.data_descriptions
 
         def f_simulations(obj) -> Dict[str, AbstractSim]:
-            return ExperimentDict(self.simulations)
+            return self.simulations
 
         def f_tasks(obj) -> Dict[str, Task]:
-            return ExperimentDict(self.tasks)
+            return self.tasks
 
-        def f_data(obj) -> None:
-
+        def f_data(obj) -> Dict[str, Data]:
+            return self.data
 
         def f_figures(obj) -> Dict[str, Figure]:
-            return ExperimentDict(self.figures)
+            return self.figures
 
         self.exp_class = type(
             "SedmlExperiment",
@@ -234,6 +237,7 @@ class SEDMLParser(object):
                 "datasets": f_datasets,
                 "simulations": f_simulations,
                 "tasks": f_tasks,
+                "data": f_data,
                 "figures": f_figures,
             },
         )
@@ -243,20 +247,20 @@ class SEDMLParser(object):
         self.experiment.initialize()
 
         # self.exp_class._data = None  # FIXME hack
-        for fig in self.figures.values():
-            print(fig)
-            fig.experiment = self.experiment
-
-            # this must happen automatically
-            for plot in fig.plots:
-                for curve in plot.curves:
-                    if curve.x:
-                        curve.x.experiment = self.experiment
-                        curve.x._register_data()
-                    if curve.y:
-                        curve.y.experiment = self.experiment
-                        curve.y._register_data()
-                    # FIXME: also for xerr and yerr
+        # for fig in self.figures.values():
+        #     print(fig)
+        #     fig.experiment = self.experiment
+        #
+        #     # this must happen automatically
+        #     for plot in fig.plots:
+        #         for curve in plot.curves:
+        #             if curve.x:
+        #                 curve.x.experiment = self.experiment
+        #                 curve.x._register_data()
+        #             if curve.y:
+        #                 curve.y.experiment = self.experiment
+        #                 curve.y._register_data()
+        #             # FIXME: also for xerr and yerr
 
 
     # --- MODELS ---
@@ -497,7 +501,7 @@ class SEDMLParser(object):
     def parse_task(self, sed_task: libsedml.SedAbstractTask) -> Task:
         """ Parse arbitrary task (repeated or simple, or simple repeated)."""
         # If no DataGenerator references the task, no execution is necessary
-        dgs = self.data_generators_for_task(sed_task)
+        dgs: List[libsedml.SedDataGenerator] = self.data_generators_for_task(sed_task)
         if len(dgs) == 0:
             logger.warning(
                 f"Task '{sed_task.getId()}' is not used in any DataGenerator."
@@ -660,11 +664,12 @@ class SEDMLParser(object):
         elif sed_var.isSetTarget():
             index = self.parse_xpath_target(sed_var.getTarget())
 
-        return Data(
-            experiment=self.exp_class,
+        d = Data(
             index=index,
             task=task_id
         )
+        self.data[d.sid] = d
+        return d
 
     def _parse_repeated_task(self, node: TaskNode):
         print("repeated task")

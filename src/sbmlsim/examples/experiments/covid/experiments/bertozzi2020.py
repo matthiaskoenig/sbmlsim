@@ -50,12 +50,10 @@ class Bertozzi2020(SimulationExperiment):
 
     def tasks(self) -> Dict[str, Task]:
         if self.simulations():
-            return ExperimentDict(
-                {
+            return {
                     f"task_{key}": Task(model="model", simulation=key)
                     for key in self.simulations()
                 }
-            )
 
     def figures(self) -> Dict[str, Figure]:
         unit_time = "time"

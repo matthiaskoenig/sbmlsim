@@ -1,7 +1,7 @@
 from typing import Dict, Tuple
 from collections import namedtuple
 
-from sbmlsim.experiment import SimulationExperiment, ExperimentDict
+from sbmlsim.experiment import SimulationExperiment
 from sbmlsim.model import AbstractModel
 from sbmlsim.simulation import TimecourseSim
 from sbmlsim.simulation.sensitivity import ModelSensitivity
@@ -44,16 +44,14 @@ class MidazolamSimulationExperiment(SimulationExperiment):
                 },
             )
         }
-        return ExperimentDict(models)
+        return models
 
     def tasks(self) -> Dict[str, Task]:
         if self.simulations():
-            return ExperimentDict(
-                {
+            return {
                     f"task_{key}": Task(model="model", simulation=key)
                     for key in self.simulations()
-                }
-            )
+            }
         else:
             return {}
 

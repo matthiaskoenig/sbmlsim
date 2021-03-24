@@ -31,7 +31,7 @@
     "task_scan_init__time": {
       "type": "TASK",
       "index": "time",
-      "unit": "second",
+      "unit": null,
       "task": "task_scan_init",
       "dataset": null,
       "function": null,
@@ -40,7 +40,7 @@
     "task_scan_init__[e__A]": {
       "type": "TASK",
       "index": "[e__A]",
-      "unit": "mole/m3",
+      "unit": null,
       "task": "task_scan_init",
       "dataset": null,
       "function": null,
@@ -49,7 +49,7 @@
     "task_scan_init__[e__B]": {
       "type": "TASK",
       "index": "[e__B]",
-      "unit": "mole/m3",
+      "unit": null,
       "task": "task_scan_init",
       "dataset": null,
       "function": null,
@@ -58,7 +58,7 @@
     "task_scan_init__[e__C]": {
       "type": "TASK",
       "index": "[e__C]",
-      "unit": "mole/m3",
+      "unit": null,
       "task": "task_scan_init",
       "dataset": null,
       "function": null,
@@ -67,7 +67,7 @@
     "task_scan_init__[c__A]": {
       "type": "TASK",
       "index": "[c__A]",
-      "unit": "mole/m3",
+      "unit": null,
       "task": "task_scan_init",
       "dataset": null,
       "function": null,
@@ -76,7 +76,7 @@
     "task_scan_init__[c__B]": {
       "type": "TASK",
       "index": "[c__B]",
-      "unit": "mole/m3",
+      "unit": null,
       "task": "task_scan_init",
       "dataset": null,
       "function": null,
@@ -85,7 +85,7 @@
     "task_scan_init__[c__C]": {
       "type": "TASK",
       "index": "[c__C]",
-      "unit": "mole/m3",
+      "unit": null,
       "task": "task_scan_init",
       "dataset": null,
       "function": null,

@@ -4,8 +4,6 @@ In the optimization the cost is minimized for Nk curves with every curve having 
 data points.
 
 sum(Nk)( w{k}^2 * sum(NKi) (w{i,k}^2 * res{i,k}))
-
-
 """
 
 from enum import Enum

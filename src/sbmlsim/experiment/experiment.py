@@ -81,14 +81,14 @@ class SimulationExperiment:
         self.settings = kwargs
 
         # init variables
-        self._models = {}
-        self._data = {}
-        self._datasets = {}
-        self._fit_mappings = {}
-        self._simulations = {}
-        self._tasks = {}
-        self._results = {}
-        self._figures = {}
+        self._models: Dict[str, AbstractModel] = {}
+        self._data: Dict[str, Data] = {}
+        self._datasets: Dict[str, DataSet] = {}
+        self._fit_mappings: Dict[str, FitMapping] = {}
+        self._simulations: Dict[str, AbstractSim] = {}
+        self._tasks: Dict[str, Task] = {}
+        self._figures: Dict[str, Figure] = {}
+        self._results: Dict[str, XResult] = {}
 
     def initialize(self) -> None:
         """Initialize SimulationExperiment.
@@ -98,13 +98,14 @@ class SimulationExperiment:
         Certain objects cannot be serialized and must be initialized.
         :return:
         """
-        self._datasets: Dict[str, DataSet] = self.datasets()
-        self._models: Dict[str, AbstractModel] = self.models()
-        self._simulations: Dict[str, AbstractSim] = self.simulations()
-        self._tasks: Dict[str, Task] = self.tasks()
-        self._data: Dict[str, Data] = self.data()
-        self._figures: Dict[str, Figure] = self.figures()
-        self._fit_mappings: Dict[str, FitMapping] = self.fit_mappings()
+        # initialized from the outside
+        # self._models: Dict[str, AbstractModel] = self.models()
+        self._datasets.update(self.datasets())
+        self._simulations.update(self.simulations())
+        self._tasks.update(self.tasks())
+        self._data.update(self.data())
+        self._figures.update(self.figures())
+        self._fit_mappings.update(self.fit_mappings())
 
         # validation of information
         self._check_keys()
@@ -166,6 +167,17 @@ class SimulationExperiment:
 
     def figures(self) -> Dict[str, Figure]:
         """Figure definition.
+
+        Selections accessed in figures and analyses must be registered beforehand
+        via datagenerators.
+
+        Most figures do not require access to concrete data, but only abstract
+        data concepts.
+        """
+        return {}
+
+    def figures_mpl(self) -> Dict[str, FigureMPL]:
+        """Matplotlib figure definition.
 
         Selections accessed in figures and analyses must be registered beforehand
         via datagenerators.
@@ -274,7 +286,7 @@ class SimulationExperiment:
                 )
 
         for key, model in self._models.items():
-            if not isinstance(model, (AbstractModel, Path)):
+            if not isinstance(model, AbstractModel):
                 raise ValueError(
                     f"model must be of type AbstractModel, but "
                     f"model '{key}' has type: '{type(model)}'"
@@ -338,7 +350,7 @@ class SimulationExperiment:
         self.evaluate_fit_mappings()
 
         # some of the figures require actual numerical results!
-        self._figures = self.figures()
+        # self._figures = self.figures()
 
         # create outputs
         if output_path is None:
@@ -383,7 +395,7 @@ class SimulationExperiment:
         This allows to hash executed simulations.
         """
         if self._results is None:
-            self._results = ExperimentDict()
+            self._results = dict()
 
         # get all tasks for given model
         model_tasks: Dict[str, List[str]] = defaultdict(list)
@@ -394,20 +406,20 @@ class SimulationExperiment:
         for model_id, task_keys in model_tasks.items():
 
             # load model in simulator
-            model = self._models[model_id]  # type: AbstractModel
+            model: AbstractModel = self._models[model_id]
             simulator.set_model(model=model)
 
             if reduced_selections:
                 # set selections based on data
                 selections = {"time"}
-                for d in self._data.values():  # type: Data
+                d: Data
+                for d in self._data.values():
                     if d.is_task():
                         # check if selection is for current model
                         task = self._tasks[d.task_id]
                         if task.model_id == model_id:
                             selections.add(d.index)
                 selections = sorted(list(selections))
-                # print(f"Selections for model '{model_id}': {selections}")
                 simulator.set_timecourse_selections(selections=selections)
             else:
                 # use the complete selection
@@ -416,7 +428,8 @@ class SimulationExperiment:
             # normalize model changes (these must be set in simulation!)
             model.normalize(uinfo=model.uinfo)
 
-            for task_key in task_keys:  # type: str
+            task_key: str
+            for task_key in task_keys:
                 task = self._tasks[task_key]
 
                 sim: Union[ScanSim, TimecourseSim] = self._simulations[
@@ -446,7 +459,7 @@ class SimulationExperiment:
 
     # --- SERIALIZATION -------------------------------------------------------
     @timeit
-    def to_json(self, path=None, indent=2):
+    def to_json(self, path: Path = None, indent: int = 2):
         """Convert experiment to JSON for exchange.
 
         :param path: path for file, if None JSON str is returned
@@ -522,11 +535,13 @@ class SimulationExperiment:
         """Create matplotlib figures."""
         mpl_figures = {}
         for fig_key, fig in self._figures.items():
-            if isinstance(fig, Figure):
-                fig_mpl = MatplotlibFigureSerializer.to_figure(self, fig)
-            elif isinstance(fig, FigureMPL):
-                fig_mpl = fig
+            print(fig)
+            print(fig.to_dict())
+            fig_mpl = MatplotlibFigureSerializer.to_figure(self, fig)
+            mpl_figures[fig_key] = fig_mpl
 
+        # additional custom figures
+        for fig_key, fig_mpl in self.figures_mpl().items():
             mpl_figures[fig_key] = fig_mpl
 
         return mpl_figures
