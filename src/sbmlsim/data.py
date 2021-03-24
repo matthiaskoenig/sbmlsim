@@ -23,6 +23,8 @@ class Data(object):
     experimental data, simulations or via function calculations.
 
     All transformation of data and a tree of data operations.
+    This is just a promise for data which will be fullfilled with data from
+    tasks.
     """
 
     class Types(Enum):
@@ -34,41 +36,44 @@ class Data(object):
 
     def __init__(
         self,
-        experiment,
+        # experiment,
         index: str,
         task: str = None,
         dataset: str = None,
-        function=None,
-        variables=None,
+        function: str = None,
+        variables: Dict[str, 'Data'] = None,
+        parameters: Dict[str, float] = None,
+        sid: str = None
     ):
         """Construct data."""
-        self.experiment = experiment
+        # self.experiment = experiment
         self.index: str = index
         self.task_id: str = task
         self.dset_id: str = dataset
         self.function = function
         self.variables = variables
         self.unit: Optional[str] = None
+        self._sid = None
 
         if (not self.task_id) and (not self.dset_id) and (not self.function):
             raise ValueError(
                 "Either 'task_id', 'dset_id' or 'function' required for Data."
             )
 
-        # register data in simulation
-        self._register_data()
-
-    def _register_data(self):
-        """Registers data in simulation."""
-        # FIXME: this creates strange issues
-
-        if self.experiment:
-            if self.experiment._data is None:
-                self.experiment._data = {}
-
-            self.experiment._data[self.sid] = self
-        else:
-            logger.error("No experiment for data, registration failed.")
+    #     # register data in simulation
+    #     self._register_data()
+    #
+    # def _register_data(self):
+    #     """Registers data in simulation."""
+    #     # FIXME: this creates strange issues
+    #
+    #     if self.experiment:
+    #         if self.experiment._data is None:
+    #             self.experiment._data = {}
+    #
+    #         self.experiment._data[self.sid] = self
+    #     else:
+    #         logger.error("No experiment for data, registration failed.")
 
     def __str__(self) -> str:
         """Get string."""

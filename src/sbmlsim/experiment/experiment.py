@@ -24,17 +24,6 @@ from sbmlsim.utils import timeit
 logger = logging.getLogger(__name__)
 
 
-class ExperimentDict(dict):
-    """Dictionary for experiments."""
-
-    def __getitem__(self, k):
-        """Get item k."""
-        try:
-            return super().__getitem__(k)
-        except KeyError:
-            raise KeyError(f"Key '{k}' not in {sorted(self.keys())}")
-
-
 class SimulationExperiment:
     """Generic simulation experiment.
 
@@ -92,14 +81,14 @@ class SimulationExperiment:
         self.settings = kwargs
 
         # init variables
-        self._models = ExperimentDict()
-        self._data = ExperimentDict()
-        self._datasets = ExperimentDict()
-        self._fit_mappings = ExperimentDict()
-        self._simulations = ExperimentDict()
-        self._tasks = ExperimentDict()
-        self._results = ExperimentDict()
-        self._figures = ExperimentDict()
+        self._models = {}
+        self._data = {}
+        self._datasets = {}
+        self._fit_mappings = {}
+        self._simulations = {}
+        self._tasks = {}
+        self._results = {}
+        self._figures = {}
 
     def initialize(self) -> None:
         """Initialize SimulationExperiment.
@@ -109,13 +98,14 @@ class SimulationExperiment:
         Certain objects cannot be serialized and must be initialized.
         :return:
         """
-        # process all information necessary to run the simulations, i.e.,
-        # all data required from the model
-        self._datasets = self.datasets()  # storage of datasets
-        self._simulations = self.simulations()  # storage of simulation definition
-        self._tasks = self.tasks()
-        self._fit_mappings = self.fit_mappings()  # type: Dict[str, FitMapping]
-        self.datagenerators()  # definition of data accessed later on (sets self._data)
+        self._datasets: Dict[str, DataSet] = self.datasets()
+        self._models: Dict[str, AbstractModel] = self.models()
+        self._simulations: Dict[str, AbstractSim] = self.simulations()
+        self._tasks: Dict[str, Task] = self.tasks()
+        self._data: Dict[str, Data] = self.data()
+        self._figures = Dict[str, Figure] = self.figures()
+        self._fit_mappings: Dict[str, FitMapping] = self.fit_mappings()  # type: Dict[str, FitMapping]
+
 
         # validation of information
         self._check_keys()
@@ -145,17 +135,10 @@ class SimulationExperiment:
 
         The child classes fill out the information.
         """
-        return ExperimentDict()
+        return dict()
 
     def datasets(self) -> Dict[str, DataSet]:
         """Define dataset definitions (experimental data).
-
-        The child classes fill out the information.
-        """
-        return ExperimentDict()
-
-    def tasks(self) -> Dict[str, Task]:
-        """Define task definitions.
 
         The child classes fill out the information.
         """
@@ -168,6 +151,22 @@ class SimulationExperiment:
         """
         return ExperimentDict()
 
+    def tasks(self) -> Dict[str, Task]:
+        """Define task definitions.
+
+        The child classes fill out the information.
+        """
+        return ExperimentDict()
+
+    def datagenerators(self) -> Dict[str, Data]:
+        """Define DataGenerators including functions.
+
+        All data which is accessed in a simulation result must be defined in a
+        data generator. The data generators are important for defining the
+        selections of a simulation experiment.
+        """
+        return ExperimentDict()
+
     def fit_mappings(self) -> Dict[str, FitMapping]:
         """Define fit mappings.
 
@@ -176,15 +175,6 @@ class SimulationExperiment:
         The child classes fill out the information.
         """
         return ExperimentDict()
-
-    def datagenerators(self) -> None:
-        """Define DataGenerators including functions.
-
-        All data which is accessed in a simulation result must be defined in a
-        data generator. The data generators are important for defining the
-        selections of a simulation experiment.
-        """
-        return None
 
     def add_selections(self, selections: Iterable[str], task_ids: Iterable[str] = None):
         """Add selections to given tasks.

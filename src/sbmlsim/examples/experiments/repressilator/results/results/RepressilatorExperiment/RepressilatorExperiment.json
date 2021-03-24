@@ -1,0 +1,113 @@
+{
+  "experiment_id": "RepressilatorExperiment",
+  "base_path": "/home/mkoenig/git/sbmlsim/src/sbmlsim/examples/experiments/repressilator",
+  "data_path": "[PosixPath('/home/mkoenig/git/sbmlsim/src/sbmlsim/examples/experiments/repressilator')]",
+  "models": {
+    "model1": {
+      "sid": null,
+      "name": null,
+      "language": "SBML",
+      "language_type": "SBML",
+      "source": {
+        "source": "/home/mkoenig/git/sbmlsim/src/sbmlsim/test/data/models/repressilator.xml",
+        "path": "/home/mkoenig/git/sbmlsim/src/sbmlsim/test/data/models/repressilator.xml",
+        "content": "None"
+      },
+      "changes": {}
+    },
+    "model2": {
+      "sid": null,
+      "name": null,
+      "language": "SBML",
+      "language_type": "SBML",
+      "source": {
+        "source": "/home/mkoenig/git/sbmlsim/src/sbmlsim/test/data/models/repressilator.xml",
+        "path": "/home/mkoenig/git/sbmlsim/src/sbmlsim/test/data/models/repressilator.xml",
+        "content": "None"
+      },
+      "changes": {
+        "X": {
+          "_magnitude": 100,
+          "_units": "dimensionless",
+          "_Quantity__used": false,
+          "_Quantity__handling": null
+        }
+      }
+    }
+  },
+  "tasks": {
+    "task_model1_tc": {
+      "model": "model1",
+      "simulation": "tc"
+    },
+    "task_model1_scan1d": {
+      "model": "model1",
+      "simulation": "scan1d"
+    },
+    "task_model1_scan2d": {
+      "model": "model1",
+      "simulation": "scan2d"
+    },
+    "task_model2_tc": {
+      "model": "model2",
+      "simulation": "tc"
+    },
+    "task_model2_scan1d": {
+      "model": "model2",
+      "simulation": "scan1d"
+    },
+    "task_model2_scan2d": {
+      "model": "model2",
+      "simulation": "scan2d"
+    }
+  },
+  "simulations": {
+    "tc": {
+      "type": "TimecourseSim",
+      "selections": null,
+      "reset": true,
+      "time_offset": 0.0,
+      "timecourses": [
+        {
+          "start": 0,
+          "end": 100,
+          "steps": 2000,
+          "changes": {},
+          "model_changes": {},
+          "model_manipulations": {},
+          "discard": false
+        },
+        {
+          "start": 0,
+          "end": 100,
+          "steps": 2000,
+          "changes": {
+            "X": {
+              "_magnitude": 10,
+              "_units": "dimensionless",
+              "_Quantity__used": false,
+              "_Quantity__handling": null
+            },
+            "Y": {
+              "_magnitude": 20,
+              "_units": "dimensionless",
+              "_Quantity__used": false,
+              "_Quantity__handling": null
+            }
+          },
+          "model_changes": {},
+          "model_manipulations": {},
+          "discard": false
+        }
+      ]
+    },
+    "scan1d": {
+      "type": "ScanSim"
+    },
+    "scan2d": {
+      "type": "ScanSim"
+    }
+  },
+  "data": {},
+  "figures": {}
+}

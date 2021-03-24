@@ -220,6 +220,9 @@ class SEDMLParser(object):
         def f_tasks(obj) -> Dict[str, Task]:
             return ExperimentDict(self.tasks)
 
+        def f_datagenerators(obj) -> None:
+
+
         def f_figures(obj) -> Dict[str, Figure]:
             return ExperimentDict(self.figures)
 
