@@ -10,7 +10,7 @@ from typing import Dict, Iterable, List, Union
 
 from sbmlsim.data import Data, DataSet
 from sbmlsim.fit import FitMapping
-from sbmlsim.model import AbstractModel
+from sbmlsim.model import AbstractModel, RoadrunnerSBMLModel
 from sbmlsim.plot import Figure
 from sbmlsim.plot.plotting_matplotlib import FigureMPL, MatplotlibFigureSerializer, plt
 from sbmlsim.result import XResult
@@ -103,15 +103,12 @@ class SimulationExperiment:
         self._simulations: Dict[str, AbstractSim] = self.simulations()
         self._tasks: Dict[str, Task] = self.tasks()
         self._data: Dict[str, Data] = self.data()
-        self._figures = Dict[str, Figure] = self.figures()
-        self._fit_mappings: Dict[str, FitMapping] = self.fit_mappings()  # type: Dict[str, FitMapping]
-
+        self._figures: Dict[str, Figure] = self.figures()
+        self._fit_mappings: Dict[str, FitMapping] = self.fit_mappings()
 
         # validation of information
         self._check_keys()
         self._check_types()
-
-        # print(self)
 
     def __str__(self) -> str:
         """Get string representation."""
@@ -130,7 +127,7 @@ class SimulationExperiment:
         ]
         return "\n".join(info)
 
-    def models(self) -> Dict[str, AbstractModel]:
+    def models(self) -> Dict[str, Union[AbstractModel, Path]]:
         """Define model definitions.
 
         The child classes fill out the information.
@@ -142,30 +139,41 @@ class SimulationExperiment:
 
         The child classes fill out the information.
         """
-        return ExperimentDict()
+        return dict()
 
     def simulations(self) -> Dict[str, AbstractSim]:
         """Define simulation definitions.
 
         The child classes fill out the information.
         """
-        return ExperimentDict()
+        return dict()
 
     def tasks(self) -> Dict[str, Task]:
         """Define task definitions.
 
         The child classes fill out the information.
         """
-        return ExperimentDict()
+        return dict()
 
-    def datagenerators(self) -> Dict[str, Data]:
+    def data(self) -> Dict[str, Data]:
         """Define DataGenerators including functions.
 
         All data which is accessed in a simulation result must be defined in a
         data generator. The data generators are important for defining the
         selections of a simulation experiment.
         """
-        return ExperimentDict()
+        return dict()
+
+    def figures(self) -> Dict[str, Figure]:
+        """Figure definition.
+
+        Selections accessed in figures and analyses must be registered beforehand
+        via datagenerators.
+
+        Most figures do not require access to concrete data, but only abstract
+        data concepts.
+        """
+        return {}
 
     def fit_mappings(self) -> Dict[str, FitMapping]:
         """Define fit mappings.
@@ -174,10 +182,21 @@ class SimulationExperiment:
         Used for the optimization of parameters.
         The child classes fill out the information.
         """
-        return ExperimentDict()
+        return dict()
 
-    def add_selections(self, selections: Iterable[str], task_ids: Iterable[str] = None):
+    # --- DATA ------------------------------------------------------------------------
+    def add_data(self, d: Data) -> None:
+        """Adds data to the tracked data."""
+        self._data[d.sid] = d
+
+    def add_selections_data(
+        self,
+        selections: Iterable[str],
+        task_ids: Iterable[str] = None
+    ) -> None:
         """Add selections to given tasks.
+
+        The data for the selections will be part of the results.
 
         Selections are necessary to access data from simulations.
         Here these selections are added to the tasks. If no tasks are given,
@@ -188,7 +207,9 @@ class SimulationExperiment:
 
         for task_id in task_ids:
             for selection in selections:
-                Data(self, index=selection, task=task_id)
+                self.add_data(
+                    Data(index=selection, task=task_id)
+                )
 
     # --- RESULTS ---------------------------------------------------------------------
     @property
@@ -206,17 +227,6 @@ class SimulationExperiment:
             self._run_tasks(self.simulator)
         return self._results
 
-    def figures(self) -> Dict[str, Figure]:
-        """Figure definition.
-
-        Selections accessed in figures and analyses must be registered beforehand
-        via datagenerators.
-
-        Most figures do not require access to concrete data, but only abstract
-        data concepts.
-        """
-        return {}
-
     # --- VALIDATION ------------------------------------------------------------------
     def _check_keys(self):
         """Check keys in information dictionaries."""
@@ -226,8 +236,10 @@ class SimulationExperiment:
         for field_key in [
             "_models",
             "_datasets",
-            "_tasks",
             "_simulations",
+            "_tasks",
+            "_data",
+            "_figures",
             "_fit_mappings",
         ]:
             field = getattr(self, field_key)
@@ -262,17 +274,10 @@ class SimulationExperiment:
                 )
 
         for key, model in self._models.items():
-            if not isinstance(model, AbstractModel):
+            if not isinstance(model, (AbstractModel, Path)):
                 raise ValueError(
-                    f"datasets must be of type AbstractModel, but "
+                    f"model must be of type AbstractModel, but "
                     f"model '{key}' has type: '{type(model)}'"
-                )
-
-        for key, task in self._tasks.items():
-            if not isinstance(task, Task):
-                raise ValueError(
-                    f"tasks must be of type Task, but "
-                    f"task '{key}' has type: '{type(task)}'"
                 )
 
         for key, sim in self._simulations.items():
@@ -282,10 +287,31 @@ class SimulationExperiment:
                     f"simulation '{key}' has type: '{type(sim)}'"
                 )
 
+        for key, task in self._tasks.items():
+            if not isinstance(task, Task):
+                raise ValueError(
+                    f"tasks must be of type Task, but "
+                    f"task '{key}' has type: '{type(task)}'"
+                )
+
+        for key, data in self._data.items():
+            if not isinstance(data, Data):
+                raise ValueError(
+                    f"data must be of type Data, but "
+                    f"task '{key}' has type: '{type(data)}'"
+                )
+
+        for key, figure in self._figures.items():
+            if not isinstance(figure, Figure):
+                raise ValueError(
+                    f"figure must be of type Figure, but "
+                    f"task '{key}' has type: '{type(figure)}'"
+                )
+
         for key, mapping in self._fit_mappings.items():
             if not isinstance(mapping, FitMapping):
                 raise ValueError(
-                    f"fit_mappings must be of type FitMappintg, but "
+                    f"fit_mappings must be of type FitMapping, but "
                     f"mapping '{key}' has type: '{type(mapping)}'"
                 )
 
@@ -497,7 +523,7 @@ class SimulationExperiment:
         mpl_figures = {}
         for fig_key, fig in self._figures.items():
             if isinstance(fig, Figure):
-                fig_mpl = MatplotlibFigureSerializer.to_figure(fig)
+                fig_mpl = MatplotlibFigureSerializer.to_figure(self, fig)
             elif isinstance(fig, FigureMPL):
                 fig_mpl = fig
 

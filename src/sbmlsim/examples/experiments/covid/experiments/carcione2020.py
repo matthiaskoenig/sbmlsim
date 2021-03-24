@@ -1,7 +1,7 @@
 from pathlib import Path
 from typing import Dict
 
-from sbmlsim.experiment import ExperimentDict, SimulationExperiment
+from sbmlsim.experiment import SimulationExperiment
 from sbmlsim.model import AbstractModel
 from sbmlsim.plot import Axis, Figure
 from sbmlsim.simulation import Timecourse, TimecourseSim
@@ -22,16 +22,16 @@ class Carcione2020(SimulationExperiment):
                 changes={},
             )
         }
-        return ExperimentDict(models)
+        return models
 
     def tasks(self) -> Dict[str, Task]:
+        tasks = {}
         if self.simulations():
-            return ExperimentDict(
-                {
+            tasks = {
                     f"task_{key}": Task(model="model", simulation=key)
                     for key in self.simulations()
-                }
-            )
+            }
+        return tasks
 
     def simulations(self) -> Dict[str, TimecourseSim]:
         Q_ = self.Q_
@@ -56,13 +56,16 @@ class Carcione2020(SimulationExperiment):
         unit_time = "time"
         unit_y = "substance"
 
+        selections = ["Susceptible", "Exposed", "Infected", "Recovered"]
+        self.add_selections_data(["time"] + selections)
+
         fig_1 = Figure(self, sid="plot_1", name=f"{self.sid} (plot_1)", num_rows=1)
         plots = fig_1.create_plots(Axis("time", unit=unit_time), legend=True)
         plots[0].set_yaxis("y", unit_y)
 
         # simulation
         colors = ["black", "blue", "red", "green"]
-        for k, skey in enumerate(["Susceptible", "Exposed", "Infected", "Recovered"]):
+        for k, skey in enumerate(selections):
             plots[0].add_data(
                 task="task_sim1",
                 xid="time",

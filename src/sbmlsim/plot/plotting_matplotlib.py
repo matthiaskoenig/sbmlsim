@@ -47,7 +47,7 @@ class MatplotlibFigureSerializer(object):
     """
 
     @staticmethod
-    def to_figure(figure: Figure) -> FigureMPL:
+    def to_figure(experiment: 'SimulationExperiment', figure: Figure) -> FigureMPL:
         """Convert sbmlsim.Figure to matplotlib figure."""
 
         # FIXME: UserWarning: Warning: converting a masked element to nan.
@@ -55,11 +55,11 @@ class MatplotlibFigureSerializer(object):
         # Issue with converting elements
 
         # create new figure
-        fig = plt.figure(
+        fig: plt.Figure = plt.figure(
             figsize=(figure.width, figure.height),
             dpi=Figure.fig_dpi,
             facecolor=Figure.fig_facecolor,
-        )  # type: plt.Figure
+        )
 
         if figure.name:
             fig.suptitle(
@@ -119,8 +119,8 @@ class MatplotlibFigureSerializer(object):
                     kwargs = curve.style.to_mpl_kwargs()
 
                 # mean quantity
-                x = curve.x.get_data(to_units=xunit)
-                y = curve.y.get_data(to_units=yunit)
+                x = curve.x.get_data(experiment=experiment, to_units=xunit)
+                y = curve.y.get_data(experiment=experiment, to_units=yunit)
 
                 # additional data exists in xres
                 # FIXME: get access to the full data matrix and support plotting
@@ -131,7 +131,7 @@ class MatplotlibFigureSerializer(object):
                 x_std, x_min, x_max = None, None, None
                 if curve.x.dtype == Data.Types.TASK:
                     data = curve.x
-                    xres = data.experiment.results[data.task_id]  # type: XResult
+                    xres = experiment.results[data.task_id]  # type: XResult
                     if not xres.is_timecourse():
                         x_std = xres.dim_std(data.index).to(xunit)
                         x_min = xres.dim_min(data.index).to(xunit)
@@ -140,7 +140,7 @@ class MatplotlibFigureSerializer(object):
                 y_std, y_min, y_max = None, None, None
                 if curve.y.dtype == Data.Types.TASK:
                     data = curve.y
-                    xres = data.experiment.results[data.task_id]  # type: XResult
+                    xres = experiment.results[data.task_id]  # type: XResult
                     if not xres.is_timecourse():
                         y_std = xres.dim_std(data.index).to(yunit)
                         y_min = xres.dim_min(data.index).to(yunit)
@@ -148,17 +148,11 @@ class MatplotlibFigureSerializer(object):
 
                 xerr = None
                 if curve.xerr is not None:
-                    xerr = curve.xerr.get_data(to_units=xunit)
+                    xerr = curve.xerr.get_data(experiment=experiment, to_units=xunit)
 
                 yerr = None
                 if curve.yerr is not None:
-                    yerr = curve.yerr.get_data(to_units=yunit)
-
-                # use interpolation
-                # show_figures            4.7645 [s]
-                # save_figures           26.8983 [s]
-                # run                    32.5651 [s]
-                # run_experiments        32.5654 [s]
+                    yerr = curve.yerr.get_data(experiment=experiment, to_units=yunit)
 
                 xmin, xmax = x.magnitude[0], x.magnitude[-1]
                 if (xax.min is not None) and (xax.min > xmin):

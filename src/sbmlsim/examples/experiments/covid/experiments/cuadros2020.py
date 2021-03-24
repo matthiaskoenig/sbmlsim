@@ -1,7 +1,7 @@
 from pathlib import Path
 from typing import Dict
 
-from sbmlsim.experiment import ExperimentDict, SimulationExperiment
+from sbmlsim.experiment import SimulationExperiment
 from sbmlsim.model import AbstractModel
 from sbmlsim.plot import Axis, Figure
 from sbmlsim.simulation import Timecourse, TimecourseSim
@@ -22,20 +22,10 @@ class Cuadros2020(SimulationExperiment):
                 changes={},
             )
         }
-        return ExperimentDict(models)
-
-    def tasks(self) -> Dict[str, Task]:
-        if self.simulations():
-            return ExperimentDict(
-                {
-                    f"task_{key}": Task(model="model", simulation=key)
-                    for key in self.simulations()
-                }
-            )
+        return models
 
     def simulations(self) -> Dict[str, TimecourseSim]:
         Q_ = self.Q_
-
         tcsims = {}
         tcsims["sim1"] = TimecourseSim(
             [
@@ -49,12 +39,23 @@ class Cuadros2020(SimulationExperiment):
         )
         return tcsims
 
-    def figures(self) -> Dict[str, Figure]:
-        return {**self.figure_plot_1()}
+    def tasks(self) -> Dict[str, Task]:
+        if self.simulations():
+            return {
+                    f"task_{key}": Task(model="model", simulation=key)
+                    for key in self.simulations()
+            }
 
-    def figure_plot_1(self):
+    def figures(self) -> Dict[str, Figure]:
         unit_time = "time"
         unit_y = "substance"
+
+        self.add_selections_data(
+            ["time",
+             "Total_cumulative_cases",
+             "Total_deaths"
+             ]
+        )
 
         fig_1 = Figure(self, sid="plot_1", name=f"{self.sid} (plot_1)")
         plots = fig_1.create_plots(Axis("time", unit=unit_time), legend=True)

@@ -1,7 +1,7 @@
 from pathlib import Path
 from typing import Dict
 
-from sbmlsim.experiment import ExperimentDict, SimulationExperiment
+from sbmlsim.experiment import SimulationExperiment
 from sbmlsim.model import AbstractModel
 from sbmlsim.plot import Axis, Figure
 from sbmlsim.simulation import Timecourse, TimecourseSim
@@ -22,16 +22,7 @@ class Bertozzi2020(SimulationExperiment):
                 changes={},
             )
         }
-        return ExperimentDict(models)
-
-    def tasks(self) -> Dict[str, Task]:
-        if self.simulations():
-            return ExperimentDict(
-                {
-                    f"task_{key}": Task(model="model", simulation=key)
-                    for key in self.simulations()
-                }
-            )
+        return models
 
     def simulations(self) -> Dict[str, TimecourseSim]:
         Q_ = self.Q_
@@ -57,9 +48,23 @@ class Bertozzi2020(SimulationExperiment):
 
         return tcsims
 
+    def tasks(self) -> Dict[str, Task]:
+        if self.simulations():
+            return ExperimentDict(
+                {
+                    f"task_{key}": Task(model="model", simulation=key)
+                    for key in self.simulations()
+                }
+            )
+
     def figures(self) -> Dict[str, Figure]:
         unit_time = "time"
         unit_y = "substance"
+
+        selections = ["Infected", "Susceptible", "Recovered", "Peak_Time"]
+        self.add_selections_data(
+            selections=["time"] + selections
+        )
 
         fig_1 = Figure(self, sid="plot_1", name=f"{self.sid} (plot_1)")
         plots = fig_1.create_plots(Axis("time", unit=unit_time), legend=True)
@@ -69,7 +74,7 @@ class Bertozzi2020(SimulationExperiment):
         task_id = "task_sim0"
         colors = ["black", "blue", "red", "green"]
 
-        for k, skey in enumerate(["Infected", "Susceptible", "Recovered", "Peak_Time"]):
+        for k, skey in enumerate(selections):
             color = colors[k]
             plots[0].add_data(
                 task=task_id,

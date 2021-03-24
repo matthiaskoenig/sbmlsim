@@ -2,7 +2,6 @@
 
 from .experiment import (
     SimulationExperiment,
-    ExperimentDict,
     ExperimentResult,
 )
 from .runner import ExperimentRunner

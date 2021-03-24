@@ -45,7 +45,7 @@
     "task_sim1__time": {
       "type": "TASK",
       "index": "time",
-      "unit": "(86400.0*s)",
+      "unit": null,
       "task": "task_sim1",
       "dataset": null,
       "function": null,
@@ -54,7 +54,7 @@
     "task_sim1__Total_cumulative_cases": {
       "type": "TASK",
       "index": "Total_cumulative_cases",
-      "unit": "",
+      "unit": null,
       "task": "task_sim1",
       "dataset": null,
       "function": null,
@@ -63,7 +63,7 @@
     "task_sim1__Total_deaths": {
       "type": "TASK",
       "index": "Total_deaths",
-      "unit": "",
+      "unit": null,
       "task": "task_sim1",
       "dataset": null,
       "function": null,

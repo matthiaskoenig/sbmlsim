@@ -40,7 +40,7 @@ class AssignmentExperiment(SimulationExperiment):
         return tasks
 
     def datagenerators(self) -> None:
-        self.add_selections(selections=["time", "A1", "[A1]", "D"])
+        self.add_selections_data(selections=["time", "A1", "[A1]", "D"])
 
     def simulations(self) -> Dict[str, AbstractSim]:
         Q_ = self.Q_

@@ -36,7 +36,6 @@ class Data(object):
 
     def __init__(
         self,
-        # experiment,
         index: str,
         task: str = None,
         dataset: str = None,
@@ -46,34 +45,18 @@ class Data(object):
         sid: str = None
     ):
         """Construct data."""
-        # self.experiment = experiment
         self.index: str = index
         self.task_id: str = task
         self.dset_id: str = dataset
         self.function = function
         self.variables = variables
         self.unit: Optional[str] = None
-        self._sid = None
+        self._sid = sid
 
         if (not self.task_id) and (not self.dset_id) and (not self.function):
             raise ValueError(
                 "Either 'task_id', 'dset_id' or 'function' required for Data."
             )
-
-    #     # register data in simulation
-    #     self._register_data()
-    #
-    # def _register_data(self):
-    #     """Registers data in simulation."""
-    #     # FIXME: this creates strange issues
-    #
-    #     if self.experiment:
-    #         if self.experiment._data is None:
-    #             self.experiment._data = {}
-    #
-    #         self.experiment._data[self.sid] = self
-    #     else:
-    #         logger.error("No experiment for data, registration failed.")
 
     def __str__(self) -> str:
         """Get string."""
@@ -90,7 +73,9 @@ class Data(object):
     def sid(self) -> str:
         """Get id."""
         sid: str
-        if self.task_id:
+        if self._sid:
+            sid = self._sid
+        elif self.task_id:
             sid = f"{self.task_id}__{self.index}"
         elif self.dset_id:
             sid = f"{self.dset_id}__{self.index}"
@@ -146,8 +131,12 @@ class Data(object):
         }
         return d
 
-    def get_data(self, to_units: str = None):
+    def get_data(self, experiment: 'SimulationExperiment', to_units: str = None):
         """Return actual data from the data object.
+
+        The data is resolved from the available datasets and
+        the injected Experiment.
+
 
         :param to_units: units to convert to
         :return:
@@ -155,7 +144,7 @@ class Data(object):
         # Necessary to resolve the data
         if self.dtype == Data.Types.DATASET:
             # read dataset data
-            dset = self.experiment._datasets[self.dset_id]
+            dset = experiment._datasets[self.dset_id]
             if not isinstance(dset, DataSet):
                 raise ValueError(
                     f"DataSet '{self.dset_id}' is not a DataSet, but "
@@ -190,7 +179,7 @@ class Data(object):
 
         elif self.dtype == Data.Types.TASK:
             # read results of task
-            xres: XResult = self.experiment.results[self.task_id]
+            xres: XResult = experiment.results[self.task_id]
             if not isinstance(xres, XResult):
                 raise ValueError("Only Result objects supported in task data.")
 
@@ -207,9 +196,9 @@ class Data(object):
             for k, v in self.variables.items():
                 # lookup via key
                 if isinstance(v, str):
-                    variables[k] = self.experiment._data[v].data
+                    variables[k] = experiment._data[v].data
                 elif isinstance(v, Data):
-                    variables[k] = v.data
+                    variables[k] = v.get_data(experiment=experiment)
 
             x = mathml.evaluate(astnode=astnode, variables=variables)
             self.unit = str(x.units)  # check if this is correct
@@ -234,8 +223,6 @@ class Data(object):
                 raise err
 
         return x
-
-    data = property(get_data)
 
 
 class DataFunction(object):

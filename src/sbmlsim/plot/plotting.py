@@ -767,8 +767,8 @@ class Plot(BasePlotObject):
         # Necessary to define how the scans should be plotted, i.e.
         # which curves should be generated
         self.curve(
-            x=Data(experiment, xid, dataset=dataset, task=task),
-            y=Data(experiment, yid, dataset=dataset, task=task),
+            x=Data(xid, dataset=dataset, task=task),
+            y=Data(yid, dataset=dataset, task=task),
             yerr=yerr,
             label=label,
             single_lines=single_lines,

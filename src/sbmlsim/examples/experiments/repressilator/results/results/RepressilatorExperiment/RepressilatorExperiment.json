@@ -108,6 +108,432 @@
       "type": "ScanSim"
     }
   },
-  "data": {},
-  "figures": {}
+  "data": {
+    "task_model1_tc__X": {
+      "type": "TASK",
+      "index": "X",
+      "unit": null,
+      "task": "task_model1_tc",
+      "dataset": null,
+      "function": null,
+      "variables": null
+    },
+    "task_model1_tc__Y": {
+      "type": "TASK",
+      "index": "Y",
+      "unit": null,
+      "task": "task_model1_tc",
+      "dataset": null,
+      "function": null,
+      "variables": null
+    },
+    "task_model1_tc__Z": {
+      "type": "TASK",
+      "index": "Z",
+      "unit": null,
+      "task": "task_model1_tc",
+      "dataset": null,
+      "function": null,
+      "variables": null
+    },
+    "task_model2_tc__X": {
+      "type": "TASK",
+      "index": "X",
+      "unit": null,
+      "task": "task_model2_tc",
+      "dataset": null,
+      "function": null,
+      "variables": null
+    },
+    "task_model2_tc__Y": {
+      "type": "TASK",
+      "index": "Y",
+      "unit": null,
+      "task": "task_model2_tc",
+      "dataset": null,
+      "function": null,
+      "variables": null
+    },
+    "task_model2_tc__Z": {
+      "type": "TASK",
+      "index": "Z",
+      "unit": null,
+      "task": "task_model2_tc",
+      "dataset": null,
+      "function": null,
+      "variables": null
+    },
+    "f1": {
+      "type": "FUNCTION",
+      "index": "f1",
+      "unit": "dimensionless",
+      "task": null,
+      "dataset": null,
+      "function": "(sin(X)+Y+Z)/max(X)",
+      "variables": {
+        "X": {
+          "type": "TASK",
+          "index": "X",
+          "unit": "",
+          "task": "task_model1_tc",
+          "dataset": null,
+          "function": null,
+          "variables": null
+        },
+        "Y": {
+          "type": "TASK",
+          "index": "Y",
+          "unit": "",
+          "task": "task_model1_tc",
+          "dataset": null,
+          "function": null,
+          "variables": null
+        },
+        "Z": {
+          "type": "TASK",
+          "index": "Y",
+          "unit": "",
+          "task": "task_model1_tc",
+          "dataset": null,
+          "function": null,
+          "variables": null
+        }
+      }
+    },
+    "f2": {
+      "type": "FUNCTION",
+      "index": "f2",
+      "unit": "dimensionless",
+      "task": null,
+      "dataset": null,
+      "function": "Y/max(Y)",
+      "variables": {
+        "Y": {
+          "type": "TASK",
+          "index": "Y",
+          "unit": "",
+          "task": "task_model1_tc",
+          "dataset": null,
+          "function": null,
+          "variables": null
+        }
+      }
+    },
+    "task_model1_tc__time": {
+      "type": "TASK",
+      "index": "time",
+      "unit": null,
+      "task": "task_model1_tc",
+      "dataset": null,
+      "function": null,
+      "variables": null
+    },
+    "task_model2_tc__time": {
+      "type": "TASK",
+      "index": "time",
+      "unit": null,
+      "task": "task_model2_tc",
+      "dataset": null,
+      "function": null,
+      "variables": null
+    }
+  },
+  "figures": {
+    "Fig1": {
+      "sid": "Fig1",
+      "name": null,
+      "num_rows": 1,
+      "num_cols": 1,
+      "width": 7,
+      "height": 5,
+      "subplots": [
+        {
+          "plot": {
+            "sid": "plot0",
+            "name": "RepressilatorExperiment_Fig1",
+            "xaxis": {
+              "sid": "plot0_xaxis",
+              "name": "time [min]",
+              "label": "time",
+              "unit": "min",
+              "scale": "LINEAR",
+              "min": null,
+              "max": null,
+              "grid": false,
+              "label_visible": true,
+              "ticks_visible": true
+            },
+            "yaxis": {
+              "sid": "plot0_yaxis",
+              "name": "data [-]",
+              "label": "data",
+              "unit": "dimensionless",
+              "scale": "LINEAR",
+              "min": null,
+              "max": null,
+              "grid": false,
+              "label_visible": true,
+              "ticks_visible": true
+            },
+            "legend": true,
+            "facecolor": "#ffffffff",
+            "curves": [
+              {
+                "sid": "plot0_curve0",
+                "name": "X sim",
+                "x": "task_model1_tc__time",
+                "y": "task_model1_tc__X",
+                "xerr": null,
+                "yerr": null,
+                "yaxis": null,
+                "style": {
+                  "sid": null,
+                  "name": null,
+                  "line": {
+                    "type": "SOLID",
+                    "color": "#000000ff",
+                    "thickness": 2.0
+                  },
+                  "marker": {
+                    "size": null,
+                    "type": "NONE",
+                    "fill": "#000000ff",
+                    "line_color": null,
+                    "line_thickness": null
+                  },
+                  "fill": null
+                },
+                "order": 0
+              },
+              {
+                "sid": "plot0_curve1",
+                "name": "Y sim",
+                "x": "task_model1_tc__time",
+                "y": "task_model1_tc__Y",
+                "xerr": null,
+                "yerr": null,
+                "yaxis": null,
+                "style": {
+                  "sid": null,
+                  "name": null,
+                  "line": {
+                    "type": "SOLID",
+                    "color": "#0000ffff",
+                    "thickness": 2.0
+                  },
+                  "marker": {
+                    "size": null,
+                    "type": "NONE",
+                    "fill": "#0000ffff",
+                    "line_color": null,
+                    "line_thickness": null
+                  },
+                  "fill": null
+                },
+                "order": 1
+              },
+              {
+                "sid": "plot0_curve2",
+                "name": "X sim",
+                "x": "task_model2_tc__time",
+                "y": "task_model2_tc__X",
+                "xerr": null,
+                "yerr": null,
+                "yaxis": null,
+                "style": {
+                  "sid": null,
+                  "name": null,
+                  "line": {
+                    "type": "SOLID",
+                    "color": "#000000ff",
+                    "thickness": 2.0
+                  },
+                  "marker": {
+                    "size": null,
+                    "type": "NONE",
+                    "fill": "#000000ff",
+                    "line_color": null,
+                    "line_thickness": null
+                  },
+                  "fill": null
+                },
+                "order": 2
+              },
+              {
+                "sid": "plot0_curve3",
+                "name": "Y sim",
+                "x": "task_model2_tc__time",
+                "y": "task_model2_tc__Y",
+                "xerr": null,
+                "yerr": null,
+                "yaxis": null,
+                "style": {
+                  "sid": null,
+                  "name": null,
+                  "line": {
+                    "type": "SOLID",
+                    "color": "#0000ffff",
+                    "thickness": 2.0
+                  },
+                  "marker": {
+                    "size": null,
+                    "type": "NONE",
+                    "fill": "#0000ffff",
+                    "line_color": null,
+                    "line_thickness": null
+                  },
+                  "fill": null
+                },
+                "order": 3
+              }
+            ]
+          },
+          "row": 1,
+          "col": 1,
+          "row_span": 1,
+          "col_span": 1
+        }
+      ]
+    },
+    "Fig2": {
+      "sid": "Fig2",
+      "name": null,
+      "num_rows": 2,
+      "num_cols": 1,
+      "width": 7,
+      "height": 10,
+      "subplots": [
+        {
+          "plot": {
+            "sid": "plot0",
+            "name": null,
+            "xaxis": {
+              "sid": "plot0_xaxis",
+              "name": "data [-]",
+              "label": "data",
+              "unit": "dimensionless",
+              "scale": "LINEAR",
+              "min": -1.0,
+              "max": 2.0,
+              "grid": true,
+              "label_visible": true,
+              "ticks_visible": true
+            },
+            "yaxis": {
+              "sid": "plot0_yaxis",
+              "name": "data [-]",
+              "label": "data",
+              "unit": "dimensionless",
+              "scale": "LINEAR",
+              "min": null,
+              "max": null,
+              "grid": false,
+              "label_visible": true,
+              "ticks_visible": true
+            },
+            "legend": true,
+            "facecolor": "#ffffffff",
+            "curves": [
+              {
+                "sid": "plot0_curve0",
+                "name": "f2 ~ f1",
+                "x": "f1",
+                "y": "f2",
+                "xerr": null,
+                "yerr": null,
+                "yaxis": null,
+                "style": {
+                  "sid": null,
+                  "name": null,
+                  "line": {
+                    "type": "SOLID",
+                    "color": "#0000004c",
+                    "thickness": 1.0
+                  },
+                  "marker": {
+                    "size": null,
+                    "type": "CIRCLE",
+                    "fill": "#0000004c",
+                    "line_color": null,
+                    "line_thickness": null
+                  },
+                  "fill": null
+                },
+                "order": 0
+              }
+            ]
+          },
+          "row": 1,
+          "col": 1,
+          "row_span": 1,
+          "col_span": 1
+        },
+        {
+          "plot": {
+            "sid": "plot1",
+            "name": null,
+            "xaxis": {
+              "sid": "plot1_xaxis",
+              "name": "data [-]",
+              "label": "data",
+              "unit": "dimensionless",
+              "scale": "LOG10",
+              "min": null,
+              "max": null,
+              "grid": false,
+              "label_visible": true,
+              "ticks_visible": true
+            },
+            "yaxis": {
+              "sid": "plot1_yaxis",
+              "name": "data [-]",
+              "label": "data",
+              "unit": "dimensionless",
+              "scale": "LOG10",
+              "min": null,
+              "max": null,
+              "grid": false,
+              "label_visible": true,
+              "ticks_visible": true
+            },
+            "legend": true,
+            "facecolor": "#ffffffff",
+            "curves": [
+              {
+                "sid": "plot1_curve0",
+                "name": "f2 ~ f1",
+                "x": "f1",
+                "y": "f2",
+                "xerr": null,
+                "yerr": null,
+                "yaxis": null,
+                "style": {
+                  "sid": null,
+                  "name": null,
+                  "line": {
+                    "type": "SOLID",
+                    "color": "#0000004c",
+                    "thickness": 1.0
+                  },
+                  "marker": {
+                    "size": null,
+                    "type": "CIRCLE",
+                    "fill": "#0000004c",
+                    "line_color": null,
+                    "line_thickness": null
+                  },
+                  "fill": null
+                },
+                "order": 0
+              }
+            ]
+          },
+          "row": 2,
+          "col": 1,
+          "row_span": 1,
+          "col_span": 1
+        }
+      ]
+    }
+  }
 }
