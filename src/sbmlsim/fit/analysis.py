@@ -136,6 +136,8 @@ class OptimizationAnalysis:
         # Create figures
         # ----------------------
         rc_params_copy = {**plt.rcParams}
+        # reset matplotlib parameters
+        matplotlib.rcdefaults()
         # from pprint import pprint
         # pprint(rc_params_copy)
         if mpl_parameters is None:
@@ -190,15 +192,16 @@ class OptimizationAnalysis:
 
         # correlation plot
         if self.optres.size > 1:
-            self.plot_correlation(path=plots_dir / "parameter_correlation")
+            # FIXME: simplifiy correlation plot for speedup (create individual panels)
+            pass
+            # self.plot_correlation(path=plots_dir / "parameter_correlation")
 
-        # reset parameters
+        # restore parameters
         plt.rcParams.update(rc_params_copy)
 
-        print("-" * 80)
-        print(f"Analysis finished: {str(self.results_dir / 'index.html')}")
-
-        print("-" * 80)
+        logger.warning("-" * 80)
+        logger.warning(f"Analysis finished: file:/{str(self.results_dir / 'index.html')}")
+        logger.warning("-" * 80)
 
     def html_report(self, path: Path):
         """Creates HTML report of the fit."""
