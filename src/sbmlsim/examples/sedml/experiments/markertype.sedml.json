@@ -48,10 +48,31 @@
           }
         },
         {
-          "@id": "dg_SQUARE",
+          "@id": "dg_NONE",
           "math": {
             "@xmlns": "http://www.w3.org/1998/Math/MathML",
             "ci": "S1"
+          },
+          "listOfVariables": {
+            "variable": {
+              "@id": "S1",
+              "@target": "/sbml:sbml/sbml:model/sbml:listOfSpecies/sbml:species[@id='S1']",
+              "@taskReference": "task0",
+              "@modelReference": "model0"
+            }
+          }
+        },
+        {
+          "@id": "dg_SQUARE",
+          "math": {
+            "@xmlns": "http://www.w3.org/1998/Math/MathML",
+            "apply": {
+              "plus": null,
+              "ci": [
+                "S1",
+                "1"
+              ]
+            }
           },
           "listOfVariables": {
             "variable": {
@@ -70,7 +91,217 @@
               "plus": null,
               "ci": [
                 "S1",
+                "2"
+              ]
+            }
+          },
+          "listOfVariables": {
+            "variable": {
+              "@id": "S1",
+              "@target": "/sbml:sbml/sbml:model/sbml:listOfSpecies/sbml:species[@id='S1']",
+              "@taskReference": "task0",
+              "@modelReference": "model0"
+            }
+          }
+        },
+        {
+          "@id": "dg_DIAMOND",
+          "math": {
+            "@xmlns": "http://www.w3.org/1998/Math/MathML",
+            "apply": {
+              "plus": null,
+              "ci": [
+                "S1",
+                "3"
+              ]
+            }
+          },
+          "listOfVariables": {
+            "variable": {
+              "@id": "S1",
+              "@target": "/sbml:sbml/sbml:model/sbml:listOfSpecies/sbml:species[@id='S1']",
+              "@taskReference": "task0",
+              "@modelReference": "model0"
+            }
+          }
+        },
+        {
+          "@id": "dg_XCROSS",
+          "math": {
+            "@xmlns": "http://www.w3.org/1998/Math/MathML",
+            "apply": {
+              "plus": null,
+              "ci": [
+                "S1",
+                "4"
+              ]
+            }
+          },
+          "listOfVariables": {
+            "variable": {
+              "@id": "S1",
+              "@target": "/sbml:sbml/sbml:model/sbml:listOfSpecies/sbml:species[@id='S1']",
+              "@taskReference": "task0",
+              "@modelReference": "model0"
+            }
+          }
+        },
+        {
+          "@id": "dg_PLUS",
+          "math": {
+            "@xmlns": "http://www.w3.org/1998/Math/MathML",
+            "apply": {
+              "plus": null,
+              "ci": [
+                "S1",
+                "5"
+              ]
+            }
+          },
+          "listOfVariables": {
+            "variable": {
+              "@id": "S1",
+              "@target": "/sbml:sbml/sbml:model/sbml:listOfSpecies/sbml:species[@id='S1']",
+              "@taskReference": "task0",
+              "@modelReference": "model0"
+            }
+          }
+        },
+        {
+          "@id": "dg_STAR",
+          "math": {
+            "@xmlns": "http://www.w3.org/1998/Math/MathML",
+            "apply": {
+              "plus": null,
+              "ci": [
+                "S1",
+                "6"
+              ]
+            }
+          },
+          "listOfVariables": {
+            "variable": {
+              "@id": "S1",
+              "@target": "/sbml:sbml/sbml:model/sbml:listOfSpecies/sbml:species[@id='S1']",
+              "@taskReference": "task0",
+              "@modelReference": "model0"
+            }
+          }
+        },
+        {
+          "@id": "dg_TRIANGLEUP",
+          "math": {
+            "@xmlns": "http://www.w3.org/1998/Math/MathML",
+            "apply": {
+              "plus": null,
+              "ci": [
+                "S1",
+                "7"
+              ]
+            }
+          },
+          "listOfVariables": {
+            "variable": {
+              "@id": "S1",
+              "@target": "/sbml:sbml/sbml:model/sbml:listOfSpecies/sbml:species[@id='S1']",
+              "@taskReference": "task0",
+              "@modelReference": "model0"
+            }
+          }
+        },
+        {
+          "@id": "dg_TRIANGLEDOWN",
+          "math": {
+            "@xmlns": "http://www.w3.org/1998/Math/MathML",
+            "apply": {
+              "plus": null,
+              "ci": [
+                "S1",
+                "8"
+              ]
+            }
+          },
+          "listOfVariables": {
+            "variable": {
+              "@id": "S1",
+              "@target": "/sbml:sbml/sbml:model/sbml:listOfSpecies/sbml:species[@id='S1']",
+              "@taskReference": "task0",
+              "@modelReference": "model0"
+            }
+          }
+        },
+        {
+          "@id": "dg_TRIANGLELEFT",
+          "math": {
+            "@xmlns": "http://www.w3.org/1998/Math/MathML",
+            "apply": {
+              "plus": null,
+              "ci": [
+                "S1",
+                "9"
+              ]
+            }
+          },
+          "listOfVariables": {
+            "variable": {
+              "@id": "S1",
+              "@target": "/sbml:sbml/sbml:model/sbml:listOfSpecies/sbml:species[@id='S1']",
+              "@taskReference": "task0",
+              "@modelReference": "model0"
+            }
+          }
+        },
+        {
+          "@id": "dg_TRIANGLERIGHT",
+          "math": {
+            "@xmlns": "http://www.w3.org/1998/Math/MathML",
+            "apply": {
+              "plus": null,
+              "ci": [
+                "S1",
                 "10"
+              ]
+            }
+          },
+          "listOfVariables": {
+            "variable": {
+              "@id": "S1",
+              "@target": "/sbml:sbml/sbml:model/sbml:listOfSpecies/sbml:species[@id='S1']",
+              "@taskReference": "task0",
+              "@modelReference": "model0"
+            }
+          }
+        },
+        {
+          "@id": "dg_HDASH",
+          "math": {
+            "@xmlns": "http://www.w3.org/1998/Math/MathML",
+            "apply": {
+              "plus": null,
+              "ci": [
+                "S1",
+                "11"
+              ]
+            }
+          },
+          "listOfVariables": {
+            "variable": {
+              "@id": "S1",
+              "@target": "/sbml:sbml/sbml:model/sbml:listOfSpecies/sbml:species[@id='S1']",
+              "@taskReference": "task0",
+              "@modelReference": "model0"
+            }
+          }
+        },
+        {
+          "@id": "dg_VDASH",
+          "math": {
+            "@xmlns": "http://www.w3.org/1998/Math/MathML",
+            "apply": {
+              "plus": null,
+              "ci": [
+                "S1",
+                "12"
               ]
             }
           },
@@ -108,6 +339,15 @@
         "listOfCurves": {
           "curve": [
             {
+              "@id": "curve_NONE",
+              "@logX": "false",
+              "@style": "style_NONE",
+              "@xDataReference": "dg_time",
+              "@logY": "false",
+              "@yDataReference": "dg_NONE",
+              "@type": "points"
+            },
+            {
               "@id": "curve_SQUARE",
               "@logX": "false",
               "@style": "style_SQUARE",
@@ -124,6 +364,96 @@
               "@logY": "false",
               "@yDataReference": "dg_CIRCLE",
               "@type": "points"
+            },
+            {
+              "@id": "curve_DIAMOND",
+              "@logX": "false",
+              "@style": "style_DIAMOND",
+              "@xDataReference": "dg_time",
+              "@logY": "false",
+              "@yDataReference": "dg_DIAMOND",
+              "@type": "points"
+            },
+            {
+              "@id": "curve_XCROSS",
+              "@logX": "false",
+              "@style": "style_XCROSS",
+              "@xDataReference": "dg_time",
+              "@logY": "false",
+              "@yDataReference": "dg_XCROSS",
+              "@type": "points"
+            },
+            {
+              "@id": "curve_PLUS",
+              "@logX": "false",
+              "@style": "style_PLUS",
+              "@xDataReference": "dg_time",
+              "@logY": "false",
+              "@yDataReference": "dg_PLUS",
+              "@type": "points"
+            },
+            {
+              "@id": "curve_STAR",
+              "@logX": "false",
+              "@style": "style_STAR",
+              "@xDataReference": "dg_time",
+              "@logY": "false",
+              "@yDataReference": "dg_STAR",
+              "@type": "points"
+            },
+            {
+              "@id": "curve_TRIANGLEUP",
+              "@logX": "false",
+              "@style": "style_TRIANGLEUP",
+              "@xDataReference": "dg_time",
+              "@logY": "false",
+              "@yDataReference": "dg_TRIANGLEUP",
+              "@type": "points"
+            },
+            {
+              "@id": "curve_TRIANGLEDOWN",
+              "@logX": "false",
+              "@style": "style_TRIANGLEDOWN",
+              "@xDataReference": "dg_time",
+              "@logY": "false",
+              "@yDataReference": "dg_TRIANGLEDOWN",
+              "@type": "points"
+            },
+            {
+              "@id": "curve_TRIANGLELEFT",
+              "@logX": "false",
+              "@style": "style_TRIANGLELEFT",
+              "@xDataReference": "dg_time",
+              "@logY": "false",
+              "@yDataReference": "dg_TRIANGLELEFT",
+              "@type": "points"
+            },
+            {
+              "@id": "curve_TRIANGLERIGHT",
+              "@logX": "false",
+              "@style": "style_TRIANGLERIGHT",
+              "@xDataReference": "dg_time",
+              "@logY": "false",
+              "@yDataReference": "dg_TRIANGLERIGHT",
+              "@type": "points"
+            },
+            {
+              "@id": "curve_HDASH",
+              "@logX": "false",
+              "@style": "style_HDASH",
+              "@xDataReference": "dg_time",
+              "@logY": "false",
+              "@yDataReference": "dg_HDASH",
+              "@type": "points"
+            },
+            {
+              "@id": "curve_VDASH",
+              "@logX": "false",
+              "@style": "style_VDASH",
+              "@xDataReference": "dg_time",
+              "@logY": "false",
+              "@yDataReference": "dg_VDASH",
+              "@type": "points"
             }
           ]
         }
@@ -132,15 +462,28 @@
     "listOfStyles": {
       "style": [
         {
+          "@id": "style_NONE",
+          "line": {
+            "@style": "solid",
+            "@color": "#000000",
+            "@thickness": "1"
+          },
+          "marker": {
+            "@style": "none",
+            "@fill": "#000000",
+            "@lineColor": "#0000FF"
+          }
+        },
+        {
           "@id": "style_SQUARE",
           "line": {
             "@style": "solid",
-            "@color": "#0000FF",
+            "@color": "#000000",
             "@thickness": "1"
           },
           "marker": {
             "@style": "square",
-            "@fill": "#0000FF",
+            "@fill": "#000000",
             "@lineColor": "#0000FF"
           }
         },
@@ -148,12 +491,142 @@
           "@id": "style_CIRCLE",
           "line": {
             "@style": "solid",
-            "@color": "#0000FF",
+            "@color": "#000000",
             "@thickness": "1"
           },
           "marker": {
             "@style": "circle",
-            "@fill": "#0000FF",
+            "@fill": "#000000",
+            "@lineColor": "#0000FF"
+          }
+        },
+        {
+          "@id": "style_DIAMOND",
+          "line": {
+            "@style": "solid",
+            "@color": "#000000",
+            "@thickness": "1"
+          },
+          "marker": {
+            "@style": "diamond",
+            "@fill": "#000000",
+            "@lineColor": "#0000FF"
+          }
+        },
+        {
+          "@id": "style_XCROSS",
+          "line": {
+            "@style": "solid",
+            "@color": "#000000",
+            "@thickness": "1"
+          },
+          "marker": {
+            "@style": "xCross",
+            "@fill": "#000000",
+            "@lineColor": "#0000FF"
+          }
+        },
+        {
+          "@id": "style_PLUS",
+          "line": {
+            "@style": "solid",
+            "@color": "#000000",
+            "@thickness": "1"
+          },
+          "marker": {
+            "@style": "plus",
+            "@fill": "#000000",
+            "@lineColor": "#0000FF"
+          }
+        },
+        {
+          "@id": "style_STAR",
+          "line": {
+            "@style": "solid",
+            "@color": "#000000",
+            "@thickness": "1"
+          },
+          "marker": {
+            "@style": "star",
+            "@fill": "#000000",
+            "@lineColor": "#0000FF"
+          }
+        },
+        {
+          "@id": "style_TRIANGLEUP",
+          "line": {
+            "@style": "solid",
+            "@color": "#000000",
+            "@thickness": "1"
+          },
+          "marker": {
+            "@style": "triangleUp",
+            "@fill": "#000000",
+            "@lineColor": "#0000FF"
+          }
+        },
+        {
+          "@id": "style_TRIANGLEDOWN",
+          "line": {
+            "@style": "solid",
+            "@color": "#000000",
+            "@thickness": "1"
+          },
+          "marker": {
+            "@style": "triangleDown",
+            "@fill": "#000000",
+            "@lineColor": "#0000FF"
+          }
+        },
+        {
+          "@id": "style_TRIANGLELEFT",
+          "line": {
+            "@style": "solid",
+            "@color": "#000000",
+            "@thickness": "1"
+          },
+          "marker": {
+            "@style": "triangleLeft",
+            "@fill": "#000000",
+            "@lineColor": "#0000FF"
+          }
+        },
+        {
+          "@id": "style_TRIANGLERIGHT",
+          "line": {
+            "@style": "solid",
+            "@color": "#000000",
+            "@thickness": "1"
+          },
+          "marker": {
+            "@style": "triangleRight",
+            "@fill": "#000000",
+            "@lineColor": "#0000FF"
+          }
+        },
+        {
+          "@id": "style_HDASH",
+          "line": {
+            "@style": "solid",
+            "@color": "#000000",
+            "@thickness": "1"
+          },
+          "marker": {
+            "@style": "hDash",
+            "@fill": "#000000",
+            "@lineColor": "#0000FF"
+          }
+        },
+        {
+          "@id": "style_VDASH",
+          "line": {
+            "@style": "solid",
+            "@color": "#000000",
+            "@thickness": "1"
+          },
+          "marker": {
+            "@style": "vDash",
+            "@fill": "#000000",
             "@lineColor": "#0000FF"
           }
         }

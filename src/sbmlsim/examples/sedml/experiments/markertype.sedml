@@ -20,7 +20,7 @@
         <variable id="time" symbol="urn:sedml:symbol:time" taskReference="task0" modelReference="model0"/>
       </listOfVariables>
     </dataGenerator>
-    <dataGenerator id="dg_SQUARE">
+    <dataGenerator id="dg_NONE">
       <math xmlns="http://www.w3.org/1998/Math/MathML">
         <ci> S1 </ci>
       </math>
@@ -28,12 +28,144 @@
         <variable id="S1" target="/sbml:sbml/sbml:model/sbml:listOfSpecies/sbml:species[@id=&apos;S1&apos;]" taskReference="task0" modelReference="model0"/>
       </listOfVariables>
     </dataGenerator>
-    <dataGenerator id="dg_CIRCLE">
+    <dataGenerator id="dg_SQUARE">
+      <math xmlns="http://www.w3.org/1998/Math/MathML">
+      <apply>
+          <plus/>
+          <ci> S1 </ci>
+          <ci> 1 </ci>
+        </apply>
+      </math>
+      <listOfVariables>
+        <variable id="S1" target="/sbml:sbml/sbml:model/sbml:listOfSpecies/sbml:species[@id=&apos;S1&apos;]" taskReference="task0" modelReference="model0"/>
+      </listOfVariables>
+    </dataGenerator>
+        <dataGenerator id="dg_CIRCLE">
+      <math xmlns="http://www.w3.org/1998/Math/MathML">
+      <apply>
+          <plus/>
+          <ci> S1 </ci>
+          <ci> 2 </ci>
+        </apply>
+      </math>
+      <listOfVariables>
+        <variable id="S1" target="/sbml:sbml/sbml:model/sbml:listOfSpecies/sbml:species[@id=&apos;S1&apos;]" taskReference="task0" modelReference="model0"/>
+      </listOfVariables>
+    </dataGenerator>
+        <dataGenerator id="dg_DIAMOND">
+      <math xmlns="http://www.w3.org/1998/Math/MathML">
+      <apply>
+          <plus/>
+          <ci> S1 </ci>
+          <ci> 3 </ci>
+        </apply>
+      </math>
+      <listOfVariables>
+        <variable id="S1" target="/sbml:sbml/sbml:model/sbml:listOfSpecies/sbml:species[@id=&apos;S1&apos;]" taskReference="task0" modelReference="model0"/>
+      </listOfVariables>
+    </dataGenerator>
+        <dataGenerator id="dg_XCROSS">
+      <math xmlns="http://www.w3.org/1998/Math/MathML">
+      <apply>
+          <plus/>
+          <ci> S1 </ci>
+          <ci> 4 </ci>
+        </apply>
+      </math>
+      <listOfVariables>
+        <variable id="S1" target="/sbml:sbml/sbml:model/sbml:listOfSpecies/sbml:species[@id=&apos;S1&apos;]" taskReference="task0" modelReference="model0"/>
+      </listOfVariables>
+    </dataGenerator>
+    <dataGenerator id="dg_PLUS">
+      <math xmlns="http://www.w3.org/1998/Math/MathML">
+      <apply>
+          <plus/>
+          <ci> S1 </ci>
+          <ci> 5 </ci>
+        </apply>
+      </math>
+      <listOfVariables>
+        <variable id="S1" target="/sbml:sbml/sbml:model/sbml:listOfSpecies/sbml:species[@id=&apos;S1&apos;]" taskReference="task0" modelReference="model0"/>
+      </listOfVariables>
+    </dataGenerator>
+    <dataGenerator id="dg_STAR">
+      <math xmlns="http://www.w3.org/1998/Math/MathML">
+      <apply>
+          <plus/>
+          <ci> S1 </ci>
+          <ci> 6 </ci>
+        </apply>
+      </math>
+      <listOfVariables>
+        <variable id="S1" target="/sbml:sbml/sbml:model/sbml:listOfSpecies/sbml:species[@id=&apos;S1&apos;]" taskReference="task0" modelReference="model0"/>
+      </listOfVariables>
+    </dataGenerator>
+    <dataGenerator id="dg_TRIANGLEUP">
+      <math xmlns="http://www.w3.org/1998/Math/MathML">
+      <apply>
+          <plus/>
+          <ci> S1 </ci>
+          <ci> 7 </ci>
+        </apply>
+      </math>
+      <listOfVariables>
+        <variable id="S1" target="/sbml:sbml/sbml:model/sbml:listOfSpecies/sbml:species[@id=&apos;S1&apos;]" taskReference="task0" modelReference="model0"/>
+      </listOfVariables>
+    </dataGenerator>
+    <dataGenerator id="dg_TRIANGLEDOWN">
+      <math xmlns="http://www.w3.org/1998/Math/MathML">
+      <apply>
+          <plus/>
+          <ci> S1 </ci>
+          <ci> 8 </ci>
+        </apply>
+      </math>
+      <listOfVariables>
+        <variable id="S1" target="/sbml:sbml/sbml:model/sbml:listOfSpecies/sbml:species[@id=&apos;S1&apos;]" taskReference="task0" modelReference="model0"/>
+      </listOfVariables>
+    </dataGenerator>
+    <dataGenerator id="dg_TRIANGLELEFT">
+      <math xmlns="http://www.w3.org/1998/Math/MathML">
+      <apply>
+          <plus/>
+          <ci> S1 </ci>
+          <ci> 9 </ci>
+        </apply>
+      </math>
+      <listOfVariables>
+        <variable id="S1" target="/sbml:sbml/sbml:model/sbml:listOfSpecies/sbml:species[@id=&apos;S1&apos;]" taskReference="task0" modelReference="model0"/>
+      </listOfVariables>
+    </dataGenerator>
+    <dataGenerator id="dg_TRIANGLERIGHT">
       <math xmlns="http://www.w3.org/1998/Math/MathML">
       <apply>
           <plus/>
           <ci> S1 </ci>
           <ci> 10 </ci>
+        </apply>
+      </math>
+      <listOfVariables>
+        <variable id="S1" target="/sbml:sbml/sbml:model/sbml:listOfSpecies/sbml:species[@id=&apos;S1&apos;]" taskReference="task0" modelReference="model0"/>
+      </listOfVariables>
+    </dataGenerator>
+    <dataGenerator id="dg_HDASH">
+      <math xmlns="http://www.w3.org/1998/Math/MathML">
+      <apply>
+          <plus/>
+          <ci> S1 </ci>
+          <ci> 11 </ci>
+        </apply>
+      </math>
+      <listOfVariables>
+        <variable id="S1" target="/sbml:sbml/sbml:model/sbml:listOfSpecies/sbml:species[@id=&apos;S1&apos;]" taskReference="task0" modelReference="model0"/>
+      </listOfVariables>
+    </dataGenerator>
+    <dataGenerator id="dg_VDASH">
+      <math xmlns="http://www.w3.org/1998/Math/MathML">
+      <apply>
+          <plus/>
+          <ci> S1 </ci>
+          <ci> 12 </ci>
         </apply>
       </math>
       <listOfVariables>
@@ -52,19 +184,75 @@
   <listOfOutputs>
     <plot2D id="plot_0" name="UniformTimecourse">
       <listOfCurves>
+        <curve id="curve_NONE" logX="false" style="style_NONE" xDataReference="dg_time" logY="false" yDataReference="dg_NONE" type="points"/>
         <curve id="curve_SQUARE" logX="false" style="style_SQUARE" xDataReference="dg_time" logY="false" yDataReference="dg_SQUARE" type="points"/>
         <curve id="curve_CIRCLE" logX="false" style="style_CIRCLE" xDataReference="dg_time" logY="false" yDataReference="dg_CIRCLE" type="points"/>
+        <curve id="curve_DIAMOND" logX="false" style="style_DIAMOND" xDataReference="dg_time" logY="false" yDataReference="dg_DIAMOND" type="points"/>
+        <curve id="curve_XCROSS" logX="false" style="style_XCROSS" xDataReference="dg_time" logY="false" yDataReference="dg_XCROSS" type="points"/>
+        <curve id="curve_PLUS" logX="false" style="style_PLUS" xDataReference="dg_time" logY="false" yDataReference="dg_PLUS" type="points"/>
+        <curve id="curve_STAR" logX="false" style="style_STAR" xDataReference="dg_time" logY="false" yDataReference="dg_STAR" type="points"/>
+        <curve id="curve_TRIANGLEUP" logX="false" style="style_TRIANGLEUP" xDataReference="dg_time" logY="false" yDataReference="dg_TRIANGLEUP" type="points"/>
+        <curve id="curve_TRIANGLEDOWN" logX="false" style="style_TRIANGLEDOWN" xDataReference="dg_time" logY="false" yDataReference="dg_TRIANGLEDOWN" type="points"/>
+        <curve id="curve_TRIANGLELEFT" logX="false" style="style_TRIANGLELEFT" xDataReference="dg_time" logY="false" yDataReference="dg_TRIANGLELEFT" type="points"/>
+        <curve id="curve_TRIANGLERIGHT" logX="false" style="style_TRIANGLERIGHT" xDataReference="dg_time" logY="false" yDataReference="dg_TRIANGLERIGHT" type="points"/>
+        <curve id="curve_HDASH" logX="false" style="style_HDASH" xDataReference="dg_time" logY="false" yDataReference="dg_HDASH" type="points"/>
+        <curve id="curve_VDASH" logX="false" style="style_VDASH" xDataReference="dg_time" logY="false" yDataReference="dg_VDASH" type="points"/>
       </listOfCurves>
     </plot2D>
   </listOfOutputs>
+
   <listOfStyles>
+    <style id="style_NONE">
+      <line style="solid" color="#000000" thickness="1"/>
+      <marker style="none" fill="#000000" lineColor="#0000FF"/>
+    </style>
     <style id="style_SQUARE">
-      <line style="solid" color="#0000FF" thickness="1"/>
-      <marker style="square" fill="#0000FF" lineColor="#0000FF"/>
+      <line style="solid" color="#000000" thickness="1"/>
+      <marker style="square" fill="#000000" lineColor="#0000FF"/>
     </style>
     <style id="style_CIRCLE">
-      <line style="solid" color="#0000FF" thickness="1"/>
-      <marker style="circle" fill="#0000FF" lineColor="#0000FF"/>
+      <line style="solid" color="#000000" thickness="1"/>
+      <marker style="circle" fill="#000000" lineColor="#0000FF"/>
+    </style>
+    <style id="style_DIAMOND">
+      <line style="solid" color="#000000" thickness="1"/>
+      <marker style="diamond" fill="#000000" lineColor="#0000FF"/>
+    </style>
+    <style id="style_XCROSS">
+      <line style="solid" color="#000000" thickness="1"/>
+      <marker style="xCross" fill="#000000" lineColor="#0000FF"/>
+    </style>
+    <style id="style_PLUS">
+      <line style="solid" color="#000000" thickness="1"/>
+      <marker style="plus" fill="#000000" lineColor="#0000FF"/>
+    </style>
+    <style id="style_STAR">
+      <line style="solid" color="#000000" thickness="1"/>
+      <marker style="star" fill="#000000" lineColor="#0000FF"/>
+    </style>
+    <style id="style_TRIANGLEUP">
+      <line style="solid" color="#000000" thickness="1"/>
+      <marker style="triangleUp" fill="#000000" lineColor="#0000FF"/>
+    </style>
+    <style id="style_TRIANGLEDOWN">
+      <line style="solid" color="#000000" thickness="1"/>
+      <marker style="triangleDown" fill="#000000" lineColor="#0000FF"/>
+    </style>
+    <style id="style_TRIANGLELEFT">
+      <line style="solid" color="#000000" thickness="1"/>
+      <marker style="triangleLeft" fill="#000000" lineColor="#0000FF"/>
+    </style>
+    <style id="style_TRIANGLERIGHT">
+      <line style="solid" color="#000000" thickness="1"/>
+      <marker style="triangleRight" fill="#000000" lineColor="#0000FF"/>
+    </style>
+    <style id="style_HDASH">
+      <line style="solid" color="#000000" thickness="1"/>
+      <marker style="hDash" fill="#000000" lineColor="#0000FF"/>
+    </style>
+    <style id="style_VDASH">
+      <line style="solid" color="#000000" thickness="1"/>
+      <marker style="vDash" fill="#000000" lineColor="#0000FF"/>
     </style>
   </listOfStyles>
 </sedML>
