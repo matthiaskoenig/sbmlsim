@@ -697,6 +697,7 @@ class SEDMLParser(object):
                     fill=Fill(),
                 )
             curve.style = style
+
             if not curve.name:
                 curve.name = curve.y.index
         elif sed_curve_type == libsedml.SedShadedArea:
@@ -802,11 +803,11 @@ class SEDMLParser(object):
             marker_style = MarkerStyle.SQUARE
 
         return Marker(
-            size=sed_marker.getSize(),
-            style=marker_style,
-            fill=ColorType(sed_marker.getFill()),
-            line_color=ColorType(sed_marker.getLineColor()),
-            line_thickness=sed_marker.getLineThickness(),
+            size=sed_marker.getSize() if sed_marker.isSetSize() else 6,
+            style=marker_style if sed_marker.isSetStyle() else MarkerStyle.SQUARE,
+            fill=ColorType(sed_marker.getFill()) if sed_marker.isSetFill() else ColorType("black"),
+            line_color=ColorType(sed_marker.getLineColor()) if sed_marker.isSetLineColor else ColorType("black"),
+            line_thickness=sed_marker.getLineThickness() if sed_marker.isSetLineThickness() else 0.0,
         )
 
     def parse_fill(self, sed_fill: libsedml.SedFill) -> Optional[Fill]:

@@ -335,7 +335,7 @@
     "listOfOutputs": {
       "plot2D": {
         "@id": "plot_0",
-        "@name": "UniformTimecourse",
+        "@name": "MarkerTypes",
         "listOfCurves": {
           "curve": [
             {

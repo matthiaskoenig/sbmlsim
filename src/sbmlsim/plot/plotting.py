@@ -149,6 +149,11 @@ class Style(BasePlotObject):
         self.marker = marker
         self.fill = fill
 
+    def __repr__(self) -> str:
+        """Get string presentation."""
+        return f"{self.sid} ({self.name}) [marker={self.marker}; line={self.line}M" \
+               f"fill={self.fill}]"
+
     # https://matplotlib.org/3.1.0/gallery/lines_bars_and_markers/linestyles.html
     MPL2SEDML_LINESTYLE_MAPPING = {
         "": LineStyle.NONE,
