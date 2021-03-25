@@ -200,7 +200,7 @@ class OptimizationAnalysis:
         plt.rcParams.update(rc_params_copy)
 
         logger.warning("-" * 80)
-        logger.warning(f"Analysis finished: file:/{str(self.results_dir / 'index.html')}")
+        logger.warning(f"Analysis finished: {str(self.results_dir / 'index.html')}")
         logger.warning("-" * 80)
 
     def html_report(self, path: Path):
