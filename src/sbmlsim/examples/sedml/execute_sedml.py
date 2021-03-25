@@ -9,11 +9,7 @@ from sbmlsim.simulator import SimulatorSerial
 from sbmlsim.simulator.simulation_ray import SimulatorParallel
 
 
-if __name__ == "__main__":
-
-    base_path = Path(__file__).parent
-    working_dir = base_path / "experiments"
-    sedml_path = working_dir / "repressilator_sedml.xml"
+def execute_sedml(working_dir: Path, sedml_path: Path) -> None:
 
     doc, working_dir, input_type = read_sedml(
         source=str(sedml_path), working_dir=working_dir
@@ -56,3 +52,12 @@ if __name__ == "__main__":
 
     # TODO: write experiment to SED-ML file
     # serialization of experiments
+
+
+if __name__ == "__main__":
+    base_path = Path(__file__).parent
+    working_dir = base_path / "experiments"
+    # sedml_path = working_dir / "repressilator_sedml.xml"
+    sedml_path = working_dir / "test_file_1.sedml"
+
+    execute_sedml(working_dir=working_dir, sedml_path=sedml_path)

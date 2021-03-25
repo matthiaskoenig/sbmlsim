@@ -68,8 +68,12 @@ class OptimizationProblem(ObjectJSONEncoder):
         """
         super(OptimizationProblem, self).__init__()
         self.opid: str = opid
-        # self.fit_experiments = FitExperiment.reduce(fit_experiments)
-        self.fit_experiments = fit_experiments
+        self.fit_experiments = []
+        for fit_exp in fit_experiments:
+            if fit_exp.exclude:
+                logger.warning(f"FitExperiment excluded: {fit_exp}")
+            else:
+                self.fit_experiments.append(fit_exp)
         self.parameters = fit_parameters
         if self.parameters is None or len(self.parameters) == 0:
             logger.error(

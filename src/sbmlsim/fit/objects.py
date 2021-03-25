@@ -28,6 +28,7 @@ class FitExperiment:
         weights: Union[float, List[float]] = None,
         use_mapping_weights: bool = False,
         fit_parameters: Dict[str, List["FitParameter"]] = None,
+        exclude: bool = False
     ):
         """Initialize simulation experiment used in a fitting.
 
@@ -39,6 +40,8 @@ class FitExperiment:
         :param use_mapping_weights: uses weights of mapping
         :param fit_parameters: LOCAL parameters only changed in this simulation
                                 experiment
+        :param exclude: boolean flag to exclude experiment. This will not be considered
+                        in fitting.
         """
         self._weights = None
         self.experiment_class = experiment
@@ -52,6 +55,7 @@ class FitExperiment:
         self.mappings = mappings
         self.use_mapping_weights = use_mapping_weights
         self.weights = weights
+        self.exclude: bool = exclude
 
         if fit_parameters is None:
             self.fit_parameters = {}

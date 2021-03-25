@@ -50,7 +50,7 @@ def read_sedml(source: Union[Path, str], working_dir: Path = None) -> Dict:
 
     :return: dictionary of SedDocument, input_type and working directory.
     """
-
+    print(source)
     if isinstance(source, str) and not Path(source).exists:
         logger.info("SED-ML from string")
         input_type = INPUT_TYPE_STR
@@ -124,6 +124,6 @@ def read_sedml(source: Union[Path, str], working_dir: Path = None) -> Dict:
 
         # check document
         check_sedml(doc)
-        print
+        print()
 
         return doc, working_dir, input_type

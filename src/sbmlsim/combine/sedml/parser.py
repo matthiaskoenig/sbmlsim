@@ -111,6 +111,7 @@ from sbmlsim.experiment import SimulationExperiment
 from sbmlsim.model import model_resources
 from sbmlsim.model.model import AbstractModel
 from sbmlsim.plot import Figure, Plot, Axis, Curve
+from sbmlsim.plot.plotting import Style, Line
 from sbmlsim.simulation import ScanSim, TimecourseSim, Timecourse, AbstractSim
 from sbmlsim.task import Task
 from sbmlsim.units import UnitRegistry
@@ -638,11 +639,32 @@ class SEDMLParser(object):
             # FIXME: handle errorbars via lower and upper
             xerr=self.data_from_datagenerator(sed_curve.getXErrorLower()),
             yerr=self.data_from_datagenerator(sed_curve.getYErrorLower()),
+            style=self.parse_style(sed_curve.getStyle()),
+            # FIXME: curve type
         )
         # FIXME: support yaxis
         # FIXME: support type
         # FIXME: parse style
         return curve
+
+    def parse_style(self, sed_style: libsedml.SedStyle):
+        # FIXME: parse the style
+
+        style = Style(
+            sid=sed_style.getId(),
+            name=sed_style.getName(),
+            base_style=self.parse_style(sed_style.getBaseStyle()),
+        )
+        line = sed_style.getLine()
+        marker = sed_style.getMarker()
+        fill = sed_style.getFill()
+
+        if line == libsedml.LINETYPE_DASH:
+            line = Line.
+
+        sed_style.getId()
+
+
 
     def data_from_datagenerator(self, sed_dg_ref: Optional[str]) -> Optional[Data]:
         """This must all be evaluated with actual data"""
