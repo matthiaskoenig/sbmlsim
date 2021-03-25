@@ -50,6 +50,12 @@ def execute_sedml(working_dir: Path, sedml_path: Path) -> None:
     print("\n--- TASKS ---")
     pprint(sed_parser.tasks)
 
+    print("\n--- DATA ---")
+    pprint(sed_parser.data)
+
+    print("\n--- FIGURES ---")
+    pprint(sed_parser.figures)
+
     print("*" * 80)
     # analyze simulation experiment
     # print(sed_parser.exp_class)
@@ -78,6 +84,7 @@ if __name__ == "__main__":
     base_path = Path(__file__).parent
     working_dir = base_path / "experiments"
     # sedml_path = working_dir / "repressilator_sedml.xml"
-    sedml_path = working_dir / "test_file_1.sedml"
+    # sedml_path = working_dir / "test_file_1.sedml"
+    sedml_path = working_dir / "test_line_fill.sedml"
 
     execute_sedml(working_dir=working_dir, sedml_path=sedml_path)

@@ -167,7 +167,7 @@ class SEDMLParser(object):
             self.models[mid] = self.parse_model(
                 sed_model, source=source, sed_changes=sed_changes
             )
-        print(f"models: {self.models}")
+        # print(f"models: {self.models}")
 
         # --- DataDescriptions ---
         self.data_descriptions = {}
@@ -177,21 +177,21 @@ class SEDMLParser(object):
             self.data_descriptions[did] = DataDescriptionParser.parse(
                 sed_dd, self.working_dir
             )
-        print(f"data_descriptions: {self.data_descriptions}")
+        # print(f"data_descriptions: {self.data_descriptions}")
 
         # --- Simulations ---
         self.simulations: Dict[str, AbstractSim] = {}
         sed_sim: libsedml.SedSimulation
         for sed_sim in sed_doc.getListOfSimulations():
             self.simulations[sed_sim.getId()] = self.parse_simulation(sed_sim)
-        print(f"simulations: {self.simulations}")
+        # print(f"simulations: {self.simulations}")
 
         # --- Tasks ---
         self.tasks: Dict[str, Task] = {}
         sed_task: libsedml.SedTask
         for sed_task in sed_doc.getListOfTasks():
             self.tasks[sed_task.getId()] = self.parse_task(sed_task)
-        print(f"tasks: {self.tasks}")
+        # print(f"tasks: {self.tasks}")
 
         # --- Data ---
         self.data: Dict[str, Data] = {}
@@ -207,7 +207,7 @@ class SEDMLParser(object):
             elif type_code == libsedml.SEDML_OUTPUT_REPORT:
                 # FIXME: implement
                 logger.error("Output report not implemented.")
-        print(f"figures: {self.figures}")
+        # print(f"figures: {self.figures}")
 
         # Create the experiment object
         def f_models(obj) -> Dict[str, AbstractModel]:
@@ -248,23 +248,6 @@ class SEDMLParser(object):
         self.experiment: SimulationExperiment = self.exp_class()
         self.experiment.initialize()
 
-        # self.exp_class._data = None  # FIXME hack
-        # for fig in self.figures.values():
-        #     print(fig)
-        #     fig.experiment = self.experiment
-        #
-        #     # this must happen automatically
-        #     for plot in fig.plots:
-        #         for curve in plot.curves:
-        #             if curve.x:
-        #                 curve.x.experiment = self.experiment
-        #                 curve.x._register_data()
-        #             if curve.y:
-        #                 curve.y.experiment = self.experiment
-        #                 curve.y._register_data()
-        #             # FIXME: also for xerr and yerr
-
-
     # --- MODELS ---
     @staticmethod
     def parse_xpath_target(xpath: str) -> str:
@@ -304,7 +287,7 @@ class SEDMLParser(object):
         """Convert SedModel to AbstractModel.
 
         :param sed_changes:
-        :param source:
+        :param source:s
         :param sed_model:
         :return:
         """
@@ -522,9 +505,6 @@ class SEDMLParser(object):
         node_stack = Stack()
         tree_nodes = [n for n in task_tree_root]
 
-        print("tree_nodes", tree_nodes)
-        print(task_tree_root.info())
-
         for kn, node in enumerate(tree_nodes):
             task_type = node.task.getTypeCode()
 
@@ -551,7 +531,6 @@ class SEDMLParser(object):
         return Task(model=model_id, simulation=simulation_id)
 
     def _parse_simple_repeated_task(self, node: TaskNode):
-        print("parse simple repeated task")
         raise NotImplementedError(
             f"Task type is not supported: {node.task.getTypeCode()}"
         )
@@ -600,8 +579,9 @@ class SEDMLParser(object):
         plot = Plot(
             sid=sed_plot2d.getId(),
             name=sed_plot2d.getName(),
-            legend=sed_plot2d.getLegend(),
+            legend=sed_plot2d.getLegend() if sed_plot2d.isSetLegend() else True
         )
+
         # axis
         plot.xaxis = self.parse_axis(sed_plot2d.getXAxis())
         plot.yaxis = self.parse_axis(sed_plot2d.getYAxis())
@@ -626,6 +606,8 @@ class SEDMLParser(object):
                 max=sed_axis.getMax(),
                 grid=sed_axis.getGrid(),
             )
+            axis.sid = sed_axis.getId()
+            axis.name = sed_axis.getName()
         return axis
 
     def parse_curve(self, sed_curve: libsedml.SedCurve) -> Curve:
@@ -635,6 +617,8 @@ class SEDMLParser(object):
         yerr: Data
 
         curve = Curve(
+            sid=sed_curve.getId(),
+            name=sed_curve.getName(),
             x=self.data_from_datagenerator(sed_curve.getXDataReference()),
             y=self.data_from_datagenerator(sed_curve.getYDataReference()),
             # FIXME: handle errorbars via lower and upper
@@ -643,16 +627,15 @@ class SEDMLParser(object):
 
             # FIXME: curve type
         )
+        if not curve.name:
+            curve.name = curve.y.index
         curve.style = self.parse_style(sed_curve.getStyle())
         # FIXME: support yaxis
-        print(curve)
-        print(curve.to_dict())
 
         return curve
 
     def parse_style(self, sed_style: Union[str, libsedml.SedStyle]) -> Optional[Style]:
         """Parse SED-ML style."""
-        print(f"parsing style: {sed_style}")
         if not sed_style:
             return None
 
@@ -680,7 +663,11 @@ class SEDMLParser(object):
     def parse_line(self, sed_line: libsedml.SedLine) -> Optional[Line]:
         """Parse line information."""
         if sed_line is None:
-            return None
+            return Line(
+                style=LineStyle.SOLID,
+                color=ColorType("black"),
+                thickness=1.0,
+            )
 
         line_style: LineStyle
         sed_line_style = sed_line.getStyle()
@@ -703,13 +690,13 @@ class SEDMLParser(object):
         return Line(
             style=line_style,
             color=ColorType(sed_line.getColor()),
-            thickness=sed_line.getThickness(),
+            thickness=sed_line.getThickness() if sed_line.isSetThickness() else 1.0,
         )
 
     def parse_marker(self, sed_marker: libsedml.SedMarker) -> Optional[Marker]:
         """Parse the line information."""
         if sed_marker is None:
-            return None
+            return Marker()
 
         marker_style: MarkerStyle
         sed_marker_style = sed_marker.getStyle()
@@ -754,7 +741,7 @@ class SEDMLParser(object):
     def parse_fill(self, sed_fill: libsedml.SedFill) -> Optional[Fill]:
         """Parse fill information."""
         if sed_fill is None:
-            return None
+            return Fill()
 
         return Fill(
             color=ColorType(sed_fill.getColor()),
@@ -767,7 +754,6 @@ class SEDMLParser(object):
         if not sed_dg_ref:
             return None
         sed_dg: libsedml.SedDataGenerator = self.sed_doc.getDataGenerator(sed_dg_ref)
-        print("DataGenerator", sed_dg)
 
         # sed_dg.getListOfVariables()
         # sed_dg.getMath()
@@ -789,7 +775,6 @@ class SEDMLParser(object):
         return d
 
     def _parse_repeated_task(self, node: TaskNode):
-        print("repeated task")
         # repeated tasks will be translated into multidimensional scans
         raise NotImplementedError
         # TODO: implement

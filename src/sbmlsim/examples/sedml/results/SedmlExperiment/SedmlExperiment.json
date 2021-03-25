@@ -32,7 +32,7 @@
         {
           "start": 0.0,
           "end": 10.0,
-          "steps": 29,
+          "steps": 9,
           "changes": {},
           "model_changes": {},
           "model_manipulations": {},
@@ -85,7 +85,7 @@
             "name": "UniformTimecourse",
             "xaxis": {
               "sid": "plot_0_xaxis",
-              "name": "None [None]",
+              "name": "",
               "label": null,
               "unit": null,
               "scale": "LINEAR",
@@ -97,7 +97,7 @@
             },
             "yaxis": {
               "sid": "plot_0_yaxis",
-              "name": "None [None]",
+              "name": "",
               "label": null,
               "unit": null,
               "scale": "LINEAR",
@@ -107,60 +107,66 @@
               "label_visible": true,
               "ticks_visible": true
             },
-            "legend": false,
+            "legend": true,
             "facecolor": "#ffffffff",
             "curves": [
               {
                 "sid": "plot_0_curve0",
-                "name": null,
+                "name": "S1",
                 "x": "task0__time",
                 "y": "task0__S1",
                 "xerr": null,
                 "yerr": null,
                 "yaxis": null,
                 "style": {
-                  "sid": "blue_line_green_markers",
+                  "sid": "blue_fill",
                   "name": "",
                   "line": {
                     "style": "DASHDOT",
-                    "color": "#0000FF",
+                    "color": "#FF00FF",
                     "thickness": 10.0
                   },
                   "marker": {
-                    "size": NaN,
-                    "style": "SQUARE",
-                    "fill": "#00FF00",
-                    "line_color": "#0000FF",
-                    "line_thickness": NaN
+                    "size": 6.0,
+                    "style": "NONE",
+                    "fill": "black",
+                    "line_color": "black",
+                    "line_thickness": 1.0
                   },
-                  "fill": null
+                  "fill": {
+                    "color": "#0000FF",
+                    "second_color": ""
+                  }
                 },
                 "order": 0
               },
               {
                 "sid": "plot_0_curve1",
-                "name": null,
+                "name": "S2",
                 "x": "task0__time",
                 "y": "task0__S2",
                 "xerr": null,
                 "yerr": null,
                 "yaxis": null,
                 "style": {
-                  "sid": "red_line_yellow_markers",
+                  "sid": "red_dashed_line",
                   "name": "",
                   "line": {
-                    "style": "SOLID",
+                    "style": "DASH",
                     "color": "#FF0000",
-                    "thickness": NaN
+                    "thickness": 1.0
                   },
                   "marker": {
-                    "size": 2.0,
-                    "style": "DIAMOND",
-                    "fill": "#FFFF00",
-                    "line_color": "#FF0000",
+                    "size": 6.0,
+                    "style": "NONE",
+                    "fill": "black",
+                    "line_color": "black",
                     "line_thickness": 1.0
                   },
-                  "fill": null
+                  "fill": {
+                    "color": null,
+                    "second_color": null
+                  }
                 },
                 "order": 1
               }

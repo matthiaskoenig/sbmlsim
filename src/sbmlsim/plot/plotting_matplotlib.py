@@ -112,6 +112,8 @@ class MatplotlibFigureSerializer(object):
 
             for curve in plot.curves:
                 # TODO: sort by order
+
+
                 label = curve.name if curve.name else "__nolabel__"
 
                 kwargs = {}

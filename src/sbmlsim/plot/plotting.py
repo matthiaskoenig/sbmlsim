@@ -96,9 +96,9 @@ class ColorType(object):
 
 @dataclass
 class Line(object):
-    style: LineStyle
-    color: ColorType
-    thickness: float
+    style: LineStyle = LineStyle.SOLID
+    color: ColorType = None
+    thickness: float = 1.0
 
     def to_dict(self):
         return {
@@ -110,10 +110,10 @@ class Line(object):
 
 @dataclass
 class Marker(object):
-    size: float
-    style: MarkerStyle
-    fill: ColorType
-    line_color: ColorType
+    size: float = 6.0
+    style: MarkerStyle = MarkerStyle.NONE
+    fill: ColorType = ColorType("black")
+    line_color: ColorType = ColorType("black")
     line_thickness: float = 1.0
 
     def to_dict(self):
@@ -128,7 +128,7 @@ class Marker(object):
 
 @dataclass
 class Fill(object):
-    color: ColorType
+    color: ColorType = None
     second_color: ColorType = None
 
 
@@ -314,7 +314,9 @@ class Axis(BasePlotObject):
         # if unit is None:
         #     unit = "?"
         if not name:
-            if unit != "dimensionless":
+            if not label and not unit:
+                name = ""
+            elif unit != "dimensionless":
                 name = f"{label} [{unit}]"
             else:
                 name = f"{label} [-]"
@@ -498,6 +500,9 @@ class Plot(BasePlotObject):
         super(Plot, self).__init__(sid, name)
         if curves is None:
             curves = list()
+        if legend is None:
+            # legend by default
+            legend = True
         self.legend = legend
         self.facecolor = facecolor
         self.title_visible = title_visible
@@ -634,8 +639,6 @@ class Plot(BasePlotObject):
             alpha=curve.kwargs.get("alpha", 1.0),
         )
         style: Style = curve.style
-        print(style)
-        print(style.sid)
 
         if (style.line.style != LineStyle.NONE) and (not style.line.color):
             style.line.color = color
