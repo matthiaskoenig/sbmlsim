@@ -48,6 +48,7 @@ class OptimizationAnalysis:
         absolute_tolerance: float = 1e-6,
         relative_tolerance: float = 1e-6,
         image_format: str = "svg",
+        **kwargs
     ) -> None:
         """Construct Optimization analysis.
 
@@ -77,6 +78,11 @@ class OptimizationAnalysis:
         self.image_format = image_format
         self.show_plots = show_plots
         self.show_titles = show_titles
+
+        if kwargs:
+            for key, value in kwargs.items():
+                logger.warning(f"Argument to OptimizationAnalysis is not supported: "
+                               f"'{key}'")
 
         if op:
             op.initialize(
@@ -188,6 +194,11 @@ class OptimizationAnalysis:
 
         # reset parameters
         plt.rcParams.update(rc_params_copy)
+
+        print("-" * 80)
+        print(f"Analysis finished: {str(self.results_dir / 'index.html')}")
+
+        print("-" * 80)
 
     def html_report(self, path: Path):
         """Creates HTML report of the fit."""
