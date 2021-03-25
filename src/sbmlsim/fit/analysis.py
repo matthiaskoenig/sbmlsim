@@ -48,6 +48,7 @@ class OptimizationAnalysis:
         absolute_tolerance: float = 1e-6,
         relative_tolerance: float = 1e-6,
         image_format: str = "svg",
+        **kwargs
     ) -> None:
         """Construct Optimization analysis.
 
@@ -77,6 +78,11 @@ class OptimizationAnalysis:
         self.image_format = image_format
         self.show_plots = show_plots
         self.show_titles = show_titles
+
+        if kwargs:
+            for key, value in kwargs.items():
+                logger.warning(f"Argument to OptimizationAnalysis is not supported: "
+                               f"'{key}'")
 
         if op:
             op.initialize(
@@ -130,6 +136,8 @@ class OptimizationAnalysis:
         # Create figures
         # ----------------------
         rc_params_copy = {**plt.rcParams}
+        # reset matplotlib parameters
+        matplotlib.rcdefaults()
         # from pprint import pprint
         # pprint(rc_params_copy)
         if mpl_parameters is None:
@@ -184,10 +192,16 @@ class OptimizationAnalysis:
 
         # correlation plot
         if self.optres.size > 1:
-            self.plot_correlation(path=plots_dir / "parameter_correlation")
+            # FIXME: simplifiy correlation plot for speedup (create individual panels)
+            pass
+            # self.plot_correlation(path=plots_dir / "parameter_correlation")
 
-        # reset parameters
+        # restore parameters
         plt.rcParams.update(rc_params_copy)
+
+        logger.warning("-" * 80)
+        logger.warning(f"Analysis finished: {str(self.results_dir / 'index.html')}")
+        logger.warning("-" * 80)
 
     def html_report(self, path: Path):
         """Creates HTML report of the fit."""
