@@ -9,6 +9,7 @@ from sbmlsim.examples.sedml.execute_sedml import execute_sedml, base_path
     ("Repressilator", "repressilator_sedml.xml"),
     ("TestFile1", "test_file_1.sedml"),
     ("TestLineFill", "test_line_fill.sedml"),
+    ("MarkerType", "markertype.sedml"),
     ("StackedBar", "stacked_bar.sedml"),
     ("HBarStacked", "test_3hbarstacked.sedml"),
     ("Bar", "test_bar.sedml"),
