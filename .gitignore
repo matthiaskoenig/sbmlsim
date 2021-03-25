@@ -27,3 +27,6 @@ src/sbmlsim/examples/experiments/glucose/results/DoseResponseExperiment/DoseResp
 src/sbmlsim/examples/experiments/repressilator/RepressilatorExperiment/RepressilatorExperiment_task_tc.h5
 src/sbmlsim/examples/experiments/midazolam/results/
 src/sbmlsim/examples/experiments/midazolam/results_fit/
+
+# sedml
+src/sbmlsim/examples/sedml/results/

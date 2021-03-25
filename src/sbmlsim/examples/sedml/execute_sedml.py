@@ -11,6 +11,8 @@ from sbmlsim.simulator.simulation_ray import SimulatorParallel
 import xmltodict
 import json
 
+base_path = Path(__file__).parent
+
 
 def sedmltojson(sedml_path: Path) -> None:
     """Convert SED-ML to JSON file."""
@@ -26,40 +28,24 @@ def sedmltojson(sedml_path: Path) -> None:
         f_json.write(json_data)
 
 
-def execute_sedml(working_dir: Path, sedml_path: Path) -> None:
-
+def execute_sedml(working_dir: Path, name: str, sedml_path: Path) -> None:
+    """Execute the given SED-ML in the working directory."""
     # convert to json
     sedmltojson(sedml_path)
 
-    doc, working_dir, input_type = read_sedml(
+
+    sed_doc, errorlog, _, _ = read_sedml(
         source=str(sedml_path), working_dir=working_dir
     )
 
-    sed_parser = SEDMLParser(doc, working_dir=working_dir)
+    if errorlog.getNumErrors() > 0:
+        raise IOError("Errors in the SED-ML document.")
 
-    print("*" * 80)
-    print("--- MODELS ---")
-    pprint(sed_parser.models)
+    sed_parser = SEDMLParser(sed_doc, working_dir=working_dir, name=name)
+    sed_parser.print_info()
 
-    print("\n--- DATA DESCRIPTIONS ---")
-    pprint(sed_parser.data_descriptions)
-
-    print("\n--- SIMULATIONS ---")
-    pprint(sed_parser.simulations)
-
-    print("\n--- TASKS ---")
-    pprint(sed_parser.tasks)
-
-    print("\n--- DATA ---")
-    pprint(sed_parser.data)
-
-    print("\n--- FIGURES ---")
-    pprint(sed_parser.figures)
-
-    print("*" * 80)
-    # analyze simulation experiment
-    # print(sed_parser.exp_class)
-    exp = sed_parser.exp_class()  # type: SimulationExperiment
+    # check created experiment
+    exp: SimulationExperiment = sed_parser.exp_class()
     exp.initialize()
     print(exp)
 
@@ -81,10 +67,24 @@ def execute_sedml(working_dir: Path, sedml_path: Path) -> None:
 
 
 if __name__ == "__main__":
-    base_path = Path(__file__).parent
-    working_dir = base_path / "experiments"
-    # sedml_path = working_dir / "repressilator_sedml.xml"
-    # sedml_path = working_dir / "test_file_1.sedml"
-    sedml_path = working_dir / "test_line_fill.sedml"
 
-    execute_sedml(working_dir=working_dir, sedml_path=sedml_path)
+    working_dir = base_path / "experiments"
+
+    for name, sedml_file in [
+        # ("Repressilator", "repressilator_sedml.xml"),
+        # ("TestFile1", "test_file_1.sedml"),
+        # ("TestLineFill", "test_line_fill.sedml"),
+        ("MarkerType", "markertype.sedml"),
+        # ("StackedBar", "stacked_bar.sedml"),
+        # ("HBarStacked", "test_3hbarstacked.sedml"),
+        # ("Bar", "test_bar.sedml"),
+        # ("Bar", "test_bar3stacked.sedml"),
+        # ("StackedBar", "test_file.sedml"),
+        # ("StackedBar", "test_hbar_stacked.sedml"),
+        # ("StackedBar", "test_shaded_area.sedml"),
+    ]:
+        execute_sedml(
+            working_dir=working_dir,
+            name=name,
+            sedml_path=working_dir / sedml_file
+        )

@@ -111,9 +111,9 @@ class Line(object):
 @dataclass
 class Marker(object):
     size: float = 6.0
-    style: MarkerStyle = MarkerStyle.NONE
-    fill: ColorType = ColorType("black")
-    line_color: ColorType = ColorType("black")
+    style: MarkerStyle = MarkerStyle.SQUARE
+    fill: ColorType = None
+    line_color: ColorType = None
     line_thickness: float = 1.0
 
     def to_dict(self):

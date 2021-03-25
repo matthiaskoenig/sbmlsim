@@ -115,7 +115,7 @@ class SimulationExperiment:
         """Get string representation."""
         info = [
             "-" * 80,
-            f"SimulationExperiment: {self.__class__.__name__}: {self.sid}",
+            f"SimulationExperiment: {self.__class__.__name__}",
             "-" * 80,
             f"{'data':20} {list(self._data.keys())}",
             f"{'datasets':20} {list(self._datasets.keys())}",
@@ -466,8 +466,6 @@ class SimulationExperiment:
         :return:
         """
         d = self.to_dict()
-        # from pprint import pprint
-        # pprint(d)
         if path is None:
             return json.dumps(d, cls=ObjectJSONEncoder, indent=indent)
         else:
@@ -535,8 +533,6 @@ class SimulationExperiment:
         """Create matplotlib figures."""
         mpl_figures = {}
         for fig_key, fig in self._figures.items():
-            print(fig)
-            print(fig.to_dict())
             fig_mpl = MatplotlibFigureSerializer.to_figure(self, fig)
             mpl_figures[fig_key] = fig_mpl
 

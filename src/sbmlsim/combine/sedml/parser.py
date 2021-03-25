@@ -97,10 +97,12 @@ import re
 import warnings
 from collections import OrderedDict, namedtuple
 from pathlib import Path
-from typing import Dict, List, Union, Optional
+from typing import Dict, List, Union, Optional, Type
 
 import libsedml
 import numpy as np
+import pandas as pd
+from pprint import pprint
 
 from sbmlsim.combine.sedml.data import DataDescriptionParser
 from sbmlsim.combine.sedml.io import read_sedml
@@ -143,19 +145,32 @@ def experiment_from_omex(omex_path: Path):
 class SEDMLParser(object):
     """ Parsing SED-ML in internal format."""
 
-    def __init__(self, sed_doc: libsedml.SedDocument, working_dir: Path):
-        """Parses information from SedDocument."""
+    def __init__(
+        self,
+        sed_doc: libsedml.SedDocument,
+        working_dir: Path,
+        name: Optional[str] = None,
+    ):
+        """Parses information from SedDocument.
+
+        :param sed_doc: SedDocument
+        :param working_dir: working dir to execute the SED-ML
+        :param name: class name used for the simulation experiment. Must be valid
+                     python class name.
+        """
+
         self.sed_doc: libsedml.SedDocument = sed_doc
-        self.working_dir = working_dir
+        self.working_dir: Path = working_dir
+        self.name: str = name
 
         # unit registry to handle units throughout the simulation
-        self.ureg = UnitRegistry()
+        self.ureg: UnitRegistry = UnitRegistry()
 
         # Reference to the experiment class
-        self.exp_class = None
+        self.exp_class: Type[SimulationExperiment]
 
         # --- Models ---
-        self.models = {}
+        self.models: Dict[str, AbstractModel] = {}
 
         # resolve original model source and changes
         model_sources, model_changes = self.resolve_model_changes()
@@ -167,36 +182,50 @@ class SEDMLParser(object):
             self.models[mid] = self.parse_model(
                 sed_model, source=source, sed_changes=sed_changes
             )
-        # print(f"models: {self.models}")
+        logger.debug(f"models: {self.models}")
 
         # --- DataDescriptions ---
-        self.data_descriptions = {}
+        self.data_descriptions: Dict[str, Dict[str, pd.Series]] = {}
         sed_dd: libsedml.SedDataDescription
         for sed_dd in sed_doc.getListOfDataDescriptions():
             did = sed_dd.getId()
             self.data_descriptions[did] = DataDescriptionParser.parse(
                 sed_dd, self.working_dir
             )
-        # print(f"data_descriptions: {self.data_descriptions}")
+        logger.debug(f"data_descriptions: {self.data_descriptions}")
 
         # --- Simulations ---
         self.simulations: Dict[str, AbstractSim] = {}
         sed_sim: libsedml.SedSimulation
         for sed_sim in sed_doc.getListOfSimulations():
             self.simulations[sed_sim.getId()] = self.parse_simulation(sed_sim)
-        # print(f"simulations: {self.simulations}")
+        logger.debug(f"simulations: {self.simulations}")
 
         # --- Tasks ---
         self.tasks: Dict[str, Task] = {}
         sed_task: libsedml.SedTask
         for sed_task in sed_doc.getListOfTasks():
             self.tasks[sed_task.getId()] = self.parse_task(sed_task)
-        # print(f"tasks: {self.tasks}")
+        logger.debug(f"tasks: {self.tasks}")
 
         # --- Data ---
+        # data is generated in the figures
         self.data: Dict[str, Data] = {}
 
+        # --- Styles ---
+        self.styles: Dict[str, Style] = {}
+        sed_style: libsedml.SedStyle
+
+        # see: https://github.com/fbergmann/libSEDML/issues/104
+        # for sed_style in sed_doc.getListOfStyles():
+        #    self.styles[sed_style.getId()] = self.parse_style(sed_style)
+        for k in range(sed_doc.getNumStyles()):
+            sed_style: libsedml.SedStyle = sed_doc.getStyle(k)
+            self.styles[sed_style.getId()] = self.parse_style(sed_style)
+        logger.debug(f"styles: {self.styles}")
+
         # --- Figures/Reports ---
+        fig: Figure
         self.figures: Dict[str, Figure] = {}
         sed_output: libsedml.SedOutput
         for sed_output in sed_doc.getListOfOutputs():
@@ -207,7 +236,17 @@ class SEDMLParser(object):
             elif type_code == libsedml.SEDML_OUTPUT_REPORT:
                 # FIXME: implement
                 logger.error("Output report not implemented.")
-        # print(f"figures: {self.figures}")
+        logger.debug(f"figures: {self.figures}")
+
+        self.exp_class = self._create_experiment_class()
+        self.experiment: SimulationExperiment = self.exp_class()
+        self.experiment.initialize()
+
+    def _create_experiment_class(self) -> Type[SimulationExperiment]:
+        """Create SimulationExperiment class from information.
+
+        See sbmlsim.experiment.Experiment for the expected functions.
+        """
 
         # Create the experiment object
         def f_models(obj) -> Dict[str, AbstractModel]:
@@ -231,8 +270,12 @@ class SEDMLParser(object):
         def f_figures(obj) -> Dict[str, Figure]:
             return self.figures
 
-        self.exp_class = type(
-            "SedmlExperiment",
+        class_name = self.name
+        if not class_name:
+            class_name = "SedmlSimulationExperiment"
+
+        exp_class = type(
+            class_name,
             (SimulationExperiment,),
             {
                 "models": f_models,
@@ -243,10 +286,19 @@ class SEDMLParser(object):
                 "figures": f_figures,
             },
         )
-        fig: Figure
+        return exp_class
 
-        self.experiment: SimulationExperiment = self.exp_class()
-        self.experiment.initialize()
+    def print_info(self) -> None:
+        """Print information."""
+        info = {
+            "models": self.models,
+            "simulations": self.simulations,
+            "tasks": self.tasks,
+            "data": self.data,
+            "figures": self.figures,
+            "styles": self.styles,
+        }
+        pprint(info)
 
     # --- MODELS ---
     @staticmethod
@@ -595,6 +647,7 @@ class SEDMLParser(object):
         return plot
 
     def parse_axis(self, sed_axis: libsedml.SedAxis) -> Axis:
+        """Parse axes information."""
         # FIXME: support style on axis
         if sed_axis is None:
             axis = Axis()
@@ -611,26 +664,44 @@ class SEDMLParser(object):
         return axis
 
     def parse_curve(self, sed_curve: libsedml.SedCurve) -> Curve:
+        """Parse curve."""
         x: Data
         y: Data
         xerr: Data
         yerr: Data
 
-        curve = Curve(
-            sid=sed_curve.getId(),
-            name=sed_curve.getName(),
-            x=self.data_from_datagenerator(sed_curve.getXDataReference()),
-            y=self.data_from_datagenerator(sed_curve.getYDataReference()),
-            # FIXME: handle errorbars via lower and upper
-            xerr=self.data_from_datagenerator(sed_curve.getXErrorLower()),
-            yerr=self.data_from_datagenerator(sed_curve.getYErrorLower()),
+        # FIXME: resolve type of curve
+        sed_curve_type = sed_curve.getTypeCode()
+        if sed_curve_type == libsedml.SEDML_OUTPUT_CURVE:
 
-            # FIXME: curve type
-        )
-        if not curve.name:
-            curve.name = curve.y.index
-        curve.style = self.parse_style(sed_curve.getStyle())
-        # FIXME: support yaxis
+            curve = Curve(
+                sid=sed_curve.getId(),
+                name=sed_curve.getName(),
+                x=self.data_from_datagenerator(sed_curve.getXDataReference()),
+                y=self.data_from_datagenerator(sed_curve.getYDataReference()),
+                # FIXME: handle errorbars via lower and upper
+                xerr=self.data_from_datagenerator(sed_curve.getXErrorLower()),
+                yerr=self.data_from_datagenerator(sed_curve.getYErrorLower()),
+                # FIXME: curve type
+                # FIXME: support yaxis
+            )
+
+            if sed_curve.isSetStyle():
+                # styles are already parsed, used the style
+                style = self.styles[sed_curve.getStyle()]
+            else:
+                # default style
+                style = Style(
+                    line=Line(),
+                    marker=Marker(),
+                    fill=Fill(),
+                )
+            curve.style = style
+            if not curve.name:
+                curve.name = curve.y.index
+        elif sed_curve_type == libsedml.SedShadedArea:
+            # FIXME: support shaded area
+            logger.error("ShadedArea is not supported.")
 
         return curve
 
@@ -753,24 +824,42 @@ class SEDMLParser(object):
         # FIXME: do all the math on the data-generator
         if not sed_dg_ref:
             return None
+
         sed_dg: libsedml.SedDataGenerator = self.sed_doc.getDataGenerator(sed_dg_ref)
 
-        # sed_dg.getListOfVariables()
-        # sed_dg.getMath()
-        sed_var: libsedml.SedVariable = sed_dg.getVariable(0)
-        task_id = sed_var.getTaskReference()
+        # TODO: Necessary to evaluate the math
+        astnode: libsedml.ASTNode = sed_dg.getMath()
+        function: str = libsedml.formulaToL3String(astnode)
 
-        sed_symbol = sed_var.isSetSymbol()
-        if sed_var.isSetSymbol():
-            # FIXME: check symbol
-            index = "time"
-        elif sed_var.isSetTarget():
-            index = self.parse_xpath_target(sed_var.getTarget())
+        parameters: Dict[str, float] = {}
+        sed_par: libsedml.SedParameter
+        for sed_par in sed_dg.getListOfParameters():
+            parameters[sed_par.getId()] = sed_par.getValue()
 
+        variables: Dict[str, Data] = {}
+        sed_var: libsedml.SedVariable
+        for sed_var in sed_dg.getListOfVariables():
+            task_id = sed_var.getTaskReference()
+            if sed_var.isSetSymbol():
+                index = "time"
+            elif sed_var.isSetTarget():
+                index = self.parse_xpath_target(sed_var.getTarget())
+            d_var = Data(
+                index=index,
+                task=task_id
+            )
+            # register data
+            self.data[d_var.sid] = d_var
+            variables[sed_var.getId()] = d_var
+
+        # FIXME: the simple math should not be evaluated via functions
         d = Data(
-            index=index,
-            task=task_id
+            index=sed_dg.getId(),  # FIXME: not sure about this
+            function=function,
+            variables=variables,
+            parameters=parameters,
         )
+
         self.data[d.sid] = d
         return d
 

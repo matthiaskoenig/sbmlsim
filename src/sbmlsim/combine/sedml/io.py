@@ -21,14 +21,14 @@ INPUT_TYPE_FILE_SEDML = "SEDML_FILE"
 INPUT_TYPE_FILE_COMBINE = "COMBINE_FILE"  # includes .sedx archives
 
 
-def check_sedml(doc: libsedml.SedDocument) -> str:
+def check_sedml(sed_doc: libsedml.SedDocument) -> libsedml.SedErrorLog:
     """Checks the SedDocument for errors.
 
-    :param doc: SedDocument.
+    :param sed_doc: SedDocument.
     """
-    errorlog = doc.getErrorLog()
+    errorlog: libsedml.SedErrorLog = sed_doc.getErrorLog()
     msg = errorlog.toString()
-    if doc.getErrorLog().getNumFailsWithSeverity(libsedml.LIBSEDML_SEV_ERROR) > 0:
+    if sed_doc.getErrorLog().getNumFailsWithSeverity(libsedml.LIBSEDML_SEV_ERROR) > 0:
         # FIXME: workaround for https://github.com/fbergmann/libSEDML/issues/47
         logger.warning(msg)
         # raise IOError(msg)
@@ -41,8 +41,9 @@ def check_sedml(doc: libsedml.SedDocument) -> str:
         logger.warning(msg)
     if errorlog.getNumFailsWithSeverity(libsedml.LIBSEDML_SEV_GENERAL_WARNING) > 0:
         logger.warning(msg)
-    print(f"errors: {msg}")
-    return str(msg)
+    if errorlog.getNumErrors() > 0:
+        logger.error(f"errors: {msg}")
+    return errorlog
 
 
 def read_sedml(source: Union[Path, str], working_dir: Path = None) -> Dict:
@@ -62,7 +63,7 @@ def read_sedml(source: Union[Path, str], working_dir: Path = None) -> Dict:
             logger.error(f"SED-ML string is not valid XML: '{source}'")
             raise err
 
-        doc = libsedml.readSedMLFromString(source)
+        sed_doc: libsedml.SedDocument = libsedml.readSedMLFromString(source)
 
         if working_dir is None:
             working_dir = Path.cwd()
@@ -72,7 +73,7 @@ def read_sedml(source: Union[Path, str], working_dir: Path = None) -> Dict:
         file_stem, file_suffix = file_path.stem, file_path.suffix
 
         if zipfile.is_zipfile(file_path):
-            print(f"SED-ML from archive: {file_path}")
+            logger.info(f"SED-ML from archive: {file_path}")
             input_type = INPUT_TYPE_FILE_COMBINE
             omex_path = file_path
 
@@ -82,7 +83,7 @@ def read_sedml(source: Union[Path, str], working_dir: Path = None) -> Dict:
                 extract_dir = omex_path.parent / f"_sbmlsim_{file_stem}"
             else:
                 extract_dir = working_dir
-            print(f"extracting archive to '{extract_dir}'")
+            logger.info(f"extracting archive to '{extract_dir}'")
 
             # extract archive to working directory
             importlib.reload(libcombine)
@@ -103,27 +104,26 @@ def read_sedml(source: Union[Path, str], working_dir: Path = None) -> Dict:
                 raise IOError(f"SED-ML file does not exist: {sedml_path}")
 
             importlib.reload(libsedml)
-            doc = libsedml.readSedMLFromFile(str(sedml_path))
+            sed_doc = libsedml.readSedMLFromFile(str(sedml_path))
 
             # we have to work relative to the SED-ML file
             working_dir = sedml_path.parent
 
         elif file_path.exists():
-            print(f"SED-ML from file: {file_path}")
+            logger.info(f"SED-ML from file: {file_path}")
             input_type = INPUT_TYPE_FILE_SEDML
             if file_suffix not in [".sedml", ".xml"]:
                 raise IOError(
                     f"SEDML file must have [.sedml|.xml] extension:" f"'{source}'"
                 )
 
-            doc = libsedml.readSedMLFromFile(str(source))
+            sed_doc = libsedml.readSedMLFromFile(str(source))
 
             # working directory is where the sedml file is
             if working_dir is None:
                 working_dir = file_path.parent
 
         # check document
-        check_sedml(doc)
-        print()
+        errorlog = check_sedml(sed_doc)
 
-        return doc, working_dir, input_type
+        return sed_doc, errorlog, working_dir, input_type
