@@ -47,7 +47,7 @@ class BasePlotObject(object):
         self.name = name
 
 
-class LineType(Enum):
+class LineStyle(Enum):
     NONE = 1
     SOLID = 2
     DASH = 3
@@ -56,7 +56,7 @@ class LineType(Enum):
     DASHDOTDOT = 6
 
 
-class MarkerType(Enum):
+class MarkerStyle(Enum):
     NONE = 1
     SQUARE = 2
     CIRCLE = 3
@@ -96,13 +96,13 @@ class ColorType(object):
 
 @dataclass
 class Line(object):
-    type: LineType
+    style: LineStyle
     color: ColorType
     thickness: float
 
     def to_dict(self):
         return {
-            "type": self.type,
+            "style": self.style,
             "color": self.color,
             "thickness": self.thickness,
         }
@@ -111,7 +111,7 @@ class Line(object):
 @dataclass
 class Marker(object):
     size: float
-    type: MarkerType
+    style: MarkerStyle
     fill: ColorType
     line_color: ColorType
     line_thickness: float = 1.0
@@ -119,7 +119,7 @@ class Marker(object):
     def to_dict(self):
         return {
             "size": self.size,
-            "type": self.type,
+            "style": self.style,
             "fill": self.fill,
             "line_color": self.line_color,
             "line_thickness": self.line_thickness,
@@ -151,35 +151,35 @@ class Style(BasePlotObject):
 
     # https://matplotlib.org/3.1.0/gallery/lines_bars_and_markers/linestyles.html
     MPL2SEDML_LINESTYLE_MAPPING = {
-        "": LineType.NONE,
-        "-": LineType.SOLID,
-        "solid": LineType.SOLID,
-        ".": LineType.DOT,
-        "dotted": LineType.DOT,
-        "--": LineType.DASH,
-        "dashed": LineType.DASH.DASH,
-        "-.": LineType.DASHDOT,
-        "dashdot": LineType.DASHDOT,
-        "dashdotdotted": LineType.DASHDOTDOT,
+        "": LineStyle.NONE,
+        "-": LineStyle.SOLID,
+        "solid": LineStyle.SOLID,
+        ".": LineStyle.DOT,
+        "dotted": LineStyle.DOT,
+        "--": LineStyle.DASH,
+        "dashed": LineStyle.DASH.DASH,
+        "-.": LineStyle.DASHDOT,
+        "dashdot": LineStyle.DASHDOT,
+        "dashdotdotted": LineStyle.DASHDOTDOT,
     }
     SEDML2MPL_LINESTYLE_MAPPING = {
         v: k for (k, v) in MPL2SEDML_LINESTYLE_MAPPING.items()
     }
 
     MPL2SEDML_MARKER_MAPPING = {
-        "": MarkerType.NONE,
-        "s": MarkerType.SQUARE,
-        "o": MarkerType.CIRCLE,
-        "D": MarkerType.DIAMOND,
-        "x": MarkerType.XCROSS,
-        "+": MarkerType.PLUS,
-        "*": MarkerType.STAR,
-        "^": MarkerType.TRIANGLEUP,
-        "v": MarkerType.TRIANGLEDOWN,
-        "<": MarkerType.TRIANGLELEFT,
-        ">": MarkerType.TRIANGLERIGHT,
-        "_": MarkerType.HDASH,
-        "|": MarkerType.VDASH,
+        "": MarkerStyle.NONE,
+        "s": MarkerStyle.SQUARE,
+        "o": MarkerStyle.CIRCLE,
+        "D": MarkerStyle.DIAMOND,
+        "x": MarkerStyle.XCROSS,
+        "+": MarkerStyle.PLUS,
+        "*": MarkerStyle.STAR,
+        "^": MarkerStyle.TRIANGLEUP,
+        "v": MarkerStyle.TRIANGLEDOWN,
+        "<": MarkerStyle.TRIANGLELEFT,
+        ">": MarkerStyle.TRIANGLERIGHT,
+        "_": MarkerStyle.HDASH,
+        "|": MarkerStyle.VDASH,
     }
     SEDML2MPL_MARKER_MAPPING = {v: k for (k, v) in MPL2SEDML_MARKER_MAPPING.items()}
 
@@ -189,13 +189,13 @@ class Style(BasePlotObject):
         if self.line:
             if self.line.color:
                 kwargs["color"] = self.line.color.color
-            if self.line.type:
-                kwargs["linestyle"] = Style.SEDML2MPL_LINESTYLE_MAPPING[self.line.type]
+            if self.line.style:
+                kwargs["linestyle"] = Style.SEDML2MPL_LINESTYLE_MAPPING[self.line.style]
             if self.line.thickness:
                 kwargs["linewidth"] = self.line.thickness
         if self.marker:
-            if self.marker.type:
-                kwargs["marker"] = Style.SEDML2MPL_MARKER_MAPPING[self.marker.type]
+            if self.marker.style:
+                kwargs["marker"] = Style.SEDML2MPL_MARKER_MAPPING[self.marker.style]
             if self.marker.size:
                 kwargs["markersize"] = self.marker.size
             if self.marker.fill:
@@ -259,12 +259,12 @@ class Style(BasePlotObject):
 
         # Line
         linestyle = Style.MPL2SEDML_LINESTYLE_MAPPING[kwargs.get("linestyle", "-")]
-        line = Line(color=color, type=linestyle, thickness=kwargs.get("linewidth", 1.0))
+        line = Line(color=color, style=linestyle, thickness=kwargs.get("linewidth", 1.0))
 
         # Marker
         marker_symbol = Style.MPL2SEDML_MARKER_MAPPING[kwargs.get("marker", "")]
         marker = Marker(
-            type=marker_symbol,
+            style=marker_symbol,
             size=kwargs.get("markersize", None),
             fill=kwargs.get("markerfacecolor", color),
             line_color=kwargs.get("markeredgecolor", None),
@@ -633,13 +633,16 @@ class Plot(BasePlotObject):
             color=DEFAULT_COLORS[curve.order % len(DEFAULT_COLORS)],
             alpha=curve.kwargs.get("alpha", 1.0),
         )
-        style = curve.style  # type: Style
-        if (style.line.type != LineType.NONE) and (not style.line.color):
+        style: Style = curve.style
+        print(style)
+        print(style.sid)
+
+        if (style.line.style != LineStyle.NONE) and (not style.line.color):
             style.line.color = color
             logger.warning(
                 f"'{self.sid}.{curve.sid}': undefined line color set to: {color}"
             )
-        if (style.marker.type != MarkerType.NONE) and (not style.marker.fill):
+        if (style.marker.style != MarkerStyle.NONE) and (not style.marker.fill):
             style.marker.fill = color
             logger.error(
                 f"'{self.sid}.{curve.sid}': undefined marker fill set to: {color}"

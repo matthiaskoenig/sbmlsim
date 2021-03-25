@@ -111,7 +111,8 @@ from sbmlsim.experiment import SimulationExperiment
 from sbmlsim.model import model_resources
 from sbmlsim.model.model import AbstractModel
 from sbmlsim.plot import Figure, Plot, Axis, Curve
-from sbmlsim.plot.plotting import Style, Line
+from sbmlsim.plot.plotting import Style, Line, LineStyle, ColorType, Marker, \
+    MarkerStyle, Fill
 from sbmlsim.simulation import ScanSim, TimecourseSim, Timecourse, AbstractSim
 from sbmlsim.task import Task
 from sbmlsim.units import UnitRegistry
@@ -639,32 +640,126 @@ class SEDMLParser(object):
             # FIXME: handle errorbars via lower and upper
             xerr=self.data_from_datagenerator(sed_curve.getXErrorLower()),
             yerr=self.data_from_datagenerator(sed_curve.getYErrorLower()),
-            style=self.parse_style(sed_curve.getStyle()),
+
             # FIXME: curve type
         )
+        curve.style = self.parse_style(sed_curve.getStyle())
         # FIXME: support yaxis
-        # FIXME: support type
-        # FIXME: parse style
+        print(curve)
+        print(curve.to_dict())
+
         return curve
 
-    def parse_style(self, sed_style: libsedml.SedStyle):
-        # FIXME: parse the style
+    def parse_style(self, sed_style: Union[str, libsedml.SedStyle]) -> Optional[Style]:
+        """Parse SED-ML style."""
+        print(f"parsing style: {sed_style}")
+        if not sed_style:
+            return None
+
+        # resolve style if string
+        if isinstance(sed_style, str):
+            sed_style: libsedml.SedStyle = self.sed_doc.getStyle(sed_style)
+
+        # FIXME: get the complete style resolved from basestyle
 
         style = Style(
             sid=sed_style.getId(),
             name=sed_style.getName(),
             base_style=self.parse_style(sed_style.getBaseStyle()),
         )
-        line = sed_style.getLine()
-        marker = sed_style.getMarker()
-        fill = sed_style.getFill()
+        sed_line: libsedml.SedLine = sed_style.getLineStyle()
+        style.line = self.parse_line(sed_line)
 
-        if line == libsedml.LINETYPE_DASH:
-            line = Line.
+        sed_marker: libsedml.SedMarker = sed_style.getMarkerStyle()
+        style.marker = self.parse_marker(sed_marker)
 
-        sed_style.getId()
+        sed_fill = libsedml.SedFill = sed_style.getFillStyle()
+        style.fill = self.parse_fill(sed_fill)
+        return style
 
+    def parse_line(self, sed_line: libsedml.SedLine) -> Optional[Line]:
+        """Parse line information."""
+        if sed_line is None:
+            return None
 
+        line_style: LineStyle
+        sed_line_style = sed_line.getStyle()
+        if sed_line_style == libsedml.SEDML_LINETYPE_NONE:
+            line_style = LineStyle.NONE
+        elif sed_line_style == libsedml.SEDML_LINETYPE_SOLID:
+            line_style = LineStyle.SOLID
+        elif sed_line_style == libsedml.SEDML_LINETYPE_DASH:
+            line_style = LineStyle.DASH
+        elif sed_line_style == libsedml.SEDML_LINETYPE_DOT:
+            line_style = LineStyle.DOT
+        elif sed_line_style == libsedml.SEDML_LINETYPE_DASHDOT:
+            line_style = LineStyle.DASHDOT
+        elif sed_line_style == libsedml.SEDML_LINETYPE_DASHDOTDOT:
+            line_style = LineStyle.DASHDOTDOT
+        else:
+            logger.warning(f"Unsupported LineStyle, using LineStyle.SOLID.")
+            line_style = LineStyle.SOLID
+
+        return Line(
+            style=line_style,
+            color=ColorType(sed_line.getColor()),
+            thickness=sed_line.getThickness(),
+        )
+
+    def parse_marker(self, sed_marker: libsedml.SedMarker) -> Optional[Marker]:
+        """Parse the line information."""
+        if sed_marker is None:
+            return None
+
+        marker_style: MarkerStyle
+        sed_marker_style = sed_marker.getStyle()
+        if sed_marker_style == libsedml.SEDML_MARKERTYPE_NONE:
+            marker_style = MarkerStyle.NONE
+        elif sed_marker_style == libsedml.SEDML_MARKERTYPE_SQUARE:
+            marker_style = MarkerStyle.SQUARE
+        elif sed_marker_style == libsedml.SEDML_MARKERTYPE_CIRCLE:
+            marker_style = MarkerStyle.CIRCLE
+        elif sed_marker_style == libsedml.SEDML_MARKERTYPE_DIAMOND:
+            marker_style = MarkerStyle.DIAMOND
+        elif sed_marker_style == libsedml.SEDML_MARKERTYPE_XCROSS:
+            marker_style = MarkerStyle.XCROSS
+        elif sed_marker_style == libsedml.SEDML_MARKERTYPE_PLUS:
+            marker_style = MarkerStyle.PLUS
+        elif sed_marker_style == libsedml.SEDML_MARKERTYPE_STAR:
+            marker_style = MarkerStyle.STAR
+        elif sed_marker_style == libsedml.SEDML_MARKERTYPE_TRIANGLEUP:
+            marker_style = MarkerStyle.TRIANGLEUP
+        elif sed_marker_style == libsedml.SEDML_MARKERTYPE_TRIANGLEDOWN:
+            marker_style = MarkerStyle.TRIANGLEDOWN
+        elif sed_marker_style == libsedml.SEDML_MARKERTYPE_TRIANGLELEFT:
+            marker_style = MarkerStyle.TRIANGLELEFT
+        elif sed_marker_style == libsedml.SEDML_MARKERTYPE_TRIANGLERIGHT:
+            marker_style = MarkerStyle.TRIANGLERIGHT
+        elif sed_marker_style == libsedml.SEDML_MARKERTYPE_HDASH:
+            marker_style = MarkerStyle.HDASH
+        elif sed_marker_style == libsedml.SEDML_MARKERTYPE_VDASH:
+            marker_style = MarkerStyle.VDASH
+        else:
+            logger.warning(f"Unsupported MarkerStyle, using MarkerStyle.SQUARE.")
+            marker_style = MarkerStyle.SQUARE
+
+        return Marker(
+            size=sed_marker.getSize(),
+            style=marker_style,
+            fill=ColorType(sed_marker.getFill()),
+            line_color=ColorType(sed_marker.getLineColor()),
+            line_thickness=sed_marker.getLineThickness(),
+        )
+
+    def parse_fill(self, sed_fill: libsedml.SedFill) -> Optional[Fill]:
+        """Parse fill information."""
+        if sed_fill is None:
+            return None
+
+        return Fill(
+            color=ColorType(sed_fill.getColor()),
+            second_color=sed_fill.getSecondColor(),
+        )
 
     def data_from_datagenerator(self, sed_dg_ref: Optional[str]) -> Optional[Data]:
         """This must all be evaluated with actual data"""
@@ -733,7 +828,7 @@ class SEDMLParser(object):
                     # FIXME: resolve with model
                     selection = SEDMLCodeFactory.selectionFromVariable(var, model_id)
                     expr = selection.id
-                    if selection.type == "concentration":
+                    if selection.style == "concentration":
                         expr = "[{}]".format(selection.id)
                     selections.add(expr)
 

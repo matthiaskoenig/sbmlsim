@@ -1,1 +1,1 @@
-from .plotting import Figure, Plot, Axis, SubPlot, Curve, ColorType, MarkerType
+from .plotting import Figure, Plot, Axis, SubPlot, Curve, ColorType, MarkerStyle

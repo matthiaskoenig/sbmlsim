@@ -119,19 +119,19 @@
                 "yerr": null,
                 "yaxis": null,
                 "style": {
-                  "sid": null,
-                  "name": null,
+                  "sid": "blue_line_green_markers",
+                  "name": "",
                   "line": {
-                    "type": "SOLID",
-                    "color": "#1f77b4ff",
-                    "thickness": 2.0
+                    "style": "DASHDOT",
+                    "color": "#0000FF",
+                    "thickness": 10.0
                   },
                   "marker": {
-                    "size": null,
-                    "type": "NONE",
-                    "fill": null,
-                    "line_color": null,
-                    "line_thickness": null
+                    "size": NaN,
+                    "style": "SQUARE",
+                    "fill": "#00FF00",
+                    "line_color": "#0000FF",
+                    "line_thickness": NaN
                   },
                   "fill": null
                 },
@@ -146,19 +146,19 @@
                 "yerr": null,
                 "yaxis": null,
                 "style": {
-                  "sid": null,
-                  "name": null,
+                  "sid": "red_line_yellow_markers",
+                  "name": "",
                   "line": {
-                    "type": "SOLID",
-                    "color": "#ff7f0eff",
-                    "thickness": 2.0
+                    "style": "SOLID",
+                    "color": "#FF0000",
+                    "thickness": NaN
                   },
                   "marker": {
-                    "size": null,
-                    "type": "NONE",
-                    "fill": null,
-                    "line_color": null,
-                    "line_thickness": null
+                    "size": 2.0,
+                    "style": "DIAMOND",
+                    "fill": "#FFFF00",
+                    "line_color": "#FF0000",
+                    "line_thickness": 1.0
                   },
                   "fill": null
                 },

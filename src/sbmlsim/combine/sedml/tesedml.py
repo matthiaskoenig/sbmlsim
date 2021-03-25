@@ -665,9 +665,9 @@ class SEDMLCodeFactory(object):
                 vid = var.getId()
                 selection = SEDMLCodeFactory.selectionFromVariable(var, mid)
                 expr = selection.id
-                if selection.type == "concentration":
+                if selection.style == "concentration":
                     expr = "init([{}])".format(selection.id)
-                elif selection.type == "amount":
+                elif selection.style == "amount":
                     expr = "init({})".format(selection.id)
                 lines.append("__var__{} = {}['{}']".format(vid, mid, expr))
                 variables[vid] = "__var__{}".format(vid)
@@ -1112,9 +1112,9 @@ class SEDMLCodeFactory(object):
                     mid = var.getModelReference()
                     selection = SEDMLCodeFactory.selectionFromVariable(var, mid)
                     expr = selection.id
-                    if selection.type == "concentration":
+                    if selection.style == "concentration":
                         expr = "init([{}])".format(selection.id)
-                    elif selection.type == "amount":
+                    elif selection.style == "amount":
                         expr = "init({})".format(selection.id)
 
                     # create variable
@@ -1270,7 +1270,7 @@ class SEDMLCodeFactory(object):
                         mid = var.getModelReference()
                         selection = SEDMLCodeFactory.selectionFromVariable(var, mid)
                         expr = selection.id
-                        if selection.type == "concentration":
+                        if selection.style == "concentration":
                             expr = "[{}]".format(selection.id)
                         lines.append("__value__{} = {}['{}']".format(vid, mid, expr))
                         variables[vid] = "__value__{}".format(vid)
@@ -1338,7 +1338,7 @@ class SEDMLCodeFactory(object):
                 if var.getTaskReference() == task.getId():
                     selection = SEDMLCodeFactory.selectionFromVariable(var, modelId)
                     expr = selection.id
-                    if selection.type == "concentration":
+                    if selection.style == "concentration":
                         expr = "[{}]".format(selection.id)
                     selections.add(expr)
 
@@ -1461,10 +1461,10 @@ class SEDMLCodeFactory(object):
         target = SEDMLCodeFactory._resolveXPath(xpath, modelId)
         if target:
             # initial concentration
-            if target.type == "concentration":
+            if target.style == "concentration":
                 expr = "init([{}])".format(target.id)
             # initial amount
-            elif target.type == "amount":
+            elif target.style == "amount":
                 expr = "init({})".format(target.id)
             # other (parameter, flux, ...)
             else:
@@ -1500,7 +1500,7 @@ class SEDMLCodeFactory(object):
         elif var.isSetTarget():
             xpath = var.getTarget()
             target = SEDMLCodeFactory._resolveXPath(xpath, modelId)
-            return Selection(target.id, target.type)
+            return Selection(target.id, target.style)
 
         else:
             warnings.warn("Unrecognized Selection in variable")
@@ -1587,7 +1587,7 @@ class SEDMLCodeFactory(object):
 
                 selection = SEDMLCodeFactory.selectionFromVariable(var, modelId)
                 isTime = False
-                if selection.type == "symbol" and selection.id == "time":
+                if selection.style == "symbol" and selection.id == "time":
                     isTime = True
 
                 resetModel = True
@@ -1595,7 +1595,7 @@ class SEDMLCodeFactory(object):
                     resetModel = task.getResetModel()
 
                 sid = selection.id
-                if selection.type == "concentration":
+                if selection.style == "concentration":
                     sid = "[{}]".format(selection.id)
 
                 # Series of curves
