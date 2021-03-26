@@ -33,7 +33,6 @@ def execute_sedml(working_dir: Path, name: str, sedml_path: Path) -> None:
     # convert to json
     sedmltojson(sedml_path)
 
-
     sed_doc, errorlog, _, _ = read_sedml(
         source=str(sedml_path), working_dir=working_dir
     )
@@ -59,7 +58,8 @@ def execute_sedml(working_dir: Path, name: str, sedml_path: Path) -> None:
         base_path=base_path,
     )
     _results = runner.run_experiments(
-        output_path=base_path / "results", show_figures=True
+        output_path=base_path / "results", show_figures=True,
+        figure_formats=["svg", "png"]
     )
 
     # TODO: write experiment to SED-ML file

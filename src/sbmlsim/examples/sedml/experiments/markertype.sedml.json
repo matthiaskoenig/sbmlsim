@@ -51,7 +51,13 @@
           "@id": "dg_NONE",
           "math": {
             "@xmlns": "http://www.w3.org/1998/Math/MathML",
-            "ci": "S1"
+            "apply": {
+              "plus": null,
+              "ci": [
+                "S1",
+                "12"
+              ]
+            }
           },
           "listOfVariables": {
             "variable": {
@@ -70,7 +76,7 @@
               "plus": null,
               "ci": [
                 "S1",
-                "1"
+                "11"
               ]
             }
           },
@@ -91,7 +97,7 @@
               "plus": null,
               "ci": [
                 "S1",
-                "2"
+                "10"
               ]
             }
           },
@@ -112,7 +118,7 @@
               "plus": null,
               "ci": [
                 "S1",
-                "3"
+                "9"
               ]
             }
           },
@@ -133,7 +139,7 @@
               "plus": null,
               "ci": [
                 "S1",
-                "4"
+                "8"
               ]
             }
           },
@@ -154,7 +160,7 @@
               "plus": null,
               "ci": [
                 "S1",
-                "5"
+                "7"
               ]
             }
           },
@@ -196,7 +202,7 @@
               "plus": null,
               "ci": [
                 "S1",
-                "7"
+                "5"
               ]
             }
           },
@@ -217,7 +223,7 @@
               "plus": null,
               "ci": [
                 "S1",
-                "8"
+                "4"
               ]
             }
           },
@@ -238,7 +244,7 @@
               "plus": null,
               "ci": [
                 "S1",
-                "9"
+                "3"
               ]
             }
           },
@@ -259,7 +265,7 @@
               "plus": null,
               "ci": [
                 "S1",
-                "10"
+                "2"
               ]
             }
           },
@@ -280,7 +286,7 @@
               "plus": null,
               "ci": [
                 "S1",
-                "11"
+                "1"
               ]
             }
           },
@@ -301,7 +307,7 @@
               "plus": null,
               "ci": [
                 "S1",
-                "12"
+                "0"
               ]
             }
           },
@@ -464,170 +470,131 @@
         {
           "@id": "style_NONE",
           "line": {
-            "@style": "solid",
-            "@color": "#000000",
-            "@thickness": "1"
+            "@style": "none"
           },
           "marker": {
             "@style": "none",
-            "@fill": "#000000",
-            "@lineColor": "#0000FF"
+            "@fill": "#000000"
           }
         },
         {
           "@id": "style_SQUARE",
           "line": {
-            "@style": "solid",
-            "@color": "#000000",
-            "@thickness": "1"
+            "@style": "none"
           },
           "marker": {
             "@style": "square",
-            "@fill": "#000000",
-            "@lineColor": "#0000FF"
+            "@fill": "#000000"
           }
         },
         {
           "@id": "style_CIRCLE",
           "line": {
-            "@style": "solid",
-            "@color": "#000000",
-            "@thickness": "1"
+            "@style": "none"
           },
           "marker": {
             "@style": "circle",
-            "@fill": "#000000",
-            "@lineColor": "#0000FF"
+            "@fill": "#000000"
           }
         },
         {
           "@id": "style_DIAMOND",
           "line": {
-            "@style": "solid",
-            "@color": "#000000",
-            "@thickness": "1"
+            "@style": "none"
           },
           "marker": {
             "@style": "diamond",
-            "@fill": "#000000",
-            "@lineColor": "#0000FF"
+            "@fill": "#000000"
           }
         },
         {
           "@id": "style_XCROSS",
           "line": {
-            "@style": "solid",
-            "@color": "#000000",
-            "@thickness": "1"
+            "@style": "none"
           },
           "marker": {
             "@style": "xCross",
-            "@fill": "#000000",
-            "@lineColor": "#0000FF"
+            "@fill": "#000000"
           }
         },
         {
           "@id": "style_PLUS",
           "line": {
-            "@style": "solid",
-            "@color": "#000000",
-            "@thickness": "1"
+            "@style": "none"
           },
           "marker": {
             "@style": "plus",
-            "@fill": "#000000",
-            "@lineColor": "#0000FF"
+            "@fill": "#000000"
           }
         },
         {
           "@id": "style_STAR",
           "line": {
-            "@style": "solid",
-            "@color": "#000000",
-            "@thickness": "1"
+            "@style": "none"
           },
           "marker": {
             "@style": "star",
-            "@fill": "#000000",
-            "@lineColor": "#0000FF"
+            "@fill": "#000000"
           }
         },
         {
           "@id": "style_TRIANGLEUP",
           "line": {
-            "@style": "solid",
-            "@color": "#000000",
-            "@thickness": "1"
+            "@style": "none"
           },
           "marker": {
             "@style": "triangleUp",
-            "@fill": "#000000",
-            "@lineColor": "#0000FF"
+            "@fill": "#000000"
           }
         },
         {
           "@id": "style_TRIANGLEDOWN",
           "line": {
-            "@style": "solid",
-            "@color": "#000000",
-            "@thickness": "1"
+            "@style": "none"
           },
           "marker": {
             "@style": "triangleDown",
-            "@fill": "#000000",
-            "@lineColor": "#0000FF"
+            "@fill": "#000000"
           }
         },
         {
           "@id": "style_TRIANGLELEFT",
           "line": {
-            "@style": "solid",
-            "@color": "#000000",
-            "@thickness": "1"
+            "@style": "none"
           },
           "marker": {
             "@style": "triangleLeft",
-            "@fill": "#000000",
-            "@lineColor": "#0000FF"
+            "@fill": "#000000"
           }
         },
         {
           "@id": "style_TRIANGLERIGHT",
           "line": {
-            "@style": "solid",
-            "@color": "#000000",
-            "@thickness": "1"
+            "@style": "none"
           },
           "marker": {
             "@style": "triangleRight",
-            "@fill": "#000000",
-            "@lineColor": "#0000FF"
+            "@fill": "#000000"
           }
         },
         {
           "@id": "style_HDASH",
           "line": {
-            "@style": "solid",
-            "@color": "#000000",
-            "@thickness": "1"
+            "@style": "none"
           },
           "marker": {
             "@style": "hDash",
-            "@fill": "#000000",
-            "@lineColor": "#0000FF"
+            "@fill": "#000000"
           }
         },
         {
           "@id": "style_VDASH",
           "line": {
-            "@style": "solid",
-            "@color": "#000000",
-            "@thickness": "1"
+            "@style": "none"
           },
           "marker": {
             "@style": "vDash",
-            "@fill": "#000000",
-            "@lineColor": "#0000FF"
+            "@fill": "#000000"
           }
         }
       ]

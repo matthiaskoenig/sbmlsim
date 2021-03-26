@@ -25,7 +25,7 @@
       <apply>
           <plus/>
           <ci> S1 </ci>
-          <ci> 1 </ci>
+          <ci> 5 </ci>
         </apply>
       </math>
       <listOfVariables>
@@ -37,7 +37,7 @@
       <apply>
           <plus/>
           <ci> S1 </ci>
-          <ci> 2 </ci>
+          <ci> 4 </ci>
         </apply>
       </math>
       <listOfVariables>
@@ -61,7 +61,7 @@
       <apply>
           <plus/>
           <ci> S1 </ci>
-          <ci> 4 </ci>
+          <ci> 2 </ci>
         </apply>
       </math>
       <listOfVariables>
@@ -73,7 +73,7 @@
       <apply>
           <plus/>
           <ci> S1 </ci>
-          <ci> 5 </ci>
+          <ci> 1 </ci>
         </apply>
       </math>
       <listOfVariables>
@@ -97,29 +97,34 @@
         <curve id="curve_DASH" logX="false" style="style_DASH" xDataReference="dg_time" logY="false" yDataReference="dg_DASH" type="points"/>
         <curve id="curve_DOT" logX="false" style="style_DOT" xDataReference="dg_time" logY="false" yDataReference="dg_DOT" type="points"/>
         <curve id="curve_DASHDOT" logX="false" style="style_DASHDOT" xDataReference="dg_time" logY="false" yDataReference="dg_DASHDOT" type="points"/>
+        <curve id="curve_DASHDOTDOT" logX="false" style="style_DASHDOTDOT" xDataReference="dg_time" logY="false" yDataReference="dg_DASHDOTDOT" type="points"/>
       </listOfCurves>
     </plot2D>
   </listOfOutputs>
   <listOfStyles>
     <style id="style_NONE">
       <line style="none" color="#000000" thickness="2"/>
-      <marker style="square" size="3" fill="#000000" lineColor="#000000"/>
+      <marker style="none"/>
     </style>
     <style id="style_SOLID">
       <line style="solid" color="#000000" thickness="2"/>
-      <marker style="square" size="3" fill="#000000" lineColor="#000000"/>
+      <marker style="none"/>
     </style>
     <style id="style_DASH">
       <line style="dash" color="#000000" thickness="2"/>
-      <marker style="square" size="3" fill="#000000" lineColor="#000000"/>
+      <marker style="none"/>
     </style>
     <style id="style_DOT">
       <line style="dot" color="#000000" thickness="2"/>
-      <marker style="square" size="3" fill="#000000" lineColor="#000000"/>
+      <marker style="none"/>
     </style>
     <style id="style_DASHDOT">
       <line style="dashDot" color="#000000" thickness="2"/>
-      <marker style="square" size="3" fill="#000000" lineColor="#000000"/>
+      <marker style="none"/>
+    </style>
+    <style id="style_DASHDOTDOT">
+      <line style="dashDotDot" color="#000000" thickness="2"/>
+      <marker style="none"/>
     </style>
   </listOfStyles>
 </sedML>

@@ -215,13 +215,9 @@ class SEDMLParser(object):
         # --- Styles ---
         self.styles: Dict[str, Style] = {}
         sed_style: libsedml.SedStyle
-
-        # see: https://github.com/fbergmann/libSEDML/issues/104
-        # for sed_style in sed_doc.getListOfStyles():
-        #    self.styles[sed_style.getId()] = self.parse_style(sed_style)
-        for k in range(sed_doc.getNumStyles()):
-            sed_style: libsedml.SedStyle = sed_doc.getStyle(k)
+        for sed_style in sed_doc.getListOfStyles():
             self.styles[sed_style.getId()] = self.parse_style(sed_style)
+
         logger.debug(f"styles: {self.styles}")
 
         # --- Figures/Reports ---
@@ -802,13 +798,20 @@ class SEDMLParser(object):
             logger.warning(f"Unsupported MarkerStyle, using MarkerStyle.SQUARE.")
             marker_style = MarkerStyle.SQUARE
 
-        return Marker(
+        marker = Marker(
             size=sed_marker.getSize() if sed_marker.isSetSize() else 6,
             style=marker_style if sed_marker.isSetStyle() else MarkerStyle.SQUARE,
             fill=ColorType(sed_marker.getFill()) if sed_marker.isSetFill() else ColorType("black"),
-            line_color=ColorType(sed_marker.getLineColor()) if sed_marker.isSetLineColor else ColorType("black"),
+
             line_thickness=sed_marker.getLineThickness() if sed_marker.isSetLineThickness() else 0.0,
         )
+        if sed_marker.isSetLineColor():
+            marker.line_color = ColorType(sed_marker.getLineColor())
+        else:
+            # Fallback to fill
+            marker.line_color = marker.fill
+
+        return marker
 
     def parse_fill(self, sed_fill: libsedml.SedFill) -> Optional[Fill]:
         """Parse fill information."""

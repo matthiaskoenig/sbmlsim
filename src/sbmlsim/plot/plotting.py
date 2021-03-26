@@ -170,6 +170,7 @@ class Style(BasePlotObject):
     SEDML2MPL_LINESTYLE_MAPPING = {
         v: k for (k, v) in MPL2SEDML_LINESTYLE_MAPPING.items()
     }
+    SEDML2MPL_LINESTYLE_MAPPING[LineStyle.DASHDOTDOT] = (0, (3, 5, 1, 5, 1, 5))
 
     MPL2SEDML_MARKER_MAPPING = {
         "": MarkerStyle.NONE,

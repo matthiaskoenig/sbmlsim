@@ -54,7 +54,7 @@
               "plus": null,
               "ci": [
                 "S1",
-                "1"
+                "5"
               ]
             }
           },
@@ -75,7 +75,7 @@
               "plus": null,
               "ci": [
                 "S1",
-                "2"
+                "4"
               ]
             }
           },
@@ -117,7 +117,7 @@
               "plus": null,
               "ci": [
                 "S1",
-                "4"
+                "2"
               ]
             }
           },
@@ -138,7 +138,7 @@
               "plus": null,
               "ci": [
                 "S1",
-                "5"
+                "1"
               ]
             }
           },
@@ -219,6 +219,15 @@
               "@logY": "false",
               "@yDataReference": "dg_DASHDOT",
               "@type": "points"
+            },
+            {
+              "@id": "curve_DASHDOTDOT",
+              "@logX": "false",
+              "@style": "style_DASHDOTDOT",
+              "@xDataReference": "dg_time",
+              "@logY": "false",
+              "@yDataReference": "dg_DASHDOTDOT",
+              "@type": "points"
             }
           ]
         }
@@ -234,10 +243,7 @@
             "@thickness": "2"
           },
           "marker": {
-            "@style": "square",
-            "@size": "3",
-            "@fill": "#000000",
-            "@lineColor": "#000000"
+            "@style": "none"
           }
         },
         {
@@ -248,10 +254,7 @@
             "@thickness": "2"
           },
           "marker": {
-            "@style": "square",
-            "@size": "3",
-            "@fill": "#000000",
-            "@lineColor": "#000000"
+            "@style": "none"
           }
         },
         {
@@ -262,10 +265,7 @@
             "@thickness": "2"
           },
           "marker": {
-            "@style": "square",
-            "@size": "3",
-            "@fill": "#000000",
-            "@lineColor": "#000000"
+            "@style": "none"
           }
         },
         {
@@ -276,10 +276,7 @@
             "@thickness": "2"
           },
           "marker": {
-            "@style": "square",
-            "@size": "3",
-            "@fill": "#000000",
-            "@lineColor": "#000000"
+            "@style": "none"
           }
         },
         {
@@ -290,10 +287,18 @@
             "@thickness": "2"
           },
           "marker": {
-            "@style": "square",
-            "@size": "3",
-            "@fill": "#000000",
-            "@lineColor": "#000000"
+            "@style": "none"
+          }
+        },
+        {
+          "@id": "style_DASHDOTDOT",
+          "line": {
+            "@style": "dashDotDot",
+            "@color": "#000000",
+            "@thickness": "2"
+          },
+          "marker": {
+            "@style": "none"
           }
         }
       ]

@@ -22,7 +22,11 @@
     </dataGenerator>
     <dataGenerator id="dg_NONE">
       <math xmlns="http://www.w3.org/1998/Math/MathML">
-        <ci> S1 </ci>
+      <apply>
+          <plus/>
+          <ci> S1 </ci>
+          <ci> 12 </ci>
+        </apply>
       </math>
       <listOfVariables>
         <variable id="S1" target="/sbml:sbml/sbml:model/sbml:listOfSpecies/sbml:species[@id=&apos;S1&apos;]" taskReference="task0" modelReference="model0"/>
@@ -33,7 +37,7 @@
       <apply>
           <plus/>
           <ci> S1 </ci>
-          <ci> 1 </ci>
+          <ci> 11 </ci>
         </apply>
       </math>
       <listOfVariables>
@@ -45,7 +49,7 @@
       <apply>
           <plus/>
           <ci> S1 </ci>
-          <ci> 2 </ci>
+          <ci> 10 </ci>
         </apply>
       </math>
       <listOfVariables>
@@ -57,7 +61,7 @@
       <apply>
           <plus/>
           <ci> S1 </ci>
-          <ci> 3 </ci>
+          <ci> 9 </ci>
         </apply>
       </math>
       <listOfVariables>
@@ -69,7 +73,7 @@
       <apply>
           <plus/>
           <ci> S1 </ci>
-          <ci> 4 </ci>
+          <ci> 8 </ci>
         </apply>
       </math>
       <listOfVariables>
@@ -81,7 +85,7 @@
       <apply>
           <plus/>
           <ci> S1 </ci>
-          <ci> 5 </ci>
+          <ci> 7 </ci>
         </apply>
       </math>
       <listOfVariables>
@@ -105,7 +109,7 @@
       <apply>
           <plus/>
           <ci> S1 </ci>
-          <ci> 7 </ci>
+          <ci> 5 </ci>
         </apply>
       </math>
       <listOfVariables>
@@ -117,7 +121,7 @@
       <apply>
           <plus/>
           <ci> S1 </ci>
-          <ci> 8 </ci>
+          <ci> 4 </ci>
         </apply>
       </math>
       <listOfVariables>
@@ -129,7 +133,7 @@
       <apply>
           <plus/>
           <ci> S1 </ci>
-          <ci> 9 </ci>
+          <ci> 3 </ci>
         </apply>
       </math>
       <listOfVariables>
@@ -141,7 +145,7 @@
       <apply>
           <plus/>
           <ci> S1 </ci>
-          <ci> 10 </ci>
+          <ci> 2 </ci>
         </apply>
       </math>
       <listOfVariables>
@@ -153,7 +157,7 @@
       <apply>
           <plus/>
           <ci> S1 </ci>
-          <ci> 11 </ci>
+          <ci> 1 </ci>
         </apply>
       </math>
       <listOfVariables>
@@ -165,7 +169,7 @@
       <apply>
           <plus/>
           <ci> S1 </ci>
-          <ci> 12 </ci>
+          <ci> 0 </ci>
         </apply>
       </math>
       <listOfVariables>
@@ -203,56 +207,56 @@
 
   <listOfStyles>
     <style id="style_NONE">
-      <line style="solid" color="#000000" thickness="1"/>
-      <marker style="none" fill="#000000" lineColor="#0000FF"/>
+      <line style="none"/>
+      <marker style="none" fill="#000000"/>
     </style>
     <style id="style_SQUARE">
-      <line style="solid" color="#000000" thickness="1"/>
-      <marker style="square" fill="#000000" lineColor="#0000FF"/>
+      <line style="none"/>
+      <marker style="square" fill="#000000"/>
     </style>
     <style id="style_CIRCLE">
-      <line style="solid" color="#000000" thickness="1"/>
-      <marker style="circle" fill="#000000" lineColor="#0000FF"/>
+      <line style="none"/>
+      <marker style="circle" fill="#000000"/>
     </style>
     <style id="style_DIAMOND">
-      <line style="solid" color="#000000" thickness="1"/>
-      <marker style="diamond" fill="#000000" lineColor="#0000FF"/>
+      <line style="none"/>
+      <marker style="diamond" fill="#000000"/>
     </style>
     <style id="style_XCROSS">
-      <line style="solid" color="#000000" thickness="1"/>
-      <marker style="xCross" fill="#000000" lineColor="#0000FF"/>
+      <line style="none"/>
+      <marker style="xCross" fill="#000000"/>
     </style>
     <style id="style_PLUS">
-      <line style="solid" color="#000000" thickness="1"/>
-      <marker style="plus" fill="#000000" lineColor="#0000FF"/>
+      <line style="none"/>
+      <marker style="plus" fill="#000000"/>
     </style>
     <style id="style_STAR">
-      <line style="solid" color="#000000" thickness="1"/>
-      <marker style="star" fill="#000000" lineColor="#0000FF"/>
+      <line style="none"/>
+      <marker style="star" fill="#000000"/>
     </style>
     <style id="style_TRIANGLEUP">
-      <line style="solid" color="#000000" thickness="1"/>
-      <marker style="triangleUp" fill="#000000" lineColor="#0000FF"/>
+      <line style="none"/>
+      <marker style="triangleUp" fill="#000000"/>
     </style>
     <style id="style_TRIANGLEDOWN">
-      <line style="solid" color="#000000" thickness="1"/>
-      <marker style="triangleDown" fill="#000000" lineColor="#0000FF"/>
+      <line style="none"/>
+      <marker style="triangleDown" fill="#000000"/>
     </style>
     <style id="style_TRIANGLELEFT">
-      <line style="solid" color="#000000" thickness="1"/>
-      <marker style="triangleLeft" fill="#000000" lineColor="#0000FF"/>
+      <line style="none"/>
+      <marker style="triangleLeft" fill="#000000"/>
     </style>
     <style id="style_TRIANGLERIGHT">
-      <line style="solid" color="#000000" thickness="1"/>
-      <marker style="triangleRight" fill="#000000" lineColor="#0000FF"/>
+      <line style="none"/>
+      <marker style="triangleRight" fill="#000000"/>
     </style>
     <style id="style_HDASH">
-      <line style="solid" color="#000000" thickness="1"/>
-      <marker style="hDash" fill="#000000" lineColor="#0000FF"/>
+      <line style="none"/>
+      <marker style="hDash" fill="#000000"/>
     </style>
     <style id="style_VDASH">
-      <line style="solid" color="#000000" thickness="1"/>
-      <marker style="vDash" fill="#000000" lineColor="#0000FF"/>
+      <line style="none"/>
+      <marker style="vDash" fill="#000000"/>
     </style>
   </listOfStyles>
 </sedML>
