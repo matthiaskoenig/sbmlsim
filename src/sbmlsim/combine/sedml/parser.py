@@ -97,7 +97,7 @@ import re
 import warnings
 from collections import OrderedDict, namedtuple
 from pathlib import Path
-from typing import Dict, List, Union, Optional, Type
+from typing import Dict, List, Union, Optional, Type, Any
 
 import libsedml
 import numpy as np
@@ -114,7 +114,7 @@ from sbmlsim.model import model_resources
 from sbmlsim.model.model import AbstractModel
 from sbmlsim.plot import Figure, Plot, Axis, Curve
 from sbmlsim.plot.plotting import Style, Line, LineStyle, ColorType, Marker, \
-    MarkerStyle, Fill
+    MarkerStyle, Fill, SubPlot
 from sbmlsim.simulation import ScanSim, TimecourseSim, Timecourse, AbstractSim
 from sbmlsim.task import Task
 from sbmlsim.units import UnitRegistry
@@ -232,22 +232,54 @@ class SEDMLParser(object):
                 single_plots.add(sed_output.getId())
 
         for sed_output in sed_doc.getListOfOutputs():
-
             type_code = sed_output.getTypeCode()
             if type_code == libsedml.SEDML_FIGURE:
                 self.figures[sed_output.getId()] = self.parse_figure(sed_output)
+                sed_figure: libsedml.SedFigure = sed_output
+                sed_subplot: libsedml.SedSubPlot
+                for sed_subplot in sed_figure.getListOfSubPlots():
+                    sed_plot_id = sed_subplot.getPlot()
+                    single_plots.remove(sed_plot_id)
+
             elif type_code == libsedml.SEDML_OUTPUT_REPORT:
                 self.reports[sed_output.getId()] = self.parse_output()
                 logger.error("Output report not implemented.")
 
-            elif type_code == libsedml.SEDML_OUTPUT_PLOT2D:
-                self.figures[sed_output.getId()] = self.parse_plot2(sed_output)
+        # render remaining plots (without figure)
+        for sed_output in sed_doc.getListOfOutputs():
+            sed_output_id = sed_output.getId()
+            if sed_output_id in single_plots:
+                self.figures[sed_output_id] = self._wrap_plot_in_figure(sed_output)
 
         logger.debug(f"figures: {self.figures}")
 
         self.exp_class = self._create_experiment_class()
         self.experiment: SimulationExperiment = self.exp_class()
         self.experiment.initialize()
+
+        for figure in self.figures.values():
+            figure.experiment = self.experiment
+
+    def _wrap_plot_in_figure(self, sed_plot: Union[libsedml.SedPlot2D, libsedml.SedPlot3D]) -> Figure:
+        """Creates plot from SED-ML plot and wraps in figure."""
+        typecode = sed_plot.getTypeCode()
+        sed_plot_id: str = sed_plot.getId()
+        f = Figure(
+            experiment=None,
+            sid=sed_plot_id,
+            num_rows=1,
+            num_cols=1,
+        )
+        if typecode == libsedml.SEDML_OUTPUT_PLOT2D:
+            plot = self.parse_plot2d(sed_plot2d=sed_plot)
+        elif typecode == libsedml.SEDML_OUTPUT_PLOT3D:
+            plot = self.parse_plot3d(sed_plot3d=sed_plot)
+
+        f.add_plots([
+            plot
+        ])
+        return f
+
 
     def _create_experiment_class(self) -> Type[SimulationExperiment]:
         """Create SimulationExperiment class from information.
@@ -615,47 +647,41 @@ class SEDMLParser(object):
         #         forLines.extend(SEDMLCodeFactory.repeatedTaskToPython(doc, task=t))
         #         forLines.append("{}.extend({})".format(task.getId(), t.getId()))
 
-
-
     def parse_figure(self, sed_figure: libsedml.SedFigure) -> Figure:
         """ Parse figure information."""
-        f = Figure(
+        figure = Figure(
             experiment=None,
+            sid=sed_figure.getId(),
             num_rows=sed_figure.getNumRows(),
             num_cols=sed_figure.getNumCols(),
         )
+
         sed_subplot: libsedml.SedSubPlot
+        for sed_subplot in sed_figure.getListOfSubPlots():
+            sed_output = self.sed_doc.getOutput(sed_subplot.getPlot())
+            typecode = sed_output.getTypeCode()
 
-        plot_dict: Dict[str, libsedml.SedPlot] = {}
-        for sed_output in self.sed_doc.getListOfOutputs():
-            if sed_output.getTypeCode == libsedml.SEDML_OUTPUT_PLOT2D:
-                plot_dict[sed_output.getId()] = sed_output
-            if sed_output.getTypeCode == libsedml.SEDML_OUTPUT_PLOT3D:
-                # FIXME: support 3D plots
-                raise NotImplementedError
-
-        plots = []
-        for sed_subplot_id in libsedml.SedListOfSubPlots():
-            sed_output = self.sed_doc.getOutput(sed_subplot_id)
-            if sed_output.getTypeCode == libsedml.SEDML_OUTPUT_PLOT2D:
-                plots.append(self.parse_plot2d(sed_plot2d=sed_output))
-            elif sed_output.getTypeCode == libsedml.SEDML_OUTPUT_PLOT3D:
-                plots.append(self.parse_plot3d(sed_plot3d=sed_output))
-            elif sed_output.getTypeCode == libsedml.SEDML_OUTPUT_REPORT:
+            plot: Plot
+            if typecode == libsedml.SEDML_OUTPUT_PLOT2D:
+                plot = self.parse_plot2d(sed_plot2d=sed_output)
+            elif typecode == libsedml.SEDML_OUTPUT_PLOT3D:
+                plot = self.parse_plot3d(sed_plot3d=sed_output)
+            elif typecode == libsedml.SEDML_OUTPUT_REPORT:
+                plot = None
                 raise ValueError("Report not supported as subplot.")
 
-    def parse_plot2d_no_figure(self, sed_plot2d: libsedml.SedPlot2D) -> Figure:
-        """ Parse Plot2D."""
-        f = Figure(
-            experiment=None,
-            sid=sed_plot2d.getId(),
-            num_rows=1,
-            num_cols=1,
-        )
-        f.add_plots([
-            self.parse_plot2d(sed_plot2d)
-        ])
-        return f
+            # handle layout
+            row = sed_subplot.getRow()
+            col = sed_subplot.getCol()
+            row_span = sed_subplot.getRowSpan() if sed_subplot.isSetRowSpan() else 1
+            col_span = sed_subplot.getColSpan() if sed_subplot.isSetColSpan() else 1
+
+            # add subplot
+            figure.subplots.append(
+                SubPlot(plot=plot, row=row, col=col, row_span=row_span, col_span=col_span)
+            )
+
+        return figure
 
     def parse_plot2d(self, sed_plot2d: libsedml.SedPlot2D) -> Plot:
         plot = Plot(
@@ -681,7 +707,7 @@ class SEDMLParser(object):
         # FIXME: implement
         raise NotImplementedError
 
-    def parse_output(self, sed_plot2d: libsedml.SedReport) -> Plot:
+    def parse_output(self, sed_plot2d: libsedml.SedReport) -> Any:
         """ Parse Report."""
         # FIXME: implement
         raise NotImplementedError

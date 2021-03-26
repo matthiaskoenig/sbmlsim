@@ -278,21 +278,27 @@
                 "@logX": "false",
                 "@logY": "false",
                 "@xDataReference": "dg_0_0_0",
-                "@yDataReference": "dg_0_0_1"
+                "@yDataReference": "dg_0_0_1",
+                "@type": "points",
+                "@style": "style_1"
               },
               {
                 "@id": "plot_0__plot_0_0_0__plot_0_1_1",
                 "@logX": "false",
                 "@logY": "false",
                 "@xDataReference": "dg_0_0_0",
-                "@yDataReference": "dg_0_1_1"
+                "@yDataReference": "dg_0_1_1",
+                "@type": "points",
+                "@style": "style_2"
               },
               {
                 "@id": "plot_0__plot_0_0_0__plot_0_2_1",
                 "@logX": "false",
                 "@logY": "false",
                 "@xDataReference": "dg_0_0_0",
-                "@yDataReference": "dg_0_2_1"
+                "@yDataReference": "dg_0_2_1",
+                "@type": "points",
+                "@style": "style_3"
               }
             ]
           }
@@ -307,21 +313,27 @@
                 "@logX": "false",
                 "@logY": "false",
                 "@xDataReference": "dg_1_0_0",
-                "@yDataReference": "dg_1_0_1"
+                "@yDataReference": "dg_1_0_1",
+                "@type": "points",
+                "@style": "style_1"
               },
               {
                 "@id": "plot_1__plot_1_0_0__plot_1_1_1",
                 "@logX": "false",
                 "@logY": "false",
                 "@xDataReference": "dg_1_0_0",
-                "@yDataReference": "dg_1_1_1"
+                "@yDataReference": "dg_1_1_1",
+                "@type": "points",
+                "@style": "style_2"
               },
               {
                 "@id": "plot_1__plot_1_0_0__plot_1_2_1",
                 "@logX": "false",
                 "@logY": "false",
                 "@xDataReference": "dg_1_0_0",
-                "@yDataReference": "dg_1_2_1"
+                "@yDataReference": "dg_1_2_1",
+                "@type": "points",
+                "@style": "style_3"
               }
             ]
           }
@@ -336,21 +348,27 @@
                 "@logX": "false",
                 "@logY": "false",
                 "@xDataReference": "dg_2_0_0",
-                "@yDataReference": "dg_2_0_1"
+                "@yDataReference": "dg_2_0_1",
+                "@type": "points",
+                "@style": "style_A"
               },
               {
                 "@id": "plot_2__plot_2_1_0__plot_2_0_0",
                 "@logX": "false",
                 "@logY": "false",
                 "@xDataReference": "dg_2_1_0",
-                "@yDataReference": "dg_2_0_0"
+                "@yDataReference": "dg_2_0_0",
+                "@type": "points",
+                "@style": "style_B"
               },
               {
                 "@id": "plot_2__plot_2_0_1__plot_2_1_0",
                 "@logX": "false",
                 "@logY": "false",
                 "@xDataReference": "dg_2_0_1",
-                "@yDataReference": "dg_2_1_0"
+                "@yDataReference": "dg_2_1_0",
+                "@type": "points",
+                "@style": "style_C"
               }
             ]
           }
@@ -358,31 +376,100 @@
       ],
       "figure": {
         "@id": "figure1",
-        "@numRows": "3",
-        "@numCols": "1",
-        "listOfSubplots": {
+        "@numRows": "2",
+        "@numCols": "2",
+        "listOfSubPlots": {
           "subPlot": [
             {
-              "@id": "subplot1",
               "@plot": "timecourse",
               "@row": "1",
-              "@col": "1"
+              "@col": "1",
+              "@rowSpan": "1",
+              "@colSpan": "2"
             },
             {
-              "@id": "subplot2",
               "@plot": "preprocessing",
               "@row": "2",
               "@col": "1"
             },
             {
-              "@id": "subplot3",
               "@plot": "postprocessing",
-              "@row": "3",
-              "@col": "1"
+              "@row": "2",
+              "@col": "2"
             }
           ]
         }
       }
+    },
+    "listOfStyles": {
+      "style": [
+        {
+          "@id": "style_1",
+          "line": {
+            "@style": "solid",
+            "@color": "#1f77b4",
+            "@thickness": "3"
+          },
+          "marker": {
+            "@style": "none"
+          }
+        },
+        {
+          "@id": "style_2",
+          "line": {
+            "@style": "solid",
+            "@color": "#ff7f0e",
+            "@thickness": "3"
+          },
+          "marker": {
+            "@style": "none"
+          }
+        },
+        {
+          "@id": "style_3",
+          "line": {
+            "@style": "solid",
+            "@color": "#2ca02c",
+            "@thickness": "3"
+          },
+          "marker": {
+            "@style": "none"
+          }
+        },
+        {
+          "@id": "style_A",
+          "line": {
+            "@style": "solid",
+            "@color": "#d62728",
+            "@thickness": "3"
+          },
+          "marker": {
+            "@style": "none"
+          }
+        },
+        {
+          "@id": "style_B",
+          "line": {
+            "@style": "solid",
+            "@color": "#9467bd",
+            "@thickness": "3"
+          },
+          "marker": {
+            "@style": "none"
+          }
+        },
+        {
+          "@id": "style_C",
+          "line": {
+            "@style": "solid",
+            "@color": "#8c564b",
+            "@thickness": "3"
+          },
+          "marker": {
+            "@style": "none"
+          }
+        }
+      ]
     }
   }
 }

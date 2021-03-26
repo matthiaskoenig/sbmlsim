@@ -294,6 +294,7 @@ class MatplotlibFigureSerializer(object):
         fig.subplots_adjust(
             wspace=Figure.fig_subplots_wspace, hspace=Figure.fig_subplots_hspace
         )
+
         return fig
 
 

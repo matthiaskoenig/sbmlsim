@@ -751,9 +751,6 @@ class Plot(BasePlotObject):
                 "To not plot a label use 'label=None'"
             )
 
-        # experiment to resolve data
-        experiment = self.experiment
-
         # yerr data
         yerr = None
         yerr_label = ""
@@ -783,7 +780,7 @@ class Plot(BasePlotObject):
                     count_data = Data(
                         index=count, dataset=dataset, task=task
                     )
-                    counts = count_data.get_data(experiment)
+                    counts = count_data.get_data(self.experiment)
                     counts_unique = np.unique(counts.magnitude)
                     if counts_unique.size > 1:
                         logger.warning(f"count is not unique for dataset: '{counts}'")
@@ -920,7 +917,6 @@ class Figure(BasePlotObject):
         """Returns list of plots."""
         return [subplot.plot for subplot in self.subplots]
 
-    # FIXME
     def add_plots(self, plots: List[Plot], copy_plots: bool = False) -> None:
         """Add plots to figure.
 

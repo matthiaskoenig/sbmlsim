@@ -533,6 +533,7 @@ class SimulationExperiment:
         """Create matplotlib figures."""
         mpl_figures = {}
         for fig_key, fig in self._figures.items():
+            print("Serialize figure:", fig_key, fig)
             fig_mpl = MatplotlibFigureSerializer.to_figure(self, fig)
             mpl_figures[fig_key] = fig_mpl
 
