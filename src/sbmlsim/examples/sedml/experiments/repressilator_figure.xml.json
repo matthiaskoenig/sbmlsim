@@ -355,7 +355,34 @@
             ]
           }
         }
-      ]
+      ],
+      "figure": {
+        "@id": "figure1",
+        "@numRows": "3",
+        "@numCols": "1",
+        "listOfSubplots": {
+          "subPlot": [
+            {
+              "@id": "subplot1",
+              "@plot": "timecourse",
+              "@row": "1",
+              "@col": "1"
+            },
+            {
+              "@id": "subplot2",
+              "@plot": "preprocessing",
+              "@row": "2",
+              "@col": "1"
+            },
+            {
+              "@id": "subplot3",
+              "@plot": "postprocessing",
+              "@row": "3",
+              "@col": "1"
+            }
+          ]
+        }
+      }
     }
   }
 }

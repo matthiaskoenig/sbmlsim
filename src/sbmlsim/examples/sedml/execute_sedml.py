@@ -71,11 +71,13 @@ if __name__ == "__main__":
     working_dir = base_path / "experiments"
 
     for name, sedml_file in [
-        # ("Repressilator", "repressilator_sedml.xml"),
+        ("repressilator_figure", "repressilator_figure.xml"),
+        # ("repressilator_l1v3", "repressilator_l1v3.xml"),
+        # ("repressilator_urn_l1v3", "repressilator_urn_l1v3.xml"),  # FIXME: resolve URN
         # ("TestFile1", "test_file_1.sedml"),
         # ("TestLineFill", "test_line_fill.sedml"),
         # ("markertype", "markertype.sedml"),
-        ("linetype", "linetype.sedml"),
+        # ("linetype", "linetype.sedml"),
         # ("StackedBar", "stacked_bar.sedml"),
         # ("HBarStacked", "test_3hbarstacked.sedml"),
         # ("Bar", "test_bar.sedml"),
