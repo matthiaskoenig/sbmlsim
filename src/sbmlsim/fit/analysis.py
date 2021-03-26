@@ -4,6 +4,7 @@ import logging
 from pathlib import Path
 from typing import Any, Dict, List, Tuple
 
+import webbrowser
 import matplotlib
 import numpy as np
 import pandas as pd
@@ -200,8 +201,10 @@ class OptimizationAnalysis:
         plt.rcParams.update(rc_params_copy)
 
         logger.warning("-" * 80)
-        logger.warning(f"Analysis finished: {str(self.results_dir / 'index.html')}")
+        logger.warning(f"Analysis finished: file://{str(self.results_dir / 'index.html')}")
         logger.warning("-" * 80)
+
+        webbrowser.open(f"file://{str(self.results_dir / 'index.html')}", new=2)
 
     def html_report(self, path: Path):
         """Creates HTML report of the fit."""
