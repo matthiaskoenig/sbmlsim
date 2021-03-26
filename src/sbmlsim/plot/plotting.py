@@ -282,11 +282,13 @@ class Style(BasePlotObject):
         return Style(line=line, marker=marker, fill=None)
 
 
-class Axis(BasePlotObject):
-    class AxisScale(Enum):
-        LINEAR = 1
-        LOG10 = 2
+class AxisScale(Enum):
+    LINEAR = 1
+    LOG10 = 2
 
+
+class Axis(BasePlotObject):
+    """Axis object."""
     def __init__(
         self,
         label: str = None,
@@ -296,8 +298,8 @@ class Axis(BasePlotObject):
         min: float = None,
         max: float = None,
         grid: bool = False,
-        label_visible=True,
-        ticks_visible=True,
+        label_visible: bool = True,
+        ticks_visible: bool = True,
     ):
         """Axis object.
 
@@ -326,17 +328,18 @@ class Axis(BasePlotObject):
             else:
                 name = f"{label} [-]"
 
-        self.label = label
-        self.name = name
-        self.unit = unit
-        self.scale = scale
-        self.min = min
-        self.max = max
-        self.grid = grid
-        self.label_visible = label_visible
-        self.ticks_visible = ticks_visible
+        self.label: str = label
+        self.name: str = name
+        self.unit: str = unit
+        self.scale: AxisScale = scale
+        self.min: float = min
+        self.max: float = max
+        self.grid: bool = grid
+        self.label_visible: bool = label_visible
+        self.ticks_visible: bool = ticks_visible
 
-    def __copy__(self):
+    def __copy__(self) -> 'Axis':
+        """Copy axis object."""
         return Axis(
             label=self.label,
             name=self.name,
@@ -349,15 +352,18 @@ class Axis(BasePlotObject):
             ticks_visible=self.ticks_visible,
         )
 
-    def __str__(self):
-        return self.name
+    def __str__(self) -> str:
+        """Get string representation."""
+        return f"Axis({self.name})"
 
     @property
-    def scale(self):
+    def scale(self) -> AxisScale:
+        """Get axis scale."""
         return self._scale
 
     @scale.setter
-    def scale(self, scale: AxisScale):
+    def scale(self, scale: AxisScale) -> None:
+        """Set axis scale."""
         if isinstance(scale, str):
             if scale == "linear":
                 scale = self.AxisScale.LINEAR
@@ -487,20 +493,23 @@ class Plot(BasePlotObject):
         self,
         sid: str,
         name: str = None,
-        legend: bool = False,
         xaxis: Axis = None,
         yaxis: Axis = None,
         curves: List[Curve] = None,
-        facecolor=Style.parse_color("white"),
-        title_visible=True,
+        # FIXME: support areas
+        legend: bool = False,
+        facecolor: ColorType=Style.parse_color("white"),
+        title_visible: bool = True,
     ):
         """
         :param sid: Sid of the plot
         :param name: title of the plot
         :param legend: boolean flag to show or hide legend
-        :param xaxis:
-        :param yaxis:
-        :param curves:
+        :param xaxis: x-Axis
+        :param yaxis: y-Axis
+        :param curves: list of curves for the plots
+        :param facecolor: color of the plot.
+        :param title_visible: boolean flag to show the title
         """
         super(Plot, self).__init__(sid, name)
         if curves is None:
@@ -508,34 +517,37 @@ class Plot(BasePlotObject):
         if legend is None:
             # legend by default
             legend = True
-        self.legend = legend
-        self.facecolor = facecolor
-        self.title_visible = title_visible
 
-        if xaxis is not None:
-            if not isinstance(xaxis, Axis):
-                raise ValueError(f"'xaxis' must be of type Axis but: '{type(xaxis)}'")
-        if yaxis is not None:
-            if not isinstance(yaxis, Axis):
-                raise ValueError(f"'yaxis' must be of type Axis but: '{type(yaxis)}'")
+        if xaxis and not isinstance(xaxis, Axis):
+            raise ValueError(f"'xaxis' must be of type Axis but: '{type(xaxis)}'")
+        if yaxis and not isinstance(yaxis, Axis):
+            raise ValueError(f"'yaxis' must be of type Axis but: '{type(yaxis)}'")
 
-        self._xaxis = None  # type: Axis
-        self._yaxis = None  # type: Axis
-        self._curves = None
-        self._figure = None  # type: Figure
+        # property storage
+        self._xaxis: Axis = None
+        self._yaxis: Axis = None
+        self._curves: Axis = None
+        self._figure: Figure = None
 
-        self.xaxis = xaxis
-        self.yaxis = yaxis
-        self.curves = curves
+        self.xaxis: Axis = xaxis
+        self.yaxis: Axis = yaxis
+        self.curves: List[Curve] = curves
 
-    def __copy__(self):
+        self.legend: bool = legend
+        self.facecolor: ColorType = facecolor
+        self.title_visible: bool = title_visible
+
+    def __copy__(self) -> 'Plot':
+        """Copy the existing object."""
         return Plot(
             sid=self.sid,
             name=self.name,
             xaxis=Axis.__copy__(self.xaxis),
             yaxis=Axis.__copy__(self.yaxis),
             curves=self.curves,
+            legend=self.legend,
             facecolor=self.facecolor,
+            title_visible=self.title_visible,
         )
 
     def to_dict(self):
@@ -547,9 +559,14 @@ class Plot(BasePlotObject):
             "yaxis": self.yaxis,
             "legend": self.legend,
             "facecolor": self.facecolor,
+            "title_visible": self.title_visible,
             "curves": self.curves,
         }
         return d
+
+    def __str__(self) -> str:
+        """Get string."""
+        return f"Plot({self.to_dict()})"
 
     @property
     def figure(self) -> "Figure":
@@ -583,24 +600,21 @@ class Plot(BasePlotObject):
 
     @xaxis.setter
     def xaxis(self, value: Axis) -> None:
+        """Set xaxis."""
         self.set_xaxis(label=value)
 
-    def set_xaxis(self, label: Union[str, Axis], unit: str = None, **kwargs):
+    def set_xaxis(
+        self,
+        label: Optional[Union[str, Axis]],
+        unit: str = None,
+        **kwargs
+    ) -> None:
         """Set axis with all axes attributes.
 
         All argument of Axis are supported.
-
-        :param label:
-        :param unit:
-        :keyword label_visible:
-        :param kwargs:
-        :return:
         """
-        if isinstance(label, Axis):
-            ax = label
-        else:
-            ax = Axis(label=label, unit=unit, **kwargs)
-        if ax.sid is None:
+        ax = Plot._set_axis(label=label, unit=unit, **kwargs)
+        if ax and ax.sid is None:
             ax.sid = f"{self.sid}_xaxis"
         self._xaxis = ax
 
@@ -623,13 +637,24 @@ class Plot(BasePlotObject):
         :param kwargs:
         :return:
         """
-        if isinstance(label, Axis):
+        ax = Plot._set_axis(label=label, unit=unit, **kwargs)
+        if ax and ax.sid is None:
+            ax.sid = f"{self.sid}_yaxis"
+        self._yaxis = ax
+
+    @staticmethod
+    def _set_axis(
+        label: Optional[Union[str, Axis]],
+        unit: str = None,
+        **kwargs
+    ) -> Optional[Axis]:
+        if not label:
+            ax = None
+        elif isinstance(label, Axis):
             ax = label
         else:
             ax = Axis(label=label, unit=unit, **kwargs)
-        if ax.sid is None:
-            ax.sid = f"{self.sid}_yaxis"
-        self._yaxis = ax
+        return ax
 
     def add_curve(self, curve: Curve):
         """Curves are added via the helper function."""

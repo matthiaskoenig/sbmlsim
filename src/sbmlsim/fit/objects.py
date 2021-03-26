@@ -301,9 +301,9 @@ class FitData:
                 elif isinstance(count, str):
                     # resolve count data from dataset
                     count_data = Data(
-                        experiment, index=count, dataset=dataset, task=task
+                        index=count, dataset=dataset, task=task
                     )
-                    counts = count_data.data
+                    counts = count_data.get_data(self.experiment)
                     counts_unique = np.unique(counts.magnitude)
                     if counts_unique.size > 1:
                         logger.warning(f"count is not unique for dataset: '{counts}'")

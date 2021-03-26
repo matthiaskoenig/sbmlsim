@@ -11,6 +11,7 @@ from matplotlib.pyplot import GridSpec
 
 from sbmlsim.data import Data, DataSet
 from sbmlsim.plot import Axis, Curve, Figure, Plot, SubPlot
+from sbmlsim.plot.plotting import AxisScale
 from sbmlsim.result import XResult
 from sbmlsim.utils import deprecated
 
@@ -71,15 +72,17 @@ class MatplotlibFigureSerializer(object):
         # create grid for figure
         gs = GridSpec(figure.num_rows, figure.num_cols, figure=fig)
 
-        def get_scale(axis):
-            if axis.scale == Axis.AxisScale.LINEAR:
+        def get_scale(axis: Axis) -> str:
+            """Gets string representation of the scale."""
+            if axis.scale == AxisScale.LINEAR:
                 return "linear"
-            elif axis.scale == Axis.AxisScale.LOG10:
+            elif axis.scale == AxisScale.LOG10:
                 return "log"
             else:
                 raise ValueError(f"Unsupported axis scale: '{axis.scale}'")
 
-        for subplot in figure.subplots:  # type: SubPlot
+        subplot: SubPlot
+        for subplot in figure.subplots:
 
             ridx = subplot.row - 1
             cidx = subplot.col - 1
@@ -90,6 +93,9 @@ class MatplotlibFigureSerializer(object):
             plot = subplot.plot
             xax: Axis = plot.xaxis
             yax: Axis = plot.yaxis
+            print("plot:", plot)
+            print("x-Axis:", xax)
+            print("y-Axis:", yax)
 
             # units
             if xax is None:
