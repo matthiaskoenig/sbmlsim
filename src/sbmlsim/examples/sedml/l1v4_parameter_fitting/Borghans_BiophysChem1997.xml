@@ -1,0 +1,131 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<sedML xmlns="http://sed-ml.org/sed-ml/level1/version4" level="1" version="4">
+  <listOfDataDescriptions>
+    <dataDescription id="data1" format="urn:sedml:format:tsv" source="Borghans_BiophysChem1997_model1_data1.tsv">
+      <dimensionDescription xmlns="http://www.numl.org/numl/level1/version1">
+        <compositeDescription xmlns="http://www.numl.org/numl/level1/version1" id="time" indexType="double">
+          <compositeDescription xmlns="http://www.numl.org/numl/level1/version1" id="columnNames" indexType="string">
+            <atomicDescription xmlns="http://www.numl.org/numl/level1/version1" name="concentration" valueType="double"/>
+          </compositeDescription>
+        </compositeDescription>
+      </dimensionDescription>
+      <listOfDataSources>
+        <dataSource id="ds_time_model1_data1" indexSet="time"/>
+        <dataSource id="ds_Ca_model1_data1">
+          <listOfSlices>
+            <slice reference="columnNames" value="Values[Ca]"/>
+          </listOfSlices>
+        </dataSource>
+      </listOfDataSources>
+    </dataDescription>
+  </listOfDataDescriptions>
+  <listOfModels>
+    <model id="model1" language="urn:sedml:language:sbml" source="model_Borghans_BiophysChem1997.xml"/>
+  </listOfModels>
+  <listOfTasks>
+    <parameterEstimationTask id="pe1">
+      <algorithm kisaoID="KISAO:0000515"/>
+      <leastSquareObjectiveFunction/>
+      <listOfAdjustableParameters>
+        <adjustableParameter initialValue="0.09994855801565" modelReference="model1" target="/sbml:sbml/sbml:model/sbml:listOfParameters/sbml:parameter[@id=&quot;K2&quot;]">
+          <bounds lowerBound="0.001" upperBound="100000"/>
+        </adjustableParameter>
+        <adjustableParameter initialValue="11.4120804594265" modelReference="model1" target="/sbml:sbml/sbml:model/sbml:listOfParameters/sbml:parameter[@id=&quot;K_par&quot;]">
+          <bounds lowerBound="0.001" upperBound="100000"/>
+        </adjustableParameter>
+        <adjustableParameter initialValue="0.197593940310187" modelReference="model1" target="/sbml:sbml/sbml:model/sbml:listOfParameters/sbml:parameter[@id=&quot;Ka&quot;]">
+          <bounds lowerBound="0.001" upperBound="100000"/>
+        </adjustableParameter>
+        <adjustableParameter initialValue="0.392497512107474" modelReference="model1" target="/sbml:sbml/sbml:model/sbml:listOfParameters/sbml:parameter[@id=&quot;Kd&quot;]">
+          <bounds lowerBound="0.001" upperBound="100000"/>
+        </adjustableParameter>
+        <adjustableParameter initialValue="1.13794968361236" modelReference="model1" target="/sbml:sbml/sbml:model/sbml:listOfParameters/sbml:parameter[@id=&quot;Kf&quot;]">
+          <bounds lowerBound="0.001" upperBound="100000"/>
+        </adjustableParameter>
+        <adjustableParameter initialValue="0.996567464196472" modelReference="model1" target="/sbml:sbml/sbml:model/sbml:listOfParameters/sbml:parameter[@id=&quot;Kp&quot;]">
+          <bounds lowerBound="0.001" upperBound="100000"/>
+        </adjustableParameter>
+        <adjustableParameter initialValue="0.200364133028272" modelReference="model1" target="/sbml:sbml/sbml:model/sbml:listOfParameters/sbml:parameter[@id=&quot;Ky&quot;]">
+          <bounds lowerBound="0.001" upperBound="100000"/>
+        </adjustableParameter>
+        <adjustableParameter initialValue="0.303353547057472" modelReference="model1" target="/sbml:sbml/sbml:model/sbml:listOfParameters/sbml:parameter[@id=&quot;Kz&quot;]">
+          <bounds lowerBound="0.001" upperBound="100000"/>
+        </adjustableParameter>
+        <adjustableParameter initialValue="92.8739300577976" modelReference="model1" target="/sbml:sbml/sbml:model/sbml:listOfParameters/sbml:parameter[@id=&quot;Vd&quot;]">
+          <bounds lowerBound="0.001" upperBound="100000"/>
+        </adjustableParameter>
+        <adjustableParameter initialValue="7.45712445492225" modelReference="model1" target="/sbml:sbml/sbml:model/sbml:listOfParameters/sbml:parameter[@id=&quot;Vm2&quot;]">
+          <bounds lowerBound="0.001" upperBound="100000"/>
+        </adjustableParameter>
+        <adjustableParameter initialValue="22.7025248825352" modelReference="model1" target="/sbml:sbml/sbml:model/sbml:listOfParameters/sbml:parameter[@id=&quot;Vm3&quot;]">
+          <bounds lowerBound="0.001" upperBound="100000"/>
+        </adjustableParameter>
+        <adjustableParameter initialValue="2.75685784345759" modelReference="model1" target="/sbml:sbml/sbml:model/sbml:listOfParameters/sbml:parameter[@id=&quot;Vp&quot;]">
+          <bounds lowerBound="0.001" upperBound="100000"/>
+        </adjustableParameter>
+        <adjustableParameter initialValue="1.12395230256787" modelReference="model1" target="/sbml:sbml/sbml:model/sbml:listOfParameters/sbml:parameter[@id=&quot;beta_par&quot;]">
+          <bounds lowerBound="0.001" upperBound="100000"/>
+        </adjustableParameter>
+        <adjustableParameter initialValue="0.163232195306188" modelReference="model1" target="/sbml:sbml/sbml:model/sbml:listOfParameters/sbml:parameter[@id=&quot;epsilon_par&quot;]">
+          <bounds lowerBound="0.001" upperBound="100000"/>
+        </adjustableParameter>
+        <adjustableParameter initialValue="0.99999999999996" modelReference="model1" target="/sbml:sbml/sbml:model/sbml:listOfParameters/sbml:parameter[@id=&quot;init_A_state&quot;]">
+          <bounds lowerBound="0" upperBound="1"/>
+        </adjustableParameter>
+        <adjustableParameter initialValue="0.999348084438687" modelReference="model1" target="/sbml:sbml/sbml:model/sbml:listOfParameters/sbml:parameter[@id=&quot;init_Y_state&quot;]">
+          <bounds lowerBound="0" upperBound="1"/>
+        </adjustableParameter>
+        <adjustableParameter initialValue="0.087920524425504" modelReference="model1" target="/sbml:sbml/sbml:model/sbml:listOfParameters/sbml:parameter[@id=&quot;init_Z_state&quot;]">
+          <bounds lowerBound="0" upperBound="1"/>
+        </adjustableParameter>
+        <adjustableParameter initialValue="4.1025144127497" modelReference="model1" target="/sbml:sbml/sbml:model/sbml:listOfParameters/sbml:parameter[@id=&quot;n_par&quot;]">
+          <bounds lowerBound="0.001" upperBound="100000"/>
+        </adjustableParameter>
+        <adjustableParameter initialValue="0.300763662073358" modelReference="model1" target="/sbml:sbml/sbml:model/sbml:listOfParameters/sbml:parameter[@id=&quot;offset&quot;]">
+          <bounds lowerBound="0.001" upperBound="100000"/>
+        </adjustableParameter>
+        <adjustableParameter initialValue="0.658073142979721" modelReference="model1" target="/sbml:sbml/sbml:model/sbml:listOfParameters/sbml:parameter[@id=&quot;scale&quot;]">
+          <bounds lowerBound="0.001" upperBound="100000"/>
+        </adjustableParameter>
+        <adjustableParameter initialValue="0.104922918935031" modelReference="model1" target="/sbml:sbml/sbml:model/sbml:listOfParameters/sbml:parameter[@id=&quot;sigma&quot;]">
+          <bounds lowerBound="0.001" upperBound="100000"/>
+        </adjustableParameter>
+        <adjustableParameter initialValue="2.31778715779187" modelReference="model1" target="/sbml:sbml/sbml:model/sbml:listOfParameters/sbml:parameter[@id=&quot;v0&quot;]">
+          <bounds lowerBound="0.001" upperBound="100000"/>
+        </adjustableParameter>
+        <adjustableParameter initialValue="1.00488755696677" modelReference="model1" target="/sbml:sbml/sbml:model/sbml:listOfParameters/sbml:parameter[@id=&quot;v1&quot;]">
+          <bounds lowerBound="0.001" upperBound="100000"/>
+        </adjustableParameter>
+      </listOfAdjustableParameters>
+      <listOfFitExperiments>
+        <fitExperiment id="model1_data1" type="timeCourse">
+          <listOfFitMappings>
+            <fitMapping dataSource="ds_time_model1_data1" target="dg_time" type="time" weight="1"/>
+            <fitMapping dataSource="ds_Ca_model1_data1" target="dg_Ca" type="observable" weight="1"/>
+          </listOfFitMappings>
+        </fitExperiment>
+      </listOfFitExperiments>
+    </parameterEstimationTask>
+  </listOfTasks>
+  <listOfDataGenerators>
+    <dataGenerator id="dg_time">
+      <math xmlns="http://www.w3.org/1998/Math/MathML">
+        <ci> var_time </ci>
+      </math>
+      <listOfVariables>
+        <variable id="var_time" symbol="urn:sedml:symbol:time" taskReference="pe1" modelReference="model1"/>
+      </listOfVariables>
+    </dataGenerator>
+    <dataGenerator id="dg_Ca">
+      <math xmlns="http://www.w3.org/1998/Math/MathML">
+        <ci> var_Ca </ci>
+      </math>
+      <listOfVariables>
+        <variable id="var_Ca" target="/sbml:sbml/sbml:model/sbml:listOfParameters/sbml:parameter[@id=&quot;Ca&quot;]" taskReference="pe1" modelReference="model1"/>
+      </listOfVariables>
+    </dataGenerator>
+  </listOfDataGenerators>
+  <listOfOutputs>
+    <parameterEstimationResultPlot id="plot1" taskRef="pe1"/>
+  </listOfOutputs>
+</sedML>

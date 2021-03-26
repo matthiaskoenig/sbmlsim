@@ -110,6 +110,7 @@ from sbmlsim.combine.sedml.kisao import is_supported_algorithm_for_simulation_ty
 from sbmlsim.combine.sedml.task import Stack, TaskNode, TaskTree
 from sbmlsim.data import DataSet, Data
 from sbmlsim.experiment import SimulationExperiment
+from sbmlsim.fit import FitParameter, FitExperiment
 from sbmlsim.model import model_resources
 from sbmlsim.model.model import AbstractModel
 from sbmlsim.plot import Figure, Plot, Axis, Curve
@@ -205,12 +206,86 @@ class SEDMLParser(object):
         self.tasks: Dict[str, Task] = {}
         sed_task: libsedml.SedTask
         for sed_task in sed_doc.getListOfTasks():
-            self.tasks[sed_task.getId()] = self.parse_task(sed_task)
+            task = self.parse_task(sed_task)
+            if isinstance(task, Task):
+                self.tasks[sed_task.getId()] = task
+            elif isinstance(task, libsedml.SedParameterEstimationTask):
+
+                # --------------------------------------------------------------------
+                # Parameter Estimation Task
+                # --------------------------------------------------------------------
+                sed_petask: libsedml.SedParameterEstimationTask = task
+                sed_objective: libsedml.SedObjective = sed_petask.getObjective()
+                if sed_objective.getTypeCode() == libsedml.SEDML_LEAST_SQUARE_OBJECTIVE:
+                    print("LeastSquareOptimization")
+
+                # Fit Experiments
+                fit_experiments: List[FitExperiment] = []
+                sed_fit_experiment: libsedml.SedFitExperiment
+                for sed_fit_experiment in sed_petask.getListOfFitExperiments():
+                    fit_type = sed_fit_experiment.getType()
+                    if fit_type == libsedml.SEDML_EXPERIMENTTYPE_STEADYSTATE:
+                        raise NotImplementedError("Steady state parameter fitting is not supported")
+
+
+
+
+
+                # Fit Parameters
+                parameters: List[FitParameter] = []
+                sed_adpar: libsedml.SedAdjustableParameter
+                for sed_adpar in sed_petask.getListOfAdjustableParameters():
+
+                    sid = sed_adpar.getId()
+                    # FIXME: this must be the parameter name in the model -> resolve target
+                    # The target of an AdjustableParameter must point to an adjustable
+                    # element of the Model referenced bythe parent
+                    # ParameterEstimationTask.
+                    target = sed_adpar.getTarget()
+                    print(target)
+                    pid = "?"
+
+                    initial_value: float = sed_adpar.getInitialValue()
+                    sed_bounds: libsedml.SedBounds = sed_adpar.getBounds()
+                    lower_bound: float = sed_bounds.getLowerBound()
+                    upper_bound: float = sed_bounds.getUpperBound()
+                    scale: str = sed_bounds.getScale()  # FIXME: support scale (only log)
+
+                    parameters.append(
+                        FitParameter(
+                            pid=pid,
+                            start_value=initial_value,
+                            lower_bound=lower_bound,
+                            upper_bound=upper_bound,
+                            unit=None
+                        )
+                    )
+
+                    # resolve links to experiments!
+                    experiment_refs: List[str] = []
+
+                    for sed_experiment_ref in sed_adpar.getListOfExperimentRefs():
+                        experiment_refs.append(sed_experiment_ref)
+
+
+                print(sed_objective)
+
+
+
+
+
+
+
+
         logger.debug(f"tasks: {self.tasks}")
 
         # --- Data ---
         # data is generated in the figures
         self.data: Dict[str, Data] = {}
+
+
+
+
 
         # --- Styles ---
         self.styles: Dict[str, Style] = {}
@@ -611,8 +686,11 @@ class SEDMLParser(object):
             elif task_type == libsedml.SEDML_TASK_SIMPLEREPEATEDTASK:
                 self._parse_simple_repeated_task(node=node)
 
+            elif task_type == libsedml.SEDML_TASK_PARAMETER_ESTIMATION:
+                return sed_task
+
             else:
-                logger.error("Unsupported task: {}".format(task_type))
+                raise ValueError(f"Unsupported task: {task_type}")
 
     def _parse_simple_task(self, task_node: TaskNode) -> Task:
         """Parse simple task"""

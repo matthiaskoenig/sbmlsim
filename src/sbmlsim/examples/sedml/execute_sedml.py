@@ -67,11 +67,12 @@ def execute_sedml(working_dir: Path, name: str, sedml_path: Path) -> None:
 
 
 if __name__ == "__main__":
-
-    working_dir = base_path / "experiments"
-
+    # ----------------------
+    # L1V4 Plotting
+    # ----------------------
+    working_dir = base_path / "l1v4_plotting"
     for name, sedml_file in [
-        ("repressilator_figure", "repressilator_figure.xml"),
+        # ("repressilator_figure", "repressilator_figure.xml"),
         # ("repressilator_l1v3", "repressilator_l1v3.xml"),
         # ("repressilator_urn_l1v3", "repressilator_urn_l1v3.xml"),  # FIXME: resolve URN
         # ("TestFile1", "test_file_1.sedml"),
@@ -85,6 +86,19 @@ if __name__ == "__main__":
         # ("StackedBar", "test_file.sedml"),
         # ("StackedBar", "test_hbar_stacked.sedml"),
         # ("StackedBar", "test_shaded_area.sedml"),
+    ]:
+        execute_sedml(
+            working_dir=working_dir,
+            name=name,
+            sedml_path=working_dir / sedml_file
+        )
+
+    # ----------------------
+    # L1V4 Parameter Fitting
+    # ----------------------
+    working_dir = base_path / "l1v4_parameter_fitting"
+    for name, sedml_file in [
+        ("Elowitz_Nature2000", "Elowitz_Nature2000.xml"),
     ]:
         execute_sedml(
             working_dir=working_dir,

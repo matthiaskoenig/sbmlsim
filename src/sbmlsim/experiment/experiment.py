@@ -280,10 +280,16 @@ class SimulationExperiment:
         """Check for correctness of types."""
         for key, dset in self._datasets.items():
             if not isinstance(dset, DataSet):
-                raise ValueError(
+
+                # FIXME: relaxing for now (re-enable) !!!
+                logger.error(
                     f"datasets must be of type DataSet, but "
                     f"dataset '{key}' has type: '{type(dset)}'"
                 )
+                # raise ValueError(
+                #     f"datasets must be of type DataSet, but "
+                #     f"dataset '{key}' has type: '{type(dset)}'"
+                # )
 
         for key, model in self._models.items():
             if not isinstance(model, AbstractModel):

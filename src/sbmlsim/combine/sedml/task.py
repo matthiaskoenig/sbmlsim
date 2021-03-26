@@ -1,4 +1,7 @@
+import logging
 import libsedml
+
+logger = logging.getLogger(__name__)
 
 
 class TaskNode(object):
@@ -88,6 +91,8 @@ class TaskTree(object):
                     node.add_child(child)
                     # recursive adding of children
                     add_children(child)
+            elif typeCode == libsedml.SEDML_TASK_PARAMETER_ESTIMATION:
+                logger.warning("Skipping parameter estimation task.")
             else:
                 raise IOError("Unsupported task type: {node.task_id.getElementName()}")
 
