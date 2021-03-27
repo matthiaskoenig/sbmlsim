@@ -110,7 +110,7 @@ from sbmlsim.combine.sedml.kisao import is_supported_algorithm_for_simulation_ty
 from sbmlsim.combine.sedml.task import Stack, TaskNode, TaskTree
 from sbmlsim.data import DataSet, Data
 from sbmlsim.experiment import SimulationExperiment
-from sbmlsim.fit import FitParameter, FitExperiment
+from sbmlsim.fit import FitParameter, FitExperiment, FitMapping, FitData
 from sbmlsim.model import model_resources
 from sbmlsim.model.model import AbstractModel
 from sbmlsim.plot import Figure, Plot, Axis, Curve
@@ -187,12 +187,21 @@ class SEDMLParser(object):
 
         # --- DataDescriptions ---
         self.data_descriptions: Dict[str, Dict[str, pd.Series]] = {}
+        self.datasets: Dict[str, DataSet] = {}
         sed_dd: libsedml.SedDataDescription
         for sed_dd in sed_doc.getListOfDataDescriptions():
             did = sed_dd.getId()
-            self.data_descriptions[did] = DataDescriptionParser.parse(
+            data_description: Dict[str, pd.Series] = DataDescriptionParser.parse(
                 sed_dd, self.working_dir
             )
+            self.data_descriptions[did] = data_description
+
+            # TODO: fix the dataframe generation
+            # pprint(data_description)
+            # df = pd.DataFrame(data_description)
+            # dset = DataSet.from_df(df=df, ureg=None, udict=None)
+            # self.datasets[did] = dset
+
         logger.debug(f"data_descriptions: {self.data_descriptions}")
 
         # --- Simulations ---
@@ -214,39 +223,90 @@ class SEDMLParser(object):
                 # --------------------------------------------------------------------
                 # Parameter Estimation Task
                 # --------------------------------------------------------------------
+                print("-" * 80)
+                print("Parameter estimation")
+                print("-" * 80)
                 sed_petask: libsedml.SedParameterEstimationTask = task
                 sed_objective: libsedml.SedObjective = sed_petask.getObjective()
+
+                print("*** Objective ***")
                 if sed_objective.getTypeCode() == libsedml.SEDML_LEAST_SQUARE_OBJECTIVE:
                     print("LeastSquareOptimization")
 
                 # Fit Experiments
+                print("*** FitExperiments & FitMappings ***")
                 fit_experiments: List[FitExperiment] = []
                 sed_fit_experiment: libsedml.SedFitExperiment
                 for sed_fit_experiment in sed_petask.getListOfFitExperiments():
+                    pprint(sed_fit_experiment)
                     fit_type = sed_fit_experiment.getType()
-                    if fit_type == libsedml.SEDML_EXPERIMENTTYPE_STEADYSTATE:
-                        raise NotImplementedError("Steady state parameter fitting is not supported")
+                    if fit_type == libsedml.SEDML_EXPERIMENTTYPE_TIMECOURSE:
+                        pass
+                    elif fit_type == libsedml.SEDML_EXPERIMENTTYPE_STEADYSTATE:
+                        # TODO: support steady state fitting
+                        raise NotImplementedError(
+                            "Steady state parameter fitting is not supported"
+                        )
+                    else:
+                        raise ValueError(
+                            f"ExperimentType not supported: {fit_type}"
+                        )
 
+                    # algorithm
+                    # TODO: support algorithms
+                    sed_algorithm: libsedml.SedAlgorithm = sed_fit_experiment.getAlgorithm()
 
+                    # fit_mappings
+                    mappings: List[FitMapping] = []
+                    sed_fit_mapping: libsedml.SedFitMapping
+                    for sed_fit_mapping in sed_fit_experiment.getListOfFitMappings():
+                        weight: float = sed_fit_mapping.getWeight()
+                        # TODO: support for point weights
+                        point_weight: str = sed_fit_mapping.getPointWeight()
 
+                        # TODO: resolve data from data generator
+                        reference: FitData = None
+                        observable: FitData = None
+                        experiment = None
 
+                        # necessary to map these
+                        mapping = FitMapping(
+                            experiment=experiment,
+                            reference=reference,
+                            observable=observable,
+                            weight=weight,
+                        )
+                        mappings.append(mapping)
+
+                    pprint(mappings)
+
+                    # TODO: necessary to create a SimulationExperiment for the fit experiment
+                    fit_experiment = FitExperiment(
+                        experiment=None,
+                        mappings=mappings,
+                        fit_parameters=None
+                    )
+                    fit_experiments.append(fit_experiment)
+
+                # print(fit_experiments)
 
                 # Fit Parameters
+                print("*** FitParameters ***")
                 parameters: List[FitParameter] = []
-                sed_adpar: libsedml.SedAdjustableParameter
-                for sed_adpar in sed_petask.getListOfAdjustableParameters():
+                sed_adjustable_parameter: libsedml.SedAdjustableParameter
+                for sed_adjustable_parameter in sed_petask.getListOfAdjustableParameters():
 
-                    sid = sed_adpar.getId()
+                    sid = sed_adjustable_parameter.getId()
                     # FIXME: this must be the parameter name in the model -> resolve target
                     # The target of an AdjustableParameter must point to an adjustable
                     # element of the Model referenced bythe parent
                     # ParameterEstimationTask.
-                    target = sed_adpar.getTarget()
+                    target = sed_adjustable_parameter.getTarget()
                     print(target)
                     pid = "?"
 
-                    initial_value: float = sed_adpar.getInitialValue()
-                    sed_bounds: libsedml.SedBounds = sed_adpar.getBounds()
+                    initial_value: float = sed_adjustable_parameter.getInitialValue()
+                    sed_bounds: libsedml.SedBounds = sed_adjustable_parameter.getBounds()
                     lower_bound: float = sed_bounds.getLowerBound()
                     upper_bound: float = sed_bounds.getUpperBound()
                     scale: str = sed_bounds.getScale()  # FIXME: support scale (only log)
@@ -264,27 +324,18 @@ class SEDMLParser(object):
                     # resolve links to experiments!
                     experiment_refs: List[str] = []
 
-                    for sed_experiment_ref in sed_adpar.getListOfExperimentRefs():
+                    for sed_experiment_ref in sed_adjustable_parameter.getListOfExperimentRefs():
                         experiment_refs.append(sed_experiment_ref)
 
-
+                print("*** Objective ***")
                 print(sed_objective)
 
-
-
-
-
-
-
-
+        print("-" * 80)
         logger.debug(f"tasks: {self.tasks}")
 
         # --- Data ---
         # data is generated in the figures
         self.data: Dict[str, Data] = {}
-
-
-
 
 
         # --- Styles ---
@@ -368,9 +419,7 @@ class SEDMLParser(object):
 
         def f_datasets(obj) -> Dict[str, DataSet]:
             """Dataset definition (experimental data)."""
-
-            # FIXME: convert to DataSets & add units
-            return self.data_descriptions
+            return self.datasets
 
         def f_simulations(obj) -> Dict[str, AbstractSim]:
             return self.simulations
