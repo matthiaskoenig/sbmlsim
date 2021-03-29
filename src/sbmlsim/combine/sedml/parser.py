@@ -115,7 +115,7 @@ from sbmlsim.model import model_resources
 from sbmlsim.model.model import AbstractModel
 from sbmlsim.plot import Figure, Plot, Axis, Curve
 from sbmlsim.plot.plotting import Style, Line, LineStyle, ColorType, Marker, \
-    MarkerStyle, Fill, SubPlot
+    MarkerStyle, Fill, SubPlot, AxisScale
 from sbmlsim.simulation import ScanSim, TimecourseSim, Timecourse, AbstractSim
 from sbmlsim.task import Task
 from sbmlsim.units import UnitRegistry
@@ -786,6 +786,10 @@ class SEDMLParser(object):
         sed_subplot: libsedml.SedSubPlot
         for sed_subplot in sed_figure.getListOfSubPlots():
             sed_output = self.sed_doc.getOutput(sed_subplot.getPlot())
+            if sed_output is None:
+                raise ValueError(f"Plot could not be resolved. No output exists in "
+                                 f"listOfOutputs for id='{sed_subplot.getPlot()}'")
+
             typecode = sed_output.getTypeCode()
 
             plot: Plot
@@ -841,19 +845,36 @@ class SEDMLParser(object):
 
     def parse_axis(self, sed_axis: libsedml.SedAxis) -> Axis:
         """Parse axes information."""
-        # FIXME: support style on axis
         if sed_axis is None:
             axis = Axis()
         else:
             axis = Axis(
                 label=sed_axis.getName(),
-                scale=sed_axis.getType(),
-                min=sed_axis.getMin(),
-                max=sed_axis.getMax(),
-                grid=sed_axis.getGrid(),
+                min=sed_axis.getMin() if sed_axis.isSetMin() else None,
+                max=sed_axis.getMax() if sed_axis.isSetMax() else None,
+                grid=sed_axis.getGrid() if sed_axis.isSetGrid() else False,
             )
             axis.sid = sed_axis.getId()
             axis.name = sed_axis.getName()
+
+            scale: AxisScale
+            if sed_axis.isSetType():
+                sed_type = sed_axis.getType()
+                if sed_type == libsedml.SEDML_AXISTYPE_LINEAR:
+                    scale = AxisScale.LINEAR
+                elif sed_type == libsedml.SEDML_AXISTYPE_LOG10:
+                    scale = AxisScale.LOG10
+                elif sed_type == libsedml.SEDML_AXISTYPE_INVALID:
+                    logger.error("Invalid axis scale encountered, fallback to 'linear'")
+                    scale = AxisScale.LINEAR
+            else:
+                scale = AxisScale.LINEAR
+            axis.scale = scale
+
+            if sed_axis.isSetStyle():
+                style = self.parse_style(sed_axis.getStyle())
+                axis.style = style
+
         return axis
 
     def parse_curve(self, sed_curve: libsedml.SedCurve) -> Curve:
@@ -892,7 +913,7 @@ class SEDMLParser(object):
             curve.style = style
 
             if not curve.name:
-                curve.name = curve.y.index
+                curve.name = f"{curve.y.index} ~ {curve.x.index}"
         elif sed_curve_type == libsedml.SedShadedArea:
             # FIXME: support shaded area
             logger.error("ShadedArea is not supported.")
@@ -954,7 +975,7 @@ class SEDMLParser(object):
 
         return Line(
             style=line_style,
-            color=ColorType(sed_line.getColor()),
+            color=ColorType.parse_color(sed_line.getColor()) if sed_line.isSetColor() else None,
             thickness=sed_line.getThickness() if sed_line.isSetThickness() else 1.0,
         )
 
@@ -1016,8 +1037,8 @@ class SEDMLParser(object):
             return Fill()
 
         return Fill(
-            color=ColorType(sed_fill.getColor()),
-            second_color=sed_fill.getSecondColor(),
+            color=ColorType.parse_color(sed_fill.getColor()),
+            second_color=ColorType.parse_color(sed_fill.getSecondColor()),
         )
 
     def data_from_datagenerator(self, sed_dg_ref: Optional[str]) -> Optional[Data]:
@@ -1027,6 +1048,9 @@ class SEDMLParser(object):
             return None
 
         sed_dg: libsedml.SedDataGenerator = self.sed_doc.getDataGenerator(sed_dg_ref)
+        if sed_dg is None:
+            raise ValueError(f"DataGenerator does not exist in listOfDataGenerators "
+                             f"with id: '{sed_dg_ref}'")
 
         # TODO: Necessary to evaluate the math
         astnode: libsedml.ASTNode = sed_dg.getMath()

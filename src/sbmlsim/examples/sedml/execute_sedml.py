@@ -72,13 +72,15 @@ if __name__ == "__main__":
     # ----------------------
     working_dir = base_path / "l1v4_plotting"
     for name, sedml_file in [
+        # ("markertype", "markertype.sedml"),
+        # ("linetype", "linetype.sedml"),
+        ("axis", "axis.sedml"),
         # ("repressilator_figure", "repressilator_figure.xml"),
         # ("repressilator_l1v3", "repressilator_l1v3.xml"),
         # ("repressilator_urn_l1v3", "repressilator_urn_l1v3.xml"),  # FIXME: resolve URN
         # ("TestFile1", "test_file_1.sedml"),
         # ("TestLineFill", "test_line_fill.sedml"),
-        # ("markertype", "markertype.sedml"),
-        # ("linetype", "linetype.sedml"),
+
         # ("StackedBar", "stacked_bar.sedml"),
         # ("HBarStacked", "test_3hbarstacked.sedml"),
         # ("Bar", "test_bar.sedml"),
@@ -98,7 +100,7 @@ if __name__ == "__main__":
     # ----------------------
     working_dir = base_path / "l1v4_parameter_fitting"
     for name, sedml_file in [
-        ("Elowitz_Nature2000", "Elowitz_Nature2000.xml"),
+        # ("Elowitz_Nature2000", "Elowitz_Nature2000.xml"),
     ]:
         execute_sedml(
             working_dir=working_dir,

@@ -11,7 +11,7 @@ from matplotlib.pyplot import GridSpec
 
 from sbmlsim.data import Data, DataSet
 from sbmlsim.plot import Axis, Curve, Figure, Plot, SubPlot
-from sbmlsim.plot.plotting import AxisScale
+from sbmlsim.plot.plotting import AxisScale, Style, LineStyle
 from sbmlsim.result import XResult
 from sbmlsim.utils import deprecated
 
@@ -93,9 +93,6 @@ class MatplotlibFigureSerializer(object):
             plot = subplot.plot
             xax: Axis = plot.xaxis
             yax: Axis = plot.yaxis
-            print("plot:", plot)
-            print("x-Axis:", xax)
-            print("y-Axis:", yax)
 
             # units
             if xax is None:
@@ -229,7 +226,6 @@ class MatplotlibFigureSerializer(object):
 
             if xax:
                 ax.set_xscale(get_scale(xax))
-
                 if (xax.min is not None) or (xax.max is not None):
                     # (None, None) locks the axis limits to defaults [0,1]
                     ax.set_xlim(xmin=xax.min, xmax=xax.max)
@@ -239,6 +235,31 @@ class MatplotlibFigureSerializer(object):
                         ax.set_xlabel(xax.name)
                 if not xax.ticks_visible:
                     ax.set_xticklabels([])  # hide ticks
+
+                # style
+                # https://matplotlib.org/stable/api/spines_api.html
+                # http://matplotlib.org/examples/pylab_examples/multiple_yaxis_with_spines.html
+                if xax.style and xax.style.line:
+                    style: Style = xax.style
+                    if style.line:
+                        if style.line.thickness:
+                            linewidth = style.line.thickness
+                            for axis in ["bottom", "top"]:
+                                ax.tick_params(width=linewidth)
+                                if np.isclose(linewidth, 0.0):
+                                    ax.spines[axis].set_color(Figure.fig_facecolor)
+                                else:
+                                    ax.spines[axis].set_linewidth(linewidth)
+                                    ax.tick_params(width=linewidth)
+                        if style.line.color:
+                            color = style.line.color
+                            for axis in ["bottom", "top"]:
+                                ax.spines[axis].set_color(str(color))
+
+                        if style.line.style and style.line.style == LineStyle.NONE:
+                            for axis in ["bottom", "top"]:
+                                ax.tick_params(width=linewidth)
+                                ax.spines[axis].set_color(Figure.fig_facecolor)
 
             if yax:
                 ax.set_yscale(get_scale(yax))
@@ -252,6 +273,28 @@ class MatplotlibFigureSerializer(object):
                         ax.set_ylabel(yax.name)
                 if not yax.ticks_visible:
                     ax.set_yticklabels([])  # hide ticks
+
+                if yax.style and yax.style.line:
+                    style: Style = yax.style
+                    if style.line:
+                        if style.line.thickness:
+                            linewidth = style.line.thickness
+                            for axis in ["left", "right"]:
+                                ax.tick_params(width=linewidth)
+                                if np.isclose(linewidth, 0.0):
+                                    ax.spines[axis].set_color(Figure.fig_facecolor)
+                                else:
+                                    ax.spines[axis].set_linewidth(linewidth)
+                                    ax.tick_params(width=linewidth)
+                        if style.line.color:
+                            color = style.line.color
+                            for axis in ["left", "right"]:
+                                ax.spines[axis].set_color(str(color))
+
+                        if style.line.style and style.line.style == LineStyle.NONE:
+                            for axis in ["left", "right"]:
+                                ax.tick_params(width=linewidth)
+                                ax.spines[axis].set_color(Figure.fig_facecolor)
 
             # recompute the ax.dataLim
             # ax.relim()

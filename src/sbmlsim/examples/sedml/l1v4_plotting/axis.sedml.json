@@ -1,0 +1,248 @@
+{
+  "sedML": {
+    "@xmlns": "http://sed-ml.org/sed-ml/level1/version4",
+    "@level": "1",
+    "@version": "4",
+    "listOfModels": {
+      "model": {
+        "@id": "model0",
+        "@language": "urn:sedml:language:sbml.level-3.version-1",
+        "@source": "case_01.xml"
+      }
+    },
+    "listOfSimulations": {
+      "uniformTimeCourse": {
+        "@id": "sim0",
+        "@initialTime": "0",
+        "@outputStartTime": "0",
+        "@outputEndTime": "10",
+        "@numberOfSteps": "30",
+        "algorithm": {
+          "@kisaoID": "KISAO:0000019"
+        }
+      }
+    },
+    "listOfTasks": {
+      "task": {
+        "@id": "task0",
+        "@modelReference": "model0",
+        "@simulationReference": "sim0"
+      }
+    },
+    "listOfDataGenerators": {
+      "dataGenerator": [
+        {
+          "@id": "dg_S1",
+          "math": {
+            "@xmlns": "http://www.w3.org/1998/Math/MathML",
+            "ci": "S1"
+          },
+          "listOfVariables": {
+            "variable": {
+              "@id": "S1",
+              "@target": "/sbml:sbml/sbml:model/sbml:listOfSpecies/sbml:species[@id='S1']",
+              "@taskReference": "task0",
+              "@modelReference": "model0"
+            }
+          }
+        },
+        {
+          "@id": "dg_time",
+          "@name": "task0.time",
+          "math": {
+            "@xmlns": "http://www.w3.org/1998/Math/MathML",
+            "ci": "task0_____time"
+          },
+          "listOfVariables": {
+            "variable": {
+              "@id": "task0_____time",
+              "@symbol": "urn:sedml:symbol:time",
+              "@taskReference": "task0",
+              "@modelReference": "model0"
+            }
+          }
+        }
+      ]
+    },
+    "listOfOutputs": {
+      "plot2D": [
+        {
+          "@id": "plot0",
+          "@name": "No axes",
+          "@legend": "true",
+          "listOfCurves": {
+            "curve": {
+              "@id": "curve0",
+              "@name": "S1",
+              "@logX": "false",
+              "@style": "style_curve",
+              "@xDataReference": "dg_time",
+              "@logY": "false",
+              "@yDataReference": "dg_S1",
+              "@type": "points"
+            }
+          }
+        },
+        {
+          "@id": "plot1",
+          "@name": "Axis (reversed order and grid)",
+          "@legend": "true",
+          "xAxis": {
+            "@type": "linear",
+            "@min": "10",
+            "@max": "0",
+            "@grid": "true",
+            "@style": "style_axis"
+          },
+          "yAxis": {
+            "@type": "linear",
+            "@min": "10",
+            "@max": "0",
+            "@grid": "true",
+            "@style": "style_axis"
+          },
+          "listOfCurves": {
+            "curve": {
+              "@id": "curve1",
+              "@logX": "false",
+              "@style": "style_curve",
+              "@xDataReference": "dg_time",
+              "@logY": "false",
+              "@yDataReference": "dg_S1",
+              "@type": "points"
+            }
+          }
+        },
+        {
+          "@id": "plot2",
+          "@name": "Axis (log axis and style)",
+          "@legend": "true",
+          "xAxis": {
+            "@type": "log10",
+            "@min": "-1",
+            "@max": "1",
+            "@grid": "true",
+            "@style": "style_axis_blue"
+          },
+          "yAxis": {
+            "@type": "log10",
+            "@min": "-1",
+            "@max": "1",
+            "@grid": "true",
+            "@style": "style_axis_red"
+          },
+          "listOfCurves": {
+            "curve": {
+              "@id": "curve2",
+              "@logX": "false",
+              "@style": "style_curve",
+              "@xDataReference": "dg_time",
+              "@logY": "false",
+              "@yDataReference": "dg_S1",
+              "@type": "points"
+            }
+          }
+        },
+        {
+          "@id": "plot3",
+          "@name": "Axis (hidden and no legend)",
+          "@legend": "false",
+          "xAxis": {
+            "@type": "linear",
+            "@style": "style_axis_none"
+          },
+          "yAxis": {
+            "@type": "linear",
+            "@style": "style_axis_none"
+          },
+          "listOfCurves": {
+            "curve": {
+              "@id": "curve3",
+              "@logX": "false",
+              "@style": "style_curve",
+              "@xDataReference": "dg_time",
+              "@logY": "false",
+              "@yDataReference": "dg_S1",
+              "@type": "points"
+            }
+          }
+        }
+      ],
+      "figure": {
+        "@id": "figure1",
+        "@numRows": "2",
+        "@numCols": "2",
+        "listOfSubPlots": {
+          "subPlot": [
+            {
+              "@plot": "plot0",
+              "@row": "1",
+              "@col": "1"
+            },
+            {
+              "@plot": "plot1",
+              "@row": "1",
+              "@col": "2"
+            },
+            {
+              "@plot": "plot2",
+              "@row": "2",
+              "@col": "1"
+            },
+            {
+              "@plot": "plot3",
+              "@row": "2",
+              "@col": "2"
+            }
+          ]
+        }
+      }
+    },
+    "listOfStyles": {
+      "style": [
+        {
+          "@id": "style_curve",
+          "line": {
+            "@style": "solid",
+            "@color": "#000000",
+            "@thickness": "2"
+          },
+          "marker": {
+            "@style": "square",
+            "@fill": "#000000",
+            "@size": "6"
+          }
+        },
+        {
+          "@id": "style_axis",
+          "line": {
+            "@style": "solid",
+            "@color": "#000000"
+          }
+        },
+        {
+          "@id": "style_axis_blue",
+          "line": {
+            "@style": "solid",
+            "@color": "#0000FF",
+            "@thickness": "2"
+          }
+        },
+        {
+          "@id": "style_axis_red",
+          "line": {
+            "@style": "solid",
+            "@color": "#FF0000",
+            "@thickness": "4"
+          }
+        },
+        {
+          "@id": "style_axis_none",
+          "line": {
+            "@style": "none"
+          }
+        }
+      ]
+    }
+  }
+}

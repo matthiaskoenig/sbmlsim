@@ -93,6 +93,40 @@ class ColorType(object):
     def __repr__(self):
         return self.color
 
+    @staticmethod
+    def parse_color(color: str, alpha: float = 1.0) -> Optional['ColorType']:
+        """Parse given color and add alpha information.
+
+        :param color:
+        :param alpha:
+        :return: ColorType or None
+        """
+
+        # https://matplotlib.org/stable/tutorials/colors/colors.html
+        if color is None:
+            return None
+
+        elif color.startswith("#"):
+            # handle hex colors
+            if len(color) == 7:
+                # parse alpha
+                color_hex = color + "%02x" % round(alpha * 255)
+            elif len(color) == 9:
+                color_hex = color
+                if alpha != 1.0:
+                    logger.warning(
+                        f"alpha ignored for hex colors with alpha channel: "
+                        f"'{color}', alpha={alpha}."
+                    )
+            else:
+                logger.error(f"Incorrect hex color: '{color}'")
+
+        else:
+            color = to_rgba(color, alpha)
+            color_hex = to_hex(color, keep_alpha=True)
+
+        return ColorType(color_hex)
+
 
 @dataclass
 class Line(object):
@@ -153,6 +187,16 @@ class Style(BasePlotObject):
         """Get string presentation."""
         return f"{self.sid} ({self.name}) [marker={self.marker}; line={self.line}M" \
                f"fill={self.fill}]"
+
+    def __copy__(self) -> 'Style':
+        """Copy axis object."""
+        return Style(
+            sid=self.sid,
+            name=self.name,
+            line=self.line,
+            marker=self.marker,
+            fill=self.fill,
+        )
 
     # https://matplotlib.org/3.1.0/gallery/lines_bars_and_markers/linestyles.html
     MPL2SEDML_LINESTYLE_MAPPING = {
@@ -217,39 +261,6 @@ class Style(BasePlotObject):
         return kwargs
 
     @staticmethod
-    def parse_color(color: str, alpha: float = 1.0) -> Optional[ColorType]:
-        """Parse given color and add alpha information.
-
-        :param color:
-        :param alpha:
-        :return: ColorType or None
-        """
-        # https://matplotlib.org/stable/tutorials/colors/colors.html
-        if color is None:
-            return None
-
-        elif color.startswith("#"):
-            # handle hex colors
-            if len(color) == 7:
-                # parse alpha
-                color_hex = color + "%02x" % round(alpha * 255)
-            elif len(color) == 9:
-                color_hex = color
-                if alpha != 1.0:
-                    logger.warning(
-                        f"alpha ignored for hex colors with alpha channel: "
-                        f"'{color}', alpha={alpha}."
-                    )
-            else:
-                logger.error(f"Incorrect hex color: '{color}'")
-
-        else:
-            color = to_rgba(color, alpha)
-            color_hex = to_hex(color, keep_alpha=True)
-
-        return ColorType(color_hex)
-
-    @staticmethod
     def from_mpl_kwargs(**kwargs) -> "Style":
         """Creates style from matplotlib arguments.
 
@@ -258,7 +269,7 @@ class Style(BasePlotObject):
         :param kwargs:
         :return:
         """
-        color = Style.parse_color(
+        color = ColorType.parse_color(
             color=kwargs.get("color", None),
             alpha=kwargs.get("alpha", 1.0),
         )
@@ -301,6 +312,7 @@ class Axis(BasePlotObject):
         grid: bool = False,
         label_visible: bool = True,
         ticks_visible: bool = True,
+        style: Style = None,
     ):
         """Axis object.
 
@@ -338,6 +350,7 @@ class Axis(BasePlotObject):
         self.grid: bool = grid
         self.label_visible: bool = label_visible
         self.ticks_visible: bool = ticks_visible
+        self.style = style
 
     def __copy__(self) -> 'Axis':
         """Copy axis object."""
@@ -351,6 +364,7 @@ class Axis(BasePlotObject):
             grid=self.grid,
             label_visible=self.label_visible,
             ticks_visible=self.ticks_visible,
+            style=self.style.__copy__(),
         )
 
     def __str__(self) -> str:
@@ -433,6 +447,10 @@ class Curve(AbstractCurve):
 
         if "label" in kwargs:
             self.name = kwargs["label"]
+        if "sid" in kwargs:
+            self.sid = kwargs["sid"]
+        if "name" in kwargs:
+            self.name = kwargs["name"]
 
         # parse additional arguments and create style
         if style:
@@ -499,7 +517,7 @@ class Plot(BasePlotObject):
         curves: List[Curve] = None,
         # FIXME: support areas
         legend: bool = False,
-        facecolor: ColorType=Style.parse_color("white"),
+        facecolor: ColorType=ColorType.parse_color("white"),
         title_visible: bool = True,
     ):
         """
@@ -665,7 +683,7 @@ class Plot(BasePlotObject):
         curve.order = len(self.curves)
 
         # inject default colors if no colors provided
-        color = Style.parse_color(
+        color = ColorType.parse_color(
             color=DEFAULT_COLORS[curve.order % len(DEFAULT_COLORS)],
             alpha=curve.kwargs.get("alpha", 1.0),
         )
