@@ -225,10 +225,11 @@ class MatplotlibFigureSerializer(object):
                 return ax.unit if len(str(ax.unit)) > 0 else "-"
 
             if xax:
-                ax.set_xscale(get_scale(xax))
                 if (xax.min is not None) or (xax.max is not None):
                     # (None, None) locks the axis limits to defaults [0,1]
                     ax.set_xlim(xmin=xax.min, xmax=xax.max)
+
+                ax.set_xscale(get_scale(xax))
 
                 if xax.label_visible:
                     if xax.name:
@@ -262,11 +263,11 @@ class MatplotlibFigureSerializer(object):
                                 ax.spines[axis].set_color(Figure.fig_facecolor)
 
             if yax:
-                ax.set_yscale(get_scale(yax))
-
                 if (yax.min is not None) or (yax.max is not None):
                     # (None, None) locks the axis limits to defaults [0,1]
                     ax.set_ylim(ymin=yax.min, ymax=yax.max)
+
+                ax.set_yscale(get_scale(yax))
 
                 if yax.label_visible:
                     if yax.name:

@@ -39,21 +39,21 @@
       <xAxis type="linear" min="10" max="0" grid="true" style="style_axis"/>
       <yAxis type="linear" min="10" max="0" grid="true" style="style_axis"/>
       <listOfCurves>
-        <curve id="curve1" logX="false" style="style_curve" xDataReference="dg_time" logY="false" yDataReference="dg_S1" type="points"/>
+        <curve id="curve1" name="S1" logX="false" style="style_curve" xDataReference="dg_time" logY="false" yDataReference="dg_S1" type="points"/>
       </listOfCurves>
     </plot2D>
     <plot2D id="plot2" name="Axis (log axis and style)" legend="true">
-      <xAxis type="log10" min="-1" max="1" grid="true" style="style_axis_blue"/>
-      <yAxis type="log10" min="-1" max="1" grid="true" style="style_axis_red"/>
+      <xAxis type="log10" min="0.1" max="10" grid="true" style="style_axis_blue"/>
+      <yAxis type="log10" grid="true" style="style_axis_red"/>
       <listOfCurves>
-        <curve id="curve2" logX="false" style="style_curve" xDataReference="dg_time" logY="false" yDataReference="dg_S1" type="points"/>
+        <curve id="curve2" name="S1" logX="false" style="style_curve" xDataReference="dg_time" logY="false" yDataReference="dg_S1" type="points"/>
       </listOfCurves>
     </plot2D>
-    <plot2D id="plot3" name="Axis (hidden and no legend)" legend="false">
-      <xAxis type="linear" style="style_axis_none"/>
-      <yAxis type="linear" style="style_axis_none"/>
+    <plot2D id="plot3" name="Axis (hidden, no legend, min/max)" legend="false">
+      <xAxis type="linear" style="style_axis_none" min="2" max="8"/>
+      <yAxis type="linear" style="style_axis_none" min="0" max="8"/>
       <listOfCurves>
-        <curve id="curve3" logX="false" style="style_curve" xDataReference="dg_time" logY="false" yDataReference="dg_S1" type="points"/>
+        <curve id="curve3" name="S1" logX="false" style="style_curve" xDataReference="dg_time" logY="false" yDataReference="dg_S1" type="points"/>
       </listOfCurves>
     </plot2D>
     <figure id="figure1" numRows="2" numCols="2">
