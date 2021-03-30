@@ -74,7 +74,8 @@ if __name__ == "__main__":
     for name, sedml_file in [
         # ("markertype", "markertype.sedml"),
         # ("linetype", "linetype.sedml"),
-        ("axis", "axis.sedml"),
+        # ("axis", "axis.sedml"),
+        ("curve_types", "curve_types.sedml"),
         # ("repressilator_figure", "repressilator_figure.xml"),
         # ("repressilator_l1v3", "repressilator_l1v3.xml"),
         # ("repressilator_urn_l1v3", "repressilator_urn_l1v3.xml"),  # FIXME: resolve URN

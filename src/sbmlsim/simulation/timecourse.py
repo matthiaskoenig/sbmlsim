@@ -124,7 +124,7 @@ class TimecourseSim(AbstractSim):
 
     def __init__(
         self,
-        timecourses: List[Timecourse],
+        timecourses: Union[List[Timecourse], Timecourse],
         selections: Optional[List[str]] = None,
         reset: bool = True,
         time_offset: float = 0.0,

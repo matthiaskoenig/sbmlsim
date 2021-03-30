@@ -89,6 +89,7 @@ class SimulationExperiment:
         self._tasks: Dict[str, Task] = {}
         self._figures: Dict[str, Figure] = {}
         self._results: Dict[str, XResult] = {}
+        self._reports
 
     def initialize(self) -> None:
         """Initialize SimulationExperiment.

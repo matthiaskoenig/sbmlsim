@@ -103,7 +103,7 @@ class ColorType(object):
         """
 
         # https://matplotlib.org/stable/tutorials/colors/colors.html
-        if color is None:
+        if color is None or len(color) == 0:
             return None
 
         elif color.startswith("#"):

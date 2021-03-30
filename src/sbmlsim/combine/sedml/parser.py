@@ -337,7 +337,6 @@ class SEDMLParser(object):
         # data is generated in the figures
         self.data: Dict[str, Data] = {}
 
-
         # --- Styles ---
         self.styles: Dict[str, Style] = {}
         sed_style: libsedml.SedStyle
@@ -349,6 +348,7 @@ class SEDMLParser(object):
         # --- Outputs: Figures/Plots/Reports ---
         fig: Figure
         self.figures: Dict[str, Figure] = {}
+        self.reports: Dict[str, Dict[str, Data]] = {}
         sed_output: libsedml.SedOutput
 
         # which plots are not in figures
@@ -368,8 +368,12 @@ class SEDMLParser(object):
                     single_plots.remove(sed_plot_id)
 
             elif type_code == libsedml.SEDML_OUTPUT_REPORT:
-                self.reports[sed_output.getId()] = self.parse_output()
-                logger.error("Output report not implemented.")
+                sed_report: libsedml.SedReport = sed_output
+                report: Dict[str, str] = self.parse_report(sed_report=sed_report)
+                report_data = Dict[str, Data]
+                for label, dg_id in report.items():
+                    report_data[label] = self.data[dg_id]
+                self.reports[sed_output.getId()] = report_data
 
         # render remaining plots (without figure)
         for sed_output in sed_doc.getListOfOutputs():
@@ -432,6 +436,9 @@ class SEDMLParser(object):
 
         def f_figures(obj) -> Dict[str, Figure]:
             return self.figures
+
+        def f_reports(obj) -> Dict[str, Dict[str, Data]]:
+            return self.reports
 
         class_name = self.name
         if not class_name:
@@ -749,38 +756,18 @@ class SEDMLParser(object):
         return Task(model=model_id, simulation=simulation_id)
 
     def _parse_simple_repeated_task(self, node: TaskNode):
+
         raise NotImplementedError(
             f"Task type is not supported: {node.task.getTypeCode()}"
         )
-        # TODO: implement
-
-        # for ksub, subtask in enumerate(subtasks):
-        #     t = doc.getTask(subtask.getTask())
-        #
-        #     resultVariable = "__subtask__".format(t.getId())
-        #     selections = SEDMLCodeFactory.selectionsForTask(doc=doc, task=task)
-        #     if t.getTypeCode() == libsedml.SEDML_TASK:
-        #         forLines.extend(
-        #             SEDMLCodeFactory.subtaskToPython(
-        #                 doc,
-        #                 task=t,
-        #                 selections=selections,
-        #                 resultVariable=resultVariable,
-        #             )
-        #         )
-        #         forLines.append("{}.extend([__subtask__])".format(task.getId()))
-        #
-        #     elif t.getTypeCode() == libsedml.SEDML_TASK_REPEATEDTASK:
-        #         forLines.extend(SEDMLCodeFactory.repeatedTaskToPython(doc, task=t))
-        #         forLines.append("{}.extend({})".format(task.getId(), t.getId()))
 
     def parse_figure(self, sed_figure: libsedml.SedFigure) -> Figure:
-        """ Parse figure information."""
+        """Parse figure information."""
         figure = Figure(
             experiment=None,
             sid=sed_figure.getId(),
-            num_rows=sed_figure.getNumRows(),
-            num_cols=sed_figure.getNumCols(),
+            num_rows=sed_figure.getNumRows() if sed_figure.isSetNumRows() else 1,
+            num_cols=sed_figure.getNumCols() if sed_figure.isSetNumCols() else 1,
         )
 
         sed_subplot: libsedml.SedSubPlot
@@ -838,10 +825,26 @@ class SEDMLParser(object):
         # FIXME: implement
         raise NotImplementedError
 
-    def parse_output(self, sed_plot2d: libsedml.SedReport) -> Any:
-        """ Parse Report."""
-        # FIXME: implement
-        raise NotImplementedError
+    def parse_report(self, sed_report: libsedml.SedReport) -> Dict[str, str]:
+        """ Parse Report.
+
+        Returns dictionary of label: dataGenerator.id mapping.
+        """
+        sed_dataset: libsedml.SedDataSet
+        report: Dict[str, str] = {}
+        for sed_dataset in sed_report.getListOfDataSets():
+            sed_dg_id: str = sed_dataset.getDataReference()
+            if not sed_dataset.isSetLabel():
+                logger.error(f"Required attribute label missing on DataSet in Report.")
+                continue
+            label = sed_dataset.getLabel()
+            if label in report:
+                logger.error(f"Duplicate label in report '{report.getId()}': '{label}'")
+
+            report[label] = sed_dg_id
+        return report
+
+
 
     def parse_axis(self, sed_axis: libsedml.SedAxis) -> Axis:
         """Parse axes information."""
