@@ -2,6 +2,7 @@
 
 import json
 import logging
+import re
 from collections import defaultdict
 from copy import deepcopy
 from dataclasses import dataclass
@@ -89,7 +90,7 @@ class SimulationExperiment:
         self._tasks: Dict[str, Task] = {}
         self._figures: Dict[str, Figure] = {}
         self._results: Dict[str, XResult] = {}
-        self._reports: Dict[str, Dict[str, Data]]
+        self._reports: Dict[str, Dict[str, str]] = {}
 
     def initialize(self) -> None:
         """Initialize SimulationExperiment.
@@ -106,6 +107,7 @@ class SimulationExperiment:
         self._tasks.update(self.tasks())
         self._data.update(self.data())
         self._figures.update(self.figures())
+        self._reports.update(self.reports())
         self._fit_mappings.update(self.fit_mappings())
 
         # validation of information
@@ -125,6 +127,7 @@ class SimulationExperiment:
             f"{'tasks':20} {list(self._tasks.keys())}",
             f"{'results':20} {list(self._results.keys())}",
             f"{'figures':20} {list(self._figures.keys())}",
+            f"{'reports':20} {list(self._reports.keys())}",
             "-" * 80,
         ]
         return "\n".join(info)
@@ -197,10 +200,10 @@ class SimulationExperiment:
         """
         return dict()
 
-    def reports(self) -> Dict[str, Dict[str, Data]]:
+    def reports(self) -> Dict[str, Dict[str, str]]:
         """Define reports.
 
-        Reports are defined by a hashmap label:DataGenerators.
+        Reports are defined by a hashmap label:Data.
         Reports can be serialized in multiple manners.
         """
         return dict()
@@ -261,6 +264,7 @@ class SimulationExperiment:
             "_tasks",
             "_data",
             "_figures",
+            "_reports",
             "_fit_mappings",
         ]:
             field = getattr(self, field_key)
@@ -273,11 +277,27 @@ class SimulationExperiment:
                     f"'{allowed_types}. Often simply the return statement is missing "
                     f"(returning NoneType)."
                 )
+
+            # \w matches any alphanumeric character; this is equivalent to [a-zA-Z0-9_]
+            pattern_sid = re.compile(r"[a-zA-Z0-9][a-zA-Z0-9_]*")
             for key in getattr(self, field_key).keys():
                 if not isinstance(key, str):
                     raise ValueError(
                         f"'{field_key} keys must be str: " f"'{key} -> {type(key)}'"
                     )
+                # Check that valid Sid
+                try:
+                    if not re.match(pattern_sid, key):
+                        raise ValueError(
+                            f"{field_key} key is not a valid SId "
+                            f"([a-zA-Z0-9][a-zA-Z0-9_]*): '{key}'"
+                        )
+                except TypeError:
+                    raise ValueError(
+                        f"{field_key} key is not a valid SId. "
+                        f"Incorrect type: '{key}', {type(key)}"
+                    )
+
                 if key in all_keys:
                     raise ValueError(
                         f"Duplicate key '{key}' for '{field_key}' and '{all_keys[key]}'"

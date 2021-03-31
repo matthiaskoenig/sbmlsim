@@ -202,12 +202,12 @@
     }
   },
   "figures": {
-    "Repressilator example": {
-      "sid": "Repressilator example",
-      "name": null,
+    "figure0": {
+      "sid": "figure0",
+      "name": "Repressilator",
       "num_rows": 2,
       "num_cols": 2,
-      "width": 14,
+      "width": 10,
       "height": 10,
       "subplots": [
         {
@@ -238,7 +238,7 @@
               "label_visible": true,
               "ticks_visible": true
             },
-            "legend": false,
+            "legend": true,
             "facecolor": "#ffffffff",
             "title_visible": true,
             "curves": [
@@ -358,7 +358,7 @@
               "label_visible": true,
               "ticks_visible": true
             },
-            "legend": false,
+            "legend": true,
             "facecolor": "#ffffffff",
             "title_visible": true,
             "curves": [
@@ -478,7 +478,7 @@
               "label_visible": true,
               "ticks_visible": true
             },
-            "legend": false,
+            "legend": true,
             "facecolor": "#ffffffff",
             "title_visible": true,
             "curves": [

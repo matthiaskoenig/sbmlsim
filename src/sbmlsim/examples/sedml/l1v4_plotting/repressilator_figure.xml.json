@@ -270,7 +270,9 @@
       "plot2D": [
         {
           "@id": "timecourse",
-          "@name": "Timecourse of repressilator",
+          "@name": "Timecourse",
+          "@height": "5",
+          "@width": "5",
           "listOfCurves": {
             "curve": [
               {
@@ -305,7 +307,9 @@
         },
         {
           "@id": "preprocessing",
-          "@name": "Timecourse after pre-processing",
+          "@name": "Pre-processing",
+          "@height": "5",
+          "@width": "5",
           "listOfCurves": {
             "curve": [
               {
@@ -340,7 +344,9 @@
         },
         {
           "@id": "postprocessing",
-          "@name": "Timecourse after post-processing",
+          "@name": "Post-processing",
+          "@height": "5",
+          "@width": "10",
           "listOfCurves": {
             "curve": [
               {
@@ -376,6 +382,7 @@
       ],
       "figure": {
         "@id": "figure1",
+        "@name": "Repressilator",
         "@numRows": "2",
         "@numCols": "2",
         "listOfSubPlots": {
@@ -383,19 +390,19 @@
             {
               "@plot": "timecourse",
               "@row": "1",
-              "@col": "1",
-              "@rowSpan": "1",
-              "@colSpan": "2"
+              "@col": "1"
             },
             {
               "@plot": "preprocessing",
-              "@row": "2",
-              "@col": "1"
+              "@row": "1",
+              "@col": "2"
             },
             {
               "@plot": "postprocessing",
               "@row": "2",
-              "@col": "2"
+              "@col": "1",
+              "@rowSpan": "1",
+              "@colSpan": "2"
             }
           ]
         }

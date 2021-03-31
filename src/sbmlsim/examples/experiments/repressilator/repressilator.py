@@ -81,7 +81,9 @@ class RepressilatorExperiment(SimulationExperiment):
 
     def figures(self) -> Dict[str, Figure]:
         """Define figure outputs (plots)."""
-        fig = Figure(experiment=self, sid="Repressilator example", num_cols=2, num_rows=2)
+        fig = Figure(experiment=self, sid="figure0",
+                     name="Repressilator", num_cols=2, num_rows=2,
+                     width=10, height=10)
 
         # FIXME: add helper to easily create figure layouts with plots
         p0 = fig.add_subplot(Plot(sid="plot0", name="Timecourse"), row=1, col=1)

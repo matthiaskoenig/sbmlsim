@@ -1,3 +1,6 @@
+# Serialization
+- [ ] writing SED-ML
+
 # Plotting
 - [ ] support height and width;
       plots have height & width; these can be directly set in single plot figures;
@@ -6,6 +9,7 @@
 - [x] use curve.name as label in legend
 - [x] support style on axis
 - [~] support setting label (name of axis), see https://github.com/fbergmann/libSEDML/issues/110
+- [x] plot width and height  
 - [ ] curve type (points, bar, ...)
 - [ ] yAxis  
 - [ ] shaded areas & fills

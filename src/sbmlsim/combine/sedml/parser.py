@@ -345,10 +345,9 @@ class SEDMLParser(object):
 
         logger.debug(f"styles: {self.styles}")
 
-        # --- Outputs: Figures/Plots/Reports ---
+        # --- Outputs: Figures/Plots ---
         fig: Figure
         self.figures: Dict[str, Figure] = {}
-        self.reports: Dict[str, Dict[str, Data]] = {}
         sed_output: libsedml.SedOutput
 
         # which plots are not in figures
@@ -367,13 +366,6 @@ class SEDMLParser(object):
                     sed_plot_id = sed_subplot.getPlot()
                     single_plots.remove(sed_plot_id)
 
-            elif type_code == libsedml.SEDML_OUTPUT_REPORT:
-                sed_report: libsedml.SedReport = sed_output
-                report: Dict[str, str] = self.parse_report(sed_report=sed_report)
-                report_data = Dict[str, Data]
-                for label, dg_id in report.items():
-                    report_data[label] = self.data[dg_id]
-                self.reports[sed_output.getId()] = report_data
 
         # render remaining plots (without figure)
         for sed_output in sed_doc.getListOfOutputs():
@@ -382,6 +374,18 @@ class SEDMLParser(object):
                 self.figures[sed_output_id] = self._wrap_plot_in_figure(sed_output)
 
         logger.debug(f"figures: {self.figures}")
+
+        # --- Outputs: Reports---
+        self.reports: Dict[str, Dict[str, Data]] = {}
+
+        for sed_output in sed_doc.getListOfOutputs():
+            type_code = sed_output.getTypeCode()
+            if type_code == libsedml.SEDML_OUTPUT_REPORT:
+                sed_report: libsedml.SedReport = sed_output
+                report: Dict[str, str] = self.parse_report(sed_report=sed_report)
+                self.reports[sed_output.getId()] = report
+
+        logger.debug(f"reports: {self.reports}")
 
         self.exp_class = self._create_experiment_class()
         self.experiment: SimulationExperiment = self.exp_class()
@@ -437,7 +441,7 @@ class SEDMLParser(object):
         def f_figures(obj) -> Dict[str, Figure]:
             return self.figures
 
-        def f_reports(obj) -> Dict[str, Dict[str, Data]]:
+        def f_reports(obj) -> Dict[str, Dict[str, str]]:
             return self.reports
 
         class_name = self.name
@@ -454,6 +458,7 @@ class SEDMLParser(object):
                 "tasks": f_tasks,
                 "data": f_data,
                 "figures": f_figures,
+                "reports": f_reports,
             },
         )
         return exp_class
@@ -804,8 +809,10 @@ class SEDMLParser(object):
     def parse_plot2d(self, sed_plot2d: libsedml.SedPlot2D) -> Plot:
         plot = Plot(
             sid=sed_plot2d.getId(),
-            name=sed_plot2d.getName(),
-            legend=sed_plot2d.getLegend() if sed_plot2d.isSetLegend() else True
+            name=sed_plot2d.getName() if sed_plot2d.isSetName() else None,
+            legend=sed_plot2d.getLegend() if sed_plot2d.isSetLegend() else True,
+            height=sed_plot2d.getHeight() if sed_plot2d.isSetHeight() else None,
+            width=sed_plot2d.getHeight() if sed_plot2d.isSetWidth() else None,
         )
 
         # axis
@@ -834,6 +841,9 @@ class SEDMLParser(object):
         report: Dict[str, str] = {}
         for sed_dataset in sed_report.getListOfDataSets():
             sed_dg_id: str = sed_dataset.getDataReference()
+            if self.sed_doc.getDataGenerator(sed_dg_id) is None:
+                raise ValueError(f"Report '{sed_report.getId()}': Id of DataGenerator "
+                                 f"does not exist '{sed_dg_id}'")
             if not sed_dataset.isSetLabel():
                 logger.error(f"Required attribute label missing on DataSet in Report.")
                 continue

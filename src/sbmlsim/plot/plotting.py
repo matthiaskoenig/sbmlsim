@@ -516,9 +516,11 @@ class Plot(BasePlotObject):
         yaxis: Axis = None,
         curves: List[Curve] = None,
         # FIXME: support areas
-        legend: bool = False,
+        legend: bool = True,
         facecolor: ColorType=ColorType.parse_color("white"),
         title_visible: bool = True,
+        height: float = None,
+        width: float = None,
     ):
         """
         :param sid: Sid of the plot
@@ -529,6 +531,8 @@ class Plot(BasePlotObject):
         :param curves: list of curves for the plots
         :param facecolor: color of the plot.
         :param title_visible: boolean flag to show the title
+        :param height: plot height (should be set on figure)
+        :param width: plot width (should be set on figure)
         """
         super(Plot, self).__init__(sid, name)
         if curves is None:
@@ -555,6 +559,12 @@ class Plot(BasePlotObject):
         self.legend: bool = legend
         self.facecolor: ColorType = facecolor
         self.title_visible: bool = title_visible
+        if not height:
+            height = Figure.panel_height
+        self.height = height
+        if not width:
+            width = Figure.panel_width
+        self.width = width
 
     def __copy__(self) -> 'Plot':
         """Copy the existing object."""
@@ -567,6 +577,8 @@ class Plot(BasePlotObject):
             legend=self.legend,
             facecolor=self.facecolor,
             title_visible=self.title_visible,
+            height=self.height,
+            width=self.width,
         )
 
     def to_dict(self):
@@ -893,12 +905,37 @@ class Figure(BasePlotObject):
         self.num_rows = num_rows
         self.num_cols = num_cols
 
+        self._height: float = None
+        self._width: float = None
         if width is None:
             width = num_cols * Figure.panel_width
-        if height is None:
-            height = num_rows * Figure.panel_height
+
         self.width = width
         self.height = height
+
+    @property
+    def height(self) -> float:
+        """Get height."""
+        return self._height
+
+    @height.setter
+    def height(self, value: float) -> None:
+        """Set height."""
+        if value is None:
+            value = self.num_rows * Figure.panel_height
+        self._height = value
+
+    @property
+    def width(self) -> float:
+        """Get width."""
+        return self._width
+
+    @height.setter
+    def width(self, value: float) -> None:
+        """Set width."""
+        if value is None:
+            value = self.num_cols * Figure.panel_width
+        self._width = value
 
     def num_subplots(self):
         """Number of existing subplots."""
@@ -961,6 +998,11 @@ class Figure(BasePlotObject):
         if col + col_span - 1 > self.num_cols:
             raise ValueError(f"col + col_span - 1 must be <= num_cols, but "
                              f"'{col + col_span} > {self.num_cols}'")
+
+        if self.height and not plot.height:
+            plot.height = self.height/self.num_rows * (row + row_span - 1)
+        if self.width and not plot.width:
+            plot.width = self.width/self.num_cols * (col + col_span - 1)
 
         self.subplots.append(
             SubPlot(plot=plot, row=row, col=col, row_span=row_span, col_span=col_span)

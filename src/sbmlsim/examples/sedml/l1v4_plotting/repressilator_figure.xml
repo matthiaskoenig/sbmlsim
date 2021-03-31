@@ -133,32 +133,32 @@
     </dataGenerator>
   </listOfDataGenerators>
   <listOfOutputs>
-    <plot2D id="timecourse" name="Timecourse of repressilator">
+    <plot2D id="timecourse" name="Timecourse" height="5" width="5">
       <listOfCurves>
         <curve id="plot_0__plot_0_0_0__plot_0_0_1" logX="false" logY="false" xDataReference="dg_0_0_0" yDataReference="dg_0_0_1" type="points" style="style_1"/>
         <curve id="plot_0__plot_0_0_0__plot_0_1_1" logX="false" logY="false" xDataReference="dg_0_0_0" yDataReference="dg_0_1_1" type="points" style="style_2"/>
         <curve id="plot_0__plot_0_0_0__plot_0_2_1" logX="false" logY="false" xDataReference="dg_0_0_0" yDataReference="dg_0_2_1" type="points" style="style_3"/>
       </listOfCurves>
     </plot2D>
-    <plot2D id="preprocessing" name="Timecourse after pre-processing">
+    <plot2D id="preprocessing" name="Pre-processing" height="5" width="5">
       <listOfCurves>
         <curve id="plot_1__plot_1_0_0__plot_1_0_1" logX="false" logY="false" xDataReference="dg_1_0_0" yDataReference="dg_1_0_1" type="points" style="style_1"/>
         <curve id="plot_1__plot_1_0_0__plot_1_1_1" logX="false" logY="false" xDataReference="dg_1_0_0" yDataReference="dg_1_1_1" type="points" style="style_2"/>
         <curve id="plot_1__plot_1_0_0__plot_1_2_1" logX="false" logY="false" xDataReference="dg_1_0_0" yDataReference="dg_1_2_1" type="points" style="style_3"/>
       </listOfCurves>
     </plot2D>
-    <plot2D id="postprocessing" name="Timecourse after post-processing">
+    <plot2D id="postprocessing" name="Post-processing" height="5" width="10">
       <listOfCurves>
         <curve id="plot_2__plot_2_0_0__plot_2_0_1" logX="false" logY="false" xDataReference="dg_2_0_0" yDataReference="dg_2_0_1" type="points" style="style_A"/>
         <curve id="plot_2__plot_2_1_0__plot_2_0_0" logX="false" logY="false" xDataReference="dg_2_1_0" yDataReference="dg_2_0_0" type="points" style="style_B"/>
         <curve id="plot_2__plot_2_0_1__plot_2_1_0" logX="false" logY="false" xDataReference="dg_2_0_1" yDataReference="dg_2_1_0" type="points" style="style_C"/>
       </listOfCurves>
     </plot2D>
-    <figure id="figure1" numRows="2" numCols="2">
+    <figure id="figure1" name="Repressilator" numRows="2" numCols="2">
         <listOfSubPlots>
-            <subPlot plot="timecourse" row="1" col="1" rowSpan="1" colSpan="2"></subPlot>
-            <subPlot plot="preprocessing" row="2" col="1"></subPlot>
-            <subPlot plot="postprocessing" row="2" col="2"></subPlot>
+            <subPlot plot="timecourse" row="1" col="1"></subPlot>
+            <subPlot plot="preprocessing" row="1" col="2"></subPlot>
+            <subPlot plot="postprocessing" row="2" col="1" rowSpan="1" colSpan="2"></subPlot>
         </listOfSubPlots>
     </figure>
   </listOfOutputs>
