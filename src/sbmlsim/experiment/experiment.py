@@ -279,7 +279,7 @@ class SimulationExperiment:
                 )
 
             # \w matches any alphanumeric character; this is equivalent to [a-zA-Z0-9_]
-            pattern_sid = re.compile(r"[a-zA-Z0-9][a-zA-Z0-9_]*")
+            pattern_sid = re.compile(r"[a-zA-Z_][a-zA-Z0-9_]*")
             for key in getattr(self, field_key).keys():
                 if not isinstance(key, str):
                     raise ValueError(
