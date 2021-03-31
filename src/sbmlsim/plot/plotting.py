@@ -935,6 +935,38 @@ class Figure(BasePlotObject):
         """Returns list of plots."""
         return [subplot.plot for subplot in self.subplots]
 
+    def add_subplot(self, plot: Plot, row: int, col: int, row_span: int = 1, col_span: int = 1) -> Plot:
+        """Add plot as subplot to figure.
+
+        Be careful that individual subplots do not overlap when adding multiple
+        subplots.
+
+        :param plot: Plot to add as subplot.
+        :param row: row position for plot in [1, num_rows]
+        :param col: col position for plot in [1, num_cols]
+        :param row_span: span of figure with row + row_span <= num_rows
+        :param col_span: span of figure with col + col_span <= num_cols
+        """
+        if row <= 0:
+            raise ValueError(f"row must be > 0, but 'row={row}'")
+        if col <= 0:
+            raise ValueError(f"col must be > 0, but 'col={col}'")
+        if row > self.num_rows:
+            raise ValueError(f"row must be <= num_rows, but '{row} > {self.num_rows}'")
+        if col > self.num_cols:
+            raise ValueError(f"col must be <= num_cols, but '{col} > {self.num_cols}'")
+        if row + row_span - 1> self.num_rows:
+            raise ValueError(f"row + row_span must be <= num_rows, but "
+                             f"'{row + row_span} > {self.num_rows}'")
+        if col + col_span - 1 > self.num_cols:
+            raise ValueError(f"col + col_span - 1 must be <= num_cols, but "
+                             f"'{col + col_span} > {self.num_cols}'")
+
+        self.subplots.append(
+            SubPlot(plot=plot, row=row, col=col, row_span=row_span, col_span=col_span)
+        )
+        return plot
+
     def add_plots(self, plots: List[Plot], copy_plots: bool = False) -> None:
         """Add plots to figure.
 

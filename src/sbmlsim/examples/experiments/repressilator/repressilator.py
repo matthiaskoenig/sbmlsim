@@ -7,7 +7,7 @@ from typing import Dict, Union
 from sbmlsim.data import Data
 from sbmlsim.experiment import ExperimentRunner, SimulationExperiment
 from sbmlsim.model import AbstractModel
-from sbmlsim.plot import Axis, Figure
+from sbmlsim.plot import Axis, Figure, Plot
 from sbmlsim.simulation import (
     AbstractSim,
     Timecourse,
@@ -81,27 +81,28 @@ class RepressilatorExperiment(SimulationExperiment):
 
     def figures(self) -> Dict[str, Figure]:
         """Define figure outputs (plots)."""
-        fig = Figure(experiment=self, sid="Repressilator example", num_cols=1, num_rows=3)
+        fig = Figure(experiment=self, sid="Repressilator example", num_cols=2, num_rows=2)
 
         # FIXME: add helper to easily create figure layouts with plots
-        plots = fig.create_plots(
-            legend=True,
-        )
-        plots[0].set_title(f"Timecourse")
-        plots[0].set_xaxis("time", unit="second")
-        plots[0].set_yaxis("data", unit="dimensionless")
-        plots[1].set_title(f"Preprocessing")
-        plots[1].set_xaxis("time", unit="second")
-        plots[1].set_yaxis("data", unit="dimensionless")
+        p0 = fig.add_subplot(Plot(sid="plot0", name="Timecourse"), row=1, col=1)
+        p1 = fig.add_subplot(Plot(sid="plot1", name="Preprocessing"), row=1, col=2)
+        p2 = fig.add_subplot(Plot(sid="plot2", name="Postprocessing"), row=2, col=1, col_span=2)
+
+        p0.set_title(f"Timecourse")
+        p0.set_xaxis("time", unit="second")
+        p0.set_yaxis("data", unit="dimensionless")
+        p1.set_title(f"Preprocessing")
+        p1.set_xaxis("time", unit="second")
+        p1.set_yaxis("data", unit="dimensionless")
         colors = ["tab:red", "tab:green", "tab:blue"]
         for k, sid in enumerate(["PX", "PY", "PZ"]):
-            plots[0].curve(
+            p0.curve(
                 x=Data("time", task=f"task_model1_tc"),
                 y=Data(f"{sid}", task=f"task_model1_tc"),
                 label=f"{sid}",
                 color=colors[k]
             )
-            plots[1].curve(
+            p1.curve(
                 x=Data("time", task=f"task_model2_tc"),
                 y=Data(f"{sid}", task=f"task_model2_tc"),
                 label=f"{sid}",
@@ -109,13 +110,13 @@ class RepressilatorExperiment(SimulationExperiment):
                 linewidth=2.0,
             )
 
-        plots[2].set_title(f"Postprocessing")
-        plots[2].set_xaxis("data", unit="dimensionless")
-        plots[2].set_yaxis("data", unit="dimensionless")
+        p2.set_title(f"Postprocessing")
+        p2.set_xaxis("data", unit="dimensionless")
+        p2.set_yaxis("data", unit="dimensionless")
 
         colors2 = ["tab:orange", "tab:brown", "tab:purple"]
         for k, (sidx, sidy) in enumerate([("PX", "PZ"), ("PZ", "PY"), ('PY', 'PX')]):
-            plots[2].curve(
+            p2.curve(
                 x=self._data[f"f_{sidx}_normalized"],
                 y=self._data[f"f_{sidy}_normalized"],
                 label=f"{sidy}/max({sidy}) ~ {sidx}/max({sidx})",

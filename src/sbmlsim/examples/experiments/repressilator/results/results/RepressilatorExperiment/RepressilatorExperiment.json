@@ -205,10 +205,10 @@
     "Repressilator example": {
       "sid": "Repressilator example",
       "name": null,
-      "num_rows": 3,
-      "num_cols": 1,
-      "width": 7,
-      "height": 15,
+      "num_rows": 2,
+      "num_cols": 2,
+      "width": 14,
+      "height": 10,
       "subplots": [
         {
           "plot": {
@@ -238,7 +238,7 @@
               "label_visible": true,
               "ticks_visible": true
             },
-            "legend": true,
+            "legend": false,
             "facecolor": "#ffffffff",
             "title_visible": true,
             "curves": [
@@ -358,7 +358,7 @@
               "label_visible": true,
               "ticks_visible": true
             },
-            "legend": true,
+            "legend": false,
             "facecolor": "#ffffffff",
             "title_visible": true,
             "curves": [
@@ -445,8 +445,8 @@
               }
             ]
           },
-          "row": 2,
-          "col": 1,
+          "row": 1,
+          "col": 2,
           "row_span": 1,
           "col_span": 1
         },
@@ -478,7 +478,7 @@
               "label_visible": true,
               "ticks_visible": true
             },
-            "legend": true,
+            "legend": false,
             "facecolor": "#ffffffff",
             "title_visible": true,
             "curves": [
@@ -565,10 +565,10 @@
               }
             ]
           },
-          "row": 3,
+          "row": 2,
           "col": 1,
           "row_span": 1,
-          "col_span": 1
+          "col_span": 2
         }
       ]
     }
