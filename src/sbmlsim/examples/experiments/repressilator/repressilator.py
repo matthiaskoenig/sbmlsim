@@ -4,16 +4,12 @@ Example simulation experiment.
 from pathlib import Path
 from typing import Dict, Union
 
-import numpy as np
-
 from sbmlsim.data import Data
 from sbmlsim.experiment import ExperimentRunner, SimulationExperiment
 from sbmlsim.model import AbstractModel
 from sbmlsim.plot import Axis, Figure
 from sbmlsim.simulation import (
     AbstractSim,
-    Dimension,
-    ScanSim,
     Timecourse,
     TimecourseSim,
 )
@@ -26,193 +22,117 @@ class RepressilatorExperiment(SimulationExperiment):
     """Simple repressilator experiment."""
 
     def models(self) -> Dict[str, Union[Path, AbstractModel]]:
+        """Define models."""
         return {
             "model1": MODEL_REPRESSILATOR,
             "model2": AbstractModel(
-                MODEL_REPRESSILATOR, changes={"X": self.Q_(100, "dimensionless")}
+                MODEL_REPRESSILATOR, changes={
+                    "ps_0": self.Q_(1.3E-5, "dimensionless"),
+                    "ps_a": self.Q_(0.013, "dimensionless")
+                }
             ),
         }
 
     def simulations(self) -> Dict[str, AbstractSim]:
+        """Define simulations."""
+        tc = TimecourseSim(
+            timecourses=Timecourse(start=0, end=1000, steps=1000),
+            time_offset=0,
+        )
         return {
-            **self.sim_scans(),
-            # **self.sim_sensitivities(),
+            "tc": tc
         }
 
     def tasks(self) -> Dict[str, Task]:
+        """Define tasks."""
         tasks = dict()
         for model in ["model1", "model2"]:
-            for sim_key in self.simulations():
-                tasks[f"task_{model}_{sim_key}"] = Task(model=model, simulation=sim_key)
+            tasks[f"task_{model}_tc"] = Task(model=model, simulation="tc")
         return tasks
 
-    def sim_scans(self) -> Dict[str, AbstractSim]:
-        Q_ = self.Q_
-        unit_data = "dimensionless"
-        tc = TimecourseSim(
-            [
-                Timecourse(start=0, end=100, steps=2000),
-                Timecourse(
-                    start=0,
-                    end=100,
-                    steps=2000,
-                    changes={"X": Q_(10, unit_data), "Y": Q_(20, unit_data)},
-                ),
-            ]
-        )
-
-        scan1d = ScanSim(
-            simulation=tc,
-            dimensions=[
-                Dimension(
-                    "dim1", changes={"X": Q_(np.linspace(0, 10, num=11), unit_data)}
-                )
-            ],
-        )
-        scan2d = ScanSim(
-            simulation=tc,
-            dimensions=[
-                Dimension(
-                    "dim1",
-                    changes={"X": Q_(np.random.normal(5, 2, size=10), unit_data)},
-                ),
-                Dimension(
-                    "dim2",
-                    changes={"Y": Q_(np.random.normal(5, 2, size=10), unit_data)},
-                ),
-            ],
-        )
-        scan3d = ScanSim(
-            simulation=tc,
-            dimensions=[
-                Dimension(
-                    "dim1", changes={"X": Q_(np.linspace(0, 10, num=5), unit_data)}
-                ),
-                Dimension(
-                    "dim2", changes={"Y": Q_(np.linspace(0, 10, num=5), unit_data)}
-                ),
-                Dimension(
-                    "dim3", changes={"Z": Q_(np.linspace(0, 10, num=5), unit_data)}
-                ),
-            ],
-        )
-
-        return {
-            "tc": tc,
-            "scan1d": scan1d,
-            "scan2d": scan2d,
-            # "scan3d": scan3d,
-        }
-
     def data(self) -> Dict[str, Data]:
-        """Data used for plotting and analysis.
-        Generates promises for results.
-
-        :return:
-        """
+        """Define data generators."""
+        # direct access via id
         data = []
-
         for model in ["model1", "model2"]:
-            for selection in ["X", "Y", "Z"]:
-                # accessed data
+            for selection in ["time", "PX", "PY", "PZ"]:
                 data.append(
                     Data(task=f"task_{model}_tc", index=selection)
                 )
 
-        # Define functions (data generators)
-        data.extend([
-            Data(
-                index="f1",
-                function="(sin(X)+Y+Z)/max(X)",
-                variables={
-                    "X": Data(index='X', task="task_model1_tc"),
-                    "Y": Data(index='Y', task="task_model1_tc"),
-                    "Z": Data(index='Y', task="task_model1_tc"),
-                },
-                parameters={
-                }
-            ),
-            Data(
-                index="f2",
-                function="Y/max(Y)",
-                variables={
-                    "Y": Data(index="Y", task="task_model1_tc"),
-                },
+        # functions (calculated data generators)
+        # FIXME: necessary to store units in the xres
+        for sid in ["PX", "PY", "PZ"]:
+            data.append(
+                Data(
+                    index=f"f_{sid}_normalized",
+                    function=f"{sid}/max({sid})",
+                    variables={
+                        f"{sid}": Data(index=f'{sid}', task="task_model1_tc"),
+                    },
+                    parameters={}
+                )
             )
-        ])
 
-        # FIXME: arbitrary processing
-        # [3] arbitrary processing (e.g. pharmacokinetic calculations)
-        # Processing(variables) # arbitrary functions
-        # Aggregation over
-
-        return {d.sid: d for d in data}
+        data_dict = {d.sid: d for d in data}
+        from pprint import pprint
+        pprint(data_dict)
+        return data_dict
 
     def figures(self) -> Dict[str, Figure]:
-        unit_time = "min"
-        unit_data = "dimensionless"
+        """Define figure outputs (plots)."""
+        fig = Figure(experiment=self, sid="Repressilator example", num_cols=1, num_rows=3)
 
-        self.add_selections_data(
-            selections=["time", "X", "Y"],
-            task_ids=[f"task_{m}_tc" for m in ["model1", "model2"]]
-        )
-
-        fig1 = Figure(experiment=self, sid="Fig1", num_cols=1, num_rows=1)
-        plots = fig1.create_plots(
-            xaxis=Axis("time", unit=unit_time),
-            yaxis=Axis("data", unit=unit_data),
+        # FIXME: add helper to easily create figure layouts with plots
+        plots = fig.create_plots(
             legend=True,
         )
-        plots[0].set_title(f"{self.sid}_{fig1.sid}")
-        for model in ["model1", "model2"]:
-            task_id = f"task_{model}_tc"
+        plots[0].set_title(f"Timecourse")
+        plots[0].set_xaxis("time", unit="second")
+        plots[0].set_yaxis("data", unit="dimensionless")
+        plots[1].set_title(f"Preprocessing")
+        plots[1].set_xaxis("time", unit="second")
+        plots[1].set_yaxis("data", unit="dimensionless")
+        colors = ["tab:red", "tab:green", "tab:blue"]
+        for k, sid in enumerate(["PX", "PY", "PZ"]):
             plots[0].curve(
-                x=Data("time", task=task_id),
-                y=Data("X", task=task_id),
-                label="X sim",
-                color="black",
+                x=Data("time", task=f"task_model1_tc"),
+                y=Data(f"{sid}", task=f"task_model1_tc"),
+                label=f"{sid}",
+                color=colors[k]
             )
-            plots[0].curve(
-                x=Data("time", task=task_id),
-                y=Data("Y", task=task_id),
-                label="Y sim",
-                color="blue",
+            plots[1].curve(
+                x=Data("time", task=f"task_model2_tc"),
+                y=Data(f"{sid}", task=f"task_model2_tc"),
+                label=f"{sid}",
+                color=colors[k],
+                linewidth=2.0,
             )
 
-        fig2 = Figure(experiment=self, sid="Fig2", num_rows=2, num_cols=1)
-        plots = fig2.create_plots(
-            xaxis=Axis("data", unit=unit_data),
-            yaxis=Axis("data", unit=unit_data),
-            legend=True,
-        )
-        plots[0].curve(
-            x=self._data["f1"],
-            y=self._data["f2"],
-            label="f2 ~ f1",
-            color="black",
-            marker="o",
-            alpha=0.3,
-        )
-        plots[1].curve(
-            x=self._data["f1"],
-            y=self._data["f2"],
-            label="f2 ~ f1",
-            color="black",
-            marker="o",
-            alpha=0.3,
-        )
+        plots[2].set_title(f"Postprocessing")
+        plots[2].set_xaxis("data", unit="dimensionless")
+        plots[2].set_yaxis("data", unit="dimensionless")
 
-        plots[0].xaxis.min = -1.0
-        plots[0].xaxis.max = 2.0
-        plots[0].xaxis.grid = True
-
-        plots[1].xaxis.scale = "log"
-        plots[1].yaxis.scale = "log"
-
+        colors2 = ["tab:orange", "tab:brown", "tab:purple"]
+        for k, (sidx, sidy) in enumerate([("PX", "PZ"), ("PZ", "PY"), ('PY', 'PX')]):
+            plots[2].curve(
+                x=self._data[f"f_{sidx}_normalized"],
+                y=self._data[f"f_{sidy}_normalized"],
+                label=f"{sidy}/max({sidy}) ~ {sidx}/max({sidx})",
+                color=colors2[k],
+                linewidth=2.0,
+            )
         return {
-            fig1.sid: fig1,
-            fig2.sid: fig2,
+            fig.sid: fig,
         }
+
+    def reports(self) -> Dict[str, Dict[str, Data]]:
+        """Define reports.
+
+        HashMap of DataGenerators.
+        FIXME: separate class for these objects.
+        """
+        pass
 
 
 def run_repressilator_experiments(output_path: Path) -> Path:
@@ -220,16 +140,15 @@ def run_repressilator_experiments(output_path: Path) -> Path:
     base_path = Path(__file__).parent
     data_path = base_path
 
-    for simulator in [SimulatorSerial(), SimulatorParallel()]:
-        runner = ExperimentRunner(
-            [RepressilatorExperiment],
-            simulator=simulator,
-            data_path=data_path,
-            base_path=base_path,
-        )
-        _results = runner.run_experiments(
-            output_path=output_path / "results", show_figures=True
-        )
+    runner = ExperimentRunner(
+        [RepressilatorExperiment],
+        simulator=SimulatorParallel(),
+        data_path=data_path,
+        base_path=base_path,
+    )
+    _results = runner.run_experiments(
+        output_path=output_path / "results", show_figures=True
+    )
 
 
 if __name__ == "__main__":

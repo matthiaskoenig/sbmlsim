@@ -89,7 +89,7 @@ class SimulationExperiment:
         self._tasks: Dict[str, Task] = {}
         self._figures: Dict[str, Figure] = {}
         self._results: Dict[str, XResult] = {}
-        self._reports
+        self._reports: Dict[str, Dict[str, Data]]
 
     def initialize(self) -> None:
         """Initialize SimulationExperiment.
@@ -194,6 +194,14 @@ class SimulationExperiment:
         Mapping reference data on observables.
         Used for the optimization of parameters.
         The child classes fill out the information.
+        """
+        return dict()
+
+    def reports(self) -> Dict[str, Dict[str, Data]]:
+        """Define reports.
+
+        Reports are defined by a hashmap label:DataGenerators.
+        Reports can be serialized in multiple manners.
         """
         return dict()
 

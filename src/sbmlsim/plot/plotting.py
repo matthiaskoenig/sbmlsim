@@ -381,9 +381,9 @@ class Axis(BasePlotObject):
         """Set axis scale."""
         if isinstance(scale, str):
             if scale == "linear":
-                scale = self.AxisScale.LINEAR
+                scale = AxisScale.LINEAR
             elif scale in {"log", "log10"}:
-                scale = self.AxisScale.LOG10
+                scale = AxisScale.LOG10
             else:
                 ValueError(f"Unsupported axis scale: '{scale}'")
         self._scale = scale
