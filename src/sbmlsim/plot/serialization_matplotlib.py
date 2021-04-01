@@ -81,10 +81,10 @@ class MatplotlibFigureSerializer(object):
             yunit = yax.unit if yax else None
 
             # memory for stacked bars
-            last_barstack_x = None
-            last_barstack_y = None
-            last_barhstack_x = None
-            last_barhstack_y = None
+            barstack_x = None
+            barstack_y = None
+            barhstack_x = None
+            barhstack_y = None
 
             # plot ordered curves
             curves: List[Curve] = sorted(plot.curves, key=lambda x: x.order)
@@ -164,66 +164,44 @@ class MatplotlibFigureSerializer(object):
                         )
 
                 elif curve.type == CurveType.BARSTACKED:
-                    if last_barstack_x is not None:
-                        if not np.all(np.isclose(last_barstack_x, x_data)):
-                            raise ValueError(
-                                "x data must be identical for stacked bars.")
-                        # FIXME: correct offsets, must be tested with 3 species
-                        ax.bar(x=x_data, height=y_data, bottom=last_barstack_y,
-                               label=label, **bar_kwargs)
-                        if (xerr is not None) or (yerr is not None):
-                            ax.errorbar(
-                                x=x_data,
-                                y=y_data + last_barstack_y,
-                                xerr=xerr_data,
-                                yerr=yerr_data,
-                                label="__nolabel__",
-                                **error_kwargs
-                            )
-                    else:
-                        ax.bar(x=x_data, height=y_data, label=label, **bar_kwargs)
-                        if (xerr is not None) or (yerr is not None):
-                            ax.errorbar(
-                                x=x_data,
-                                y=y_data,
-                                xerr=xerr_data,
-                                yerr=yerr_data,
-                                label="__nolabel__",
-                                **error_kwargs
-                            )
+                    if barstack_x is None:
+                        barstack_x = x_data
+                        barstack_y = np.zeros_like(y_data)
 
-                    last_barstack_x = x_data
-                    last_barstack_y = y_data
+                    if not np.all(np.isclose(barstack_x, x_data)):
+                        raise ValueError("x data must match for stacked bars.")
+                    ax.bar(x=x_data, height=y_data, bottom=barstack_y,
+                           label=label, **bar_kwargs)
+                    if (xerr is not None) or (yerr is not None):
+                        ax.errorbar(
+                            x=x_data,
+                            y=y_data + barstack_y,
+                            xerr=xerr_data,
+                            yerr=yerr_data,
+                            label="__nolabel__",
+                            **error_kwargs
+                        )
+                    barstack_y = barstack_y + y_data
 
                 elif curve.type == CurveType.HORIZONTALBARSTACKED:
-                    if last_barhstack_x is not None:
-                        if not np.all(np.isclose(last_barhstack_x, x_data)):
-                            raise ValueError(
-                                "x data must be identical for stacked bars.")
-                        ax.barh(y=x_data, width=y_data, left=last_barhstack_y,
-                                label=label, **bar_kwargs)
-                        if (xerr is not None) or (yerr is not None):
-                            ax.errorbar(
-                                x=y_data + last_barhstack_y,
-                                y=x_data,
-                                xerr=yerr_data,
-                                yerr=xerr_data,
-                                label="__nolabel__",
-                                **error_kwargs
-                            )
-                    else:
-                        ax.barh(y=x_data, width=y_data, **bar_kwargs)
-                        if (xerr is not None) or (yerr is not None):
-                            ax.errorbar(
-                                x=y_data,
-                                y=x_data,
-                                xerr=yerr_data,
-                                yerr=xerr_data,
-                                label="__nolabel__",
-                                **error_kwargs
-                            )
-                    last_barhstack_x = x_data
-                    last_barhstack_y = y_data
+                    if barhstack_x is None:
+                        barhstack_x = x_data
+                        barhstack_y = np.zeros_like(y_data)
+
+                    if not np.all(np.isclose(barhstack_x, x_data)):
+                        raise ValueError("x data must match for stacked bars.")
+                    ax.barh(y=x_data, width=y_data, left=barhstack_y,
+                            label=label, **bar_kwargs)
+                    if (xerr is not None) or (yerr is not None):
+                        ax.errorbar(
+                            x=y_data + barhstack_y,
+                            y=x_data,
+                            xerr=yerr_data,
+                            yerr=xerr_data,
+                            label="__nolabel__",
+                            **error_kwargs
+                        )
+                    barhstack_y = barhstack_y + y_data
 
 
             # plot settings

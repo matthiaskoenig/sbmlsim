@@ -11,6 +11,8 @@
 - [~] support setting label (name of axis), see https://github.com/fbergmann/libSEDML/issues/110
 - [x] plot width and height  
 - [x] curve type (points, bar, ...)
+  - [ ] fix stacking position
+  - [ ] bars next to each other;  
 - [ ] error bars
 - [ ] yAxis  
 - [ ] shaded areas & fills
