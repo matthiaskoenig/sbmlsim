@@ -10,11 +10,11 @@
 - [x] support style on axis
 - [~] support setting label (name of axis), see https://github.com/fbergmann/libSEDML/issues/110
 - [x] plot width and height  
-- [ ] curve type (points, bar, ...)
+- [x] curve type (points, bar, ...)
+- [ ] error bars
 - [ ] yAxis  
 - [ ] shaded areas & fills
 - [ ] order of abstract curve
-- [ ] error bars
 
 # Reports
 - [ ] reports

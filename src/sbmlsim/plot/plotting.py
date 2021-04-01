@@ -447,8 +447,11 @@ class Curve(AbstractCurve):
     ):
         super(Curve, self).__init__(None, None, x, order, style, yaxis)
         self.y = y
-        self.xerr = xerr
-        self.yerr = yerr
+
+        # set symmetrical
+        self.xerr: Data = xerr
+        self.yerr: Data = yerr
+
         self.single_lines = single_lines
         self.dim_reductions = dim_reductions
 

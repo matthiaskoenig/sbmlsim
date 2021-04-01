@@ -7,7 +7,7 @@
       "model": {
         "@id": "model0",
         "@language": "urn:sedml:language:sbml.level-3.version-1",
-        "@source": "curve_types_model.xml"
+        "@source": "case_01.xml"
       }
     },
     "listOfSimulations": {
@@ -64,6 +64,25 @@
           }
         },
         {
+          "@id": "dg_S1_error",
+          "math": {
+            "@xmlns": "http://www.w3.org/1998/Math/MathML",
+            "apply": {
+              "times": null,
+              "cn": "0.2",
+              "ci": "S1"
+            }
+          },
+          "listOfVariables": {
+            "variable": {
+              "@id": "S1",
+              "@target": "/sbml:sbml/sbml:model/sbml:listOfSpecies/sbml:species[@id='S1']",
+              "@taskReference": "task0",
+              "@modelReference": "model0"
+            }
+          }
+        },
+        {
           "@id": "dg_S2",
           "@name": "S2",
           "math": {
@@ -80,16 +99,38 @@
           }
         },
         {
-          "@id": "dg_S3",
-          "@name": "S3",
+          "@id": "dg_S2_error",
           "math": {
             "@xmlns": "http://www.w3.org/1998/Math/MathML",
-            "ci": "S3"
+            "apply": {
+              "times": null,
+              "cn": "0.1",
+              "ci": "S2"
+            }
           },
           "listOfVariables": {
             "variable": {
-              "@id": "S3",
-              "@target": "/sbml:sbml/sbml:model/sbml:listOfSpecies/sbml:species[@id='S3']",
+              "@id": "S2",
+              "@target": "/sbml:sbml/sbml:model/sbml:listOfSpecies/sbml:species[@id='S2']",
+              "@taskReference": "task0",
+              "@modelReference": "model0"
+            }
+          }
+        },
+        {
+          "@id": "dg_S2_errorLower",
+          "math": {
+            "@xmlns": "http://www.w3.org/1998/Math/MathML",
+            "apply": {
+              "times": null,
+              "cn": "0.3",
+              "ci": "S2"
+            }
+          },
+          "listOfVariables": {
+            "variable": {
+              "@id": "S2",
+              "@target": "/sbml:sbml/sbml:model/sbml:listOfSpecies/sbml:species[@id='S2']",
               "@taskReference": "task0",
               "@modelReference": "model0"
             }
@@ -109,6 +150,7 @@
                 "@name": "S1",
                 "@xDataReference": "dg_time",
                 "@yDataReference": "dg_S1",
+                "@xError": "dg_S1_error",
                 "@type": "points",
                 "@style": "style_blue"
               },
@@ -117,16 +159,10 @@
                 "@name": "S2",
                 "@xDataReference": "dg_time",
                 "@yDataReference": "dg_S2",
+                "@xError": "dg_S2_error",
+                "@xErrorLower": "dg_S2_errorLower",
                 "@type": "points",
                 "@style": "style_orange"
-              },
-              {
-                "@id": "curve_S3_points",
-                "@name": "S3",
-                "@xDataReference": "dg_time",
-                "@yDataReference": "dg_S3",
-                "@type": "points",
-                "@style": "style_green"
               }
             ]
           }
@@ -151,14 +187,6 @@
                 "@yDataReference": "dg_S2",
                 "@type": "bar",
                 "@style": "style_orange"
-              },
-              {
-                "@id": "curve_S3_bar",
-                "@name": "S3",
-                "@xDataReference": "dg_time",
-                "@yDataReference": "dg_S3",
-                "@type": "bar",
-                "@style": "style_green"
               }
             ]
           }
@@ -183,14 +211,6 @@
                 "@yDataReference": "dg_S2",
                 "@type": "barStacked",
                 "@style": "style_orange"
-              },
-              {
-                "@id": "curve_S3_barStacked",
-                "@name": "S3",
-                "@xDataReference": "dg_time",
-                "@yDataReference": "dg_S3",
-                "@type": "barStacked",
-                "@style": "style_green"
               }
             ]
           }
@@ -215,14 +235,6 @@
                 "@yDataReference": "dg_S2",
                 "@type": "horizontalBar",
                 "@style": "style_orange"
-              },
-              {
-                "@id": "curve_S3_horizontalBar",
-                "@name": "S3",
-                "@xDataReference": "dg_time",
-                "@yDataReference": "dg_S3",
-                "@type": "horizontalBar",
-                "@style": "style_green"
               }
             ]
           }
@@ -247,14 +259,6 @@
                 "@yDataReference": "dg_S2",
                 "@type": "horizontalBarStacked",
                 "@style": "style_orange"
-              },
-              {
-                "@id": "curve_S3_horizontalBarStacked",
-                "@name": "S3",
-                "@xDataReference": "dg_time",
-                "@yDataReference": "dg_S3",
-                "@type": "horizontalBarStacked",
-                "@style": "style_green"
               }
             ]
           }
@@ -326,18 +330,7 @@
             "@thickness": "4"
           },
           "fill": {
-            "@color": "#ff7f0eaa"
-          }
-        },
-        {
-          "@id": "style_green",
-          "line": {
-            "@style": "solid",
-            "@color": "#2ca02caa",
-            "@thickness": "4"
-          },
-          "fill": {
-            "@color": "#2ca02caa"
+            "@color": "#ff7f0eff"
           }
         }
       ]

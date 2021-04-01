@@ -1083,7 +1083,7 @@
         <table id="table_species" class="table table-condensed table-nonfluid table-hover">
             <thead class="bg-secondary">
             <tr>    <th scope="col" class="hidden">type</th>
-	<th scope="col" class="warning">Species [2]</th>
+	<th scope="col" class="warning">Species [3]</th>
     <th scope="col">name</th>
 	<th scope="col">compartment</th>
     <th scope="col">hasOnlySubstanceUnits</th>
@@ -1224,6 +1224,68 @@
                 </td>
 	<td></td>
 </tr>
+                <tr>    <td class="hidden">Species</td>
+	    
+                <td id="S3" class="active">
+                <span class="package">S3</span> 
+            
+      <button type="button" class="btn btn-default btn-xs" data-toggle="modal"
+         data-target="#model-S3">
+        <i class="fa fa-code"></i>
+      </button>
+      <div class="modal fade" id="model-S3" role="dialog">
+        <div class="modal-dialog modal-lg">
+          <div class="modal-content">
+            <div class="modal-header"><h4 class="modal-title">S3</h4></div>
+            <div class="modal-body">
+                <textarea rows="20" class="form-control"
+                    style="min-width: 100%; font-family: 'Courier New'">
+                    <species sboTerm="SBO:0000247" id="S3" compartment="cell" initialConcentration="0" substanceUnits="mmole" hasOnlySubstanceUnits="false" boundaryCondition="false" constant="false"/>
+                </textarea>
+            </div>
+          </div>
+        </div>
+      </div>
+    
+    </td>
+
+	<td><i class="fa fa-ban gray"></i></td>
+	<td>cell</td>
+    <td><span class=""><span class="invisible">F</span></span></td>
+    <td><span class=""><span class="invisible">F</span></span></td>
+    <td><span class=""><span class="invisible">F</span></span></td>
+	<td><i class="fa fa-ban gray"></i></td>
+	<td>0.0</td>
+    <td><i class="fa fa-ban gray"></i></td>
+    <td>mmole</td>
+	<td>mmole</td>
+	<td><?xml version="1.0" encoding="UTF-8"?>
+<math xmlns="http://www.w3.org/1998/Math/MathML">
+  <apply>
+    <divide/>
+    <apply>
+      <times/>
+      <apply>
+        <power/>
+        <cn type="integer"> 10 </cn>
+        <apply>
+          <minus/>
+          <cn type="integer"> 3 </cn>
+        </apply>
+      </apply>
+      <ci> mole </ci>
+    </apply>
+    <ci> litre </ci>
+  </apply>
+</math></td>
+	<td><div class="cvterm">
+                        <a href="http://identifiers.org/biomodels.sbo/SBO:0000247" target="_blank">
+                            SBO:0000247
+                        </a>
+                    </div>
+                </td>
+	<td></td>
+</tr>
             </tbody>
         </table>
     </p>
@@ -1324,7 +1386,7 @@
         <table id="table_reactions" class="table table-condensed table-nonfluid table-hover">
             <thead class="bg-secondary">
             <tr>    <th scope="col" class="hidden">type</th>
-	<th scope="col" class="warning">Reactions [1]</th>
+	<th scope="col" class="warning">Reactions [2]</th>
 	<th scope="col">name</th>
 	<th scope="col"></th>
 	<th scope="col">equation</th>
@@ -1388,6 +1450,86 @@
     <times/>
     <ci> k </ci>
     <ci> S1 </ci>
+  </apply>
+</math></td>
+    <td><?xml version="1.0" encoding="UTF-8"?>
+<math xmlns="http://www.w3.org/1998/Math/MathML">
+  <apply>
+    <divide/>
+    <apply>
+      <times/>
+      <apply>
+        <power/>
+        <cn type="integer"> 10 </cn>
+        <apply>
+          <minus/>
+          <cn type="integer"> 3 </cn>
+        </apply>
+      </apply>
+      <ci> mole </ci>
+    </apply>
+    <apply>
+      <times/>
+      <cn> 60 </cn>
+      <ci> s </ci>
+    </apply>
+  </apply>
+</math></td>
+	<td></td>
+	<td></td>
+</tr>
+                <tr>    <td class="hidden">Reaction</td>
+	    
+                <td id="_J1" class="active">
+                <span class="package">_J1</span> 
+            
+      <button type="button" class="btn btn-default btn-xs" data-toggle="modal"
+         data-target="#model-_J1">
+        <i class="fa fa-code"></i>
+      </button>
+      <div class="modal fade" id="model-_J1" role="dialog">
+        <div class="modal-dialog modal-lg">
+          <div class="modal-content">
+            <div class="modal-header"><h4 class="modal-title">_J1</h4></div>
+            <div class="modal-body">
+                <textarea rows="20" class="form-control"
+                    style="min-width: 100%; font-family: 'Courier New'">
+                    <reaction id="_J1" reversible="false" fast="false" compartment="cell">
+  <listOfReactants>
+    <speciesReference species="S2" stoichiometry="1" constant="true"/>
+  </listOfReactants>
+  <listOfProducts>
+    <speciesReference species="S3" stoichiometry="1" constant="true"/>
+  </listOfProducts>
+  <kineticLaw>
+    <math xmlns="http://www.w3.org/1998/Math/MathML">
+      <apply>
+        <times/>
+        <ci> k </ci>
+        <ci> S2 </ci>
+      </apply>
+    </math>
+  </kineticLaw>
+</reaction>
+                </textarea>
+            </div>
+          </div>
+        </div>
+      </div>
+    
+    </td>
+
+	<td><i class="fa fa-ban gray"></i><br />
+	</td>
+	<td class ="danger">&#10142;</td>
+	<td>S2 &#10142; S3</td>
+	<td><i class="fa fa-ban gray"></i></td>
+	<td><?xml version="1.0" encoding="UTF-8"?>
+<math xmlns="http://www.w3.org/1998/Math/MathML">
+  <apply>
+    <times/>
+    <ci> k </ci>
+    <ci> S2 </ci>
   </apply>
 </math></td>
     <td><?xml version="1.0" encoding="UTF-8"?>

@@ -57,6 +57,14 @@ species = [
         hasOnlySubstanceUnits=False,
         substanceUnit=UNIT_mmole,
     ),
+    Species(
+        sid="S3",
+        compartment="cell",
+        initialConcentration=0.0,
+        sboTerm=SBO_SIMPLE_CHEMICAL,
+        hasOnlySubstanceUnits=False,
+        substanceUnit=UNIT_mmole,
+    ),
 ]
 
 parameters = [
@@ -69,6 +77,12 @@ reactions = [
         equation="S1 -> S2",
         compartment="cell",
         formula=("k * S1", UNIT_mmole_per_min)
+    ),
+    Reaction(
+        sid="_J1",
+        equation="S2 -> S3",
+        compartment="cell",
+        formula=("k * S2", UNIT_mmole_per_min)
     )
 ]
 

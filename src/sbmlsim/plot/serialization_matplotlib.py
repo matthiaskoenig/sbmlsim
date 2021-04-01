@@ -113,7 +113,7 @@ class MatplotlibFigureSerializer(object):
                 # TODO: iterate over all repeats in the data
                 x_data = x.magnitude[:, 0] if x is not None else None
                 y_data = y.magnitude[:, 0] if y is not None else None
-                xerr_data = xerr.magnitude[:, 0] if xerr is not None else None
+                xerr_data = xerr_data.magnitude[:, 0] if xerr is not None else None
                 yerr_data = yerr.magnitude[:, 0] if yerr is not None else None
 
                 print("xshape")
@@ -122,36 +122,75 @@ class MatplotlibFigureSerializer(object):
                 print("x_data", x_data)
                 print("y_data", y_data)
 
-                # FIXME: support error bars (in a generic manner)
                 # directly plot the bars with whiskers
-
+                error_kwargs = {
+                    'color': "black",
+                    'marker': None,
+                }
                 if curve.type == CurveType.POINTS:
-                    if (xerr is None) and (yerr is None):
-                        ax.plot(x_data, y_data, label=label, **points_kwargs)
-                    elif yerr is not None:
-                        # FIXME: support x-error
+                    ax.plot(x_data, y_data, label=label, **points_kwargs)
+                    if (xerr is not None) or (yerr is not None):
                         ax.errorbar(
-                            x_data,
-                            y_data,
-                            yerr_data,
-                            label=label,
-                            **points_kwargs,
+                            x=x_data,
+                            y=y_data,
+                            xerr=xerr_data,
+                            yerr=yerr_data,
+                            label="__nolabel__",
+                            **error_kwargs
                         )
+
                 elif curve.type == CurveType.BAR:
-                    ax.bar(x=x_data, height=y_data, **bar_kwargs)
+                    ax.bar(x=x_data, height=y_data, label=label, **bar_kwargs)
+                    if (xerr is not None) or (yerr is not None):
+                        ax.errorbar(
+                            x=x_data,
+                            y=y_data,
+                            xerr=xerr_data,
+                            yerr=yerr_data,
+                            label="__nolabel__",
+                            **error_kwargs
+                        )
 
                 elif curve.type == CurveType.HORIZONTALBAR:
-                    ax.barh(y=x_data, width=y_data, **bar_kwargs)
+                    ax.barh(y=x_data, width=y_data, label=label, **bar_kwargs)
+                    if (xerr is not None) or (yerr is not None):
+                        ax.errorbar(
+                            x=y_data,
+                            y=x_data,
+                            xerr=yerr_data,
+                            yerr=xerr_data,
+                            label="__nolabel__",
+                            **error_kwargs
+                        )
 
                 elif curve.type == CurveType.BARSTACKED:
                     if last_barstack_x is not None:
                         if not np.all(np.isclose(last_barstack_x, x_data)):
                             raise ValueError(
                                 "x data must be identical for stacked bars.")
+                        # FIXME: correct offsets, must be tested with 3 species
                         ax.bar(x=x_data, height=y_data, bottom=last_barstack_y,
-                               **bar_kwargs)
+                               label=label, **bar_kwargs)
+                        if (xerr is not None) or (yerr is not None):
+                            ax.errorbar(
+                                x=x_data,
+                                y=y_data + last_barstack_y,
+                                xerr=xerr_data,
+                                yerr=yerr_data,
+                                label="__nolabel__",
+                                **error_kwargs
+                            )
                     else:
-                        ax.bar(x=x_data, height=y_data, **bar_kwargs)
+                        ax.bar(x=x_data, height=y_data, label=label, **bar_kwargs)
+                        if (xerr is not None) or (yerr is not None):
+                            ax.errorbar(
+                                x=x_data,
+                                y=y_data,
+                                xerr=xerr_data,
+                                yerr=yerr_data,
+                                label="__nolabel__",
+                                **error_kwargs
+                            )
 
                     last_barstack_x = x_data
                     last_barstack_y = y_data
@@ -162,10 +201,27 @@ class MatplotlibFigureSerializer(object):
                             raise ValueError(
                                 "x data must be identical for stacked bars.")
                         ax.barh(y=x_data, width=y_data, left=last_barhstack_y,
-                               **bar_kwargs)
+                                label=label, **bar_kwargs)
+                        if (xerr is not None) or (yerr is not None):
+                            ax.errorbar(
+                                x=y_data + last_barhstack_y,
+                                y=x_data,
+                                xerr=yerr_data,
+                                yerr=xerr_data,
+                                label="__nolabel__",
+                                **error_kwargs
+                            )
                     else:
                         ax.barh(y=x_data, width=y_data, **bar_kwargs)
-
+                        if (xerr is not None) or (yerr is not None):
+                            ax.errorbar(
+                                x=y_data,
+                                y=x_data,
+                                xerr=yerr_data,
+                                yerr=xerr_data,
+                                label="__nolabel__",
+                                **error_kwargs
+                            )
                     last_barhstack_x = x_data
                     last_barhstack_y = y_data
 

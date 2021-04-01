@@ -76,6 +76,7 @@ if __name__ == "__main__":
         # ("linetype", "linetype.sedml"),
         # ("axis", "axis.sedml"),
         ("curve_types", "curve_types.sedml"),
+        # ("curve_types_errors", "curve_types_errors.sedml"),
         # ("line_overlap_order", "line_overlap_order.sedml"),
         # ("repressilator_figure", "repressilator_figure.xml"),
         # ("repressilator_l1v3", "repressilator_l1v3.xml"),

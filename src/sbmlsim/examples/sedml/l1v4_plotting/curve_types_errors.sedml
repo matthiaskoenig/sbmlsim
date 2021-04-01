@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <sedML xmlns="http://sed-ml.org/sed-ml/level1/version4" level="1" version="4">
   <listOfModels>
-    <model id="model0" language="urn:sedml:language:sbml.level-3.version-1" source="curve_types_model.xml"/>
+    <model id="model0" language="urn:sedml:language:sbml.level-3.version-1" source="case_01.xml"/>
   </listOfModels>
   <listOfSimulations>
     <uniformTimeCourse id="sim0" initialTime="0" outputStartTime="0" outputEndTime="10" numberOfSteps="10">
@@ -28,6 +28,18 @@
         <variable id="S1" target="/sbml:sbml/sbml:model/sbml:listOfSpecies/sbml:species[@id=&apos;S1&apos;]" taskReference="task0" modelReference="model0"/>
       </listOfVariables>
     </dataGenerator>
+    <dataGenerator id="dg_S1_error">
+      <math xmlns="http://www.w3.org/1998/Math/MathML">
+      <apply>
+        <times/>
+        <cn>0.2</cn>
+        <ci> S1 </ci>
+        </apply>
+      </math>
+      <listOfVariables>
+        <variable id="S1" target="/sbml:sbml/sbml:model/sbml:listOfSpecies/sbml:species[@id=&apos;S1&apos;]" taskReference="task0" modelReference="model0"/>
+      </listOfVariables>
+    </dataGenerator>
     <dataGenerator id="dg_S2" name="S2">
       <math xmlns="http://www.w3.org/1998/Math/MathML">
         <ci> S2 </ci>
@@ -36,49 +48,60 @@
         <variable id="S2" target="/sbml:sbml/sbml:model/sbml:listOfSpecies/sbml:species[@id=&apos;S2&apos;]" taskReference="task0" modelReference="model0"/>
       </listOfVariables>
     </dataGenerator>
-    <dataGenerator id="dg_S3" name="S3">
+    <dataGenerator id="dg_S2_error">
       <math xmlns="http://www.w3.org/1998/Math/MathML">
-        <ci> S3 </ci>
+      <apply>
+        <times/>
+        <cn>0.1</cn>
+        <ci> S2 </ci>
+        </apply>
       </math>
       <listOfVariables>
-        <variable id="S3" target="/sbml:sbml/sbml:model/sbml:listOfSpecies/sbml:species[@id=&apos;S3&apos;]" taskReference="task0" modelReference="model0"/>
+        <variable id="S2" target="/sbml:sbml/sbml:model/sbml:listOfSpecies/sbml:species[@id=&apos;S2&apos;]" taskReference="task0" modelReference="model0"/>
+      </listOfVariables>
+    </dataGenerator>
+    <dataGenerator id="dg_S2_errorLower">
+      <math xmlns="http://www.w3.org/1998/Math/MathML">
+      <apply>
+        <times/>
+        <cn>0.3</cn>
+        <ci> S2 </ci>
+      </apply>
+      </math>
+      <listOfVariables>
+        <variable id="S2" target="/sbml:sbml/sbml:model/sbml:listOfSpecies/sbml:species[@id=&apos;S2&apos;]" taskReference="task0" modelReference="model0"/>
       </listOfVariables>
     </dataGenerator>
   </listOfDataGenerators>
   <listOfOutputs>
     <plot2D id="plot_points" name="points">
       <listOfCurves>
-        <curve id="curve_S1_points" name="S1" xDataReference="dg_time" yDataReference="dg_S1" type="points" style="style_blue"/>
-        <curve id="curve_S2_points" name="S2" xDataReference="dg_time" yDataReference="dg_S2" type="points" style="style_orange"/>
-        <curve id="curve_S3_points" name="S3" xDataReference="dg_time" yDataReference="dg_S3" type="points" style="style_green"/>
+        <curve id="curve_S1_points" name="S1" xDataReference="dg_time" yDataReference="dg_S1" xError="dg_S1_error" type="points" style="style_blue"/>
+        <curve id="curve_S2_points" name="S2" xDataReference="dg_time" yDataReference="dg_S2" xError="dg_S2_error" xErrorLower="dg_S2_errorLower" type="points" style="style_orange"/>
       </listOfCurves>
     </plot2D>
     <plot2D id="plot_bar" name="bar">
       <listOfCurves>
         <curve id="curve_S1_bar" name="S1" xDataReference="dg_time" yDataReference="dg_S1" type="bar" style="style_blue"/>
         <curve id="curve_S2_bar" name="S2" xDataReference="dg_time" yDataReference="dg_S2" type="bar" style="style_orange"/>
-        <curve id="curve_S3_bar" name="S3" xDataReference="dg_time" yDataReference="dg_S3" type="bar" style="style_green"/>
       </listOfCurves>
     </plot2D>
     <plot2D id="plot_barStacked" name="barStacked">
       <listOfCurves>
         <curve id="curve_S1_barStacked" name="S1" xDataReference="dg_time" yDataReference="dg_S1" type="barStacked" style="style_blue"/>
         <curve id="curve_S2_barStacked" name="S2" xDataReference="dg_time" yDataReference="dg_S2" type="barStacked" style="style_orange"/>
-        <curve id="curve_S3_barStacked" name="S3" xDataReference="dg_time" yDataReference="dg_S3" type="barStacked" style="style_green"/>
       </listOfCurves>
     </plot2D>
     <plot2D id="plot_horizontalBar" name="horizontalBar">
       <listOfCurves>
         <curve id="curve_S1_horizontalBar" name="S1" xDataReference="dg_time" yDataReference="dg_S1" type="horizontalBar" style="style_blue"/>
         <curve id="curve_S2_horizontalBar" name="S2" xDataReference="dg_time" yDataReference="dg_S2" type="horizontalBar" style="style_orange"/>
-        <curve id="curve_S3_horizontalBar" name="S3" xDataReference="dg_time" yDataReference="dg_S3" type="horizontalBar" style="style_green"/>
       </listOfCurves>
     </plot2D>
     <plot2D id="plot_horizontalBarStacked" name="horizontalBarStacked">
       <listOfCurves>
         <curve id="curve_S1_horizontalBarStacked" name="S1" xDataReference="dg_time" yDataReference="dg_S1" type="horizontalBarStacked" style="style_blue"/>
         <curve id="curve_S2_horizontalBarStacked" name="S2" xDataReference="dg_time" yDataReference="dg_S2" type="horizontalBarStacked" style="style_orange"/>
-        <curve id="curve_S3_horizontalBarStacked" name="S3" xDataReference="dg_time" yDataReference="dg_S3" type="horizontalBarStacked" style="style_green"/>
       </listOfCurves>
     </plot2D>
     <figure id="figure0" numRows="3" numCols="2">
@@ -98,11 +121,7 @@
     </style>
     <style id="style_orange">
       <line style="solid" color="#ff7f0eaa" thickness="4"/>
-      <fill color="#ff7f0eaa"/>
-    </style>
-    <style id="style_green">
-      <line style="solid" color="#2ca02caa" thickness="4"/>
-      <fill color="#2ca02caa"/>
+      <fill color="#ff7f0eff"/>
     </style>
   </listOfStyles>
 </sedML>

@@ -918,12 +918,12 @@ class SEDMLParser(object):
                 name=sed_curve.getName() if sed_curve.isSetName() else None,
                 x=self.data_from_datagenerator(sed_curve.getXDataReference()),
                 y=self.data_from_datagenerator(sed_curve.getYDataReference()),
-                # FIXME: handle errorbars via lower and upper
-                xerr=self.data_from_datagenerator(sed_curve.getXErrorLower()),
-                yerr=self.data_from_datagenerator(sed_curve.getYErrorLower()),
+                xerr=self.data_from_datagenerator(sed_curve.getXErrorUpper()),
+                yerr=self.data_from_datagenerator(sed_curve.getYErrorUpper()),
                 type=curve_type,
                 # FIXME: support yaxis
             )
+            sed_curve.getXErrorUpper()
 
             if sed_curve.isSetStyle():
                 # styles are already parsed, used the style
