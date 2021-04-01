@@ -733,7 +733,11 @@ class Plot(BasePlotObject):
         if len(curve_types) > 1:
             raise ValueError(f"CurveTypes cannot be mixed: {curve_types}")
 
-        curve.order = len(self.curves)
+        if curve.order is None:
+            if not self.curves:
+                curve.order = 0
+            else:
+                curve.order = max([c.order for c in self.curves]) + 1
 
         # inject default colors if no colors provided
         color = ColorType.parse_color(

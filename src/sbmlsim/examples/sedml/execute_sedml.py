@@ -75,7 +75,7 @@ if __name__ == "__main__":
         # ("markertype", "markertype.sedml"),
         # ("linetype", "linetype.sedml"),
         # ("axis", "axis.sedml"),
-        ("curve_types", "curve_types.sedml"),
+        # ("curve_types", "curve_types.sedml"),
         # ("curve_types_errors", "curve_types_errors.sedml"),
         # ("line_overlap_order", "line_overlap_order.sedml"),
         # ("repressilator_figure", "repressilator_figure.xml"),
@@ -84,7 +84,7 @@ if __name__ == "__main__":
         # ("TestFile1", "test_file_1.sedml"),
         # ("TestLineFill", "test_line_fill.sedml"),
 
-        # ("StackedBar", "stacked_bar.sedml"),
+        ("stacked_bar", "stacked_bar.sedml"),
         # ("HBarStacked", "test_3hbarstacked.sedml"),
         # ("Bar", "test_bar.sedml"),
         # ("Bar", "test_bar3stacked.sedml"),

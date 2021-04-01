@@ -60,48 +60,48 @@
         <variable id="S2" target="/sbml:sbml/sbml:model/sbml:listOfSpecies/sbml:species[@id=&apos;S2&apos;]" taskReference="task0" modelReference="model0"/>
       </listOfVariables>
     </dataGenerator>
-    <dataGenerator id="dg_S2_errorLower">
+    <dataGenerator id="dg_time_error">
       <math xmlns="http://www.w3.org/1998/Math/MathML">
       <apply>
         <times/>
-        <cn>0.3</cn>
-        <ci> S2 </ci>
+        <cn>0.1</cn>
+        <ci> time </ci>
       </apply>
       </math>
       <listOfVariables>
-        <variable id="S2" target="/sbml:sbml/sbml:model/sbml:listOfSpecies/sbml:species[@id=&apos;S2&apos;]" taskReference="task0" modelReference="model0"/>
+         <variable id="time" symbol="urn:sedml:symbol:time" taskReference="task0" modelReference="model0"/>
       </listOfVariables>
     </dataGenerator>
   </listOfDataGenerators>
   <listOfOutputs>
     <plot2D id="plot_points" name="points">
       <listOfCurves>
-        <curve id="curve_S1_points" name="S1" xDataReference="dg_time" yDataReference="dg_S1" xError="dg_S1_error" type="points" style="style_blue"/>
-        <curve id="curve_S2_points" name="S2" xDataReference="dg_time" yDataReference="dg_S2" xError="dg_S2_error" xErrorLower="dg_S2_errorLower" type="points" style="style_orange"/>
+        <curve id="curve_S1_points" name="S1" xDataReference="dg_time" yDataReference="dg_S1" xErrorUpper="dg_time_error" yErrorUpper="dg_S1_error" type="points" style="style_blue"/>
+        <curve id="curve_S2_points" name="S2" xDataReference="dg_time" yDataReference="dg_S2" xErrorUpper="dg_time_error" yErrorUpper="dg_S2_error" type="points" style="style_orange"/>
       </listOfCurves>
     </plot2D>
     <plot2D id="plot_bar" name="bar">
       <listOfCurves>
-        <curve id="curve_S1_bar" name="S1" xDataReference="dg_time" yDataReference="dg_S1" type="bar" style="style_blue"/>
-        <curve id="curve_S2_bar" name="S2" xDataReference="dg_time" yDataReference="dg_S2" type="bar" style="style_orange"/>
+        <curve id="curve_S1_bar" name="S1" xDataReference="dg_time" yDataReference="dg_S1" xErrorUpper="dg_time_error" yErrorUpper="dg_S1_error" type="bar" style="style_blue"/>
+        <curve id="curve_S2_bar" name="S2" xDataReference="dg_time" yDataReference="dg_S2" xErrorUpper="dg_time_error" yErrorUpper="dg_S2_error" type="bar" style="style_orange"/>
       </listOfCurves>
     </plot2D>
     <plot2D id="plot_barStacked" name="barStacked">
       <listOfCurves>
-        <curve id="curve_S1_barStacked" name="S1" xDataReference="dg_time" yDataReference="dg_S1" type="barStacked" style="style_blue"/>
-        <curve id="curve_S2_barStacked" name="S2" xDataReference="dg_time" yDataReference="dg_S2" type="barStacked" style="style_orange"/>
+        <curve id="curve_S1_barStacked" name="S1" xDataReference="dg_time" yDataReference="dg_S1" xErrorUpper="dg_time_error" yErrorUpper="dg_S1_error" type="barStacked" style="style_blue"/>
+        <curve id="curve_S2_barStacked" name="S2" xDataReference="dg_time" yDataReference="dg_S2" xErrorUpper="dg_time_error" yErrorUpper="dg_S2_error" type="barStacked" style="style_orange"/>
       </listOfCurves>
     </plot2D>
     <plot2D id="plot_horizontalBar" name="horizontalBar">
       <listOfCurves>
-        <curve id="curve_S1_horizontalBar" name="S1" xDataReference="dg_time" yDataReference="dg_S1" type="horizontalBar" style="style_blue"/>
-        <curve id="curve_S2_horizontalBar" name="S2" xDataReference="dg_time" yDataReference="dg_S2" type="horizontalBar" style="style_orange"/>
+        <curve id="curve_S1_horizontalBar" name="S1" xDataReference="dg_time" yDataReference="dg_S1" xErrorUpper="dg_time_error" yErrorUpper="dg_S1_error" type="horizontalBar" style="style_blue"/>
+        <curve id="curve_S2_horizontalBar" name="S2" xDataReference="dg_time" yDataReference="dg_S2" xErrorUpper="dg_time_error" yErrorUpper="dg_S2_error" type="horizontalBar" style="style_orange"/>
       </listOfCurves>
     </plot2D>
     <plot2D id="plot_horizontalBarStacked" name="horizontalBarStacked">
       <listOfCurves>
-        <curve id="curve_S1_horizontalBarStacked" name="S1" xDataReference="dg_time" yDataReference="dg_S1" type="horizontalBarStacked" style="style_blue"/>
-        <curve id="curve_S2_horizontalBarStacked" name="S2" xDataReference="dg_time" yDataReference="dg_S2" type="horizontalBarStacked" style="style_orange"/>
+        <curve id="curve_S1_horizontalBarStacked" name="S1" xDataReference="dg_time" yDataReference="dg_S1" xErrorUpper="dg_time_error" yErrorUpper="dg_S1_error" type="horizontalBarStacked" style="style_blue"/>
+        <curve id="curve_S2_horizontalBarStacked" name="S2" xDataReference="dg_time" yDataReference="dg_S2" xErrorUpper="dg_time_error" yErrorUpper="dg_S2_error" type="horizontalBarStacked" style="style_orange"/>
       </listOfCurves>
     </plot2D>
     <figure id="figure0" numRows="3" numCols="2">
@@ -117,11 +117,18 @@
   <listOfStyles>
     <style id="style_blue">
       <line style="solid" color="#1f77b4aa" thickness="4"/>
+      <marker lineColor="#000000"/>
       <fill color="#1f77b4aa"/>
     </style>
     <style id="style_orange">
       <line style="solid" color="#ff7f0eaa" thickness="4"/>
-      <fill color="#ff7f0eff"/>
+      <marker lineColor="#000000"/>
+      <fill color="#ff7f0eaa"/>
+    </style>
+    <style id="style_green">
+      <line style="solid" color="#2ca02caa" thickness="4"/>
+      <marker lineColor="#000000" lineThickness="1"/>
+      <fill color="#2ca02caa"/>
     </style>
   </listOfStyles>
 </sedML>

@@ -921,6 +921,7 @@ class SEDMLParser(object):
                 xerr=self.data_from_datagenerator(sed_curve.getXErrorUpper()),
                 yerr=self.data_from_datagenerator(sed_curve.getYErrorUpper()),
                 type=curve_type,
+                order=sed_curve.getOrder() if sed_curve.isSetOrder() else None,
                 # FIXME: support yaxis
             )
             sed_curve.getXErrorUpper()

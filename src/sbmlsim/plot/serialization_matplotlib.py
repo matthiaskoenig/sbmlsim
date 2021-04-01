@@ -88,6 +88,7 @@ class MatplotlibFigureSerializer(object):
 
             # plot ordered curves
             curves: List[Curve] = sorted(plot.curves, key=lambda x: x.order)
+            print("order:", [c.order for c in curves])
             for curve in curves:
                 print(curve)
 
@@ -106,62 +107,64 @@ class MatplotlibFigureSerializer(object):
                 points_kwargs = curve.style.to_mpl_kwargs() if curve.style else {}
                 bar_kwargs = {**points_kwargs}
                 for key in ["marker", "markersize", "markerfacecolor", "markeredgewidth"]:
-                    bar_kwargs.pop(key)
+                    if key in bar_kwargs:
+                        bar_kwargs.pop(key)
+                    if 'markeredgecolor' in bar_kwargs:
+                        bar_kwargs['edgecolor'] = bar_kwargs.pop('markeredgecolor')
 
 
                 # FIXME: necessary to get the individual curves out of the data cube
                 # TODO: iterate over all repeats in the data
                 x_data = x.magnitude[:, 0] if x is not None else None
                 y_data = y.magnitude[:, 0] if y is not None else None
-                xerr_data = xerr_data.magnitude[:, 0] if xerr is not None else None
+                xerr_data = xerr.magnitude[:, 0] if xerr is not None else None
                 yerr_data = yerr.magnitude[:, 0] if yerr is not None else None
 
-                print("xshape")
-                print("x", x)
-                print("y", y)
-                print("x_data", x_data)
-                print("y_data", y_data)
+                # print("xshape")
+                # print("x", x)
+                # print("y", y)
+                # print("x_data", x_data)
+                # print("y_data", y_data)
 
                 # directly plot the bars with whiskers
                 error_kwargs = {
-                    'color': "black",
-                    'marker': None,
+                    'error_kw': {
+                        'ecolor': "black",
+                        'elinewidth': 3.0,
+                    }
+
                 }
                 if curve.type == CurveType.POINTS:
-                    ax.plot(x_data, y_data, label=label, **points_kwargs)
-                    if (xerr is not None) or (yerr is not None):
-                        ax.errorbar(
-                            x=x_data,
-                            y=y_data,
-                            xerr=xerr_data,
-                            yerr=yerr_data,
-                            label="__nolabel__",
-                            **error_kwargs
-                        )
+                    ax.errorbar(
+                        x=x_data,
+                        y=y_data,
+                        xerr=xerr_data,
+                        yerr=yerr_data,
+                        label=label,
+                        **error_kwargs['error_kw'], **points_kwargs
+                    )
 
                 elif curve.type == CurveType.BAR:
-                    ax.bar(x=x_data, height=y_data, label=label, **bar_kwargs)
-                    if (xerr is not None) or (yerr is not None):
-                        ax.errorbar(
-                            x=x_data,
-                            y=y_data,
-                            xerr=xerr_data,
-                            yerr=yerr_data,
-                            label="__nolabel__",
-                            **error_kwargs
-                        )
+                    ax.bar(
+                        x=x_data,
+                        height=y_data,
+                        xerr=xerr_data,
+                        yerr=yerr_data,
+                        label=label,
+                        **error_kwargs,
+                        **bar_kwargs,
+                    )
 
                 elif curve.type == CurveType.HORIZONTALBAR:
-                    ax.barh(y=x_data, width=y_data, label=label, **bar_kwargs)
-                    if (xerr is not None) or (yerr is not None):
-                        ax.errorbar(
-                            x=y_data,
-                            y=x_data,
-                            xerr=yerr_data,
-                            yerr=xerr_data,
-                            label="__nolabel__",
-                            **error_kwargs
-                        )
+                    ax.barh(
+                        y=x_data,
+                        width=y_data,
+                        xerr=xerr_data,
+                        yerr=yerr_data,
+                        label=label,
+                        **error_kwargs,
+                        **bar_kwargs
+                    )
 
                 elif curve.type == CurveType.BARSTACKED:
                     if barstack_x is None:
@@ -170,17 +173,16 @@ class MatplotlibFigureSerializer(object):
 
                     if not np.all(np.isclose(barstack_x, x_data)):
                         raise ValueError("x data must match for stacked bars.")
-                    ax.bar(x=x_data, height=y_data, bottom=barstack_y,
-                           label=label, **bar_kwargs)
-                    if (xerr is not None) or (yerr is not None):
-                        ax.errorbar(
-                            x=x_data,
-                            y=y_data + barstack_y,
-                            xerr=xerr_data,
-                            yerr=yerr_data,
-                            label="__nolabel__",
-                            **error_kwargs
-                        )
+                    ax.bar(
+                        x=x_data,
+                        height=y_data,
+                        bottom=barstack_y,
+                        xerr=xerr_data,
+                        yerr=yerr_data,
+                        label=label,
+                        **error_kwargs,
+                        **bar_kwargs
+                    )
                     barstack_y = barstack_y + y_data
 
                 elif curve.type == CurveType.HORIZONTALBARSTACKED:
@@ -190,17 +192,16 @@ class MatplotlibFigureSerializer(object):
 
                     if not np.all(np.isclose(barhstack_x, x_data)):
                         raise ValueError("x data must match for stacked bars.")
-                    ax.barh(y=x_data, width=y_data, left=barhstack_y,
-                            label=label, **bar_kwargs)
-                    if (xerr is not None) or (yerr is not None):
-                        ax.errorbar(
-                            x=y_data + barhstack_y,
-                            y=x_data,
-                            xerr=yerr_data,
-                            yerr=xerr_data,
-                            label="__nolabel__",
-                            **error_kwargs
-                        )
+                    ax.barh(
+                        y=x_data,
+                        width=y_data,
+                        left=barhstack_y,
+                        xerr=yerr_data,
+                        yerr=xerr_data,
+                        label=label,
+                        **error_kwargs,
+                        **bar_kwargs
+                    )
                     barhstack_y = barhstack_y + y_data
 
 

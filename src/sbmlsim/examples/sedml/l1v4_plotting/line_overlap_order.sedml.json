@@ -33,55 +33,20 @@
         "@id": "task0",
         "@modelReference": "model0",
         "@simulationReference": "sim0"
-      },
-      "repeatedTask": {
-        "@id": "repeat2",
-        "@range": "X",
-        "@resetModel": "false",
-        "listOfRanges": {
-          "uniformRange": {
-            "@id": "X",
-            "@start": "0",
-            "@end": "10",
-            "@numberOfSteps": "100",
-            "@type": "linear"
-          }
-        },
-        "listOfChanges": {
-          "setValue": {
-            "@modelReference": "model0",
-            "@target": "/sbml:sbml/sbml:model/sbml:listOfSpecies/sbml:species[@id='S1']",
-            "math": {
-              "@xmlns": "http://www.w3.org/1998/Math/MathML",
-              "ci": "local_____X"
-            },
-            "listOfParameters": {
-              "parameter": {
-                "@id": "local_____X"
-              }
-            }
-          }
-        },
-        "listOfSubTasks": {
-          "subTask": {
-            "@order": "0",
-            "@task": "task0"
-          }
-        }
       }
     },
     "listOfDataGenerators": {
       "dataGenerator": [
         {
           "@id": "plot_0_0_0",
-          "@name": "task0.time",
+          "@name": "time",
           "math": {
             "@xmlns": "http://www.w3.org/1998/Math/MathML",
-            "ci": "task0_____time"
+            "ci": "time"
           },
           "listOfVariables": {
             "variable": {
-              "@id": "task0_____time",
+              "@id": "time",
               "@symbol": "urn:sedml:symbol:time",
               "@taskReference": "task0",
               "@modelReference": "model0"
@@ -90,14 +55,14 @@
         },
         {
           "@id": "plot_0_0_1",
-          "@name": "task0.S1",
+          "@name": "S1",
           "math": {
             "@xmlns": "http://www.w3.org/1998/Math/MathML",
-            "ci": "task0_____S1"
+            "ci": "S1"
           },
           "listOfVariables": {
             "variable": {
-              "@id": "task0_____S1",
+              "@id": "S1",
               "@target": "/sbml:sbml/sbml:model/sbml:listOfSpecies/sbml:species[@id='S1']",
               "@taskReference": "task0",
               "@modelReference": "model0"
@@ -106,14 +71,14 @@
         },
         {
           "@id": "plot_0_1_1",
-          "@name": "task0.S2",
+          "@name": "S2",
           "math": {
             "@xmlns": "http://www.w3.org/1998/Math/MathML",
-            "ci": "task0_____S2"
+            "ci": "S2"
           },
           "listOfVariables": {
             "variable": {
-              "@id": "task0_____S2",
+              "@id": "S2",
               "@target": "/sbml:sbml/sbml:model/sbml:listOfSpecies/sbml:species[@id='S2']",
               "@taskReference": "task0",
               "@modelReference": "model0"
@@ -122,14 +87,14 @@
         },
         {
           "@id": "plot_0_2_1",
-          "@name": "task0.S3",
+          "@name": "S3",
           "math": {
             "@xmlns": "http://www.w3.org/1998/Math/MathML",
-            "ci": "task0_____S3"
+            "ci": "S3"
           },
           "listOfVariables": {
             "variable": {
-              "@id": "task0_____S3",
+              "@id": "S3",
               "@target": "/sbml:sbml/sbml:model/sbml:listOfSpecies/sbml:species[@id='S3']",
               "@taskReference": "task0",
               "@modelReference": "model0"
@@ -173,23 +138,6 @@
               "@logY": "false",
               "@yDataReference": "plot_0_2_1",
               "@type": "points"
-            }
-          ]
-        }
-      },
-      "report": {
-        "@id": "report_1",
-        "listOfDataSets": {
-          "dataSet": [
-            {
-              "@id": "plot_0_0_0_dataset",
-              "@label": "task0.time",
-              "@dataReference": "plot_0_0_0"
-            },
-            {
-              "@id": "plot_0_0_1_dataset",
-              "@label": "task0.S1",
-              "@dataReference": "plot_0_0_1"
             }
           ]
         }

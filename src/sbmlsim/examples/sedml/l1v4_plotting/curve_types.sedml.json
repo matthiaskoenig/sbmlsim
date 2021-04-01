@@ -314,6 +314,9 @@
             "@color": "#1f77b4aa",
             "@thickness": "4"
           },
+          "marker": {
+            "@lineColor": "#000000"
+          },
           "fill": {
             "@color": "#1f77b4aa"
           }
@@ -325,6 +328,9 @@
             "@color": "#ff7f0eaa",
             "@thickness": "4"
           },
+          "marker": {
+            "@lineColor": "#000000"
+          },
           "fill": {
             "@color": "#ff7f0eaa"
           }
@@ -335,6 +341,10 @@
             "@style": "solid",
             "@color": "#2ca02caa",
             "@thickness": "4"
+          },
+          "marker": {
+            "@lineColor": "#000000",
+            "@lineThickness": "1"
           },
           "fill": {
             "@color": "#2ca02caa"

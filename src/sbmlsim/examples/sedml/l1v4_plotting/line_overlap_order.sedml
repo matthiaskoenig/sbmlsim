@@ -14,56 +14,38 @@
   </listOfSimulations>
   <listOfTasks>
     <task id="task0" modelReference="model0" simulationReference="sim0"/>
-    <repeatedTask id="repeat2" range="X" resetModel="false">
-      <listOfRanges>
-        <uniformRange id="X" start="0" end="10" numberOfSteps="100" type="linear"/>
-      </listOfRanges>
-      <listOfChanges>
-        <setValue modelReference="model0" target="/sbml:sbml/sbml:model/sbml:listOfSpecies/sbml:species[@id=&apos;S1&apos;]">
-          <math xmlns="http://www.w3.org/1998/Math/MathML">
-            <ci> local_____X </ci>
-          </math>
-          <listOfParameters>
-            <parameter id="local_____X"/>
-          </listOfParameters>
-        </setValue>
-      </listOfChanges>
-      <listOfSubTasks>
-        <subTask order="0" task="task0"/>
-      </listOfSubTasks>
-    </repeatedTask>
   </listOfTasks>
   <listOfDataGenerators>
-    <dataGenerator id="plot_0_0_0" name="task0.time">
+    <dataGenerator id="plot_0_0_0" name="time">
       <math xmlns="http://www.w3.org/1998/Math/MathML">
-        <ci> task0_____time </ci>
+        <ci> time </ci>
       </math>
       <listOfVariables>
-        <variable id="task0_____time" symbol="urn:sedml:symbol:time" taskReference="task0" modelReference="model0"/>
+        <variable id="time" symbol="urn:sedml:symbol:time" taskReference="task0" modelReference="model0"/>
       </listOfVariables>
     </dataGenerator>
-    <dataGenerator id="plot_0_0_1" name="task0.S1">
+    <dataGenerator id="plot_0_0_1" name="S1">
       <math xmlns="http://www.w3.org/1998/Math/MathML">
-        <ci> task0_____S1 </ci>
+        <ci> S1 </ci>
       </math>
       <listOfVariables>
-        <variable id="task0_____S1" target="/sbml:sbml/sbml:model/sbml:listOfSpecies/sbml:species[@id=&apos;S1&apos;]" taskReference="task0" modelReference="model0"/>
+        <variable id="S1" target="/sbml:sbml/sbml:model/sbml:listOfSpecies/sbml:species[@id=&apos;S1&apos;]" taskReference="task0" modelReference="model0"/>
       </listOfVariables>
     </dataGenerator>
-    <dataGenerator id="plot_0_1_1" name="task0.S2">
+    <dataGenerator id="plot_0_1_1" name="S2">
       <math xmlns="http://www.w3.org/1998/Math/MathML">
-        <ci> task0_____S2 </ci>
+        <ci> S2 </ci>
       </math>
       <listOfVariables>
-        <variable id="task0_____S2" target="/sbml:sbml/sbml:model/sbml:listOfSpecies/sbml:species[@id=&apos;S2&apos;]" taskReference="task0" modelReference="model0"/>
+        <variable id="S2" target="/sbml:sbml/sbml:model/sbml:listOfSpecies/sbml:species[@id=&apos;S2&apos;]" taskReference="task0" modelReference="model0"/>
       </listOfVariables>
     </dataGenerator>
-    <dataGenerator id="plot_0_2_1" name="task0.S3">
+    <dataGenerator id="plot_0_2_1" name="S3">
       <math xmlns="http://www.w3.org/1998/Math/MathML">
-        <ci> task0_____S3 </ci>
+        <ci> S3 </ci>
       </math>
       <listOfVariables>
-        <variable id="task0_____S3" target="/sbml:sbml/sbml:model/sbml:listOfSpecies/sbml:species[@id=&apos;S3&apos;]" taskReference="task0" modelReference="model0"/>
+        <variable id="S3" target="/sbml:sbml/sbml:model/sbml:listOfSpecies/sbml:species[@id=&apos;S3&apos;]" taskReference="task0" modelReference="model0"/>
       </listOfVariables>
     </dataGenerator>
   </listOfDataGenerators>
@@ -75,12 +57,6 @@
         <curve id="plot_0__plot_0_0_0__plot_0_2_1" logX="false" order="1" style="green_line" xDataReference="plot_0_0_0" logY="false" yDataReference="plot_0_2_1" type="points"/>
       </listOfCurves>
     </plot2D>
-    <report id="report_1">
-      <listOfDataSets>
-        <dataSet id="plot_0_0_0_dataset" label="task0.time" dataReference="plot_0_0_0"/>
-        <dataSet id="plot_0_0_1_dataset" label="task0.S1" dataReference="plot_0_0_1"/>
-      </listOfDataSets>
-    </report>
   </listOfOutputs>
   <listOfStyles>
     <style id="purple_line">

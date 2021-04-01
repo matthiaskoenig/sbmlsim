@@ -118,19 +118,19 @@
           }
         },
         {
-          "@id": "dg_S2_errorLower",
+          "@id": "dg_time_error",
           "math": {
             "@xmlns": "http://www.w3.org/1998/Math/MathML",
             "apply": {
               "times": null,
-              "cn": "0.3",
-              "ci": "S2"
+              "cn": "0.1",
+              "ci": "time"
             }
           },
           "listOfVariables": {
             "variable": {
-              "@id": "S2",
-              "@target": "/sbml:sbml/sbml:model/sbml:listOfSpecies/sbml:species[@id='S2']",
+              "@id": "time",
+              "@symbol": "urn:sedml:symbol:time",
               "@taskReference": "task0",
               "@modelReference": "model0"
             }
@@ -150,7 +150,8 @@
                 "@name": "S1",
                 "@xDataReference": "dg_time",
                 "@yDataReference": "dg_S1",
-                "@xError": "dg_S1_error",
+                "@xErrorUpper": "dg_time_error",
+                "@yErrorUpper": "dg_S1_error",
                 "@type": "points",
                 "@style": "style_blue"
               },
@@ -159,8 +160,8 @@
                 "@name": "S2",
                 "@xDataReference": "dg_time",
                 "@yDataReference": "dg_S2",
-                "@xError": "dg_S2_error",
-                "@xErrorLower": "dg_S2_errorLower",
+                "@xErrorUpper": "dg_time_error",
+                "@yErrorUpper": "dg_S2_error",
                 "@type": "points",
                 "@style": "style_orange"
               }
@@ -177,6 +178,8 @@
                 "@name": "S1",
                 "@xDataReference": "dg_time",
                 "@yDataReference": "dg_S1",
+                "@xErrorUpper": "dg_time_error",
+                "@yErrorUpper": "dg_S1_error",
                 "@type": "bar",
                 "@style": "style_blue"
               },
@@ -185,6 +188,8 @@
                 "@name": "S2",
                 "@xDataReference": "dg_time",
                 "@yDataReference": "dg_S2",
+                "@xErrorUpper": "dg_time_error",
+                "@yErrorUpper": "dg_S2_error",
                 "@type": "bar",
                 "@style": "style_orange"
               }
@@ -201,6 +206,8 @@
                 "@name": "S1",
                 "@xDataReference": "dg_time",
                 "@yDataReference": "dg_S1",
+                "@xErrorUpper": "dg_time_error",
+                "@yErrorUpper": "dg_S1_error",
                 "@type": "barStacked",
                 "@style": "style_blue"
               },
@@ -209,6 +216,8 @@
                 "@name": "S2",
                 "@xDataReference": "dg_time",
                 "@yDataReference": "dg_S2",
+                "@xErrorUpper": "dg_time_error",
+                "@yErrorUpper": "dg_S2_error",
                 "@type": "barStacked",
                 "@style": "style_orange"
               }
@@ -225,6 +234,8 @@
                 "@name": "S1",
                 "@xDataReference": "dg_time",
                 "@yDataReference": "dg_S1",
+                "@xErrorUpper": "dg_time_error",
+                "@yErrorUpper": "dg_S1_error",
                 "@type": "horizontalBar",
                 "@style": "style_blue"
               },
@@ -233,6 +244,8 @@
                 "@name": "S2",
                 "@xDataReference": "dg_time",
                 "@yDataReference": "dg_S2",
+                "@xErrorUpper": "dg_time_error",
+                "@yErrorUpper": "dg_S2_error",
                 "@type": "horizontalBar",
                 "@style": "style_orange"
               }
@@ -249,6 +262,8 @@
                 "@name": "S1",
                 "@xDataReference": "dg_time",
                 "@yDataReference": "dg_S1",
+                "@xErrorUpper": "dg_time_error",
+                "@yErrorUpper": "dg_S1_error",
                 "@type": "horizontalBarStacked",
                 "@style": "style_blue"
               },
@@ -257,6 +272,8 @@
                 "@name": "S2",
                 "@xDataReference": "dg_time",
                 "@yDataReference": "dg_S2",
+                "@xErrorUpper": "dg_time_error",
+                "@yErrorUpper": "dg_S2_error",
                 "@type": "horizontalBarStacked",
                 "@style": "style_orange"
               }
@@ -318,6 +335,9 @@
             "@color": "#1f77b4aa",
             "@thickness": "4"
           },
+          "marker": {
+            "@lineColor": "#000000"
+          },
           "fill": {
             "@color": "#1f77b4aa"
           }
@@ -329,8 +349,26 @@
             "@color": "#ff7f0eaa",
             "@thickness": "4"
           },
+          "marker": {
+            "@lineColor": "#000000"
+          },
           "fill": {
-            "@color": "#ff7f0eff"
+            "@color": "#ff7f0eaa"
+          }
+        },
+        {
+          "@id": "style_green",
+          "line": {
+            "@style": "solid",
+            "@color": "#2ca02caa",
+            "@thickness": "4"
+          },
+          "marker": {
+            "@lineColor": "#000000",
+            "@lineThickness": "1"
+          },
+          "fill": {
+            "@color": "#2ca02caa"
           }
         }
       ]
