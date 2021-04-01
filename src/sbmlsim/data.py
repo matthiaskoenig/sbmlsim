@@ -58,15 +58,15 @@ class Data(object):
                 "Either 'task_id', 'dset_id' or 'function' required for Data."
             )
 
-    def __str__(self) -> str:
+    def __repr__(self) -> str:
         """Get string."""
         s: str
         if self.is_task():
-            s = f"Data(index={self.index}, task_id={self.task_id})|Task"
+            s = f"Data(Task: index={self.index} task_id={self.task_id})"
         elif self.is_dataset():
-            s = f"Data(index={self.index}, dset_id={self.dset_id})|DataSet"
+            s = f"Data(DataSet: index={self.index} dset_id={self.dset_id})"
         elif self.is_function():
-            s = f"Data(index={self.index}, function={self.function})|Function"
+            s = f"Data(Function: index={self.index} function={self.function})"
         return s
 
     @property

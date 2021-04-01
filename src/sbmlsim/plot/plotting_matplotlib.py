@@ -93,6 +93,7 @@ class MatplotlibFigureSerializer(object):
             plot = subplot.plot
             xax: Axis = plot.xaxis
             yax: Axis = plot.yaxis
+            print(plot.__repr__())
 
             # units
             if xax is None:

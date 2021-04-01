@@ -1,5 +1,5 @@
 # Serialization
-- [ ] writing SED-ML
+- [ ] writing SED-ML from experiments
 
 # Plotting
 - [ ] support height and width;

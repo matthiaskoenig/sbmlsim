@@ -12,7 +12,7 @@
     <task id="task0" modelReference="model0" simulationReference="sim0"/>
   </listOfTasks>
   <listOfDataGenerators>
-    <dataGenerator id="plot_0_0_0" name="time">
+    <dataGenerator id="dg_time" name="time">
       <math xmlns="http://www.w3.org/1998/Math/MathML">
         <ci> time </ci>
       </math>
@@ -20,7 +20,7 @@
         <variable id="time" symbol="urn:sedml:symbol:time" taskReference="task0" modelReference="model0"/>
       </listOfVariables>
     </dataGenerator>
-    <dataGenerator id="plot_0_0_1" name="S1">
+    <dataGenerator id="dg_S1" name="S1">
       <math xmlns="http://www.w3.org/1998/Math/MathML">
         <ci> S1 </ci>
       </math>
@@ -28,7 +28,7 @@
         <variable id="S1" target="/sbml:sbml/sbml:model/sbml:listOfSpecies/sbml:species[@id=&apos;S1&apos;]" taskReference="task0" modelReference="model0"/>
       </listOfVariables>
     </dataGenerator>
-    <dataGenerator id="plot_0_1_1" name="S2">
+    <dataGenerator id="dg_S2" name="S2">
       <math xmlns="http://www.w3.org/1998/Math/MathML">
         <ci> S2 </ci>
       </math>
@@ -36,36 +36,47 @@
         <variable id="S2" target="/sbml:sbml/sbml:model/sbml:listOfSpecies/sbml:species[@id=&apos;S2&apos;]" taskReference="task0" modelReference="model0"/>
       </listOfVariables>
     </dataGenerator>
-    <dataGenerator id="report_1_0_0" name="task0.time">
-      <math xmlns="http://www.w3.org/1998/Math/MathML">
-        <ci> task0_____time </ci>
-      </math>
-      <listOfVariables>
-        <variable id="task0_____time" symbol="urn:sedml:symbol:time" taskReference="task0" modelReference="model0"/>
-      </listOfVariables>
-    </dataGenerator>
-    <dataGenerator id="report_1_0_1" name="task0.S1">
-      <math xmlns="http://www.w3.org/1998/Math/MathML">
-        <ci> task0_____S1 </ci>
-      </math>
-      <listOfVariables>
-        <variable id="task0_____S1" target="/sbml:sbml/sbml:model/sbml:listOfSpecies/sbml:species[@id=&apos;S1&apos;]" taskReference="task0" modelReference="model0"/>
-      </listOfVariables>
-    </dataGenerator>
   </listOfDataGenerators>
   <listOfOutputs>
-    <plot2D id="plot_0" name="UniformTimecourse">
+    <plot2D id="plot_points" name="points">
       <listOfCurves>
-        <curve id="plot_0__plot_0_0_0__plot_0_0_1" logX="false" style="blue_fill" xDataReference="plot_0_0_0" logY="false" yDataReference="plot_0_0_1" type="bar"/>
-        <curve id="plot_0__plot_0_0_0__plot_0_1_1" logX="false" style="red_dashed_line" xDataReference="plot_0_0_0" logY="false" yDataReference="plot_0_1_1" type="bar"/>
+        <curve id="curve_S1_points" name="S1" xDataReference="dg_time" yDataReference="dg_S1" type="points"/>
+        <curve id="curve_S2_points" name="S2" xDataReference="dg_time" yDataReference="dg_S2" type="points"/>
       </listOfCurves>
     </plot2D>
-    <report id="report_1">
-      <listOfDataSets>
-        <dataSet id="report_1_0_0_dataset" label="task0.time" dataReference="report_1_0_0"/>
-        <dataSet id="report_1_0_1_dataset" label="task0.S1" dataReference="report_1_0_1"/>
-      </listOfDataSets>
-    </report>
+    <plot2D id="plot_bar" name="bar">
+      <listOfCurves>
+        <curve id="curve_S1_bar" name="S1" xDataReference="dg_time" yDataReference="dg_S1" type="bar"/>
+        <curve id="curve_S2_bar" name="S2" xDataReference="dg_time" yDataReference="dg_S2" type="bar"/>
+      </listOfCurves>
+    </plot2D>
+    <plot2D id="plot_barStacked" name="barStacked">
+      <listOfCurves>
+        <curve id="curve_S1_barStacked" name="S1" xDataReference="dg_time" yDataReference="dg_S1" type="barStacked"/>
+        <curve id="curve_S2_barStacked" name="S2" xDataReference="dg_time" yDataReference="dg_S2" type="barStacked"/>
+      </listOfCurves>
+    </plot2D>
+    <plot2D id="plot_horizontalBar" name="horizontalBar">
+      <listOfCurves>
+        <curve id="curve_S1_horizontalBar" name="S1" xDataReference="dg_time" yDataReference="dg_S1" type="horizontalBar"/>
+        <curve id="curve_S2_horizontalBar" name="S2" xDataReference="dg_time" yDataReference="dg_S2" type="horizontalBar"/>
+      </listOfCurves>
+    </plot2D>
+    <plot2D id="plot_horizontalBarStacked" name="horizontalBarStacked">
+      <listOfCurves>
+        <curve id="curve_S1_horizontalBarStacked" name="S1" xDataReference="dg_time" yDataReference="dg_S1" type="horizontalBarStacked"/>
+        <curve id="curve_S2_horizontalBarStacked" name="S2" xDataReference="dg_time" yDataReference="dg_S2" type="horizontalBarStacked"/>
+      </listOfCurves>
+    </plot2D>
+    <figure id="figure0" numRows="3" numCols="2">
+      <listOfSubPlots>
+        <subPlot plot="plot_points" row="1" col="1" rowSpan="1" colSpan="2"/>
+        <subPlot plot="plot_bar" row="2" col="1" rowSpan="1" colSpan="1"/>
+        <subPlot plot="plot_barStacked" row="2" col="2" rowSpan="1" colSpan="1"/>
+        <subPlot plot="plot_horizontalBar" row="3" col="1" rowSpan="1" colSpan="1"/>
+        <subPlot plot="plot_horizontalBarStacked" row="3" col="2" rowSpan="1" colSpan="1"/>
+      </listOfSubPlots>
+    </figure>
   </listOfOutputs>
   <listOfStyles>
     <style id="blue_fill">

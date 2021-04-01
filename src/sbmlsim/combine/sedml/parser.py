@@ -122,6 +122,8 @@ from sbmlsim.units import UnitRegistry
 
 
 logger = logging.getLogger(__file__)
+
+# FIXME: support omex files
 '''
 def experiment_from_omex(omex_path: Path):
     """Create SimulationExperiments from all SED-ML files."""
@@ -471,6 +473,7 @@ class SEDMLParser(object):
             "tasks": self.tasks,
             "data": self.data,
             "figures": self.figures,
+            "reports": self.reports,
             "styles": self.styles,
         }
         pprint(info)
@@ -854,15 +857,13 @@ class SEDMLParser(object):
             report[label] = sed_dg_id
         return report
 
-
-
     def parse_axis(self, sed_axis: libsedml.SedAxis) -> Axis:
         """Parse axes information."""
         if sed_axis is None:
             axis = Axis()
         else:
             axis = Axis(
-                label=sed_axis.getName(),
+                label=sed_axis.getName() if sed_axis.isSetName else None,
                 min=sed_axis.getMin() if sed_axis.isSetMin() else None,
                 max=sed_axis.getMax() if sed_axis.isSetMax() else None,
                 grid=sed_axis.getGrid() if sed_axis.isSetGrid() else False,

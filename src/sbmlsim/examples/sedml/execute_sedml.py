@@ -38,7 +38,7 @@ def execute_sedml(working_dir: Path, name: str, sedml_path: Path) -> None:
     )
 
     if errorlog.getNumErrors() > 0:
-        raise IOError("Errors in the SED-ML document.")
+        raise IOError(f"Errors in SED-ML document for '{sedml_path}',")
 
     sed_parser = SEDMLParser(sed_doc, working_dir=working_dir, name=name)
     sed_parser.print_info()
@@ -76,6 +76,7 @@ if __name__ == "__main__":
         # ("linetype", "linetype.sedml"),
         # ("axis", "axis.sedml"),
         ("curve_types", "curve_types.sedml"),
+        # ("line_overlap_order", "line_overlap_order.sedml"),
         # ("repressilator_figure", "repressilator_figure.xml"),
         # ("repressilator_l1v3", "repressilator_l1v3.xml"),
         # ("repressilator_urn_l1v3", "repressilator_urn_l1v3.xml"),  # FIXME: resolve URN

@@ -352,6 +352,15 @@ class Axis(BasePlotObject):
         self.ticks_visible: bool = ticks_visible
         self.style = style
 
+    def __repr__(self) -> str:
+        """Get string."""
+        return f"Axis(sid={self.sid} name={self.name} scale={self.scale} " \
+               f"min={self.min} max={self.max})"
+
+    def __str__(self) -> str:
+        """Get string."""
+        return f"Axis({self.name})"
+
     def __copy__(self) -> 'Axis':
         """Copy axis object."""
         return Axis(
@@ -366,10 +375,6 @@ class Axis(BasePlotObject):
             ticks_visible=self.ticks_visible,
             style=self.style.__copy__(),
         )
-
-    def __str__(self) -> str:
-        """Get string representation."""
-        return f"Axis({self.name})"
 
     @property
     def scale(self) -> AxisScale:
@@ -425,6 +430,7 @@ class AbstractCurve(BasePlotObject):
 
 
 class Curve(AbstractCurve):
+    """Curve object."""
     def __init__(
         self,
         x: Data,
@@ -434,6 +440,7 @@ class Curve(AbstractCurve):
         single_lines: bool = False,
         dim_reductions: List[str] = None,
         order=None,
+        type: CurveType = CurveType.POINTS,
         style: Style = None,
         yaxis=None,
         **kwargs,
@@ -452,9 +459,11 @@ class Curve(AbstractCurve):
         if "name" in kwargs:
             self.name = kwargs["name"]
 
+        self.type: CurveType = type
+
         # parse additional arguments and create style
         if style:
-            logger.warning("'style' is set, 'kwargs' style arguments ignored")
+            logger.warning("'style' is set, 'kwargs' style arguments are ignored.")
         else:
             kwargs = Curve._add_default_style_kwargs(kwargs, y.dtype)
             style = Style.from_mpl_kwargs(**kwargs)
@@ -566,6 +575,15 @@ class Plot(BasePlotObject):
             width = Figure.panel_width
         self.width = width
 
+    def __repr__(self) -> str:
+        """Get representation string."""
+        return f"Plot(xaxis={self.xaxis} yaxis={self.yaxis} #curves={len(self.curves)} " \
+               f"legend={self.legend})"
+
+    def __str__(self) -> str:
+        """Get string."""
+        return f"Plot({self.to_dict()})"
+
     def __copy__(self) -> 'Plot':
         """Copy the existing object."""
         return Plot(
@@ -594,10 +612,6 @@ class Plot(BasePlotObject):
             "curves": self.curves,
         }
         return d
-
-    def __str__(self) -> str:
-        """Get string."""
-        return f"Plot({self.to_dict()})"
 
     @property
     def figure(self) -> "Figure":
@@ -692,6 +706,12 @@ class Plot(BasePlotObject):
         if curve.sid is None:
             curve.sid = f"{self.sid}_curve{len(self.curves)}"
 
+        # check allowed types
+        curve_types = set([c.type for c in self.curves])
+        curve_types.add(curve.type)
+        if len(curve_types) > 1:
+            raise ValueError(f"CurveTypes cannot be mixed: {curve_types}")
+
         curve.order = len(self.curves)
 
         # inject default colors if no colors provided
@@ -731,6 +751,7 @@ class Plot(BasePlotObject):
         y: Data,
         xerr: Data = None,
         yerr: Data = None,
+        type: CurveType = CurveType.POINTS,
         single_lines: bool = False,
         dim_reductions: List[str] = None,
         **kwargs,
@@ -743,7 +764,16 @@ class Plot(BasePlotObject):
         E.g. over which dimensions should an error be calculated and which
         dimensions should be plotted individually.
         """
-        curve = Curve(x, y, xerr, yerr, single_lines=single_lines, **kwargs)
+        curve = Curve(
+            x=x,
+            y=y,
+            xerr=xerr,
+            yerr=yerr,
+            single_lines=single_lines,
+            dim_reductions=dim_reductions,
+            type=type,
+            **kwargs
+        )
         self.add_curve(curve)
 
     def add_data(
@@ -868,27 +898,27 @@ class Figure(BasePlotObject):
     resolve the datasets and the simulations.
     """
 
-    fig_dpi = 72
-    fig_facecolor = "white"
-    fig_subplots_wspace = 0.3  # vertical spacing of subplots (fraction of axes)
-    fig_subplots_hspace = 0.3  # horizontal spacing of subplots (fraction of axes)
-    panel_width = 7
-    panel_height = 5
-    fig_titlesize = 25
-    fig_titleweight = "bold"
-    axes_titlesize = 20
-    axes_titleweight = "bold"
-    axes_labelsize = 18
-    axes_labelweight = "bold"
-    xtick_labelsize = 15
-    ytick_labelsize = 15
-    legend_fontsize = 13
-    legend_loc = "best"
-    _area_interpolation_points = 300
+    fig_dpi: int = 72
+    fig_facecolor: str = "white"
+    fig_subplots_wspace: float = 0.3  # vertical spacing of subplots (fraction of axes)
+    fig_subplots_hspace: float = 0.3  # horizontal spacing of subplots (fraction of axes)
+    panel_width: float = 7.0
+    panel_height: float = 5.0
+    fig_titlesize: int = 25
+    fig_titleweight: str = "bold"
+    axes_titlesize: int = 20
+    axes_titleweight: str = "bold"
+    axes_labelsize: int = 18
+    axes_labelweight: str = "bold"
+    xtick_labelsize: int = 15
+    ytick_labelsize: int = 15
+    legend_fontsize: int = 13
+    legend_loc: str = "best"
+    _area_interpolation_points: int = 300
 
     def __init__(
         self,
-        experiment,
+        experiment: 'SimulationExperiment',
         sid: str,
         name: str = None,
         subplots: List[SubPlot] = None,
@@ -905,13 +935,16 @@ class Figure(BasePlotObject):
         self.num_rows = num_rows
         self.num_cols = num_cols
 
-        self._height: float = None
-        self._width: float = None
-        if width is None:
-            width = num_cols * Figure.panel_width
-
+        self._height: float = self.num_rows * Figure.panel_height
+        self._width: float = self.num_cols * Figure.panel_height
         self.width = width
         self.height = height
+
+    def __repr__(self) -> str:
+        """Get representation string."""
+        return f"Figure(sid={self.sid} name={self.name} " \
+               f"shape=[{self.num_rows},{self.num_cols}] " \
+               f"#subplots={len(self.subplots)})"
 
     @property
     def height(self) -> float:
