@@ -93,14 +93,16 @@
                 "@name": "S1",
                 "@xDataReference": "dg_time",
                 "@yDataReference": "dg_S1",
-                "@type": "points"
+                "@type": "points",
+                "@style": "style_blue"
               },
               {
                 "@id": "curve_S2_points",
                 "@name": "S2",
                 "@xDataReference": "dg_time",
                 "@yDataReference": "dg_S2",
-                "@type": "points"
+                "@type": "points",
+                "@style": "style_orange"
               }
             ]
           }
@@ -115,14 +117,16 @@
                 "@name": "S1",
                 "@xDataReference": "dg_time",
                 "@yDataReference": "dg_S1",
-                "@type": "bar"
+                "@type": "bar",
+                "@style": "style_blue"
               },
               {
                 "@id": "curve_S2_bar",
                 "@name": "S2",
                 "@xDataReference": "dg_time",
                 "@yDataReference": "dg_S2",
-                "@type": "bar"
+                "@type": "bar",
+                "@style": "style_orange"
               }
             ]
           }
@@ -137,14 +141,16 @@
                 "@name": "S1",
                 "@xDataReference": "dg_time",
                 "@yDataReference": "dg_S1",
-                "@type": "barStacked"
+                "@type": "barStacked",
+                "@style": "style_blue"
               },
               {
                 "@id": "curve_S2_barStacked",
                 "@name": "S2",
                 "@xDataReference": "dg_time",
                 "@yDataReference": "dg_S2",
-                "@type": "barStacked"
+                "@type": "barStacked",
+                "@style": "style_orange"
               }
             ]
           }
@@ -159,14 +165,16 @@
                 "@name": "S1",
                 "@xDataReference": "dg_time",
                 "@yDataReference": "dg_S1",
-                "@type": "horizontalBar"
+                "@type": "horizontalBar",
+                "@style": "style_blue"
               },
               {
                 "@id": "curve_S2_horizontalBar",
                 "@name": "S2",
                 "@xDataReference": "dg_time",
                 "@yDataReference": "dg_S2",
-                "@type": "horizontalBar"
+                "@type": "horizontalBar",
+                "@style": "style_orange"
               }
             ]
           }
@@ -181,14 +189,16 @@
                 "@name": "S1",
                 "@xDataReference": "dg_time",
                 "@yDataReference": "dg_S1",
-                "@type": "horizontalBarStacked"
+                "@type": "horizontalBarStacked",
+                "@style": "style_blue"
               },
               {
                 "@id": "curve_S2_horizontalBarStacked",
                 "@name": "S2",
                 "@xDataReference": "dg_time",
                 "@yDataReference": "dg_S2",
-                "@type": "horizontalBarStacked"
+                "@type": "horizontalBarStacked",
+                "@style": "style_orange"
               }
             ]
           }
@@ -242,21 +252,25 @@
     "listOfStyles": {
       "style": [
         {
-          "@id": "blue_fill",
+          "@id": "style_blue",
           "line": {
-            "@style": "dashDot",
-            "@color": "#FF00FF",
+            "@style": "solid",
+            "@color": "#1f77b4aa",
             "@thickness": "4"
           },
           "fill": {
-            "@color": "#0000FF"
+            "@color": "#1f77b4aa"
           }
         },
         {
-          "@id": "red_dashed_line",
+          "@id": "style_orange",
           "line": {
-            "@style": "dash",
-            "@color": "#FF0000"
+            "@style": "solid",
+            "@color": "#ff7f0eaa",
+            "@thickness": "4"
+          },
+          "fill": {
+            "@color": "#ff7f0eff"
           }
         }
       ]

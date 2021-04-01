@@ -80,6 +80,12 @@ class MatplotlibFigureSerializer(object):
             xunit = xax.unit if xax else None
             yunit = yax.unit if yax else None
 
+            # memory for stacked bars
+            last_barstack_x = None
+            last_barstack_y = None
+            last_barhstack_x = None
+            last_barhstack_y = None
+
             # plot ordered curves
             curves: List[Curve] = sorted(plot.curves, key=lambda x: x.order)
             for curve in curves:
@@ -96,34 +102,72 @@ class MatplotlibFigureSerializer(object):
                     yerr = curve.yerr.get_data(experiment=experiment, to_units=yunit)
 
                 label = curve.name if curve.name else "__nolabel__"
-                kwargs = curve.style.to_mpl_kwargs() if curve.style else {}
+
+                points_kwargs = curve.style.to_mpl_kwargs() if curve.style else {}
+                bar_kwargs = {**points_kwargs}
+                for key in ["marker", "markersize", "markerfacecolor", "markeredgewidth"]:
+                    bar_kwargs.pop(key)
+
 
                 # FIXME: necessary to get the individual curves out of the data cube
+                # TODO: iterate over all repeats in the data
+                x_data = x.magnitude[:, 0] if x is not None else None
+                y_data = y.magnitude[:, 0] if y is not None else None
+                xerr_data = xerr.magnitude[:, 0] if xerr is not None else None
+                yerr_data = yerr.magnitude[:, 0] if yerr is not None else None
 
+                print("xshape")
+                print("x", x)
+                print("y", y)
+                print("x_data", x_data)
+                print("y_data", y_data)
 
+                # FIXME: support error bars (in a generic manner)
+                # directly plot the bars with whiskers
 
                 if curve.type == CurveType.POINTS:
                     if (xerr is None) and (yerr is None):
-                        ax.plot(x.magnitude, y.magnitude, label=label, **kwargs)
+                        ax.plot(x_data, y_data, label=label, **points_kwargs)
                     elif yerr is not None:
                         # FIXME: support x-error
                         ax.errorbar(
-                            x.magnitude,
-                            y.magnitude,
-                            yerr.magnitude,
+                            x_data,
+                            y_data,
+                            yerr_data,
                             label=label,
-                            **kwargs,
+                            **points_kwargs,
                         )
                 elif curve.type == CurveType.BAR:
-                    # FIXME: support error bars
-                    print("x", x.magnitude)
-                    print("y", y.magnitude)
-                    # FIXME: manage the dimensions of the result (i.e. unstacking for
-                    # repeats)
-                    ax.bar(x=x.magnitude[0], height=y.magnitude[0])
-                elif curve.type == CurveType.HORIZONTALBAR:
-                    ax.barh(y=x.magnitude[0], width=y.magnitude[0])
+                    ax.bar(x=x_data, height=y_data, **bar_kwargs)
 
+                elif curve.type == CurveType.HORIZONTALBAR:
+                    ax.barh(y=x_data, width=y_data, **bar_kwargs)
+
+                elif curve.type == CurveType.BARSTACKED:
+                    if last_barstack_x is not None:
+                        if not np.all(np.isclose(last_barstack_x, x_data)):
+                            raise ValueError(
+                                "x data must be identical for stacked bars.")
+                        ax.bar(x=x_data, height=y_data, bottom=last_barstack_y,
+                               **bar_kwargs)
+                    else:
+                        ax.bar(x=x_data, height=y_data, **bar_kwargs)
+
+                    last_barstack_x = x_data
+                    last_barstack_y = y_data
+
+                elif curve.type == CurveType.HORIZONTALBARSTACKED:
+                    if last_barhstack_x is not None:
+                        if not np.all(np.isclose(last_barhstack_x, x_data)):
+                            raise ValueError(
+                                "x data must be identical for stacked bars.")
+                        ax.barh(y=x_data, width=y_data, left=last_barhstack_y,
+                               **bar_kwargs)
+                    else:
+                        ax.barh(y=x_data, width=y_data, **bar_kwargs)
+
+                    last_barhstack_x = x_data
+                    last_barhstack_y = y_data
 
 
             # plot settings

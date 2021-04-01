@@ -40,32 +40,32 @@
   <listOfOutputs>
     <plot2D id="plot_points" name="points">
       <listOfCurves>
-        <curve id="curve_S1_points" name="S1" xDataReference="dg_time" yDataReference="dg_S1" type="points"/>
-        <curve id="curve_S2_points" name="S2" xDataReference="dg_time" yDataReference="dg_S2" type="points"/>
+        <curve id="curve_S1_points" name="S1" xDataReference="dg_time" yDataReference="dg_S1" type="points" style="style_blue"/>
+        <curve id="curve_S2_points" name="S2" xDataReference="dg_time" yDataReference="dg_S2" type="points" style="style_orange"/>
       </listOfCurves>
     </plot2D>
     <plot2D id="plot_bar" name="bar">
       <listOfCurves>
-        <curve id="curve_S1_bar" name="S1" xDataReference="dg_time" yDataReference="dg_S1" type="bar"/>
-        <curve id="curve_S2_bar" name="S2" xDataReference="dg_time" yDataReference="dg_S2" type="bar"/>
+        <curve id="curve_S1_bar" name="S1" xDataReference="dg_time" yDataReference="dg_S1" type="bar" style="style_blue"/>
+        <curve id="curve_S2_bar" name="S2" xDataReference="dg_time" yDataReference="dg_S2" type="bar" style="style_orange"/>
       </listOfCurves>
     </plot2D>
     <plot2D id="plot_barStacked" name="barStacked">
       <listOfCurves>
-        <curve id="curve_S1_barStacked" name="S1" xDataReference="dg_time" yDataReference="dg_S1" type="barStacked"/>
-        <curve id="curve_S2_barStacked" name="S2" xDataReference="dg_time" yDataReference="dg_S2" type="barStacked"/>
+        <curve id="curve_S1_barStacked" name="S1" xDataReference="dg_time" yDataReference="dg_S1" type="barStacked" style="style_blue"/>
+        <curve id="curve_S2_barStacked" name="S2" xDataReference="dg_time" yDataReference="dg_S2" type="barStacked" style="style_orange"/>
       </listOfCurves>
     </plot2D>
     <plot2D id="plot_horizontalBar" name="horizontalBar">
       <listOfCurves>
-        <curve id="curve_S1_horizontalBar" name="S1" xDataReference="dg_time" yDataReference="dg_S1" type="horizontalBar"/>
-        <curve id="curve_S2_horizontalBar" name="S2" xDataReference="dg_time" yDataReference="dg_S2" type="horizontalBar"/>
+        <curve id="curve_S1_horizontalBar" name="S1" xDataReference="dg_time" yDataReference="dg_S1" type="horizontalBar" style="style_blue"/>
+        <curve id="curve_S2_horizontalBar" name="S2" xDataReference="dg_time" yDataReference="dg_S2" type="horizontalBar" style="style_orange"/>
       </listOfCurves>
     </plot2D>
     <plot2D id="plot_horizontalBarStacked" name="horizontalBarStacked">
       <listOfCurves>
-        <curve id="curve_S1_horizontalBarStacked" name="S1" xDataReference="dg_time" yDataReference="dg_S1" type="horizontalBarStacked"/>
-        <curve id="curve_S2_horizontalBarStacked" name="S2" xDataReference="dg_time" yDataReference="dg_S2" type="horizontalBarStacked"/>
+        <curve id="curve_S1_horizontalBarStacked" name="S1" xDataReference="dg_time" yDataReference="dg_S1" type="horizontalBarStacked" style="style_blue"/>
+        <curve id="curve_S2_horizontalBarStacked" name="S2" xDataReference="dg_time" yDataReference="dg_S2" type="horizontalBarStacked" style="style_orange"/>
       </listOfCurves>
     </plot2D>
     <figure id="figure0" numRows="3" numCols="2">
@@ -79,12 +79,13 @@
     </figure>
   </listOfOutputs>
   <listOfStyles>
-    <style id="blue_fill">
-      <line style="dashDot" color="#FF00FF" thickness="4"/>
-      <fill color="#0000FF"/>
+    <style id="style_blue">
+      <line style="solid" color="#1f77b4aa" thickness="4"/>
+      <fill color="#1f77b4aa"/>
     </style>
-    <style id="red_dashed_line">
-      <line style="dash" color="#FF0000"/>
+    <style id="style_orange">
+      <line style="solid" color="#ff7f0eaa" thickness="4"/>
+      <fill color="#ff7f0eff"/>
     </style>
   </listOfStyles>
 </sedML>
