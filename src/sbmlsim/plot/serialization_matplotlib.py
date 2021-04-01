@@ -9,7 +9,7 @@ from matplotlib.gridspec import GridSpec
 
 from sbmlsim.data import Data
 from sbmlsim.plot import Figure, Axis, SubPlot, Curve
-from sbmlsim.plot.plotting import AxisScale, Style, LineStyle
+from sbmlsim.plot.plotting import AxisScale, Style, LineStyle, CurveType
 from sbmlsim.plot.plotting_matplotlib import logger, interp
 
 
@@ -86,10 +86,6 @@ class MatplotlibFigureSerializer(object):
                 print(curve)
 
                 # process data
-                # xres quantity (potentially high dimensional)
-                # x = xres.dim_mean(self.index) !!!
-                # if isinstance(x, XResult):
-                #    x_mean = x.mean(dim=self._op_dims(), skipna=True).values * self.ureg(self.udict[key])
                 x = curve.x.get_data(experiment=experiment, to_units=xunit)
                 y = curve.y.get_data(experiment=experiment, to_units=yunit)
                 xerr = None
@@ -101,17 +97,34 @@ class MatplotlibFigureSerializer(object):
 
                 label = curve.name if curve.name else "__nolabel__"
                 kwargs = curve.style.to_mpl_kwargs() if curve.style else {}
-                if (xerr is None) and (yerr is None):
-                    # single trajectories (FIXME: handle xres)
-                    ax.plot(x.magnitude, y.magnitude, label=label, **kwargs)
-                elif yerr is not None:
-                    ax.errorbar(
-                        x.magnitude,
-                        y.magnitude,
-                        yerr.magnitude,
-                        label=label,
-                        **kwargs,
-                    )
+
+                # FIXME: necessary to get the individual curves out of the data cube
+
+
+
+                if curve.type == CurveType.POINTS:
+                    if (xerr is None) and (yerr is None):
+                        ax.plot(x.magnitude, y.magnitude, label=label, **kwargs)
+                    elif yerr is not None:
+                        # FIXME: support x-error
+                        ax.errorbar(
+                            x.magnitude,
+                            y.magnitude,
+                            yerr.magnitude,
+                            label=label,
+                            **kwargs,
+                        )
+                elif curve.type == CurveType.BAR:
+                    # FIXME: support error bars
+                    print("x", x.magnitude)
+                    print("y", y.magnitude)
+                    # FIXME: manage the dimensions of the result (i.e. unstacking for
+                    # repeats)
+                    ax.bar(x=x.magnitude[0], height=y.magnitude[0])
+                elif curve.type == CurveType.HORIZONTALBAR:
+                    ax.barh(y=x.magnitude[0], width=y.magnitude[0])
+
+
 
             # plot settings
             if plot.name and plot.title_visible:
