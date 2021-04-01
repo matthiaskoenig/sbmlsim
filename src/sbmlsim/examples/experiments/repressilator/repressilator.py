@@ -8,6 +8,7 @@ from sbmlsim.data import Data
 from sbmlsim.experiment import ExperimentRunner, SimulationExperiment
 from sbmlsim.model import AbstractModel
 from sbmlsim.plot import Axis, Figure, Plot
+from sbmlsim.result.report import Report
 from sbmlsim.simulation import (
     AbstractSim,
     Timecourse,
@@ -129,13 +130,14 @@ class RepressilatorExperiment(SimulationExperiment):
             fig.sid: fig,
         }
 
-    def reports(self) -> Dict[str, Dict[str, Data]]:
+    def reports(self) -> Dict[str, Report]:
         """Define reports.
 
         HashMap of DataGenerators.
-        FIXME: separate class for these objects.
+
         """
-        pass
+        return {}
+
 
 
 def run_repressilator_experiments(output_path: Path) -> Path:

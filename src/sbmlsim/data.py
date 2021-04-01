@@ -131,12 +131,11 @@ class Data(object):
         }
         return d
 
-    def get_data(self, experiment: 'SimulationExperiment', to_units: str = None):
+    def get_data(self, experiment: 'SimulationExperiment', to_units: str = None) -> Quantity:
         """Return actual data from the data object.
 
         The data is resolved from the available datasets and
         the injected Experiment.
-
 
         :param to_units: units to convert to
         :return:
@@ -184,10 +183,8 @@ class Data(object):
                 raise ValueError("Only Result objects supported in task data.")
 
             self.unit = xres.uinfo[self.index]
-            # FIXME: complete data must be kept
-            # print(xres)
-            x = xres.dim_mean(self.index)
-            # x = xres[self.index]
+            # x = xres.dim_mean(self.index)
+            x = xres.uinfo.Q_(xres[self.index].values, self.unit)
 
         elif self.dtype == Data.Types.FUNCTION:
             # evaluate with actual data

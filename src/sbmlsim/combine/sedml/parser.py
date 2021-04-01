@@ -115,7 +115,7 @@ from sbmlsim.model import model_resources
 from sbmlsim.model.model import AbstractModel
 from sbmlsim.plot import Figure, Plot, Axis, Curve
 from sbmlsim.plot.plotting import Style, Line, LineStyle, ColorType, Marker, \
-    MarkerStyle, Fill, SubPlot, AxisScale
+    MarkerStyle, Fill, SubPlot, AxisScale, CurveType
 from sbmlsim.simulation import ScanSim, TimecourseSim, Timecourse, AbstractSim
 from sbmlsim.task import Task
 from sbmlsim.units import UnitRegistry
@@ -902,15 +902,26 @@ class SEDMLParser(object):
         sed_curve_type = sed_curve.getTypeCode()
         if sed_curve_type == libsedml.SEDML_OUTPUT_CURVE:
 
+            curve_type: CurveType
+            if sed_curve.getType() == libsedml.SEDML_CURVETYPE_POINTS:
+                curve_type = CurveType.POINTS
+            elif sed_curve.getType() == libsedml.SEDML_CURVETYPE_BAR:
+                curve_type = CurveType.BAR
+            elif sed_curve.getType() == libsedml.SEDML_CURVETYPE_BARSTACKED:
+                curve_type = CurveType.BARSTACKED
+            elif sed_curve.getType() == libsedml.SEDML_CURVETYPE_HORIZONTALBAR:
+                curve_type = CurveType.HORIZONTALBAR
+            elif sed_curve.getType() == libsedml.SEDML_CURVETYPE_HORIZONTALBARSTACKED:
+                curve_type = CurveType.HORIZONTALBARSTACKED
             curve = Curve(
                 sid=sed_curve.getId(),
-                name=sed_curve.getName(),
+                name=sed_curve.getName() if sed_curve.isSetName() else None,
                 x=self.data_from_datagenerator(sed_curve.getXDataReference()),
                 y=self.data_from_datagenerator(sed_curve.getYDataReference()),
                 # FIXME: handle errorbars via lower and upper
                 xerr=self.data_from_datagenerator(sed_curve.getXErrorLower()),
                 yerr=self.data_from_datagenerator(sed_curve.getYErrorLower()),
-                # FIXME: curve type
+                type=curve_type,
                 # FIXME: support yaxis
             )
 

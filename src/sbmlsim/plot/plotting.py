@@ -470,9 +470,27 @@ class Curve(AbstractCurve):
         self.style = style
         self.kwargs = kwargs  # store for lookup
 
-    def __str__(self):
-        info = f"x: {self.x}\ny: {self.y}\nxerr: {self.xerr}\nyerr: {self.yerr}"
-        return info
+    def __repr__(self) -> str:
+        """Get representation string."""
+        return f"Curve(sid={self.sid} name={self.name} type={self.type} order={self.order} " \
+               f"x={self.x is not None} y={self.y is not None}" \
+               f"xerr={self.xerr is not None} yerr={self.yerr is not None})"
+
+    def __str__(self) -> str:
+        """Get string."""
+        info = [
+            "Curve(",
+            f"\tsid={self.sid}",
+            f"\tname={self.name}",
+            f"\ttype={self.type}",
+            f"\tx={self.x}",
+            f"\ty={self.y}",
+            f"\txerr={self.xerr}",
+            f"\tyerr={self.yerr}",
+            f"\torder={self.order}",
+            ")"
+        ]
+        return "\n".join(info)
 
     @staticmethod
     def _add_default_style_kwargs(d: Dict, dtype: str) -> Dict:

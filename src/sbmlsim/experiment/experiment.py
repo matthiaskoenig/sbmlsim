@@ -13,7 +13,11 @@ from sbmlsim.data import Data, DataSet
 from sbmlsim.fit import FitMapping
 from sbmlsim.model import AbstractModel, RoadrunnerSBMLModel
 from sbmlsim.plot import Figure
-from sbmlsim.plot.plotting_matplotlib import FigureMPL, MatplotlibFigureSerializer, plt
+from sbmlsim.plot.serialization_matplotlib import (
+    MatplotlibFigureSerializer,
+    FigureMPL,
+    plt,
+)
 from sbmlsim.result import XResult
 from sbmlsim.serialization import ObjectJSONEncoder
 from sbmlsim.simulation import AbstractSim, ScanSim, TimecourseSim

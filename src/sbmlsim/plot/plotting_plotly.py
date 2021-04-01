@@ -3,8 +3,7 @@ import logging
 import plotly.tools as tls
 
 from sbmlsim.plot import Axis, Curve, Figure, Plot, SubPlot
-from sbmlsim.plot.plotting_matplotlib import MatplotlibFigureSerializer
-
+from sbmlsim.plot.serialization_matplotlib import MatplotlibFigureSerializer
 
 logger = logging.getLogger(__name__)
 
