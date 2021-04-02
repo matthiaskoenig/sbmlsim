@@ -289,7 +289,7 @@ class Style(BasePlotObject):
         if 'markeredgecolor' in bar_kwargs:
             bar_kwargs['edgecolor'] = bar_kwargs.pop('markeredgecolor')
         if 'markerfacecolor' in bar_kwargs:
-            bar_kwargs['color'] = bar_kwargs.pop('markeredgecolor')
+            bar_kwargs['color'] = bar_kwargs.pop('markerfacecolor')
 
         return {
             **bar_kwargs,
