@@ -959,8 +959,8 @@ class SEDMLParser(object):
 
         style = Style(
             sid=sed_style.getId(),
-            name=sed_style.getName(),
-            base_style=self.parse_style(sed_style.getBaseStyle()),
+            name=sed_style.getName() if sed_style.isSetName() else None,
+            base_style=self.parse_style(sed_style.getBaseStyle()) if sed_style.isSetBaseStyle() else None,
         )
         sed_line: libsedml.SedLine = sed_style.getLineStyle()
         style.line = self.parse_line(sed_line)
@@ -975,96 +975,87 @@ class SEDMLParser(object):
     def parse_line(self, sed_line: libsedml.SedLine) -> Optional[Line]:
         """Parse line information."""
         if sed_line is None:
-            return Line(
-                style=LineStyle.SOLID,
-                color=ColorType("black"),
-                thickness=1.0,
-            )
+            return None
 
-        line_style: LineStyle
-        sed_line_style = sed_line.getStyle()
-        if sed_line_style == libsedml.SEDML_LINETYPE_NONE:
-            line_style = LineStyle.NONE
-        elif sed_line_style == libsedml.SEDML_LINETYPE_SOLID:
-            line_style = LineStyle.SOLID
-        elif sed_line_style == libsedml.SEDML_LINETYPE_DASH:
-            line_style = LineStyle.DASH
-        elif sed_line_style == libsedml.SEDML_LINETYPE_DOT:
-            line_style = LineStyle.DOT
-        elif sed_line_style == libsedml.SEDML_LINETYPE_DASHDOT:
-            line_style = LineStyle.DASHDOT
-        elif sed_line_style == libsedml.SEDML_LINETYPE_DASHDOTDOT:
-            line_style = LineStyle.DASHDOTDOT
+        line_style: Optional[LineStyle]
+        if not sed_line.isSetStyle():
+            line_style = None
         else:
-            logger.warning(f"Unsupported LineStyle, using LineStyle.SOLID.")
-            line_style = LineStyle.SOLID
+            sed_line_style = sed_line.getStyle()
+            if sed_line_style == libsedml.SEDML_LINETYPE_NONE:
+                line_style = LineStyle.NONE
+            elif sed_line_style == libsedml.SEDML_LINETYPE_SOLID:
+                line_style = LineStyle.SOLID
+            elif sed_line_style == libsedml.SEDML_LINETYPE_DASH:
+                line_style = LineStyle.DASH
+            elif sed_line_style == libsedml.SEDML_LINETYPE_DOT:
+                line_style = LineStyle.DOT
+            elif sed_line_style == libsedml.SEDML_LINETYPE_DASHDOT:
+                line_style = LineStyle.DASHDOT
+            elif sed_line_style == libsedml.SEDML_LINETYPE_DASHDOTDOT:
+                line_style = LineStyle.DASHDOTDOT
 
         return Line(
             style=line_style,
             color=ColorType.parse_color(sed_line.getColor()) if sed_line.isSetColor() else None,
-            thickness=sed_line.getThickness() if sed_line.isSetThickness() else 1.0,
+            thickness=sed_line.getThickness() if sed_line.isSetThickness() else None
         )
 
     def parse_marker(self, sed_marker: libsedml.SedMarker) -> Optional[Marker]:
         """Parse the line information."""
         if sed_marker is None:
-            return Marker()
+            return None
 
-        marker_style: MarkerStyle
-        sed_marker_style = sed_marker.getStyle()
-        if sed_marker_style == libsedml.SEDML_MARKERTYPE_NONE:
-            marker_style = MarkerStyle.NONE
-        elif sed_marker_style == libsedml.SEDML_MARKERTYPE_SQUARE:
-            marker_style = MarkerStyle.SQUARE
-        elif sed_marker_style == libsedml.SEDML_MARKERTYPE_CIRCLE:
-            marker_style = MarkerStyle.CIRCLE
-        elif sed_marker_style == libsedml.SEDML_MARKERTYPE_DIAMOND:
-            marker_style = MarkerStyle.DIAMOND
-        elif sed_marker_style == libsedml.SEDML_MARKERTYPE_XCROSS:
-            marker_style = MarkerStyle.XCROSS
-        elif sed_marker_style == libsedml.SEDML_MARKERTYPE_PLUS:
-            marker_style = MarkerStyle.PLUS
-        elif sed_marker_style == libsedml.SEDML_MARKERTYPE_STAR:
-            marker_style = MarkerStyle.STAR
-        elif sed_marker_style == libsedml.SEDML_MARKERTYPE_TRIANGLEUP:
-            marker_style = MarkerStyle.TRIANGLEUP
-        elif sed_marker_style == libsedml.SEDML_MARKERTYPE_TRIANGLEDOWN:
-            marker_style = MarkerStyle.TRIANGLEDOWN
-        elif sed_marker_style == libsedml.SEDML_MARKERTYPE_TRIANGLELEFT:
-            marker_style = MarkerStyle.TRIANGLELEFT
-        elif sed_marker_style == libsedml.SEDML_MARKERTYPE_TRIANGLERIGHT:
-            marker_style = MarkerStyle.TRIANGLERIGHT
-        elif sed_marker_style == libsedml.SEDML_MARKERTYPE_HDASH:
-            marker_style = MarkerStyle.HDASH
-        elif sed_marker_style == libsedml.SEDML_MARKERTYPE_VDASH:
-            marker_style = MarkerStyle.VDASH
+        marker_style: Optional[MarkerStyle]
+        if not sed_marker.isSetStyle():
+            marker_style = None
         else:
-            logger.warning(f"Unsupported MarkerStyle, using MarkerStyle.SQUARE.")
-            marker_style = MarkerStyle.SQUARE
+            sed_marker_style = sed_marker.getStyle()
+            if sed_marker_style == libsedml.SEDML_MARKERTYPE_NONE:
+                marker_style = MarkerStyle.NONE
+            elif sed_marker_style == libsedml.SEDML_MARKERTYPE_SQUARE:
+                marker_style = MarkerStyle.SQUARE
+            elif sed_marker_style == libsedml.SEDML_MARKERTYPE_CIRCLE:
+                marker_style = MarkerStyle.CIRCLE
+            elif sed_marker_style == libsedml.SEDML_MARKERTYPE_DIAMOND:
+                marker_style = MarkerStyle.DIAMOND
+            elif sed_marker_style == libsedml.SEDML_MARKERTYPE_XCROSS:
+                marker_style = MarkerStyle.XCROSS
+            elif sed_marker_style == libsedml.SEDML_MARKERTYPE_PLUS:
+                marker_style = MarkerStyle.PLUS
+            elif sed_marker_style == libsedml.SEDML_MARKERTYPE_STAR:
+                marker_style = MarkerStyle.STAR
+            elif sed_marker_style == libsedml.SEDML_MARKERTYPE_TRIANGLEUP:
+                marker_style = MarkerStyle.TRIANGLEUP
+            elif sed_marker_style == libsedml.SEDML_MARKERTYPE_TRIANGLEDOWN:
+                marker_style = MarkerStyle.TRIANGLEDOWN
+            elif sed_marker_style == libsedml.SEDML_MARKERTYPE_TRIANGLELEFT:
+                marker_style = MarkerStyle.TRIANGLELEFT
+            elif sed_marker_style == libsedml.SEDML_MARKERTYPE_TRIANGLERIGHT:
+                marker_style = MarkerStyle.TRIANGLERIGHT
+            elif sed_marker_style == libsedml.SEDML_MARKERTYPE_HDASH:
+                marker_style = MarkerStyle.HDASH
+            elif sed_marker_style == libsedml.SEDML_MARKERTYPE_VDASH:
+                marker_style = MarkerStyle.VDASH
 
         marker = Marker(
-            size=sed_marker.getSize() if sed_marker.isSetSize() else 6,
-            style=marker_style if sed_marker.isSetStyle() else MarkerStyle.SQUARE,
-            fill=ColorType(sed_marker.getFill()) if sed_marker.isSetFill() else ColorType("black"),
-
-            line_thickness=sed_marker.getLineThickness() if sed_marker.isSetLineThickness() else 0.0,
+            size=sed_marker.getSize() if sed_marker.isSetSize() else None,
+            style=marker_style if sed_marker.isSetStyle() else None,
+            fill=ColorType(sed_marker.getFill()) if sed_marker.isSetFill() else None,
+            line_thickness=sed_marker.getLineThickness() if sed_marker.isSetLineThickness() else None,
+            line_color=ColorType(sed_marker.getLineColor()) if sed_marker.isSetLineColor() else None,
         )
-        if sed_marker.isSetLineColor():
-            marker.line_color = ColorType(sed_marker.getLineColor())
-        else:
-            # Fallback to fill
-            marker.line_color = marker.fill
 
         return marker
 
     def parse_fill(self, sed_fill: libsedml.SedFill) -> Optional[Fill]:
         """Parse fill information."""
         if sed_fill is None:
-            return Fill()
+            return None
 
         return Fill(
-            color=ColorType.parse_color(sed_fill.getColor()),
-            second_color=ColorType.parse_color(sed_fill.getSecondColor()),
+            color=ColorType.parse_color(sed_fill.getColor()) if sed_fill.isSetColor() else None,
+            second_color=ColorType.parse_color(sed_fill.getSecondColor()) if sed_fill.isSetSecondColor() else None,
         )
 
     def data_from_datagenerator(self, sed_dg_ref: Optional[str]) -> Optional[Data]:

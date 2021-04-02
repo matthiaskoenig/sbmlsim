@@ -13,7 +13,7 @@ import logging
 from copy import deepcopy
 from dataclasses import dataclass
 from enum import Enum
-from typing import Dict, List, Optional, Union
+from typing import Dict, List, Optional, Union, Any
 
 import numpy as np
 from matplotlib.colors import to_hex, to_rgba
@@ -233,9 +233,9 @@ class Style(BasePlotObject):
     }
     SEDML2MPL_MARKER_MAPPING = {v: k for (k, v) in MPL2SEDML_MARKER_MAPPING.items()}
 
-    def to_mpl_kwargs(self) -> Dict:
-        """Convert to matplotlib plotting arguments"""
-        kwargs = {}
+    def to_mpl_curve_kwargs(self) -> Dict:
+        """Convert to matplotlib curve keyword arguments."""
+        kwargs: Dict[str, Any] = {}
         if self.line:
             if self.line.color:
                 kwargs["color"] = self.line.color.color
@@ -255,8 +255,56 @@ class Style(BasePlotObject):
             if self.marker.line_thickness:
                 kwargs["markeredgewidth"] = self.marker.line_thickness
 
+        return kwargs
+
+    def _mpl_error_kwargs(self) -> Dict[str, Any]:
+        """Define keywords for error bars."""
+        error_kwargs = {
+            'error_kw': {
+                'ecolor': "black",
+                'elinewidth': 3.0,
+            }
+        }
+        return error_kwargs
+
+    def to_mpl_points_kwargs(self) -> Dict[str, Any]:
+        """Convert to matplotlib point curve keyword arguments."""
+        points_kwargs = self.to_mpl_curve_kwargs()
+        error_kwargs = self._mpl_error_kwargs()
+        return {
+            **points_kwargs,
+            **error_kwargs['error_kw'],
+        }
+
+    def to_mpl_bar_kwargs(self):
+        """Convert to matplotlib bar curve keyword arguments."""
+        bar_kwargs = self.to_mpl_curve_kwargs()
+        for key in ['color', 'linewidth', 'marker']:
+            # pop line keys
+            if key in bar_kwargs:
+                bar_kwargs.pop(key)
+
+        if 'markeredgewidth' in bar_kwargs:
+            bar_kwargs['linewidth'] = bar_kwargs.pop('markeredgewidth')
+        if 'markeredgecolor' in bar_kwargs:
+            bar_kwargs['edgecolor'] = bar_kwargs.pop('markeredgecolor')
+        if 'markerfacecolor' in bar_kwargs:
+            bar_kwargs['color'] = bar_kwargs.pop('markeredgecolor')
+
+        return {
+            **bar_kwargs,
+            **self._mpl_error_kwargs(),
+        }
+
+    def to_mpl_area_kwargs(self) -> Dict[str, Any]:
+        """Define keyword dictionary for a shaded area."""
+        kwargs: Dict[str, Any] = self.to_mpl_points_kwargs()
+
         if self.fill:
-            pass
+            if self.fill.color:
+                kwargs["fill.color"] = self.fill.color
+            if self.fill.second_color:
+                kwargs["second.color"] = self.fill.second_color
 
         return kwargs
 
@@ -738,24 +786,6 @@ class Plot(BasePlotObject):
                 curve.order = 0
             else:
                 curve.order = max([c.order for c in self.curves]) + 1
-
-        # inject default colors if no colors provided
-        color = ColorType.parse_color(
-            color=DEFAULT_COLORS[curve.order % len(DEFAULT_COLORS)],
-            alpha=curve.kwargs.get("alpha", 1.0),
-        )
-        style: Style = curve.style
-
-        if (style.line.style != LineStyle.NONE) and (not style.line.color):
-            style.line.color = color
-            logger.warning(
-                f"'{self.sid}.{curve.sid}': undefined line color set to: {color}"
-            )
-        if (style.marker.style != MarkerStyle.NONE) and (not style.marker.fill):
-            style.marker.fill = color
-            logger.error(
-                f"'{self.sid}.{curve.sid}': undefined marker fill set to: {color}"
-            )
 
         self.curves.append(curve)
 

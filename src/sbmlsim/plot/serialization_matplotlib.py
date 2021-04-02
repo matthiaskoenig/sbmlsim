@@ -1,6 +1,6 @@
 """Serialization of Figure object to matplotlib."""
 
-from typing import List
+from typing import List, Dict, Any
 
 import numpy as np
 from matplotlib import pyplot as plt
@@ -89,7 +89,7 @@ class MatplotlibFigureSerializer(object):
             # plot ordered curves
             curves: List[Curve] = sorted(plot.curves, key=lambda x: x.order)
             print("order:", [c.order for c in curves])
-            for curve in curves:
+            for kc, curve in enumerate(curves):
                 print(curve)
 
                 # process data
@@ -104,15 +104,6 @@ class MatplotlibFigureSerializer(object):
 
                 label = curve.name if curve.name else "__nolabel__"
 
-                points_kwargs = curve.style.to_mpl_kwargs() if curve.style else {}
-                bar_kwargs = {**points_kwargs}
-                for key in ["marker", "markersize", "markerfacecolor", "markeredgewidth"]:
-                    if key in bar_kwargs:
-                        bar_kwargs.pop(key)
-                    if 'markeredgecolor' in bar_kwargs:
-                        bar_kwargs['edgecolor'] = bar_kwargs.pop('markeredgecolor')
-
-
                 # FIXME: necessary to get the individual curves out of the data cube
                 # TODO: iterate over all repeats in the data
                 x_data = x.magnitude[:, 0] if x is not None else None
@@ -126,14 +117,14 @@ class MatplotlibFigureSerializer(object):
                 # print("x_data", x_data)
                 # print("y_data", y_data)
 
-                # directly plot the bars with whiskers
-                error_kwargs = {
-                    'error_kw': {
-                        'ecolor': "black",
-                        'elinewidth': 3.0,
-                    }
+                kwargs: Dict[str, Any] = {}
+                if curve.style:
+                    if curve.type == CurveType.POINTS:
+                        kwargs = curve.style.to_mpl_points_kwargs()
+                    else:
+                        # bar plot
+                        kwargs = curve.style.to_mpl_bar_kwargs()
 
-                }
                 if curve.type == CurveType.POINTS:
                     ax.errorbar(
                         x=x_data,
@@ -141,7 +132,7 @@ class MatplotlibFigureSerializer(object):
                         xerr=xerr_data,
                         yerr=yerr_data,
                         label=label,
-                        **error_kwargs['error_kw'], **points_kwargs
+                        **kwargs
                     )
 
                 elif curve.type == CurveType.BAR:
@@ -151,8 +142,7 @@ class MatplotlibFigureSerializer(object):
                         xerr=xerr_data,
                         yerr=yerr_data,
                         label=label,
-                        **error_kwargs,
-                        **bar_kwargs,
+                        **kwargs
                     )
 
                 elif curve.type == CurveType.HORIZONTALBAR:
@@ -162,8 +152,7 @@ class MatplotlibFigureSerializer(object):
                         xerr=xerr_data,
                         yerr=yerr_data,
                         label=label,
-                        **error_kwargs,
-                        **bar_kwargs
+                        **kwargs
                     )
 
                 elif curve.type == CurveType.BARSTACKED:
@@ -180,8 +169,7 @@ class MatplotlibFigureSerializer(object):
                         xerr=xerr_data,
                         yerr=yerr_data,
                         label=label,
-                        **error_kwargs,
-                        **bar_kwargs
+                        **kwargs
                     )
                     barstack_y = barstack_y + y_data
 
@@ -199,8 +187,7 @@ class MatplotlibFigureSerializer(object):
                         xerr=yerr_data,
                         yerr=xerr_data,
                         label=label,
-                        **error_kwargs,
-                        **bar_kwargs
+                        **kwargs
                     )
                     barhstack_y = barhstack_y + y_data
 

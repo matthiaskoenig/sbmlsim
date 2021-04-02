@@ -88,7 +88,7 @@ class MatplotlibFigureSerializer(object):
 
                 kwargs = {}
                 if curve.style:
-                    kwargs = curve.style.to_mpl_kwargs()
+                    kwargs = curve.style.to_mpl_curve_kwargs()
 
                 # mean quantity
                 x = curve.x.get_data(experiment=experiment, to_units=xunit)

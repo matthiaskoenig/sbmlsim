@@ -11,12 +11,14 @@
 - [~] support setting label (name of axis), see https://github.com/fbergmann/libSEDML/issues/110
 - [x] plot width and height  
 - [x] curve type (points, bar, ...)
-  - [ ] fix stacking position
-  - [ ] bars next to each other;  
-- [ ] error bars
+  - [x] fix stacking position
+  - [~] bars next to each other; see https://github.com/SED-ML/sed-ml/issues/138  
+- [~] error bars; see https://github.com/SED-ML/sed-ml/issues/137
+- [ ] styling of bar plots; 
 - [ ] yAxis  
 - [ ] shaded areas & fills
 - [ ] order of abstract curve
+- [ ] resolve basestyle
 
 # Reports
 - [ ] reports
