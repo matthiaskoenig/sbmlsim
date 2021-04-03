@@ -343,12 +343,22 @@ class Style(BasePlotObject):
 
 
 class AxisScale(Enum):
+    """Scale of the axis."""
+
     LINEAR = 1
     LOG10 = 2
 
 
+class YAxisPosition(Enum):
+    """Position of yaxis."""
+
+    LEFT = 1
+    RIGHT = 2
+
+
 class Axis(BasePlotObject):
     """Axis object."""
+
     def __init__(
         self,
         label: str = None,
@@ -490,7 +500,7 @@ class Curve(AbstractCurve):
         order=None,
         type: CurveType = CurveType.POINTS,
         style: Style = None,
-        yaxis=None,
+        yaxis: YAxisPosition = None,
         **kwargs,
     ):
         super(Curve, self).__init__(None, None, x, order, style, yaxis)
@@ -518,6 +528,7 @@ class Curve(AbstractCurve):
         else:
             kwargs = Curve._add_default_style_kwargs(kwargs, y.dtype)
             style = Style.from_mpl_kwargs(**kwargs)
+        self.yaxis: YAxisPosition = yaxis
         self.style = style
         self.kwargs = kwargs  # store for lookup
 
@@ -592,6 +603,7 @@ class Plot(BasePlotObject):
         name: str = None,
         xaxis: Axis = None,
         yaxis: Axis = None,
+        yaxis_right: Axis = None,
         curves: List[Curve] = None,
         # FIXME: support areas
         legend: bool = True,
@@ -627,6 +639,7 @@ class Plot(BasePlotObject):
         # property storage
         self._xaxis: Axis = None
         self._yaxis: Axis = None
+        self._yaxis_right: Axis = None
         self._curves: Axis = None
         self._figure: Figure = None
 
@@ -755,6 +768,30 @@ class Plot(BasePlotObject):
         if ax and ax.sid is None:
             ax.sid = f"{self.sid}_yaxis"
         self._yaxis = ax
+
+    @property
+    def yaxis_right(self) -> Axis:
+        return self._yaxis_right
+
+    @yaxis.setter
+    def yaxis_right(self, value: Axis) -> None:
+        self.set_yaxis_right(label=value)
+
+    def set_yaxis_right(self, label: Union[str, Axis], unit: str = None, **kwargs):
+        """Set axis with all axes attributes.
+
+        All argument of Axis are supported.
+
+        :param label:
+        :param unit:
+        :keyword label_visible:
+        :param kwargs:
+        :return:
+        """
+        ax = Plot._set_axis(label=label, unit=unit, **kwargs)
+        if ax and ax.sid is None:
+            ax.sid = f"{self.sid}_yaxis"
+        self._yaxis_right = ax
 
     @staticmethod
     def _set_axis(

@@ -115,7 +115,7 @@ from sbmlsim.model import model_resources
 from sbmlsim.model.model import AbstractModel
 from sbmlsim.plot import Figure, Plot, Axis, Curve
 from sbmlsim.plot.plotting import Style, Line, LineStyle, ColorType, Marker, \
-    MarkerStyle, Fill, SubPlot, AxisScale, CurveType
+    MarkerStyle, Fill, SubPlot, AxisScale, CurveType, YAxisPosition
 from sbmlsim.simulation import ScanSim, TimecourseSim, Timecourse, AbstractSim
 from sbmlsim.task import Task
 from sbmlsim.units import UnitRegistry
@@ -821,6 +821,7 @@ class SEDMLParser(object):
         # axis
         plot.xaxis = self.parse_axis(sed_plot2d.getXAxis())
         plot.yaxis = self.parse_axis(sed_plot2d.getYAxis())
+        plot.yaxis_right = self.parse_axis(sed_plot2d.getRightYAxis())
 
         # curves
         curves: List[Curve] = []
@@ -898,7 +899,6 @@ class SEDMLParser(object):
         xerr: Data
         yerr: Data
 
-        # FIXME: resolve type of curve
         sed_curve_type = sed_curve.getTypeCode()
         if sed_curve_type == libsedml.SEDML_OUTPUT_CURVE:
 
@@ -922,10 +922,20 @@ class SEDMLParser(object):
                 yerr=self.data_from_datagenerator(sed_curve.getYErrorUpper()),
                 type=curve_type,
                 order=sed_curve.getOrder() if sed_curve.isSetOrder() else None,
-                # FIXME: support yaxis
             )
-            sed_curve.getXErrorUpper()
+            # parse yaxis
+            yaxis = None
+            if sed_curve.isSetYAxis():
+                sed_yaxis: str = sed_curve.getYAxis()
+                if sed_yaxis == "left":
+                    yaxis = YAxisPosition.LEFT
+                elif sed_yaxis == "right":
+                    yaxis = YAxisPosition.RIGHT
+                else:
+                    raise ValueError(f"Unsupported yAxis on curve: {sed_yaxis}")
+            curve.yaxis = yaxis
 
+            # parse style
             if sed_curve.isSetStyle():
                 # styles are already parsed, used the style
                 style = self.styles[sed_curve.getStyle()]

@@ -9,7 +9,7 @@ from matplotlib.gridspec import GridSpec
 
 from sbmlsim.data import Data
 from sbmlsim.plot import Figure, Axis, SubPlot, Curve
-from sbmlsim.plot.plotting import AxisScale, Style, LineStyle, CurveType
+from sbmlsim.plot.plotting import AxisScale, Style, LineStyle, CurveType, YAxisPosition
 from sbmlsim.plot.plotting_matplotlib import logger, interp
 
 
@@ -52,24 +52,25 @@ class MatplotlibFigureSerializer(object):
 
             ridx = subplot.row - 1
             cidx = subplot.col - 1
-            ax: plt.Axes = fig.add_subplot(
+            ax1: plt.Axes = fig.add_subplot(
                 gs[ridx : ridx + subplot.row_span, cidx : cidx + subplot.col_span]
             )
 
             plot = subplot.plot
             xax: Axis = plot.xaxis
             yax: Axis = plot.yaxis
+            yax_right = Axis.plot.yaxis_right
             print(plot.__repr__())
 
             # units
             if xax is None:
                 logger.warning(f"No xaxis in plot: {subplot}")
-                ax.spines["bottom"].set_color(Figure.fig_facecolor)
-                ax.spines["top"].set_color(Figure.fig_facecolor)
+                ax1.spines["bottom"].set_color(Figure.fig_facecolor)
+                ax1.spines["top"].set_color(Figure.fig_facecolor)
             if yax is None:
                 logger.warning(f"No yaxis in plot: {subplot}")
-                ax.spines["right"].set_color(Figure.fig_facecolor)
-                ax.spines["left"].set_color(Figure.fig_facecolor)
+                ax1.spines["right"].set_color(Figure.fig_facecolor)
+                ax1.spines["left"].set_color(Figure.fig_facecolor)
             if (not xax) or (not yax):
                 if len(plot.curves) > 0:
                     raise ValueError(
@@ -79,6 +80,17 @@ class MatplotlibFigureSerializer(object):
 
             xunit = xax.unit if xax else None
             yunit = yax.unit if yax else None
+            yunit_right = yax_right.unit if yax_right else None
+
+            # secondary axis
+            ax2: plt.Axes = None
+            if yax_right:
+                for curve in plot.curves:
+                    if curve.yaxis and curve.yaxis == YAxisPosition.RIGHT:
+                        ax2 = ax1.twinx()
+                        break
+                else:
+                    logger.error("Position right defined by no yAxis right.")
 
             # memory for stacked bars
             barstack_x = None
@@ -88,9 +100,14 @@ class MatplotlibFigureSerializer(object):
 
             # plot ordered curves
             curves: List[Curve] = sorted(plot.curves, key=lambda x: x.order)
-            print("order:", [c.order for c in curves])
             for kc, curve in enumerate(curves):
                 print(curve)
+                if curve.yaxis and curve.yaxis == YAxisPosition.RIGHT:
+                    # right axis
+                    ax = ax2
+                else:
+                    # left axis
+                    ax = ax1
 
                 # process data
                 x = curve.x.get_data(experiment=experiment, to_units=xunit)
@@ -180,7 +197,7 @@ class MatplotlibFigureSerializer(object):
 
                     if not np.all(np.isclose(barhstack_x, x_data)):
                         raise ValueError("x data must match for stacked bars.")
-                    ax.barh(
+                    ax1.barh(
                         y=x_data,
                         width=y_data,
                         left=barhstack_y,
@@ -194,20 +211,20 @@ class MatplotlibFigureSerializer(object):
 
             # plot settings
             if plot.name and plot.title_visible:
-                ax.set_title(plot.name)
+                ax1.set_title(plot.name)
 
             if xax:
                 if (xax.min is not None) or (xax.max is not None):
                     # (None, None) locks the axis limits to defaults [0,1]
-                    ax.set_xlim(xmin=xax.min, xmax=xax.max)
+                    ax1.set_xlim(xmin=xax.min, xmax=xax.max)
 
-                ax.set_xscale(cls._get_scale(xax))
+                ax1.set_xscale(cls._get_scale(xax))
 
                 if xax.label_visible:
                     if xax.name:
-                        ax.set_xlabel(xax.name)
+                        ax1.set_xlabel(xax.name)
                 if not xax.ticks_visible:
-                    ax.set_xticklabels([])  # hide ticks
+                    ax1.set_xticklabels([])  # hide ticks
 
                 # style
                 # https://matplotlib.org/stable/api/spines_api.html
@@ -218,34 +235,35 @@ class MatplotlibFigureSerializer(object):
                         if style.line.thickness:
                             linewidth = style.line.thickness
                             for axis in ["bottom", "top"]:
-                                ax.tick_params(width=linewidth)
+                                ax1.tick_params(width=linewidth)
                                 if np.isclose(linewidth, 0.0):
-                                    ax.spines[axis].set_color(Figure.fig_facecolor)
+                                    ax1.spines[axis].set_color(Figure.fig_facecolor)
                                 else:
-                                    ax.spines[axis].set_linewidth(linewidth)
-                                    ax.tick_params(width=linewidth)
+                                    ax1.spines[axis].set_linewidth(linewidth)
+                                    ax1.tick_params(width=linewidth)
                         if style.line.color:
                             color = style.line.color
                             for axis in ["bottom", "top"]:
-                                ax.spines[axis].set_color(str(color))
+                                ax1.spines[axis].set_color(str(color))
 
                         if style.line.style and style.line.style == LineStyle.NONE:
                             for axis in ["bottom", "top"]:
-                                ax.tick_params(width=linewidth)
-                                ax.spines[axis].set_color(Figure.fig_facecolor)
+                                ax1.tick_params(width=linewidth)
+                                ax1.spines[axis].set_color(Figure.fig_facecolor)
 
+            # FIXME: yaxis right
             if yax:
                 if (yax.min is not None) or (yax.max is not None):
                     # (None, None) locks the axis limits to defaults [0,1]
-                    ax.set_ylim(ymin=yax.min, ymax=yax.max)
+                    ax1.set_ylim(ymin=yax.min, ymax=yax.max)
 
-                ax.set_yscale(cls._get_scale(yax))
+                ax1.set_yscale(cls._get_scale(yax))
 
                 if yax.label_visible:
                     if yax.name:
-                        ax.set_ylabel(yax.name)
+                        ax1.set_ylabel(yax.name)
                 if not yax.ticks_visible:
-                    ax.set_yticklabels([])  # hide ticks
+                    ax1.set_yticklabels([])  # hide ticks
 
                 if yax.style and yax.style.line:
                     style: Style = yax.style
@@ -253,21 +271,21 @@ class MatplotlibFigureSerializer(object):
                         if style.line.thickness:
                             linewidth = style.line.thickness
                             for axis in ["left", "right"]:
-                                ax.tick_params(width=linewidth)
+                                ax1.tick_params(width=linewidth)
                                 if np.isclose(linewidth, 0.0):
-                                    ax.spines[axis].set_color(Figure.fig_facecolor)
+                                    ax1.spines[axis].set_color(Figure.fig_facecolor)
                                 else:
-                                    ax.spines[axis].set_linewidth(linewidth)
-                                    ax.tick_params(width=linewidth)
+                                    ax1.spines[axis].set_linewidth(linewidth)
+                                    ax1.tick_params(width=linewidth)
                         if style.line.color:
                             color = style.line.color
                             for axis in ["left", "right"]:
-                                ax.spines[axis].set_color(str(color))
+                                ax1.spines[axis].set_color(str(color))
 
                         if style.line.style and style.line.style == LineStyle.NONE:
                             for axis in ["left", "right"]:
-                                ax.tick_params(width=linewidth)
-                                ax.spines[axis].set_color(Figure.fig_facecolor)
+                                ax1.tick_params(width=linewidth)
+                                ax1.spines[axis].set_color(Figure.fig_facecolor)
 
             # recompute the ax.dataLim
             # ax.relim()
@@ -275,37 +293,37 @@ class MatplotlibFigureSerializer(object):
             # ax.autoscale_view()
 
             # figure styling
-            ax.title.set_fontsize(Figure.axes_titlesize)
-            ax.title.set_fontweight(Figure.axes_titleweight)
-            ax.xaxis.label.set_fontsize(Figure.axes_labelsize)
-            ax.xaxis.label.set_fontweight(Figure.axes_labelweight)
-            ax.yaxis.label.set_fontsize(Figure.axes_labelsize)
-            ax.yaxis.label.set_fontweight(Figure.axes_labelweight)
-            ax.tick_params(axis="x", labelsize=Figure.xtick_labelsize)
-            ax.tick_params(axis="y", labelsize=Figure.ytick_labelsize)
+            ax1.title.set_fontsize(Figure.axes_titlesize)
+            ax1.title.set_fontweight(Figure.axes_titleweight)
+            ax1.xaxis.label.set_fontsize(Figure.axes_labelsize)
+            ax1.xaxis.label.set_fontweight(Figure.axes_labelweight)
+            ax1.yaxis.label.set_fontsize(Figure.axes_labelsize)
+            ax1.yaxis.label.set_fontweight(Figure.axes_labelweight)
+            ax1.tick_params(axis="x", labelsize=Figure.xtick_labelsize)
+            ax1.tick_params(axis="y", labelsize=Figure.ytick_labelsize)
 
             # hide none-existing axes
             if xax is None:
-                ax.tick_params(axis="x", colors=Figure.fig_facecolor)
-                ax.xaxis.label.set_color(Figure.fig_facecolor)
+                ax1.tick_params(axis="x", colors=Figure.fig_facecolor)
+                ax1.xaxis.label.set_color(Figure.fig_facecolor)
             if yax is None:
-                ax.tick_params(axis="y", colors=Figure.fig_facecolor)
-                ax.yaxis.label.set_color(Figure.fig_facecolor)
+                ax1.tick_params(axis="y", colors=Figure.fig_facecolor)
+                ax1.yaxis.label.set_color(Figure.fig_facecolor)
 
             xgrid = xax.grid if xax else None
             ygrid = yax.grid if yax else None
 
             if xgrid and ygrid:
-                ax.grid(True, axis="both")
+                ax1.grid(True, axis="both")
             elif xgrid:
-                ax.grid(True, axis="x")
+                ax1.grid(True, axis="x")
             elif ygrid:
-                ax.grid(True, axis="y")
+                ax1.grid(True, axis="y")
             else:
-                ax.grid(False)
+                ax1.grid(False)
 
             if plot.legend:
-                ax.legend(fontsize=Figure.legend_fontsize, loc=Figure.legend_loc)
+                ax1.legend(fontsize=Figure.legend_fontsize, loc=Figure.legend_loc)
 
         fig.subplots_adjust(
             wspace=Figure.fig_subplots_wspace, hspace=Figure.fig_subplots_hspace
