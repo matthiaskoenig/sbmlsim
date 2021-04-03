@@ -9,7 +9,8 @@ from matplotlib.gridspec import GridSpec
 
 from sbmlsim.data import Data
 from sbmlsim.plot import Figure, Axis, SubPlot, Curve
-from sbmlsim.plot.plotting import AxisScale, Style, LineStyle, CurveType, YAxisPosition
+from sbmlsim.plot.plotting import AxisScale, Style, LineStyle, CurveType, YAxisPosition, \
+    AbstractCurve, ShadedArea
 from sbmlsim.plot.plotting_matplotlib import logger, interp
 
 
@@ -89,7 +90,7 @@ class MatplotlibFigureSerializer(object):
                     )
 
             xunit = xax.unit if xax else None
-            yunit = yax.unit if yax else None
+            yunit_left = yax.unit if yax else None
             yunit_right = yax_right.unit if yax_right else None
 
             # memory for stacked bars
@@ -99,124 +100,152 @@ class MatplotlibFigureSerializer(object):
             barhstack_y = None
 
             # plot ordered curves
-            curves: List[Curve] = sorted(plot.curves, key=lambda x: x.order)
-            for kc, curve in enumerate(curves):
+            abstract_curves: List[AbstractCurve] = sorted(plot.curves + plot.areas, key=lambda x: x.order)
+            for kc, abstract_curve in enumerate(abstract_curves):
 
-                print(curve)
-                if curve.yaxis_position and curve.yaxis_position == YAxisPosition.RIGHT:
+                print(abstract_curve)
+
+                if abstract_curve.yaxis_position and abstract_curve.yaxis_position == YAxisPosition.RIGHT:
                     # right axis
                     yaxis_position = YAxisPosition.RIGHT
+                    yunit = yunit_right
                     ax = ax2
                 else:
                     # left axis
                     yaxis_position = YAxisPosition.LEFT
+                    yunit = yunit_left
                     ax = ax1
 
-                # process data
-                x = curve.x.get_data(experiment=experiment, to_units=xunit)
-                if yaxis_position == YAxisPosition.LEFT:
+                if isinstance(abstract_curve, Curve):
+                    # --- Curve ---
+                    curve: Curve = abstract_curve
+                    x = curve.x.get_data(experiment=experiment, to_units=xunit)
                     y = curve.y.get_data(experiment=experiment, to_units=yunit)
-                else:
-                    y = curve.y.get_data(experiment=experiment, to_units=yunit_right)
-                xerr = None
-                if curve.xerr is not None:
-                    xerr = curve.xerr.get_data(experiment=experiment, to_units=xunit)
-                yerr = None
-                if curve.yerr is not None:
-                    if yaxis_position == YAxisPosition.LEFT:
+                    xerr = None
+                    if curve.xerr is not None:
+                        xerr = curve.xerr.get_data(experiment=experiment, to_units=xunit)
+                    yerr = None
+                    if curve.yerr is not None:
                         yerr = curve.yerr.get_data(experiment=experiment, to_units=yunit)
-                    else:
-                        yerr = curve.yerr.get_data(experiment=experiment,
-                                                   to_units=yunit_right)
 
-                label = curve.name if curve.name else "__nolabel__"
+                    label = curve.name if curve.name else "__nolabel__"
 
-                # FIXME: necessary to get the individual curves out of the data cube
-                # TODO: iterate over all repeats in the data
-                x_data = x.magnitude[:, 0] if x is not None else None
-                y_data = y.magnitude[:, 0] if y is not None else None
-                xerr_data = xerr.magnitude[:, 0] if xerr is not None else None
-                yerr_data = yerr.magnitude[:, 0] if yerr is not None else None
+                    # FIXME: necessary to get the individual curves out of the data cube
+                    # TODO: iterate over all repeats in the data
+                    x_data = x.magnitude[:, 0] if x is not None else None
+                    y_data = y.magnitude[:, 0] if y is not None else None
+                    xerr_data = xerr.magnitude[:, 0] if xerr is not None else None
+                    yerr_data = yerr.magnitude[:, 0] if yerr is not None else None
 
-                # print("xshape")
-                # print("x", x)
-                # print("y", y)
-                # print("x_data", x_data)
-                # print("y_data", y_data)
+                    # print("xshape")
+                    # print("x", x)
+                    # print("y", y)
+                    # print("x_data", x_data)
+                    # print("y_data", y_data)
 
-                kwargs: Dict[str, Any] = {}
-                if curve.style:
+                    kwargs: Dict[str, Any] = {}
+                    if curve.style:
+                        if curve.type == CurveType.POINTS:
+                            kwargs = curve.style.to_mpl_points_kwargs()
+                        else:
+                            # bar plot
+                            kwargs = curve.style.to_mpl_bar_kwargs()
+
                     if curve.type == CurveType.POINTS:
-                        kwargs = curve.style.to_mpl_points_kwargs()
-                    else:
-                        # bar plot
-                        kwargs = curve.style.to_mpl_bar_kwargs()
+                        ax.errorbar(
+                            x=x_data,
+                            y=y_data,
+                            xerr=xerr_data,
+                            yerr=yerr_data,
+                            label=label,
+                            **kwargs
+                        )
 
-                if curve.type == CurveType.POINTS:
-                    ax.errorbar(
+                    elif curve.type == CurveType.BAR:
+                        ax.bar(
+                            x=x_data,
+                            height=y_data,
+                            xerr=xerr_data,
+                            yerr=yerr_data,
+                            label=label,
+                            **kwargs
+                        )
+
+                    elif curve.type == CurveType.HORIZONTALBAR:
+                        ax.barh(
+                            y=x_data,
+                            width=y_data,
+                            xerr=xerr_data,
+                            yerr=yerr_data,
+                            label=label,
+                            **kwargs
+                        )
+
+                    elif curve.type == CurveType.BARSTACKED:
+                        if barstack_x is None:
+                            barstack_x = x_data
+                            barstack_y = np.zeros_like(y_data)
+
+                        if not np.all(np.isclose(barstack_x, x_data)):
+                            raise ValueError("x data must match for stacked bars.")
+                        ax.bar(
+                            x=x_data,
+                            height=y_data,
+                            bottom=barstack_y,
+                            xerr=xerr_data,
+                            yerr=yerr_data,
+                            label=label,
+                            **kwargs
+                        )
+                        barstack_y = barstack_y + y_data
+
+                    elif curve.type == CurveType.HORIZONTALBARSTACKED:
+                        if barhstack_x is None:
+                            barhstack_x = x_data
+                            barhstack_y = np.zeros_like(y_data)
+
+                        if not np.all(np.isclose(barhstack_x, x_data)):
+                            raise ValueError("x data must match for stacked bars.")
+                        ax.barh(
+                            y=x_data,
+                            width=y_data,
+                            left=barhstack_y,
+                            xerr=yerr_data,
+                            yerr=xerr_data,
+                            label=label,
+                            **kwargs
+                        )
+                        barhstack_y = barhstack_y + y_data
+
+                elif isinstance(abstract_curve, ShadedArea):
+                    # --- ShadedArea ---
+                    area: ShadedArea = abstract_curve
+                    x = area.x.get_data(experiment=experiment, to_units=xunit)
+                    yfrom = area.yfrom.get_data(experiment=experiment, to_units=yunit)
+                    yto = area.yto.get_data(experiment=experiment, to_units=yunit)
+                    label = area.name if area.name else "__nolabel__"
+
+
+                    x_data = x.magnitude[:, 0] if x is not None else None
+                    yfrom_data = yfrom.magnitude[:, 0] if yfrom is not None else None
+                    yto_data = yto.magnitude[:, 0] if yto is not None else None
+
+                    # FIXME: parse style argument
+                    kwargs: Dict[str, Any] = {}
+                    # if curve.style:
+                    #     if curve.type == CurveType.POINTS:
+                    #         kwargs = curve.style.to_mpl_points_kwargs()
+                    #     else:
+                    #         # bar plot
+                    #         kwargs = curve.style.to_mpl_bar_kwargs()
+
+                    ax.fill_between(
                         x=x_data,
-                        y=y_data,
-                        xerr=xerr_data,
-                        yerr=yerr_data,
-                        label=label,
+                        y1=yfrom_data,
+                        y2=yto_data,
                         **kwargs
                     )
 
-                elif curve.type == CurveType.BAR:
-                    ax.bar(
-                        x=x_data,
-                        height=y_data,
-                        xerr=xerr_data,
-                        yerr=yerr_data,
-                        label=label,
-                        **kwargs
-                    )
-
-                elif curve.type == CurveType.HORIZONTALBAR:
-                    ax.barh(
-                        y=x_data,
-                        width=y_data,
-                        xerr=xerr_data,
-                        yerr=yerr_data,
-                        label=label,
-                        **kwargs
-                    )
-
-                elif curve.type == CurveType.BARSTACKED:
-                    if barstack_x is None:
-                        barstack_x = x_data
-                        barstack_y = np.zeros_like(y_data)
-
-                    if not np.all(np.isclose(barstack_x, x_data)):
-                        raise ValueError("x data must match for stacked bars.")
-                    ax.bar(
-                        x=x_data,
-                        height=y_data,
-                        bottom=barstack_y,
-                        xerr=xerr_data,
-                        yerr=yerr_data,
-                        label=label,
-                        **kwargs
-                    )
-                    barstack_y = barstack_y + y_data
-
-                elif curve.type == CurveType.HORIZONTALBARSTACKED:
-                    if barhstack_x is None:
-                        barhstack_x = x_data
-                        barhstack_y = np.zeros_like(y_data)
-
-                    if not np.all(np.isclose(barhstack_x, x_data)):
-                        raise ValueError("x data must match for stacked bars.")
-                    ax.barh(
-                        y=x_data,
-                        width=y_data,
-                        left=barhstack_y,
-                        xerr=yerr_data,
-                        yerr=xerr_data,
-                        label=label,
-                        **kwargs
-                    )
-                    barhstack_y = barhstack_y + y_data
 
             # plot settings
             if plot.name and plot.title_visible:

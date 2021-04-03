@@ -610,7 +610,7 @@ class ShadedArea(AbstractCurve):
         x: Data,
         yfrom: Data,
         yto: Data,
-        order=None,
+        order: Optional[int] = None,
         style: Style = None,
         yaxis_position: YAxisPosition = None,
         **kwargs,
@@ -623,15 +623,15 @@ class ShadedArea(AbstractCurve):
             style=style,
             yaxis_position=yaxis_position
         )
-        self.yFrom = yfrom
-        self.yTo = yto
-        self.kwargs = kwargs
+        self.yfrom: Data = yfrom
+        self.yto: Data = yto
+        self.kwargs: Dict[str, Any] = kwargs
 
     def __repr__(self) -> str:
         """Get representation string."""
         return f"ShadedArea(sid={self.sid} name={self.name} order={self.order} " \
                f"x={self.x is not None} yfrom={self.yfrom is not None}" \
-               f"yto={self.yot is not None})"
+               f"yto={self.yto is not None})"
 
     def __str__(self) -> str:
         """Get string."""
@@ -641,7 +641,7 @@ class ShadedArea(AbstractCurve):
             f"\tname={self.name}",
             f"\tx={self.x}",
             f"\tyfrom={self.yfrom}",
-            f"\tyto={self.xto}",
+            f"\tyto={self.yto}",
             f"\torder={self.order}",
             f"\tyaxis_position={self.yaxis_position}",
             ")"
