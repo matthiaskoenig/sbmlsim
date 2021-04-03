@@ -1,8 +1,10 @@
 # Serialization
-- [ ] writing SED-ML from experiments
+- [ ] writing SED-ML from experiments (Combine archive)
+
+# Run Co
 
 # Plotting
-- [ ] support height and width;
+- [x] support height and width;
       plots have height & width; these can be directly set in single plot figures;
       for multi-plot figures the combined height and width must be calculated
 ## Plot2D
@@ -15,10 +17,11 @@
   - [~] bars next to each other; see https://github.com/SED-ML/sed-ml/issues/138  
 - [~] error bars; see https://github.com/SED-ML/sed-ml/issues/137
 - [x] styling of bar plots; 
-- [ ] yAxis  
+- [x] yAxis right  
+
+- [x] order of abstract curve
 - [ ] shaded areas & fills
-- [ ] order of abstract curve
-- [ ] resolve basestyle
+- [ ] resolve and apply basestyle
 
 # Reports
 - [ ] reports

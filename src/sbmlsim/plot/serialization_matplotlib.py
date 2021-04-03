@@ -1,6 +1,6 @@
 """Serialization of Figure object to matplotlib."""
 
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional
 
 import numpy as np
 from matplotlib import pyplot as plt
@@ -49,18 +49,28 @@ class MatplotlibFigureSerializer(object):
 
         subplot: SubPlot
         for subplot in figure.subplots:
+            plot = subplot.plot
+            xax: Axis = plot.xaxis if plot.xaxis else Axis()
+            yax: Axis = plot.yaxis if plot.yaxis else Axis()
+            yax_right = plot.yaxis_right
+            print(plot.__repr__())
 
             ridx = subplot.row - 1
             cidx = subplot.col - 1
             ax1: plt.Axes = fig.add_subplot(
                 gs[ridx : ridx + subplot.row_span, cidx : cidx + subplot.col_span]
             )
-
-            plot = subplot.plot
-            xax: Axis = plot.xaxis
-            yax: Axis = plot.yaxis
-            yax_right = Axis.plot.yaxis_right
-            print(plot.__repr__())
+            # secondary axis
+            ax2: Optional[plt.Axes] = None
+            axes: List[plt.Axes] = [ax1]
+            if yax_right:
+                for curve in plot.curves:
+                    if curve.yaxis_position and curve.yaxis_position == YAxisPosition.RIGHT:
+                        ax2 = ax1.twinx()
+                        axes.append(ax2)
+                        break
+                else:
+                    logger.error("Position right defined by no yAxis right.")
 
             # units
             if xax is None:
@@ -82,16 +92,6 @@ class MatplotlibFigureSerializer(object):
             yunit = yax.unit if yax else None
             yunit_right = yax_right.unit if yax_right else None
 
-            # secondary axis
-            ax2: plt.Axes = None
-            if yax_right:
-                for curve in plot.curves:
-                    if curve.yaxis and curve.yaxis == YAxisPosition.RIGHT:
-                        ax2 = ax1.twinx()
-                        break
-                else:
-                    logger.error("Position right defined by no yAxis right.")
-
             # memory for stacked bars
             barstack_x = None
             barstack_y = None
@@ -101,23 +101,33 @@ class MatplotlibFigureSerializer(object):
             # plot ordered curves
             curves: List[Curve] = sorted(plot.curves, key=lambda x: x.order)
             for kc, curve in enumerate(curves):
+
                 print(curve)
-                if curve.yaxis and curve.yaxis == YAxisPosition.RIGHT:
+                if curve.yaxis_position and curve.yaxis_position == YAxisPosition.RIGHT:
                     # right axis
+                    yaxis_position = YAxisPosition.RIGHT
                     ax = ax2
                 else:
                     # left axis
+                    yaxis_position = YAxisPosition.LEFT
                     ax = ax1
 
                 # process data
                 x = curve.x.get_data(experiment=experiment, to_units=xunit)
-                y = curve.y.get_data(experiment=experiment, to_units=yunit)
+                if yaxis_position == YAxisPosition.LEFT:
+                    y = curve.y.get_data(experiment=experiment, to_units=yunit)
+                else:
+                    y = curve.y.get_data(experiment=experiment, to_units=yunit_right)
                 xerr = None
                 if curve.xerr is not None:
                     xerr = curve.xerr.get_data(experiment=experiment, to_units=xunit)
                 yerr = None
                 if curve.yerr is not None:
-                    yerr = curve.yerr.get_data(experiment=experiment, to_units=yunit)
+                    if yaxis_position == YAxisPosition.LEFT:
+                        yerr = curve.yerr.get_data(experiment=experiment, to_units=yunit)
+                    else:
+                        yerr = curve.yerr.get_data(experiment=experiment,
+                                                   to_units=yunit_right)
 
                 label = curve.name if curve.name else "__nolabel__"
 
@@ -197,7 +207,7 @@ class MatplotlibFigureSerializer(object):
 
                     if not np.all(np.isclose(barhstack_x, x_data)):
                         raise ValueError("x data must match for stacked bars.")
-                    ax1.barh(
+                    ax.barh(
                         y=x_data,
                         width=y_data,
                         left=barhstack_y,
@@ -208,16 +218,15 @@ class MatplotlibFigureSerializer(object):
                     )
                     barhstack_y = barhstack_y + y_data
 
-
             # plot settings
             if plot.name and plot.title_visible:
                 ax1.set_title(plot.name)
 
             if xax:
-                if (xax.min is not None) or (xax.max is not None):
-                    # (None, None) locks the axis limits to defaults [0,1]
-                    ax1.set_xlim(xmin=xax.min, xmax=xax.max)
-
+                if xax.min is not None:
+                    ax1.set_xlim(xmin=xax.min)
+                if xax.max is not None:
+                    ax1.set_xlim(xmax=xax.max)
                 ax1.set_xscale(cls._get_scale(xax))
 
                 if xax.label_visible:
@@ -251,11 +260,11 @@ class MatplotlibFigureSerializer(object):
                                 ax1.tick_params(width=linewidth)
                                 ax1.spines[axis].set_color(Figure.fig_facecolor)
 
-            # FIXME: yaxis right
             if yax:
-                if (yax.min is not None) or (yax.max is not None):
-                    # (None, None) locks the axis limits to defaults [0,1]
-                    ax1.set_ylim(ymin=yax.min, ymax=yax.max)
+                if yax.min is not None:
+                    ax1.set_ylim(ymin=yax.min)
+                if yax.max is not None:
+                    ax1.set_ylim(ymax=yax.max)
 
                 ax1.set_yscale(cls._get_scale(yax))
 
@@ -287,20 +296,58 @@ class MatplotlibFigureSerializer(object):
                                 ax1.tick_params(width=linewidth)
                                 ax1.spines[axis].set_color(Figure.fig_facecolor)
 
+            if yax_right:
+                if yax_right.min is not None:
+                    ax2.set_ylim(ymin=yax_right.min)
+                if yax_right.max is not None:
+                    ax2.set_ylim(ymax=yax_right.max)
+
+                ax2.set_yscale(cls._get_scale(yax_right))
+
+                if yax_right.label_visible:
+                    if yax_right.name:
+                        ax2.set_ylabel(yax_right.name)
+                if not yax_right.ticks_visible:
+                    ax2.set_yticklabels([])  # hide ticks
+
+                if yax_right.style and yax_right.style.line:
+                    style: Style = yax_right.style
+                    if style.line:
+                        if style.line.thickness:
+                            linewidth = style.line.thickness
+                            for axis in ["left", "right"]:
+                                ax2.tick_params(width=linewidth)
+                                if np.isclose(linewidth, 0.0):
+                                    ax2.spines[axis].set_color(Figure.fig_facecolor)
+                                else:
+                                    ax2.spines[axis].set_linewidth(linewidth)
+                                    ax2.tick_params(width=linewidth)
+                        if style.line.color:
+                            color = style.line.color
+                            for axis in ["left", "right"]:
+                                ax2.spines[axis].set_color(str(color))
+
+                        if style.line.style and style.line.style == LineStyle.NONE:
+                            for axis in ["left", "right"]:
+                                ax2.tick_params(width=linewidth)
+                                ax2.spines[axis].set_color(Figure.fig_facecolor)
+
+
             # recompute the ax.dataLim
             # ax.relim()
             # update ax.viewLim using the new dataLim
             # ax.autoscale_view()
 
             # figure styling
-            ax1.title.set_fontsize(Figure.axes_titlesize)
-            ax1.title.set_fontweight(Figure.axes_titleweight)
-            ax1.xaxis.label.set_fontsize(Figure.axes_labelsize)
-            ax1.xaxis.label.set_fontweight(Figure.axes_labelweight)
-            ax1.yaxis.label.set_fontsize(Figure.axes_labelsize)
-            ax1.yaxis.label.set_fontweight(Figure.axes_labelweight)
-            ax1.tick_params(axis="x", labelsize=Figure.xtick_labelsize)
-            ax1.tick_params(axis="y", labelsize=Figure.ytick_labelsize)
+            for ax in axes:
+                ax.title.set_fontsize(Figure.axes_titlesize)
+                ax.title.set_fontweight(Figure.axes_titleweight)
+                ax.xaxis.label.set_fontsize(Figure.axes_labelsize)
+                ax.xaxis.label.set_fontweight(Figure.axes_labelweight)
+                ax.yaxis.label.set_fontsize(Figure.axes_labelsize)
+                ax.yaxis.label.set_fontweight(Figure.axes_labelweight)
+                ax.tick_params(axis="x", labelsize=Figure.xtick_labelsize)
+                ax.tick_params(axis="y", labelsize=Figure.ytick_labelsize)
 
             # hide none-existing axes
             if xax is None:
@@ -323,7 +370,11 @@ class MatplotlibFigureSerializer(object):
                 ax1.grid(False)
 
             if plot.legend:
-                ax1.legend(fontsize=Figure.legend_fontsize, loc=Figure.legend_loc)
+                if len(axes) == 1:
+                    ax1.legend(fontsize=Figure.legend_fontsize, loc=Figure.legend_loc)
+                elif len(axes) == 2:
+                    ax1.legend(fontsize=Figure.legend_fontsize, loc="upper left")
+                    ax2.legend(fontsize=Figure.legend_fontsize, loc="upper right")
 
         fig.subplots_adjust(
             wspace=Figure.fig_subplots_wspace, hspace=Figure.fig_subplots_hspace

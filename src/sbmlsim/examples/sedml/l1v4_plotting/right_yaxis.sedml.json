@@ -89,10 +89,13 @@
           "@type": "linear"
         },
         "yAxis": {
-          "@type": "linear"
+          "@type": "linear",
+          "@max": "20"
         },
         "rightYAxis": {
-          "@type": "log10"
+          "@type": "log10",
+          "@min": "0.1",
+          "@max": "50"
         },
         "listOfCurves": {
           "curve": [
@@ -179,11 +182,11 @@
           "line": {
             "@style": "dash",
             "@color": "#1f77b4ff",
-            "@thickness": "4"
+            "@thickness": "2"
           },
           "marker": {
-            "@style": "square",
-            "@size": "6",
+            "@style": "circle",
+            "@size": "3",
             "@fill": "#1f77b4aa",
             "@lineColor": "#000000ff",
             "@lineThickness": "2"
@@ -194,11 +197,11 @@
           "line": {
             "@style": "dash",
             "@color": "#ff7f0eff",
-            "@thickness": "4"
+            "@thickness": "2"
           },
           "marker": {
-            "@style": "square",
-            "@size": "6",
+            "@style": "circle",
+            "@size": "3",
             "@fill": "#ff7f0eaa",
             "@lineColor": "#000000ff",
             "@lineThickness": "2"

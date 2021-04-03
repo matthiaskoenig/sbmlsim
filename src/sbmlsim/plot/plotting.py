@@ -417,7 +417,7 @@ class Axis(BasePlotObject):
 
     def __str__(self) -> str:
         """Get string."""
-        return f"Axis({self.name})"
+        return f"Axis({self.name, self.scale})"
 
     def __copy__(self) -> 'Axis':
         """Copy axis object."""
@@ -470,21 +470,26 @@ class Axis(BasePlotObject):
 
 class AbstractCurve(BasePlotObject):
     def __init__(
-        self, sid: str, name: str, x: Data, order: int, style: Style, yaxis: Axis
+        self, sid: str, name: str,
+        x: Data = None,
+        order: int = None,
+        style: Style = None,
+        yaxis_position: YAxisPosition = None
     ):
-        """
+        """Abstract base class of Curve and ShadedArea.
+
         :param sid:
         :param name: label of the curve
-        :param xdata:
+        :param x:
         :param order:
         :param style:
-        :param yaxis:
+        :param yaxis_position:
         """
         super(AbstractCurve, self).__init__(sid, name)
         self.x = x
         self.order = order
         self.style = style
-        self.yaxis = yaxis
+        self.yaxis_position = yaxis_position
 
 
 class Curve(AbstractCurve):
@@ -500,10 +505,17 @@ class Curve(AbstractCurve):
         order=None,
         type: CurveType = CurveType.POINTS,
         style: Style = None,
-        yaxis: YAxisPosition = None,
+        yaxis_position: YAxisPosition = None,
         **kwargs,
     ):
-        super(Curve, self).__init__(None, None, x, order, style, yaxis)
+        super(Curve, self).__init__(
+            sid=None,
+            name=None,
+            x=x,
+            order=order,
+            style=style,
+            yaxis_position=yaxis_position
+        )
         self.y = y
 
         # set symmetrical
@@ -528,7 +540,6 @@ class Curve(AbstractCurve):
         else:
             kwargs = Curve._add_default_style_kwargs(kwargs, y.dtype)
             style = Style.from_mpl_kwargs(**kwargs)
-        self.yaxis: YAxisPosition = yaxis
         self.style = style
         self.kwargs = kwargs  # store for lookup
 
@@ -550,6 +561,7 @@ class Curve(AbstractCurve):
             f"\txerr={self.xerr}",
             f"\tyerr={self.yerr}",
             f"\torder={self.order}",
+            f"\tyaxis_position={self.yaxis_position}",
             ")"
         ]
         return "\n".join(info)
@@ -575,7 +587,7 @@ class Curve(AbstractCurve):
         return d
 
     def to_dict(self):
-        """ Convert to dictionary. """
+        """Convert Curve to dictionary."""
         d = {
             "sid": self.sid,
             "name": self.name,
@@ -583,7 +595,68 @@ class Curve(AbstractCurve):
             "y": self.y.sid if self.y else None,
             "xerr": self.xerr.sid if self.xerr else None,
             "yerr": self.yerr.sid if self.yerr else None,
-            "yaxis": self.yaxis,
+            "yaxis_position": self.yaxis_position,
+            "style": self.style,
+            "order": self.order,
+        }
+        return d
+
+
+class ShadedArea(AbstractCurve):
+    """ShadedArea class."""
+
+    def __init__(
+        self,
+        x: Data,
+        yfrom: Data,
+        yto: Data,
+        order=None,
+        style: Style = None,
+        yaxis_position: YAxisPosition = None,
+        **kwargs,
+    ):
+        super(ShadedArea, self).__init__(
+            sid=None,
+            name=None,
+            x=x,
+            order=order,
+            style=style,
+            yaxis_position=yaxis_position
+        )
+        self.yFrom = yfrom
+        self.yTo = yto
+        self.kwargs = kwargs
+
+    def __repr__(self) -> str:
+        """Get representation string."""
+        return f"ShadedArea(sid={self.sid} name={self.name} order={self.order} " \
+               f"x={self.x is not None} yfrom={self.yfrom is not None}" \
+               f"yto={self.yot is not None})"
+
+    def __str__(self) -> str:
+        """Get string."""
+        info = [
+            "ShadedArea(",
+            f"\tsid={self.sid}",
+            f"\tname={self.name}",
+            f"\tx={self.x}",
+            f"\tyfrom={self.yfrom}",
+            f"\tyto={self.xto}",
+            f"\torder={self.order}",
+            f"\tyaxis_position={self.yaxis_position}",
+            ")"
+        ]
+        return "\n".join(info)
+
+    def to_dict(self):
+        """Convert to dictionary."""
+        d = {
+            "sid": self.sid,
+            "name": self.name,
+            "x": self.x.sid if self.x else None,
+            "yfrom": self.yfrom.sid if self.yfrom else None,
+            "yto": self.yto.sid if self.yto else None,
+            "yaxis_position": self.yaxis_position,
             "style": self.style,
             "order": self.order,
         }
@@ -605,7 +678,7 @@ class Plot(BasePlotObject):
         yaxis: Axis = None,
         yaxis_right: Axis = None,
         curves: List[Curve] = None,
-        # FIXME: support areas
+        areas: List[ShadedArea] = None,
         legend: bool = True,
         facecolor: ColorType=ColorType.parse_color("white"),
         title_visible: bool = True,
@@ -640,12 +713,15 @@ class Plot(BasePlotObject):
         self._xaxis: Axis = None
         self._yaxis: Axis = None
         self._yaxis_right: Axis = None
-        self._curves: Axis = None
+        self._curves: List[Curve] = None
+        self._areas: List[ShadedArea] = None
         self._figure: Figure = None
 
         self.xaxis: Axis = xaxis
         self.yaxis: Axis = yaxis
+        self.yaxis_right: Axis = yaxis_right
         self.curves: List[Curve] = curves
+        self.areas: List[ShadedArea] = areas
 
         self.legend: bool = legend
         self.facecolor: ColorType = facecolor
@@ -659,7 +735,8 @@ class Plot(BasePlotObject):
 
     def __repr__(self) -> str:
         """Get representation string."""
-        return f"Plot(xaxis={self.xaxis} yaxis={self.yaxis} #curves={len(self.curves)} " \
+        return f"Plot(xaxis={self.xaxis} yaxis={self.yaxis} " \
+               f"yaxis_right={self.yaxis_right} #curves={len(self.curves)} " \
                f"legend={self.legend})"
 
     def __str__(self) -> str:
@@ -674,6 +751,7 @@ class Plot(BasePlotObject):
             xaxis=Axis.__copy__(self.xaxis),
             yaxis=Axis.__copy__(self.yaxis),
             curves=self.curves,
+            areas=self.areas,
             legend=self.legend,
             facecolor=self.facecolor,
             title_visible=self.title_visible,
@@ -688,10 +766,12 @@ class Plot(BasePlotObject):
             "name": self.name,
             "xaxis": self.xaxis,
             "yaxis": self.yaxis,
+            "yaxis_right": self.yaxis_right,
             "legend": self.legend,
             "facecolor": self.facecolor,
             "title_visible": self.title_visible,
             "curves": self.curves,
+            "areas": self.areas,
         }
         return d
 
@@ -740,7 +820,7 @@ class Plot(BasePlotObject):
 
         All argument of Axis are supported.
         """
-        ax = Plot._set_axis(label=label, unit=unit, **kwargs)
+        ax = Plot._create_axis(label=label, unit=unit, **kwargs)
         if ax and ax.sid is None:
             ax.sid = f"{self.sid}_xaxis"
         self._xaxis = ax
@@ -764,7 +844,7 @@ class Plot(BasePlotObject):
         :param kwargs:
         :return:
         """
-        ax = Plot._set_axis(label=label, unit=unit, **kwargs)
+        ax = Plot._create_axis(label=label, unit=unit, **kwargs)
         if ax and ax.sid is None:
             ax.sid = f"{self.sid}_yaxis"
         self._yaxis = ax
@@ -773,7 +853,7 @@ class Plot(BasePlotObject):
     def yaxis_right(self) -> Axis:
         return self._yaxis_right
 
-    @yaxis.setter
+    @yaxis_right.setter
     def yaxis_right(self, value: Axis) -> None:
         self.set_yaxis_right(label=value)
 
@@ -788,13 +868,13 @@ class Plot(BasePlotObject):
         :param kwargs:
         :return:
         """
-        ax = Plot._set_axis(label=label, unit=unit, **kwargs)
+        ax = Plot._create_axis(label=label, unit=unit, **kwargs)
         if ax and ax.sid is None:
-            ax.sid = f"{self.sid}_yaxis"
+            ax.sid = f"{self.sid}_yaxis_right"
         self._yaxis_right = ax
 
     @staticmethod
-    def _set_axis(
+    def _create_axis(
         label: Optional[Union[str, Axis]],
         unit: str = None,
         **kwargs
@@ -807,35 +887,53 @@ class Plot(BasePlotObject):
             ax = Axis(label=label, unit=unit, **kwargs)
         return ax
 
-    def add_curve(self, curve: Curve):
-        """Curves are added via the helper function."""
-        if curve.sid is None:
-            curve.sid = f"{self.sid}_curve{len(self.curves)}"
-
-        # check allowed types
-        curve_types = set([c.type for c in self.curves])
-        curve_types.add(curve.type)
-        if len(curve_types) > 1:
-            raise ValueError(f"CurveTypes cannot be mixed: {curve_types}")
-
-        if curve.order is None:
-            if not self.curves:
-                curve.order = 0
+    def _set_order(self, abstract_curve: AbstractCurve):
+        """Set order for given AbstractCurve."""
+        if abstract_curve.order is None:
+            if not self.curves and not self.areas:
+                abstract_curve.order = 0
             else:
-                curve.order = max([c.order for c in self.curves]) + 1
+                abstract_curve.order = max([ac.order for ac in self.curves + self.areas]) + 1
 
+    def add_curve(self, curve: Curve):
+        """Add Curve via the helper function."""
+        if curve.sid is None:
+            curve.sid = f"{self.sid}_curve{len(self.curves)-1}"
+
+        self._set_order(curve)
         self.curves.append(curve)
+
+    def add_area(self, area: ShadedArea):
+        """Add ShadedArea via the helper function."""
+        if area.sid is None:
+            area.sid = f"{self.sid}_area{len(self.areas)-1}"
+
+        self._set_order(area)
+        self.areas.append(area)
 
     @property
     def curves(self) -> List[Curve]:
+        """Get curves."""
         return self._curves
 
     @curves.setter
     def curves(self, value: List[Curve]):
+        """Set curves."""
         self._curves = list()
         if value is not None:
             for curve in value:
                 self.add_curve(curve)
+
+    @property
+    def areas(self) -> List[ShadedArea]:
+        return self._areas
+
+    @areas.setter
+    def areas(self, value: List[ShadedArea]):
+        self._areas = list()
+        if value is not None:
+            for area in value:
+                self.add_area(area)
 
     def curve(
         self,

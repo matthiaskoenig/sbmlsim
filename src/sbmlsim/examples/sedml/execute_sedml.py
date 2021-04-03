@@ -77,7 +77,7 @@ if __name__ == "__main__":
         # ("axis", "axis.sedml"),
         # ("curve_types", "curve_types.sedml"),
         # ("curve_types_errors", "curve_types_errors.sedml"),
-        ("right_yaxis", "right_yaxis.sedml"),
+        # ("right_yaxis", "right_yaxis.sedml"),
         # ("line_overlap_order", "line_overlap_order.sedml"),
         # ("repressilator_figure", "repressilator_figure.xml"),
         # ("repressilator_l1v3", "repressilator_l1v3.xml"),
@@ -92,7 +92,9 @@ if __name__ == "__main__":
         # ("Bar", "test_bar3stacked.sedml"),
         # ("StackedBar", "test_file.sedml"),
         # ("StackedBar", "test_hbar_stacked.sedml"),
-        # ("StackedBar", "test_shaded_area.sedml"),
+        ("test_shaded_area", "test_shaded_area.sedml"),
+        # ("test_shaded_area_overlap_order", "test_shaded_area_overlap_order.sedml"),
+
     ]:
         execute_sedml(
             working_dir=working_dir,

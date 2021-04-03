@@ -115,7 +115,7 @@ from sbmlsim.model import model_resources
 from sbmlsim.model.model import AbstractModel
 from sbmlsim.plot import Figure, Plot, Axis, Curve
 from sbmlsim.plot.plotting import Style, Line, LineStyle, ColorType, Marker, \
-    MarkerStyle, Fill, SubPlot, AxisScale, CurveType, YAxisPosition
+    MarkerStyle, Fill, SubPlot, AxisScale, CurveType, YAxisPosition, ShadedArea
 from sbmlsim.simulation import ScanSim, TimecourseSim, Timecourse, AbstractSim
 from sbmlsim.task import Task
 from sbmlsim.units import UnitRegistry
@@ -825,10 +825,16 @@ class SEDMLParser(object):
 
         # curves
         curves: List[Curve] = []
+        areas: List[ShadedArea] = []
         sed_curve: libsedml.Curve
-        for sed_curve in sed_plot2d.getListOfCurves():
-            curves.append(self.parse_curve(sed_curve))
+        for sed_abstract_curve in sed_plot2d.getListOfCurves():
+            abstract_curve = self.parse_abstract_curve(sed_abstract_curve)
+            if isinstance(abstract_curve, Curve):
+                curves.append(abstract_curve)
+            elif isinstance(abstract_curve, ShadedArea):
+                areas.append(abstract_curve)
         plot.curves = curves
+        plot.areas = areas
         return plot
 
     def parse_plot3d(self, sed_plot3d: libsedml.SedPlot3D) -> Plot:
@@ -858,50 +864,79 @@ class SEDMLParser(object):
             report[label] = sed_dg_id
         return report
 
-    def parse_axis(self, sed_axis: libsedml.SedAxis) -> Axis:
+    def parse_axis(self, sed_axis: libsedml.SedAxis) -> Optional[Axis]:
         """Parse axes information."""
         if sed_axis is None:
-            axis = Axis()
-        else:
-            axis = Axis(
-                label=sed_axis.getName() if sed_axis.isSetName else None,
-                min=sed_axis.getMin() if sed_axis.isSetMin() else None,
-                max=sed_axis.getMax() if sed_axis.isSetMax() else None,
-                grid=sed_axis.getGrid() if sed_axis.isSetGrid() else False,
-            )
-            axis.sid = sed_axis.getId()
-            axis.name = sed_axis.getName()
+            return None
 
-            scale: AxisScale
-            if sed_axis.isSetType():
-                sed_type = sed_axis.getType()
-                if sed_type == libsedml.SEDML_AXISTYPE_LINEAR:
-                    scale = AxisScale.LINEAR
-                elif sed_type == libsedml.SEDML_AXISTYPE_LOG10:
-                    scale = AxisScale.LOG10
-                elif sed_type == libsedml.SEDML_AXISTYPE_INVALID:
-                    logger.error("Invalid axis scale encountered, fallback to 'linear'")
-                    scale = AxisScale.LINEAR
-            else:
+        axis = Axis(
+            label=sed_axis.getName() if sed_axis.isSetName else None,
+            min=sed_axis.getMin() if sed_axis.isSetMin() else None,
+            max=sed_axis.getMax() if sed_axis.isSetMax() else None,
+            grid=sed_axis.getGrid() if sed_axis.isSetGrid() else False,
+        )
+        axis.sid = sed_axis.getId()
+        axis.name = sed_axis.getName()
+
+        scale: AxisScale
+        if sed_axis.isSetType():
+            sed_type = sed_axis.getType()
+            if sed_type == libsedml.SEDML_AXISTYPE_LINEAR:
                 scale = AxisScale.LINEAR
-            axis.scale = scale
+            elif sed_type == libsedml.SEDML_AXISTYPE_LOG10:
+                scale = AxisScale.LOG10
+            elif sed_type == libsedml.SEDML_AXISTYPE_INVALID:
+                logger.error("Invalid axis scale encountered, fallback to 'linear'")
+                scale = AxisScale.LINEAR
+        else:
+            scale = AxisScale.LINEAR
+        axis.scale = scale
 
-            if sed_axis.isSetStyle():
-                style = self.parse_style(sed_axis.getStyle())
-                axis.style = style
+        if sed_axis.isSetStyle():
+            style = self.parse_style(sed_axis.getStyle())
+            axis.style = style
 
         return axis
 
-    def parse_curve(self, sed_curve: libsedml.SedCurve) -> Curve:
-        """Parse curve."""
-        x: Data
-        y: Data
-        xerr: Data
-        yerr: Data
+    def parse_abstract_curve(
+        self,
+        sed_acurve: libsedml.SedAbstractCurve
+    ) -> Union[ShadedArea, Curve]:
+        """Parse abstract curve."""
+        sid: str = sed_acurve.getId(),
+        name: Optional[str] = sed_acurve.getName() if sed_acurve.isSetName() else None,
+        x: Data = self.data_from_datagenerator(sed_acurve.getXDataReference())
+        order: int = sed_acurve.getOrder() if sed_acurve.isSetOrder() else None,
 
-        sed_curve_type = sed_curve.getTypeCode()
+        # parse yaxis
+        yaxis_position = None
+        if sed_acurve.isSetYAxis():
+            sed_yaxis: str = sed_acurve.getYAxis()
+            if sed_yaxis == "left":
+                yaxis_position = YAxisPosition.LEFT
+            elif sed_yaxis == "right":
+                yaxis_position = YAxisPosition.RIGHT
+            else:
+                raise ValueError(f"Unsupported yAxis on curve: {sed_yaxis}")
+
+        # parse style
+        if sed_acurve.isSetStyle():
+            # styles are already parsed, used the style
+            style = self.styles[sed_acurve.getStyle()]
+        else:
+            # default style
+            style = Style(
+                line=Line(),
+                marker=Marker(),
+                fill=Fill(),
+            )
+
+        sed_curve_type = sed_acurve.getTypeCode()
         if sed_curve_type == libsedml.SEDML_OUTPUT_CURVE:
-
+            sed_curve: libsedml.SedCurve = sed_acurve
+            y: Data
+            xerr: Data
+            yerr: Data
             curve_type: CurveType
             if sed_curve.getType() == libsedml.SEDML_CURVETYPE_POINTS:
                 curve_type = CurveType.POINTS
@@ -913,48 +948,40 @@ class SEDMLParser(object):
                 curve_type = CurveType.HORIZONTALBAR
             elif sed_curve.getType() == libsedml.SEDML_CURVETYPE_HORIZONTALBARSTACKED:
                 curve_type = CurveType.HORIZONTALBARSTACKED
+            else:
+                raise ValueError
             curve = Curve(
-                sid=sed_curve.getId(),
-                name=sed_curve.getName() if sed_curve.isSetName() else None,
-                x=self.data_from_datagenerator(sed_curve.getXDataReference()),
+                sid=sid,
+                name=name,
+                x=x,
                 y=self.data_from_datagenerator(sed_curve.getYDataReference()),
                 xerr=self.data_from_datagenerator(sed_curve.getXErrorUpper()),
                 yerr=self.data_from_datagenerator(sed_curve.getYErrorUpper()),
                 type=curve_type,
-                order=sed_curve.getOrder() if sed_curve.isSetOrder() else None,
+                order=order,
+                yaxis_position=yaxis_position,
+                style=style,
             )
-            # parse yaxis
-            yaxis = None
-            if sed_curve.isSetYAxis():
-                sed_yaxis: str = sed_curve.getYAxis()
-                if sed_yaxis == "left":
-                    yaxis = YAxisPosition.LEFT
-                elif sed_yaxis == "right":
-                    yaxis = YAxisPosition.RIGHT
-                else:
-                    raise ValueError(f"Unsupported yAxis on curve: {sed_yaxis}")
-            curve.yaxis = yaxis
-
-            # parse style
-            if sed_curve.isSetStyle():
-                # styles are already parsed, used the style
-                style = self.styles[sed_curve.getStyle()]
-            else:
-                # default style
-                style = Style(
-                    line=Line(),
-                    marker=Marker(),
-                    fill=Fill(),
-                )
-            curve.style = style
 
             if not curve.name:
                 curve.name = f"{curve.y.index} ~ {curve.x.index}"
-        elif sed_curve_type == libsedml.SedShadedArea:
-            # FIXME: support shaded area
-            logger.error("ShadedArea is not supported.")
-
-        return curve
+            return curve
+        elif sed_curve_type == libsedml.SEDML_SHADEDAREA:
+            sed_shaded_area: libsedml.SedShadedArea = sed_acurve
+            area = ShadedArea(
+                sid=sid,
+                name=name,
+                x=x,
+                yfrom=self.data_from_datagenerator(sed_shaded_area.getYDataReferenceFrom()),
+                yto=self.data_from_datagenerator(sed_shaded_area.getYDataReferenceTo()),
+                order=order,
+                yaxis_position=yaxis_position,
+                style=style,
+            )
+            return area
+        else:
+            raise ValueError(f"Type of AbstractCurve '{sed_acurve}' is not supported: "
+                             f"'{sed_curve_type}'")
 
     def parse_style(self, sed_style: Union[str, libsedml.SedStyle]) -> Optional[Style]:
         """Parse SED-ML style."""
