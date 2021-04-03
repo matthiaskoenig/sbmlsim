@@ -1,0 +1,210 @@
+{
+  "sedML": {
+    "@xmlns": "http://sed-ml.org/sed-ml/level1/version4",
+    "@level": "1",
+    "@version": "4",
+    "listOfModels": {
+      "model": {
+        "@id": "model0",
+        "@language": "urn:sedml:language:sbml.level-3.version-1",
+        "@source": "case_01.xml"
+      }
+    },
+    "listOfSimulations": {
+      "uniformTimeCourse": {
+        "@id": "sim0",
+        "@initialTime": "0",
+        "@outputStartTime": "0",
+        "@outputEndTime": "10",
+        "@numberOfSteps": "10",
+        "algorithm": {
+          "@kisaoID": "KISAO:0000019"
+        }
+      }
+    },
+    "listOfTasks": {
+      "task": {
+        "@id": "task0",
+        "@modelReference": "model0",
+        "@simulationReference": "sim0"
+      }
+    },
+    "listOfDataGenerators": {
+      "dataGenerator": [
+        {
+          "@id": "dg_time",
+          "@name": "time",
+          "math": {
+            "@xmlns": "http://www.w3.org/1998/Math/MathML",
+            "ci": "time"
+          },
+          "listOfVariables": {
+            "variable": {
+              "@id": "time",
+              "@symbol": "urn:sedml:symbol:time",
+              "@taskReference": "task0",
+              "@modelReference": "model0"
+            }
+          }
+        },
+        {
+          "@id": "dg_S1",
+          "@name": "S1",
+          "math": {
+            "@xmlns": "http://www.w3.org/1998/Math/MathML",
+            "ci": "S1"
+          },
+          "listOfVariables": {
+            "variable": {
+              "@id": "S1",
+              "@target": "/sbml:sbml/sbml:model/sbml:listOfSpecies/sbml:species[@id='S1']",
+              "@taskReference": "task0",
+              "@modelReference": "model0"
+            }
+          }
+        },
+        {
+          "@id": "dg_S2",
+          "@name": "S2",
+          "math": {
+            "@xmlns": "http://www.w3.org/1998/Math/MathML",
+            "ci": "S2"
+          },
+          "listOfVariables": {
+            "variable": {
+              "@id": "S2",
+              "@target": "/sbml:sbml/sbml:model/sbml:listOfSpecies/sbml:species[@id='S2']",
+              "@taskReference": "task0",
+              "@modelReference": "model0"
+            }
+          }
+        }
+      ]
+    },
+    "listOfOutputs": {
+      "plot2D": {
+        "@id": "plot_0",
+        "@name": "Left and right axis",
+        "xAxis": {
+          "@type": "linear"
+        },
+        "yAxis": {
+          "@type": "linear"
+        },
+        "rightYAxis": {
+          "@type": "log10"
+        },
+        "listOfCurves": {
+          "curve": [
+            {
+              "@id": "curve_S1_left",
+              "@yAxis": "left",
+              "@name": "S1 (left)",
+              "@logX": "false",
+              "@xDataReference": "dg_time",
+              "@logY": "false",
+              "@yDataReference": "dg_S2",
+              "@type": "points",
+              "@style": "style_blue"
+            },
+            {
+              "@id": "curve_S2_left",
+              "@yAxis": "left",
+              "@name": "S2 (left)",
+              "@xDataReference": "dg_time",
+              "@logY": "false",
+              "@yDataReference": "dg_S1",
+              "@type": "points",
+              "@style": "style_orange"
+            },
+            {
+              "@id": "curve_S1_right",
+              "@yAxis": "right",
+              "@name": "S1 (right)",
+              "@logX": "false",
+              "@xDataReference": "dg_time",
+              "@logY": "false",
+              "@yDataReference": "dg_S2",
+              "@type": "points",
+              "@style": "style_blue_dash"
+            },
+            {
+              "@id": "curve_S2_right",
+              "@yAxis": "right",
+              "@name": "S2 (right)",
+              "@xDataReference": "dg_time",
+              "@logY": "false",
+              "@yDataReference": "dg_S1",
+              "@type": "points",
+              "@style": "style_orange_dash"
+            }
+          ]
+        }
+      }
+    },
+    "listOfStyles": {
+      "style": [
+        {
+          "@id": "style_blue",
+          "line": {
+            "@style": "solid",
+            "@color": "#1f77b4ff",
+            "@thickness": "4"
+          },
+          "marker": {
+            "@style": "square",
+            "@size": "6",
+            "@fill": "#1f77b4aa",
+            "@lineColor": "#000000ff",
+            "@lineThickness": "2"
+          }
+        },
+        {
+          "@id": "style_orange",
+          "line": {
+            "@style": "solid",
+            "@color": "#ff7f0eff",
+            "@thickness": "4"
+          },
+          "marker": {
+            "@style": "square",
+            "@size": "6",
+            "@fill": "#ff7f0eaa",
+            "@lineColor": "#000000ff",
+            "@lineThickness": "2"
+          }
+        },
+        {
+          "@id": "style_blue_dash",
+          "line": {
+            "@style": "dash",
+            "@color": "#1f77b4ff",
+            "@thickness": "4"
+          },
+          "marker": {
+            "@style": "square",
+            "@size": "6",
+            "@fill": "#1f77b4aa",
+            "@lineColor": "#000000ff",
+            "@lineThickness": "2"
+          }
+        },
+        {
+          "@id": "style_orange_dash",
+          "line": {
+            "@style": "dash",
+            "@color": "#ff7f0eff",
+            "@thickness": "4"
+          },
+          "marker": {
+            "@style": "square",
+            "@size": "6",
+            "@fill": "#ff7f0eaa",
+            "@lineColor": "#000000ff",
+            "@lineThickness": "2"
+          }
+        }
+      ]
+    }
+  }
+}

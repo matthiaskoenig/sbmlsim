@@ -94,18 +94,15 @@
   <listOfStyles>
     <style id="style_blue">
       <line style="solid" color="#1f77b4aa" thickness="4"/>
-      <marker lineColor="#000000"/>
-      <fill color="#1f77b4aa"/>
+      <marker style="square" size="6" fill="#1f77b4aa" lineColor="#000000ff" lineThickness="2"/>
     </style>
     <style id="style_orange">
       <line style="solid" color="#ff7f0eaa" thickness="4"/>
-      <marker lineColor="#000000"/>
-      <fill color="#ff7f0eaa"/>
+      <marker style="square" size="6" fill="#ff7f0eaa" lineColor="#000000ff" lineThickness="2"/>
     </style>
     <style id="style_green">
       <line style="solid" color="#2ca02caa" thickness="4"/>
-      <marker lineColor="#000000" lineThickness="1"/>
-      <fill color="#2ca02caa"/>
+      <marker style="square" size="6" fill="#2ca02caa" lineColor="#000000ff" lineThickness="2"/>
     </style>
   </listOfStyles>
 </sedML>

@@ -72,13 +72,14 @@ if __name__ == "__main__":
     # ----------------------
     working_dir = base_path / "l1v4_plotting"
     for name, sedml_file in [
-        ("markertype", "markertype.sedml"),
-        ("linetype", "linetype.sedml"),
-        ("axis", "axis.sedml"),
-        ("curve_types", "curve_types.sedml"),
-        ("curve_types_errors", "curve_types_errors.sedml"),
-        ("line_overlap_order", "line_overlap_order.sedml"),
-        ("repressilator_figure", "repressilator_figure.xml"),
+        # ("markertype", "markertype.sedml"),
+        # ("linetype", "linetype.sedml"),
+        # ("axis", "axis.sedml"),
+        # ("curve_types", "curve_types.sedml"),
+        # ("curve_types_errors", "curve_types_errors.sedml"),
+        ("right_yaxis", "right_yaxis.sedml"),
+        # ("line_overlap_order", "line_overlap_order.sedml"),
+        # ("repressilator_figure", "repressilator_figure.xml"),
         # ("repressilator_l1v3", "repressilator_l1v3.xml"),
         # ("repressilator_urn_l1v3", "repressilator_urn_l1v3.xml"),  # FIXME: resolve URN
         # ("TestFile1", "test_file_1.sedml"),

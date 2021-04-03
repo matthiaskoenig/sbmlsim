@@ -14,7 +14,7 @@
   - [x] fix stacking position
   - [~] bars next to each other; see https://github.com/SED-ML/sed-ml/issues/138  
 - [~] error bars; see https://github.com/SED-ML/sed-ml/issues/137
-- [ ] styling of bar plots; 
+- [x] styling of bar plots; 
 - [ ] yAxis  
 - [ ] shaded areas & fills
 - [ ] order of abstract curve

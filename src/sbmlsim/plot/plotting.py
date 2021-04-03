@@ -279,7 +279,7 @@ class Style(BasePlotObject):
     def to_mpl_bar_kwargs(self):
         """Convert to matplotlib bar curve keyword arguments."""
         bar_kwargs = self.to_mpl_curve_kwargs()
-        for key in ['color', 'linewidth', 'marker']:
+        for key in ['color', 'linewidth', 'marker', 'markersize']:
             # pop line keys
             if key in bar_kwargs:
                 bar_kwargs.pop(key)
