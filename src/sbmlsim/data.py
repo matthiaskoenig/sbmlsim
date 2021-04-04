@@ -97,6 +97,20 @@ class Data(object):
         return self.function is not None
 
     @property
+    def name(self) -> str:
+        """Get name."""
+        name: str
+        dtype = self.dtype
+        if dtype in [Data.Types.TASK, Data.Types.DATASET]:
+            name = self.index
+        elif dtype == Data.Types.FUNCTION:
+            if len(self.variables) == 1:
+                name = list(self.variables.values())[0].index
+            else:
+                name = self.index
+        return name
+
+    @property
     def dtype(self) -> "Data.Types":
         """Get data type."""
         if self.task_id:

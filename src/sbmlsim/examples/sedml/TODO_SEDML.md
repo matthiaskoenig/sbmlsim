@@ -20,7 +20,7 @@
 - [x] yAxis right  
 
 - [x] order of abstract curve
-- [ ] shaded areas & fills
+- [x] shaded areas & fills
 - [ ] resolve and apply basestyle
 
 # Reports

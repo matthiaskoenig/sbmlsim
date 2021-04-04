@@ -7,7 +7,7 @@
       "model": {
         "@id": "model0",
         "@language": "urn:sedml:language:sbml.level-3.version-1",
-        "@source": "case_01.xml"
+        "@source": "case_02.xml"
       }
     },
     "listOfSimulations": {
@@ -80,6 +80,22 @@
           }
         },
         {
+          "@id": "plot_0_2_1",
+          "@name": "S3",
+          "math": {
+            "@xmlns": "http://www.w3.org/1998/Math/MathML",
+            "ci": "S3"
+          },
+          "listOfVariables": {
+            "variable": {
+              "@id": "S3",
+              "@target": "/sbml:sbml/sbml:model/sbml:listOfSpecies/sbml:species[@id='S3']",
+              "@taskReference": "task0",
+              "@modelReference": "model0"
+            }
+          }
+        },
+        {
           "@id": "report_1_0_0",
           "@name": "task0.time",
           "math": {
@@ -122,7 +138,7 @@
             {
               "@id": "plot_0__plot_0_0_0__plot_0_0_1",
               "@logX": "false",
-              "@style": "blue_fill",
+              "@style": "purple_dash",
               "@xDataReference": "plot_0_0_0",
               "@logY": "false",
               "@yDataReference": "plot_0_0_1",
@@ -131,10 +147,19 @@
             {
               "@id": "plot_0__plot_0_0_0__plot_0_1_1",
               "@logX": "false",
-              "@style": "red_dashed_line",
+              "@style": "red_dash_dot",
               "@xDataReference": "plot_0_0_0",
               "@logY": "false",
               "@yDataReference": "plot_0_1_1",
+              "@type": "points"
+            },
+            {
+              "@id": "plot_0__plot_0_0_0__plot_0_2_1",
+              "@logX": "false",
+              "@style": "green_line_orange_circles",
+              "@xDataReference": "plot_0_0_0",
+              "@logY": "false",
+              "@yDataReference": "plot_0_2_1",
               "@type": "points"
             }
           ]
@@ -161,21 +186,54 @@
     "listOfStyles": {
       "style": [
         {
-          "@id": "blue_fill",
+          "@id": "dash",
           "line": {
-            "@style": "dashDot",
-            "@color": "#FF00FFaa",
-            "@thickness": "10"
-          },
-          "fill": {
-            "@color": "#0000FF"
+            "@style": "dash",
+            "@thickness": "4"
           }
         },
         {
-          "@id": "red_dashed_line",
+          "@id": "purple_dash",
+          "@baseStyle": "dash",
           "line": {
-            "@style": "dash",
-            "@color": "#FF0000"
+            "@color": "#FF00FF"
+          }
+        },
+        {
+          "@id": "red_dash_dot",
+          "line": {
+            "@style": "dashDot",
+            "@color": "#FF0000",
+            "@thickness": "4"
+          }
+        },
+        {
+          "@id": "big_circles",
+          "marker": {
+            "@size": "16",
+            "@style": "circle"
+          }
+        },
+        {
+          "@id": "orange_circles",
+          "@baseStyle": "big_circles",
+          "marker": {
+            "@fill": "#FFa500"
+          }
+        },
+        {
+          "@id": "green_line_orange_circles",
+          "@baseStyle": "orange_circles",
+          "line": {
+            "@style": "solid",
+            "@color": "#00FF00",
+            "@thickness": "4"
+          }
+        },
+        {
+          "@id": "blue_fill",
+          "fill": {
+            "@color": "#0000ff"
           }
         }
       ]

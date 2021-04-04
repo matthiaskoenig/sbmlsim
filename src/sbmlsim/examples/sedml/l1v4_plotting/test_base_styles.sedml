@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <sedML xmlns="http://sed-ml.org/sed-ml/level1/version4" level="1" version="4">
   <listOfModels>
-    <model id="model0" language="urn:sedml:language:sbml.level-3.version-1" source="case_01.xml"/>
+    <model id="model0" language="urn:sedml:language:sbml.level-3.version-1" source="case_02.xml"/>
   </listOfModels>
   <listOfSimulations>
     <uniformTimeCourse id="sim0" initialTime="0" outputStartTime="0" outputEndTime="10" numberOfSteps="10">
@@ -36,6 +36,14 @@
         <variable id="S2" target="/sbml:sbml/sbml:model/sbml:listOfSpecies/sbml:species[@id=&apos;S2&apos;]" taskReference="task0" modelReference="model0"/>
       </listOfVariables>
     </dataGenerator>
+    <dataGenerator id="plot_0_2_1" name="S3">
+      <math xmlns="http://www.w3.org/1998/Math/MathML">
+        <ci> S3 </ci>
+      </math>
+      <listOfVariables>
+        <variable id="S3" target="/sbml:sbml/sbml:model/sbml:listOfSpecies/sbml:species[@id=&apos;S3&apos;]" taskReference="task0" modelReference="model0"/>
+      </listOfVariables>
+    </dataGenerator>
     <dataGenerator id="report_1_0_0" name="task0.time">
       <math xmlns="http://www.w3.org/1998/Math/MathML">
         <ci> task0_____time </ci>
@@ -56,8 +64,9 @@
   <listOfOutputs>
     <plot2D id="plot_0" name="UniformTimecourse">
       <listOfCurves>
-        <curve id="plot_0__plot_0_0_0__plot_0_0_1" logX="false" style="blue_fill" xDataReference="plot_0_0_0" logY="false" yDataReference="plot_0_0_1" type="points"/>
-        <curve id="plot_0__plot_0_0_0__plot_0_1_1" logX="false" style="red_dashed_line" xDataReference="plot_0_0_0" logY="false" yDataReference="plot_0_1_1" type="points"/>
+        <curve id="plot_0__plot_0_0_0__plot_0_0_1" logX="false" style="purple_dash" xDataReference="plot_0_0_0" logY="false" yDataReference="plot_0_0_1" type="points"/>
+        <curve id="plot_0__plot_0_0_0__plot_0_1_1" logX="false" style="red_dash_dot" xDataReference="plot_0_0_0" logY="false" yDataReference="plot_0_1_1" type="points"/>
+        <curve id="plot_0__plot_0_0_0__plot_0_2_1" logX="false" style="green_line_orange_circles" xDataReference="plot_0_0_0" logY="false" yDataReference="plot_0_2_1" type="points"/>
       </listOfCurves>
     </plot2D>
     <report id="report_1">
@@ -68,12 +77,26 @@
     </report>
   </listOfOutputs>
   <listOfStyles>
-    <style id="blue_fill">
-      <line style="dashDot" color="#FF00FFaa" thickness="10"/>
-      <fill color="#0000FF"/>
+    <style id="dash">
+      <line style="dash" thickness="4"/>
     </style>
-    <style id="red_dashed_line">
-      <line style="dash" color="#FF0000"/>
+    <style id="purple_dash" baseStyle="dash">
+      <line color="#FF00FF"/>
+    </style>
+    <style id="red_dash_dot">
+      <line style="dashDot" color="#FF0000" thickness="4"/>
+    </style>
+    <style id="big_circles">
+      <marker size="16" style="circle"/>
+    </style>
+    <style id="orange_circles" baseStyle="big_circles">
+      <marker fill="#FFa500"/>
+    </style>
+    <style id="green_line_orange_circles" baseStyle="orange_circles">
+      <line style="solid" color="#00FF00" thickness="4"/>
+    </style>
+    <style id="blue_fill">
+      <fill color="#0000ff"/>
     </style>
   </listOfStyles>
 </sedML>

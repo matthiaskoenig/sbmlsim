@@ -82,18 +82,19 @@ if __name__ == "__main__":
         # ("repressilator_figure", "repressilator_figure.xml"),
         # ("repressilator_l1v3", "repressilator_l1v3.xml"),
         # ("repressilator_urn_l1v3", "repressilator_urn_l1v3.xml"),  # FIXME: resolve URN
-        # ("TestFile1", "test_file_1.sedml"),
-        # ("TestLineFill", "test_line_fill.sedml"),
+        # ("test_file_1", "test_file_1.sedml"),
+        # ("test_line_fill", "test_line_fill.sedml"),
 
         # ("stacked_bar", "stacked_bar.sedml"),
         # ("stacked_bar2", "stacked_bar2.sedml"),
-        # ("HBarStacked", "test_3hbarstacked.sedml"),
-        # ("Bar", "test_bar.sedml"),
-        # ("Bar", "test_bar3stacked.sedml"),
+        # ("test_3hbarstacked", "test_3hbarstacked.sedml"),
+        ("test_bar", "test_bar.sedml"),
+        # ("test_bar3stacked", "test_bar3stacked.sedml"),
         # ("StackedBar", "test_file.sedml"),
-        # ("StackedBar", "test_hbar_stacked.sedml"),
-        ("test_shaded_area", "test_shaded_area.sedml"),
+        # ("test_hbar_stacked", "test_hbar_stacked.sedml"),
+        # ("test_shaded_area", "test_shaded_area.sedml"),
         # ("test_shaded_area_overlap_order", "test_shaded_area_overlap_order.sedml"),
+        # ("test_base_styles", "test_base_styles.sedml"),
 
     ]:
         execute_sedml(

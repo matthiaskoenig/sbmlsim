@@ -298,13 +298,22 @@ class Style(BasePlotObject):
 
     def to_mpl_area_kwargs(self) -> Dict[str, Any]:
         """Define keyword dictionary for a shaded area."""
-        kwargs: Dict[str, Any] = self.to_mpl_points_kwargs()
+        kwargs: Dict[str, Any] = {}
+
+        if self.line:
+            if self.line.color:
+                kwargs["edgecolor"] = self.line.color.color
+            if self.line.style:
+                kwargs["linestyle"] = Style.SEDML2MPL_LINESTYLE_MAPPING[self.line.style]
+            if self.line.thickness:
+                kwargs["linewidth"] = self.line.thickness
 
         if self.fill:
             if self.fill.color:
-                kwargs["fill.color"] = self.fill.color
-            if self.fill.second_color:
-                kwargs["second.color"] = self.fill.second_color
+                kwargs["color"] = self.fill.color.color
+            # FIXME: second color not supported (gradients)
+            # if self.fill.second_color:
+            #    kwargs["second.color"] = self.fill.second_color
 
         return kwargs
 
@@ -625,6 +634,14 @@ class ShadedArea(AbstractCurve):
         )
         self.yfrom: Data = yfrom
         self.yto: Data = yto
+
+        if "label" in kwargs:
+            self.name = kwargs["label"]
+        if "sid" in kwargs:
+            self.sid = kwargs["sid"]
+        if "name" in kwargs:
+            self.name = kwargs["name"]
+
         self.kwargs: Dict[str, Any] = kwargs
 
     def __repr__(self) -> str:

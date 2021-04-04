@@ -904,9 +904,9 @@ class SEDMLParser(object):
     ) -> Union[ShadedArea, Curve]:
         """Parse abstract curve."""
         sid: str = sed_acurve.getId(),
-        name: Optional[str] = sed_acurve.getName() if sed_acurve.isSetName() else None,
+        name: Optional[str] = sed_acurve.getName() if sed_acurve.isSetName() else None
         x: Data = self.data_from_datagenerator(sed_acurve.getXDataReference())
-        order: int = sed_acurve.getOrder() if sed_acurve.isSetOrder() else None,
+        order: int = sed_acurve.getOrder() if sed_acurve.isSetOrder() else None
 
         # parse yaxis
         yaxis_position = None
@@ -964,7 +964,8 @@ class SEDMLParser(object):
             )
 
             if not curve.name:
-                curve.name = f"{curve.y.index} ~ {curve.x.index}"
+                curve.name = f"{curve.y.name}({curve.x.name})"
+
             return curve
         elif sed_curve_type == libsedml.SEDML_SHADEDAREA:
             sed_shaded_area: libsedml.SedShadedArea = sed_acurve
@@ -978,6 +979,10 @@ class SEDMLParser(object):
                 yaxis_position=yaxis_position,
                 style=style,
             )
+
+            if not area.name:
+                area.name = f"{area.yfrom.name}|{area.yto.name}({area.x.name})"
+
             return area
         else:
             raise ValueError(f"Type of AbstractCurve '{sed_acurve}' is not supported: "

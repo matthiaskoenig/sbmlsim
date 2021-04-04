@@ -103,16 +103,12 @@ class MatplotlibFigureSerializer(object):
             abstract_curves: List[AbstractCurve] = sorted(plot.curves + plot.areas, key=lambda x: x.order)
             for kc, abstract_curve in enumerate(abstract_curves):
 
-                print(abstract_curve)
-
                 if abstract_curve.yaxis_position and abstract_curve.yaxis_position == YAxisPosition.RIGHT:
                     # right axis
-                    yaxis_position = YAxisPosition.RIGHT
                     yunit = yunit_right
                     ax = ax2
                 else:
                     # left axis
-                    yaxis_position = YAxisPosition.LEFT
                     yunit = yunit_left
                     ax = ax1
 
@@ -223,29 +219,24 @@ class MatplotlibFigureSerializer(object):
                     x = area.x.get_data(experiment=experiment, to_units=xunit)
                     yfrom = area.yfrom.get_data(experiment=experiment, to_units=yunit)
                     yto = area.yto.get_data(experiment=experiment, to_units=yunit)
-                    label = area.name if area.name else "__nolabel__"
 
-
+                    # FIXME: support multidimensional results
                     x_data = x.magnitude[:, 0] if x is not None else None
                     yfrom_data = yfrom.magnitude[:, 0] if yfrom is not None else None
                     yto_data = yto.magnitude[:, 0] if yto is not None else None
 
-                    # FIXME: parse style argument
+                    label = area.name if area.name else "__nolabel__"
                     kwargs: Dict[str, Any] = {}
-                    # if curve.style:
-                    #     if curve.type == CurveType.POINTS:
-                    #         kwargs = curve.style.to_mpl_points_kwargs()
-                    #     else:
-                    #         # bar plot
-                    #         kwargs = curve.style.to_mpl_bar_kwargs()
+                    if area.style:
+                        kwargs = area.style.to_mpl_area_kwargs()
 
                     ax.fill_between(
                         x=x_data,
                         y1=yfrom_data,
                         y2=yto_data,
+                        label=label,
                         **kwargs
                     )
-
 
             # plot settings
             if plot.name and plot.title_visible:
