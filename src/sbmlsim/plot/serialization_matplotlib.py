@@ -141,11 +141,12 @@ class MatplotlibFigureSerializer(object):
 
                     kwargs: Dict[str, Any] = {}
                     if curve.style:
+                        style: Style = curve.style.resolve_style()
                         if curve.type == CurveType.POINTS:
-                            kwargs = curve.style.to_mpl_points_kwargs()
+                            kwargs = style.to_mpl_points_kwargs()
                         else:
                             # bar plot
-                            kwargs = curve.style.to_mpl_bar_kwargs()
+                            kwargs = style.to_mpl_bar_kwargs()
 
                     if curve.type == CurveType.POINTS:
                         ax.errorbar(
@@ -228,7 +229,8 @@ class MatplotlibFigureSerializer(object):
                     label = area.name if area.name else "__nolabel__"
                     kwargs: Dict[str, Any] = {}
                     if area.style:
-                        kwargs = area.style.to_mpl_area_kwargs()
+                        style: Style = area.style.resolve_style()
+                        kwargs = style.to_mpl_area_kwargs()
 
                     ax.fill_between(
                         x=x_data,
@@ -242,116 +244,70 @@ class MatplotlibFigureSerializer(object):
             if plot.name and plot.title_visible:
                 ax1.set_title(plot.name)
 
-            if xax:
-                if xax.min is not None:
-                    ax1.set_xlim(xmin=xax.min)
-                if xax.max is not None:
-                    ax1.set_xlim(xmax=xax.max)
-                ax1.set_xscale(cls._get_scale(xax))
+            def apply_axis_settings(sax: Axis, ax: plt.Axes, axis_type: str):
+                """Apply settings to all axis."""
+                if not axis_type in ["x", "y"]:
+                    raise ValueError
 
-                if xax.label_visible:
-                    if xax.name:
-                        ax1.set_xlabel(xax.name)
-                if not xax.ticks_visible:
-                    ax1.set_xticklabels([])  # hide ticks
+                if sax.min is not None:
+                    if axis_type == "x":
+                        ax.set_xlim(xmin=sax.min)
+                    elif axis_type == "y":
+                        ax.set_ylim(ymin=sax.min)
+                if sax.max is not None:
+                    if axis_type == "x":
+                        ax.set_xlim(xmax=sax.max)
+                    elif axis_type == "y":
+                        ax.set_ylim(ymax=sax.max)
+
+                if axis_type == "x":
+                    ax.set_xscale(cls._get_scale(sax))
+                elif axis_type == "y":
+                    ax.set_yscale(cls._get_scale(sax))
+
+                if sax.label_visible and sax.name:
+                    if axis_type == "x":
+                        ax.set_xlabel(sax.name)
+                    elif axis_type == "y":
+                        ax.set_ylabel(sax.name)
+
+                if not sax.ticks_visible:
+                    if axis_type == "x":
+                        ax.set_xticklabels([])  # hide ticks
+                    elif axis_type == "y":
+                        ax.set_yticklabels([])  # hide ticks
 
                 # style
                 # https://matplotlib.org/stable/api/spines_api.html
                 # http://matplotlib.org/examples/pylab_examples/multiple_yaxis_with_spines.html
-                if xax.style and xax.style.line:
-                    style: Style = xax.style
+                if sax.style and sax.style.line:
+                    style: Style = sax.style.resolve_style()
                     if style.line:
                         if style.line.thickness:
                             linewidth = style.line.thickness
                             for axis in ["bottom", "top"]:
-                                ax1.tick_params(width=linewidth)
+                                ax.tick_params(width=linewidth)
                                 if np.isclose(linewidth, 0.0):
-                                    ax1.spines[axis].set_color(Figure.fig_facecolor)
+                                    ax.spines[axis].set_color(Figure.fig_facecolor)
                                 else:
-                                    ax1.spines[axis].set_linewidth(linewidth)
-                                    ax1.tick_params(width=linewidth)
+                                    ax.spines[axis].set_linewidth(linewidth)
+                                    ax.tick_params(width=linewidth)
                         if style.line.color:
                             color = style.line.color
                             for axis in ["bottom", "top"]:
-                                ax1.spines[axis].set_color(str(color))
+                                ax.spines[axis].set_color(str(color))
 
                         if style.line.style and style.line.style == LineStyle.NONE:
                             for axis in ["bottom", "top"]:
-                                ax1.tick_params(width=linewidth)
-                                ax1.spines[axis].set_color(Figure.fig_facecolor)
+                                ax.tick_params(width=linewidth)
+                                ax.spines[axis].set_color(Figure.fig_facecolor)
 
-            if yax:
-                if yax.min is not None:
-                    ax1.set_ylim(ymin=yax.min)
-                if yax.max is not None:
-                    ax1.set_ylim(ymax=yax.max)
-
-                ax1.set_yscale(cls._get_scale(yax))
-
-                if yax.label_visible:
-                    if yax.name:
-                        ax1.set_ylabel(yax.name)
-                if not yax.ticks_visible:
-                    ax1.set_yticklabels([])  # hide ticks
-
-                if yax.style and yax.style.line:
-                    style: Style = yax.style
-                    if style.line:
-                        if style.line.thickness:
-                            linewidth = style.line.thickness
-                            for axis in ["left", "right"]:
-                                ax1.tick_params(width=linewidth)
-                                if np.isclose(linewidth, 0.0):
-                                    ax1.spines[axis].set_color(Figure.fig_facecolor)
-                                else:
-                                    ax1.spines[axis].set_linewidth(linewidth)
-                                    ax1.tick_params(width=linewidth)
-                        if style.line.color:
-                            color = style.line.color
-                            for axis in ["left", "right"]:
-                                ax1.spines[axis].set_color(str(color))
-
-                        if style.line.style and style.line.style == LineStyle.NONE:
-                            for axis in ["left", "right"]:
-                                ax1.tick_params(width=linewidth)
-                                ax1.spines[axis].set_color(Figure.fig_facecolor)
-
+            if xax:
+                apply_axis_settings(xax, ax1, axis_type="x")
+            if xax:
+                apply_axis_settings(yax, ax1, axis_type="y")
             if yax_right:
-                if yax_right.min is not None:
-                    ax2.set_ylim(ymin=yax_right.min)
-                if yax_right.max is not None:
-                    ax2.set_ylim(ymax=yax_right.max)
-
-                ax2.set_yscale(cls._get_scale(yax_right))
-
-                if yax_right.label_visible:
-                    if yax_right.name:
-                        ax2.set_ylabel(yax_right.name)
-                if not yax_right.ticks_visible:
-                    ax2.set_yticklabels([])  # hide ticks
-
-                if yax_right.style and yax_right.style.line:
-                    style: Style = yax_right.style
-                    if style.line:
-                        if style.line.thickness:
-                            linewidth = style.line.thickness
-                            for axis in ["left", "right"]:
-                                ax2.tick_params(width=linewidth)
-                                if np.isclose(linewidth, 0.0):
-                                    ax2.spines[axis].set_color(Figure.fig_facecolor)
-                                else:
-                                    ax2.spines[axis].set_linewidth(linewidth)
-                                    ax2.tick_params(width=linewidth)
-                        if style.line.color:
-                            color = style.line.color
-                            for axis in ["left", "right"]:
-                                ax2.spines[axis].set_color(str(color))
-
-                        if style.line.style and style.line.style == LineStyle.NONE:
-                            for axis in ["left", "right"]:
-                                ax2.tick_params(width=linewidth)
-                                ax2.spines[axis].set_color(Figure.fig_facecolor)
-
+                apply_axis_settings(yax_right, ax2, axis_type="y")
 
             # recompute the ax.dataLim
             # ax.relim()

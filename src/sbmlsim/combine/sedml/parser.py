@@ -993,11 +993,9 @@ class SEDMLParser(object):
         if not sed_style:
             return None
 
-        # resolve style if string
+        # resolve style by style id
         if isinstance(sed_style, str):
             sed_style: libsedml.SedStyle = self.sed_doc.getStyle(sed_style)
-
-        # FIXME: get the complete style resolved from basestyle
 
         style = Style(
             sid=sed_style.getId(),

@@ -167,25 +167,74 @@ class Fill(object):
 
 
 class Style(BasePlotObject):
+    """Style class.
+
+    Storing styling informatin about line, marker and fill.
+    Styles can be derived from other styles based on the the
+    base_style attribute.
+    """
+
     def __init__(
         self,
         sid: str = None,
         name: str = None,
-        base_style: "Style" = None,
-        line: Line = None,
-        marker: Marker = None,
-        fill: Fill = None,
+        base_style: Optional["Style"] = None,
+        line: Optional[Line] = None,
+        marker: Optional[Marker] = None,
+        fill: Optional[Fill] = None,
     ):
-
-        # FIXME: base_style not handled
         super(Style, self).__init__(sid, name)
-        self.line = line
-        self.marker = marker
-        self.fill = fill
+        self.base_style: Optional["Style"] = base_style
+        self.line: Optional[Line] = line
+        self.marker: Optional[Marker] = marker
+        self.fill: Optional[Fill] = fill
+
+    def resolve_style(self) -> "Style":
+        """Resolve all basestyle information.
+
+        Resolves the actual style information.
+        """
+        # recursive resolving of basestyle.
+        if not self.base_style:
+            return self
+
+        # get base_style information
+        logger.warning(f"Resolving base_style: {self.base_style}")
+        style = self.base_style.resolve_style()
+
+        # overwrite information
+        if self.line:
+            if not style.line:
+                style.line = deepcopy(self.line)
+            else:
+                for key in ["style", "color", "thickness"]:
+                    if hasattr(self.line, key) and getattr(self.line, key):
+                        logger.debug(f"line: {key} = {getattr(self.line, key)}")
+                        setattr(style.line, key, getattr(self.line, key))
+
+        if self.marker:
+            if not style.marker:
+                style.marker = deepcopy(self.marker)
+            else:
+                for key in ["style", "size", "fill", "lineColor", "lineThickness"]:
+                    if hasattr(self.marker, key) and getattr(self.marker, key):
+                        logger.debug(f"marker: {key} = {getattr(self.marker, key)}")
+                        setattr(style.marker, key, getattr(self.marker, key))
+
+        if self.fill:
+            if not style.fill:
+                style.fill = deepcopy(self.fill)
+            else:
+                for key in ["color", "secondColor"]:
+                    if hasattr(self.fill, key) and getattr(self.fill, key):
+                        logger.debug(f"fill: {key} = {getattr(self.fill, key)}")
+                        setattr(style.fill, key, getattr(self.fill, key))
+
+        return style
 
     def __repr__(self) -> str:
         """Get string presentation."""
-        return f"{self.sid} ({self.name}) [marker={self.marker}; line={self.line}M" \
+        return f"{self.sid} (base_style={self.base_style}) [marker={self.marker}; line={self.line}; " \
                f"fill={self.fill}]"
 
     def __copy__(self) -> 'Style':
@@ -346,9 +395,11 @@ class Style(BasePlotObject):
         )
 
         # Fill
-        # FIXME: implement
+        fill = Fill(
+            color=color
+        )
 
-        return Style(line=line, marker=marker, fill=None)
+        return Style(line=line, marker=marker, fill=fill)
 
 
 class AxisScale(Enum):

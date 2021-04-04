@@ -1,7 +1,8 @@
-# Serialization
-- [ ] writing SED-ML from experiments (Combine archive)
+# Run COMBINE archive
+- [ ] execute COMBINE archives
 
-# Run Co
+# Serialization
+- [ ] writing SED-ML from experiments (to combine archive)
 
 # Plotting
 - [x] support height and width;
@@ -17,22 +18,23 @@
   - [~] bars next to each other; see https://github.com/SED-ML/sed-ml/issues/138  
 - [~] error bars; see https://github.com/SED-ML/sed-ml/issues/137
 - [x] styling of bar plots; 
-- [x] yAxis right  
-
+- [x] yAxis right
 - [x] order of abstract curve
 - [x] shaded areas & fills
-- [ ] resolve and apply basestyle
+- [x] resolve and apply basestyle
 
 # Reports
 - [ ] reports
 # Repeated Tasks
 - [ ] repeated task
+# Simulation
+- [ ] steady state & one-step
+# Kisao terms
 
 ## Plot3D
 - [ ] Plot3D examples (surfaces)
 - [ ] use surface.name as label in legend
 
-# Simulation
-- [ ] steady state & one-step
+
 
 # Parameter fitting

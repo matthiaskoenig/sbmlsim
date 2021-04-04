@@ -88,13 +88,13 @@ if __name__ == "__main__":
         # ("stacked_bar", "stacked_bar.sedml"),
         # ("stacked_bar2", "stacked_bar2.sedml"),
         # ("test_3hbarstacked", "test_3hbarstacked.sedml"),
-        ("test_bar", "test_bar.sedml"),
+        # ("test_bar", "test_bar.sedml"),
         # ("test_bar3stacked", "test_bar3stacked.sedml"),
         # ("StackedBar", "test_file.sedml"),
         # ("test_hbar_stacked", "test_hbar_stacked.sedml"),
         # ("test_shaded_area", "test_shaded_area.sedml"),
         # ("test_shaded_area_overlap_order", "test_shaded_area_overlap_order.sedml"),
-        # ("test_base_styles", "test_base_styles.sedml"),
+        ("test_base_styles", "test_base_styles.sedml"),
 
     ]:
         execute_sedml(
