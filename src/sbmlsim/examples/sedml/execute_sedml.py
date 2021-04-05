@@ -28,39 +28,24 @@ def sedmltojson(sedml_path: Path) -> None:
         f_json.write(json_data)
 
 
-def execute_omex(omex_path: Path, working_dir: Path = None) -> None:
-    """Execute omex archive.
+def execute_sedml(path: Path, working_dir: Path) -> None:
+    """Execute the given SED-ML in the working directory.
 
-    :param omex_path: Path to COMBINE archive (OMEX)
-    :param working_dir: Directory to execute the archive (temporary directory of None)
+    :param path: path to SED-ML file or OMEX archive.
+    :param working_dir: directory for execution and resources
     :return:
     """
-    # extract combine archive
-    from sbmlsim.combine.omex import Omex
-    omex = Omex(omex_path=omex_path, working_dir=working_dir)
-    omex.extract()
-    print(omex)
-
-    sedml_locations = omex.locations_by_format(format_key="sed-ml")
-    print(sedml_locations)
-    for location, master in sedml_locations:
-        if master:
-            execute_sedml(working_dir=working_dir, )
-
-
-def execute_sedml(sedml_path: Path, working_dir: Path) -> None:
-    """Execute the given SED-ML in the working directory."""
-    # convert to json
-    sedmltojson(sedml_path)
-
-    sed_doc, errorlog, _, _ = read_sedml(
-        source=str(sedml_path), working_dir=working_dir
+    sed_doc, errorlog, working_dir, input_type = read_sedml(
+        source=str(path), working_dir=working_dir
     )
+    print("working_dir:", working_dir)
+    print("input_type:", input_type)
+
 
     if errorlog.getNumErrors() > 0:
-        raise IOError(f"Errors in SED-ML document for '{sedml_path}',")
+        raise IOError(f"Errors in SED-ML document for '{path}',")
 
-    sed_parser = SEDMLParser(sed_doc, working_dir=working_dir, name=sedml_path.stem)
+    sed_parser = SEDMLParser(sed_doc, working_dir=working_dir, name=path.stem)
     sed_parser.print_info()
 
     # check created experiment
@@ -116,7 +101,7 @@ if __name__ == "__main__":
         # "test_base_styles.sedml",
     ]:
         execute_sedml(
-            sedml_path=working_dir / sedml_file,
+            path=working_dir / sedml_file,
             working_dir=working_dir,
         )
 
@@ -129,5 +114,5 @@ if __name__ == "__main__":
     ]:
         execute_sedml(
             working_dir=working_dir,
-            sedml_path=working_dir / sedml_file
+            path=working_dir / sedml_file
         )

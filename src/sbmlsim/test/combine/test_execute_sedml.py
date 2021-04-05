@@ -23,5 +23,5 @@ def test_execute_sedml(tmp_path: Path, name: str, sedml_file: str) -> None:
     execute_sedml(
         working_dir=working_dir,
         name=name,
-        sedml_path=working_dir / sedml_file
+        path=working_dir / sedml_file
     )

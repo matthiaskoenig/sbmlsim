@@ -12,6 +12,7 @@ from xml.etree import ElementTree
 import libcombine
 import libsedml
 
+from sbmlsim.combine.omex import Omex
 
 logger = logging.getLogger(__name__)
 
@@ -46,12 +47,15 @@ def check_sedml(sed_doc: libsedml.SedDocument) -> libsedml.SedErrorLog:
     return errorlog
 
 
+# FIXME: use proper results data structure
+# FIXME: support execution of multiple SED-ML files
+# FIXME: cleanup of function
+
 def read_sedml(source: Union[Path, str], working_dir: Path = None) -> Dict:
     """Parses SedMLDocument from given input.
 
     :return: dictionary of SedDocument, input_type and working directory.
     """
-    print(source)
     if isinstance(source, str) and not Path(source).exists:
         logger.info("SED-ML from string")
         input_type = INPUT_TYPE_STR
@@ -79,34 +83,31 @@ def read_sedml(source: Union[Path, str], working_dir: Path = None) -> Dict:
 
             # in case of an archive a working directory is created
             # in which the files are extracted
+            extract_dir: Path
             if working_dir is None:
                 extract_dir = omex_path.parent / f"_sbmlsim_{file_stem}"
             else:
                 extract_dir = working_dir
-            logger.info(f"extracting archive to '{extract_dir}'")
+            logger.debug(f"extracting archive to '{extract_dir}'")
 
             # extract archive to working directory
             importlib.reload(libcombine)
-            libcombine.CombineArchive.extractArchive(str(omex_path), str(extract_dir))
-            sedml_files = libcombine.CombineArchive.filePathsFromExtractedArchive(
-                str(extract_dir), filetype="sed-ml"
-            )
-            if len(sedml_files) == 0:
-                raise IOError(f"No SEDML files found in archive: {omex_path}")
-            elif len(sedml_files) > 1:
-                logger.warning(
-                    "More than one sedml file in archive, only "
-                    f"processing first file."
-                )
-
-            sedml_path = extract_dir / sedml_files[0]
-            if not file_path.exists():
-                raise IOError(f"SED-ML file does not exist: {sedml_path}")
+            omex = Omex(omex_path=file_path, working_dir=working_dir)
+            omex.extract()
+            for location, master in omex.locations_by_format("sed-ml"):
+                print("SED-ML location: ", location)
+                if master:
+                    sedml_path = extract_dir / location
+                    break
+            else:
+                logger.error("No SED-ML file with master flag found.")
 
             importlib.reload(libsedml)
             sed_doc = libsedml.readSedMLFromFile(str(sedml_path))
 
             # we have to work relative to the SED-ML file
+            # FIXME: add execution directory (clear separation between where the files are
+            # and where SED-ML is resolving files
             working_dir = sedml_path.parent
 
         elif file_path.exists():
