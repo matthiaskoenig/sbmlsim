@@ -109,10 +109,11 @@ from sbmlsim.combine.sedml.io import read_sedml
 from sbmlsim.combine.sedml.kisao import is_supported_algorithm_for_simulation_type
 from sbmlsim.combine.sedml.task import Stack, TaskNode, TaskTree
 from sbmlsim.data import DataSet, Data
-from sbmlsim.experiment import SimulationExperiment
+from sbmlsim.experiment import SimulationExperiment, ExperimentRunner
 from sbmlsim.fit import FitParameter, FitExperiment, FitMapping, FitData
 from sbmlsim.model import model_resources
 from sbmlsim.model.model import AbstractModel
+from sbmlsim.model.model_resources import Source
 from sbmlsim.plot import Figure, Plot, Axis, Curve
 from sbmlsim.plot.plotting import Style, Line, LineStyle, ColorType, Marker, \
     MarkerStyle, Fill, SubPlot, AxisScale, CurveType, YAxisPosition, ShadedArea
@@ -145,8 +146,78 @@ def experiment_from_omex(omex_path: Path):
 '''
 
 
-class SEDMLParser(object):
-    """ Parsing SED-ML in internal format."""
+class SEDMLSerializer:
+    """Serialize SimulationExperiment to SED-ML.
+
+    Creates the SED-ML and the COMBINE archive containing
+    all models and data for the simulation experiment.
+    """
+
+    def __init__(
+        self,
+        experiment: Type[SimulationExperiment],
+        working_dir: Path,
+        sedml_filename: str,
+        omex_path: Path = None,
+    ):
+        self.experiment = experiment
+        self.working_dir: Path = working_dir
+        self.sedml_filename: str = sedml_filename
+        self.omex_path: Optional[Path] = omex_path
+
+        runner = ExperimentRunner(
+            [experiment],
+            simulator=None,
+            data_path=None,
+            base_path=None,
+        )
+        exp: SimulationExperiment = list(runner.experiments.values())[0]
+
+        sed_doc: libsedml.SedDocument = libsedml.SedDocument(1, 4)
+
+        # --- models ---
+
+        # Get the unresolved model files or URNs
+        model_key: str
+        model: AbstractModel
+        for mid, model in exp.models().items():
+            print(mid, model)
+
+            sed_model: libsedml.SedModel = sed_doc.createModel()
+            sed_model.setId(mid)
+            if model.name:
+                sed_model.setName(model.name)
+
+            # FIXME: copy the model to omex & set relative source
+            print("model.source", model)
+
+            if isinstance(model, Path):
+                sed_model.setSource(str(model))
+
+            elif isinstance(model, Source):
+                sed_model.setSource(model.source)
+                for key, value in model.changes:
+                    # FIXME: necessary to normalize on model units first
+
+                    sed_change_attr: libsedml.SedChangeAttribute = sed_model.createChangeAttribute()
+
+                    # FIXME: necessary to figure out the XPath for the model change;
+                    # important for the type (also concentration/amount).
+                    sed_change_attr.setTarget(
+                        f"/sbml:sbml/sbml:model/sbml:listOfParameters/sbml:parameter[@id='{key}']"
+                    )
+                    sed_change_attr.setNewValue(value)
+
+                    # FIXME: Not supported: AddXML, ChangeXML, RemoveXML
+                    # FIXME: ComputeChange: Not supported
+
+        sedml_path = working_dir / sedml_filename
+        libsedml.writeSedML(sed_doc, str(sedml_path))
+
+
+
+class SEDMLParser:
+    """Parse SED-ML to sbmlsim.SimulationExperiment."""
 
     def __init__(
         self,

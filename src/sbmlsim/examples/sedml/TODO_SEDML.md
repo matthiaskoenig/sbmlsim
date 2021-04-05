@@ -1,8 +1,10 @@
 # Models
 - [x] resolve model from URN
+- [N] AddXML, ChangeXML, RemoveXML
+- [ ] ComputeChange
 
 # Run COMBINE archive
-- [~] execute COMBINE archives
+- [x] execute COMBINE archives (refactoring required; also store results)
 
 # Serialization
 - [ ] writing SED-ML from experiments (to combine archive)

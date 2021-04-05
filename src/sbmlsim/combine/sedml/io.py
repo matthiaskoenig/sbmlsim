@@ -68,6 +68,8 @@ def read_sedml(source: Union[Path, str], working_dir: Path = None) -> Dict:
             raise err
 
         sed_doc: libsedml.SedDocument = libsedml.readSedMLFromString(source)
+        if sed_doc is None:
+            raise IOError("SED-ML could not be read.")
 
         if working_dir is None:
             working_dir = Path.cwd()

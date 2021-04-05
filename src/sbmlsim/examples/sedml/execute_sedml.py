@@ -41,9 +41,8 @@ def execute_sedml(path: Path, working_dir: Path) -> None:
     print("working_dir:", working_dir)
     print("input_type:", input_type)
 
-
     if errorlog.getNumErrors() > 0:
-        raise IOError(f"Errors in SED-ML document for '{path}',")
+        raise IOError(f"Errors in SED-ML document for '{path}'")
 
     sed_parser = SEDMLParser(sed_doc, working_dir=working_dir, name=path.stem)
     sed_parser.print_info()
