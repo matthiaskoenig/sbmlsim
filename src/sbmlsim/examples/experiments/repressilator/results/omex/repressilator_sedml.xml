@@ -1,7 +1,12 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <sedML xmlns="http://sed-ml.org/sed-ml/level1/version4" level="1" version="4">
   <listOfModels>
-    <model id="model1" name="repressilator.xml" source="/home/mkoenig/git/sbmlsim/src/sbmlsim/test/data/models/repressilator.xml"/>
-    <model id="model2"/>
+    <model id="model1" name="repressilator.xml" source="models/repressilator.xml"/>
+    <model id="model2" source="models/repressilator.xml">
+      <listOfChanges>
+        <changeAttribute target="/sbml:sbml/sbml:model/sbml:listOfParameters/sbml:parameter[@id=&apos;ps_0&apos;]" newValue="1.3e-05"/>
+        <changeAttribute target="/sbml:sbml/sbml:model/sbml:listOfParameters/sbml:parameter[@id=&apos;ps_a&apos;]" newValue="0.013"/>
+      </listOfChanges>
+    </model>
   </listOfModels>
 </sedML>

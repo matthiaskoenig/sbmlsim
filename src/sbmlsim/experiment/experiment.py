@@ -86,7 +86,7 @@ class SimulationExperiment:
         self.settings = kwargs
 
         # init variables
-        self._models: Dict[str, AbstractModel] = {}
+        self._models: Dict[str, RoadrunnerSBMLModel] = {}
         self._data: Dict[str, Data] = {}
         self._datasets: Dict[str, DataSet] = {}
         self._fit_mappings: Dict[str, FitMapping] = {}

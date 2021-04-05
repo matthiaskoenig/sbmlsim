@@ -94,6 +94,7 @@ are supported.
 import importlib
 import logging
 import re
+import shutil
 import warnings
 from collections import OrderedDict, namedtuple
 from pathlib import Path
@@ -104,6 +105,8 @@ import numpy as np
 import pandas as pd
 from pprint import pprint
 
+from pint import Quantity
+
 from sbmlsim.combine.sedml.data import DataDescriptionParser
 from sbmlsim.combine.sedml.io import read_sedml
 from sbmlsim.combine.sedml.kisao import is_supported_algorithm_for_simulation_type
@@ -111,7 +114,7 @@ from sbmlsim.combine.sedml.task import Stack, TaskNode, TaskTree
 from sbmlsim.data import DataSet, Data
 from sbmlsim.experiment import SimulationExperiment, ExperimentRunner
 from sbmlsim.fit import FitParameter, FitExperiment, FitMapping, FitData
-from sbmlsim.model import model_resources
+from sbmlsim.model import model_resources, RoadrunnerSBMLModel
 from sbmlsim.model.model import AbstractModel
 from sbmlsim.model.model_resources import Source
 from sbmlsim.plot import Figure, Plot, Axis, Curve
@@ -119,8 +122,7 @@ from sbmlsim.plot.plotting import Style, Line, LineStyle, ColorType, Marker, \
     MarkerStyle, Fill, SubPlot, AxisScale, CurveType, YAxisPosition, ShadedArea
 from sbmlsim.simulation import ScanSim, TimecourseSim, Timecourse, AbstractSim
 from sbmlsim.task import Task
-from sbmlsim.units import UnitRegistry
-
+from sbmlsim.units import UnitRegistry, UnitsInformation
 
 logger = logging.getLogger(__file__)
 
@@ -180,40 +182,78 @@ class SEDMLSerializer:
         # Get the unresolved model files or URNs
         model_key: str
         model: AbstractModel
+
+
+
         for mid, model in exp.models().items():
             print(mid, model)
+
+            import roadrunner
+            rrsbml_model: RoadrunnerSBMLModel = exp._models[mid]
+            rr_model: roadrunner.ExecutableModel = rrsbml_model.r.model
+            parameter_ids = set(rr_model.getGlobalParameterIds())
+            species_ids = set(rr_model.getBoundarySpeciesIds() + rr_model.getFloatingSpeciesIds())
+            compartment_ids = set(rr_model.getCompartmentIds())
 
             sed_model: libsedml.SedModel = sed_doc.createModel()
             sed_model.setId(mid)
             if model.name:
                 sed_model.setName(model.name)
 
-            # FIXME: copy the model to omex & set relative source
-            print("model.source", model)
-
+            # models are stored in separate directory
+            models_dir = working_dir / "models"
+            models_dir.mkdir(parents=True, exist_ok=True)
+            abstract_model: AbstractModel
             if isinstance(model, Path):
-                sed_model.setSource(str(model))
+                abstract_model = AbstractModel(source=model)
+            elif isinstance(model, AbstractModel):
+                abstract_model = model
+            else:
+                raise ValueError(f"Model type not supported: {type(model)}")
 
-            elif isinstance(model, Source):
-                sed_model.setSource(model.source)
-                for key, value in model.changes:
-                    # FIXME: necessary to normalize on model units first
+            model_path_src: Path = abstract_model.source.path
+            filename = model_path_src.name
+            model_path_target = models_dir / filename
 
-                    sed_change_attr: libsedml.SedChangeAttribute = sed_model.createChangeAttribute()
+            # copy path in models directory
+            shutil.copyfile(model_path_src, model_path_target)
 
-                    # FIXME: necessary to figure out the XPath for the model change;
-                    # important for the type (also concentration/amount).
-                    sed_change_attr.setTarget(
-                        f"/sbml:sbml/sbml:model/sbml:listOfParameters/sbml:parameter[@id='{key}']"
-                    )
-                    sed_change_attr.setNewValue(value)
+            # resolve path relative to working dir
+            model_path_rel = Path(".") / "models" / filename
+            sed_model.setSource(str(model_path_rel))
 
-                    # FIXME: Not supported: AddXML, ChangeXML, RemoveXML
-                    # FIXME: ComputeChange: Not supported
+            # get normalized changes (to model units)
+            changes: Dict[str, Quantity] = UnitsInformation.normalize_changes(
+                changes=abstract_model.changes,
+                uinfo=rrsbml_model.uinfo
+            )
+
+            for key, value in changes.items():
+                # FIXME: support amount and concentration
+                # see https://github.com/SED-ML/sed-ml/issues/141
+                symbol: str = None
+                target: str = None
+
+                if key in compartment_ids:
+                    target = f"/sbml:sbml/sbml:model/sbml:listOfCompartments/sbml:compartment[@id='{key}']"
+                elif key in parameter_ids:
+                    target = f"/sbml:sbml/sbml:model/sbml:listOfParameters/sbml:parameter[@id='{key}']"
+                elif key in species_ids:
+                    target = f"/sbml:sbml/sbml:model/sbml:listOfSpecies/sbml:species[@id='{key}'](amount)"
+                elif key.startswith("[") and key.endswith("]"):
+                    target = f"/sbml:sbml/sbml:model/sbml:listOfSpecies/sbml:species[@id='{key[1:-1]}'](concentration)"
+
+                sed_change_attr: libsedml.SedChangeAttribute = sed_model.createChangeAttribute()
+                sed_change_attr.setTarget(
+                    target
+                )
+                sed_change_attr.setNewValue(str(value.magnitude))
+
+                # FIXME: Not supported: AddXML, ChangeXML, RemoveXML
+                # FIXME: ComputeChange: Not supported
 
         sedml_path = working_dir / sedml_filename
         libsedml.writeSedML(sed_doc, str(sedml_path))
-
 
 
 class SEDMLParser:
