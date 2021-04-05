@@ -1,19 +1,26 @@
-# Models
-- [x] resolve model from URN
-- [N] AddXML, ChangeXML, RemoveXML
-- [ ] ComputeChange
-
 # Run COMBINE archive
 - [x] execute COMBINE archives (refactoring required; also store results)
 
-# Serialization
-- [ ] writing SED-ML from experiments (to combine archive)
+# Serialization (SimulationExperiment -> SED-ML)
+- [x] model
+    - [x] resolve model from URN
+    - [S] AddXML, ChangeXML, RemoveXML
+    - [S] ComputeChange
+- [x] simulation
+    - [x] UniformTimecourse
+    - [S] OneStep
+    - [S] SteadyState
+    
+
 
 # Plotting
+
+
+# Parsing (SED-ML -> SimulationExperiment)
+## Plot2D
 - [x] support height and width;
       plots have height & width; these can be directly set in single plot figures;
       for multi-plot figures the combined height and width must be calculated
-## Plot2D
 - [x] use curve.name as label in legend
 - [x] support style on axis
 - [~] support setting label (name of axis), see https://github.com/fbergmann/libSEDML/issues/110

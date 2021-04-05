@@ -155,6 +155,8 @@ class SEDMLSerializer:
     all models and data for the simulation experiment.
     """
 
+
+
     def __init__(
         self,
         experiment: Type[SimulationExperiment],
@@ -167,41 +169,65 @@ class SEDMLSerializer:
         self.sedml_filename: str = sedml_filename
         self.omex_path: Optional[Path] = omex_path
 
+        # initialize experiment
         runner = ExperimentRunner(
             [experiment],
             simulator=None,
             data_path=None,
             base_path=None,
         )
-        exp: SimulationExperiment = list(runner.experiments.values())[0]
+        self.exp: SimulationExperiment = list(runner.experiments.values())[0]
+        self.sed_doc: libsedml.SedDocument = libsedml.SedDocument(1, 4)
 
-        sed_doc: libsedml.SedDocument = libsedml.SedDocument(1, 4)
+        # --- datasets ---
 
         # --- models ---
+        self.serialize_models()
 
+        # --- simulations ---
+        self.serialize_simulations()
+
+        # --- tasks ---
+        self.serialize_tasks()
+
+        # --- data generators ---
+        self.serialize_data()
+
+        # --- figures ---
+
+        # --- reports ---
+
+
+        sedml_path = working_dir / sedml_filename
+        libsedml.writeSedML(self.sed_doc, str(sedml_path))
+
+    def serialize_models(self):
+        """Serialize models.
+
+        Write experiment models in SedDocument.
+        """
         # Get the unresolved model files or URNs
         model_key: str
         model: AbstractModel
 
-
-
-        for mid, model in exp.models().items():
+        for mid, model in self.exp.models().items():
             print(mid, model)
 
             import roadrunner
-            rrsbml_model: RoadrunnerSBMLModel = exp._models[mid]
+            rrsbml_model: RoadrunnerSBMLModel = self.exp._models[mid]
             rr_model: roadrunner.ExecutableModel = rrsbml_model.r.model
             parameter_ids = set(rr_model.getGlobalParameterIds())
-            species_ids = set(rr_model.getBoundarySpeciesIds() + rr_model.getFloatingSpeciesIds())
+            species_ids = set(
+                rr_model.getBoundarySpeciesIds() + rr_model.getFloatingSpeciesIds())
             compartment_ids = set(rr_model.getCompartmentIds())
 
-            sed_model: libsedml.SedModel = sed_doc.createModel()
+            sed_model: libsedml.SedModel = self.sed_doc.createModel()
             sed_model.setId(mid)
             if model.name:
                 sed_model.setName(model.name)
 
             # models are stored in separate directory
-            models_dir = working_dir / "models"
+            models_dir = self.working_dir / "models"
             models_dir.mkdir(parents=True, exist_ok=True)
             abstract_model: AbstractModel
             if isinstance(model, Path):
@@ -252,8 +278,60 @@ class SEDMLSerializer:
                 # FIXME: Not supported: AddXML, ChangeXML, RemoveXML
                 # FIXME: ComputeChange: Not supported
 
-        sedml_path = working_dir / sedml_filename
-        libsedml.writeSedML(sed_doc, str(sedml_path))
+    def serialize_simulations(self):
+        """Serialize simulations.
+
+        Write experiment simulations in SedDocument.
+        """
+        sid: str
+        simulation: Dict[str, AbstractSim]
+        for sid, simulation in self.exp._simulations.items():
+            if isinstance(simulation, (TimecourseSim, ScanSim)):
+                if isinstance(simulation, TimecourseSim):
+                    tcsim: TimecourseSim = simulation
+                elif isinstance(simulation, ScanSim):
+                    tcsim = simulation.simulation
+
+                tc: Timecourse
+                for k, tc in enumerate(tcsim.timecourses):
+                    sed_uniform_tc: libsedml.SedUniformTimeCourse = self.sed_doc.createUniformTimeCourse()
+                    sed_uniform_tc.setId(f"{sid}_{k}")
+                    sed_uniform_tc.setInitialTime(tc.start)
+                    if tcsim.time_offset is not None:
+                        # FIXME: how to handle the time offsets in later simulations
+                        output_start_time = tc.start + tcsim.time_offset
+                        output_end_time = tc.end + tcsim.time_offset
+                    else:
+                        output_start_time = tc.start
+                        output_end_time = tc.end
+
+                    sed_uniform_tc.setOutputStartTime(output_start_time)
+                    sed_uniform_tc.setOutputEndTime(output_end_time)
+                    sed_uniform_tc.setNumberOfSteps(tc.steps)
+
+    def serialize_tasks(self):
+        """Serialize tasks.
+
+        Write experiment tasks in SedDocument.
+        """
+        tid: str
+        task: Task
+        for tid, task in self.exp._tasks.items():
+            # FIXME: necessary to extract the repeated tasks from the scans
+            sed_task: libsedml.SedTask = self.sed_doc.createTask()
+            sed_task.setId(tid)
+            sed_task.setModelReference(task.model_id)
+            sed_task.setSimulationReference(task.simulation_id)
+
+    def serialize_data(self):
+        """Serialize data generators.
+
+        Write experiment data in SedDocument.
+        """
+        did: str
+        data: Data
+        for did, data in self.exp._data.items():
+            print("DataGenerator", did)
 
 
 class SEDMLParser:

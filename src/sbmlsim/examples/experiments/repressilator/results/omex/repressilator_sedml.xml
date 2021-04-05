@@ -9,4 +9,11 @@
       </listOfChanges>
     </model>
   </listOfModels>
+  <listOfSimulations>
+    <uniformTimeCourse id="tc_0" initialTime="0" outputStartTime="0" outputEndTime="1000" numberOfSteps="1000"/>
+  </listOfSimulations>
+  <listOfTasks>
+    <task id="task_model1_tc" modelReference="model1" simulationReference="tc"/>
+    <task id="task_model2_tc" modelReference="model2" simulationReference="tc"/>
+  </listOfTasks>
 </sedML>
