@@ -931,25 +931,33 @@ class SEDMLParser(object):
                 fill=Fill(),
             )
 
-        sed_curve_type = sed_acurve.getTypeCode()
-        if sed_curve_type == libsedml.SEDML_OUTPUT_CURVE:
+        sed_acurve_type = sed_acurve.getTypeCode()
+        if sed_acurve_type == libsedml.SEDML_OUTPUT_CURVE:
             sed_curve: libsedml.SedCurve = sed_acurve
             y: Data
             xerr: Data
             yerr: Data
             curve_type: CurveType
-            if sed_curve.getType() == libsedml.SEDML_CURVETYPE_POINTS:
+            if not sed_curve.isSetType():
+                logger.warning(f"No curve.type set on {sed_curve}, "
+                               f"defaulting to POINTS. It is highly "
+                               f"recommended to set curve.type.")
                 curve_type = CurveType.POINTS
-            elif sed_curve.getType() == libsedml.SEDML_CURVETYPE_BAR:
-                curve_type = CurveType.BAR
-            elif sed_curve.getType() == libsedml.SEDML_CURVETYPE_BARSTACKED:
-                curve_type = CurveType.BARSTACKED
-            elif sed_curve.getType() == libsedml.SEDML_CURVETYPE_HORIZONTALBAR:
-                curve_type = CurveType.HORIZONTALBAR
-            elif sed_curve.getType() == libsedml.SEDML_CURVETYPE_HORIZONTALBARSTACKED:
-                curve_type = CurveType.HORIZONTALBARSTACKED
             else:
-                raise ValueError
+                sed_curve_type = sed_curve.getType()
+                if sed_curve_type == libsedml.SEDML_CURVETYPE_POINTS:
+                    curve_type = CurveType.POINTS
+                elif sed_curve_type == libsedml.SEDML_CURVETYPE_BAR:
+                    curve_type = CurveType.BAR
+                elif sed_curve_type == libsedml.SEDML_CURVETYPE_BARSTACKED:
+                    curve_type = CurveType.BARSTACKED
+                elif sed_curve_type == libsedml.SEDML_CURVETYPE_HORIZONTALBAR:
+                    curve_type = CurveType.HORIZONTALBAR
+                elif sed_curve_type == libsedml.SEDML_CURVETYPE_HORIZONTALBARSTACKED:
+                    curve_type = CurveType.HORIZONTALBARSTACKED
+                elif sed_curve_type == libsedml.SEDML_CURVETYPE_INVALID:
+                    raise ValueError(f"Invalid CurveType: {sed_curve.getType()} on "
+                                     f"{sed_curve}")
             curve = Curve(
                 sid=sid,
                 name=name,
@@ -967,7 +975,7 @@ class SEDMLParser(object):
                 curve.name = f"{curve.y.name}({curve.x.name})"
 
             return curve
-        elif sed_curve_type == libsedml.SEDML_SHADEDAREA:
+        elif sed_acurve_type == libsedml.SEDML_SHADEDAREA:
             sed_shaded_area: libsedml.SedShadedArea = sed_acurve
             area = ShadedArea(
                 sid=sid,
@@ -986,7 +994,7 @@ class SEDMLParser(object):
             return area
         else:
             raise ValueError(f"Type of AbstractCurve '{sed_acurve}' is not supported: "
-                             f"'{sed_curve_type}'")
+                             f"'{sed_acurve_type}'")
 
     def parse_style(self, sed_style: Union[str, libsedml.SedStyle]) -> Optional[Style]:
         """Parse SED-ML style."""

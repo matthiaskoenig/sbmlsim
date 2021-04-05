@@ -53,7 +53,7 @@ class RoadrunnerSBMLModel(AbstractModel):
                 selections=selections,
             )
         else:
-            logger.debug("RoadrunnerSBMLModel from source")
+            logger.warning("RoadrunnerSBMLModel from source")
             super(RoadrunnerSBMLModel, self).__init__(
                 source=source,
                 language_type=AbstractModel.LanguageType.SBML,
@@ -156,12 +156,13 @@ class RoadrunnerSBMLModel(AbstractModel):
 
     def parse_units(self, ureg: UnitRegistry) -> UnitsInformation:
         """Parse units from SBML model."""
+        uinfo: UnitsInformation
         if self.source.is_content():
-            model_path = self.source.content
+            uinfo = UnitsInformation.from_sbml(sbml=self.source.content, ureg=ureg)
         elif self.source.is_path():
-            model_path = self.source.path
+            uinfo = UnitsInformation.from_sbml(sbml=self.source.path, ureg=ureg)
 
-        return UnitsInformation.from_sbml_path(model_path, ureg)
+        return uinfo
 
     @classmethod
     def set_timecourse_selections(

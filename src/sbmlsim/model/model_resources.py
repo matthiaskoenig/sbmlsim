@@ -46,10 +46,7 @@ class Source:
     def from_source(
         cls, source: Union["Source", str, Path], base_dir: Path = None
     ) -> "Source":
-        """Resolve the source string.
-
-        # FIXME: handle the case of models given as strings.
-        """
+        """Resolve the source string."""
         if isinstance(source, Source):
             return source
 
@@ -90,6 +87,7 @@ def is_http(source: str) -> bool:
 
 def model_from_urn(urn: str) -> str:
     """Get model string from given URN."""
+    logger.warning(f"Loading model from urn: {urn}")
     if "biomodel" in urn:
         mid = parse_biomodels_mid(urn)
         content = model_from_biomodels(mid)
@@ -161,4 +159,5 @@ def model_from_biomodels(mid: str) -> str:
         )
         raise err
 
+    logger.warning(f"{url}")
     return model_from_url(url)

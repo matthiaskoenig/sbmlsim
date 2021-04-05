@@ -6,10 +6,12 @@ import logging
 import os
 from collections.abc import MutableMapping
 from pathlib import Path
-from typing import Dict, Iterator, Optional, Tuple
+from typing import Dict, Iterator, Optional, Tuple, Union
 
 import libsbml
 import numpy as np
+
+from sbmlutils.io import read_sbml
 
 
 # Disable Pint's old fallback behavior (must come before importing Pint)
@@ -80,11 +82,12 @@ class UnitsInformation(MutableMapping):
         return self.ureg.Quantity
 
     @staticmethod
-    def from_sbml_path(
-        model_path: Path, ureg: Optional[UnitRegistry] = None
+    def from_sbml(
+        sbml: Union[str, Path], ureg: Optional[UnitRegistry] = None
     ) -> "UnitsInformation":
         """Get pint UnitsInformation for model."""
-        doc: libsbml.SBMLDocument = libsbml.readSBMLFromFile(str(model_path))
+
+        doc: libsbml.SBMLDocument = read_sbml(sbml)
         return UnitsInformation.from_sbml_doc(doc, ureg=ureg)
 
     sbml_uids = [
@@ -178,6 +181,9 @@ class UnitsInformation(MutableMapping):
 
         # create sid to unit mapping
         model: libsbml.Model = doc.getModel()
+        if not model:
+            ValueError(f"No model found in SBMLDocument: {doc}")
+
         uid_dict: Dict[str, str] = UnitsInformation.model_uid_dict(model, ureg=ureg)
 
         # add additional units
@@ -422,7 +428,7 @@ if __name__ == "__main__":
 
     # uinfo = UnitsInformation.from_sbml_path(MODEL_DEMO)
     ureg = UnitRegistry()
-    uinfo = UnitsInformation.from_sbml_path(MODEL_GLCWB, ureg=ureg)
+    uinfo = UnitsInformation.from_sbml(MODEL_GLCWB, ureg=ureg)
     for key, value in uinfo.items():
         # q = ureg(value)
         print(key, value)

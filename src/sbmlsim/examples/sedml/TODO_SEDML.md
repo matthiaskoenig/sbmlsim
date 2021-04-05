@@ -1,5 +1,8 @@
+# Models
+- [x] resolve model from URN
+
 # Run COMBINE archive
-- [ ] execute COMBINE archives
+- [~] execute COMBINE archives
 
 # Serialization
 - [ ] writing SED-ML from experiments (to combine archive)
@@ -22,6 +25,8 @@
 - [x] order of abstract curve
 - [x] shaded areas & fills
 - [x] resolve and apply basestyle
+
+## Altair serialization
 
 # Reports
 - [ ] reports

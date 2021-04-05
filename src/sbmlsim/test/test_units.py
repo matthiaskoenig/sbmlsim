@@ -35,7 +35,7 @@ def check_uinfo(uinfo: UnitsInformation) -> None:
 @pytest.mark.parametrize("sbml_path", sbml_paths)
 def test_units_from_sbml(sbml_path: Path) -> None:
     """Test reading units from SBML models."""
-    uinfo = UnitsInformation.from_sbml_path(sbml_path)
+    uinfo = UnitsInformation.from_sbml(sbml_path)
     check_uinfo(uinfo)
 
 

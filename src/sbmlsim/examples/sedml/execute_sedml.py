@@ -28,7 +28,27 @@ def sedmltojson(sedml_path: Path) -> None:
         f_json.write(json_data)
 
 
-def execute_sedml(working_dir: Path, name: str, sedml_path: Path) -> None:
+def execute_omex(omex_path: Path, working_dir: Path = None) -> None:
+    """Execute omex archive.
+
+    :param omex_path: Path to COMBINE archive (OMEX)
+    :param working_dir: Directory to execute the archive (temporary directory of None)
+    :return:
+    """
+    # extract combine archive
+    from sbmlsim.combine.omex import Omex
+    omex = Omex(omex_path=omex_path, working_dir=working_dir)
+    omex.extract()
+    print(omex)
+
+    sedml_locations = omex.locations_by_format(format_key="sed-ml")
+    print(sedml_locations)
+    for location, master in sedml_locations:
+        if master:
+            execute_sedml(working_dir=working_dir, )
+
+
+def execute_sedml(sedml_path: Path, working_dir: Path) -> None:
     """Execute the given SED-ML in the working directory."""
     # convert to json
     sedmltojson(sedml_path)
@@ -40,7 +60,7 @@ def execute_sedml(working_dir: Path, name: str, sedml_path: Path) -> None:
     if errorlog.getNumErrors() > 0:
         raise IOError(f"Errors in SED-ML document for '{sedml_path}',")
 
-    sed_parser = SEDMLParser(sed_doc, working_dir=working_dir, name=name)
+    sed_parser = SEDMLParser(sed_doc, working_dir=working_dir, name=sedml_path.stem)
     sed_parser.print_info()
 
     # check created experiment
@@ -71,36 +91,33 @@ if __name__ == "__main__":
     # L1V4 Plotting
     # ----------------------
     working_dir = base_path / "l1v4_plotting"
-    for name, sedml_file in [
-        # ("markertype", "markertype.sedml"),
-        # ("linetype", "linetype.sedml"),
-        # ("axis", "axis.sedml"),
-        # ("curve_types", "curve_types.sedml"),
-        # ("curve_types_errors", "curve_types_errors.sedml"),
-        # ("right_yaxis", "right_yaxis.sedml"),
-        # ("line_overlap_order", "line_overlap_order.sedml"),
-        # ("repressilator_figure", "repressilator_figure.xml"),
-        # ("repressilator_l1v3", "repressilator_l1v3.xml"),
-        # ("repressilator_urn_l1v3", "repressilator_urn_l1v3.xml"),  # FIXME: resolve URN
-        # ("test_file_1", "test_file_1.sedml"),
-        # ("test_line_fill", "test_line_fill.sedml"),
-
-        # ("stacked_bar", "stacked_bar.sedml"),
-        # ("stacked_bar2", "stacked_bar2.sedml"),
-        # ("test_3hbarstacked", "test_3hbarstacked.sedml"),
-        # ("test_bar", "test_bar.sedml"),
-        # ("test_bar3stacked", "test_bar3stacked.sedml"),
-        # ("StackedBar", "test_file.sedml"),
-        # ("test_hbar_stacked", "test_hbar_stacked.sedml"),
-        # ("test_shaded_area", "test_shaded_area.sedml"),
-        # ("test_shaded_area_overlap_order", "test_shaded_area_overlap_order.sedml"),
-        ("test_base_styles", "test_base_styles.sedml"),
-
+    for sedml_file in [
+        "repressilator_urn.xml"
+        # "markertype.sedml",
+        # "linetype.sedml",
+        # "axis.sedml",
+        # "curve_types.sedml",
+        # "curve_types_errors.sedml",
+        # "right_yaxis.sedml",
+        # "line_overlap_order.sedml",
+        # "repressilator_figure.xml",
+        # "repressilator_l1v3.xml",
+        # "test_file_1.sedml",
+        # "test_line_fill.sedml",
+        # "stacked_bar.sedml",
+        # "stacked_bar2.sedml",
+        # "test_3hbarstacked.sedml",
+        # "test_bar.sedml",
+        # "test_bar3stacked.sedml",
+        # "test_file.sedml",
+        # "test_hbar_stacked.sedml",
+        # "test_shaded_area.sedml",
+        # "test_shaded_area_overlap_order.sedml",
+        # "test_base_styles.sedml",
     ]:
         execute_sedml(
+            sedml_path=working_dir / sedml_file,
             working_dir=working_dir,
-            name=name,
-            sedml_path=working_dir / sedml_file
         )
 
     # ----------------------
@@ -108,10 +125,9 @@ if __name__ == "__main__":
     # ----------------------
     working_dir = base_path / "l1v4_parameter_fitting"
     for name, sedml_file in [
-        # ("Elowitz_Nature2000", "Elowitz_Nature2000.xml"),
+        # "Elowitz_Nature2000.xml",
     ]:
         execute_sedml(
             working_dir=working_dir,
-            name=name,
             sedml_path=working_dir / sedml_file
         )

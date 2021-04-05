@@ -18,7 +18,7 @@ import tempfile
 import warnings
 import zipfile
 from pathlib import Path
-from typing import Any, Iterable, Iterator, List
+from typing import Any, Iterable, Iterator, List, Tuple
 
 import libcombine
 
@@ -102,7 +102,7 @@ class Omex:
 
     def __str__(self) -> str:
         """Get contents of archive string."""
-        return pprint.pformat(self.list_contents())
+        return pprint.pformat([c[0:-1] for c in self.list_contents()])
 
     def _omex_init(self) -> libcombine.CombineArchive:
         """Initialize omex from archive.
@@ -285,7 +285,7 @@ class Omex:
         else:
             raise ValueError(f"Method is not supported '{method}'")
 
-    def locations_by_format(self, format_key: str = None, method="omex"):
+    def locations_by_format(self, format_key: str = None, method="omex") -> List[Tuple[str, bool]]:
         """Get locations to files with given format in the archive.
 
         Uses the libcombine KnownFormats for formatKey, e.g., 'sed-ml' or 'sbml'.
@@ -294,13 +294,12 @@ class Omex:
         :param omex_path:
         :param format_key:
         :param method:
-        :return:
+        :return: List of files with master flags
         """
         if not format_key:
             raise ValueError("Format must be specified.")
 
-        locations_master: List[str] = []
-        locations: List[str] = []
+        locations: List[Tuple[str, bool]] = []
 
         if method == "omex":
             archive: libcombine.CombineArchive = self._omex_init()
@@ -312,12 +311,13 @@ class Omex:
                 if libcombine.KnownFormats.isFormat(format_key, format):
                     loc: str = entry.getLocation()
                     if (master is None) or (master is False):
-                        locations.append(loc)
+                        locations.append((loc, False))
                     else:
-                        locations_master.append(loc)
+                        locations.append((loc, True))
             archive.cleanUp()
 
         elif method == "zip":
+            logger.warning("Master flag cannot be resolved, use method 'omex' instead.")
             # extract to tmpfile and guess format
             tmp_dir = tempfile.mkdtemp()
 
@@ -334,7 +334,7 @@ class Omex:
                         if libcombine.KnownFormats.isFormat(
                             formatKey=format_key, format=format
                         ):
-                            locations.append(location)
+                            locations.append(location, False)
 
             finally:
                 shutil.rmtree(tmp_dir)
@@ -342,7 +342,7 @@ class Omex:
         else:
             raise ValueError(f"Method is not supported '{method}'")
 
-        return locations_master + locations
+        return locations
 
     def list_contents(self, method="omex") -> List[List[Any]]:
         """Returns list of contents of the combine archive.
