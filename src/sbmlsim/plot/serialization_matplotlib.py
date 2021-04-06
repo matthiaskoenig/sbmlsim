@@ -128,10 +128,28 @@ class MatplotlibFigureSerializer(object):
 
                     # FIXME: necessary to get the individual curves out of the data cube
                     # TODO: iterate over all repeats in the data
-                    x_data = x.magnitude[:, 0] if x is not None else None
-                    y_data = y.magnitude[:, 0] if y is not None else None
-                    xerr_data = xerr.magnitude[:, 0] if xerr is not None else None
-                    yerr_data = yerr.magnitude[:, 0] if yerr is not None else None
+                    if x is None:
+                        x_data = None
+                    else:
+                        x_data = x.magnitude[:, 0] if len(x.shape) == 2 else x.magnitude
+
+                    if y is None:
+                        y_data = None
+                    else:
+                        y_data = y.magnitude[:, 0] if len(y.shape) == 2 else y.magnitude
+
+                    if xerr is None:
+                        xerr_data = None
+                    else:
+                        xerr_data = xerr.magnitude[:, 0] if len(xerr.shape) == 2 else xerr.magnitude
+
+                    if yerr is None:
+                        yerr_data = None
+                    else:
+                        yerr_data = yerr.magnitude[:, 0] if len(yerr.shape) == 2 else yerr.magnitude
+
+
+                    # FIXME: !!!
 
                     # print("xshape")
                     # print("x", x)

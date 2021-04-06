@@ -30,3 +30,5 @@ src/sbmlsim/examples/experiments/midazolam/results_fit/
 
 # sedml
 src/sbmlsim/examples/sedml/results/
+src/sbmlsim/examples/experiments/repressilator/results/omex/
+
