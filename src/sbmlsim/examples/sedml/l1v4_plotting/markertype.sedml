@@ -188,19 +188,19 @@
   <listOfOutputs>
     <plot2D id="plot_0" name="MarkerTypes">
       <listOfCurves>
-        <curve id="curve_NONE" logX="false" style="style_NONE" xDataReference="dg_time" logY="false" yDataReference="dg_NONE" type="points"/>
-        <curve id="curve_SQUARE" logX="false" style="style_SQUARE" xDataReference="dg_time" logY="false" yDataReference="dg_SQUARE" type="points"/>
-        <curve id="curve_CIRCLE" logX="false" style="style_CIRCLE" xDataReference="dg_time" logY="false" yDataReference="dg_CIRCLE" type="points"/>
-        <curve id="curve_DIAMOND" logX="false" style="style_DIAMOND" xDataReference="dg_time" logY="false" yDataReference="dg_DIAMOND" type="points"/>
-        <curve id="curve_XCROSS" logX="false" style="style_XCROSS" xDataReference="dg_time" logY="false" yDataReference="dg_XCROSS" type="points"/>
-        <curve id="curve_PLUS" logX="false" style="style_PLUS" xDataReference="dg_time" logY="false" yDataReference="dg_PLUS" type="points"/>
-        <curve id="curve_STAR" logX="false" style="style_STAR" xDataReference="dg_time" logY="false" yDataReference="dg_STAR" type="points"/>
-        <curve id="curve_TRIANGLEUP" logX="false" style="style_TRIANGLEUP" xDataReference="dg_time" logY="false" yDataReference="dg_TRIANGLEUP" type="points"/>
-        <curve id="curve_TRIANGLEDOWN" logX="false" style="style_TRIANGLEDOWN" xDataReference="dg_time" logY="false" yDataReference="dg_TRIANGLEDOWN" type="points"/>
-        <curve id="curve_TRIANGLELEFT" logX="false" style="style_TRIANGLELEFT" xDataReference="dg_time" logY="false" yDataReference="dg_TRIANGLELEFT" type="points"/>
-        <curve id="curve_TRIANGLERIGHT" logX="false" style="style_TRIANGLERIGHT" xDataReference="dg_time" logY="false" yDataReference="dg_TRIANGLERIGHT" type="points"/>
-        <curve id="curve_HDASH" logX="false" style="style_HDASH" xDataReference="dg_time" logY="false" yDataReference="dg_HDASH" type="points"/>
-        <curve id="curve_VDASH" logX="false" style="style_VDASH" xDataReference="dg_time" logY="false" yDataReference="dg_VDASH" type="points"/>
+        <curve id="curve_NONE" name="none" logX="false" style="style_NONE" xDataReference="dg_time" logY="false" yDataReference="dg_NONE" type="points"/>
+        <curve id="curve_SQUARE" name="square" logX="false" style="style_SQUARE" xDataReference="dg_time" logY="false" yDataReference="dg_SQUARE" type="points"/>
+        <curve id="curve_CIRCLE" name="circle" logX="false" style="style_CIRCLE" xDataReference="dg_time" logY="false" yDataReference="dg_CIRCLE" type="points"/>
+        <curve id="curve_DIAMOND" name="diamond" logX="false" style="style_DIAMOND" xDataReference="dg_time" logY="false" yDataReference="dg_DIAMOND" type="points"/>
+        <curve id="curve_XCROSS" name="xCross" logX="false" style="style_XCROSS" xDataReference="dg_time" logY="false" yDataReference="dg_XCROSS" type="points"/>
+        <curve id="curve_PLUS" name="plus" logX="false" style="style_PLUS" xDataReference="dg_time" logY="false" yDataReference="dg_PLUS" type="points"/>
+        <curve id="curve_STAR" name="star" logX="false" style="style_STAR" xDataReference="dg_time" logY="false" yDataReference="dg_STAR" type="points"/>
+        <curve id="curve_TRIANGLEUP" name="triangleUp" logX="false" style="style_TRIANGLEUP" xDataReference="dg_time" logY="false" yDataReference="dg_TRIANGLEUP" type="points"/>
+        <curve id="curve_TRIANGLEDOWN" name="triangleDown" logX="false" style="style_TRIANGLEDOWN" xDataReference="dg_time" logY="false" yDataReference="dg_TRIANGLEDOWN" type="points"/>
+        <curve id="curve_TRIANGLELEFT" name="triangleLeft" logX="false" style="style_TRIANGLELEFT" xDataReference="dg_time" logY="false" yDataReference="dg_TRIANGLELEFT" type="points"/>
+        <curve id="curve_TRIANGLERIGHT" name="triangleRight" logX="false" style="style_TRIANGLERIGHT" xDataReference="dg_time" logY="false" yDataReference="dg_TRIANGLERIGHT" type="points"/>
+        <curve id="curve_HDASH" name="hDash" logX="false" style="style_HDASH" xDataReference="dg_time" logY="false" yDataReference="dg_HDASH" type="points"/>
+        <curve id="curve_VDASH" name="vDash" logX="false" style="style_VDASH" xDataReference="dg_time" logY="false" yDataReference="dg_VDASH" type="points"/>
       </listOfCurves>
     </plot2D>
   </listOfOutputs>

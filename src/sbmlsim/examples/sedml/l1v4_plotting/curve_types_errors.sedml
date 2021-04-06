@@ -82,26 +82,26 @@
     </plot2D>
     <plot2D id="plot_bar" name="bar">
       <listOfCurves>
-        <curve id="curve_S1_bar" name="S1" xDataReference="dg_time" yDataReference="dg_S1" xErrorUpper="dg_time_error" yErrorUpper="dg_S1_error" type="bar" style="style_blue"/>
-        <curve id="curve_S2_bar" name="S2" xDataReference="dg_time" yDataReference="dg_S2" xErrorUpper="dg_time_error" yErrorUpper="dg_S2_error" type="bar" style="style_orange"/>
+        <curve id="curve_S1_bar" name="S1" xDataReference="dg_time" yDataReference="dg_S1" xErrorUpper="dg_time_error" yErrorUpper="dg_S1_error" type="bar" style="style_blue_bar"/>
+        <curve id="curve_S2_bar" name="S2" xDataReference="dg_time" yDataReference="dg_S2" xErrorUpper="dg_time_error" yErrorUpper="dg_S2_error" type="bar" style="style_orange_bar"/>
       </listOfCurves>
     </plot2D>
     <plot2D id="plot_barStacked" name="barStacked">
       <listOfCurves>
-        <curve id="curve_S1_barStacked" name="S1" xDataReference="dg_time" yDataReference="dg_S1" xErrorUpper="dg_time_error" yErrorUpper="dg_S1_error" type="barStacked" style="style_blue"/>
-        <curve id="curve_S2_barStacked" name="S2" xDataReference="dg_time" yDataReference="dg_S2" xErrorUpper="dg_time_error" yErrorUpper="dg_S2_error" type="barStacked" style="style_orange"/>
+        <curve id="curve_S1_barStacked" name="S1" xDataReference="dg_time" yDataReference="dg_S1" xErrorUpper="dg_time_error" yErrorUpper="dg_S1_error" type="barStacked" style="style_blue_bar"/>
+        <curve id="curve_S2_barStacked" name="S2" xDataReference="dg_time" yDataReference="dg_S2" xErrorUpper="dg_time_error" yErrorUpper="dg_S2_error" type="barStacked" style="style_orange_bar"/>
       </listOfCurves>
     </plot2D>
     <plot2D id="plot_horizontalBar" name="horizontalBar">
       <listOfCurves>
-        <curve id="curve_S1_horizontalBar" name="S1" xDataReference="dg_time" yDataReference="dg_S1" xErrorUpper="dg_time_error" yErrorUpper="dg_S1_error" type="horizontalBar" style="style_blue"/>
-        <curve id="curve_S2_horizontalBar" name="S2" xDataReference="dg_time" yDataReference="dg_S2" xErrorUpper="dg_time_error" yErrorUpper="dg_S2_error" type="horizontalBar" style="style_orange"/>
+        <curve id="curve_S1_horizontalBar" name="S1" xDataReference="dg_time" yDataReference="dg_S1" xErrorUpper="dg_time_error" yErrorUpper="dg_S1_error" type="horizontalBar" style="style_blue_bar"/>
+        <curve id="curve_S2_horizontalBar" name="S2" xDataReference="dg_time" yDataReference="dg_S2" xErrorUpper="dg_time_error" yErrorUpper="dg_S2_error" type="horizontalBar" style="style_orange_bar"/>
       </listOfCurves>
     </plot2D>
     <plot2D id="plot_horizontalBarStacked" name="horizontalBarStacked">
       <listOfCurves>
-        <curve id="curve_S1_horizontalBarStacked" name="S1" xDataReference="dg_time" yDataReference="dg_S1" xErrorUpper="dg_time_error" yErrorUpper="dg_S1_error" type="horizontalBarStacked" style="style_blue"/>
-        <curve id="curve_S2_horizontalBarStacked" name="S2" xDataReference="dg_time" yDataReference="dg_S2" xErrorUpper="dg_time_error" yErrorUpper="dg_S2_error" type="horizontalBarStacked" style="style_orange"/>
+        <curve id="curve_S1_horizontalBarStacked" name="S1" xDataReference="dg_time" yDataReference="dg_S1" xErrorUpper="dg_time_error" yErrorUpper="dg_S1_error" type="horizontalBarStacked" style="style_blue_bar"/>
+        <curve id="curve_S2_horizontalBarStacked" name="S2" xDataReference="dg_time" yDataReference="dg_S2" xErrorUpper="dg_time_error" yErrorUpper="dg_S2_error" type="horizontalBarStacked" style="style_orange_bar"/>
       </listOfCurves>
     </plot2D>
     <figure id="figure0" numRows="3" numCols="2">
@@ -119,13 +119,25 @@
       <line style="solid" color="#1f77b4aa" thickness="4"/>
       <marker style="square" size="6" fill="#1f77b4aa" lineColor="#000000ff" lineThickness="2"/>
     </style>
+    <style id="style_blue_bar">
+      <line style="solid" color="#000000ff" thickness="2"/>
+      <fill color="#1f77b4aa"/>
+    </style>
     <style id="style_orange">
       <line style="solid" color="#ff7f0eaa" thickness="4"/>
       <marker style="square" size="6" fill="#ff7f0eaa" lineColor="#000000ff" lineThickness="2"/>
     </style>
+    <style id="style_orange_bar">
+      <line style="solid" color="#000000ff" thickness="2"/>
+      <fill color="#ff7f0eaa"/>
+    </style>
     <style id="style_green">
       <line style="solid" color="#2ca02caa" thickness="4"/>
       <marker style="square" size="6" fill="#2ca02caa" lineColor="#000000ff" lineThickness="2"/>
+    </style>
+    <style id="style_green_bar">
+      <line style="solid" color="#000000ff" thickness="2"/>
+      <fill color="#2ca02caa"/>
     </style>
   </listOfStyles>
 </sedML>

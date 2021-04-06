@@ -166,6 +166,9 @@ class MatplotlibFigureSerializer(object):
                             # bar plot
                             kwargs = style.to_mpl_bar_kwargs()
 
+                        from pprint import pprint
+                        pprint(kwargs)
+
                     if curve.type == CurveType.POINTS:
                         ax.errorbar(
                             x=x_data,
@@ -190,8 +193,8 @@ class MatplotlibFigureSerializer(object):
                         ax.barh(
                             y=x_data,
                             width=y_data,
-                            xerr=xerr_data,
-                            yerr=yerr_data,
+                            xerr=yerr_data,
+                            yerr=xerr_data,
                             label=label,
                             **kwargs
                         )
@@ -317,7 +320,6 @@ class MatplotlibFigureSerializer(object):
 
                         if style.line.style and style.line.style == LineStyle.NONE:
                             for axis in ["bottom", "top"]:
-                                ax.tick_params(width=linewidth)
                                 ax.spines[axis].set_color(Figure.fig_facecolor)
 
             if xax:

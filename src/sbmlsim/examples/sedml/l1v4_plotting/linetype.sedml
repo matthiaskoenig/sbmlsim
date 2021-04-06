@@ -92,12 +92,12 @@
   <listOfOutputs>
     <plot2D id="plot_0" name="LineTypes">
       <listOfCurves>
-        <curve id="curve_NONE" logX="false" style="style_NONE" xDataReference="dg_time" logY="false" yDataReference="dg_NONE" type="points"/>
-        <curve id="curve_SOLID" logX="false" style="style_SOLID" xDataReference="dg_time" logY="false" yDataReference="dg_SOLID" type="points"/>
-        <curve id="curve_DASH" logX="false" style="style_DASH" xDataReference="dg_time" logY="false" yDataReference="dg_DASH" type="points"/>
-        <curve id="curve_DOT" logX="false" style="style_DOT" xDataReference="dg_time" logY="false" yDataReference="dg_DOT" type="points"/>
-        <curve id="curve_DASHDOT" logX="false" style="style_DASHDOT" xDataReference="dg_time" logY="false" yDataReference="dg_DASHDOT" type="points"/>
-        <curve id="curve_DASHDOTDOT" logX="false" style="style_DASHDOTDOT" xDataReference="dg_time" logY="false" yDataReference="dg_DASHDOTDOT" type="points"/>
+        <curve id="curve_NONE" name="none" logX="false" style="style_NONE" xDataReference="dg_time" logY="false" yDataReference="dg_NONE" type="points"/>
+        <curve id="curve_SOLID" name="solid" logX="false" style="style_SOLID" xDataReference="dg_time" logY="false" yDataReference="dg_SOLID" type="points"/>
+        <curve id="curve_DASH" name="dash" logX="false" style="style_DASH" xDataReference="dg_time" logY="false" yDataReference="dg_DASH" type="points"/>
+        <curve id="curve_DOT" name="dot" logX="false" style="style_DOT" xDataReference="dg_time" logY="false" yDataReference="dg_DOT" type="points"/>
+        <curve id="curve_DASHDOT" name="dashDot" logX="false" style="style_DASHDOT" xDataReference="dg_time" logY="false" yDataReference="dg_DASHDOT" type="points"/>
+        <curve id="curve_DASHDOTDOT" name="dashDotDot" logX="false" style="style_DASHDOTDOT" xDataReference="dg_time" logY="false" yDataReference="dg_DASHDOTDOT" type="points"/>
       </listOfCurves>
     </plot2D>
   </listOfOutputs>

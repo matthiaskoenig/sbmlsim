@@ -154,8 +154,6 @@ class SEDMLSerializer:
     all models and data for the simulation experiment.
     """
 
-
-
     def __init__(
         self,
         experiment: Type[SimulationExperiment],
@@ -331,6 +329,11 @@ class SEDMLSerializer:
         data: Data
         for did, data in self.exp._data.items():
             print("DataGenerator", did)
+
+            sed_dg: libsedml.SedDataGenerator = self.sed_doc.createDataGenerator()
+            sed_dg.setId(did)
+            if data.is_dataset():
+                raise NotImplementedError("Datasets ")
 
 
 class SEDMLParser:

@@ -303,6 +303,11 @@ class Style(BasePlotObject):
                 kwargs["markeredgecolor"] = self.marker.line_color.color
             if self.marker.line_thickness:
                 kwargs["markeredgewidth"] = self.marker.line_thickness
+        if self.fill:
+            if self.fill.color:
+                kwargs["fill.color"] = self.fill.color.color
+            if self.fill.second_color:
+                kwargs["fill.second_color"] = self.fill.second_color.color
 
         return kwargs
 
@@ -319,6 +324,9 @@ class Style(BasePlotObject):
     def to_mpl_points_kwargs(self) -> Dict[str, Any]:
         """Convert to matplotlib point curve keyword arguments."""
         points_kwargs = self.to_mpl_curve_kwargs()
+        for key in ["fill.color", "fill.second_color"]:
+            if key in points_kwargs:
+                points_kwargs.pop(key)
         error_kwargs = self._mpl_error_kwargs()
         return {
             **points_kwargs,
@@ -328,17 +336,16 @@ class Style(BasePlotObject):
     def to_mpl_bar_kwargs(self):
         """Convert to matplotlib bar curve keyword arguments."""
         bar_kwargs = self.to_mpl_curve_kwargs()
-        for key in ['color', 'linewidth', 'marker', 'markersize']:
+        for key in ['marker', 'markersize', 'markeredgewidth', 'markeredgecolor',
+                    'markerfacecolor', 'fill.second_color']:
             # pop line keys
             if key in bar_kwargs:
                 bar_kwargs.pop(key)
 
-        if 'markeredgewidth' in bar_kwargs:
-            bar_kwargs['linewidth'] = bar_kwargs.pop('markeredgewidth')
-        if 'markeredgecolor' in bar_kwargs:
-            bar_kwargs['edgecolor'] = bar_kwargs.pop('markeredgecolor')
-        if 'markerfacecolor' in bar_kwargs:
-            bar_kwargs['color'] = bar_kwargs.pop('markerfacecolor')
+        if 'color' in bar_kwargs:
+            bar_kwargs['edgecolor'] = bar_kwargs.pop('color')
+        if 'fill.color' in bar_kwargs:
+            bar_kwargs['color'] = bar_kwargs.pop('fill.color')
 
         return {
             **bar_kwargs,
