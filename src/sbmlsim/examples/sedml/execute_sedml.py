@@ -2,7 +2,7 @@ from pathlib import Path
 
 from pprint import pprint
 
-from sbmlsim.combine.sedml.io import read_sedml
+from sbmlsim.combine.sedml.io import SEDMLReader
 from sbmlsim.combine.sedml.parser import SEDMLParser
 from sbmlsim.experiment import SimulationExperiment, ExperimentRunner
 from sbmlsim.simulator import SimulatorSerial
@@ -35,20 +35,18 @@ def execute_sedml(path: Path, working_dir: Path) -> None:
     :param working_dir: directory for execution and resources
     :return:
     """
-    sed_doc, errorlog, working_dir, input_type = read_sedml(
-        source=str(path), working_dir=working_dir
+    sedml_reader = SEDMLReader(source=path, working_dir=working_dir)
+    print(sedml_reader)
+
+    sedml_parser = SEDMLParser(
+        sedml_reader.sed_doc,
+        working_dir=working_dir,
+        name=path.stem
     )
-    print("working_dir:", working_dir)
-    print("input_type:", input_type)
-
-    if errorlog.getNumErrors() > 0:
-        raise IOError(f"Errors in SED-ML document for '{path}'")
-
-    sed_parser = SEDMLParser(sed_doc, working_dir=working_dir, name=path.stem)
-    sed_parser.print_info()
+    sedml_parser.print_info()
 
     # check created experiment
-    exp: SimulationExperiment = sed_parser.exp_class()
+    exp: SimulationExperiment = sedml_parser.exp_class()
     exp.initialize()
     print(exp)
 
@@ -56,7 +54,7 @@ def execute_sedml(path: Path, working_dir: Path) -> None:
     base_path = Path(__file__).parent
     data_path = base_path
     runner = ExperimentRunner(
-        [sed_parser.exp_class],
+        [sedml_parser.exp_class],
         simulator=SimulatorSerial(),
         data_path=data_path,
         base_path=base_path,
@@ -76,7 +74,7 @@ if __name__ == "__main__":
     # ----------------------
     working_dir = base_path / "l1v4_plotting"
     for sedml_file in [
-        "repressilator_urn.xml"
+        # "repressilator_urn.xml",
         # "markertype.sedml",
         # "linetype.sedml",
         # "axis.sedml",
@@ -88,7 +86,7 @@ if __name__ == "__main__":
         # "repressilator_l1v3.xml",
         # "test_file_1.sedml",
         # "test_line_fill.sedml",
-        # "stacked_bar.sedml",
+        "stacked_bar.sedml",
         # "stacked_bar2.sedml",
         # "test_3hbarstacked.sedml",
         # "test_bar.sedml",

@@ -108,7 +108,6 @@ from pprint import pprint
 from pint import Quantity
 
 from sbmlsim.combine.sedml.data import DataDescriptionParser
-from sbmlsim.combine.sedml.io import read_sedml
 from sbmlsim.combine.sedml.kisao import is_supported_algorithm_for_simulation_type
 from sbmlsim.combine.sedml.task import Stack, TaskNode, TaskTree
 from sbmlsim.data import DataSet, Data
