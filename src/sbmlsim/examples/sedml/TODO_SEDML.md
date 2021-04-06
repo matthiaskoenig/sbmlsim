@@ -34,6 +34,7 @@
 - [x] order of abstract curve
 - [x] shaded areas & fills
 - [x] resolve and apply basestyle
+- [ ] update bar styling (see https://github.com/SED-ML/sed-ml/issues/140)
 
 ## Altair serialization
 
