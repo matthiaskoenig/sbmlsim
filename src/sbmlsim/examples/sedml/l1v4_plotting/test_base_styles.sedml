@@ -78,13 +78,13 @@
   </listOfOutputs>
   <listOfStyles>
     <style id="dash">
-      <line style="dash" thickness="4"/>
+      <line type="dash" thickness="4"/>
     </style>
     <style id="purple_dash" baseStyle="dash">
       <line color="#FF00FF"/>
     </style>
     <style id="red_dash_dot">
-      <line style="dashDot" color="#FF0000" thickness="4"/>
+      <line type="dashDot" color="#FF0000" thickness="4"/>
     </style>
     <style id="big_circles">
       <marker size="16" style="circle"/>
@@ -93,7 +93,7 @@
       <marker fill="#FFa500"/>
     </style>
     <style id="green_line_orange_circles" baseStyle="orange_circles">
-      <line style="solid" color="#00FF00" thickness="4"/>
+      <line type="solid" color="#00FF00" thickness="4"/>
     </style>
     <style id="blue_fill">
       <fill color="#0000ff"/>

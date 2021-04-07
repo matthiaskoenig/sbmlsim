@@ -162,7 +162,7 @@
                   "name": null,
                   "base_style": null,
                   "line": {
-                    "style": "DASHDOT",
+                    "type": "DASHDOT",
                     "color": "#FF00FFff",
                     "thickness": 4.0
                   },
@@ -189,7 +189,7 @@
                   "name": null,
                   "base_style": null,
                   "line": {
-                    "style": "DASH",
+                    "type": "DASH",
                     "color": "#FF0000ff",
                     "thickness": null
                   },

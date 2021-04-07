@@ -190,7 +190,7 @@
                   "name": null,
                   "base_style": null,
                   "line": {
-                    "style": null,
+                    "type": null,
                     "color": "#FF00FFff",
                     "thickness": 4.0
                   },
@@ -217,7 +217,7 @@
                   "name": null,
                   "base_style": null,
                   "line": {
-                    "style": null,
+                    "type": null,
                     "color": "#FF0000ff",
                     "thickness": 4.0
                   },
@@ -244,7 +244,7 @@
                   "name": null,
                   "base_style": null,
                   "line": {
-                    "style": null,
+                    "type": null,
                     "color": "#FF0000ff",
                     "thickness": 4.0
                   },

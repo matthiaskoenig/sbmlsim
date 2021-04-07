@@ -362,13 +362,13 @@
                   "name": null,
                   "base_style": null,
                   "line": {
-                    "style": "NONE",
+                    "type": "NONE",
                     "color": null,
                     "thickness": null
                   },
                   "marker": {
                     "size": null,
-                    "style": "NONE",
+                    "type": "NONE",
                     "fill": "#000000",
                     "line_color": null,
                     "line_thickness": null
@@ -392,13 +392,13 @@
                   "name": null,
                   "base_style": null,
                   "line": {
-                    "style": "NONE",
+                    "type": "NONE",
                     "color": null,
                     "thickness": null
                   },
                   "marker": {
                     "size": null,
-                    "style": "SQUARE",
+                    "type": "SQUARE",
                     "fill": "#000000",
                     "line_color": null,
                     "line_thickness": null
@@ -422,13 +422,13 @@
                   "name": null,
                   "base_style": null,
                   "line": {
-                    "style": "NONE",
+                    "type": "NONE",
                     "color": null,
                     "thickness": null
                   },
                   "marker": {
                     "size": null,
-                    "style": "CIRCLE",
+                    "type": "CIRCLE",
                     "fill": "#000000",
                     "line_color": null,
                     "line_thickness": null
@@ -452,13 +452,13 @@
                   "name": null,
                   "base_style": null,
                   "line": {
-                    "style": "NONE",
+                    "type": "NONE",
                     "color": null,
                     "thickness": null
                   },
                   "marker": {
                     "size": null,
-                    "style": "DIAMOND",
+                    "type": "DIAMOND",
                     "fill": "#000000",
                     "line_color": null,
                     "line_thickness": null
@@ -482,13 +482,13 @@
                   "name": null,
                   "base_style": null,
                   "line": {
-                    "style": "NONE",
+                    "type": "NONE",
                     "color": null,
                     "thickness": null
                   },
                   "marker": {
                     "size": null,
-                    "style": "XCROSS",
+                    "type": "XCROSS",
                     "fill": "#000000",
                     "line_color": null,
                     "line_thickness": null
@@ -512,13 +512,13 @@
                   "name": null,
                   "base_style": null,
                   "line": {
-                    "style": "NONE",
+                    "type": "NONE",
                     "color": null,
                     "thickness": null
                   },
                   "marker": {
                     "size": null,
-                    "style": "PLUS",
+                    "type": "PLUS",
                     "fill": "#000000",
                     "line_color": null,
                     "line_thickness": null
@@ -542,13 +542,13 @@
                   "name": null,
                   "base_style": null,
                   "line": {
-                    "style": "NONE",
+                    "type": "NONE",
                     "color": null,
                     "thickness": null
                   },
                   "marker": {
                     "size": null,
-                    "style": "STAR",
+                    "type": "STAR",
                     "fill": "#000000",
                     "line_color": null,
                     "line_thickness": null
@@ -572,13 +572,13 @@
                   "name": null,
                   "base_style": null,
                   "line": {
-                    "style": "NONE",
+                    "type": "NONE",
                     "color": null,
                     "thickness": null
                   },
                   "marker": {
                     "size": null,
-                    "style": "TRIANGLEUP",
+                    "type": "TRIANGLEUP",
                     "fill": "#000000",
                     "line_color": null,
                     "line_thickness": null
@@ -602,13 +602,13 @@
                   "name": null,
                   "base_style": null,
                   "line": {
-                    "style": "NONE",
+                    "type": "NONE",
                     "color": null,
                     "thickness": null
                   },
                   "marker": {
                     "size": null,
-                    "style": "TRIANGLEDOWN",
+                    "type": "TRIANGLEDOWN",
                     "fill": "#000000",
                     "line_color": null,
                     "line_thickness": null
@@ -632,13 +632,13 @@
                   "name": null,
                   "base_style": null,
                   "line": {
-                    "style": "NONE",
+                    "type": "NONE",
                     "color": null,
                     "thickness": null
                   },
                   "marker": {
                     "size": null,
-                    "style": "TRIANGLELEFT",
+                    "type": "TRIANGLELEFT",
                     "fill": "#000000",
                     "line_color": null,
                     "line_thickness": null
@@ -662,13 +662,13 @@
                   "name": null,
                   "base_style": null,
                   "line": {
-                    "style": "NONE",
+                    "type": "NONE",
                     "color": null,
                     "thickness": null
                   },
                   "marker": {
                     "size": null,
-                    "style": "TRIANGLERIGHT",
+                    "type": "TRIANGLERIGHT",
                     "fill": "#000000",
                     "line_color": null,
                     "line_thickness": null
@@ -692,13 +692,13 @@
                   "name": null,
                   "base_style": null,
                   "line": {
-                    "style": "NONE",
+                    "type": "NONE",
                     "color": null,
                     "thickness": null
                   },
                   "marker": {
                     "size": null,
-                    "style": "HDASH",
+                    "type": "HDASH",
                     "fill": "#000000",
                     "line_color": null,
                     "line_thickness": null
@@ -722,13 +722,13 @@
                   "name": null,
                   "base_style": null,
                   "line": {
-                    "style": "NONE",
+                    "type": "NONE",
                     "color": null,
                     "thickness": null
                   },
                   "marker": {
                     "size": null,
-                    "style": "VDASH",
+                    "type": "VDASH",
                     "fill": "#000000",
                     "line_color": null,
                     "line_thickness": null

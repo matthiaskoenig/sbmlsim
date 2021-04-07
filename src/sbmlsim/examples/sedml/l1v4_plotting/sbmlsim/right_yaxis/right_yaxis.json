@@ -142,8 +142,8 @@
             "name": "Left and right axis",
             "xaxis": {
               "sid": "",
-              "name": "",
-              "label": "",
+              "name": "time",
+              "label": "time",
               "unit": null,
               "scale": "LINEAR",
               "min": null,
@@ -154,8 +154,8 @@
             },
             "yaxis": {
               "sid": "",
-              "name": "",
-              "label": "",
+              "name": "concentration",
+              "label": "concentration",
               "unit": null,
               "scale": "LINEAR",
               "min": null,
@@ -166,8 +166,8 @@
             },
             "yaxis_right": {
               "sid": "",
-              "name": "",
-              "label": "",
+              "name": "log10(concentration)",
+              "label": "log10(concentration)",
               "unit": null,
               "scale": "LOG10",
               "min": 0.1,
@@ -195,13 +195,13 @@
                   "name": null,
                   "base_style": null,
                   "line": {
-                    "style": "SOLID",
+                    "type": "SOLID",
                     "color": "#1f77b4ff",
                     "thickness": 4.0
                   },
                   "marker": {
                     "size": 6.0,
-                    "style": "SQUARE",
+                    "type": "SQUARE",
                     "fill": "#1f77b4aa",
                     "line_color": "#000000ff",
                     "line_thickness": 2.0
@@ -225,13 +225,13 @@
                   "name": null,
                   "base_style": null,
                   "line": {
-                    "style": "SOLID",
+                    "type": "SOLID",
                     "color": "#ff7f0eff",
                     "thickness": 4.0
                   },
                   "marker": {
                     "size": 6.0,
-                    "style": "SQUARE",
+                    "type": "SQUARE",
                     "fill": "#ff7f0eaa",
                     "line_color": "#000000ff",
                     "line_thickness": 2.0
@@ -255,13 +255,13 @@
                   "name": null,
                   "base_style": null,
                   "line": {
-                    "style": "DASH",
+                    "type": "DASH",
                     "color": "#1f77b4ff",
                     "thickness": 2.0
                   },
                   "marker": {
                     "size": 3.0,
-                    "style": "CIRCLE",
+                    "type": "CIRCLE",
                     "fill": "#1f77b4aa",
                     "line_color": "#000000ff",
                     "line_thickness": 2.0
@@ -285,13 +285,13 @@
                   "name": null,
                   "base_style": null,
                   "line": {
-                    "style": "DASH",
+                    "type": "DASH",
                     "color": "#ff7f0eff",
                     "thickness": 2.0
                   },
                   "marker": {
                     "size": 3.0,
-                    "style": "CIRCLE",
+                    "type": "CIRCLE",
                     "fill": "#ff7f0eaa",
                     "line_color": "#000000ff",
                     "line_thickness": 2.0

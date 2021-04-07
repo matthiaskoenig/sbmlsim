@@ -168,8 +168,30 @@
           "plot": {
             "sid": "plot_points",
             "name": "points",
-            "xaxis": null,
-            "yaxis": null,
+            "xaxis": {
+              "sid": "",
+              "name": "time",
+              "label": "time",
+              "unit": null,
+              "scale": "LINEAR",
+              "min": null,
+              "max": null,
+              "grid": false,
+              "label_visible": true,
+              "ticks_visible": true
+            },
+            "yaxis": {
+              "sid": "",
+              "name": "concentration",
+              "label": "concentration",
+              "unit": null,
+              "scale": "LINEAR",
+              "min": null,
+              "max": null,
+              "grid": false,
+              "label_visible": true,
+              "ticks_visible": true
+            },
             "yaxis_right": null,
             "legend": true,
             "facecolor": "#ffffffff",
@@ -190,13 +212,13 @@
                   "name": null,
                   "base_style": null,
                   "line": {
-                    "style": "SOLID",
+                    "type": "SOLID",
                     "color": "#1f77b4aa",
                     "thickness": 4.0
                   },
                   "marker": {
                     "size": 6.0,
-                    "style": "SQUARE",
+                    "type": "SQUARE",
                     "fill": "#1f77b4aa",
                     "line_color": "#000000ff",
                     "line_thickness": 2.0
@@ -220,13 +242,13 @@
                   "name": null,
                   "base_style": null,
                   "line": {
-                    "style": "SOLID",
+                    "type": "SOLID",
                     "color": "#ff7f0eaa",
                     "thickness": 4.0
                   },
                   "marker": {
                     "size": 6.0,
-                    "style": "SQUARE",
+                    "type": "SQUARE",
                     "fill": "#ff7f0eaa",
                     "line_color": "#000000ff",
                     "line_thickness": 2.0
@@ -250,13 +272,13 @@
                   "name": null,
                   "base_style": null,
                   "line": {
-                    "style": "SOLID",
+                    "type": "SOLID",
                     "color": "#2ca02caa",
                     "thickness": 4.0
                   },
                   "marker": {
                     "size": 6.0,
-                    "style": "SQUARE",
+                    "type": "SQUARE",
                     "fill": "#2ca02caa",
                     "line_color": "#000000ff",
                     "line_thickness": 2.0
@@ -277,8 +299,30 @@
           "plot": {
             "sid": "plot_bar",
             "name": "bar",
-            "xaxis": null,
-            "yaxis": null,
+            "xaxis": {
+              "sid": "",
+              "name": "time",
+              "label": "time",
+              "unit": null,
+              "scale": "LINEAR",
+              "min": null,
+              "max": null,
+              "grid": false,
+              "label_visible": true,
+              "ticks_visible": true
+            },
+            "yaxis": {
+              "sid": "",
+              "name": "concentration",
+              "label": "concentration",
+              "unit": null,
+              "scale": "LINEAR",
+              "min": null,
+              "max": null,
+              "grid": false,
+              "label_visible": true,
+              "ticks_visible": true
+            },
             "yaxis_right": null,
             "legend": true,
             "facecolor": "#ffffffff",
@@ -299,7 +343,7 @@
                   "name": null,
                   "base_style": null,
                   "line": {
-                    "style": "SOLID",
+                    "type": "SOLID",
                     "color": "#000000ff",
                     "thickness": 2.0
                   },
@@ -326,7 +370,7 @@
                   "name": null,
                   "base_style": null,
                   "line": {
-                    "style": "SOLID",
+                    "type": "SOLID",
                     "color": "#000000ff",
                     "thickness": 2.0
                   },
@@ -353,7 +397,7 @@
                   "name": null,
                   "base_style": null,
                   "line": {
-                    "style": "SOLID",
+                    "type": "SOLID",
                     "color": "#000000ff",
                     "thickness": 2.0
                   },
@@ -377,8 +421,30 @@
           "plot": {
             "sid": "plot_barStacked",
             "name": "barStacked",
-            "xaxis": null,
-            "yaxis": null,
+            "xaxis": {
+              "sid": "",
+              "name": "time",
+              "label": "time",
+              "unit": null,
+              "scale": "LINEAR",
+              "min": null,
+              "max": null,
+              "grid": false,
+              "label_visible": true,
+              "ticks_visible": true
+            },
+            "yaxis": {
+              "sid": "",
+              "name": "concentration",
+              "label": "concentration",
+              "unit": null,
+              "scale": "LINEAR",
+              "min": null,
+              "max": null,
+              "grid": false,
+              "label_visible": true,
+              "ticks_visible": true
+            },
             "yaxis_right": null,
             "legend": true,
             "facecolor": "#ffffffff",
@@ -399,7 +465,7 @@
                   "name": null,
                   "base_style": null,
                   "line": {
-                    "style": "SOLID",
+                    "type": "SOLID",
                     "color": "#000000ff",
                     "thickness": 2.0
                   },
@@ -426,7 +492,7 @@
                   "name": null,
                   "base_style": null,
                   "line": {
-                    "style": "SOLID",
+                    "type": "SOLID",
                     "color": "#000000ff",
                     "thickness": 2.0
                   },
@@ -453,7 +519,7 @@
                   "name": null,
                   "base_style": null,
                   "line": {
-                    "style": "SOLID",
+                    "type": "SOLID",
                     "color": "#000000ff",
                     "thickness": 2.0
                   },
@@ -477,8 +543,30 @@
           "plot": {
             "sid": "plot_horizontalBar",
             "name": "horizontalBar",
-            "xaxis": null,
-            "yaxis": null,
+            "xaxis": {
+              "sid": "",
+              "name": "time",
+              "label": "time",
+              "unit": null,
+              "scale": "LINEAR",
+              "min": null,
+              "max": null,
+              "grid": false,
+              "label_visible": true,
+              "ticks_visible": true
+            },
+            "yaxis": {
+              "sid": "",
+              "name": "concentration",
+              "label": "concentration",
+              "unit": null,
+              "scale": "LINEAR",
+              "min": null,
+              "max": null,
+              "grid": false,
+              "label_visible": true,
+              "ticks_visible": true
+            },
             "yaxis_right": null,
             "legend": true,
             "facecolor": "#ffffffff",
@@ -499,7 +587,7 @@
                   "name": null,
                   "base_style": null,
                   "line": {
-                    "style": "SOLID",
+                    "type": "SOLID",
                     "color": "#000000ff",
                     "thickness": 2.0
                   },
@@ -526,7 +614,7 @@
                   "name": null,
                   "base_style": null,
                   "line": {
-                    "style": "SOLID",
+                    "type": "SOLID",
                     "color": "#000000ff",
                     "thickness": 2.0
                   },
@@ -553,7 +641,7 @@
                   "name": null,
                   "base_style": null,
                   "line": {
-                    "style": "SOLID",
+                    "type": "SOLID",
                     "color": "#000000ff",
                     "thickness": 2.0
                   },
@@ -577,8 +665,30 @@
           "plot": {
             "sid": "plot_horizontalBarStacked",
             "name": "horizontalBarStacked",
-            "xaxis": null,
-            "yaxis": null,
+            "xaxis": {
+              "sid": "",
+              "name": "time",
+              "label": "time",
+              "unit": null,
+              "scale": "LINEAR",
+              "min": null,
+              "max": null,
+              "grid": false,
+              "label_visible": true,
+              "ticks_visible": true
+            },
+            "yaxis": {
+              "sid": "",
+              "name": "concentration",
+              "label": "concentration",
+              "unit": null,
+              "scale": "LINEAR",
+              "min": null,
+              "max": null,
+              "grid": false,
+              "label_visible": true,
+              "ticks_visible": true
+            },
             "yaxis_right": null,
             "legend": true,
             "facecolor": "#ffffffff",
@@ -599,7 +709,7 @@
                   "name": null,
                   "base_style": null,
                   "line": {
-                    "style": "SOLID",
+                    "type": "SOLID",
                     "color": "#000000ff",
                     "thickness": 2.0
                   },
@@ -626,7 +736,7 @@
                   "name": null,
                   "base_style": null,
                   "line": {
-                    "style": "SOLID",
+                    "type": "SOLID",
                     "color": "#000000ff",
                     "thickness": 2.0
                   },
@@ -653,7 +763,7 @@
                   "name": null,
                   "base_style": null,
                   "line": {
-                    "style": "SOLID",
+                    "type": "SOLID",
                     "color": "#000000ff",
                     "thickness": 2.0
                   },

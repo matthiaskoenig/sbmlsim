@@ -190,7 +190,7 @@
                   "name": null,
                   "base_style": null,
                   "line": {
-                    "style": "DASH",
+                    "type": "DASH",
                     "color": "#FF00FFff",
                     "thickness": 4.0
                   },
@@ -214,7 +214,7 @@
                   "name": null,
                   "base_style": null,
                   "line": {
-                    "style": "DASHDOT",
+                    "type": "DASHDOT",
                     "color": "#FF0000ff",
                     "thickness": 4.0
                   },
@@ -238,13 +238,13 @@
                   "name": null,
                   "base_style": null,
                   "line": {
-                    "style": "SOLID",
+                    "type": "SOLID",
                     "color": "#00FF00ff",
                     "thickness": 4.0
                   },
                   "marker": {
                     "size": 16.0,
-                    "style": "CIRCLE",
+                    "type": null,
                     "fill": "#FFa500",
                     "line_color": null,
                     "line_thickness": null

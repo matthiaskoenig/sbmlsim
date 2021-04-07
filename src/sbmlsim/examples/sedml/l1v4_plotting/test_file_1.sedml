@@ -69,11 +69,11 @@
   </listOfOutputs>
   <listOfStyles>
     <style id="blue_line_green_markers">
-      <line style="dashDot" color="#0000FF" thickness="10"/>
+      <line type="dashDot" color="#0000FF" thickness="10"/>
       <marker fill="#00FF00" lineColor="#0000FF"/>
     </style>
     <style id="red_line_yellow_markers">
-      <line style="solid" color="#FF0000"/>
+      <line type="solid" color="#FF0000"/>
       <marker size="2" style="diamond" fill="#FFFF00" lineColor="#FF0000" lineThickness="1"/>
     </style>
   </listOfStyles>

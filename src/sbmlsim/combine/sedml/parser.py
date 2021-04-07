@@ -120,8 +120,8 @@ from sbmlsim.model import model_resources, RoadrunnerSBMLModel
 from sbmlsim.model.model import AbstractModel
 from sbmlsim.model.model_resources import Source
 from sbmlsim.plot import Figure, Plot, Axis, Curve
-from sbmlsim.plot.plotting import Style, Line, LineStyle, ColorType, Marker, \
-    MarkerStyle, Fill, SubPlot, AxisScale, CurveType, YAxisPosition, ShadedArea
+from sbmlsim.plot.plotting import Style, Line, LineType, ColorType, Marker, \
+    MarkerType, Fill, SubPlot, AxisScale, CurveType, YAxisPosition, ShadedArea
 from sbmlsim.simulation import ScanSim, TimecourseSim, Timecourse, AbstractSim
 from sbmlsim.task import Task
 from sbmlsim.units import UnitRegistry, UnitsInformation
@@ -282,6 +282,7 @@ class SEDMLSerializer:
         self.serialize_data()
 
         # --- figures ---
+        self.serialize_figures()
 
         # --- reports ---
 
@@ -371,9 +372,9 @@ class SEDMLSerializer:
 
         Write experiment simulations in SedDocument.
         """
-        sid: str
+        sim_id: str
         simulation: Dict[str, AbstractSim]
-        for sid, simulation in self.exp._simulations.items():
+        for sim_id, simulation in self.exp._simulations.items():
             if isinstance(simulation, (TimecourseSim, ScanSim)):
                 if isinstance(simulation, TimecourseSim):
                     tcsim: TimecourseSim = simulation
@@ -383,7 +384,14 @@ class SEDMLSerializer:
                 tc: Timecourse
                 for k, tc in enumerate(tcsim.timecourses):
                     sed_uniform_tc: libsedml.SedUniformTimeCourse = self.sed_doc.createUniformTimeCourse()
-                    sed_uniform_tc.setId(f"{sid}_{k}")
+
+                    tc_id: str
+                    if k == 0:
+                        tc_id = sim_id
+                    else:
+                        tc_id = f"{sim_id}_{k}"
+                        logger.error(f"Concatenated timecourses not supported: '{tc_id}'")
+                    sed_uniform_tc.setId(tc_id)
                     sed_uniform_tc.setInitialTime(tc.start)
                     if tcsim.time_offset is not None:
                         # FIXME: how to handle the time offsets in later simulations
@@ -402,12 +410,12 @@ class SEDMLSerializer:
 
         Write experiment tasks in SedDocument.
         """
-        tid: str
+        task_id: str
         task: Task
-        for tid, task in self.exp._tasks.items():
+        for task_id, task in self.exp._tasks.items():
             # FIXME: necessary to extract the repeated tasks from the scans
             sed_task: libsedml.SedTask = self.sed_doc.createTask()
-            sed_task.setId(tid)
+            sed_task.setId(task_id)
             sed_task.setModelReference(task.model_id)
             sed_task.setSimulationReference(task.simulation_id)
 
@@ -465,6 +473,25 @@ class SEDMLSerializer:
                     raise NotImplementedError("Parameters on variables not supported")
 
                 sed_dg.setMath(math)
+
+    def serialize_figures(self):
+        """Serialize figures.
+
+        Write experiment figures in SedDocument.
+        """
+        fig_id: str
+        task: Task
+        for fig_id, figure in self.exp._figures.items():
+
+            sed_figure: libsedml.SedFigure = self.sed_doc.createFigure()
+            sed_figure.setId(figure.sid)
+            sed_figure.setName(figure.name)
+            sed_figure.setNumCols(figure.num_cols)
+            sed_figure.setNumRows(figure.num_rows)
+
+            for subplot in figure.subplots:
+                sed_subplot: libsedml.SedSubPlot = sed_figure.createSubPlot()
+
 
 
 class SEDMLParser:
@@ -658,7 +685,7 @@ class SEDMLParser:
         logger.debug(f"tasks: {self.tasks}")
 
         # --- Data ---
-        # data is generated in the figures
+        # data is generated in the figures and reports
         self.data: Dict[str, Data] = {}
 
         # --- Styles ---
@@ -1354,26 +1381,26 @@ class SEDMLParser:
         if sed_line is None:
             return None
 
-        line_style: Optional[LineStyle]
-        if not sed_line.isSetStyle():
-            line_style = None
+        line_type: Optional[LineType]
+        if not sed_line.isSetType():
+            line_type = None
         else:
-            sed_line_style = sed_line.getStyle()
-            if sed_line_style == libsedml.SEDML_LINETYPE_NONE:
-                line_style = LineStyle.NONE
-            elif sed_line_style == libsedml.SEDML_LINETYPE_SOLID:
-                line_style = LineStyle.SOLID
-            elif sed_line_style == libsedml.SEDML_LINETYPE_DASH:
-                line_style = LineStyle.DASH
-            elif sed_line_style == libsedml.SEDML_LINETYPE_DOT:
-                line_style = LineStyle.DOT
-            elif sed_line_style == libsedml.SEDML_LINETYPE_DASHDOT:
-                line_style = LineStyle.DASHDOT
-            elif sed_line_style == libsedml.SEDML_LINETYPE_DASHDOTDOT:
-                line_style = LineStyle.DASHDOTDOT
+            sed_line_type = sed_line.getType()
+            if sed_line_type == libsedml.SEDML_LINETYPE_NONE:
+                line_type = LineType.NONE
+            elif sed_line_type == libsedml.SEDML_LINETYPE_SOLID:
+                line_type = LineType.SOLID
+            elif sed_line_type == libsedml.SEDML_LINETYPE_DASH:
+                line_type = LineType.DASH
+            elif sed_line_type == libsedml.SEDML_LINETYPE_DOT:
+                line_type = LineType.DOT
+            elif sed_line_type == libsedml.SEDML_LINETYPE_DASHDOT:
+                line_type = LineType.DASHDOT
+            elif sed_line_type == libsedml.SEDML_LINETYPE_DASHDOTDOT:
+                line_type = LineType.DASHDOTDOT
 
         return Line(
-            style=line_style,
+            type=line_type,
             color=ColorType.parse_color(sed_line.getColor()) if sed_line.isSetColor() else None,
             thickness=sed_line.getThickness() if sed_line.isSetThickness() else None
         )
@@ -1383,41 +1410,41 @@ class SEDMLParser:
         if sed_marker is None:
             return None
 
-        marker_style: Optional[MarkerStyle]
-        if not sed_marker.isSetStyle():
-            marker_style = None
+        marker_type: Optional[MarkerType]
+        if not sed_marker.isSetType():
+            marker_type = None
         else:
-            sed_marker_style = sed_marker.getStyle()
-            if sed_marker_style == libsedml.SEDML_MARKERTYPE_NONE:
-                marker_style = MarkerStyle.NONE
-            elif sed_marker_style == libsedml.SEDML_MARKERTYPE_SQUARE:
-                marker_style = MarkerStyle.SQUARE
-            elif sed_marker_style == libsedml.SEDML_MARKERTYPE_CIRCLE:
-                marker_style = MarkerStyle.CIRCLE
-            elif sed_marker_style == libsedml.SEDML_MARKERTYPE_DIAMOND:
-                marker_style = MarkerStyle.DIAMOND
-            elif sed_marker_style == libsedml.SEDML_MARKERTYPE_XCROSS:
-                marker_style = MarkerStyle.XCROSS
-            elif sed_marker_style == libsedml.SEDML_MARKERTYPE_PLUS:
-                marker_style = MarkerStyle.PLUS
-            elif sed_marker_style == libsedml.SEDML_MARKERTYPE_STAR:
-                marker_style = MarkerStyle.STAR
-            elif sed_marker_style == libsedml.SEDML_MARKERTYPE_TRIANGLEUP:
-                marker_style = MarkerStyle.TRIANGLEUP
-            elif sed_marker_style == libsedml.SEDML_MARKERTYPE_TRIANGLEDOWN:
-                marker_style = MarkerStyle.TRIANGLEDOWN
-            elif sed_marker_style == libsedml.SEDML_MARKERTYPE_TRIANGLELEFT:
-                marker_style = MarkerStyle.TRIANGLELEFT
-            elif sed_marker_style == libsedml.SEDML_MARKERTYPE_TRIANGLERIGHT:
-                marker_style = MarkerStyle.TRIANGLERIGHT
-            elif sed_marker_style == libsedml.SEDML_MARKERTYPE_HDASH:
-                marker_style = MarkerStyle.HDASH
-            elif sed_marker_style == libsedml.SEDML_MARKERTYPE_VDASH:
-                marker_style = MarkerStyle.VDASH
+            sed_marker_type = sed_marker.getType()
+            if sed_marker_type == libsedml.SEDML_MARKERTYPE_NONE:
+                marker_type = MarkerType.NONE
+            elif sed_marker_type == libsedml.SEDML_MARKERTYPE_SQUARE:
+                marker_type = MarkerType.SQUARE
+            elif sed_marker_type == libsedml.SEDML_MARKERTYPE_CIRCLE:
+                marker_type = MarkerType.CIRCLE
+            elif sed_marker_type == libsedml.SEDML_MARKERTYPE_DIAMOND:
+                marker_type = MarkerType.DIAMOND
+            elif sed_marker_type == libsedml.SEDML_MARKERTYPE_XCROSS:
+                marker_type = MarkerType.XCROSS
+            elif sed_marker_type == libsedml.SEDML_MARKERTYPE_PLUS:
+                marker_type = MarkerType.PLUS
+            elif sed_marker_type == libsedml.SEDML_MARKERTYPE_STAR:
+                marker_type = MarkerType.STAR
+            elif sed_marker_type == libsedml.SEDML_MARKERTYPE_TRIANGLEUP:
+                marker_type = MarkerType.TRIANGLEUP
+            elif sed_marker_type == libsedml.SEDML_MARKERTYPE_TRIANGLEDOWN:
+                marker_type = MarkerType.TRIANGLEDOWN
+            elif sed_marker_type == libsedml.SEDML_MARKERTYPE_TRIANGLELEFT:
+                marker_type = MarkerType.TRIANGLELEFT
+            elif sed_marker_type == libsedml.SEDML_MARKERTYPE_TRIANGLERIGHT:
+                marker_type = MarkerType.TRIANGLERIGHT
+            elif sed_marker_type == libsedml.SEDML_MARKERTYPE_HDASH:
+                marker_type = MarkerType.HDASH
+            elif sed_marker_type == libsedml.SEDML_MARKERTYPE_VDASH:
+                marker_type = MarkerType.VDASH
 
         marker = Marker(
             size=sed_marker.getSize() if sed_marker.isSetSize() else None,
-            style=marker_style if sed_marker.isSetStyle() else None,
+            type=marker_type,
             fill=ColorType(sed_marker.getFill()) if sed_marker.isSetFill() else None,
             line_thickness=sed_marker.getLineThickness() if sed_marker.isSetLineThickness() else None,
             line_color=ColorType(sed_marker.getLineColor()) if sed_marker.isSetLineColor() else None,
@@ -1521,7 +1548,7 @@ class SEDMLParser:
                     # FIXME: resolve with model
                     selection = SEDMLCodeFactory.selectionFromVariable(var, model_id)
                     expr = selection.id
-                    if selection.style == "concentration":
+                    if selection.type == "concentration":
                         expr = "[{}]".format(selection.id)
                     selections.add(expr)
 

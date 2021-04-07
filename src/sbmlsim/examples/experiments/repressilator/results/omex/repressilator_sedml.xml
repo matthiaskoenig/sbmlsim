@@ -10,7 +10,7 @@
     </model>
   </listOfModels>
   <listOfSimulations>
-    <uniformTimeCourse id="tc_0" initialTime="0" outputStartTime="0" outputEndTime="1000" numberOfSteps="1000"/>
+    <uniformTimeCourse id="tc" initialTime="0" outputStartTime="0" outputEndTime="1000" numberOfSteps="1000"/>
   </listOfSimulations>
   <listOfTasks>
     <task id="task_model1_tc" modelReference="model1" simulationReference="tc"/>
@@ -127,4 +127,13 @@
       </listOfVariables>
     </dataGenerator>
   </listOfDataGenerators>
+  <listOfOutputs>
+    <figure id="figure0" name="Repressilator" numRows="2" numCols="2">
+      <listOfSubPlots>
+        <subPlot/>
+        <subPlot/>
+        <subPlot/>
+      </listOfSubPlots>
+    </figure>
+  </listOfOutputs>
 </sedML>

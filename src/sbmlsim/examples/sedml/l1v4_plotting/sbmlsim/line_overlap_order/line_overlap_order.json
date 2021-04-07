@@ -190,7 +190,7 @@
                   "name": null,
                   "base_style": null,
                   "line": {
-                    "style": "SOLID",
+                    "type": "SOLID",
                     "color": "#FF00FFff",
                     "thickness": 18.0
                   },
@@ -214,7 +214,7 @@
                   "name": null,
                   "base_style": null,
                   "line": {
-                    "style": "SOLID",
+                    "type": "SOLID",
                     "color": "#FF0000ff",
                     "thickness": 18.0
                   },
@@ -238,7 +238,7 @@
                   "name": null,
                   "base_style": null,
                   "line": {
-                    "style": "SOLID",
+                    "type": "SOLID",
                     "color": "#00FF00ff",
                     "thickness": 18.0
                   },

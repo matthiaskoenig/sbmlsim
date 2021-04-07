@@ -9,7 +9,7 @@ from matplotlib.gridspec import GridSpec
 
 from sbmlsim.data import Data
 from sbmlsim.plot import Figure, Axis, SubPlot, Curve
-from sbmlsim.plot.plotting import AxisScale, Style, LineStyle
+from sbmlsim.plot.plotting import AxisScale, Style, LineType
 from sbmlsim.plot.plotting_matplotlib import logger, interp
 
 
@@ -226,7 +226,7 @@ class MatplotlibFigureSerializer(object):
                             for axis in ["bottom", "top"]:
                                 ax.spines[axis].set_color(str(color))
 
-                        if style.line.style and style.line.style == LineStyle.NONE:
+                        if style.line.type and style.line.type == LineType.NONE:
                             for axis in ["bottom", "top"]:
                                 ax.tick_params(width=linewidth)
                                 ax.spines[axis].set_color(Figure.fig_facecolor)
@@ -261,7 +261,7 @@ class MatplotlibFigureSerializer(object):
                             for axis in ["left", "right"]:
                                 ax.spines[axis].set_color(str(color))
 
-                        if style.line.style and style.line.style == LineStyle.NONE:
+                        if style.line.type and style.line.type == LineType.NONE:
                             for axis in ["left", "right"]:
                                 ax.tick_params(width=linewidth)
                                 ax.spines[axis].set_color(Figure.fig_facecolor)

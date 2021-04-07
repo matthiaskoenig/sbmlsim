@@ -35,52 +35,52 @@
         <curve id="curve0" name="S1" logX="false" style="style_curve" xDataReference="dg_time" logY="false" yDataReference="dg_S1" type="points"/>
       </listOfCurves>
     </plot2D>
-    <plot2D id="plot1" name="Axis (reversed order and grid)" legend="true">
-      <xAxis type="linear" min="10" max="0" grid="true" style="style_axis"/>
-      <yAxis type="linear" min="10" max="0" grid="true" style="style_axis"/>
+    <plot2D id="plot1" name="Reversed order &amp; grid" legend="true">
+      <xAxis name="time" type="linear" min="10" max="0" grid="true" style="style_axis"/>
+      <yAxis name="S1" type="linear" min="10" max="0" grid="true" style="style_axis"/>
       <listOfCurves>
         <curve id="curve1" name="S1" logX="false" style="style_curve" xDataReference="dg_time" logY="false" yDataReference="dg_S1" type="points"/>
       </listOfCurves>
     </plot2D>
-    <plot2D id="plot2" name="Axis (log axis and style)" legend="true">
+    <plot2D id="plot2" name="Log axis &amp; style" legend="true">
       <xAxis type="log10" min="0.1" max="10" grid="true" style="style_axis_blue"/>
       <yAxis type="log10" grid="true" style="style_axis_red"/>
       <listOfCurves>
         <curve id="curve2" name="S1" logX="false" style="style_curve" xDataReference="dg_time" logY="false" yDataReference="dg_S1" type="points"/>
       </listOfCurves>
     </plot2D>
-    <plot2D id="plot3" name="Axis (hidden, no legend, min/max)" legend="false">
-      <xAxis type="linear" style="style_axis_none" min="2" max="8"/>
-      <yAxis type="linear" style="style_axis_none" min="0" max="8"/>
+    <plot2D id="plot3" name="Hidden, no legend, min/max" legend="false">
+      <xAxis name="time" type="linear" style="style_axis_none" min="2" max="8"/>
+      <yAxis name="S1" type="linear" style="style_axis_none" min="0" max="8"/>
       <listOfCurves>
         <curve id="curve3" name="S1" logX="false" style="style_curve" xDataReference="dg_time" logY="false" yDataReference="dg_S1" type="points"/>
       </listOfCurves>
     </plot2D>
     <figure id="figure1" numRows="2" numCols="2">
         <listOfSubPlots>
-            <subPlot plot="plot0" row="1" col="1"></subPlot>
-            <subPlot plot="plot1" row="1" col="2"></subPlot>
-            <subPlot plot="plot2" row="2" col="1"></subPlot>
-            <subPlot plot="plot3" row="2" col="2"></subPlot>
+            <subPlot id="subplot0" plot="plot0" row="1" col="1"></subPlot>
+            <subPlot id="subplot1" plot="plot1" row="1" col="2"></subPlot>
+            <subPlot id="subplot2" plot="plot2" row="2" col="1"></subPlot>
+            <subPlot id="subplot3" plot="plot3" row="2" col="2"></subPlot>
         </listOfSubPlots>
     </figure>
   </listOfOutputs>
   <listOfStyles>
     <style id="style_curve">
-      <line style="solid" color="#000000" thickness="2"/>
-      <marker style="square" fill="#000000" size="6"/>
+      <line type="solid" color="#000000" thickness="2"/>
+      <marker type="square" fill="#000000" size="6"/>
     </style>
     <style id="style_axis">
-      <line style="solid" color="#000000"/>
+      <line type="solid" color="#000000"/>
     </style>
     <style id="style_axis_blue">
-      <line style="solid" color="#0000FF" thickness="2"/>
+      <line type="dashed" color="#0000FF" thickness="2"/>
     </style>
     <style id="style_axis_red">
-      <line style="solid" color="#FF0000" thickness="4"/>
+      <line type="solid" color="#FF0000" thickness="4"/>
     </style>
     <style id="style_axis_none">
-      <line style="none"/>
+      <line type="none"/>
     </style>
   </listOfStyles>
 </sedML>

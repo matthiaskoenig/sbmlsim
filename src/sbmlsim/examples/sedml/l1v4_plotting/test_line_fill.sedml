@@ -69,11 +69,11 @@
   </listOfOutputs>
   <listOfStyles>
     <style id="blue_fill">
-      <line style="dashDot" color="#FF00FFaa" thickness="10"/>
+      <line type="dashDot" color="#FF00FFaa" thickness="10"/>
       <fill color="#0000FF"/>
     </style>
     <style id="red_dashed_line">
-      <line style="dash" color="#FF0000"/>
+      <line type="dash" color="#FF0000"/>
     </style>
   </listOfStyles>
 </sedML>

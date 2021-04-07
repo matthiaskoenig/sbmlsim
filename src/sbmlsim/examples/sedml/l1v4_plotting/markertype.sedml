@@ -207,56 +207,56 @@
 
   <listOfStyles>
     <style id="style_NONE">
-      <line style="none"/>
-      <marker style="none" fill="#000000"/>
+      <line type="none"/>
+      <marker type="none" fill="#000000"/>
     </style>
     <style id="style_SQUARE">
-      <line style="none"/>
-      <marker style="square" fill="#000000"/>
+      <line type="none"/>
+      <marker type="square" fill="#000000"/>
     </style>
     <style id="style_CIRCLE">
-      <line style="none"/>
-      <marker style="circle" fill="#000000"/>
+      <line type="none"/>
+      <marker type="circle" fill="#000000"/>
     </style>
     <style id="style_DIAMOND">
-      <line style="none"/>
-      <marker style="diamond" fill="#000000"/>
+      <line type="none"/>
+      <marker type="diamond" fill="#000000"/>
     </style>
     <style id="style_XCROSS">
-      <line style="none"/>
-      <marker style="xCross" fill="#000000"/>
+      <line type="none"/>
+      <marker type="xCross" fill="#000000"/>
     </style>
     <style id="style_PLUS">
-      <line style="none"/>
-      <marker style="plus" fill="#000000"/>
+      <line type="none"/>
+      <marker type="plus" fill="#000000"/>
     </style>
     <style id="style_STAR">
-      <line style="none"/>
-      <marker style="star" fill="#000000"/>
+      <line type="none"/>
+      <marker type="star" fill="#000000"/>
     </style>
     <style id="style_TRIANGLEUP">
-      <line style="none"/>
-      <marker style="triangleUp" fill="#000000"/>
+      <line type="none"/>
+      <marker type="triangleUp" fill="#000000"/>
     </style>
     <style id="style_TRIANGLEDOWN">
-      <line style="none"/>
-      <marker style="triangleDown" fill="#000000"/>
+      <line type="none"/>
+      <marker type="triangleDown" fill="#000000"/>
     </style>
     <style id="style_TRIANGLELEFT">
-      <line style="none"/>
-      <marker style="triangleLeft" fill="#000000"/>
+      <line type="none"/>
+      <marker type="triangleLeft" fill="#000000"/>
     </style>
     <style id="style_TRIANGLERIGHT">
-      <line style="none"/>
-      <marker style="triangleRight" fill="#000000"/>
+      <line type="none"/>
+      <marker type="triangleRight" fill="#000000"/>
     </style>
     <style id="style_HDASH">
-      <line style="none"/>
-      <marker style="hDash" fill="#000000"/>
+      <line type="none"/>
+      <marker type="hDash" fill="#000000"/>
     </style>
     <style id="style_VDASH">
-      <line style="none"/>
-      <marker style="vDash" fill="#000000"/>
+      <line type="none"/>
+      <marker type="vDash" fill="#000000"/>
     </style>
   </listOfStyles>
 </sedML>

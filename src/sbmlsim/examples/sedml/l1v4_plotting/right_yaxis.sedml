@@ -39,9 +39,9 @@
   </listOfDataGenerators>
   <listOfOutputs>
     <plot2D id="plot_0" name="Left and right axis">
-      <xAxis type="linear"/>
-      <yAxis type="linear" max="20"/>
-      <rightYAxis type="log10" min="0.1" max="50"/>
+      <xAxis name="time" type="linear"/>
+      <yAxis name="concentration" type="linear" max="20"/>
+      <rightYAxis name="log10(concentration)" type="log10" min="0.1" max="50"/>
       <listOfCurves>
         <curve id="curve_S1_left" yAxis="left" name="S1 (left)" logX="false" xDataReference="dg_time" logY="false" yDataReference="dg_S2" type="points" style="style_blue"/>
         <curve id="curve_S2_left" yAxis="left" name="S2 (left)" xDataReference="dg_time" logY="false" yDataReference="dg_S1" type="points" style="style_orange"/>
@@ -52,20 +52,20 @@
   </listOfOutputs>
   <listOfStyles>
     <style id="style_blue">
-      <line style="solid" color="#1f77b4ff" thickness="4"/>
-      <marker style="square" size="6" fill="#1f77b4aa" lineColor="#000000ff" lineThickness="2"/>
+      <line type="solid" color="#1f77b4ff" thickness="4"/>
+      <marker type="square" size="6" fill="#1f77b4aa" lineColor="#000000ff" lineThickness="2"/>
     </style>
     <style id="style_orange">
-      <line style="solid" color="#ff7f0eff" thickness="4"/>
-      <marker style="square" size="6" fill="#ff7f0eaa" lineColor="#000000ff" lineThickness="2"/>
+      <line type="solid" color="#ff7f0eff" thickness="4"/>
+      <marker type="square" size="6" fill="#ff7f0eaa" lineColor="#000000ff" lineThickness="2"/>
     </style>
     <style id="style_blue_dash">
-      <line style="dash" color="#1f77b4ff" thickness="2"/>
-      <marker style="circle" size="3" fill="#1f77b4aa" lineColor="#000000ff" lineThickness="2"/>
+      <line type="dash" color="#1f77b4ff" thickness="2"/>
+      <marker type="circle" size="3" fill="#1f77b4aa" lineColor="#000000ff" lineThickness="2"/>
     </style>
     <style id="style_orange_dash">
-      <line style="dash" color="#ff7f0eff" thickness="2"/>
-      <marker style="circle" size="3" fill="#ff7f0eaa" lineColor="#000000ff" lineThickness="2"/>
+      <line type="dash" color="#ff7f0eff" thickness="2"/>
+      <marker type="circle" size="3" fill="#ff7f0eaa" lineColor="#000000ff" lineThickness="2"/>
     </style>
   </listOfStyles>
 </sedML>

@@ -162,13 +162,13 @@
                   "name": null,
                   "base_style": null,
                   "line": {
-                    "style": "DASHDOT",
+                    "type": "DASHDOT",
                     "color": "#0000FFff",
                     "thickness": 10.0
                   },
                   "marker": {
                     "size": null,
-                    "style": null,
+                    "type": null,
                     "fill": "#00FF00",
                     "line_color": "#0000FF",
                     "line_thickness": null
@@ -192,13 +192,13 @@
                   "name": null,
                   "base_style": null,
                   "line": {
-                    "style": "SOLID",
+                    "type": "SOLID",
                     "color": "#FF0000ff",
                     "thickness": null
                   },
                   "marker": {
                     "size": 2.0,
-                    "style": "DIAMOND",
+                    "type": null,
                     "fill": "#FFFF00",
                     "line_color": "#FF0000",
                     "line_thickness": 1.0

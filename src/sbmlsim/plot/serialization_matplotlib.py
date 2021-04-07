@@ -9,7 +9,7 @@ from matplotlib.gridspec import GridSpec
 
 from sbmlsim.data import Data
 from sbmlsim.plot import Figure, Axis, SubPlot, Curve
-from sbmlsim.plot.plotting import AxisScale, Style, LineStyle, CurveType, YAxisPosition, \
+from sbmlsim.plot.plotting import AxisScale, Style, LineType, CurveType, YAxisPosition, \
     AbstractCurve, ShadedArea
 from sbmlsim.plot.plotting_matplotlib import logger, interp
 
@@ -302,24 +302,30 @@ class MatplotlibFigureSerializer(object):
                 # https://matplotlib.org/stable/api/spines_api.html
                 # http://matplotlib.org/examples/pylab_examples/multiple_yaxis_with_spines.html
                 if sax.style and sax.style.line:
+                    if axis_type == "x":
+                        directions = ["bottom", "top"]
+                    elif axis_type == "y":
+                        directions = ["left", "right"]
+
                     style: Style = sax.style.resolve_style()
                     if style.line:
                         if style.line.thickness:
                             linewidth = style.line.thickness
-                            for axis in ["bottom", "top"]:
+                            for axis in directions:
                                 ax.tick_params(width=linewidth)
                                 if np.isclose(linewidth, 0.0):
                                     ax.spines[axis].set_color(Figure.fig_facecolor)
                                 else:
                                     ax.spines[axis].set_linewidth(linewidth)
                                     ax.tick_params(width=linewidth)
+
                         if style.line.color:
                             color = style.line.color
-                            for axis in ["bottom", "top"]:
+                            for axis in directions:
                                 ax.spines[axis].set_color(str(color))
 
-                        if style.line.style and style.line.style == LineStyle.NONE:
-                            for axis in ["bottom", "top"]:
+                        if style.line.type and style.line.type == LineType.NONE:
+                            for axis in directions:
                                 ax.spines[axis].set_color(Figure.fig_facecolor)
 
             if xax:

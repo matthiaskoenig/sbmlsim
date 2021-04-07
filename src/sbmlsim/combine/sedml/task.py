@@ -259,9 +259,9 @@ class Test(object):
                     mid = var.getModelReference()
                     selection = SEDMLCodeFactory.selectionFromVariable(var, mid)
                     expr = selection.id
-                    if selection.style == "concentration":
+                    if selection.type == "concentration":
                         expr = "init([{}])".format(selection.id)
-                    elif selection.style == "amount":
+                    elif selection.type == "amount":
                         expr = "init({})".format(selection.id)
 
                     # create variable
@@ -417,7 +417,7 @@ class Test(object):
                         mid = var.getModelReference()
                         selection = SEDMLCodeFactory.selectionFromVariable(var, mid)
                         expr = selection.id
-                        if selection.style == "concentration":
+                        if selection.type == "concentration":
                             expr = "[{}]".format(selection.id)
                         lines.append("__value__{} = {}['{}']".format(vid, mid, expr))
                         variables[vid] = "__value__{}".format(vid)

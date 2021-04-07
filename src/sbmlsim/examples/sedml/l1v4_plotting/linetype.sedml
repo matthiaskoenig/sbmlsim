@@ -103,28 +103,28 @@
   </listOfOutputs>
   <listOfStyles>
     <style id="style_NONE">
-      <line style="none" color="#000000" thickness="2"/>
-      <marker style="none"/>
+      <line type="none" color="#000000" thickness="2"/>
+      <marker type="none"/>
     </style>
     <style id="style_SOLID">
-      <line style="solid" color="#000000" thickness="2"/>
-      <marker style="none"/>
+      <line type="solid" color="#000000" thickness="2"/>
+      <marker type="none"/>
     </style>
     <style id="style_DASH">
-      <line style="dash" color="#000000" thickness="2"/>
-      <marker style="none"/>
+      <line type="dash" color="#000000" thickness="2"/>
+      <marker type="none"/>
     </style>
     <style id="style_DOT">
-      <line style="dot" color="#000000" thickness="2"/>
-      <marker style="none"/>
+      <line type="dot" color="#000000" thickness="2"/>
+      <marker type="none"/>
     </style>
     <style id="style_DASHDOT">
-      <line style="dashDot" color="#000000" thickness="2"/>
-      <marker style="none"/>
+      <line type="dashDot" color="#000000" thickness="2"/>
+      <marker type="none"/>
     </style>
     <style id="style_DASHDOTDOT">
-      <line style="dashDotDot" color="#000000" thickness="2"/>
-      <marker style="none"/>
+      <line type="dashDotDot" color="#000000" thickness="2"/>
+      <marker type="none"/>
     </style>
   </listOfStyles>
 </sedML>

@@ -80,13 +80,13 @@
   </listOfOutputs>
   <listOfStyles>
     <style id="purple_dash">
-      <line style="dash" color="#FF00FF" thickness="4"/>
+      <line type="dash" color="#FF00FF" thickness="4"/>
     </style>
     <style id="red_dash_dot">
-      <line style="dashDot" color="#FF0000" thickness="4"/>
+      <line type="dashDot" color="#FF0000" thickness="4"/>
     </style>
     <style id="green_line_orange_circles">
-      <line style="solid" color="#00FF00" thickness="4"/>
+      <line type="solid" color="#00FF00" thickness="4"/>
       <marker size="16" style="circle" fill="#FFa500"/>
     </style>
     <style id="blue_fill">

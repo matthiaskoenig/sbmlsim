@@ -134,13 +134,13 @@
                   "name": null,
                   "base_style": null,
                   "line": {
-                    "style": "SOLID",
+                    "type": "SOLID",
                     "color": "#000000ff",
                     "thickness": 2.0
                   },
                   "marker": {
                     "size": 6.0,
-                    "style": "SQUARE",
+                    "type": "SQUARE",
                     "fill": "#000000",
                     "line_color": null,
                     "line_thickness": null
@@ -160,11 +160,11 @@
         {
           "plot": {
             "sid": "plot1",
-            "name": "Axis (reversed order and grid)",
+            "name": "Reversed order & grid",
             "xaxis": {
               "sid": "",
-              "name": "",
-              "label": "",
+              "name": "time",
+              "label": "time",
               "unit": null,
               "scale": "LINEAR",
               "min": 10.0,
@@ -175,8 +175,8 @@
             },
             "yaxis": {
               "sid": "",
-              "name": "",
-              "label": "",
+              "name": "S1",
+              "label": "S1",
               "unit": null,
               "scale": "LINEAR",
               "min": 10.0,
@@ -205,13 +205,13 @@
                   "name": null,
                   "base_style": null,
                   "line": {
-                    "style": "SOLID",
+                    "type": "SOLID",
                     "color": "#000000ff",
                     "thickness": 2.0
                   },
                   "marker": {
                     "size": 6.0,
-                    "style": "SQUARE",
+                    "type": "SQUARE",
                     "fill": "#000000",
                     "line_color": null,
                     "line_thickness": null
@@ -231,7 +231,7 @@
         {
           "plot": {
             "sid": "plot2",
-            "name": "Axis (log axis and style)",
+            "name": "Log axis & style",
             "xaxis": {
               "sid": "",
               "name": "",
@@ -276,13 +276,13 @@
                   "name": null,
                   "base_style": null,
                   "line": {
-                    "style": "SOLID",
+                    "type": "SOLID",
                     "color": "#000000ff",
                     "thickness": 2.0
                   },
                   "marker": {
                     "size": 6.0,
-                    "style": "SQUARE",
+                    "type": "SQUARE",
                     "fill": "#000000",
                     "line_color": null,
                     "line_thickness": null
@@ -302,11 +302,11 @@
         {
           "plot": {
             "sid": "plot3",
-            "name": "Axis (hidden, no legend, min/max)",
+            "name": "Hidden, no legend, min/max",
             "xaxis": {
               "sid": "",
-              "name": "",
-              "label": "",
+              "name": "time",
+              "label": "time",
               "unit": null,
               "scale": "LINEAR",
               "min": 2.0,
@@ -317,8 +317,8 @@
             },
             "yaxis": {
               "sid": "",
-              "name": "",
-              "label": "",
+              "name": "S1",
+              "label": "S1",
               "unit": null,
               "scale": "LINEAR",
               "min": 0.0,
@@ -347,13 +347,13 @@
                   "name": null,
                   "base_style": null,
                   "line": {
-                    "style": "SOLID",
+                    "type": "SOLID",
                     "color": "#000000ff",
                     "thickness": 2.0
                   },
                   "marker": {
                     "size": 6.0,
-                    "style": "SQUARE",
+                    "type": "SQUARE",
                     "fill": "#000000",
                     "line_color": null,
                     "line_thickness": null

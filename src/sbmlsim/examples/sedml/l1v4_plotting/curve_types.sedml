@@ -47,6 +47,8 @@
   </listOfDataGenerators>
   <listOfOutputs>
     <plot2D id="plot_points" name="points">
+      <xAxis name="time" type="lin"/>
+      <yAxis name="concentration" type="lin"/>
       <listOfCurves>
         <curve id="curve_S1_points" name="S1" xDataReference="dg_time" yDataReference="dg_S1" type="points" style="style_blue"/>
         <curve id="curve_S2_points" name="S2" xDataReference="dg_time" yDataReference="dg_S2" type="points" style="style_orange"/>
@@ -54,6 +56,8 @@
       </listOfCurves>
     </plot2D>
     <plot2D id="plot_bar" name="bar">
+      <xAxis name="time" type="lin"/>
+      <yAxis name="concentration" type="lin"/>
       <listOfCurves>
         <curve id="curve_S1_bar" name="S1" xDataReference="dg_time" yDataReference="dg_S1" type="bar" style="style_blue_bar"/>
         <curve id="curve_S2_bar" name="S2" xDataReference="dg_time" yDataReference="dg_S2" type="bar" style="style_orange_bar"/>
@@ -61,6 +65,8 @@
       </listOfCurves>
     </plot2D>
     <plot2D id="plot_barStacked" name="barStacked">
+      <xAxis name="time" type="lin"/>
+      <yAxis name="concentration" type="lin"/>
       <listOfCurves>
         <curve id="curve_S1_barStacked" name="S1" xDataReference="dg_time" yDataReference="dg_S1" type="barStacked" style="style_blue_bar"/>
         <curve id="curve_S2_barStacked" name="S2" xDataReference="dg_time" yDataReference="dg_S2" type="barStacked" style="style_orange_bar"/>
@@ -68,6 +74,8 @@
       </listOfCurves>
     </plot2D>
     <plot2D id="plot_horizontalBar" name="horizontalBar">
+      <xAxis name="time" type="lin"/>
+      <yAxis name="concentration" type="lin"/>
       <listOfCurves>
         <curve id="curve_S1_horizontalBar" name="S1" xDataReference="dg_time" yDataReference="dg_S1" type="horizontalBar" style="style_blue_bar"/>
         <curve id="curve_S2_horizontalBar" name="S2" xDataReference="dg_time" yDataReference="dg_S2" type="horizontalBar" style="style_orange_bar"/>
@@ -75,6 +83,8 @@
       </listOfCurves>
     </plot2D>
     <plot2D id="plot_horizontalBarStacked" name="horizontalBarStacked">
+      <xAxis name="time" type="lin"/>
+      <yAxis name="concentration" type="lin"/>
       <listOfCurves>
         <curve id="curve_S1_horizontalBarStacked" name="S1" xDataReference="dg_time" yDataReference="dg_S1" type="horizontalBarStacked" style="style_blue_bar"/>
         <curve id="curve_S2_horizontalBarStacked" name="S2" xDataReference="dg_time" yDataReference="dg_S2" type="horizontalBarStacked" style="style_orange_bar"/>
@@ -82,38 +92,40 @@
       </listOfCurves>
     </plot2D>
     <figure id="figure0" numRows="3" numCols="2">
+      <xAxis name="time" type="lin"/>
+      <yAxis name="concentration" type="lin"/>
       <listOfSubPlots>
-        <subPlot plot="plot_points" row="1" col="1" rowSpan="1" colSpan="2"/>
-        <subPlot plot="plot_bar" row="2" col="1" rowSpan="1" colSpan="1"/>
-        <subPlot plot="plot_barStacked" row="2" col="2" rowSpan="1" colSpan="1"/>
-        <subPlot plot="plot_horizontalBar" row="3" col="1" rowSpan="1" colSpan="1"/>
-        <subPlot plot="plot_horizontalBarStacked" row="3" col="2" rowSpan="1" colSpan="1"/>
+        <subPlot id="subplot_points" plot="plot_points" row="1" col="1" rowSpan="1" colSpan="2"/>
+        <subPlot id="subplot_bar" plot="plot_bar" row="2" col="1" rowSpan="1" colSpan="1"/>
+        <subPlot id="subplot_barStacked" plot="plot_barStacked" row="2" col="2" rowSpan="1" colSpan="1"/>
+        <subPlot id="subplot_horizontalBar" plot="plot_horizontalBar" row="3" col="1" rowSpan="1" colSpan="1"/>
+        <subPlot id="subplot_horizontalBarStacked" plot="plot_horizontalBarStacked" row="3" col="2" rowSpan="1" colSpan="1"/>
       </listOfSubPlots>
     </figure>
   </listOfOutputs>
   <listOfStyles>
     <style id="style_blue">
-      <line style="solid" color="#1f77b4aa" thickness="4"/>
-      <marker style="square" size="6" fill="#1f77b4aa" lineColor="#000000ff" lineThickness="2"/>
+      <line type="solid" color="#1f77b4aa" thickness="4"/>
+      <marker type="square" size="6" fill="#1f77b4aa" lineColor="#000000ff" lineThickness="2"/>
     </style>
     <style id="style_blue_bar">
-      <line style="solid" color="#000000ff" thickness="2"/>
+      <line type="solid" color="#000000ff" thickness="2"/>
       <fill color="#1f77b4aa"/>
     </style>
     <style id="style_orange">
-      <line style="solid" color="#ff7f0eaa" thickness="4"/>
-      <marker style="square" size="6" fill="#ff7f0eaa" lineColor="#000000ff" lineThickness="2"/>
+      <line type="solid" color="#ff7f0eaa" thickness="4"/>
+      <marker type="square" size="6" fill="#ff7f0eaa" lineColor="#000000ff" lineThickness="2"/>
     </style>
     <style id="style_orange_bar">
-      <line style="solid" color="#000000ff" thickness="2"/>
+      <line type="solid" color="#000000ff" thickness="2"/>
       <fill color="#ff7f0eaa"/>
     </style>
     <style id="style_green">
-      <line style="solid" color="#2ca02caa" thickness="4"/>
-      <marker style="square" size="6" fill="#2ca02caa" lineColor="#000000ff" lineThickness="2"/>
+      <line type="solid" color="#2ca02caa" thickness="4"/>
+      <marker type="square" size="6" fill="#2ca02caa" lineColor="#000000ff" lineThickness="2"/>
     </style>
     <style id="style_green_bar">
-      <line style="solid" color="#000000ff" thickness="2"/>
+      <line type="solid" color="#000000ff" thickness="2"/>
       <fill color="#2ca02caa"/>
     </style>
   </listOfStyles>

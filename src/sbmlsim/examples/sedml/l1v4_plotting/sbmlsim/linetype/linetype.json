@@ -229,13 +229,13 @@
                   "name": null,
                   "base_style": null,
                   "line": {
-                    "style": "NONE",
+                    "type": "NONE",
                     "color": "#000000ff",
                     "thickness": 2.0
                   },
                   "marker": {
                     "size": null,
-                    "style": "NONE",
+                    "type": "NONE",
                     "fill": null,
                     "line_color": null,
                     "line_thickness": null
@@ -259,13 +259,13 @@
                   "name": null,
                   "base_style": null,
                   "line": {
-                    "style": "SOLID",
+                    "type": "SOLID",
                     "color": "#000000ff",
                     "thickness": 2.0
                   },
                   "marker": {
                     "size": null,
-                    "style": "NONE",
+                    "type": "NONE",
                     "fill": null,
                     "line_color": null,
                     "line_thickness": null
@@ -289,13 +289,13 @@
                   "name": null,
                   "base_style": null,
                   "line": {
-                    "style": "DASH",
+                    "type": "DASH",
                     "color": "#000000ff",
                     "thickness": 2.0
                   },
                   "marker": {
                     "size": null,
-                    "style": "NONE",
+                    "type": "NONE",
                     "fill": null,
                     "line_color": null,
                     "line_thickness": null
@@ -319,13 +319,13 @@
                   "name": null,
                   "base_style": null,
                   "line": {
-                    "style": "DOT",
+                    "type": "DOT",
                     "color": "#000000ff",
                     "thickness": 2.0
                   },
                   "marker": {
                     "size": null,
-                    "style": "NONE",
+                    "type": "NONE",
                     "fill": null,
                     "line_color": null,
                     "line_thickness": null
@@ -349,13 +349,13 @@
                   "name": null,
                   "base_style": null,
                   "line": {
-                    "style": "DASHDOT",
+                    "type": "DASHDOT",
                     "color": "#000000ff",
                     "thickness": 2.0
                   },
                   "marker": {
                     "size": null,
-                    "style": "NONE",
+                    "type": "NONE",
                     "fill": null,
                     "line_color": null,
                     "line_thickness": null
@@ -379,13 +379,13 @@
                   "name": null,
                   "base_style": null,
                   "line": {
-                    "style": "DASHDOTDOT",
+                    "type": "DASHDOTDOT",
                     "color": "#000000ff",
                     "thickness": 2.0
                   },
                   "marker": {
                     "size": null,
-                    "style": "NONE",
+                    "type": "NONE",
                     "fill": null,
                     "line_color": null,
                     "line_thickness": null

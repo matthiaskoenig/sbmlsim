@@ -366,8 +366,30 @@
           "plot": {
             "sid": "timecourse",
             "name": "Timecourse",
-            "xaxis": null,
-            "yaxis": null,
+            "xaxis": {
+              "sid": "",
+              "name": "time",
+              "label": "time",
+              "unit": null,
+              "scale": "LINEAR",
+              "min": null,
+              "max": null,
+              "grid": false,
+              "label_visible": true,
+              "ticks_visible": true
+            },
+            "yaxis": {
+              "sid": "",
+              "name": "protein",
+              "label": "protein",
+              "unit": null,
+              "scale": "LINEAR",
+              "min": null,
+              "max": null,
+              "grid": false,
+              "label_visible": true,
+              "ticks_visible": true
+            },
             "yaxis_right": null,
             "legend": true,
             "facecolor": "#ffffffff",
@@ -377,7 +399,7 @@
                 "sid": [
                   "plot_0__plot_0_0_0__plot_0_0_1"
                 ],
-                "name": "PX(time)",
+                "name": "PX",
                 "x": "dg_0_0_0",
                 "y": "dg_0_0_1",
                 "xerr": null,
@@ -388,13 +410,13 @@
                   "name": null,
                   "base_style": null,
                   "line": {
-                    "style": "SOLID",
+                    "type": "SOLID",
                     "color": "#1f77b4ff",
                     "thickness": 3.0
                   },
                   "marker": {
                     "size": null,
-                    "style": "NONE",
+                    "type": "NONE",
                     "fill": null,
                     "line_color": null,
                     "line_thickness": null
@@ -407,7 +429,7 @@
                 "sid": [
                   "plot_0__plot_0_0_0__plot_0_1_1"
                 ],
-                "name": "PZ(time)",
+                "name": "PY",
                 "x": "dg_0_0_0",
                 "y": "dg_0_1_1",
                 "xerr": null,
@@ -418,13 +440,13 @@
                   "name": null,
                   "base_style": null,
                   "line": {
-                    "style": "SOLID",
+                    "type": "SOLID",
                     "color": "#ff7f0eff",
                     "thickness": 3.0
                   },
                   "marker": {
                     "size": null,
-                    "style": "NONE",
+                    "type": "NONE",
                     "fill": null,
                     "line_color": null,
                     "line_thickness": null
@@ -437,7 +459,7 @@
                 "sid": [
                   "plot_0__plot_0_0_0__plot_0_2_1"
                 ],
-                "name": "PY(time)",
+                "name": "PZ",
                 "x": "dg_0_0_0",
                 "y": "dg_0_2_1",
                 "xerr": null,
@@ -448,13 +470,13 @@
                   "name": null,
                   "base_style": null,
                   "line": {
-                    "style": "SOLID",
+                    "type": "SOLID",
                     "color": "#2ca02cff",
                     "thickness": 3.0
                   },
                   "marker": {
                     "size": null,
-                    "style": "NONE",
+                    "type": "NONE",
                     "fill": null,
                     "line_color": null,
                     "line_thickness": null
@@ -475,8 +497,30 @@
           "plot": {
             "sid": "preprocessing",
             "name": "Pre-processing",
-            "xaxis": null,
-            "yaxis": null,
+            "xaxis": {
+              "sid": "",
+              "name": "time",
+              "label": "time",
+              "unit": null,
+              "scale": "LINEAR",
+              "min": null,
+              "max": null,
+              "grid": false,
+              "label_visible": true,
+              "ticks_visible": true
+            },
+            "yaxis": {
+              "sid": "",
+              "name": "protein",
+              "label": "protein",
+              "unit": null,
+              "scale": "LINEAR",
+              "min": null,
+              "max": null,
+              "grid": false,
+              "label_visible": true,
+              "ticks_visible": true
+            },
             "yaxis_right": null,
             "legend": true,
             "facecolor": "#ffffffff",
@@ -486,7 +530,7 @@
                 "sid": [
                   "plot_1__plot_1_0_0__plot_1_0_1"
                 ],
-                "name": "PX(time)",
+                "name": "PX",
                 "x": "dg_1_0_0",
                 "y": "dg_1_0_1",
                 "xerr": null,
@@ -497,13 +541,13 @@
                   "name": null,
                   "base_style": null,
                   "line": {
-                    "style": "SOLID",
+                    "type": "SOLID",
                     "color": "#1f77b4ff",
                     "thickness": 3.0
                   },
                   "marker": {
                     "size": null,
-                    "style": "NONE",
+                    "type": "NONE",
                     "fill": null,
                     "line_color": null,
                     "line_thickness": null
@@ -516,7 +560,7 @@
                 "sid": [
                   "plot_1__plot_1_0_0__plot_1_1_1"
                 ],
-                "name": "PZ(time)",
+                "name": "PY",
                 "x": "dg_1_0_0",
                 "y": "dg_1_1_1",
                 "xerr": null,
@@ -527,13 +571,13 @@
                   "name": null,
                   "base_style": null,
                   "line": {
-                    "style": "SOLID",
+                    "type": "SOLID",
                     "color": "#ff7f0eff",
                     "thickness": 3.0
                   },
                   "marker": {
                     "size": null,
-                    "style": "NONE",
+                    "type": "NONE",
                     "fill": null,
                     "line_color": null,
                     "line_thickness": null
@@ -546,7 +590,7 @@
                 "sid": [
                   "plot_1__plot_1_0_0__plot_1_2_1"
                 ],
-                "name": "PY(time)",
+                "name": "PZ",
                 "x": "dg_1_0_0",
                 "y": "dg_1_2_1",
                 "xerr": null,
@@ -557,13 +601,13 @@
                   "name": null,
                   "base_style": null,
                   "line": {
-                    "style": "SOLID",
+                    "type": "SOLID",
                     "color": "#2ca02cff",
                     "thickness": 3.0
                   },
                   "marker": {
                     "size": null,
-                    "style": "NONE",
+                    "type": "NONE",
                     "fill": null,
                     "line_color": null,
                     "line_thickness": null
@@ -584,8 +628,30 @@
           "plot": {
             "sid": "postprocessing",
             "name": "Post-processing",
-            "xaxis": null,
-            "yaxis": null,
+            "xaxis": {
+              "sid": "",
+              "name": "normalized protein",
+              "label": "normalized protein",
+              "unit": null,
+              "scale": "LINEAR",
+              "min": null,
+              "max": null,
+              "grid": false,
+              "label_visible": true,
+              "ticks_visible": true
+            },
+            "yaxis": {
+              "sid": "",
+              "name": "normalized protein",
+              "label": "normalized protein",
+              "unit": null,
+              "scale": "LINEAR",
+              "min": null,
+              "max": null,
+              "grid": false,
+              "label_visible": true,
+              "ticks_visible": true
+            },
             "yaxis_right": null,
             "legend": true,
             "facecolor": "#ffffffff",
@@ -595,7 +661,7 @@
                 "sid": [
                   "plot_2__plot_2_0_0__plot_2_0_1"
                 ],
-                "name": "PZ(PX)",
+                "name": "PZ/max(PZ) ~ PX/max(PX)",
                 "x": "dg_2_0_0",
                 "y": "dg_2_0_1",
                 "xerr": null,
@@ -606,13 +672,13 @@
                   "name": null,
                   "base_style": null,
                   "line": {
-                    "style": "SOLID",
+                    "type": "SOLID",
                     "color": "#d62728ff",
                     "thickness": 3.0
                   },
                   "marker": {
                     "size": null,
-                    "style": "NONE",
+                    "type": "NONE",
                     "fill": null,
                     "line_color": null,
                     "line_thickness": null
@@ -625,7 +691,7 @@
                 "sid": [
                   "plot_2__plot_2_1_0__plot_2_0_0"
                 ],
-                "name": "PX(PY)",
+                "name": "PX/max(PX) ~ PY/max(PY)",
                 "x": "dg_2_1_0",
                 "y": "dg_2_0_0",
                 "xerr": null,
@@ -636,13 +702,13 @@
                   "name": null,
                   "base_style": null,
                   "line": {
-                    "style": "SOLID",
+                    "type": "SOLID",
                     "color": "#9467bdff",
                     "thickness": 3.0
                   },
                   "marker": {
                     "size": null,
-                    "style": "NONE",
+                    "type": "NONE",
                     "fill": null,
                     "line_color": null,
                     "line_thickness": null
@@ -655,7 +721,7 @@
                 "sid": [
                   "plot_2__plot_2_0_1__plot_2_1_0"
                 ],
-                "name": "PY(PZ)",
+                "name": "PY/max(PY) ~ PX/max(PZ)",
                 "x": "dg_2_0_1",
                 "y": "dg_2_1_0",
                 "xerr": null,
@@ -666,13 +732,13 @@
                   "name": null,
                   "base_style": null,
                   "line": {
-                    "style": "SOLID",
+                    "type": "SOLID",
                     "color": "#8c564bff",
                     "thickness": 3.0
                   },
                   "marker": {
                     "size": null,
-                    "style": "NONE",
+                    "type": "NONE",
                     "fill": null,
                     "line_color": null,
                     "line_thickness": null
