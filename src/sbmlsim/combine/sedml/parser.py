@@ -97,14 +97,15 @@ import re
 import shutil
 import warnings
 from collections import OrderedDict, namedtuple
+from enum import Enum
 from pathlib import Path
-from typing import Dict, List, Union, Optional, Type, Any
+from typing import Dict, List, Union, Optional, Type, Any, NamedTuple
 
 import libsedml
 import numpy as np
 import pandas as pd
 from pprint import pprint
-
+import roadrunner
 from pint import Quantity
 
 from sbmlsim.combine.sedml.data import DataDescriptionParser
@@ -125,26 +126,110 @@ from sbmlsim.units import UnitRegistry, UnitsInformation
 
 logger = logging.getLogger(__file__)
 
-# FIXME: support omex files
-'''
-def experiment_from_omex(omex_path: Path):
-    """Create SimulationExperiments from all SED-ML files."""
-    tmp_dir = tempfile.mkdtemp()
-    try:
-        omex.extractCombineArchive(omex_path, directory=tmp_dir, method="zip")
-        locations = omex.getLocationsByFormat(omex_path, "sed-ml")
-        sedml_files = [os.path.join(tmp_dir, loc) for loc in locations]
 
-        for k, sedml_file in enumerate(sedml_files):
-            pystr = sedmlToPython(sedml_file)
-            factory = SEDMLCodeFactory(inputStr, workingDir=workingDir)
-            factory.to
-            pycode[locations[k]] = pystr
+class SBMLModelTargetType(Enum):
+    """Supported target types in SBML models."""
+    PARAMETER = 0
+    COMPARTMENT = 1
+    SPECIES = 2
+    SPECIES_AMOUNT = 3
+    SPECIES_CONCENTRATION = 4
+    TIME = 5
 
-    finally:
-        shutil.rmtree(tmp_dir)
-    return pycode
-'''
+
+class SBMLModelTarget:
+    """Target in an SBML model."""
+
+    def __init__(self, selection: str, target_type: SBMLModelTargetType):
+        if target_type in {
+            SBMLModelTargetType.PARAMETER,
+            SBMLModelTargetType.COMPARTMENT,
+            SBMLModelTargetType.SPECIES,
+            SBMLModelTargetType.SPECIES_AMOUNT,
+            SBMLModelTargetType.TIME,
+        }:
+            sid = selection
+        elif target_type == SBMLModelTargetType.SPECIES_CONCENTRATION:
+            sid = selection[1:-1]
+
+        self.sid: str = sid
+        self.selection: str = selection
+        self.target_type: SBMLModelTargetType = target_type
+
+    @property
+    def sedml_symbol(self) -> Optional[str]:
+        """Get symbol for model target."""
+        if self.target_type in {
+            SBMLModelTargetType.PARAMETER,
+            SBMLModelTargetType.COMPARTMENT,
+            SBMLModelTargetType.SPECIES,
+        }:
+            return None
+        elif self.target_type == SBMLModelTargetType.SPECIES_AMOUNT:
+            return "urn:sedml:symbol:amount"
+        elif self.target_type == SBMLModelTargetType.SPECIES_CONCENTRATION:
+            return "urn:sedml:symbol:concentration"
+        elif self.target_type == SBMLModelTargetType.TIME:
+            return "urn:sedml:symbol:time"
+
+    @property
+    def sedml_target(self) -> Optional[str]:
+        """Get xpath target."""
+        if self.target_type == SBMLModelTargetType.PARAMETER:
+            return f"/sbml:sbml/sbml:model/sbml:listOfParameters/sbml:parameter[@id='{self.sid}']"
+        elif self.target_type == SBMLModelTargetType.COMPARTMENT:
+            return f"/sbml:sbml/sbml:model/sbml:listOfCompartments/sbml:compartment[@id='{self.sid}']"
+        elif self.target_type in {
+            SBMLModelTargetType.SPECIES,
+            SBMLModelTargetType.SPECIES_AMOUNT,
+            SBMLModelTargetType.SPECIES_CONCENTRATION,
+        }:
+            return f"/sbml:sbml/sbml:model/sbml:listOfSpecies/sbml:species[@id='{self.sid}']"
+        elif self.target_type == SBMLModelTargetType.TIME:
+            return None
+
+    @staticmethod
+    def sbmlsim_model_targets(r: roadrunner.ExecutableModel) -> Dict[str, 'SBMLModelTarget']:
+        """Model targets which are supported by sbmlsim."""
+        d: Dict[str, 'SBMLModelTarget'] = {}
+
+        # time
+        d["time"] = SBMLModelTarget(
+            selection="time",
+            target_type=SBMLModelTargetType.TIME,
+        )
+
+        # parameters
+        parameter_ids = set(r.getGlobalParameterIds())
+        for pid in parameter_ids:
+            d[pid] = SBMLModelTarget(
+                selection=pid,
+                target_type=SBMLModelTargetType.PARAMETER,
+            )
+
+        # species
+        species_ids = set(
+            r.getBoundarySpeciesIds() + r.getFloatingSpeciesIds()
+        )
+        for sid in species_ids:
+            d[sid] = SBMLModelTarget(
+                selection=sid,
+                target_type=SBMLModelTargetType.SPECIES_AMOUNT,
+            )
+            d[f"[{sid}]"] = SBMLModelTarget(
+                selection=f"[{sid}]",
+                target_type=SBMLModelTargetType.SPECIES_CONCENTRATION,
+            )
+
+        # compartments
+        compartment_ids = set(r.getCompartmentIds())
+        for sid in compartment_ids:
+            d[sid] = SBMLModelTarget(
+                selection=sid,
+                target_type=SBMLModelTargetType.COMPARTMENT,
+            )
+
+        return d
 
 
 class SEDMLSerializer:
@@ -174,6 +259,10 @@ class SEDMLSerializer:
             base_path=None,
         )
         self.exp: SimulationExperiment = list(runner.experiments.values())[0]
+        # lookup of sbmlsim selections
+        self.selection_lookup = self._selection_lookup_table()
+
+        # SED-ML document
         self.sed_doc: libsedml.SedDocument = libsedml.SedDocument(1, 4)
 
         # --- datasets ---
@@ -198,6 +287,15 @@ class SEDMLSerializer:
         sedml_path = working_dir / sedml_filename
         libsedml.writeSedML(self.sed_doc, str(sedml_path))
 
+    def _selection_lookup_table(self) -> Dict[str, Dict[str, SBMLModelTarget]]:
+        """Lookup table for sbmlsim model selections."""
+        d: Dict[str, Dict[str, SBMLModelTarget]] = {}
+        for model_id, model in self.exp.models().items():
+            rrsbml_model: RoadrunnerSBMLModel = self.exp._models[model_id]
+            rr_model: roadrunner.ExecutableModel = rrsbml_model.r.model
+            d[model_id] = SBMLModelTarget.sbmlsim_model_targets(r=rr_model)
+        return d
+
     def serialize_models(self):
         """Serialize models.
 
@@ -207,19 +305,13 @@ class SEDMLSerializer:
         model_key: str
         model: AbstractModel
 
-        for mid, model in self.exp.models().items():
-            print(mid, model)
-
-            import roadrunner
-            rrsbml_model: RoadrunnerSBMLModel = self.exp._models[mid]
-            rr_model: roadrunner.ExecutableModel = rrsbml_model.r.model
-            parameter_ids = set(rr_model.getGlobalParameterIds())
-            species_ids = set(
-                rr_model.getBoundarySpeciesIds() + rr_model.getFloatingSpeciesIds())
-            compartment_ids = set(rr_model.getCompartmentIds())
+        for model_id, model in self.exp.models().items():
+            print(model_id, model)
+            rrsbml_model: RoadrunnerSBMLModel = self.exp._models[model_id]
+            selection_map: Dict[str, SBMLModelTarget] = self.selection_lookup[model_id]
 
             sed_model: libsedml.SedModel = self.sed_doc.createModel()
-            sed_model.setId(mid)
+            sed_model.setId(model_id)
             if model.name:
                 sed_model.setName(model.name)
 
@@ -251,25 +343,16 @@ class SEDMLSerializer:
                 uinfo=rrsbml_model.uinfo
             )
 
-            for key, value in changes.items():
-                # FIXME: support amount and concentration
-                # see https://github.com/SED-ML/sed-ml/issues/141
-                symbol: str = None
-                target: str = None
-
-                if key in compartment_ids:
-                    target = f"/sbml:sbml/sbml:model/sbml:listOfCompartments/sbml:compartment[@id='{key}']"
-                elif key in parameter_ids:
-                    target = f"/sbml:sbml/sbml:model/sbml:listOfParameters/sbml:parameter[@id='{key}']"
-                elif key in species_ids:
-                    target = f"/sbml:sbml/sbml:model/sbml:listOfSpecies/sbml:species[@id='{key}'](amount)"
-                elif key.startswith("[") and key.endswith("]"):
-                    target = f"/sbml:sbml/sbml:model/sbml:listOfSpecies/sbml:species[@id='{key[1:-1]}'](concentration)"
-
+            for selection, value in changes.items():
+                sbml_target = selection_map[selection]
                 sed_change_attr: libsedml.SedChangeAttribute = sed_model.createChangeAttribute()
-                sed_change_attr.setTarget(
-                    target
-                )
+                sed_change_attr.setTarget(sbml_target.sedml_target)
+
+                # FIXME: support amount and concentration
+                # https://github.com/SED-ML/sed-ml/issues/141
+                # https://github.com/SED-ML/sed-ml/issues/124
+                # sed_change_attr.setSymbol(sbml_target.sedml_symbol)
+
                 sed_change_attr.setNewValue(str(value.magnitude))
 
                 # FIXME: Not supported: AddXML, ChangeXML, RemoveXML
@@ -333,7 +416,20 @@ class SEDMLSerializer:
             sed_dg: libsedml.SedDataGenerator = self.sed_doc.createDataGenerator()
             sed_dg.setId(did)
             if data.is_dataset():
-                raise NotImplementedError("Datasets ")
+                raise NotImplementedError("Dataset data generators")
+            elif data.is_task():
+                task_id: str = data.task_id
+                task: Task = self.exp._tasks[task_id]
+                model_id: str = task.model_id
+
+                model_target: SBMLModelTarget = self.selection_lookup[model_id][data.index]
+                sed_variable: libsedml.SedVariable = sed_dg.createVariable()
+                sed_variable.setId(f"{did}__{data.task_id}__{data.index}")
+                sed_variable.setModelReference(task.model_id)
+                if model_target.sedml_target:
+                    sed_variable.setTarget(model_target.sedml_target)
+                if model_target.sedml_symbol:
+                    sed_variable.setSymbol(model_target.sedml_symbol)
 
 
 class SEDMLParser:

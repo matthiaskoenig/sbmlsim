@@ -16,4 +16,49 @@
     <task id="task_model1_tc" modelReference="model1" simulationReference="tc"/>
     <task id="task_model2_tc" modelReference="model2" simulationReference="tc"/>
   </listOfTasks>
+  <listOfDataGenerators>
+    <dataGenerator id="task_model1_tc__time">
+      <listOfVariables>
+        <variable id="task_model1_tc__time__task_model1_tc__time" symbol="urn:sedml:symbol:time" modelReference="model1"/>
+      </listOfVariables>
+    </dataGenerator>
+    <dataGenerator id="task_model1_tc__PX">
+      <listOfVariables>
+        <variable id="task_model1_tc__PX__task_model1_tc__PX" symbol="urn:sedml:symbol:amount" target="/sbml:sbml/sbml:model/sbml:listOfSpecies/sbml:species[@id=&apos;PX&apos;]" modelReference="model1"/>
+      </listOfVariables>
+    </dataGenerator>
+    <dataGenerator id="task_model1_tc__PY">
+      <listOfVariables>
+        <variable id="task_model1_tc__PY__task_model1_tc__PY" symbol="urn:sedml:symbol:amount" target="/sbml:sbml/sbml:model/sbml:listOfSpecies/sbml:species[@id=&apos;PY&apos;]" modelReference="model1"/>
+      </listOfVariables>
+    </dataGenerator>
+    <dataGenerator id="task_model1_tc__PZ">
+      <listOfVariables>
+        <variable id="task_model1_tc__PZ__task_model1_tc__PZ" symbol="urn:sedml:symbol:amount" target="/sbml:sbml/sbml:model/sbml:listOfSpecies/sbml:species[@id=&apos;PZ&apos;]" modelReference="model1"/>
+      </listOfVariables>
+    </dataGenerator>
+    <dataGenerator id="task_model2_tc__time">
+      <listOfVariables>
+        <variable id="task_model2_tc__time__task_model2_tc__time" symbol="urn:sedml:symbol:time" modelReference="model2"/>
+      </listOfVariables>
+    </dataGenerator>
+    <dataGenerator id="task_model2_tc__PX">
+      <listOfVariables>
+        <variable id="task_model2_tc__PX__task_model2_tc__PX" symbol="urn:sedml:symbol:amount" target="/sbml:sbml/sbml:model/sbml:listOfSpecies/sbml:species[@id=&apos;PX&apos;]" modelReference="model2"/>
+      </listOfVariables>
+    </dataGenerator>
+    <dataGenerator id="task_model2_tc__PY">
+      <listOfVariables>
+        <variable id="task_model2_tc__PY__task_model2_tc__PY" symbol="urn:sedml:symbol:amount" target="/sbml:sbml/sbml:model/sbml:listOfSpecies/sbml:species[@id=&apos;PY&apos;]" modelReference="model2"/>
+      </listOfVariables>
+    </dataGenerator>
+    <dataGenerator id="task_model2_tc__PZ">
+      <listOfVariables>
+        <variable id="task_model2_tc__PZ__task_model2_tc__PZ" symbol="urn:sedml:symbol:amount" target="/sbml:sbml/sbml:model/sbml:listOfSpecies/sbml:species[@id=&apos;PZ&apos;]" modelReference="model2"/>
+      </listOfVariables>
+    </dataGenerator>
+    <dataGenerator id="f_PX_normalized"/>
+    <dataGenerator id="f_PY_normalized"/>
+    <dataGenerator id="f_PZ_normalized"/>
+  </listOfDataGenerators>
 </sedML>

@@ -6,6 +6,7 @@
     - [x] resolve model from URN
     - [S] AddXML, ChangeXML, RemoveXML
     - [S] ComputeChange
+    - [~S] support amount, concentration and native species targets
 - [x] simulation
     - [x] UniformTimecourse
     - [S] OneStep
@@ -14,6 +15,7 @@
     - [x] Task
     - [ ] RepeatedTask
 - [ ] data generators    
+
 
 # Plotting
 
