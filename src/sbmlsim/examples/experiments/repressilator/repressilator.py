@@ -168,4 +168,5 @@ if __name__ == "__main__":
 
     execute_sedml(path=omex_path, working_dir=Path(__file__).parent / "results",
                   output_path=Path(__file__).parent / "results" / "sbmlsim_omex")
-    # run_repressilator_experiments(Path(__file__).parent / "results")
+
+    run_repressilator_experiments(Path(__file__).parent / "results")

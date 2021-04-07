@@ -2,6 +2,7 @@
 - [x] execute COMBINE archives (refactoring required; also store results)
 
 # Serialization (SimulationExperiment -> SED-ML)
+- [ ] datasets
 - [x] model
     - [x] resolve model from URN
     - [S] AddXML, ChangeXML, RemoveXML
@@ -14,11 +15,9 @@
 - [~] tasks
     - [x] Task
     - [ ] RepeatedTask
-- [ ] data generators    
-
-
-# Plotting
-
+- [x] data generators
+- [ ] figures
+- [ ] reports
 
 # Parsing (SED-ML -> SimulationExperiment)
 ## Plot2D
@@ -27,19 +26,18 @@
       for multi-plot figures the combined height and width must be calculated
 - [x] use curve.name as label in legend
 - [x] support style on axis
-- [~] support setting label (name of axis), see https://github.com/fbergmann/libSEDML/issues/110
+- [x] support setting label (name of axis)
 - [x] plot width and height  
 - [x] curve type (points, bar, ...)
-  - [x] fix stacking position
-  - [~] bars next to each other; see https://github.com/SED-ML/sed-ml/issues/138  
-- [~] error bars; see https://github.com/SED-ML/sed-ml/issues/137
+- [~] error bars; assymetrical error bars; see https://github.com/SED-ML/sed-ml/issues/137
 - [x] styling of bar plots; 
 - [x] yAxis right
 - [x] order of abstract curve
 - [x] shaded areas & fills
 - [x] resolve and apply basestyle
 - [x] update bar styling (see https://github.com/SED-ML/sed-ml/issues/140)
-- [~] implement assymetrical errorbars (see https://github.com/SED-ML/sed-ml/issues/137)
+- [ ] support figure caption via notes (<notes><p xmlns="xhtml">Figure 1 - Example for figure with text legend and sub-plots.</p></notes>)
+
 
 ## Altair serialization
 

@@ -22,7 +22,7 @@
         <ci> task_model1_tc__time__time </ci>
       </math>
       <listOfVariables>
-        <variable id="task_model1_tc__time__time" symbol="urn:sedml:symbol:time" modelReference="model1"/>
+        <variable id="task_model1_tc__time__time" symbol="urn:sedml:symbol:time" taskReference="task_model1_tc" modelReference="model1"/>
       </listOfVariables>
     </dataGenerator>
     <dataGenerator id="task_model1_tc__PX">
@@ -30,7 +30,7 @@
         <ci> task_model1_tc__PX__PX </ci>
       </math>
       <listOfVariables>
-        <variable id="task_model1_tc__PX__PX" symbol="urn:sedml:symbol:amount" target="/sbml:sbml/sbml:model/sbml:listOfSpecies/sbml:species[@id=&apos;PX&apos;]" modelReference="model1"/>
+        <variable id="task_model1_tc__PX__PX" symbol="urn:sedml:symbol:amount" target="/sbml:sbml/sbml:model/sbml:listOfSpecies/sbml:species[@id=&apos;PX&apos;]" taskReference="task_model1_tc" modelReference="model1"/>
       </listOfVariables>
     </dataGenerator>
     <dataGenerator id="task_model1_tc__PY">
@@ -38,7 +38,7 @@
         <ci> task_model1_tc__PY__PY </ci>
       </math>
       <listOfVariables>
-        <variable id="task_model1_tc__PY__PY" symbol="urn:sedml:symbol:amount" target="/sbml:sbml/sbml:model/sbml:listOfSpecies/sbml:species[@id=&apos;PY&apos;]" modelReference="model1"/>
+        <variable id="task_model1_tc__PY__PY" symbol="urn:sedml:symbol:amount" target="/sbml:sbml/sbml:model/sbml:listOfSpecies/sbml:species[@id=&apos;PY&apos;]" taskReference="task_model1_tc" modelReference="model1"/>
       </listOfVariables>
     </dataGenerator>
     <dataGenerator id="task_model1_tc__PZ">
@@ -46,7 +46,7 @@
         <ci> task_model1_tc__PZ__PZ </ci>
       </math>
       <listOfVariables>
-        <variable id="task_model1_tc__PZ__PZ" symbol="urn:sedml:symbol:amount" target="/sbml:sbml/sbml:model/sbml:listOfSpecies/sbml:species[@id=&apos;PZ&apos;]" modelReference="model1"/>
+        <variable id="task_model1_tc__PZ__PZ" symbol="urn:sedml:symbol:amount" target="/sbml:sbml/sbml:model/sbml:listOfSpecies/sbml:species[@id=&apos;PZ&apos;]" taskReference="task_model1_tc" modelReference="model1"/>
       </listOfVariables>
     </dataGenerator>
     <dataGenerator id="task_model2_tc__time">
@@ -54,7 +54,7 @@
         <ci> task_model2_tc__time__time </ci>
       </math>
       <listOfVariables>
-        <variable id="task_model2_tc__time__time" symbol="urn:sedml:symbol:time" modelReference="model2"/>
+        <variable id="task_model2_tc__time__time" symbol="urn:sedml:symbol:time" taskReference="task_model2_tc" modelReference="model2"/>
       </listOfVariables>
     </dataGenerator>
     <dataGenerator id="task_model2_tc__PX">
@@ -62,7 +62,7 @@
         <ci> task_model2_tc__PX__PX </ci>
       </math>
       <listOfVariables>
-        <variable id="task_model2_tc__PX__PX" symbol="urn:sedml:symbol:amount" target="/sbml:sbml/sbml:model/sbml:listOfSpecies/sbml:species[@id=&apos;PX&apos;]" modelReference="model2"/>
+        <variable id="task_model2_tc__PX__PX" symbol="urn:sedml:symbol:amount" target="/sbml:sbml/sbml:model/sbml:listOfSpecies/sbml:species[@id=&apos;PX&apos;]" taskReference="task_model2_tc" modelReference="model2"/>
       </listOfVariables>
     </dataGenerator>
     <dataGenerator id="task_model2_tc__PY">
@@ -70,7 +70,7 @@
         <ci> task_model2_tc__PY__PY </ci>
       </math>
       <listOfVariables>
-        <variable id="task_model2_tc__PY__PY" symbol="urn:sedml:symbol:amount" target="/sbml:sbml/sbml:model/sbml:listOfSpecies/sbml:species[@id=&apos;PY&apos;]" modelReference="model2"/>
+        <variable id="task_model2_tc__PY__PY" symbol="urn:sedml:symbol:amount" target="/sbml:sbml/sbml:model/sbml:listOfSpecies/sbml:species[@id=&apos;PY&apos;]" taskReference="task_model2_tc" modelReference="model2"/>
       </listOfVariables>
     </dataGenerator>
     <dataGenerator id="task_model2_tc__PZ">
@@ -78,7 +78,7 @@
         <ci> task_model2_tc__PZ__PZ </ci>
       </math>
       <listOfVariables>
-        <variable id="task_model2_tc__PZ__PZ" symbol="urn:sedml:symbol:amount" target="/sbml:sbml/sbml:model/sbml:listOfSpecies/sbml:species[@id=&apos;PZ&apos;]" modelReference="model2"/>
+        <variable id="task_model2_tc__PZ__PZ" symbol="urn:sedml:symbol:amount" target="/sbml:sbml/sbml:model/sbml:listOfSpecies/sbml:species[@id=&apos;PZ&apos;]" taskReference="task_model2_tc" modelReference="model2"/>
       </listOfVariables>
     </dataGenerator>
     <dataGenerator id="f_PX_normalized">
@@ -93,7 +93,7 @@
         </apply>
       </math>
       <listOfVariables>
-        <variable id="f_PX_normalized__PX" symbol="urn:sedml:symbol:amount" target="/sbml:sbml/sbml:model/sbml:listOfSpecies/sbml:species[@id=&apos;PX&apos;]" modelReference="model1"/>
+        <variable id="f_PX_normalized__PX" symbol="urn:sedml:symbol:amount" target="/sbml:sbml/sbml:model/sbml:listOfSpecies/sbml:species[@id=&apos;PX&apos;]" taskReference="task_model1_tc" modelReference="model1"/>
       </listOfVariables>
     </dataGenerator>
     <dataGenerator id="f_PY_normalized">
@@ -108,7 +108,7 @@
         </apply>
       </math>
       <listOfVariables>
-        <variable id="f_PY_normalized__PY" symbol="urn:sedml:symbol:amount" target="/sbml:sbml/sbml:model/sbml:listOfSpecies/sbml:species[@id=&apos;PY&apos;]" modelReference="model1"/>
+        <variable id="f_PY_normalized__PY" symbol="urn:sedml:symbol:amount" target="/sbml:sbml/sbml:model/sbml:listOfSpecies/sbml:species[@id=&apos;PY&apos;]" taskReference="task_model1_tc" modelReference="model1"/>
       </listOfVariables>
     </dataGenerator>
     <dataGenerator id="f_PZ_normalized">
@@ -123,17 +123,44 @@
         </apply>
       </math>
       <listOfVariables>
-        <variable id="f_PZ_normalized__PZ" symbol="urn:sedml:symbol:amount" target="/sbml:sbml/sbml:model/sbml:listOfSpecies/sbml:species[@id=&apos;PZ&apos;]" modelReference="model1"/>
+        <variable id="f_PZ_normalized__PZ" symbol="urn:sedml:symbol:amount" target="/sbml:sbml/sbml:model/sbml:listOfSpecies/sbml:species[@id=&apos;PZ&apos;]" taskReference="task_model1_tc" modelReference="model1"/>
       </listOfVariables>
     </dataGenerator>
   </listOfDataGenerators>
   <listOfOutputs>
     <figure id="figure0" name="Repressilator" numRows="2" numCols="2">
       <listOfSubPlots>
-        <subPlot/>
-        <subPlot/>
-        <subPlot/>
+        <subPlot plot="plot0" row="1" col="1" rowSpan="1" colSpan="1"/>
+        <subPlot plot="plot1" row="1" col="2" rowSpan="1" colSpan="1"/>
+        <subPlot plot="plot2" row="2" col="1" rowSpan="1" colSpan="2"/>
       </listOfSubPlots>
     </figure>
+    <plot2D id="plot0" name="Timecourse" legend="true" height="5" width="7">
+      <xAxis id="plot0_xaxis" name="time [second]" type="linear"/>
+      <yAxis id="plot0_yaxis" name="data [-]" type="linear"/>
+      <listOfCurves>
+        <curve id="plot0_curve0" name="PX" xDataReference="task_model1_tc__time" yDataReference="task_model1_tc__PX"/>
+        <curve id="plot0_curve1" name="PY" xDataReference="task_model1_tc__time" yDataReference="task_model1_tc__PY"/>
+        <curve id="plot0_curve2" name="PZ" xDataReference="task_model1_tc__time" yDataReference="task_model1_tc__PZ"/>
+      </listOfCurves>
+    </plot2D>
+    <plot2D id="plot1" name="Preprocessing" legend="true" height="5" width="7">
+      <xAxis id="plot1_xaxis" name="time [second]" type="linear"/>
+      <yAxis id="plot1_yaxis" name="data [-]" type="linear"/>
+      <listOfCurves>
+        <curve id="plot1_curve0" name="PX" xDataReference="task_model2_tc__time" yDataReference="task_model2_tc__PX"/>
+        <curve id="plot1_curve1" name="PY" xDataReference="task_model2_tc__time" yDataReference="task_model2_tc__PY"/>
+        <curve id="plot1_curve2" name="PZ" xDataReference="task_model2_tc__time" yDataReference="task_model2_tc__PZ"/>
+      </listOfCurves>
+    </plot2D>
+    <plot2D id="plot2" name="Postprocessing" legend="true" height="5" width="7">
+      <xAxis id="plot2_xaxis" name="data [-]" type="linear"/>
+      <yAxis id="plot2_yaxis" name="data [-]" type="linear"/>
+      <listOfCurves>
+        <curve id="plot2_curve0" name="PZ/max(PZ) ~ PX/max(PX)" xDataReference="f_PX_normalized" yDataReference="f_PZ_normalized"/>
+        <curve id="plot2_curve1" name="PY/max(PY) ~ PZ/max(PZ)" xDataReference="f_PZ_normalized" yDataReference="f_PY_normalized"/>
+        <curve id="plot2_curve2" name="PX/max(PX) ~ PY/max(PY)" xDataReference="f_PY_normalized" yDataReference="f_PX_normalized"/>
+      </listOfCurves>
+    </plot2D>
   </listOfOutputs>
 </sedML>

@@ -363,6 +363,8 @@
       "height": 10.0,
       "subplots": [
         {
+          "sid": null,
+          "name": null,
           "plot": {
             "sid": "timecourse",
             "name": "Timecourse",
@@ -494,6 +496,8 @@
           "col_span": 1
         },
         {
+          "sid": null,
+          "name": null,
           "plot": {
             "sid": "preprocessing",
             "name": "Pre-processing",
@@ -625,6 +629,8 @@
           "col_span": 1
         },
         {
+          "sid": null,
+          "name": null,
           "plot": {
             "sid": "postprocessing",
             "name": "Post-processing",

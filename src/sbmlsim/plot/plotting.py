@@ -389,12 +389,12 @@ class Style(BasePlotObject):
 
         # Line
         linestyle = Style.MPL2SEDML_LINESTYLE_MAPPING[kwargs.get("linestyle", "-")]
-        line = Line(color=color, style=linestyle, thickness=kwargs.get("linewidth", 1.0))
+        line = Line(color=color, type=linestyle, thickness=kwargs.get("linewidth", 1.0))
 
         # Marker
         marker_symbol = Style.MPL2SEDML_MARKER_MAPPING[kwargs.get("marker", "")]
         marker = Marker(
-            style=marker_symbol,
+            type=marker_symbol,
             size=kwargs.get("markersize", None),
             fill=kwargs.get("markerfacecolor", color),
             line_color=kwargs.get("markeredgecolor", None),
@@ -973,7 +973,7 @@ class Plot(BasePlotObject):
     def add_curve(self, curve: Curve):
         """Add Curve via the helper function."""
         if curve.sid is None:
-            curve.sid = f"{self.sid}_curve{len(self.curves)-1}"
+            curve.sid = f"{self.sid}_curve{len(self.curves)}"
 
         self._set_order(curve)
         self.curves.append(curve)
@@ -981,7 +981,7 @@ class Plot(BasePlotObject):
     def add_area(self, area: ShadedArea):
         """Add ShadedArea via the helper function."""
         if area.sid is None:
-            area.sid = f"{self.sid}_area{len(self.areas)-1}"
+            area.sid = f"{self.sid}_area{len(self.areas)}"
 
         self._set_order(area)
         self.areas.append(area)
@@ -1145,7 +1145,10 @@ class SubPlot(BasePlotObject):
         col: int = None,
         row_span: int = 1,
         col_span: int = 1,
+        sid: Optional[str] = None,
+        name: Optional[str] = None
     ):
+        super(SubPlot, self).__init__(sid=sid, name=name)
         self.plot = plot
         self.row = row
         self.col = col
@@ -1193,17 +1196,16 @@ class Figure(BasePlotObject):
         num_cols: int = 1,
     ):
         super(Figure, self).__init__(sid, name)
-        self.experiment = experiment
+        self.experiment: 'SimulationExperiment' = experiment
         if subplots is None:
             subplots = list()
-        self.subplots = subplots
-        self.num_rows = num_rows
-        self.num_cols = num_cols
-
+        self.subplots: List[SubPlot] = subplots
+        self.num_rows: int = num_rows
+        self.num_cols: int = num_cols
         self._height: float = self.num_rows * Figure.panel_height
         self._width: float = self.num_cols * Figure.panel_height
-        self.width = width
-        self.height = height
+        self.width: float = width
+        self.height: float = height
 
     def __repr__(self) -> str:
         """Get representation string."""

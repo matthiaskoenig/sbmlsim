@@ -295,7 +295,6 @@ class SEDMLSerializer:
             omex = Omex(omex_path=omex_path, working_dir=working_dir)
             omex.from_directory(omex_path=omex_path, directory=working_dir)
 
-
     def _selection_lookup_table(self) -> Dict[str, Dict[str, SBMLModelTarget]]:
         """Lookup table for sbmlsim model selections."""
         d: Dict[str, Dict[str, SBMLModelTarget]] = {}
@@ -304,6 +303,15 @@ class SEDMLSerializer:
             rr_model: roadrunner.ExecutableModel = rrsbml_model.r.model
             d[model_id] = SBMLModelTarget.sbmlsim_model_targets(r=rr_model)
         return d
+
+    def datagenerator_id_from_data(self, data: Data) -> str:
+        """Get the data generator id from data."""
+        if data.is_task():
+            return f"{data.task_id}__{data.index}"
+        elif data.is_function():
+            return f"{data.index}"
+        elif data.is_dataset():
+            raise NotImplementedError("Datasets are not implemented.")
 
     def serialize_models(self):
         """Serialize models.
@@ -434,6 +442,7 @@ class SEDMLSerializer:
             model_target: SBMLModelTarget = self.selection_lookup[model_id][data.index]
             sed_variable: libsedml.SedVariable = sed_dg.createVariable()
             sed_variable.setId(f"{did}__{var_id}")
+            sed_variable.setTaskReference(task_id)
 
             sed_variable.setModelReference(task.model_id)
             if model_target.sedml_target:
@@ -491,6 +500,106 @@ class SEDMLSerializer:
 
             for subplot in figure.subplots:
                 sed_subplot: libsedml.SedSubPlot = sed_figure.createSubPlot()
+                if subplot.sid:
+                    sed_subplot.setId(subplot.sid)
+                if subplot.name:
+                    sed_subplot.setName(subplot.name)
+                sed_subplot.setRow(subplot.row)
+                sed_subplot.setCol(subplot.col)
+                sed_subplot.setRowSpan(subplot.row_span)
+                sed_subplot.setColSpan(subplot.col_span)
+
+                # FIXME: support plot3d
+
+                plot = subplot.plot
+                sed_plot2d: libsedml.SedPlot2D = self.sed_doc.createPlot2D()
+                if plot.sid:
+                    sed_plot2d.setId(plot.sid)
+                if plot.name:
+                    sed_plot2d.setName(plot.name)
+                sed_plot2d.setLegend(plot.legend)
+                sed_plot2d.setHeight(plot.height)
+                sed_plot2d.setWidth(plot.width)
+
+                # axis
+                if plot.xaxis:
+                    sed_xaxis: libsedml.SedAxis = sed_plot2d.createXAxis()
+                    self.serialize_axis(plot.xaxis, sed_xaxis)
+                if plot.yaxis:
+                    sed_yaxis: libsedml.SedAxis = sed_plot2d.createYAxis()
+                    self.serialize_axis(plot.yaxis, sed_yaxis)
+                if plot.yaxis_right:
+                    sed_yaxis_right: libsedml.SedAxis = sed_plot2d.createRightYAxis()
+                    self.serialize_axis(plot.yaxis_right, sed_yaxis_right)
+
+                # curves
+                # FIXME: order, style, yAxis
+                for curve in plot.curves:
+                    sed_curve: libsedml.SedCurve = sed_plot2d.createCurve()
+                    if curve.sid:
+                        sed_curve.setId(curve.sid)
+                    if curve.name:
+                        sed_curve.setName(curve.name)
+                    if curve.x:
+                        sed_curve.setXDataReference(
+                            self.datagenerator_id_from_data(curve.x)
+                        )
+                    if curve.y:
+                        sed_curve.setYDataReference(
+                            self.datagenerator_id_from_data(curve.y)
+                        )
+                    # FIXME: assymetrical errors
+                    if curve.xerr:
+                        dg_id_xerr = self.datagenerator_id_from_data(curve.xerr)
+                        sed_curve.setXErrorUpper(dg_id_xerr)
+                        sed_curve.setXErrorLower(dg_id_xerr)
+                    if curve.yerr:
+                        dg_id_yerr = self.datagenerator_id_from_data(curve.yerr)
+                        sed_curve.setYErrorUpper(dg_id_yerr)
+                        sed_curve.setYErrorLower(dg_id_yerr)
+
+                # shaded areas
+                # FIXME: order, style, yAxis
+                for area in plot.areas:
+                    sed_area: libsedml.SedShadedArea = sed_plot2d.createShadedArea()
+                    if area.yfrom:
+                        sed_area.setYDataReferenceFrom(
+                            self.datagenerator_id_from_data(area.yfrom)
+                        )
+                    if area.yto:
+                        sed_area.setYDataReferenceTo(
+                            self.datagenerator_id_from_data(area.yto)
+                        )
+
+                sed_subplot.setPlot(sed_plot2d.getId())
+
+    @classmethod
+    def serialize_axis(cls, axis: Axis, sed_axis: libsedml.SedAxis) -> None:
+        """Serialize Axis object attributes to SEDAxis"""
+        if axis.sid:
+            sed_axis.setId(axis.sid)
+        if axis.name:
+            sed_axis.setName(axis.name)
+        if axis.scale == AxisScale.LINEAR:
+            sed_axis.setType(libsedml.SEDML_AXISTYPE_LINEAR)
+        elif axis.scale == AxisScale.LOG10:
+            sed_axis.setType(libsedml.SEDML_AXISTYPE_LOG10)
+        if axis.min:
+            sed_axis.setMin(axis.min)
+        if axis.max:
+            sed_axis.setMax(axis.max)
+        if axis.grid:
+            sed_axis.setGrid(axis.grid)
+        if axis.style:
+            # FIXME: reuse styles
+            # FIXME: parse styles
+            pass
+
+    @classmethod
+    def serialize_style(self, style: Style, sed_style: libsedml.SedStyle) -> None:
+        # FIXME: implement
+        pass
+
 
 
 
@@ -1470,8 +1579,11 @@ class SEDMLParser:
 
         sed_dg: libsedml.SedDataGenerator = self.sed_doc.getDataGenerator(sed_dg_ref)
         if sed_dg is None:
-            raise ValueError(f"DataGenerator does not exist in listOfDataGenerators "
-                             f"with id: '{sed_dg_ref}'")
+            raise ValueError(
+                f"DataGenerator with id '{sed_dg_ref}' does not exist "
+                f"in listOfDataGenerators:\n"
+                f"{[dg.getId() for dg in self.sed_doc.getListOfDataGenerators()]}"
+            )
 
         # TODO: Necessary to evaluate the math
         astnode: libsedml.ASTNode = sed_dg.getMath()

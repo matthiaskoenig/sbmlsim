@@ -75,40 +75,40 @@
   </listOfDataGenerators>
   <listOfOutputs>
     <plot2D id="plot_points" name="points">
-      <xAxis name="time" type="lin"/>
-      <yAxis name="concentration" type="lin"/>
+      <xAxis name="time" type="linear"/>
+      <yAxis name="concentration" type="linear"/>
       <listOfCurves>
         <curve id="curve_S1_points" name="S1" xDataReference="dg_time" yDataReference="dg_S1" xErrorUpper="dg_time_error" yErrorUpper="dg_S1_error" type="points" style="style_blue"/>
         <curve id="curve_S2_points" name="S2" xDataReference="dg_time" yDataReference="dg_S2" xErrorUpper="dg_time_error" yErrorUpper="dg_S2_error" type="points" style="style_orange"/>
       </listOfCurves>
     </plot2D>
     <plot2D id="plot_bar" name="bar">
-      <xAxis name="time" type="lin"/>
-      <yAxis name="concentration" type="lin"/>
+      <xAxis name="time" type="linear"/>
+      <yAxis name="concentration" type="linear"/>
       <listOfCurves>
         <curve id="curve_S1_bar" name="S1" xDataReference="dg_time" yDataReference="dg_S1" xErrorUpper="dg_time_error" yErrorUpper="dg_S1_error" type="bar" style="style_blue_bar"/>
         <curve id="curve_S2_bar" name="S2" xDataReference="dg_time" yDataReference="dg_S2" xErrorUpper="dg_time_error" yErrorUpper="dg_S2_error" type="bar" style="style_orange_bar"/>
       </listOfCurves>
     </plot2D>
     <plot2D id="plot_barStacked" name="barStacked">
-      <xAxis name="time" type="lin"/>
-      <yAxis name="concentration" type="lin"/>
+      <xAxis name="time" type="linear"/>
+      <yAxis name="concentration" type="linear"/>
       <listOfCurves>
         <curve id="curve_S1_barStacked" name="S1" xDataReference="dg_time" yDataReference="dg_S1" xErrorUpper="dg_time_error" yErrorUpper="dg_S1_error" type="barStacked" style="style_blue_bar"/>
         <curve id="curve_S2_barStacked" name="S2" xDataReference="dg_time" yDataReference="dg_S2" xErrorUpper="dg_time_error" yErrorUpper="dg_S2_error" type="barStacked" style="style_orange_bar"/>
       </listOfCurves>
     </plot2D>
     <plot2D id="plot_horizontalBar" name="horizontalBar">
-      <xAxis name="time" type="lin"/>
-      <yAxis name="concentration" type="lin"/>
+      <xAxis name="time" type="linear"/>
+      <yAxis name="concentration" type="linear"/>
       <listOfCurves>
         <curve id="curve_S1_horizontalBar" name="S1" xDataReference="dg_time" yDataReference="dg_S1" xErrorUpper="dg_time_error" yErrorUpper="dg_S1_error" type="horizontalBar" style="style_blue_bar"/>
         <curve id="curve_S2_horizontalBar" name="S2" xDataReference="dg_time" yDataReference="dg_S2" xErrorUpper="dg_time_error" yErrorUpper="dg_S2_error" type="horizontalBar" style="style_orange_bar"/>
       </listOfCurves>
     </plot2D>
     <plot2D id="plot_horizontalBarStacked" name="horizontalBarStacked">
-      <xAxis name="time" type="lin"/>
-      <yAxis name="concentration" type="lin"/>
+      <xAxis name="time" type="linear"/>
+      <yAxis name="concentration" type="linear"/>
       <listOfCurves>
         <curve id="curve_S1_horizontalBarStacked" name="S1" xDataReference="dg_time" yDataReference="dg_S1" xErrorUpper="dg_time_error" yErrorUpper="dg_S1_error" type="horizontalBarStacked" style="style_blue_bar"/>
         <curve id="curve_S2_horizontalBarStacked" name="S2" xDataReference="dg_time" yDataReference="dg_S2" xErrorUpper="dg_time_error" yErrorUpper="dg_S2_error" type="horizontalBarStacked" style="style_orange_bar"/>

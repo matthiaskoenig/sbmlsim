@@ -211,6 +211,8 @@
       "height": 10,
       "subplots": [
         {
+          "sid": null,
+          "name": null,
           "plot": {
             "sid": "plot0",
             "name": "Timecourse",
@@ -244,7 +246,7 @@
             "title_visible": true,
             "curves": [
               {
-                "sid": "plot0_curve-1",
+                "sid": "plot0_curve0",
                 "name": "PX",
                 "x": "task_model1_tc__time",
                 "y": "task_model1_tc__PX",
@@ -256,13 +258,13 @@
                   "name": null,
                   "base_style": null,
                   "line": {
-                    "style": "SOLID",
+                    "type": "SOLID",
                     "color": "#d62728ff",
                     "thickness": 2.0
                   },
                   "marker": {
                     "size": null,
-                    "style": "NONE",
+                    "type": "NONE",
                     "fill": "#d62728ff",
                     "line_color": null,
                     "line_thickness": null
@@ -275,7 +277,7 @@
                 "order": 0
               },
               {
-                "sid": "plot0_curve0",
+                "sid": "plot0_curve1",
                 "name": "PY",
                 "x": "task_model1_tc__time",
                 "y": "task_model1_tc__PY",
@@ -287,13 +289,13 @@
                   "name": null,
                   "base_style": null,
                   "line": {
-                    "style": "SOLID",
+                    "type": "SOLID",
                     "color": "#2ca02cff",
                     "thickness": 2.0
                   },
                   "marker": {
                     "size": null,
-                    "style": "NONE",
+                    "type": "NONE",
                     "fill": "#2ca02cff",
                     "line_color": null,
                     "line_thickness": null
@@ -306,7 +308,7 @@
                 "order": 1
               },
               {
-                "sid": "plot0_curve1",
+                "sid": "plot0_curve2",
                 "name": "PZ",
                 "x": "task_model1_tc__time",
                 "y": "task_model1_tc__PZ",
@@ -318,13 +320,13 @@
                   "name": null,
                   "base_style": null,
                   "line": {
-                    "style": "SOLID",
+                    "type": "SOLID",
                     "color": "#1f77b4ff",
                     "thickness": 2.0
                   },
                   "marker": {
                     "size": null,
-                    "style": "NONE",
+                    "type": "NONE",
                     "fill": "#1f77b4ff",
                     "line_color": null,
                     "line_thickness": null
@@ -345,6 +347,8 @@
           "col_span": 1
         },
         {
+          "sid": null,
+          "name": null,
           "plot": {
             "sid": "plot1",
             "name": "Preprocessing",
@@ -378,7 +382,7 @@
             "title_visible": true,
             "curves": [
               {
-                "sid": "plot1_curve-1",
+                "sid": "plot1_curve0",
                 "name": "PX",
                 "x": "task_model2_tc__time",
                 "y": "task_model2_tc__PX",
@@ -390,13 +394,13 @@
                   "name": null,
                   "base_style": null,
                   "line": {
-                    "style": "SOLID",
+                    "type": "SOLID",
                     "color": "#d62728ff",
                     "thickness": 2.0
                   },
                   "marker": {
                     "size": null,
-                    "style": "NONE",
+                    "type": "NONE",
                     "fill": "#d62728ff",
                     "line_color": null,
                     "line_thickness": null
@@ -409,7 +413,7 @@
                 "order": 0
               },
               {
-                "sid": "plot1_curve0",
+                "sid": "plot1_curve1",
                 "name": "PY",
                 "x": "task_model2_tc__time",
                 "y": "task_model2_tc__PY",
@@ -421,13 +425,13 @@
                   "name": null,
                   "base_style": null,
                   "line": {
-                    "style": "SOLID",
+                    "type": "SOLID",
                     "color": "#2ca02cff",
                     "thickness": 2.0
                   },
                   "marker": {
                     "size": null,
-                    "style": "NONE",
+                    "type": "NONE",
                     "fill": "#2ca02cff",
                     "line_color": null,
                     "line_thickness": null
@@ -440,7 +444,7 @@
                 "order": 1
               },
               {
-                "sid": "plot1_curve1",
+                "sid": "plot1_curve2",
                 "name": "PZ",
                 "x": "task_model2_tc__time",
                 "y": "task_model2_tc__PZ",
@@ -452,13 +456,13 @@
                   "name": null,
                   "base_style": null,
                   "line": {
-                    "style": "SOLID",
+                    "type": "SOLID",
                     "color": "#1f77b4ff",
                     "thickness": 2.0
                   },
                   "marker": {
                     "size": null,
-                    "style": "NONE",
+                    "type": "NONE",
                     "fill": "#1f77b4ff",
                     "line_color": null,
                     "line_thickness": null
@@ -479,6 +483,8 @@
           "col_span": 1
         },
         {
+          "sid": null,
+          "name": null,
           "plot": {
             "sid": "plot2",
             "name": "Postprocessing",
@@ -512,7 +518,7 @@
             "title_visible": true,
             "curves": [
               {
-                "sid": "plot2_curve-1",
+                "sid": "plot2_curve0",
                 "name": "PZ/max(PZ) ~ PX/max(PX)",
                 "x": "f_PX_normalized",
                 "y": "f_PZ_normalized",
@@ -524,13 +530,13 @@
                   "name": null,
                   "base_style": null,
                   "line": {
-                    "style": "SOLID",
+                    "type": "SOLID",
                     "color": "#ff7f0eff",
                     "thickness": 2.0
                   },
                   "marker": {
                     "size": null,
-                    "style": "NONE",
+                    "type": "NONE",
                     "fill": "#ff7f0eff",
                     "line_color": null,
                     "line_thickness": null
@@ -543,7 +549,7 @@
                 "order": 0
               },
               {
-                "sid": "plot2_curve0",
+                "sid": "plot2_curve1",
                 "name": "PY/max(PY) ~ PZ/max(PZ)",
                 "x": "f_PZ_normalized",
                 "y": "f_PY_normalized",
@@ -555,13 +561,13 @@
                   "name": null,
                   "base_style": null,
                   "line": {
-                    "style": "SOLID",
+                    "type": "SOLID",
                     "color": "#8c564bff",
                     "thickness": 2.0
                   },
                   "marker": {
                     "size": null,
-                    "style": "NONE",
+                    "type": "NONE",
                     "fill": "#8c564bff",
                     "line_color": null,
                     "line_thickness": null
@@ -574,7 +580,7 @@
                 "order": 1
               },
               {
-                "sid": "plot2_curve1",
+                "sid": "plot2_curve2",
                 "name": "PX/max(PX) ~ PY/max(PY)",
                 "x": "f_PY_normalized",
                 "y": "f_PX_normalized",
@@ -586,13 +592,13 @@
                   "name": null,
                   "base_style": null,
                   "line": {
-                    "style": "SOLID",
+                    "type": "SOLID",
                     "color": "#9467bdff",
                     "thickness": 2.0
                   },
                   "marker": {
                     "size": null,
-                    "style": "NONE",
+                    "type": "NONE",
                     "fill": "#9467bdff",
                     "line_color": null,
                     "line_thickness": null
