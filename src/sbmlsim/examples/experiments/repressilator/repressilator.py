@@ -158,7 +158,7 @@ def run_repressilator_experiments(output_path: Path) -> Path:
 
 
 if __name__ == "__main__":
-    omex_path = Path(__file__).parent / "results" / "repessilator_sbmlsim.omex"
+    omex_path = Path(__file__).parent / "results" / "repressilator_sbmlsim.omex"
     serializer = SEDMLSerializer(
         experiment=RepressilatorExperiment,
         working_dir=Path(__file__).parent / "results" / "omex",
@@ -166,5 +166,6 @@ if __name__ == "__main__":
         omex_path=omex_path
     )
 
-    # execute_sedml(path=omex_path, working_dir=Path(__file__).parent / "results")
+    execute_sedml(path=omex_path, working_dir=Path(__file__).parent / "results",
+                  output_path=Path(__file__).parent / "results" / "sbmlsim_omex")
     # run_repressilator_experiments(Path(__file__).parent / "results")

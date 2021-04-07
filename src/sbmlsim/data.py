@@ -48,8 +48,9 @@ class Data(object):
         self.index: str = index
         self.task_id: str = task
         self.dset_id: str = dataset
-        self.function = function
-        self.variables = variables
+        self.function: str = function
+        self.variables: Dict[str, 'Data'] = variables
+        self.parameters: Dict[str, float] = parameters
         self.unit: Optional[str] = None
         self._sid = sid
 
@@ -204,15 +205,17 @@ class Data(object):
             # evaluate with actual data
             astnode = mathml.formula_to_astnode(self.function)
             variables = {}
-            for k, v in self.variables.items():
+            for var_key, variable in self.variables.items():
                 # lookup via key
-                if isinstance(v, str):
-                    variables[k] = experiment._data[v].data
-                elif isinstance(v, Data):
-                    variables[k] = v.get_data(experiment=experiment)
+                if isinstance(variable, str):
+                    variables[var_key] = experiment._data[variable].data
+                elif isinstance(variable, Data):
+                    variables[var_key] = variable.get_data(experiment=experiment)
+            for par_key, par_value in self.parameters.items():
+                variables[par_key] = par_value
 
             x = mathml.evaluate(astnode=astnode, variables=variables)
-            self.unit = str(x.units)  # check if this is correct
+            self.unit = str(x.units)  # FIXME: check if this is correct
 
         # convert units to requested units
         if to_units is not None:

@@ -1,6 +1,6 @@
-"""
-Helper functions for evaluation of MathML expressions.
-Using sympy to evalutate the expressions.
+"""Helper functions for evaluation of MathML expressions.
+
+Using sympy to evaluate the expressions.
 """
 import logging
 from typing import Dict, Set, Tuple

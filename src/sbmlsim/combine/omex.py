@@ -175,9 +175,15 @@ class Omex:
         # create additional metadata if available
 
         # write all the entries
-        return cls.from_entries(
+        print("-" * 80)
+        print(omex_path)
+        print("-" * 80)
+        omex = cls.from_entries(
             omex_path=omex_path, entries=entries, working_dir=directory
         )
+        print("-" * 80)
+
+        return omex
 
     @classmethod
     def from_entries(
@@ -251,7 +257,7 @@ class Omex:
 
                 archive.addMetadata(location, omex_description)
 
-        archive.writeToFile(self.omex_path)
+        archive.writeToFile(str(self.omex_path))
         archive.cleanUp()
 
     def extract(self, output_dir: Path = None, method: str = "zip") -> None:

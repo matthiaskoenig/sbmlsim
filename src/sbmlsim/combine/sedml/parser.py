@@ -108,6 +108,8 @@ from pprint import pprint
 import roadrunner
 from pint import Quantity
 
+from sbmlsim.combine.mathml import formula_to_astnode
+from sbmlsim.combine.omex import Omex
 from sbmlsim.combine.sedml.data import DataDescriptionParser
 from sbmlsim.combine.sedml.kisao import is_supported_algorithm_for_simulation_type
 from sbmlsim.combine.sedml.task import Stack, TaskNode, TaskTree
@@ -287,6 +289,12 @@ class SEDMLSerializer:
         sedml_path = working_dir / sedml_filename
         libsedml.writeSedML(self.sed_doc, str(sedml_path))
 
+        # package in omex archive
+        if omex_path:
+            omex = Omex(omex_path=omex_path, working_dir=working_dir)
+            omex.from_directory(omex_path=omex_path, directory=working_dir)
+
+
     def _selection_lookup_table(self) -> Dict[str, Dict[str, SBMLModelTarget]]:
         """Lookup table for sbmlsim model selections."""
         d: Dict[str, Dict[str, SBMLModelTarget]] = {}
@@ -408,6 +416,24 @@ class SEDMLSerializer:
 
         Write experiment data in SedDocument.
         """
+
+        def sed_variable_from_data(sed_dg: libsedml.SedDataGenerator, data: Data, var_id: str) -> libsedml.SedVariable:
+            """Create sed_variable from given Data."""
+            task_id: str = data.task_id
+            task: Task = self.exp._tasks[task_id]
+            model_id: str = task.model_id
+
+            model_target: SBMLModelTarget = self.selection_lookup[model_id][data.index]
+            sed_variable: libsedml.SedVariable = sed_dg.createVariable()
+            sed_variable.setId(f"{did}__{var_id}")
+
+            sed_variable.setModelReference(task.model_id)
+            if model_target.sedml_target:
+                sed_variable.setTarget(model_target.sedml_target)
+            if model_target.sedml_symbol:
+                sed_variable.setSymbol(model_target.sedml_symbol)
+            return sed_variable
+
         did: str
         data: Data
         for did, data in self.exp._data.items():
@@ -418,18 +444,27 @@ class SEDMLSerializer:
             if data.is_dataset():
                 raise NotImplementedError("Dataset data generators")
             elif data.is_task():
-                task_id: str = data.task_id
-                task: Task = self.exp._tasks[task_id]
-                model_id: str = task.model_id
+                sed_variable = sed_variable_from_data(sed_dg, data=data, var_id=data.index)
+                formula = f"{sed_variable.getId()}"
+                # print("formula: ", formula)
+                math: libsedml.ASTNode = formula_to_astnode(formula)
+                sed_dg.setMath(math)
 
-                model_target: SBMLModelTarget = self.selection_lookup[model_id][data.index]
-                sed_variable: libsedml.SedVariable = sed_dg.createVariable()
-                sed_variable.setId(f"{did}__{data.task_id}__{data.index}")
-                sed_variable.setModelReference(task.model_id)
-                if model_target.sedml_target:
-                    sed_variable.setTarget(model_target.sedml_target)
-                if model_target.sedml_symbol:
-                    sed_variable.setSymbol(model_target.sedml_symbol)
+            elif data.is_function():
+                formula: str = data.function
+                # print("formula:", formula)
+                # print("variables:", data.variables)
+                math: libsedml.ASTNode = formula_to_astnode(formula)
+
+                for k, var_key in enumerate(data.variables):
+                    var_data = data.variables[var_key]
+                    sed_variable = sed_variable_from_data(sed_dg, data=var_data, var_id=var_key)
+                    math.renameSIdRefs(var_key, sed_variable.getId())
+                for par_key, par_value in data.parameters:
+                    # FIXME: implement & replace parameter ids in formula
+                    raise NotImplementedError("Parameters on variables not supported")
+
+                sed_dg.setMath(math)
 
 
 class SEDMLParser:
@@ -816,11 +851,18 @@ class SEDMLParser:
                 changes[target] = value
 
         mid = sed_model.getId()
+        language: str
+        if sed_model.isSetLanguage():
+            language = sed_model.getLanguage()
+        else:
+            logger.warning("No language attribute set on model, using SBML.")
+            language = "urn:sedml:language:sbml"
+
         model = AbstractModel(
             source=source,
             sid=mid,
             name=sed_model.getName(),
-            language=sed_model.getLanguage(),
+            language=language,
             language_type=None,
             base_path=self.working_dir,
             changes=changes,
