@@ -199,7 +199,7 @@ class Data(object):
 
             self.unit = xres.uinfo[self.index]
             # x = xres.dim_mean(self.index)
-            x = xres.uinfo.Q_(xres[self.index].values, self.unit)
+            x = xres[self.index].values * xres.uinfo.ureg(self.unit)
 
         elif self.dtype == Data.Types.FUNCTION:
             # evaluate with actual data

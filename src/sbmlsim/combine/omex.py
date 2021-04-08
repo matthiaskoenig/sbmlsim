@@ -91,7 +91,8 @@ class Omex:
     def __init__(self, omex_path: Path, working_dir: Path):
         """Create combine archive."""
         if not working_dir.exists():
-            raise IOError("Working directory does not exist: {working_dir}")
+            logger.warning(f"Creating working directory: {working_dir}")
+            working_dir.mkdir(parents=True, exist_ok=True)
 
         self.omex_path: Path = omex_path
         self.working_dir: Path = working_dir

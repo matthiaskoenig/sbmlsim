@@ -98,6 +98,8 @@
       "height": 5,
       "subplots": [
         {
+          "sid": null,
+          "name": null,
           "plot": {
             "sid": "plot0",
             "name": "Timecourse",
@@ -125,6 +127,7 @@
               "label_visible": true,
               "ticks_visible": true
             },
+            "yaxis_right": null,
             "legend": true,
             "facecolor": "#ffffffff",
             "title_visible": true,
@@ -136,27 +139,32 @@
                 "y": "task_model_tc__[S1]",
                 "xerr": null,
                 "yerr": null,
-                "yaxis": null,
+                "yaxis_position": null,
                 "style": {
                   "sid": null,
                   "name": null,
+                  "base_style": null,
                   "line": {
-                    "style": "SOLID",
-                    "color": "#1f77b4ff",
+                    "type": "SOLID",
+                    "color": null,
                     "thickness": 2.0
                   },
                   "marker": {
                     "size": null,
-                    "style": "NONE",
+                    "type": "NONE",
                     "fill": null,
                     "line_color": null,
                     "line_thickness": null
                   },
-                  "fill": null
+                  "fill": {
+                    "color": null,
+                    "second_color": null
+                  }
                 },
                 "order": 0
               }
-            ]
+            ],
+            "areas": []
           },
           "row": 1,
           "col": 1,

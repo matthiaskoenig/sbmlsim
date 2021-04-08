@@ -17,7 +17,7 @@
     - [ ] RepeatedTask
 - [x] data generators
 - [x] figures
-  - [ ] plot2d
+  - [x] plot2d
   - [ ] plot3d 
   - [x] styles
 - [ ] reports

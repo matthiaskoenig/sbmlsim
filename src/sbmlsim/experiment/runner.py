@@ -14,7 +14,9 @@ from typing import Dict, Iterable, List, Optional, Type, Union
 
 from sbmlsim.experiment import ExperimentResult, SimulationExperiment
 from sbmlsim.model import RoadrunnerSBMLModel
+from sbmlsim.report.experiment_report import ReportResults, ExperimentReport
 from sbmlsim.simulator import SimulatorSerial
+from sbmlsim.simulator.simulation_ray import SimulatorParallel
 from sbmlsim.units import UnitRegistry, Units, UnitsInformation
 from sbmlsim.utils import timeit
 
@@ -135,3 +137,33 @@ class ExperimentRunner(object):
             )
             exp_results.append(result)
         return exp_results
+
+
+def run_experiments(
+    experiments: Union[Type[SimulationExperiment], List[Type[SimulationExperiment]]],
+    output_path: Path,
+    base_path: Path = None,
+    data_path: Path = None,
+    parallel: bool = True
+) -> Path:
+    """Run simulation experiments."""
+    if not isinstance(experiments, (list, tuple)):
+        experiments = [experiments]
+    simulator = SimulatorParallel() if parallel else SimulatorSerial()
+
+    runner = ExperimentRunner(
+        experiments,
+        simulator=simulator,
+        data_path=data_path,
+        base_path=base_path,
+    )
+    results = runner.run_experiments(
+        output_path=output_path,
+        show_figures=True,
+    )
+    report_results = ReportResults()
+    for exp_result in results:
+        report_results.add_experiment_result(exp_result=exp_result)
+
+    report = ExperimentReport(report_results)
+    report.create_report(output_path=output_path)

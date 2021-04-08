@@ -7,7 +7,8 @@ from typing import Dict, Union, Type
 from sbmlsim.combine.sedml.parser import SEDMLSerializer
 from sbmlsim.data import Data
 from sbmlsim.examples.sedml.execute_sedml import execute_sedml
-from sbmlsim.experiment import ExperimentRunner, SimulationExperiment
+from sbmlsim.experiment import SimulationExperiment
+from sbmlsim.experiment.runner import run_experiments
 from sbmlsim.model import AbstractModel
 from sbmlsim.plot import Axis, Figure, Plot
 from sbmlsim.result.report import Report
@@ -142,27 +143,10 @@ class RepressilatorExperiment(SimulationExperiment):
         return {}
 
 
-def run_experiment(experiment: Type[SimulationExperiment], output_path: Path) -> Path:
-    """Run the repressilator simulation experiments."""
-    base_path = Path(__file__).parent
-    data_path = base_path
-
-    runner = ExperimentRunner(
-        [experiment],
-        simulator=SimulatorSerial(),  # SimulatorParallel(),
-        data_path=data_path,
-        base_path=base_path,
-    )
-    _results = runner.run_experiments(
-        output_path=output_path,
-        show_figures=True,
-    )
-
-
 if __name__ == "__main__":
-    # run sbmlsim experiment (native)
-    run_experiment(
-        experiment=RepressilatorExperiment,
+    # run sbmlsim experiment
+    run_experiments(
+        experiments=RepressilatorExperiment,
         output_path=Path(__file__).parent / "results" / "sbmlsim"
     )
 

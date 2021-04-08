@@ -916,6 +916,7 @@ class SEDMLParser:
             if sed_output.getTypeCode() in [libsedml.SEDML_OUTPUT_PLOT2D, libsedml.SEDML_OUTPUT_PLOT3D]:
                 single_plots.add(sed_output.getId())
 
+        print(single_plots)
         for sed_output in sed_doc.getListOfOutputs():
             type_code = sed_output.getTypeCode()
             if type_code == libsedml.SEDML_FIGURE:
@@ -924,6 +925,7 @@ class SEDMLParser:
                 sed_subplot: libsedml.SedSubPlot
                 for sed_subplot in sed_figure.getListOfSubPlots():
                     sed_plot_id = sed_subplot.getPlot()
+                    print(sed_plot_id, single_plots)
                     single_plots.remove(sed_plot_id)
 
         # render remaining plots (without figure)

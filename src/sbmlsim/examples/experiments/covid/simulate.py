@@ -3,41 +3,45 @@ Run COVID-19 model experiments.
 """
 from pathlib import Path
 
+from sbmlsim.combine.sedml.parser import SEDMLSerializer
+from sbmlsim.combine.sedml.runner import execute_sedml
 from sbmlsim.examples.experiments.covid.experiments import (
     Bertozzi2020,
     Carcione2020,
     Cuadros2020,
 )
-from sbmlsim.experiment import ExperimentRunner
-from sbmlsim.report.experiment_report import ExperimentReport, ReportResults
-from sbmlsim.simulator.simulation_ray import SimulatorParallel
-
-
-def run_covid_experiments(output_path: Path) -> None:
-    """Run covid simulation experiments."""
-    base_path = Path(__file__).parent
-    runner = ExperimentRunner(
-        [
-            Cuadros2020,
-            # Bertozzi2020,
-            Carcione2020,
-        ],
-        simulator=SimulatorParallel(),
-        base_path=base_path,
-        data_path=base_path,
-    )
-    results = runner.run_experiments(
-        output_path=output_path,
-        show_figures=True,
-        reduced_selections=False,
-    )
-    report_results = ReportResults()
-    for exp_result in results:
-        report_results.add_experiment_result(exp_result=exp_result)
-
-    report = ExperimentReport(report_results)
-    report.create_report(output_path=output_path)
+from sbmlsim.experiment.runner import run_experiments
 
 
 if __name__ == "__main__":
-    run_covid_experiments(Path(__file__).parent / "results")
+    experiments = [
+        Bertozzi2020,
+        Cuadros2020,
+        Carcione2020,
+    ]
+    base_path = Path(__file__).parent
+    run_experiments(
+        experiments=experiments,
+        output_path=base_path / "results" / "sbmlsim",
+        data_path=base_path,
+        base_path=base_path,
+        parallel=True,
+    )
+
+    for experiment in experiments:
+        exp_id = experiment.__name__
+        # serialize to SED-ML/OMEX archive
+        omex_path = Path(__file__).parent / "results" / f"{exp_id}.omex"
+        serializer = SEDMLSerializer(
+            experiment=experiment,
+            working_dir=Path(__file__).parent / "results" / "omex",
+            sedml_filename=f"{exp_id}_sedml.xml",
+            omex_path=omex_path
+        )
+
+        # execute OMEX archive
+        execute_sedml(
+            path=omex_path,
+            working_dir=Path(__file__).parent / "results" / "sbmlsim_omex",
+            output_path=Path(__file__).parent / "results" / "sbmlsim_omex"
+        )

@@ -1,7 +1,7 @@
 {
   "experiment_id": "RepressilatorExperiment",
-  "base_path": "/home/mkoenig/git/sbmlsim/src/sbmlsim/examples/experiments/repressilator",
-  "data_path": "[PosixPath('/home/mkoenig/git/sbmlsim/src/sbmlsim/examples/experiments/repressilator')]",
+  "base_path": null,
+  "data_path": null,
   "models": {
     "model1": {
       "sid": null,

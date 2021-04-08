@@ -57,7 +57,7 @@ class Cuadros2020(SimulationExperiment):
              ]
         )
 
-        fig_1 = Figure(self, sid="plot_1", name=f"{self.sid} (plot_1)")
+        fig_1 = Figure(self, sid="fig_plot_1", name=f"{self.sid} (plot_1)")
         plots = fig_1.create_plots(Axis("time", unit=unit_time), legend=True)
         plots[0].set_yaxis("Total_cumulative_cases", unit_y)
 
@@ -71,7 +71,7 @@ class Cuadros2020(SimulationExperiment):
             linewidth=2,
         )
 
-        fig_3 = Figure(self, sid="plot_3", name=f"{self.sid} (plot_3)")
+        fig_3 = Figure(self, sid="fig_plot_3", name=f"{self.sid} (plot_3)")
         plots = fig_3.create_plots(Axis("time", unit=unit_time), legend=True)
         plots[0].set_yaxis("Total_deaths", unit_y)
 

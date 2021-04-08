@@ -1134,7 +1134,7 @@ class Plot(BasePlotObject):
             label=label,
             type=type,
             style=style,
-            yaxis_position=yaxis_position
+            yaxis_position=yaxis_position,
             **kwargs,
         )
 
@@ -1264,7 +1264,7 @@ class Figure(BasePlotObject):
             xax = deepcopy(xaxis) if xaxis else None
             yax = deepcopy(yaxis) if yaxis else None
             # create plot
-            p = Plot(sid=f"plot{k}", xaxis=xax, yaxis=yax, legend=legend)
+            p = Plot(sid=f"{self.sid}__plot{k}", xaxis=xax, yaxis=yax, legend=legend)
             p.set_figure = self
             plots.append(p)
         self.add_plots(plots, copy_plots=False)
