@@ -801,11 +801,7 @@ class Plot(BasePlotObject):
         self.legend: bool = legend
         self.facecolor: ColorType = facecolor
         self.title_visible: bool = title_visible
-        if not height:
-            height = Figure.panel_height
         self.height = height
-        if not width:
-            width = Figure.panel_width
         self.width = width
 
     def __repr__(self) -> str:
@@ -1300,9 +1296,9 @@ class Figure(BasePlotObject):
                              f"'{col + col_span} > {self.num_cols}'")
 
         if self.height and not plot.height:
-            plot.height = self.height/self.num_rows * (row + row_span - 1)
+            plot.height = self.height/self.num_rows * row_span
         if self.width and not plot.width:
-            plot.width = self.width/self.num_cols * (col + col_span - 1)
+            plot.width = self.width/self.num_cols * col_span
 
         self.subplots.append(
             SubPlot(plot=plot, row=row, col=col, row_span=row_span, col_span=col_span)

@@ -473,7 +473,6 @@ class SEDMLSerializer:
         figure: Figure
         task: Task
         for fig_id, figure in self.exp._figures.items():
-
             sed_figure: libsedml.SedFigure = self.sed_doc.createFigure()
             sed_figure.setId(figure.sid)
             if figure.name:
@@ -500,9 +499,20 @@ class SEDMLSerializer:
                     sed_plot2d.setId(plot.sid)
                 if plot.name:
                     sed_plot2d.setName(plot.name)
+
+                # legend
                 sed_plot2d.setLegend(plot.legend)
-                sed_plot2d.setHeight(plot.height)
-                sed_plot2d.setWidth(plot.width)
+
+                # handle height and width
+                plot_height: float = plot.height
+                if not plot_height:
+                    plot_height = figure.height/figure.num_rows * subplot.row_span
+                sed_plot2d.setHeight(plot_height)
+
+                plot_width: float = plot.width
+                if not plot_width:
+                    plot_width = figure.width / figure.num_cols * subplot.col_span
+                sed_plot2d.setWidth(plot_width)
 
                 # axis
                 if plot.xaxis:
@@ -1227,6 +1237,8 @@ class SEDMLParser:
             num_cols=sed_figure.getNumCols() if sed_figure.isSetNumCols() else 1,
         )
 
+        panel_height = 0.0
+        panel_width = 0.0
         sed_subplot: libsedml.SedSubPlot
         for sed_subplot in sed_figure.getListOfSubPlots():
             sed_output = self.sed_doc.getOutput(sed_subplot.getPlot())
@@ -1251,10 +1263,24 @@ class SEDMLParser:
             row_span = sed_subplot.getRowSpan() if sed_subplot.isSetRowSpan() else 1
             col_span = sed_subplot.getColSpan() if sed_subplot.isSetColSpan() else 1
 
+            if not panel_height and plot.height:
+                panel_height = plot.height/sed_subplot.getRowSpan()
+            if not panel_width and plot.width:
+                panel_width = plot.width/sed_subplot.getColSpan()
+
             # add subplot
             figure.subplots.append(
                 SubPlot(plot=plot, row=row, col=col, row_span=row_span, col_span=col_span)
             )
+
+        # figure height and width from panels
+        if not panel_height:
+            panel_height = Figure.panel_height
+        figure.height = figure.num_rows * panel_height
+
+        if not panel_width:
+            panel_width = Figure.panel_width
+        figure.width = figure.num_cols * panel_width
 
         return figure
 

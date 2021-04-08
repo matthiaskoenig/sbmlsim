@@ -135,7 +135,7 @@
         <subPlot plot="plot2" row="2" col="1" rowSpan="1" colSpan="2"/>
       </listOfSubPlots>
     </figure>
-    <plot2D id="plot0" name="Timecourse" legend="true" height="5" width="7">
+    <plot2D id="plot0" name="Timecourse" legend="true" height="5" width="5">
       <xAxis id="plot0_xaxis" name="time [second]" type="linear"/>
       <yAxis id="plot0_yaxis" name="data [-]" type="linear"/>
       <listOfCurves>
@@ -144,7 +144,7 @@
         <curve id="plot0_curve2" name="PZ" xDataReference="task_model1_tc__time" yDataReference="task_model1_tc__PZ"/>
       </listOfCurves>
     </plot2D>
-    <plot2D id="plot1" name="Preprocessing" legend="true" height="5" width="7">
+    <plot2D id="plot1" name="Preprocessing" legend="true" height="5" width="5">
       <xAxis id="plot1_xaxis" name="time [second]" type="linear"/>
       <yAxis id="plot1_yaxis" name="data [-]" type="linear"/>
       <listOfCurves>
@@ -153,7 +153,7 @@
         <curve id="plot1_curve2" name="PZ" xDataReference="task_model2_tc__time" yDataReference="task_model2_tc__PZ"/>
       </listOfCurves>
     </plot2D>
-    <plot2D id="plot2" name="Postprocessing" legend="true" height="5" width="7">
+    <plot2D id="plot2" name="Postprocessing" legend="true" height="5" width="10">
       <xAxis id="plot2_xaxis" name="data [-]" type="linear"/>
       <yAxis id="plot2_yaxis" name="data [-]" type="linear"/>
       <listOfCurves>
