@@ -1,5 +1,5 @@
 """
-Base classes for storing plotting information.
+Classes for storing plotting information.
 
 The general workflow of generating plotting information is the following.
 
@@ -7,6 +7,11 @@ The general workflow of generating plotting information is the following.
     i.e., how from the data plots can be generated.
 
 
+Working with multidimensional data !
+Additional settings are required which allow to define how things
+        are plotted.
+        E.g. over which dimensions should an error be calculated and which
+        dimensions should be plotted individually.
 """
 import copy
 import logging
@@ -80,7 +85,7 @@ class CurveType(Enum):
     HORIZONTALBARSTACKED = 5
 
 
-class ColorType(object):
+class ColorType:
     def __init__(self, color: str):
         if color is None:
             raise ValueError("color cannot be NoneType")
@@ -129,7 +134,7 @@ class ColorType(object):
 
 
 @dataclass
-class Line(object):
+class Line:
     type: LineType = LineType.SOLID
     color: ColorType = None
     thickness: float = 1.0
@@ -143,7 +148,7 @@ class Line(object):
 
 
 @dataclass
-class Marker(object):
+class Marker:
     size: float = 6.0
     type: MarkerType = MarkerType.SQUARE
     fill: ColorType = None
@@ -161,7 +166,7 @@ class Marker(object):
 
 
 @dataclass
-class Fill(object):
+class Fill:
     color: ColorType = None
     second_color: ColorType = None
 
@@ -565,10 +570,10 @@ class Curve(AbstractCurve):
         self,
         x: Data,
         y: Data,
+        sid=None,
+        name=None,
         xerr: Data = None,
         yerr: Data = None,
-        single_lines: bool = False,
-        dim_reductions: List[str] = None,
         order=None,
         type: CurveType = CurveType.POINTS,
         style: Style = None,
@@ -576,8 +581,8 @@ class Curve(AbstractCurve):
         **kwargs,
     ):
         super(Curve, self).__init__(
-            sid=None,
-            name=None,
+            sid=sid,
+            name=name if name else y.name,
             x=x,
             order=order,
             style=style,
@@ -589,15 +594,8 @@ class Curve(AbstractCurve):
         self.xerr: Data = xerr
         self.yerr: Data = yerr
 
-        self.single_lines = single_lines
-        self.dim_reductions = dim_reductions
-
         if "label" in kwargs:
             self.name = kwargs["label"]
-        if "sid" in kwargs:
-            self.sid = kwargs["sid"]
-        if "name" in kwargs:
-            self.name = kwargs["name"]
 
         self.type: CurveType = type
 
@@ -926,16 +924,17 @@ class Plot(BasePlotObject):
 
     @yaxis_right.setter
     def yaxis_right(self, value: Axis) -> None:
+        """Set right yaxis."""
         self.set_yaxis_right(label=value)
 
-    def set_yaxis_right(self, label: Union[str, Axis], unit: str = None, **kwargs):
+    def set_yaxis_right(self, label: Union[str, Axis], unit: str = None, **kwargs) -> None:
         """Set axis with all axes attributes.
 
         All argument of Axis are supported.
 
-        :param label:
-        :param unit:
-        :keyword label_visible:
+        :param label: label of Axis
+        :param unit: unit of the Axis (added to label)
+        :keyword label_visible: boolean flag to make the axis visible or not.
         :param kwargs:
         :return:
         """
@@ -1013,26 +1012,19 @@ class Plot(BasePlotObject):
         xerr: Data = None,
         yerr: Data = None,
         type: CurveType = CurveType.POINTS,
-        single_lines: bool = False,
-        dim_reductions: List[str] = None,
+        style: Style = None,
+        yaxis_position: YAxisPosition = None,
         **kwargs,
     ):
-        """Adds curve to the plot.
-
-        Data can be high-dimensional data from a scan.
-        Additional settings are required which allow to define how things
-        are plotted.
-        E.g. over which dimensions should an error be calculated and which
-        dimensions should be plotted individually.
-        """
+        """Create curve and add to plot."""
         curve = Curve(
             x=x,
             y=y,
             xerr=xerr,
             yerr=yerr,
-            single_lines=single_lines,
-            dim_reductions=dim_reductions,
             type=type,
+            style=style,
+            yaxis_position=yaxis_position,
             **kwargs
         )
         self.add_curve(curve)
@@ -1047,11 +1039,30 @@ class Plot(BasePlotObject):
         dataset: str = None,
         task: str = None,
         label: str = "__yid__",
-        single_lines=False,
-        dim_reduction=None,
+        type: CurveType = CurveType.POINTS,
+        style: Style = None,
+        yaxis_position: YAxisPosition = None,
         **kwargs,
     ):
-        """Wrapper around plotting."""
+        """Add a data curve to the plot.
+
+        Styling of curve is based on the provided style and matplotlib
+        kwargs.
+
+        :param xid: index of x data
+        :param yid: index of y data
+        :param yid_sd: index of y SD data
+        :param yid_se: index of y SE data
+        :param count: count for curve (number of subjects)
+        :param dataset: dataset id
+        :param task: task id
+        :param label: label for curve
+        :param type: type of curve (default points)
+        :param style: style for curve
+        :param yaxis_position: position of yaxis for this curve
+        :param kwargs: matplotlib styling kwargs
+        :return:
+        """
         if yid_sd and yid_se:
             raise ValueError("Set either 'yid_sd' or 'yid_se', not both.")
         if dataset is not None and task is not None:
@@ -1066,7 +1077,7 @@ class Plot(BasePlotObject):
                 "a curve use 'label=None' instead."
             )
             label = None
-        if label == "__yid__":
+        elif label == "__yid__":
             logger.warning(
                 "No label provided on curve, using default label 'yid'. "
                 "To not plot a label use 'label=None'"
@@ -1115,16 +1126,15 @@ class Plot(BasePlotObject):
 
             label = f"{label}{yerr_label}{count_label}"
 
-        # FIXME: here the data is not resolved yet, it is just the definition
-        # Necessary to define how the scans should be plotted, i.e.
-        # which curves should be generated
         self.curve(
             x=Data(xid, dataset=dataset, task=task),
             y=Data(yid, dataset=dataset, task=task),
+            xerr=None,
             yerr=yerr,
             label=label,
-            single_lines=single_lines,
-            dim_reduction=dim_reduction,
+            type=type,
+            style=style,
+            yaxis_position=yaxis_position
             **kwargs,
         )
 

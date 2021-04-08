@@ -16,13 +16,14 @@
     - [x] Task
     - [ ] RepeatedTask
 - [x] data generators
-- [~] figures
-  - [ ] styles
+- [x] figures
+  - [ ] plot2d
+  - [ ] plot3d 
+  - [x] styles
 - [ ] reports
 
 # Parsing (SED-ML -> SimulationExperiment)
 - [ ] datasets !
-
 
 ## Plot2D
 - [x] support height and width;
@@ -43,8 +44,6 @@
 - [ ] support figure caption via notes (<notes><p xmlns="xhtml">Figure 1 - Example for figure with text legend and sub-plots.</p></notes>)
 
 
-## Altair serialization
-
 # Reports
 - [ ] reports
 # Repeated Tasks
@@ -58,3 +57,5 @@
 - [ ] use surface.name as label in legend
 
 # Parameter fitting
+
+# Altair serialization

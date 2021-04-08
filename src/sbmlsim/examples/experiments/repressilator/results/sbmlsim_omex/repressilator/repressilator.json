@@ -256,23 +256,23 @@
                 "yerr": null,
                 "yaxis_position": null,
                 "style": {
-                  "sid": null,
+                  "sid": "style_plot0_curve0",
                   "name": null,
                   "base_style": null,
                   "line": {
                     "type": "SOLID",
-                    "color": null,
-                    "thickness": 1.0
+                    "color": "#d62728ff",
+                    "thickness": 2.0
                   },
                   "marker": {
-                    "size": 6.0,
-                    "type": "SQUARE",
-                    "fill": null,
+                    "size": null,
+                    "type": "NONE",
+                    "fill": "#d62728ff",
                     "line_color": null,
-                    "line_thickness": 1.0
+                    "line_thickness": null
                   },
                   "fill": {
-                    "color": null,
+                    "color": "#d62728ff",
                     "second_color": null
                   }
                 },
@@ -289,23 +289,23 @@
                 "yerr": null,
                 "yaxis_position": null,
                 "style": {
-                  "sid": null,
+                  "sid": "style_plot0_curve1",
                   "name": null,
                   "base_style": null,
                   "line": {
                     "type": "SOLID",
-                    "color": null,
-                    "thickness": 1.0
+                    "color": "#2ca02cff",
+                    "thickness": 2.0
                   },
                   "marker": {
-                    "size": 6.0,
-                    "type": "SQUARE",
-                    "fill": null,
+                    "size": null,
+                    "type": "NONE",
+                    "fill": "#2ca02cff",
                     "line_color": null,
-                    "line_thickness": 1.0
+                    "line_thickness": null
                   },
                   "fill": {
-                    "color": null,
+                    "color": "#2ca02cff",
                     "second_color": null
                   }
                 },
@@ -322,23 +322,23 @@
                 "yerr": null,
                 "yaxis_position": null,
                 "style": {
-                  "sid": null,
+                  "sid": "style_plot0_curve2",
                   "name": null,
                   "base_style": null,
                   "line": {
                     "type": "SOLID",
-                    "color": null,
-                    "thickness": 1.0
+                    "color": "#1f77b4ff",
+                    "thickness": 2.0
                   },
                   "marker": {
-                    "size": 6.0,
-                    "type": "SQUARE",
-                    "fill": null,
+                    "size": null,
+                    "type": "NONE",
+                    "fill": "#1f77b4ff",
                     "line_color": null,
-                    "line_thickness": 1.0
+                    "line_thickness": null
                   },
                   "fill": {
-                    "color": null,
+                    "color": "#1f77b4ff",
                     "second_color": null
                   }
                 },
@@ -398,23 +398,23 @@
                 "yerr": null,
                 "yaxis_position": null,
                 "style": {
-                  "sid": null,
+                  "sid": "style_plot1_curve0",
                   "name": null,
                   "base_style": null,
                   "line": {
                     "type": "SOLID",
-                    "color": null,
-                    "thickness": 1.0
+                    "color": "#d62728ff",
+                    "thickness": 2.0
                   },
                   "marker": {
-                    "size": 6.0,
-                    "type": "SQUARE",
-                    "fill": null,
+                    "size": null,
+                    "type": "NONE",
+                    "fill": "#d62728ff",
                     "line_color": null,
-                    "line_thickness": 1.0
+                    "line_thickness": null
                   },
                   "fill": {
-                    "color": null,
+                    "color": "#d62728ff",
                     "second_color": null
                   }
                 },
@@ -431,23 +431,23 @@
                 "yerr": null,
                 "yaxis_position": null,
                 "style": {
-                  "sid": null,
+                  "sid": "style_plot1_curve1",
                   "name": null,
                   "base_style": null,
                   "line": {
                     "type": "SOLID",
-                    "color": null,
-                    "thickness": 1.0
+                    "color": "#2ca02cff",
+                    "thickness": 2.0
                   },
                   "marker": {
-                    "size": 6.0,
-                    "type": "SQUARE",
-                    "fill": null,
+                    "size": null,
+                    "type": "NONE",
+                    "fill": "#2ca02cff",
                     "line_color": null,
-                    "line_thickness": 1.0
+                    "line_thickness": null
                   },
                   "fill": {
-                    "color": null,
+                    "color": "#2ca02cff",
                     "second_color": null
                   }
                 },
@@ -464,23 +464,23 @@
                 "yerr": null,
                 "yaxis_position": null,
                 "style": {
-                  "sid": null,
+                  "sid": "style_plot1_curve2",
                   "name": null,
                   "base_style": null,
                   "line": {
                     "type": "SOLID",
-                    "color": null,
-                    "thickness": 1.0
+                    "color": "#1f77b4ff",
+                    "thickness": 2.0
                   },
                   "marker": {
-                    "size": 6.0,
-                    "type": "SQUARE",
-                    "fill": null,
+                    "size": null,
+                    "type": "NONE",
+                    "fill": "#1f77b4ff",
                     "line_color": null,
-                    "line_thickness": 1.0
+                    "line_thickness": null
                   },
                   "fill": {
-                    "color": null,
+                    "color": "#1f77b4ff",
                     "second_color": null
                   }
                 },
@@ -540,23 +540,23 @@
                 "yerr": null,
                 "yaxis_position": null,
                 "style": {
-                  "sid": null,
+                  "sid": "style_plot2_curve0",
                   "name": null,
                   "base_style": null,
                   "line": {
                     "type": "SOLID",
-                    "color": null,
-                    "thickness": 1.0
+                    "color": "#ff7f0eff",
+                    "thickness": 2.0
                   },
                   "marker": {
-                    "size": 6.0,
-                    "type": "SQUARE",
-                    "fill": null,
+                    "size": null,
+                    "type": "NONE",
+                    "fill": "#ff7f0eff",
                     "line_color": null,
-                    "line_thickness": 1.0
+                    "line_thickness": null
                   },
                   "fill": {
-                    "color": null,
+                    "color": "#ff7f0eff",
                     "second_color": null
                   }
                 },
@@ -573,23 +573,23 @@
                 "yerr": null,
                 "yaxis_position": null,
                 "style": {
-                  "sid": null,
+                  "sid": "style_plot2_curve1",
                   "name": null,
                   "base_style": null,
                   "line": {
                     "type": "SOLID",
-                    "color": null,
-                    "thickness": 1.0
+                    "color": "#8c564bff",
+                    "thickness": 2.0
                   },
                   "marker": {
-                    "size": 6.0,
-                    "type": "SQUARE",
-                    "fill": null,
+                    "size": null,
+                    "type": "NONE",
+                    "fill": "#8c564bff",
                     "line_color": null,
-                    "line_thickness": 1.0
+                    "line_thickness": null
                   },
                   "fill": {
-                    "color": null,
+                    "color": "#8c564bff",
                     "second_color": null
                   }
                 },
@@ -606,23 +606,23 @@
                 "yerr": null,
                 "yaxis_position": null,
                 "style": {
-                  "sid": null,
+                  "sid": "style_plot2_curve2",
                   "name": null,
                   "base_style": null,
                   "line": {
                     "type": "SOLID",
-                    "color": null,
-                    "thickness": 1.0
+                    "color": "#9467bdff",
+                    "thickness": 2.0
                   },
                   "marker": {
-                    "size": 6.0,
-                    "type": "SQUARE",
-                    "fill": null,
+                    "size": null,
+                    "type": "NONE",
+                    "fill": "#9467bdff",
                     "line_color": null,
-                    "line_thickness": 1.0
+                    "line_thickness": null
                   },
                   "fill": {
-                    "color": null,
+                    "color": "#9467bdff",
                     "second_color": null
                   }
                 },

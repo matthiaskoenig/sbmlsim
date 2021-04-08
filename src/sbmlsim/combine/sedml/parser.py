@@ -102,7 +102,8 @@ from sbmlsim.model import RoadrunnerSBMLModel
 from sbmlsim.model.model import AbstractModel
 from sbmlsim.plot import Figure, Plot, Axis, Curve
 from sbmlsim.plot.plotting import Style, Line, LineType, ColorType, Marker, \
-    MarkerType, Fill, SubPlot, AxisScale, CurveType, YAxisPosition, ShadedArea
+    MarkerType, Fill, SubPlot, AxisScale, CurveType, YAxisPosition, ShadedArea, \
+    AbstractCurve
 from sbmlsim.simulation import ScanSim, TimecourseSim, Timecourse, AbstractSim
 from sbmlsim.task import Task
 from sbmlsim.units import UnitRegistry, UnitsInformation
@@ -465,10 +466,42 @@ class SEDMLSerializer:
                 sed_dg.setMath(math)
 
     def serialize_figures(self):
-        """Serialize figures.
+        """Serialize sbmlsim.Figures to libsedml.SedFigures.
 
         Write experiment figures in SedDocument.
         """
+
+        def set_abstract_curve_attributes(
+            acurve: AbstractCurve,
+            sed_acurve: libsedml.SedAbstractCurve
+        ) -> None:
+            """Set abstract curve attributes."""
+            if acurve.sid is not None:
+                sed_acurve.setId(acurve.sid)
+            if curve.name is not None:
+                sed_acurve.setName(acurve.name)
+            if curve.x is not None:
+                sed_acurve.setXDataReference(
+                    self.datagenerator_id_from_data(acurve.x)
+                )
+            if acurve.order is not None:
+                sed_acurve.setOrder(acurve.order)
+            if acurve.yaxis_position is not None:
+                if acurve.yaxis_position == YAxisPosition.LEFT:
+                    sed_acurve.setYAxis("left")
+                elif acurve.yaxis_position == YAxisPosition.Right:
+                    sed_acurve.setYAxis("right")
+            if acurve.style is not None:
+                if acurve.style.sid is None:
+                    acurve.style.sid = f"style_{sed_acurve.getId()}"
+
+                style_id: str = acurve.style.sid
+                sed_style: libsedml.SedStyle = self.sed_doc.getStyle(style_id)
+                if sed_style is None:
+                    sed_style = self.sed_doc.createStyle()
+                    self.serialize_style(acurve.style, sed_style)
+                sed_acurve.setStyle(sed_style.getId())
+
         fig_id: str
         figure: Figure
         task: Task
@@ -526,35 +559,27 @@ class SEDMLSerializer:
                     self.serialize_axis(plot.yaxis_right, sed_yaxis_right)
 
                 # curves
-                # FIXME: order, style, yAxis
                 for curve in plot.curves:
                     sed_curve: libsedml.SedCurve = sed_plot2d.createCurve()
-                    if curve.sid:
-                        sed_curve.setId(curve.sid)
-                    if curve.name:
-                        sed_curve.setName(curve.name)
-                    if curve.x:
-                        sed_curve.setXDataReference(
-                            self.datagenerator_id_from_data(curve.x)
-                        )
-                    if curve.y:
+                    set_abstract_curve_attributes(acurve=curve, sed_acurve=sed_curve)
+                    if curve.y is not None:
                         sed_curve.setYDataReference(
                             self.datagenerator_id_from_data(curve.y)
                         )
                     # FIXME: assymetrical errors
-                    if curve.xerr:
+                    if curve.xerr is not None:
                         dg_id_xerr = self.datagenerator_id_from_data(curve.xerr)
                         sed_curve.setXErrorUpper(dg_id_xerr)
                         sed_curve.setXErrorLower(dg_id_xerr)
-                    if curve.yerr:
+                    if curve.yerr is not None:
                         dg_id_yerr = self.datagenerator_id_from_data(curve.yerr)
                         sed_curve.setYErrorUpper(dg_id_yerr)
                         sed_curve.setYErrorLower(dg_id_yerr)
 
                 # shaded areas
-                # FIXME: order, style, yAxis
                 for area in plot.areas:
                     sed_area: libsedml.SedShadedArea = sed_plot2d.createShadedArea()
+                    set_abstract_curve_attributes(acurve=area, sed_acurve=sed_area)
                     if area.yfrom:
                         sed_area.setYDataReferenceFrom(
                             self.datagenerator_id_from_data(area.yfrom)
@@ -566,9 +591,8 @@ class SEDMLSerializer:
 
                 sed_subplot.setPlot(sed_plot2d.getId())
 
-    @classmethod
-    def serialize_axis(cls, axis: Axis, sed_axis: libsedml.SedAxis) -> None:
-        """Serialize Axis object attributes to SEDAxis"""
+    def serialize_axis(self, axis: Axis, sed_axis: libsedml.SedAxis) -> None:
+        """Serialize sbmlsim.Axis to libsedml.SEDAxis."""
         if axis.sid:
             sed_axis.setId(axis.sid)
         if axis.name:
@@ -583,17 +607,100 @@ class SEDMLSerializer:
             sed_axis.setMax(axis.max)
         if axis.grid:
             sed_axis.setGrid(axis.grid)
-        if axis.style:
-            # FIXME: reuse styles
-            # FIXME: parse styles
-            pass
+        if axis.style is not None:
+            if not axis.style.sid:
+                axis.style.sid = f"style_{axis.sid}"
+            sed_style: libsedml.SedStyle = self.sed_doc.getStyle(axis.style.id)
+            if sed_style is None:
+                # style does not yet exist, parse style
+                sed_style = self.sed_doc.createStyle()
+                self.serialize_style(axis.style, sed_style)
+            sed_axis.setStyle(sed_style.getId())
 
-    @classmethod
     def serialize_style(self, style: Style, sed_style: libsedml.SedStyle) -> None:
-        # FIXME: implement
-        pass
+        """Serialize sbmlsim.Style to libsedml.Style."""
+        sed_style.setId(style.sid)
+        if style.name is not None:
+            sed_style.setName(style.name)
+        if style.base_style is not None:
+            sed_basestyle: libsedml.SedStyle = self.sed_doc.getStyle(style.base_style.sid)
+            if sed_basestyle is None:
+                sed_basestyle = self.sed_doc.createStyle()
+                self.serialize_style(style.base_style, sed_basestyle)
+            sed_style.setBaseStyle(sed_basestyle.getId())
+        if style.line is not None:
+            line = style.line
+            sed_line: libsedml.SedLine = sed_style.createLineStyle()
+            if style.line.color is not None:
+                sed_line.setColor(line.color.color)
+            if line.type:
+                line_type = line.type
+                if line_type == LineType.NONE:
+                    sed_line_type = libsedml.SEDML_LINETYPE_NONE
+                elif line_type == LineType.SOLID:
+                    sed_line_type = libsedml.SEDML_LINETYPE_SOLID
+                elif line_type == LineType.DASH:
+                    sed_line_type = libsedml.SEDML_LINETYPE_DASH
+                elif line_type == LineType.DOT:
+                    sed_line_type = libsedml.SEDML_LINETYPE_DOT
+                elif line_type == LineType.DASHDOT:
+                    sed_line_type = libsedml.SEDML_LINETYPE_DASHDOT
+                elif line_type == LineType.DASHDOTDOT:
+                    sed_line_type = libsedml.SEDML_LINETYPE_DASHDOTDOT
+                sed_line.setType(sed_line_type)
+            if line.thickness is not None:
+                sed_line.setThickness(line.thickness)
 
+        if style.marker is not None:
+            marker = style.marker
+            sed_marker: libsedml.SedMarker = sed_style.createMarkerStyle()
+            if marker.type:
+                marker_type = marker.type
+                if marker_type == MarkerType.NONE:
+                    sed_marker_type = libsedml.SEDML_MARKERTYPE_NONE
+                elif marker_type == MarkerType.SQUARE:
+                    sed_marker_type = libsedml.SEDML_MARKERTYPE_SQUARE
+                elif marker_type == MarkerType.CIRCLE:
+                    sed_marker_type = libsedml.SEDML_MARKERTYPE_CIRCLE
+                elif marker_type == MarkerType.DIAMOND:
+                    sed_marker_type = libsedml.SEDML_MARKERTYPE_DIAMOND
+                elif marker_type == MarkerType.XCROSS:
+                    sed_marker_type = libsedml.SEDML_MARKERTYPE_XCROSS
+                elif marker_type == MarkerType.PLUS:
+                    sed_marker_type = libsedml.SEDML_MARKERTYPE_PLUS
+                elif marker_type == MarkerType.PLUS:
+                    sed_marker_type = libsedml.SEDML_MARKERTYPE_PLUS
+                elif marker_type == MarkerType.STAR:
+                    sed_marker_type = libsedml.SEDML_MARKERTYPE_STAR
+                elif marker_type == MarkerType.TRIANGLEUP:
+                    sed_marker_type = libsedml.SEDML_MARKERTYPE_TRIANGLEUP
+                elif marker_type == MarkerType.TRIANGLEDOWN:
+                    sed_marker_type = libsedml.SEDML_MARKERTYPE_TRIANGLEDOWN
+                elif marker_type == MarkerType.TRIANGLELEFT:
+                    sed_marker_type = libsedml.SEDML_MARKERTYPE_TRIANGLELEFT
+                elif marker_type == MarkerType.TRIANGLERIGHT:
+                    sed_marker_type = libsedml.SEDML_MARKERTYPE_TRIANGLERIGHT
+                elif marker_type == MarkerType.HDASH:
+                    sed_marker_type = libsedml.SEDML_MARKERTYPE_HDASH
+                elif marker_type == MarkerType.VDASH:
+                    sed_marker_type = libsedml.SEDML_MARKERTYPE_VDASH
+                sed_marker.setType(sed_marker_type)
+            if marker.size is not None:
+                sed_marker.setSize(marker.size)
+            if marker.fill:
+                sed_marker.setFill(marker.fill.color)
+            if marker.line_color:
+                sed_marker.setLineColor(marker.line_color)
+            if marker.line_thickness is not None:
+                sed_marker.setLineThickness(marker.line_thickness)
 
+        if style.fill is not None:
+            fill = style.fill
+            sed_fill: libsedml.SedFill = sed_style.createFillStyle()
+            if fill.color:
+                sed_fill.setColor(fill.color.color)
+            if fill.second_color:
+                sed_fill.setSecondColor(fill.second_color.color)
 
 
 class SEDMLParser:
@@ -818,7 +925,6 @@ class SEDMLParser:
                 for sed_subplot in sed_figure.getListOfSubPlots():
                     sed_plot_id = sed_subplot.getPlot()
                     single_plots.remove(sed_plot_id)
-
 
         # render remaining plots (without figure)
         for sed_output in sed_doc.getListOfOutputs():
@@ -1285,6 +1391,7 @@ class SEDMLParser:
         return figure
 
     def parse_plot2d(self, sed_plot2d: libsedml.SedPlot2D) -> Plot:
+        """Parse the libsedml.Plot2D into a sbmlsim.Plot."""
         plot = Plot(
             sid=sed_plot2d.getId(),
             name=sed_plot2d.getName() if sed_plot2d.isSetName() else None,

@@ -139,28 +139,75 @@
       <xAxis id="plot0_xaxis" name="time [second]" type="linear"/>
       <yAxis id="plot0_yaxis" name="data [-]" type="linear"/>
       <listOfCurves>
-        <curve id="plot0_curve0" name="PX" xDataReference="task_model1_tc__time" yDataReference="task_model1_tc__PX"/>
-        <curve id="plot0_curve1" name="PY" xDataReference="task_model1_tc__time" yDataReference="task_model1_tc__PY"/>
-        <curve id="plot0_curve2" name="PZ" xDataReference="task_model1_tc__time" yDataReference="task_model1_tc__PZ"/>
+        <curve id="plot0_curve0" name="PX" order="0" style="style_plot0_curve0" xDataReference="task_model1_tc__time" yDataReference="task_model1_tc__PX"/>
+        <curve id="plot0_curve1" name="PY" order="1" style="style_plot0_curve1" xDataReference="task_model1_tc__time" yDataReference="task_model1_tc__PY"/>
+        <curve id="plot0_curve2" name="PZ" order="2" style="style_plot0_curve2" xDataReference="task_model1_tc__time" yDataReference="task_model1_tc__PZ"/>
       </listOfCurves>
     </plot2D>
     <plot2D id="plot1" name="Preprocessing" legend="true" height="5" width="5">
       <xAxis id="plot1_xaxis" name="time [second]" type="linear"/>
       <yAxis id="plot1_yaxis" name="data [-]" type="linear"/>
       <listOfCurves>
-        <curve id="plot1_curve0" name="PX" xDataReference="task_model2_tc__time" yDataReference="task_model2_tc__PX"/>
-        <curve id="plot1_curve1" name="PY" xDataReference="task_model2_tc__time" yDataReference="task_model2_tc__PY"/>
-        <curve id="plot1_curve2" name="PZ" xDataReference="task_model2_tc__time" yDataReference="task_model2_tc__PZ"/>
+        <curve id="plot1_curve0" name="PX" order="0" style="style_plot1_curve0" xDataReference="task_model2_tc__time" yDataReference="task_model2_tc__PX"/>
+        <curve id="plot1_curve1" name="PY" order="1" style="style_plot1_curve1" xDataReference="task_model2_tc__time" yDataReference="task_model2_tc__PY"/>
+        <curve id="plot1_curve2" name="PZ" order="2" style="style_plot1_curve2" xDataReference="task_model2_tc__time" yDataReference="task_model2_tc__PZ"/>
       </listOfCurves>
     </plot2D>
     <plot2D id="plot2" name="Postprocessing" legend="true" height="5" width="10">
       <xAxis id="plot2_xaxis" name="data [-]" type="linear"/>
       <yAxis id="plot2_yaxis" name="data [-]" type="linear"/>
       <listOfCurves>
-        <curve id="plot2_curve0" name="PZ/max(PZ) ~ PX/max(PX)" xDataReference="f_PX_normalized" yDataReference="f_PZ_normalized"/>
-        <curve id="plot2_curve1" name="PY/max(PY) ~ PZ/max(PZ)" xDataReference="f_PZ_normalized" yDataReference="f_PY_normalized"/>
-        <curve id="plot2_curve2" name="PX/max(PX) ~ PY/max(PY)" xDataReference="f_PY_normalized" yDataReference="f_PX_normalized"/>
+        <curve id="plot2_curve0" name="PZ/max(PZ) ~ PX/max(PX)" order="0" style="style_plot2_curve0" xDataReference="f_PX_normalized" yDataReference="f_PZ_normalized"/>
+        <curve id="plot2_curve1" name="PY/max(PY) ~ PZ/max(PZ)" order="1" style="style_plot2_curve1" xDataReference="f_PZ_normalized" yDataReference="f_PY_normalized"/>
+        <curve id="plot2_curve2" name="PX/max(PX) ~ PY/max(PY)" order="2" style="style_plot2_curve2" xDataReference="f_PY_normalized" yDataReference="f_PX_normalized"/>
       </listOfCurves>
     </plot2D>
   </listOfOutputs>
+  <listOfStyles>
+    <style id="style_plot0_curve0">
+      <line type="solid" color="#d62728ff" thickness="2"/>
+      <marker type="none" fill="#d62728ff"/>
+      <fill color="#d62728ff"/>
+    </style>
+    <style id="style_plot0_curve1">
+      <line type="solid" color="#2ca02cff" thickness="2"/>
+      <marker type="none" fill="#2ca02cff"/>
+      <fill color="#2ca02cff"/>
+    </style>
+    <style id="style_plot0_curve2">
+      <line type="solid" color="#1f77b4ff" thickness="2"/>
+      <marker type="none" fill="#1f77b4ff"/>
+      <fill color="#1f77b4ff"/>
+    </style>
+    <style id="style_plot1_curve0">
+      <line type="solid" color="#d62728ff" thickness="2"/>
+      <marker type="none" fill="#d62728ff"/>
+      <fill color="#d62728ff"/>
+    </style>
+    <style id="style_plot1_curve1">
+      <line type="solid" color="#2ca02cff" thickness="2"/>
+      <marker type="none" fill="#2ca02cff"/>
+      <fill color="#2ca02cff"/>
+    </style>
+    <style id="style_plot1_curve2">
+      <line type="solid" color="#1f77b4ff" thickness="2"/>
+      <marker type="none" fill="#1f77b4ff"/>
+      <fill color="#1f77b4ff"/>
+    </style>
+    <style id="style_plot2_curve0">
+      <line type="solid" color="#ff7f0eff" thickness="2"/>
+      <marker type="none" fill="#ff7f0eff"/>
+      <fill color="#ff7f0eff"/>
+    </style>
+    <style id="style_plot2_curve1">
+      <line type="solid" color="#8c564bff" thickness="2"/>
+      <marker type="none" fill="#8c564bff"/>
+      <fill color="#8c564bff"/>
+    </style>
+    <style id="style_plot2_curve2">
+      <line type="solid" color="#9467bdff" thickness="2"/>
+      <marker type="none" fill="#9467bdff"/>
+      <fill color="#9467bdff"/>
+    </style>
+  </listOfStyles>
 </sedML>
