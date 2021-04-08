@@ -204,10 +204,10 @@
   "figures": {
     "figure0": {
       "sid": "figure0",
-      "name": null,
+      "name": "Repressilator",
       "num_rows": 2,
       "num_cols": 2,
-      "width": 10.0,
+      "width": 14.0,
       "height": 10.0,
       "subplots": [
         {

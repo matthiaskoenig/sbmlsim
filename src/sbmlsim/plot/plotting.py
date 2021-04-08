@@ -1230,7 +1230,7 @@ class Figure(BasePlotObject):
         """Get width."""
         return self._width
 
-    @height.setter
+    @width.setter
     def width(self, value: float) -> None:
         """Set width."""
         if value is None:

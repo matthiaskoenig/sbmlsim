@@ -2,7 +2,7 @@
 - [x] execute COMBINE archives (refactoring required; also store results)
 
 # Serialization (SimulationExperiment -> SED-ML)
-- [ ] datasets
+- [ ] datasets !
 - [x] model
     - [x] resolve model from URN
     - [S] AddXML, ChangeXML, RemoveXML
@@ -16,10 +16,14 @@
     - [x] Task
     - [ ] RepeatedTask
 - [x] data generators
-- [ ] figures
+- [~] figures
+  - [ ] styles
 - [ ] reports
 
 # Parsing (SED-ML -> SimulationExperiment)
+- [ ] datasets !
+
+
 ## Plot2D
 - [x] support height and width;
       plots have height & width; these can be directly set in single plot figures;
@@ -52,7 +56,5 @@
 ## Plot3D
 - [ ] Plot3D examples (surfaces)
 - [ ] use surface.name as label in legend
-
-
 
 # Parameter fitting

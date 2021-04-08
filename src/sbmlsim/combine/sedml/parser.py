@@ -75,51 +75,31 @@ DataGenerator class.
 
 For information about SED-ML please refer to http://www.sed-ml.org/
 and the SED-ML specification.
-
-SED-ML in sbmlsim: Supported Features
-=====================================
-sbmlsim supports SED-ML L1V4 with SBML as model format.
-SBML models are fully supported
-
-Supported input for SED-ML are either SED-ML files ('.sedml' extension),
-SED-ML XML strings or combine archives ('.sedx'|'.omex' extension).
-
-In the current implementation all SED-ML constructs with exception of
-XML transformation changes of the model, i.e.,
-- Change.RemoveXML
-- Change.AddXML
-- Change.ChangeXML
-are supported.
 """
-import importlib
 import logging
 import re
 import shutil
 import warnings
-from collections import OrderedDict, namedtuple
 from enum import Enum
 from pathlib import Path
-from typing import Dict, List, Union, Optional, Type, Any, NamedTuple
+from typing import Dict, List, Union, Optional, Type
 
 import libsedml
-import numpy as np
 import pandas as pd
 from pprint import pprint
 import roadrunner
 from pint import Quantity
 
-from sbmlsim.combine.mathml import formula_to_astnode, astnode_to_formula
+from sbmlsim.combine.mathml import formula_to_astnode
 from sbmlsim.combine.omex import Omex
 from sbmlsim.combine.sedml.data import DataDescriptionParser
 from sbmlsim.combine.sedml.kisao import is_supported_algorithm_for_simulation_type
 from sbmlsim.combine.sedml.task import Stack, TaskNode, TaskTree
-
 from sbmlsim.data import DataSet, Data
 from sbmlsim.experiment import SimulationExperiment, ExperimentRunner
 from sbmlsim.fit import FitParameter, FitExperiment, FitMapping, FitData
-from sbmlsim.model import model_resources, RoadrunnerSBMLModel
+from sbmlsim.model import RoadrunnerSBMLModel
 from sbmlsim.model.model import AbstractModel
-from sbmlsim.model.model_resources import Source
 from sbmlsim.plot import Figure, Plot, Axis, Curve
 from sbmlsim.plot.plotting import Style, Line, LineType, ColorType, Marker, \
     MarkerType, Fill, SubPlot, AxisScale, CurveType, YAxisPosition, ShadedArea
@@ -490,12 +470,14 @@ class SEDMLSerializer:
         Write experiment figures in SedDocument.
         """
         fig_id: str
+        figure: Figure
         task: Task
         for fig_id, figure in self.exp._figures.items():
 
             sed_figure: libsedml.SedFigure = self.sed_doc.createFigure()
             sed_figure.setId(figure.sid)
-            sed_figure.setName(figure.name)
+            if figure.name:
+                sed_figure.setName(figure.name)
             sed_figure.setNumCols(figure.num_cols)
             sed_figure.setNumRows(figure.num_rows)
 
@@ -1239,7 +1221,8 @@ class SEDMLParser:
         """Parse figure information."""
         figure = Figure(
             experiment=None,
-            sid=sed_figure.getId(),
+            sid=sed_figure.getId() if sed_figure.isSetId() else None,
+            name=sed_figure.getName() if sed_figure.isSetName() else None,
             num_rows=sed_figure.getNumRows() if sed_figure.isSetNumRows() else 1,
             num_cols=sed_figure.getNumCols() if sed_figure.isSetNumCols() else 1,
         )
@@ -1636,39 +1619,15 @@ class SEDMLParser:
     ) -> List[libsedml.SedDataGenerator]:
         """ Get the DataGenerators which reference the given task."""
         sed_dgs = []
-        for (
-            sed_dg
-        ) in self.sed_doc.getListOfDataGenerators():  # type: libsedml.SedDataGenerator
-            for var in sed_dg.getListOfVariables():  # type: libsedml.SedVariable
+        sed_dg: libsedml.SedDataGenerator
+        var: libsedml.SedVariable
+        for sed_dg in self.sed_doc.getListOfDataGenerators():
+            for var in sed_dg.getListOfVariables():
                 if var.getTaskReference() == sed_task.getId():
                     sed_dgs.append(sed_dg)
                     # DataGenerator is added, no need to look at rest of variables
                     break
         return sed_dgs
-
-    def selections_for_task(self, sed_task: libsedml.SedTask):
-        """Populate variable lists from the data generators for the given task.
-
-        These are the timeCourseSelections and steadyStateSelections
-        in RoadRunner.
-
-        Search all data generators for variables which have to be part of the simulation.
-        """
-        model_id = sed_task.getModelReference()
-        selections = set()
-        for (
-            sed_dg
-        ) in self.doc.getListOfDataGenerators():  # type: libsedml.SedDataGenerator
-            for var in sed_dg.getListOfVariables():
-                if var.getTaskReference() == sed_task.getId():
-                    # FIXME: resolve with model
-                    selection = SEDMLCodeFactory.selectionFromVariable(var, model_id)
-                    expr = selection.id
-                    if selection.type == "concentration":
-                        expr = "[{}]".format(selection.id)
-                    selections.add(expr)
-
-        return selections
 
     @staticmethod
     def get_ordered_subtasks(sed_task: libsedml.SedTask) -> List[libsedml.SedTask]:

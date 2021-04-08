@@ -84,11 +84,11 @@ class RepressilatorExperiment(SimulationExperiment):
 
     def figures(self) -> Dict[str, Figure]:
         """Define figure outputs (plots)."""
-        fig = Figure(experiment=self, sid="figure0",
-                     name="Repressilator", num_cols=2, num_rows=2,
-                     width=10, height=10)
-
-        # FIXME: add helper to easily create figure layouts with plots
+        fig = Figure(
+            experiment=self, sid="figure0", name="Repressilator",
+            num_cols=2, num_rows=2,
+            width=10, height=10
+        )
         p0 = fig.add_subplot(Plot(sid="plot0", name="Timecourse"), row=1, col=1)
         p1 = fig.add_subplot(Plot(sid="plot1", name="Preprocessing"), row=1, col=2)
         p2 = fig.add_subplot(Plot(sid="plot2", name="Postprocessing"), row=2, col=1, col_span=2)
@@ -128,6 +128,7 @@ class RepressilatorExperiment(SimulationExperiment):
                 color=colors2[k],
                 linewidth=2.0,
             )
+        print(fig, fig.name)
         return {
             fig.sid: fig,
         }
@@ -148,7 +149,7 @@ def run_experiment(experiment: Type[SimulationExperiment], output_path: Path) ->
 
     runner = ExperimentRunner(
         [experiment],
-        simulator=SimulatorParallel(),
+        simulator=SimulatorSerial(),  # SimulatorParallel(),
         data_path=data_path,
         base_path=base_path,
     )
