@@ -63,11 +63,14 @@ class SEDMLReader:
 
     SED-ML can be provided as string, file or as file in a COMBINE
     archive.
+
+    Execution must be performed where the master SED-ML is located.
     """
 
-    def __init__(self, source: Union[Path, str], working_dir: Path):
+    def __init__(self, source: Union[Path, str], working_dir: Path = None):
         self.source: Union[Path, str] = source
-        self.working_dir: Optional[Path] = working_dir
+        self.exec_dir: Path = os.getcwd()
+        self.working_dir: Path = working_dir
         self.input_type: Optional[SEDMLInputType] = None
         self.error_log: Optional[libsedml.SedErrorLog] = None
         self.sed_doc: Optional[libsedml.SedDocument] = None
@@ -83,7 +86,7 @@ class SEDMLReader:
         """Get string representation."""
 
         source_str = self.source if self.input_type is not SEDMLInputType.SEDML_STRING else "string"
-        return f"<SEDMLReader(source={source_str}, input_type={self.input_type}), working_dir={self.working_dir}>"
+        return f"<SEDMLReader(source={source_str}, input_type={self.input_type}), exec_dir={self.exec_dir}>"
 
     def __str__(self) -> str:
         """Get string."""
@@ -92,7 +95,7 @@ class SEDMLReader:
             "SEDMLReader(",
             f"\tinput_type: {self.input_type}",
             f"\tsource: {source_str}",
-            f"\tworking_dir: {self.working_dir}",
+            f"\texec_dir: {self.exec_dir}",
             f")"
         ]
         return "\n".join(info)
@@ -135,6 +138,8 @@ class SEDMLReader:
                 logger.debug(f"extracting archive to '{self.working_dir}'")
 
                 # extract archive to working directory
+                if self.working_dir is None:
+                    raise ValueError("working_dir required for extracting COMBINE archive.")
                 importlib.reload(libcombine)
                 omex = Omex(omex_path=file_path, working_dir=self.working_dir)
                 omex.extract()
@@ -153,6 +158,7 @@ class SEDMLReader:
                         raise ValueError("No SED-ML in archive.")
 
                 importlib.reload(libsedml)
+                self.exec_dir = sedml_path.parent
                 sed_doc = libsedml.readSedMLFromFile(str(sedml_path))
 
             else:
@@ -163,9 +169,11 @@ class SEDMLReader:
                         f"SEDML should have [.sedml|.xml] extension: '{file_path}'"
                     )
 
+                self.exec_dir = file_path.parent
                 sed_doc = libsedml.readSedMLFromFile(str(file_path))
 
         if sed_doc is None:
             raise IOError("SED-ML could not be read.")
 
+        # FIXME: figure out the working dir, i.e. relative to the SED-ML files
         return sed_doc, input_type

@@ -147,6 +147,7 @@ class UnitsInformation(MutableMapping):
         for udef in model.getListOfUnitDefinitions():
             uid = udef.getId()
             unit_str = Units.udef_to_str(udef)
+            print(uid, unit_str)
             q = ureg(unit_str)
             try:
                 # check if uid is existing unit registry definition (short name)
@@ -403,6 +404,7 @@ class Units:
                     string = "({}10^{}*{})".format(m_str, s, k_str)
                 else:
                     string = "(({}10^{}*{})^{})".format(m_str, s, k_str, e_str)
+
 
             # collect the terms
             if e >= 0.0:

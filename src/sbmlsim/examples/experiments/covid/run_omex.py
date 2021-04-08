@@ -10,6 +10,9 @@ with open(Path(__file__).parent / "omex" / "models.json", "r") as f_json:
     omex_paths = json.load(f_json)
 
     for biomodel_id, omex_path_str in omex_paths.items():
+        if biomodel_id.endswith("55"):
+            continue
+
         print(f"Execute OMEX: {biomodel_id}: {omex_path_str}")
 
         # execute OMEX archive

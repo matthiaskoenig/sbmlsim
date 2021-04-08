@@ -1,3 +1,4 @@
+import os
 from pathlib import Path
 
 
@@ -37,8 +38,13 @@ def execute_sedml(path: Path, working_dir: Path, output_path: Path) -> None:
     sedml_reader = SEDMLReader(source=path, working_dir=working_dir)
     print(sedml_reader)
 
+    cwd = os.getcwd()
+    os.chdir(sedml_reader.exec_dir)
+    print(os.getcwd())
+
     sedml_parser = SEDMLParser(
-        sedml_reader.sed_doc,
+        sed_doc=sedml_reader.sed_doc,
+        exec_dir=sedml_reader.exec_dir,
         working_dir=working_dir,
         name=path.stem
     )
@@ -57,8 +63,8 @@ def execute_sedml(path: Path, working_dir: Path, output_path: Path) -> None:
     runner = ExperimentRunner(
         [sedml_parser.exp_class],
         simulator=SimulatorSerial(),
-        data_path=working_dir,
-        base_path=working_dir,
+        data_path=sedml_reader.exec_dir,
+        base_path=sedml_reader.exec_dir,
     )
     _results = runner.run_experiments(
         output_path=output_path, show_figures=True,
@@ -67,3 +73,5 @@ def execute_sedml(path: Path, working_dir: Path, output_path: Path) -> None:
 
     # TODO: write experiment to SED-ML file
     # serialization of experiments
+
+    os.chdir(cwd)

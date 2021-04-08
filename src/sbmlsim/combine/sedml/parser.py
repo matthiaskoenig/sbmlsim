@@ -709,6 +709,7 @@ class SEDMLParser:
     def __init__(
         self,
         sed_doc: libsedml.SedDocument,
+        exec_dir: Path,
         working_dir: Path,
         name: Optional[str] = None,
     ):
@@ -721,6 +722,7 @@ class SEDMLParser:
         """
 
         self.sed_doc: libsedml.SedDocument = sed_doc
+        self.exec_dir = exec_dir
         self.working_dir: Path = working_dir
         self.name: str = name
 
@@ -1101,7 +1103,7 @@ class SEDMLParser:
             name=sed_model.getName(),
             language=language,
             language_type=None,
-            base_path=self.working_dir,
+            base_path=self.exec_dir,
             changes=changes,
             selections=None,
         )
