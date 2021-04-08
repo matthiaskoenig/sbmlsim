@@ -17,8 +17,9 @@ import shutil
 import tempfile
 import warnings
 import zipfile
+from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Iterable, Iterator, List, Tuple
+from typing import Any, Iterable, Iterator, List, Tuple, Optional
 
 import libcombine
 
@@ -351,7 +352,7 @@ class Omex:
 
         return locations
 
-    def list_contents(self, method="omex") -> List[List[Any]]:
+    def list_contents(self, method="omex") -> List['Content']:
         """Returns list of contents of the combine archive.
 
         :param omexPath:
@@ -370,13 +371,27 @@ class Omex:
             format = entry.getFormat()
             master = entry.getMaster()
             info = None
-
             for formatKey in ["sed-ml", "sbml", "sbgn", "cellml"]:
                 if libcombine.KnownFormats_isFormat(formatKey, format):
                     info = omex.extractEntryToString(location)
 
-            contents.append([i, location, format, master, info])
+            content = Content(
+              location=location,
+              format=format,
+              master=master,
+              info=info,
+            )
+
+            contents.append(content)
 
         omex.cleanUp()
 
         return contents
+
+
+@dataclass
+class Content:
+    location: str
+    format: str
+    master: bool
+    info: Optional[str] = field(repr=False)

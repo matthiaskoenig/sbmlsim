@@ -138,16 +138,22 @@ class SEDMLReader:
                 importlib.reload(libcombine)
                 omex = Omex(omex_path=file_path, working_dir=self.working_dir)
                 omex.extract()
-                for location, master in omex.locations_by_format("sed-ml"):
+                locations = omex.locations_by_format("sed-ml")
+                for location, master in locations:
                     print("SED-ML location: ", location)
                     if master:
                         sedml_path = self.working_dir / location
-                        importlib.reload(libsedml)
-                        sed_doc = libsedml.readSedMLFromFile(str(sedml_path))
                         break
                 else:
                     logger.error(f"No SED-ML file with master flag found in archive: "
-                                 f"'{file_path}'")
+                                 f"'{file_path}'. Using first file.")
+                    if len(locations) > 0:
+                        sedml_path = self.working_dir / locations[0][0]
+                    else:
+                        raise ValueError("No SED-ML in archive.")
+
+                importlib.reload(libsedml)
+                sed_doc = libsedml.readSedMLFromFile(str(sedml_path))
 
             else:
                 logger.warning(f"SED-ML from file: {file_path}")
