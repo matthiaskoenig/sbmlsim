@@ -2,7 +2,7 @@
 Example simulation experiment.
 """
 from pathlib import Path
-from typing import Dict, Union
+from typing import Dict, Union, Type
 
 from sbmlsim.combine.sedml.parser import SEDMLSerializer
 from sbmlsim.data import Data
@@ -141,24 +141,32 @@ class RepressilatorExperiment(SimulationExperiment):
         return {}
 
 
-def run_repressilator_experiments(output_path: Path) -> Path:
+def run_experiment(experiment: Type[SimulationExperiment], output_path: Path) -> Path:
     """Run the repressilator simulation experiments."""
     base_path = Path(__file__).parent
     data_path = base_path
 
     runner = ExperimentRunner(
-        [RepressilatorExperiment],
+        [experiment],
         simulator=SimulatorParallel(),
         data_path=data_path,
         base_path=base_path,
     )
     _results = runner.run_experiments(
-        output_path=output_path, show_figures=True
+        output_path=output_path,
+        show_figures=True,
     )
 
 
 if __name__ == "__main__":
-    omex_path = Path(__file__).parent / "results" / "repressilator_sbmlsim.omex"
+    # run sbmlsim experiment (native)
+    run_experiment(
+        experiment=RepressilatorExperiment,
+        output_path=Path(__file__).parent / "results" / "sbmlsim"
+    )
+
+    # serialize to SED-ML/OMEX archive
+    omex_path = Path(__file__).parent / "results" / "repressilator.omex"
     serializer = SEDMLSerializer(
         experiment=RepressilatorExperiment,
         working_dir=Path(__file__).parent / "results" / "omex",
@@ -166,7 +174,9 @@ if __name__ == "__main__":
         omex_path=omex_path
     )
 
-    execute_sedml(path=omex_path, working_dir=Path(__file__).parent / "results",
-                  output_path=Path(__file__).parent / "results" / "sbmlsim_omex")
-
-    run_repressilator_experiments(Path(__file__).parent / "results")
+    # execute OMEX archive
+    execute_sedml(
+        path=omex_path,
+        working_dir=Path(__file__).parent / "results" / "sbmlsim_omex",
+        output_path=Path(__file__).parent / "results" / "sbmlsim_omex"
+    )

@@ -108,11 +108,12 @@ from pprint import pprint
 import roadrunner
 from pint import Quantity
 
-from sbmlsim.combine.mathml import formula_to_astnode
+from sbmlsim.combine.mathml import formula_to_astnode, astnode_to_formula
 from sbmlsim.combine.omex import Omex
 from sbmlsim.combine.sedml.data import DataDescriptionParser
 from sbmlsim.combine.sedml.kisao import is_supported_algorithm_for_simulation_type
 from sbmlsim.combine.sedml.task import Stack, TaskNode, TaskTree
+
 from sbmlsim.data import DataSet, Data
 from sbmlsim.experiment import SimulationExperiment, ExperimentRunner
 from sbmlsim.fit import FitParameter, FitExperiment, FitMapping, FitData
@@ -1573,7 +1574,6 @@ class SEDMLParser:
 
     def data_from_datagenerator(self, sed_dg_ref: Optional[str]) -> Optional[Data]:
         """This must all be evaluated with actual data"""
-        # FIXME: do all the math on the data-generator
         if not sed_dg_ref:
             return None
 
@@ -1585,7 +1585,6 @@ class SEDMLParser:
                 f"{[dg.getId() for dg in self.sed_doc.getListOfDataGenerators()]}"
             )
 
-        # TODO: Necessary to evaluate the math
         astnode: libsedml.ASTNode = sed_dg.getMath()
         function: str = libsedml.formulaToL3String(astnode)
 
@@ -1599,8 +1598,10 @@ class SEDMLParser:
         for sed_var in sed_dg.getListOfVariables():
             task_id = sed_var.getTaskReference()
             if sed_var.isSetSymbol():
-                index = "time"
-            elif sed_var.isSetTarget():
+                if "time" in sed_var.getSymbol():
+                    index = "time"
+            if sed_var.isSetTarget():
+                # FIXME: handle targets correctly with the various symbols: amount/concentrations, ...
                 index = self.parse_xpath_target(sed_var.getTarget())
             d_var = Data(
                 index=index,
@@ -1610,13 +1611,16 @@ class SEDMLParser:
             self.data[d_var.sid] = d_var
             variables[sed_var.getId()] = d_var
 
-        # FIXME: the simple math should not be evaluated via functions
-        d = Data(
-            index=sed_dg.getId(),  # FIXME: not sure about this
-            function=function,
-            variables=variables,
-            parameters=parameters,
-        )
+        # The simple case of a single variable without math data generator
+        if len(variables) == 1 and function == sed_var.getId():
+            d = d_var
+        else:
+            d = Data(
+                index=sed_dg.getId(),
+                function=function,
+                variables=variables,
+                parameters=parameters,
+            )
 
         self.data[d.sid] = d
         return d

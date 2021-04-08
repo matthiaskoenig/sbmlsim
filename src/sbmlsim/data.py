@@ -63,11 +63,11 @@ class Data(object):
         """Get string."""
         s: str
         if self.is_task():
-            s = f"Data(Task: index={self.index} task_id={self.task_id})"
+            s = f"Data(Task | index={self.index}, task_id={self.task_id})"
         elif self.is_dataset():
-            s = f"Data(DataSet: index={self.index} dset_id={self.dset_id})"
+            s = f"Data(DataSet | index={self.index}, dset_id={self.dset_id})"
         elif self.is_function():
-            s = f"Data(Function: index={self.index} function={self.function})"
+            s = f"Data(Function | index={self.index}, function={self.function})"
         return s
 
     @property

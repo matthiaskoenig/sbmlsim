@@ -5,21 +5,27 @@ Using sympy to evaluate the expressions.
 import logging
 from typing import Dict, Set, Tuple
 
-import libsbml
+import libsedml
 from sympy import Symbol, lambdify, sympify
 
 
-def formula_to_astnode(formula: str) -> libsbml.ASTNode:
-    """Parses astnode from formula"""
-    astnode = libsbml.parseL3Formula(formula)
+def formula_to_astnode(formula: str) -> libsedml.ASTNode:
+    """Parse ASTNode from formula"""
+    astnode = libsedml.parseL3Formula(formula)
     if not astnode:
         logging.error("Formula could not be parsed: '{}'".format(formula))
-        logging.error(libsbml.getLastParseL3Error())
+        logging.error(libsedml.getLastParseL3Error())
     return astnode
 
 
+def astnode_to_formula(astnode: libsedml.ASTNode) -> str:
+    """Write ASTNode as formula."""
+    formula = libsedml.formulaToL3String(astnode)
+    return formula
+
+
 def parse_mathml_str(mathml_str: str):
-    astnode = libsbml.readMathMLFromString(mathml_str)  # type: libsbml.ASTNode
+    astnode: libsedml.AstNode = libsedml.readMathMLFromString(mathml_str)
     return parse_astnode(astnode)
 
 
@@ -28,7 +34,7 @@ def parse_formula(formula: str):
     return parse_astnode(astnode)
 
 
-def parse_astnode(astnode: libsbml.ASTNode):
+def parse_astnode(astnode: libsedml.ASTNode):
     """
     An AST node in libSBML is a recursive tree structure; each node has a type,
     a pointer to a value, and a list of children nodes. Each ASTNode node may
@@ -38,12 +44,12 @@ def parse_astnode(astnode: libsbml.ASTNode):
     simple mathematical operators, logical or relational operators and
     functions.
 
-    see also: http://sbml.org/Software/libSBML/docs/python-api/libsbml-math.html
+    see also: http://sbml.org/Software/libSBML/docs/python-api/libsedml-math.html
 
     :param mathml:
     :return:
     """
-    formula = libsbml.formulaToL3String(astnode)
+    formula = libsedml.formulaToL3String(astnode)
 
     # iterate over ASTNode and figure out variables
     # variables = _get_variables(astnode)
@@ -80,7 +86,7 @@ def expr_from_formula(formula: str):
     return expr
 
 
-def evaluate(astnode: libsbml.ASTNode, variables: Dict):
+def evaluate(astnode: libsedml.ASTNode, variables: Dict):
     """Evaluate the astnode with values """
     expr = parse_astnode(astnode)
     f = lambdify(args=list(expr.free_symbols), expr=expr)
@@ -88,7 +94,7 @@ def evaluate(astnode: libsbml.ASTNode, variables: Dict):
     return res
 
 
-def _get_variables(astnode: libsbml.ASTNode, variables=None) -> Set[str]:
+def _get_variables(astnode: libsedml.ASTNode, variables=None) -> Set[str]:
     """Adds variable names to the variables."""
     variables: Set
     if variables is None:
@@ -101,14 +107,14 @@ def _get_variables(astnode: libsbml.ASTNode, variables=None) -> Set[str]:
             variables.add(name)
     else:
         for k in range(num_children):
-            child = astnode.getChild(k)  # type: libsbml.ASTNode
+            child = astnode.getChild(k)  # type: libsedml.ASTNode
             _get_variables(child, variables=variables)
 
     return variables
 
 
 def replace_piecewise(formula):
-    """Replaces libsbml piecewise with sympy piecewise."""
+    """Replaces libsedml piecewise with sympy piecewise."""
     while True:
         index = formula.find("piecewise(")
         if index == -1:
@@ -178,7 +184,7 @@ if __name__ == "__main__":
 
     """
     # evaluate the function with the values
-    astnode = libsbml.readMathMLFromString(mathmlStr)
+    astnode = libsedml.readMathMLFromString(mathmlStr)
 
     y = 5
     res = evaluateMathML(astnode,

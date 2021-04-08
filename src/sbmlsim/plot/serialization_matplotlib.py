@@ -115,8 +115,14 @@ class MatplotlibFigureSerializer(object):
                 if isinstance(abstract_curve, Curve):
                     # --- Curve ---
                     curve: Curve = abstract_curve
+                    print("curve.x", curve.x)
+                    print("curve.y", curve.y)
                     x = curve.x.get_data(experiment=experiment, to_units=xunit)
                     y = curve.y.get_data(experiment=experiment, to_units=yunit)
+                    print(curve)
+                    print("x", x)
+                    print("y", y)
+
                     xerr = None
                     if curve.xerr is not None:
                         xerr = curve.xerr.get_data(experiment=experiment, to_units=xunit)
@@ -165,9 +171,6 @@ class MatplotlibFigureSerializer(object):
                         else:
                             # bar plot
                             kwargs = style.to_mpl_bar_kwargs()
-
-                        from pprint import pprint
-                        pprint(kwargs)
 
                     if curve.type == CurveType.POINTS:
                         ax.errorbar(
