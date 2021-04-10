@@ -160,9 +160,7 @@ class Mandema1992(MidazolamSimulationExperiment):
         unit_mid = "nmol/ml"
         unit_mid1oh = "nmol/ml"
 
-        self.add_selections_data(
-            selections=["time", "[Cve_mid]", "[Cve_mid1oh]"]
-        )
+        self.add_selections_data(selections=["time", "[Cve_mid]", "[Cve_mid1oh]"])
 
         fig = Figure(self, sid="Fig1", num_rows=2, num_cols=3, name=self.sid)
         plots = fig.create_plots(Axis("time", unit=unit_time), legend=True)

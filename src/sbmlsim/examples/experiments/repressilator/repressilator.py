@@ -2,7 +2,7 @@
 Example simulation experiment.
 """
 from pathlib import Path
-from typing import Dict, Union, Type
+from typing import Dict, Type, Union
 
 from sbmlsim.combine.sedml.parser import SEDMLSerializer
 from sbmlsim.data import Data
@@ -12,11 +12,7 @@ from sbmlsim.experiment.runner import run_experiments
 from sbmlsim.model import AbstractModel
 from sbmlsim.plot import Axis, Figure, Plot
 from sbmlsim.result.report import Report
-from sbmlsim.simulation import (
-    AbstractSim,
-    Timecourse,
-    TimecourseSim,
-)
+from sbmlsim.simulation import AbstractSim, Timecourse, TimecourseSim
 from sbmlsim.simulator.simulation_ray import SimulatorParallel, SimulatorSerial
 from sbmlsim.task import Task
 from sbmlsim.test import MODEL_REPRESSILATOR
@@ -30,10 +26,11 @@ class RepressilatorExperiment(SimulationExperiment):
         return {
             "model1": MODEL_REPRESSILATOR,
             "model2": AbstractModel(
-                MODEL_REPRESSILATOR, changes={
-                    "ps_0": self.Q_(1.3E-5, "dimensionless"),
-                    "ps_a": self.Q_(0.013, "dimensionless")
-                }
+                MODEL_REPRESSILATOR,
+                changes={
+                    "ps_0": self.Q_(1.3e-5, "dimensionless"),
+                    "ps_a": self.Q_(0.013, "dimensionless"),
+                },
             ),
         }
 
@@ -43,9 +40,7 @@ class RepressilatorExperiment(SimulationExperiment):
             timecourses=Timecourse(start=0, end=1000, steps=1000),
             time_offset=0,
         )
-        return {
-            "tc": tc
-        }
+        return {"tc": tc}
 
     def tasks(self) -> Dict[str, Task]:
         """Define tasks."""
@@ -60,9 +55,7 @@ class RepressilatorExperiment(SimulationExperiment):
         data = []
         for model in ["model1", "model2"]:
             for selection in ["time", "PX", "PY", "PZ"]:
-                data.append(
-                    Data(task=f"task_{model}_tc", index=selection)
-                )
+                data.append(Data(task=f"task_{model}_tc", index=selection))
 
         # functions (calculated data generators)
         # FIXME: necessary to store units in the xres
@@ -72,27 +65,34 @@ class RepressilatorExperiment(SimulationExperiment):
                     index=f"f_{sid}_normalized",
                     function=f"{sid}/max({sid})",
                     variables={
-                        f"{sid}": Data(index=f'{sid}', task="task_model1_tc"),
+                        f"{sid}": Data(index=f"{sid}", task="task_model1_tc"),
                     },
-                    parameters={}
+                    parameters={},
                 )
             )
 
         data_dict = {d.sid: d for d in data}
         from pprint import pprint
+
         pprint(data_dict)
         return data_dict
 
     def figures(self) -> Dict[str, Figure]:
         """Define figure outputs (plots)."""
         fig = Figure(
-            experiment=self, sid="figure0", name="Repressilator",
-            num_cols=2, num_rows=2,
-            width=10, height=10
+            experiment=self,
+            sid="figure0",
+            name="Repressilator",
+            num_cols=2,
+            num_rows=2,
+            width=10,
+            height=10,
         )
         p0 = fig.add_subplot(Plot(sid="plot0", name="Timecourse"), row=1, col=1)
         p1 = fig.add_subplot(Plot(sid="plot1", name="Preprocessing"), row=1, col=2)
-        p2 = fig.add_subplot(Plot(sid="plot2", name="Postprocessing"), row=2, col=1, col_span=2)
+        p2 = fig.add_subplot(
+            Plot(sid="plot2", name="Postprocessing"), row=2, col=1, col_span=2
+        )
 
         p0.set_title(f"Timecourse")
         p0.set_xaxis("time", unit="second")
@@ -106,7 +106,7 @@ class RepressilatorExperiment(SimulationExperiment):
                 x=Data("time", task=f"task_model1_tc"),
                 y=Data(f"{sid}", task=f"task_model1_tc"),
                 label=f"{sid}",
-                color=colors[k]
+                color=colors[k],
             )
             p1.curve(
                 x=Data("time", task=f"task_model2_tc"),
@@ -121,7 +121,7 @@ class RepressilatorExperiment(SimulationExperiment):
         p2.set_yaxis("data", unit="dimensionless")
 
         colors2 = ["tab:orange", "tab:brown", "tab:purple"]
-        for k, (sidx, sidy) in enumerate([("PX", "PZ"), ("PZ", "PY"), ('PY', 'PX')]):
+        for k, (sidx, sidy) in enumerate([("PX", "PZ"), ("PZ", "PY"), ("PY", "PX")]):
             p2.curve(
                 x=self._data[f"f_{sidx}_normalized"],
                 y=self._data[f"f_{sidy}_normalized"],
@@ -147,7 +147,7 @@ if __name__ == "__main__":
     # run sbmlsim experiment
     run_experiments(
         experiments=RepressilatorExperiment,
-        output_path=Path(__file__).parent / "results" / "sbmlsim"
+        output_path=Path(__file__).parent / "results" / "sbmlsim",
     )
 
     # serialize to SED-ML/OMEX archive
@@ -156,12 +156,12 @@ if __name__ == "__main__":
         experiment=RepressilatorExperiment,
         working_dir=Path(__file__).parent / "results" / "omex",
         sedml_filename="repressilator_sedml.xml",
-        omex_path=omex_path
+        omex_path=omex_path,
     )
 
     # execute OMEX archive
     execute_sedml(
         path=omex_path,
         working_dir=Path(__file__).parent / "results" / "sbmlsim_omex",
-        output_path=Path(__file__).parent / "results" / "sbmlsim_omex"
+        output_path=Path(__file__).parent / "results" / "sbmlsim_omex",
     )

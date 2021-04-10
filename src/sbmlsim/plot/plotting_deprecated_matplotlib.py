@@ -1,7 +1,10 @@
+"""Deprecated matplotlib functions.
+
+These functions will be removed in future releases.
+"""
 import itertools
 import logging
 
-import numpy as np
 import pandas as pd
 from matplotlib import pyplot as plt
 
@@ -14,26 +17,6 @@ logger = logging.getLogger(__name__)
 
 kwargs_data = {"marker": "s", "linestyle": "--", "linewidth": 1, "capsize": 3}
 kwargs_sim = {"marker": None, "linestyle": "-", "linewidth": 2}
-
-
-def interp(x, xp, fp):
-    """Interpolation for speedup of plots
-
-    :param x:
-    :param xp:
-    :param fp:
-    :return:
-    """
-    y = np.interp(x=x, xp=xp, fp=fp)
-    # better spline interpolation, but NaN issues with zero values
-    # tck, fp, ier, msg = interpolate.splrep(xp, fp, full_output=True)
-    # if ier > 0:
-    #     logger.error(f"Spline fitting failed: '{msg}'")
-    #
-    # y = interpolate.splev(x, tck, der=0)
-    if not np.all(np.isfinite(y)):
-        logger.error(f"NaN or Inf values in interpolation: {fp} -> {y}")
-    return y
 
 
 @deprecated

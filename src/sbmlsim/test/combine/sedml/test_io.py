@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from sbmlsim.combine.sedml.io import SEDMLReader, SEDMLInputType
+from sbmlsim.combine.sedml.io import SEDMLInputType, SEDMLReader
 from sbmlsim.test import DATA_DIR
 
 
@@ -28,7 +28,9 @@ def test_read_sedml_file2(tmp_path: Path) -> None:
 
 def test_read_sedml_str(tmp_path: Path) -> None:
     """Read SED-ML from file"""
-    with open(DATA_DIR / "sedml" / "l1v4" / "repressilator" / "repressilator_sedml.xml", "r") as f_in:
+    with open(
+        DATA_DIR / "sedml" / "l1v4" / "repressilator" / "repressilator_sedml.xml", "r"
+    ) as f_in:
         sedml_str = f_in.read()
         reader = SEDMLReader(source=sedml_str, working_dir=tmp_path)
         assert reader

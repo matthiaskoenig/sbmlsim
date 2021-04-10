@@ -18,7 +18,7 @@ import logging
 from copy import deepcopy
 from dataclasses import dataclass
 from enum import Enum
-from typing import Dict, List, Optional, Union, Any
+from typing import Any, Dict, List, Optional, Union
 
 import numpy as np
 from matplotlib.colors import to_hex, to_rgba
@@ -99,7 +99,7 @@ class ColorType:
         return self.color
 
     @staticmethod
-    def parse_color(color: str, alpha: float = 1.0) -> Optional['ColorType']:
+    def parse_color(color: str, alpha: float = 1.0) -> Optional["ColorType"]:
         """Parse given color and add alpha information.
 
         :param color:
@@ -239,10 +239,12 @@ class Style(BasePlotObject):
 
     def __repr__(self) -> str:
         """Get string presentation."""
-        return f"{self.sid} (base_style={self.base_style}) [marker={self.marker}; line={self.line}; " \
-               f"fill={self.fill}]"
+        return (
+            f"{self.sid} (base_style={self.base_style}) [marker={self.marker}; line={self.line}; "
+            f"fill={self.fill}]"
+        )
 
-    def __copy__(self) -> 'Style':
+    def __copy__(self) -> "Style":
         """Copy axis object."""
         return Style(
             sid=self.sid,
@@ -319,9 +321,9 @@ class Style(BasePlotObject):
     def _mpl_error_kwargs(self) -> Dict[str, Any]:
         """Define keywords for error bars."""
         error_kwargs = {
-            'error_kw': {
-                'ecolor': "black",
-                'elinewidth': 3.0,
+            "error_kw": {
+                # 'ecolor': "black",
+                # 'elinewidth': 2.0,
             }
         }
         return error_kwargs
@@ -335,22 +337,28 @@ class Style(BasePlotObject):
         error_kwargs = self._mpl_error_kwargs()
         return {
             **points_kwargs,
-            **error_kwargs['error_kw'],
+            **error_kwargs["error_kw"],
         }
 
     def to_mpl_bar_kwargs(self):
         """Convert to matplotlib bar curve keyword arguments."""
         bar_kwargs = self.to_mpl_curve_kwargs()
-        for key in ['marker', 'markersize', 'markeredgewidth', 'markeredgecolor',
-                    'markerfacecolor', 'fill.second_color']:
+        for key in [
+            "marker",
+            "markersize",
+            "markeredgewidth",
+            "markeredgecolor",
+            "markerfacecolor",
+            "fill.second_color",
+        ]:
             # pop line keys
             if key in bar_kwargs:
                 bar_kwargs.pop(key)
 
-        if 'color' in bar_kwargs:
-            bar_kwargs['edgecolor'] = bar_kwargs.pop('color')
-        if 'fill.color' in bar_kwargs:
-            bar_kwargs['color'] = bar_kwargs.pop('fill.color')
+        if "color" in bar_kwargs:
+            bar_kwargs["edgecolor"] = bar_kwargs.pop("color")
+        if "fill.color" in bar_kwargs:
+            bar_kwargs["color"] = bar_kwargs.pop("fill.color")
 
         return {
             **bar_kwargs,
@@ -407,9 +415,7 @@ class Style(BasePlotObject):
         )
 
         # Fill
-        fill = Fill(
-            color=color
-        )
+        fill = Fill(color=color)
 
         return Style(line=line, marker=marker, fill=fill)
 
@@ -484,14 +490,16 @@ class Axis(BasePlotObject):
 
     def __repr__(self) -> str:
         """Get string."""
-        return f"Axis(sid={self.sid} name={self.name} scale={self.scale} " \
-               f"min={self.min} max={self.max})"
+        return (
+            f"Axis(sid={self.sid} name={self.name} scale={self.scale} "
+            f"min={self.min} max={self.max})"
+        )
 
     def __str__(self) -> str:
         """Get string."""
         return f"Axis({self.name, self.scale})"
 
-    def __copy__(self) -> 'Axis':
+    def __copy__(self) -> "Axis":
         """Copy axis object."""
         return Axis(
             label=self.label,
@@ -542,11 +550,13 @@ class Axis(BasePlotObject):
 
 class AbstractCurve(BasePlotObject):
     def __init__(
-        self, sid: str, name: str,
+        self,
+        sid: str,
+        name: str,
         x: Data = None,
         order: int = None,
         style: Style = None,
-        yaxis_position: YAxisPosition = None
+        yaxis_position: YAxisPosition = None,
     ):
         """Abstract base class of Curve and ShadedArea.
 
@@ -566,6 +576,7 @@ class AbstractCurve(BasePlotObject):
 
 class Curve(AbstractCurve):
     """Curve object."""
+
     def __init__(
         self,
         x: Data,
@@ -586,7 +597,7 @@ class Curve(AbstractCurve):
             x=x,
             order=order,
             style=style,
-            yaxis_position=yaxis_position
+            yaxis_position=yaxis_position,
         )
         self.y = y
 
@@ -610,9 +621,11 @@ class Curve(AbstractCurve):
 
     def __repr__(self) -> str:
         """Get representation string."""
-        return f"Curve(sid={self.sid} name={self.name} type={self.type} order={self.order} " \
-               f"x={self.x is not None} y={self.y is not None}" \
-               f"xerr={self.xerr is not None} yerr={self.yerr is not None})"
+        return (
+            f"Curve(sid={self.sid} name={self.name} type={self.type} order={self.order} "
+            f"x={self.x is not None} y={self.y is not None}"
+            f"xerr={self.xerr is not None} yerr={self.yerr is not None})"
+        )
 
     def __str__(self) -> str:
         """Get string."""
@@ -627,7 +640,7 @@ class Curve(AbstractCurve):
             f"\tyerr={self.yerr}",
             f"\torder={self.order}",
             f"\tyaxis_position={self.yaxis_position}",
-            ")"
+            ")",
         ]
         return "\n".join(info)
 
@@ -686,7 +699,7 @@ class ShadedArea(AbstractCurve):
             x=x,
             order=order,
             style=style,
-            yaxis_position=yaxis_position
+            yaxis_position=yaxis_position,
         )
         self.yfrom: Data = yfrom
         self.yto: Data = yto
@@ -702,9 +715,11 @@ class ShadedArea(AbstractCurve):
 
     def __repr__(self) -> str:
         """Get representation string."""
-        return f"ShadedArea(sid={self.sid} name={self.name} order={self.order} " \
-               f"x={self.x is not None} yfrom={self.yfrom is not None}" \
-               f"yto={self.yto is not None})"
+        return (
+            f"ShadedArea(sid={self.sid} name={self.name} order={self.order} "
+            f"x={self.x is not None} yfrom={self.yfrom is not None}"
+            f"yto={self.yto is not None})"
+        )
 
     def __str__(self) -> str:
         """Get string."""
@@ -717,7 +732,7 @@ class ShadedArea(AbstractCurve):
             f"\tyto={self.yto}",
             f"\torder={self.order}",
             f"\tyaxis_position={self.yaxis_position}",
-            ")"
+            ")",
         ]
         return "\n".join(info)
 
@@ -753,7 +768,7 @@ class Plot(BasePlotObject):
         curves: List[Curve] = None,
         areas: List[ShadedArea] = None,
         legend: bool = True,
-        facecolor: ColorType=ColorType.parse_color("white"),
+        facecolor: ColorType = ColorType.parse_color("white"),
         title_visible: bool = True,
         height: float = None,
         width: float = None,
@@ -804,15 +819,17 @@ class Plot(BasePlotObject):
 
     def __repr__(self) -> str:
         """Get representation string."""
-        return f"Plot(xaxis={self.xaxis} yaxis={self.yaxis} " \
-               f"yaxis_right={self.yaxis_right} #curves={len(self.curves)} " \
-               f"legend={self.legend})"
+        return (
+            f"Plot(xaxis={self.xaxis} yaxis={self.yaxis} "
+            f"yaxis_right={self.yaxis_right} #curves={len(self.curves)} "
+            f"legend={self.legend})"
+        )
 
     def __str__(self) -> str:
         """Get string."""
         return f"Plot({self.to_dict()})"
 
-    def __copy__(self) -> 'Plot':
+    def __copy__(self) -> "Plot":
         """Copy the existing object."""
         return Plot(
             sid=self.sid,
@@ -880,10 +897,7 @@ class Plot(BasePlotObject):
         self.set_xaxis(label=value)
 
     def set_xaxis(
-        self,
-        label: Optional[Union[str, Axis]],
-        unit: str = None,
-        **kwargs
+        self, label: Optional[Union[str, Axis]], unit: str = None, **kwargs
     ) -> None:
         """Set axis with all axes attributes.
 
@@ -927,7 +941,9 @@ class Plot(BasePlotObject):
         """Set right yaxis."""
         self.set_yaxis_right(label=value)
 
-    def set_yaxis_right(self, label: Union[str, Axis], unit: str = None, **kwargs) -> None:
+    def set_yaxis_right(
+        self, label: Union[str, Axis], unit: str = None, **kwargs
+    ) -> None:
         """Set axis with all axes attributes.
 
         All argument of Axis are supported.
@@ -945,9 +961,7 @@ class Plot(BasePlotObject):
 
     @staticmethod
     def _create_axis(
-        label: Optional[Union[str, Axis]],
-        unit: str = None,
-        **kwargs
+        label: Optional[Union[str, Axis]], unit: str = None, **kwargs
     ) -> Optional[Axis]:
         if not label:
             ax = None
@@ -963,7 +977,9 @@ class Plot(BasePlotObject):
             if not self.curves and not self.areas:
                 abstract_curve.order = 0
             else:
-                abstract_curve.order = max([ac.order for ac in self.curves + self.areas]) + 1
+                abstract_curve.order = (
+                    max([ac.order for ac in self.curves + self.areas]) + 1
+                )
 
     def add_curve(self, curve: Curve):
         """Add Curve via the helper function."""
@@ -1025,7 +1041,7 @@ class Plot(BasePlotObject):
             type=type,
             style=style,
             yaxis_position=yaxis_position,
-            **kwargs
+            **kwargs,
         )
         self.add_curve(curve)
 
@@ -1109,9 +1125,7 @@ class Plot(BasePlotObject):
                     pass
                 elif isinstance(count, str):
                     # resolve count data from dataset
-                    count_data = Data(
-                        index=count, dataset=dataset, task=task
-                    )
+                    count_data = Data(index=count, dataset=dataset, task=task)
                     counts = count_data.get_data(self.experiment)
                     counts_unique = np.unique(counts.magnitude)
                     if counts_unique.size > 1:
@@ -1152,7 +1166,7 @@ class SubPlot(BasePlotObject):
         row_span: int = 1,
         col_span: int = 1,
         sid: Optional[str] = None,
-        name: Optional[str] = None
+        name: Optional[str] = None,
     ):
         super(SubPlot, self).__init__(sid=sid, name=name)
         self.plot = plot
@@ -1175,7 +1189,9 @@ class Figure(BasePlotObject):
     fig_dpi: int = 72
     fig_facecolor: str = "white"
     fig_subplots_wspace: float = 0.3  # vertical spacing of subplots (fraction of axes)
-    fig_subplots_hspace: float = 0.3  # horizontal spacing of subplots (fraction of axes)
+    fig_subplots_hspace: float = (
+        0.3  # horizontal spacing of subplots (fraction of axes)
+    )
     panel_width: float = 7.0
     panel_height: float = 5.0
     fig_titlesize: int = 25
@@ -1192,7 +1208,7 @@ class Figure(BasePlotObject):
 
     def __init__(
         self,
-        experiment: 'SimulationExperiment',
+        experiment: "SimulationExperiment",
         sid: str,
         name: str = None,
         subplots: List[SubPlot] = None,
@@ -1202,7 +1218,7 @@ class Figure(BasePlotObject):
         num_cols: int = 1,
     ):
         super(Figure, self).__init__(sid, name)
-        self.experiment: 'SimulationExperiment' = experiment
+        self.experiment: "SimulationExperiment" = experiment
         if subplots is None:
             subplots = list()
         self.subplots: List[SubPlot] = subplots
@@ -1215,9 +1231,11 @@ class Figure(BasePlotObject):
 
     def __repr__(self) -> str:
         """Get representation string."""
-        return f"Figure(sid={self.sid} name={self.name} " \
-               f"shape=[{self.num_rows},{self.num_cols}] " \
-               f"#subplots={len(self.subplots)})"
+        return (
+            f"Figure(sid={self.sid} name={self.name} "
+            f"shape=[{self.num_rows},{self.num_cols}] "
+            f"#subplots={len(self.subplots)})"
+        )
 
     @property
     def height(self) -> float:
@@ -1257,7 +1275,11 @@ class Figure(BasePlotObject):
     def create_plots(
         self, xaxis: Axis = None, yaxis: Axis = None, legend: bool = True
     ) -> List[Plot]:
-        """Template function for creating plots"""
+        """Create plots in the figure.
+
+        Settings are applied to all generated plots. E.g. if an xaxis is provided
+        all plots have a copy of this xaxis.
+        """
         plots = []
         for k in range(self.num_panels()):
             # create independent axis objects
@@ -1271,14 +1293,17 @@ class Figure(BasePlotObject):
         return plots
 
     @property
-    def plots(self):
+    def plots(self) -> List[Plot]:
+        """Get plots in this figure."""
         return self.get_plots()
 
     def get_plots(self) -> List[Plot]:
-        """Returns list of plots."""
+        """Get plots in this figure."""
         return [subplot.plot for subplot in self.subplots]
 
-    def add_subplot(self, plot: Plot, row: int, col: int, row_span: int = 1, col_span: int = 1) -> Plot:
+    def add_subplot(
+        self, plot: Plot, row: int, col: int, row_span: int = 1, col_span: int = 1
+    ) -> Plot:
         """Add plot as subplot to figure.
 
         Be careful that individual subplots do not overlap when adding multiple
@@ -1298,17 +1323,21 @@ class Figure(BasePlotObject):
             raise ValueError(f"row must be <= num_rows, but '{row} > {self.num_rows}'")
         if col > self.num_cols:
             raise ValueError(f"col must be <= num_cols, but '{col} > {self.num_cols}'")
-        if row + row_span - 1> self.num_rows:
-            raise ValueError(f"row + row_span must be <= num_rows, but "
-                             f"'{row + row_span} > {self.num_rows}'")
+        if row + row_span - 1 > self.num_rows:
+            raise ValueError(
+                f"row + row_span must be <= num_rows, but "
+                f"'{row + row_span} > {self.num_rows}'"
+            )
         if col + col_span - 1 > self.num_cols:
-            raise ValueError(f"col + col_span - 1 must be <= num_cols, but "
-                             f"'{col + col_span} > {self.num_cols}'")
+            raise ValueError(
+                f"col + col_span - 1 must be <= num_cols, but "
+                f"'{col + col_span} > {self.num_cols}'"
+            )
 
         if self.height and not plot.height:
-            plot.height = self.height/self.num_rows * row_span
+            plot.height = self.height / self.num_rows * row_span
         if self.width and not plot.width:
-            plot.width = self.width/self.num_cols * col_span
+            plot.width = self.width / self.num_cols * col_span
 
         self.subplots.append(
             SubPlot(plot=plot, row=row, col=col, row_span=row_span, col_span=col_span)
@@ -1331,7 +1360,7 @@ class Figure(BasePlotObject):
             raise ValueError("Too many plots for figure")
         ridx = 1
         cidx = 1
-        for k, plot in enumerate(new_plots):
+        for plot in new_plots:
             self.subplots.append(
                 SubPlot(plot=plot, row=ridx, col=cidx, row_span=1, col_span=1)
             )
@@ -1361,7 +1390,7 @@ class Figure(BasePlotObject):
         )
 
     def to_dict(self):
-        """ Convert to dictionary. """
+        """Convert to dictionary."""
         d = {
             "sid": self.sid,
             "name": self.name,

@@ -85,7 +85,7 @@ def _parseDataDescriptions(sedml_path):
 
     for dd in list_dd:
         print(type(dd))
-        data_sources = DataDescriptionParser.parse(dd, workingDir=BASE_DIR)
+        data_sources = DataDescriptionParser.parse(dd, working_dir=BASE_DIR)
         assert data_sources is not None
         assert type(data_sources) == dict
         assert len(data_sources) > 0

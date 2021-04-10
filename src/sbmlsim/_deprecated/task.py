@@ -1,5 +1,7 @@
 import logging
+
 import libsedml
+
 
 logger = logging.getLogger(__name__)
 

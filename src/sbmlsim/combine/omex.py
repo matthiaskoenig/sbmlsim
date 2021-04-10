@@ -19,7 +19,7 @@ import warnings
 import zipfile
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Iterable, Iterator, List, Tuple, Optional
+from typing import Any, Iterable, Iterator, List, Optional, Tuple
 
 import libcombine
 
@@ -43,7 +43,7 @@ class Creator:
 
 
 class Entry:
-    """ Helper class to store content to create an OmexEntry."""
+    """Helper class to store content to create an OmexEntry."""
 
     def __init__(
         self,
@@ -79,7 +79,7 @@ class Entry:
         self.creators: Iterator[Creator] = creators
 
     def __str__(self) -> str:
-        """String representation of entry."""
+        """Get string of Entry."""
         if self.master:
             return f"<*master* Entry {self.location} | {self.format}>"
         else:
@@ -87,7 +87,7 @@ class Entry:
 
 
 class Omex:
-    """Combine archive class"""
+    """Combine archive class."""
 
     def __init__(self, omex_path: Path, working_dir: Path):
         """Create combine archive."""
@@ -123,7 +123,7 @@ class Omex:
         directory: Path,
         creators=None,
     ) -> "Omex":
-        """Creates a COMBINE archive from a given folder.
+        """Create a COMBINE archive from a given folder.
 
         The file types are inferred,
         in case of existing manifest or metadata information this should be reused.
@@ -155,7 +155,7 @@ class Omex:
         ]
 
         # iterate over all locations & guess format
-        for root, dirs, files in os.walk(str(directory)):
+        for root, _dirs, files in os.walk(str(directory)):
             for file in files:
                 file_path = os.path.join(root, file)
                 location = os.path.relpath(file_path, directory)
@@ -191,7 +191,7 @@ class Omex:
     def from_entries(
         cls, omex_path: Path, entries: Iterable[Entry], working_dir: Path
     ) -> "Omex":
-        """Creates combine archive from given entries.
+        """Create COMBINE archive from given entries.
 
         Overwrites existing combine archive at omex_path.
 
@@ -293,7 +293,9 @@ class Omex:
         else:
             raise ValueError(f"Method is not supported '{method}'")
 
-    def locations_by_format(self, format_key: str = None, method="omex") -> List[Tuple[str, bool]]:
+    def locations_by_format(
+        self, format_key: str = None, method="omex"
+    ) -> List[Tuple[str, bool]]:
         """Get locations to files with given format in the archive.
 
         Uses the libcombine KnownFormats for formatKey, e.g., 'sed-ml' or 'sbml'.
@@ -333,7 +335,7 @@ class Omex:
                 self.extract(output_dir=tmp_dir, method="zip")
 
                 # iterate over all locations & guess format
-                for root, dirs, files in os.walk(tmp_dir):
+                for root, _dirs, files in os.walk(tmp_dir):
                     for file in files:
                         file_path = os.path.join(root, file)
                         location = os.path.relpath(file_path, tmp_dir)
@@ -352,8 +354,8 @@ class Omex:
 
         return locations
 
-    def list_contents(self, method="omex") -> List['Content']:
-        """Returns list of contents of the combine archive.
+    def list_contents(self, method="omex") -> List["Content"]:
+        """Return list of contents of the combine archive.
 
         :param omexPath:
         :param method: method to extract content, only 'omex' supported
@@ -376,10 +378,10 @@ class Omex:
                     info = omex.extractEntryToString(location)
 
             content = Content(
-              location=location,
-              format=format,
-              master=master,
-              info=info,
+                location=location,
+                format=format,
+                master=master,
+                info=info,
             )
 
             contents.append(content)
@@ -391,6 +393,8 @@ class Omex:
 
 @dataclass
 class Content:
+    """Content entry of OMEX archive."""
+
     location: str
     format: str
     master: bool

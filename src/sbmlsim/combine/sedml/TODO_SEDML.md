@@ -1,3 +1,11 @@
+# Documentation
+- [ ] create documentation of SED-ML features
+
+- [ ] parse KISAO ontology
+
+# Test cases
+- [ ] execute/update all examples for the specification
+
 # Run COMBINE archive
 - [x] execute COMBINE archives (refactoring required; also store results)
 
@@ -24,6 +32,8 @@
 
 # Parsing (SED-ML -> SimulationExperiment)
 - [ ] datasets !
+
+- [ ] parameters in computation
 
 ## Plot2D
 - [x] support height and width;

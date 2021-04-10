@@ -40,16 +40,16 @@ class Data(object):
         task: str = None,
         dataset: str = None,
         function: str = None,
-        variables: Dict[str, 'Data'] = None,
+        variables: Dict[str, "Data"] = None,
         parameters: Dict[str, float] = None,
-        sid: str = None
+        sid: str = None,
     ):
         """Construct data."""
         self.index: str = index
         self.task_id: str = task
         self.dset_id: str = dataset
         self.function: str = function
-        self.variables: Dict[str, 'Data'] = variables
+        self.variables: Dict[str, "Data"] = variables
         self.parameters: Dict[str, float] = parameters
         self.unit: Optional[str] = None
         self._sid = sid
@@ -146,7 +146,9 @@ class Data(object):
         }
         return d
 
-    def get_data(self, experiment: 'SimulationExperiment', to_units: str = None) -> Quantity:
+    def get_data(
+        self, experiment: "SimulationExperiment", to_units: str = None  # noqa: F821
+    ) -> Quantity:
         """Return actual data from the data object.
 
         The data is resolved from the available datasets and

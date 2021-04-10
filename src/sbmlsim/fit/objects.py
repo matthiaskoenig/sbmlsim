@@ -28,7 +28,7 @@ class FitExperiment:
         weights: Union[float, List[float]] = None,
         use_mapping_weights: bool = False,
         fit_parameters: Dict[str, List["FitParameter"]] = None,
-        exclude: bool = False
+        exclude: bool = False,
     ):
         """Initialize simulation experiment used in a fitting.
 
@@ -300,9 +300,7 @@ class FitData:
                     pass
                 elif isinstance(count, str):
                     # resolve count data from dataset
-                    count_data = Data(
-                        index=count, dataset=dataset, task=task
-                    )
+                    count_data = Data(index=count, dataset=dataset, task=task)
                     counts = count_data.get_data(self.experiment)
                     counts_unique = np.unique(counts.magnitude)
                     if counts_unique.size > 1:

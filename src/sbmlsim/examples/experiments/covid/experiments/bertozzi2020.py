@@ -51,18 +51,16 @@ class Bertozzi2020(SimulationExperiment):
     def tasks(self) -> Dict[str, Task]:
         if self.simulations():
             return {
-                    f"task_{key}": Task(model="model", simulation=key)
-                    for key in self.simulations()
-                }
+                f"task_{key}": Task(model="model", simulation=key)
+                for key in self.simulations()
+            }
 
     def figures(self) -> Dict[str, Figure]:
         unit_time = "time"
         unit_y = "substance"
 
         selections = ["Infected", "Susceptible", "Recovered", "Peak_Time"]
-        self.add_selections_data(
-            selections=["time"] + selections
-        )
+        self.add_selections_data(selections=["time"] + selections)
 
         fig_1 = Figure(self, sid="plot_1", name=f"{self.sid} (plot_1)")
         plots = fig_1.create_plots(Axis("time", unit=unit_time), legend=True)

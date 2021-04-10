@@ -36,12 +36,12 @@ if __name__ == "__main__":
             experiment=experiment,
             working_dir=Path(__file__).parent / "results" / "omex",
             sedml_filename=f"{exp_id}_sedml.xml",
-            omex_path=omex_path
+            omex_path=omex_path,
         )
 
         # execute OMEX archive
         execute_sedml(
             path=omex_path,
             working_dir=Path(__file__).parent / "results" / "sbmlsim_omex",
-            output_path=Path(__file__).parent / "results" / "sbmlsim_omex"
+            output_path=Path(__file__).parent / "results" / "sbmlsim_omex",
         )

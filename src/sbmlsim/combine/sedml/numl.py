@@ -1,3 +1,5 @@
+"""Parser for NuML data."""
+
 import importlib
 import logging
 import warnings
@@ -18,18 +20,20 @@ class NumlParser(object):
     """Helper class for parsing Numl data files."""
 
     class Library(Enum):
+        """Bugfix helper for managing the library issues."""
+
         LIBNUML = 1
         LIBSEDML = 2
 
     @classmethod
-    def read_numl_document(cls, path):
-        """Helper to read external numl document and check for errors
+    def read_numl_document(cls, path: Path) -> libnuml.NUMLDocument:
+        """Read NuML document and check for errors.
 
         :param path: path of file
-        :return:
+        :return: libnuml.NUMLDocument
         """
         importlib.reload(libnuml)
-        doc_numl = libnuml.readNUMLFromFile(path)  # type: libnuml.NUMLDocument
+        doc_numl: libnuml.NUMLDocument = libnuml.readNUMLFromFile(path)
 
         # check for errors
         errorlog = doc_numl.getErrorLog()
@@ -50,7 +54,7 @@ class NumlParser(object):
 
     @classmethod
     def load_numl_data(cls, path) -> pd.DataFrame:
-        """Reading NuML data from file.
+        """Read NuML data from file.
 
         This loads the complete numl data.
         For more information see: https://github.com/numl/numl
@@ -96,7 +100,7 @@ class NumlParser(object):
             # column ids from DimensionDescription
             column_ids = []
             for entry in data_types:
-                for cid, dtype in entry.items():
+                for cid, _dtype in entry.items():
                     column_ids.append(cid)
 
             df = pd.DataFrame(flat_data, columns=column_ids)
@@ -120,7 +124,7 @@ class NumlParser(object):
     def parse_dimension_description(
         cls, description, library: Library = Library.LIBNUML
     ):
-        """Parses the given dimension description.
+        """Parse the given dimension description.
 
         Returns dictionary of { key: dtype }
 
@@ -150,7 +154,7 @@ class NumlParser(object):
     def _parse_description(
         cls, d, info=None, entry=None, library: Library = Library.LIBNUML
     ):
-        """Parses the recursive DimensionDescription, TupleDescription, AtomicDescription.
+        """Parse the recursive DimensionDescription, TupleDescription, AtomicDescription.
 
         This gets the dimension information from NuML.
 
@@ -252,13 +256,9 @@ class NumlParser(object):
     def _parse_dimension(
         cls, d, data=None, entry=None, library: Library = Library.LIBNUML
     ):
-        """Parses the recursive CompositeValue, Tuple, AtomicValue.
+        """Parse the recursive CompositeValue, Tuple, AtomicValue.
 
         This gets the actual data from NuML.
-
-        :param d:
-        :param data:
-        :return:
         """
         if library == cls.Library.LIBNUML:
             importlib.reload(libnuml)

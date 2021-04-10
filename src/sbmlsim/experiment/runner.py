@@ -14,7 +14,7 @@ from typing import Dict, Iterable, List, Optional, Type, Union
 
 from sbmlsim.experiment import ExperimentResult, SimulationExperiment
 from sbmlsim.model import RoadrunnerSBMLModel
-from sbmlsim.report.experiment_report import ReportResults, ExperimentReport
+from sbmlsim.report.experiment_report import ExperimentReport, ReportResults
 from sbmlsim.simulator import SimulatorSerial
 from sbmlsim.simulator.simulation_ray import SimulatorParallel
 from sbmlsim.units import UnitRegistry, Units, UnitsInformation
@@ -29,7 +29,9 @@ class ExperimentRunner(object):
 
     def __init__(
         self,
-        experiment_classes: Union[Type[SimulationExperiment], List[Type[SimulationExperiment]]],
+        experiment_classes: Union[
+            Type[SimulationExperiment], List[Type[SimulationExperiment]]
+        ],
         base_path: Path,
         data_path: Path,
         simulator: SimulatorSerial = None,
@@ -101,7 +103,6 @@ class ExperimentRunner(object):
                     )
                 _models[model_id] = self.models[source]
 
-
             # set resolved models in experiment
             experiment._models = _models
             # only after model loading the unit registry is filled
@@ -144,7 +145,7 @@ def run_experiments(
     output_path: Path,
     base_path: Path = None,
     data_path: Path = None,
-    parallel: bool = True
+    parallel: bool = True,
 ) -> Path:
     """Run simulation experiments."""
     if not isinstance(experiments, (list, tuple)):

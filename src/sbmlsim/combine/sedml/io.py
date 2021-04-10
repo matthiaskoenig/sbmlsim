@@ -1,19 +1,18 @@
-"""
-Template functions to run the example cases.
-"""
+"""Template functions to run the example cases."""
 import importlib
 import logging
 import os
 import zipfile
 from enum import Enum
 from pathlib import Path
-from typing import Dict, Union, Optional, Tuple
+from typing import Dict, Optional, Tuple, Union
 from xml.etree import ElementTree
 
 import libcombine
 import libsedml
 
 from sbmlsim.combine.omex import Omex
+
 
 logger = logging.getLogger(__name__)
 
@@ -48,11 +47,13 @@ def check_sedml_doc(sed_doc: libsedml.SedDocument) -> libsedml.SedErrorLog:
 # FIXME: support execution of multiple SED-ML files
 # FIXME: cleanup of function
 
+
 class SEDMLInputType(Enum):
     """Types of SED-ML input.
 
     SED-ML can be read from string, file or a COMBINE archive (or zip archives).
     """
+
     SEDML_STRING = 0
     SEDML_FILE = 1
     OMEX = 2
@@ -80,23 +81,33 @@ class SEDMLReader:
 
         # check document
         if self.sed_doc:
-            self.error_log: Optional[libsedml.SedErrorLog] = check_sedml_doc(self.sed_doc)
+            self.error_log: Optional[libsedml.SedErrorLog] = check_sedml_doc(
+                self.sed_doc
+            )
 
     def __repr__(self) -> None:
         """Get string representation."""
 
-        source_str = self.source if self.input_type is not SEDMLInputType.SEDML_STRING else "string"
+        source_str = (
+            self.source
+            if self.input_type is not SEDMLInputType.SEDML_STRING
+            else "string"
+        )
         return f"<SEDMLReader(source={source_str}, input_type={self.input_type}), exec_dir={self.exec_dir}>"
 
     def __str__(self) -> str:
         """Get string."""
-        source_str = self.source if self.input_type is not SEDMLInputType.SEDML_STRING else "string"
+        source_str = (
+            self.source
+            if self.input_type is not SEDMLInputType.SEDML_STRING
+            else "string"
+        )
         info = [
             "SEDMLReader(",
             f"\tinput_type: {self.input_type}",
             f"\tsource: {source_str}",
             f"\texec_dir: {self.exec_dir}",
-            f")"
+            ")",
         ]
         return "\n".join(info)
 
@@ -126,7 +137,7 @@ class SEDMLReader:
             if not file_path.exists():
                 raise IOError(f"SED-ML file/archive does not exist: {file_path}")
 
-            file_stem, file_suffix = file_path.stem, file_path.suffix
+            _, file_suffix = file_path.stem, file_path.suffix
 
             if zipfile.is_zipfile(file_path):
                 logger.warning(f"SED-ML from archive: {file_path}")
@@ -139,7 +150,9 @@ class SEDMLReader:
 
                 # extract archive to working directory
                 if self.working_dir is None:
-                    raise ValueError("working_dir required for extracting COMBINE archive.")
+                    raise ValueError(
+                        "working_dir required for extracting COMBINE archive."
+                    )
                 importlib.reload(libcombine)
                 omex = Omex(omex_path=file_path, working_dir=self.working_dir)
                 omex.extract()
@@ -150,8 +163,10 @@ class SEDMLReader:
                         sedml_path = self.working_dir / location
                         break
                 else:
-                    logger.error(f"No SED-ML file with master flag found in archive: "
-                                 f"'{file_path}'. Using first file.")
+                    logger.error(
+                        f"No SED-ML file with master flag found in archive: "
+                        f"'{file_path}'. Using first file."
+                    )
                     if len(locations) > 0:
                         sedml_path = self.working_dir / locations[0][0]
                     else:

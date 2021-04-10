@@ -3,14 +3,14 @@
 Using sympy to evaluate the expressions.
 """
 import logging
-from typing import Dict, Set, Tuple
+from typing import Any, Dict, Set, Tuple
 
 import libsedml
 from sympy import Symbol, lambdify, sympify
 
 
 def formula_to_astnode(formula: str) -> libsedml.ASTNode:
-    """Parse ASTNode from formula"""
+    """Parse ASTNode from formula."""
     astnode = libsedml.parseL3Formula(formula)
     if not astnode:
         logging.error("Formula could not be parsed: '{}'".format(formula))
@@ -25,17 +25,20 @@ def astnode_to_formula(astnode: libsedml.ASTNode) -> str:
 
 
 def parse_mathml_str(mathml_str: str):
+    """Parse MathML string."""
     astnode: libsedml.AstNode = libsedml.readMathMLFromString(mathml_str)
     return parse_astnode(astnode)
 
 
-def parse_formula(formula: str):
+def parse_formula(formula: str) -> libsedml.ASTNode:
+    """Parse formula to ASTNode."""
     astnode = formula_to_astnode(formula)
     return parse_astnode(astnode)
 
 
-def parse_astnode(astnode: libsedml.ASTNode):
-    """
+def parse_astnode(astnode: libsedml.ASTNode) -> Any:
+    """Parse ASTNode.
+
     An AST node in libSBML is a recursive tree structure; each node has a type,
     a pointer to a value, and a list of children nodes. Each ASTNode node may
     have none, one, two, or more children depending on its type. There are
@@ -62,7 +65,7 @@ def parse_astnode(astnode: libsedml.ASTNode):
 
 
 def expr_from_formula(formula: str):
-    """Parses sympy expression from given formula string."""
+    """Parse sympy expression from given formula string."""
 
     # [2] create sympy expressions with variables and formula
     # necessary to map the expression trees
@@ -87,7 +90,7 @@ def expr_from_formula(formula: str):
 
 
 def evaluate(astnode: libsedml.ASTNode, variables: Dict):
-    """Evaluate the astnode with values """
+    """Evaluate the astnode with values."""
     expr = parse_astnode(astnode)
     f = lambdify(args=list(expr.free_symbols), expr=expr)
     res = f(**variables)
@@ -95,7 +98,7 @@ def evaluate(astnode: libsedml.ASTNode, variables: Dict):
 
 
 def _get_variables(astnode: libsedml.ASTNode, variables=None) -> Set[str]:
-    """Adds variable names to the variables."""
+    """Add variable names to the variables."""
     variables: Set
     if variables is None:
         variables = set()
@@ -114,7 +117,7 @@ def _get_variables(astnode: libsedml.ASTNode, variables=None) -> Set[str]:
 
 
 def replace_piecewise(formula):
-    """Replaces libsedml piecewise with sympy piecewise."""
+    """Replace libsedml piecewise with sympy piecewise."""
     while True:
         index = formula.find("piecewise(")
         if index == -1:

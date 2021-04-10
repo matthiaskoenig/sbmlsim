@@ -1,17 +1,16 @@
+"""Module with helpers to execute SED-ML files and COMBINE archives."""
+
+import json
 import os
 from pathlib import Path
 
+import xmltodict
 
 from sbmlsim.combine.sedml.io import SEDMLReader
 from sbmlsim.combine.sedml.parser import SEDMLParser
-from sbmlsim.experiment import SimulationExperiment, ExperimentRunner
+from sbmlsim.experiment import ExperimentRunner, SimulationExperiment
 from sbmlsim.simulator import SimulatorSerial
 from sbmlsim.simulator.simulation_ray import SimulatorParallel
-
-import xmltodict
-import json
-
-
 
 
 def sedmltojson(sedml_path: Path) -> None:
@@ -46,7 +45,7 @@ def execute_sedml(path: Path, working_dir: Path, output_path: Path) -> None:
         sed_doc=sedml_reader.sed_doc,
         exec_dir=sedml_reader.exec_dir,
         working_dir=working_dir,
-        name=path.stem
+        name=path.stem,
     )
     sedml_parser.print_info()
 
@@ -56,19 +55,14 @@ def execute_sedml(path: Path, working_dir: Path, output_path: Path) -> None:
     print(exp)
 
     # execute simulation experiment
-    # FIXME: what are the correct paths here?
-    base_path = Path(__file__).parent
-    data_path = base_path
-
     runner = ExperimentRunner(
         [sedml_parser.exp_class],
         simulator=SimulatorSerial(),
         data_path=sedml_reader.exec_dir,
         base_path=sedml_reader.exec_dir,
     )
-    _results = runner.run_experiments(
-        output_path=output_path, show_figures=True,
-        figure_formats=["svg", "png"]
+    runner.run_experiments(
+        output_path=output_path, show_figures=True, figure_formats=["svg", "png"]
     )
 
     # TODO: write experiment to SED-ML file

@@ -3,9 +3,9 @@ Execute a COMBINE archive.
 """
 from pathlib import Path
 
+from sbmlsim.examples.sedml.execute_sedml import execute_sedml
 from sbmlsim.test import DATA_DIR
 
-from sbmlsim.examples.sedml.execute_sedml import execute_sedml
 
 if __name__ == "__main__":
     repressilator_omex = DATA_DIR / "omex" / "tellurium" / "repressilator.omex"

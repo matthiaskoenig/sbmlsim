@@ -28,8 +28,8 @@ class Carcione2020(SimulationExperiment):
         tasks = {}
         if self.simulations():
             tasks = {
-                    f"task_{key}": Task(model="model", simulation=key)
-                    for key in self.simulations()
+                f"task_{key}": Task(model="model", simulation=key)
+                for key in self.simulations()
             }
         return tasks
 

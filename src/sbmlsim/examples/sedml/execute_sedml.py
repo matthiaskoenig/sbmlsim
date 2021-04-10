@@ -35,7 +35,7 @@ if __name__ == "__main__":
         execute_sedml(
             path=examples_dir / sedml_file,
             working_dir=working_dir,
-            output_path=working_dir / "sbmlsim"
+            output_path=working_dir / "sbmlsim",
         )
 
     # ----------------------

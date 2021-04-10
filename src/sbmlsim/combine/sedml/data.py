@@ -1,12 +1,11 @@
-"""
-Reading NUML, CSV and TSV data from DataDescriptions
-"""
+"""Reading NUML, CSV and TSV data from DataDescriptions."""
 import http.client as httplib
 import importlib
 import logging
 import os
 import tempfile
-from typing import Dict
+from pathlib import Path
+from typing import Dict, Optional
 
 import libsbml
 import libsedml
@@ -15,31 +14,30 @@ import pandas as pd
 from .numl import NumlParser
 
 
-logger = logging.getLogger("sedml-data")
+logger = logging.getLogger(__name__)
 
 
-class DataDescriptionParser(object):
-    """ Class for parsing DataDescriptions. """
+class DataDescriptionParser:
+    """Class for parsing DataDescriptions."""
 
     FORMAT_URN = "urn:sedml:format:"
     FORMAT_NUML = "urn:sedml:format:numl"
     FORMAT_CSV = "urn:sedml:format:csv"
     FORMAT_TSV = "urn:sedml:format:tsv"
 
-    # supported formats
     SUPPORTED_FORMATS = [FORMAT_NUML, FORMAT_CSV, FORMAT_TSV]
 
     @classmethod
     def parse(
-        cls, dd: libsedml.SedDataDescription, workingDir=None
+        cls, dd: libsedml.SedDataDescription, working_dir: Path = None
     ) -> Dict[str, pd.Series]:
-        """Parses single DataDescription.
+        """Parse single DataDescription.
 
         Returns dictionary of data sources {DataSource.id, slice_data}
 
         :param dd: SED-ML DataDescription
-        :param workingDir: workingDir relative to which the sources are resolved
-        :return:
+        :param working_dir: workingDir relative to which the sources are resolved
+        :return: dictionary of pandas.Series
         """
         importlib.reload(libsedml)
         assert dd.getTypeCode() == libsedml.SEDML_DATA_DESCRIPTION
@@ -52,8 +50,8 @@ class DataDescriptionParser(object):
         # Resolve source
         # -------------------------------
         # FIXME: this must work for absolute paths and URL paths
-        if workingDir is None:
-            workingDir = "."
+        if working_dir is None:
+            working_dir = "."
 
         # TODO: refactor in general resource module (for resolving anyURI and resource)
         tmp_file = None
@@ -66,15 +64,14 @@ class DataDescriptionParser(object):
             conn.close()
             try:
                 file_str = str(data.decode("utf-8"))
-            except:
-                # FIXME: too broad
+            except UnicodeDecodeError:
                 file_str = str(data)
 
             tmp_file = tempfile.NamedTemporaryFile("w")
             tmp_file.write(file_str)
             source_path = tmp_file.name
         else:
-            source_path = os.path.join(workingDir, source)
+            source_path = os.path.join(working_dir, source)
 
         # -------------------------------
         # Find the format
@@ -131,7 +128,7 @@ class DataDescriptionParser(object):
         # Process DataSources
         # -------------------------------
         data_sources = {}
-        for k, ds in enumerate(dd.getListOfDataSources()):
+        for ds in dd.getListOfDataSources():
 
             dsid = ds.getId()
 
@@ -157,15 +154,15 @@ class DataDescriptionParser(object):
                     # slice values are columns from data frame
                     try:
                         data_sources[dsid] = data[sids].values
-                    except KeyError as e:
+                    except KeyError as err:
                         # something does not fit between data and data sources
-                        print("-" * 80)
-                        print("Format:", format)
-                        print("Source:", source_path)
-                        print("-" * 80)
-                        print(data)
-                        print("-" * 80)
-                        raise
+                        logger.error("-" * 80)
+                        logger.error(f"Format: {format}")
+                        logger.error(f"Source: {source_path}")
+                        logger.error("-" * 80)
+                        logger.error(data)
+                        logger.error("-" * 80)
+                        raise err
 
             # NUML
             elif format == cls.FORMAT_NUML:
@@ -204,12 +201,12 @@ class DataDescriptionParser(object):
         return data_sources
 
     @classmethod
-    def _determine_format(cls, source_path, format=None):
-        """
+    def _determine_format(cls, source_path: Path, format: Optional[str] = None) -> str:
+        """Determine format of file.
 
         :param source_path: path of file
         :param format: format given in the DataDescription
-        :return:
+        :return: format str
         """
         if format is None or format == "":
             is_xml = False
@@ -246,31 +243,20 @@ class DataDescriptionParser(object):
         return format
 
     @classmethod
-    def _load_csv(cls, path):
-        """Read CSV data from file.
-
-        :param path: path of file
-        :return: returns pandas DataFrame with data
-        """
+    def _load_csv(cls, path: Path) -> pd.DataFrame:
+        """Read CSV data from file."""
         return cls._load_sv(path, separator=",")
 
     @classmethod
-    def _load_tsv(cls, path):
-        """Read TSV data from file.
-
-        :param path: path of file
-        :return: returns pandas DataFrame with data
-        """
+    def _load_tsv(cls, path: Path) -> pd.DataFrame:
+        """Read TSV data from file."""
         return cls._load_sv(path, separator="\t")
 
     @classmethod
-    def _load_sv(cls, path, separator):
-        """Helper function for loading data file from given source.
+    def _load_sv(cls, path: Path, separator: str) -> pd.DataFrame:
+        """Load tsv/csv data from given source.
 
         CSV files must have a header. Handles file and online resources.
-
-        :param path: path of file.
-        :return: pandas data frame
         """
         df = pd.read_csv(
             path,

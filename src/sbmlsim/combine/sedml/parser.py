@@ -1,6 +1,4 @@
-"""
-SED-ML support for sbmlsim
-==========================
+"""SED-ML support for sbmlsim.
 
 This modules parses SED-ML based simulation experiments in the sbmlsim
 SimulationExperiment format and executes them.
@@ -82,11 +80,11 @@ import shutil
 import warnings
 from enum import Enum
 from pathlib import Path
-from typing import Dict, List, Union, Optional, Type
+from pprint import pprint
+from typing import Dict, List, Optional, Type, Union
 
 import libsedml
 import pandas as pd
-from pprint import pprint
 import roadrunner
 from pint import Quantity
 
@@ -95,24 +93,38 @@ from sbmlsim.combine.omex import Omex
 from sbmlsim.combine.sedml.data import DataDescriptionParser
 from sbmlsim.combine.sedml.kisao import is_supported_algorithm_for_simulation_type
 from sbmlsim.combine.sedml.task import Stack, TaskNode, TaskTree
-from sbmlsim.data import DataSet, Data
-from sbmlsim.experiment import SimulationExperiment, ExperimentRunner
-from sbmlsim.fit import FitParameter, FitExperiment, FitMapping, FitData
+from sbmlsim.data import Data, DataSet
+from sbmlsim.experiment import ExperimentRunner, SimulationExperiment
+from sbmlsim.fit import FitData, FitExperiment, FitMapping, FitParameter
 from sbmlsim.model import RoadrunnerSBMLModel
 from sbmlsim.model.model import AbstractModel
-from sbmlsim.plot import Figure, Plot, Axis, Curve
-from sbmlsim.plot.plotting import Style, Line, LineType, ColorType, Marker, \
-    MarkerType, Fill, SubPlot, AxisScale, CurveType, YAxisPosition, ShadedArea, \
-    AbstractCurve
-from sbmlsim.simulation import ScanSim, TimecourseSim, Timecourse, AbstractSim
+from sbmlsim.plot import Axis, Curve, Figure, Plot
+from sbmlsim.plot.plotting import (
+    AbstractCurve,
+    AxisScale,
+    ColorType,
+    CurveType,
+    Fill,
+    Line,
+    LineType,
+    Marker,
+    MarkerType,
+    ShadedArea,
+    Style,
+    SubPlot,
+    YAxisPosition,
+)
+from sbmlsim.simulation import AbstractSim, ScanSim, Timecourse, TimecourseSim
 from sbmlsim.task import Task
 from sbmlsim.units import UnitRegistry, UnitsInformation
+
 
 logger = logging.getLogger(__file__)
 
 
 class SBMLModelTargetType(Enum):
     """Supported target types in SBML models."""
+
     PARAMETER = 0
     COMPARTMENT = 1
     SPECIES = 2
@@ -173,9 +185,11 @@ class SBMLModelTarget:
             return None
 
     @staticmethod
-    def sbmlsim_model_targets(r: roadrunner.ExecutableModel) -> Dict[str, 'SBMLModelTarget']:
+    def sbmlsim_model_targets(
+        r: roadrunner.ExecutableModel,
+    ) -> Dict[str, "SBMLModelTarget"]:
         """Model targets which are supported by sbmlsim."""
-        d: Dict[str, 'SBMLModelTarget'] = {}
+        d: Dict[str, "SBMLModelTarget"] = {}
 
         # time
         d["time"] = SBMLModelTarget(
@@ -192,9 +206,7 @@ class SBMLModelTarget:
             )
 
         # species
-        species_ids = set(
-            r.getBoundarySpeciesIds() + r.getFloatingSpeciesIds()
-        )
+        species_ids = set(r.getBoundarySpeciesIds() + r.getFloatingSpeciesIds())
         for sid in species_ids:
             d[sid] = SBMLModelTarget(
                 selection=sid,
@@ -268,7 +280,6 @@ class SEDMLSerializer:
 
         # --- reports ---
 
-
         sedml_path = working_dir / sedml_filename
         libsedml.writeSedML(self.sed_doc, str(sedml_path))
 
@@ -280,7 +291,7 @@ class SEDMLSerializer:
     def _selection_lookup_table(self) -> Dict[str, Dict[str, SBMLModelTarget]]:
         """Lookup table for sbmlsim model selections."""
         d: Dict[str, Dict[str, SBMLModelTarget]] = {}
-        for model_id, model in self.exp.models().items():
+        for model_id in self.exp.models():
             rrsbml_model: RoadrunnerSBMLModel = self.exp._models[model_id]
             rr_model: roadrunner.ExecutableModel = rrsbml_model.r.model
             d[model_id] = SBMLModelTarget.sbmlsim_model_targets(r=rr_model)
@@ -338,13 +349,14 @@ class SEDMLSerializer:
 
             # get normalized changes (to model units)
             changes: Dict[str, Quantity] = UnitsInformation.normalize_changes(
-                changes=abstract_model.changes,
-                uinfo=rrsbml_model.uinfo
+                changes=abstract_model.changes, uinfo=rrsbml_model.uinfo
             )
 
             for selection, value in changes.items():
                 sbml_target = selection_map[selection]
-                sed_change_attr: libsedml.SedChangeAttribute = sed_model.createChangeAttribute()
+                sed_change_attr: libsedml.SedChangeAttribute = (
+                    sed_model.createChangeAttribute()
+                )
                 sed_change_attr.setTarget(sbml_target.sedml_target)
 
                 # FIXME: support amount and concentration
@@ -373,14 +385,18 @@ class SEDMLSerializer:
 
                 tc: Timecourse
                 for k, tc in enumerate(tcsim.timecourses):
-                    sed_uniform_tc: libsedml.SedUniformTimeCourse = self.sed_doc.createUniformTimeCourse()
+                    sed_uniform_tc: libsedml.SedUniformTimeCourse = (
+                        self.sed_doc.createUniformTimeCourse()
+                    )
 
                     tc_id: str
                     if k == 0:
                         tc_id = sim_id
                     else:
                         tc_id = f"{sim_id}_{k}"
-                        logger.error(f"Concatenated timecourses not supported: '{tc_id}'")
+                        logger.error(
+                            f"Concatenated timecourses not supported: '{tc_id}'"
+                        )
                     sed_uniform_tc.setId(tc_id)
                     sed_uniform_tc.setInitialTime(tc.start)
                     if tcsim.time_offset is not None:
@@ -415,7 +431,9 @@ class SEDMLSerializer:
         Write experiment data in SedDocument.
         """
 
-        def sed_variable_from_data(sed_dg: libsedml.SedDataGenerator, data: Data, var_id: str) -> libsedml.SedVariable:
+        def sed_variable_from_data(
+            sed_dg: libsedml.SedDataGenerator, data: Data, var_id: str
+        ) -> libsedml.SedVariable:
             """Create sed_variable from given Data."""
             task_id: str = data.task_id
             task: Task = self.exp._tasks[task_id]
@@ -436,32 +454,33 @@ class SEDMLSerializer:
         did: str
         data: Data
         for did, data in self.exp._data.items():
-            print("DataGenerator", did)
-
             sed_dg: libsedml.SedDataGenerator = self.sed_doc.createDataGenerator()
             sed_dg.setId(did)
             if data.is_dataset():
                 raise NotImplementedError("Dataset data generators")
             elif data.is_task():
-                sed_variable = sed_variable_from_data(sed_dg, data=data, var_id=data.index)
+                sed_variable = sed_variable_from_data(
+                    sed_dg, data=data, var_id=data.index
+                )
                 formula = f"{sed_variable.getId()}"
-                # print("formula: ", formula)
                 math: libsedml.ASTNode = formula_to_astnode(formula)
                 sed_dg.setMath(math)
 
             elif data.is_function():
                 formula: str = data.function
-                # print("formula:", formula)
-                # print("variables:", data.variables)
                 math: libsedml.ASTNode = formula_to_astnode(formula)
 
-                for k, var_key in enumerate(data.variables):
-                    var_data = data.variables[var_key]
-                    sed_variable = sed_variable_from_data(sed_dg, data=var_data, var_id=var_key)
+                for var_key, var_data in data.variables.items():
+                    sed_variable: libsedml.SedVariable = sed_variable_from_data(
+                        sed_dg, data=var_data, var_id=var_key
+                    )
                     math.renameSIdRefs(var_key, sed_variable.getId())
                 for par_key, par_value in data.parameters:
-                    # FIXME: implement & replace parameter ids in formula
-                    raise NotImplementedError("Parameters on variables not supported")
+                    sed_parameter: libsedml.SedParameter = sed_dg.createParameter()
+                    sed_parameter_id = f"{did}__{par_key}"
+                    sed_parameter.setId(sed_parameter_id)
+                    sed_parameter.setValue(par_value)
+                    math.renameSIdRefs(par_key, sed_parameter_id)
 
                 sed_dg.setMath(math)
 
@@ -472,8 +491,7 @@ class SEDMLSerializer:
         """
 
         def set_abstract_curve_attributes(
-            acurve: AbstractCurve,
-            sed_acurve: libsedml.SedAbstractCurve
+            acurve: AbstractCurve, sed_acurve: libsedml.SedAbstractCurve
         ) -> None:
             """Set abstract curve attributes."""
             if acurve.sid is not None:
@@ -481,9 +499,7 @@ class SEDMLSerializer:
             if curve.name is not None:
                 sed_acurve.setName(acurve.name)
             if curve.x is not None:
-                sed_acurve.setXDataReference(
-                    self.datagenerator_id_from_data(acurve.x)
-                )
+                sed_acurve.setXDataReference(self.datagenerator_id_from_data(acurve.x))
             if acurve.order is not None:
                 sed_acurve.setOrder(acurve.order)
             if acurve.yaxis_position is not None:
@@ -505,7 +521,7 @@ class SEDMLSerializer:
         fig_id: str
         figure: Figure
         task: Task
-        for fig_id, figure in self.exp._figures.items():
+        for _, figure in self.exp._figures.items():
             sed_figure: libsedml.SedFigure = self.sed_doc.createFigure()
             sed_figure.setId(figure.sid)
             if figure.name:
@@ -539,7 +555,7 @@ class SEDMLSerializer:
                 # handle height and width
                 plot_height: float = plot.height
                 if not plot_height:
-                    plot_height = figure.height/figure.num_rows * subplot.row_span
+                    plot_height = figure.height / figure.num_rows * subplot.row_span
                 sed_plot2d.setHeight(plot_height)
 
                 plot_width: float = plot.width
@@ -623,7 +639,9 @@ class SEDMLSerializer:
         if style.name is not None:
             sed_style.setName(style.name)
         if style.base_style is not None:
-            sed_basestyle: libsedml.SedStyle = self.sed_doc.getStyle(style.base_style.sid)
+            sed_basestyle: libsedml.SedStyle = self.sed_doc.getStyle(
+                style.base_style.sid
+            )
             if sed_basestyle is None:
                 sed_basestyle = self.sed_doc.createStyle()
                 self.serialize_style(style.base_style, sed_basestyle)
@@ -713,7 +731,7 @@ class SEDMLParser:
         working_dir: Path,
         name: Optional[str] = None,
     ):
-        """Parses information from SedDocument.
+        """Initialize SED-ML parser from SedDocument.
 
         :param sed_doc: SedDocument
         :param working_dir: working dir to execute the SED-ML
@@ -810,13 +828,13 @@ class SEDMLParser:
                             "Steady state parameter fitting is not supported"
                         )
                     else:
-                        raise ValueError(
-                            f"ExperimentType not supported: {fit_type}"
-                        )
+                        raise ValueError(f"ExperimentType not supported: {fit_type}")
 
                     # algorithm
                     # TODO: support algorithms
-                    sed_algorithm: libsedml.SedAlgorithm = sed_fit_experiment.getAlgorithm()
+                    sed_algorithm: libsedml.SedAlgorithm = (
+                        sed_fit_experiment.getAlgorithm()
+                    )  # noqa: F841
 
                     # fit_mappings
                     mappings: List[FitMapping] = []
@@ -824,7 +842,9 @@ class SEDMLParser:
                     for sed_fit_mapping in sed_fit_experiment.getListOfFitMappings():
                         weight: float = sed_fit_mapping.getWeight()
                         # TODO: support for point weights
-                        point_weight: str = sed_fit_mapping.getPointWeight()
+                        point_weight: str = (
+                            sed_fit_mapping.getPointWeight()
+                        )  # noqa: F841
 
                         # TODO: resolve data from data generator
                         reference: FitData = None
@@ -844,9 +864,7 @@ class SEDMLParser:
 
                     # TODO: necessary to create a SimulationExperiment for the fit experiment
                     fit_experiment = FitExperiment(
-                        experiment=None,
-                        mappings=mappings,
-                        fit_parameters=None
+                        experiment=None, mappings=mappings, fit_parameters=None
                     )
                     fit_experiments.append(fit_experiment)
 
@@ -856,9 +874,11 @@ class SEDMLParser:
                 print("*** FitParameters ***")
                 parameters: List[FitParameter] = []
                 sed_adjustable_parameter: libsedml.SedAdjustableParameter
-                for sed_adjustable_parameter in sed_petask.getListOfAdjustableParameters():
+                for (
+                    sed_adjustable_parameter
+                ) in sed_petask.getListOfAdjustableParameters():
 
-                    sid = sed_adjustable_parameter.getId()
+                    sid = sed_adjustable_parameter.getId()  # noqa: F841
                     # FIXME: this must be the parameter name in the model -> resolve target
                     # The target of an AdjustableParameter must point to an adjustable
                     # element of the Model referenced bythe parent
@@ -868,10 +888,13 @@ class SEDMLParser:
                     pid = "?"
 
                     initial_value: float = sed_adjustable_parameter.getInitialValue()
-                    sed_bounds: libsedml.SedBounds = sed_adjustable_parameter.getBounds()
+                    sed_bounds: libsedml.SedBounds = (
+                        sed_adjustable_parameter.getBounds()
+                    )
                     lower_bound: float = sed_bounds.getLowerBound()
                     upper_bound: float = sed_bounds.getUpperBound()
-                    scale: str = sed_bounds.getScale()  # FIXME: support scale (only log)
+                    # FIXME: support scale (only log)
+                    scale: str = sed_bounds.getScale()  # noqa: F841
 
                     parameters.append(
                         FitParameter(
@@ -879,14 +902,16 @@ class SEDMLParser:
                             start_value=initial_value,
                             lower_bound=lower_bound,
                             upper_bound=upper_bound,
-                            unit=None
+                            unit=None,
                         )
                     )
 
                     # resolve links to experiments!
                     experiment_refs: List[str] = []
 
-                    for sed_experiment_ref in sed_adjustable_parameter.getListOfExperimentRefs():
+                    for (
+                        sed_experiment_ref
+                    ) in sed_adjustable_parameter.getListOfExperimentRefs():
                         experiment_refs.append(sed_experiment_ref)
 
                 print("*** Objective ***")
@@ -915,7 +940,10 @@ class SEDMLParser:
         # which plots are not in figures
         single_plots = set()
         for sed_output in sed_doc.getListOfOutputs():
-            if sed_output.getTypeCode() in [libsedml.SEDML_OUTPUT_PLOT2D, libsedml.SEDML_OUTPUT_PLOT3D]:
+            if sed_output.getTypeCode() in [
+                libsedml.SEDML_OUTPUT_PLOT2D,
+                libsedml.SEDML_OUTPUT_PLOT3D,
+            ]:
                 single_plots.add(sed_output.getId())
 
         print(single_plots)
@@ -957,8 +985,10 @@ class SEDMLParser:
         for figure in self.figures.values():
             figure.experiment = self.experiment
 
-    def _wrap_plot_in_figure(self, sed_plot: Union[libsedml.SedPlot2D, libsedml.SedPlot3D]) -> Figure:
-        """Creates plot from SED-ML plot and wraps in figure."""
+    def _wrap_plot_in_figure(
+        self, sed_plot: Union[libsedml.SedPlot2D, libsedml.SedPlot3D]
+    ) -> Figure:
+        """Create sbmlsim.Plot from libsedml.Plot and wraps in sbmlsim.Figure."""
         typecode = sed_plot.getTypeCode()
         sed_plot_id: str = sed_plot.getId()
         f = Figure(
@@ -972,11 +1002,8 @@ class SEDMLParser:
         elif typecode == libsedml.SEDML_OUTPUT_PLOT3D:
             plot = self.parse_plot3d(sed_plot3d=sed_plot)
 
-        f.add_plots([
-            plot
-        ])
+        f.add_plots([plot])
         return f
-
 
     def _create_experiment_class(self) -> Type[SimulationExperiment]:
         """Create SimulationExperiment class from information.
@@ -1111,7 +1138,7 @@ class SEDMLParser:
         return model
 
     def resolve_model_changes(self):
-        """Resolves the original model sources and full change lists.
+        """Resolve the original model sources and full change lists.
 
         Going through the tree of model upwards until root is reached and
         collecting changes on the way (example models m* and changes c*)
@@ -1128,14 +1155,11 @@ class SEDMLParser:
         model tree hierarchy is not getting to deep.
         """
 
-        def findSource(mid, changes):
-            """
-            Recursive search for original model and store the
-            changes which have to be applied in the list of changes
+        def find_source(mid: str, changes):
+            """Find source.
 
-            :param mid:
-            :param changes:
-            :return:
+            Recursive search for original model and store the
+            changes which have to be applied in the list of changes.
             """
             # mid is node above
             if mid in model_sources and not model_sources[mid] == mid:
@@ -1143,7 +1167,7 @@ class SEDMLParser:
                 for c in model_changes[mid]:
                     changes.append(c)
                 # keep looking deeper
-                return findSource(model_sources[mid], changes)
+                return find_source(model_sources[mid], changes)
             # the source is no longer a key in the sources, it is the source
             return mid, changes
 
@@ -1166,14 +1190,14 @@ class SEDMLParser:
         all_changes = {}
         mids = [m.getId() for m in self.sed_doc.getListOfModels()]
         for mid in mids:
-            source, changes = findSource(mid, changes=list())
+            source, changes = find_source(mid, changes=list())
             model_sources[mid] = source
             all_changes[mid] = changes[::-1]
 
         return model_sources, all_changes
 
     def parse_change(self, sed_change: libsedml.SedChange) -> Dict:
-        """Parses the change.
+        """Parse the libsedml.Change.
 
         Currently only a limited subset of model changes is supported.
         Namely changes of parameters and concentrations within a
@@ -1221,13 +1245,13 @@ class SEDMLParser:
             return {}
 
     def parse_simulation(self, sed_sim: libsedml.SedSimulation) -> Union[TimecourseSim]:
-        """ Parse simulation information."""
+        """Parse simulation information."""
         sim_type = sed_sim.getTypeCode()
         algorithm = sed_sim.getAlgorithm()
         if algorithm is None:
             logger.warning(
-                f"Algorithm missing on simulation, defaulting to "
-                f"'cvode: KISAO:0000019'"
+                "Algorithm missing on simulation, defaulting to "
+                "'cvode: KISAO:0000019'"
             )
             algorithm = sed_sim.createAlgorithm()
             algorithm.setKisaoID("KISAO:0000019")
@@ -1256,10 +1280,10 @@ class SEDMLParser:
                     Timecourse(
                         start=initial_time,
                         end=output_end_time,
-                        steps=number_of_points-1,
+                        steps=number_of_points - 1,
                     ),
                 ],
-                time_offset=output_start_time
+                time_offset=output_start_time,
             )
             return tcsim
 
@@ -1282,7 +1306,7 @@ class SEDMLParser:
         # TODO/FIXME: handle all the algorithm parameters as integrator parameters
 
     def parse_task(self, sed_task: libsedml.SedAbstractTask) -> Task:
-        """ Parse arbitrary task (repeated or simple, or simple repeated)."""
+        """Parse arbitrary task (repeated or simple, or simple repeated)."""
         # If no DataGenerator references the task, no execution is necessary
         dgs: List[libsedml.SedDataGenerator] = self.data_generators_for_task(sed_task)
         if len(dgs) == 0:
@@ -1299,11 +1323,9 @@ class SEDMLParser:
         task_tree_root = TaskTree.from_sedml_task(self.sed_doc, root_task=sed_task)
 
         # go forward through task tree
-        lines = []
-        node_stack = Stack()
         tree_nodes = [n for n in task_tree_root]
 
-        for kn, node in enumerate(tree_nodes):
+        for node in tree_nodes:
             task_type = node.task.getTypeCode()
 
             # Create simulation for task
@@ -1325,7 +1347,7 @@ class SEDMLParser:
                 raise ValueError(f"Unsupported task: {task_type}")
 
     def _parse_simple_task(self, task_node: TaskNode) -> Task:
-        """Parse simple task"""
+        """Parse simple task."""
         sed_task: libsedml.SedTask = task_node.task
         model_id: str = sed_task.getModelReference()
         simulation_id: str = sed_task.getSimulationReference()
@@ -1353,8 +1375,10 @@ class SEDMLParser:
         for sed_subplot in sed_figure.getListOfSubPlots():
             sed_output = self.sed_doc.getOutput(sed_subplot.getPlot())
             if sed_output is None:
-                raise ValueError(f"Plot could not be resolved. No output exists in "
-                                 f"listOfOutputs for id='{sed_subplot.getPlot()}'")
+                raise ValueError(
+                    f"Plot could not be resolved. No output exists in "
+                    f"listOfOutputs for id='{sed_subplot.getPlot()}'"
+                )
 
             typecode = sed_output.getTypeCode()
 
@@ -1374,13 +1398,15 @@ class SEDMLParser:
             col_span = sed_subplot.getColSpan() if sed_subplot.isSetColSpan() else 1
 
             if not panel_height and plot.height:
-                panel_height = plot.height/sed_subplot.getRowSpan()
+                panel_height = plot.height / sed_subplot.getRowSpan()
             if not panel_width and plot.width:
-                panel_width = plot.width/sed_subplot.getColSpan()
+                panel_width = plot.width / sed_subplot.getColSpan()
 
             # add subplot
             figure.subplots.append(
-                SubPlot(plot=plot, row=row, col=col, row_span=row_span, col_span=col_span)
+                SubPlot(
+                    plot=plot, row=row, col=col, row_span=row_span, col_span=col_span
+                )
             )
 
         # figure height and width from panels
@@ -1424,24 +1450,26 @@ class SEDMLParser:
         return plot
 
     def parse_plot3d(self, sed_plot3d: libsedml.SedPlot3D) -> Plot:
-        """ Parse Plot3D."""
+        """Parse Plot3D."""
         # FIXME: implement
         raise NotImplementedError
 
     def parse_report(self, sed_report: libsedml.SedReport) -> Dict[str, str]:
-        """ Parse Report.
+        """Parse Report.
 
-        Returns dictionary of label: dataGenerator.id mapping.
+        :return dictionary of label: dataGenerator.id mapping.
         """
         sed_dataset: libsedml.SedDataSet
         report: Dict[str, str] = {}
         for sed_dataset in sed_report.getListOfDataSets():
             sed_dg_id: str = sed_dataset.getDataReference()
             if self.sed_doc.getDataGenerator(sed_dg_id) is None:
-                raise ValueError(f"Report '{sed_report.getId()}': Id of DataGenerator "
-                                 f"does not exist '{sed_dg_id}'")
+                raise ValueError(
+                    f"Report '{sed_report.getId()}': Id of DataGenerator "
+                    f"does not exist '{sed_dg_id}'"
+                )
             if not sed_dataset.isSetLabel():
-                logger.error(f"Required attribute label missing on DataSet in Report.")
+                logger.error("Required attribute label missing on DataSet in Report.")
                 continue
             label = sed_dataset.getLabel()
             if label in report:
@@ -1485,11 +1513,10 @@ class SEDMLParser:
         return axis
 
     def parse_abstract_curve(
-        self,
-        sed_acurve: libsedml.SedAbstractCurve
+        self, sed_acurve: libsedml.SedAbstractCurve
     ) -> Union[ShadedArea, Curve]:
         """Parse abstract curve."""
-        sid: str = sed_acurve.getId(),
+        sid: str = sed_acurve.getId()
         name: Optional[str] = sed_acurve.getName() if sed_acurve.isSetName() else None
         x: Data = self.data_from_datagenerator(sed_acurve.getXDataReference())
         order: int = sed_acurve.getOrder() if sed_acurve.isSetOrder() else None
@@ -1525,9 +1552,11 @@ class SEDMLParser:
             yerr: Data
             curve_type: CurveType
             if not sed_curve.isSetType():
-                logger.warning(f"No curve.type set on {sed_curve}, "
-                               f"defaulting to POINTS. It is highly "
-                               f"recommended to set curve.type.")
+                logger.warning(
+                    f"No curve.type set on {sed_curve}, "
+                    f"defaulting to POINTS. It is highly "
+                    f"recommended to set curve.type."
+                )
                 curve_type = CurveType.POINTS
             else:
                 sed_curve_type = sed_curve.getType()
@@ -1542,8 +1571,9 @@ class SEDMLParser:
                 elif sed_curve_type == libsedml.SEDML_CURVETYPE_HORIZONTALBARSTACKED:
                     curve_type = CurveType.HORIZONTALBARSTACKED
                 elif sed_curve_type == libsedml.SEDML_CURVETYPE_INVALID:
-                    raise ValueError(f"Invalid CurveType: {sed_curve.getType()} on "
-                                     f"{sed_curve}")
+                    raise ValueError(
+                        f"Invalid CurveType: {sed_curve.getType()} on " f"{sed_curve}"
+                    )
             curve = Curve(
                 sid=sid,
                 name=name,
@@ -1567,7 +1597,9 @@ class SEDMLParser:
                 sid=sid,
                 name=name,
                 x=x,
-                yfrom=self.data_from_datagenerator(sed_shaded_area.getYDataReferenceFrom()),
+                yfrom=self.data_from_datagenerator(
+                    sed_shaded_area.getYDataReferenceFrom()
+                ),
                 yto=self.data_from_datagenerator(sed_shaded_area.getYDataReferenceTo()),
                 order=order,
                 yaxis_position=yaxis_position,
@@ -1579,8 +1611,10 @@ class SEDMLParser:
 
             return area
         else:
-            raise ValueError(f"Type of AbstractCurve '{sed_acurve}' is not supported: "
-                             f"'{sed_acurve_type}'")
+            raise ValueError(
+                f"Type of AbstractCurve '{sed_acurve}' is not supported: "
+                f"'{sed_acurve_type}'"
+            )
 
     def parse_style(self, sed_style: Union[str, libsedml.SedStyle]) -> Optional[Style]:
         """Parse SED-ML style."""
@@ -1594,7 +1628,9 @@ class SEDMLParser:
         style = Style(
             sid=sed_style.getId(),
             name=sed_style.getName() if sed_style.isSetName() else None,
-            base_style=self.parse_style(sed_style.getBaseStyle()) if sed_style.isSetBaseStyle() else None,
+            base_style=self.parse_style(sed_style.getBaseStyle())
+            if sed_style.isSetBaseStyle()
+            else None,
         )
         sed_line: libsedml.SedLine = sed_style.getLineStyle()
         style.line = self.parse_line(sed_line)
@@ -1631,8 +1667,10 @@ class SEDMLParser:
 
         return Line(
             type=line_type,
-            color=ColorType.parse_color(sed_line.getColor()) if sed_line.isSetColor() else None,
-            thickness=sed_line.getThickness() if sed_line.isSetThickness() else None
+            color=ColorType.parse_color(sed_line.getColor())
+            if sed_line.isSetColor()
+            else None,
+            thickness=sed_line.getThickness() if sed_line.isSetThickness() else None,
         )
 
     def parse_marker(self, sed_marker: libsedml.SedMarker) -> Optional[Marker]:
@@ -1676,8 +1714,12 @@ class SEDMLParser:
             size=sed_marker.getSize() if sed_marker.isSetSize() else None,
             type=marker_type,
             fill=ColorType(sed_marker.getFill()) if sed_marker.isSetFill() else None,
-            line_thickness=sed_marker.getLineThickness() if sed_marker.isSetLineThickness() else None,
-            line_color=ColorType(sed_marker.getLineColor()) if sed_marker.isSetLineColor() else None,
+            line_thickness=sed_marker.getLineThickness()
+            if sed_marker.isSetLineThickness()
+            else None,
+            line_color=ColorType(sed_marker.getLineColor())
+            if sed_marker.isSetLineColor()
+            else None,
         )
 
         return marker
@@ -1688,12 +1730,19 @@ class SEDMLParser:
             return None
 
         return Fill(
-            color=ColorType.parse_color(sed_fill.getColor()) if sed_fill.isSetColor() else None,
-            second_color=ColorType.parse_color(sed_fill.getSecondColor()) if sed_fill.isSetSecondColor() else None,
+            color=ColorType.parse_color(sed_fill.getColor())
+            if sed_fill.isSetColor()
+            else None,
+            second_color=ColorType.parse_color(sed_fill.getSecondColor())
+            if sed_fill.isSetSecondColor()
+            else None,
         )
 
     def data_from_datagenerator(self, sed_dg_ref: Optional[str]) -> Optional[Data]:
-        """This must all be evaluated with actual data"""
+        """Evaluate DataGenerator with actual data.
+
+        Uses results of SimulationExperiment for evaluation.
+        """
         if not sed_dg_ref:
             return None
 
@@ -1723,10 +1772,7 @@ class SEDMLParser:
             if sed_var.isSetTarget():
                 # FIXME: handle targets correctly with the various symbols: amount/concentrations, ...
                 index = self.parse_xpath_target(sed_var.getTarget())
-            d_var = Data(
-                index=index,
-                task=task_id
-            )
+            d_var = Data(index=index, task=task_id)
             # register data
             self.data[d_var.sid] = d_var
             variables[sed_var.getId()] = d_var
@@ -1754,7 +1800,7 @@ class SEDMLParser:
         self,
         sed_task: libsedml.SedTask,
     ) -> List[libsedml.SedDataGenerator]:
-        """ Get the DataGenerators which reference the given task."""
+        """Get DataGenerators which reference the given task."""
         sed_dgs = []
         sed_dg: libsedml.SedDataGenerator
         var: libsedml.SedVariable
@@ -1768,7 +1814,7 @@ class SEDMLParser:
 
     @staticmethod
     def get_ordered_subtasks(sed_task: libsedml.SedTask) -> List[libsedml.SedTask]:
-        """ Ordered list of subtasks for task."""
+        """Ordered list of subtasks for task."""
         subtasks = sed_task.getListOfSubTasks()
         subtask_order = [st.getOrder() for st in subtasks]
 

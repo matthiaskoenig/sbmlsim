@@ -42,20 +42,15 @@ class Cuadros2020(SimulationExperiment):
     def tasks(self) -> Dict[str, Task]:
         if self.simulations():
             return {
-                    f"task_{key}": Task(model="model", simulation=key)
-                    for key in self.simulations()
+                f"task_{key}": Task(model="model", simulation=key)
+                for key in self.simulations()
             }
 
     def figures(self) -> Dict[str, Figure]:
         unit_time = "time"
         unit_y = "substance"
 
-        self.add_selections_data(
-            ["time",
-             "Total_cumulative_cases",
-             "Total_deaths"
-             ]
-        )
+        self.add_selections_data(["time", "Total_cumulative_cases", "Total_deaths"])
 
         fig_1 = Figure(self, sid="fig_plot_1", name=f"{self.sid} (plot_1)")
         plots = fig_1.create_plots(Axis("time", unit=unit_time), legend=True)

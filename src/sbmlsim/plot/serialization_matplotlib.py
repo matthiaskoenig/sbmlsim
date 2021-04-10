@@ -1,17 +1,46 @@
 """Serialization of Figure object to matplotlib."""
 
-from typing import List, Dict, Any, Optional
+import logging
+from typing import Any, Dict, List, Optional
 
 import numpy as np
 from matplotlib import pyplot as plt
 from matplotlib.figure import Figure as FigureMPL
 from matplotlib.gridspec import GridSpec
 
-from sbmlsim.data import Data
-from sbmlsim.plot import Figure, Axis, SubPlot, Curve
-from sbmlsim.plot.plotting import AxisScale, Style, LineType, CurveType, YAxisPosition, \
-    AbstractCurve, ShadedArea
-from sbmlsim.plot.plotting_matplotlib import logger, interp
+from sbmlsim.plot import Axis, Curve, Figure, SubPlot
+from sbmlsim.plot.plotting import (
+    AbstractCurve,
+    AxisScale,
+    CurveType,
+    LineType,
+    ShadedArea,
+    Style,
+    YAxisPosition,
+)
+
+
+logger = logging.getLogger(__name__)
+
+
+def interp(x, xp, fp):
+    """Interpolation for speedup of plots.
+
+    :param x:
+    :param xp:
+    :param fp:
+    :return:
+    """
+    y = np.interp(x=x, xp=xp, fp=fp)
+    # better spline interpolation, but NaN issues with zero values
+    # tck, fp, ier, msg = interpolate.splrep(xp, fp, full_output=True)
+    # if ier > 0:
+    #     logger.error(f"Spline fitting failed: '{msg}'")
+    #
+    # y = interpolate.splev(x, tck, der=0)
+    if not np.all(np.isfinite(y)):
+        logger.error(f"NaN or Inf values in interpolation: {fp} -> {y}")
+    return y
 
 
 class MatplotlibFigureSerializer(object):
@@ -19,7 +48,7 @@ class MatplotlibFigureSerializer(object):
 
     @classmethod
     def _get_scale(cls, axis: Axis) -> str:
-        """Gets string representation of the scale."""
+        """Get string representation of the scale."""
         if axis.scale == AxisScale.LINEAR:
             return "linear"
         elif axis.scale == AxisScale.LOG10:
@@ -28,7 +57,9 @@ class MatplotlibFigureSerializer(object):
             raise ValueError(f"Unsupported axis scale: '{axis.scale}'")
 
     @classmethod
-    def to_figure(cls, experiment: 'SimulationExperiment', figure: Figure) -> FigureMPL:
+    def to_figure(
+        cls, experiment: "SimulationExperiment", figure: Figure
+    ) -> FigureMPL:  # noqa: F821
         """Convert sbmlsim.Figure to matplotlib figure."""
 
         # create new figure
@@ -51,10 +82,10 @@ class MatplotlibFigureSerializer(object):
         subplot: SubPlot
         for subplot in figure.subplots:
             plot = subplot.plot
+            # print(plot.__repr__())
             xax: Axis = plot.xaxis if plot.xaxis else Axis()
             yax: Axis = plot.yaxis if plot.yaxis else Axis()
             yax_right = plot.yaxis_right
-            print(plot.__repr__())
 
             ridx = subplot.row - 1
             cidx = subplot.col - 1
@@ -66,7 +97,10 @@ class MatplotlibFigureSerializer(object):
             axes: List[plt.Axes] = [ax1]
             if yax_right:
                 for curve in plot.curves:
-                    if curve.yaxis_position and curve.yaxis_position == YAxisPosition.RIGHT:
+                    if (
+                        curve.yaxis_position
+                        and curve.yaxis_position == YAxisPosition.RIGHT
+                    ):
                         ax2 = ax1.twinx()
                         axes.append(ax2)
                         break
@@ -100,10 +134,15 @@ class MatplotlibFigureSerializer(object):
             barhstack_y = None
 
             # plot ordered curves
-            abstract_curves: List[AbstractCurve] = sorted(plot.curves + plot.areas, key=lambda x: x.order)
-            for kc, abstract_curve in enumerate(abstract_curves):
+            abstract_curves: List[AbstractCurve] = sorted(
+                plot.curves + plot.areas, key=lambda x: x.order
+            )
+            for abstract_curve in abstract_curves:
 
-                if abstract_curve.yaxis_position and abstract_curve.yaxis_position == YAxisPosition.RIGHT:
+                if (
+                    abstract_curve.yaxis_position
+                    and abstract_curve.yaxis_position == YAxisPosition.RIGHT
+                ):
                     # right axis
                     yunit = yunit_right
                     ax = ax2
@@ -119,10 +158,14 @@ class MatplotlibFigureSerializer(object):
                     y = curve.y.get_data(experiment=experiment, to_units=yunit)
                     xerr = None
                     if curve.xerr is not None:
-                        xerr = curve.xerr.get_data(experiment=experiment, to_units=xunit)
+                        xerr = curve.xerr.get_data(
+                            experiment=experiment, to_units=xunit
+                        )
                     yerr = None
                     if curve.yerr is not None:
-                        yerr = curve.yerr.get_data(experiment=experiment, to_units=yunit)
+                        yerr = curve.yerr.get_data(
+                            experiment=experiment, to_units=yunit
+                        )
 
                     label = curve.name if curve.name else "__nolabel__"
 
@@ -141,13 +184,20 @@ class MatplotlibFigureSerializer(object):
                     if xerr is None:
                         xerr_data = None
                     else:
-                        xerr_data = xerr.magnitude[:, 0] if len(xerr.shape) == 2 else xerr.magnitude
+                        xerr_data = (
+                            xerr.magnitude[:, 0]
+                            if len(xerr.shape) == 2
+                            else xerr.magnitude
+                        )
 
                     if yerr is None:
                         yerr_data = None
                     else:
-                        yerr_data = yerr.magnitude[:, 0] if len(yerr.shape) == 2 else yerr.magnitude
-
+                        yerr_data = (
+                            yerr.magnitude[:, 0]
+                            if len(yerr.shape) == 2
+                            else yerr.magnitude
+                        )
 
                     # FIXME: !!!
 
@@ -173,7 +223,7 @@ class MatplotlibFigureSerializer(object):
                             xerr=xerr_data,
                             yerr=yerr_data,
                             label=label,
-                            **kwargs
+                            **kwargs,
                         )
 
                     elif curve.type == CurveType.BAR:
@@ -183,7 +233,7 @@ class MatplotlibFigureSerializer(object):
                             xerr=xerr_data,
                             yerr=yerr_data,
                             label=label,
-                            **kwargs
+                            **kwargs,
                         )
 
                     elif curve.type == CurveType.HORIZONTALBAR:
@@ -193,7 +243,7 @@ class MatplotlibFigureSerializer(object):
                             xerr=yerr_data,
                             yerr=xerr_data,
                             label=label,
-                            **kwargs
+                            **kwargs,
                         )
 
                     elif curve.type == CurveType.BARSTACKED:
@@ -210,7 +260,7 @@ class MatplotlibFigureSerializer(object):
                             xerr=xerr_data,
                             yerr=yerr_data,
                             label=label,
-                            **kwargs
+                            **kwargs,
                         )
                         barstack_y = barstack_y + y_data
 
@@ -228,7 +278,7 @@ class MatplotlibFigureSerializer(object):
                             xerr=yerr_data,
                             yerr=xerr_data,
                             label=label,
-                            **kwargs
+                            **kwargs,
                         )
                         barhstack_y = barhstack_y + y_data
 
@@ -251,11 +301,7 @@ class MatplotlibFigureSerializer(object):
                         kwargs = style.to_mpl_area_kwargs()
 
                     ax.fill_between(
-                        x=x_data,
-                        y1=yfrom_data,
-                        y2=yto_data,
-                        label=label,
-                        **kwargs
+                        x=x_data, y1=yfrom_data, y2=yto_data, label=label, **kwargs
                     )
 
             # plot settings
@@ -264,7 +310,7 @@ class MatplotlibFigureSerializer(object):
 
             def apply_axis_settings(sax: Axis, ax: plt.Axes, axis_type: str):
                 """Apply settings to all axis."""
-                if not axis_type in ["x", "y"]:
+                if axis_type not in ["x", "y"]:
                     raise ValueError
 
                 if sax.min is not None:

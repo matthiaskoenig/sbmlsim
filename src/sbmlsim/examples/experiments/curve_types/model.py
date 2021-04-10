@@ -26,7 +26,7 @@ model_units = ModelUnits(
     length=UNIT_KIND_METRE,
     extent=UNIT_mmole,
     substance=UNIT_mmole,
-    volume=UNIT_KIND_LITRE
+    volume=UNIT_KIND_LITRE,
 )
 units = [
     UNIT_min,
@@ -67,23 +67,21 @@ species = [
     ),
 ]
 
-parameters = [
-    Parameter("k", 0.3, constant=True, unit=UNIT_litre_per_min)
-]
+parameters = [Parameter("k", 0.3, constant=True, unit=UNIT_litre_per_min)]
 
 reactions = [
     Reaction(
         sid="_J0",
         equation="S1 -> S2",
         compartment="cell",
-        formula=("k * S1", UNIT_mmole_per_min)
+        formula=("k * S1", UNIT_mmole_per_min),
     ),
     Reaction(
         sid="_J1",
         equation="S2 -> S3",
         compartment="cell",
-        formula=("k * S2", UNIT_mmole_per_min)
-    )
+        formula=("k * S2", UNIT_mmole_per_min),
+    ),
 ]
 
 

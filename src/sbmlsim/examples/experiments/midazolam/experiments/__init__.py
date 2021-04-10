@@ -49,8 +49,8 @@ class MidazolamSimulationExperiment(SimulationExperiment):
     def tasks(self) -> Dict[str, Task]:
         if self.simulations():
             return {
-                    f"task_{key}": Task(model="model", simulation=key)
-                    for key in self.simulations()
+                f"task_{key}": Task(model="model", simulation=key)
+                for key in self.simulations()
             }
         else:
             return {}

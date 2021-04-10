@@ -115,31 +115,30 @@ class RepressilatorScanExperiment(SimulationExperiment):
         for model in ["model1", "model2"]:
             for selection in ["X", "Y", "Z"]:
                 # accessed data
-                data.append(
-                    Data(task=f"task_{model}_tc", index=selection)
-                )
+                data.append(Data(task=f"task_{model}_tc", index=selection))
 
         # Define functions (data generators)
-        data.extend([
-            Data(
-                index="f1",
-                function="(sin(X)+Y+Z)/max(X)",
-                variables={
-                    "X": Data(index='X', task="task_model1_tc"),
-                    "Y": Data(index='Y', task="task_model1_tc"),
-                    "Z": Data(index='Y', task="task_model1_tc"),
-                },
-                parameters={
-                }
-            ),
-            Data(
-                index="f2",
-                function="Y/max(Y)",
-                variables={
-                    "Y": Data(index="Y", task="task_model1_tc"),
-                },
-            )
-        ])
+        data.extend(
+            [
+                Data(
+                    index="f1",
+                    function="(sin(X)+Y+Z)/max(X)",
+                    variables={
+                        "X": Data(index="X", task="task_model1_tc"),
+                        "Y": Data(index="Y", task="task_model1_tc"),
+                        "Z": Data(index="Y", task="task_model1_tc"),
+                    },
+                    parameters={},
+                ),
+                Data(
+                    index="f2",
+                    function="Y/max(Y)",
+                    variables={
+                        "Y": Data(index="Y", task="task_model1_tc"),
+                    },
+                ),
+            ]
+        )
 
         # FIXME: arbitrary processing
         # [3] arbitrary processing (e.g. pharmacokinetic calculations)
@@ -154,7 +153,7 @@ class RepressilatorScanExperiment(SimulationExperiment):
 
         self.add_selections_data(
             selections=["time", "X", "Y"],
-            task_ids=[f"task_{m}_tc" for m in ["model1", "model2"]]
+            task_ids=[f"task_{m}_tc" for m in ["model1", "model2"]],
         )
 
         fig1 = Figure(experiment=self, sid="Fig1", num_cols=1, num_rows=1)

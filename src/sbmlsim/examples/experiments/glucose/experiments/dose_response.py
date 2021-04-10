@@ -129,7 +129,7 @@ class DoseResponseExperiment(SimulationExperiment):
     def data(self) -> Dict[str, Data]:
         self.add_selections_data(
             selections=["time", "glu", "ins", "epi", "gamma"],
-            task_ids=["task_glc_scan"]
+            task_ids=["task_glc_scan"],
         )
         return {}
 

@@ -1,10 +1,10 @@
 """Analysis of fitting results."""
 
 import logging
+import webbrowser
 from pathlib import Path
 from typing import Any, Dict, List, Tuple
 
-import webbrowser
 import matplotlib
 import numpy as np
 import pandas as pd
@@ -49,7 +49,7 @@ class OptimizationAnalysis:
         absolute_tolerance: float = 1e-6,
         relative_tolerance: float = 1e-6,
         image_format: str = "svg",
-        **kwargs
+        **kwargs,
     ) -> None:
         """Construct Optimization analysis.
 
@@ -82,8 +82,9 @@ class OptimizationAnalysis:
 
         if kwargs:
             for key, value in kwargs.items():
-                logger.warning(f"Argument to OptimizationAnalysis is not supported: "
-                               f"'{key}'")
+                logger.warning(
+                    f"Unsupported argument to OptimizationAnalysis '{key}: {value}'."
+                )
 
         if op:
             op.initialize(
@@ -201,13 +202,15 @@ class OptimizationAnalysis:
         plt.rcParams.update(rc_params_copy)
 
         logger.warning("-" * 80)
-        logger.warning(f"Analysis finished: file://{str(self.results_dir / 'index.html')}")
+        logger.warning(
+            f"Analysis finished: file://{str(self.results_dir / 'index.html')}"
+        )
         logger.warning("-" * 80)
 
         webbrowser.open(f"file://{str(self.results_dir / 'index.html')}", new=2)
 
     def html_report(self, path: Path):
-        """Creates HTML report of the fit."""
+        """Create HTML report of the fit."""
 
         title = f"{self.op.opid} [{self.sid}]"
 
@@ -323,9 +326,7 @@ class OptimizationAnalysis:
         res_data = self.op.residuals(xlog=np.log10(x), complete_data=True)
 
         for k, mapping_id in enumerate(self.op.mapping_keys):
-            fig, [ax1, ax2] = plt.subplots(
-                nrows=1, ncols=2, figsize=(10, 5)
-            )
+            fig, [ax1, ax2] = plt.subplots(nrows=1, ncols=2, figsize=(10, 5))
 
             # global reference data
             sid = self.op.experiment_keys[k]
@@ -376,7 +377,9 @@ class OptimizationAnalysis:
             ax2.set_yscale("log")
             ax2.set_ylim(bottom=0.3 * np.nanmin(y_ref))
 
-            self._save_mpl_figure(fig, path=output_dir / f"{sid}_{mapping_id}.{self.image_format}")
+            self._save_mpl_figure(
+                fig, path=output_dir / f"{sid}_{mapping_id}.{self.image_format}"
+            )
 
     @timeit
     def plot_fit_residual(self, output_dir: Path, x: np.ndarray) -> None:
@@ -1023,9 +1026,7 @@ class OptimizationAnalysis:
                     # ax.plot([ystart, y], [xstart, x], "-", color="black", alpha=0.7)
 
                     for run in range(self.optres.size):
-                        df_run = self.optres.df_traces[
-                            self.optres.df_traces.run == run
-                        ]
+                        df_run = self.optres.df_traces[self.optres.df_traces.run == run]
                         # ax.plot(df_run[pidy], df_run[pidx], '-', color="black", alpha=0.3)
                         ax.scatter(
                             df_run[pidy],

@@ -14,8 +14,8 @@ from sbmlsim.fit import FitMapping
 from sbmlsim.model import AbstractModel, RoadrunnerSBMLModel
 from sbmlsim.plot import Figure
 from sbmlsim.plot.serialization_matplotlib import (
-    MatplotlibFigureSerializer,
     FigureMPL,
+    MatplotlibFigureSerializer,
     plt,
 )
 from sbmlsim.result import XResult
@@ -214,13 +214,11 @@ class SimulationExperiment:
 
     # --- DATA ------------------------------------------------------------------------
     def add_data(self, d: Data) -> None:
-        """Adds data to the tracked data."""
+        """Add data to the tracked data."""
         self._data[d.sid] = d
 
     def add_selections_data(
-        self,
-        selections: Iterable[str],
-        task_ids: Iterable[str] = None
+        self, selections: Iterable[str], task_ids: Iterable[str] = None
     ) -> None:
         """Add selections to given tasks.
 
@@ -235,9 +233,7 @@ class SimulationExperiment:
 
         for task_id in task_ids:
             for selection in selections:
-                self.add_data(
-                    Data(index=selection, task=task_id)
-                )
+                self.add_data(Data(index=selection, task=task_id))
 
     # --- RESULTS ---------------------------------------------------------------------
     @property
