@@ -13,28 +13,27 @@ from sbmlsim.examples.experiments.covid.experiments import (
 from sbmlsim.experiment.runner import run_experiments
 
 
-if __name__ == "__main__":
+def run_covid_examples(output_path: Path) -> None:
     experiments = [
         Bertozzi2020,
         Cuadros2020,
         Carcione2020,
     ]
-    base_path = Path(__file__).parent
     run_experiments(
         experiments=experiments,
-        output_path=base_path / "results" / "sbmlsim",
-        data_path=base_path,
-        base_path=base_path,
+        output_path=output_path / "sbmlsim",
+        data_path=output_path,
+        base_path=output_path,
         parallel=True,
     )
 
     for experiment in experiments:
         exp_id = experiment.__name__
         # serialize to SED-ML/OMEX archive
-        omex_path = Path(__file__).parent / "results" / f"{exp_id}.omex"
+        omex_path = output_path / f"{exp_id}.omex"
         serializer = SEDMLSerializer(
             experiment=experiment,
-            working_dir=Path(__file__).parent / "results" / "omex",
+            working_dir=output_path / "omex",
             sedml_filename=f"{exp_id}_sedml.xml",
             omex_path=omex_path,
         )
@@ -42,6 +41,10 @@ if __name__ == "__main__":
         # execute OMEX archive
         execute_sedml(
             path=omex_path,
-            working_dir=Path(__file__).parent / "results" / "sbmlsim_omex",
-            output_path=Path(__file__).parent / "results" / "sbmlsim_omex",
+            working_dir=output_path / "sbmlsim_omex",
+            output_path=output_path / "sbmlsim_omex",
         )
+
+
+if __name__ == "__main__":
+    run_covid_examples(output_path=Path(__file__).parent / "results")

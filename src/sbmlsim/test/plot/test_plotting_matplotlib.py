@@ -3,7 +3,7 @@ Testing plotting functionality.
 """
 import numpy as np
 
-from sbmlsim.plot.plotting_matplotlib import add_line, plt
+from sbmlsim.plot.plotting_deprecated_matplotlib import add_line, plt
 from sbmlsim.simulation import Dimension, ScanSim, Timecourse, TimecourseSim
 from sbmlsim.simulator import SimulatorSerial as Simulator
 from sbmlsim.test import MODEL_REPRESSILATOR

@@ -55,10 +55,10 @@ def test_locations_by_format_omex2(tmp_path: Path) -> None:
     omex = Omex(omex_path=OMEX_SHOWCASE, working_dir=tmp_path)
     locations = omex.locations_by_format(format_key="sed-ml", method="omex")
 
-    # master=True file first
-    assert locations[0].endswith("Calzone2007-simulation-figure-1B.xml")
+    location_strings = [item[0] for item in locations]
+    assert "./experiment/Calzone2007-simulation-figure-1B.xml" in location_strings
     # master=False afterwards
-    assert locations[1].endswith("Calzone2007-default-simulation.xml")
+    assert "./experiment/Calzone2007-default-simulation.xml" in location_strings
 
 
 def test_locations_by_format_zip2(tmp_path: Path) -> None:
@@ -66,9 +66,10 @@ def test_locations_by_format_zip2(tmp_path: Path) -> None:
     omex = Omex(omex_path=OMEX_SHOWCASE, working_dir=tmp_path)
     locations = omex.locations_by_format(format_key="sed-ml", method="zip")
     # master=True file first
-    assert "experiment/Calzone2007-simulation-figure-1B.xml" in locations
+    location_strings = [item[0] for item in locations]
+    assert "experiment/Calzone2007-simulation-figure-1B.xml" in location_strings
     # master=False afterwards
-    assert "experiment/Calzone2007-default-simulation.xml" in locations
+    assert "experiment/Calzone2007-default-simulation.xml" in location_strings
 
 
 def test_list_contents(tmp_path: Path) -> None:

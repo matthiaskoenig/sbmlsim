@@ -1,7 +1,7 @@
 """
 Example shows basic model simulations and plotting.
 """
-from sbmlsim.plot.plotting_matplotlib import add_line, plt
+from sbmlsim.plot.plotting_deprecated_matplotlib import add_line, plt
 from sbmlsim.simulation import Timecourse, TimecourseSim
 from sbmlsim.simulation.sensitivity import ModelSensitivity
 from sbmlsim.simulator import SimulatorSerial as Simulator

@@ -1,6 +1,6 @@
 import pytest
 
-from sbmlsim.plot.plotting import Style
+from sbmlsim.plot.plotting import ColorType, Style
 
 
 color_data = [
@@ -18,5 +18,5 @@ color_data = [
 
 @pytest.mark.parametrize("color, hex, alpha", color_data)
 def test_parse_color(color, hex, alpha):
-    c = Style.parse_color(color, alpha=alpha)
+    c = ColorType.parse_color(color, alpha=alpha)
     assert c.color == hex

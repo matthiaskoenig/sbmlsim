@@ -6,7 +6,7 @@ For instance clamping species to given formulas.
 import pandas as pd
 
 from sbmlsim.model import ModelChange, RoadrunnerSBMLModel
-from sbmlsim.plot.plotting_matplotlib import add_line, plt
+from sbmlsim.plot.plotting_deprecated_matplotlib import add_line, plt
 from sbmlsim.result import XResult
 from sbmlsim.simulation import Timecourse, TimecourseSim
 from sbmlsim.simulator import SimulatorSerial as Simulator

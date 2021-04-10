@@ -143,18 +143,19 @@ class RepressilatorExperiment(SimulationExperiment):
         return {}
 
 
-if __name__ == "__main__":
+def run_repressilator_example(output_path: Path) -> None:
+    """Run repressilator example."""
     # run sbmlsim experiment
     run_experiments(
         experiments=RepressilatorExperiment,
-        output_path=Path(__file__).parent / "results" / "sbmlsim",
+        output_path=output_path / "sbmlsim",
     )
 
     # serialize to SED-ML/OMEX archive
     omex_path = Path(__file__).parent / "results" / "repressilator.omex"
     serializer = SEDMLSerializer(
         experiment=RepressilatorExperiment,
-        working_dir=Path(__file__).parent / "results" / "omex",
+        working_dir=output_path / "omex",
         sedml_filename="repressilator_sedml.xml",
         omex_path=omex_path,
     )
@@ -162,6 +163,10 @@ if __name__ == "__main__":
     # execute OMEX archive
     execute_sedml(
         path=omex_path,
-        working_dir=Path(__file__).parent / "results" / "sbmlsim_omex",
-        output_path=Path(__file__).parent / "results" / "sbmlsim_omex",
+        working_dir=output_path / "sbmlsim_omex",
+        output_path=output_path / "sbmlsim_omex",
     )
+
+
+if __name__ == "__main__":
+    run_repressilator_example(output_path=Path(__file__).parent / "results")

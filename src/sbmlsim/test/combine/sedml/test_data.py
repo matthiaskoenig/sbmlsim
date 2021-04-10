@@ -8,7 +8,7 @@ from pathlib import Path
 import libsedml
 
 from sbmlsim.combine.sedml.data import DataDescriptionParser
-from sbmlsim.combine.sedml.io import check_sedml_doc, read_sedml
+from sbmlsim.combine.sedml.io import check_sedml_doc
 from sbmlsim.test import DATA_DIR
 
 

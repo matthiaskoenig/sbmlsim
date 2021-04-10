@@ -38,7 +38,8 @@ from sbmlsim.task import Task
 from sbmlsim.utils import timeit
 
 from matplotlib.pyplot import Figure
-from sbmlsim.plot.plotting_matplotlib import add_data, plt
+from sbmlsim.plot.plotting_deprecated_matplotlib import add_data
+from sbmlsim.plot.serialization_matplotlib import plt
 
 
 class DoseResponseExperiment(SimulationExperiment):

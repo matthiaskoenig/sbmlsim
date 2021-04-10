@@ -6,7 +6,7 @@ from pprint import pprint
 import numpy as np
 from matplotlib import pyplot as plt
 
-from sbmlsim.plot.plotting_matplotlib import add_line
+from sbmlsim.plot.plotting_deprecated_matplotlib import add_line
 from sbmlsim.result import XResult
 from sbmlsim.simulation import Dimension, ScanSim, Timecourse, TimecourseSim
 from sbmlsim.simulator.simulation_serial import SimulatorSerial as Simulator

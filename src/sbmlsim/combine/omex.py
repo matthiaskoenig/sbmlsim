@@ -104,7 +104,7 @@ class Omex:
 
     def __str__(self) -> str:
         """Get contents of archive string."""
-        return pprint.pformat([c[0:-1] for c in self.list_contents()])
+        return pprint.pformat(self.list_contents())
 
     def _omex_init(self) -> libcombine.CombineArchive:
         """Initialize omex from archive.
@@ -344,7 +344,7 @@ class Omex:
                         if libcombine.KnownFormats.isFormat(
                             formatKey=format_key, format=format
                         ):
-                            locations.append(location, False)
+                            locations.append((location, False))
 
             finally:
                 shutil.rmtree(tmp_dir)
