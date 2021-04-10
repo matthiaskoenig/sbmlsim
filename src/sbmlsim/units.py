@@ -142,6 +142,16 @@ class UnitsInformation(MutableMapping):
         # map no units on dimensionless
         uid_dict[""] = "dimensionless"
 
+        # add predefined units (SBML Level 2)
+        for uid, unit_str in {
+            "substance": 'mole',
+            "volume": 'litre',
+            "area": "meter^2",
+            "length": "meter",
+            "time": "second",
+        }.items():
+            ureg.define(f"{uid} = {unit_str}")
+
         udef: libsbml.UnitDefinition
         for udef in model.getListOfUnitDefinitions():
             uid = udef.getId()

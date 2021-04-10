@@ -32,8 +32,8 @@ class SimulatorSerial(SimulatorWorker):
         """
         # default settings
         self.integrator_settings = {
-            "absolute_tolerance": 1e-14,
-            "relative_tolerance": 1e-14,
+            "absolute_tolerance": 1e-10,
+            "relative_tolerance": 1e-10,
         }
         self.integrator_settings.update(kwargs)
         self.set_model(model)
