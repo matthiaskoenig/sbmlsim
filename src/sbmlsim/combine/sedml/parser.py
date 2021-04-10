@@ -832,9 +832,9 @@ class SEDMLParser:
 
                     # algorithm
                     # TODO: support algorithms
-                    sed_algorithm: libsedml.SedAlgorithm = (
+                    sed_algorithm: libsedml.SedAlgorithm = (  # noqa: F841
                         sed_fit_experiment.getAlgorithm()
-                    )  # noqa: F841
+                    )
 
                     # fit_mappings
                     mappings: List[FitMapping] = []
@@ -842,9 +842,9 @@ class SEDMLParser:
                     for sed_fit_mapping in sed_fit_experiment.getListOfFitMappings():
                         weight: float = sed_fit_mapping.getWeight()
                         # TODO: support for point weights
-                        point_weight: str = (
+                        point_weight: str = (  # noqa: F841
                             sed_fit_mapping.getPointWeight()
-                        )  # noqa: F841
+                        )
 
                         # TODO: resolve data from data generator
                         reference: FitData = None

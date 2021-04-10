@@ -58,8 +58,8 @@ class MatplotlibFigureSerializer(object):
 
     @classmethod
     def to_figure(
-        cls, experiment: "SimulationExperiment", figure: Figure
-    ) -> FigureMPL:  # noqa: F821
+        cls, experiment: "SimulationExperiment", figure: Figure  # noqa: F821
+    ) -> FigureMPL:
         """Convert sbmlsim.Figure to matplotlib figure."""
 
         # create new figure

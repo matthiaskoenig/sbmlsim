@@ -53,6 +53,8 @@ class BasePlotObject(object):
 
 
 class LineType(Enum):
+    """LineType options."""
+
     NONE = 1
     SOLID = 2
     DASH = 3
@@ -62,6 +64,8 @@ class LineType(Enum):
 
 
 class MarkerType(Enum):
+    """MarkerType options."""
+
     NONE = 1
     SQUARE = 2
     CIRCLE = 3
@@ -78,6 +82,8 @@ class MarkerType(Enum):
 
 
 class CurveType(Enum):
+    """CurveType options."""
+
     POINTS = 1
     BAR = 2
     BARSTACKED = 3
@@ -86,6 +92,11 @@ class CurveType(Enum):
 
 
 class ColorType:
+    """ColorType class.
+
+    Encoding color information used in plots.
+    """
+
     def __init__(self, color: str):
         if color is None:
             raise ValueError("color cannot be NoneType")
@@ -93,9 +104,11 @@ class ColorType:
         self.color = color
 
     def to_dict(self):
+        """Convert for serialization."""
         return self.color
 
-    def __repr__(self):
+    def __repr__(self) -> str:
+        """Get string representation."""
         return self.color
 
     @staticmethod
@@ -135,11 +148,14 @@ class ColorType:
 
 @dataclass
 class Line:
+    """Style of a line."""
+
     type: LineType = LineType.SOLID
     color: ColorType = None
     thickness: float = 1.0
 
-    def to_dict(self):
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert to dictionary for serialization."""
         return {
             "type": self.type,
             "color": self.color,
@@ -149,13 +165,16 @@ class Line:
 
 @dataclass
 class Marker:
+    """Style of a marker."""
+
     size: float = 6.0
     type: MarkerType = MarkerType.SQUARE
     fill: ColorType = None
     line_color: ColorType = None
     line_thickness: float = 1.0
 
-    def to_dict(self):
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert to dictionary for serialization."""
         return {
             "size": self.size,
             "type": self.type,
@@ -167,8 +186,17 @@ class Marker:
 
 @dataclass
 class Fill:
+    """Style of a fill."""
+
     color: ColorType = None
     second_color: ColorType = None
+
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert to dictionary for serialization."""
+        return {
+            "color": self.color,
+            "second_color": self.second_color,
+        }
 
 
 class Style(BasePlotObject):
@@ -388,7 +416,7 @@ class Style(BasePlotObject):
 
     @staticmethod
     def from_mpl_kwargs(**kwargs) -> "Style":
-        """Creates style from matplotlib arguments.
+        """Create style from matplotlib arguments.
 
         :keyword alpha: alpha setting
         :keyword color: color setting
@@ -549,6 +577,8 @@ class Axis(BasePlotObject):
 
 
 class AbstractCurve(BasePlotObject):
+    """Base class of Curves and ShadedAreas."""
+
     def __init__(
         self,
         sid: str,
@@ -646,7 +676,7 @@ class Curve(AbstractCurve):
 
     @staticmethod
     def _add_default_style_kwargs(d: Dict, dtype: str) -> Dict:
-        """Default plotting styles"""
+        """Add the default plotting style arguments."""
 
         if dtype == Data.Types.TASK:
             if "linestyle" not in d:
@@ -768,12 +798,13 @@ class Plot(BasePlotObject):
         curves: List[Curve] = None,
         areas: List[ShadedArea] = None,
         legend: bool = True,
-        facecolor: ColorType = ColorType.parse_color("white"),
+        facecolor: ColorType = None,
         title_visible: bool = True,
         height: float = None,
         width: float = None,
     ):
-        """
+        """Initialize plot.
+
         :param sid: Sid of the plot
         :param name: title of the plot
         :param legend: boolean flag to show or hide legend
@@ -796,6 +827,9 @@ class Plot(BasePlotObject):
             raise ValueError(f"'xaxis' must be of type Axis but: '{type(xaxis)}'")
         if yaxis and not isinstance(yaxis, Axis):
             raise ValueError(f"'yaxis' must be of type Axis but: '{type(yaxis)}'")
+
+        if facecolor is None:
+            facecolor = ColorType.parse_color("white")
 
         # property storage
         self._xaxis: Axis = None
@@ -846,7 +880,7 @@ class Plot(BasePlotObject):
         )
 
     def to_dict(self):
-        """ Convert to dictionary. """
+        """Convert to dictionary."""
         d = {
             "sid": self.sid,
             "name": self.name,
@@ -863,6 +897,7 @@ class Plot(BasePlotObject):
 
     @property
     def figure(self) -> "Figure":
+        """Get figure for plot."""
         if not self._figure:
             raise ValueError(f"The plot '{self}' has no associated figure.")
 
@@ -870,25 +905,31 @@ class Plot(BasePlotObject):
 
     @figure.setter
     def figure(self, value: "Figure"):
+        """Set figure for plot."""
         self._figure = value
 
     @property
     def experiment(self):
+        """Get simulation experiment for this plot."""
         return self.figure.experiment
 
     @property
-    def title(self):
+    def title(self) -> str:
+        """Get title."""
         return self.name
 
     @title.setter
-    def title(self, value: str):
+    def title(self, value: str) -> None:
+        """Set title."""
         self.set_title(title=value)
 
-    def set_title(self, title: str):
+    def set_title(self, title: str) -> None:
+        """Set title."""
         self.name = title
 
     @property
     def xaxis(self) -> Axis:
+        """Get xaxis."""
         return self._xaxis
 
     @xaxis.setter
@@ -910,10 +951,12 @@ class Plot(BasePlotObject):
 
     @property
     def yaxis(self) -> Axis:
+        """Get yaxis."""
         return self._yaxis
 
     @yaxis.setter
     def yaxis(self, value: Axis) -> None:
+        """Set yaxis."""
         self.set_yaxis(label=value)
 
     def set_yaxis(self, label: Union[str, Axis], unit: str = None, **kwargs):
@@ -934,6 +977,7 @@ class Plot(BasePlotObject):
 
     @property
     def yaxis_right(self) -> Axis:
+        """Get right yaxis."""
         return self._yaxis_right
 
     @yaxis_right.setter
@@ -1012,10 +1056,12 @@ class Plot(BasePlotObject):
 
     @property
     def areas(self) -> List[ShadedArea]:
+        """Get areas."""
         return self._areas
 
     @areas.setter
-    def areas(self, value: List[ShadedArea]):
+    def areas(self, value: List[ShadedArea]) -> None:
+        """Set areas."""
         self._areas = list()
         if value is not None:
             for area in value:
@@ -1154,8 +1200,10 @@ class Plot(BasePlotObject):
 
 
 class SubPlot(BasePlotObject):
-    """
-    A SubPlot is a locate plot in a figure.
+    """A SubPlot holds a plot in a Figure.
+
+    The SubPlot defines the layout used by the plot, i.e., the position
+    and number of panels the plot is spanning.
     """
 
     def __init__(
@@ -1176,6 +1224,7 @@ class SubPlot(BasePlotObject):
         self.col_span = col_span
 
     def __str__(self):
+        """Get string."""
         return f"<Subplot[{self.row},{self.col}]>"
 
 
@@ -1208,7 +1257,7 @@ class Figure(BasePlotObject):
 
     def __init__(
         self,
-        experiment: "SimulationExperiment",
+        experiment: "SimulationExperiment",  # noqa: F821
         sid: str,
         name: str = None,
         subplots: List[SubPlot] = None,
@@ -1218,7 +1267,7 @@ class Figure(BasePlotObject):
         num_cols: int = 1,
     ):
         super(Figure, self).__init__(sid, name)
-        self.experiment: "SimulationExperiment" = experiment
+        self.experiment: "SimulationExperiment" = experiment  # noqa: F821
         if subplots is None:
             subplots = list()
         self.subplots: List[SubPlot] = subplots
@@ -1261,15 +1310,19 @@ class Figure(BasePlotObject):
             value = self.num_cols * Figure.panel_width
         self._width = value
 
-    def num_subplots(self):
-        """Number of existing subplots."""
+    def num_subplots(self) -> int:
+        """Get number ofsubplots."""
         return len(self.subplots)
 
-    def num_panels(self):
-        """Number of available spots for plots."""
+    def num_panels(self) -> int:
+        """Get number of panel spots for plots.
+
+        Plots can span multiple of these panels.
+        """
         return self.num_cols * self.num_rows
 
     def set_title(self, title):
+        """Set title."""
         self.name = title
 
     def create_plots(
