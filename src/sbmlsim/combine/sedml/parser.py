@@ -78,10 +78,11 @@ import logging
 import re
 import shutil
 import warnings
+from collections import defaultdict
 from enum import Enum
 from pathlib import Path
 from pprint import pprint
-from typing import Dict, List, Optional, Type, Union
+from typing import Dict, List, Optional, Type, Union, Set
 
 import libsedml
 import pandas as pd
@@ -306,7 +307,7 @@ class SEDMLSerializer:
         elif data.is_function():
             return f"{data.index}"
         elif data.is_dataset():
-            raise NotImplementedError("Datasets are not implemented.")
+            return f"{data.dset_id}__{data.index}"
 
     def serialize_datasets(self):
         """Serialize sbmlsim.DataSets to libsedml.DataDescription.
@@ -327,11 +328,18 @@ class SEDMLSerializer:
         # FIXME: same for the model
         did: str
         data: Data
+
+        dset_indices: Dict[str, Set[str]] = defaultdict(set)
         for did, data in self.exp._data.items():
             sed_dg: libsedml.SedDataGenerator = self.sed_doc.createDataGenerator()
             sed_dg.setId(did)
             if data.is_dataset():
-                print(f"dataset, index: {data.dset_id} {data.index}")
+                dset_indices[data.dset_id].add(data.index)
+
+        from pprint import pprint
+        pprint(dset_indices)
+
+        reference = "column_ids"
 
         for dset_id, dataset in self.exp._datasets.items():
 
@@ -339,18 +347,37 @@ class SEDMLSerializer:
             sed_data_description.setId(dset_id)
 
             # resolve source (relative to data dir
-            dataset.to_csv(data_dir / f"{dset_id}.tsv")
+            dataset.to_csv(data_dir / f"{dset_id}.tsv", index=False, sep=",")
             sed_data_description.setSource(str(Path(".") / "data" / f"{dset_id}.tsv"))
             sed_data_description.setFormat("urn:sedml:format:csv")
 
             # Necessary to encode the columns
-            # sed_data_description.setDimensionDescription()
-            # FIXME: add the listOfDataSources
+            '''
+            <dimensionDescription>
+                <compositeDescription indexType="integer" name="index">
+                    <compositeDescription indexType="string" name="columns">
+                        <atomicDescription valueType="double" name="values"/>
+                    </compositeDescription>
+                </compositeDescription>
+            </dimensionDescription>
+            '''
+            dim_description: libsedml.DimensionDescription = sed_data_description.createDimensionDescription()
+            composite_description_index: libsedml.CompositeDescription = dim_description.createCompositeDescription()
+            composite_description_index.setIndexType("integer")
+            composite_description_index.setName("index")
+            composite_description_columns: libsedml.CompositeDescription = composite_description_index.createCompositeDescription()
+            composite_description_columns.setIndexType("string")
+            composite_description_columns.setName("columns")
+            atomic_description: libsedml.AtomicDescription = composite_description_columns.createAtomicDescription()
+            atomic_description.setValueType("double")
+            atomic_description.setName("values")
+
+            # listOfDataSources
             '''
             <listOfDataSources>
                 <dataSource id="dataTime">
                     <listOfSlices>
-                <slice reference="ColumnIds" value="time"/>
+                        <slice reference="ColumnIds" value="time"/>
                     </listOfSlices>
                 </dataSource>
                 <dataSource id="dataS1">
@@ -360,10 +387,12 @@ class SEDMLSerializer:
                 </dataSource>
             </listOfDataSources>
             '''
-
-
-
-
+            for index in dset_indices[dset_id]:
+                sed_data_source: libsedml.SedDataSource = sed_data_description.createDataSource()
+                sed_data_source.setId(f"{dset_id}__{index}")
+                sed_slice: libsedml.SedSlice = sed_data_source.createSlice()
+                sed_slice.setReference(reference)
+                sed_slice.setValue(index)
 
 
     def serialize_models(self):
@@ -520,11 +549,23 @@ class SEDMLSerializer:
             sed_dg: libsedml.SedDataGenerator = self.sed_doc.createDataGenerator()
             sed_dg.setId(did)
             if data.is_dataset():
-                raise NotImplementedError("Dataset data generators")
+
+                sed_variable: libsedml.SedVariable = sed_dg.createVariable()
+                sed_variable.setId(f"{did}__{data.index}")
+
+                # reference DataSource
+                sed_variable.setTarget(f"#{data.dset_id}__{data.index}")
+                # FIXME: add conversion math for plots
+                formula = f"{sed_variable.getId()}"
+                math: libsedml.ASTNode = formula_to_astnode(formula)
+                sed_dg.setMath(math)
+
+
             elif data.is_task():
                 sed_variable = sed_variable_from_data(
                     sed_dg, data=data, var_id=data.index
                 )
+                # FIXME: add conversion math for plots
                 formula = f"{sed_variable.getId()}"
                 math: libsedml.ASTNode = formula_to_astnode(formula)
                 sed_dg.setMath(math)
@@ -533,6 +574,7 @@ class SEDMLSerializer:
                 formula: str = data.function
                 math: libsedml.ASTNode = formula_to_astnode(formula)
 
+                # FIXME: add conversion math for plots
                 for var_key, var_data in data.variables.items():
                     sed_variable: libsedml.SedVariable = sed_variable_from_data(
                         sed_dg, data=var_data, var_id=var_key
