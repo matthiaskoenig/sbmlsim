@@ -237,21 +237,22 @@ class SEDMLSerializer:
 
     def __init__(
         self,
-        experiment: Type[SimulationExperiment],
+        exp_class: Type[SimulationExperiment],
         working_dir: Path,
         sedml_filename: str,
         omex_path: Path = None,
+        data_path: Path = None
     ):
-        self.experiment = experiment
+        self.experiment: Type[SimulationExperiment] = exp_class
         self.working_dir: Path = working_dir
         self.sedml_filename: str = sedml_filename
         self.omex_path: Optional[Path] = omex_path
 
         # initialize experiment
         runner = ExperimentRunner(
-            [experiment],
+            [exp_class],
             simulator=None,
-            data_path=None,
+            data_path=data_path,
             base_path=None,
         )
         self.exp: SimulationExperiment = list(runner.experiments.values())[0]
@@ -262,6 +263,7 @@ class SEDMLSerializer:
         self.sed_doc: libsedml.SedDocument = libsedml.SedDocument(1, 4)
 
         # --- datasets ---
+        self.serialize_datasets()
 
         # --- models ---
         self.serialize_models()
@@ -306,6 +308,64 @@ class SEDMLSerializer:
         elif data.is_dataset():
             raise NotImplementedError("Datasets are not implemented.")
 
+    def serialize_datasets(self):
+        """Serialize sbmlsim.DataSets to libsedml.DataDescription.
+
+        Write experiment datasets in SedDocument.
+        """
+        dset_id: str
+        dataset: DataSet
+
+        if self.exp._datasets:
+            # models are stored in separate directory
+            data_dir = self.working_dir / "data"
+            data_dir.mkdir(parents=True, exist_ok=True)
+
+        # FIXME: necessary to figure out the minimal set of columns from the data!
+        # Only store this subset of data for the experiment.
+        # FIXME: Data must be unit converted to the actual plot/report;
+        # FIXME: same for the model
+        did: str
+        data: Data
+        for did, data in self.exp._data.items():
+            sed_dg: libsedml.SedDataGenerator = self.sed_doc.createDataGenerator()
+            sed_dg.setId(did)
+            if data.is_dataset():
+                print(f"dataset, index: {data.dset_id} {data.index}")
+
+        for dset_id, dataset in self.exp._datasets.items():
+
+            sed_data_description: libsedml.SedDataDescription = self.sed_doc.createDataDescription()
+            sed_data_description.setId(dset_id)
+
+            # resolve source (relative to data dir
+            dataset.to_csv(data_dir / f"{dset_id}.tsv")
+            sed_data_description.setSource(str(Path(".") / "data" / f"{dset_id}.tsv"))
+            sed_data_description.setFormat("urn:sedml:format:csv")
+
+            # Necessary to encode the columns
+            # sed_data_description.setDimensionDescription()
+            # FIXME: add the listOfDataSources
+            '''
+            <listOfDataSources>
+                <dataSource id="dataTime">
+                    <listOfSlices>
+                <slice reference="ColumnIds" value="time"/>
+                    </listOfSlices>
+                </dataSource>
+                <dataSource id="dataS1">
+                    <listOfSlices>
+                    <slice reference="ColumnIds" value="S1"/>
+                </listOfSlices>
+                </dataSource>
+            </listOfDataSources>
+            '''
+
+
+
+
+
+
     def serialize_models(self):
         """Serialize models.
 
@@ -314,6 +374,11 @@ class SEDMLSerializer:
         # Get the unresolved model files or URNs
         model_key: str
         model: AbstractModel
+
+        if self.exp.models():
+            # models are stored in separate directory
+            models_dir = self.working_dir / "models"
+            models_dir.mkdir(parents=True, exist_ok=True)
 
         for model_id, model in self.exp.models().items():
             print(model_id, model)
@@ -325,9 +390,7 @@ class SEDMLSerializer:
             if model.name:
                 sed_model.setName(model.name)
 
-            # models are stored in separate directory
-            models_dir = self.working_dir / "models"
-            models_dir.mkdir(parents=True, exist_ok=True)
+
             abstract_model: AbstractModel
             if isinstance(model, Path):
                 abstract_model = AbstractModel(source=model)

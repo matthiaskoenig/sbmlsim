@@ -152,7 +152,7 @@ class Line:
 
     type: LineType = LineType.SOLID
     color: ColorType = None
-    thickness: float = 1.0
+    thickness: float = 2.0
 
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary for serialization."""
@@ -168,7 +168,7 @@ class Marker:
     """Style of a marker."""
 
     size: float = 6.0
-    type: MarkerType = MarkerType.SQUARE
+    type: MarkerType = MarkerType.NONE
     fill: ColorType = None
     line_color: ColorType = None
     line_thickness: float = 1.0
@@ -217,6 +217,13 @@ class Style(BasePlotObject):
         fill: Optional[Fill] = None,
     ):
         super(Style, self).__init__(sid, name)
+
+        # using default styling if not otherwise provided
+        if marker is None:
+            marker = Marker()
+        if line is None:
+            line = Line()
+
         self.base_style: Optional["Style"] = base_style
         self.line: Optional[Line] = line
         self.marker: Optional[Marker] = marker
@@ -338,6 +345,7 @@ class Style(BasePlotObject):
                 kwargs["markeredgecolor"] = self.marker.line_color.color
             if self.marker.line_thickness:
                 kwargs["markeredgewidth"] = self.marker.line_thickness
+
         if self.fill:
             if self.fill.color:
                 kwargs["fill.color"] = self.fill.color.color
@@ -1026,17 +1034,44 @@ class Plot(BasePlotObject):
                 )
 
     def add_curve(self, curve: Curve):
-        """Add Curve via the helper function."""
+        """Add Curve via the helper function.
+
+        All additions must go via this function to ensure data registration.
+        """
         if curve.sid is None:
             curve.sid = f"{self.sid}_curve{len(self.curves)}"
+
+        for data in [
+            curve.x,
+            curve.y,
+            curve.xerr,
+            curve.yerr,
+        ]:
+            if data is not None:
+                if data.sid not in self.experiment._data:
+                    print(f"Register: {data.sid} in curve")
+                    self.experiment._data[data.sid] = data
 
         self._set_order(curve)
         self.curves.append(curve)
 
     def add_area(self, area: ShadedArea):
-        """Add ShadedArea via the helper function."""
+        """Add ShadedArea via the helper function.
+
+        All additions must go via this function to ensure data registration.
+        """
         if area.sid is None:
             area.sid = f"{self.sid}_area{len(self.areas)}"
+
+        for data in [
+            area.x,
+            area.yfrom,
+            area.yto,
+        ]:
+            if data is not None:
+                if data.sid not in self.experiment._data:
+                    print(f"Register: {data.sid} in curve")
+                    self.experiment._data[data.sid] = data
 
         self._set_order(area)
         self.areas.append(area)

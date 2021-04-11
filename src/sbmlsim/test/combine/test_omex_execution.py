@@ -17,6 +17,13 @@ for path in Path(DATA_DIR / "combine" / "omex" / "jws" / "omex").rglob('*.sedx')
 jws_omex_paths = sorted(jws_omex_paths)
 
 
+l1v3_omex_paths = []
+for path in Path(DATA_DIR / "combine" / "omex" / "specification" / "L1V3").rglob('*.omex'):
+    l1v3_omex_paths.append(path)
+l1v3_omex_paths = sorted(l1v3_omex_paths)
+print(l1v3_omex_paths)
+
+
 @pytest.mark.parametrize("omex_path", biomodels_omex_paths)
 def test_biomodel_omex(omex_path: Path, tmp_path: Path) -> None:
     execute_sedml(path=omex_path, working_dir=tmp_path, output_path=tmp_path)
@@ -24,6 +31,11 @@ def test_biomodel_omex(omex_path: Path, tmp_path: Path) -> None:
 
 @pytest.mark.parametrize("omex_path", jws_omex_paths)
 def test_jws_omex(omex_path: Path, tmp_path: Path) -> None:
+    execute_sedml(path=omex_path, working_dir=tmp_path, output_path=tmp_path)
+
+
+@pytest.mark.parametrize("omex_path", l1v3_omex_paths)
+def test_l1v3_omex(omex_path: Path, tmp_path: Path) -> None:
     execute_sedml(path=omex_path, working_dir=tmp_path, output_path=tmp_path)
 
 

@@ -32,7 +32,7 @@ def run_covid_examples(output_path: Path) -> None:
         # serialize to SED-ML/OMEX archive
         omex_path = output_path / f"{exp_id}.omex"
         serializer = SEDMLSerializer(
-            experiment=experiment,
+            exp_class=experiment,
             working_dir=output_path / "omex",
             sedml_filename=f"{exp_id}_sedml.xml",
             omex_path=omex_path,

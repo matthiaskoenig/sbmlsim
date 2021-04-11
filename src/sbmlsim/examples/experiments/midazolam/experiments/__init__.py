@@ -13,20 +13,6 @@ from ...midazolam import MODEL_PATH
 MolecularWeights = namedtuple("MolecularWeights", "mid mid1oh")
 
 
-def exclude_parameters_midazolam(pid: str) -> bool:
-    """Filter for excluding parameter ids in sensitivity."""
-    if pid.startswith("Mr_"):
-        return True
-    if pid.startswith("conversion_"):
-        return True
-    if pid.startswith("F_"):
-        return True
-    if pid.startswith("BP_"):
-        return True
-
-    return False
-
-
 class MidazolamSimulationExperiment(SimulationExperiment):
     """Base class for all GlucoseSimulationExperiments. """
 
@@ -60,15 +46,15 @@ class MidazolamSimulationExperiment(SimulationExperiment):
             return simulations
 
         # injecting additional scan dimension for timecourse simulation
-        for sim_key, sim in simulations.copy().items():
-            if isinstance(sim, TimecourseSim):
-                scan = ModelSensitivity.difference_sensitivity_scan(
-                    model=self._models["model"],
-                    simulation=sim,
-                    difference=0.5,
-                    exclude_filter=exclude_parameters_midazolam,
-                )
-                simulations[f"{sim_key}_sensitivity"] = scan
+        # for sim_key, sim in simulations.copy().items():
+        #     if isinstance(sim, TimecourseSim):
+        #         scan = ModelSensitivity.difference_sensitivity_scan(
+        #             model=self._models["model"],
+        #             simulation=sim,
+        #             difference=0.5,
+        #             exclude_filter=exclude_parameters_midazolam,
+        #         )
+        #         simulations[f"{sim_key}_sensitivity"] = scan
 
         # print("Simulation keys:", simulations.keys())
         return simulations
@@ -79,3 +65,17 @@ class MidazolamSimulationExperiment(SimulationExperiment):
             mid=self.Q_(325.768, "g/mole"),
             mid1oh=self.Q_(341.8, "g/mole"),
         )
+
+
+def exclude_parameters_midazolam(pid: str) -> bool:
+    """Filter for excluding parameter ids in sensitivity."""
+    if pid.startswith("Mr_"):
+        return True
+    if pid.startswith("conversion_"):
+        return True
+    if pid.startswith("F_"):
+        return True
+    if pid.startswith("BP_"):
+        return True
+
+    return False

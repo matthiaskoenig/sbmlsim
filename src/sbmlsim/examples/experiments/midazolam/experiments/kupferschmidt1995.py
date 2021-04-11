@@ -170,7 +170,7 @@ class Kupferschmidt1995(MidazolamSimulationExperiment):
         }
 
         for key, value in plot_dict.items():
-            for suffix in ["_sensitivity", ""]:
+            for suffix in [""]:  # ["_sensitivity", ""]:
                 task_id = f"task_{key}{suffix}"
                 # plot midazolam
                 p = plots[value["plot"][0]]

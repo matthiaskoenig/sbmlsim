@@ -2,12 +2,15 @@
 Run some example experiments.
 """
 from pathlib import Path
+from typing import Type
 
+from sbmlsim.combine.sedml.parser import SEDMLSerializer
+from sbmlsim.combine.sedml.runner import execute_sedml
 from sbmlsim.examples.experiments.midazolam.experiments.kupferschmidt1995 import (
     Kupferschmidt1995,
 )
 from sbmlsim.examples.experiments.midazolam.experiments.mandema1992 import Mandema1992
-from sbmlsim.experiment import ExperimentRunner
+from sbmlsim.experiment import ExperimentRunner, SimulationExperiment
 from sbmlsim.report.experiment_report import ExperimentReport, ReportResults
 from sbmlsim.simulator.simulation_ray import SimulatorParallel
 
@@ -35,4 +38,23 @@ def run_midazolam_experiments(output_path: Path) -> None:
 
 if __name__ == "__main__":
     output_path = Path(__file__).parent / "results"
-    run_midazolam_experiments(output_path)
+    # run_midazolam_experiments(output_path)
+
+    exp_class: Type[SimulationExperiment]
+    for exp_class in [Kupferschmidt1995]:  # [Mandema1992, Kupferschmidt1995]:
+        # serialize to SED-ML/OMEX archive
+        omex_path = Path(__file__).parent / "results" / f"{exp_class.__name__}.omex"
+        serializer = SEDMLSerializer(
+            exp_class=exp_class,
+            working_dir=output_path / "omex",
+            sedml_filename=f"{exp_class.__name__}_sedml.xml",
+            omex_path=omex_path,
+            data_path=Path(__file__).parent / "data",
+        )
+
+        # execute OMEX archive
+        execute_sedml(
+            path=omex_path,
+            working_dir=output_path / "sbmlsim_omex",
+            output_path=output_path / "sbmlsim_omex",
+        )
