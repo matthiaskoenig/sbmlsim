@@ -51,25 +51,6 @@
       "function": null,
       "variables": null
     },
-    "dg_time": {
-      "type": "FUNCTION",
-      "index": "dg_time",
-      "unit": "second",
-      "task": null,
-      "dataset": null,
-      "function": "task0_____time",
-      "variables": {
-        "task0_____time": {
-          "type": "TASK",
-          "index": "time",
-          "unit": "second",
-          "task": "task0",
-          "dataset": null,
-          "function": null,
-          "variables": null
-        }
-      }
-    },
     "task0__S1": {
       "type": "TASK",
       "index": "S1",
@@ -78,25 +59,6 @@
       "dataset": null,
       "function": null,
       "variables": null
-    },
-    "dg_S1": {
-      "type": "FUNCTION",
-      "index": "dg_S1",
-      "unit": "dimensionless",
-      "task": null,
-      "dataset": null,
-      "function": "S1",
-      "variables": {
-        "S1": {
-          "type": "TASK",
-          "index": "S1",
-          "unit": "",
-          "task": "task0",
-          "dataset": null,
-          "function": null,
-          "variables": null
-        }
-      }
     }
   },
   "figures": {
@@ -105,10 +67,12 @@
       "name": null,
       "num_rows": 2,
       "num_cols": 2,
-      "width": 10.0,
+      "width": 14.0,
       "height": 10.0,
       "subplots": [
         {
+          "sid": null,
+          "name": null,
           "plot": {
             "sid": "plot0",
             "name": "No axes",
@@ -120,12 +84,10 @@
             "title_visible": true,
             "curves": [
               {
-                "sid": [
-                  "curve0"
-                ],
+                "sid": "curve0",
                 "name": "S1",
-                "x": "dg_time",
-                "y": "dg_S1",
+                "x": "task0__time",
+                "y": "task0__S1",
                 "xerr": null,
                 "yerr": null,
                 "yaxis_position": null,
@@ -158,6 +120,8 @@
           "col_span": 1
         },
         {
+          "sid": null,
+          "name": null,
           "plot": {
             "sid": "plot1",
             "name": "Reversed order & grid",
@@ -191,12 +155,10 @@
             "title_visible": true,
             "curves": [
               {
-                "sid": [
-                  "curve1"
-                ],
+                "sid": "curve1",
                 "name": "S1",
-                "x": "dg_time",
-                "y": "dg_S1",
+                "x": "task0__time",
+                "y": "task0__S1",
                 "xerr": null,
                 "yerr": null,
                 "yaxis_position": null,
@@ -229,6 +191,8 @@
           "col_span": 1
         },
         {
+          "sid": null,
+          "name": null,
           "plot": {
             "sid": "plot2",
             "name": "Log axis & style",
@@ -262,12 +226,10 @@
             "title_visible": true,
             "curves": [
               {
-                "sid": [
-                  "curve2"
-                ],
+                "sid": "curve2",
                 "name": "S1",
-                "x": "dg_time",
-                "y": "dg_S1",
+                "x": "task0__time",
+                "y": "task0__S1",
                 "xerr": null,
                 "yerr": null,
                 "yaxis_position": null,
@@ -300,6 +262,8 @@
           "col_span": 1
         },
         {
+          "sid": null,
+          "name": null,
           "plot": {
             "sid": "plot3",
             "name": "Hidden, no legend, min/max",
@@ -333,12 +297,10 @@
             "title_visible": true,
             "curves": [
               {
-                "sid": [
-                  "curve3"
-                ],
+                "sid": "curve3",
                 "name": "S1",
-                "x": "dg_time",
-                "y": "dg_S1",
+                "x": "task0__time",
+                "y": "task0__S1",
                 "xerr": null,
                 "yerr": null,
                 "yaxis_position": null,

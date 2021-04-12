@@ -74,7 +74,7 @@
     </style>
     <style id="red_line_yellow_markers">
       <line type="solid" color="#FF0000"/>
-      <marker size="2" style="diamond" fill="#FFFF00" lineColor="#FF0000" lineThickness="1"/>
+      <marker size="2" type="diamond" fill="#FFFF00" lineColor="#FF0000" lineThickness="1"/>
     </style>
   </listOfStyles>
 </sedML>

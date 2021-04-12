@@ -74,7 +74,7 @@
       <line type="solid" color="#000000"/>
     </style>
     <style id="style_axis_blue">
-      <line type="dashed" color="#0000FF" thickness="2"/>
+      <line type="dash" color="#0000FF" thickness="2"/>
     </style>
     <style id="style_axis_red">
       <line type="solid" color="#FF0000" thickness="4"/>

@@ -51,25 +51,6 @@
       "function": null,
       "variables": null
     },
-    "dg_time": {
-      "type": "FUNCTION",
-      "index": "dg_time",
-      "unit": "second",
-      "task": null,
-      "dataset": null,
-      "function": "task0_____time",
-      "variables": {
-        "task0_____time": {
-          "type": "TASK",
-          "index": "time",
-          "unit": "second",
-          "task": "task0",
-          "dataset": null,
-          "function": null,
-          "variables": null
-        }
-      }
-    },
     "task0__S1": {
       "type": "TASK",
       "index": "S1",
@@ -333,10 +314,12 @@
       "name": null,
       "num_rows": 1,
       "num_cols": 1,
-      "width": 5.0,
+      "width": 7.0,
       "height": 5.0,
       "subplots": [
         {
+          "sid": null,
+          "name": null,
           "plot": {
             "sid": "plot_0",
             "name": "MarkerTypes",
@@ -348,11 +331,9 @@
             "title_visible": true,
             "curves": [
               {
-                "sid": [
-                  "curve_NONE"
-                ],
+                "sid": "curve_NONE",
                 "name": "none",
-                "x": "dg_time",
+                "x": "task0__time",
                 "y": "dg_NONE",
                 "xerr": null,
                 "yerr": null,
@@ -378,11 +359,9 @@
                 "order": 0
               },
               {
-                "sid": [
-                  "curve_SQUARE"
-                ],
+                "sid": "curve_SQUARE",
                 "name": "square",
-                "x": "dg_time",
+                "x": "task0__time",
                 "y": "dg_SQUARE",
                 "xerr": null,
                 "yerr": null,
@@ -408,11 +387,9 @@
                 "order": 1
               },
               {
-                "sid": [
-                  "curve_CIRCLE"
-                ],
+                "sid": "curve_CIRCLE",
                 "name": "circle",
-                "x": "dg_time",
+                "x": "task0__time",
                 "y": "dg_CIRCLE",
                 "xerr": null,
                 "yerr": null,
@@ -438,11 +415,9 @@
                 "order": 2
               },
               {
-                "sid": [
-                  "curve_DIAMOND"
-                ],
+                "sid": "curve_DIAMOND",
                 "name": "diamond",
-                "x": "dg_time",
+                "x": "task0__time",
                 "y": "dg_DIAMOND",
                 "xerr": null,
                 "yerr": null,
@@ -468,11 +443,9 @@
                 "order": 3
               },
               {
-                "sid": [
-                  "curve_XCROSS"
-                ],
+                "sid": "curve_XCROSS",
                 "name": "xCross",
-                "x": "dg_time",
+                "x": "task0__time",
                 "y": "dg_XCROSS",
                 "xerr": null,
                 "yerr": null,
@@ -498,11 +471,9 @@
                 "order": 4
               },
               {
-                "sid": [
-                  "curve_PLUS"
-                ],
+                "sid": "curve_PLUS",
                 "name": "plus",
-                "x": "dg_time",
+                "x": "task0__time",
                 "y": "dg_PLUS",
                 "xerr": null,
                 "yerr": null,
@@ -528,11 +499,9 @@
                 "order": 5
               },
               {
-                "sid": [
-                  "curve_STAR"
-                ],
+                "sid": "curve_STAR",
                 "name": "star",
-                "x": "dg_time",
+                "x": "task0__time",
                 "y": "dg_STAR",
                 "xerr": null,
                 "yerr": null,
@@ -558,11 +527,9 @@
                 "order": 6
               },
               {
-                "sid": [
-                  "curve_TRIANGLEUP"
-                ],
+                "sid": "curve_TRIANGLEUP",
                 "name": "triangleUp",
-                "x": "dg_time",
+                "x": "task0__time",
                 "y": "dg_TRIANGLEUP",
                 "xerr": null,
                 "yerr": null,
@@ -588,11 +555,9 @@
                 "order": 7
               },
               {
-                "sid": [
-                  "curve_TRIANGLEDOWN"
-                ],
+                "sid": "curve_TRIANGLEDOWN",
                 "name": "triangleDown",
-                "x": "dg_time",
+                "x": "task0__time",
                 "y": "dg_TRIANGLEDOWN",
                 "xerr": null,
                 "yerr": null,
@@ -618,11 +583,9 @@
                 "order": 8
               },
               {
-                "sid": [
-                  "curve_TRIANGLELEFT"
-                ],
+                "sid": "curve_TRIANGLELEFT",
                 "name": "triangleLeft",
-                "x": "dg_time",
+                "x": "task0__time",
                 "y": "dg_TRIANGLELEFT",
                 "xerr": null,
                 "yerr": null,
@@ -648,11 +611,9 @@
                 "order": 9
               },
               {
-                "sid": [
-                  "curve_TRIANGLERIGHT"
-                ],
+                "sid": "curve_TRIANGLERIGHT",
                 "name": "triangleRight",
-                "x": "dg_time",
+                "x": "task0__time",
                 "y": "dg_TRIANGLERIGHT",
                 "xerr": null,
                 "yerr": null,
@@ -678,11 +639,9 @@
                 "order": 10
               },
               {
-                "sid": [
-                  "curve_HDASH"
-                ],
+                "sid": "curve_HDASH",
                 "name": "hDash",
-                "x": "dg_time",
+                "x": "task0__time",
                 "y": "dg_HDASH",
                 "xerr": null,
                 "yerr": null,
@@ -708,11 +667,9 @@
                 "order": 11
               },
               {
-                "sid": [
-                  "curve_VDASH"
-                ],
+                "sid": "curve_VDASH",
                 "name": "vDash",
-                "x": "dg_time",
+                "x": "task0__time",
                 "y": "dg_VDASH",
                 "xerr": null,
                 "yerr": null,

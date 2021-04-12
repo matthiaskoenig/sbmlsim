@@ -1,3 +1,9 @@
+sbmlsim.Experiment
+- globally unique identifiers (validate on object creation)
+- identifiers must be SIDs! (so that experiements can be )
+
+
+
 # Documentation
 - [ ] create documentation of SED-ML features
 
@@ -11,6 +17,8 @@
 
 # Serialization (SimulationExperiment -> SED-ML)
 - [ ] datasets !
+  - [ ] slices
+  - [ ] dataRange
 - [x] model
     - [x] resolve model from URN
     - [S] AddXML, ChangeXML, RemoveXML

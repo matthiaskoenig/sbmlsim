@@ -584,7 +584,7 @@ class SEDMLSerializer:
                     sed_parameter: libsedml.SedParameter = sed_dg.createParameter()
                     sed_parameter_id = f"{did}__{par_key}"
                     sed_parameter.setId(sed_parameter_id)
-                    sed_parameter.setValue(par_value)
+                    sed_parameter.setValue(float(par_value))
                     math.renameSIdRefs(par_key, sed_parameter_id)
 
                 sed_dg.setMath(math)
