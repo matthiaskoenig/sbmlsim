@@ -330,11 +330,12 @@ class SEDMLSerializer:
         data: Data
 
         dset_indices: Dict[str, Set[str]] = defaultdict(set)
-        for did, data in self.exp._data.items():
-            sed_dg: libsedml.SedDataGenerator = self.sed_doc.createDataGenerator()
-            sed_dg.setId(did)
-            if data.is_dataset():
-                dset_indices[data.dset_id].add(data.index)
+        # THIS CREATES PROBLEMS
+        # for did, data in self.exp._data.items():
+        #     sed_dg: libsedml.SedDataGenerator = self.sed_doc.createDataGenerator()
+        #     sed_dg.setId(did)
+        #     if data.is_dataset():
+        #         dset_indices[data.dset_id].add(data.index)
 
         from pprint import pprint
         pprint(dset_indices)
@@ -545,23 +546,14 @@ class SEDMLSerializer:
 
         did: str
         data: Data
+        print(self.exp._data.items())
         for did, data in self.exp._data.items():
+            print(did, data)
             sed_dg: libsedml.SedDataGenerator = self.sed_doc.createDataGenerator()
             sed_dg.setId(did)
-            if data.is_dataset():
 
-                sed_variable: libsedml.SedVariable = sed_dg.createVariable()
-                sed_variable.setId(f"{did}__{data.index}")
-
-                # reference DataSource
-                sed_variable.setTarget(f"#{data.dset_id}__{data.index}")
-                # FIXME: add conversion math for plots
-                formula = f"{sed_variable.getId()}"
-                math: libsedml.ASTNode = formula_to_astnode(formula)
-                sed_dg.setMath(math)
-
-
-            elif data.is_task():
+            if data.is_task():
+                print("Create Task DataGenerator:", data)
                 sed_variable = sed_variable_from_data(
                     sed_dg, data=data, var_id=data.index
                 )
@@ -587,6 +579,18 @@ class SEDMLSerializer:
                     sed_parameter.setValue(float(par_value))
                     math.renameSIdRefs(par_key, sed_parameter_id)
 
+                sed_dg.setMath(math)
+
+            elif data.is_dataset():
+
+                sed_variable: libsedml.SedVariable = sed_dg.createVariable()
+                sed_variable.setId(f"{did}__{data.index}")
+
+                # reference DataSource
+                sed_variable.setTarget(f"#{data.dset_id}__{data.index}")
+                # FIXME: add conversion math for plots
+                formula = f"{sed_variable.getId()}"
+                math: libsedml.ASTNode = formula_to_astnode(formula)
                 sed_dg.setMath(math)
 
     def serialize_figures(self):

@@ -119,12 +119,11 @@ class ColorType:
         :param alpha:
         :return: ColorType or None
         """
-
         # https://matplotlib.org/stable/tutorials/colors/colors.html
         if color is None or len(color) == 0:
             return None
 
-        elif color.startswith("#"):
+        elif isinstance(color, str) and color.startswith("#"):
             # handle hex colors
             if len(color) == 7:
                 # parse alpha

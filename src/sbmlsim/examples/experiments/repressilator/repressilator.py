@@ -63,12 +63,12 @@ class RepressilatorExperiment(SimulationExperiment):
             data.append(
                 Data(
                     index=f"f_{sid}_normalized",
-                    function=f"{sid}/max({sid}) * p1",
+                    function=f"{sid}/max({sid})",
                     variables={
                         sid: Data(index=f"{sid}", task="task_model1_tc"),
                     },
                     parameters={
-                        'p1': 1.0
+                        # 'p1': 1.0
                     },
                 )
             )
