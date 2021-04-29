@@ -118,6 +118,8 @@ class SimulationExperiment:
         self._check_keys()
         self._check_types()
 
+        print(self)
+
     def __str__(self) -> str:
         """Get string representation."""
         info = [
@@ -582,6 +584,8 @@ class SimulationExperiment:
     def show_mpl_figures(self, mpl_figures: Dict[str, FigureMPL]) -> None:
         """Show matplotlib figures."""
         for _, fig_mpl in mpl_figures.items():
+            # see https://stackoverflow.com/questions/23141452/difference-between-plt-draw-and-plt-show-in-matplotlib/23141491#23141491
+            # fig_mpl.draw(renderer=)
             fig_mpl.show()
 
     @timeit

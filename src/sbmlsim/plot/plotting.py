@@ -1136,7 +1136,7 @@ class Plot(BasePlotObject):
         count: Union[int, str] = None,
         dataset: str = None,
         task: str = None,
-        label: str = "__yid__",
+        label: Optional[str] = "__yid__",
         type: CurveType = CurveType.POINTS,
         style: Style = None,
         yaxis_position: YAxisPosition = None,
@@ -1154,7 +1154,7 @@ class Plot(BasePlotObject):
         :param count: count for curve (number of subjects)
         :param dataset: dataset id
         :param task: task id
-        :param label: label for curve
+        :param label: label for curve (label=None for no label)
         :param type: type of curve (default points)
         :param style: style for curve
         :param yaxis_position: position of yaxis for this curve
@@ -1288,6 +1288,7 @@ class Figure(BasePlotObject):
     xtick_labelsize: int = 15
     ytick_labelsize: int = 15
     legend_fontsize: int = 13
+    legend_position: str = "inside"  # "outside"
     legend_loc: str = "best"
     _area_interpolation_points: int = 300
 

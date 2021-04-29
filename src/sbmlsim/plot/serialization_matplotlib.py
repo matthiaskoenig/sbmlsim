@@ -77,7 +77,14 @@ class MatplotlibFigureSerializer(object):
             )
 
         # create grid for figure
-        gs = GridSpec(figure.num_rows, figure.num_cols, figure=fig)
+        gs = GridSpec(
+            nrows=figure.num_rows,
+            ncols=figure.num_cols,
+            figure=fig,
+            # done via subplots adjust below
+            # hspace=figure.fig_subplots_hspace,
+            # wspace=figure.fig_subplots_wspace,
+        )
 
         subplot: SubPlot
         for subplot in figure.subplots:
@@ -416,13 +423,21 @@ class MatplotlibFigureSerializer(object):
 
             if plot.legend:
                 if len(axes) == 1:
-                    ax1.legend(fontsize=Figure.legend_fontsize, loc=Figure.legend_loc)
+                    if figure.legend_position == "inside":
+                        ax1.legend(fontsize=Figure.legend_fontsize, loc=Figure.legend_loc)
+                    elif figure.legend_position == "outside":
+                        ax1.legend(fontsize=Figure.legend_fontsize, loc="upper left",
+                                   bbox_to_anchor=(1.04, 1))
                 elif len(axes) == 2:
                     ax1.legend(fontsize=Figure.legend_fontsize, loc="upper left")
                     ax2.legend(fontsize=Figure.legend_fontsize, loc="upper right")
 
+        wspace = figure.fig_subplots_wspace
+        hspace = figure.fig_subplots_hspace
+        if figure.legend_position == "outside":
+            wspace += 1.0
         fig.subplots_adjust(
-            wspace=Figure.fig_subplots_wspace, hspace=Figure.fig_subplots_hspace
+            wspace=wspace, hspace=hspace
         )
 
         return fig

@@ -116,4 +116,4 @@ To install for development use::
 
     pip install -e .[development]
     
-© 2019-2020 Matthias König
+© 2019-2021 Matthias König
