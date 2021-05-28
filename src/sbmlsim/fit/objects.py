@@ -3,6 +3,7 @@ import json
 import logging
 import math
 from pathlib import Path
+from dataclasses import dataclass
 from typing import Any, Callable, Dict, Iterable, List, Optional, Sized, Union
 
 import numpy as np
@@ -151,6 +152,11 @@ class FitExperiment:
         return "\n".join(info)
 
 
+@dataclass
+class MappingMetaData:
+    pass
+
+
 class FitMapping:
     """Mapping of reference data to observable data.
 
@@ -165,6 +171,7 @@ class FitMapping:
         reference: "FitData",
         observable: "FitData",
         weight: float = None,
+        metadata: MappingMetaData = None,
     ):
         """FitMapping.
 
@@ -174,11 +181,13 @@ class FitMapping:
         :param reference: reference data (mostly experimental data)
         :param observable: observable in model
         :param weight: weight of fit mapping (default=1.0)
+        :param metadata: metadata
         """
         self.experiment = experiment
         self.reference = reference
         self.observable = observable
         self._weight = weight
+        self.metadata = metadata
 
     @property
     def weight(self) -> float:
