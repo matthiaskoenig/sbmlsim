@@ -10,7 +10,7 @@ This includes
 
 import logging
 from pathlib import Path
-from typing import Dict, Iterable, List, Optional, Type, Union
+from typing import Dict, Iterable, List, Optional, Type, Union, Tuple
 
 from sbmlsim.experiment import ExperimentResult, SimulationExperiment
 from sbmlsim.model import RoadrunnerSBMLModel
@@ -144,7 +144,7 @@ def run_experiments(
     experiments: Union[Type[SimulationExperiment], List[Type[SimulationExperiment]]],
     output_path: Path,
     base_path: Path = None,
-    data_path: Path = None,
+    data_path: Union[List[Path], Tuple[Path], Optional[Path]] = None,
     parallel: bool = True,
 ) -> Path:
     """Run simulation experiments."""

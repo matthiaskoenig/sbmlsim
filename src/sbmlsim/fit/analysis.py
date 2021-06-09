@@ -371,7 +371,12 @@ class OptimizationAnalysis:
                     )
                 # plot simulation
                 ax.plot(x_obs, y_obs, "-", color="blue", label="observable")
-                ax.set_xlim(right=1.1 * np.max(x_ref))
+
+                xdelta = np.max(x_ref) - np.min(x_ref)
+                ax.set_xlim(
+                    left=np.min(x_ref) - 0.1*xdelta,
+                    right=np.max(x_ref) + 0.1*xdelta,
+                )
                 ax.legend()
 
             ax2.set_yscale("log")

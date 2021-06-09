@@ -492,6 +492,7 @@ def load_pkdb_dataframe(
     if isinstance(data_path, Path):
         data_path = [data_path]
 
+    print(data_path)
     for p in data_path:
         path = p / study / f".{sid}.tsv"
         if path.exists():
