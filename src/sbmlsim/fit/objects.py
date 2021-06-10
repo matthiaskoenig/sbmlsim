@@ -195,7 +195,17 @@ class FitMapping:
         if self._weight is not None:
             return self._weight
         else:
-            return self.reference.count
+            try:
+                return self.reference.count
+            except AttributeError as err:
+                msg = f"Count data missing on FitMapping: '{self}'"
+                logger.error(msg)
+                raise AttributeError(msg)
+
+    def __str__(self) -> str:
+        """Get string."""
+        return f"FitMapping({self.experiment.sid}, " \
+               f"reference={self.reference}, observable={self.observable})"
 
 
 class FitParameter:
@@ -376,6 +386,10 @@ class FitData:
                 dataset=self.dset_id,
                 function=self.function,
             )
+
+    def __str__(self) -> str:
+        """Get string."""
+        return f"FitData"  # FIXME
 
     def is_task(self) -> bool:
         """Check if FitData comes from a task (simulation)."""
