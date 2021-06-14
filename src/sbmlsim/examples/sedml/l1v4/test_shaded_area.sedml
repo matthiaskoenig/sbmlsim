@@ -86,7 +86,7 @@
     </style>
     <style id="green_line_orange_circles">
       <line type="solid" color="#00FF00" thickness="4"/>
-      <marker size="16" type="circle" fill="#FFa500"/>
+      <marker size="16" style="circle" fill="#FFa500"/>
     </style>
     <style id="blue_fill">
       <fill color="#0000ff"/>

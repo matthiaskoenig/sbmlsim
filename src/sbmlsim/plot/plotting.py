@@ -480,6 +480,7 @@ class Axis(BasePlotObject):
         scale: AxisScale = AxisScale.LINEAR,
         min: float = None,
         max: float = None,
+        reverse: bool = False,
         grid: bool = False,
         label_visible: bool = True,
         ticks_visible: bool = True,
@@ -495,6 +496,7 @@ class Axis(BasePlotObject):
         :param scale: Scale of the axis, i.e. "linear" or "log" axis.
         :param min: lower axis bound
         :param max: upper axis bound
+        :param reverse: flag to reverse axis plot order
         :param grid: show grid lines along the axis
         :param label_visible: show/hide the label text
         :param ticks_visible: show/hide axis ticks
@@ -518,6 +520,7 @@ class Axis(BasePlotObject):
         self.scale: AxisScale = scale
         self.min: float = min
         self.max: float = max
+        self.reverse: bool = reverse
         self.grid: bool = grid
         self.label_visible: bool = label_visible
         self.ticks_visible: bool = ticks_visible

@@ -3,29 +3,30 @@ from pathlib import Path
 from sbmlsim.combine.sedml.runner import execute_sedml
 
 
-examples_dir = Path(__file__).parent / "l1v4_plotting"
+examples_dir = Path(__file__).parent / "l1v4"
 all_sedml_files = [
+    # plotting
     "axis.sedml",
-    "markertype.sedml",
-    "linetype.sedml",
-    "curve_types.sedml",
-    "curve_types_errors.sedml",
-    "right_yaxis.sedml",
-    "line_overlap_order.sedml",
-    "repressilator_figure.xml",
-    "repressilator.xml",
-    "repressilator_urn.xml",
-    "test_file_1.sedml",
-    "test_line_fill.sedml",
-    "stacked_bar.sedml",
-    "test_3hbarstacked.sedml",
-    "test_bar.sedml",
-    "test_bar3stacked.sedml",
-    "test_file.sedml",
-    "test_hbar_stacked.sedml",
-    "test_shaded_area.sedml",
-    "test_shaded_area_overlap_order.sedml",
-    "test_base_styles.sedml",
+    # "markertype.sedml",
+    # "linetype.sedml",
+    # "curve_types.sedml",
+    # "curve_types_errors.sedml",
+    # "right_yaxis.sedml",
+    # "line_overlap_order.sedml",
+    # "repressilator_figure.xml",
+    # "repressilator.xml",
+    # "repressilator_urn.xml",
+    # "test_file_1.sedml",
+    # "test_line_fill.sedml",
+    # "stacked_bar.sedml",
+    # "test_3hbarstacked.sedml",
+    # "test_bar.sedml",
+    # "test_bar3stacked.sedml",
+    # "test_file.sedml",
+    # "test_hbar_stacked.sedml",
+    # "test_shaded_area.sedml",
+    # "test_shaded_area_overlap_order.sedml",
+    # "test_base_styles.sedml",
 ]
 
 if __name__ == "__main__":

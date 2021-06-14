@@ -4,7 +4,7 @@
     <model id="model0" language="urn:sedml:language:sbml.level-3.version-1" source="case_01.xml"/>
   </listOfModels>
   <listOfSimulations>
-    <uniformTimeCourse id="sim0" initialTime="0" outputStartTime="0" outputEndTime="10" numberOfSteps="30">
+    <uniformTimeCourse id="sim0" initialTime="0" outputStartTime="0" outputEndTime="10" numberOfSteps="10">
       <algorithm kisaoID="KISAO:0000019"/>
     </uniformTimeCourse>
   </listOfSimulations>
@@ -55,9 +55,11 @@
   </listOfDataGenerators>
   <listOfOutputs>
     <plot2D id="plot_0" name="UniformTimecourse">
+      <xAxis name="Time" type="linear" min="-2"/>
+      <yAxis name="Concentration" type="linear" max="20"/>
       <listOfCurves>
-        <curve id="plot_0__plot_0_0_0__plot_0_0_1" logX="false" style="blue_line_green_markers" xDataReference="plot_0_0_0" logY="false" yDataReference="plot_0_0_1" type="points"/>
-        <curve id="plot_0__plot_0_0_0__plot_0_1_1" logX="false" style="red_line_yellow_markers" xDataReference="plot_0_0_0" logY="false" yDataReference="plot_0_1_1" type="points"/>
+        <curve id="plot_0__plot_0_0_0__plot_0_0_1" logX="false" xDataReference="plot_0_0_0" logY="false" yDataReference="plot_0_0_1"/>
+        <curve id="plot_0__plot_0_0_0__plot_0_1_1" logX="false" xDataReference="plot_0_0_0" logY="false" yDataReference="plot_0_1_1"/>
       </listOfCurves>
     </plot2D>
     <report id="report_1">
@@ -67,14 +69,4 @@
       </listOfDataSets>
     </report>
   </listOfOutputs>
-  <listOfStyles>
-    <style id="blue_line_green_markers">
-      <line type="dashDot" color="#0000FF" thickness="10"/>
-      <marker fill="#00FF00" lineColor="#0000FF"/>
-    </style>
-    <style id="red_line_yellow_markers">
-      <line type="solid" color="#FF0000"/>
-      <marker size="2" type="diamond" fill="#FFFF00" lineColor="#FF0000" lineThickness="1"/>
-    </style>
-  </listOfStyles>
 </sedML>

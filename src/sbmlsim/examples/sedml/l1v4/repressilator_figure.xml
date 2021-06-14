@@ -134,8 +134,8 @@
   </listOfDataGenerators>
   <listOfOutputs>
     <plot2D id="timecourse" name="Timecourse" height="5" width="5">
-      <xAxis name="time" type="linear"/>
-      <yAxis name="protein" type="linear"/>
+      <xAxis name="time" type="lin"/>
+      <yAxis name="protein" type="lin"/>
       <listOfCurves>
         <curve id="plot_0__plot_0_0_0__plot_0_0_1" name="PX" logX="false" logY="false" xDataReference="dg_0_0_0" yDataReference="dg_0_0_1" type="points" style="style_1"/>
         <curve id="plot_0__plot_0_0_0__plot_0_1_1" name="PY" logX="false" logY="false" xDataReference="dg_0_0_0" yDataReference="dg_0_1_1" type="points" style="style_2"/>
@@ -143,8 +143,8 @@
       </listOfCurves>
     </plot2D>
     <plot2D id="preprocessing" name="Pre-processing" height="5" width="5">
-      <xAxis name="time" type="linear"/>
-      <yAxis name="protein" type="linear"/>
+      <xAxis name="time" type="lin"/>
+      <yAxis name="protein" type="lin"/>
       <listOfCurves>
         <curve id="plot_1__plot_1_0_0__plot_1_0_1" name="PX" logX="false" logY="false" xDataReference="dg_1_0_0" yDataReference="dg_1_0_1" type="points" style="style_1"/>
         <curve id="plot_1__plot_1_0_0__plot_1_1_1" name="PY" logX="false" logY="false" xDataReference="dg_1_0_0" yDataReference="dg_1_1_1" type="points" style="style_2"/>
@@ -152,8 +152,8 @@
       </listOfCurves>
     </plot2D>
     <plot2D id="postprocessing" name="Post-processing" height="5" width="10">
-      <xAxis name="normalized protein" type="linear"/>
-      <yAxis name="normalized protein" type="linear"/>
+      <xAxis name="normalized protein" type="lin"/>
+      <yAxis name="normalized protein" type="lin"/>
       <listOfCurves>
         <curve id="plot_2__plot_2_0_0__plot_2_0_1" name="PZ/max(PZ) ~ PX/max(PX)" logX="false" logY="false" xDataReference="dg_2_0_0" yDataReference="dg_2_0_1" type="points" style="style_A"/>
         <curve id="plot_2__plot_2_1_0__plot_2_0_0" name="PX/max(PX) ~ PY/max(PY)" logX="false" logY="false" xDataReference="dg_2_1_0" yDataReference="dg_2_0_0" type="points" style="style_B"/>

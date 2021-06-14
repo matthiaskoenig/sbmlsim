@@ -320,16 +320,22 @@ class MatplotlibFigureSerializer(object):
                 if axis_type not in ["x", "y"]:
                     raise ValueError
 
+                # handle the reverse flag
+                if sax.reverse:
+                    ax_min, ax_max = sax.max, sax.min
+                else:
+                    ax_min, ax_max = sax.min, sax.max
+
                 if sax.min is not None:
                     if axis_type == "x":
-                        ax.set_xlim(xmin=sax.min)
+                        ax.set_xlim(xmin=ax_min)
                     elif axis_type == "y":
-                        ax.set_ylim(ymin=sax.min)
+                        ax.set_ylim(ymin=ax_min)
                 if sax.max is not None:
                     if axis_type == "x":
-                        ax.set_xlim(xmax=sax.max)
+                        ax.set_xlim(xmax=ax_max)
                     elif axis_type == "y":
-                        ax.set_ylim(ymax=sax.max)
+                        ax.set_ylim(ymax=ax_max)
 
                 if axis_type == "x":
                     ax.set_xscale(cls._get_scale(sax))

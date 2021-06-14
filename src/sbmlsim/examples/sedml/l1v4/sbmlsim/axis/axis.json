@@ -1,7 +1,7 @@
 {
   "experiment_id": "axis",
-  "base_path": "/home/mkoenig/git/sbmlsim/src/sbmlsim/examples/sedml/l1v4_plotting",
-  "data_path": "[PosixPath('/home/mkoenig/git/sbmlsim/src/sbmlsim/examples/sedml/l1v4_plotting')]",
+  "base_path": "/home/mkoenig/git/sbmlsim/src/sbmlsim/examples/sedml/l1v4",
+  "data_path": "[PosixPath('/home/mkoenig/git/sbmlsim/src/sbmlsim/examples/sedml/l1v4')]",
   "models": {
     "model0": {
       "sid": "model0",
@@ -10,7 +10,7 @@
       "language_type": "SBML",
       "source": {
         "source": "case_01.xml",
-        "path": "/home/mkoenig/git/sbmlsim/src/sbmlsim/examples/sedml/l1v4_plotting/case_01.xml",
+        "path": "/home/mkoenig/git/sbmlsim/src/sbmlsim/examples/sedml/l1v4/case_01.xml",
         "content": "None"
       },
       "changes": {}
@@ -131,8 +131,8 @@
               "label": "time",
               "unit": null,
               "scale": "LINEAR",
-              "min": 10.0,
-              "max": 0.0,
+              "min": 0.0,
+              "max": 10.0,
               "grid": true,
               "label_visible": true,
               "ticks_visible": true
@@ -143,8 +143,8 @@
               "label": "S1",
               "unit": null,
               "scale": "LINEAR",
-              "min": 10.0,
-              "max": 0.0,
+              "min": 0.0,
+              "max": 10.0,
               "grid": true,
               "label_visible": true,
               "ticks_visible": true

@@ -36,8 +36,8 @@
       </listOfCurves>
     </plot2D>
     <plot2D id="plot1" name="Reversed order &amp; grid" legend="true">
-      <xAxis name="time" type="linear" min="10" max="0" grid="true" style="style_axis"/>
-      <yAxis name="S1" type="linear" min="10" max="0" grid="true" style="style_axis"/>
+      <xAxis name="time" type="linear" min="0" max="10" reverse="true" grid="true" style="style_axis"/>
+      <yAxis name="S1" type="linear" min="0" max="10" reverse="true" grid="true" style="style_axis"/>
       <listOfCurves>
         <curve id="curve1" name="S1" logX="false" style="style_curve" xDataReference="dg_time" logY="false" yDataReference="dg_S1" type="points"/>
       </listOfCurves>

@@ -44,6 +44,7 @@ sbmlsim.Experiment
 - [ ] parameters in computation
 
 ## Plot2D
+- [x] fix reverse axis
 - [x] support height and width;
       plots have height & width; these can be directly set in single plot figures;
       for multi-plot figures the combined height and width must be calculated

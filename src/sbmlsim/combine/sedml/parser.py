@@ -1597,6 +1597,7 @@ class SEDMLParser:
             min=sed_axis.getMin() if sed_axis.isSetMin() else None,
             max=sed_axis.getMax() if sed_axis.isSetMax() else None,
             grid=sed_axis.getGrid() if sed_axis.isSetGrid() else False,
+            reverse=sed_axis.getReverse() if sed_axis.isSetReverse() else False,
         )
         axis.sid = sed_axis.getId()
         axis.name = sed_axis.getName()
