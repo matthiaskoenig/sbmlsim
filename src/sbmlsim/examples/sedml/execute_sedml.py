@@ -6,7 +6,12 @@ from sbmlsim.combine.sedml.runner import execute_sedml
 examples_dir = Path(__file__).parent / "l1v4"
 all_sedml_files = [
     # plotting
-    "axis.sedml",
+    # "axis.sedml",
+    # "axis_grids.sedml",
+    # "axis_minmax.sedml",
+    # "axis_minmax_smaller.sedml",
+    # "axis_minormax.sedml",
+    "concentration_amount.sedml"
     # "markertype.sedml",
     # "linetype.sedml",
     # "curve_types.sedml",

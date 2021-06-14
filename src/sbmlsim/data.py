@@ -34,9 +34,17 @@ class Data(object):
         DATASET = 2
         FUNCTION = 3
 
+    class Symbols(Enum):
+        """Symbols."""
+
+        DEFAULT = 1
+        AMOUNT = 2
+        CONCENTRATION = 3
+
     def __init__(
         self,
         index: str,
+        symbol: Symbols = Symbols.DEFAULT,
         task: str = None,
         dataset: str = None,
         function: str = None,
@@ -45,7 +53,12 @@ class Data(object):
         sid: str = None,
     ):
         """Construct data."""
+        if index.startswith("[") and index.endswith("]"):
+            index = index[1:-1]
+            symbol = Data.Symbols.CONCENTRATION
+
         self.index: str = index
+        self.symbol: 'Symbols' = symbol
         self.task_id: str = task
         self.dset_id: str = dataset
         self.function: str = function

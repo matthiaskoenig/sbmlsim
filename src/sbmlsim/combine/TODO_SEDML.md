@@ -37,6 +37,7 @@ sbmlsim.Experiment
   - [ ] plot3d 
   - [x] styles
 - [ ] reports
+- [ ] concentrations/amounts xpath (parse symbols and use for evaluation)
 
 # Parsing (SED-ML -> SimulationExperiment)
 - [ ] datasets !

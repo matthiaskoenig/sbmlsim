@@ -1181,27 +1181,13 @@ class SEDMLParser:
         """Resolve targets in xpath expression.
 
         Uses a heuristics to figure out the targets.
-        # FIXME: SED-ML amount/species targets
         """
-
         # resolve target
         xpath = xpath.replace('"', "'")
         match = re.findall(r"id='(.*?)'", xpath)
         if (match is None) or (len(match) == 0):
             warnings.warn(f"xpath could not be resolved: {xpath}")
         target = match[0]
-
-        if ("model" in xpath) and ("parameter" in xpath):
-            # parameter value change
-            pass
-        elif ("model" in xpath) and ("species" in xpath):
-            # species concentration change
-            pass
-        elif ("model" in xpath) and ("id" in xpath):
-            # other
-            pass
-        else:
-            raise ValueError(f"Unsupported target in xpath: {xpath}")
 
         return target
 
@@ -1882,7 +1868,17 @@ class SEDMLParser:
             if sed_var.isSetTarget():
                 # FIXME: handle targets correctly with the various symbols: amount/concentrations, ...
                 index = self.parse_xpath_target(sed_var.getTarget())
-            d_var = Data(index=index, task=task_id)
+                sed_symbol = sed_var.getSymbol() if sed_var.isSetSymbol() else None
+                symbol = Data.Symbols.DEFAULT
+                if sed_symbol:
+                    if sed_symbol == "urn:sedml:symbol:amount":
+                        symbol = Data.Symbols.AMOUNT
+                    elif symbol == "urn:sedml:symbol:concentration":
+                        index = Data.Symbols.CONCENTRATION
+                    else:
+                        logger.error(f"symbol not supported: '{symbol}'")
+
+            d_var = Data(index=index, symbol=symbol, task=task_id)
             # register data
             self.data[d_var.sid] = d_var
             variables[sed_var.getId()] = d_var
