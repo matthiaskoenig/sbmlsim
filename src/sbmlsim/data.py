@@ -36,15 +36,14 @@ class Data(object):
 
     class Symbols(Enum):
         """Symbols."""
-
-        DEFAULT = 1
+        TIME = 1
         AMOUNT = 2
         CONCENTRATION = 3
 
     def __init__(
         self,
         index: str,
-        symbol: Symbols = Symbols.DEFAULT,
+        symbol: Optional[Symbols] = None,
         task: str = None,
         dataset: str = None,
         function: str = None,
@@ -53,9 +52,13 @@ class Data(object):
         sid: str = None,
     ):
         """Construct data."""
-        if index.startswith("[") and index.endswith("]"):
-            index = index[1:-1]
-            symbol = Data.Symbols.CONCENTRATION
+        # FIXME: get rid of backwards compatibility
+        if not symbol:
+            if index.startswith("[") and index.endswith("]"):
+                index = index[1:-1]
+                symbol = Data.Symbols.CONCENTRATION
+            else:
+                symbol = Data.Symbols.AMOUNT
 
         self.index: str = index
         self.symbol: 'Symbols' = symbol
@@ -70,6 +73,10 @@ class Data(object):
         if (not self.task_id) and (not self.dset_id) and (not self.function):
             raise ValueError(
                 "Either 'task_id', 'dset_id' or 'function' required for Data."
+            )
+        if self.symbol == Data.Symbols.CONCENTRATION and symbol.startswith("["):
+            raise ValueError(
+                "Use index without brackets in combination with 'symbol=concentration'"
             )
 
     def __repr__(self) -> str:
@@ -212,6 +219,7 @@ class Data(object):
             if not isinstance(xres, XResult):
                 raise ValueError("Only Result objects supported in task data.")
 
+            # FIXME: units have to match the symbols
             self.unit = xres.uinfo[self.index]
             # x = xres.dim_mean(self.index)
             x = xres[self.index].values * xres.uinfo.ureg(self.unit)

@@ -2,6 +2,7 @@
 import logging
 
 import pandas as pd
+import roadrunner
 from roadrunner import RoadRunner, SelectionRecord
 
 from sbmlsim.model import ModelChange
@@ -97,6 +98,10 @@ class SimulatorWorker:
 
             # [4] apply changes
             for key, item in tc.changes.items():
+
+                # FIXME: handle concentrations/amounts/default
+                # TODO: Figure out the hasOnlySubstanceUnit flag! (roadrunner)
+                # r: roadrunner.ExecutableModel = self.r
                 logger.debug("Applying simulation changes")
                 try:
                     self.r[key] = float(item.magnitude)

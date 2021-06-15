@@ -1862,14 +1862,14 @@ class SEDMLParser:
         sed_var: libsedml.SedVariable
         for sed_var in sed_dg.getListOfVariables():
             task_id = sed_var.getTaskReference()
+            symbol = None
             if sed_var.isSetSymbol():
-                if "time" in sed_var.getSymbol():
+                if sed_var.getSymbol() == "urn:sedml:symbol:time":
                     index = "time"
+                    symbol = Data.Symbols.TIME
             if sed_var.isSetTarget():
-                # FIXME: handle targets correctly with the various symbols: amount/concentrations, ...
                 index = self.parse_xpath_target(sed_var.getTarget())
                 sed_symbol = sed_var.getSymbol() if sed_var.isSetSymbol() else None
-                symbol = Data.Symbols.DEFAULT
                 if sed_symbol:
                     if sed_symbol == "urn:sedml:symbol:amount":
                         symbol = Data.Symbols.AMOUNT

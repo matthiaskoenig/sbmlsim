@@ -11,11 +11,14 @@ all_sedml_files = [
     # "axis_minmax.sedml",
     # "axis_minmax_smaller.sedml",
     # "axis_minormax.sedml",
-    "concentration_amount.sedml"
-    # "markertype.sedml",
-    # "linetype.sedml",
+    # "concentration_amount.sedml"  # FIXME
+    # "concentration_amount_b.sedml"  # FIXME
     # "curve_types.sedml",
     # "curve_types_errors.sedml",
+    "heat_map_ls.sedml",
+    # "markertype.sedml",
+    # "linetype.sedml",
+
     # "right_yaxis.sedml",
     # "line_overlap_order.sedml",
     # "repressilator_figure.xml",

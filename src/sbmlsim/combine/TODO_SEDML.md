@@ -38,6 +38,8 @@ sbmlsim.Experiment
   - [x] styles
 - [ ] reports
 - [ ] concentrations/amounts xpath (parse symbols and use for evaluation)
+  - [ ] data generators
+  - [ ] model changes; changesets  
 
 # Parsing (SED-ML -> SimulationExperiment)
 - [ ] datasets !
