@@ -1,0 +1,228 @@
+{
+  "experiment_id": "test_shaded_area_overlap_order",
+  "base_path": "/home/mkoenig/git/sbmlsim/src/sbmlsim/examples/sedml/l1v4_plotting",
+  "data_path": "[PosixPath('/home/mkoenig/git/sbmlsim/src/sbmlsim/examples/sedml/l1v4_plotting')]",
+  "models": {
+    "model0": {
+      "sid": "model0",
+      "name": "",
+      "language": "SBML",
+      "language_type": "SBML",
+      "source": {
+        "source": "case_02.xml",
+        "path": "/home/mkoenig/git/sbmlsim/src/sbmlsim/examples/sedml/l1v4_plotting/case_02.xml",
+        "content": "None"
+      },
+      "changes": {}
+    }
+  },
+  "tasks": {
+    "task0": {
+      "model": "model0",
+      "simulation": "sim0"
+    }
+  },
+  "simulations": {
+    "sim0": {
+      "type": "TimecourseSim",
+      "selections": null,
+      "reset": true,
+      "time_offset": 0.0,
+      "timecourses": [
+        {
+          "start": 0.0,
+          "end": 10.0,
+          "steps": 9,
+          "changes": {},
+          "model_changes": {},
+          "model_manipulations": {},
+          "discard": false
+        }
+      ]
+    }
+  },
+  "data": {
+    "task0__time": {
+      "type": "TASK",
+      "index": "time",
+      "unit": "second",
+      "task": "task0",
+      "dataset": null,
+      "function": null,
+      "variables": null
+    },
+    "task0__S1": {
+      "type": "TASK",
+      "index": "S1",
+      "unit": "",
+      "task": "task0",
+      "dataset": null,
+      "function": null,
+      "variables": null
+    },
+    "task0__S2": {
+      "type": "TASK",
+      "index": "S2",
+      "unit": "",
+      "task": "task0",
+      "dataset": null,
+      "function": null,
+      "variables": null
+    },
+    "task0__S3": {
+      "type": "TASK",
+      "index": "S3",
+      "unit": "",
+      "task": "task0",
+      "dataset": null,
+      "function": null,
+      "variables": null
+    }
+  },
+  "figures": {
+    "plot_0": {
+      "sid": "plot_0",
+      "name": null,
+      "num_rows": 1,
+      "num_cols": 1,
+      "width": 7.0,
+      "height": 5.0,
+      "subplots": [
+        {
+          "sid": null,
+          "name": null,
+          "plot": {
+            "sid": "plot_0",
+            "name": "UniformTimecourse",
+            "xaxis": null,
+            "yaxis": null,
+            "yaxis_right": null,
+            "legend": true,
+            "facecolor": "#ffffffff",
+            "title_visible": true,
+            "curves": [
+              {
+                "sid": "plot_0__plot_0_0_0__plot_0_0_1",
+                "name": "S1",
+                "x": "task0__time",
+                "y": "task0__S1",
+                "xerr": null,
+                "yerr": null,
+                "yaxis_position": null,
+                "style": {
+                  "sid": "purple_dash",
+                  "name": null,
+                  "base_style": null,
+                  "line": {
+                    "type": "DASH",
+                    "color": "#FF00FFff",
+                    "thickness": 4.0
+                  },
+                  "marker": null,
+                  "fill": null
+                },
+                "order": 0
+              },
+              {
+                "sid": "plot_0__plot_0_0_0__plot_0_1_1",
+                "name": "S2",
+                "x": "task0__time",
+                "y": "task0__S2",
+                "xerr": null,
+                "yerr": null,
+                "yaxis_position": null,
+                "style": {
+                  "sid": "red_dash_dot",
+                  "name": null,
+                  "base_style": null,
+                  "line": {
+                    "type": "DASHDOT",
+                    "color": "#FF0000ff",
+                    "thickness": 4.0
+                  },
+                  "marker": null,
+                  "fill": null
+                },
+                "order": 1
+              },
+              {
+                "sid": "plot_0__plot_0_0_0__plot_0_2_1",
+                "name": "S3",
+                "x": "task0__time",
+                "y": "task0__S3",
+                "xerr": null,
+                "yerr": null,
+                "yaxis_position": null,
+                "style": {
+                  "sid": "green_line_orange_circles",
+                  "name": null,
+                  "base_style": null,
+                  "line": {
+                    "type": "SOLID",
+                    "color": "#00FF00ff",
+                    "thickness": 4.0
+                  },
+                  "marker": {
+                    "size": 16.0,
+                    "type": null,
+                    "fill": "#FFa500",
+                    "line_color": null,
+                    "line_thickness": null
+                  },
+                  "fill": null
+                },
+                "order": 2
+              }
+            ],
+            "areas": [
+              {
+                "sid": "S2_S3",
+                "name": "S3|S2(time)",
+                "x": "task0__time",
+                "yfrom": "task0__S3",
+                "yto": "task0__S2",
+                "yaxis_position": null,
+                "style": {
+                  "sid": "blue_fill",
+                  "name": null,
+                  "base_style": null,
+                  "line": null,
+                  "marker": null,
+                  "fill": {
+                    "color": "#0000ffff",
+                    "second_color": null
+                  }
+                },
+                "order": 1
+              },
+              {
+                "sid": "S1_S2",
+                "name": "S2|S1(time)",
+                "x": "task0__time",
+                "yfrom": "task0__S2",
+                "yto": "task0__S1",
+                "yaxis_position": null,
+                "style": {
+                  "sid": "purple_fill",
+                  "name": null,
+                  "base_style": null,
+                  "line": null,
+                  "marker": null,
+                  "fill": {
+                    "color": "#FF00ffff",
+                    "second_color": null
+                  }
+                },
+                "order": 0
+              }
+            ]
+          },
+          "row": 1,
+          "col": 1,
+          "row_span": 1,
+          "col_span": 1
+        }
+      ]
+    }
+  }
+}

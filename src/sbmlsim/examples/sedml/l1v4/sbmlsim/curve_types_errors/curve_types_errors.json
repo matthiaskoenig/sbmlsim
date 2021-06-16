@@ -1,0 +1,613 @@
+{
+  "experiment_id": "curve_types_errors",
+  "base_path": "/home/mkoenig/git/sbmlsim/src/sbmlsim/examples/sedml/l1v4",
+  "data_path": "[PosixPath('/home/mkoenig/git/sbmlsim/src/sbmlsim/examples/sedml/l1v4')]",
+  "models": {
+    "model0": {
+      "sid": "model0",
+      "name": "",
+      "language": "SBML",
+      "language_type": "SBML",
+      "source": {
+        "source": "case_01.xml",
+        "path": "/home/mkoenig/git/sbmlsim/src/sbmlsim/examples/sedml/l1v4/case_01.xml",
+        "content": "None"
+      },
+      "changes": {}
+    }
+  },
+  "tasks": {
+    "task0": {
+      "model": "model0",
+      "simulation": "sim0"
+    }
+  },
+  "simulations": {
+    "sim0": {
+      "type": "TimecourseSim",
+      "selections": null,
+      "reset": true,
+      "time_offset": 0.0,
+      "timecourses": [
+        {
+          "start": 0.0,
+          "end": 10.0,
+          "steps": 9,
+          "changes": {},
+          "model_changes": {},
+          "model_manipulations": {},
+          "discard": false
+        }
+      ]
+    }
+  },
+  "data": {
+    "task0__time": {
+      "type": "TASK",
+      "index": "time",
+      "unit": "second",
+      "task": "task0",
+      "dataset": null,
+      "function": null,
+      "variables": null
+    },
+    "task0__S1": {
+      "type": "TASK",
+      "index": "S1",
+      "unit": "",
+      "task": "task0",
+      "dataset": null,
+      "function": null,
+      "variables": null
+    },
+    "dg_time_error": {
+      "type": "FUNCTION",
+      "index": "dg_time_error",
+      "unit": "second",
+      "task": null,
+      "dataset": null,
+      "function": "0.1 * time",
+      "variables": {
+        "time": {
+          "type": "TASK",
+          "index": "time",
+          "unit": "second",
+          "task": "task0",
+          "dataset": null,
+          "function": null,
+          "variables": null
+        }
+      }
+    },
+    "dg_S1_error": {
+      "type": "FUNCTION",
+      "index": "dg_S1_error",
+      "unit": "dimensionless",
+      "task": null,
+      "dataset": null,
+      "function": "0.2 * S1",
+      "variables": {
+        "S1": {
+          "type": "TASK",
+          "index": "S1",
+          "unit": "",
+          "task": "task0",
+          "dataset": null,
+          "function": null,
+          "variables": null
+        }
+      }
+    },
+    "task0__S2": {
+      "type": "TASK",
+      "index": "S2",
+      "unit": "",
+      "task": "task0",
+      "dataset": null,
+      "function": null,
+      "variables": null
+    },
+    "dg_S2_error": {
+      "type": "FUNCTION",
+      "index": "dg_S2_error",
+      "unit": "dimensionless",
+      "task": null,
+      "dataset": null,
+      "function": "0.1 * S2",
+      "variables": {
+        "S2": {
+          "type": "TASK",
+          "index": "S2",
+          "unit": "",
+          "task": "task0",
+          "dataset": null,
+          "function": null,
+          "variables": null
+        }
+      }
+    }
+  },
+  "figures": {
+    "figure0": {
+      "sid": "figure0",
+      "name": null,
+      "num_rows": 3,
+      "num_cols": 2,
+      "width": 14.0,
+      "height": 15.0,
+      "subplots": [
+        {
+          "sid": null,
+          "name": null,
+          "plot": {
+            "sid": "plot_points",
+            "name": "points",
+            "xaxis": {
+              "sid": "",
+              "name": "time",
+              "label": "time",
+              "unit": null,
+              "scale": "LINEAR",
+              "min": null,
+              "max": null,
+              "grid": false,
+              "label_visible": true,
+              "ticks_visible": true
+            },
+            "yaxis": {
+              "sid": "",
+              "name": "concentration",
+              "label": "concentration",
+              "unit": null,
+              "scale": "LINEAR",
+              "min": null,
+              "max": null,
+              "grid": false,
+              "label_visible": true,
+              "ticks_visible": true
+            },
+            "yaxis_right": null,
+            "legend": true,
+            "facecolor": "#ffffffff",
+            "title_visible": true,
+            "curves": [
+              {
+                "sid": "curve_S1_points",
+                "name": "S1",
+                "x": "task0__time",
+                "y": "task0__S1",
+                "xerr": "dg_time_error",
+                "yerr": "dg_S1_error",
+                "yaxis_position": null,
+                "style": {
+                  "sid": "style_blue",
+                  "name": null,
+                  "base_style": null,
+                  "line": {
+                    "type": "SOLID",
+                    "color": "#1f77b4aa",
+                    "thickness": 4.0
+                  },
+                  "marker": {
+                    "size": 6.0,
+                    "type": "SQUARE",
+                    "fill": "#1f77b4aa",
+                    "line_color": "#000000ff",
+                    "line_thickness": 2.0
+                  },
+                  "fill": null
+                },
+                "order": 0
+              },
+              {
+                "sid": "curve_S2_points",
+                "name": "S2",
+                "x": "task0__time",
+                "y": "task0__S2",
+                "xerr": "dg_time_error",
+                "yerr": "dg_S2_error",
+                "yaxis_position": null,
+                "style": {
+                  "sid": "style_orange",
+                  "name": null,
+                  "base_style": null,
+                  "line": {
+                    "type": "SOLID",
+                    "color": "#ff7f0eaa",
+                    "thickness": 4.0
+                  },
+                  "marker": {
+                    "size": 6.0,
+                    "type": "SQUARE",
+                    "fill": "#ff7f0eaa",
+                    "line_color": "#000000ff",
+                    "line_thickness": 2.0
+                  },
+                  "fill": null
+                },
+                "order": 1
+              }
+            ],
+            "areas": []
+          },
+          "row": 1,
+          "col": 1,
+          "row_span": 1,
+          "col_span": 2
+        },
+        {
+          "sid": null,
+          "name": null,
+          "plot": {
+            "sid": "plot_bar",
+            "name": "bar",
+            "xaxis": {
+              "sid": "",
+              "name": "time",
+              "label": "time",
+              "unit": null,
+              "scale": "LINEAR",
+              "min": null,
+              "max": null,
+              "grid": false,
+              "label_visible": true,
+              "ticks_visible": true
+            },
+            "yaxis": {
+              "sid": "",
+              "name": "concentration",
+              "label": "concentration",
+              "unit": null,
+              "scale": "LINEAR",
+              "min": null,
+              "max": null,
+              "grid": false,
+              "label_visible": true,
+              "ticks_visible": true
+            },
+            "yaxis_right": null,
+            "legend": true,
+            "facecolor": "#ffffffff",
+            "title_visible": true,
+            "curves": [
+              {
+                "sid": "curve_S1_bar",
+                "name": "S1",
+                "x": "task0__time",
+                "y": "task0__S1",
+                "xerr": "dg_time_error",
+                "yerr": "dg_S1_error",
+                "yaxis_position": null,
+                "style": {
+                  "sid": "style_blue_bar",
+                  "name": null,
+                  "base_style": null,
+                  "line": {
+                    "type": "SOLID",
+                    "color": "#000000ff",
+                    "thickness": 2.0
+                  },
+                  "marker": null,
+                  "fill": {
+                    "color": "#1f77b4aa",
+                    "second_color": null
+                  }
+                },
+                "order": 0
+              },
+              {
+                "sid": "curve_S2_bar",
+                "name": "S2",
+                "x": "task0__time",
+                "y": "task0__S2",
+                "xerr": "dg_time_error",
+                "yerr": "dg_S2_error",
+                "yaxis_position": null,
+                "style": {
+                  "sid": "style_orange_bar",
+                  "name": null,
+                  "base_style": null,
+                  "line": {
+                    "type": "SOLID",
+                    "color": "#000000ff",
+                    "thickness": 2.0
+                  },
+                  "marker": null,
+                  "fill": {
+                    "color": "#ff7f0eaa",
+                    "second_color": null
+                  }
+                },
+                "order": 1
+              }
+            ],
+            "areas": []
+          },
+          "row": 2,
+          "col": 1,
+          "row_span": 1,
+          "col_span": 1
+        },
+        {
+          "sid": null,
+          "name": null,
+          "plot": {
+            "sid": "plot_barStacked",
+            "name": "barStacked",
+            "xaxis": {
+              "sid": "",
+              "name": "time",
+              "label": "time",
+              "unit": null,
+              "scale": "LINEAR",
+              "min": null,
+              "max": null,
+              "grid": false,
+              "label_visible": true,
+              "ticks_visible": true
+            },
+            "yaxis": {
+              "sid": "",
+              "name": "concentration",
+              "label": "concentration",
+              "unit": null,
+              "scale": "LINEAR",
+              "min": null,
+              "max": null,
+              "grid": false,
+              "label_visible": true,
+              "ticks_visible": true
+            },
+            "yaxis_right": null,
+            "legend": true,
+            "facecolor": "#ffffffff",
+            "title_visible": true,
+            "curves": [
+              {
+                "sid": "curve_S1_barStacked",
+                "name": "S1",
+                "x": "task0__time",
+                "y": "task0__S1",
+                "xerr": "dg_time_error",
+                "yerr": "dg_S1_error",
+                "yaxis_position": null,
+                "style": {
+                  "sid": "style_blue_bar",
+                  "name": null,
+                  "base_style": null,
+                  "line": {
+                    "type": "SOLID",
+                    "color": "#000000ff",
+                    "thickness": 2.0
+                  },
+                  "marker": null,
+                  "fill": {
+                    "color": "#1f77b4aa",
+                    "second_color": null
+                  }
+                },
+                "order": 0
+              },
+              {
+                "sid": "curve_S2_barStacked",
+                "name": "S2",
+                "x": "task0__time",
+                "y": "task0__S2",
+                "xerr": "dg_time_error",
+                "yerr": "dg_S2_error",
+                "yaxis_position": null,
+                "style": {
+                  "sid": "style_orange_bar",
+                  "name": null,
+                  "base_style": null,
+                  "line": {
+                    "type": "SOLID",
+                    "color": "#000000ff",
+                    "thickness": 2.0
+                  },
+                  "marker": null,
+                  "fill": {
+                    "color": "#ff7f0eaa",
+                    "second_color": null
+                  }
+                },
+                "order": 1
+              }
+            ],
+            "areas": []
+          },
+          "row": 2,
+          "col": 2,
+          "row_span": 1,
+          "col_span": 1
+        },
+        {
+          "sid": null,
+          "name": null,
+          "plot": {
+            "sid": "plot_horizontalBar",
+            "name": "horizontalBar",
+            "xaxis": {
+              "sid": "",
+              "name": "time",
+              "label": "time",
+              "unit": null,
+              "scale": "LINEAR",
+              "min": null,
+              "max": null,
+              "grid": false,
+              "label_visible": true,
+              "ticks_visible": true
+            },
+            "yaxis": {
+              "sid": "",
+              "name": "concentration",
+              "label": "concentration",
+              "unit": null,
+              "scale": "LINEAR",
+              "min": null,
+              "max": null,
+              "grid": false,
+              "label_visible": true,
+              "ticks_visible": true
+            },
+            "yaxis_right": null,
+            "legend": true,
+            "facecolor": "#ffffffff",
+            "title_visible": true,
+            "curves": [
+              {
+                "sid": "curve_S1_horizontalBar",
+                "name": "S1",
+                "x": "task0__time",
+                "y": "task0__S1",
+                "xerr": "dg_time_error",
+                "yerr": "dg_S1_error",
+                "yaxis_position": null,
+                "style": {
+                  "sid": "style_blue_bar",
+                  "name": null,
+                  "base_style": null,
+                  "line": {
+                    "type": "SOLID",
+                    "color": "#000000ff",
+                    "thickness": 2.0
+                  },
+                  "marker": null,
+                  "fill": {
+                    "color": "#1f77b4aa",
+                    "second_color": null
+                  }
+                },
+                "order": 0
+              },
+              {
+                "sid": "curve_S2_horizontalBar",
+                "name": "S2",
+                "x": "task0__time",
+                "y": "task0__S2",
+                "xerr": "dg_time_error",
+                "yerr": "dg_S2_error",
+                "yaxis_position": null,
+                "style": {
+                  "sid": "style_orange_bar",
+                  "name": null,
+                  "base_style": null,
+                  "line": {
+                    "type": "SOLID",
+                    "color": "#000000ff",
+                    "thickness": 2.0
+                  },
+                  "marker": null,
+                  "fill": {
+                    "color": "#ff7f0eaa",
+                    "second_color": null
+                  }
+                },
+                "order": 1
+              }
+            ],
+            "areas": []
+          },
+          "row": 3,
+          "col": 1,
+          "row_span": 1,
+          "col_span": 1
+        },
+        {
+          "sid": null,
+          "name": null,
+          "plot": {
+            "sid": "plot_horizontalBarStacked",
+            "name": "horizontalBarStacked",
+            "xaxis": {
+              "sid": "",
+              "name": "time",
+              "label": "time",
+              "unit": null,
+              "scale": "LINEAR",
+              "min": null,
+              "max": null,
+              "grid": false,
+              "label_visible": true,
+              "ticks_visible": true
+            },
+            "yaxis": {
+              "sid": "",
+              "name": "concentration",
+              "label": "concentration",
+              "unit": null,
+              "scale": "LINEAR",
+              "min": null,
+              "max": null,
+              "grid": false,
+              "label_visible": true,
+              "ticks_visible": true
+            },
+            "yaxis_right": null,
+            "legend": true,
+            "facecolor": "#ffffffff",
+            "title_visible": true,
+            "curves": [
+              {
+                "sid": "curve_S1_horizontalBarStacked",
+                "name": "S1",
+                "x": "task0__time",
+                "y": "task0__S1",
+                "xerr": "dg_time_error",
+                "yerr": "dg_S1_error",
+                "yaxis_position": null,
+                "style": {
+                  "sid": "style_blue_bar",
+                  "name": null,
+                  "base_style": null,
+                  "line": {
+                    "type": "SOLID",
+                    "color": "#000000ff",
+                    "thickness": 2.0
+                  },
+                  "marker": null,
+                  "fill": {
+                    "color": "#1f77b4aa",
+                    "second_color": null
+                  }
+                },
+                "order": 0
+              },
+              {
+                "sid": "curve_S2_horizontalBarStacked",
+                "name": "S2",
+                "x": "task0__time",
+                "y": "task0__S2",
+                "xerr": "dg_time_error",
+                "yerr": "dg_S2_error",
+                "yaxis_position": null,
+                "style": {
+                  "sid": "style_orange_bar",
+                  "name": null,
+                  "base_style": null,
+                  "line": {
+                    "type": "SOLID",
+                    "color": "#000000ff",
+                    "thickness": 2.0
+                  },
+                  "marker": null,
+                  "fill": {
+                    "color": "#ff7f0eaa",
+                    "second_color": null
+                  }
+                },
+                "order": 1
+              }
+            ],
+            "areas": []
+          },
+          "row": 3,
+          "col": 2,
+          "row_span": 1,
+          "col_span": 1
+        }
+      ]
+    }
+  }
+}
