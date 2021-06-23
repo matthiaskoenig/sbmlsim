@@ -161,5 +161,5 @@ def run_model_clamp2():
 
 if __name__ == "__main__":
     run_model_change_example1()
-    # run_model_clamp1()
-    # run_model_clamp2()
+    run_model_clamp1()
+    run_model_clamp2()
