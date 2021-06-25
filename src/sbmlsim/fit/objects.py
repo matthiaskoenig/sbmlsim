@@ -176,6 +176,7 @@ class FitMapping:
         self.reference = reference
         self.observable = observable
         self._weight = weight
+        self.metadata = metadata
 
     @property
     def weight(self) -> float:
