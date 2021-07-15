@@ -1433,7 +1433,6 @@ class SEDMLParser:
                 self._parse_repeated_task(node=node)
 
 
-
             elif task_type == libsedml.SEDML_TASK_PARAMETER_ESTIMATION:
                 return sed_task
 
@@ -1447,6 +1446,14 @@ class SEDMLParser:
         simulation_id: str = sed_task.getSimulationReference()
         return Task(model=model_id, simulation=simulation_id)
 
+    def _parse_repeated_task(self, node: TaskNode):
+        """Parse repeated task.
+
+        Will be translated into a multi-dimensional scan.
+        """
+        # repeated tasks will be translated into multidimensional scans
+        raise NotImplementedError
+        # TODO: implement
 
     def parse_figure(self, sed_figure: libsedml.SedFigure) -> Figure:
         """Parse figure information."""
@@ -1891,10 +1898,7 @@ class SEDMLParser:
         self.data[d.sid] = d
         return d
 
-    def _parse_repeated_task(self, node: TaskNode):
-        # repeated tasks will be translated into multidimensional scans
-        raise NotImplementedError
-        # TODO: implement
+
 
     def data_generators_for_task(
         self,
