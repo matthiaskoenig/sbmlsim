@@ -1,0 +1,86 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<sedML xmlns="http://sed-ml.org/sed-ml/level1/version4" level="1" version="4">
+  <listOfModels>
+    <model id="model0" language="urn:sedml:language:sbml.level-3.version-1" source="case_01.xml"/>
+  </listOfModels>
+  <listOfSimulations>
+    <uniformTimeCourse id="sim0" initialTime="0" outputStartTime="0" outputEndTime="10" numberOfSteps="30">
+      <algorithm kisaoID="KISAO:0000019"/>
+    </uniformTimeCourse>
+  </listOfSimulations>
+  <listOfTasks>
+    <task id="task0" modelReference="model0" simulationReference="sim0"/>
+  </listOfTasks>
+  <listOfDataGenerators>
+    <dataGenerator id="dg_S1">
+      <math xmlns="http://www.w3.org/1998/Math/MathML">
+        <ci> S1 </ci>
+      </math>
+      <listOfVariables>
+        <variable id="S1" target="/sbml:sbml/sbml:model/sbml:listOfSpecies/sbml:species[@id=&apos;S1&apos;]" taskReference="task0" modelReference="model0"/>
+      </listOfVariables>
+    </dataGenerator>
+    <dataGenerator id="dg_time" name="task0.time">
+      <math xmlns="http://www.w3.org/1998/Math/MathML">
+        <ci> task0_____time </ci>
+      </math>
+      <listOfVariables>
+        <variable id="task0_____time" symbol="urn:sedml:symbol:time" taskReference="task0" modelReference="model0"/>
+      </listOfVariables>
+    </dataGenerator>
+  </listOfDataGenerators>
+  <listOfOutputs>
+    <plot2D id="plot0" name="No axes" legend="true">
+      <listOfCurves>
+        <curve id="curve0" name="S1" logX="false" style="style_curve" xDataReference="dg_time" logY="false" yDataReference="dg_S1" type="points"/>
+      </listOfCurves>
+    </plot2D>
+    <plot2D id="plot1" name="Reversed order &amp; grid" legend="true">
+      <xAxis name="time" type="linear" min="0" max="10" reverse="true" grid="true" style="style_axis"/>
+      <yAxis name="S1" type="linear" min="0" max="10" reverse="true" grid="true" style="style_axis"/>
+      <listOfCurves>
+        <curve id="curve1" name="S1" logX="false" style="style_curve" xDataReference="dg_time" logY="false" yDataReference="dg_S1" type="points"/>
+      </listOfCurves>
+    </plot2D>
+    <plot2D id="plot2" name="Log axis &amp; style" legend="true">
+      <xAxis type="log10" min="0.1" max="10" grid="true" style="style_axis_blue"/>
+      <yAxis type="log10" grid="true" style="style_axis_red"/>
+      <listOfCurves>
+        <curve id="curve2" name="S1" logX="false" style="style_curve" xDataReference="dg_time" logY="false" yDataReference="dg_S1" type="points"/>
+      </listOfCurves>
+    </plot2D>
+    <plot2D id="plot3" name="Hidden, no legend, min/max" legend="false">
+      <xAxis name="time" type="linear" style="style_axis_none" min="2" max="8"/>
+      <yAxis name="S1" type="linear" style="style_axis_none" min="0" max="8"/>
+      <listOfCurves>
+        <curve id="curve3" name="S1" logX="false" style="style_curve" xDataReference="dg_time" logY="false" yDataReference="dg_S1" type="points"/>
+      </listOfCurves>
+    </plot2D>
+    <figure id="figure1" numRows="2" numCols="2">
+        <listOfSubPlots>
+            <subPlot id="subplot0" plot="plot0" row="1" col="1"></subPlot>
+            <subPlot id="subplot1" plot="plot1" row="1" col="2"></subPlot>
+            <subPlot id="subplot2" plot="plot2" row="2" col="1"></subPlot>
+            <subPlot id="subplot3" plot="plot3" row="2" col="2"></subPlot>
+        </listOfSubPlots>
+    </figure>
+  </listOfOutputs>
+  <listOfStyles>
+    <style id="style_curve">
+      <line type="solid" color="#000000" thickness="2"/>
+      <marker type="square" fill="#000000" size="6"/>
+    </style>
+    <style id="style_axis">
+      <line type="solid" color="#000000"/>
+    </style>
+    <style id="style_axis_blue">
+      <line type="dash" color="#0000FF" thickness="2"/>
+    </style>
+    <style id="style_axis_red">
+      <line type="solid" color="#FF0000" thickness="4"/>
+    </style>
+    <style id="style_axis_none">
+      <line type="none"/>
+    </style>
+  </listOfStyles>
+</sedML>

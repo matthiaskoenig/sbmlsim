@@ -1,0 +1,10 @@
+<omexManifest>
+<content location="manifest.xml" format="http://identifiers.org/combine.specifications/omex-manifest" master="False"/>
+<content location="metadata.rdf" format="http://identifiers.org/combine.specifications/omex-metadata" master="False"/>
+<content location="." format="http://identifiers.org/combine.specifications/omex" master="False"/>
+<content location="manifest.json" format="http://purl.org/NET/mediatypes/application/json" master="False"/>
+<content location="repeated-stochastic-runs.xml" format="http://identifiers.org/combine.specifications/sed-ml" master="True"/>
+<content location="BorisEJB.xml" format="http://identifiers.org/combine.specifications/sbml" master="False"/>
+<content location="results/sedml_webtools/plot1.png" format="http://purl.org/NET/mediatypes/image/png" master="False"/>
+<content location="results/tellurium/plot1.pdf" format="http://purl.org/NET/mediatypes/application/pdf" master="False"/>
+</omexManifest>

@@ -29,12 +29,12 @@ src/sbmlsim/examples/experiments/midazolam/results/
 src/sbmlsim/examples/experiments/midazolam/results_fit/
 
 # sedml
-src/sbmlsim/examples/sedml/results/
+src/sbmlsim/combine/examples/results/
 src/sbmlsim/examples/experiments/repressilator/results/
 src/sbmlsim/examples/experiments/covid/results/
 src/sbmlsim/examples/experiments/covid/omex/results/
 src/sbmlsim/examples/experiments/midazolam/results/
 
 src/sbmlsim/combine/results
-src/sbmlsim/examples/sedml/l1v4/sbmlsim/
+src/sbmlsim/combine/examples/l1v4/sbmlsim/
 

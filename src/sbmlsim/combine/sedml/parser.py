@@ -1432,8 +1432,7 @@ class SEDMLParser:
             elif task_type == libsedml.SEDML_TASK_REPEATEDTASK:
                 self._parse_repeated_task(node=node)
 
-            elif task_type == libsedml.SEDML_TASK_SIMPLEREPEATEDTASK:
-                self._parse_simple_repeated_task(node=node)
+
 
             elif task_type == libsedml.SEDML_TASK_PARAMETER_ESTIMATION:
                 return sed_task
@@ -1448,11 +1447,6 @@ class SEDMLParser:
         simulation_id: str = sed_task.getSimulationReference()
         return Task(model=model_id, simulation=simulation_id)
 
-    def _parse_simple_repeated_task(self, node: TaskNode):
-
-        raise NotImplementedError(
-            f"Task type is not supported: {node.task.getTypeCode()}"
-        )
 
     def parse_figure(self, sed_figure: libsedml.SedFigure) -> Figure:
         """Parse figure information."""

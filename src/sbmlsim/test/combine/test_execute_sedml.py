@@ -2,7 +2,7 @@ from pathlib import Path
 
 import pytest
 
-from sbmlsim.examples.sedml.execute_sedml import (
+from sbmlsim.examples.sedml import (
     all_sedml_files,
     examples_dir,
     execute_sedml,

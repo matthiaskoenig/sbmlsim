@@ -2,18 +2,17 @@
 Example simulation experiment.
 """
 from pathlib import Path
-from typing import Dict, Type, Union
+from typing import Dict, Union
 
 from sbmlsim.combine.sedml.parser import SEDMLSerializer
 from sbmlsim.data import Data
-from sbmlsim.examples.sedml.execute_sedml import execute_sedml
+from sbmlsim.examples.sedml import execute_sedml
 from sbmlsim.experiment import SimulationExperiment
 from sbmlsim.experiment.runner import run_experiments
 from sbmlsim.model import AbstractModel
-from sbmlsim.plot import Axis, Figure, Plot
+from sbmlsim.plot import Figure, Plot
 from sbmlsim.result.report import Report
 from sbmlsim.simulation import AbstractSim, Timecourse, TimecourseSim
-from sbmlsim.simulator.simulation_ray import SimulatorParallel, SimulatorSerial
 from sbmlsim.task import Task
 from sbmlsim.test import MODEL_REPRESSILATOR
 

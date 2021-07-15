@@ -1,4 +1,5 @@
 import logging
+from typing import List
 
 import libsedml
 
@@ -105,9 +106,17 @@ class TaskTree(object):
         return root
 
     @staticmethod
-    def parse_task_tree(doc: libsedml.SedDocument, tree: TaskNode):
-        """ Python code generation from task tree. """
+    def get_ordered_subtasks(repeated_task: libsedml.SedRepeatedTask) -> List[libsedml.SedSubTask]:
+        """Ordered list of subtasks for repeated task."""
+        subtasks: libsedml.SedListOfSubTasks = repeated_task.getListOfSubTasks()
+        subtaskOrder: List[int] = [st.getOrder() for st in subtasks]
+        # sort by order, if all subtasks have order (not required)
+        if all(subtaskOrder) != None:
+            subtasks = [st for (stOrder, st) in sorted(zip(subtaskOrder, subtasks))]
+        return subtasks
 
+
+# -------------------------------------------------------------------------------------
 
 class Test(object):
     @staticmethod

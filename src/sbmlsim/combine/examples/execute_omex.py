@@ -3,8 +3,9 @@ Execute a COMBINE archive.
 """
 from pathlib import Path
 
-from sbmlsim.examples.sedml.execute_sedml import execute_sedml
+from sbmlsim.combine.examples import execute_sedml
 from sbmlsim.test import DATA_DIR
+
 
 def run_repressilator():
     repressilator_omex = DATA_DIR / "omex" / "tellurium" / "repressilator.omex"
