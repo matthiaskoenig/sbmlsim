@@ -116,6 +116,7 @@ from sbmlsim.plot.plotting import (
     YAxisPosition,
 )
 from sbmlsim.simulation import AbstractSim, ScanSim, Timecourse, TimecourseSim
+from sbmlsim.simulation.algorithm import AlgorithmParameter
 from sbmlsim.task import Task
 from sbmlsim.units import UnitRegistry, UnitsInformation
 
@@ -893,6 +894,15 @@ class SEDMLParser:
 
         logger.debug(f"data_descriptions: {self.data_descriptions}")
 
+        # --- AlgorithmParameters ---
+        self.algorithm_parameters: List[AlgorithmParameter] = []
+        sed_alg_par: libsedml.SedAlgorithmParameter
+        for sed_alg_par in sed_doc.getListOfAlgorithmParameters():
+            self.algorithm_parameters.append(
+                self.parse_algorithm_parameter(sed_alg_par)
+            )
+        logger.debug(f"algorithm_parameters: {self.algorithm_parameters}")
+
         # --- Simulations ---
         self.simulations: Dict[str, AbstractSim] = {}
         sed_sim: libsedml.SedSimulation
@@ -1121,6 +1131,9 @@ class SEDMLParser:
         """
 
         # Create the experiment object
+        def f_algorithm_parameters(obj) -> List[AlgorithmParameter]:
+            return self.algorithm_parameters
+
         def f_models(obj) -> Dict[str, AbstractModel]:
             return self.models
 
@@ -1151,6 +1164,7 @@ class SEDMLParser:
             class_name,
             (SimulationExperiment,),
             {
+                "algorithm_parameters": f_algorithm_parameters,
                 "models": f_models,
                 "datasets": f_datasets,
                 "simulations": f_simulations,
@@ -1165,6 +1179,7 @@ class SEDMLParser:
     def print_info(self) -> None:
         """Print information."""
         info = {
+            "algorithm_parameters:": self.algorithm_parameters,
             "models": self.models,
             "simulations": self.simulations,
             "tasks": self.tasks,
@@ -1339,7 +1354,15 @@ class SEDMLParser:
             # TODO: libsedml.SEDML_CHANGE_CHANGEXML
             return {}
 
-    def parse_simulation(self, sed_sim: libsedml.SedSimulation) -> Union[TimecourseSim]:
+    def parse_algorithm_parameter(self, sed_alg_par: libsedml.SedAlgorithmParameter) -> AlgorithmParameter:
+        """Parse algorithm parameter information."""
+        sid = sed_alg_par.getId() if sed_alg_par.isSetId() else None
+        name = sed_alg_par.getName() if sed_alg_par.isSetName() else None
+        kisao = sed_alg_par.getKisaoID() if sed_alg_par.isSetKisaoID() else None
+        value = sed_alg_par.getValue() if sed_alg_par.isSetValue() else None
+        return AlgorithmParameter(sid=sid, name=name, kisao=kisao, value=value)
+
+    def parse_simulation(self, sed_sim: libsedml.SedSimulation) -> TimecourseSim:
         """Parse simulation information."""
         sim_type = sed_sim.getTypeCode()
         algorithm = sed_sim.getAlgorithm()
@@ -1369,7 +1392,7 @@ class SEDMLParser:
             number_of_points: int = sed_sim.getNumberOfPoints()
 
             # FIXME: handle time offset correctly (either separate presimulation)
-            # FIXME: impoartant to have the correct numbers of points
+            # FIXME: important to have the correct numbers of points
             tcsim = TimecourseSim(
                 timecourses=[
                     Timecourse(
@@ -1423,6 +1446,7 @@ class SEDMLParser:
         for node in tree_nodes:
             task_type = node.task.getTypeCode()
 
+            print(node.task)
             # Create simulation for task
             if task_type == libsedml.SEDML_TASK:
                 task = self._parse_simple_task(task_node=node)

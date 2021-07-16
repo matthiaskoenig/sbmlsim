@@ -22,6 +22,7 @@ Then, for each SubTask child of the RepeatedTask, in the order specified by its 
 from dataclasses import dataclass
 from typing import List
 
+
 from sbmlsim.simulation import Dimension
 
 @dataclass
@@ -35,19 +36,11 @@ class Change:
     math: str
     range: str  # this is precalculated
 
-@dataclass
-class AlgorithmParameter:
-    kisao: str
-
-@dataclass
-class Algorithm:
-    kisao: str
-    parameters: AlgorithmParameter
-
 
 @dataclass
 class Simulation:
     algorithm: Algorithm
+
 
 # Dimensions:
 @dataclass

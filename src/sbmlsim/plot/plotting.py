@@ -44,7 +44,7 @@ DEFAULT_COLORS = [
 ]
 
 
-class BasePlotObject(object):
+class BasePlotObject:
     """Base class for plotting objects."""
 
     def __init__(self, sid: str, name: str):
