@@ -59,12 +59,12 @@ class VectorRange(Range):
                 f"'{values}'")
 
         # values are sorted
-        values_sorted = np.sort(values)
+        values_sorted: np.ndarray = np.sort(values)
         if not np.allclose(values, values_sorted):
             console.log(
                 f"'values' in VectorRange must be one-dimensional, but ndim='{values.ndim}' for "
                 f"'{values}'")
-        self.values: np.ndarray = values.sort()
+        self.values: np.ndarray = values_sorted
 
     def __repr__(self) -> str:
         """Get string representation."""
@@ -183,12 +183,13 @@ class Dimension:
 
 if __name__ == "__main__":
     console.rule("[bold red]Range examples")
-    vrange = VectorRange(sid="range1", values=[0, 2, 3])
-    vrange = VectorRange(sid=1.0)
-    
+    vrange1 = VectorRange(sid="range1", values=[0, 2, 3])
+    vrange2 = VectorRange(sid="range2", values=np.linspace(start=0, stop=10, num=10))
 
 
-    console.log(vrange)
+
+    console.log(vrange1)
+    console.log(vrange2)
     # import time
     # with console.status("Working..."):
     #     time.sleep(2)
