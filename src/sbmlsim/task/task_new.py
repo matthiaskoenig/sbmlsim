@@ -19,6 +19,8 @@ Then, for each SubTask child of the RepeatedTask, in the order specified by its 
 - The referenced Task of the SubTask is executed.
 """
 
+import roadrunner
+
 from dataclasses import dataclass
 from typing import List
 
@@ -35,41 +37,6 @@ class Change:
     parameters: List
     math: str
     range: str  # this is precalculated
-
-
-@dataclass
-class Simulation:
-    algorithm: Algorithm
-
-
-# Dimensions:
-@dataclass
-class Range:
-    id: str
-    name: str
-
-@dataclass
-class UniformRange(Range):
-    start: float
-    end: float
-    steps: float
-    type: str  # linear/log
-
-@dataclass(Range)
-class VectorRange:
-    values: List[float]
-
-@dataclass
-class FunctionalRange(Range):
-    range: Range
-    variables: List   # model variables
-    parameters: List
-    math: str
-
-@dataclass
-class DataRange(Range):
-    source: str
-
 
 
 @dataclass
@@ -101,26 +68,3 @@ class SubTask:
     model_manipulations: List[str]
     order: int
     discard: bool = False,
-
-
-import roadrunner
-
-class TimecourseSubTask(SubTask):
-    start: float
-    end: float
-    steps: int
-    initial_time: float
-
-class OneStepSubtask(SubTask):
-    pass
-
-class SteadyStateSubtask(SubTask):
-    pass
-
-class OneStepSubtask(SubTask)
-
-
-
-
-class TimecourseTask:
-    subtasks: List[SubTask]

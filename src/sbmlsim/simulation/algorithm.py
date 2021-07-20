@@ -23,9 +23,11 @@ logger = logging.getLogger(__name__)
 kisao_ontology = Kisao()
 kisao_pattern = re.compile(r"^KISAO_\d{7}$")
 
+
 kisao_lookup = {
-    'absolute tolerance': "KISAO_0000211"
+    'absolute tolerance': "KISAO_0000211",
 }
+
 
 def validate_kisao(kisao: str) -> str:
     """Validates and normalizes kisao id against pattern."""

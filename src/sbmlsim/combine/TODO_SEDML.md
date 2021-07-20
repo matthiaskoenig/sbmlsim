@@ -3,12 +3,14 @@
 - [ ] 3D plotting
 - [ ] parameter fitting
 
+
 -----------------------------
 
 sbmlsim.Experiment
 - globally unique identifiers (validate on object creation)
 - identifiers must be SIDs! (so that experiements can be )
 
+- [ ] applied dimensions;
 
 
 # Documentation

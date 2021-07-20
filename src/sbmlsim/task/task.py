@@ -9,7 +9,7 @@ class Task:
     model variants.
     """
 
-    def __init__(self, model: str, simulation: str, sid: str=None, name: str=None):
+    def __init__(self, model: str, simulation: str, sid: str = None, name: str = None):
         if not isinstance(model, str):
             raise ValueError(
                 f"Reference to a model must be a string model key, "

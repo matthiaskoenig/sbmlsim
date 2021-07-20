@@ -5,62 +5,106 @@ from abc import ABC
 from typing import Any, Dict, Iterable, List
 
 import numpy as np
+from sbmlsim.simulation.range import Dimension
 
 from sbmlsim.units import UnitsInformation
 
 
-class Dimension(object):
-    """Define dimension for a simulation or scan.
+from sbmlsim.simulation.base import BaseObject
+from sbmlsim.simulation.algorithm import Algorithm
 
-    The dimension defines how the dimension is called,
-    the index is the corresponding index of the dimension.
+
+class Simulation(BaseObject):
+    """Simulation class.
+
+    A simulation is the execution of some defined algorithm(s). Simulations are
+    described differently depending on the type of simulation experiment to be
+    performed.
+
+    Simulation is an abstract class and serves as parent class for the different
+    types of simulations.
     """
 
-    def __init__(self, dimension: str, index: np.ndarray = None, changes: Dict = None):
-        """Dimension.
+    def __init__(self, sid: str, algorithm: Algorithm, name: str = None):
+        """Construct Simulation.
 
-        If no index is provided the index is calculated from the changes.
-        So in most cases the index can be left empty (e.g., for scanning of
-        parameters).
-
-        :param dimension: unique id of dimension, should start with 'dim'
-        :param index: index for values in dimension
-        :param changes: changes to apply.
+        The mandatory attribute algorithm defines the simulation algorithms used
+        for the execution of the simulation. The algorithms are defined
+        via the Algorithm class.
         """
-        if index is None and changes is None:
-            raise ValueError("Either 'index' or 'changes' required for Dimension.")
-        self.dimension: str = dimension
-
-        if changes is None:
-            changes = {}
-        self.changes = changes
-        if index is None:
-            # figure out index from changes
-            num = 1
-            for values in changes.values():
-                if isinstance(values, Iterable):
-                    n = len(values)
-                    if num != 1 and num != n:
-                        raise ValueError(
-                            f"All changes must have same length: '{changes}'"
-                        )
-                    num = n
-            index = np.arange(num)
-        self.index = index
+        super(Simulation, self).__init__(sid=sid, name=name)
+        self.algorithm: Algorithm = algorithm
 
     def __repr__(self) -> str:
-        """Get representation."""
-        return f"Dim({self.dimension}({len(self)}), " f"{list(self.changes.keys())})"
+        """Get string representation."""
+        return f"Simulation({self.sid}, {self.name}, {self.algorithm}"
 
-    def __len__(self) -> int:
-        """Get length."""
-        return len(self.index)
 
-    @staticmethod
-    def indices_from_dimensions(dimensions: List["Dimension"]):
-        """Get indices of all combinations of dimensions."""
-        index_vecs = [dim.index for dim in dimensions]
-        return list(itertools.product(*index_vecs))
+class Analysis(Simulation):
+    """Analysis class.
+
+    The Analysis represents any sort of analysis or simulation of a Model, entirely defined by its child
+    Algorithm.
+    """
+
+    def __repr__(self) -> str:
+        """Get string representation."""
+        return f"Analysis({self.sid}, {self.name}, {self.algorithm}"
+
+
+class SteadyState(Simulation):
+    """SteadyState class.
+
+    The SteadyState represents a steady state computation (as for example
+    implemented by NLEQ or Kinsolve).
+    """
+
+    def __repr__(self) -> str:
+        """Get string representation."""
+        return f"SteadyState({self.sid}, {self.name}, {self.algorithm}"
+
+
+class OneStep(Simulation):
+    """OneStep class.
+
+    The OneStep class calculates one further output step for the model from its
+    current state.
+    """
+
+    def __repr__(self) -> str:
+        """Get string representation."""
+        return f"OneStep({self.sid}, {self.name}, {self.algorithm}"
+
+    def __init__(self, sid: str, step: float, algorithm: Algorithm, name: str = None):
+        """Construct OneStep."""
+        super(OneStep, self).__init__(sid=sid, name=name, algorithm=algorithm)
+        self.step: float = step
+
+
+class UniformTimeCourse(Simulation):
+    """UniformTimeCourse class.
+
+    The UniformTimeCourse class calculates a time course output with equidistant
+    time points.
+    """
+
+    def __repr__(self) -> str:
+        """Get string representation."""
+        return f"UniformTimeCourse({self.sid}, {self.name}, {self.algorithm}"
+
+    def __init__(self, sid: str, algorithm: Algorithm,
+                 start: float,
+                 end: float,
+                 steps: int,
+                 initial_time: float,
+                 name: str = None
+                 ):
+        """Construct UniformTimeCourse"""
+        super(UniformTimeCourse, self).__init__(sid=sid, name=name, algorithm=algorithm)
+        self.start: float = start
+        self.end: float = end
+        self.steps: int = steps
+        self.initial_time: float = initial_time
 
 
 class AbstractSim(ABC):
@@ -90,3 +134,12 @@ class AbstractSim(ABC):
             "type": self.__class__.__name__,
         }
         return d
+
+
+if __name__ == "__main__":
+    tc = UniformTimeCourse(
+        sid="tc1", name="Timecourse 1",
+        start=0, end=100, steps=200,
+        algorithm=Algorithm(kisao="cvode"),
+    )
+    print(tc)
