@@ -1,4 +1,8 @@
+# IDE
 .idea
+.vscode
+workspace.code-workspace
+
 dist
 build
 sbmlsim.egg-info

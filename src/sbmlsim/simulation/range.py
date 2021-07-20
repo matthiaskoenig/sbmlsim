@@ -70,15 +70,50 @@ class VectorRange(Range):
         """Get string representation."""
         return f"Range(sid={self.sid}, name={self.name})"
 
-# TODO: implement
-# @dataclass
-# class UniformRange(Range):
-#     start: float
-#     end: float
-#     steps: float
-#     type: str  # linear/log
-#
-#
+
+class UniformRange(Range):
+    """UniformRange class.
+
+    The VectorRange describes an ordered collection of real values, listing
+    them explicitly within child value elements.
+    """
+
+    def __init__(self, sid: str, values: Union[List, Tuple, np.ndarray], name: str = None,):
+        """Construct VectorRange."""
+        super(VectorRange, self).__init__(sid=sid, name=name)
+        if isinstance(values, (list, tuple)):
+            values = np.array(values)
+
+        if not isinstance(values, np.ndarray):
+            raise ValueError(f"'values' in VectorRange must be numpy.ndarray, but '{type(values)}' for "
+                             f"'{values}'")
+        if values.ndim != 1:
+            raise ValueError(
+                f"'values' in VectorRange must be one-dimensional, but ndim='{values.ndim}' for "
+                f"'{values}'")
+
+        # values are sorted
+        values_sorted = np.sort(values)
+        if not np.allclose(values, values_sorted):
+            console.log(
+                f"'values' in VectorRange must be one-dimensional, but ndim='{values.ndim}' for "
+                f"'{values}'")
+        self.values: np.ndarray = values.sort()
+
+    def __repr__(self) -> str:
+        """Get string representation."""
+        return f"Range(sid={self.sid}, name={self.name})"
+
+
+
+
+class UniformRange(Range):
+    start: float
+    end: float
+    steps: float
+    type: str  # linear/log
+
+
 # @dataclass
 # class DataRange(Range):
 #     source: str
@@ -149,8 +184,12 @@ class Dimension:
 if __name__ == "__main__":
     console.rule("[bold red]Range examples")
     vrange = VectorRange(sid="range1", values=[0, 2, 3])
+    vrange = VectorRange(sid=1.0)
+    
+
+
     console.log(vrange)
-    import time
-    with console.status("Working..."):
-        time.sleep(2)
+    # import time
+    # with console.status("Working..."):
+    #     time.sleep(2)
 
