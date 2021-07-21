@@ -1,3 +1,6 @@
+.vscode
+workspace.code-workspace
+
 .idea
 dist
 build
