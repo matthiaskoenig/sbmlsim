@@ -8,16 +8,16 @@
 FIXME: add annotation
 	https://identifiers.org/biomodels.kisao:KISAO_0000057
 """
-import re
 import logging
+import re
 from typing import List, Union
 
-from kisao import Kisao
-from kisao import utils
+from kisao import Kisao, utils
 from kisao.data_model import AlgorithmSubstitutionPolicy
 from pronto import Term
 
 from sbmlsim.simulation.base import BaseObject
+
 
 logger = logging.getLogger(__name__)
 kisao_ontology = Kisao()
@@ -25,7 +25,7 @@ kisao_pattern = re.compile(r"^KISAO_\d{7}$")
 
 
 kisao_lookup = {
-    'absolute tolerance': "KISAO_0000211",
+    "absolute tolerance": "KISAO_0000211",
 }
 
 
@@ -39,8 +39,9 @@ def validate_kisao(kisao: str) -> str:
         kisao = kisao.replace(":", "_")
 
     if not re.match(kisao_pattern, kisao):
-        raise ValueError(f"kisao '{kisao}' does not match kisao pattern "
-                         f"'{kisao_pattern}'.")
+        raise ValueError(
+            f"kisao '{kisao}' does not match kisao pattern " f"'{kisao_pattern}'."
+        )
 
     # term = kisao_ontology.get_term(kisao)
     # check that term exists
@@ -66,7 +67,9 @@ def name_kisao(kisao: str, name: str = None) -> str:
 class AlgorithmParameter(BaseObject):
     """AlgorithmParameter."""
 
-    def __init__(self, kisao: str, value: Union[str, float], sid: str = None, name: str = None):
+    def __init__(
+        self, kisao: str, value: Union[str, float], sid: str = None, name: str = None
+    ):
         kisao = validate_kisao(kisao)
         name = name_kisao(kisao, name)
 
@@ -80,9 +83,9 @@ class AlgorithmParameter(BaseObject):
 
 
 class Algorithm(BaseObject):
-
-    def __init__(self, sid: str, name: str, kisao: str,
-                 parameters: List[AlgorithmParameter]):
+    def __init__(
+        self, sid: str, name: str, kisao: str, parameters: List[AlgorithmParameter]
+    ):
         kisao = validate_kisao(kisao)
         name = name_kisao(kisao, name)
 
@@ -96,12 +99,11 @@ class Algorithm(BaseObject):
 
 
 if __name__ == "__main__":
-    ap = AlgorithmParameter(sid=None, name=None, kisao="KISAO:0000211", value=1E-7)
+    ap = AlgorithmParameter(sid=None, name=None, kisao="KISAO:0000211", value=1e-7)
     print(ap)
-    ap = AlgorithmParameter(sid=None, name=None, kisao="KISAO_0000211", value=1E-7)
+    ap = AlgorithmParameter(sid=None, name=None, kisao="KISAO_0000211", value=1e-7)
     print(ap)
-    ap = AlgorithmParameter(kisao="KISAO:0000211", value=1E-7)
+    ap = AlgorithmParameter(kisao="KISAO:0000211", value=1e-7)
     print(ap)
-    ap = AlgorithmParameter(kisao="absolute tolerance", value=1E-7)
+    ap = AlgorithmParameter(kisao="absolute tolerance", value=1e-7)
     print(ap)
-

@@ -26,13 +26,11 @@ if __name__ == "__main__":
 
     biomodels_omex_base_path = DATA_DIR / "combine" / "omex" / "biomodels" / "omex"
     biomodels_omex_paths = []
-    for path in Path(biomodels_omex_base_path).rglob('*.omex'):
+    for path in Path(biomodels_omex_base_path).rglob("*.omex"):
         biomodels_omex_paths.append(path)
     biomodels_omex_paths = sorted(biomodels_omex_paths)
 
-    for omex_path in [
-        biomodels_omex_base_path / "BIOMD0000000111_fi4_sedml.omex"
-    ]:
+    for omex_path in [biomodels_omex_base_path / "BIOMD0000000111_fi4_sedml.omex"]:
         run_omex(omex_path)
 
     # for omex_path in sorted(biomodels_omex_paths):
@@ -42,4 +40,3 @@ if __name__ == "__main__":
     "/home/mkoenig/git/sbmlsim/src/sbmlsim/test/data/combine/omex/jws/omex/levering2012_fig2-user.sedx",
     "/home/mkoenig/git/sbmlsim/src/sbmlsim/test/data/combine/omex/jws/omex/levering2012_fig5-user.sedx",
     "/home/mkoenig/git/sbmlsim/src/sbmlsim/test/data/combine/omex/jws/omex/martins2016_fig4b.sedx"
-

@@ -2,8 +2,8 @@
 import json
 import logging
 import math
-from pathlib import Path
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any, Callable, Dict, Iterable, List, Optional, Sized, Union
 
 import numpy as np
@@ -204,8 +204,10 @@ class FitMapping:
 
     def __str__(self) -> str:
         """Get string."""
-        return f"FitMapping({self.experiment.sid}, " \
-               f"reference={self.reference}, observable={self.observable})"
+        return (
+            f"FitMapping({self.experiment.sid}, "
+            f"reference={self.reference}, observable={self.observable})"
+        )
 
 
 class FitParameter:

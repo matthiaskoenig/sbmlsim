@@ -144,8 +144,8 @@ class UnitsInformation(MutableMapping):
 
         # add predefined units (SBML Level 2)
         for uid, unit_str in {
-            "substance": 'mole',
-            "volume": 'litre',
+            "substance": "mole",
+            "volume": "litre",
             "area": "meter^2",
             "length": "meter",
             "time": "second",

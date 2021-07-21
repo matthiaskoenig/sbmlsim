@@ -6,9 +6,7 @@ from sbmlsim.combine.sedml.runner import execute_sedml
 examples_dir = Path(__file__).parent / "l1v4"
 # examples_dir = Path(__file__).parent / "l1v4_l1v3"
 
-l1v4_l1v3_files = [
-    "repeated-stochastic-runs/repeated-stochastic-runs.sedml"
-]
+l1v4_l1v3_files = ["repeated-stochastic-runs/repeated-stochastic-runs.sedml"]
 
 l1v4_files = [
     # plotting
@@ -18,7 +16,6 @@ l1v4_files = [
     # "axis_minmax.sedml",
     # "axis_minmax_smaller.sedml",
     # "axis_minormax.sedml",
-
     # "concentration_amount.sedml",  # FIXME
     # "concentration_amount_b.sedml"  # FIXME
     # "curve_types.sedml",
@@ -26,7 +23,6 @@ l1v4_files = [
     # "heat_map_ls.sedml",
     # "markertype.sedml",
     # "linetype.sedml",
-
     # "right_yaxis.sedml",
     # "line_overlap_order.sedml",
     # "repressilator_figure.xml",
@@ -51,7 +47,7 @@ if __name__ == "__main__":
     # ----------------------
     working_dir = examples_dir
     for sedml_file in l1v4_files:
-    # for sedml_file in l1v4_l1v3_files:
+        # for sedml_file in l1v4_l1v3_files:
         execute_sedml(
             path=examples_dir / sedml_file,
             working_dir=examples_dir / "sbmlsim",

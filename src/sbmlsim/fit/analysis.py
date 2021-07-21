@@ -374,8 +374,8 @@ class OptimizationAnalysis:
 
                 xdelta = np.max(x_ref) - np.min(x_ref)
                 ax.set_xlim(
-                    left=np.min(x_ref) - 0.1*xdelta,
-                    right=np.max(x_ref) + 0.1*xdelta,
+                    left=np.min(x_ref) - 0.1 * xdelta,
+                    right=np.max(x_ref) + 0.1 * xdelta,
                 )
                 ax.legend()
 

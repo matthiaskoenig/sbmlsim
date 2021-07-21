@@ -106,7 +106,9 @@ class TaskTree(object):
         return root
 
     @staticmethod
-    def get_ordered_subtasks(repeated_task: libsedml.SedRepeatedTask) -> List[libsedml.SedSubTask]:
+    def get_ordered_subtasks(
+        repeated_task: libsedml.SedRepeatedTask,
+    ) -> List[libsedml.SedSubTask]:
         """Ordered list of subtasks for repeated task."""
         subtasks: libsedml.SedListOfSubTasks = repeated_task.getListOfSubTasks()
         subtaskOrder: List[int] = [st.getOrder() for st in subtasks]
@@ -117,6 +119,7 @@ class TaskTree(object):
 
 
 # -------------------------------------------------------------------------------------
+
 
 class Test(object):
     @staticmethod

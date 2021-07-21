@@ -2,11 +2,7 @@ from pathlib import Path
 
 import pytest
 
-from sbmlsim.examples.sedml import (
-    all_sedml_files,
-    examples_dir,
-    execute_sedml,
-)
+from sbmlsim.examples.sedml import all_sedml_files, examples_dir, execute_sedml
 
 
 @pytest.mark.parametrize("sedml_filename", all_sedml_files)

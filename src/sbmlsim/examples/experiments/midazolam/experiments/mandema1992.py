@@ -10,6 +10,7 @@ from . import MidazolamSimulationExperiment
 
 class Mandema1992(MidazolamSimulationExperiment):
     """Mandema1992."""
+
     def datasets(self) -> Dict[str, DataSet]:
         dsets = {}
         for fig_id in ["Fig1A", "Fig2A", "Fig3A"]:

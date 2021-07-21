@@ -5,13 +5,11 @@ from abc import ABC
 from typing import Any, Dict, Iterable, List
 
 import numpy as np
-from sbmlsim.simulation.range import Dimension
 
-from sbmlsim.units import UnitsInformation
-
-
-from sbmlsim.simulation.base import BaseObject
 from sbmlsim.simulation.algorithm import Algorithm
+from sbmlsim.simulation.base import BaseObject
+from sbmlsim.simulation.range import Dimension
+from sbmlsim.units import UnitsInformation
 
 
 class Simulation(BaseObject):
@@ -92,13 +90,16 @@ class UniformTimeCourse(Simulation):
         """Get string representation."""
         return f"UniformTimeCourse({self.sid}, {self.name}, {self.algorithm}"
 
-    def __init__(self, sid: str, algorithm: Algorithm,
-                 start: float,
-                 end: float,
-                 steps: int,
-                 initial_time: float,
-                 name: str = None
-                 ):
+    def __init__(
+        self,
+        sid: str,
+        algorithm: Algorithm,
+        start: float,
+        end: float,
+        steps: int,
+        initial_time: float,
+        name: str = None,
+    ):
         """Construct UniformTimeCourse"""
         super(UniformTimeCourse, self).__init__(sid=sid, name=name, algorithm=algorithm)
         self.start: float = start
@@ -138,8 +139,11 @@ class AbstractSim(ABC):
 
 if __name__ == "__main__":
     tc = UniformTimeCourse(
-        sid="tc1", name="Timecourse 1",
-        start=0, end=100, steps=200,
+        sid="tc1",
+        name="Timecourse 1",
+        start=0,
+        end=100,
+        steps=200,
         algorithm=Algorithm(kisao="cvode"),
     )
     print(tc)

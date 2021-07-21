@@ -36,6 +36,7 @@ class Data(object):
 
     class Symbols(Enum):
         """Symbols."""
+
         TIME = 1
         AMOUNT = 2
         CONCENTRATION = 3
@@ -61,7 +62,7 @@ class Data(object):
                 symbol = Data.Symbols.AMOUNT
 
         self.index: str = index
-        self.symbol: 'Symbols' = symbol
+        self.symbol: "Symbols" = symbol
         self.task_id: str = task
         self.dset_id: str = dataset
         self.function: str = function

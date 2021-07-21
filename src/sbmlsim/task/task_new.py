@@ -19,13 +19,13 @@ Then, for each SubTask child of the RepeatedTask, in the order specified by its 
 - The referenced Task of the SubTask is executed.
 """
 
-import roadrunner
-
 from dataclasses import dataclass
 from typing import List
 
+import roadrunner
 
 from sbmlsim.simulation import Dimension
+
 
 @dataclass
 class Change:
