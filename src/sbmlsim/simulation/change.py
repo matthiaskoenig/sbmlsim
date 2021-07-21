@@ -1,8 +1,12 @@
 from sbmlsim.simulation.base import BaseObject
+from enum import Enum, unique, auto
 
 
-class TargetType(Enum):
-    pass
+@unique
+class Target:
+    def __init__(self, target: str):
+        self.target = target
+
 
 
 class Change(BaseObject):
@@ -17,12 +21,10 @@ class Change(BaseObject):
       (AddXML, ChangeXML, RemoveXML)
     """
 
-    def __init__(self, sid: str, target: TargetType):
+    def __init__(self, target: Target, sid=None, name=None):
         """Construct Calculation."""
-        super(Calculation, self).__init__(sid=sid, name=name)
-        self.variables: List = variables
-        self.parameters: List = parameters
-        self.math: str = math
+        super(Change, self).__init__(sid=sid, name=name)
+        self.target = target
 
 
 class ComputeChange(Calculation):
@@ -32,4 +34,7 @@ class ComputeChange(Calculation):
     the numerical value of any single element or attribute of a Model
     addressable by a target, based on a calculation."""
 
-    pass
+    def __init__(self, sid: str, target: TargetType):
+        """Construct Calculation."""
+        super(Change, self).__init__(sid=sid, name=name, target)
+        
