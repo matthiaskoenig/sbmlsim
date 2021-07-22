@@ -10,21 +10,6 @@ from sbmlsim.simulation.base import BaseObject
 from sbmlsim.simulation.calculation import Calculation, Parameter, Variable
 
 
-# from rich import pretty
-# pretty.install()
-# from rich import print
-
-# FORMAT = "%(message)s"
-# logging.basicConfig(
-#     level="NOTSET", format=FORMAT, datefmt="[%X]", handlers=[RichHandler()]
-# )
-#
-# log = logging.getLogger("rich")
-# log.info("Hello, World!")
-
-# FIXME: common method to access data
-
-
 class Range(BaseObject):
     """Range class.
 

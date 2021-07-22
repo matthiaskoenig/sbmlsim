@@ -1,10 +1,6 @@
 from abc import ABC
 from typing import Optional
 
-import roadrunner
-m: roadrunner.ExecutableModel = roadrunner.RoadRunner().model
-m.get
-
 
 class BaseObject(ABC):
     """Base class for SED-ML bases
@@ -21,7 +17,7 @@ class BaseObjectSIdRequired(BaseObject):
     """Base class for SED-ML bases with required sid."""
 
     def __init__(self, sid: str, name: Optional[str]):
-        super(BaseObjectSIdRequired).__init__(sid=sid, name=name)
+        super(BaseObjectSIdRequired, self).__init__(sid=sid, name=name)
 
 
 class Target:
@@ -40,6 +36,7 @@ class Target:
     def __init__(self, target: str):
         self.target = target
 
+
 class Symbol:
     """Symbol class.
     
@@ -48,9 +45,6 @@ class Symbol:
     follow the format of that attribute) that represents that variable’s concept. The notion of implicit 
     variables is explained in Section 3.2.5. For backwards compatibility, the old string “urn:sedml:symbol:time”
     is also allowed, though interpreters should interpret “KISAO:0000832” as meaning the same thing.
-
-
-
     """
     values = [
         # "urn:sedml:symbol:time",

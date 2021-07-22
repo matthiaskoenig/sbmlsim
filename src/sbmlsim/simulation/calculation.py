@@ -4,13 +4,14 @@
 from abc import abstractmethod
 from typing import List, Optional
 
+from sbmlsim.console import console
 from sbmlsim.simulation.base import BaseObject, BaseObjectSIdRequired, Target, Symbol
 
 
 class Parameter(BaseObjectSIdRequired):
     """Parameter class.
     
-    The Parameter class (Figure 2.4) is used to create named parameters with a constant value. 
+    The Parameter class (Figure 2.4) is used to create named pars with a constant value. 
     A Parameter can be used wherever a mathematical expression to compute a value is defined, e.g.,
     in ComputeChange, FunctionalRange or DataGenerator. The Parameter definitions are local to the
     particular class defining them.
@@ -48,16 +49,16 @@ class AppliedDimension(BaseObject):
 
     """
     def __init__(
-        self, target: Optional[str], dimension_target: str, sid: Optional[str], name: Optional[str] = None
+        self, target: Optional[str] = None, dimension_target: Optional[str] = None, sid: Optional[str] = None, name: Optional[str] = None
     ):
         """Construct Parameter."""
         super(AppliedDimension, self).__init__(sid=sid, name=name)
         self.target: Optional[str] = target
-        self.dimension_target: Optional[str] = target
+        self.dimension_target: Optional[str] = dimension_target
 
     def __repr__(self) -> str:
         """Get string representation."""
-        return f"Parameter(sid={self.sid}, name={self.name}, value={self.value}, unit={self.unit})"
+        return f"AppliedDimension(sid={self.sid}, name={self.name}, target={self.target}, dimension_target={self.dimension_target})"
 
 
 class Variable(BaseObjectSIdRequired):
@@ -86,8 +87,12 @@ class Variable(BaseObjectSIdRequired):
         self.target: Optional[Target] = target
         self.symbol: Optional[Symbol] = symbol
         self.unit: Optional[str] = unit
-        term: Optional[str] = term, 
+        self.term: Optional[str] = term, 
         self.applied_dimensions: Optional[List[AppliedDimension]] = applied_dimensions
+
+    def __repr__(self) -> str:
+        """Get string representation."""
+        return f"Variable(sid={self.sid}, name={self.name}, target={self.target}, symbol={self.symbol}, term={self.term})"
 
 
 class DependentVariable(Variable):
@@ -138,25 +143,31 @@ class Calculation(BaseObjectSIdRequired):
         """Construct Calculation."""
         super(Calculation, self).__init__(sid=sid, name=name)
         self.variables: List[Variable] = variables
-        self.parameters: List[Parameter] = parameters
+        self.parameters: List[Parameter] = pars
         self.math: str = math
 
-    @abstractmethod
+    # @abstractmethod
     def values(self):
+        pass
         # FIXME
         # evaluate with actual data
-            astnode = mathml.formula_to_astnode(self.function)
-            variables = {}
-            for var_key, variable in self.variables.items():
-                # lookup via key
-                if isinstance(variable, str):
-                    variables[var_key] = experiment._data[variable].data
-                elif isinstance(variable, Data):
-                    variables[var_key] = variable.get_data(experiment=experiment)
-            for par_key, par_value in self.parameters.items():
-                variables[par_key] = par_value
+        # astnode = mathml.formula_to_astnode(self.function)
+        # variables = {}
+        # for var_key, variable in self.variables.items():
+        #     # lookup via key
+        #     if isinstance(variable, str):
+        #         variables[var_key] = experiment._data[variable].data
+        #     elif isinstance(variable, Data):
+        #         variables[var_key] = variable.get_data(experiment=experiment)
+        # for par_key, par_value in self.pars.items():
+        #     variables[par_key] = par_value
 
-            x = mathml.evaluate(astnode=astnode, variables=variables)
+        # x = mathml.evaluate(astnode=astnode, variables=variables)
+
+    def __repr__(self) -> str:
+        """Get string representation."""
+        return f"Calculation(sid={self.sid}, name={self.name}, variables={self.variables}, parameters={self.parameters}, math={self.math})"
+
 
 
 class ComputeChange(Calculation):
@@ -177,9 +188,26 @@ class FunctionalRange(Calculation):
 
 
 if __name__ == "__main__":
-    parameters: List[Parameter] = [
+    pars: List[Parameter] = [
         Parameter(sid="p1", value=10.0, unit="mM"),
         Parameter(sid="p2", value=0),
     ]
+    console.log(pars)
 
-    print(parameters)
+    dims: List[AppliedDimension] = [
+        AppliedDimension(sid="dim1", target="repeated_task1")
+    ]
+    console.log(dims)
+
+    vars: List[Variable] = [
+        Variable(sid="S1_model1", target="S1", model_reference="model1", task_reference="repeated_task1"),
+        Variable(sid="S2_model1", target="S2", model_reference="model1", task_reference="repeated_task1",
+                 applied_dimensions=dims),
+    ]
+    console.log(vars)
+    
+    calculation = Calculation(
+        sid="calculation1", parameters=pars, variables=vars,
+        math="p1 + p2 + S1_model1 + S2_model1"
+    )
+    console.log(calculation)
