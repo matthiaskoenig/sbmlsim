@@ -192,7 +192,8 @@ class DataRange(Range):
         """Resolve data from data generator."""
 
         # FIXME: implement; requires access to the resolved DataDescriptions of the experiment.
-        raise NotImplementedError
+        # raise NotImplementedError
+        return None
 
 
 class FunctionalRange(Calculation, Range):
@@ -230,7 +231,8 @@ class FunctionalRange(Calculation, Range):
         """Resolve data from data generator."""
 
         # FIXME: implement; requires access to all numerical values in the variables and the ranges.
-        raise NotImplementedError
+        # raise NotImplementedError
+        return None
 
 
 # Dimension is basically a ComputeChange;
@@ -294,7 +296,9 @@ if __name__ == "__main__":
         VectorRange(sid="vrange1", values=[0, 2, 3]),
         VectorRange(sid="vrange2", values=np.linspace(start=0, stop=10, num=10)),
         UniformRange(sid="ufrange1", start=0, end=10, steps=100),
-        UniformRangeType("ufrange2", start=1, end=100, steps=2),
+        UniformRange("ufrange2", start=1, end=2, steps=1),
+        DataRange("drange1", source_ref="datasource1"),
+        FunctionalRange("frange", sid="frange1", variables = Variable)
     ]
     range: Range
     for range in ranges:

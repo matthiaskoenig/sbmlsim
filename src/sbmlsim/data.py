@@ -263,21 +263,6 @@ class Data(object):
         return x
 
 
-class DataFunction(object):
-    """Functional data calculation.
-
-    The idea ist to provide an object which can calculate a generic math function
-    based on given input symbols.
-
-    Important challenge is to handle the correct functional evaluation.
-    """
-
-    def __init__(self, index, formula, variables):
-        self.index = index
-        self.formula = formula
-        self.variables = variables
-
-
 class DataSeries(pd.Series):
     """DataSet - a pd.Series with additional unit information."""
 
