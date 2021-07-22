@@ -17,12 +17,12 @@ class Parameter(BaseObjectSIdRequired):
     """
 
     def __init__(
-        self, sid: str, value: float, unit: str, name: Optional[str] = None
+        self, sid: str, value: float, unit: Optional[str] = None, name: Optional[str] = None
     ):
         """Construct Parameter."""
         super(Parameter, self).__init__(sid=sid, name=name)
         self.value: float = value
-        self.unit: str = unit
+        self.unit: Optional[str] = unit
 
     def __repr__(self) -> str:
         """Get string representation."""
@@ -30,7 +30,34 @@ class Parameter(BaseObjectSIdRequired):
 
 
 class AppliedDimension(BaseObject):
-    """AppliedDimension class."""
+    """AppliedDimension class.
+    
+    A AppliedDimension object is used when the term of the Variable is a function that reduces the dimen-
+    sionality of the data.
+
+    Dimension reducing functions can be applied in two contexts:
+    First to reduce data from RepeatedTasks and nested RepeatedTasks which requires the taskReference 
+    of the variable to be set and to be a reference to a RepeatedTask. 
+    All AppliedDimensions must have the target set and reference either one of the 
+    possibly nested RepeatedTask Sids or the Task within the RepeatedTask.
+    Second to reduce data from a multi-dimensional DataSource in a DataGenerator which 
+    requires the target of the variable to be set to reference the respective DataSource. 
+    The AppliedDimensions must have the dimensionTarget set to a NuMLIdRef referencing a dimension of the data."
+    "If the listOfAppliedDimensions contains 2 or more AppliedDimensions the reducing function is applied on an element-by-element basis."
+
+
+    """
+    def __init__(
+        self, target: Optional[str], dimension_target: str, sid: Optional[str], name: Optional[str] = None
+    ):
+        """Construct Parameter."""
+        super(AppliedDimension, self).__init__(sid=sid, name=name)
+        self.target: Optional[str] = target
+        self.dimension_target: Optional[str] = target
+
+    def __repr__(self) -> str:
+        """Get string representation."""
+        return f"Parameter(sid={self.sid}, name={self.name}, value={self.value}, unit={self.unit})"
 
 
 class Variable(BaseObjectSIdRequired):
@@ -43,23 +70,61 @@ class Variable(BaseObjectSIdRequired):
     def __init__(
         self, 
         sid: str, 
-        model_ref: Optional[str], 
-        task_ref: Optional[str], 
+        model_reference: Optional[str], 
+        task_reference: Optional[str], 
         target: Optional[Target] = None, 
         symbol: Optional[Symbol] = None,
         unit: Optional[str] = None, 
         name: Optional[str] = None,
+        term: Optional[str] = None,
         applied_dimensions: Optional[List[AppliedDimension]] = None
     ):
         """Construct Variable."""
-        super(Parameter, self).__init__(sid=sid, name=name)
-        self.model_ref: Optional[str] = model_ref
-        self.task_ref: Optional[str] = task_ref, 
+        super(Variable, self).__init__(sid=sid, name=name)
+        self.model_reference: Optional[str] = model_reference
+        self.task_reference: Optional[str] = task_reference, 
         self.target: Optional[Target] = target
         self.symbol: Optional[Symbol] = symbol
         self.unit: Optional[str] = unit
-        self.appliedDimension: Optional[List[AppliedDimension]] = applied_dimension
+        term: Optional[str] = term, 
+        self.applied_dimensions: Optional[List[AppliedDimension]] = applied_dimensions
 
+
+class DependentVariable(Variable):
+    """DependentVariable class.
+    
+    A dependent variable
+    is necessary when the desired variable is a composite of two other variables, such as ‘the rate of change
+    of S1 with respect to time’.
+    """
+    def __init__(
+        self, 
+        sid: str, 
+        model_reference: Optional[str], 
+        task_reference: Optional[str], 
+        target: Optional[Target] = None, 
+        symbol: Optional[Symbol] = None,
+        target2: Optional[Target] = None, 
+        symbol2: Optional[Symbol] = None,
+        unit: Optional[str] = None, 
+        name: Optional[str] = None,
+        term: Optional[str] = None,
+        applied_dimensions: Optional[List[AppliedDimension]] = None
+    ):
+        """Construct DependentVariable."""
+        super(DependentVariable, self).__init__(
+            sid=sid, name=name, 
+            model_reference=model_reference,
+            task_reference=task_reference,
+            target=target,
+            symbol=symbol,
+            unit=unit,
+            term=term,
+            applied_dimensions=applied_dimensions
+        )
+        self.target2: Optional[Target] = target2
+        self.symbol2: Optional[Symbol] = symbol2
+     
 
 class Calculation(BaseObjectSIdRequired):
     """Calculation class.
@@ -114,6 +179,7 @@ class FunctionalRange(Calculation):
 if __name__ == "__main__":
     parameters: List[Parameter] = [
         Parameter(sid="p1", value=10.0, unit="mM"),
+        Parameter(sid="p2", value=0),
     ]
 
     print(parameters)
