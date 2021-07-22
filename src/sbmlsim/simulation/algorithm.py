@@ -1,71 +1,23 @@
-"""Handling of algorithms and algorithm parameters.
+"""Handling of algorithms and algorithm parameters."""
 
-1. global algorithm parameters
-2. simulation algorithm parameters
-3. nested lists
-4. kisao terms
-
-FIXME: add annotation
-	https://identifiers.org/biomodels.kisao:KISAO_0000057
-"""
 import logging
-import re
-from typing import List, Union
+from typing import List, Union, Optional
 
-from kisao import Kisao, utils
-from kisao.data_model import AlgorithmSubstitutionPolicy
-from pronto import Term
 
 from sbmlsim.simulation.base import BaseObject
+from sbmlsim.simulation.kisaos import name_kisao, validate_kisao
 
 
 logger = logging.getLogger(__name__)
-kisao_ontology = Kisao()
-kisao_pattern = re.compile(r"^KISAO_\d{7}$")
-
-
-kisao_lookup = {
-    "absolute tolerance": "KISAO_0000211",
-}
-
-
-def validate_kisao(kisao: str) -> str:
-    """Validates and normalizes kisao id against pattern."""
-    if not kisao.startswith("KISAO"):
-        # try lookup by name
-        kisao = kisao_lookup.get(kisao, kisao)
-
-    if kisao.startswith("KISAO:"):
-        kisao = kisao.replace(":", "_")
-
-    if not re.match(kisao_pattern, kisao):
-        raise ValueError(
-            f"kisao '{kisao}' does not match kisao pattern " f"'{kisao_pattern}'."
-        )
-
-    # term = kisao_ontology.get_term(kisao)
-    # check that term exists
-
-    return kisao
-
-
-def name_kisao(kisao: str, name: str = None) -> str:
-    """Get name for kisao id."""
-    term: Term = kisao_ontology.get_term(kisao)
-    if not term:
-        raise ValueError(f"No term in kisao ontology for: '{kisao}'")
-
-    kisao_name = term.name
-    if kisao_name != term.name:
-        logger.warning(f"Name '{name}' does not match kisao name '{kisao_name}'")
-    if name:
-        return name
-    else:
-        return kisao_name
 
 
 class AlgorithmParameter(BaseObject):
-    """AlgorithmParameter."""
+    """AlgorithmParameter.
+    
+    The AlgorithmParameter class allows to parameterize a particular simulation algorithm. The set of
+    possible parameters for a particular instance is determined by the algorithm that is referenced by the
+    kisaoID of the enclosing algorithm element.
+    """
 
     def __init__(
         self, kisao: str, value: Union[str, float], sid: str = None, name: str = None
@@ -84,14 +36,15 @@ class AlgorithmParameter(BaseObject):
 
 class Algorithm(BaseObject):
     def __init__(
-        self, sid: str, name: str, kisao: str, parameters: List[AlgorithmParameter]
+        self, kisao: str, parameters: Optional[List[AlgorithmParameter]] = None, 
+        sid: Optional[str] = None, name: Optional[str] = None,
     ):
-        kisao = validate_kisao(kisao)
-        name = name_kisao(kisao, name)
+        kisao: str = validate_kisao(kisao)
+        name: str = name_kisao(kisao, name)
 
         super(Algorithm, self).__init__(sid, name)
         self.kisao: str = kisao
-        self.parameters: List[AlgorithmParameter] = parameters
+        self.parameters: Optional[List[AlgorithmParameter]] = parameters
 
     def __repr__(self) -> str:
         """Get string representation."""

@@ -4,7 +4,7 @@
 from abc import abstractmethod
 from typing import List, Optional
 
-from sbmlsim.simulation.base import BaseObject, BaseObjectSIdRequired
+from sbmlsim.simulation.base import BaseObject, BaseObjectSIdRequired, Target, Symbol
 
 
 class Parameter(BaseObjectSIdRequired):
@@ -29,15 +29,36 @@ class Parameter(BaseObjectSIdRequired):
         return f"Parameter(sid={self.sid}, name={self.name}, value={self.value}, unit={self.unit})"
 
 
+class AppliedDimension(BaseObject):
+    """AppliedDimension class."""
+
+
 class Variable(BaseObjectSIdRequired):
+    """Variable class.
+    
+    A Variable is a reference to an already existing entity, either explicitly created in the
+    SED-ML Document, or to an implicitly defined symbol.
+    """
 
     def __init__(
-        self, sid: str, value: float, unit: str, name: Optional[str] = None
+        self, 
+        sid: str, 
+        model_ref: Optional[str], 
+        task_ref: Optional[str], 
+        target: Optional[Target] = None, 
+        symbol: Optional[Symbol] = None,
+        unit: Optional[str] = None, 
+        name: Optional[str] = None,
+        applied_dimensions: Optional[List[AppliedDimension]] = None
     ):
         """Construct Variable."""
         super(Parameter, self).__init__(sid=sid, name=name)
-        self.value: float = value
-        self.unit: str = unit
+        self.model_ref: Optional[str] = model_ref
+        self.task_ref: Optional[str] = task_ref, 
+        self.target: Optional[Target] = target
+        self.symbol: Optional[Symbol] = symbol
+        self.unit: Optional[str] = unit
+        self.appliedDimension: Optional[List[AppliedDimension]] = applied_dimension
 
 
 class Calculation(BaseObjectSIdRequired):

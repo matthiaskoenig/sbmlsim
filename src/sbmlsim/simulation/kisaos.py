@@ -5,8 +5,83 @@ from collections import namedtuple
 
 import libsedml
 
+import re
+from typing import List, Union
+
+from kisao import Kisao, utils
+from kisao.data_model import AlgorithmSubstitutionPolicy, IdDialect
+from pronto import Term, Ontology
+import pronto
+
+from sbmlsim.simulation.base import BaseObject
+
 
 logger = logging.getLogger(__name__)
+
+#FIXME: add annotation
+# 	https://identifiers.org/biomodels.kisao:KISAO_0000057
+
+# FIXME: add kisao term
+
+kisao_ontology = Kisao()
+kisao_pattern = re.compile(r"^KISAO_\d{7}$")
+
+# FIXME: Create this programatically
+
+
+def create_name_lookup():
+    """Creates dictionary for lookup by name."""
+    pronto_ontology: Ontology = kisao_ontology._ontology 
+    name_to_kisao: Dict[str, str] = {}
+    for term in pronto_ontology:
+        kisao_id = kisao_ontology.get_normalized_id(term_id, dialect=IdDialect.kisao)
+        term: Term = kisao_ontology.get_term(kisao)
+        name = term.name
+        if name in name_to_kisao:
+            raise ValueError
+        name_to_kisao[term.name] = 
+            
+
+    kisao_name = term.name
+    kisao_lookup = {
+        "absolute tolerance": "KISAO_0000211",
+    }
+
+
+def validate_kisao(kisao: str) -> str:
+    """Validates and normalizes kisao id against pattern."""
+    if not kisao.startswith("KISAO"):
+        # try lookup by name
+        kisao = kisao_lookup.get(kisao, kisao)
+
+    if kisao.startswith("KISAO:"):
+        kisao = kisao.replace(":", "_")
+
+    if not re.match(kisao_pattern, kisao):
+        raise ValueError(
+            f"kisao '{kisao}' does not match kisao pattern " f"'{kisao_pattern}'."
+        )
+
+    # term = kisao_ontology.get_term(kisao)
+    # check that term exists
+
+    return kisao
+
+
+def name_kisao(kisao: str, name: str = None) -> str:
+    """Get name for kisao id."""
+    term: Term = kisao_ontology.get_term(kisao)
+    if not term:
+        raise ValueError(f"No term in kisao ontology for: '{kisao}'")
+
+    kisao_name = term.name
+    if kisao_name != term.name:
+        logger.warning(f"Name '{name}' does not match kisao name '{kisao_name}'")
+    if name:
+        return name
+    else:
+        return kisao_name
+
 
 # ----------------
 # KISAO MAPPINGS

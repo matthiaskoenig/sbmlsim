@@ -7,7 +7,7 @@ import numpy as np
 
 from sbmlsim.console import console
 from sbmlsim.simulation.base import BaseObject
-from sbmlsim.simulation.calculation import Calculation
+from sbmlsim.simulation.calculation import Calculation, Parameter, Variable
 
 
 # from rich import pretty
@@ -56,8 +56,6 @@ class Range(BaseObject):
                 f"'{data}'"
             )
     
-    
-
 
 class VectorRange(Range):
     """VectorRange class.
@@ -208,8 +206,8 @@ class FunctionalRange(Calculation, Range):
     def __init__(
         self,
         sid: str,
-        variables: List,
-        parameters: List,
+        variables: List[Variable],
+        parameters: List[Parameter],
         math: str,
         range: str,
         name: str = None,
@@ -298,7 +296,7 @@ if __name__ == "__main__":
         UniformRange(sid="ufrange1", start=0, end=10, steps=100),
         UniformRange("ufrange2", start=1, end=2, steps=1),
         DataRange("drange1", source_ref="datasource1"),
-        FunctionalRange("frange", sid="frange1", variables = Variable)
+        FunctionalRange(sid="frange1")
     ]
     range: Range
     for range in ranges:

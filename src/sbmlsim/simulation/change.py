@@ -1,12 +1,6 @@
-from sbmlsim.simulation.base import BaseObject
+from sbmlsim.simulation.base import BaseObject, Target
+from sbmlsim.simulation.calculation import Calculation
 from enum import Enum, unique, auto
-
-
-@unique
-class Target:
-    def __init__(self, target: str):
-        self.target = target
-
 
 
 class Change(BaseObject):
@@ -34,7 +28,7 @@ class ComputeChange(Calculation):
     the numerical value of any single element or attribute of a Model
     addressable by a target, based on a calculation."""
 
-    def __init__(self, sid: str, target: TargetType):
+    def __init__(self, sid: str, target: Target):
         """Construct Calculation."""
         super(Change, self).__init__(sid=sid, name=name, target)
         
