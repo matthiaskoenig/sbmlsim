@@ -2,7 +2,7 @@
 from pathlib import Path
 
 __author__ = "Matthias Koenig"
-__version__ = "0.2.0"
+__version__ = "0.2.1"
 
 
 from sbmlsim.utils import show_versions
