@@ -229,7 +229,12 @@ class SimulationExperiment:
         Selections are necessary to access data from simulations.
         Here these selections are added to the tasks. If no tasks are given,
         the selections are added to all tasks.
+
+        :param reset: drop and reset all selections.
         """
+        if reset is False:
+            self._data = {}
+
         if task_ids is None:
             task_ids = self._tasks.keys()
 

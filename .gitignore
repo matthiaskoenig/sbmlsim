@@ -1,4 +1,6 @@
-# IDE
+.vscode
+workspace.code-workspace
+
 .idea
 .vscode
 workspace.code-workspace
@@ -26,7 +28,7 @@ __pycache__
 
 # documentation
 docs_builder/_build/
-
+src/sbmlsim/examples/experiments/covid/results/
 src/sbmlsim/examples/experiments/glucose/results/DoseResponseExperiment/DoseResponseExperiment_fig1.svg
 src/sbmlsim/examples/experiments/repressilator/RepressilatorExperiment/RepressilatorExperiment_task_tc.h5
 src/sbmlsim/examples/experiments/midazolam/results/
@@ -41,4 +43,3 @@ src/sbmlsim/examples/experiments/midazolam/results/
 
 src/sbmlsim/combine/results
 src/sbmlsim/combine/examples/l1v4/sbmlsim/
-

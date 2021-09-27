@@ -859,7 +859,6 @@ class SEDMLParser:
         :param name: class name used for the simulation experiment. Must be valid
                      python class name.
         """
-
         self.sed_doc: libsedml.SedDocument = sed_doc
         self.exec_dir = exec_dir
         self.working_dir: Path = working_dir

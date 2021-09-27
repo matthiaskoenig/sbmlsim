@@ -49,7 +49,7 @@ class Timecourse(ObjectJSONEncoder):
         :param changes: parameter and initial condition changes
         :param model_changes: model parameter and initial condition changes
         :param model_manipulations: model structure changes
-        :param discard: discards simulation from results (e.g. pre-simulations)
+        :param discard: discards results from simulations (e.g. pre-simulations)
         """
         # Create empty changes and model changes for serialization
         if changes is None:

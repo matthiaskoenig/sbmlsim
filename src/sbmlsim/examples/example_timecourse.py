@@ -9,7 +9,7 @@ from sbmlsim.test import MODEL_REPRESSILATOR
 
 
 def run_timecourse_examples():
-    """ Run various timecourses. """
+    """Run various timecourses."""
     simulator = Simulator(MODEL_REPRESSILATOR)
 
     # 1. simple timecourse simulation

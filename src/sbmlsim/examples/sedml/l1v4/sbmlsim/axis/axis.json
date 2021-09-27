@@ -1,0 +1,338 @@
+{
+  "experiment_id": "axis",
+  "base_path": "/home/mkoenig/git/sbmlsim/src/sbmlsim/examples/sedml/l1v4",
+  "data_path": "[PosixPath('/home/mkoenig/git/sbmlsim/src/sbmlsim/examples/sedml/l1v4')]",
+  "models": {
+    "model0": {
+      "sid": "model0",
+      "name": "",
+      "language": "SBML",
+      "language_type": "SBML",
+      "source": {
+        "source": "case_01.xml",
+        "path": "/home/mkoenig/git/sbmlsim/src/sbmlsim/examples/sedml/l1v4/case_01.xml",
+        "content": "None"
+      },
+      "changes": {}
+    }
+  },
+  "tasks": {
+    "task0": {
+      "model": "model0",
+      "simulation": "sim0"
+    }
+  },
+  "simulations": {
+    "sim0": {
+      "type": "TimecourseSim",
+      "selections": null,
+      "reset": true,
+      "time_offset": 0.0,
+      "timecourses": [
+        {
+          "start": 0.0,
+          "end": 10.0,
+          "steps": 29,
+          "changes": {},
+          "model_changes": {},
+          "model_manipulations": {},
+          "discard": false
+        }
+      ]
+    }
+  },
+  "data": {
+    "task0__time": {
+      "type": "TASK",
+      "index": "time",
+      "unit": "second",
+      "task": "task0",
+      "dataset": null,
+      "function": null,
+      "variables": null
+    },
+    "task0__S1": {
+      "type": "TASK",
+      "index": "S1",
+      "unit": "",
+      "task": "task0",
+      "dataset": null,
+      "function": null,
+      "variables": null
+    }
+  },
+  "figures": {
+    "figure1": {
+      "sid": "figure1",
+      "name": null,
+      "num_rows": 2,
+      "num_cols": 2,
+      "width": 14.0,
+      "height": 10.0,
+      "subplots": [
+        {
+          "sid": null,
+          "name": null,
+          "plot": {
+            "sid": "plot0",
+            "name": "No axes",
+            "xaxis": null,
+            "yaxis": null,
+            "yaxis_right": null,
+            "legend": true,
+            "facecolor": "#ffffffff",
+            "title_visible": true,
+            "curves": [
+              {
+                "sid": "curve0",
+                "name": "S1",
+                "x": "task0__time",
+                "y": "task0__S1",
+                "xerr": null,
+                "yerr": null,
+                "yaxis_position": null,
+                "style": {
+                  "sid": "style_curve",
+                  "name": null,
+                  "base_style": null,
+                  "line": {
+                    "type": "SOLID",
+                    "color": "#000000ff",
+                    "thickness": 2.0
+                  },
+                  "marker": {
+                    "size": 6.0,
+                    "type": "SQUARE",
+                    "fill": "#000000",
+                    "line_color": null,
+                    "line_thickness": null
+                  },
+                  "fill": null
+                },
+                "order": 0
+              }
+            ],
+            "areas": []
+          },
+          "row": 1,
+          "col": 1,
+          "row_span": 1,
+          "col_span": 1
+        },
+        {
+          "sid": null,
+          "name": null,
+          "plot": {
+            "sid": "plot1",
+            "name": "Reversed order & grid",
+            "xaxis": {
+              "sid": "",
+              "name": "time",
+              "label": "time",
+              "unit": null,
+              "scale": "LINEAR",
+              "min": 0.0,
+              "max": 10.0,
+              "grid": true,
+              "label_visible": true,
+              "ticks_visible": true
+            },
+            "yaxis": {
+              "sid": "",
+              "name": "S1",
+              "label": "S1",
+              "unit": null,
+              "scale": "LINEAR",
+              "min": 0.0,
+              "max": 10.0,
+              "grid": true,
+              "label_visible": true,
+              "ticks_visible": true
+            },
+            "yaxis_right": null,
+            "legend": true,
+            "facecolor": "#ffffffff",
+            "title_visible": true,
+            "curves": [
+              {
+                "sid": "curve1",
+                "name": "S1",
+                "x": "task0__time",
+                "y": "task0__S1",
+                "xerr": null,
+                "yerr": null,
+                "yaxis_position": null,
+                "style": {
+                  "sid": "style_curve",
+                  "name": null,
+                  "base_style": null,
+                  "line": {
+                    "type": "SOLID",
+                    "color": "#000000ff",
+                    "thickness": 2.0
+                  },
+                  "marker": {
+                    "size": 6.0,
+                    "type": "SQUARE",
+                    "fill": "#000000",
+                    "line_color": null,
+                    "line_thickness": null
+                  },
+                  "fill": null
+                },
+                "order": 0
+              }
+            ],
+            "areas": []
+          },
+          "row": 1,
+          "col": 2,
+          "row_span": 1,
+          "col_span": 1
+        },
+        {
+          "sid": null,
+          "name": null,
+          "plot": {
+            "sid": "plot2",
+            "name": "Log axis & style",
+            "xaxis": {
+              "sid": "",
+              "name": "",
+              "label": "",
+              "unit": null,
+              "scale": "LOG10",
+              "min": 0.1,
+              "max": 10.0,
+              "grid": true,
+              "label_visible": true,
+              "ticks_visible": true
+            },
+            "yaxis": {
+              "sid": "",
+              "name": "",
+              "label": "",
+              "unit": null,
+              "scale": "LOG10",
+              "min": null,
+              "max": null,
+              "grid": true,
+              "label_visible": true,
+              "ticks_visible": true
+            },
+            "yaxis_right": null,
+            "legend": true,
+            "facecolor": "#ffffffff",
+            "title_visible": true,
+            "curves": [
+              {
+                "sid": "curve2",
+                "name": "S1",
+                "x": "task0__time",
+                "y": "task0__S1",
+                "xerr": null,
+                "yerr": null,
+                "yaxis_position": null,
+                "style": {
+                  "sid": "style_curve",
+                  "name": null,
+                  "base_style": null,
+                  "line": {
+                    "type": "SOLID",
+                    "color": "#000000ff",
+                    "thickness": 2.0
+                  },
+                  "marker": {
+                    "size": 6.0,
+                    "type": "SQUARE",
+                    "fill": "#000000",
+                    "line_color": null,
+                    "line_thickness": null
+                  },
+                  "fill": null
+                },
+                "order": 0
+              }
+            ],
+            "areas": []
+          },
+          "row": 2,
+          "col": 1,
+          "row_span": 1,
+          "col_span": 1
+        },
+        {
+          "sid": null,
+          "name": null,
+          "plot": {
+            "sid": "plot3",
+            "name": "Hidden, no legend, min/max",
+            "xaxis": {
+              "sid": "",
+              "name": "time",
+              "label": "time",
+              "unit": null,
+              "scale": "LINEAR",
+              "min": 2.0,
+              "max": 8.0,
+              "grid": false,
+              "label_visible": true,
+              "ticks_visible": true
+            },
+            "yaxis": {
+              "sid": "",
+              "name": "S1",
+              "label": "S1",
+              "unit": null,
+              "scale": "LINEAR",
+              "min": 0.0,
+              "max": 8.0,
+              "grid": false,
+              "label_visible": true,
+              "ticks_visible": true
+            },
+            "yaxis_right": null,
+            "legend": false,
+            "facecolor": "#ffffffff",
+            "title_visible": true,
+            "curves": [
+              {
+                "sid": "curve3",
+                "name": "S1",
+                "x": "task0__time",
+                "y": "task0__S1",
+                "xerr": null,
+                "yerr": null,
+                "yaxis_position": null,
+                "style": {
+                  "sid": "style_curve",
+                  "name": null,
+                  "base_style": null,
+                  "line": {
+                    "type": "SOLID",
+                    "color": "#000000ff",
+                    "thickness": 2.0
+                  },
+                  "marker": {
+                    "size": 6.0,
+                    "type": "SQUARE",
+                    "fill": "#000000",
+                    "line_color": null,
+                    "line_thickness": null
+                  },
+                  "fill": null
+                },
+                "order": 0
+              }
+            ],
+            "areas": []
+          },
+          "row": 2,
+          "col": 2,
+          "row_span": 1,
+          "col_span": 1
+        }
+      ]
+    }
+  }
+}

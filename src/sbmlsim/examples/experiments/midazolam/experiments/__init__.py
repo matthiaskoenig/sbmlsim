@@ -14,7 +14,7 @@ MolecularWeights = namedtuple("MolecularWeights", "mid mid1oh")
 
 
 class MidazolamSimulationExperiment(SimulationExperiment):
-    """Base class for all GlucoseSimulationExperiments. """
+    """Base class for all GlucoseSimulationExperiments."""
 
     def models(self) -> Dict[str, AbstractModel]:
         Q_ = self.Q_

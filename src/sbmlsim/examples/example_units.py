@@ -14,7 +14,7 @@ from sbmlsim.test import MODEL_DEMO
 
 
 def run_demo_example():
-    """ Run various timecourses. """
+    """Run various timecourses."""
     simulator = Simulator(MODEL_DEMO)
     # build quantities using the unit registry for the model
     Q_ = simulator.Q_
