@@ -42,7 +42,7 @@ class Creator:
 
 
 class Entry:
-    """ Helper class to store content to create an OmexEntry."""
+    """Helper class to store content to create an OmexEntry."""
 
     def __init__(
         self,

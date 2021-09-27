@@ -2,7 +2,7 @@ import libsedml
 
 
 class TaskNode(object):
-    """Tree implementation of task tree. """
+    """Tree implementation of task tree."""
 
     def __init__(self, task: libsedml.SedAbstractTask, depth: int):
         self.task = task
@@ -28,7 +28,7 @@ class TaskNode(object):
         return f"<[{self.depth}] {self.task.getId()} ({self.task.getElementName()})>"
 
     def __iter__(self):
-        """ Depth-first iterator which yields TaskNodes."""
+        """Depth-first iterator which yields TaskNodes."""
         yield self
         for child in self.children:
             for node in child:
@@ -39,7 +39,7 @@ class TaskNode(object):
 
 
 class Stack(object):
-    """ Stack implementation for nodes."""
+    """Stack implementation for nodes."""
 
     def __init__(self):
         self.items = []
@@ -99,7 +99,7 @@ class TaskTree(object):
 
     @staticmethod
     def parse_task_tree(doc: libsedml.SedDocument, tree: TaskNode):
-        """ Python code generation from task tree. """
+        """Python code generation from task tree."""
 
 
 class Test(object):

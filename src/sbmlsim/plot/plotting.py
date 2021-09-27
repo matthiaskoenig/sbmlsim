@@ -457,7 +457,7 @@ class Curve(AbstractCurve):
         return d
 
     def to_dict(self):
-        """ Convert to dictionary. """
+        """Convert to dictionary."""
         d = {
             "sid": self.sid,
             "name": self.name,
@@ -532,7 +532,7 @@ class Plot(BasePlotObject):
         )
 
     def to_dict(self):
-        """ Convert to dictionary. """
+        """Convert to dictionary."""
         d = {
             "sid": self.sid,
             "name": self.name,
@@ -933,7 +933,7 @@ class Figure(BasePlotObject):
         )
 
     def to_dict(self):
-        """ Convert to dictionary. """
+        """Convert to dictionary."""
         d = {
             "sid": self.sid,
             "name": self.name,

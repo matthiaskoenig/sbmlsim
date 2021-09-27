@@ -6,10 +6,12 @@ requirements
     ray
     pandas
 """
-import roadrunner
-import ray
-import pandas as pd
 import time
+
+import pandas as pd
+import ray
+import roadrunner
+
 
 # start ray
 ray.init(ignore_reinit_error=True)
@@ -18,6 +20,7 @@ ray.init(ignore_reinit_error=True)
 @ray.remote
 class SimulatorActorPath(object):
     """Ray actor to execute simulations."""
+
     def __init__(self, r: roadrunner.RoadRunner):
         self.r: roadrunner.RoadRunner = r
 
@@ -37,7 +40,7 @@ class SimulatorActorPath(object):
 
 
 if __name__ == "__main__":
-    actor_count = 10   # cores to run this on
+    actor_count = 10  # cores to run this on
 
     rr = roadrunner.RoadRunner("icg_body_flat.xml")
     simulators = [SimulatorActorPath.remote(rr) for _ in range(actor_count)]

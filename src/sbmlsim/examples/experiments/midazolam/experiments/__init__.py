@@ -28,7 +28,7 @@ def exclude_parameters_midazolam(pid: str) -> bool:
 
 
 class MidazolamSimulationExperiment(SimulationExperiment):
-    """Base class for all GlucoseSimulationExperiments. """
+    """Base class for all GlucoseSimulationExperiments."""
 
     def models(self) -> Dict[str, AbstractModel]:
         Q_ = self.Q_

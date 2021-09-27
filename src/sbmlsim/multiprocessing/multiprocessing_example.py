@@ -1,4 +1,5 @@
 from multiprocessing import Process
+
 import roadrunner
 
 
@@ -9,10 +10,9 @@ def run_simulations(r, size):
         print(res)
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     rr = roadrunner.RoadRunner("icg_body_flat.xml")
-    size=10
+    size = 10
     p = Process(target=run_simulations, args=(rr, size))
     p.start()
     p.join()
-

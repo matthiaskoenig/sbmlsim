@@ -186,8 +186,12 @@ class SimulationExperiment:
         """
         return None
 
-    def add_selections(self, selections: Iterable[str], task_ids: Iterable[str] = None,
-                       reset: bool = False):
+    def add_selections(
+        self,
+        selections: Iterable[str],
+        task_ids: Iterable[str] = None,
+        reset: bool = False,
+    ):
         """Add selections to given tasks.
 
         Selections are necessary to access data from simulations.

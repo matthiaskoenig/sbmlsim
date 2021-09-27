@@ -369,7 +369,9 @@ class DataSet(pd.DataFrame):
                                 if f"mean_{err_key}" in df.columns:
                                     # remove existing mean_sd column
                                     del df[f"mean_{err_key}"]
-                                    logger.warning(f"Removing existing column: `mean_{err_key}`from DataSet.")
+                                    logger.warning(
+                                        f"Removing existing column: `mean_{err_key}`from DataSet."
+                                    )
 
                                 df.rename(
                                     columns={f"{err_key}": f"mean_{err_key}"},

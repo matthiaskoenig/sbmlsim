@@ -169,7 +169,7 @@ def integrator_from_kisao(kisao):
 
 
 def algorithm_parameter_to_parameter_key(par):
-    """ Resolve the mapping between parameter keys and roadrunner integrator keys."""
+    """Resolve the mapping between parameter keys and roadrunner integrator keys."""
     ParameterKey = namedtuple("ParameterKey", "key value dtype")
     kisao = par.getKisaoID()
     value = par.getValue()

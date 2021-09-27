@@ -410,7 +410,7 @@ def executeCombineArchive(
 
 
 class SEDMLCodeFactory(object):
-    """ Code Factory generating executable code."""
+    """Code Factory generating executable code."""
 
     # template location
     TEMPLATE_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "templates")
@@ -748,7 +748,7 @@ class SEDMLCodeFactory(object):
         return SEDMLCodeFactory.taskTreeToPython(doc, tree=taskTree)
 
     class TaskNode(object):
-        """ Tree implementation of task tree. """
+        """Tree implementation of task tree."""
 
         def __init__(self, task, depth):
             self.task = task
@@ -780,14 +780,14 @@ class SEDMLCodeFactory(object):
             )
 
         def __iter__(self):
-            """ Depth-first iterator which yields TaskNodes."""
+            """Depth-first iterator which yields TaskNodes."""
             yield self
             for child in self.children:
                 for node in child:
                     yield node
 
     class Stack(object):
-        """ Stack implementation for nodes."""
+        """Stack implementation for nodes."""
 
         def __init__(self):
             self.items = []
@@ -843,7 +843,7 @@ class SEDMLCodeFactory(object):
 
     @staticmethod
     def getOrderedSubtasks(task):
-        """ Ordered list of subtasks for task."""
+        """Ordered list of subtasks for task."""
         subtasks = task.getListOfSubTasks()
         subtaskOrder = [st.getOrder() for st in subtasks]
         # sort by order, if all subtasks have order (not required)
@@ -853,7 +853,7 @@ class SEDMLCodeFactory(object):
 
     @staticmethod
     def taskTreeToPython(doc, tree):
-        """ Python code generation from task tree. """
+        """Python code generation from task tree."""
 
         # go forward through task tree
         lines = []
@@ -1424,7 +1424,7 @@ class SEDMLCodeFactory(object):
 
     @staticmethod
     def algorithmParameterToParameterKey(par):
-        """ Resolve the mapping between parameter keys and roadrunner integrator keys."""
+        """Resolve the mapping between parameter keys and roadrunner integrator keys."""
         ParameterKey = namedtuple("ParameterKey", "key value dtype")
         kid = par.getKisaoID()
         value = par.getValue()
@@ -1672,7 +1672,7 @@ class SEDMLCodeFactory(object):
         return "\n".join(lines)
 
     def outputToPython(self, doc, output):
-        """ Create output """
+        """Create output"""
         lines = []
         typeCode = output.getTypeCode()
         if typeCode == libsedml.SEDML_OUTPUT_REPORT:
@@ -2019,7 +2019,7 @@ class SEDMLCodeFactory(object):
 
 ##################################################################################################
 class SEDMLTools(object):
-    """ Helper functions to work with sedml. """
+    """Helper functions to work with sedml."""
 
     INPUT_TYPE_STR = "SEDML_STRING"
     INPUT_TYPE_FILE_SEDML = "SEDML_FILE"
@@ -2227,7 +2227,7 @@ def terminate_trace(trace):
 
 
 def fix_endpoints(x, y, color, tag, fig):
-    """ Adds endpoint markers wherever there is a discontinuity in the data."""
+    """Adds endpoint markers wherever there is a discontinuity in the data."""
     warnings.warn("don't use this", DeprecationWarning)
     # expect x and y to be 1d
     if len(x.shape) > 1:
@@ -2287,7 +2287,7 @@ if __name__ == "__main__":
     from tellurium.tests.testdata import OMEX_TEST_DIR, SEDML_TEST_DIR
 
     def testInput(sedmlInput):
-        """ Test function run on inputStr. """
+        """Test function run on inputStr."""
         print("\n", "*" * 100)
         print(sedmlInput)
         print("*" * 100)

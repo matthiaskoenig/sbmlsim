@@ -161,7 +161,7 @@ class FitMapping:
         reference: "FitData",
         observable: "FitData",
         weight: float = None,
-        metadata: Any = None  # FIXME: already implemented in SED-ML branch
+        metadata: Any = None,  # FIXME: already implemented in SED-ML branch
     ):
         """FitMapping.
 

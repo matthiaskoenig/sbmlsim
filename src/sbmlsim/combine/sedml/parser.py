@@ -97,7 +97,7 @@ import re
 import warnings
 from collections import OrderedDict, namedtuple
 from pathlib import Path
-from typing import Dict, List, Union, Optional
+from typing import Dict, List, Optional, Union
 
 import libsedml
 import numpy as np
@@ -106,12 +106,12 @@ from sbmlsim.combine.sedml.data import DataDescriptionParser
 from sbmlsim.combine.sedml.io import read_sedml
 from sbmlsim.combine.sedml.kisao import is_supported_algorithm_for_simulation_type
 from sbmlsim.combine.sedml.task import Stack, TaskNode, TaskTree
-from sbmlsim.data import DataSet, Data
+from sbmlsim.data import Data, DataSet
 from sbmlsim.experiment import ExperimentDict, SimulationExperiment
 from sbmlsim.model import model_resources
 from sbmlsim.model.model import AbstractModel
-from sbmlsim.plot import Figure, Plot, Axis, Curve
-from sbmlsim.simulation import ScanSim, TimecourseSim, Timecourse, AbstractSim
+from sbmlsim.plot import Axis, Curve, Figure, Plot
+from sbmlsim.simulation import AbstractSim, ScanSim, Timecourse, TimecourseSim
 from sbmlsim.task import Task
 from sbmlsim.units import UnitRegistry
 
@@ -139,7 +139,7 @@ def experiment_from_omex(omex_path: Path):
 
 
 class SEDMLParser(object):
-    """ Parsing SED-ML in internal format."""
+    """Parsing SED-ML in internal format."""
 
     def __init__(self, sed_doc: libsedml.SedDocument, working_dir: Path):
         """Parses information from SedDocument."""
@@ -254,7 +254,6 @@ class SEDMLParser(object):
                         curve.y.experiment = self.experiment
                         curve.y._register_data()
                     # FIXME: also for xerr and yerr
-
 
     # --- MODELS ---
     @staticmethod
@@ -431,7 +430,7 @@ class SEDMLParser(object):
             return {}
 
     def parse_simulation(self, sed_sim: libsedml.SedSimulation) -> Union[TimecourseSim]:
-        """ Parse simulation information."""
+        """Parse simulation information."""
         sim_type = sed_sim.getTypeCode()
         algorithm = sed_sim.getAlgorithm()
         if algorithm is None:
@@ -466,10 +465,10 @@ class SEDMLParser(object):
                     Timecourse(
                         start=initial_time,
                         end=output_end_time,
-                        steps=number_of_points-1,
+                        steps=number_of_points - 1,
                     ),
                 ],
-                time_offset=output_start_time
+                time_offset=output_start_time,
             )
             return tcsim
 
@@ -492,7 +491,7 @@ class SEDMLParser(object):
         # TODO/FIXME: handle all the algorithm parameters as integrator parameters
 
     def parse_task(self, sed_task: libsedml.SedAbstractTask) -> Task:
-        """ Parse arbitrary task (repeated or simple, or simple repeated)."""
+        """Parse arbitrary task (repeated or simple, or simple repeated)."""
         # If no DataGenerator references the task, no execution is necessary
         dgs = self.data_generators_for_task(sed_task)
         if len(dgs) == 0:
@@ -569,13 +568,11 @@ class SEDMLParser(object):
         #         forLines.append("{}.extend({})".format(task.getId(), t.getId()))
 
     def parse_figure(self, sed_output: libsedml.SedOutput) -> Figure:
-        """ Parse simulation information."""
+        """Parse simulation information."""
         type_code = sed_output.getTypeCode()
         if type_code == libsedml.SEDML_OUTPUT_PLOT2D:
             sed_plot2d: libsedml.SedPlot = sed_output
-            plots = [
-                self.parse_plot2d(sed_plot2d)
-            ]
+            plots = [self.parse_plot2d(sed_plot2d)]
             f = Figure(
                 experiment=None,
                 sid=sed_plot2d.getId(),
@@ -657,11 +654,7 @@ class SEDMLParser(object):
         elif sed_var.isSetTarget():
             index = self.parse_xpath_target(sed_var.getTarget())
 
-        return Data(
-            experiment=self.exp_class,
-            index=index,
-            task=task_id
-        )
+        return Data(experiment=self.exp_class, index=index, task=task_id)
 
     def _parse_repeated_task(self, node: TaskNode):
         print("repeated task")
@@ -673,7 +666,7 @@ class SEDMLParser(object):
         self,
         sed_task: libsedml.SedTask,
     ) -> List[libsedml.SedDataGenerator]:
-        """ Get the DataGenerators which reference the given task."""
+        """Get the DataGenerators which reference the given task."""
         sed_dgs = []
         for (
             sed_dg
@@ -711,7 +704,7 @@ class SEDMLParser(object):
 
     @staticmethod
     def get_ordered_subtasks(sed_task: libsedml.SedTask) -> List[libsedml.SedTask]:
-        """ Ordered list of subtasks for task."""
+        """Ordered list of subtasks for task."""
         subtasks = sed_task.getListOfSubTasks()
         subtask_order = [st.getOrder() for st in subtasks]
 

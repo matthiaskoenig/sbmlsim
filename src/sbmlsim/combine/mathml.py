@@ -81,7 +81,7 @@ def expr_from_formula(formula: str):
 
 
 def evaluate(astnode: libsbml.ASTNode, variables: Dict):
-    """Evaluate the astnode with values """
+    """Evaluate the astnode with values"""
     expr = parse_astnode(astnode)
     f = lambdify(args=list(expr.free_symbols), expr=expr)
     res = f(**variables)

@@ -19,7 +19,7 @@ logger = logging.getLogger("sedml-data")
 
 
 class DataDescriptionParser(object):
-    """ Class for parsing DataDescriptions. """
+    """Class for parsing DataDescriptions."""
 
     FORMAT_URN = "urn:sedml:format:"
     FORMAT_NUML = "urn:sedml:format:numl"
