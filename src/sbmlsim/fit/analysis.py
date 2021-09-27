@@ -80,9 +80,9 @@ class OptimizationAnalysis:
         self.show_titles = show_titles
 
         if kwargs:
-            for key, value in kwargs.items():
+            for key in kwargs:
                 logger.warning(
-                    f"Argument to OptimizationAnalysis is not supported: " f"'{key}'"
+                    f"Argument to OptimizationAnalysis is not supported: '{key}'."
                 )
 
         if op:
@@ -205,7 +205,7 @@ class OptimizationAnalysis:
         logger.warning("-" * 80)
 
     def html_report(self, path: Path):
-        """Creates HTML report of the fit."""
+        """Create HTML report of the fit."""
 
         title = f"{self.op.opid} [{self.sid}]"
 

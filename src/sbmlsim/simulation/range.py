@@ -1,3 +1,5 @@
+"""Range classes."""
+
 import itertools
 from enum import Enum, auto, unique
 from typing import Dict, Iterable, List, Tuple, Union
@@ -192,7 +194,7 @@ class FunctionalRange(Range):
     def __init__(self, sid: str, range: str, name: str = None):
         """Construct DataRange."""
         super(DataRange, self).__init__(sid=sid, name=name)
-        self.source_ref: str = source_ref
+        # self.source_ref: str = source_ref  # FIXME
 
     def __repr__(self) -> str:
         """Get string representation."""

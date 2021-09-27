@@ -1,10 +1,12 @@
+"""Multiprocessing simulation example."""
 from multiprocessing import Process
 
 import roadrunner
 
 
 def run_simulations(r, size):
-    for k in range(size):
+    """Run simulations."""
+    for _ in range(size):
         print("simulate")
         res = r.simulate(0, 100, steps=100)
         print(res)

@@ -1,17 +1,6 @@
 name: CI-CD
 
-on:
-  push:
-    branches:
-    - master
-    - develop
-    tags:
-      - '[0-9]+.[0-9]+.[0-9]+'
-      - '[0-9]+.[0-9]+.[0-9]+a[0-9]+'
-  pull_request:
-    branches:
-    - master
-    - develop
+on: [push]
 
 jobs:
   test:
@@ -20,7 +9,7 @@ jobs:
       fail-fast: false
       matrix:
         os: [ubuntu-latest]  # [ubuntu-latest, macos-latest, windows-latest]
-        python-version: [3.7, 3.8]
+        python-version: [3.7, 3.8, 3.9]
 
     steps:
     - uses: actions/checkout@v2

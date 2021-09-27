@@ -1,5 +1,4 @@
-"""
-Example parallel simulation
+"""Example parallel simulation with ray.
 
 requirements
     roadrunner
@@ -25,10 +24,11 @@ class SimulatorActorPath(object):
         self.r: roadrunner.RoadRunner = r
 
     def simulate(self, size=1):
+        """Simulate."""
         print("Start simulations")
         ts = time.time()
         results = []
-        for k in range(size):
+        for _ in range(size):
             self.r.resetAll()
             s = self.r.simulate(0, 100, steps=100)
             # create numpy array (which can be pickled), better use shared memory
@@ -48,7 +48,7 @@ if __name__ == "__main__":
     # run simulations
     sim_per_actor = 10
     tc_ids = []
-    for k, simulator in enumerate(simulators):
+    for simulator in simulators:
         tcs_id = simulator.simulate.remote(size=sim_per_actor)
         tc_ids.append(tcs_id)
 

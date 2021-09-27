@@ -59,7 +59,7 @@ class Data(object):
         self._register_data()
 
     def _register_data(self):
-        """Registers data in simulation."""
+        """Register data in simulation."""
         # FIXME: this creates strange issues
 
         if self.experiment:
