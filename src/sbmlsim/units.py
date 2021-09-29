@@ -156,6 +156,7 @@ class UnitsInformation(MutableMapping):
         for udef in model.getListOfUnitDefinitions():
             uid = udef.getId()
             unit_str = Units.udef_to_str(udef)
+            print(unit_str)
             q = ureg(unit_str)
             try:
                 # check if uid is existing unit registry definition (short name)
