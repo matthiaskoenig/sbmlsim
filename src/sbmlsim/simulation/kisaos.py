@@ -1,88 +1,9 @@
 """Working with the KISAO ontology."""
 
-import re
 from collections import namedtuple
-from typing import Dict
-
 import libsedml
-from kisao import Kisao
-from kisao.data_model import IdDialect
-from pronto import Ontology, Term
 from sbmlutils import log
-
-
 logger = log.get_logger(__name__)
-
-kisao_ontology = Kisao()
-kisao_pattern = re.compile(r"^KISAO_\d{7}$")
-
-
-def create_kisao_lookup() -> Dict[str, str]:
-    """Creates dictionary for lookup by name."""
-    pronto_ontology: Ontology = kisao_ontology._ontology
-    name_to_kisao: Dict[str, str] = {}
-    for term_id in pronto_ontology:
-        if "KISAO#_KISAO_" in term_id:
-            logger.warning(f"Incorrect kisao id: {term_id}")
-            continue
-        try:
-            kisao_id = kisao_ontology.get_normalized_id(
-                term_id.split("#")[1], dialect=IdDialect.kisao
-            )
-            term: Term = kisao_ontology.get_term(kisao_id)
-            name = term.name
-            if name in name_to_kisao:
-                raise ValueError
-            name_to_kisao[name] = kisao_id
-        except (KeyError, ValueError) as err:
-            logger.warning(f"{err}")
-
-    return name_to_kisao
-
-
-# FIXME: kisao class
-# @unique
-# class KISAO(str, Enum):
-#     KISAO_1234 = "absolute tolerance"
-#     ABSOLUTE_TOLERANCE = "KISAO:12345"
-
-
-kisao_lookup = create_kisao_lookup()
-
-
-def validate_kisao(kisao: str) -> str:
-    """Validates and normalizes kisao id against pattern."""
-    if not kisao.startswith("KISAO"):
-        # try lookup by name
-        kisao = kisao_lookup.get(kisao, kisao)
-
-    if kisao.startswith("KISAO:"):
-        kisao = kisao.replace(":", "_")
-
-    if not re.match(kisao_pattern, kisao):
-        raise ValueError(
-            f"kisao '{kisao}' does not match kisao pattern " f"'{kisao_pattern}'."
-        )
-
-    # term = kisao_ontology.get_term(kisao)
-    # check that term exists
-
-    return kisao
-
-
-def name_kisao(kisao: str, name: str = None) -> str:
-    """Get name for kisao id."""
-    term: Term = kisao_ontology.get_term(kisao)
-    if not term:
-        raise ValueError(f"No term in kisao ontology for: '{kisao}'")
-
-    kisao_name = term.name
-    if kisao_name != term.name:
-        logger.warning(f"Name '{name}' does not match kisao name '{kisao_name}'")
-    if name:
-        return name
-    else:
-        return kisao_name
 
 
 # ----------------
@@ -174,8 +95,7 @@ KISAOS_ALGORITHMPARAMETERS = {
     "KISAO:0000209": ("relative_tolerance", float),  # the relative tolerance
     "KISAO:0000211": ("absolute_tolerance", float),  # the absolute tolerance
     "KISAO:0000220": ("maximum_bdf_order", int),  # the maximum BDF (stiff) order
-    "KISAO:0000219": (
-        "maximum_adams_order",
+    "KISAO:0000219": ("maximum_adams_order",
         int,
     ),  # the maximum Adams (non-stiff) order
     "KISAO:0000415": (

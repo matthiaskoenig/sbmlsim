@@ -2,10 +2,10 @@
 
 from typing import List, Optional, Union
 
+from pymetadata.metadata import KISAO, KISAOType
 from sbmlutils import log
 
 from sbmlsim.simulation.base import BaseObject
-from sbmlsim.simulation.kisaos import name_kisao, validate_kisao
 
 
 logger = log.get_logger(__name__)
@@ -14,22 +14,19 @@ logger = log.get_logger(__name__)
 class AlgorithmParameter(BaseObject):
     """AlgorithmParameter.
 
-    The AlgorithmParameter class allows to parameterize a particular simulation algorithm. The set of
-    possible parameters for a particular instance is determined by the algorithm that is referenced by the
-    kisaoID of the enclosing algorithm element.
-
-    TODO: add annotation
-    https://identifiers.org/biomodels.kisao:KISAO_0000057
+    The AlgorithmParameter class allows to parameterize a particular simulation
+    algorithm. The set of possible parameters for a particular instance is determined
+    by the algorithm that is referenced by the kisaoID of the enclosing algorithm
+    element.
     """
-
     def __init__(
-        self, kisao: str, value: Union[str, float], sid: str = None, name: str = None
+        self, kisao: KISAOType, value: Union[str, float], sid: str = None, name: str = None
     ):
-        kisao = validate_kisao(kisao)
-        name = name_kisao(kisao, name)
+        term: KISAO = KISAO.validate(kisao)
+        name: str = KISAO.get_name(term)
 
         super(AlgorithmParameter, self).__init__(sid=sid, name=name)
-        self.kisao: str = kisao
+        self.kisao: KISAO = term
         self.value: str = str(value)
 
     def __repr__(self) -> str:
@@ -38,24 +35,23 @@ class AlgorithmParameter(BaseObject):
 
 
 class Algorithm(BaseObject):
-    """Algorithm class.
-
-    TODO: add annotation
-    https://identifiers.org/biomodels.kisao:KISAO_0000057
-    """
+    """Algorithm class."""
 
     def __init__(
         self,
-        kisao: str,
+        kisao: KISAOType,
         parameters: Optional[List[AlgorithmParameter]] = None,
         sid: Optional[str] = None,
         name: Optional[str] = None,
     ):
-        kisao: str = validate_kisao(kisao)
-        name: str = name_kisao(kisao, name)
+        term: KISAO = KISAO.validate(kisao)
+        term_name: str = KISAO.name_kisao(term)
+        if name:
+            if name != term_name:
+                logger.warning("Using name")
 
         super(Algorithm, self).__init__(sid, name)
-        self.kisao: str = kisao
+        self.kisao: KISAO = kisao
         self.parameters: Optional[List[AlgorithmParameter]] = parameters
 
     def __repr__(self) -> str:
@@ -70,5 +66,7 @@ if __name__ == "__main__":
     print(ap)
     ap = AlgorithmParameter(kisao="KISAO:0000211", value=1e-7)
     print(ap)
-    ap = AlgorithmParameter(kisao="absolute tolerance", value=1e-7)
+    ap = AlgorithmParameter(kisao=KISAO.KISAO_0000211, value=1e-7)
+    print(ap)
+    ap = AlgorithmParameter(kisao=KISAO.ABSOLUTE_TOLERANCE, value=1e-7)
     print(ap)
