@@ -19,9 +19,13 @@ class AlgorithmParameter(BaseObject):
     by the algorithm that is referenced by the kisaoID of the enclosing algorithm
     element.
     """
+
     def __init__(
-        self, kisao: KISAOType, value: Union[str, float], sid: str = None,
-        name: str = None
+        self,
+        kisao: KISAOType,
+        value: Union[str, float],
+        sid: str = None,
+        name: str = None,
     ):
         term: KISAO = KISAO.validate(kisao)
         term_name: str = KISAO.get_name(term)

@@ -54,8 +54,13 @@ class Data(object):
         # FIXME: get rid of backwards compatibility
         if not symbol:
             if index.startswith("[") and index.endswith("]"):
+
                 index = index[1:-1]
                 symbol = Data.Symbols.CONCENTRATION
+                logger.warning(
+                    f"Encoding concentration '[{index}]' as 'index={index}' "
+                    f"and 'symbol={symbol}'."
+                )
             else:
                 symbol = Data.Symbols.AMOUNT
 
@@ -73,20 +78,30 @@ class Data(object):
             raise ValueError(
                 "Either 'task_id', 'dset_id' or 'function' required for Data."
             )
-        if self.symbol == Data.Symbols.CONCENTRATION and symbol.startswith("["):
+        if self.symbol == Data.Symbols.CONCENTRATION and index.startswith("["):
             raise ValueError(
                 "Use index without brackets in combination with 'symbol=concentration'"
             )
+
+    @property
+    def selection(self) -> str:
+        """Get selection string.
+
+        Depending on symbol, different selections have to be performed.
+        """
+        if self.symbol and self.symbol == Data.Symbols.CONCENTRATION:
+            return f"[{self.index}]"
+        return self.index
 
     def __repr__(self) -> str:
         """Get string."""
         s: str
         if self.is_task():
-            s = f"Data(Task | index={self.index}, task_id={self.task_id})"
+            s = f"Data(Task|index={self.index}, symbol={self.symbol}, task_id={self.task_id})"
         elif self.is_dataset():
-            s = f"Data(DataSet | index={self.index}, dset_id={self.dset_id})"
+            s = f"Data(DataSet|index={self.index}, symbol={self.symbol}, dset_id={self.dset_id})"
         elif self.is_function():
-            s = f"Data(Function | index={self.index}, function={self.function})"
+            s = f"Data(Function|index={self.index}, symbol={self.symbol}, function={self.function})"
         return s
 
     @property
@@ -218,10 +233,10 @@ class Data(object):
             if not isinstance(xres, XResult):
                 raise ValueError("Only Result objects supported in task data.")
 
-            # FIXME: units have to match the symbols
-            self.unit = xres.uinfo[self.index]
+            # units match the symbols
+            self.unit = xres.uinfo[self.selection]
             # x = xres.dim_mean(self.index)
-            x = xres[self.index].values * xres.uinfo.ureg(self.unit)
+            x = xres[self.selection].values * xres.uinfo.ureg(self.unit)
 
         elif self.dtype == Data.Types.FUNCTION:
             # evaluate with actual data
@@ -245,9 +260,8 @@ class Data(object):
                 x = x.to(to_units)
             except DimensionalityError as err:
                 logger.error(
-                    f"Could not convert '{str(self)}' with "
-                    f"data '{x} ({type(x)})' to "
-                    f"units '{to_units}'"
+                    f"Could not convert '{str(self)}' to units '{to_units}' with "
+                    f"data \n'{x}'"
                 )
                 raise err
             except AttributeError as err:
@@ -383,7 +397,9 @@ class DataSet(pd.DataFrame):
                                     # remove existing mean_sd column
                                     del df[f"mean_{err_key}"]
                                     logger.warning(
-                                        f"Removing existing column: `mean_{err_key}`from DataSet."
+                                        f"Removing existing column: 'mean_{err_key}' "
+                                        f"from DataSet:\n"
+                                        f"{df.head(3)}"
                                     )
 
                                 df.rename(
@@ -504,7 +520,6 @@ def load_pkdb_dataframe(
     if isinstance(data_path, Path):
         data_path = [data_path]
 
-    print(data_path)
     for p in data_path:
         path = p / study / f".{sid}.tsv"
         if path.exists():

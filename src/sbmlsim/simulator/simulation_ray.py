@@ -104,7 +104,7 @@ class SimulatorParallel(SimulatorSerial):
         logger.info(f"Using '{self.actor_count}' cpu/core for parallel simulation.")
 
         # Create actors once
-        logger.info(f"Creating '{self.actor_count}' SimulationActors")
+        logger.debug(f"Creating '{self.actor_count}' SimulationActors")
         self.simulators = [SimulatorActor.remote() for _ in range(self.actor_count)]
 
         super(SimulatorParallel, self).__init__(model=None, **kwargs)

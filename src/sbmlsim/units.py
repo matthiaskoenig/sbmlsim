@@ -315,7 +315,12 @@ class UnitsInformation(MutableMapping):
                     # convert to model units
                     item = item.to(uinfo[key])
                 except DimensionalityError as err:
-                    logger.error(f"DimensionalityError " f"'{key} = {item}'. {err}")
+                    logger.error(
+                        f"DimensionalityError "
+                        f"'{key} = {item}'. Check that model "
+                        f"units fit with changes units."
+                        f"\n{err}"
+                    )
                     raise err
                 except KeyError as err:
                     logger.error(
@@ -326,7 +331,7 @@ class UnitsInformation(MutableMapping):
             else:
                 item = Q_(item, uinfo[key])
                 logger.warning(
-                    f"No units provided, assuming dictionary units: " f"{key} = {item}"
+                    f"No units provided, assuming dictionary units: {key} = {item}"
                 )
             changes_normed[key] = item
 

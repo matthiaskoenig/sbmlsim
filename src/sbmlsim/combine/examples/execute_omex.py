@@ -15,9 +15,9 @@ def run_repressilator():
 
 
 def run_omex(omex_path: Path):
-    print(omex_path)
+    # print(omex_path)
     working_dir = Path(__file__).parent / "results" / omex_path.name
-    print(working_dir)
+    # print(working_dir)
     working_dir.mkdir(parents=True, exist_ok=True)
     execute_sedml(path=omex_path, working_dir=working_dir, output_path=working_dir)
 

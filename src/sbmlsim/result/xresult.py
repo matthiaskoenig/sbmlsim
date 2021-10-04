@@ -27,7 +27,11 @@ class XResult:
 
     def __getitem__(self, key) -> xr.DataArray:
         """Get item."""
-        return self.xds[key]
+        try:
+            return self.xds[key]
+        except KeyError as err:
+            logger.error(f"Key '{key}' not in {self.xds}" f"\n{err}")
+            raise err
 
     def __getattr__(self, name):
         """Provide dot access to keys."""

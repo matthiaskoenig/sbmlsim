@@ -1,9 +1,7 @@
 """Test Algorithm and AlgorithmParameters."""
 import pytest
 
-from sbmlsim.simulation.algorithm import (
-    Algorithm, AlgorithmParameter, KISAO, KISAOType
-)
+from sbmlsim.simulation.algorithm import KISAO, Algorithm, AlgorithmParameter, KISAOType
 
 
 @pytest.mark.parametrize(
@@ -29,11 +27,14 @@ def test_algorithm() -> None:
     """Test creation of Algorithms."""
 
     algorithm = Algorithm(
-        sid="algorithm", name="algorithm name", kisao=KISAO.CVODE,
-                          parameters=[
-        AlgorithmParameter(kisao=KISAO.ABSOLUTE_TOLERANCE, value=1e-7),
-        AlgorithmParameter(kisao=KISAO.RELATIVE_TOLERANCE, value=1e-7),
-    ])
+        sid="algorithm",
+        name="algorithm name",
+        kisao=KISAO.CVODE,
+        parameters=[
+            AlgorithmParameter(kisao=KISAO.ABSOLUTE_TOLERANCE, value=1e-7),
+            AlgorithmParameter(kisao=KISAO.RELATIVE_TOLERANCE, value=1e-7),
+        ],
+    )
     assert algorithm
     assert algorithm.sid == "algorithm"
     assert algorithm.name == "algorithm name"

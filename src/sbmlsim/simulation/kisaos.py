@@ -1,8 +1,11 @@
 """Working with the KISAO ontology."""
 
 from collections import namedtuple
+
 import libsedml
 from sbmlutils import log
+
+
 logger = log.get_logger(__name__)
 
 
@@ -95,7 +98,8 @@ KISAOS_ALGORITHMPARAMETERS = {
     "KISAO:0000209": ("relative_tolerance", float),  # the relative tolerance
     "KISAO:0000211": ("absolute_tolerance", float),  # the absolute tolerance
     "KISAO:0000220": ("maximum_bdf_order", int),  # the maximum BDF (stiff) order
-    "KISAO:0000219": ("maximum_adams_order",
+    "KISAO:0000219": (
+        "maximum_adams_order",
         int,
     ),  # the maximum Adams (non-stiff) order
     "KISAO:0000415": (

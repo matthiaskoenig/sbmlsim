@@ -7,6 +7,10 @@ import time
 import warnings
 
 from depinfo import print_dependencies
+from sbmlutils import log
+
+
+logger = log.get_logger(__name__)
 
 
 def show_versions() -> None:
@@ -59,7 +63,7 @@ def timeit(method):
             name = kw.get("log_name", method.__name__.upper())
             kw["log_time"][name] = int((te - ts) * 1000)
         else:
-            print(
+            logger.info(
                 "{:20}  {:8.4f} [s]".format(
                     f"{method.__name__} <{os.getpid()}>", (te - ts)
                 )
