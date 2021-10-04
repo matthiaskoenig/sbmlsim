@@ -156,7 +156,6 @@ class UnitsInformation(MutableMapping):
         for udef in model.getListOfUnitDefinitions():
             uid = udef.getId()
             unit_str = Units.udef_to_str(udef)
-            print(unit_str)
             q = ureg(unit_str)
             try:
                 # check if uid is existing unit registry definition (short name)
@@ -197,11 +196,6 @@ class UnitsInformation(MutableMapping):
         uid_dict: Dict[str, str] = UnitsInformation.model_uid_dict(model, ureg=ureg)
 
         # add additional units
-
-        # from pprint import pprint
-        # pprint(uid_dict)
-        # print("-" * 80)
-
         udict: Dict[str, str] = {}
 
         # add time unit

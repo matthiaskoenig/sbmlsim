@@ -53,7 +53,7 @@ class RoadrunnerSBMLModel(AbstractModel):
                 selections=selections,
             )
         else:
-            logger.warning("RoadrunnerSBMLModel from source")
+            logger.info("RoadrunnerSBMLModel from source")
             super(RoadrunnerSBMLModel, self).__init__(
                 source=source,
                 language_type=AbstractModel.LanguageType.SBML,
