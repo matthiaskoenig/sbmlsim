@@ -2,7 +2,6 @@
 
 Used for model and data unit conversions.
 """
-import logging
 import os
 from collections.abc import MutableMapping
 from pathlib import Path
@@ -10,6 +9,7 @@ from typing import Dict, Iterator, Optional, Tuple, Union
 
 import libsbml
 import numpy as np
+from sbmlutils import log
 from sbmlutils.io import read_sbml
 
 
@@ -27,7 +27,7 @@ with warnings.catch_warnings():
     warnings.simplefilter("ignore")
     Quantity([])
 
-logger = logging.getLogger(__name__)
+logger = log.get_logger(__name__)
 UdictType = Dict[str, str]
 
 

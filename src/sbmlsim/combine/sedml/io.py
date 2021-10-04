@@ -1,6 +1,5 @@
 """Template functions to run the example cases."""
 import importlib
-import logging
 import os
 import zipfile
 from enum import Enum
@@ -10,11 +9,12 @@ from xml.etree import ElementTree
 
 import libcombine
 import libsedml
+from sbmlutils import log
 
 from sbmlsim.combine.omex import Omex
 
 
-logger = logging.getLogger(__name__)
+logger = log.get_logger(__name__)
 
 
 def check_sedml_doc(sed_doc: libsedml.SedDocument) -> libsedml.SedErrorLog:

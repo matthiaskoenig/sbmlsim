@@ -1,10 +1,10 @@
 """Serial simulator."""
-import logging
-from typing import Dict, List, Optional
+from typing import List
 
 import pandas as pd
 from pint import Quantity
 from roadrunner import roadrunner
+from sbmlutils import log
 
 from sbmlsim.model import AbstractModel, RoadrunnerSBMLModel
 from sbmlsim.result import XResult
@@ -13,7 +13,7 @@ from sbmlsim.simulator.simulation import SimulatorWorker
 from sbmlsim.units import UnitsInformation
 
 
-logger = logging.getLogger(__name__)
+logger = log.get_logger(__name__)
 
 
 class SimulatorSerial(SimulatorWorker):

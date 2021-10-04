@@ -20,12 +20,12 @@ Locks (in CPython) so both can use up to 100% of a CPU on a multi-cpu box, as lo
 they dont contend for other lower-level (OS) resources. That's the "multiprocessing"
 part.
 """
-import logging
 import multiprocessing
 import os
 from typing import List, Optional
 
 import numpy as np
+from sbmlutils import log
 
 from sbmlsim.fit.optimization import OptimizationProblem
 from sbmlsim.fit.options import (
@@ -39,7 +39,7 @@ from sbmlsim.fit.result import OptimizationResult
 from sbmlsim.utils import timeit
 
 
-logger = logging.getLogger(__name__)
+logger = log.get_logger(__name__)
 lock = multiprocessing.Lock()
 
 

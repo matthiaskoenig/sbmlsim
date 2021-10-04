@@ -1,12 +1,12 @@
 """Methods specific to pkdb models."""
-import logging
 import re
 from typing import Dict
 
 import roadrunner
+from sbmlutils import log
 
 
-logger = logging.getLogger(__name__)
+logger = log.get_logger(__name__)
 
 # -------------------------------------------------------------------------------------------------
 # Initial values

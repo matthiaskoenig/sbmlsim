@@ -2,10 +2,10 @@
 
 Using sympy to evaluate the expressions.
 """
-import logging
 from typing import Any, Dict, Set, Tuple
 
 import libsedml
+from sbmlutils import log
 from sympy import Symbol, lambdify, sympify
 
 

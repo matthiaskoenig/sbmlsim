@@ -1,6 +1,5 @@
 """Analysis of fitting results."""
 
-import logging
 import webbrowser
 from pathlib import Path
 from typing import Any, Dict, List, Tuple
@@ -11,6 +10,7 @@ import pandas as pd
 import seaborn as sns
 from matplotlib.figure import Axes, Figure
 from matplotlib.lines import Line2D
+from sbmlutils import log
 
 from sbmlsim.fit.optimization import OptimizationProblem
 from sbmlsim.fit.options import (
@@ -24,7 +24,7 @@ from sbmlsim.plot.plotting_deprecated_matplotlib import plt
 from sbmlsim.utils import timeit
 
 
-logger = logging.getLogger(__name__)
+logger = log.get_logger(__name__)
 
 
 class OptimizationAnalysis:

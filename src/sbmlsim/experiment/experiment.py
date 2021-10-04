@@ -1,13 +1,14 @@
 """SimulationExperiments and helpers."""
 
 import json
-import logging
 import re
 from collections import defaultdict
 from copy import deepcopy
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Dict, Iterable, List, Union
+
+from sbmlutils import log
 
 from sbmlsim.data import Data, DataSet
 from sbmlsim.fit import FitMapping
@@ -26,7 +27,7 @@ from sbmlsim.units import UnitRegistry, UnitsInformation
 from sbmlsim.utils import timeit
 
 
-logger = logging.getLogger(__name__)
+logger = log.get_logger(__name__)
 
 
 class SimulationExperiment:
@@ -220,7 +221,9 @@ class SimulationExperiment:
         self._data[d.sid] = d
 
     def add_selections_data(
-        self, selections: Iterable[str], task_ids: Iterable[str] = None
+        self,
+        selections: Iterable[str],
+        task_ids: Iterable[str] = None,
     ) -> None:
         """Add selections to given tasks.
 
@@ -232,8 +235,9 @@ class SimulationExperiment:
 
         :param reset: drop and reset all selections.
         """
-        if reset is False:
-            self._data = {}
+        # FIXME: handle reset
+        # if reset is False:
+        #     self._data = {}
 
         if task_ids is None:
             task_ids = self._tasks.keys()
@@ -402,7 +406,7 @@ class SimulationExperiment:
         else:
             if not Path.exists(output_path):
                 Path.mkdir(output_path, parents=True)
-                logging.info(f"'output_path' created: '{output_path}'")
+                logger.info(f"'output_path' created: '{output_path}'")
 
             # save outputs
             self.save_datasets(output_path)

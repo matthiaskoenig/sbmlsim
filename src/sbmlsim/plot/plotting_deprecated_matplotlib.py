@@ -3,17 +3,17 @@
 These functions will be removed in future releases.
 """
 import itertools
-import logging
 
 import pandas as pd
 from matplotlib import pyplot as plt
+from sbmlutils import log
 
 from sbmlsim.data import DataSet
 from sbmlsim.result import XResult
 from sbmlsim.utils import deprecated
 
 
-logger = logging.getLogger(__name__)
+logger = log.get_logger(__name__)
 
 kwargs_data = {"marker": "s", "linestyle": "--", "linewidth": 1, "capsize": 3}
 kwargs_sim = {"marker": None, "linestyle": "-", "linewidth": 2}

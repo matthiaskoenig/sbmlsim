@@ -2,18 +2,17 @@
 
 Allows scans over other simulations.
 """
-
-import logging
 from copy import deepcopy
 from typing import Dict, List
 
 import numpy as np
+from sbmlutils import log
 
 from sbmlsim.simulation import AbstractSim, Dimension
 from sbmlsim.units import UnitsInformation
 
 
-logger = logging.getLogger()
+logger = log.get_logger(__name__)
 
 
 class ScanSim(AbstractSim):

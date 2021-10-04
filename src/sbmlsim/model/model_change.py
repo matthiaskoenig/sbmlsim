@@ -4,12 +4,11 @@ Model changes are structural changes to the model structure.
 Changes of values and initial conditions are encoded via
 the changes instead.
 """
-import logging
-
 import roadrunner
+from sbmlutils import log
 
 
-logger = logging.getLogger(__name__)
+logger = log.get_logger(__name__)
 
 
 class ModelChange(object):

@@ -1,6 +1,5 @@
 """Abstract base simulation."""
 import abc
-import itertools
 from abc import ABC
 from typing import Any, Dict, Iterable, List
 

@@ -4,17 +4,17 @@ Allows to test semi-automatically for problems with the various models.
 Used to benchmark the simulation results.
 """
 
-import logging
 from pathlib import Path
 from typing import Dict, List
 
 import pandas as pd
 from matplotlib import pyplot as plt
+from sbmlutils import log
 
 from sbmlsim.utils import timeit
 
 
-logger = logging.getLogger(__name__)
+logger = log.get_logger(__name__)
 
 
 def get_files_by_extension(base_path: Path, extension: str = ".json") -> Dict[str, str]:
@@ -285,7 +285,7 @@ class DataSetsComparison(object):
         lines.append(str(self.is_equal()).upper())
         lines.append("-" * 80)
         if not self.is_equal():
-            logging.warning("Datasets are not equal !")
+            logger.warning("Datasets are not equal !")
 
         return "\n".join([str(item) for item in lines])
 

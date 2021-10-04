@@ -2,20 +2,19 @@
 
 Allows to get sets of changes from given model instance.
 """
-import logging
-from copy import deepcopy
 from enum import Enum
 from typing import Dict, Iterable
 
 import libsbml
 import numpy as np
+from sbmlutils import log
 
-from sbmlsim.model import AbstractModel, RoadrunnerSBMLModel
-from sbmlsim.simulation import Dimension, ScanSim, Timecourse, TimecourseSim
-from sbmlsim.units import Units, UnitsInformation
+from sbmlsim.model import RoadrunnerSBMLModel
+from sbmlsim.simulation import Dimension, ScanSim, TimecourseSim
+from sbmlsim.units import UnitsInformation
 
 
-logger = logging.getLogger(__name__)
+logger = log.get_logger(__name__)
 
 
 class SensitivityType(Enum):

@@ -1,22 +1,21 @@
 """Create report of simulation experiments."""
 import json
-import logging
 import os
 import shutil
 import sys
-from collections import OrderedDict
 from enum import Enum
 from pathlib import Path
-from typing import Dict, List
+from typing import Dict
 
 import jinja2
+from sbmlutils import log
 
 from sbmlsim import RESOURCES_DIR, __version__
 from sbmlsim.experiment import ExperimentResult, SimulationExperiment
 from sbmlsim.model import AbstractModel
 
 
-logger = logging.getLogger(__name__)
+logger = log.get_logger(__name__)
 TEMPLATE_PATH = RESOURCES_DIR / "templates"
 
 

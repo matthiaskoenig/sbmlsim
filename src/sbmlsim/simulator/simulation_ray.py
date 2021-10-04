@@ -1,6 +1,5 @@
 """Parallel simulation using ray."""
 
-import logging
 from pathlib import Path
 from typing import Iterator, List
 
@@ -9,13 +8,14 @@ import pandas as pd
 import psutil
 import ray
 import roadrunner
+from sbmlutils import log
 
 from sbmlsim.simulation import TimecourseSim
 from sbmlsim.simulator import SimulatorSerial
 from sbmlsim.simulator.simulation import SimulatorWorker
 
 
-logger = logging.getLogger(__name__)
+logger = log.get_logger(__name__)
 
 # start ray
 ray.init(ignore_reinit_error=True)

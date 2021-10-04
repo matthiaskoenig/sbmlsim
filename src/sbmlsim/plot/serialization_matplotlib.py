@@ -1,12 +1,12 @@
 """Serialization of Figure object to matplotlib."""
 
-import logging
 from typing import Any, Dict, List, Optional
 
 import numpy as np
 from matplotlib import pyplot as plt
 from matplotlib.figure import Figure as FigureMPL
 from matplotlib.gridspec import GridSpec
+from sbmlutils import log
 
 from sbmlsim.plot import Axis, Curve, Figure, SubPlot
 from sbmlsim.plot.plotting import (
@@ -20,7 +20,7 @@ from sbmlsim.plot.plotting import (
 )
 
 
-logger = logging.getLogger(__name__)
+logger = log.get_logger(__name__)
 
 
 def interp(x, xp, fp):

@@ -74,7 +74,6 @@ DataGenerator class.
 For information about SED-ML please refer to http://www.sed-ml.org/
 and the SED-ML specification.
 """
-import logging
 import re
 import shutil
 import warnings
@@ -88,12 +87,12 @@ import libsedml
 import pandas as pd
 import roadrunner
 from pint import Quantity
+from sbmlutils import log
 
 from sbmlsim.combine.mathml import formula_to_astnode
 from sbmlsim.combine.omex import Omex
 from sbmlsim.combine.sedml.data import DataDescriptionParser
-from sbmlsim.combine.sedml.kisao import is_supported_algorithm_for_simulation_type
-from sbmlsim.combine.sedml.task import Stack, TaskNode, TaskTree
+from sbmlsim.combine.sedml.task import TaskNode, TaskTree
 from sbmlsim.data import Data, DataSet
 from sbmlsim.experiment import ExperimentRunner, SimulationExperiment
 from sbmlsim.fit import FitData, FitExperiment, FitMapping, FitParameter
@@ -117,11 +116,12 @@ from sbmlsim.plot.plotting import (
 )
 from sbmlsim.simulation import AbstractSim, ScanSim, Timecourse, TimecourseSim
 from sbmlsim.simulation.algorithm import AlgorithmParameter
+from sbmlsim.simulation.kisaos import is_supported_algorithm_for_simulation_type
 from sbmlsim.task import Task
 from sbmlsim.units import UnitRegistry, UnitsInformation
 
 
-logger = logging.getLogger(__file__)
+logger = log.get_logger(__file__)
 
 
 class SBMLModelTargetType(Enum):

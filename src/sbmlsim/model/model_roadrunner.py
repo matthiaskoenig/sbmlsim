@@ -1,22 +1,22 @@
 """RoadRunner model."""
 
-import logging
 import tempfile
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple, Union
+from typing import Dict, List, Optional, Union
 
 import libsbml
 import numpy as np
 import pandas as pd
 import roadrunner
+from sbmlutils import log
 
 from sbmlsim.model import AbstractModel
 from sbmlsim.model.model_resources import Source
-from sbmlsim.units import Quantity, UdictType, UnitRegistry, Units, UnitsInformation
+from sbmlsim.units import Quantity, UnitRegistry, UnitsInformation
 from sbmlsim.utils import md5_for_path
 
 
-logger = logging.getLogger(__name__)
+logger = log.get_logger(__name__)
 
 
 class RoadrunnerSBMLModel(AbstractModel):
@@ -129,12 +129,12 @@ class RoadrunnerSBMLModel(AbstractModel):
                 r = roadrunner.RoadRunner()
                 r.loadState(str(state_path))
             else:
-                logging.warning(f"Load model from SBML: '{source.path.resolve()}'")
+                logger.info(f"Load model from SBML: '{source.path.resolve()}'")
                 r = roadrunner.RoadRunner(str(source.path))
                 # save state path
                 if state_path:
                     r.saveState(str(state_path))
-                    logging.warning(f"Save state: '{state_path}'")
+                    logger.info(f"Save state: '{state_path}'")
         elif source.is_content():
             r = roadrunner.RoadRunner(str(source.content))
 

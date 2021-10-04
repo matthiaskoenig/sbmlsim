@@ -1,18 +1,18 @@
 """Definition of Objects used in FitProblems and optimization."""
 import json
-import logging
 import math
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable, Dict, Iterable, List, Optional, Sized, Union
 
 import numpy as np
+from sbmlutils import log
 
 from sbmlsim.data import Data
 from sbmlsim.serialization import to_json
 
 
-logger = logging.getLogger(__name__)
+logger = log.get_logger(__name__)
 
 
 class FitExperiment:

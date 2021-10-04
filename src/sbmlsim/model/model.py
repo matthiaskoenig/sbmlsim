@@ -5,16 +5,17 @@ Model can be in different formats, main supported format being SBML.
 
 Other formats could be supported like CellML or NeuroML.
 """
-import logging
 from enum import Enum
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple, Union
+from typing import Dict, List, Optional, Union
+
+from sbmlutils import log
 
 from sbmlsim.model.model_resources import Source
-from sbmlsim.units import Units, UnitsInformation
+from sbmlsim.units import UnitsInformation
 
 
-logger = logging.getLogger(__name__)
+logger = log.get_logger(__name__)
 
 
 class AbstractModel(object):

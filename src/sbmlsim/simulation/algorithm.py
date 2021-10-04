@@ -1,19 +1,19 @@
 """Handling of algorithms and algorithm parameters."""
 
-import logging
-from typing import List, Union, Optional
+from typing import List, Optional, Union
 
+from sbmlutils import log
 
 from sbmlsim.simulation.base import BaseObject
 from sbmlsim.simulation.kisaos import name_kisao, validate_kisao
 
 
-logger = logging.getLogger(__name__)
+logger = log.get_logger(__name__)
 
 
 class AlgorithmParameter(BaseObject):
     """AlgorithmParameter.
-    
+
     The AlgorithmParameter class allows to parameterize a particular simulation algorithm. The set of
     possible parameters for a particular instance is determined by the algorithm that is referenced by the
     kisaoID of the enclosing algorithm element.
@@ -39,13 +39,17 @@ class AlgorithmParameter(BaseObject):
 
 class Algorithm(BaseObject):
     """Algorithm class.
-    
+
     TODO: add annotation
     https://identifiers.org/biomodels.kisao:KISAO_0000057
     """
+
     def __init__(
-        self, kisao: str, parameters: Optional[List[AlgorithmParameter]] = None, 
-        sid: Optional[str] = None, name: Optional[str] = None,
+        self,
+        kisao: str,
+        parameters: Optional[List[AlgorithmParameter]] = None,
+        sid: Optional[str] = None,
+        name: Optional[str] = None,
     ):
         kisao: str = validate_kisao(kisao)
         name: str = name_kisao(kisao, name)

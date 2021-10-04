@@ -1,7 +1,6 @@
 """Reading NUML, CSV and TSV data from DataDescriptions."""
 import http.client as httplib
 import importlib
-import logging
 import os
 import tempfile
 from pathlib import Path
@@ -10,11 +9,12 @@ from typing import Dict, Optional
 import libsbml
 import libsedml
 import pandas as pd
+from sbmlutils import log
 
 from .numl import NumlParser
 
 
-logger = logging.getLogger(__name__)
+logger = log.get_logger(__name__)
 
 
 class DataDescriptionParser:

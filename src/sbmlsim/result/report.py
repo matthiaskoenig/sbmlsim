@@ -1,10 +1,11 @@
 """Reports."""
 
-import logging
 from typing import Dict
 
+from sbmlutils import log
 
-logger = logging.getLogger(__name__)
+
+logger = log.get_logger(__name__)
 
 
 class Report:

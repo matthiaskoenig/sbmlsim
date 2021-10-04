@@ -5,8 +5,8 @@ from pathlib import Path
 from typing import Dict, Union
 
 from sbmlsim.combine.sedml.parser import SEDMLSerializer
+from sbmlsim.combine.sedml.runner import execute_sedml
 from sbmlsim.data import Data
-from sbmlsim.examples.sedml import execute_sedml
 from sbmlsim.experiment import SimulationExperiment
 from sbmlsim.experiment.runner import run_experiments
 from sbmlsim.model import AbstractModel

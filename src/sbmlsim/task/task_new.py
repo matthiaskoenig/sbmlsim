@@ -47,11 +47,11 @@ class RepeatedTask:
     concatenate: bool
 
 
-
 @dataclass
 class Task:
     model: str
     simulation: str
+
 
 # Fields on Timecourse
 #         self.selections = deepcopy(selections)
@@ -67,4 +67,4 @@ class SubTask:
     model_changes: List[str]
     model_manipulations: List[str]
     order: int
-    discard: bool = False,
+    discard: bool = False

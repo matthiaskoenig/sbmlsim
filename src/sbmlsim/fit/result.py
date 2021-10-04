@@ -1,19 +1,19 @@
 """Result of optimization."""
 import datetime
-import logging
 import uuid
 from pathlib import Path
 from typing import Dict, Iterable, List, Optional, Set, Tuple, Union
 
 import numpy as np
 import pandas as pd
+from sbmlutils import log
 from scipy.optimize import OptimizeResult
 
 from sbmlsim.fit.objects import FitParameter
 from sbmlsim.serialization import ObjectJSONEncoder, from_json, to_json
 
 
-logger = logging.getLogger(__name__)
+logger = log.get_logger(__name__)
 
 
 class OptimizationResult(ObjectJSONEncoder):

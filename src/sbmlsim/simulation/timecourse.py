@@ -1,19 +1,19 @@
 """Definition of timecourses and timecourse simulations."""
 import json
-import logging
 from copy import deepcopy
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple, Union
+from typing import Any, Dict, List, Optional, Union
 
 import numpy as np
 from pint import Quantity
+from sbmlutils import log
 
 from sbmlsim.serialization import ObjectJSONEncoder
 from sbmlsim.simulation import AbstractSim, Dimension
 from sbmlsim.units import Units, UnitsInformation
 
 
-logger = logging.getLogger(__name__)
+logger = log.get_logger(__name__)
 
 
 class Timecourse(ObjectJSONEncoder):

@@ -1,29 +1,17 @@
 """Working with the KISAO ontology."""
 
-import logging
+import re
 from collections import namedtuple
+from typing import Dict
 
 import libsedml
-
-import re
-from typing import Dict
-from enum import Enum, unique
-
 from kisao import Kisao
 from kisao.data_model import IdDialect
-from pronto import Term, Ontology
-
-from rich.logging import RichHandler
-
-logging.basicConfig(
-    level="WARNING",
-    format="%(message)s",
-    datefmt="[%X]",
-    handlers=[RichHandler(rich_tracebacks=True)]
-)
+from pronto import Ontology, Term
+from sbmlutils import log
 
 
-logger = logging.getLogger(__name__)
+logger = log.get_logger(__name__)
 
 kisao_ontology = Kisao()
 kisao_pattern = re.compile(r"^KISAO_\d{7}$")
@@ -31,14 +19,16 @@ kisao_pattern = re.compile(r"^KISAO_\d{7}$")
 
 def create_kisao_lookup() -> Dict[str, str]:
     """Creates dictionary for lookup by name."""
-    pronto_ontology: Ontology = kisao_ontology._ontology 
+    pronto_ontology: Ontology = kisao_ontology._ontology
     name_to_kisao: Dict[str, str] = {}
     for term_id in pronto_ontology:
         if "KISAO#_KISAO_" in term_id:
             logger.warning(f"Incorrect kisao id: {term_id}")
             continue
         try:
-            kisao_id = kisao_ontology.get_normalized_id(term_id.split('#')[1], dialect=IdDialect.kisao)
+            kisao_id = kisao_ontology.get_normalized_id(
+                term_id.split("#")[1], dialect=IdDialect.kisao
+            )
             term: Term = kisao_ontology.get_term(kisao_id)
             name = term.name
             if name in name_to_kisao:
@@ -46,8 +36,9 @@ def create_kisao_lookup() -> Dict[str, str]:
             name_to_kisao[name] = kisao_id
         except (KeyError, ValueError) as err:
             logger.warning(f"{err}")
-    
+
     return name_to_kisao
+
 
 # FIXME: kisao class
 # @unique

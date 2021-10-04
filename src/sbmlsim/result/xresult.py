@@ -1,18 +1,17 @@
 """Module for encoding simulation results and processed data."""
-import logging
-from enum import Enum
+
 from typing import Dict, List, Optional
 
 import numpy as np
 import pandas as pd
 import xarray as xr
+from sbmlutils import log
 
 from sbmlsim.simulation import Dimension, ScanSim
-from sbmlsim.units import UnitRegistry, UnitsInformation
-from sbmlsim.utils import deprecated, timeit
+from sbmlsim.units import UnitsInformation
 
 
-logger = logging.getLogger(__name__)
+logger = log.get_logger(__name__)
 
 
 class XResult:

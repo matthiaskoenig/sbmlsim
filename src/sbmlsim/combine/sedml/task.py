@@ -1,10 +1,10 @@
-import logging
 from typing import List
 
 import libsedml
+from sbmlutils import log
 
 
-logger = logging.getLogger(__name__)
+logger = log.get_logger(__name__)
 
 
 class TaskNode(object):
@@ -119,6 +119,7 @@ class TaskTree(object):
 
 
 # -------------------------------------------------------------------------------------
+
 
 class Test(object):
     @staticmethod

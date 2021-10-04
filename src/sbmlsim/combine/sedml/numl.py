@@ -1,7 +1,6 @@
 """Parser for NuML data."""
 
 import importlib
-import logging
 import warnings
 from enum import Enum
 from pathlib import Path
@@ -11,9 +10,10 @@ import libsbml
 import libsedml
 import numpy as np
 import pandas as pd
+from sbmlutils import log
 
 
-logger = logging.getLogger(__name__)
+logger = log.get_logger(__name__)
 
 
 class NumlParser(object):

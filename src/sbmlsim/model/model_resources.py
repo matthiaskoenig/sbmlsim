@@ -3,16 +3,16 @@
 Interacting with model resources to retrieve models.
 This currently includes BioModels, but can easily be extended to other models.
 """
-import logging
 import re
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Dict, Optional, Union
 
 import requests
+from sbmlutils import log
 
 
-logger = logging.getLogger(__name__)
+logger = log.get_logger(__name__)
 
 
 @dataclass

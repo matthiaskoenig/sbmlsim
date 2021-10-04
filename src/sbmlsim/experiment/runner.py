@@ -8,20 +8,21 @@ This includes
 - creating outputs
 """
 
-import logging
 from pathlib import Path
-from typing import Dict, Iterable, List, Optional, Tuple, Type, Union
+from typing import Dict, List, Optional, Tuple, Type, Union
+
+from sbmlutils import log
 
 from sbmlsim.experiment import ExperimentResult, SimulationExperiment
 from sbmlsim.model import RoadrunnerSBMLModel
 from sbmlsim.report.experiment_report import ExperimentReport, ReportResults
 from sbmlsim.simulator import SimulatorSerial
 from sbmlsim.simulator.simulation_ray import SimulatorParallel
-from sbmlsim.units import UnitRegistry, Units, UnitsInformation
+from sbmlsim.units import UnitRegistry, UnitsInformation
 from sbmlsim.utils import timeit
 
 
-logger = logging.getLogger(__name__)
+logger = log.get_logger(__name__)
 
 
 class ExperimentRunner(object):

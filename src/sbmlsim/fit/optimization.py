@@ -1,6 +1,5 @@
 """Optimization of parameter fitting problem."""
 
-import logging
 import time
 from collections import defaultdict
 from copy import deepcopy
@@ -11,6 +10,7 @@ from typing import Any, Callable, Collection, Dict, List, Optional, Set, Tuple, 
 import numpy as np
 import pandas as pd
 import scipy
+from sbmlutils import log
 from scipy import interpolate, optimize
 
 from sbmlsim.data import Data
@@ -32,7 +32,7 @@ from sbmlsim.units import DimensionalityError
 from sbmlsim.utils import timeit
 
 
-logger = logging.getLogger(__name__)
+logger = log.get_logger(__name__)
 
 
 @dataclass

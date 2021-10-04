@@ -1,19 +1,17 @@
 """Module handling data (experiment and simulation)."""
-import logging
 from enum import Enum
 from pathlib import Path
 from typing import Dict, List, Optional, Union
 
-import numpy as np
 import pandas as pd
+from sbmlutils import log
 
 from sbmlsim.combine import mathml
 from sbmlsim.result import XResult
 from sbmlsim.units import DimensionalityError, Quantity, UnitRegistry, UnitsInformation
-from sbmlsim.utils import deprecated
 
 
-logger = logging.getLogger(__name__)
+logger = log.get_logger(__name__)
 
 
 class Data(object):

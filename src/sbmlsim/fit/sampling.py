@@ -1,5 +1,4 @@
 """Sampling of parameter values."""
-import logging
 from enum import Enum
 from typing import Dict, Iterable, List, Sized
 
@@ -7,12 +6,13 @@ import numpy as np
 import pandas as pd
 from matplotlib import pyplot as plt
 from pyDOE import lhs
+from sbmlutils import log
 
 # FIXME: make this independent of the fit parameters
 from sbmlsim.fit.objects import FitParameter
 
 
-logger = logging.getLogger(__name__)
+logger = log.get_logger(__name__)
 
 
 class SamplingType(Enum):

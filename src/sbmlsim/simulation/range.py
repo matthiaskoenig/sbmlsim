@@ -1,14 +1,11 @@
 import itertools
 from abc import ABC, abstractmethod
-
 from enum import Enum, auto, unique
 from typing import Dict, Iterable, List, Tuple, Union
 
 import numpy as np
 
-from sbmlsim.console import console
 from sbmlsim.simulation.base import BaseObject
-
 from sbmlsim.simulation.calculation import Calculation, Parameter, Variable
 
 
@@ -42,6 +39,7 @@ class Range(BaseObject):
                 f"'data' in Range must be numpy.ndarray, but '{type(data)}' for "
                 f"'{data}'"
             )
+
 
 class VectorRange(Range):
     """VectorRange class.
@@ -86,7 +84,6 @@ class VectorRange(Range):
     def values(self) -> np.ndarray:
         """Get values of the range."""
         return self._values
-
 
     def __repr__(self) -> str:
         """Get string representation."""
@@ -206,7 +203,6 @@ class FunctionalRange(Calculation, Range):
         )
         self.range: str = range
 
-
     def __repr__(self) -> str:
         """Get string representation."""
         return (
@@ -278,6 +274,8 @@ class Dimension:
 
 
 if __name__ == "__main__":
+    from sbmlutils.console import console
+
     console.rule("[bold red]Range examples")
     ranges = [
         VectorRange(sid="vrange1", values=[0, 2, 3]),
@@ -285,10 +283,9 @@ if __name__ == "__main__":
         UniformRange(sid="ufrange1", start=0, end=10, steps=100),
         UniformRange("ufrange2", start=1, end=2, steps=1),
         DataRange("drange1", source_ref="datasource1"),
-        FunctionalRange(sid="frange1")
+        FunctionalRange(sid="frange1"),
     ]
     range: Range
     for range in ranges:
         console.log(range)
         console.log(range.values)
-

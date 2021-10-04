@@ -14,7 +14,6 @@ Additional settings are required which allow to define how things
         dimensions should be plotted individually.
 """
 import copy
-import logging
 from copy import deepcopy
 from dataclasses import dataclass
 from enum import Enum
@@ -22,11 +21,12 @@ from typing import Any, Dict, List, Optional, Union
 
 import numpy as np
 from matplotlib.colors import to_hex, to_rgba
+from sbmlutils import log
 
 from sbmlsim.data import Data, DataSet
 
 
-logger = logging.getLogger(__name__)
+logger = log.get_logger(__name__)
 
 # The colors in the default property cycle have been changed
 # to the category10 color palette used by Vega and d3 originally developed at Tableau.
