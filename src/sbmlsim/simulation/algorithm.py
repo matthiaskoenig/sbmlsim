@@ -20,10 +20,16 @@ class AlgorithmParameter(BaseObject):
     element.
     """
     def __init__(
-        self, kisao: KISAOType, value: Union[str, float], sid: str = None, name: str = None
+        self, kisao: KISAOType, value: Union[str, float], sid: str = None,
+        name: str = None
     ):
         term: KISAO = KISAO.validate(kisao)
-        name: str = KISAO.get_name(term)
+        term_name: str = KISAO.get_name(term)
+        if name:
+            if name != term_name:
+                logger.warning("Using name '{name}' instead of '{term_name}'.")
+            else:
+                name = term_name
 
         super(AlgorithmParameter, self).__init__(sid=sid, name=name)
         self.kisao: KISAO = term
@@ -45,10 +51,12 @@ class Algorithm(BaseObject):
         name: Optional[str] = None,
     ):
         term: KISAO = KISAO.validate(kisao)
-        term_name: str = KISAO.name_kisao(term)
+        term_name: str = KISAO.get_name(term)
         if name:
             if name != term_name:
-                logger.warning("Using name")
+                logger.warning("Using name '{name}' instead of '{term_name}'.")
+            else:
+                name = term_name
 
         super(Algorithm, self).__init__(sid, name)
         self.kisao: KISAO = kisao
@@ -57,16 +65,3 @@ class Algorithm(BaseObject):
     def __repr__(self) -> str:
         """Get string representation."""
         return f"Algorithm({self.name}, {self.kisao}, parameters={self.parameters})"
-
-
-if __name__ == "__main__":
-    ap = AlgorithmParameter(sid=None, name=None, kisao="KISAO:0000211", value=1e-7)
-    print(ap)
-    ap = AlgorithmParameter(sid=None, name=None, kisao="KISAO_0000211", value=1e-7)
-    print(ap)
-    ap = AlgorithmParameter(kisao="KISAO:0000211", value=1e-7)
-    print(ap)
-    ap = AlgorithmParameter(kisao=KISAO.KISAO_0000211, value=1e-7)
-    print(ap)
-    ap = AlgorithmParameter(kisao=KISAO.ABSOLUTE_TOLERANCE, value=1e-7)
-    print(ap)

@@ -22,13 +22,15 @@ def test_algorithm_parameter(kisao: KISAOType, term: KISAO) -> None:
     assert ap
     assert isinstance(ap, AlgorithmParameter)
     assert ap.kisao == term
-    assert ap.value == 1e-7
+    assert ap.value == str(1e-7)
 
 
 def test_algorithm() -> None:
     """Test creation of Algorithms."""
 
-    algorithm = Algorithm(sid="algorithm", name="algorithm name", parameters=[
+    algorithm = Algorithm(
+        sid="algorithm", name="algorithm name", kisao=KISAO.CVODE,
+                          parameters=[
         AlgorithmParameter(kisao=KISAO.ABSOLUTE_TOLERANCE, value=1e-7),
         AlgorithmParameter(kisao=KISAO.RELATIVE_TOLERANCE, value=1e-7),
     ])
