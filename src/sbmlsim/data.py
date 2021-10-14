@@ -57,7 +57,7 @@ class Data(object):
 
                 index = index[1:-1]
                 symbol = Data.Symbols.CONCENTRATION
-                logger.warning(
+                logger.debug(
                     f"Encoding concentration '[{index}]' as 'index={index}' "
                     f"and 'symbol={symbol}'."
                 )
@@ -396,7 +396,7 @@ class DataSet(pd.DataFrame):
                                 if f"mean_{err_key}" in df.columns:
                                     # remove existing mean_sd column
                                     del df[f"mean_{err_key}"]
-                                    logger.warning(
+                                    logger.debug(
                                         f"Removing existing column: 'mean_{err_key}' "
                                         f"from DataSet:\n"
                                         f"{df.head(3)}"
