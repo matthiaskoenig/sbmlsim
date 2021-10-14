@@ -317,8 +317,8 @@ class OptimizationProblem(ObjectJSONEncoder):
                     )
 
                 # observable units
-                obs_xid = mapping.observable.x.index
-                obs_yid = mapping.observable.y.index
+                obs_xid = mapping.observable.x.selection
+                obs_yid = mapping.observable.y.selection
                 obs_x_unit = model.uinfo[obs_xid]
                 obs_y_unit = model.uinfo[obs_yid]
 
