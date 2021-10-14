@@ -236,6 +236,7 @@ class Data(object):
             # units match the symbols
             self.unit = xres.uinfo[self.selection]
             # x = xres.dim_mean(self.index)
+            print(xres)
             x = xres[self.selection].values * xres.uinfo.ureg(self.unit)
 
         elif self.dtype == Data.Types.FUNCTION:
