@@ -383,16 +383,13 @@ class SimulationExperiment:
     ) -> "ExperimentResult":
         """Execute given experiment and store results."""
 
-        # run simulations
+        # run simulations (sets self._results)
         self._run_tasks(
             simulator, reduced_selections=reduced_selections
-        )  # sets self._results
+        )
 
         # evaluate mappings
         self.evaluate_fit_mappings()
-
-        # some of the figures require actual numerical results!
-        # self._figures = self.figures()
 
         # create outputs
         if output_path is None:
@@ -460,7 +457,7 @@ class SimulationExperiment:
                         # check if selection is for current model
                         task = self._tasks[d.task_id]
                         if task.model_id == model_id:
-                            selections.add(d.index)
+                            selections.add(d.selection)
                 selections = sorted(list(selections))
                 simulator.set_timecourse_selections(selections=selections)
             else:

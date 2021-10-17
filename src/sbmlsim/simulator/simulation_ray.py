@@ -50,6 +50,7 @@ class SimulatorActor(SimulatorWorker):
 
     def set_timecourse_selections(self, selections: Iterator[str]):
         """Set the timecourse selections."""
+        logger.info(f"'set_timecourse_selections':{selections}")
         try:
             if selections is None:
                 r_model: roadrunner.ExecutableModel = self.r.model

@@ -428,7 +428,7 @@ class FitData:
         """
         result = FitDataInitialized()
         for key in ["x", "y", "x_sd", "x_se", "y_sd", "y_se"]:
-            console.log(f"FitData.get_data: {self}.{key}")
+            logger.debug(f"FitData.get_data: {self}.{key}")
             d = getattr(self, key)
             if d is not None:
                 setattr(result, key, d.get_data(self.experiment))
