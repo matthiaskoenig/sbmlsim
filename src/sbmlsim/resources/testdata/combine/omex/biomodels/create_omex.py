@@ -8,8 +8,8 @@ import libcombine
 
 
 EXAMPLES_DIR = os.path.dirname(os.path.realpath(__file__))
-SEDML_DIR = os.path.join(EXAMPLES_DIR, "./sedml")
-OMEX_DIR = os.path.join(EXAMPLES_DIR, "./omex")
+SEDML_DIR = os.path.join(EXAMPLES_DIR, "sedml")
+OMEX_DIR = os.path.join(EXAMPLES_DIR, "omex")
 
 
 def create_omex_from_sedml(sedml_file, omex_file):

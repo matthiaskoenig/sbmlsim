@@ -690,6 +690,8 @@ class OptimizationProblem(ObjectJSONEncoder):
             simulation: TimecourseSim = self.simulations[k]
             simulation.normalize(uinfo=simulator.uinfo)
 
+
+
             # run simulation
             try:
                 # FIXME: just simulate at the requested timepoints with step

@@ -54,4 +54,4 @@ if __name__ == "__main__":
     # TODO: infer the data types and create real omex
 
     print("*" * 80)
-    create_all_zip(base_dir=".", out_dir=".", extension="omex")
+    create_all_zip(base_dir="", out_dir="", extension="omex")

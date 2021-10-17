@@ -1,4 +1,4 @@
-from sbmlsim.test.data.diff import simulate_examples
+from sbmlsim.resources.testdata.diff import simulate_examples
 
 
 def test_run_simulations():
