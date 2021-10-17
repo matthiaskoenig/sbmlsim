@@ -122,9 +122,7 @@ class SimulationExperiment:
     def __str__(self) -> str:
         """Get string representation."""
         info = [
-            "-" * 80,
-            f"SimulationExperiment: {self.__class__.__name__}",
-            "-" * 80,
+            f"*** SimulationExperiment: {self.__class__.__name__} ***",
             f"{'data':20} {list(self._data.keys())}",
             f"{'datasets':20} {list(self._datasets.keys())}",
             f"{'fit_mappings':20} {list(self._fit_mappings.keys())}",
@@ -133,7 +131,6 @@ class SimulationExperiment:
             f"{'results':20} {list(self._results.keys())}",
             f"{'figures':20} {list(self._figures.keys())}",
             f"{'reports':20} {list(self._reports.keys())}",
-            "-" * 80,
         ]
         return "\n".join(info)
 

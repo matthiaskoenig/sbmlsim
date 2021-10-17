@@ -78,6 +78,7 @@ class FitExperiment:
     def weights(self, weights: Union[float, List[float]] = None) -> None:
         """Set weights for mappings in fit experiment."""
 
+        weights_processed = None
         if self.use_mapping_weights is True:
             mapping_weights = [None] * len(self.mappings)
             # no weights provided use default empty weights
@@ -198,7 +199,7 @@ class FitMapping:
         else:
             try:
                 return self.reference.count
-            except AttributeError as err:
+            except AttributeError:
                 msg = f"Count data missing on FitMapping: '{self}'"
                 logger.error(msg)
                 raise AttributeError(msg)
@@ -392,7 +393,8 @@ class FitData:
 
     def __str__(self) -> str:
         """Get string."""
-        return f"FitData({self.experiment}: dataset={self.dset_id} task={self.task_id} function={self.function})"
+        return f"FitData(experiment={self.experiment.__class__.__name__} dset_id={self.dset_id} " \
+               f"task_id={self.task_id} function={self.function})"
 
     def is_task(self) -> bool:
         """Check if FitData comes from a task (simulation)."""
@@ -426,7 +428,7 @@ class FitData:
         """
         result = FitDataInitialized()
         for key in ["x", "y", "x_sd", "x_se", "y_sd", "y_se"]:
-            console.log(f"FitData.get_data: {self}, key={key}")
+            console.log(f"FitData.get_data: {self}.{key}")
             d = getattr(self, key)
             if d is not None:
                 setattr(result, key, d.get_data(self.experiment))
