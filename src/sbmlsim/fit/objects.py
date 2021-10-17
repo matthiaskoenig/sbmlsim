@@ -142,9 +142,7 @@ class FitExperiment:
     def __str__(self) -> str:
         """Get string."""
         info = [
-            "-" * 80,
-            "FitExperiment",
-            "-" * 80,
+            "*** FitExperiment ***",
             f"experiment: {self.experiment_class.__name__}",
             f"mappings: {self.mappings}",
             f"weights: {self.weights}",

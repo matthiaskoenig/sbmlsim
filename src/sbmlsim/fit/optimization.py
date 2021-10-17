@@ -253,12 +253,9 @@ class OptimizationProblem(ObjectJSONEncoder):
             # FIXME: selections should be based on fit mappings; this will reduce
             # selections and speed up calculations
             selections_set: Set[str] = set()
-            for d in sim_experiment._data.values():  # type: Data
-                if d.is_task():
-                    selections_set.add(d.selection)
-            selections: List[str] = list(selections_set)
-            console.log("FitExperiment:", fit_experiment)
-            console.log("Selections", selections)
+            # for d in sim_experiment._data.values():  # type: Data
+            #     if d.is_task():
+            #         selections_set.add(d.selection)
 
             # use all fit_mappings if None are provided
             if fit_experiment.mappings is None:
@@ -322,6 +319,8 @@ class OptimizationProblem(ObjectJSONEncoder):
                 # observable units
                 obs_xid = mapping.observable.x.selection
                 obs_yid = mapping.observable.y.selection
+                selections_set.add(obs_xid)
+                selections_set.add(obs_yid)
                 obs_x_unit = model.uinfo[obs_xid]
                 obs_y_unit = model.uinfo[obs_yid]
 
@@ -477,6 +476,8 @@ class OptimizationProblem(ObjectJSONEncoder):
                             pid_value = model.changes[pid]
                     self.xmodel[k] = pid_value
 
+                selections: List[str] = list(selections_set)
+
                 # lookup maps
                 self.models.append(model)
                 self.simulations.append(simulation)
@@ -498,13 +499,12 @@ class OptimizationProblem(ObjectJSONEncoder):
 
                 # debug info
                 if False:
-                    console.log("-" * 80)
                     console.log(f"{fit_experiment}.{mapping_id}")
                     console.log(f"weight: {weight}")
                     console.log(f"weight_curve: {weight_curve}")
                     console.log(f"weight_points: {weight_points}")
                     console.log(f"y_ref: {y_ref}")
-                    console.log(f"y_ref_err: {y_ref_err}")
+                    console.log(f"y_ref_err: {y_ref_err}\n")
 
         # set simulator instance with arguments
         simulator = SimulatorSerial(

@@ -68,7 +68,7 @@ class SimulatorSerial(SimulatorWorker):
 
     def set_timecourse_selections(self, selections):
         """Set timecourse selection in model."""
-        logger.info(f"'set_timecourse_selections': {selections}")
+        logger.info(f"set_timecourse_selections: {selections}")
         RoadrunnerSBMLModel.set_timecourse_selections(self.r, selections=selections)
 
     @property
