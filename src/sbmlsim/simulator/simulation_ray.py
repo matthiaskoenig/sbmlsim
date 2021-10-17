@@ -71,7 +71,7 @@ class SimulatorActor(SimulatorWorker):
             else:
                 self.r.timeCourseSelections = selections
         except RuntimeError as err:
-            print(f"ERROR: {err}")
+            logger.error(f"{err}")
             raise (err)
 
     def work(self, simulations):

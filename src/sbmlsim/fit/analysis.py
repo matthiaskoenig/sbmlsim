@@ -140,8 +140,6 @@ class OptimizationAnalysis:
         rc_params_copy = {**plt.rcParams}
         # reset matplotlib parameters
         matplotlib.rcdefaults()
-        # from pprint import pprint
-        # pprint(rc_params_copy)
         if mpl_parameters is None:
             mpl_parameters = {}
 

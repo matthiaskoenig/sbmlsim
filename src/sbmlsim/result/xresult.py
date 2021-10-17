@@ -1,11 +1,12 @@
 """Module for encoding simulation results and processed data."""
 
-from typing import Dict, List, Optional
+from typing import List, Optional
 
 import numpy as np
 import pandas as pd
 import xarray as xr
 from sbmlutils import log
+from sbmlutils.console import console
 
 from sbmlsim.simulation import Dimension, ScanSim
 from sbmlsim.units import UnitsInformation
@@ -211,4 +212,4 @@ if __name__ == "__main__":
         dfs.append(pd.DataFrame(s, columns=s.colnames))
 
     xres = XResult.from_dfs(dfs)
-    print(xres)
+    console.print(xres)

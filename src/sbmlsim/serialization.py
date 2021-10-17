@@ -3,7 +3,7 @@ import json
 from enum import Enum
 from json import JSONEncoder
 from pathlib import Path
-from typing import Any, Dict, Optional, Tuple, Union
+from typing import Any, Dict, Optional, Union
 
 from matplotlib.pyplot import Figure as MPLFigure
 from numpy import ndarray
@@ -57,7 +57,6 @@ class ObjectJSONEncoder(JSONEncoder):
 
         if hasattr(o, "to_dict"):
             # custom serializer
-            # print(type(o))
             if isinstance(o, type):
                 print(o.__name__)
             return o.to_dict()

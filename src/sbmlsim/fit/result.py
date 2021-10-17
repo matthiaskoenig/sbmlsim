@@ -7,6 +7,7 @@ from typing import Dict, Iterable, List, Optional, Set, Tuple, Union
 import numpy as np
 import pandas as pd
 from sbmlutils import log
+from sbmlutils.console import console
 from scipy.optimize import OptimizeResult
 
 from sbmlsim.fit.objects import FitParameter
@@ -157,7 +158,6 @@ class OptimizationResult(ObjectJSONEncoder):
         """Process the optimization results."""
         results = []
         pids = [p.pid for p in parameters]
-        # print(fits)
         for kt, trajectory in enumerate(trajectories):
             for step in trajectory:
                 res = {
@@ -176,7 +176,6 @@ class OptimizationResult(ObjectJSONEncoder):
         """Process the optimization results."""
         results = []
         pids = [p.pid for p in parameters]
-        # print(fits)
         for kf, fit in enumerate(fits):
             res = {
                 "run": kf,
@@ -243,7 +242,7 @@ class OptimizationResult(ObjectJSONEncoder):
         info_str: str = "\n".join(info)
 
         if print_output:
-            print(info_str)
+            console.print(info_str)
 
         if path:
             with open(path, "w") as f_out:

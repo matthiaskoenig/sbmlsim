@@ -26,6 +26,7 @@ from typing import List, Optional
 
 import numpy as np
 from sbmlutils import log
+from sbmlutils.console import console
 
 from sbmlsim.fit.optimization import OptimizationProblem
 from sbmlsim.fit.options import (
@@ -106,8 +107,9 @@ def run_optimization(
         n_cores = max(1, multiprocessing.cpu_count() - 1)
         logger.error(f"More cores then cpus requested, reducing cores to '{n_cores}'")
 
-    print("\n--- STARTING OPTIMIZATION ---\n")
-    print(f"Running {n_cores} workers")
+    console.rule(style="white")
+    console.log("\n--- STARTING OPTIMIZATION ---\n")
+    console.log(f"Running {n_cores} workers")
     if size < n_cores:
         logger.warning(
             f"Less simulations then cores: '{size} < {n_cores}', "
@@ -160,7 +162,8 @@ def run_optimization(
         # combine simulation results
         opt_result = OptimizationResult.combine(opt_results)
 
-    print("\n--- FINISHED OPTIMIZATION ---\n")
+    console.log("\n--- FINISHED OPTIMIZATION ---\n")
+    console.rule(style="white")
     return opt_result
 
 
@@ -168,7 +171,7 @@ def worker(kwargs) -> OptimizationResult:
     """Worker for running optimization problem."""
     lock.acquire()
     try:
-        print(f"worker <{os.getpid()}> running optimization ...")
+        logger.info(f"worker <{os.getpid()}> running optimization ...")
     finally:
         lock.release()
 

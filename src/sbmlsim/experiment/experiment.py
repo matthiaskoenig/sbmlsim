@@ -119,8 +119,6 @@ class SimulationExperiment:
         self._check_keys()
         self._check_types()
 
-        # print(self)
-
     def __str__(self) -> str:
         """Get string representation."""
         info = [

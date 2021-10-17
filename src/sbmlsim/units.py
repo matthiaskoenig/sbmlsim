@@ -10,17 +10,18 @@ from typing import Dict, Iterator, Optional, Tuple, Union
 import libsbml
 import numpy as np
 from sbmlutils import log
+from sbmlutils.console import console
 from sbmlutils.io import read_sbml
 
 
 # Disable Pint's old fallback behavior (must come before importing Pint)
 os.environ["PINT_ARRAY_PROTOCOL_FALLBACK"] = "0"
 
-import warnings  # noqa: E402
+import warnings
 
-import pint  # noqa: E402
-from pint import Quantity, UnitRegistry  # noqa: E402
-from pint.errors import DimensionalityError, UndefinedUnitError  # noqa: E402
+import pint
+from pint import Quantity, UnitRegistry
+from pint.errors import DimensionalityError, UndefinedUnitError
 
 
 with warnings.catch_warnings():
@@ -174,7 +175,7 @@ class UnitsInformation(MutableMapping):
                 definition = f"{uid} = {unit_str}"
                 ureg.define(definition)
 
-            # print(f"{uid} = {unit_str} ({q})")
+            logger.debug(f"{uid} = {unit_str} ({q})")
             uid_dict[uid] = unit_str
 
         return uid_dict
@@ -435,11 +436,6 @@ class Units:
 if __name__ == "__main__":
     from sbmlsim.test import MODEL_DEMO, MODEL_GLCWB
 
-    # uinfo = UnitsInformation.from_sbml_path(MODEL_DEMO)
     ureg = UnitRegistry()
-    uinfo = UnitsInformation.from_sbml(MODEL_GLCWB, ureg=ureg)
-    for key, value in uinfo.items():
-        # q = ureg(value)
-        print(key, value)
-
-    # print(uinfo)
+    uinfo = UnitsInformation.from_sbml(MODEL_DEMO, ureg=ureg)
+    console.log(uinfo.udict)

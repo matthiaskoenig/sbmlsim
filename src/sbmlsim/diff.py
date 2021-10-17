@@ -5,11 +5,13 @@ Used to benchmark the simulation results.
 """
 
 from pathlib import Path
-from typing import Dict, List
+from typing import Dict
 
 import pandas as pd
+import seaborn as sns
 from matplotlib import pyplot as plt
 from sbmlutils import log
+from sbmlutils.console import console
 
 from sbmlsim.utils import timeit
 
@@ -87,21 +89,21 @@ class DataSetsComparison(object):
             # use the first keys for comparison
             colnames = list(selections.values())[1]
             for key, sel_keys in selections.items():
-                print("***", key, "***")
+                console.log("***", key, "***")
                 df = dfs_dict[key]
                 # get subset
                 df_new = df[sel_keys]
                 # apply factors
                 fs = factors.get(key, [1.0] * len(sel_keys))
                 for k, sel in enumerate(sel_keys):
-                    print(f"scaling: '{sel}' * {fs[k]}")  # type: ignore
+                    console.log(f"scaling: '{sel}' * {fs[k]}")  # type: ignore
                     # df_new[sel] = fs[k] * df_new[sel]
                     df_new.loc[:, sel] *= fs[k]  # type: ignore
 
                 # do renaming
                 df_new = df_new.rename(columns=dict(zip(sel_keys, colnames)))
                 # store updated df
-                print(df_new.head())
+                console.log(df_new.head())
                 dfs_dict[key] = df_new
 
         # get the subset of columns to compare
@@ -266,7 +268,6 @@ class DataSetsComparison(object):
         diff_info = pd.concat([diff_0, diff_rel_0, diff_max, diff_rel_max], axis=1)
         diff_info.columns = ["Delta_abs_0", "Delta_rel_0", "Delta_max", "Delta_rel_max"]
 
-        # TODO: fixme
         diff_info = diff_info[diff_max >= DataSetsComparison.tol_abs]
         with pd.option_context("display.max_rows", None, "display.max_columns", None):
             lines.append(
@@ -292,8 +293,7 @@ class DataSetsComparison(object):
     @timeit
     def report(self):
         """Report."""
-        # print report
-        print(self.report_str())
+        console.log(self.report_str())
 
         # plot figure
         f = self.plot_diff()
@@ -303,19 +303,14 @@ class DataSetsComparison(object):
     def plot_diff(self):
         """Plot lines for entries which are above epsilon treshold."""
 
-        import seaborn as sns
-
-        # FIXME: only plot the top differences, otherwise plotting takes
-        # very long
         # filter data
         diff_abs = self.diff_abs.copy()
         diff_rel = self.diff_rel.copy()
         diff_tol = self.diff_tol.copy()
         diff_max = diff_abs.max()
         column_index = diff_max >= DataSetsComparison.eps_plot
-        # column_index = diff_max >= DataSetsComparison.eps
 
-        # print(column_index)
+        # console.log(column_index)
         diff_abs = diff_abs.transpose()
         diff_abs = diff_abs[column_index]
         diff_abs = diff_abs.transpose()
@@ -328,8 +323,6 @@ class DataSetsComparison(object):
         sns.heatmap(data=self.diff_tol_bool, cmap="Blues", vmin=0, vmax=1, ax=ax1)
         ax1.set_title(f"equal = {str(self.is_equal()).upper()}", fontweight="bold")
         ax1.set_ylabel("Tolerance difference", fontweight="bold")
-
-        # sns.heatmap(data=self.diff_tol, center=0, ax=ax2)
 
         for cid in diff_abs.columns:
             ax2.plot(diff_tol[cid], label=cid)
@@ -351,10 +344,5 @@ class DataSetsComparison(object):
         ax2.axhline(0.0, color="black", linestyle="--")
         for ax in (ax3, ax4):
             ax.axhline(DataSetsComparison.tol_abs, color="black", linestyle="--")
-
-            # ax.legend()
-            # ax.set_xlim(right=ax.get_xlim()[1] * 2)
-
-        # ax3.imshow(self.diff_tol, cmap='Greys')
 
         return f1

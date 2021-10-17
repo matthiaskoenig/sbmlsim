@@ -208,7 +208,6 @@ class NumlParser(object):
 
             content = {d.getId(): d.getIndexType()}
             info.append(content)
-            # print('\t* CompositeDescription:', content)
             if d.isContentCompositeDescription():
                 for k in range(d.size()):
                     info = cls._parse_description(
@@ -228,7 +227,6 @@ class NumlParser(object):
         ):
             content = {d.getId(): d.getValueType()}
             info.append(content)
-            # print('\t* AtomicDescription:', content)
 
         elif (
             library == cls.Library.LIBNUML
@@ -245,7 +243,6 @@ class NumlParser(object):
                 valueTypes.append(atomic.getValueType())
 
             info.append(valueTypes)
-            # print('\t* TupleDescription:', valueTypes)
 
         else:
             raise NotImplementedError("Type code: {}".format(type_code))
@@ -270,7 +267,6 @@ class NumlParser(object):
             entry = []
 
         type_code = d.getTypeCode()
-        # print('typecode:', type_code)
 
         if (
             library == cls.Library.LIBNUML and type_code == libnuml.NUML_COMPOSITEVALUE
@@ -281,7 +277,6 @@ class NumlParser(object):
 
             indexValue = d.getIndexValue()
             entry.append(indexValue)
-            # print('\t* CompositeValue:', indexValue)
 
             if d.isContentCompositeValue():
                 for k in range(d.size()):
@@ -303,7 +298,6 @@ class NumlParser(object):
             entry.append(value)
             # entry finished, we are appending
             data.append(entry)
-            # print('\t* AtomicValue:', value)
 
         elif (library == cls.Library.LIBNUML and type_code == libnuml.NUML_TUPLE) or (
             library == cls.Library.LIBSEDML and type_code == libsedml.NUML_TUPLE
@@ -316,7 +310,6 @@ class NumlParser(object):
                 values.append(atomic.getDoubleValue())
 
             data.append(values)
-            # print('\t* TupleDescription:', values)
 
         else:
             raise NotImplementedError

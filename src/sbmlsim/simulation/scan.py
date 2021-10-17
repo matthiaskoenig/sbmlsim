@@ -137,11 +137,6 @@ class ScanSim(AbstractSim):
 
             simulations.append(sim_new)
 
-        # print(simulations)
-        # for sim in simulations:
-        #    print("-" * 80)
-        #    print(sim)
-
         return indices, simulations
 
 

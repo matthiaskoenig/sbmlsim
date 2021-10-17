@@ -89,7 +89,6 @@ class MatplotlibFigureSerializer(object):
         subplot: SubPlot
         for subplot in figure.subplots:
             plot = subplot.plot
-            # print(plot.__repr__())
             xax: Axis = plot.xaxis if plot.xaxis else Axis()
             yax: Axis = plot.yaxis if plot.yaxis else Axis()
             yax_right = plot.yaxis_right
@@ -207,12 +206,6 @@ class MatplotlibFigureSerializer(object):
                         )
 
                     # FIXME: !!!
-
-                    # print("xshape")
-                    # print("x", x)
-                    # print("y", y)
-                    # print("x_data", x_data)
-                    # print("y_data", y_data)
 
                     kwargs: Dict[str, Any] = {}
                     if curve.style:

@@ -7,6 +7,7 @@ import pandas as pd
 from matplotlib import pyplot as plt
 from pyDOE import lhs
 from sbmlutils import log
+from sbmlutils.console import console
 
 # FIXME: make this independent of the fit parameters
 from sbmlsim.fit.objects import FitParameter
@@ -55,7 +56,6 @@ def create_samples(
     if sampling in {SamplingType.UNIFORM, SamplingType.LOGUNIFORM}:
         # samples = np.random.uniform(0, 1, size=size)
         x = np.random.rand(size, len(parameters))
-        # print(type(x), x.shape)
 
     elif sampling in {SamplingType.UNIFORM_LHS, SamplingType.LOGUNIFORM_LHS}:
         # Latin-Hypercube sampling
@@ -92,7 +92,6 @@ def create_samples(
             # parameter values in real space
             x[:, k] = np.power(10, values_log)
 
-    # print(type(x), x.shape)
     return pd.DataFrame(x, columns=[p.pid for p in parameters])
 
 
@@ -146,13 +145,13 @@ def example_sampling():
         SamplingType.LOGUNIFORM,
         SamplingType.LOGUNIFORM_LHS,
     ]:
-        print(f"* {sampling.name} *")
+        console.log(f"* {sampling.name} *")
         df = create_samples(
             parameters=parameters, size=10, sampling=sampling, seed=1234
         )
         samples[sampling.name] = df
 
-    print(samples)
+    console.log(samples)
     plot_samples(samples)
 
 

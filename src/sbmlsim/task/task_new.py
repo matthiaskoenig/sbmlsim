@@ -1,6 +1,7 @@
 # TODO: SED-ML
 
 # FIXME: add discard flag on subtask; handle via outputEndTime
+# TODO: use pydantic whereever possible
 
 #
 """
@@ -21,8 +22,6 @@ Then, for each SubTask child of the RepeatedTask, in the order specified by its 
 
 from dataclasses import dataclass
 from typing import List
-
-import roadrunner
 
 from sbmlsim.simulation import Dimension
 

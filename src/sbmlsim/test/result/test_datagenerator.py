@@ -1,4 +1,4 @@
-from sbmlsim.result.datagenerator_example import example
+from sbmlsim.examples.datagenerator_example import example
 
 
 def test_datagenerator_example():

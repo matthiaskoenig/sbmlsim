@@ -44,7 +44,6 @@ def example_scan() -> XResult:
 def example() -> None:
     """Run example for scan functionality."""
     xres = example_scan()
-    # print(xres)
 
     dgen_first = DataGeneratorIndexingFunction(dimension="_time", index=0)
     dgen_last = DataGeneratorIndexingFunction(dimension="_time", index=-1)

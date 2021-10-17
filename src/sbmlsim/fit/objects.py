@@ -7,6 +7,7 @@ from typing import Any, Callable, Dict, Iterable, List, Optional, Sized, Union
 
 import numpy as np
 from sbmlutils import log
+from sbmlutils.console import console
 
 from sbmlsim.data import Data
 from sbmlsim.serialization import to_json
@@ -391,7 +392,7 @@ class FitData:
 
     def __str__(self) -> str:
         """Get string."""
-        return f"FitData"  # FIXME
+        return f"FitData({self.experiment}: dataset={self.dset_id} task={self.task_id} function={self.function})"
 
     def is_task(self) -> bool:
         """Check if FitData comes from a task (simulation)."""
@@ -425,6 +426,7 @@ class FitData:
         """
         result = FitDataInitialized()
         for key in ["x", "y", "x_sd", "x_se", "y_sd", "y_se"]:
+            console.log(f"FitData.get_data: {self}, key={key}")
             d = getattr(self, key)
             if d is not None:
                 setattr(result, key, d.get_data(self.experiment))

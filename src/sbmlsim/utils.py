@@ -29,7 +29,7 @@ def md5_for_path(path):
         return hashlib.md5(data).hexdigest()
 
 
-def deprecated(func):
+def deprecated(function):
     """Get decorator for deprecation.
 
     This is a decorator which can be used to mark functions
@@ -37,35 +37,36 @@ def deprecated(func):
     when the function is used.
     """
 
-    @functools.wraps(func)
+    @functools.wraps(function)
     def new_func(*args, **kwargs):
         warnings.simplefilter("always", DeprecationWarning)  # turn off filter
         warnings.warn(
-            "Call to deprecated function {}.".format(func.__name__),
+            "Call to deprecated function {}.".format(function.__name__),
             category=DeprecationWarning,
             stacklevel=2,
         )
         warnings.simplefilter("default", DeprecationWarning)  # reset filter
-        return func(*args, **kwargs)
+        return function(*args, **kwargs)
 
     return new_func
 
 
-def timeit(method):
+def timeit(function):
     """Time function via timing decorator."""
 
+    @functools.wraps(function)
     def timed(*args, **kw):
         ts = time.time()
-        result = method(*args, **kw)
+        result = function(*args, **kw)
         te = time.time()
 
         if "log_time" in kw:
-            name = kw.get("log_name", method.__name__.upper())
+            name = kw.get("log_name", function.__name__.upper())
             kw["log_time"][name] = int((te - ts) * 1000)
         else:
             logger.info(
                 "{:20}  {:8.4f} [s]".format(
-                    f"{method.__name__} <{os.getpid()}>", (te - ts)
+                    f"{function.__name__} <{os.getpid()}>", (te - ts)
                 )
             )
         return result
@@ -73,7 +74,7 @@ def timeit(method):
     return timed
 
 
-def function_name():
+def function_name() -> str:
     """Get current function name."""
     frame = inspect.currentframe()
     return inspect.getframeinfo(frame).function

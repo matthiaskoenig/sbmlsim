@@ -152,7 +152,6 @@ class ExperimentReport:
         if report_type in [self.ReportType.HTML, self.ReportType.MARKDOWN]:
             # report for individual simulation experiment
             for exp_id, context in self.data_dict.items():
-                # pprint(context)
                 write_report(
                     filename=f"{exp_id}/{exp_id}",
                     context=context,
@@ -169,12 +168,10 @@ class ExperimentReport:
         # for latex report the pngs have to be collected with correct paths
         # adapt context
         if report_type == self.ReportType.LATEX:
-            # pprint(context)
             if f_filter_context:
                 # filter subset of figures
                 # FIXME: more robust
                 f_filter_context(self.data_dict)
-            # pprint(context)
 
             # collect and copy figures
 

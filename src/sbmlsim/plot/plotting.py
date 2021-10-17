@@ -1043,18 +1043,6 @@ class Plot(BasePlotObject):
         if curve.sid is None:
             curve.sid = f"{self.sid}_curve{len(self.curves)}"
 
-        # for data in [
-        #     curve.x,
-        #     curve.y,
-        #     curve.xerr,
-        #     curve.yerr,
-        # ]:
-        #     # FIXME: register at the end after figures !
-        #     if data is not None:
-        #         if data.sid not in self.experiment._data:
-        #             print(f"Register: {data.sid} in curve")
-        #             self.experiment._data[data.sid] = data
-
         self._set_order(curve)
         self.curves.append(curve)
 
@@ -1065,17 +1053,6 @@ class Plot(BasePlotObject):
         """
         if area.sid is None:
             area.sid = f"{self.sid}_area{len(self.areas)}"
-
-        # FIXME: register at the end of figures
-        # for data in [
-        #     area.x,
-        #     area.yfrom,
-        #     area.yto,
-        # ]:
-        #     if data is not None:
-        #         if data.sid not in self.experiment._data:
-        #             print(f"Register: {data.sid} in curve")
-        #             self.experiment._data[data.sid] = data
 
         self._set_order(area)
         self.areas.append(area)

@@ -11,6 +11,7 @@ import numpy as np
 import pandas as pd
 import scipy
 from sbmlutils import log
+from sbmlutils.console import console
 from scipy import interpolate, optimize
 
 from sbmlsim.data import Data
@@ -184,7 +185,7 @@ class OptimizationProblem(ObjectJSONEncoder):
         info = "\n".join(all_info)
 
         if print_output:
-            print(info)
+            console.log(info)
         if path:
             with open(path, "w") as f:
                 f.write(info)
@@ -254,8 +255,10 @@ class OptimizationProblem(ObjectJSONEncoder):
             selections_set: Set[str] = set()
             for d in sim_experiment._data.values():  # type: Data
                 if d.is_task():
-                    selections_set.add(d.index)
+                    selections_set.add(d.selection)
             selections: List[str] = list(selections_set)
+            console.log("FitExperiment:", fit_experiment)
+            console.log("Selections", selections)
 
             # use all fit_mappings if None are provided
             if fit_experiment.mappings is None:
@@ -495,16 +498,13 @@ class OptimizationProblem(ObjectJSONEncoder):
 
                 # debug info
                 if False:
-                    print("-" * 80)
-                    print(f"{fit_experiment}.{mapping_id}")
-                    print(f"weight: {weight}")
-                    print(f"weight_curve: {weight_curve}")
-                    print(f"weight_points: {weight_points}")
-                    print(f"y_ref: {y_ref}")
-                    print(f"y_ref_err: {y_ref_err}")
-
-            # Print mappings with calculated weights
-            # print(fit_experiment)
+                    console.log("-" * 80)
+                    console.log(f"{fit_experiment}.{mapping_id}")
+                    console.log(f"weight: {weight}")
+                    console.log(f"weight_curve: {weight_curve}")
+                    console.log(f"weight_points: {weight_points}")
+                    console.log(f"y_ref: {y_ref}")
+                    console.log(f"y_ref_err: {y_ref_err}")
 
         # set simulator instance with arguments
         simulator = SimulatorSerial(
@@ -656,14 +656,14 @@ class OptimizationProblem(ObjectJSONEncoder):
     def residuals(self, xlog: np.ndarray, complete_data=False):
         """Calculate residuals for given parameter vector.
 
+        Optimization is performed in logarithmic parameter space to
+        account for xtol in largely varying parameters.
+        see https://github.com/scipy/scipy/issues/7632
+
         :param xlog: logarithmic parameter vector
         :param complete_data: boolean flag to return additional information
         :return: vector of weighted residuals
         """
-        # Necessary to work in logarithmic parameter space to account for xtol
-        # in largely varying parameters
-        # see https://github.com/scipy/scipy/issues/7632
-        # print(f"\t{xlog}")
         x = np.power(10, xlog)
 
         # FIXME: handle parts better
@@ -684,8 +684,6 @@ class OptimizationProblem(ObjectJSONEncoder):
 
             # set model in simulator
             simulator.set_model(model=self.models[k])
-
-            # print(simulator.r.integrator)
             simulator.set_timecourse_selections(selections=self.selections[k])
 
             # FIXME: normalize simulations and parameters once outside of loop

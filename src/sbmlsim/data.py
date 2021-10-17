@@ -236,7 +236,6 @@ class Data(object):
             # units match the symbols
             self.unit = xres.uinfo[self.selection]
             # x = xres.dim_mean(self.index)
-            print(xres)
             x = xres[self.selection].values * xres.uinfo.ureg(self.unit)
 
         elif self.dtype == Data.Types.FUNCTION:
@@ -368,7 +367,6 @@ class DataSet(pd.DataFrame):
                     )
                 elif len(units) == 0:
                     logger.error(f"Column '{key}' units are missing: '{units}'")
-                    print(df.head())
                 item_key = key[0:-5]
                 if item_key not in df.columns:
                     logger.error(

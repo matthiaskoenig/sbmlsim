@@ -1,14 +1,17 @@
 """Abstract base simulation."""
 import abc
 from abc import ABC
-from typing import Any, Dict, Iterable, List
+from typing import Dict, List
 
-import numpy as np
+from sbmlutils import log
 
 from sbmlsim.simulation.algorithm import Algorithm
 from sbmlsim.simulation.base import BaseObject
 from sbmlsim.simulation.range import Dimension
 from sbmlsim.units import UnitsInformation
+
+
+logger = log.get_logger(__name__)
 
 
 class Simulation(BaseObject):
@@ -134,15 +137,3 @@ class AbstractSim(ABC):
             "type": self.__class__.__name__,
         }
         return d
-
-
-if __name__ == "__main__":
-    tc = UniformTimeCourse(
-        sid="tc1",
-        name="Timecourse 1",
-        start=0,
-        end=100,
-        steps=200,
-        algorithm=Algorithm(kisao="cvode"),
-    )
-    print(tc)

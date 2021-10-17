@@ -8,6 +8,7 @@ from typing import Dict, Iterable
 import libsbml
 import numpy as np
 from sbmlutils import log
+from sbmlutils.console import console
 
 from sbmlsim.model import RoadrunnerSBMLModel
 from sbmlsim.simulation import Dimension, ScanSim, TimecourseSim
@@ -286,14 +287,13 @@ class ModelSensitivity(object):
 
 
 if __name__ == "__main__":
-    from pprint import pprint
 
     from sbmlsim.test import MODEL_REPRESSILATOR
 
-    print("Loading model")
+    console.print("Loading model")
     model = RoadrunnerSBMLModel(MODEL_REPRESSILATOR)
 
-    print("Reference dict")
+    console.print("Reference dict")
     p_ref = ModelSensitivity.reference_dict(
         model=model, stype=SensitivityType.PARAMETER_SENSITIVITY
     )
@@ -301,11 +301,11 @@ if __name__ == "__main__":
         model=model, stype=SensitivityType.SPECIES_SENSITIVITY
     )
 
-    print("Apply changes")
-    pprint(p_ref)
-    pprint(ModelSensitivity.apply_change_to_dict(p_ref, change=0.1))
-    pprint(ModelSensitivity.apply_change_to_dict(p_ref, change=-0.1))
+    console.print("Apply changes")
+    console.print(p_ref)
+    console.print(ModelSensitivity.apply_change_to_dict(p_ref, change=0.1))
+    console.print(ModelSensitivity.apply_change_to_dict(p_ref, change=-0.1))
 
-    pprint(s_ref)
-    pprint(ModelSensitivity.apply_change_to_dict(s_ref, change=0.1))
-    pprint(ModelSensitivity.apply_change_to_dict(s_ref, change=-0.1))
+    console.print(s_ref)
+    console.print(ModelSensitivity.apply_change_to_dict(s_ref, change=0.1))
+    console.print(ModelSensitivity.apply_change_to_dict(s_ref, change=-0.1))
