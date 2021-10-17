@@ -109,10 +109,6 @@ class SimulatorWorker:
             # run simulation
             integrator = self.r.integrator
             # FIXME: support simulation by times
-            if tc.times:
-
-                s = self.r.simulate()
-
             if integrator.getValue("variable_step_size"):
                 s = self.r.simulate(start=tc.start, end=tc.end)
             else:

@@ -2,6 +2,7 @@
 
 from rich import print
 import roadrunner
+from sbmlsim.utils import timeit
 
 from sbmlutils.test import REPRESSILATOR_SBML
 
@@ -22,4 +23,9 @@ print(s1)
 print("-" * 80)
 print(s2)
 print("-" * 80)
+
+
+def simulate_times():
+    r.resetToOrigin()
+    r.simulate(times=[0, 10.98, 50.12])
 
