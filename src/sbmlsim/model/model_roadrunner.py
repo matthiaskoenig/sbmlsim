@@ -125,7 +125,6 @@ class RoadrunnerSBMLModel(AbstractModel):
         # load model
         if source.is_path():
             if state_path and state_path.exists():
-                # logging.info(f"Load model from state: '{state_path}'")
                 r = roadrunner.RoadRunner()
                 r.loadState(str(state_path))
             else:

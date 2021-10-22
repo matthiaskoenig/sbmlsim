@@ -3,18 +3,19 @@
 Using sympy to evaluate the expressions.
 """
 from typing import Any, Dict, Set, Tuple
-
-import libsedml
 from sbmlutils import log
+import libsedml
 from sympy import Symbol, lambdify, sympify
+
+logger = log.get_logger(__name__)
 
 
 def formula_to_astnode(formula: str) -> libsedml.ASTNode:
     """Parse ASTNode from formula."""
     astnode = libsedml.parseL3Formula(formula)
     if not astnode:
-        logging.error("Formula could not be parsed: '{}'".format(formula))
-        logging.error(libsedml.getLastParseL3Error())
+        logger.error("Formula could not be parsed: '{}'".format(formula))
+        logger.error(libsedml.getLastParseL3Error())
     return astnode
 
 

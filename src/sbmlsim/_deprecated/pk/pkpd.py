@@ -50,7 +50,7 @@ def _set_initial_values(
             rkey = f"[{key}]"
 
         if "urine" in rkey:
-            logging.debug("urinary values are not set")
+            logger.debug("urinary values are not set")
             continue
 
         changeset[rkey] = value
