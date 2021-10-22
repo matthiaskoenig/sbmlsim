@@ -392,13 +392,16 @@ class DataSet(pd.DataFrame):
                         # rename the sd and se columns to mean_sd and mean_se
                         if key == "mean":
                             for err_key in ["sd", "se"]:
+                                if err_key not in df.columns and f"mean_{err_key}" in df.columns:
+                                    df[err_key] = df[f"mean_{err_key}"]
+
                                 if f"mean_{err_key}" in df.columns:
                                     # remove existing mean_sd column
                                     del df[f"mean_{err_key}"]
-                                    logger.debug(
+                                    logger.warning(
                                         f"Removing existing column: 'mean_{err_key}' "
-                                        f"from DataSet:\n"
-                                        f"{df.head(3)}"
+                                        f"from DataSet. Column should be named: "
+                                        f"'{err_key}'"
                                     )
 
                                 df.rename(
