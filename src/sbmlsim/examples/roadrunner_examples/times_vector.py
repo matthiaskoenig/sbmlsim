@@ -25,7 +25,12 @@ print(s2)
 print("-" * 80)
 
 
-def simulate_times():
+@timeit
+def simulate_times(r: roadrunner.RoadRunner):
     r.resetToOrigin()
     r.simulate(times=[0, 10.98, 50.12])
 
+@timeit
+def simulate_steps(r):
+    r.resetToOrigin()
+    r.simulate(times=[0, 10.98, 50.12, 100.0])

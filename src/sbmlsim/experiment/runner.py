@@ -39,6 +39,11 @@ class ExperimentRunner(object):
         ureg: UnitRegistry = None,  # FIXME: is this needed on ExperimentRunner?
         **kwargs,
     ):
+        """Initialize the runner.
+
+        FIXME: document arguments for the solver.
+
+        """
 
         # single UnitRegistry per runner
         if not ureg:

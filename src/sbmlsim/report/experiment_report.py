@@ -5,10 +5,11 @@ import shutil
 import sys
 from enum import Enum
 from pathlib import Path
-from typing import Dict
+from typing import Dict, Optional
 
 import jinja2
 from sbmlutils import log
+from sbmlutils.console import console
 
 from sbmlsim import RESOURCES_DIR, __version__
 from sbmlsim.experiment import ExperimentResult, SimulationExperiment
@@ -113,11 +114,11 @@ class ExperimentReport:
     def create_report(
         self,
         output_path: Path,
-        filename=None,
+        filename: Optional[str] = None,
         report_type: ReportType = ReportType.HTML,
-        f_filter_context=None,
+        f_filter_context: Optional[Dict] = None,
         **kwargs,
-    ):
+    ) -> Path:
         """Create report of SimulationExperiments.
 
         Processes ExperimentResults to generate overall report.
@@ -133,14 +134,15 @@ class ExperimentReport:
             lstrip_blocks=True,
         )
 
-        def write_report(filename: str, context: Dict, template_str: str):
+        def write_report(filename: str, context: Dict, template_str: str) -> Path:
             """Write the report file from given context and template."""
             template = env.get_template(template_str)
             text = template.render(context)
             suffix = template_str.split(".")[-1]
-            out_file = output_path / f"{filename}.{suffix}"
+            out_file: Path = output_path / f"{filename}.{suffix}"
             with open(out_file, "w") as f_out:
                 f_out.write(text)
+            return out_file
 
         if report_type == self.ReportType.HTML:
             suffix = "html"
@@ -186,4 +188,10 @@ class ExperimentReport:
                         str(figure_base_path / f"{fig_path}.png"),
                     )
 
-        write_report(filename=filename, context=context, template_str=f"index.{suffix}")
+        output_path = write_report(
+            filename=filename,
+            context=context,
+            template_str=f"index.{suffix}"
+        )
+        logger.info(f"Report created: 'file://{output_path}'")
+        return output_path
