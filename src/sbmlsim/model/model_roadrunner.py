@@ -216,7 +216,7 @@ class RoadrunnerSBMLModel(AbstractModel):
                 # tolerances
                 value = min(value, value * min(r.model.getCompartmentVolumes()))
             integrator.setValue(key, value)
-            logger.debug(f"Integrator setting: '{key} = {value}'")
+            logger.info(f"Integrator setting: '{key} = {value}'")
         return integrator
 
     @staticmethod
@@ -236,15 +236,15 @@ class RoadrunnerSBMLModel(AbstractModel):
 
         :return: pandas DataFrame
         """
-        r_model = r.model  # type: roadrunner.ExecutableModel
-        doc = libsbml.readSBMLFromString(
+        r_model: roadrunner.ExecutableModel = r.model
+        doc: libsbml.SBMLDocument = libsbml.readSBMLFromString(
             r.getCurrentSBML()
-        )  # type: libsbml.SBMLDocument
-        model = doc.getModel()  # type: libsbml.Model
+        )
+        model: libsbml.Model = doc.getModel()
         sids = r_model.getGlobalParameterIds()
-        parameters = [
+        parameters: List[libsbml.Parameter] = [
             model.getParameter(sid) for sid in sids
-        ]  # type: List[libsbml.Parameter]
+        ]
         data = {
             "sid": sids,
             "value": r_model.getGlobalParameterValues(),
@@ -261,14 +261,14 @@ class RoadrunnerSBMLModel(AbstractModel):
 
         :return: pandas DataFrame
         """
-        r_model = r.model  # type: roadrunner.ExecutableModel
+        r_model: roadrunner.ExecutableModel = r.model
         sbml_str = r.getCurrentSBML()
 
-        doc = libsbml.readSBMLFromString(sbml_str)  # type: libsbml.SBMLDocument
-        model = doc.getModel()  # type: libsbml.Model
+        doc: libsbml.SBMLDocument = libsbml.readSBMLFromString(sbml_str)
+        model: libsbml.Model = doc.getModel()
 
         sids = r_model.getFloatingSpeciesIds() + r_model.getBoundarySpeciesIds()
-        species = [model.getSpecies(sid) for sid in sids]  # type: List[libsbml.Species]
+        species: List[libsbml.Species] = [model.getSpecies(sid) for sid in sids]
 
         data = {
             "sid": sids,
