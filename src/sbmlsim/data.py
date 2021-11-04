@@ -433,7 +433,7 @@ class DataSet(pd.DataFrame):
         return dset
 
     def unit_conversion(self, key, factor: Quantity) -> None:
-        """Convert the units of the given key in the dataset.
+        """Convert the units of the given key in the dataset via `key * factor`.
 
         Changes values in place in the DataSet.
 
