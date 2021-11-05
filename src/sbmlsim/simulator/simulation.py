@@ -72,11 +72,11 @@ class SimulatorWorker:
 
                 # [2] re-evaluate initial assignments
                 # https://github.com/sys-bio/roadrunner/issues/710
-                logger.debug("Reevaluate initial conditions")
-                # FIXME: support initial model changes
+                # logger.debug("Reevaluate initial conditions")
+                # FIXME/TODO: support initial model changes
                 # self.r.resetAll()
-                self.r.reset(SelectionRecord.DEPENDENT_FLOATING_AMOUNT)
-                self.r.reset(SelectionRecord.DEPENDENT_INITIAL_GLOBAL_PARAMETER)
+                # self.r.reset(SelectionRecord.DEPENDENT_FLOATING_AMOUNT)
+                # self.r.reset(SelectionRecord.DEPENDENT_INITIAL_GLOBAL_PARAMETER)
 
             # [3] apply model manipulations
             # model manipulations are applied to model
@@ -94,12 +94,14 @@ class SimulatorWorker:
                         )
 
             # [4] apply changes
+            if tc.changes:
+                logger.debug("Applying simulation changes")
             for key, item in tc.changes.items():
 
                 # FIXME: handle concentrations/amounts/default
                 # TODO: Figure out the hasOnlySubstanceUnit flag! (roadrunner)
                 # r: roadrunner.ExecutableModel = self.r
-                logger.debug("Applying simulation changes")
+
                 try:
                     self.r[key] = float(item.magnitude)
                 except AttributeError:

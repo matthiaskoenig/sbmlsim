@@ -73,6 +73,8 @@ def get_species_keys(skey, species_ids):
         # use regular expression to find ids
         # This pattern is not very robust !!! FIXME (e.g. blood vs. plasma)
         pattern = r"^[AC][a-z]+(_plasma)*\_{}$".format(skey)
+        # FIXME
+
         match = re.search(pattern, species_id)
         if match:
             # print("match:", species_id)

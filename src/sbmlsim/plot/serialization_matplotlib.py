@@ -43,7 +43,7 @@ def interp(x, xp, fp):
     return y
 
 
-class MatplotlibFigureSerializer(object):
+class MatplotlibFigureSerializer:
     """Serializer for figures to matplotlib."""
 
     @classmethod
