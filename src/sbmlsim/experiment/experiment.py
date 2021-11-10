@@ -105,19 +105,23 @@ class SimulationExperiment:
         Certain objects cannot be serialized and must be initialized.
         :return:
         """
-        # initialized from the outside
-        # self._models: Dict[str, AbstractModel] = self.models()
-        self._datasets.update(self.datasets())
-        self._simulations.update(self.simulations())
-        self._tasks.update(self.tasks())
-        self._data.update(self.data())
-        self._figures.update(self.figures())
-        self._reports.update(self.reports())
-        self._fit_mappings.update(self.fit_mappings())
+        try:
+            # initialized from the outside
+            # self._models: Dict[str, AbstractModel] = self.models()
+            self._datasets.update(self.datasets())
+            self._simulations.update(self.simulations())
+            self._tasks.update(self.tasks())
+            self._data.update(self.data())
+            self._figures.update(self.figures())
+            self._reports.update(self.reports())
+            self._fit_mappings.update(self.fit_mappings())
 
-        # validation of information
-        self._check_keys()
-        self._check_types()
+            # validation of information
+            self._check_keys()
+            self._check_types()
+        except Exception as err:
+            logger.error(f"Problem initializing '{self.__class__.__name__}'")
+            raise err
 
     def __str__(self) -> str:
         """Get string representation."""
