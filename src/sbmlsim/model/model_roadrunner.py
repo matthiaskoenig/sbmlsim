@@ -218,7 +218,7 @@ class RoadrunnerSBMLModel(AbstractModel):
                 # tolerances
                 value = min(value, value * min(r.model.getCompartmentVolumes()))
             integrator.setValue(key, value)
-            logger.info(f"Integrator setting: '{key} = {value}'")
+            logger.debug(f"Integrator setting: '{key} = {value}'")
         return integrator
 
     @staticmethod

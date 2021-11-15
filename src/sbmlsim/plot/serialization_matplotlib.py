@@ -5,6 +5,7 @@ from typing import Any, Dict, List, Optional
 import numpy as np
 from matplotlib import pyplot as plt
 from matplotlib.figure import Figure as FigureMPL
+from matplotlib.axis import Axis as AxisMPL
 from matplotlib.gridspec import GridSpec
 from sbmlutils import log
 
