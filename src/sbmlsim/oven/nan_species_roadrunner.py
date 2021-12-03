@@ -6,7 +6,7 @@ r: roadrunner.RoadRunner = roadrunner.RoadRunner("nan_species.xml")
 # numerically integrated
 r.setValue("Vext", 1.0)
 
-# setting the inital value
+# setting the initial value
 r.setValue("init(Vext)", 1.0)
 r.resetAll()
 
