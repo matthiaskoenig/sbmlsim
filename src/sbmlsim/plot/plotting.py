@@ -1156,7 +1156,7 @@ class Plot(BasePlotObject):
             )
             label = None
         elif label == "__yid__":
-            logger.warning(
+            logger.debug(
                 "No label provided on curve, using default label 'yid'. "
                 "To not plot a label use 'label=None'"
             )

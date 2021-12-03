@@ -423,19 +423,25 @@ class MatplotlibFigureSerializer:
 
             if plot.legend:
                 if len(axes) == 1:
-                    if figure.legend_position == "inside":
-                        ax1.legend(
-                            fontsize=Figure.legend_fontsize, loc=Figure.legend_loc
-                        )
-                    elif figure.legend_position == "outside":
-                        ax1.legend(
-                            fontsize=Figure.legend_fontsize,
-                            loc="upper left",
-                            bbox_to_anchor=(1.04, 1),
-                        )
+                    handles1, _ = ax1.get_legend_handles_labels()
+                    if handles1:
+                        if figure.legend_position == "inside":
+                            ax1.legend(
+                                fontsize=Figure.legend_fontsize, loc=Figure.legend_loc
+                            )
+                        elif figure.legend_position == "outside":
+                            ax1.legend(
+                                fontsize=Figure.legend_fontsize,
+                                loc="upper left",
+                                bbox_to_anchor=(1.04, 1),
+                            )
                 elif len(axes) == 2:
-                    ax1.legend(fontsize=Figure.legend_fontsize, loc="upper left")
-                    ax2.legend(fontsize=Figure.legend_fontsize, loc="upper right")
+                    handles1, _ = ax1.get_legend_handles_labels()
+                    if handles1:
+                        ax1.legend(fontsize=Figure.legend_fontsize, loc="upper left")
+                    handles2, _ = ax2.get_legend_handles_labels()
+                    if handles2:
+                        ax2.legend(fontsize=Figure.legend_fontsize, loc="upper right")
 
         wspace = figure.fig_subplots_wspace
         hspace = figure.fig_subplots_hspace

@@ -1,6 +1,8 @@
 """Classes for running simulations with SBML models."""
+from typing import Optional
+
 import pandas as pd
-from roadrunner import SelectionRecord
+import roadrunner
 from sbmlutils import log
 
 from sbmlsim.model import ModelChange
@@ -19,7 +21,7 @@ class SimulatorWorker:
 
     def __init__(self):
         """Init placeholder."""
-        self.r = None
+        self.r: Optional[roadrunner.RoadRunner] = None
 
     def _timecourse(self, simulation: TimecourseSim) -> pd.DataFrame:
         """Timecourse simulation.
@@ -107,6 +109,12 @@ class SimulatorWorker:
                 except AttributeError:
                     self.r[key] = float(item)
                 logger.debug(f"\t{key} = {item}")
+
+            # debug model state
+            # FIXME: report issue
+            # sbml_str = self.r.getCurrentSBML()
+            # with open("/home/mkoenig/git/pkdb_models/pkdb_models/models/dextromethorphan/results/debug/test.xml", "w") as f_out:
+            #     f_out.write(sbml_str)
 
             # run simulation
             integrator = self.r.integrator
