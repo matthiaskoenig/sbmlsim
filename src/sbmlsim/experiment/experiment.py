@@ -413,14 +413,14 @@ class SimulationExperiment:
                 self.save_results(output_path)
 
         # create figures
-        mpl_figures = self.create_mpl_figures()
+        self._mpl_figures = self.create_mpl_figures()
         if show_figures:
-            self.show_mpl_figures(mpl_figures=mpl_figures)
+            self.show_mpl_figures(mpl_figures=self._mpl_figures)
         if output_path:
             self.save_mpl_figures(
-                output_path, mpl_figures=mpl_figures, figure_formats=figure_formats
+                output_path, mpl_figures=self._mpl_figures, figure_formats=figure_formats
             )
-        self.close_mpl_figures(mpl_figures=mpl_figures)
+        self.close_mpl_figures(mpl_figures=self._mpl_figures)
 
         # only perform serialization after data evaluation (to access units)
         if output_path:
