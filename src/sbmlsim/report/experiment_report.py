@@ -70,7 +70,7 @@ class ReportResults:
 
         # parse meta data for figures (mapping based on figure keys)
         figures = {
-            key: rel_path / f"{exp_id}_{key}" for key in experiment._figures.keys()
+            key: rel_path / f"{exp_id}_{key}" for key in experiment._mpl_figures.keys()
         }
 
         self.data[exp_id] = {
