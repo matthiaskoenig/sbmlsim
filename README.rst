@@ -87,7 +87,8 @@ Matthias König is supported by the Federal Ministry of Education and Research (
 within the research network Systems Medicine of the Liver (**LiSyM**, grant number 031L0054) 
 and by the German Research Foundation (DFG) within the Research Unit Programme FOR 5151 
 "`QuaLiPerF <https://qualiperf.de>`__ (Quantifying Liver Perfusion-Function Relationship in Complex Resection - 
-A Systems Medicine Approach)" by grant number 436883643. Matthias König has received funding from the EOSCsecretariat.eu which has received funding 
+A Systems Medicine Approach)" by grant number 436883643 and by grant number 
+465194077 (Priority Programme SPP 2311, Subproject SimLivA). Matthias König has received funding from the EOSCsecretariat.eu which has received funding 
 from the European Union's Horizon Programme call H2020-INFRAEOSC-05-2018-2019, grant Agreement number 831644.
 
 
@@ -121,4 +122,4 @@ To install for development use::
 
     pip install -e .[development]
     
-© 2019-2021 Matthias König
+© 2019-2022 Matthias König

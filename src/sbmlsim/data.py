@@ -320,9 +320,9 @@ class DataSet(pd.DataFrame):
 
     def __repr__(self) -> str:
         """Return DataFrame with all columns."""
-        pd.set_option("max_columns", None)
+        pd.set_option("display.max_columns", None)
         s = super().__repr__()
-        pd.reset_option("max_columns")
+        pd.reset_option("display.max_columns")
         return str(s)
 
     @classmethod
