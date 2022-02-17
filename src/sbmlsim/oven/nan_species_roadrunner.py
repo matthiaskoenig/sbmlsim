@@ -6,6 +6,10 @@ r: roadrunner.RoadRunner = roadrunner.RoadRunner("nan_species.xml")
 # numerically integrated
 r.setValue("Vext", 1.0)
 
+# setting the inital value
+r.setValue("init(Vext)", 1.0)
+r.resetAll()
+
 # Instead of `initialConcentration="0.0" defined in the model there is an
 # incorrect `initialAmount="NaN"` on the `dex_ext` species probably due to some
 # pre-processing steps of the model
