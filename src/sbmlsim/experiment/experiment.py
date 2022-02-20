@@ -388,6 +388,7 @@ class SimulationExperiment:
         """Execute given experiment and store results."""
 
         # run simulations (sets self._results)
+        logger.info("_run_tasks")
         self._run_tasks(
             simulator, reduced_selections=reduced_selections
         )
@@ -450,8 +451,10 @@ class SimulationExperiment:
 
             # load model in simulator
             model: AbstractModel = self._models[model_id]
+            logger.info("set model")
             simulator.set_model(model=model)
 
+            logger.info("set selections")
             if reduced_selections:
                 # set selections based on data
                 selections = {"time"}
@@ -468,6 +471,7 @@ class SimulationExperiment:
                 # use the complete selection
                 simulator.set_timecourse_selections(selections=None)
 
+            logger.info("normalize changes")
             # normalize model changes (these must be set in simulation!)
             model.normalize(uinfo=model.uinfo)
 
@@ -486,6 +490,7 @@ class SimulationExperiment:
                 sim = deepcopy(sim)
                 sim.add_model_changes(model.changes)
 
+                logger.info("running timecourse simulation")
                 if isinstance(sim, TimecourseSim):
                     self._results[task_key] = simulator.run_timecourse(sim)
                 elif isinstance(sim, ScanSim):
