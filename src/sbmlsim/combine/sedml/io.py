@@ -8,6 +8,7 @@ from typing import Dict, Optional, Tuple, Union
 from xml.etree import ElementTree
 
 import libsedml
+from pymetadata import omex as pyomex
 from sbmlutils import log
 
 
@@ -142,30 +143,21 @@ class SEDMLReader:
 
                 # in case of an archive a working directory is created
                 # in which the files are extracted
+                omex = pyomex.Omex.from_omex(omex_path=file_path)
+                sedml_entries = omex.entries_by_format(format_key="sed-ml")
+                for entry in sedml_entries:
 
-                logger.debug(f"extracting archive to '{self.working_dir}'")
-
-                # extract archive to working directory
-                if self.working_dir is None:
-                    raise ValueError(
-                        "working_dir required for extracting COMBINE archive."
-                    )
-                importlib.reload(libcombine)
-                omex = Omex(omex_path=file_path, working_dir=self.working_dir)
-                omex.extract()
-                locations = omex.locations_by_format("sed-ml")
-                for location, master in locations:
-                    print("SED-ML location: ", location)
-                    if master:
-                        sedml_path = self.working_dir / location
+                    logger.info("SED-ML location: ", entry.location)
+                    if entry.master:
+                        sedml_path = omex.get_path(entry.location)
                         break
                 else:
                     logger.error(
                         f"No SED-ML file with master flag found in archive: "
                         f"'{file_path}'. Using first file."
                     )
-                    if len(locations) > 0:
-                        sedml_path = self.working_dir / locations[0][0]
+                    if len(sedml_entries) > 0:
+                        sedml_path = omex.get_path(sedml_entries[0].location)
                     else:
                         raise ValueError("No SED-ML in archive.")
 
