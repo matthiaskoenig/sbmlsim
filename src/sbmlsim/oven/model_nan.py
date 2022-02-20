@@ -1,4 +1,4 @@
-"""Dextromethorphan intestinal model."""
+"""Model with NaN example.."""
 from pathlib import Path
 
 from sbmlutils.cytoscape import visualize_sbml
