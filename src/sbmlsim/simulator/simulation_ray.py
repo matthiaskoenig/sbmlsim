@@ -1,5 +1,4 @@
 """Parallel simulation using ray."""
-
 from pathlib import Path
 from typing import Iterator, List
 
