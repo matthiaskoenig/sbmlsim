@@ -7,11 +7,8 @@ from pathlib import Path
 from typing import Dict, Optional, Tuple, Union
 from xml.etree import ElementTree
 
-import libcombine
 import libsedml
 from sbmlutils import log
-
-from sbmlsim.combine.omex import Omex
 
 
 logger = log.get_logger(__name__)
