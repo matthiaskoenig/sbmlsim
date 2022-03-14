@@ -87,10 +87,11 @@ import libsedml
 import pandas as pd
 import roadrunner
 from pint import Quantity
+
+from pymetadata import omex as pyomex
 from sbmlutils import log
 
 from sbmlsim.combine.mathml import formula_to_astnode
-from sbmlsim.combine.omex import Omex
 from sbmlsim.combine.sedml.data import DataDescriptionParser
 from sbmlsim.combine.sedml.task import TaskNode, TaskTree
 from sbmlsim.data import Data, DataSet
@@ -289,8 +290,8 @@ class SEDMLSerializer:
 
         # package in omex archive
         if omex_path:
-            omex = Omex(omex_path=omex_path, working_dir=working_dir)
-            omex.from_directory(omex_path=omex_path, directory=working_dir)
+            omex = pyomex.Omex.from_directory(working_dir)
+            omex.to_omex(omex_path=omex_path)
 
     def _selection_lookup_table(self) -> Dict[str, Dict[str, SBMLModelTarget]]:
         """Lookup table for sbmlsim model selections."""

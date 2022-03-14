@@ -41,19 +41,20 @@ class SimulatorSerial(SimulatorWorker):
 
     def set_model(self, model):
         """Set model for simulator and updates the integrator settings.
-
-        This should handle caching and state saving.
         """
+        logger.debug("SimulatorSerial.set_model")
         if model is None:
             self.model = None
         else:
-            if isinstance(model, AbstractModel):
-                self.model = model
-            else:
-                # handle path, urn, ...
-                self.model = RoadrunnerSBMLModel(
-                    source=model, settings=self.integrator_settings
-                )
+            # if isinstance(model, AbstractModel):
+            #     self.model = model
+            # else:
+            # handle path, urn, ...
+
+            # FIXME: this is probably the issue
+            self.model = RoadrunnerSBMLModel(
+                source=model, settings=self.integrator_settings
+            )
 
             self.set_integrator_settings(**self.integrator_settings)
 
