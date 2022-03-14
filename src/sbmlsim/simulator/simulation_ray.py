@@ -8,6 +8,7 @@ import psutil
 import ray
 import roadrunner
 from sbmlutils import log
+import tempfile
 
 from sbmlsim.simulation import TimecourseSim
 from sbmlsim.simulator import SimulatorSerial
@@ -38,14 +39,19 @@ class SimulatorActor(SimulatorWorker):
         if path_state is not None:
             self.set_model(path_state)
 
-    def set_model(self, path_state: Path) -> None:
-        """Set model using the Path to a state file.
+    def set_model(self, state: bytes) -> None:
+        """Set model using the loaded state
 
         Faster to load the state.
         """
         self.r: roadrunner.RoadRunner = roadrunner.RoadRunner()
-        if path_state is not None:
-            self.r.loadState(str(path_state))
+        if state is not None:
+            # write state to temporary file for reading
+            with tempfile.NamedTemporaryFile("wb") as f_temp:
+                f_temp.write(state)
+                filename = f_temp.name
+                print(f"load state: {filename}")
+                self.r.loadState(str(filename))
 
     def set_timecourse_selections(self, selections: Iterator[str]):
         """Set the timecourse selections."""
@@ -113,14 +119,20 @@ class SimulatorParallel(SimulatorSerial):
 
     def set_model(self, model):
         """Set model."""
+        print("SimulatorParallel.set_model")
         super(SimulatorParallel, self).set_model(model)
         if model:
             if not self.model.state_path:
                 raise ValueError("State path does not exist.")
 
-            state_path = str(self.model.state_path)
+            # read state only once
+            print("Read state")
+            with open(self.model.state_path, "rb") as f_state:
+                state = f_state.read()
+            print("Set remote state")
             for simulator in self.simulators:
-                simulator.set_model.remote(state_path)
+                simulator.set_model.remote(state)
+            print("Set timecourse selection")
             self.set_timecourse_selections(self.r.selections)
 
         # FIXME: set integrator settings

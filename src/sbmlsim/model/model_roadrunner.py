@@ -52,7 +52,7 @@ class RoadrunnerSBMLModel(AbstractModel):
                 selections=selections,
             )
         else:
-            logger.debug("RoadrunnerSBMLModel from source")
+            logger.info("RoadrunnerSBMLModel from source")
             super(RoadrunnerSBMLModel, self).__init__(
                 source=source,
                 language_type=AbstractModel.LanguageType.SBML,
@@ -70,6 +70,7 @@ class RoadrunnerSBMLModel(AbstractModel):
 
         # load the model
         self.state_path = self.get_state_path()
+        logger.debug(f"Load model from state: {self.state_path}")
         self._model = self.load_roadrunner_model(
             source=self.source, state_path=self.state_path
         )
@@ -106,6 +107,8 @@ class RoadrunnerSBMLModel(AbstractModel):
         """
         if self.source.is_path():
             md5 = md5_for_path(self.source.path)
+            # FIXME: get unique hash for library version
+
             return Path(f"{self.source.path}_rr{roadrunner.__version__}_{md5}.state")
         else:
             return None
@@ -126,8 +129,10 @@ class RoadrunnerSBMLModel(AbstractModel):
         # load model
         if source.is_path():
             if state_path and state_path.exists():
+                logger.debug(f"Load model from state: '{state_path}'")
                 r = roadrunner.RoadRunner()
                 r.loadState(str(state_path))
+                logger.debug(f"Model loaded from state: '{state_path}'")
             else:
                 logger.info(f"Load model from SBML: '{source.path.resolve()}'")
                 r = roadrunner.RoadRunner(str(source.path))
