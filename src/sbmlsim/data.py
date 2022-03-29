@@ -194,6 +194,8 @@ class Data(object):
         # Necessary to resolve the data
         if self.dtype == Data.Types.DATASET:
             # read dataset data
+            if not experiment._datasets:
+                experiment._datasets = experiment.datasets()
             dset = experiment._datasets[self.dset_id]
             if not isinstance(dset, DataSet):
                 raise ValueError(
