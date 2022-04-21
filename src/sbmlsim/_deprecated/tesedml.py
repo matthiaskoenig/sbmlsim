@@ -498,7 +498,7 @@ class SEDMLCodeFactory(object):
         # template environment
         env = jinja2.Environment(
             loader=jinja2.FileSystemLoader(self.TEMPLATE_DIR),
-            extensions=["jinja2.ext.autoescape"],
+            extensions=[],
             trim_blocks=True,
             lstrip_blocks=True,
         )
