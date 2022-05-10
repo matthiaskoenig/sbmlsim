@@ -1,3 +1,8 @@
+.. image:: https://github.com/matthiaskoenig/sbmlsim/raw/develop/docs/images/favicon/sbmlsim-100x100-300dpi.png
+   :align: left
+   :alt: pymetadata logo
+
+
 sbmlsim: SBML simulation made easy
 ==================================
 
