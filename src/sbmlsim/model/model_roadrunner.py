@@ -13,6 +13,7 @@ from sbmlsim.model import AbstractModel
 from sbmlsim.model.model_resources import Source
 from sbmlsim.units import Quantity, UnitRegistry, UnitsInformation
 from sbmlsim.utils import md5_for_path
+from sbmlsim.filelock import FileLock
 
 
 logger = log.get_logger(__name__)
@@ -127,24 +128,28 @@ class RoadrunnerSBMLModel(AbstractModel):
             source = Source.from_source(source=source)
 
         # load model
-        # FIXME: state saving results in many issues with multiple cores/concurrent access!
+        # FIXME
         # if source.is_path():
         #     if state_path and state_path.exists():
         #         logger.debug(f"Load model from state: '{state_path}'")
         #         r = roadrunner.RoadRunner()
-        #         r.loadState(str(state_path))
+        #         with FileLock(state_path):
+        #             r.loadState(str(state_path))
         #         logger.debug(f"Model loaded from state: '{state_path}'")
         #     else:
         #         logger.debug(f"Load model from SBML: '{source.path.resolve()}'")
         #         r = roadrunner.RoadRunner(str(source.path))
         #         # save state path
         #         if state_path:
-        #             r.saveState(str(state_path))
+        #             with FileLock(state_path):
+        #                 r.saveState(str(state_path))
         #             logger.debug(f"Save state: '{state_path}'")
 
+        # backup without state handling
         if source.is_path():
             logger.debug(f"Load model from SBML: '{source.path.resolve()}'")
             r = roadrunner.RoadRunner(str(source.path))
+
         elif source.is_content():
             r = roadrunner.RoadRunner(str(source.content))
 
@@ -159,9 +164,10 @@ class RoadrunnerSBMLModel(AbstractModel):
         """
         ftmp = tempfile.NamedTemporaryFile()
         filename = ftmp.name
-        r.saveState(filename)
-        r2 = roadrunner.RoadRunner()
-        r2.loadState(filename)
+        with FileLock(filename):
+            r.saveState(filename)
+            r2 = roadrunner.RoadRunner()
+            r2.loadState(filename)
         return r2
 
     def parse_units(self, ureg: UnitRegistry) -> UnitsInformation:
