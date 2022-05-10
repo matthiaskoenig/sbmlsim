@@ -1,6 +1,7 @@
 """
 Testing of SED-ML data support, i.e., DataDescription.
 """
+import pytest
 import importlib
 import os
 from pathlib import Path

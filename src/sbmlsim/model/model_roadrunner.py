@@ -127,19 +127,24 @@ class RoadrunnerSBMLModel(AbstractModel):
             source = Source.from_source(source=source)
 
         # load model
+        # FIXME: state saving results in many issues with multiple cores/concurrent access!
+        # if source.is_path():
+        #     if state_path and state_path.exists():
+        #         logger.debug(f"Load model from state: '{state_path}'")
+        #         r = roadrunner.RoadRunner()
+        #         r.loadState(str(state_path))
+        #         logger.debug(f"Model loaded from state: '{state_path}'")
+        #     else:
+        #         logger.debug(f"Load model from SBML: '{source.path.resolve()}'")
+        #         r = roadrunner.RoadRunner(str(source.path))
+        #         # save state path
+        #         if state_path:
+        #             r.saveState(str(state_path))
+        #             logger.debug(f"Save state: '{state_path}'")
+
         if source.is_path():
-            if state_path and state_path.exists():
-                logger.debug(f"Load model from state: '{state_path}'")
-                r = roadrunner.RoadRunner()
-                r.loadState(str(state_path))
-                logger.debug(f"Model loaded from state: '{state_path}'")
-            else:
-                logger.debug(f"Load model from SBML: '{source.path.resolve()}'")
-                r = roadrunner.RoadRunner(str(source.path))
-                # save state path
-                if state_path:
-                    r.saveState(str(state_path))
-                    logger.debug(f"Save state: '{state_path}'")
+            logger.debug(f"Load model from SBML: '{source.path.resolve()}'")
+            r = roadrunner.RoadRunner(str(source.path))
         elif source.is_content():
             r = roadrunner.RoadRunner(str(source.content))
 

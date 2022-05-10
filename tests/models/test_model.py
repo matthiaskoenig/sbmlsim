@@ -31,7 +31,6 @@ def test_abstractmodel_creation_with_empty_changes() -> None:
     assert len(model.changes) == 0
 
 
-@pytest.mark.skip(reason="no SED-ML support")
 def test_roadrunnermodel_creation() -> None:
     """Test RoadrunnerSBMLModel creation."""
     model = RoadrunnerSBMLModel(source=MODEL_REPRESSILATOR)
