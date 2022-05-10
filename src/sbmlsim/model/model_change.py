@@ -4,7 +4,7 @@ Model changes are structural changes to the model structure.
 Changes of values and initial conditions are encoded via
 the changes instead.
 """
-import roadrunner
+from sbmlsim.model.model_roadrunner import roadrunner
 from sbmlutils import log
 
 

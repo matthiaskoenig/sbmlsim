@@ -34,6 +34,7 @@ def test_abstractmodel_creation_with_empty_changes() -> None:
 def test_roadrunnermodel_creation() -> None:
     """Test RoadrunnerSBMLModel creation."""
     model = RoadrunnerSBMLModel(source=MODEL_REPRESSILATOR)
+    print("Model created")
     assert model
     assert model.sid is None
     assert model.source.source == MODEL_REPRESSILATOR

@@ -2,7 +2,7 @@
 from typing import Optional
 
 import pandas as pd
-import roadrunner
+from sbmlsim.model.model_roadrunner import roadrunner
 from sbmlutils import log
 
 from sbmlsim.model import ModelChange

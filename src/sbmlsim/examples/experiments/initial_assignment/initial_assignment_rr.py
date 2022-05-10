@@ -1,6 +1,6 @@
 import pandas as pd
-import roadrunner
-from roadrunner import SelectionRecord
+from sbmlsim.model.model_roadrunner import roadrunner
+
 
 
 # Loading model and simulating
@@ -46,8 +46,8 @@ model.selections = ["time", "D", "A1", "[A1]"]
 #     init(A1) = 2 * D
 model["init(D)"] = 2
 model.resetAll()
-model.reset(SelectionRecord.DEPENDENT_FLOATING_AMOUNT)
-model.reset(SelectionRecord.DEPENDENT_INITIAL_GLOBAL_PARAMETER)
+model.reset(roadrunner.SelectionRecord.DEPENDENT_FLOATING_AMOUNT)
+model.reset(roadrunner.SelectionRecord.DEPENDENT_INITIAL_GLOBAL_PARAMETER)
 
 s = model.simulate(0, 100, steps=11)
 s = pd.DataFrame(s, columns=s.colnames)

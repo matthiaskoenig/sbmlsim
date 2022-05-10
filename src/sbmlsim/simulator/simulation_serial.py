@@ -3,9 +3,10 @@ from typing import List
 
 import pandas as pd
 from pint import Quantity
-from roadrunner import roadrunner
+
 from sbmlutils import log
 
+from sbmlsim.model.model_roadrunner import roadrunner
 from sbmlsim.model import AbstractModel, RoadrunnerSBMLModel
 from sbmlsim.result import XResult
 from sbmlsim.simulation import ScanSim, TimecourseSim

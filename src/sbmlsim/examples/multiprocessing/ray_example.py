@@ -1,15 +1,19 @@
 """Example parallel simulation with ray.
 
 requirements
-    roadrunner
+    roadrunner==2.2.1
     ray
     pandas
 """
 import time
+from pathlib import Path
 
 import pandas as pd
 import ray
+
 import roadrunner
+from roadrunner import Config
+Config.setValue(Config.LLVM_BACKEND, Config.LLJIT)
 
 
 # start ray
@@ -39,10 +43,13 @@ class SimulatorActorPath(object):
         return results
 
 
-if __name__ == "__main__":
-    actor_count = 10  # cores to run this on
+def ray_example():
+    """Ray example."""
+    actor_count: int = 3  # cores to run this on
 
-    rr = roadrunner.RoadRunner("icg_body_flat.xml")
+    model_path = Path(__file__).parent / "icg_body_flat.xml"
+    rr: roadrunner.RoadRunner = roadrunner.RoadRunner(str(model_path))
+
     simulators = [SimulatorActorPath.remote(rr) for _ in range(actor_count)]
 
     # run simulations
@@ -53,3 +60,8 @@ if __name__ == "__main__":
         tc_ids.append(tcs_id)
 
     results = ray.get(tc_ids)
+    return results
+
+
+if __name__ == "__main__":
+    ray_example()

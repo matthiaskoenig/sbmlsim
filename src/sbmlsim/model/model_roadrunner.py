@@ -7,6 +7,7 @@ import libsbml
 import numpy as np
 import pandas as pd
 import roadrunner
+from roadrunner import Config
 from sbmlutils import log
 
 from sbmlsim.model import AbstractModel
@@ -15,7 +16,7 @@ from sbmlsim.units import Quantity, UnitRegistry, UnitsInformation
 from sbmlsim.utils import md5_for_path
 from sbmlsim.filelock import FileLock
 
-
+Config.setValue(Config.LLVM_BACKEND, Config.LLJIT)
 logger = log.get_logger(__name__)
 
 
@@ -128,27 +129,27 @@ class RoadrunnerSBMLModel(AbstractModel):
             source = Source.from_source(source=source)
 
         # load model
-        # FIXME
-        # if source.is_path():
-        #     if state_path and state_path.exists():
-        #         logger.debug(f"Load model from state: '{state_path}'")
-        #         r = roadrunner.RoadRunner()
-        #         with FileLock(state_path):
-        #             r.loadState(str(state_path))
-        #         logger.debug(f"Model loaded from state: '{state_path}'")
-        #     else:
-        #         logger.debug(f"Load model from SBML: '{source.path.resolve()}'")
-        #         r = roadrunner.RoadRunner(str(source.path))
-        #         # save state path
-        #         if state_path:
-        #             with FileLock(state_path):
-        #                 r.saveState(str(state_path))
-        #             logger.debug(f"Save state: '{state_path}'")
+        if source.is_path():
+            if state_path and state_path.exists():
+                logger.debug(f"Load model from state: '{state_path}'")
+                r = roadrunner.RoadRunner()
+                with FileLock(state_path):
+                    r.loadState(str(state_path))
+                logger.debug(f"Model loaded from state: '{state_path}'")
+            else:
+                logger.debug(f"Load model from SBML: '{source.path.resolve()}'")
+                with FileLock(source.path):
+                    r = roadrunner.RoadRunner(str(source.path))
+                # save state path
+                if state_path:
+                    with FileLock(state_path):
+                        r.saveState(str(state_path))
+                    logger.debug(f"Save state: '{state_path}'")
 
         # backup without state handling
-        if source.is_path():
-            logger.debug(f"Load model from SBML: '{source.path.resolve()}'")
-            r = roadrunner.RoadRunner(str(source.path))
+        # if source.is_path():
+        #     logger.debug(f"Load model from SBML: '{source.path.resolve()}'")
+        #     r = roadrunner.RoadRunner(str(source.path))
 
         elif source.is_content():
             r = roadrunner.RoadRunner(str(source.content))

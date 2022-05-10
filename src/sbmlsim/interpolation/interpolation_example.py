@@ -5,7 +5,7 @@ import tempfile
 from pathlib import Path
 
 import pandas as pd
-import roadrunner
+from sbmlsim.model.model_roadrunner import roadrunner
 from matplotlib import pyplot as plt
 from matplotlib.pyplot import Axes, Figure
 from sbmlutils import log

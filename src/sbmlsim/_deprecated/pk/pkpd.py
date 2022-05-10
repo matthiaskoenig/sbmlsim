@@ -2,7 +2,7 @@
 import re
 from typing import Dict
 
-import roadrunner
+from sbmlsim.model.model_roadrunner import roadrunner
 from sbmlutils import log
 
 

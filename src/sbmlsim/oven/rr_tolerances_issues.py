@@ -1,5 +1,5 @@
 import pandas as pd
-import roadrunner
+from sbmlsim.model.model_roadrunner import roadrunner
 
 
 tiny_sbml = "tiny_example_1.xml"

@@ -3,7 +3,7 @@ from pathlib import Path
 
 import pandas as pd
 import pytest
-import roadrunner
+from sbmlsim.model.model_roadrunner import roadrunner
 from sbmlutils.manipulation import interpolation as ip
 from sbmlutils.manipulation.interpolation_example import interpolation_example
 

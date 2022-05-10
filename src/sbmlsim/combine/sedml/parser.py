@@ -85,11 +85,11 @@ from typing import Dict, List, Optional, Set, Type, Union
 
 import libsedml
 import pandas as pd
-import roadrunner
 from pint import Quantity
 from pymetadata import omex as pyomex
 from sbmlutils import log
 
+from sbmlsim.model.model_roadrunner import roadrunner
 from sbmlsim.combine.mathml import formula_to_astnode
 from sbmlsim.combine.sedml.data import DataDescriptionParser
 from sbmlsim.combine.sedml.task import TaskNode, TaskTree

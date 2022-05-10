@@ -1,8 +1,8 @@
 """Simulate roadrunner with a times vector."""
 
-import roadrunner
+from sbmlsim.model.model_roadrunner import roadrunner
 from rich import print
-from sbmlutils.test import REPRESSILATOR_SBML
+from sbmlutils.resources import REPRESSILATOR_SBML
 
 from sbmlsim.utils import timeit
 

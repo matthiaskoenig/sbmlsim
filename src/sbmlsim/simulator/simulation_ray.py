@@ -7,7 +7,7 @@ import numpy as np
 import pandas as pd
 import psutil
 import ray
-import roadrunner
+from sbmlsim.model.model_roadrunner import roadrunner
 from sbmlutils import log
 
 from sbmlsim.simulation import TimecourseSim
