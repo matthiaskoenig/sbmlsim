@@ -87,7 +87,7 @@ def is_http(source: str) -> bool:
 
 def model_from_urn(urn: str) -> str:
     """Get model string from given URN."""
-    logger.warning(f"Loading model from urn: {urn}")
+    logger.debug(f"Loading model from urn: {urn}")
     if "biomodel" in urn:
         mid = parse_biomodels_mid(urn)
         content = model_from_biomodels(mid)
@@ -109,7 +109,7 @@ def model_from_url(url: str) -> str:
     if url.startswith("https://www.ebi.ac.uk/biomodels-main/download?mid="):
         mid = parse_biomodels_mid(url)
         logger.error(
-            f"Use of deprecated biomodels URL '{url}' ,"
+            f"Use of deprecated biomodels URL '{url}',"
             f"use updated url instead: "
             f"'https://www.ebi.ac.uk/biomodels/model/download/{mid}?filename={mid}_url.xml'"
         )
@@ -159,5 +159,4 @@ def model_from_biomodels(mid: str) -> str:
         )
         raise err
 
-    logger.warning(f"{url}")
     return model_from_url(url)

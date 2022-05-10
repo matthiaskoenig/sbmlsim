@@ -1,6 +1,4 @@
-"""
-Creates the omex files from the SED-ML files.
-"""
+"""Create omex files from SED-ML files."""
 
 from pathlib import Path
 from typing import List
@@ -18,7 +16,7 @@ OMEX_DIR: Path = EXAMPLES_DIR / "omex"
 
 
 def create_omex_from_sedml(sedml_path: Path, omex_path: Path) -> None:
-    """Creates a combine archive from SED-ML path."""
+    """Create a combine archive from SED-ML path."""
 
     omex = pyomex.Omex()
     entry = pyomex.ManifestEntry(
@@ -30,7 +28,7 @@ def create_omex_from_sedml(sedml_path: Path, omex_path: Path) -> None:
 
 
 def create_all_omex() -> None:
-    """Creates all omex from the SED-ML file."""
+    """Create all omex from the SED-ML file."""
 
     sedml_paths: List[Path] = []
     for p in SEDML_DIR.rglob("*"):

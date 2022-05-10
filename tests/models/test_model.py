@@ -1,3 +1,5 @@
+"""Testing sbmlsim model handling."""
+
 import pytest
 import roadrunner
 
@@ -5,7 +7,8 @@ from sbmlsim.model import AbstractModel, RoadrunnerSBMLModel
 from tests import MODEL_REPRESSILATOR
 
 
-def test_abstractmodel_creation():
+def test_abstractmodel_creation() -> None:
+    """Test creation of abstract model."""
     model = AbstractModel(
         sid="model1",
         source=MODEL_REPRESSILATOR,
@@ -16,18 +19,21 @@ def test_abstractmodel_creation():
     assert model.source.source == MODEL_REPRESSILATOR
 
 
-def test_abstractmodel_creation_with_changes():
+def test_abstractmodel_creation_with_empty_changes() -> None:
+    """Test creation of abstract model with empty changes."""
     model = AbstractModel(
         sid="model1",
         source=MODEL_REPRESSILATOR,
         language_type=AbstractModel.LanguageType.SBML,
-        changes=[],
+        changes={},
     )
     assert model
     assert len(model.changes) == 0
 
 
-def test_roadrunnermodel_creation():
+@pytest.mark.skip(reason="no SED-ML support")
+def test_roadrunnermodel_creation() -> None:
+    """Test RoadrunnerSBMLModel creation."""
     model = RoadrunnerSBMLModel(source=MODEL_REPRESSILATOR)
     assert model
     assert model.sid is None
@@ -35,13 +41,15 @@ def test_roadrunnermodel_creation():
     assert model.language_type == AbstractModel.LanguageType.SBML
 
 
-def test_load_roadrunner_model():
+def test_load_roadrunner_model() -> None:
+    """Test loading RoadRunner model."""
     r = RoadrunnerSBMLModel.load_roadrunner_model(MODEL_REPRESSILATOR)
     assert r
     assert isinstance(r, roadrunner.RoadRunner)
 
 
-def test_parameter_df():
+def test_parameter_df() -> None:
+    """Test parameter DataFrame."""
     r = RoadrunnerSBMLModel.load_roadrunner_model(MODEL_REPRESSILATOR)
     df = RoadrunnerSBMLModel.parameter_df(r)
 
@@ -49,28 +57,19 @@ def test_parameter_df():
     assert "sid" in df
 
 
-def test_species_df():
+def test_species_df() -> None:
+    """Test species DataFrame."""
     r = RoadrunnerSBMLModel.load_roadrunner_model(MODEL_REPRESSILATOR)
     df = RoadrunnerSBMLModel.species_df(r)
     assert df is not None
     assert "sid" in df
 
 
-def test_copy_model():
+def test_copy_model() -> None:
+    """Test copy model."""
     r = RoadrunnerSBMLModel.load_roadrunner_model(MODEL_REPRESSILATOR)
     r["X"] = 100.0
     r_copy = RoadrunnerSBMLModel.copy_roadrunner_model(r)
     assert r_copy
     assert isinstance(r_copy, roadrunner.RoadRunner)
-    assert pytest.approx(100.0, r_copy["X"])
-
-
-"""
-def test_clamp_sid():
-    r = load_model(MODEL_REPRESSILATOR)
-
-    # Perform clamping
-    r_clamp = clamp_species(r, sids=["X"], boundary_condition=True)
-    assert r_clamp
-    assert isinstance(r_clamp, roadrunner.RoadRunner)
-"""
+    assert 100.0 == pytest.approx(r_copy["X"])

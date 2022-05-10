@@ -1,3 +1,4 @@
+"""Helper module for downloading COVID-19 biomodels."""
 import json
 from pathlib import Path
 from pprint import pprint

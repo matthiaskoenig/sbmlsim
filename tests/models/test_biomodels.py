@@ -6,7 +6,7 @@ from sbmlsim.model import model_resources
 
 
 def _check_sbml_str(sbml_str: str) -> None:
-    """Helper function for checking SBML string."""
+    """Check SBML string."""
     assert sbml_str
     doc: libsbml.SBMLDocument = libsbml.readSBMLFromString(sbml_str)
     assert doc
