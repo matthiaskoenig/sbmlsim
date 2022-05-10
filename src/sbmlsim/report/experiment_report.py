@@ -189,9 +189,7 @@ class ExperimentReport:
                     )
 
         output_path = write_report(
-            filename=filename,
-            context=context,
-            template_str=f"index.{suffix}"
+            filename=filename, context=context, template_str=f"index.{suffix}"
         )
         logger.info(f"Report created: 'file://{output_path}'")
         return output_path

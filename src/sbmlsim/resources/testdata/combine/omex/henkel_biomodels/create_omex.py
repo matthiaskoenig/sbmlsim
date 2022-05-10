@@ -6,8 +6,9 @@ from pathlib import Path
 from typing import List
 
 from pymetadata import omex as pyomex
-
 from sbmlutils import log
+
+
 logger = log.get_logger(__name__)
 
 
@@ -21,9 +22,7 @@ def create_omex_from_sedml(sedml_path: Path, omex_path: Path) -> None:
 
     omex = pyomex.Omex()
     entry = pyomex.ManifestEntry(
-        master=True,
-        format=pyomex.EntryFormat.SEDML,
-        location=f"./{sedml_path.name}"
+        master=True, format=pyomex.EntryFormat.SEDML, location=f"./{sedml_path.name}"
     )
     omex.add_entry(entry_path=sedml_path, entry=entry)
     omex.to_omex(omex_path=omex_path)
@@ -35,7 +34,7 @@ def create_all_omex() -> None:
 
     sedml_paths: List[Path] = []
     for p in SEDML_DIR.rglob("*"):
-        sedml_suffixes = {'.xml', '.sedml'}
+        sedml_suffixes = {".xml", ".sedml"}
         if p.is_file() and p.suffix in sedml_suffixes:
             sedml_paths.append(SEDML_DIR / p)
 

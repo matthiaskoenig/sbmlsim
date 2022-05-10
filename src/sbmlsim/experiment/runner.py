@@ -9,7 +9,7 @@ This includes
 """
 
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple, Type, Union, Set
+from typing import Dict, List, Optional, Set, Tuple, Type, Union
 
 from sbmlutils import log
 
@@ -74,7 +74,15 @@ class ExperimentRunner(object):
                 experiment.simulator = simulator
 
     @timeit
-    def initialize(self, experiment_classes: Union[List[Type[SimulationExperiment]], Tuple[Type[SimulationExperiment]], Set[Type[SimulationExperiment]]], **kwargs):
+    def initialize(
+        self,
+        experiment_classes: Union[
+            List[Type[SimulationExperiment]],
+            Tuple[Type[SimulationExperiment]],
+            Set[Type[SimulationExperiment]],
+        ],
+        **kwargs,
+    ):
         """Initialize ExperimentRunner.
 
         Initialization is required in addition to construction to allow serialization

@@ -394,7 +394,10 @@ class DataSet(pd.DataFrame):
                         # rename the sd and se columns to mean_sd and mean_se
                         if key == "mean":
                             for err_key in ["sd", "se"]:
-                                if err_key not in df.columns and f"mean_{err_key}" in df.columns:
+                                if (
+                                    err_key not in df.columns
+                                    and f"mean_{err_key}" in df.columns
+                                ):
                                     df[err_key] = df[f"mean_{err_key}"]
 
                                 if f"mean_{err_key}" in df.columns:

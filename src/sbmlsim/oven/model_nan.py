@@ -2,9 +2,9 @@
 from pathlib import Path
 
 from sbmlutils.cytoscape import visualize_sbml
+from sbmlutils.examples.templates import terms_of_use
 from sbmlutils.factory import *
 from sbmlutils.metadata import *
-from sbmlutils.examples.templates import terms_of_use
 
 
 class U(Units):
@@ -56,8 +56,7 @@ _m.reactions = [
         name="DEX export",
         equation="dex_ext ->",
         sboTerm=SBO.TRANSPORT_REACTION,
-        rules=[
-        ],
+        rules=[],
         pars=[
             Parameter(
                 "DEXEX_Vmax",
@@ -83,7 +82,4 @@ model_nan = _m
 
 if __name__ == "__main__":
 
-    result: FactoryResult = create_model(
-        output_dir=Path(".").parent, models=model_nan
-    )
-
+    result: FactoryResult = create_model(output_dir=Path(".").parent, models=model_nan)

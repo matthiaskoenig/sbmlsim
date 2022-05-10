@@ -87,7 +87,6 @@ import libsedml
 import pandas as pd
 import roadrunner
 from pint import Quantity
-
 from pymetadata import omex as pyomex
 from sbmlutils import log
 

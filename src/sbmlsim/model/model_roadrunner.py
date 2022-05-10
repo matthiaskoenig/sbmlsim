@@ -243,14 +243,10 @@ class RoadrunnerSBMLModel(AbstractModel):
         :return: pandas DataFrame
         """
         r_model: roadrunner.ExecutableModel = r.model
-        doc: libsbml.SBMLDocument = libsbml.readSBMLFromString(
-            r.getCurrentSBML()
-        )
+        doc: libsbml.SBMLDocument = libsbml.readSBMLFromString(r.getCurrentSBML())
         model: libsbml.Model = doc.getModel()
         sids = r_model.getGlobalParameterIds()
-        parameters: List[libsbml.Parameter] = [
-            model.getParameter(sid) for sid in sids
-        ]
+        parameters: List[libsbml.Parameter] = [model.getParameter(sid) for sid in sids]
         data = {
             "sid": sids,
             "value": r_model.getGlobalParameterValues(),

@@ -1,4 +1,5 @@
 """Parallel simulation using ray."""
+import tempfile
 from pathlib import Path
 from typing import Iterator, List
 
@@ -8,7 +9,6 @@ import psutil
 import ray
 import roadrunner
 from sbmlutils import log
-import tempfile
 
 from sbmlsim.simulation import TimecourseSim
 from sbmlsim.simulator import SimulatorSerial

@@ -10,13 +10,9 @@ import roadrunner
 from sbmlsim.model import RoadrunnerSBMLModel
 from sbmlsim.simulation import Dimension, ScanSim, Timecourse, TimecourseSim
 from sbmlsim.simulator import SimulatorSerial
-from sbmlsim.simulator.simulation_ray import (
-    SimulatorActor,
-    SimulatorParallel,
-    ray,
-)
-from tests import MODEL_GLCWB, MODEL_REPRESSILATOR
+from sbmlsim.simulator.simulation_ray import SimulatorActor, SimulatorParallel, ray
 from sbmlsim.units import UnitsInformation
+from tests import MODEL_GLCWB, MODEL_REPRESSILATOR
 
 
 def example_single_actor():

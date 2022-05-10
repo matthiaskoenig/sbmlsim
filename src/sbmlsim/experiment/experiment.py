@@ -389,9 +389,7 @@ class SimulationExperiment:
 
         # run simulations (sets self._results)
         logger.info("_run_tasks")
-        self._run_tasks(
-            simulator, reduced_selections=reduced_selections
-        )
+        self._run_tasks(simulator, reduced_selections=reduced_selections)
 
         # evaluate mappings
         self.evaluate_fit_mappings()
@@ -419,7 +417,9 @@ class SimulationExperiment:
             self.show_mpl_figures(mpl_figures=self._mpl_figures)
         if output_path:
             self.save_mpl_figures(
-                output_path, mpl_figures=self._mpl_figures, figure_formats=figure_formats
+                output_path,
+                mpl_figures=self._mpl_figures,
+                figure_formats=figure_formats,
             )
         self.close_mpl_figures(mpl_figures=self._mpl_figures)
 

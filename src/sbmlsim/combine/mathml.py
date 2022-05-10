@@ -3,9 +3,11 @@
 Using sympy to evaluate the expressions.
 """
 from typing import Any, Dict, Set, Tuple
-from sbmlutils import log
+
 import libsedml
+from sbmlutils import log
 from sympy import Symbol, lambdify, sympify
+
 
 logger = log.get_logger(__name__)
 

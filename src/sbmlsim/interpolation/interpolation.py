@@ -13,7 +13,6 @@ from typing import Any, List, Optional, Tuple, Union
 
 import libsbml
 import pandas as pd
-
 from sbmlutils import log
 from sbmlutils.io.sbml import write_sbml
 from sbmlutils.validation import validate_doc
