@@ -2,7 +2,7 @@
 Testing reading of numl files
 """
 from sbmlsim.combine.sedml.numl import NumlParser
-from sbmlsim.test import DATA_DIR
+from tests import DATA_DIR
 
 
 BASE_DIR = DATA_DIR / "sedml" / "data"

@@ -5,7 +5,7 @@ from sbmlsim.result import XResult
 from sbmlsim.result.datagenerator import DataGeneratorIndexingFunction
 from sbmlsim.simulation import Dimension, ScanSim, Timecourse, TimecourseSim
 from sbmlsim.simulator.simulation_ray import SimulatorParallel
-from sbmlsim.test import MODEL_MIDAZOLAM
+from tests import MODEL_MIDAZOLAM
 
 
 def example_scan() -> XResult:

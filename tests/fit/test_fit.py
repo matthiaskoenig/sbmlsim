@@ -83,7 +83,7 @@ def test_optimization_analysis(tmp_path):
     op_analysis = OptimizationAnalysis(
         opt_result=opt_result,
         output_dir=tmp_path,
-        output_name="test",
+        output_name="tests",
         op=op,
         show_plots=False,
         **fit_kwargs_default

@@ -8,7 +8,7 @@ from pathlib import Path
 
 from sbmlsim import RESOURCES_DIR
 
-TEST_PATH = Path(__file__).parents[0]  # directory of test files
+TEST_PATH = Path(__file__).parents[0]  # directory of tests files
 DATA_DIR = RESOURCES_DIR / "testdata"  # directory of data for tests
 
 MODEL_DIR = DATA_DIR / "models"

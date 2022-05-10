@@ -14,7 +14,7 @@ from sbmlsim.plot import Figure, Plot
 from sbmlsim.result.report import Report
 from sbmlsim.simulation import AbstractSim, Timecourse, TimecourseSim
 from sbmlsim.task import Task
-from sbmlsim.test import MODEL_REPRESSILATOR
+from tests import MODEL_REPRESSILATOR
 
 
 class RepressilatorExperiment(SimulationExperiment):

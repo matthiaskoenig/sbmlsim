@@ -2,7 +2,7 @@ import pytest
 import roadrunner
 
 from sbmlsim.model import AbstractModel, RoadrunnerSBMLModel
-from sbmlsim.test import MODEL_REPRESSILATOR
+from tests import MODEL_REPRESSILATOR
 
 
 def test_abstractmodel_creation():

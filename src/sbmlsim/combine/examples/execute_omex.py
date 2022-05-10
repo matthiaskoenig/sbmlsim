@@ -4,7 +4,7 @@ Execute a COMBINE archive.
 from pathlib import Path
 
 from sbmlsim.combine.examples import execute_sedml
-from sbmlsim.test import DATA_DIR
+from tests import DATA_DIR
 
 
 def run_repressilator():
@@ -36,7 +36,7 @@ if __name__ == "__main__":
     # for omex_path in sorted(biomodels_omex_paths):
     #     run_biomodel_omex(omex_path)
 
-    "/home/mkoenig/git/sbmlsim/src/sbmlsim/test/data/combine/omex/jws/omex/fraser2002_fig1a_1b_2a_2b.sedx"
-    "/home/mkoenig/git/sbmlsim/src/sbmlsim/test/data/combine/omex/jws/omex/levering2012_fig2-user.sedx",
-    "/home/mkoenig/git/sbmlsim/src/sbmlsim/test/data/combine/omex/jws/omex/levering2012_fig5-user.sedx",
-    "/home/mkoenig/git/sbmlsim/src/sbmlsim/test/data/combine/omex/jws/omex/martins2016_fig4b.sedx"
+    "/home/mkoenig/git/sbmlsim/src/sbmlsim/tests/data/combine/omex/jws/omex/fraser2002_fig1a_1b_2a_2b.sedx"
+    "/home/mkoenig/git/sbmlsim/src/sbmlsim/tests/data/combine/omex/jws/omex/levering2012_fig2-user.sedx",
+    "/home/mkoenig/git/sbmlsim/src/sbmlsim/tests/data/combine/omex/jws/omex/levering2012_fig5-user.sedx",
+    "/home/mkoenig/git/sbmlsim/src/sbmlsim/tests/data/combine/omex/jws/omex/martins2016_fig4b.sedx"

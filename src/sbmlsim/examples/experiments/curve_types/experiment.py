@@ -7,12 +7,11 @@ from typing import Dict, Union
 from sbmlsim.data import Data
 from sbmlsim.experiment import ExperimentRunner, SimulationExperiment
 from sbmlsim.model import AbstractModel
-from sbmlsim.plot import Axis, Figure, Plot
+from sbmlsim.plot import Figure, Plot
 from sbmlsim.result.report import Report
 from sbmlsim.simulation import AbstractSim, Timecourse, TimecourseSim
-from sbmlsim.simulator.simulation_ray import SimulatorParallel, SimulatorSerial
+from sbmlsim.simulator.simulation_ray import SimulatorParallel
 from sbmlsim.task import Task
-from sbmlsim.test import MODEL_REPRESSILATOR
 
 
 class CurveTypesExperiment(SimulationExperiment):

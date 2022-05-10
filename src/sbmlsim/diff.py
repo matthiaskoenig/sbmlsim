@@ -1,6 +1,6 @@
 """Helpers for numerical comparison of simulation results between different simulators.
 
-Allows to test semi-automatically for problems with the various models.
+Allows to tests semi-automatically for problems with the various models.
 Used to benchmark the simulation results.
 """
 
@@ -200,9 +200,9 @@ class DataSetsComparison(object):
         https://github.com/sbmlteam/sbml-test-suite/blob/master/cases/semantic/README.md
         Let the following variables be defined:
 
-        * `abs_tol` stand for the absolute tolerance for a test case,
-        * `rel_tol` stand for the relative tolerance for a test case,
-        * `c_ij` stand for the expected correct value for row `i`, column `j`, of the result data set for the test case
+        * `abs_tol` stand for the absolute tolerance for a tests case,
+        * `rel_tol` stand for the relative tolerance for a tests case,
+        * `c_ij` stand for the expected correct value for row `i`, column `j`, of the result data set for the tests case
         * `u_ij` stand for the corresponding value produced by a given software simulation system run by the user
 
         These absolute and relative tolerances are used in the following way:

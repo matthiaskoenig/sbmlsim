@@ -19,10 +19,10 @@ from sbmlsim.simulation import (
     Timecourse,
     TimecourseSim,
 )
-from sbmlsim.simulation.sensitivity import ModelSensitivity, SensitivityType
-from sbmlsim.simulator.simulation_ray import SimulatorParallel, SimulatorSerial
+from sbmlsim.simulation.sensitivity import ModelSensitivity
+from sbmlsim.simulator.simulation_ray import SimulatorParallel
 from sbmlsim.task import Task
-from sbmlsim.test import MODEL_DEMO
+from tests import MODEL_DEMO
 
 
 class DemoExperiment(SimulationExperiment):

@@ -3,7 +3,7 @@ import pandas as pd
 from sbmlsim.model import ModelChange
 from sbmlsim.simulation import Timecourse, TimecourseSim
 from sbmlsim.simulator import SimulatorSerial as Simulator
-from sbmlsim.test import MODEL_REPRESSILATOR
+from tests import MODEL_REPRESSILATOR
 
 
 def test_create_simulator():

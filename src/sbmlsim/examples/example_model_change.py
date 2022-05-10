@@ -10,7 +10,7 @@ from sbmlsim.plot.plotting_deprecated_matplotlib import add_line, plt
 from sbmlsim.result import XResult
 from sbmlsim.simulation import Timecourse, TimecourseSim
 from sbmlsim.simulator import SimulatorSerial as Simulator
-from sbmlsim.test import MODEL_REPRESSILATOR
+from tests import MODEL_REPRESSILATOR
 
 
 def run_model_change_example1():

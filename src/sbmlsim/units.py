@@ -5,7 +5,7 @@ Used for model and data unit conversions.
 import os
 from collections.abc import MutableMapping
 from pathlib import Path
-from typing import Dict, Iterator, Optional, Tuple, Union
+from typing import Dict, Iterator, Optional, Union
 
 import libsbml
 import numpy as np
@@ -434,7 +434,7 @@ class Units:
 
 
 if __name__ == "__main__":
-    from sbmlsim.test import MODEL_DEMO, MODEL_GLCWB
+    from tests import MODEL_DEMO
 
     ureg = UnitRegistry()
     uinfo = UnitsInformation.from_sbml(MODEL_DEMO, ureg=ureg)

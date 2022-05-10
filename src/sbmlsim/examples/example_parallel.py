@@ -13,11 +13,10 @@ from sbmlsim.simulator import SimulatorSerial
 from sbmlsim.simulator.simulation_ray import (
     SimulatorActor,
     SimulatorParallel,
-    cpu_count,
     ray,
 )
-from sbmlsim.test import MODEL_GLCWB, MODEL_REPRESSILATOR
-from sbmlsim.units import Units, UnitsInformation
+from tests import MODEL_GLCWB, MODEL_REPRESSILATOR
+from sbmlsim.units import UnitsInformation
 
 
 def example_single_actor():

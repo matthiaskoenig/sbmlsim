@@ -5,7 +5,7 @@ from sbmlsim.plot.plotting_deprecated_matplotlib import add_line, plt
 from sbmlsim.simulation import Timecourse, TimecourseSim
 from sbmlsim.simulation.sensitivity import ModelSensitivity
 from sbmlsim.simulator import SimulatorSerial as Simulator
-from sbmlsim.test import MODEL_REPRESSILATOR
+from tests import MODEL_REPRESSILATOR
 
 
 def plot_results(xres):

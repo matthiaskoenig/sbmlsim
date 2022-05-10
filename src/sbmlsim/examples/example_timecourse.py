@@ -5,7 +5,7 @@ Example showing basic timecourse simulations and plotting.
 from sbmlsim.plot.plotting_deprecated_matplotlib import plt
 from sbmlsim.simulation import Timecourse, TimecourseSim
 from sbmlsim.simulator import SimulatorSerial as Simulator
-from sbmlsim.test import MODEL_REPRESSILATOR
+from tests import MODEL_REPRESSILATOR
 
 
 def run_timecourse_examples():

@@ -3,7 +3,7 @@ from pathlib import Path
 import pytest
 
 from sbmlsim.combine.sedml.runner import execute_sedml
-from sbmlsim.test import DATA_DIR
+from tests import DATA_DIR
 
 
 biomodels_omex_paths = []

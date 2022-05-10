@@ -8,7 +8,7 @@ import libsbml
 import pytest
 
 from sbmlsim.examples import example_units
-from sbmlsim.test import MODEL_DEMO, MODEL_REPRESSILATOR
+from tests import MODEL_DEMO, MODEL_REPRESSILATOR
 from sbmlsim.units import UnitRegistry, Units, UnitsInformation
 
 

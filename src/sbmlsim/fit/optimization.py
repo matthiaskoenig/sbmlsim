@@ -404,7 +404,7 @@ class OptimizationProblem(ObjectJSONEncoder):
                     ("y_ref_err", x_ref),
                 ]:
                     if data_key == "y_ref_err" and data is None:
-                        # skip test if no error data
+                        # skip tests if no error data
                         continue
                     if np.any(~np.isfinite(data)):
                         raise ValueError(

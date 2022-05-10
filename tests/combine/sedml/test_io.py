@@ -1,7 +1,7 @@
 from pathlib import Path
 
 from sbmlsim.combine.sedml.io import SEDMLInputType, SEDMLReader
-from sbmlsim.test import DATA_DIR
+from tests import DATA_DIR
 
 
 def test_read_sedml_file1(tmp_path: Path) -> None:

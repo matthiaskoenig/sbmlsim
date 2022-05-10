@@ -19,7 +19,7 @@ from sbmlsim.simulation import (
 )
 from sbmlsim.simulator.simulation_ray import SimulatorParallel, SimulatorSerial
 from sbmlsim.task import Task
-from sbmlsim.test import MODEL_REPRESSILATOR
+from tests import MODEL_REPRESSILATOR
 
 
 class RepressilatorScanExperiment(SimulationExperiment):

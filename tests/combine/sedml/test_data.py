@@ -9,7 +9,7 @@ import libsedml
 
 from sbmlsim.combine.sedml.data import DataDescriptionParser
 from sbmlsim.combine.sedml.io import check_sedml_doc
-from sbmlsim.test import DATA_DIR
+from tests import DATA_DIR
 
 
 # ---------------------------------------------------------------------------------

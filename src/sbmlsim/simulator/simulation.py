@@ -113,7 +113,7 @@ class SimulatorWorker:
             # debug model state
             # FIXME: report issue
             # sbml_str = self.r.getCurrentSBML()
-            # with open("/home/mkoenig/git/pkdb_models/pkdb_models/models/dextromethorphan/results/debug/test.xml", "w") as f_out:
+            # with open("/home/mkoenig/git/pkdb_models/pkdb_models/models/dextromethorphan/results/debug/tests.xml", "w") as f_out:
             #     f_out.write(sbml_str)
 
             # run simulation

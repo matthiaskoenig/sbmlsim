@@ -2,8 +2,8 @@
 import pandas as pd
 
 from sbmlsim.data import DataSet, load_pkdb_dataframe
-from sbmlsim.test import DATA_DIR
-from sbmlsim.units import UnitRegistry, UnitsInformation
+from tests import DATA_DIR
+from sbmlsim.units import UnitRegistry
 
 
 def test_dataset():

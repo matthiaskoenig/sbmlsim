@@ -7,7 +7,7 @@ from sbmlsim.diff import DataSetsComparison, get_files_by_extension
 from sbmlsim.model import RoadrunnerSBMLModel
 from sbmlsim.simulation import TimecourseSim
 from sbmlsim.simulator import SimulatorSerial as Simulator
-from sbmlsim.test import DATA_DIR, MODEL_REPRESSILATOR
+from tests import DATA_DIR, MODEL_REPRESSILATOR
 
 
 def run_simulations(create_files=True):
@@ -35,7 +35,7 @@ def run_simulations(create_files=True):
 
 
 def run_comparisons(create_files=True):
-    """Run comparison of test simulations.
+    """Run comparison of tests simulations.
 
     :return:
     """

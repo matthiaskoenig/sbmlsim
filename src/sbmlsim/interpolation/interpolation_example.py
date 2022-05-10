@@ -41,7 +41,7 @@ def interpolation_example() -> None:
         ]
     ):
         with tempfile.TemporaryDirectory() as tmpdir:
-            tmp_f = Path(tmpdir, "test.xml")
+            tmp_f = Path(tmpdir, "tests.xml")
 
             interpolation = ip.Interpolation(data=data1, method=method)
             interpolation.write_sbml_to_file(tmp_f)
