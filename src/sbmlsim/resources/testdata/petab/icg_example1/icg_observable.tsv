@@ -1,0 +1,6 @@
+observableId	observableName	observableFormula	observableTransformation	noiseFormula	noiseDistribution
+model__Cve_icg	ICG concentration venous blood [mmole/l]	Cve_icg	lin	noiseparameter1_observable_model__Cve_icg * noiseparameter2_observable_model__Cve_icg * Cve_icg	normal
+model__Chv_icg	ICG concentration hepatic vein [mmole/l]	Chv_icg	lin	noiseparameter1_observable_model__Chv_icg * noiseparameter2_observable_model__Chv_icg * Chv_icg	normal
+model__Car_icg	ICG concentration arterial [mmole/l]	Car_icg	lin	noiseparameter1_observable_model__Car_icg * noiseparameter2_observable_model__Car_icg * Car_icg	normal
+model__ER_icg	ICG extraction ratio [dimensionless]	ER_icg	lin	noiseparameter1_observable_model__ER_icg * noiseparameter2_observable_model__ER_icg * ER_icg	normal
+model__LI__ICGLI2BI	ICG bile transport [mmole/min]	LI__ICGLI2BI	lin	noiseparameter1_observable_model__LI__ICGLI2BI * noiseparameter2_observable_model__LI__ICGLI2BI * LI__ICGLI2BI	normal

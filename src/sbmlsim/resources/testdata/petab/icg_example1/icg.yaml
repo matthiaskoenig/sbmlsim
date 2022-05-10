@@ -1,0 +1,11 @@
+parameter_file: icg_parameter.tsv
+format_version: 1
+problems:
+- condition_files:
+  - icg_condition.tsv
+  measurement_files:
+  - icg_measurement.tsv
+  sbml_files:
+  - icg.xml
+  observable_files:
+  - icg_observable.tsv
