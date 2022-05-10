@@ -1,5 +1,6 @@
 import pytest
 import roadrunner
+from pytest import approx
 
 from sbmlsim.model import RoadrunnerSBMLModel
 from sbmlsim.simulator import SimulatorSerial
@@ -11,7 +12,7 @@ def _tolerance_test(r: roadrunner.RoadRunner, abs_tol: float, rel_tol: float):
     """Check that tolerances are set correctly."""
     integrator = r.getIntegrator()  # type: roadrunner.Integrator
 
-    assert pytest.approx(rel_tol, integrator.getSetting("relative_tolerance"))
+    assert rel_tol == approx(integrator.getSetting("relative_tolerance"))
     assert abs_tol <= integrator.getSetting("absolute_tolerance")
 
 

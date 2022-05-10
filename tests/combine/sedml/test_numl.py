@@ -1,6 +1,6 @@
-"""
-Testing reading of numl files
-"""
+"""Testing reading of numl files."""
+import pytest
+
 from sbmlsim.combine.sedml.numl import NumlParser
 from tests import DATA_DIR
 
@@ -13,21 +13,25 @@ SOURCE_NUML_2D = BASE_DIR / "./numlData2D.xml"
 SOURCE_NUML_2DRC = BASE_DIR / "./numlData2DRC.xml"
 
 
+@pytest.mark.skip(reason="no SED-ML support")
 def test_load_numl():
     data = NumlParser.load_numl_data(SOURCE_NUML)
     assert data is not None
 
 
+@pytest.mark.skip(reason="no SED-ML support")
 def test_load_numl_1D():
     data = NumlParser.load_numl_data(SOURCE_NUML_1D)
     assert data is not None
 
 
+@pytest.mark.skip(reason="no SED-ML support")
 def test_load_numl_2D():
     data = NumlParser.load_numl_data(SOURCE_NUML_2D)
     assert data is not None
 
 
+@pytest.mark.skip(reason="no SED-ML support")
 def test_load_numl_2DRC():
     data = NumlParser.load_numl_data(SOURCE_NUML_2D)
     assert data is not None

@@ -1,4 +1,4 @@
-"""Testing biomodel model resources."""
+"""Test biomodel model resources."""
 
 import libsbml
 
@@ -6,42 +6,34 @@ from sbmlsim.model import model_resources
 
 
 def _check_sbml_str(sbml_str: str) -> None:
+    """Helper function for checking SBML string."""
     assert sbml_str
-    doc = libsbml.readSBMLFromString(sbml_str)  # type: libsbml.SBMLDocument
+    doc: libsbml.SBMLDocument = libsbml.readSBMLFromString(sbml_str)
     assert doc
-    model = doc.getModel()  # type: libsbml.Model
+    model: libsbml.Model = doc.getModel()
     assert model
 
 
-def test_from_biomodels_url():
+def test_from_biomodels_url() -> None:
+    """Test from BioModels URL."""
     mid = "BIOMD0000000012"
     url = f"https://www.ebi.ac.uk/biomodels/model/download/{mid}?filename={mid}_url.xml"
     sbml_str = model_resources.model_from_url(url)
     _check_sbml_str(sbml_str=sbml_str)
 
 
-def test_from_biomodels_url_deprecated():
+def test_from_biomodels_url_deprecated() -> None:
+    """Test from deprecated BioModels URL."""
     mid = "BIOMD0000000012"
     url = f"https://www.ebi.ac.uk/biomodels-main/download?mid={mid}"
     sbml_str = model_resources.model_from_url(url)
     _check_sbml_str(sbml_str=sbml_str)
 
 
-def test_from_biomodels_url():
-    mid = "BIOMD0000000012"
-    url = f"https://www.ebi.ac.uk/biomodels/model/download/{mid}?filename={mid}_url.xml"
-
-    sbml_str = model_resources.model_from_url(url)
-    _check_sbml_str(sbml_str=sbml_str)
-
-
-def test_from_biomodels_urn():
-    """Check that string is returned.
-
-    :return:
-    """
+def test_from_biomodels_urn() -> None:
+    """Check that string is returned."""
     urn = "urn:miriam:biomodels.db:BIOMD0000000139"
     sbml_str = model_resources.model_from_urn(urn)
     assert sbml_str
-    doc = libsbml.readSBMLFromString(sbml_str)  # type: libsbml.SBMLDocument
+    doc: libsbml.SBMLDocument = libsbml.readSBMLFromString(sbml_str)
     assert doc

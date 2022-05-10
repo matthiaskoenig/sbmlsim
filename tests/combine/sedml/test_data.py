@@ -38,6 +38,7 @@ OMEX_CSV_JWS_ADLUNG2017_FIG2G = BASE_DIR / "omex" / "jws_adlung2017_fig2g.omex"
 # ---------------------------------------------------------------------------------
 
 
+@pytest.mark.skip(reason="no SED-ML support")
 def test_load_csv():
     data = DataDescriptionParser._load_csv(SOURCE_CSV)
     assert data is not None
@@ -45,6 +46,7 @@ def test_load_csv():
     assert data.shape[1] == 3
 
 
+@pytest.mark.skip(reason="no SED-ML support")
 def test_load_tsv():
     data = DataDescriptionParser._load_tsv(SOURCE_TSV)
     assert data is not None
@@ -52,6 +54,7 @@ def test_load_tsv():
     assert data.shape[1] == 3
 
 
+@pytest.mark.skip(reason="no SED-ML support")
 def test_load_csv_parameters():
     data = DataDescriptionParser._load_csv(SOURCE_CSV_PARAMETERS)
     assert data is not None
@@ -92,6 +95,7 @@ def _parseDataDescriptions(sedml_path):
     return data_sources
 
 
+@pytest.mark.skip(reason="no SED-ML support")
 def test_parse_csv():
     data_sources = _parseDataDescriptions(SEDML_READ_CSV)
     assert "dataTime" in data_sources
@@ -100,6 +104,7 @@ def test_parse_csv():
     assert len(data_sources["dataS1"]) == 200
 
 
+@pytest.mark.skip(reason="no SED-ML support")
 def test_parse_csv_parameters():
     data_sources = _parseDataDescriptions(SEDML_CSV_PARAMETERS)
     assert "dataIndex" in data_sources
@@ -108,6 +113,7 @@ def test_parse_csv_parameters():
     assert len(data_sources["dataMu"]) == 10
 
 
+@pytest.mark.skip(reason="no SED-ML support")
 def test_parse_tsv():
     data_sources = _parseDataDescriptions(SEDML_READ_TSV)
     assert "dataTime" in data_sources
@@ -116,6 +122,7 @@ def test_parse_tsv():
     assert len(data_sources["dataS1"]) == 200
 
 
+@pytest.mark.skip(reason="no SED-ML support")
 def test_parse_numl():
     data_sources = _parseDataDescriptions(SEDML_READ_NUML)
     assert "dataTime" in data_sources
@@ -124,6 +131,7 @@ def test_parse_numl():
     assert len(data_sources["dataS1"]) == 200
 
 
+@pytest.mark.skip(reason="no SED-ML support")
 def test_parse_numl_1D():
     data_sources = _parseDataDescriptions(SEDML_READ_NUML_1D)
     assert data_sources is not None
@@ -137,6 +145,7 @@ def test_parse_numl_1D():
     assert len(data_sources["data_s_glu"]) == 1
 
 
+@pytest.mark.skip(reason="no SED-ML support")
 def test_parse_numl_2D():
     data_sources = _parseDataDescriptions(SEDML_READ_NUML_2D)
     assert data_sources is not None
@@ -148,6 +157,7 @@ def test_parse_numl_2D():
     assert len(data_sources["dataB"]) == 6
 
 
+@pytest.mark.skip(reason="no SED-ML support")
 def test_parse_numl_2DRC():
     data_sources = _parseDataDescriptions(SEDML_READ_NUML_2DRC)
     assert data_sources is not None
