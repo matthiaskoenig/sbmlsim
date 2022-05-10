@@ -70,3 +70,11 @@ jobs:
         body_path: "release-notes/${{ steps.tag.outputs.version }}.md"
         draft: false
         prerelease: false
+    - name: Send release tweet
+      uses: ethomson/send-tweet-action@v1
+      with:
+        status: "New ${{ github.event.repository.name }} release ${{ steps.tag.outputs.version }}! https://github.com/matthiaskoenig/sbmlsim/releases/tag/${{ steps.tag.outputs.version }} #python #SBML #release"
+        consumer-key: ${{ secrets.TWITTER_CONSUMER_API_KEY }}
+        consumer-secret: ${{ secrets.TWITTER_CONSUMER_API_SECRET }}
+        access-token: ${{ secrets.TWITTER_ACCESS_TOKEN }}
+        access-token-secret: ${{ secrets.TWITTER_ACCESS_TOKEN_SECRET }}
