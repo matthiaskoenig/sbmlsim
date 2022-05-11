@@ -1,3 +1,5 @@
+"""COMBINE archive for PEtab problems."""
+
 from pathlib import Path
 
 import numpy as np

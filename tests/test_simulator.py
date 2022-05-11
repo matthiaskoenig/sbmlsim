@@ -1,4 +1,5 @@
-import pytest
+"""Test simulator."""
+
 import roadrunner
 from pytest import approx
 
@@ -16,7 +17,8 @@ def _tolerance_test(r: roadrunner.RoadRunner, abs_tol: float, rel_tol: float):
     assert abs_tol <= integrator.getSetting("absolute_tolerance")
 
 
-def test_tolerances_serial():
+def test_tolerances_serial1() -> None:
+    """Test tolerances serial."""
     abs_tol = 1e-14
     rel_tol = 1e-14
     simulator = SimulatorSerial(
@@ -28,7 +30,8 @@ def test_tolerances_serial():
     _tolerance_test(r=simulator.model.r, abs_tol=abs_tol, rel_tol=rel_tol)
 
 
-def test_tolerances_serial2():
+def test_tolerances_serial2() -> None:
+    """Test tolerances serial."""
     abs_tol = 1e-14
     rel_tol = 1e-14
     simulator = SimulatorSerial(
@@ -40,7 +43,8 @@ def test_tolerances_serial2():
     _tolerance_test(r=simulator.model.r, abs_tol=abs_tol, rel_tol=rel_tol)
 
 
-def test_tolerances_parallel():
+def test_tolerances_parallel1() -> None:
+    """Test tolerances parallel."""
     abs_tol = 1e-14
     rel_tol = 1e-14
 
@@ -53,7 +57,8 @@ def test_tolerances_parallel():
     _tolerance_test(r=simulator.model.r, abs_tol=abs_tol, rel_tol=rel_tol)
 
 
-def test_tolerances_parallel2():
+def test_tolerances_parallel2() -> None:
+    """Test tolerances parallel."""
     abs_tol = 1e-14
     rel_tol = 1e-14
 

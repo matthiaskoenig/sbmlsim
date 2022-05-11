@@ -40,10 +40,7 @@ class SimulatorActor(SimulatorWorker):
             self.set_model(path_state)
 
     def set_model(self, state: bytes) -> None:
-        """Set model using the loaded state
-
-        Faster to load the state.
-        """
+        """Set model using the state."""
         self.r: roadrunner.RoadRunner = roadrunner.RoadRunner()
         if state is not None:
             # write state to temporary file for reading

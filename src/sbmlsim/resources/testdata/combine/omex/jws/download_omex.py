@@ -1,10 +1,8 @@
-"""
-Downloads latest JWS simulation descriptions.
+"""Downloads latest JWS simulation descriptions.
 
 Necessary to update the script with changing JWS webpage.
 """
 import os
-import pprint
 import shutil
 
 import requests
@@ -18,7 +16,7 @@ OMEX_DIR = os.path.join(THIS_DIR, "omex")
 
 
 def jws_omex_dict():
-    """Returns dictionary of available JWS combine archives.
+    """Return dictionary of available JWS combine archives.
 
     :return: { id: download_url } dict
     """
@@ -66,6 +64,7 @@ def download_omex(url, omex_path):
 
 
 def download_jws_omex():
+    """Download JWS COMBINE archives."""
     jws_dict = jws_omex_dict()
     num_omex = len(jws_dict)
     count = 1

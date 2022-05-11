@@ -9,6 +9,8 @@ import time
 
 
 class FileLockException(Exception):
+    """FileLockException."""
+
     pass
 
 

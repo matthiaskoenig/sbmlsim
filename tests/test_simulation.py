@@ -8,16 +8,19 @@ from tests import MODEL_REPRESSILATOR
 
 
 def test_create_simulator():
+    """Create simulator for model."""
     simulator = Simulator(MODEL_REPRESSILATOR)
     assert simulator
 
 
 def test_create_simulator_strpath():
+    """Create simulator for model."""
     simulator = Simulator(str(MODEL_REPRESSILATOR))
     assert simulator
 
 
-def test_timecourse_simulation():
+def test_timecourse_simulation() -> None:
+    """Run timecourse simulation."""
     simulator = Simulator(MODEL_REPRESSILATOR)
 
     tc = Timecourse(start=0, end=100, steps=100)
@@ -42,7 +45,8 @@ def test_timecourse_simulation():
     assert s is not None
 
 
-def test_timecourse_combined():
+def test_timecourse_combined() -> None:
+    """Test timecourse combination."""
     simulator = Simulator(MODEL_REPRESSILATOR)
 
     s = simulator._timecourse(

@@ -1,3 +1,4 @@
+"""Execute SED-ML."""
 from pathlib import Path
 
 from sbmlsim.combine.sedml.runner import execute_sedml

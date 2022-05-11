@@ -129,7 +129,7 @@ def plot_samples(samples):
 
 
 def example_sampling() -> None:
-    """Example how to use sampling."""
+    """Run sampling exa how to use sampling."""
     parameters: List[FitParameter] = [
         FitParameter(pid="p1", lower_bound=10, upper_bound=1e4),
         FitParameter(pid="p2", lower_bound=1, upper_bound=1e3),

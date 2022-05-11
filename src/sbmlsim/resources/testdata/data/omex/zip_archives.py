@@ -1,16 +1,13 @@
-"""
-Creates all zip files.
+"""Creates all zip files.
+
 Manifest exists in folder, so creating combine archives.
 """
-
-from __future__ import absolute_import, print_function
-
 import os
 import shutil
 
 
 def create_all_zip(base_dir, out_dir, extension):
-    """Creates zip for all folders.
+    """Create zip for all folders.
 
     :param base_dir:
     :param out_dir: output directory
@@ -30,11 +27,7 @@ def create_all_zip(base_dir, out_dir, extension):
 
 
 def create_zip_from_folder(directory, out_dir, extension):
-    """
-
-    :param directory:
-    :return:
-    """
+    """Create zip from folder."""
 
     if not extension.startswith("."):
         extension = "." + extension

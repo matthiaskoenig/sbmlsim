@@ -3,6 +3,7 @@
 Used for model and data unit conversions.
 """
 import os
+import warnings
 from collections.abc import MutableMapping
 from pathlib import Path
 from typing import Dict, Iterator, Optional, Union
@@ -17,11 +18,10 @@ from sbmlutils.io import read_sbml
 # Disable Pint's old fallback behavior (must come before importing Pint)
 os.environ["PINT_ARRAY_PROTOCOL_FALLBACK"] = "0"
 
-import warnings
 
-import pint
-from pint import Quantity, UnitRegistry
-from pint.errors import DimensionalityError, UndefinedUnitError
+import pint  # noqa: E402
+from pint import Quantity, UnitRegistry  # noqa: E402
+from pint.errors import DimensionalityError, UndefinedUnitError  # noqa: E402
 
 
 with warnings.catch_warnings():

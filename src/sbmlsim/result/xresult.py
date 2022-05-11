@@ -23,6 +23,7 @@ class XResult:
     """
 
     def __init__(self, xdataset: xr.Dataset, uinfo: Optional[UnitsInformation] = None):
+        """Initialize XResult."""
         self.xds = xdataset
         self.uinfo = uinfo
 

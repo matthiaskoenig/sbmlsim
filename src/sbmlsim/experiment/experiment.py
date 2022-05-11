@@ -168,6 +168,7 @@ class SimulationExperiment:
 
     def data(self) -> Dict[str, Data]:
         """Define DataGenerators including functions.
+
         This determines the selection in the model.
 
         All data which is accessed in a simulation result must be defined in a

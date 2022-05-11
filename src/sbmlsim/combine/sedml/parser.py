@@ -139,6 +139,7 @@ class SBMLModelTarget:
     """Target in an SBML model."""
 
     def __init__(self, selection: str, target_type: SBMLModelTargetType):
+        """Initialize SBMLModelTarget."""
         if target_type in {
             SBMLModelTargetType.PARAMETER,
             SBMLModelTargetType.COMPARTMENT,
@@ -245,6 +246,7 @@ class SEDMLSerializer:
         omex_path: Path = None,
         data_path: Path = None,
     ):
+        """Initialize SED-ML serializer."""
         self.experiment: Type[SimulationExperiment] = exp_class
         self.working_dir: Path = working_dir
         self.sedml_filename: str = sedml_filename

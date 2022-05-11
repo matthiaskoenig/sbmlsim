@@ -1,10 +1,8 @@
-# TODO: SED-ML
+"""Task module.
 
-# FIXME: add discard flag on subtask; handle via outputEndTime
-# TODO: use pydantic whereever possible
+FIXME: add discard flag on subtask; handle via outputEndTime
+TODO: use pydantic whereever possible
 
-#
-"""
 1. The values of all ranges are calculated before the execution of the repeated task
 
 The order of activities within each iteration of a RepeatedTask is as follows:
@@ -28,6 +26,8 @@ from sbmlsim.simulation import Dimension
 
 @dataclass
 class Change:
+    """Change."""
+
     model: str
     target: str
     symbol: str
@@ -40,6 +40,8 @@ class Change:
 
 @dataclass
 class RepeatedTask:
+    """RepeatedTask."""
+
     range: str  # dimension id
     ranges: [Dimension]
     reset_model: bool
@@ -48,6 +50,8 @@ class RepeatedTask:
 
 @dataclass
 class Task:
+    """Task."""
+
     model: str
     simulation: str
 
@@ -60,6 +64,8 @@ class Task:
 
 @dataclass
 class SubTask:
+    """Subtask."""
+
     model: str
     simulation: str
     changes: List[str]

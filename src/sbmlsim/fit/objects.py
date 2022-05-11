@@ -154,6 +154,8 @@ class FitExperiment:
 
 @dataclass
 class MappingMetaData:
+    """Metadata for mapping."""
+
     pass
 
 
@@ -306,6 +308,7 @@ class FitData:
         task: Optional[str] = None,
         function: Optional[str] = None,
     ):
+        """Initialize FitData."""
 
         self.experiment = experiment
         self.dset_id = dataset
@@ -443,6 +446,7 @@ class FitDataInitialized:
     """
 
     def __init__(self):
+        """Initialize FitDataInitialized."""
         self.x = None
         self.y = None
         self.x_sd = None

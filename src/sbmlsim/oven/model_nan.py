@@ -8,6 +8,8 @@ from sbmlutils.metadata import *
 
 
 class U(Units):
+    """UnitDefinitions."""
+
     mmole = UnitDefinition("mmole", "mmole")
     min = UnitDefinition("min", "min")
     mmole_per_min = UnitDefinition("mmole_per_min", "mmole/min")

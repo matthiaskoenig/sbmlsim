@@ -19,6 +19,7 @@ class DataGeneratorIndexingFunction(DataGeneratorFunction):
     """DataGeneratorIndexingFunction."""
 
     def __init__(self, index: int, dimension: str = "_time"):
+        """Initialize DataGeneratorIndexingFunction."""
         self.index = index
         self.dimension = dimension
 
@@ -51,6 +52,7 @@ class DataGenerator:
         xresults: Dict[str, XResult],
         dsets: Dict[str, DataSet] = None,
     ):
+        """Initialize DataGenerator."""
         self.xresults = xresults
         self.dsets = dsets
         self.f = f

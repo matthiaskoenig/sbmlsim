@@ -1,3 +1,4 @@
+"""Test sensitivity simulations."""
 import pytest
 
 from sbmlsim.examples import example_sensitivity
@@ -6,11 +7,13 @@ from sbmlsim.simulation.sensitivity import ModelSensitivity, SensitivityType
 from tests import MODEL_REPRESSILATOR
 
 
-def test_sensitivity_example():
+def test_sensitivity_example() -> None:
+    """Run sensitivity example."""
     example_sensitivity.run_sensitivity()
 
 
-def test_sensitivity():
+def test_sensitivity() -> None:
+    """Test sensitivity."""
     model = RoadrunnerSBMLModel(MODEL_REPRESSILATOR)
 
     p_ref = ModelSensitivity.reference_dict(
@@ -39,7 +42,8 @@ def test_sensitivity():
         assert key in all_ref
 
 
-def test_sensitivity_change():
+def test_sensitivity_change() -> None:
+    """Test sensitivity change."""
     model = RoadrunnerSBMLModel(MODEL_REPRESSILATOR)
     p_ref = ModelSensitivity.reference_dict(
         model=model, stype=SensitivityType.PARAMETER_SENSITIVITY

@@ -1,3 +1,6 @@
+"""Test experiment report."""
+from pathlib import Path
+
 from sbmlsim.examples.experiments.glucose import BASE_PATH, DATA_PATH
 from sbmlsim.examples.experiments.glucose.experiments.dose_response import (
     DoseResponseExperiment,
@@ -6,12 +9,8 @@ from sbmlsim.experiment import ExperimentReport, ExperimentRunner
 from sbmlsim.simulator import SimulatorSerial
 
 
-def test_glucose_report(tmp_path):
-    """Create model report for the glucose experiment.
-
-    :param tmp_path:
-    :return:
-    """
+def test_glucose_report(tmp_path: Path) -> None:
+    """Create model report for glucose experiment."""
     runner = ExperimentRunner(
         [DoseResponseExperiment],
         base_path=BASE_PATH,

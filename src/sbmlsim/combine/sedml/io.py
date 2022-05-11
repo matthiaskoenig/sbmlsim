@@ -67,6 +67,7 @@ class SEDMLReader:
     """
 
     def __init__(self, source: Union[Path, str], working_dir: Path = None):
+        """Initialize SEDMLReader."""
         self.source: Union[Path, str] = source
         self.exec_dir: Path = os.getcwd()
         self.working_dir: Path = working_dir
