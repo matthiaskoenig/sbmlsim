@@ -1,6 +1,6 @@
 """Test parallel examples."""
 
-from sbmlsim.examples import example_parallel
+from sbmlsim.examples.multiprocessing import example_parallel
 
 
 def test_parallel_single_actor() -> None:

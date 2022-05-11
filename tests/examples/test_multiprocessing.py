@@ -1,5 +1,5 @@
 """Testing multiprocessing."""
-from sbmlsim.examples.multiprocessing.multiprocessing_example import (
+from sbmlsim.examples.multiprocessing.example_multiprocessing import (
     multiprocessing_example,
 )
 

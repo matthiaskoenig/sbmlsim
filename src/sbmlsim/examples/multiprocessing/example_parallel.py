@@ -1,6 +1,4 @@
-"""
-Parallel execution of timecourses
-"""
+"""Parallel execution of timecourses."""
 import tempfile
 import time
 
@@ -28,11 +26,15 @@ def example_single_actor():
     RoadrunnerSBMLModel.set_timecourse_selections(r)
     uinfo = UnitsInformation.from_sbml(MODEL_REPRESSILATOR)
 
-    f_state = tempfile.NamedTemporaryFile(suffix=".dat")
+    f_state = tempfile.NamedTemporaryFile(suffix=".state")
     r.saveState(f_state.name)
 
     # Create single actor process
-    sa = SimulatorActor.remote(f_state.name)
+    state: bytes
+    with open(f_state.name, "rb") as f_state:
+        state = f_state.read()
+    sa = SimulatorActor.remote()
+    # TODO: set state
 
     # run simulation
     tcsim = TimecourseSim(
@@ -178,8 +180,8 @@ def example_parallel_timecourse(nsim=40, actor_count=15):
 
 
 if __name__ == "__main__":
-    # example_single_actor()
+    example_single_actor()
     # example_multiple_actors()
 
-    sim_info = example_parallel_timecourse(nsim=100, actor_count=15)
-    ray.timeline(filename="timeline.json")
+    # sim_info = example_parallel_timecourse(nsim=100, actor_count=15)
+    # ray.timeline(filename="timeline.json")

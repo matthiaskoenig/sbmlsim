@@ -1,7 +1,7 @@
 """Parallel simulation using ray."""
 import tempfile
 from pathlib import Path
-from typing import Iterator, List
+from typing import Iterator, List, Optional
 
 import numpy as np
 import pandas as pd
@@ -33,12 +33,6 @@ class SimulatorActor(SimulatorWorker):
     An actor is essentially a stateful worker
     """
 
-    def __init__(self, path_state=None):
-        """State contains model, integrator settings and selections."""
-        self.r = None
-        if path_state is not None:
-            self.set_model(path_state)
-
     def set_model(self, state: bytes) -> None:
         """Set model using the state."""
         self.r: roadrunner.RoadRunner = roadrunner.RoadRunner()
@@ -47,7 +41,9 @@ class SimulatorActor(SimulatorWorker):
             with tempfile.NamedTemporaryFile("wb") as f_temp:
                 f_temp.write(state)
                 filename = f_temp.name
-                print(f"load state: {filename}")
+                logger.debug(f"load state: {filename}")
+
+                # FIXME: this must be in a lock
                 self.r.loadState(str(filename))
 
     def set_timecourse_selections(self, selections: Iterator[str]):
@@ -116,20 +112,19 @@ class SimulatorParallel(SimulatorSerial):
 
     def set_model(self, model):
         """Set model."""
-        print("SimulatorParallel.set_model")
         super(SimulatorParallel, self).set_model(model)
         if model:
             if not self.model.state_path:
                 raise ValueError("State path does not exist.")
 
             # read state only once
-            print("Read state")
+            logger.debug("Read state")
+            state: bytes
             with open(self.model.state_path, "rb") as f_state:
                 state = f_state.read()
-            print("Set remote state")
+            logger.debug("Set remote state")
             for simulator in self.simulators:
                 simulator.set_model.remote(state)
-            print("Set timecourse selection")
             self.set_timecourse_selections(self.r.selections)
 
         # FIXME: set integrator settings
