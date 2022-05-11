@@ -14,7 +14,7 @@ SOURCE_NUML_2DRC = BASE_DIR / "./numlData2DRC.xml"
 
 
 @pytest.mark.skip(reason="no SED-ML support")
-def test_load_numl():
+def test_load_numl() -> None:
     """Load NuML."""
     data = NumlParser.load_numl_data(SOURCE_NUML)
     assert data is not None

@@ -4,6 +4,7 @@ import os
 from pathlib import Path
 
 import libsedml
+import pandas as pd
 import pytest
 
 from sbmlsim.combine.sedml.data import DataDescriptionParser
@@ -64,7 +65,7 @@ def test_load_csv_parameters() -> None:
     assert data.shape[1] == 1
 
 
-def _parseDataDescriptions(sedml_path: Path) -> None:
+def _parseDataDescriptions(sedml_path: Path) -> dict[str, pd.Series]:
     """Test helper functions.
 
     Tries to parse all DataDescriptions in the SED-ML file.
@@ -94,6 +95,7 @@ def _parseDataDescriptions(sedml_path: Path) -> None:
         assert data_sources is not None
         assert type(data_sources) == dict
         assert len(data_sources) > 0
+
     return data_sources
 
 
