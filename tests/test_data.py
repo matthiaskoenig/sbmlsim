@@ -6,14 +6,16 @@ from sbmlsim.units import UnitRegistry
 from tests import DATA_DIR
 
 
-def test_dataset():
+def test_dataset() -> None:
+    """Test dataset."""
     df = pd.DataFrame({"col1": [1, 2, 3], "col2": [2, 3, 4], "col3": [4, 5, 6]})
     dset = DataSet.from_df(df, udict={"col1": "mM"}, ureg=UnitRegistry())
     assert "col1" in dset.uinfo
     assert dset.uinfo["col1"] == "mM"
 
 
-def test_Faber1978_Fig1():
+def test_Faber1978_Fig1() -> None:
+    """Test Faber1978 Fig1."""
     data_path = DATA_DIR / "datasets"
     df = load_pkdb_dataframe(sid="Faber1978_Fig1", data_path=data_path)
     dset = DataSet.from_df(df, udict={}, ureg=UnitRegistry())
@@ -27,7 +29,8 @@ def test_Faber1978_Fig1():
     assert dset.cpep_unit.unique()[0] == "pmol/ml"
 
 
-def test_Allonen1981_Fig3A():
+def test_Allonen1981_Fig3A() -> None:
+    """Test Allonen1981 Fig3A."""
     data_path = DATA_DIR / "datasets"
     df = load_pkdb_dataframe(sid="Allonen1981_Fig3A", data_path=data_path)
     for substance in df.substance.unique():
@@ -44,7 +47,8 @@ def test_Allonen1981_Fig3A():
         assert "unit" not in dset.columns
 
 
-def test_unit_conversion1():
+def test_unit_conversion() -> None:
+    """Test unit conversion."""
     data_path = DATA_DIR / "datasets"
     df = load_pkdb_dataframe(sid="Allonen1981_Fig3A", data_path=data_path)
 

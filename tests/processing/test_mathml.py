@@ -1,3 +1,4 @@
+"""Test MathML functionality."""
 import numpy as np
 import pytest
 
@@ -9,7 +10,8 @@ from sbmlsim.combine.mathml import (
 )
 
 
-def test_variables_1():
+def test_variables_1() -> None:
+    """Test variables."""
     astnode = formula_to_astnode("x + y")
     variables = _get_variables(astnode)
     assert len(variables) == 2
@@ -17,7 +19,8 @@ def test_variables_1():
     assert "y" in variables
 
 
-def test_variables_2():
+def test_variables_2() -> None:
+    """Test variables."""
     astnode = formula_to_astnode("sin(x) + 2.0 * y/x * exp(10)")
     variables = _get_variables(astnode)
     print(variables)
@@ -26,13 +29,15 @@ def test_variables_2():
     assert "y" in variables
 
 
-def test_evaluate():
+def test_evaluate() -> None:
+    """Test evaluate."""
     astnode = formula_to_astnode("x + 2.5 * y")
     res = evaluate(astnode=astnode, variables={"x": 1.0, "y": 2.0})
     assert res == pytest.approx(6.0)
 
 
-def test_evaluate_array():
+def test_evaluate_array() -> None:
+    """Test evaluate array."""
     astnode = formula_to_astnode("x + 2.5 * y")
     res = evaluate(
         astnode=astnode,
@@ -44,7 +49,8 @@ def test_evaluate_array():
     assert np.allclose(res, np.array([6.0, 9.5]))
 
 
-def test_mathml_str():
+def test_mathml_str() -> None:
+    """Test MathML string."""
     mathml_str = """
            <math xmlns="http://www.w3.org/1998/Math/MathML">
                 <piecewise>
@@ -78,4 +84,4 @@ def test_mathml_str():
                 </piecewise>
               </math>
     """
-    expr = parse_mathml_str(mathml_str)
+    _ = parse_mathml_str(mathml_str)

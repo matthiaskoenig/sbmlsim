@@ -1,8 +1,9 @@
 """Testing OMEX generation for PETab problems."""
+from pymetadata.omex import Omex
+
 from sbmlsim import RESOURCES_DIR
 from sbmlsim.fit.petab_omex import create_petab_omex
 
-from pymetadata.omex import Omex
 
 data_dir = RESOURCES_DIR / "testdata" / "petab" / "icg_example1"
 

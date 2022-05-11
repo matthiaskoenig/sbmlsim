@@ -1,7 +1,4 @@
-"""
-Definition of data and files for tests.
-The files are located in the data directory.
-"""
+"""Definition of data and files for tests."""
 
 
 from pathlib import Path

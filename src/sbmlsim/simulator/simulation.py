@@ -2,10 +2,10 @@
 from typing import Optional
 
 import pandas as pd
-from sbmlsim.model.model_roadrunner import roadrunner
 from sbmlutils import log
 
 from sbmlsim.model import ModelChange
+from sbmlsim.model.model_roadrunner import roadrunner
 from sbmlsim.simulation import Timecourse, TimecourseSim
 
 

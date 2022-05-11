@@ -5,9 +5,9 @@ import tempfile
 import time
 
 import numpy as np
-from sbmlsim.model.model_roadrunner import roadrunner
 
 from sbmlsim.model import RoadrunnerSBMLModel
+from sbmlsim.model.model_roadrunner import roadrunner
 from sbmlsim.simulation import Dimension, ScanSim, Timecourse, TimecourseSim
 from sbmlsim.simulator import SimulatorSerial
 from sbmlsim.simulator.simulation_ray import SimulatorActor, SimulatorParallel, ray

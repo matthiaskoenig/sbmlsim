@@ -1,6 +1,4 @@
-"""
-Test units.
-"""
+"""Test units."""
 from pathlib import Path
 from typing import List, Tuple
 
@@ -48,6 +46,7 @@ def test_units_from_doc(sbml_path: Path) -> None:
 
 
 def test_example_units() -> None:
+    """Run demo examples."""
     example_units.run_demo_example()
 
 
@@ -86,11 +85,7 @@ udef_examples = create_udef_examples()
 
 @pytest.mark.parametrize("udef, s", udef_examples)
 def test_udef_to_str(udef: libsbml.UnitDefinition, s: str) -> None:
-    stest = libsbml.UnitDefinition_printUnits(udef)
-    print(stest)
+    """Test UnitDefinition to string."""
+    _ = libsbml.UnitDefinition_printUnits(udef)
     s2 = Units.udef_to_str(udef)
     assert s2 == s
-
-
-# def test_normalize_changes() -> None:
-#     Units.normalize_changes()

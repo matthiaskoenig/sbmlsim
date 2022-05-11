@@ -1,18 +1,17 @@
 from pathlib import Path
 
-from pymetadata.omex import Omex, ManifestEntry, EntryFormat
-
 import numpy as np
 import petab
 from petab import (
+    CONDITION_FILES,
+    MEASUREMENT_FILES,
+    OBSERVABLE_FILES,
     PARAMETER_FILE,
     PROBLEMS,
-    MEASUREMENT_FILES,
     SBML_FILES,
-    CONDITION_FILES,
-    OBSERVABLE_FILES,
     VISUALIZATION_FILES,
 )
+from pymetadata.omex import EntryFormat, ManifestEntry, Omex
 
 
 def create_petab_omex(
@@ -33,7 +32,7 @@ def create_petab_omex(
             location=f"./{yaml_file.relative_to(base_dir)}",
             format=EntryFormat.YAML,
             master=True,
-        )
+        ),
     )
 
     # Add parameter file(s) that describe a single parameter table.
@@ -45,7 +44,7 @@ def create_petab_omex(
                 location=parameter_subset_file,
                 format=EntryFormat.TSV,
                 master=True,
-            )
+            ),
         )
 
     for problem in yaml_config[PROBLEMS]:
@@ -56,11 +55,15 @@ def create_petab_omex(
                     location=sbml_file,
                     format=EntryFormat.SBML,
                     master=True,
-                )
+                ),
             )
 
-        for field in [MEASUREMENT_FILES, OBSERVABLE_FILES,
-                      VISUALIZATION_FILES, CONDITION_FILES]:
+        for field in [
+            MEASUREMENT_FILES,
+            OBSERVABLE_FILES,
+            VISUALIZATION_FILES,
+            CONDITION_FILES,
+        ]:
             if field not in problem:
                 continue
 
@@ -71,7 +74,7 @@ def create_petab_omex(
                         location=file,
                         format=EntryFormat.TSV,
                         master=True,
-                    )
+                    ),
                 )
 
     omex.to_omex(omex_file)
@@ -79,6 +82,7 @@ def create_petab_omex(
 
 if __name__ == "__main__":
     from sbmlsim import RESOURCES_DIR
+
     data_dir = RESOURCES_DIR / "testdata" / "petab" / "icg_example1"
     print(data_dir, data_dir.exists())
 

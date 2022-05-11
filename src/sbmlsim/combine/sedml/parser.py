@@ -89,7 +89,6 @@ from pint import Quantity
 from pymetadata import omex as pyomex
 from sbmlutils import log
 
-from sbmlsim.model.model_roadrunner import roadrunner
 from sbmlsim.combine.mathml import formula_to_astnode
 from sbmlsim.combine.sedml.data import DataDescriptionParser
 from sbmlsim.combine.sedml.task import TaskNode, TaskTree
@@ -98,6 +97,7 @@ from sbmlsim.experiment import ExperimentRunner, SimulationExperiment
 from sbmlsim.fit import FitData, FitExperiment, FitMapping, FitParameter
 from sbmlsim.model import RoadrunnerSBMLModel
 from sbmlsim.model.model import AbstractModel
+from sbmlsim.model.model_roadrunner import roadrunner
 from sbmlsim.plot import Axis, Curve, Figure, Plot
 from sbmlsim.plot.plotting import (
     AbstractCurve,

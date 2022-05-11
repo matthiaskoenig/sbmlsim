@@ -1,6 +1,4 @@
-"""
-Testing plotting functionality.
-"""
+"""Testing plotting functionality."""
 import numpy as np
 
 from sbmlsim.plot.plotting_deprecated_matplotlib import add_line, plt
@@ -10,6 +8,7 @@ from tests import MODEL_REPRESSILATOR
 
 
 def test_plotting():
+    """Test plotting."""
     simulator = Simulator(MODEL_REPRESSILATOR)
     Q_ = simulator.Q_
     scan1d = ScanSim(

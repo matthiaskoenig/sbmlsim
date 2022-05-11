@@ -1,3 +1,4 @@
+"""Testing SED-ML IO."""
 from pathlib import Path
 
 import pytest
@@ -32,7 +33,7 @@ def test_read_sedml_file2(tmp_path: Path) -> None:
 
 @pytest.mark.skip(reason="no SED-ML support")
 def test_read_sedml_str(tmp_path: Path) -> None:
-    """Read SED-ML from file"""
+    """Read SED-ML from file."""
     with open(
         DATA_DIR / "sedml" / "l1v4" / "repressilator" / "repressilator_sedml.xml", "r"
     ) as f_in:
@@ -45,7 +46,7 @@ def test_read_sedml_str(tmp_path: Path) -> None:
 
 @pytest.mark.skip(reason="no SED-ML support")
 def test_read_sedml_omex(tmp_path: Path) -> None:
-    """Read SED-ML from file"""
+    """Read SED-ML from file."""
     source = DATA_DIR / "omex" / "tellurium" / "repressilator.omex"
     reader = SEDMLReader(source=source, working_dir=tmp_path)
     assert reader

@@ -1,12 +1,10 @@
-"""
-Testing of SED-ML data support, i.e., DataDescription.
-"""
-import pytest
+"""Testing of SED-ML data support, i.e., DataDescription."""
 import importlib
 import os
 from pathlib import Path
 
 import libsedml
+import pytest
 
 from sbmlsim.combine.sedml.data import DataDescriptionParser
 from sbmlsim.combine.sedml.io import check_sedml_doc
@@ -40,7 +38,8 @@ OMEX_CSV_JWS_ADLUNG2017_FIG2G = BASE_DIR / "omex" / "jws_adlung2017_fig2g.omex"
 
 
 @pytest.mark.skip(reason="no SED-ML support")
-def test_load_csv():
+def test_load_csv() -> None:
+    """Load CSV."""
     data = DataDescriptionParser._load_csv(SOURCE_CSV)
     assert data is not None
     assert data.shape[0] == 200
@@ -48,7 +47,8 @@ def test_load_csv():
 
 
 @pytest.mark.skip(reason="no SED-ML support")
-def test_load_tsv():
+def test_load_tsv() -> None:
+    """Load TSV."""
     data = DataDescriptionParser._load_tsv(SOURCE_TSV)
     assert data is not None
     assert data.shape[0] == 200
@@ -56,14 +56,15 @@ def test_load_tsv():
 
 
 @pytest.mark.skip(reason="no SED-ML support")
-def test_load_csv_parameters():
+def test_load_csv_parameters() -> None:
+    """Load CSV parameters."""
     data = DataDescriptionParser._load_csv(SOURCE_CSV_PARAMETERS)
     assert data is not None
     assert data.shape[0] == 10
     assert data.shape[1] == 1
 
 
-def _parseDataDescriptions(sedml_path):
+def _parseDataDescriptions(sedml_path: Path) -> None:
     """Test helper functions.
 
     Tries to parse all DataDescriptions in the SED-ML file.
@@ -97,7 +98,8 @@ def _parseDataDescriptions(sedml_path):
 
 
 @pytest.mark.skip(reason="no SED-ML support")
-def test_parse_csv():
+def test_parse_csv() -> None:
+    """Parse CSV."""
     data_sources = _parseDataDescriptions(SEDML_READ_CSV)
     assert "dataTime" in data_sources
     assert "dataS1" in data_sources
@@ -106,7 +108,8 @@ def test_parse_csv():
 
 
 @pytest.mark.skip(reason="no SED-ML support")
-def test_parse_csv_parameters():
+def test_parse_csv_parameters() -> None:
+    """Parse CSV parameters."""
     data_sources = _parseDataDescriptions(SEDML_CSV_PARAMETERS)
     assert "dataIndex" in data_sources
     assert "dataMu" in data_sources
@@ -115,7 +118,8 @@ def test_parse_csv_parameters():
 
 
 @pytest.mark.skip(reason="no SED-ML support")
-def test_parse_tsv():
+def test_parse_tsv() -> None:
+    """Parse TSV."""
     data_sources = _parseDataDescriptions(SEDML_READ_TSV)
     assert "dataTime" in data_sources
     assert "dataS1" in data_sources
@@ -124,7 +128,8 @@ def test_parse_tsv():
 
 
 @pytest.mark.skip(reason="no SED-ML support")
-def test_parse_numl():
+def test_parse_numl() -> None:
+    """Parse NuML."""
     data_sources = _parseDataDescriptions(SEDML_READ_NUML)
     assert "dataTime" in data_sources
     assert "dataS1" in data_sources
@@ -133,7 +138,8 @@ def test_parse_numl():
 
 
 @pytest.mark.skip(reason="no SED-ML support")
-def test_parse_numl_1D():
+def test_parse_numl_1D() -> None:
+    """Parse NuML 1D."""
     data_sources = _parseDataDescriptions(SEDML_READ_NUML_1D)
     assert data_sources is not None
     assert len(data_sources) == 6
@@ -147,7 +153,8 @@ def test_parse_numl_1D():
 
 
 @pytest.mark.skip(reason="no SED-ML support")
-def test_parse_numl_2D():
+def test_parse_numl_2D() -> None:
+    """Parse NuML 2D."""
     data_sources = _parseDataDescriptions(SEDML_READ_NUML_2D)
     assert data_sources is not None
     assert len(data_sources) == 4
@@ -159,7 +166,8 @@ def test_parse_numl_2D():
 
 
 @pytest.mark.skip(reason="no SED-ML support")
-def test_parse_numl_2DRC():
+def test_parse_numl_2DRC() -> None:
+    """Parse NuML 2D RC."""
     data_sources = _parseDataDescriptions(SEDML_READ_NUML_2DRC)
     assert data_sources is not None
     assert len(data_sources) == 4

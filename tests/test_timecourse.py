@@ -1,12 +1,16 @@
+"""Test timecourse."""
+
 from sbmlsim.examples import example_timecourse
 from sbmlsim.simulation.timecourse import Timecourse, TimecourseSim
 
 
-def test_timecourse():
+def test_timecourse_examples() -> None:
+    """Run timecourse examples."""
     example_timecourse.run_timecourse_examples()
 
 
-def test_serialization():
+def test_timecourse_serialization() -> None:
+    """Test timecourse serialization."""
     tcsim = TimecourseSim(
         [
             Timecourse(0, 100, steps=101),
@@ -16,7 +20,6 @@ def test_serialization():
     )
     jsonstr = tcsim.to_json()
     assert jsonstr
-    print(jsonstr)
 
     tcsim2 = TimecourseSim.from_json(jsonstr)
     assert tcsim2

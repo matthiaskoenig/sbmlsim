@@ -1,3 +1,4 @@
+"""Testing execution of OMEX."""
 from pathlib import Path
 
 import pytest
@@ -30,22 +31,26 @@ print(l1v3_omex_paths)
 @pytest.mark.skip(reason="no SED-ML support")
 @pytest.mark.parametrize("omex_path", biomodels_omex_paths)
 def test_biomodel_omex(omex_path: Path, tmp_path: Path) -> None:
+    """Biomodel omex."""
     execute_sedml(path=omex_path, working_dir=tmp_path, output_path=tmp_path)
 
 
 @pytest.mark.skip(reason="no SED-ML support")
 @pytest.mark.parametrize("omex_path", jws_omex_paths)
 def test_jws_omex(omex_path: Path, tmp_path: Path) -> None:
+    """JSW omex."""
     execute_sedml(path=omex_path, working_dir=tmp_path, output_path=tmp_path)
 
 
 @pytest.mark.skip(reason="no SED-ML support")
 @pytest.mark.parametrize("omex_path", l1v3_omex_paths)
 def test_l1v3_omex(omex_path: Path, tmp_path: Path) -> None:
+    """L1V3 omex."""
     execute_sedml(path=omex_path, working_dir=tmp_path, output_path=tmp_path)
 
 
 @pytest.mark.skip(reason="no SED-ML support")
 def test_combine_archive_showcase_omex(tmp_path: Path) -> None:
+    """COMBINE archive showcase omex."""
     omex_path = DATA_DIR / "combine" / "omex" / "CombineArchiveShowCase.omex"
     execute_sedml(path=omex_path, working_dir=tmp_path, output_path=tmp_path)

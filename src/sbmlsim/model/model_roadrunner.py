@@ -10,11 +10,12 @@ import roadrunner
 from roadrunner import Config
 from sbmlutils import log
 
+from sbmlsim.filelock import FileLock
 from sbmlsim.model import AbstractModel
 from sbmlsim.model.model_resources import Source
 from sbmlsim.units import Quantity, UnitRegistry, UnitsInformation
 from sbmlsim.utils import md5_for_path
-from sbmlsim.filelock import FileLock
+
 
 # Config.setValue(Config.LLVM_BACKEND, Config.LLJIT)
 logger = log.get_logger(__name__)

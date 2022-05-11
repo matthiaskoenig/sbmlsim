@@ -2,8 +2,9 @@
 import re
 from typing import Dict
 
-from sbmlsim.model.model_roadrunner import roadrunner
 from sbmlutils import log
+
+from sbmlsim.model.model_roadrunner import roadrunner
 
 
 logger = log.get_logger(__name__)

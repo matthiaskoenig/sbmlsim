@@ -7,9 +7,9 @@ import numpy as np
 import pandas as pd
 import psutil
 import ray
-from sbmlsim.model.model_roadrunner import roadrunner
 from sbmlutils import log
 
+from sbmlsim.model.model_roadrunner import roadrunner
 from sbmlsim.simulation import TimecourseSim
 from sbmlsim.simulator import SimulatorSerial
 from sbmlsim.simulator.simulation import SimulatorWorker

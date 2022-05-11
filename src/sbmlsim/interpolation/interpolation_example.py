@@ -5,11 +5,12 @@ import tempfile
 from pathlib import Path
 
 import pandas as pd
-from sbmlsim.model.model_roadrunner import roadrunner
 from matplotlib import pyplot as plt
 from matplotlib.pyplot import Axes, Figure
 from sbmlutils import log
 from sbmlutils.manipulation import interpolation as ip
+
+from sbmlsim.model.model_roadrunner import roadrunner
 
 
 logger = log.get_logger(__name__)
