@@ -42,6 +42,7 @@ class RoadrunnerSBMLModel(AbstractModel):
         ureg: UnitRegistry = None,
         settings: Dict = None,
     ):
+        """Initialize RoadrunnerSBMLModel."""
         logger.debug(f"source: {type(source)}, {source}")
         if isinstance(source, AbstractModel):
             logger.debug("RoadrunnerSBMLModel from AbstractModel")

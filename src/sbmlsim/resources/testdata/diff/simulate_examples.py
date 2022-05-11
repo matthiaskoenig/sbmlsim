@@ -1,3 +1,4 @@
+"""Simulation of examples."""
 from pathlib import Path
 
 import pandas as pd
@@ -10,11 +11,8 @@ from sbmlsim.simulator import SimulatorSerial as Simulator
 from tests import DATA_DIR, MODEL_REPRESSILATOR
 
 
-def run_simulations(create_files=True):
-    """Run all the simulations.
-
-    :return:
-    """
+def run_simulations(create_files: bool = True) -> None:
+    """Run all the simulations."""
     diff_path = Path(DATA_DIR) / "diff"
     simulator = Simulator(
         RoadrunnerSBMLModel(MODEL_REPRESSILATOR),
@@ -34,11 +32,8 @@ def run_simulations(create_files=True):
             df.to_csv(tsv_path, sep="\t", index=False)
 
 
-def run_comparisons(create_files=True):
-    """Run comparison of tests simulations.
-
-    :return:
-    """
+def run_comparisons(create_files: bool = True) -> None:
+    """Run comparison of tests simulations."""
     diff_path = Path(DATA_DIR) / "diff"
 
     simulation_keys = get_files_by_extension(diff_path)

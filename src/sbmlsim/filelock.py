@@ -15,13 +15,17 @@ class FileLockException(Exception):
 
 
 class FileLock(object):
-    """A file locking mechanism that has context-manager support so
+    """FileLock.
+
+    A file locking mechanism that has context-manager support so
     you can use it in a with statement. This should be relatively cross
     compatible as it doesn't rely on msvcrt or fcntl for the locking.
     """
 
     def __init__(self, file_name, timeout=10, delay=0.05):
-        """Prepare the file locker. Specify the file to lock and optionally
+        """Initialize FileLock.
+
+        Prepare the file locker. Specify the file to lock and optionally
         the maximum timeout and the delay between each attempt to lock.
         """
         if timeout is not None and delay is None:
@@ -32,8 +36,10 @@ class FileLock(object):
         self.timeout = timeout
         self.delay = delay
 
-    def acquire(self):
-        """Acquire the lock, if possible. If the lock is in use, it check again
+    def acquire(self) -> None:
+        """Acquire the lock, if possible.
+
+        If the lock is in use, it check again
         every `wait` seconds. It does this until it either gets the lock or
         exceeds `timeout` number of seconds, in which case it throws
         an exception.
@@ -57,8 +63,10 @@ class FileLock(object):
 
     #        self.is_locked = True
 
-    def release(self):
-        """Get rid of the lock by deleting the lockfile.
+    def release(self) -> None:
+        """Release lock.
+
+        Get rid of the lock by deleting the lockfile.
         When working in a `with` statement, this gets automatically
         called at the end.
         """
@@ -67,23 +75,29 @@ class FileLock(object):
             os.unlink(self.lockfile)
             self.is_locked = False
 
-    def __enter__(self):
-        """Activated when used in the with statement.
+    def __enter__(self) -> None:
+        """Enter lock.
+
+        Activated when used in the with statement.
         Should automatically acquire a lock to be used in the with block.
         """
         if not self.is_locked:
             self.acquire()
         return self
 
-    def __exit__(self, type, value, traceback):
-        """Activated at the end of the with statement.
+    def __exit__(self, type, value, traceback) -> None:
+        """Exit lock.
+
+        Activated at the end of the with statement.
         It automatically releases the lock if it isn't locked.
         """
         if self.is_locked:
             self.release()
 
-    def __del__(self):
-        """Make sure that the FileLock instance doesn't leave a lockfile
+    def __del__(self) -> None:
+        """Delete lock.
+
+        Make sure that the FileLock instance doesn't leave a lockfile
         lying around.
         """
         self.release()

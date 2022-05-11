@@ -52,6 +52,7 @@ class AbstractModel(object):
         changes: Dict = None,
         selections: List[str] = None,
     ):
+        """Initialize SourceType."""
 
         if not language and not language_type:
             raise ValueError(

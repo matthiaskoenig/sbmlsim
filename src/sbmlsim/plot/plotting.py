@@ -48,6 +48,7 @@ class BasePlotObject:
     """Base class for plotting objects."""
 
     def __init__(self, sid: str, name: str):
+        """Initialize BasePlotObject."""
         self.sid = sid
         self.name = name
 
@@ -98,6 +99,7 @@ class ColorType:
     """
 
     def __init__(self, color: str):
+        """Initialize ColorType."""
         if color is None:
             raise ValueError("color cannot be NoneType")
 
@@ -215,6 +217,7 @@ class Style(BasePlotObject):
         marker: Optional[Marker] = None,
         fill: Optional[Fill] = None,
     ):
+        """Initialize Style."""
         super(Style, self).__init__(sid, name)
 
         # using default styling if not otherwise provided
@@ -631,6 +634,7 @@ class Curve(AbstractCurve):
         yaxis_position: YAxisPosition = None,
         **kwargs,
     ):
+        """Initialize Curve."""
         super(Curve, self).__init__(
             sid=sid,
             name=name if name else y.name,
@@ -733,6 +737,7 @@ class ShadedArea(AbstractCurve):
         yaxis_position: YAxisPosition = None,
         **kwargs,
     ):
+        """Initialize ShadedArea."""
         super(ShadedArea, self).__init__(
             sid=None,
             name=None,
@@ -1232,6 +1237,7 @@ class SubPlot(BasePlotObject):
         sid: Optional[str] = None,
         name: Optional[str] = None,
     ):
+        """Initialize SubPlot."""
         super(SubPlot, self).__init__(sid=sid, name=name)
         self.plot = plot
         self.row = row
@@ -1283,6 +1289,7 @@ class Figure(BasePlotObject):
         num_rows: int = 1,
         num_cols: int = 1,
     ):
+        """Initialize Figure."""
         super(Figure, self).__init__(sid, name)
         self.experiment: "SimulationExperiment" = experiment  # noqa: F821
         if subplots is None:

@@ -65,7 +65,7 @@ class Data(object):
                 symbol = Data.Symbols.AMOUNT
 
         self.index: str = index
-        self.symbol: "Symbols" = symbol
+        self.symbol: "Symbols" = symbol  # noqa: F821
         self.task_id: str = task
         self.dset_id: str = dataset
         self.function: str = function

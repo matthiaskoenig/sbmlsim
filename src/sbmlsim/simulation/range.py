@@ -1,3 +1,4 @@
+"""Module handling ranges."""
 import itertools
 from abc import ABC, abstractmethod
 from enum import Enum, auto, unique

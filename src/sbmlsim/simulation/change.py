@@ -1,4 +1,4 @@
-from enum import Enum, auto, unique
+"""Module handling changes."""
 
 from sbmlsim.simulation.base import BaseObject, Target
 from sbmlsim.simulation.calculation import Calculation
@@ -27,7 +27,8 @@ class ComputeChange(Calculation):
 
     The ComputeChange class permits to change
     the numerical value of any single element or attribute of a Model
-    addressable by a target, based on a calculation."""
+    addressable by a target, based on a calculation.
+    """
 
     def __init__(self, sid: str, target: Target, name: str = None):
         """Construct Calculation."""

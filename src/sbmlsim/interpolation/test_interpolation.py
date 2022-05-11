@@ -16,7 +16,7 @@ data1 = pd.DataFrame({"x": x, "y": y, "z": z})
 
 
 def f_interpolation(method: str, tmp_path: Path) -> None:
-    """Helper function to tests the various interpolations."""
+    """Create different interpolations."""
 
     tmp_f = tmp_path / "tests.xml"
     interpolation = ip.Interpolation(data=data1, method=method)

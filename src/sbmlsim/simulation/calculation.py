@@ -163,6 +163,7 @@ class Calculation(BaseObjectSIdRequired):
 
     # @abstractmethod
     def values(self):
+        """Access to values."""
         pass
         # FIXME
         # evaluate with actual data

@@ -70,6 +70,7 @@ class Interpolator:
         z: pd.Series = None,
         method: str = INTERPOLATION_CONSTANT,
     ):
+        """Initialize Interpolator."""
         self.x: pd.Series = x
         self.y: pd.Series = y
         self.z: pd.Series = z
@@ -251,6 +252,7 @@ class Interpolation:
     """
 
     def __init__(self, data: pd.DataFrame, method: str = "linear"):
+        """Initialize Interpolation."""
         self.doc: libsbml.SBMLDocument = None
         self.model: libsbml.Model = None
         self.data: pd.DataFrame = data

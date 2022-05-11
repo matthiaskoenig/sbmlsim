@@ -27,6 +27,7 @@ class AlgorithmParameter(BaseObject):
         sid: str = None,
         name: str = None,
     ):
+        """Initialize AlgorithmParameter."""
         term: KISAO = KISAO.validate(kisao)
         term_name: str = KISAO.get_name(term)
         if name:
@@ -54,6 +55,7 @@ class Algorithm(BaseObject):
         sid: Optional[str] = None,
         name: Optional[str] = None,
     ):
+        """Initialize Algorithm."""
         term: KISAO = KISAO.validate(kisao)
         term_name: str = KISAO.get_name(term)
         if name:

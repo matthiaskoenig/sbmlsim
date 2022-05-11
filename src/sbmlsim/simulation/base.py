@@ -1,14 +1,16 @@
+"""BaseObjects for SED-ML and simulation."""
 from abc import ABC
 from typing import Optional
 
 
 class BaseObject(ABC):
-    """Base class for SED-ML bases
+    """Base class for SED-ML bases.
 
     FIXME: support annotations and notes
     """
 
     def __init__(self, sid: Optional[str], name: Optional[str]):
+        """Initialize BaseObject."""
         self.sid: Optional[str] = sid
         self.name: Optional[str] = name
 
@@ -17,6 +19,7 @@ class BaseObjectSIdRequired(BaseObject):
     """Base class for SED-ML bases with required sid."""
 
     def __init__(self, sid: str, name: Optional[str]):
+        """Initialize BaseObjectSIdRequired."""
         super(BaseObjectSIdRequired, self).__init__(sid=sid, name=name)
 
 
@@ -34,6 +37,7 @@ class Target:
     """
 
     def __init__(self, target: str):
+        """Initialize Target."""
         self.target = target
 
 
@@ -62,6 +66,7 @@ class Symbol:
     ]
 
     def __init__(self, symbol: str):
+        """Initialize Symbol."""
 
         if symbol == "urn:sedml:symbol:time":
             symbol = "KISAO:0000832"

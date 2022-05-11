@@ -102,7 +102,7 @@ class UniformTimeCourse(Simulation):
         initial_time: float,
         name: str = None,
     ):
-        """Construct UniformTimeCourse"""
+        """Construct UniformTimeCourse."""
         super(UniformTimeCourse, self).__init__(sid=sid, name=name, algorithm=algorithm)
         self.start: float = start
         self.end: float = end
