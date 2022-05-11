@@ -1,3 +1,4 @@
+"""Testing fitting examples."""
 from sbmlsim.examples.experiments.midazolam.fitting_example import (
     fitting_example,
     op_mid1oh_iv,

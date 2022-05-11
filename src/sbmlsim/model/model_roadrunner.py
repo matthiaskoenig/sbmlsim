@@ -16,7 +16,7 @@ from sbmlsim.units import Quantity, UnitRegistry, UnitsInformation
 from sbmlsim.utils import md5_for_path
 from sbmlsim.filelock import FileLock
 
-Config.setValue(Config.LLVM_BACKEND, Config.LLJIT)
+# Config.setValue(Config.LLVM_BACKEND, Config.LLJIT)
 logger = log.get_logger(__name__)
 
 

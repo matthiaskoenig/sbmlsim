@@ -1,3 +1,5 @@
+"""Test optimization results."""
+
 from pathlib import Path
 
 from sbmlsim.examples.experiments.midazolam.fitting_problems import op_mid1oh_iv

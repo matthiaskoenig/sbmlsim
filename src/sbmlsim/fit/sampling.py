@@ -128,11 +128,8 @@ def plot_samples(samples):
     plt.show()
 
 
-def example_sampling():
-    """Examples howing the use of the sampling.
-
-    :return:
-    """
+def example_sampling() -> None:
+    """Example how to use sampling."""
     parameters: List[FitParameter] = [
         FitParameter(pid="p1", lower_bound=10, upper_bound=1e4),
         FitParameter(pid="p2", lower_bound=1, upper_bound=1e3),

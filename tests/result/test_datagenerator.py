@@ -1,3 +1,4 @@
+"""Test DataGenerators."""
 from sbmlsim.examples.datagenerator_example import example
 
 

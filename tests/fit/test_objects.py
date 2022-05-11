@@ -1,3 +1,4 @@
+"""Test fit objects."""
 from sbmlsim.fit import FitParameter
 
 

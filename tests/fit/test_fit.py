@@ -1,3 +1,5 @@
+"""Test fit."""
+from pathlib import Path
 from typing import Any, Dict
 
 import pytest
@@ -71,7 +73,8 @@ fit_kwargs_default = {
 }
 
 
-def test_optimization_analysis(tmp_path):
+def test_optimization_analysis(tmp_path: Path) -> None:
+    """Test optimization analysis."""
     op = op_mid1oh_iv()
     opt_result: OptimizationResult = run_optimization(
         problem=op,

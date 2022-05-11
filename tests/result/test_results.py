@@ -1,3 +1,6 @@
+"""Test XResults."""
+from pathlib import Path
+
 import pandas as pd
 
 from sbmlsim.model import RoadrunnerSBMLModel
@@ -5,7 +8,8 @@ from sbmlsim.result import XResult
 from tests import MODEL_REPRESSILATOR
 
 
-def test_result():
+def test_xresult() -> None:
+    """Test xresults."""
     r = RoadrunnerSBMLModel(source=MODEL_REPRESSILATOR)._model
     dfs = []
     num_sim = 10
@@ -32,7 +36,8 @@ def test_result():
     assert xres.Y is not None
 
 
-def test_netcdf(tmp_path):
+def test_xresults_netcdf(tmp_path: Path) -> None:
+    """Test xresults in netcdf format."""
     r = RoadrunnerSBMLModel(source=MODEL_REPRESSILATOR)._model
     dfs = []
     for _ in range(10):
