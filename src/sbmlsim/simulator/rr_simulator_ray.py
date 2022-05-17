@@ -1,5 +1,5 @@
 """Parallel simulation using ray."""
-from typing import Iterator, List
+from typing import Iterator, List, Optional
 
 import numpy as np
 import pandas as pd
@@ -34,33 +34,37 @@ class SimulatorActor(SimulationWorkerRR):
 class SimulatorRayRR(SimulatorAbstractRR):
     """Parallel simulator using multiple cores via ray."""
 
-    def __init__(self, **kwargs):
+    def __init__(self, actor_count: Optional[int] = None):
         """Initialize parallel simulator with multiple workers.
 
         :param actor_count: int, number of actors (cores)
         """
-        if "actor_count" in kwargs:
-            self.actor_count = kwargs.pop("actor_count")
-        else:
-            self.actor_count = max(self.cpu_count() - 1, 1)
-        logger.info(f"Using '{self.actor_count}' cores for parallel simulation.")
+        max_count = max(self.cpu_count() - 1, 1)
+        if not actor_count:
+            actor_count = max_count
+        if actor_count > max_count:
+            logger.warning(
+                f"Actor count > maximal count '{actor_count} > {max_count}'"
+            )
+        self.actor_count: int = actor_count
 
-        self.simulators = [SimulatorActor.remote() for _ in range(self.actor_count)]
+        logger.info(f"Using '{actor_count}' cores for parallel simulation.")
+        self.workers = [SimulatorActor.remote() for _ in range(self.actor_count)]
 
     def set_model(self, model_state: str) -> None:
         """Set model from state."""
-        for simulator in self.simulators:
-            simulator.set_model.remote(model_state)
+        for worker in self.workers:
+            worker.set_model.remote(model_state)
 
-    def set_timecourse_selections(self, selections: Iterator[str]):
+    def set_timecourse_selections(self, selections: Optional[Iterator[str]] = None) -> None:
         """Set timecourse selections."""
-        for simulator in self.simulators:
-            simulator.set_timecourse_selections.remote(selections)
+        for worker in self.workers:
+            worker.set_timecourse_selections.remote(selections)
 
     def set_integrator_settings(self, **kwargs):
         """Set integrator settings."""
-        for simulator in self.simulators:
-            simulator.set_integrator_settings.remote(**kwargs)
+        for worker in self.workers:
+            worker.set_integrator_settings.remote(**kwargs)
 
     def _run_timecourses(self, simulations: List[TimecourseSim]) -> List[pd.DataFrame]:
         """Execute timecourse simulations."""
@@ -77,7 +81,7 @@ class SimulatorRayRR(SimulatorAbstractRR):
                 chunks[k].append(simulations[index])
 
         tc_ids = []
-        for k, simulator in enumerate(self.simulators):
+        for k, simulator in enumerate(self.workers):
             tcs_id = simulator.work.remote(chunks[k])
             tc_ids.append(tcs_id)
 

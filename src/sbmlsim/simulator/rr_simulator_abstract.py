@@ -15,22 +15,7 @@ from sbmlsim.result import XResult
 logger = log.get_logger(__name__)
 
 
-# FIXME: This can probably be all on the roadrunner model.
-
 from abc import ABC, abstractmethod
-
-
-# FIXME: default integrator settings
-# # default settings
-# self.integrator_settings = {
-#     "absolute_tolerance": 1e-10,
-#     "relative_tolerance": 1e-10,
-# }
-# self.integrator_settings.update(kwargs)
-
-# set_model
-# set_timecourse_selections
-# set_integrator_settings
 
 
 class SimulatorAbstractRR(ABC):
@@ -68,13 +53,13 @@ class SimulatorAbstractRR(ABC):
         """Run scan simulation."""
         # normalize the scan (simulation and dimensions)
         # FIXME: units
-        scan.normalize(uinfo=self.uinfo)
+        # scan.normalize(uinfo=self.uinfo)
 
         # create all possible combinations of the scan
         indices, simulations = scan.to_simulations()
 
         # simulate (uses respective function of simulator)
-        dfs = self._timecourses(simulations)
+        dfs = self._run_timecourses(simulations)
 
         # based on the indices the result structure must be created
         # FIXME: units

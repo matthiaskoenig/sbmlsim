@@ -19,30 +19,21 @@ logger = log.get_logger(__name__)
 class SimulatorSerialRR(SimulatorAbstractRR):
     """Serial simulator using a single core."""
 
-    def __init__(self, model_state: Optional[str] = None, actor_count: int = 1, **kwargs):
+    def __init__(self):
         """Initialize serial simulator with single worker."""
-        self.simulator = SimulationWorkerRR()
-        if actor_count != 1:
-            raise ValueError("Only a single actor allowed.")
-        self.actor_count: int = actor_count
-
-        if model_state:
-            self.set_model(model_state)
-
-        # TODO: same for ray simulator
-
+        self.worker = SimulationWorkerRR()
 
     def set_model(self, model_state: str) -> None:
         """Set model from state."""
-        self.simulator.set_model(model_state)
+        self.worker.set_model(model_state)
 
-    def set_timecourse_selections(self, selections: Iterator[str]):
+    def set_timecourse_selections(self, selections: Optional[Iterator[str]] = None) -> None:
         """Set timecourse selections."""
-        self.simulator.set_timecourse_selections(selections=selections)
+        self.worker.set_timecourse_selections(selections=selections)
 
     def set_integrator_settings(self, **kwargs):
         """Set integrator settings."""
-        self.simulator.set_integrator_settings(**kwargs)
+        self.worker.set_integrator_settings(**kwargs)
 
     def _run_timecourses(self, simulations: List[TimecourseSim]) -> List[pd.DataFrame]:
         """Execute timecourse simulations."""
@@ -51,4 +42,4 @@ class SimulatorSerialRR(SimulatorAbstractRR):
                 "Use of SimulatorSerial to run multiple timecourses. "
                 "Use SimulatorParallel instead."
             )
-        return [self._timecourse(sim) for sim in simulations]
+        return [self.worker._timecourse(sim) for sim in simulations]
