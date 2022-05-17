@@ -31,8 +31,6 @@ IntegratorSettingKeys = {
 class RoadrunnerSBMLModel(AbstractModel):
     """Roadrunner model wrapper."""
 
-
-
     def __init__(
         self,
         source: Union[str, Path, AbstractModel],
@@ -133,27 +131,27 @@ class RoadrunnerSBMLModel(AbstractModel):
             source = Source.from_source(source=source)
 
         # load model
-        if source.is_path():
-            if state_path and state_path.exists():
-                logger.debug(f"Load model from state: '{state_path}'")
-                r = roadrunner.RoadRunner()
-                with FileLock(state_path):
-                    r.loadState(str(state_path))
-                logger.debug(f"Model loaded from state: '{state_path}'")
-            else:
-                logger.debug(f"Load model from SBML: '{source.path.resolve()}'")
-                with FileLock(source.path):
-                    r = roadrunner.RoadRunner(str(source.path))
-                # save state path
-                if state_path:
-                    with FileLock(state_path):
-                        r.saveState(str(state_path))
-                    logger.debug(f"Save state: '{state_path}'")
+        # if source.is_path():
+        #     if state_path and state_path.exists():
+        #         logger.debug(f"Load model from state: '{state_path}'")
+        #         r = roadrunner.RoadRunner()
+        #         with FileLock(state_path):
+        #             r.loadState(str(state_path))
+        #         logger.debug(f"Model loaded from state: '{state_path}'")
+        #     else:
+        #         logger.debug(f"Load model from SBML: '{source.path.resolve()}'")
+        #         with FileLock(source.path):
+        #             r = roadrunner.RoadRunner(str(source.path))
+        #         # save state path
+        #         if state_path:
+        #             with FileLock(state_path):
+        #                 r.saveState(str(state_path))
+        #             logger.debug(f"Save state: '{state_path}'")
 
         # backup without state handling
-        # if source.is_path():
-        #     logger.debug(f"Load model from SBML: '{source.path.resolve()}'")
-        #     r = roadrunner.RoadRunner(str(source.path))
+        if source.is_path():
+            logger.debug(f"Load model from SBML: '{source.path.resolve()}'")
+            r = roadrunner.RoadRunner(str(source.path))
 
         elif source.is_content():
             r = roadrunner.RoadRunner(str(source.content))
