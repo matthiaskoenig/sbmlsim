@@ -32,7 +32,7 @@ class SimulatorActor(SimulationWorkerRR):
             "stiff": True,
         }
 
-    def work(self, simulations):
+    def work(self, simulations: List[TimecourseSim]) -> List[pd.DataFrame]:
         """Run a bunch of simulations on a single worker."""
         results = []
         for tc_sim in simulations:

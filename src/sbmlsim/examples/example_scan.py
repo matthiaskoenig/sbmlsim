@@ -11,17 +11,16 @@ from tests import MODEL_REPRESSILATOR
 def run_scan0d() -> XResult:
     """Perform a parameter 0D scan, i.e., simple simulation"""
     simulator = SimulatorSerialRR.from_sbml(sbml_path=MODEL_REPRESSILATOR)
-    Q_ = simulator.Q_
 
     scan0d = ScanSim(
         simulation=TimecourseSim(
             [
                 Timecourse(start=0, end=100, steps=100, changes={}),
                 Timecourse(
-                    start=0, end=60, steps=100, changes={"[X]": Q_(10, "dimensionless")}
+                    start=0, end=60, steps=100, changes={"[X]": 10}
                 ),
                 Timecourse(
-                    start=0, end=60, steps=100, changes={"X": Q_(10, "dimensionless")}
+                    start=0, end=60, steps=100, changes={"X": 10}
                 ),
             ]
         ),
@@ -36,17 +35,16 @@ def run_scan1d() -> XResult:
     Scanning a single parameter.
     """
     simulator = SimulatorSerialRR.from_sbml(sbml_path=MODEL_REPRESSILATOR)
-    Q_ = simulator.Q_
 
     scan1d = ScanSim(
         simulation=TimecourseSim(
             [
                 Timecourse(start=0, end=100, steps=100, changes={}),
                 Timecourse(
-                    start=0, end=60, steps=100, changes={"[X]": Q_(10, "dimensionless")}
+                    start=0, end=60, steps=100, changes={"[X]": 10}
                 ),
                 Timecourse(
-                    start=0, end=60, steps=100, changes={"X": Q_(10, "dimensionless")}
+                    start=0, end=60, steps=100, changes={"X": 10}
                 ),
             ]
         ),
@@ -54,7 +52,7 @@ def run_scan1d() -> XResult:
             Dimension(
                 "dim1",
                 changes={
-                    "n": Q_(np.linspace(start=2, stop=10, num=8), "dimensionless"),
+                    "n": np.linspace(start=2, stop=10, num=8),
                 },
             )
         ],
@@ -66,17 +64,16 @@ def run_scan1d() -> XResult:
 def run_scan2d() -> XResult:
     """Perform a parameter scan"""
     simulator = SimulatorSerialRR.from_sbml(sbml_path=MODEL_REPRESSILATOR)
-    Q_ = simulator.Q_
 
     scan2d = ScanSim(
         simulation=TimecourseSim(
             [
                 Timecourse(start=0, end=100, steps=100, changes={}),
                 Timecourse(
-                    start=0, end=60, steps=100, changes={"[X]": Q_(10, "dimensionless")}
+                    start=0, end=60, steps=100, changes={"[X]": 10}
                 ),
                 Timecourse(
-                    start=0, end=60, steps=100, changes={"X": Q_(10, "dimensionless")}
+                    start=0, end=60, steps=100, changes={"X": 10}
                 ),
             ]
         ),
@@ -84,13 +81,13 @@ def run_scan2d() -> XResult:
             Dimension(
                 "dim1",
                 changes={
-                    "n": Q_(np.linspace(start=2, stop=10, num=8), "dimensionless"),
+                    "n": np.linspace(start=2, stop=10, num=8),
                 },
             ),
             Dimension(
                 "dim2",
                 changes={
-                    "Y": Q_(np.logspace(start=2, stop=2.5, num=4), "dimensionless"),
+                    "Y": np.logspace(start=2, stop=2.5, num=4),
                 },
             ),
         ],
@@ -101,17 +98,16 @@ def run_scan2d() -> XResult:
 def run_scan1d_distribution() -> XResult:
     """Perform a parameter scan by sampling from a distribution"""
     simulator = SimulatorSerialRR.from_sbml(sbml_path=MODEL_REPRESSILATOR)
-    Q_ = simulator.Q_
 
     scan1d = ScanSim(
         simulation=TimecourseSim(
             [
                 Timecourse(start=0, end=100, steps=100, changes={}),
                 Timecourse(
-                    start=0, end=60, steps=100, changes={"[X]": Q_(10, "dimensionless")}
+                    start=0, end=60, steps=100, changes={"[X]": 10}
                 ),
                 Timecourse(
-                    start=0, end=60, steps=100, changes={"X": Q_(10, "dimensionless")}
+                    start=0, end=60, steps=100, changes={"X": 10}
                 ),
             ]
         ),
@@ -119,9 +115,7 @@ def run_scan1d_distribution() -> XResult:
             Dimension(
                 "dim1",
                 changes={
-                    "n": Q_(
-                        np.random.normal(loc=5.0, scale=0.2, size=50), "dimensionless"
-                    ),
+                    "n": np.random.normal(loc=5.0, scale=0.2, size=50),
                 },
             )
         ],
@@ -134,7 +128,6 @@ if __name__ == "__main__":
 
     column = "PX"
 
-    """
     # scan0d
     xres = run_scan0d()
     for key in ['PX', 'PY', 'PZ']:
@@ -147,7 +140,6 @@ if __name__ == "__main__":
     xres = run_scan1d()
     xres.xds[column].plot()
     plt.show()
-    """
 
     # scan1d_distrib
     xres = run_scan1d_distribution()
