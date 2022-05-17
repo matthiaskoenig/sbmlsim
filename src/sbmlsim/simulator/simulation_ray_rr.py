@@ -1,7 +1,6 @@
 """Parallel simulation using ray."""
 import tempfile
-from pathlib import Path
-from typing import Iterator, List, Optional
+from typing import Iterator, List
 
 import numpy as np
 import pandas as pd
@@ -9,10 +8,10 @@ import psutil
 import ray
 from sbmlutils import log
 
-from sbmlsim.model.model_roadrunner import roadrunner
+from sbmlsim.simulator.model_rr import roadrunner
 from sbmlsim.simulation import TimecourseSim
 from sbmlsim.simulator import SimulatorSerial
-from sbmlsim.simulator.simulation import SimulatorWorker
+from sbmlsim.simulator.simulation_worker_rr import SimulationWorkerRR
 
 
 logger = log.get_logger(__name__)
@@ -21,57 +20,12 @@ logger = log.get_logger(__name__)
 ray.init(ignore_reinit_error=True)
 
 
-def cpu_count() -> int:
-    """Get physical CPU count."""
-    return psutil.cpu_count(logical=False)
-
-
 @ray.remote
-class SimulatorActor(SimulatorWorker):
+class SimulatorActor(SimulationWorkerRR):
     """Ray actor to execute simulations.
 
     An actor is essentially a stateful worker
     """
-
-    def set_model(self, state: bytes) -> None:
-        """Set model using the state."""
-        self.r: roadrunner.RoadRunner = roadrunner.RoadRunner()
-        if state is not None:
-            # write state to temporary file for reading
-            with tempfile.NamedTemporaryFile("wb") as f_temp:
-                f_temp.write(state)
-                filename = f_temp.name
-                logger.debug(f"load state: {filename}")
-
-                # FIXME: this must be in a lock
-                self.r.loadState(str(filename))
-
-    def set_timecourse_selections(self, selections: Iterator[str]):
-        """Set the timecourse selections."""
-        logger.info(f"'set_timecourse_selections':{selections}")
-        try:
-            if selections is None:
-                r_model: roadrunner.ExecutableModel = self.r.model
-                self.r.timeCourseSelections = (
-                    ["time"]
-                    + r_model.getFloatingSpeciesIds()
-                    + r_model.getBoundarySpeciesIds()
-                    + r_model.getGlobalParameterIds()
-                    + r_model.getReactionIds()
-                    + r_model.getCompartmentIds()
-                )
-                self.r.timeCourseSelections += [
-                    f"[{key}]"
-                    for key in (
-                        r_model.getFloatingSpeciesIds()
-                        + r_model.getBoundarySpeciesIds()
-                    )
-                ]
-            else:
-                self.r.timeCourseSelections = selections
-        except RuntimeError as err:
-            logger.error(f"{err}")
-            raise (err)
 
     def work(self, simulations):
         """Run a bunch of simulations on a single worker."""
@@ -81,8 +35,8 @@ class SimulatorActor(SimulatorWorker):
         return results
 
 
-class SimulatorParallel(SimulatorSerial):
-    """Parallel simulator.
+class SimulatorParallel:
+    """Parallel simulator using multiple cores.
 
     The parallel simulator is a subclass of the SimulatorSerial reusing the
     logic for running simulations.
@@ -98,11 +52,9 @@ class SimulatorParallel(SimulatorSerial):
             self.actor_count = kwargs.pop("actor_count")
         else:
 
-            # FIXME: get virtual cores
-            self.actor_count = max(cpu_count() - 1, 1)
+            self.actor_count = max(self.cpu_count() - 1, 1)
         logger.info(f"Using '{self.actor_count}' cpu/core for parallel simulation.")
 
-        # Create actors once
         logger.debug(f"Creating '{self.actor_count}' SimulationActors")
         self.simulators = [SimulatorActor.remote() for _ in range(self.actor_count)]
 
@@ -112,25 +64,11 @@ class SimulatorParallel(SimulatorSerial):
 
     def set_model(self, model):
         """Set model."""
-        super(SimulatorParallel, self).set_model(model)
-        if model:
-            if not self.model.state_path:
-                raise ValueError("State path does not exist.")
-
-            # read state only once
-            logger.debug("Read state")
-            state: bytes
-            with open(self.model.state_path, "rb") as f_state:
-                state = f_state.read()
-            logger.debug("Set remote state")
-            for simulator in self.simulators:
-                simulator.set_model.remote(state)
-            self.set_timecourse_selections(self.r.selections)
-
-        # FIXME: set integrator settings
+        for simulator in self.simulators:
+            simulator.set_model(model)
 
     def set_timecourse_selections(self, selections: Iterator[str]):
-        """Set the timecourse selections."""
+        """Set timecourse selections."""
         for simulator in self.simulators:
             simulator.set_timecourse_selections.remote(selections)
 
@@ -167,3 +105,8 @@ class SimulatorParallel(SimulatorSerial):
         """Yield successive sized chunks from item."""
         for i in range(0, len(item), size):
             yield item[i : i + size]
+
+    @staticmethod
+    def cpu_count() -> int:
+        """Get physical CPU count."""
+        return psutil.cpu_count(logical=False)

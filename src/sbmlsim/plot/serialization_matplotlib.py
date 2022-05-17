@@ -206,8 +206,6 @@ class MatplotlibFigureSerializer:
                             else yerr.magnitude
                         )
 
-                    # FIXME: !!!
-
                     kwargs: Dict[str, Any] = {}
                     if curve.style:
                         style: Style = curve.style.resolve_style()

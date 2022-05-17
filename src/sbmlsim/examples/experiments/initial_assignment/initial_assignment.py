@@ -8,7 +8,7 @@ from sbmlsim.experiment import ExperimentRunner, SimulationExperiment
 from sbmlsim.model import AbstractModel, RoadrunnerSBMLModel
 from sbmlsim.plot import Axis, Figure
 from sbmlsim.simulation import AbstractSim, Timecourse, TimecourseSim
-from sbmlsim.simulator.simulation_ray import SimulatorParallel
+from sbmlsim.simulator.simulation_ray_rr import SimulatorParallel
 from sbmlsim.task import Task
 
 

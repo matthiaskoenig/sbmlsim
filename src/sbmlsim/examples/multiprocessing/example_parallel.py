@@ -5,10 +5,10 @@ import time
 import numpy as np
 
 from sbmlsim.model import RoadrunnerSBMLModel
-from sbmlsim.model.model_roadrunner import roadrunner
+from sbmlsim.simulator.model_rr import roadrunner
 from sbmlsim.simulation import Dimension, ScanSim, Timecourse, TimecourseSim
 from sbmlsim.simulator import SimulatorSerial
-from sbmlsim.simulator.simulation_ray import SimulatorActor, SimulatorParallel, ray
+from sbmlsim.simulator.simulation_ray_rr import SimulatorActor, SimulatorParallel, ray
 from sbmlsim.units import UnitsInformation
 from tests import MODEL_GLCWB, MODEL_REPRESSILATOR
 
@@ -29,12 +29,12 @@ def example_single_actor():
     f_state = tempfile.NamedTemporaryFile(suffix=".state")
     r.saveState(f_state.name)
 
-    # Create single actor process
+    # Create single actor process using bytes
     state: bytes
     with open(f_state.name, "rb") as f_state:
         state = f_state.read()
-    sa = SimulatorActor.remote()
-    # TODO: set state
+    sa: SimulatorActor = SimulatorActor.remote()
+    sa.set_model(state=state)
 
     # run simulation
     tcsim = TimecourseSim(
@@ -63,7 +63,7 @@ def example_multiple_actors():
     f_state = tempfile.NamedTemporaryFile(suffix=".dat")
     r.saveState(f_state.name)
 
-    # create ten Simulators.
+    # create ten simulators
     simulators = [SimulatorActor.remote(f_state.name) for _ in range(16)]
 
     # define timecourse

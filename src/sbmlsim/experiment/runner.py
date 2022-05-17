@@ -17,7 +17,7 @@ from sbmlsim.experiment import ExperimentResult, SimulationExperiment
 from sbmlsim.model import RoadrunnerSBMLModel
 from sbmlsim.report.experiment_report import ExperimentReport, ReportResults
 from sbmlsim.simulator import SimulatorSerial
-from sbmlsim.simulator.simulation_ray import SimulatorParallel
+from sbmlsim.simulator.simulation_ray_rr import SimulatorParallel
 from sbmlsim.units import UnitRegistry, UnitsInformation
 from sbmlsim.utils import timeit
 

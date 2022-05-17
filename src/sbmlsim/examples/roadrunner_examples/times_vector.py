@@ -3,7 +3,7 @@
 from rich import print
 from sbmlutils.resources import REPRESSILATOR_SBML
 
-from sbmlsim.model.model_roadrunner import roadrunner
+from sbmlsim.simulator.model_rr import roadrunner
 from sbmlsim.utils import timeit
 
 

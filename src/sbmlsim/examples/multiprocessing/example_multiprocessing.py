@@ -2,7 +2,7 @@
 from multiprocessing import Process
 
 from sbmlsim import RESOURCES_DIR
-from sbmlsim.model.model_roadrunner import roadrunner
+from sbmlsim.simulator.model_rr import roadrunner
 
 
 def run_simulations(r: roadrunner.RoadRunner, size: int) -> None:

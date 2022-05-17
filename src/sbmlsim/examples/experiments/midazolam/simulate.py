@@ -12,7 +12,7 @@ from sbmlsim.examples.experiments.midazolam.experiments.kupferschmidt1995 import
 from sbmlsim.examples.experiments.midazolam.experiments.mandema1992 import Mandema1992
 from sbmlsim.experiment import ExperimentRunner, SimulationExperiment
 from sbmlsim.report.experiment_report import ExperimentReport, ReportResults
-from sbmlsim.simulator.simulation_ray import SimulatorParallel
+from sbmlsim.simulator.simulation_ray_rr import SimulatorParallel
 
 
 def run_midazolam_experiments(output_path: Path) -> None:

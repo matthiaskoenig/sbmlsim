@@ -5,7 +5,7 @@ from pytest import approx
 
 from sbmlsim.model import RoadrunnerSBMLModel
 from sbmlsim.simulator import SimulatorSerial
-from sbmlsim.simulator.simulation_ray import SimulatorParallel
+from sbmlsim.simulator.simulation_ray_rr import SimulatorParallel
 from tests import MODEL_REPRESSILATOR
 
 

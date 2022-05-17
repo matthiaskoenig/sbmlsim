@@ -231,6 +231,7 @@ class Data(object):
 
         elif self.dtype == Data.Types.TASK:
             # read results of task
+            print(experiment.results.keys())
             xres: XResult = experiment.results[self.task_id]
             if not isinstance(xres, XResult):
                 raise ValueError("Only Result objects supported in task data.")

@@ -6,7 +6,7 @@ the changes instead.
 """
 from sbmlutils import log
 
-from sbmlsim.model.model_roadrunner import roadrunner
+from sbmlsim.simulator.model_rr import roadrunner
 
 
 logger = log.get_logger(__name__)

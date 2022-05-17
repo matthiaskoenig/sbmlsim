@@ -17,7 +17,7 @@ from sbmlsim.simulation import (
     Timecourse,
     TimecourseSim,
 )
-from sbmlsim.simulator.simulation_ray import SimulatorParallel, SimulatorSerial
+from sbmlsim.simulator.simulation_ray_rr import SimulatorParallel, SimulatorSerial
 from sbmlsim.task import Task
 from tests import MODEL_REPRESSILATOR
 

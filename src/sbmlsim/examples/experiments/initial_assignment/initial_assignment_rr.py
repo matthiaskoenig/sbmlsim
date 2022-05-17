@@ -1,6 +1,6 @@
 import pandas as pd
 
-from sbmlsim.model.model_roadrunner import roadrunner
+from sbmlsim.simulator.model_rr import roadrunner
 
 
 # Loading model and simulating

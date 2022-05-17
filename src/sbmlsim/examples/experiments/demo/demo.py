@@ -20,7 +20,7 @@ from sbmlsim.simulation import (
     TimecourseSim,
 )
 from sbmlsim.simulation.sensitivity import ModelSensitivity
-from sbmlsim.simulator.simulation_ray import SimulatorParallel
+from sbmlsim.simulator.simulation_ray_rr import SimulatorParallel
 from sbmlsim.task import Task
 from tests import MODEL_DEMO
 
@@ -29,15 +29,18 @@ class DemoExperiment(SimulationExperiment):
     """Simple repressilator experiment."""
 
     def models(self) -> Dict[str, AbstractModel]:
+        """Define models."""
         return {"model": RoadrunnerSBMLModel(source=MODEL_DEMO, ureg=self.ureg)}
 
     def tasks(self) -> Dict[str, Task]:
+        """Define tasks."""
         return {
             f"task_{key}": Task(model="model", simulation=key)
             for key in self.simulations()
         }
 
     def simulations(self) -> Dict[str, AbstractSim]:
+        """Define simulations."""
         return {
             **self.sim_scans(),
         }
@@ -57,7 +60,7 @@ class DemoExperiment(SimulationExperiment):
             ),
             dimensions=[
                 Dimension(
-                    "dim_init", changes={"[e__A]": Q_(np.linspace(5, 15, num=10), "mM")}
+                    "dim_init", changes={"[e__A]": Q_(np.linspace(5, 15, num=11), "mM")}
                 ),
                 ModelSensitivity.create_difference_dimension(
                     model=self._models["model"],
@@ -72,6 +75,9 @@ class DemoExperiment(SimulationExperiment):
         }
 
     def figures(self) -> Dict[str, Figure]:
+        # print(self._results.keys())
+        # print(self._results["task_scan_init"])
+
         unit_time = "min"
         unit_data = "mM"
 
@@ -87,6 +93,9 @@ class DemoExperiment(SimulationExperiment):
         for k in [0, 1]:
             for key in selections:
                 task_id = "task_scan_init"
+
+                # This should plot the individual curve(s), i.e. in a scan the
+                # additional dimensions have to be iterated over
                 plots[k].curve(
                     x=Data("time", task=task_id),
                     y=Data(key, task=task_id),
