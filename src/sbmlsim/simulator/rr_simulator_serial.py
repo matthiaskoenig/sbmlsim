@@ -2,12 +2,13 @@
 
 Executing simulations with single roadrunner instance on a single core.
 """
+from pathlib import Path
 from typing import List, Iterator, Optional
 
 import pandas as pd
 from sbmlutils import log
 
-
+from sbmlsim.simulator.rr_model import roadrunner
 from sbmlsim.simulation import TimecourseSim
 from sbmlsim.simulator.rr_simulator_abstract import SimulatorAbstractRR
 from sbmlsim.simulator.rr_worker import SimulationWorkerRR
@@ -18,6 +19,15 @@ logger = log.get_logger(__name__)
 
 class SimulatorSerialRR(SimulatorAbstractRR):
     """Serial simulator using a single core."""
+
+    @staticmethod
+    def from_sbml(sbml_path: Path) -> 'SimulatorSerialRR':
+        """Set model from SBML."""
+        rr: roadrunner.RoadRunner = roadrunner.RoadRunner(str(sbml_path))
+        simulator = SimulatorSerialRR()
+        # FIXME: implement global model cache
+        simulator.set_model(rr.saveStateS())
+        return simulator
 
     def __init__(self):
         """Initialize serial simulator with single worker."""

@@ -1,5 +1,6 @@
 """Classes for running simulations with SBML models."""
-from typing import List, Iterator
+from pathlib import Path
+from typing import List, Iterator, Any
 
 import pandas as pd
 from sbmlutils import log
@@ -20,6 +21,12 @@ from abc import ABC, abstractmethod
 
 class SimulatorAbstractRR(ABC):
     """Abstract base class for roadrunner simulator."""
+
+    @staticmethod
+    def from_sbml(self, sbml_path: Path) -> Any:
+        """Set model from SBML."""
+        raise NotImplementedError
+
     @abstractmethod
     def set_model(self, model_state: str) -> None:
         """Set model from state."""

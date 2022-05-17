@@ -1,3 +1,5 @@
+"""Test SimulatarRayRR."""
+from pathlib import Path
 from typing import List
 
 import numpy as np
@@ -5,13 +7,18 @@ import pytest
 
 from sbmlsim.result import XResult
 
-"""Test SimulationWorkerRR."""
-import pandas as pd
+
+
 import pytest
 
 from sbmlsim.simulation import TimecourseSim, Timecourse, ScanSim, Dimension
 from sbmlsim.simulator.rr_simulator_ray import SimulatorRayRR, SimulatorActor, ray
 
+
+def test_from_sbml(repressilator_path: Path) -> None:
+    """Test setting model."""
+    simulator = SimulatorRayRR.from_sbml(sbml_path=repressilator_path, actor_count=1)
+    assert simulator
 
 
 def test_init() -> None:

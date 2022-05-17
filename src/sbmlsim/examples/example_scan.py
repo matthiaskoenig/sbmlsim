@@ -1,17 +1,16 @@
-"""
-Example shows basic model simulations and plotting.
+"""Example shows basic model simulations and plotting with scan.
 """
 import numpy as np
 
 from sbmlsim.result import XResult
 from sbmlsim.simulation import Dimension, ScanSim, Timecourse, TimecourseSim
-from sbmlsim.simulator import SimulatorSerial
+from sbmlsim.simulator import SimulatorSerialRR
 from tests import MODEL_REPRESSILATOR
 
 
 def run_scan0d() -> XResult:
     """Perform a parameter 0D scan, i.e., simple simulation"""
-    simulator = SimulatorSerial(model=MODEL_REPRESSILATOR)
+    simulator = SimulatorSerialRR.from_sbml(sbml_path=MODEL_REPRESSILATOR)
     Q_ = simulator.Q_
 
     scan0d = ScanSim(
@@ -36,7 +35,7 @@ def run_scan1d() -> XResult:
 
     Scanning a single parameter.
     """
-    simulator = SimulatorSerial(model=MODEL_REPRESSILATOR)
+    simulator = SimulatorSerialRR.from_sbml(sbml_path=MODEL_REPRESSILATOR)
     Q_ = simulator.Q_
 
     scan1d = ScanSim(
@@ -66,7 +65,7 @@ def run_scan1d() -> XResult:
 
 def run_scan2d() -> XResult:
     """Perform a parameter scan"""
-    simulator = SimulatorSerial(model=MODEL_REPRESSILATOR)
+    simulator = SimulatorSerialRR.from_sbml(sbml_path=MODEL_REPRESSILATOR)
     Q_ = simulator.Q_
 
     scan2d = ScanSim(
@@ -101,7 +100,7 @@ def run_scan2d() -> XResult:
 
 def run_scan1d_distribution() -> XResult:
     """Perform a parameter scan by sampling from a distribution"""
-    simulator = SimulatorSerial(model=MODEL_REPRESSILATOR)
+    simulator = SimulatorSerialRR.from_sbml(sbml_path=MODEL_REPRESSILATOR)
     Q_ = simulator.Q_
 
     scan1d = ScanSim(

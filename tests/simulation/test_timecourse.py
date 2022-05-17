@@ -1,5 +1,4 @@
 """Test timecourse."""
-
 from sbmlsim.examples import example_timecourse
 from sbmlsim.simulation.timecourse import Timecourse, TimecourseSim
 

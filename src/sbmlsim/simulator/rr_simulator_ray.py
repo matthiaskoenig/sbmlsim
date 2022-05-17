@@ -1,4 +1,5 @@
 """Parallel simulation using ray."""
+from pathlib import Path
 from typing import Iterator, List, Optional
 
 import numpy as np
@@ -41,6 +42,15 @@ class SimulatorActor(SimulationWorkerRR):
 
 class SimulatorRayRR(SimulatorAbstractRR):
     """Parallel simulator using multiple cores via ray."""
+
+    @staticmethod
+    def from_sbml(sbml_path: Path, **kwargs) -> 'SimulatorRayRR':
+        """Set model from SBML."""
+        rr: roadrunner.RoadRunner = roadrunner.RoadRunner(str(sbml_path))
+        simulator = SimulatorRayRR(**kwargs)
+        # FIXME: implement global model cache
+        simulator.set_model(rr.saveStateS())
+        return simulator
 
     def __init__(self, actor_count: Optional[int] = None):
         """Initialize parallel simulator with multiple workers.

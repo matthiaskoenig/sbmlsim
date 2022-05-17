@@ -1,3 +1,5 @@
+from pathlib import Path
+
 import numpy as np
 import pytest
 
@@ -9,6 +11,12 @@ import pytest
 
 from sbmlsim.simulation import TimecourseSim, Timecourse, ScanSim, Dimension
 from sbmlsim.simulator.rr_simulator_serial import SimulatorSerialRR
+
+
+def test_from_sbml(repressilator_path: Path) -> None:
+    """Test setting model."""
+    simulator = SimulatorSerialRR.from_sbml(sbml_path=repressilator_path)
+    assert simulator
 
 
 def test_init() -> None:

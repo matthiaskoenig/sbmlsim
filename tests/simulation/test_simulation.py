@@ -3,53 +3,39 @@ import pandas as pd
 
 from sbmlsim.model import ModelChange
 from sbmlsim.simulation import Timecourse, TimecourseSim
-from sbmlsim.simulator import SimulatorSerial as Simulator
+from sbmlsim.simulator import SimulatorSerialRR
 from tests import MODEL_REPRESSILATOR
 
 
-def test_create_simulator():
-    """Create simulator for model."""
-    simulator = Simulator(MODEL_REPRESSILATOR)
-    assert simulator
-
-
-def test_create_simulator_strpath():
-    """Create simulator for model."""
-    simulator = Simulator(str(MODEL_REPRESSILATOR))
-    assert simulator
-
-
-def test_timecourse_simulation() -> None:
+def test_timecourse_simulation(repressilator_model_state: str) -> None:
     """Run timecourse simulation."""
-    simulator = Simulator(MODEL_REPRESSILATOR)
+    simulator = SimulatorSerialRR()
+    simulator.set_model(repressilator_model_state)
 
     tc = Timecourse(start=0, end=100, steps=100)
-    tc.normalize(uinfo=simulator.uinfo)
-    s = simulator._timecourse(tc)
+    s = simulator.run_timecourse(TimecourseSim(tc))
     assert s is not None
 
     tc = Timecourse(start=0, end=100, steps=100, changes={"PX": 10.0})
-    tc.normalize(uinfo=simulator.uinfo)
-    s = simulator._timecourse(tc)
-    assert s is not None
-    assert isinstance(s, pd.DataFrame)
-    assert "time" in s
-    assert len(s.time) == 101
-    assert s.PX[0] == 10.0
+    xres = simulator.run_timecourse(TimecourseSim(tc))
+    assert xres is not None
+    assert hasattr(xres, "_time")
+    assert len(xres._time) == 101
+    assert xres['[PX]'][0] == 10.0
 
     tcsim = TimecourseSim(
         timecourses=[Timecourse(start=0, end=100, steps=100, changes={"[X]": 10.0})]
     )
-    tcsim.normalize(simulator.uinfo)
-    s = simulator._timecourse(tcsim)
-    assert s is not None
+    xres = simulator.run_timecourse(tcsim)
+    assert xres is not None
 
 
-def test_timecourse_combined() -> None:
+def test_timecourse_combined(repressilator_model_state: str) -> None:
     """Test timecourse combination."""
-    simulator = Simulator(MODEL_REPRESSILATOR)
+    simulator = SimulatorSerialRR()
+    simulator.set_model(repressilator_model_state)
 
-    s = simulator._timecourse(
+    xres = simulator.run_timecourse(
         simulation=TimecourseSim(
             [
                 Timecourse(start=0, end=100, steps=100),
@@ -68,47 +54,45 @@ def test_timecourse_combined() -> None:
             ]
         )
     )
-    assert isinstance(s, pd.DataFrame)
-    assert "time" in s
-    assert s.time.values[-1] == 250.0
+
+    assert xres._time.values[-1] == 250.0
 
 
-def test_timecourse_concat():
+def test_timecourse_concat(repressilator_model_state: str) -> None:
     """Reuse of timecourses."""
-    simulator = Simulator(MODEL_REPRESSILATOR)
+    simulator = SimulatorSerialRR()
+    simulator.set_model(repressilator_model_state)
     tc = Timecourse(start=0, end=50, steps=100, changes={"X": 10})
 
-    s = simulator._timecourse(simulation=TimecourseSim([tc] * 3))
-    assert isinstance(s, pd.DataFrame)
-    assert "time" in s
-    assert s.time.values[-1] == 150.0
-    assert len(s) == 3 * 101
-    assert s.X.values[0] == 10.0
-    assert s.X.values[101] == 10.0
-    assert s.X.values[202] == 10.0
+    xres = simulator.run_timecourse(simulation=TimecourseSim([tc] * 3))
+    assert xres._time.values[-1] == 150.0
+    assert len(xres._time) == 3 * 101
+    assert xres["[X]"].values[0] == 10.0
+    assert xres["[X]"].values[101] == 10.0
+    assert xres["[X]"].values[202] == 10.0
 
 
-def test_timecourse_empty():
+def test_timecourse_empty(repressilator_model_state: str) -> None:
     """Reuse of timecourses."""
-    simulator = Simulator(MODEL_REPRESSILATOR)
+    simulator = SimulatorSerialRR()
+    simulator.set_model(repressilator_model_state)
     tc = Timecourse(start=0, end=50, steps=100, changes={"X": 10})
 
     tcsim = TimecourseSim([None, tc, None])
-    s = simulator._timecourse(
+    xres = simulator.run_timecourse(
         simulation=tcsim,
     )
     assert len(tcsim.timecourses) == 1
-    assert isinstance(s, pd.DataFrame)
-    assert "time" in s
-    assert s.time.values[-1] == 50.0
-    assert len(s) == 101
+    assert xres._time.values[-1] == 50.0
+    assert len(xres._time) == 101
 
 
-def test_timecourse_discard():
+def test_timecourse_discard(repressilator_model_state: str) -> None:
     """Test discarding pre-simulation."""
-    simulator = Simulator(MODEL_REPRESSILATOR)
+    simulator = SimulatorSerialRR()
+    simulator.set_model(repressilator_model_state)
 
-    s = simulator._timecourse(
+    xres = simulator.run_timecourse(
         simulation=TimecourseSim(
             [
                 Timecourse(
@@ -126,8 +110,6 @@ def test_timecourse_discard():
             ]
         )
     )
-    assert isinstance(s, pd.DataFrame)
-    assert "time" in s
-    assert len(s.time) == 101
-    assert s.time.values[0] == 0.0
-    assert s.time.values[-1] == 100.0
+    assert len(xres._time) == 101
+    assert xres._time.values[0] == 0.0
+    assert xres._time.values[-1] == 100.0
