@@ -7,7 +7,7 @@ import psutil
 import ray
 from sbmlutils import log
 
-
+from sbmlsim.simulator.rr_model import roadrunner, IntegratorSettingKeys
 from sbmlsim.simulation import TimecourseSim
 from sbmlsim.simulator.rr_simulator_abstract import SimulatorAbstractRR
 from sbmlsim.simulator.rr_worker import SimulationWorkerRR
@@ -22,6 +22,15 @@ class SimulatorActor(SimulationWorkerRR):
 
     An actor is essentially a stateful worker
     """
+    def __init__(self):
+        super(SimulatorActor, self).__init__()
+        self.r: roadrunner.RoadRunner = roadrunner.RoadRunner()
+        self.integrator_settings = {
+            "absolute_tolerance": 1e-8,
+            "relative_tolerance": 1e-8,
+            "variable_step_size": False,
+            "stiff": True,
+        }
 
     def work(self, simulations):
         """Run a bunch of simulations on a single worker."""
@@ -69,8 +78,9 @@ class SimulatorRayRR(SimulatorAbstractRR):
     def _run_timecourses(self, simulations: List[TimecourseSim]) -> List[pd.DataFrame]:
         """Execute timecourse simulations."""
         # Strip units for parallel simulations (this requires normalization of units!)
-        for sim in simulations:
-            sim.strip_units()
+        # FIXME: update with units
+        # for sim in simulations:
+        #     sim.strip_units()
 
         # Split simulations in chunks for actors
         # !simulation have to stay in same order to reconstruct dimensions!
