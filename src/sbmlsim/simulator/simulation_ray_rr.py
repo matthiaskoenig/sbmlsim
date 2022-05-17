@@ -8,15 +8,11 @@ import psutil
 import ray
 from sbmlutils import log
 
-from sbmlsim.simulator.model_rr import roadrunner
-from sbmlsim.simulation import TimecourseSim
-from sbmlsim.simulator import SimulatorSerial
-from sbmlsim.simulator.simulation_worker_rr import SimulationWorkerRR
 
+from sbmlsim.simulation import TimecourseSim
+from sbmlsim.simulator.simulation_worker_rr import SimulatorRR, SimulationWorkerRR
 
 logger = log.get_logger(__name__)
-
-# start ray
 ray.init(ignore_reinit_error=True)
 
 
@@ -35,11 +31,10 @@ class SimulatorActor(SimulationWorkerRR):
         return results
 
 
-class SimulatorParallel:
+class SimulatorRayRR(SimulatorRR):
     """Parallel simulator using multiple cores.
 
-    The parallel simulator is a subclass of the SimulatorSerial reusing the
-    logic for running simulations.
+
     """
 
     def __init__(self, model=None, **kwargs):
@@ -62,7 +57,7 @@ class SimulatorParallel:
         if model is not None:
             self.set_model(model=model)
 
-    def set_model(self, model):
+    def set_model(self, model) -> None:
         """Set model."""
         for simulator in self.simulators:
             simulator.set_model(model)
@@ -71,6 +66,11 @@ class SimulatorParallel:
         """Set timecourse selections."""
         for simulator in self.simulators:
             simulator.set_timecourse_selections.remote(selections)
+
+    def set_integrator_settings(self, **kwargs):
+        """Set integrator settings."""
+        for simulator in self.simulators:
+            self.simulator.set_integrator_settings(**kwargs)
 
     def _timecourses(self, simulations: List[TimecourseSim]) -> List[pd.DataFrame]:
         """Run all simulations with given model and collect the results.
