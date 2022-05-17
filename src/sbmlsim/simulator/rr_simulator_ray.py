@@ -23,7 +23,6 @@ class SimulatorActor(SimulationWorkerRR):
     An actor is essentially a stateful worker
     """
     def __init__(self):
-        super(SimulatorActor, self).__init__()
         self.r: roadrunner.RoadRunner = roadrunner.RoadRunner()
         self.integrator_settings = {
             "absolute_tolerance": 1e-8,

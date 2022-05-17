@@ -1,3 +1,5 @@
+from typing import List
+
 import numpy as np
 import pytest
 
@@ -8,7 +10,8 @@ import pandas as pd
 import pytest
 
 from sbmlsim.simulation import TimecourseSim, Timecourse, ScanSim, Dimension
-from sbmlsim.simulator.rr_simulator_ray import SimulatorRayRR
+from sbmlsim.simulator.rr_simulator_ray import SimulatorRayRR, SimulatorActor, ray
+
 
 
 def test_init() -> None:
@@ -31,7 +34,9 @@ def test_set_default_timecourse_selections(repressilator_model_state: str) -> No
     simulator.set_timecourse_selections()
     assert simulator
     for worker in simulator.workers:
-        assert "time" in worker.r.timeCourseSelections
+        selections_ref = worker.get_timecourse_selections.remote()
+        selections: List[str] = ray.get(selections_ref)
+        assert "time" in selections
 
 
 def test_set_timecourse_selections(repressilator_model_state: str) -> None:
@@ -40,9 +45,12 @@ def test_set_timecourse_selections(repressilator_model_state: str) -> None:
     simulator.set_model(repressilator_model_state)
     simulator.set_timecourse_selections(["time"])
     assert simulator
+    worker: SimulatorActor
     for worker in simulator.workers:
-        assert "time" in worker.r.timeCourseSelections
-        assert len(worker.r.timeCourseSelections) == 1
+        selections_ref = worker.get_timecourse_selections.remote()
+        selections: List[str] = ray.get(selections_ref)
+        assert "time" in selections
+        assert len(selections) == 1
 
 
 def test_default_integrator_settings(repressilator_model_state: str) -> None:
@@ -50,9 +58,14 @@ def test_default_integrator_settings(repressilator_model_state: str) -> None:
     simulator = SimulatorRayRR(actor_count=1)
     simulator.set_model(repressilator_model_state)
     for worker in simulator.workers:
-        assert worker.get_integrator_setting.remote("variable_step_size") is False
-        assert worker.get_integrator_setting.remote("stiff") is True
-        assert pytest.approx(1E-8) == worker.get_integrator_setting.remote("relative_tolerance")
+        setting_ref = worker.get_integrator_setting.remote("variable_step_size")
+        assert ray.get(setting_ref) is False
+
+        setting_ref = worker.get_integrator_setting.remote("stiff")
+        assert ray.get(setting_ref) is True
+
+        setting_ref = worker.get_integrator_setting.remote("relative_tolerance")
+        assert pytest.approx(1E-8) == ray.get(setting_ref)
 
 
 def test_run_timecourse(repressilator_model_state: str) -> None:

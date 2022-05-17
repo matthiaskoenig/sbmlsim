@@ -1,5 +1,5 @@
 """Classes for running simulations with SBML models."""
-from typing import Iterator, Optional, Any
+from typing import Iterator, Optional, Any, List
 
 import pandas as pd
 from sbmlutils import log
@@ -68,6 +68,10 @@ class SimulationWorkerRR:
         except RuntimeError as err:
             logger.error(f"{err}")
             raise err
+
+    def get_timecourse_selections(self) -> List[str]:
+        """Get timecourse selections."""
+        return self.r.timeCourseSelections
 
     def set_integrator_settings(self, **kwargs) -> roadrunner.Integrator:
         """Set integrator settings.
