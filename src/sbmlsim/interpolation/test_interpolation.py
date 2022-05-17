@@ -6,7 +6,7 @@ import pytest
 from sbmlutils.manipulation import interpolation as ip
 from sbmlutils.manipulation.interpolation_example import interpolation_example
 
-from sbmlsim.simulator.model_rr import roadrunner
+from sbmlsim.simulator.rr_model import roadrunner
 
 
 x = [0.0, 1.0, 2.0, 3.0, 4.0, 5.0]

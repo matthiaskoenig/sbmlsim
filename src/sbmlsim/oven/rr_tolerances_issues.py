@@ -1,7 +1,7 @@
 """Test roadrunner tolerances issues."""
 import pandas as pd
 
-from sbmlsim.simulator.model_rr import roadrunner
+from sbmlsim.simulator.rr_model import roadrunner
 
 
 tiny_sbml = "tiny_example_1.xml"

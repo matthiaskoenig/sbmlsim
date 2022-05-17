@@ -26,6 +26,7 @@ class SimulatorActorPath(object):
         print("Just read the value of 'a'")
         print(self.r.getValue("a"), "\n")
 
+
 def ray_example():
     """Ray example."""
     actor_count: int = 1  # cores to run this on

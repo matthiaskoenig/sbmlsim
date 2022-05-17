@@ -10,7 +10,7 @@ from sbmlsim.model import AbstractModel
 from sbmlsim.plot import Figure, Plot
 from sbmlsim.result.report import Report
 from sbmlsim.simulation import AbstractSim, Timecourse, TimecourseSim
-from sbmlsim.simulator.simulation_ray_rr import SimulatorParallel
+from sbmlsim.simulator.rr_simulator_ray import SimulatorParallel
 from sbmlsim.task import Task
 
 

@@ -5,10 +5,10 @@ import time
 import numpy as np
 
 from sbmlsim.model import RoadrunnerSBMLModel
-from sbmlsim.simulator.model_rr import roadrunner
+from sbmlsim.simulator.rr_model import roadrunner
 from sbmlsim.simulation import Dimension, ScanSim, Timecourse, TimecourseSim
 from sbmlsim.simulator import SimulatorSerial
-from sbmlsim.simulator.simulation_ray_rr import SimulatorActor, SimulatorParallel, ray
+from sbmlsim.simulator.rr_simulator_ray import SimulatorActor, SimulatorParallel, ray
 from sbmlsim.units import UnitsInformation
 from tests import MODEL_GLCWB, MODEL_REPRESSILATOR
 

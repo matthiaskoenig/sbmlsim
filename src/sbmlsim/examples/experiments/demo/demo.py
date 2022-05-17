@@ -20,7 +20,7 @@ from sbmlsim.simulation import (
     TimecourseSim,
 )
 from sbmlsim.simulation.sensitivity import ModelSensitivity
-from sbmlsim.simulator.simulation_ray_rr import SimulatorParallel
+from sbmlsim.simulator.rr_simulator_ray import SimulatorParallel
 from sbmlsim.task import Task
 from tests import MODEL_DEMO
 

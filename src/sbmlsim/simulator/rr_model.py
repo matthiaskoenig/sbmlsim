@@ -17,19 +17,21 @@ from sbmlsim.units import Quantity, UnitRegistry, UnitsInformation
 from sbmlsim.utils import md5_for_path
 
 
-# Config.setValue(Config.LLVM_BACKEND, Config.LLJIT)
+Config.setValue(Config.LLVM_BACKEND, Config.LLJIT)
 logger = log.get_logger(__name__)
+
+IntegratorSettingKeys = {
+    "variable_step_size",
+    "stiff",
+    "absolute_tolerance",
+    "relative_tolerance",
+}
 
 
 class RoadrunnerSBMLModel(AbstractModel):
     """Roadrunner model wrapper."""
 
-    IntegratorSettingKeys = {
-        "variable_step_size",
-        "stiff",
-        "absolute_tolerance",
-        "relative_tolerance",
-    }
+
 
     def __init__(
         self,

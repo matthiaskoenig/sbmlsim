@@ -1,5 +1,4 @@
 """Parallel simulation using ray."""
-import tempfile
 from typing import Iterator, List
 
 import numpy as np
@@ -10,7 +9,8 @@ from sbmlutils import log
 
 
 from sbmlsim.simulation import TimecourseSim
-from sbmlsim.simulator.simulation_worker_rr import SimulatorRR, SimulationWorkerRR
+from sbmlsim.simulator.rr_simulator_abstract import SimulatorAbstractRR
+from sbmlsim.simulator.rr_worker import SimulationWorkerRR
 
 logger = log.get_logger(__name__)
 ray.init(ignore_reinit_error=True)
@@ -31,36 +31,26 @@ class SimulatorActor(SimulationWorkerRR):
         return results
 
 
-class SimulatorRayRR(SimulatorRR):
-    """Parallel simulator using multiple cores.
+class SimulatorRayRR(SimulatorAbstractRR):
+    """Parallel simulator using multiple cores via ray."""
 
-
-    """
-
-    def __init__(self, model=None, **kwargs):
+    def __init__(self, **kwargs):
         """Initialize parallel simulator with multiple workers.
 
-        :param model: model source or model
-        :param actor_count: int,
+        :param actor_count: int, number of actors (cores)
         """
         if "actor_count" in kwargs:
             self.actor_count = kwargs.pop("actor_count")
         else:
-
             self.actor_count = max(self.cpu_count() - 1, 1)
-        logger.info(f"Using '{self.actor_count}' cpu/core for parallel simulation.")
+        logger.info(f"Using '{self.actor_count}' cores for parallel simulation.")
 
-        logger.debug(f"Creating '{self.actor_count}' SimulationActors")
         self.simulators = [SimulatorActor.remote() for _ in range(self.actor_count)]
 
-        super(SimulatorParallel, self).__init__(model=None, **kwargs)
-        if model is not None:
-            self.set_model(model=model)
-
-    def set_model(self, model) -> None:
-        """Set model."""
+    def set_model(self, model_state: str) -> None:
+        """Set model from state."""
         for simulator in self.simulators:
-            simulator.set_model(model)
+            simulator.set_model.remote(model_state)
 
     def set_timecourse_selections(self, selections: Iterator[str]):
         """Set timecourse selections."""
@@ -70,15 +60,11 @@ class SimulatorRayRR(SimulatorRR):
     def set_integrator_settings(self, **kwargs):
         """Set integrator settings."""
         for simulator in self.simulators:
-            self.simulator.set_integrator_settings(**kwargs)
+            simulator.set_integrator_settings.remote(**kwargs)
 
-    def _timecourses(self, simulations: List[TimecourseSim]) -> List[pd.DataFrame]:
-        """Run all simulations with given model and collect the results.
-
-        :param simulations: List[TimecourseSim]
-        :return: Result
-        """
-        # Strip units for parallel simulations
+    def _run_timecourses(self, simulations: List[TimecourseSim]) -> List[pd.DataFrame]:
+        """Execute timecourse simulations."""
+        # Strip units for parallel simulations (this requires normalization of units!)
         for sim in simulations:
             sim.strip_units()
 

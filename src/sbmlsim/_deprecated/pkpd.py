@@ -4,7 +4,7 @@ from typing import Dict
 
 from sbmlutils import log
 
-from sbmlsim.simulator.model_rr import roadrunner
+from sbmlsim.simulator.rr_model import roadrunner
 
 
 logger = log.get_logger(__name__)

@@ -97,7 +97,7 @@ from sbmlsim.experiment import ExperimentRunner, SimulationExperiment
 from sbmlsim.fit import FitData, FitExperiment, FitMapping, FitParameter
 from sbmlsim.model import RoadrunnerSBMLModel
 from sbmlsim.model.model import AbstractModel
-from sbmlsim.simulator.model_rr import roadrunner
+from sbmlsim.simulator.rr_model import roadrunner
 from sbmlsim.plot import Axis, Curve, Figure, Plot
 from sbmlsim.plot.plotting import (
     AbstractCurve,

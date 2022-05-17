@@ -4,7 +4,7 @@ import numpy as np
 from sbmlsim.result import XResult
 from sbmlsim.result.datagenerator import DataGeneratorIndexingFunction
 from sbmlsim.simulation import Dimension, ScanSim, Timecourse, TimecourseSim
-from sbmlsim.simulator.simulation_ray_rr import SimulatorParallel
+from sbmlsim.simulator.rr_simulator_ray import SimulatorParallel
 from tests import MODEL_MIDAZOLAM
 
 

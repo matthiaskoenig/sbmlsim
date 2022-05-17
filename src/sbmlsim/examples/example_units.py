@@ -8,7 +8,7 @@ from matplotlib import pyplot as plt
 from sbmlsim.plot.plotting_deprecated_matplotlib import add_line
 from sbmlsim.result import XResult
 from sbmlsim.simulation import Dimension, ScanSim, Timecourse, TimecourseSim
-from sbmlsim.simulator.simulation_serial_rr import SimulatorSerialRR as Simulator
+from sbmlsim.simulator.rr_simulator_serial import SimulatorSerialRR as Simulator
 from tests import MODEL_DEMO
 
 
