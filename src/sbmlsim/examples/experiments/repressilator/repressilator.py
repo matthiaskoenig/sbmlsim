@@ -4,8 +4,8 @@ Example simulation experiment.
 from pathlib import Path
 from typing import Dict, Union
 
-from sbmlsim.combine.sedml.parser import SEDMLSerializer
-from sbmlsim.combine.sedml.runner import execute_sedml
+# from sbmlsim.combine.sedml.parser import SEDMLSerializer
+# from sbmlsim.combine.sedml.runner import execute_sedml
 from sbmlsim.data import Data
 from sbmlsim.experiment import SimulationExperiment
 from sbmlsim.experiment.runner import run_experiments
@@ -14,7 +14,7 @@ from sbmlsim.plot import Figure, Plot
 from sbmlsim.result.report import Report
 from sbmlsim.simulation import AbstractSim, Timecourse, TimecourseSim
 from sbmlsim.task import Task
-from tests import MODEL_REPRESSILATOR
+from sbmlsim.resources import MODEL_REPRESSILATOR_SBML
 
 
 class RepressilatorExperiment(SimulationExperiment):
@@ -23,9 +23,9 @@ class RepressilatorExperiment(SimulationExperiment):
     def models(self) -> Dict[str, Union[Path, AbstractModel]]:
         """Define models."""
         return {
-            "model1": MODEL_REPRESSILATOR,
+            "model1": MODEL_REPRESSILATOR_SBML,
             "model2": AbstractModel(
-                MODEL_REPRESSILATOR,
+                MODEL_REPRESSILATOR_SBML,
                 changes={
                     "ps_0": self.Q_(1.3e-5, "dimensionless"),
                     "ps_a": self.Q_(0.013, "dimensionless"),
@@ -152,21 +152,21 @@ def run_repressilator_example(output_path: Path) -> None:
         output_path=output_path / "sbmlsim",
     )
 
-    # serialize to SED-ML/OMEX archive
-    omex_path = Path(__file__).parent / "results" / "repressilator.omex"
-    serializer = SEDMLSerializer(
-        exp_class=RepressilatorExperiment,
-        working_dir=output_path / "omex",
-        sedml_filename="repressilator_sedml.xml",
-        omex_path=omex_path,
-    )
-
-    # execute OMEX archive
-    execute_sedml(
-        path=omex_path,
-        working_dir=output_path / "sbmlsim_omex",
-        output_path=output_path / "sbmlsim_omex",
-    )
+    # # serialize to SED-ML/OMEX archive
+    # omex_path = Path(__file__).parent / "results" / "repressilator.omex"
+    # serializer = SEDMLSerializer(
+    #     exp_class=RepressilatorExperiment,
+    #     working_dir=output_path / "omex",
+    #     sedml_filename="repressilator_sedml.xml",
+    #     omex_path=omex_path,
+    # )
+    #
+    # # execute OMEX archive
+    # execute_sedml(
+    #     path=omex_path,
+    #     working_dir=output_path / "sbmlsim_omex",
+    #     output_path=output_path / "sbmlsim_omex",
+    # )
 
 
 if __name__ == "__main__":

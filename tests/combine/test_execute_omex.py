@@ -4,7 +4,8 @@ from pathlib import Path
 import pytest
 
 from sbmlsim.combine.sedml.runner import execute_sedml
-from tests import DATA_DIR
+# FIXME: fix test data
+DATA_DIR = Path(".")
 
 
 biomodels_omex_paths = []

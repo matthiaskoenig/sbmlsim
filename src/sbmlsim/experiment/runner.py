@@ -16,8 +16,8 @@ from sbmlutils import log
 from sbmlsim.experiment import ExperimentResult, SimulationExperiment
 from sbmlsim.model import RoadrunnerSBMLModel
 from sbmlsim.report.experiment_report import ExperimentReport, ReportResults
-from sbmlsim.simulator import SimulatorSerial
-from sbmlsim.simulator.rr_simulator_ray import SimulatorParallel
+# from sbmlsim.simulator import SimulatorSerial
+# from sbmlsim.simulator.rr_simulator_ray import SimulatorParallel
 from sbmlsim.units import UnitRegistry, UnitsInformation
 from sbmlsim.utils import timeit
 
@@ -138,7 +138,9 @@ class ExperimentRunner(object):
             output_path.mkdir(parents=True)
 
         exp_results = []
-        for sid, experiment in self.experiments.items():  # type: SimulationExperiment
+        sid: str
+        experiment: SimulationExperiment
+        for sid, experiment in self.experiments.items():
             logger.info(f"Running SimulationExperiment: {sid}")
 
             # ExperimentResult used to create report
