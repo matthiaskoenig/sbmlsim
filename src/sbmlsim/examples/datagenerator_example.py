@@ -4,8 +4,7 @@ import numpy as np
 from sbmlsim.result import XResult
 from sbmlsim.result.datagenerator import DataGeneratorIndexingFunction
 from sbmlsim.simulation import Dimension, ScanSim, Timecourse, TimecourseSim
-from sbmlsim.simulator.rr_simulator_ray import SimulatorParallel
-from tests import MODEL_MIDAZOLAM
+from sbmlsim.simulator.rr_simulator_serial import SimulatorSerialRR
 
 
 def example_scan() -> XResult:
@@ -41,7 +40,7 @@ def example_scan() -> XResult:
     return simulator.run_scan(scan)
 
 
-def example() -> None:
+def datagenerator_example() -> None:
     """Run example for scan functionality."""
     xres = example_scan()
 
@@ -70,4 +69,4 @@ def example() -> None:
 
 
 if __name__ == "__main__":
-    example()
+    datagenerator_example()

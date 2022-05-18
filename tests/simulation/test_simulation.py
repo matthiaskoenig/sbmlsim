@@ -4,7 +4,6 @@ import pandas as pd
 from sbmlsim.model import ModelChange
 from sbmlsim.simulation import Timecourse, TimecourseSim
 from sbmlsim.simulator import SimulatorSerialRR
-from tests import MODEL_REPRESSILATOR
 
 
 def test_timecourse_simulation(repressilator_model_state: str) -> None:

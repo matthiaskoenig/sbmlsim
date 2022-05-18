@@ -15,9 +15,6 @@ TODO:
 # Refactoring
 
 
-## Observables
-- 
-
 ## Simulations -> Results
 
 The following core simulations should be supported
@@ -26,8 +23,11 @@ The following core simulations should be supported
 
 In addition these simulations can be wrapped in a more complex scan
 * `dimensions`
-This creates higher dimensional scans => Just name this 
+This creates higher dimensional scans
 
+## Observables
+- handle addition of observables to the model as functions; have to be added to the
+  model or calculated on the results
 
 
 

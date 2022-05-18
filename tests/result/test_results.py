@@ -5,12 +5,11 @@ import pandas as pd
 
 from sbmlsim.model import RoadrunnerSBMLModel
 from sbmlsim.result import XResult
-from tests import MODEL_REPRESSILATOR
 
 
-def test_xresult() -> None:
+def test_xresult(repressilator_path: Path) -> None:
     """Test xresults."""
-    r = RoadrunnerSBMLModel(source=MODEL_REPRESSILATOR)._model
+    r = RoadrunnerSBMLModel(source=repressilator_path)._model
     dfs = []
     num_sim = 10
     num_steps = 20
@@ -36,9 +35,9 @@ def test_xresult() -> None:
     assert xres.Y is not None
 
 
-def test_xresults_netcdf(tmp_path: Path) -> None:
+def test_xresults_netcdf(tmp_path: Path, repressilator_path: Path) -> None:
     """Test xresults in netcdf format."""
-    r = RoadrunnerSBMLModel(source=MODEL_REPRESSILATOR)._model
+    r = RoadrunnerSBMLModel(source=repressilator_path)._model
     dfs = []
     for _ in range(10):
         s = r.simulate(0, 10, steps=10)

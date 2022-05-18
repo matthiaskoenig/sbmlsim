@@ -10,7 +10,6 @@ import roadrunner
 from roadrunner import Config
 from sbmlutils import log
 
-from sbmlsim.filelock import FileLock
 from sbmlsim.model import AbstractModel
 from sbmlsim.model.model_resources import Source
 from sbmlsim.units import Quantity, UnitRegistry, UnitsInformation
@@ -160,17 +159,10 @@ class RoadrunnerSBMLModel(AbstractModel):
 
     @classmethod
     def copy_roadrunner_model(cls, r: roadrunner.RoadRunner) -> roadrunner.RoadRunner:
-        """Copy roadrunner model by using the state.
-
-        :param r:
-        :return:
-        """
-        ftmp = tempfile.NamedTemporaryFile()
-        filename = ftmp.name
-        with FileLock(filename):
-            r.saveState(filename)
-            r2 = roadrunner.RoadRunner()
-            r2.loadState(filename)
+        """Copy roadrunner model by using the state."""
+        state: str = r.saveStateS()
+        r2 = roadrunner.RoadRunner()
+        r2.loadStateS(state)
         return r2
 
     def parse_units(self, ureg: UnitRegistry) -> UnitsInformation:

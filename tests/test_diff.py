@@ -1,5 +1,5 @@
 """Test difference."""
-from sbmlsim.resources.testdata.diff import simulate_examples
+from tests.data.testdata.diff import simulate_examples
 
 
 def test_run_simulations() -> None:
