@@ -1,12 +1,13 @@
 """Classes for running simulations with SBML models."""
 from pathlib import Path
-from typing import List, Iterator, Any
+from typing import Any, Iterator, List
 
 import pandas as pd
 from sbmlutils import log
 
-from sbmlsim.simulation import TimecourseSim, ScanSim
 from sbmlsim.result import XResult
+from sbmlsim.simulation import ScanSim, TimecourseSim
+
 
 # TODO: handle unit information
 # from pint import Quantity

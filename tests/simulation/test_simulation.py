@@ -21,7 +21,7 @@ def test_timecourse_simulation(repressilator_model_state: str) -> None:
     assert xres is not None
     assert hasattr(xres, "_time")
     assert len(xres._time) == 101
-    assert xres['[PX]'][0] == 10.0
+    assert xres["[PX]"][0] == 10.0
 
     tcsim = TimecourseSim(
         timecourses=[Timecourse(start=0, end=100, steps=100, changes={"[X]": 10.0})]

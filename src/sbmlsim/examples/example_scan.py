@@ -16,12 +16,8 @@ def run_scan0d() -> XResult:
         simulation=TimecourseSim(
             [
                 Timecourse(start=0, end=100, steps=100, changes={}),
-                Timecourse(
-                    start=0, end=60, steps=100, changes={"[X]": 10}
-                ),
-                Timecourse(
-                    start=0, end=60, steps=100, changes={"X": 10}
-                ),
+                Timecourse(start=0, end=60, steps=100, changes={"[X]": 10}),
+                Timecourse(start=0, end=60, steps=100, changes={"X": 10}),
             ]
         ),
         dimensions=[],
@@ -40,12 +36,8 @@ def run_scan1d() -> XResult:
         simulation=TimecourseSim(
             [
                 Timecourse(start=0, end=100, steps=100, changes={}),
-                Timecourse(
-                    start=0, end=60, steps=100, changes={"[X]": 10}
-                ),
-                Timecourse(
-                    start=0, end=60, steps=100, changes={"X": 10}
-                ),
+                Timecourse(start=0, end=60, steps=100, changes={"[X]": 10}),
+                Timecourse(start=0, end=60, steps=100, changes={"X": 10}),
             ]
         ),
         dimensions=[
@@ -69,12 +61,8 @@ def run_scan2d() -> XResult:
         simulation=TimecourseSim(
             [
                 Timecourse(start=0, end=100, steps=100, changes={}),
-                Timecourse(
-                    start=0, end=60, steps=100, changes={"[X]": 10}
-                ),
-                Timecourse(
-                    start=0, end=60, steps=100, changes={"X": 10}
-                ),
+                Timecourse(start=0, end=60, steps=100, changes={"[X]": 10}),
+                Timecourse(start=0, end=60, steps=100, changes={"X": 10}),
             ]
         ),
         dimensions=[
@@ -103,12 +91,8 @@ def run_scan1d_distribution() -> XResult:
         simulation=TimecourseSim(
             [
                 Timecourse(start=0, end=100, steps=100, changes={}),
-                Timecourse(
-                    start=0, end=60, steps=100, changes={"[X]": 10}
-                ),
-                Timecourse(
-                    start=0, end=60, steps=100, changes={"X": 10}
-                ),
+                Timecourse(start=0, end=60, steps=100, changes={"[X]": 10}),
+                Timecourse(start=0, end=60, steps=100, changes={"X": 10}),
             ]
         ),
         dimensions=[
@@ -130,11 +114,10 @@ if __name__ == "__main__":
 
     # scan0d
     xres = run_scan0d()
-    for key in ['PX', 'PY', 'PZ']:
+    for key in ["PX", "PY", "PZ"]:
         plt.plot(xres.time, xres[key], label=key)
     plt.legend()
     plt.show()
-
 
     # scan1d
     xres = run_scan1d()

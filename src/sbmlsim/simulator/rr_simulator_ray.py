@@ -8,10 +8,11 @@ import psutil
 import ray
 from sbmlutils import log
 
-from sbmlsim.model.rr_model import roadrunner, IntegratorSettingKeys
+from sbmlsim.model.rr_model import IntegratorSettingKeys, roadrunner
 from sbmlsim.simulation import TimecourseSim
 from sbmlsim.simulator.rr_simulator_abstract import SimulatorAbstractRR
 from sbmlsim.simulator.rr_worker import SimulationWorkerRR
+
 
 logger = log.get_logger(__name__)
 ray.init(ignore_reinit_error=True)
@@ -23,6 +24,7 @@ class SimulatorActor(SimulationWorkerRR):
 
     An actor is essentially a stateful worker
     """
+
     def __init__(self):
         self.r: roadrunner.RoadRunner = roadrunner.RoadRunner()
         self.integrator_settings = {
@@ -44,7 +46,7 @@ class SimulatorRayRR(SimulatorAbstractRR):
     """Parallel simulator using multiple cores via ray."""
 
     @staticmethod
-    def from_sbml(sbml_path: Path, **kwargs) -> 'SimulatorRayRR':
+    def from_sbml(sbml_path: Path, **kwargs) -> "SimulatorRayRR":
         """Set model from SBML."""
         rr: roadrunner.RoadRunner = roadrunner.RoadRunner(str(sbml_path))
         simulator = SimulatorRayRR(**kwargs)
@@ -61,9 +63,7 @@ class SimulatorRayRR(SimulatorAbstractRR):
         if not actor_count:
             actor_count = max_count
         if actor_count > max_count:
-            logger.warning(
-                f"Actor count > maximal count '{actor_count} > {max_count}'"
-            )
+            logger.warning(f"Actor count > maximal count '{actor_count} > {max_count}'")
         self.actor_count: int = actor_count
 
         logger.info(f"Using '{actor_count}' cores for parallel simulation.")
@@ -74,7 +74,9 @@ class SimulatorRayRR(SimulatorAbstractRR):
         for worker in self.workers:
             worker.set_model.remote(model_state)
 
-    def set_timecourse_selections(self, selections: Optional[Iterator[str]] = None) -> None:
+    def set_timecourse_selections(
+        self, selections: Optional[Iterator[str]] = None
+    ) -> None:
         """Set timecourse selections."""
         for worker in self.workers:
             worker.set_timecourse_selections.remote(selections)

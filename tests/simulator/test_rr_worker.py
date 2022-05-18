@@ -2,7 +2,7 @@
 import pandas as pd
 import pytest
 
-from sbmlsim.simulation import TimecourseSim, Timecourse
+from sbmlsim.simulation import Timecourse, TimecourseSim
 from sbmlsim.simulator.rr_worker import SimulationWorkerRR
 
 
@@ -44,16 +44,14 @@ def test_default_integrator_settings(repressilator_model_state: str) -> None:
     worker.set_model(repressilator_model_state)
     assert worker.get_integrator_setting("variable_step_size") is False
     assert worker.get_integrator_setting("stiff") is True
-    assert pytest.approx(1E-8) == worker.get_integrator_setting("relative_tolerance")
+    assert pytest.approx(1e-8) == worker.get_integrator_setting("relative_tolerance")
 
 
 def test_timecourse(repressilator_model_state: str) -> None:
     """Test timecourse simulation."""
     worker = SimulationWorkerRR()
     worker.set_model(repressilator_model_state)
-    simulation = TimecourseSim([
-        Timecourse(start=0, end=5, steps=5)
-    ])
+    simulation = TimecourseSim([Timecourse(start=0, end=5, steps=5)])
     df: pd.DataFrame = worker._timecourse(simulation)
     assert len(df) == 6
     assert "time" in df

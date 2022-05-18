@@ -3,7 +3,7 @@
 Executing simulations with single roadrunner instance on a single core.
 """
 from pathlib import Path
-from typing import List, Iterator, Optional
+from typing import Iterator, List, Optional
 
 import pandas as pd
 from sbmlutils import log
@@ -21,7 +21,7 @@ class SimulatorSerialRR(SimulatorAbstractRR):
     """Serial simulator using a single core."""
 
     @staticmethod
-    def from_sbml(sbml_path: Path) -> 'SimulatorSerialRR':
+    def from_sbml(sbml_path: Path) -> "SimulatorSerialRR":
         """Set model from SBML."""
         rr: roadrunner.RoadRunner = roadrunner.RoadRunner(str(sbml_path))
         simulator = SimulatorSerialRR()
@@ -37,7 +37,9 @@ class SimulatorSerialRR(SimulatorAbstractRR):
         """Set model from state."""
         self.worker.set_model(model_state)
 
-    def set_timecourse_selections(self, selections: Optional[Iterator[str]] = None) -> None:
+    def set_timecourse_selections(
+        self, selections: Optional[Iterator[str]] = None
+    ) -> None:
         """Set timecourse selections."""
         self.worker.set_timecourse_selections(selections=selections)
 

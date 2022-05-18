@@ -6,13 +6,8 @@ import numpy as np
 import pytest
 
 from sbmlsim.result import XResult
-
-
-
-import pytest
-
-from sbmlsim.simulation import TimecourseSim, Timecourse, ScanSim, Dimension
-from sbmlsim.simulator.rr_simulator_ray import SimulatorRayRR, SimulatorActor, ray
+from sbmlsim.simulation import Dimension, ScanSim, Timecourse, TimecourseSim
+from sbmlsim.simulator.rr_simulator_ray import SimulatorActor, SimulatorRayRR, ray
 
 
 def test_from_sbml(repressilator_path: Path) -> None:
@@ -72,16 +67,14 @@ def test_default_integrator_settings(repressilator_model_state: str) -> None:
         assert ray.get(setting_ref) is True
 
         setting_ref = worker.get_integrator_setting.remote("relative_tolerance")
-        assert pytest.approx(1E-8) == ray.get(setting_ref)
+        assert pytest.approx(1e-8) == ray.get(setting_ref)
 
 
 def test_run_timecourse(repressilator_model_state: str) -> None:
     """Test timecourse simulation."""
     simulator = SimulatorRayRR(actor_count=1)
     simulator.set_model(repressilator_model_state)
-    simulation = TimecourseSim([
-        Timecourse(start=0, end=5, steps=5)
-    ])
+    simulation = TimecourseSim([Timecourse(start=0, end=5, steps=5)])
     xres: XResult = simulator.run_timecourse(simulation)
     assert xres
 
@@ -99,7 +92,7 @@ def test_run_scan(repressilator_model_state: str) -> None:
                     "n": np.linspace(start=2, stop=10, num=8),
                 },
             )
-        ]
+        ],
     )
     xres: XResult = simulator.run_scan(scan)
     assert xres

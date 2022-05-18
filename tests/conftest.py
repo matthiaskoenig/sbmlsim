@@ -1,7 +1,9 @@
 from pathlib import Path
 
-from sbmlsim.model.rr_model import roadrunner
 import pytest
+
+from sbmlsim.model.rr_model import roadrunner
+
 
 data_dir = Path(__file__).parent / "data"
 

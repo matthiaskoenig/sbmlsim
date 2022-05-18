@@ -1,12 +1,13 @@
 """Classes for running simulations with SBML models."""
-from typing import Iterator, Optional, Any, List
+from typing import Any, Iterator, List, Optional
 
 import pandas as pd
 from sbmlutils import log
 
 from sbmlsim.model import ModelChange
-from sbmlsim.model.rr_model import roadrunner, IntegratorSettingKeys
+from sbmlsim.model.rr_model import IntegratorSettingKeys, roadrunner
 from sbmlsim.simulation import Timecourse, TimecourseSim
+
 
 logger = log.get_logger(__name__)
 
@@ -37,7 +38,9 @@ class SimulationWorkerRR:
         self.r.loadStateS(model_state)
         self.set_integrator_settings()
 
-    def set_timecourse_selections(self, selections: Optional[Iterator[str]] = None) -> None:
+    def set_timecourse_selections(
+        self, selections: Optional[Iterator[str]] = None
+    ) -> None:
         """Set the timecourse selections.
 
         If the selections are None the complee selections will be used.
@@ -108,8 +111,6 @@ class SimulationWorkerRR:
         integrator: roadrunner.Integrator = self.r.getIntegrator()
         return integrator.getSetting(key)
 
-
-
     # @property
     # def uinfo(self) -> UnitsInformation:
     #     """Get model unit information."""
@@ -124,7 +125,6 @@ class SimulationWorkerRR:
     # def r(self) -> roadrunner.ExecutableModel:
     #     """Get the RoadRunner model."""
     #     return self.model._model
-
 
     def _timecourse(self, simulation: TimecourseSim) -> pd.DataFrame:
         """Timecourse simulation.
