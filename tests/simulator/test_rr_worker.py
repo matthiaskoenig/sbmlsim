@@ -20,7 +20,7 @@ def test_set_model(repressilator_model_state: str) -> None:
 
 
 def test_set_default_timecourse_selections(repressilator_model_state: str) -> None:
-    """Test setting timecourse selections"""
+    """Test setting timecourse selections."""
     worker = SimulationWorkerRR()
     worker.set_model(repressilator_model_state)
     worker.set_timecourse_selections()
@@ -29,7 +29,7 @@ def test_set_default_timecourse_selections(repressilator_model_state: str) -> No
 
 
 def test_set_timecourse_selections(repressilator_model_state: str) -> None:
-    """Test setting timecourse selections"""
+    """Test setting timecourse selections."""
     worker = SimulationWorkerRR()
     worker.set_model(repressilator_model_state)
     worker.set_timecourse_selections(["time"])

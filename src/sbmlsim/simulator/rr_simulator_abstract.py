@@ -1,4 +1,5 @@
 """Classes for running simulations with SBML models."""
+from abc import ABC, abstractmethod
 from pathlib import Path
 from typing import Any, Iterator, List
 
@@ -15,9 +16,6 @@ from sbmlsim.simulation import ScanSim, TimecourseSim
 
 
 logger = log.get_logger(__name__)
-
-
-from abc import ABC, abstractmethod
 
 
 class SimulatorAbstractRR(ABC):

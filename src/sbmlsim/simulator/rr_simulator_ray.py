@@ -26,6 +26,7 @@ class SimulatorActor(SimulationWorkerRR):
     """
 
     def __init__(self):
+        """Initialize SimulatorActor."""
         self.r: roadrunner.RoadRunner = roadrunner.RoadRunner()
         self.integrator_settings = {
             "absolute_tolerance": 1e-8,

@@ -1,15 +1,11 @@
+"""Test SimulationWorkerRR."""
+
 from pathlib import Path
 
 import numpy as np
 import pytest
 
 from sbmlsim.result import XResult
-
-
-"""Test SimulationWorkerRR."""
-import pandas as pd
-import pytest
-
 from sbmlsim.simulation import Dimension, ScanSim, Timecourse, TimecourseSim
 from sbmlsim.simulator.rr_simulator_serial import SimulatorSerialRR
 
@@ -34,7 +30,7 @@ def test_set_model(repressilator_model_state: str) -> None:
 
 
 def test_set_default_timecourse_selections(repressilator_model_state: str) -> None:
-    """Test setting timecourse selections"""
+    """Test setting timecourse selections."""
     simulator = SimulatorSerialRR()
     simulator.set_model(repressilator_model_state)
     simulator.set_timecourse_selections()
@@ -43,7 +39,7 @@ def test_set_default_timecourse_selections(repressilator_model_state: str) -> No
 
 
 def test_set_timecourse_selections(repressilator_model_state: str) -> None:
-    """Test setting timecourse selections"""
+    """Test setting timecourse selections."""
     simulator = SimulatorSerialRR()
     simulator.set_model(repressilator_model_state)
     simulator.set_timecourse_selections(["time"])

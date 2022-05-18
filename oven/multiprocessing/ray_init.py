@@ -8,6 +8,8 @@ tstart = time.time()
 import ray
 
 ray.init(address='auto')
+# ray.init()
+
 
 tend = time.time()
 print(f"ray start time:", tend-tstart)
