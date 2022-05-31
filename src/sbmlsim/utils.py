@@ -6,16 +6,10 @@ import os
 import time
 import warnings
 
-from depinfo import print_dependencies
 from sbmlutils import log
 
 
 logger = log.get_logger(__name__)
-
-
-def show_versions() -> None:
-    """Print dependency information."""
-    print_dependencies("sbmlsim")
 
 
 def md5_for_path(path):
