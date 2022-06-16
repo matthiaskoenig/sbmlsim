@@ -2,7 +2,7 @@
 from typing import Dict
 
 from sbmlsim.data import DataSet
-from sbmlsim.result import XResult
+from sbmlsim.xresult import XResult
 
 
 class DataGeneratorFunction:

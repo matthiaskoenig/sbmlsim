@@ -7,8 +7,8 @@ import pandas as pd
 from sbmlutils import log
 
 from sbmlsim.combine import mathml
-from sbmlsim.result import XResult
 from sbmlsim.units import DimensionalityError, Quantity, UnitRegistry, UnitsInformation
+from sbmlsim.xresult import XResult
 
 
 logger = log.get_logger(__name__)

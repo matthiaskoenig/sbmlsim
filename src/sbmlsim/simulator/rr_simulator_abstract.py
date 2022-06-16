@@ -6,8 +6,8 @@ from typing import Any, Iterator, List
 import pandas as pd
 from sbmlutils import log
 
-from sbmlsim.result import XResult
 from sbmlsim.simulation import ScanSim, TimecourseSim
+from sbmlsim.xresult import XResult
 
 
 # TODO: handle unit information

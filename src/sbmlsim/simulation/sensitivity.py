@@ -10,7 +10,7 @@ import numpy as np
 from sbmlutils import log
 from sbmlutils.console import console
 
-from sbmlsim.model import RoadrunnerSBMLModel
+from sbmlsim.model.rr_model import roadrunner
 from sbmlsim.simulation import Dimension, ScanSim, TimecourseSim
 from sbmlsim.units import UnitsInformation
 
@@ -40,7 +40,7 @@ class ModelSensitivity(object):
 
     @staticmethod
     def difference_sensitivity_scan(
-        model: RoadrunnerSBMLModel,
+        model: roadrunner.RoadRunner,
         simulation: TimecourseSim,
         difference: float = 0.1,
         stype: SensitivityType = SensitivityType.PARAMETER_SENSITIVITY,
@@ -81,7 +81,7 @@ class ModelSensitivity(object):
 
     @staticmethod
     def distribution_sensitivity_scan(
-        model: RoadrunnerSBMLModel,
+        model: roadrunner.RoadRunner,
         simulation: TimecourseSim,
         cv: float = 0.1,
         size: int = 10,
@@ -114,7 +114,7 @@ class ModelSensitivity(object):
 
     @staticmethod
     def create_sampling_dimension(
-        model: RoadrunnerSBMLModel,
+        model: roadrunner.RoadRunner,
         changes: Dict = None,
         cv: float = 0.1,
         size: int = 10,
@@ -156,7 +156,7 @@ class ModelSensitivity(object):
 
     @staticmethod
     def create_difference_dimension(
-        model: RoadrunnerSBMLModel,
+        model: roadrunner.RoadRunner,
         changes: Dict = None,
         difference: float = 0.1,
         stype: SensitivityType = SensitivityType.PARAMETER_SENSITIVITY,
@@ -195,7 +195,7 @@ class ModelSensitivity(object):
 
     @staticmethod
     def reference_dict(
-        model: RoadrunnerSBMLModel,
+        model: roadrunner.RoadRunner,
         changes: Dict = None,
         stype: SensitivityType = SensitivityType.PARAMETER_SENSITIVITY,
         exclude_filter=None,
@@ -214,16 +214,14 @@ class ModelSensitivity(object):
         :return:
         """
         # reset model
-        model.r.resetAll()
+        model.resetAll()
 
         # apply normalized model changes
         if changes is None:
             changes = {}
-        else:
-            UnitsInformation.normalize_changes(changes, model.uinfo)
         for key, item in changes.items():
             try:
-                model.r[key] = item.magnitude
+                model[key] = item.magnitude
             except AttributeError as err:
                 logger.error(
                     f"Change is not a Quantity with unit: '{key} = {item}'. "
@@ -231,7 +229,7 @@ class ModelSensitivity(object):
                 )
                 raise err
 
-        doc: libsbml.SBMLDocument = libsbml.readSBMLFromString(model.r.getSBML())
+        doc: libsbml.SBMLDocument = libsbml.readSBMLFromString(model.getSBML())
         sbml_model: libsbml.Model = doc.getModel()
 
         ids = []
@@ -254,21 +252,21 @@ class ModelSensitivity(object):
             for s in sbml_model.getListOfSpecies():
                 ids.append(s.getId())
 
-        def value_dict(ids: Iterable[str]):
+        def value_dict(ids: Iterable[str]) -> Dict[str, float]:
             """Key: value dict from current model state.
 
             Non-zero and exclude filtering is applied.
             """
-            d = {}
-            for id in sorted(ids):
-                if exclude_filter and exclude_filter(id):
+            d: Dict[str, float] = {}
+            for key in sorted(ids):
+                if exclude_filter and exclude_filter(key):
                     continue
 
-                value = model.r[id]
+                value = model[key]
                 if exclude_zero:
                     if np.abs(value) < zero_eps:
                         continue
-                d[id] = model.Q_(value, model.uinfo[id])
+                d[key] = value
             return d
 
         return value_dict(ids)
@@ -291,7 +289,7 @@ if __name__ == "__main__":
     from sbmlsim.resources import REPRESSILATOR_SBML
 
     console.print("Loading model")
-    model = RoadrunnerSBMLModel(REPRESSILATOR_SBML)
+    model = roadrunner.RoadRunner(str(REPRESSILATOR_SBML))
 
     console.print("Reference dict")
     p_ref = ModelSensitivity.reference_dict(

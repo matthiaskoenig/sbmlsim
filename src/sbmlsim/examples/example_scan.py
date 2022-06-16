@@ -3,9 +3,9 @@
 import numpy as np
 
 from sbmlsim.resources import REPRESSILATOR_SBML
-from sbmlsim.result import XResult
 from sbmlsim.simulation import Dimension, ScanSim, Timecourse, TimecourseSim
 from sbmlsim.simulator import SimulatorSerialRR
+from sbmlsim.xresult import XResult
 
 
 def run_scan0d() -> XResult:

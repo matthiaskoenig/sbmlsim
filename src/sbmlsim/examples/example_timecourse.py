@@ -2,11 +2,11 @@
 
 from sbmlutils.console import console
 
-from sbmlsim.plot.plotting_deprecated_matplotlib import plt
+from sbmlsim.plot.serialization_matplotlib import plt
 from sbmlsim.resources import REPRESSILATOR_SBML
-from sbmlsim.result import XResult
 from sbmlsim.simulation import Timecourse, TimecourseSim
 from sbmlsim.simulator import SimulatorSerialRR
+from sbmlsim.xresult import XResult
 
 
 def run_timecourse_examples():
@@ -47,7 +47,7 @@ def run_timecourse_examples():
     ax3.set_title("combined timecourse")
 
     for xres, ax in [(xr1, ax1), (xr2, ax2), (xr3, ax3)]:
-        print(xres)
+        console.print(xres)
         ax.plot(xres.time, xres["[X]"], label="[X]")
         ax.plot(xres.time, xres["[Y]"], label="[Y]")
         ax.plot(xres.time, xres["[Z]"], label="[Z]")
@@ -57,9 +57,6 @@ def run_timecourse_examples():
         ax.set_xlabel("time")
         ax.set_ylabel("concentration")
     plt.show()
-
-    console.rule()
-    print(f"[{xr3.uinfo}]")
 
 
 if __name__ == "__main__":

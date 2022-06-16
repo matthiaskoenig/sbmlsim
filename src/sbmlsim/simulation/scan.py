@@ -46,7 +46,7 @@ class ScanSim(AbstractSim):
         self.simulation = simulation
         if dimensions is None:
             # handling the simple simulation case
-            dimensions = [Dimension("dim0", index=np.arange(1))]
+            dimensions = []
         self.dimensions = dimensions
         dimension_keys = [dim.dimension for dim in self.dimensions]
         if len(dimension_keys) > len(set(dimension_keys)):

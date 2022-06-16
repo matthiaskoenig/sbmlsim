@@ -3,10 +3,10 @@ import numpy as np
 
 from sbmlsim.combine.datagenerator import DataGeneratorIndexingFunction
 from sbmlsim.resources import MIDAZOLAM_SBML
-from sbmlsim.result import XResult
 from sbmlsim.simulation import Dimension, ScanSim, Timecourse, TimecourseSim
 from sbmlsim.simulator.rr_simulator_serial import SimulatorSerialRR
 from sbmlsim.units import Quantity
+from sbmlsim.xresult import XResult
 
 
 def example_scan() -> XResult:

@@ -19,12 +19,12 @@ from sbmlsim.plot.serialization_matplotlib import (
     MatplotlibFigureSerializer,
     plt,
 )
-from sbmlsim.result import XResult
 from sbmlsim.serialization import ObjectJSONEncoder
 from sbmlsim.simulation import AbstractSim, ScanSim, TimecourseSim
 from sbmlsim.task import Task
 from sbmlsim.units import UnitRegistry, UnitsInformation
 from sbmlsim.utils import timeit
+from sbmlsim.xresult import XResult
 
 
 logger = log.get_logger(__name__)

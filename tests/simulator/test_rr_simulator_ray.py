@@ -5,9 +5,9 @@ from typing import List
 import numpy as np
 import pytest
 
-from sbmlsim.result import XResult
 from sbmlsim.simulation import Dimension, ScanSim, Timecourse, TimecourseSim
 from sbmlsim.simulator.rr_simulator_ray import SimulatorActor, SimulatorRayRR, ray
+from sbmlsim.xresult import XResult
 
 
 def test_from_sbml(repressilator_path: Path) -> None:
@@ -96,6 +96,3 @@ def test_run_scan(repressilator_model_state: str) -> None:
     )
     xres: XResult = simulator.run_scan(scan)
     assert xres
-
-    # assert len(df) == 6
-    # assert "time" in df

@@ -8,9 +8,9 @@ import pandas as pd
 from sbmlsim.model import ModelChange, RoadrunnerSBMLModel
 from sbmlsim.plot.serialization_matplotlib import plt
 from sbmlsim.resources import REPRESSILATOR_SBML
-from sbmlsim.result import XResult
 from sbmlsim.simulation import Timecourse, TimecourseSim
 from sbmlsim.simulator.rr_simulator_serial import SimulatorSerialRR
+from sbmlsim.xresult import XResult
 
 
 def run_model_change_example1():

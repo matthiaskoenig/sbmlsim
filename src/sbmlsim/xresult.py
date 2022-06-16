@@ -46,7 +46,11 @@ class XResult:
 
     def __str__(self) -> str:
         """Get string."""
-        return f"<XResult: {self.xds.__repr__()}>"
+        return self.xds.__str__()
+
+    def __repr__(self) -> str:
+        """Get string representation."""
+        return self.xds.__repr__()
 
     @staticmethod
     def from_dfs(
