@@ -10,6 +10,7 @@ from sbmlsim.data import Data
 from sbmlsim.experiment import ExperimentRunner, SimulationExperiment
 from sbmlsim.model import AbstractModel
 from sbmlsim.plot import Axis, Figure
+from sbmlsim.resources import REPRESSILATOR_SBML
 from sbmlsim.simulation import (
     AbstractSim,
     Dimension,
@@ -17,9 +18,9 @@ from sbmlsim.simulation import (
     Timecourse,
     TimecourseSim,
 )
-from sbmlsim.simulator.rr_simulator_ray import SimulatorParallel, SimulatorSerial
+from sbmlsim.simulator.rr_simulator_ray import SimulatorRayRR
+from sbmlsim.simulator.rr_simulator_serial import SimulatorSerialRR
 from sbmlsim.task import Task
-from tests import MODEL_REPRESSILATOR
 
 
 class RepressilatorScanExperiment(SimulationExperiment):
@@ -27,9 +28,9 @@ class RepressilatorScanExperiment(SimulationExperiment):
 
     def models(self) -> Dict[str, Union[Path, AbstractModel]]:
         return {
-            "model1": MODEL_REPRESSILATOR,
+            "model1": REPRESSILATOR_SBML,
             "model2": AbstractModel(
-                MODEL_REPRESSILATOR, changes={"X": self.Q_(100, "dimensionless")}
+                REPRESSILATOR_SBML, changes={"X": self.Q_(100, "dimensionless")}
             ),
         }
 
@@ -219,7 +220,7 @@ def run_repressilator_experiments(output_path: Path) -> Path:
     base_path = Path(__file__).parent
     data_path = base_path
 
-    for simulator in [SimulatorSerial(), SimulatorParallel()]:
+    for simulator in [SimulatorSerialRR(), SimulatorRayRR()]:
         runner = ExperimentRunner(
             [RepressilatorScanExperiment],
             simulator=simulator,

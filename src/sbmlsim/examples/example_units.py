@@ -6,15 +6,15 @@ import numpy as np
 from matplotlib import pyplot as plt
 
 from sbmlsim.plot.plotting_deprecated_matplotlib import add_line
+from sbmlsim.resources import DEMO_SBML
 from sbmlsim.result import XResult
 from sbmlsim.simulation import Dimension, ScanSim, Timecourse, TimecourseSim
-from sbmlsim.simulator.rr_simulator_serial import SimulatorSerialRR as Simulator
-from tests import MODEL_DEMO
+from sbmlsim.simulator.rr_simulator_serial import SimulatorSerialRR
 
 
 def run_demo_example():
     """Run various timecourses."""
-    simulator = Simulator(MODEL_DEMO)
+    simulator = SimulatorSerialRR.from_sbml(DEMO_SBML)
     # build quantities using the unit registry for the model
     Q_ = simulator.Q_
 

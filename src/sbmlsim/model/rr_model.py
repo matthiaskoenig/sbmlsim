@@ -74,7 +74,7 @@ class RoadrunnerSBMLModel(AbstractModel):
         # load the model
         self.state_path = self.get_state_path()
         logger.debug(f"Load model from state: {self.state_path}")
-        self._model = self.load_roadrunner_model(
+        self._model = self.loda_model_from_source(
             source=self.source, state_path=self.state_path
         )
         # set selections
@@ -117,7 +117,7 @@ class RoadrunnerSBMLModel(AbstractModel):
             return None
 
     @classmethod
-    def load_roadrunner_model(
+    def loda_model_from_source(
         cls, source: Source, state_path: Path = None
     ) -> roadrunner.RoadRunner:
         """Load model from given source.
@@ -158,7 +158,9 @@ class RoadrunnerSBMLModel(AbstractModel):
         return r
 
     @classmethod
-    def copy_roadrunner_model(cls, r: roadrunner.RoadRunner) -> roadrunner.RoadRunner:
+    def copy_roadrunner_instance(
+        cls, r: roadrunner.RoadRunner
+    ) -> roadrunner.RoadRunner:
         """Copy roadrunner model by using the state."""
         state: str = r.saveStateS()
         r2 = roadrunner.RoadRunner()

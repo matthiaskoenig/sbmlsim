@@ -3,14 +3,14 @@
 from sbmlutils.console import console
 
 from sbmlsim.plot.plotting_deprecated_matplotlib import plt
-from sbmlsim.resources import MODEL_REPRESSILATOR_SBML
+from sbmlsim.resources import REPRESSILATOR_SBML
 from sbmlsim.simulation import Timecourse, TimecourseSim
 from sbmlsim.simulator import SimulatorSerialRR
 
 
 def run_timecourse_examples():
     """Run various timecourses."""
-    simulator = SimulatorSerialRR.from_sbml(MODEL_REPRESSILATOR_SBML)
+    simulator = SimulatorSerialRR.from_sbml(REPRESSILATOR_SBML)
 
     # 1. simple timecourse simulation
     console.rule(title="simple timecourse")

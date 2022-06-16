@@ -2,10 +2,10 @@
 Example shows basic model simulations and plotting.
 """
 from sbmlsim.plot.plotting_deprecated_matplotlib import add_line, plt
+from sbmlsim.resources import REPRESSILATOR_SBML
 from sbmlsim.simulation import Timecourse, TimecourseSim
 from sbmlsim.simulation.sensitivity import ModelSensitivity
-from sbmlsim.simulator import SimulatorSerial as Simulator
-from tests import MODEL_REPRESSILATOR
+from sbmlsim.simulator import SimulatorSerialRR
 
 
 def plot_results(xres):
@@ -78,7 +78,7 @@ def run_sensitivity():
 
     :return:
     """
-    simulator = Simulator(MODEL_REPRESSILATOR)
+    simulator = SimulatorSerialRR.from_sbml(REPRESSILATOR_SBML)
 
     # parameter sensitivity
     tcsim = TimecourseSim(

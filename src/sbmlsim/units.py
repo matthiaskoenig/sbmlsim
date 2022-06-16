@@ -434,7 +434,7 @@ class Units:
 
 
 if __name__ == "__main__":
-    from tests import MODEL_DEMO
+    from sbmlsim.resources import DEMO_SBML
 
     ureg = UnitRegistry()
     uinfo = UnitsInformation.from_sbml(MODEL_DEMO, ureg=ureg)

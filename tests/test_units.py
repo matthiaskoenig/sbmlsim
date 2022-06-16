@@ -6,11 +6,30 @@ import libsbml
 import pytest
 
 from sbmlsim.examples import example_units
+from sbmlsim.resources import DEMO_SBML, MIDAZOLAM_SBML, REPRESSILATOR_SBML
 from sbmlsim.units import UnitRegistry, Units, UnitsInformation
-from tests import MODEL_DEMO, MODEL_REPRESSILATOR
 
 
-sbml_paths = [MODEL_DEMO, MODEL_REPRESSILATOR]
+sbml_paths: List[Path] = [
+    DEMO_SBML,
+    MIDAZOLAM_SBML,
+    REPRESSILATOR_SBML,
+]
+
+
+@pytest.mark.parametrize("sbml_path", sbml_paths)
+def test_units_from_sbml(sbml_path: Path) -> None:
+    """Test reading units from SBML models."""
+    uinfo = UnitsInformation.from_sbml(sbml_path)
+    check_uinfo(uinfo)
+
+
+@pytest.mark.parametrize("sbml_path", sbml_paths)
+def test_units_from_doc(sbml_path: Path) -> None:
+    """Test reading units from SBML models."""
+    doc: libsbml.SBMLDocument = libsbml.readSBMLFromFile(str(sbml_path))
+    uinfo = UnitsInformation.from_sbml_doc(doc)
+    check_uinfo(uinfo)
 
 
 def test_default_ureg() -> None:
@@ -28,21 +47,6 @@ def check_uinfo(uinfo: UnitsInformation) -> None:
     assert isinstance(uinfo.udict, dict)
     assert uinfo.ureg
     assert isinstance(uinfo.ureg, UnitRegistry)
-
-
-@pytest.mark.parametrize("sbml_path", sbml_paths)
-def test_units_from_sbml(sbml_path: Path) -> None:
-    """Test reading units from SBML models."""
-    uinfo = UnitsInformation.from_sbml(sbml_path)
-    check_uinfo(uinfo)
-
-
-@pytest.mark.parametrize("sbml_path", sbml_paths)
-def test_units_from_doc(sbml_path: Path) -> None:
-    """Test reading units from SBML models."""
-    doc: libsbml.SBMLDocument = libsbml.readSBMLFromFile(str(sbml_path))
-    uinfo = UnitsInformation.from_sbml_doc(doc)
-    check_uinfo(uinfo)
 
 
 def test_example_units() -> None:

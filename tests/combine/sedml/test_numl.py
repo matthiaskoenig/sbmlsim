@@ -2,10 +2,10 @@
 import pytest
 
 from sbmlsim.combine.sedml.numl import NumlParser
-from tests import DATA_DIR
+from tests.conftest import data_dir
 
 
-BASE_DIR = DATA_DIR / "sedml" / "data"
+BASE_DIR = data_dir / "sedml" / "data"
 
 SOURCE_NUML = BASE_DIR / "./oscli.xml"
 SOURCE_NUML_1D = BASE_DIR / "./numlData1D.xml"

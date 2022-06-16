@@ -2,16 +2,16 @@
 from pathlib import Path
 
 import pytest
+from conftest import data_dir
 
 from sbmlsim.combine.sedml.io import SEDMLInputType, SEDMLReader
-from tests import DATA_DIR
 
 
 @pytest.mark.skip(reason="no SED-ML support")
 def test_read_sedml_file1(tmp_path: Path) -> None:
     """Read SED-ML from file str."""
     repressilator_l1v4_sedml = (
-        DATA_DIR / "sedml" / "l1v4" / "repressilator" / "repressilator_sedml.xml"
+        data_dir / "sedml" / "l1v4" / "repressilator" / "repressilator_sedml.xml"
     )
     reader = SEDMLReader(source=str(repressilator_l1v4_sedml), working_dir=tmp_path)
     assert reader
@@ -23,7 +23,7 @@ def test_read_sedml_file1(tmp_path: Path) -> None:
 def test_read_sedml_file2(tmp_path: Path) -> None:
     """Read SED-ML from file path."""
     repressilator_l1v4_sedml = (
-        DATA_DIR / "sedml" / "l1v4" / "repressilator" / "repressilator_sedml.xml"
+        data_dir / "sedml" / "l1v4" / "repressilator" / "repressilator_sedml.xml"
     )
     reader = SEDMLReader(source=repressilator_l1v4_sedml, working_dir=tmp_path)
     assert reader
@@ -35,7 +35,7 @@ def test_read_sedml_file2(tmp_path: Path) -> None:
 def test_read_sedml_str(tmp_path: Path) -> None:
     """Read SED-ML from file."""
     with open(
-        DATA_DIR / "sedml" / "l1v4" / "repressilator" / "repressilator_sedml.xml", "r"
+        data_dir / "sedml" / "l1v4" / "repressilator" / "repressilator_sedml.xml", "r"
     ) as f_in:
         sedml_str = f_in.read()
         reader = SEDMLReader(source=sedml_str, working_dir=tmp_path)
@@ -47,7 +47,7 @@ def test_read_sedml_str(tmp_path: Path) -> None:
 @pytest.mark.skip(reason="no SED-ML support")
 def test_read_sedml_omex(tmp_path: Path) -> None:
     """Read SED-ML from file."""
-    source = DATA_DIR / "omex" / "tellurium" / "repressilator.omex"
+    source = data_dir / "omex" / "tellurium" / "repressilator.omex"
     reader = SEDMLReader(source=source, working_dir=tmp_path)
     assert reader
     assert reader.sed_doc

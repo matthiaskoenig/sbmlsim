@@ -11,7 +11,7 @@ from sbmlsim.experiment import SimulationExperiment
 from sbmlsim.experiment.runner import run_experiments
 from sbmlsim.model import AbstractModel
 from sbmlsim.plot import Figure, Plot
-from sbmlsim.resources import MODEL_REPRESSILATOR_SBML
+from sbmlsim.resources import REPRESSILATOR_SBML
 from sbmlsim.result.report import Report
 from sbmlsim.simulation import AbstractSim, Timecourse, TimecourseSim
 from sbmlsim.task import Task
@@ -23,9 +23,9 @@ class RepressilatorExperiment(SimulationExperiment):
     def models(self) -> Dict[str, Union[Path, AbstractModel]]:
         """Define models."""
         return {
-            "model1": MODEL_REPRESSILATOR_SBML,
+            "model1": REPRESSILATOR_SBML,
             "model2": AbstractModel(
-                MODEL_REPRESSILATOR_SBML,
+                REPRESSILATOR_SBML,
                 changes={
                     "ps_0": self.Q_(1.3e-5, "dimensionless"),
                     "ps_a": self.Q_(0.013, "dimensionless"),

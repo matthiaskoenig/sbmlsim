@@ -204,9 +204,9 @@ class XResult:
 
 if __name__ == "__main__":
     from sbmlsim.model import RoadrunnerSBMLModel
-    from tests import MODEL_REPRESSILATOR
+    from sbmlsim.resources import REPRESSILATOR_SBML
 
-    r = RoadrunnerSBMLModel(source=MODEL_REPRESSILATOR)._model
+    r = RoadrunnerSBMLModel(source=REPRESSILATOR_SBML)._model
     dfs = []
     for _ in range(10):
         s = r.simulate(0, 10, steps=10)

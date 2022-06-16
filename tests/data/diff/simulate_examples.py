@@ -4,25 +4,25 @@ from pathlib import Path
 import pandas as pd
 from matplotlib import pyplot as plt
 
-from sbmlsim.diff import DataSetsComparison, get_files_by_extension
-from sbmlsim.model import RoadrunnerSBMLModel
+from sbmlsim.comparison.diff import DataSetsComparison, get_files_by_extension
+from sbmlsim.resources import REPRESSILATOR_SBML
 from sbmlsim.simulation import TimecourseSim
-from sbmlsim.simulator import SimulatorSerial as Simulator
-from tests import DATA_DIR, MODEL_REPRESSILATOR
+from sbmlsim.simulator import SimulatorSerialRR
+
+
+diff_path = Path(__file__) / "diff"
 
 
 def run_simulations(create_files: bool = True) -> None:
     """Run all the simulations."""
-    diff_path = Path(DATA_DIR) / "diff"
-    simulator = Simulator(
-        RoadrunnerSBMLModel(MODEL_REPRESSILATOR),
+
+    simulator = SimulatorSerialRR.from_sbml(REPRESSILATOR_SBML)
+    simulator.set_integrator_settings(
         absolute_tolerance=1e-16,
         relative_tolerance=1e-13,
     )
-
     simulations = get_files_by_extension(diff_path)
     for simulation_key, json_path in simulations.items():
-
         tsv_path = diff_path / "sbmlsim" / f"{simulation_key}.tsv"
         tcsim = TimecourseSim.from_json(json_path)
         # print(tcsim)
@@ -34,7 +34,6 @@ def run_simulations(create_files: bool = True) -> None:
 
 def run_comparisons(create_files: bool = True) -> None:
     """Run comparison of tests simulations."""
-    diff_path = Path(DATA_DIR) / "diff"
 
     simulation_keys = get_files_by_extension(diff_path)
     print(simulation_keys)

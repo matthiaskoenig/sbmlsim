@@ -43,14 +43,14 @@ def test_roadrunnermodel_creation(repressilator_path: Path) -> None:
 
 def test_load_roadrunner_model(repressilator_path: Path) -> None:
     """Test loading RoadRunner model."""
-    r = RoadrunnerSBMLModel.load_roadrunner_model(repressilator_path)
+    r = RoadrunnerSBMLModel.loda_model_from_source(repressilator_path)
     assert r
     assert isinstance(r, roadrunner.RoadRunner)
 
 
 def test_parameter_df(repressilator_path: Path) -> None:
     """Test parameter DataFrame."""
-    r = RoadrunnerSBMLModel.load_roadrunner_model(repressilator_path)
+    r = RoadrunnerSBMLModel.loda_model_from_source(repressilator_path)
     df = RoadrunnerSBMLModel.parameter_df(r)
 
     assert df is not None
@@ -59,7 +59,7 @@ def test_parameter_df(repressilator_path: Path) -> None:
 
 def test_species_df(repressilator_path: Path) -> None:
     """Test species DataFrame."""
-    r = RoadrunnerSBMLModel.load_roadrunner_model(repressilator_path)
+    r = RoadrunnerSBMLModel.loda_model_from_source(repressilator_path)
     df = RoadrunnerSBMLModel.species_df(r)
     assert df is not None
     assert "sid" in df
@@ -67,9 +67,9 @@ def test_species_df(repressilator_path: Path) -> None:
 
 def test_copy_model(repressilator_path: Path) -> None:
     """Test copy model."""
-    r = RoadrunnerSBMLModel.load_roadrunner_model(repressilator_path)
+    r = RoadrunnerSBMLModel.loda_model_from_source(repressilator_path)
     r["X"] = 100.0
-    r_copy = RoadrunnerSBMLModel.copy_roadrunner_model(r)
+    r_copy = RoadrunnerSBMLModel.copy_roadrunner_instance(r)
     assert r_copy
     assert isinstance(r_copy, roadrunner.RoadRunner)
     assert 100.0 == pytest.approx(r_copy["X"])

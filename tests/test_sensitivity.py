@@ -3,8 +3,8 @@ import pytest
 
 from sbmlsim.examples import example_sensitivity
 from sbmlsim.model import RoadrunnerSBMLModel
+from sbmlsim.resources import REPRESSILATOR_SBML
 from sbmlsim.simulation.sensitivity import ModelSensitivity, SensitivityType
-from tests import MODEL_REPRESSILATOR
 
 
 def test_sensitivity_example() -> None:
@@ -14,7 +14,7 @@ def test_sensitivity_example() -> None:
 
 def test_sensitivity() -> None:
     """Test sensitivity."""
-    model = RoadrunnerSBMLModel(MODEL_REPRESSILATOR)
+    model = RoadrunnerSBMLModel(REPRESSILATOR_SBML)
 
     p_ref = ModelSensitivity.reference_dict(
         model=model, stype=SensitivityType.PARAMETER_SENSITIVITY
@@ -44,7 +44,7 @@ def test_sensitivity() -> None:
 
 def test_sensitivity_change() -> None:
     """Test sensitivity change."""
-    model = RoadrunnerSBMLModel(MODEL_REPRESSILATOR)
+    model = RoadrunnerSBMLModel(REPRESSILATOR_SBML)
     p_ref = ModelSensitivity.reference_dict(
         model=model, stype=SensitivityType.PARAMETER_SENSITIVITY
     )

@@ -12,6 +12,7 @@ from sbmlsim.data import Data
 from sbmlsim.experiment import ExperimentRunner, SimulationExperiment
 from sbmlsim.model import AbstractModel, RoadrunnerSBMLModel
 from sbmlsim.plot import Axis, Figure
+from sbmlsim.resources import DEMO_SBML
 from sbmlsim.simulation import (
     AbstractSim,
     Dimension,
@@ -20,9 +21,8 @@ from sbmlsim.simulation import (
     TimecourseSim,
 )
 from sbmlsim.simulation.sensitivity import ModelSensitivity
-from sbmlsim.simulator.rr_simulator_ray import SimulatorParallel
+from sbmlsim.simulator import SimulatorSerialRR
 from sbmlsim.task import Task
-from tests import MODEL_DEMO
 
 
 class DemoExperiment(SimulationExperiment):
@@ -30,7 +30,7 @@ class DemoExperiment(SimulationExperiment):
 
     def models(self) -> Dict[str, AbstractModel]:
         """Define models."""
-        return {"model": RoadrunnerSBMLModel(source=MODEL_DEMO, ureg=self.ureg)}
+        return {"model": RoadrunnerSBMLModel(source=DEMO_SBML, ureg=self.ureg)}
 
     def tasks(self) -> Dict[str, Task]:
         """Define tasks."""
@@ -115,7 +115,7 @@ def run_demo_experiments(output_path: Path) -> None:
 
     runner = ExperimentRunner(
         DemoExperiment,
-        simulator=SimulatorParallel(),
+        simulator=SimulatorSerialRR(),
         data_path=data_path,
         base_path=base_path,
     )

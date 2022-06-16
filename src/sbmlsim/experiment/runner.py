@@ -16,9 +16,8 @@ from sbmlutils import log
 from sbmlsim.experiment import ExperimentResult, SimulationExperiment
 from sbmlsim.model import RoadrunnerSBMLModel
 from sbmlsim.report.experiment_report import ExperimentReport, ReportResults
-
-# from sbmlsim.simulator import SimulatorSerial
-# from sbmlsim.simulator.rr_simulator_ray import SimulatorParallel
+from sbmlsim.simulator import SimulatorSerialRR
+from sbmlsim.simulator.rr_simulator_ray import SimulatorRayRR
 from sbmlsim.units import UnitRegistry, UnitsInformation
 from sbmlsim.utils import timeit
 
@@ -36,7 +35,7 @@ class ExperimentRunner(object):
         ],
         base_path: Path,
         data_path: Path,
-        simulator: SimulatorSerial = None,
+        simulator: SimulatorSerialRR = None,
         ureg: UnitRegistry = None,  # FIXME: is this needed on ExperimentRunner?
         **kwargs,
     ):
@@ -57,12 +56,12 @@ class ExperimentRunner(object):
         self.data_path = data_path
         self.experiments: Dict[str, SimulationExperiment] = {}
         self.models = {}
-        self.simulator: Optional[SimulatorSerial] = None
+        self.simulator: Optional[SimulatorSerialRR] = None
 
         self.initialize(experiment_classes, **kwargs)
         self.set_simulator(simulator)
 
-    def set_simulator(self, simulator: SimulatorSerial) -> None:
+    def set_simulator(self, simulator: SimulatorSerialRR) -> None:
         """Set simulator on the runner and experiments."""
         if simulator is None:
             logger.debug(
@@ -70,7 +69,7 @@ class ExperimentRunner(object):
                 "ignored in parameter fitting."
             )
         else:
-            self.simulator: SimulatorSerial = simulator
+            self.simulator: SimulatorSerialRR = simulator
             for experiment in self.experiments.values():
                 experiment.simulator = simulator
 
@@ -154,7 +153,7 @@ class ExperimentRunner(object):
                 reduced_selections=reduced_selections,
             )
             exp_results.append(result)
-        return exp_results
+        return exp_results  # from sbmlsim.simulator.rr_simulator_ray import SimulatorParallel
 
 
 def run_experiments(
@@ -167,7 +166,7 @@ def run_experiments(
     """Run simulation experiments."""
     if not isinstance(experiments, (list, tuple)):
         experiments = [experiments]
-    simulator = SimulatorParallel() if parallel else SimulatorSerial()
+    simulator = SimulatorRayRR() if parallel else SimulatorSerialRR()
 
     runner = ExperimentRunner(
         experiments,

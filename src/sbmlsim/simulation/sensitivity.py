@@ -288,10 +288,10 @@ class ModelSensitivity(object):
 
 if __name__ == "__main__":
 
-    from tests import MODEL_REPRESSILATOR
+    from sbmlsim.resources import REPRESSILATOR_SBML
 
     console.print("Loading model")
-    model = RoadrunnerSBMLModel(MODEL_REPRESSILATOR)
+    model = RoadrunnerSBMLModel(REPRESSILATOR_SBML)
 
     console.print("Reference dict")
     p_ref = ModelSensitivity.reference_dict(

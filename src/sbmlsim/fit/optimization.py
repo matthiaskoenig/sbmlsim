@@ -28,7 +28,7 @@ from sbmlsim.fit.sampling import SamplingType, create_samples
 from sbmlsim.model import RoadrunnerSBMLModel
 from sbmlsim.serialization import ObjectJSONEncoder, to_json
 from sbmlsim.simulation import TimecourseSim
-from sbmlsim.simulator import SimulatorSerial
+from sbmlsim.simulator import SimulatorSerialRR
 from sbmlsim.units import DimensionalityError
 from sbmlsim.utils import timeit
 
@@ -672,7 +672,7 @@ class OptimizationProblem(ObjectJSONEncoder):
             residual_data = defaultdict(list)
 
         # simulate all mappings for all experiments
-        simulator: SimulatorSerial = self.runner.simulator
+        simulator: SimulatorSerialRR = self.runner.simulator
         Q_ = self.runner.Q_
 
         for k, _ in enumerate(self.mapping_keys):
