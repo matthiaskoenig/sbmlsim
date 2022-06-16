@@ -4,6 +4,7 @@ from sbmlutils.console import console
 
 from sbmlsim.plot.plotting_deprecated_matplotlib import plt
 from sbmlsim.resources import REPRESSILATOR_SBML
+from sbmlsim.result import XResult
 from sbmlsim.simulation import Timecourse, TimecourseSim
 from sbmlsim.simulator import SimulatorSerialRR
 
@@ -15,7 +16,7 @@ def run_timecourse_examples():
     # 1. simple timecourse simulation
     console.rule(title="simple timecourse")
     tc_sim = TimecourseSim(Timecourse(start=0, end=100, steps=100))
-    xr1 = simulator.run_timecourse(tc_sim)
+    xr1: XResult = simulator.run_timecourse(tc_sim)
     console.print(tc_sim)
 
     # 2. timecourse with parameter changes
@@ -23,7 +24,7 @@ def run_timecourse_examples():
     tc_sim = TimecourseSim(
         Timecourse(start=0, end=100, steps=100, changes={"X": 10, "Y": 200})
     )
-    xr2 = simulator.run_timecourse(tc_sim)
+    xr2: XResult = simulator.run_timecourse(tc_sim)
     console.print(tc_sim)
 
     # 3. combined timecourses
@@ -34,7 +35,7 @@ def run_timecourse_examples():
             Timecourse(start=0, end=100, steps=100, changes={"X": 10, "Y": 20}),
         ]
     )
-    xr3 = simulator.run_timecourse(tc_sim)
+    xr3: XResult = simulator.run_timecourse(tc_sim)
     console.print(tc_sim)
 
     # create figure
@@ -56,6 +57,9 @@ def run_timecourse_examples():
         ax.set_xlabel("time")
         ax.set_ylabel("concentration")
     plt.show()
+
+    console.rule()
+    print(f"[{xr3.uinfo}]")
 
 
 if __name__ == "__main__":

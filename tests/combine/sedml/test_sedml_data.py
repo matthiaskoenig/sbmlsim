@@ -9,11 +9,11 @@ import pytest
 
 from sbmlsim.combine.sedml.data import DataDescriptionParser
 from sbmlsim.combine.sedml.io import check_sedml_doc
-from tests import DATA_DIR
+from tests.conftest import data_dir
 
 
 # ---------------------------------------------------------------------------------
-BASE_DIR = DATA_DIR / "sedml" / "data"
+BASE_DIR = data_dir / "sedml" / "data"
 
 SOURCE_CSV = BASE_DIR / "oscli.csv"
 SOURCE_TSV = BASE_DIR / "oscli.tsv"

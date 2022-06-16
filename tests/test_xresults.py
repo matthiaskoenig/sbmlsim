@@ -4,12 +4,16 @@ from pathlib import Path
 import pandas as pd
 
 from sbmlsim.model import RoadrunnerSBMLModel
-from sbmlsim.result import XResult
+from sbmlsim.model.rr_model import roadrunner
+from sbmlsim.resources import REPRESSILATOR_SBML
+from sbmlsim.xresult import XResult
 
 
 def test_xresult(repressilator_path: Path) -> None:
     """Test xresults."""
-    r = RoadrunnerSBMLModel(source=repressilator_path)._model
+    r: roadrunner.RoadrunnerRunner = RoadrunnerSBMLModel(
+        source=REPRESSILATOR_SBML
+    ).model
     dfs = []
     num_sim = 10
     num_steps = 20
@@ -17,7 +21,7 @@ def test_xresult(repressilator_path: Path) -> None:
         s = r.simulate(0, 10, steps=num_steps)
         dfs.append(pd.DataFrame(s, columns=s.colnames))
 
-    xres = XResult.from_dfs(dfs)
+    xres: XResult = XResult.from_dfs(dfs)
 
     assert xres
     # check dimensions
@@ -35,9 +39,10 @@ def test_xresult(repressilator_path: Path) -> None:
     assert xres.Y is not None
 
 
-def test_xresults_netcdf(tmp_path: Path, repressilator_path: Path) -> None:
+def test_xresults_netcdf(tmp_path: Path) -> None:
     """Test xresults in netcdf format."""
-    r = RoadrunnerSBMLModel(source=repressilator_path)._model
+    r: roadrunner.RoadRunner = RoadrunnerSBMLModel(source=REPRESSILATOR_SBML).model
+    print(r.timeCourseSelections)
     dfs = []
     for _ in range(10):
         s = r.simulate(0, 10, steps=10)

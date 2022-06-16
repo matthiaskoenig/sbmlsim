@@ -4,6 +4,8 @@ Example simulation experiment.
 from pathlib import Path
 from typing import Dict, Union
 
+from sbmlsim.combine.sedml.report import Report
+
 # from sbmlsim.combine.sedml.parser import SEDMLSerializer
 # from sbmlsim.combine.sedml.runner import execute_sedml
 from sbmlsim.data import Data
@@ -12,7 +14,6 @@ from sbmlsim.experiment.runner import run_experiments
 from sbmlsim.model import AbstractModel
 from sbmlsim.plot import Figure, Plot
 from sbmlsim.resources import REPRESSILATOR_SBML
-from sbmlsim.result.report import Report
 from sbmlsim.simulation import AbstractSim, Timecourse, TimecourseSim
 from sbmlsim.task import Task
 

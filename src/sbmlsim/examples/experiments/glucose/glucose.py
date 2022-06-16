@@ -7,7 +7,7 @@ from sbmlsim.examples.experiments.glucose.experiments.dose_response import (
     DoseResponseExperiment,
 )
 from sbmlsim.experiment import ExperimentReport, ExperimentRunner
-from sbmlsim.simulator import SimulatorSerial
+from sbmlsim.simulator import SimulatorSerialRR
 
 
 def run_glucose_experiments(output_path: Path) -> None:
@@ -15,7 +15,7 @@ def run_glucose_experiments(output_path: Path) -> None:
     BASE_PATH = Path(__file__).parent
     runner = ExperimentRunner(
         [DoseResponseExperiment],
-        simulator=SimulatorSerial(),
+        simulator=SimulatorSerialRR(),
         base_path=BASE_PATH,
         data_path=BASE_PATH / "data",
     )

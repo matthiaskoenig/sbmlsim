@@ -45,6 +45,7 @@ for residual_type in [
             )
 
 
+@pytest.mark.skip(reason="no fit support")
 @pytest.mark.parametrize("fit_kwargs", fit_kwargs_testdata)
 def test_fit_settings(fit_kwargs: Dict[str, Any]) -> None:
     """Test various arguments to optimization problem."""
@@ -73,6 +74,7 @@ fit_kwargs_default = {
 }
 
 
+@pytest.mark.skip(reason="no fit support")
 def test_optimization_analysis(tmp_path: Path) -> None:
     """Test optimization analysis."""
     op = op_mid1oh_iv()
@@ -94,6 +96,7 @@ def test_optimization_analysis(tmp_path: Path) -> None:
     op_analysis.run()
 
 
+@pytest.mark.skip(reason="no fit support")
 @pytest.mark.parametrize(
     "loss_function",
     [
@@ -119,6 +122,7 @@ def test_loss_function(loss_function: LossFunctionType) -> None:
     assert op.loss_function == loss_function
 
 
+@pytest.mark.skip(reason="no fit support")
 def test_fit_lsq_serial() -> None:
     """Test serial least square fit."""
     opt_result: OptimizationResult = run_optimization(
@@ -132,6 +136,7 @@ def test_fit_lsq_serial() -> None:
     assert opt_result is not None
 
 
+@pytest.mark.skip(reason="no fit support")
 def test_fit_de_serial() -> None:
     """Test serial differential evolution fit."""
     opt_result: OptimizationResult = run_optimization(
@@ -145,6 +150,7 @@ def test_fit_de_serial() -> None:
     assert opt_result is not None
 
 
+@pytest.mark.skip(reason="no fit support")
 def test_fit_lsq_parallel() -> None:
     """Test parallel least square fit."""
     opt_result: OptimizationResult = run_optimization(
@@ -158,6 +164,7 @@ def test_fit_lsq_parallel() -> None:
     assert opt_result is not None
 
 
+@pytest.mark.skip(reason="no fit support")
 def test_fit_de_parallel():
     """Test parallel differential evolution fit."""
     opt_result: OptimizationResult = run_optimization(

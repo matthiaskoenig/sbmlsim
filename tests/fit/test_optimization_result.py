@@ -1,6 +1,7 @@
 """Test optimization results."""
-
 from pathlib import Path
+
+import pytest
 
 from sbmlsim.examples.experiments.midazolam.fitting_problems import op_mid1oh_iv
 from sbmlsim.fit.analysis import OptimizationResult
@@ -22,6 +23,7 @@ fit_kwargs_default = {
 }
 
 
+@pytest.mark.skip(reason="no fit support")
 def test_serialization(tmp_path: Path) -> None:
     """Test serialization of optimization result."""
     opt_res: OptimizationResult = run_optimization(
@@ -41,6 +43,7 @@ def test_serialization(tmp_path: Path) -> None:
     assert [p.pid for p in opt_res.parameters] == [p.pid for p in opt_res2.parameters]
 
 
+@pytest.mark.skip(reason="no fit support")
 def test_combine(tmp_path: Path) -> None:
     """Test combination of optimization result."""
     opt_results = []

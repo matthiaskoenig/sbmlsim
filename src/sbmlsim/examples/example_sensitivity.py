@@ -86,6 +86,9 @@ def run_sensitivity():
             Timecourse(start=0, end=200, steps=2000),
         ]
     )
+
+    simulator
+
     distrib_scan = ModelSensitivity.distribution_sensitivity_scan(
         model=simulator.model, simulation=tcsim, cv=0.03, size=50
     )

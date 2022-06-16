@@ -9,7 +9,7 @@ logger = log.get_logger(__name__)
 
 
 class Report:
-    """Reports of simulation experiemnts.
+    """Reports of simulation experiments.
 
     Collections of data generators.
     """

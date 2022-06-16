@@ -7,6 +7,7 @@ from sbmlsim.resources import REPRESSILATOR_SBML
 from sbmlsim.simulation.sensitivity import ModelSensitivity, SensitivityType
 
 
+@pytest.mark.skip(reason="no sensitivity support")
 def test_sensitivity_example() -> None:
     """Run sensitivity example."""
     example_sensitivity.run_sensitivity()

@@ -5,18 +5,18 @@ Example for handling units in simulations and results.
 import numpy as np
 from matplotlib import pyplot as plt
 
-from sbmlsim.plot.plotting_deprecated_matplotlib import add_line
 from sbmlsim.resources import DEMO_SBML
 from sbmlsim.result import XResult
 from sbmlsim.simulation import Dimension, ScanSim, Timecourse, TimecourseSim
 from sbmlsim.simulator.rr_simulator_serial import SimulatorSerialRR
+from sbmlsim.units import Quantity
 
 
 def run_demo_example():
     """Run various timecourses."""
     simulator = SimulatorSerialRR.from_sbml(DEMO_SBML)
     # build quantities using the unit registry for the model
-    Q_ = simulator.Q_
+    Q_ = Quantity
 
     # 1. simple timecourse simulation
     print("*** setting concentrations and amounts ***")
@@ -49,9 +49,7 @@ def run_demo_example():
     )
 
     # print(tc_sim)
-    # xres = simulator.run_timecourse(tc_sim)  # type: XResult
-    xres = simulator.run_scan(tc_scan)  # type: XResult
-    # print(tc_sim)  # simulation has been unit normalized
+    xres: XResult = simulator.run_scan(tc_scan)
 
     # create figure
     fig, (ax1, ax2, ax3, ax4) = plt.subplots(nrows=1, ncols=4, figsize=(20, 5))
@@ -70,6 +68,10 @@ def run_demo_example():
         yunit = ax_units["yunit"]
 
         for key in ["[e__A]", "[e__B]", "[e__C]", "[c__A]", "[c__B]", "[c__C]"]:
+            # FIXME: unit conversion
+
+            # => How to better handle units !!!
+
             add_line(
                 ax,
                 xres,

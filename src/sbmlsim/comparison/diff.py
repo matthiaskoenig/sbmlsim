@@ -32,7 +32,7 @@ def get_files_by_extension(base_path: Path, extension: str = ".json") -> Dict[st
     return dict(zip(keys, files))  # type: ignore
 
 
-class DataSetsComparison(object):
+class DataSetsComparison:
     """Comparing multiple simulation results.
 
     Only the subset of identical columns are compared. In the beginning a matching of column
@@ -301,7 +301,7 @@ class DataSetsComparison(object):
 
     @timeit
     def plot_diff(self):
-        """Plot lines for entries which are above epsilon treshold."""
+        """Plot lines for entries which are above epsilon tre(object)shold."""
 
         # filter data
         diff_abs = self.diff_abs.copy()

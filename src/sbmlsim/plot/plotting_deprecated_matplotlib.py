@@ -56,13 +56,13 @@ def add_line(
         )
 
     # mean data with units
-    x = xres.dim_mean(xid)
-    y = xres.dim_mean(yid) * yf
+    x = xres.mean_all_dims(xid)
+    y = xres.mean_all_dims(yid) * yf
 
     # reduction over all dimensions (not necessarily what is wanted !)
-    ystd = xres.dim_std(yid) * yf
-    ymin = xres.dim_min(yid) * yf
-    ymax = xres.dim_max(yid) * yf
+    ystd = xres.std_all_dims(yid) * yf
+    ymin = xres.min_all_dims(yid) * yf
+    ymax = xres.max_all_dims(yid) * yf
 
     # convert units to requested units
     if xunit:

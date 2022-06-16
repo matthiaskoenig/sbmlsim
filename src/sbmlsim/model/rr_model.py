@@ -1,5 +1,4 @@
 """RoadRunner model."""
-import tempfile
 from pathlib import Path
 from typing import Dict, List, Optional, Union
 
@@ -74,17 +73,17 @@ class RoadrunnerSBMLModel(AbstractModel):
         # load the model
         self.state_path = self.get_state_path()
         logger.debug(f"Load model from state: {self.state_path}")
-        self._model = self.loda_model_from_source(
+        self.model: roadrunner.RoadRunner = self.loda_model_from_source(
             source=self.source, state_path=self.state_path
         )
         # set selections
-        self.selections = self.set_timecourse_selections(
-            self._model, selections=self.selections
+        self.selections: List[str] = self.set_timecourse_selections(
+            self.model, selections=self.selections
         )
 
         # set integrator settings
         if settings is not None:
-            RoadrunnerSBMLModel.set_integrator_settings(self._model, **settings)
+            RoadrunnerSBMLModel.set_integrator_settings(self.model, **settings)
 
         self.uinfo = self.parse_units(ureg)
 
@@ -101,7 +100,7 @@ class RoadrunnerSBMLModel(AbstractModel):
     @property
     def r(self) -> roadrunner.RoadRunner:
         """Roadrunner instance."""
-        return self._model
+        return self.model
 
     def get_state_path(self) -> Optional[Path]:
         """Get path of the state file.

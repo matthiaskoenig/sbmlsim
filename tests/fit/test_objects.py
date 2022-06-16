@@ -1,7 +1,10 @@
 """Test fit objects."""
+import pytest
+
 from sbmlsim.fit import FitParameter
 
 
+@pytest.mark.skip(reason="no fit support")
 def test_fit_parameter() -> None:
     """Test FitParameter creation."""
     p = FitParameter(
@@ -18,6 +21,7 @@ def test_fit_parameter() -> None:
     assert p.unit == "dimensionless"
 
 
+@pytest.mark.skip(reason="no fit support")
 def test_fit_parameter_serialization() -> None:
     """Test FitParameter serialization."""
     p = FitParameter(
