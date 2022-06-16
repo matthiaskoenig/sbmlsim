@@ -4,6 +4,8 @@ from pathlib import Path
 import pytest
 
 from sbmlsim.combine.sedml.runner import execute_sedml
+
+
 # FIXME: fix test data
 DATA_DIR = Path(".")
 

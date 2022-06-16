@@ -5,12 +5,12 @@ For instance clamping species to given formulas.
 """
 import pandas as pd
 
+from sbmlsim import MODEL_REPRESSILATOR
 from sbmlsim.model import ModelChange, RoadrunnerSBMLModel
-from sbmlsim.plot.plotting_deprecated_matplotlib import add_line, plt
+from sbmlsim.plot.serialization_matplotlib import plt
 from sbmlsim.result import XResult
 from sbmlsim.simulation import Timecourse, TimecourseSim
-from sbmlsim.simulator import SimulatorSerial as Simulator
-from tests import MODEL_REPRESSILATOR
+from sbmlsim.simulator.rr_simulator_serial import SimulatorSerialRR
 
 
 def run_model_change_example1():
@@ -58,7 +58,7 @@ def run_model_change_example1():
 
 def run_model_clamp1():
     """Using Timecourse simulations for clamps."""
-    simulator = Simulator(MODEL_REPRESSILATOR)
+    simulator = SimulatorSerialRR.from_sbml(MODEL_REPRESSILATOR)
 
     # setting a species as boundary condition
     tcsim = TimecourseSim(
@@ -81,60 +81,39 @@ def run_model_clamp1():
     xres = simulator.run_timecourse(tcsim)
 
     # create figure
-    fig, ax1 = plt.subplots(nrows=1, ncols=1, figsize=(5, 5))
+    fig: plt.Figure
+    ax: plt.Axes
+    fig, ax = plt.subplots(nrows=1, ncols=1, figsize=(5, 5))
+    ax.set_xlabel("time")
+    ax.set_ylabel("concentration")
 
     for sid in ["X", "Y", "Z"]:
-        add_line(
-            ax1,
-            xres,
-            xid="time",
-            yid=sid,
-            xunit="second",
-            yunit="dimensionless",
-            label=sid,
-        )
+        ax.plot(xres["time"], xres[f"[{sid}]"], label=sid)
 
-    for ax in (ax1,):
-        ax.legend()
-        ax.set_xlabel("time")
-        ax.set_ylabel("concentration")
+    ax.legend()
     plt.show()
 
 
 def run_model_clamp2():
-    def plot_result(result: XResult, title: str = None) -> None:
-        # create figure
-        fig, (ax1) = plt.subplots(nrows=1, ncols=1, figsize=(5, 5))
+    def plot_result(xres: XResult, title: str = None) -> None:
+        """Plot the results with title."""
+        fig: plt.Figure
+        ax: plt.Axes
+        fig, ax = plt.subplots(nrows=1, ncols=1, figsize=(5, 5))
         fig.subplots_adjust(wspace=0.3, hspace=0.3)
 
-        add_line(
-            ax=ax1,
-            xres=result,
-            xid="time",
-            yid="X",
-            label="X",
-            xunit="second",
-            yunit="dimensionless",
-        )
-        add_line(
-            ax=ax1,
-            xres=result,
-            xid="time",
-            yid="Y",
-            label="Y",
-            xunit="second",
-            yunit="dimensionless",
-            color="darkblue",
-        )
+        t = xres["time"]
+        ax.plot(t, xres["[X]"], label="X")
+        ax.plot(t, xres["[Y]"], label="Y")
 
         if title:
-            ax1.set_title(title)
+            ax.set_title(title)
 
-        ax1.legend()
+        ax.legend()
         plt.show()
 
     # reference simulation
-    simulator = Simulator(MODEL_REPRESSILATOR)
+    simulator = SimulatorSerialRR.from_sbml(MODEL_REPRESSILATOR)
     tcsim = TimecourseSim(
         [
             Timecourse(start=0, end=220, steps=300, changes={"X": 10}),
@@ -154,9 +133,9 @@ def run_model_clamp2():
             ),
         ]
     )
-    result = simulator.run_timecourse(tcsim)
-    assert isinstance(result, XResult)
-    plot_result(result, "clamp experiment (220-420)")
+    xres = simulator.run_timecourse(tcsim)
+    assert isinstance(xres, XResult)
+    plot_result(xres, "clamp experiment (220-420)")
 
 
 if __name__ == "__main__":

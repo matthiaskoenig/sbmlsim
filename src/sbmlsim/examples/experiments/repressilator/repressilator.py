@@ -11,10 +11,10 @@ from sbmlsim.experiment import SimulationExperiment
 from sbmlsim.experiment.runner import run_experiments
 from sbmlsim.model import AbstractModel
 from sbmlsim.plot import Figure, Plot
+from sbmlsim.resources import MODEL_REPRESSILATOR_SBML
 from sbmlsim.result.report import Report
 from sbmlsim.simulation import AbstractSim, Timecourse, TimecourseSim
 from sbmlsim.task import Task
-from sbmlsim.resources import MODEL_REPRESSILATOR_SBML
 
 
 class RepressilatorExperiment(SimulationExperiment):

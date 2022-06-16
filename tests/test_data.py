@@ -1,9 +1,9 @@
 """Testing DataSet and Data functionality."""
 import pandas as pd
+from conftest import data_dir
 
 from sbmlsim.data import DataSet, load_pkdb_dataframe
 from sbmlsim.units import UnitRegistry
-from tests import DATA_DIR
 
 
 def test_dataset() -> None:
@@ -16,7 +16,7 @@ def test_dataset() -> None:
 
 def test_Faber1978_Fig1() -> None:
     """Test Faber1978 Fig1."""
-    data_path = DATA_DIR / "datasets"
+    data_path = data_dir / "datasets"
     df = load_pkdb_dataframe(sid="Faber1978_Fig1", data_path=data_path)
     dset = DataSet.from_df(df, udict={}, ureg=UnitRegistry())
     assert "cpep" in dset.uinfo
@@ -31,7 +31,7 @@ def test_Faber1978_Fig1() -> None:
 
 def test_Allonen1981_Fig3A() -> None:
     """Test Allonen1981 Fig3A."""
-    data_path = DATA_DIR / "datasets"
+    data_path = data_dir / "datasets"
     df = load_pkdb_dataframe(sid="Allonen1981_Fig3A", data_path=data_path)
     for substance in df.substance.unique():
         dset = DataSet.from_df(df[df.substance == substance], ureg=UnitRegistry())
@@ -49,7 +49,7 @@ def test_Allonen1981_Fig3A() -> None:
 
 def test_unit_conversion() -> None:
     """Test unit conversion."""
-    data_path = DATA_DIR / "datasets"
+    data_path = data_dir / "datasets"
     df = load_pkdb_dataframe(sid="Allonen1981_Fig3A", data_path=data_path)
 
     ureg = UnitRegistry()
