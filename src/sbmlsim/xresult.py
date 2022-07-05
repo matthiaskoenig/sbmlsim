@@ -26,6 +26,7 @@ class XResult:
     def __init__(self, xdataset: xr.Dataset):
         """Initialize XResult."""
         self.xds = xdataset
+        self.units: Dict[str, str] = {}
 
     def __getitem__(self, key: str) -> xr.DataArray:
         """Get item."""
@@ -46,11 +47,22 @@ class XResult:
 
     def __str__(self) -> str:
         """Get string."""
-        return self.xds.__str__()
+        return f"{self.xds.__str__()} + \nunits={self.units}"
 
     def __repr__(self) -> str:
         """Get string representation."""
-        return self.xds.__repr__()
+        return f"{self.xds.__repr__()} +  \nunits={self.units}"
+
+    def set_units(self, udict: Optional[Dict[str, str]] = None):
+        """Set units on attributes."""
+        # set units attribute
+        if udict:
+            for key in self.xds.keys():
+                if key in udict:
+                    self.xds[key].attrs["units"] = udict[key]
+                    self.units[key] = udict[key]
+
+
 
     @staticmethod
     def from_dfs(
@@ -108,12 +120,9 @@ class XResult:
             }
         )
 
-        # set units attribute
-        if udict:
-            for key in data_dict:
-                if key in udict:
-                    ds[key].attrs["units"] = udict[key]
-        return XResult(xdataset=ds)
+        xres = XResult(xdataset=ds)
+        xres.set_units(udict)
+        return xres
 
     def to_netcdf(self, path: Path):
         """Store results as netcdf4/HDF5."""
@@ -211,12 +220,15 @@ class XResult:
 if __name__ == "__main__":
     from sbmlsim.model import RoadrunnerSBMLModel
     from sbmlsim.resources import REPRESSILATOR_SBML
+    from sbmlsim.units import UnitsInformation
 
+    uinfo = UnitsInformation.from_sbml(REPRESSILATOR_SBML)
     r = RoadrunnerSBMLModel(source=REPRESSILATOR_SBML).model
+    udict: u
     dfs = []
     for _ in range(10):
         s = r.simulate(0, 10, steps=10)
         dfs.append(pd.DataFrame(s, columns=s.colnames))
 
-    xres = XResult.from_dfs(dfs)
+    xres = XResult.from_dfs(dfs, udict=uinfo.udict)
     console.print(xres)

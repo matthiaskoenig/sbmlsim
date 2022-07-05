@@ -2,6 +2,7 @@
 
 Used for model and data unit conversions.
 """
+from __future__ import annotations
 import os
 import warnings
 from collections.abc import MutableMapping
@@ -84,7 +85,7 @@ class UnitsInformation(MutableMapping):
     @staticmethod
     def from_sbml(
         sbml: Union[str, Path], ureg: Optional[UnitRegistry] = None
-    ) -> "UnitsInformation":
+    ) -> UnitsInformation:
         """Get pint UnitsInformation for model."""
 
         doc: libsbml.SBMLDocument = read_sbml(sbml)
@@ -183,7 +184,7 @@ class UnitsInformation(MutableMapping):
     @staticmethod
     def from_sbml_doc(
         doc: libsbml.SBMLDocument, ureg: Optional[UnitRegistry] = None
-    ) -> "UnitsInformation":
+    ) -> UnitsInformation:
         """Get pint UnitsInformation for model in document."""
 
         if ureg is None:
@@ -237,13 +238,17 @@ class UnitsInformation(MutableMapping):
 
                     # store concentration
                     if substance_uid and volume_uid:
-                        # udict[f"[{sid}]"] = f"{uid_dict[substance_uid]}/{uid_dict[volume_uid]}"
                         udict[f"[{sid}]"] = f"{substance_uid}/{volume_uid}"
-                    else:
+                    elif not substance_uid:
                         logger.warning(
-                            f"Substance or volume unit missing, "
-                            f"cannot determine concentration "
-                            f"unit for '[{sid}]')"
+                            f"Substance unit missing, "
+                            f"undefined concentration unit for '[{sid}]')"
+                        )
+                        udict[f"[{sid}]"] = ""
+                    elif not volume_uid:
+                        logger.warning(
+                            f"Volume unit missing, "
+                            f"undefined concentration unit for '[{sid}]')"
                         )
                         udict[f"[{sid}]"] = ""
 

@@ -20,7 +20,7 @@ from sbmlsim.fit.options import (
     WeightingPointsType,
 )
 from sbmlsim.fit.result import OptimizationResult
-from sbmlsim.plot.plotting_deprecated_matplotlib import plt
+from sbmlsim.plot.serialization_matplotlib import plt
 from sbmlsim.utils import timeit
 
 
