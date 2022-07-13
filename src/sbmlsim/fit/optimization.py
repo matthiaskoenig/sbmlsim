@@ -702,7 +702,15 @@ class OptimizationProblem(ObjectJSONEncoder):
                     copy=False,
                     assume_sorted=True,
                 )
-                y_obsip = f(self.x_references[k])
+                try:
+                    y_obsip = f(self.x_references[k])
+                except ValueError as err:
+                    logger.error(
+                        f"x data outside of interpolation range, increase simulation "
+                        f"times in mapping `{self.mapping_keys[k]}` in "
+                        f"{self.experiment_keys[k]}."
+                    )
+                    raise err
 
                 if self.residual in {
                     ResidualType.ABSOLUTE_TO_BASELINE,
