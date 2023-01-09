@@ -33,7 +33,7 @@ class SimulationWorkerRR:
             "stiff": True,
         }
 
-    def set_model(self, model_state: str) -> None:
+    def set_model(self, model_state: bytes) -> None:
         """Set model for simulator and updates the integrator settings."""
         self.r.loadStateS(model_state)
         self.set_integrator_settings()

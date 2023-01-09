@@ -1,4 +1,5 @@
 """Parallel simulation using ray."""
+from __future__ import annotations
 from pathlib import Path
 from typing import Iterator, List, Optional
 
@@ -47,12 +48,14 @@ class SimulatorRayRR(SimulatorAbstractRR):
     """Parallel simulator using multiple cores via ray."""
 
     @staticmethod
-    def from_sbml(sbml_path: Path, **kwargs) -> "SimulatorRayRR":
+    def from_sbml(sbml_path: Path, actor_count: Optional[int] = None) -> SimulatorRayRR:
         """Set model from SBML."""
+        print(sbml_path)
         rr: roadrunner.RoadRunner = roadrunner.RoadRunner(str(sbml_path))
-        simulator = SimulatorRayRR(**kwargs)
+        simulator = SimulatorRayRR(actor_count=actor_count)
         # FIXME: implement global model cache
-        simulator.set_model(rr.saveStateS())
+        model_state: bytes = rr.saveStateS()
+        simulator.set_model(model_state)
         return simulator
 
     def __init__(self, actor_count: Optional[int] = None):
@@ -70,10 +73,11 @@ class SimulatorRayRR(SimulatorAbstractRR):
         logger.info(f"Using '{actor_count}' cores for parallel simulation.")
         self.workers = [SimulatorActor.remote() for _ in range(self.actor_count)]
 
-    def set_model(self, model_state: str) -> None:
+    def set_model(self, model_state: bytes) -> None:
         """Set model from state."""
         for worker in self.workers:
-            worker.set_model.remote(model_state)
+            # not sure if a copy is needed, but to be save
+            worker.set_model.remote(model_state[:])
 
     def set_timecourse_selections(
         self, selections: Optional[Iterator[str]] = None

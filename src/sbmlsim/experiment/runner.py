@@ -35,7 +35,7 @@ class ExperimentRunner(object):
         ],
         base_path: Path,
         data_path: Path,
-        simulator: SimulatorSerialRR = None,
+        simulator: Union[SimulatorSerialRR, SimulatorRayRR] = None,
         ureg: UnitRegistry = None,  # FIXME: is this needed on ExperimentRunner?
         **kwargs,
     ):

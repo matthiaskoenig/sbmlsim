@@ -2,6 +2,7 @@
 
 Executing simulations with single roadrunner instance on a single core.
 """
+from __future__ import annotations
 from pathlib import Path
 from typing import Iterator, List, Optional
 
@@ -21,8 +22,10 @@ class SimulatorSerialRR(SimulatorAbstractRR):
     """Serial simulator using a single core."""
 
     @staticmethod
-    def from_sbml(sbml_path: Path) -> "SimulatorSerialRR":
+    def from_sbml(sbml_path: Path) -> SimulatorSerialRR:
         """Set model from SBML."""
+        print(sbml_path)
+        print(type(sbml_path))
         rr: roadrunner.RoadRunner = roadrunner.RoadRunner(str(sbml_path))
         simulator = SimulatorSerialRR()
         # FIXME: implement global model cache
@@ -33,7 +36,7 @@ class SimulatorSerialRR(SimulatorAbstractRR):
         """Initialize serial simulator with single worker."""
         self.worker = SimulationWorkerRR()
 
-    def set_model(self, model_state: str) -> None:
+    def set_model(self, model_state: bytes) -> None:
         """Set model from state."""
         self.worker.set_model(model_state)
 
