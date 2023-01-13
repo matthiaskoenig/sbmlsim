@@ -434,6 +434,10 @@ class Style(BasePlotObject):
             color=kwargs.get("color", None),
             alpha=kwargs.get("alpha", 1.0),
         )
+        line_color = ColorType.parse_color(
+            color=kwargs.get("markeredgecolor", None),
+        )
+
 
         # Line
         linestyle = Style.MPL2SEDML_LINESTYLE_MAPPING[kwargs.get("linestyle", "-")]
@@ -445,7 +449,7 @@ class Style(BasePlotObject):
             type=marker_symbol,
             size=kwargs.get("markersize", None),
             fill=kwargs.get("markerfacecolor", color),
-            line_color=kwargs.get("markeredgecolor", None),
+            line_color=line_color,
             line_thickness=kwargs.get("markeredgewidth", None),
         )
 
@@ -1160,6 +1164,8 @@ class Plot(BasePlotObject):
                 "No label provided on curve, using default label 'yid'. "
                 "To not plot a label use 'label=None'"
             )
+        if 'markeredgecolor' not in kwargs:
+            kwargs["markeredgecolor"] = "black"
 
         # yerr data
         yerr = None
