@@ -1291,7 +1291,7 @@ class Figure(BasePlotObject):
         self.num_rows: int = num_rows
         self.num_cols: int = num_cols
         self._height: float = self.num_rows * Figure.panel_height
-        self._width: float = self.num_cols * Figure.panel_height
+        self._width: float = self.num_cols * Figure.panel_width
         self.width: float = width
         self.height: float = height
 

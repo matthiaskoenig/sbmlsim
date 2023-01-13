@@ -295,7 +295,7 @@ class UnitsInformation(MutableMapping):
             "IU = 0.0347 * mg"
         )  # IU for insulin ! FIXME better handling of general IU
         ureg.define(
-            "IU/ml = 0.0347 * mg/ml"
+            "IU_per_ml = 0.0347 * mg/ml"
         )  # IU for insulin ! FIXME better handling of general IU
         return ureg
 
