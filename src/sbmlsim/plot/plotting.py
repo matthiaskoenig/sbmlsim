@@ -13,6 +13,7 @@ Additional settings are required which allow to define how things
         E.g. over which dimensions should an error be calculated and which
         dimensions should be plotted individually.
 """
+from __future__ import annotations
 import copy
 from copy import deepcopy
 from dataclasses import dataclass
@@ -112,7 +113,7 @@ class ColorType:
         return self.color
 
     @staticmethod
-    def parse_color(color: str, alpha: float = 1.0) -> Optional["ColorType"]:
+    def parse_color(color: str, alpha: float = 1.0) -> Optional[ColorType]:
         """Parse given color and add alpha information.
 
         :param color:
@@ -1296,10 +1297,13 @@ class Figure(BasePlotObject):
         self.subplots: List[SubPlot] = subplots
         self.num_rows: int = num_rows
         self.num_cols: int = num_cols
-        self._height: float = self.num_rows * Figure.panel_height
-        self._width: float = self.num_cols * Figure.panel_width
-        self.width: float = width
+        self._height: float = height
+        self._width: float = width
         self.height: float = height
+        self.width: float = width
+        # print(f"[{self.num_rows}, {self.num_cols}], ({self.height}, {self.width})")
+        # print(f"Figure: [{self.panel_height}, {self.panel_width}]")
+
 
     def __repr__(self) -> str:
         """Get representation string."""
@@ -1318,7 +1322,7 @@ class Figure(BasePlotObject):
     def height(self, value: float) -> None:
         """Set height."""
         if value is None:
-            value = self.num_rows * Figure.panel_height
+            value = self.num_rows * self.panel_height
         self._height = value
 
     @property
@@ -1330,7 +1334,7 @@ class Figure(BasePlotObject):
     def width(self, value: float) -> None:
         """Set width."""
         if value is None:
-            value = self.num_cols * Figure.panel_width
+            value = self.num_cols * self.panel_width
         self._width = value
 
     def num_subplots(self) -> int:
