@@ -1,5 +1,6 @@
-"""Helpers for numerical comparison of simulation results between different simulators.
+"""Helpers for numerical comparison of data.
 
+Used in the context of model comparison and simulations between different simulators.
 Allows to tests semi-automatically for problems with the various models.
 Used to benchmark the simulation results.
 """
