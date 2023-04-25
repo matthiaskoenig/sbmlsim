@@ -1,21 +1,4 @@
-""""
-AMICI test.
 
-```
-sudo apt-get install libatlas-base-dev swig libhdf5-serial-dev
-pip install amici petab --upgrade
-
-pip install amici
-git clone https://github.com/AMICI-dev/AMICI.git
-cd AMICI/python/sdist
-pip install -e . --upgrade
-
-pip install petab
-git clone https://github.com/PEtab-dev/libpetab-python.git
-cd libpetab-python
-pip install -e . --upgrade
-```
-"""
 from pathlib import Path
 from typing import List
 

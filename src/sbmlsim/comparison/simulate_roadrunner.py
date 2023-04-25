@@ -1,3 +1,4 @@
+from pathlib import Path
 from typing import List, Dict
 
 import pandas as pd
@@ -10,13 +11,12 @@ from sbmlsim.comparison.simulate import SimulateSBML, Condition, Timepoints
 class SimulateRoadrunnerSBML(SimulateSBML):
     """Class for simulating an SBML model."""
 
-    def __init__(self, sbml_path, conditions: List[Condition]):
-        """
-
-        :param sbml_path: Path to SBML model.
-        :param changes:
-        """
-        super().__init__(sbml_path=sbml_path, conditions=conditions)
+    def __init__(self, sbml_path, conditions: List[Condition], results_dir: Path):
+        super().__init__(
+            sbml_path=sbml_path,
+            conditions=conditions,
+            results_dir=results_dir
+        )
 
         # custom model loading
         self.r: roadrunner.RoadRunner = roadrunner.RoadRunner(str(self.sbml_path))

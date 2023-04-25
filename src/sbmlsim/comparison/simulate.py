@@ -1,10 +1,10 @@
 from __future__ import annotations
 from pathlib import Path
-from typing import Dict, Optional, List, Set
+from typing import Dict, Optional, List, Set, Tuple, Any
 import pandas as pd
 import libsbml
 from petab.conditions import get_condition_df
-
+import uuid
 
 class Change:
     """Assignment of value to a target id in the model.
@@ -94,7 +94,7 @@ class Selections:
 class SimulateSBML:
     """Class for simulating an SBML model."""
 
-    def __init__(self, sbml_path, conditions: List[Condition]):
+    def __init__(self, sbml_path, conditions: List[Condition], results_dir: Path):
         """
 
         :param sbml_path: Path to SBML model.
@@ -103,16 +103,18 @@ class SimulateSBML:
 
         self.sbml_path: Path = sbml_path
         self.conditions: Dict[str, Condition] = {c.sid: c for c in conditions}
+        self.results_dir = results_dir
 
         sbml_data = self.parse_sbml(sbml_path=self.sbml_path)
-        self.species: Set[str] = sbml_data[0]
-        self.compartments: Set[str] = sbml_data[1]
-        self.parameters: Set[str] = sbml_data[2]
-        self.has_only_substance: Dict[str, bool] = sbml_data[3]
-        self.species_compartments: Dict[str, str] = sbml_data[4]
+        self.mid: str = sbml_data[0]
+        self.species: Set[str] = sbml_data[1]
+        self.compartments: Set[str] = sbml_data[2]
+        self.parameters: Set[str] = sbml_data[3]
+        self.has_only_substance: Dict[str, bool] = sbml_data[4]
+        self.species_compartments: Dict[str, str] = sbml_data[5]
 
     @staticmethod
-    def parse_sbml(sbml_path: Path) -> Dict[str, bool]:
+    def parse_sbml(sbml_path: Path) -> Tuple[Any]:
         """Parses the identifiers."""
         doc: libsbml.SBMLDocument = libsbml.readSBMLFromFile(str(sbml_path))
         model: libsbml.Model = doc.getModel()
@@ -121,8 +123,11 @@ class SimulateSBML:
         compartments: Set[str] = set()
         has_only_substance: Dict[str, bool] = {}
         species_compartments: Dict[str, str] = {}
+        mid = str(uuid.uuid4())
 
         if model:
+            if model.isSetId():
+                mid = model.getId()
             s: libsbml.Species
             for s in model.getListOfSpecies():
                 sid = s.getId()
@@ -133,7 +138,14 @@ class SimulateSBML:
             parameters = {p.getId() for p in model.getListOfParameters()}
             compartments = {c.getId() for c in model.getListOfCompartments()}
 
-        return species, compartments, parameters, has_only_substance, species_compartments
+        return (
+            mid,
+            species,
+            compartments,
+            parameters,
+            has_only_substance,
+            species_compartments,
+        )
 
     def load_model(self):
         pass

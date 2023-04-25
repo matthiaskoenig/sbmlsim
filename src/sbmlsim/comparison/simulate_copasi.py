@@ -1,3 +1,4 @@
+from pathlib import Path
 from typing import List, Dict
 
 import pandas as pd
@@ -17,8 +18,12 @@ from sbmlsim.comparison.simulate import SimulateSBML, Condition, Timepoints
 class SimulateCopasiSBML(SimulateSBML):
     """Class for simulating an SBML model with COPASI via basico."""
 
-    def __init__(self, sbml_path, conditions: List[Condition]):
-        super().__init__(sbml_path=sbml_path, conditions=conditions)
+    def __init__(self, sbml_path, conditions: List[Condition], results_dir: Path):
+        super().__init__(
+            sbml_path=sbml_path,
+            conditions=conditions,
+            results_dir=results_dir
+        )
 
         # custom model loading
         load_model(location=str(self.sbml_path))
