@@ -147,8 +147,5 @@ class SimulateSBML:
             species_compartments,
         )
 
-    def load_model(self):
-        pass
-
     def simulate_condition(self, condition: Condition):
         pass

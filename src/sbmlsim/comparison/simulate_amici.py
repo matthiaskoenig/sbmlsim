@@ -66,7 +66,9 @@ class SimulateAmiciSBML(SimulateSBML):
         # simulation
         rdata = amici.runAmiciSimulation(self.model, solver)
         print(t)
-        print(rdata.x)
+        print(rdata.x)  # state variables;
+
+        # def _ids_and_names_to_rdata(
 
         # create result dataframe
         # print("Model parameters:", list(model.getParameterIds()), "\n")

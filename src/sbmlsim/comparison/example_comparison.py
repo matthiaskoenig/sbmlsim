@@ -4,6 +4,7 @@ from typing import List, Dict
 
 import pandas as pd
 
+from sbmlsim.comparison.diff import DataSetsComparison
 from sbmlsim.comparison.simulate_amici import SimulateAmiciSBML
 from sbmlsim.comparison.simulate_copasi import SimulateCopasiSBML
 from simulate_roadrunner import SimulateRoadrunnerSBML
@@ -16,10 +17,14 @@ from sbmlutils.console import console
 if __name__ == "__main__":
 
     base_path: Path = Path(__file__).parent
+
     model_path = base_path / "resources" / "icg_sd.xml"
+    print(model_path)
+    # model_path = base_path / "resources" / "icg_events_sd.xml"
+
     conditions_path = base_path / "resources" / "condition.tsv"
     results_dir: Path = base_path / "results"
-    timepoints = Timepoints(start=0, end=5, steps=10)
+    timepoints = Timepoints(start=0, end=100, steps=20)
 
     conditions: List[Condition] = Condition.parse_conditions_from_file(conditions_path=conditions_path)
 
@@ -31,7 +36,7 @@ if __name__ == "__main__":
     for key, simulator in {
         "roadrunner": SimulateRoadrunnerSBML,
         "copasi": SimulateCopasiSBML,
-        "amici": SimulateAmiciSBML,
+        # "amici": SimulateAmiciSBML,
 
     }.items():
         console.rule(title=key, align="left", style="white")
@@ -46,6 +51,18 @@ if __name__ == "__main__":
             timepoints=timepoints,
         )
         console.print(df.columns)
-        console.print(df)
+        console.print(df["Cve_icg"])
         dfs[key] = df
+
+    console.rule(style="white")
+    comparison = DataSetsComparison(
+        dfs_dict=dfs
+    )
+    comparison.report()
+    comparison.plot_diff()
+
+    from matplotlib import pyplot as plt
+    plt.show()
+
+
 

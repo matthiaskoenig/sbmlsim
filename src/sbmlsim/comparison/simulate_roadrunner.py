@@ -6,6 +6,7 @@ import roadrunner
 
 
 from sbmlsim.comparison.simulate import SimulateSBML, Condition, Timepoints
+from sbmlutils.console import console
 
 
 class SimulateRoadrunnerSBML(SimulateSBML):
@@ -28,8 +29,9 @@ class SimulateRoadrunnerSBML(SimulateSBML):
                 selections.append(s)
             else:
                 selections.append(f"[{s}]")
-        selections += list(self.species)
+
         selections += list(self.parameters)
+        selections += list(self.compartments)
 
         self.r.selections = selections
 
@@ -45,7 +47,6 @@ class SimulateRoadrunnerSBML(SimulateSBML):
             value = change.value
             # is species
             if tid in self.species:
-
                 if self.has_only_substance[tid]:
                     # amount
                     target = f"init({tid})"
@@ -53,6 +54,10 @@ class SimulateRoadrunnerSBML(SimulateSBML):
                     # concentration
                     target = f"init([{tid}])"
                 self.r.setValue(target, value)
+                console.print(f"{target} = {value}")
+            else:
+                self.r.setValue(tid, value)
+                console.print(f"{tid} = {value}")
 
         # simulate
         s = self.r.simulate(

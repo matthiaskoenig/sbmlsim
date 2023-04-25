@@ -302,7 +302,7 @@ class DataSetsComparison:
 
     @timeit
     def plot_diff(self):
-        """Plot lines for entries which are above epsilon tre(object)shold."""
+        """Plot lines for entries which are above epsilon treshold."""
 
         # filter data
         diff_abs = self.diff_abs.copy()

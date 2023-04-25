@@ -5,6 +5,7 @@ import pandas as pd
 from basico import (
     load_model,
     run_time_course_with_output,
+    get_parameters,
     run_time_course,
     set_parameters,
     set_species,
@@ -13,7 +14,7 @@ from basico import (
 
 
 from sbmlsim.comparison.simulate import SimulateSBML, Condition, Timepoints
-
+from sbmlutils.console import console
 
 class SimulateCopasiSBML(SimulateSBML):
     """Class for simulating an SBML model with COPASI via basico."""
@@ -32,7 +33,7 @@ class SimulateCopasiSBML(SimulateSBML):
         print(f"simulate condition: {condition.sid}")
 
         # reset ? (reloading for resetting)
-        load_model(location=str(self.sbml_path))
+        # load_model(location=str(self.sbml_path))
 
         # changes
         for change in condition.changes:
@@ -40,15 +41,23 @@ class SimulateCopasiSBML(SimulateSBML):
             value = change.value
             # is species
             if tid in self.parameters:
-                set_parameters(tid, initial_value=value)
+                set_parameters(tid, initial_value=value, exact=True)
+                set_parameters(tid, value=value, exact=True)
+                console.print(f"{tid} = {value}")
             elif tid in self.compartments:
                 set_compartment(tid, initial_value=value)
+                console.print(f"{tid} = {value}")
             elif tid in self.species:
                 if tid in self.has_only_substance:
-                    set_species(tid, initial_expression=f"{value}/compartment")
+                    # FIXME: check if correct
+                    set_species(tid, initial_expression=f"{value}/{self.compartments[tid]}")
+                    console.print(f"{tid} = {value}")
                 else:
                     # concentration
                     set_species(tid, initial_concentration=value)
+                    console.print(f"{tid} = {value}")
+
+        print(get_parameters())
 
         duration = timepoints.end - timepoints.start
         df: pd.DataFrame = run_time_course(
