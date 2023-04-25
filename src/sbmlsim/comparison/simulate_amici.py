@@ -11,18 +11,14 @@ import amici
 import numpy as np
 import pandas as pd
 
-from sbmlsim.comparison.simulate import SimulateSBML, Condition, Timepoints
+from sbmlsim.comparison.simulate import SimulateSBML, Condition
 
 
 class SimulateAmiciSBML(SimulateSBML):
     """Class for simulating an SBML model with AMICI."""
 
-    def __init__(self, sbml_path, conditions: List[Condition], results_dir: Path):
-        super().__init__(
-            sbml_path=sbml_path,
-            conditions=conditions,
-            results_dir=results_dir
-        )
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
 
         # custom model loading
         model_dir = self.results_dir / "amici" / self.mid
@@ -35,8 +31,12 @@ class SimulateAmiciSBML(SimulateSBML):
         # instantiate model
         self.model = model_module.getModel()
 
+        # instantiate solver
+        self.solver = self.model.getSolver()
+        self.solver.setAbsoluteTolerance(self.absolute_tolerance)
+        self.solver.setRelativeTolerance(self.relative_tolerance)
 
-    def simulate_condition(self, condition: Condition, timepoints: Timepoints) -> pd.DataFrame:
+    def simulate_condition(self, condition: Condition, timepoints: np.ndarray) -> pd.DataFrame:
         print(f"simulate condition: {condition.sid}")
 
         # changes
@@ -56,15 +56,11 @@ class SimulateAmiciSBML(SimulateSBML):
         #             set_species(tid, initial_concentration=value)
 
         # set timepoints
-        t = np.linspace(timepoints.start, timepoints.end, num=timepoints.steps + 1)
+        t = np.asarray(timepoints)
         self.model.setTimepoints(t)
 
-        # instantiate solver
-        solver = self.model.getSolver()
-        # solver.setAbsoluteTolerance(1e-10)
-
         # simulation
-        rdata = amici.runAmiciSimulation(self.model, solver)
+        rdata = amici.runAmiciSimulation(self.model, self.solver)
         print(t)
         print(rdata.x)  # state variables;
 

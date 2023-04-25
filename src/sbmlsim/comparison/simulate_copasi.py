@@ -1,11 +1,10 @@
 from pathlib import Path
 from typing import List, Dict
 
+import numpy as np
 import pandas as pd
 from basico import (
     load_model,
-    run_time_course_with_output,
-    get_parameters,
     run_time_course,
     set_parameters,
     set_species,
@@ -13,23 +12,19 @@ from basico import (
 )
 
 
-from sbmlsim.comparison.simulate import SimulateSBML, Condition, Timepoints
+from sbmlsim.comparison.simulate import SimulateSBML, Condition
 from sbmlutils.console import console
 
 class SimulateCopasiSBML(SimulateSBML):
     """Class for simulating an SBML model with COPASI via basico."""
 
-    def __init__(self, sbml_path, conditions: List[Condition], results_dir: Path):
-        super().__init__(
-            sbml_path=sbml_path,
-            conditions=conditions,
-            results_dir=results_dir
-        )
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
 
         # custom model loading
         load_model(location=str(self.sbml_path))
 
-    def simulate_condition(self, condition: Condition, timepoints: Timepoints) -> pd.DataFrame:
+    def simulate_condition(self, condition: Condition, timepoints: List[float]) -> pd.DataFrame:
         print(f"simulate condition: {condition.sid}")
 
         # reset ? (reloading for resetting)
@@ -38,33 +33,31 @@ class SimulateCopasiSBML(SimulateSBML):
         # changes
         for change in condition.changes:
             tid = change.target_id
+            tname = self.sid2name[tid]
             value = change.value
             # is species
             if tid in self.parameters:
-                set_parameters(tid, initial_value=value, exact=True)
-                set_parameters(tid, value=value, exact=True)
+                # necessary to set via name
+                set_parameters(tname, initial_value=value, exact=True)
                 console.print(f"{tid} = {value}")
             elif tid in self.compartments:
-                set_compartment(tid, initial_value=value)
+                set_compartment(tname, initial_value=value)
                 console.print(f"{tid} = {value}")
             elif tid in self.species:
                 if tid in self.has_only_substance:
-                    # FIXME: check if correct
-                    set_species(tid, initial_expression=f"{value}/{self.compartments[tid]}")
+                    set_species(tname, initial_expression=f"{value}/{self.compartments[tid]}")
                     console.print(f"{tid} = {value}")
                 else:
                     # concentration
-                    set_species(tid, initial_concentration=value)
+                    set_species(tname, initial_concentration=value)
                     console.print(f"{tid} = {value}")
 
-        print(get_parameters())
-
-        duration = timepoints.end - timepoints.start
         df: pd.DataFrame = run_time_course(
-            timepoints.start,
-            duration,
-            timepoints.steps,
-            use_sbml_id=True
+            use_sbml_id=True,
+            a_tol=self.absolute_tolerance,
+            r_tol=self.relative_tolerance,
+            use_concentrations=False,
+            values=timepoints
         )
 
         # cleanup amount columns

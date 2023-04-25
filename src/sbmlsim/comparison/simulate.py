@@ -1,10 +1,13 @@
 from __future__ import annotations
 from pathlib import Path
 from typing import Dict, Optional, List, Set, Tuple, Any
+
+import numpy as np
 import pandas as pd
 import libsbml
 from petab.conditions import get_condition_df
 import uuid
+
 
 class Change:
     """Assignment of value to a target id in the model.
@@ -80,31 +83,27 @@ class Condition:
         return conditions
 
 
-class Timepoints:
-    """Information on what timepoints should be generated in the output."""
-    def __init__(self, start: float, end: float, steps: int):
-        self.start: float = start
-        self.end: float = end
-        self.steps: int = steps
-
-class Selections:
-    """Information on what outputs should be stored."""
-    pass
-
 class SimulateSBML:
     """Class for simulating an SBML model."""
 
-    def __init__(self, sbml_path, conditions: List[Condition], results_dir: Path):
+    def __init__(self, sbml_path, conditions: List[Condition], results_dir: Path,
+                 absolute_tolerance: float=1E-8, relative_tolerance=1E-8):
         """
 
         :param sbml_path: Path to SBML model.
-        :param changes:
+        :param results_dir: Path to results dir and intermediate results,
+        :param absolute_tolerance: absolute tolerance for simulation
+        :param relative_tolerance: relatvie tolerance for simulation
+        :param conditions: conditions to simulate
         """
 
         self.sbml_path: Path = sbml_path
         self.conditions: Dict[str, Condition] = {c.sid: c for c in conditions}
         self.results_dir = results_dir
+        self.absolute_tolerance = absolute_tolerance
+        self.relative_tolerance = relative_tolerance
 
+        # process SBML information for unifying simulations
         sbml_data = self.parse_sbml(sbml_path=self.sbml_path)
         self.mid: str = sbml_data[0]
         self.species: Set[str] = sbml_data[1]
@@ -112,6 +111,7 @@ class SimulateSBML:
         self.parameters: Set[str] = sbml_data[3]
         self.has_only_substance: Dict[str, bool] = sbml_data[4]
         self.species_compartments: Dict[str, str] = sbml_data[5]
+        self.sid2name: Dict[str, str] = sbml_data[6]
 
     @staticmethod
     def parse_sbml(sbml_path: Path) -> Tuple[Any]:
@@ -123,6 +123,7 @@ class SimulateSBML:
         compartments: Set[str] = set()
         has_only_substance: Dict[str, bool] = {}
         species_compartments: Dict[str, str] = {}
+        sid2name: Dict[str, str] = {}
         mid = str(uuid.uuid4())
 
         if model:
@@ -133,6 +134,12 @@ class SimulateSBML:
                 sid = s.getId()
                 has_only_substance[sid] = s.getHasOnlySubstanceUnits()
                 species_compartments[sid] = s.getCompartment()
+                sid2name[sid] = s.getName() if s.isSetName() else s.getId()
+
+            for p in model.getListOfParameters():
+                sid2name[p.getId()] = p.getName() if p.isSetName() else p.getId()
+            for c in model.getListOfCompartments():
+                sid2name[c.getId()] = c.getName() if c.isSetName() else c.getId()
 
             species = {s.getId() for s in model.getListOfSpecies()}
             parameters = {p.getId() for p in model.getListOfParameters()}
@@ -145,7 +152,8 @@ class SimulateSBML:
             parameters,
             has_only_substance,
             species_compartments,
+            sid2name,
         )
 
-    def simulate_condition(self, condition: Condition):
+    def simulate_condition(self, condition: Condition, timepoints: List[float]):
         pass

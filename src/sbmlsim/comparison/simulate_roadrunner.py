@@ -1,23 +1,19 @@
-from pathlib import Path
-from typing import List, Dict
+from typing import List
 
+import numpy as np
 import pandas as pd
 import roadrunner
 
 
-from sbmlsim.comparison.simulate import SimulateSBML, Condition, Timepoints
+from sbmlsim.comparison.simulate import SimulateSBML, Condition
 from sbmlutils.console import console
 
 
 class SimulateRoadrunnerSBML(SimulateSBML):
     """Class for simulating an SBML model."""
 
-    def __init__(self, sbml_path, conditions: List[Condition], results_dir: Path):
-        super().__init__(
-            sbml_path=sbml_path,
-            conditions=conditions,
-            results_dir=results_dir
-        )
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
 
         # custom model loading
         self.r: roadrunner.RoadRunner = roadrunner.RoadRunner(str(self.sbml_path))
@@ -32,10 +28,15 @@ class SimulateRoadrunnerSBML(SimulateSBML):
 
         selections += list(self.parameters)
         selections += list(self.compartments)
-
         self.r.selections = selections
 
-    def simulate_condition(self, condition: Condition, timepoints: Timepoints) -> pd.DataFrame:
+        # tolerances
+        integrator: roadrunner.Integrator = self.r.integrator
+        integrator.setValue("absolute_tolerance", self.absolute_tolerance)
+        integrator.setValue("relative_tolerance", self.relative_tolerance)
+
+    def simulate_condition(self, condition: Condition, timepoints: List[float]) -> pd.DataFrame:
+        """Simulate condition"""
         print(f"simulate condition: {condition.sid}")
 
         # reset
@@ -60,11 +61,7 @@ class SimulateRoadrunnerSBML(SimulateSBML):
                 console.print(f"{tid} = {value}")
 
         # simulate
-        s = self.r.simulate(
-            start=timepoints.start,
-            end=timepoints.end,
-            steps=timepoints.steps,
-        )
+        s = self.r.simulate(times=timepoints)
         df = pd.DataFrame(s, columns=s.colnames)
 
         # cleanup column names for concentration species
