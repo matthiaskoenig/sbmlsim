@@ -317,7 +317,7 @@ class DataSetsComparison:
         diff_abs = diff_abs.transpose()
 
         # plot all overview
-        f1, ((ax1, ax2), (ax3, ax4)) = plt.subplots(2, 2, figsize=(10, 10), dpi=300)
+        f1, ((ax1, ax2), (ax3, ax4)) = plt.subplots(2, 2, figsize=(15, 15), dpi=300)
         f1.subplots_adjust(wspace=0.35)
         f1.suptitle(self.title, fontsize=14, fontweight="bold")
 

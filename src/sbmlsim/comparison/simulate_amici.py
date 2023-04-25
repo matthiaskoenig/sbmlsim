@@ -12,6 +12,7 @@ from pathlib import Path
 from typing import List
 
 import amici
+from amici.numpy import ReturnDataView
 import numpy as np
 import pandas as pd
 
@@ -65,8 +66,9 @@ class SimulateAmiciSBML(SimulateSBML):
 
         # simulation
         rdata = amici.runAmiciSimulation(self.model, self.solver)
-        print(t)
-        print(rdata.x)  # state variables;
+
+        xids = self.model.getStateIds()
+        print(xids)
 
         # def _ids_and_names_to_rdata(
 
@@ -75,7 +77,7 @@ class SimulateAmiciSBML(SimulateSBML):
         # print("Model const parameters:", list(model.getFixedParameterIds()), "\n")
         # print("Model outputs:", list(model.getObservableIds()), "\n")
         # print("Model states:", list(model.getStateIds()), "\n")
-        df = None
-
+        df = pd.DataFrame(rdata.x, columns=xids)
+        df.insert(loc=0, column="time", value=timepoints)
 
         return df

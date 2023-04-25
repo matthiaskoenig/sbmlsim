@@ -63,8 +63,8 @@ if __name__ == "__main__":
     simulator: Type[SimulateSBML]
     for key, simulator in {
         "roadrunner": SimulateRoadrunnerSBML,
-        "copasi": SimulateCopasiSBML,
-        # "amici": SimulateAmiciSBML,
+        # "copasi": SimulateCopasiSBML,
+        "amici": SimulateAmiciSBML,
 
     }.items():
         console.rule(title=key, align="left", style="white")
@@ -85,6 +85,8 @@ if __name__ == "__main__":
         # console.print(df["Cve_icg"])
         dfs[key] = df
 
+    # comparison
+    exit()
     console.rule(style="white")
     comparison = DataSetsComparison(
         dfs_dict=dfs
