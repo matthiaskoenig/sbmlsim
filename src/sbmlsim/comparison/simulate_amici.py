@@ -1,4 +1,8 @@
-"""Simulate model with AMICI."""
+"""Simulate model with AMICI.
+
+sudo apt-get install libatlas-base-dev swig libhdf5-serial-dev
+pip install amici --upgrade
+"""
 
 from typing import List, Dict
 

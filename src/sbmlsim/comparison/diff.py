@@ -232,7 +232,7 @@ class DataSetsComparison:
         # > 0 if difference
         diff_tol = (c - u).abs() - (self.tol_abs + self.tol_rel * c.abs())
 
-        # boolean matrix: True if difference, False if identical
+        # boolean matrix: True if different, False if identical
         diff_tol_bool = diff_tol > 0
 
         return diff, diff_abs, diff_rel, diff_tol, diff_tol_bool
@@ -317,11 +317,17 @@ class DataSetsComparison:
         diff_abs = diff_abs.transpose()
 
         # plot all overview
-        f1, ((ax1, ax2, ax3, ax4)) = plt.subplots(1, 4, figsize=(20, 4.5))
+        f1, ((ax1, ax2), (ax3, ax4)) = plt.subplots(2, 2, figsize=(10, 10), dpi=300)
         f1.subplots_adjust(wspace=0.35)
         f1.suptitle(self.title, fontsize=14, fontweight="bold")
 
-        sns.heatmap(data=self.diff_tol_bool, cmap="Blues", vmin=0, vmax=1, ax=ax1)
+        sns.heatmap(
+            data=self.diff_tol_bool.T,
+            cmap="Blues",
+            linewidths=0.2, linecolor="black",
+            vmin=0, vmax=1, ax=ax1,
+            yticklabels=self.diff_tol_bool.columns,
+        )
         ax1.set_title(f"equal = {str(self.is_equal()).upper()}", fontweight="bold")
         ax1.set_ylabel("Tolerance difference", fontweight="bold")
 
@@ -331,6 +337,7 @@ class DataSetsComparison:
             ax4.plot(diff_rel[cid], label=cid)
 
         ax2.set_ylabel("Tolerance difference", fontweight="bold")
+        ax2.legend(prop={'size': 6})
         ax3.set_ylabel("Absolute difference", fontweight="bold")
         ax4.set_ylabel("Relative difference", fontweight="bold")
 

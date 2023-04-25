@@ -74,7 +74,7 @@ if __name__ == "__main__":
             conditions=conditions,
             results_dir=results_dir,
             absolute_tolerance=1E-12,
-            relative_tolerance=1E-12,
+            relative_tolerance=1E-15,
         )
         df = simulator.simulate_condition(
             condition=conditions[0],

@@ -56,8 +56,9 @@ class SimulateCopasiSBML(SimulateSBML):
             use_sbml_id=True,
             a_tol=self.absolute_tolerance,
             r_tol=self.relative_tolerance,
-            use_concentrations=False,
-            values=timepoints
+            use_concentrations=True,
+            values=timepoints,
+            update_model=False,
         )
 
         # cleanup amount columns
