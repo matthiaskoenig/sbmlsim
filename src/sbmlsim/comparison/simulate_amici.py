@@ -5,7 +5,7 @@ pip install amici --upgrade
 """
 
 from typing import List, Dict
-
+from sbmlutils.console import console
 import pandas as pd
 
 from pathlib import Path
@@ -45,20 +45,17 @@ class SimulateAmiciSBML(SimulateSBML):
         print(f"simulate condition: {condition.sid}")
 
         # changes
-        # for change in condition.changes:
-        #     tid = change.target_id
-        #     value = change.value
-        #     # is species
-        #     if tid in self.parameters:
-        #         set_parameters(tid, initial_value=value)
-        #     elif tid in self.compartments:
-        #         set_compartment(tid, initial_value=value)
-        #     elif tid in self.species:
-        #         if tid in self.has_only_substance:
-        #             set_species(tid, initial_expression=f"{value}/compartment")
-        #         else:
-        #             # concentration
-        #             set_species(tid, initial_concentration=value)
+        for change in condition.changes:
+            tid = change.target_id
+            print(tid)
+            value = change.value
+            try:
+                self.model.setParameterById(tid, value)
+                console.print(f"{tid} = {value}")
+            except RuntimeError:
+                # FIXME: how to set the initial value of a state
+                pass
+
 
         # set timepoints
         t = np.asarray(timepoints)
@@ -66,9 +63,7 @@ class SimulateAmiciSBML(SimulateSBML):
 
         # simulation
         rdata = amici.runAmiciSimulation(self.model, self.solver)
-
         xids = self.model.getStateIds()
-        print(xids)
 
         # def _ids_and_names_to_rdata(
 
