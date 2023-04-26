@@ -56,8 +56,8 @@ if __name__ == "__main__":
     # simulate condition with simulators
     # ----------------------------------------------------------------
     # timepoints = np.linspace(start=0, stop=100, num=21).tolist()
-    timepoints = np.linspace(start=0, stop=10, num=51).tolist()
-    # timepoints = np.linspace(0, 1, num=11).tolist()
+    # timepoints = np.linspace(start=0, stop=10, num=51).tolist()
+    timepoints = np.linspace(0, 1, num=11).tolist()
     absolute_tolerance = 1E-12
     relative_tolerance = 1E-28
     # condition = conditions["infusion1"]

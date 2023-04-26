@@ -21,7 +21,7 @@ class SimulateRoadrunnerSBML(SimulateSBML):
         # complete selections
         selections = ["time"]
         for s in self.species:
-            if self.has_only_substance:
+            if self.has_only_substance[s] is True:
                 selections.append(s)
             else:
                 selections.append(f"[{s}]")
@@ -49,15 +49,16 @@ class SimulateRoadrunnerSBML(SimulateSBML):
             if np.isnan(value):
                 continue
             # is species
+            print(tid)
             if tid in self.species:
-                if self.has_only_substance[tid]:
+                if self.has_only_substance[tid] is True:
                     # amount
                     target = f"init({tid})"
                 else:
                     # concentration
                     target = f"init([{tid}])"
                 self.r.setValue(target, value)
-                console.print(f"{target} = {value}")
+                print(f"{target} = {value}")
             else:
                 self.r.setValue(tid, value)
                 console.print(f"{tid} = {value}")

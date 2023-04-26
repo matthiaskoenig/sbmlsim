@@ -110,7 +110,8 @@ class SimulateSBML:
         self.parameters: List[str] = sbml_data[3]
         self.has_only_substance: Dict[str, bool] = sbml_data[4]
         self.species_compartments: Dict[str, str] = sbml_data[5]
-        self.sid2name: Dict[str, str] = sbml_data[6]
+        self.species_compartments_names: Dict[str, str] = sbml_data[6]
+        self.sid2name: Dict[str, str] = sbml_data[7]
 
     @staticmethod
     def parse_sbml(sbml_path: Path) -> Tuple[Any]:
@@ -122,6 +123,7 @@ class SimulateSBML:
         compartments: List[str] = set()
         has_only_substance: Dict[str, bool] = {}
         species_compartments: Dict[str, str] = {}
+        species_compartments_names: Dict[str, str] = {}
         sid2name: Dict[str, str] = {}
         mid = str(uuid.uuid4())
 
@@ -132,7 +134,10 @@ class SimulateSBML:
             for s in model.getListOfSpecies():
                 sid = s.getId()
                 has_only_substance[sid] = s.getHasOnlySubstanceUnits()
-                species_compartments[sid] = s.getCompartment()
+                compartment_id = s.getCompartment()
+                species_compartments[sid] = compartment_id
+                c: libsbml.Compartment = model.getCompartment(compartment_id)
+                species_compartments_names[sid] = c.getName() if c.isSetName() else c.getId()
                 sid2name[sid] = s.getName() if s.isSetName() else s.getId()
 
             for p in model.getListOfParameters():
@@ -151,6 +156,7 @@ class SimulateSBML:
             parameters,
             has_only_substance,
             species_compartments,
+            species_compartments_names,
             sid2name,
         )
 

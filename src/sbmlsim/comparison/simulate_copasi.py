@@ -47,8 +47,8 @@ class SimulateCopasiSBML(SimulateSBML):
                 set_compartment(tname, initial_value=value)
                 console.print(f"{tid} = {value}")
             elif tid in self.species:
-                if tid in self.has_only_substance:
-                    set_species(tname, initial_expression=f"{value}/{self.species_compartments[tid]}")
+                if self.has_only_substance[tid] is True:
+                    set_species(tname, initial_expression=f"{value}/{self.species_compartments_names[tid]}")
                     console.print(f"{tid} = {value}")
                 else:
                     # concentration
