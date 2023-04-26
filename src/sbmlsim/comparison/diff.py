@@ -8,6 +8,7 @@ Used to benchmark the simulation results.
 from pathlib import Path
 from typing import Dict
 
+import numpy as np
 import pandas as pd
 import seaborn as sns
 from matplotlib import pyplot as plt
@@ -308,6 +309,7 @@ class DataSetsComparison:
         diff_abs = self.diff_abs.copy()
         diff_rel = self.diff_rel.copy()
         diff_tol = self.diff_tol.copy()
+        diff_tol[diff_tol < 0] = np.NaN  # remove the identical tolerance
         diff_max = diff_abs.max()
         column_index = diff_max >= DataSetsComparison.eps_plot
 
@@ -334,6 +336,7 @@ class DataSetsComparison:
         # absolute difference
         df_diff: pd.DataFrame = self.diff_tol.copy()
         df_diff.drop(labels=col_drops, axis=1, inplace=True)
+        df_diff[df_diff < 0] = np.NaN
 
         vmax = max(abs(df_diff.max().max()), abs(df_diff.min().min()))
         sns.heatmap(

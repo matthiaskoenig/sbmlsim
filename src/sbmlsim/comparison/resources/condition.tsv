@@ -1,4 +1,11 @@
 conditionId	conditionName	BW	Ri_icg	IVDOSE_icg
+baseline	baseline	NA	NA	NA
+infusion0	infusion0	NA	0	NA
+infusion1	infusion1	NA	1	NA
+infusion2	infusion1	NA	2	NA
+infusion4	infusion1	NA	4	NA
+iv0	iv0	NA	NA	0
+iv10	iv10	NA	NA	10
 Andersen1999_task_icg_iv	Andersen1999 (0.5 mg/kg ICG)	83.4	0.0	41.7
 Burns1991_task_icg_iv_healthy	Burns1991 (0.5 mg/kg ICG)	75.0	0.0	37.5
 Caesar1961_task_icg_inf_Control	Caesar1961 (0.5 mg/min ICG)	75.0	0.5	0.0

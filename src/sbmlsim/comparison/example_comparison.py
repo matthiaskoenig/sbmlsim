@@ -7,13 +7,11 @@ This supports:
 - variable timepoints (as occurring in typical parameter fitting simulations)
 
 # FIXME: improve comparison plots
-# - better heatmap
 # - multiple comparison [3 way comparison]
 # - show top differences curves
-# FIXME: fix concentration/amount issues between roadrunner & COPASI
-# FIXME: support AMICI
-# FIXME: run all conditions and make comparison
 
+# add additional information for comparison: AMICI/COPASI
+# FIXME: run all conditions and make comparison
 """
 from pathlib import Path
 from typing import List, Dict, Type
@@ -47,40 +45,44 @@ if __name__ == "__main__":
     conditions_path = base_path / "resources" / "condition.tsv"
 
 
-    conditions: List[Condition] = Condition.parse_conditions_from_file(
+    conditions_list: List[Condition] = Condition.parse_conditions_from_file(
         conditions_path=conditions_path
     )
+    conditions: Dict[str, Condition] = {c.sid: c for c in conditions_list}
 
     # simulate condition with simulators
-    timepoints = np.linspace(start=0, stop=100, num=21).tolist()
-    # timepoints = np.linspace(start=0, stop=1, num=51).tolist()
-    timepoints = np.linspace(0, 10, num=11)
+    # ----------------------------------------------------------------
+    # timepoints = np.linspace(start=0, stop=100, num=21).tolist()
+    timepoints = np.linspace(start=0, stop=10, num=51).tolist()
+    # timepoints = np.linspace(0, 1, num=11).tolist()
+    absolute_tolerance = 1E-12
+    relative_tolerance = 1E-28
+    condition = conditions["infusion1"]
+    # ----------------------------------------------------------------
 
     print(f"{timepoints=}")
     # timepoints = [0, 1, 10, 20, 35]
     # print(f"{timepoints=}")
 
-
     # run comparison
     dfs: Dict[str, pd.DataFrame] = {}
     simulator: Type[SimulateSBML]
     for key, simulator in {
-        # "roadrunner": SimulateRoadrunnerSBML,
+        "roadrunner": SimulateRoadrunnerSBML,
         "copasi": SimulateCopasiSBML,
-        "amici": SimulateAmiciSBML,
+        # "amici": SimulateAmiciSBML,
 
     }.items():
         console.rule(title=key, align="left", style="white")
 
         simulator = simulator(
             sbml_path=model_path,
-            conditions=conditions,
             results_dir=results_dir,
-            absolute_tolerance=1E-12,
-            relative_tolerance=1E-18,
+            absolute_tolerance=absolute_tolerance,
+            relative_tolerance=relative_tolerance,
         )
         df = simulator.simulate_condition(
-            condition=conditions[0],
+            condition=condition,
             timepoints=timepoints,
         )
         console.print(df.columns)
@@ -94,7 +96,7 @@ if __name__ == "__main__":
         dfs_dict=dfs
     )
     comparison.report()
-    comparison.plot_diff()
+
 
     from matplotlib import pyplot as plt
     plt.show()

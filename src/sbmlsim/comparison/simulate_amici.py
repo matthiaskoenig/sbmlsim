@@ -50,6 +50,8 @@ class SimulateAmiciSBML(SimulateSBML):
         for change in condition.changes:
             tid = change.target_id
             value = change.value
+            if np.isnan(value):
+                continue
 
             if tid in self.state_ids:
                 # AMICI state variables

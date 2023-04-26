@@ -35,6 +35,9 @@ class SimulateCopasiSBML(SimulateSBML):
             tid = change.target_id
             tname = self.sid2name[tid]
             value = change.value
+            if np.isnan(value):
+                continue
+
             # is species
             if tid in self.parameters:
                 # necessary to set via name

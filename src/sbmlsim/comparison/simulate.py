@@ -86,7 +86,7 @@ class Condition:
 class SimulateSBML:
     """Class for simulating an SBML model."""
 
-    def __init__(self, sbml_path, conditions: List[Condition], results_dir: Path,
+    def __init__(self, sbml_path, results_dir: Path,
                  absolute_tolerance: float=1E-8, relative_tolerance=1E-8):
         """
 
@@ -98,7 +98,6 @@ class SimulateSBML:
         """
 
         self.sbml_path: Path = sbml_path
-        self.conditions: Dict[str, Condition] = {c.sid: c for c in conditions}
         self.results_dir = results_dir
         self.absolute_tolerance = absolute_tolerance
         self.relative_tolerance = relative_tolerance

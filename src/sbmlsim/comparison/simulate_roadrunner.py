@@ -46,6 +46,8 @@ class SimulateRoadrunnerSBML(SimulateSBML):
         for change in condition.changes:
             tid = change.target_id
             value = change.value
+            if np.isnan(value):
+                continue
             # is species
             if tid in self.species:
                 if self.has_only_substance[tid]:
