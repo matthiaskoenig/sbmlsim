@@ -65,9 +65,9 @@ if __name__ == "__main__":
     dfs: Dict[str, pd.DataFrame] = {}
     simulator: Type[SimulateSBML]
     for key, simulator in {
-        "roadrunner": SimulateRoadrunnerSBML,
+        # "roadrunner": SimulateRoadrunnerSBML,
         "copasi": SimulateCopasiSBML,
-        # "amici": SimulateAmiciSBML,
+        "amici": SimulateAmiciSBML,
 
     }.items():
         console.rule(title=key, align="left", style="white")

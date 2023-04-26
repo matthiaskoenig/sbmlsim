@@ -60,6 +60,8 @@ class SimulateAmiciSBML(SimulateSBML):
                 self.model.setParameterById(tid, value)
                 console.print(f"{tid} = {value} (parameter)")
 
+        self.model.setInitialStates(x0)
+
         # set timepoints
         t = np.asarray(timepoints)
         self.model.setTimepoints(t)

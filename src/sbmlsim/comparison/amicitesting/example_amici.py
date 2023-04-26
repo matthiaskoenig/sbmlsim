@@ -40,6 +40,9 @@ for key, value in changes.items():
         model.setParameterById(key, value)
         print(f"{key} = {value} (parameter)")
 
+# update states
+model.setInitialStates(x0)
+
 # set timepoints
 timepoints = np.linspace(0, 10, num=11)
 model.setTimepoints(timepoints)
