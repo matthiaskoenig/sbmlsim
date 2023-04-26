@@ -105,9 +105,9 @@ class SimulateSBML:
         # process SBML information for unifying simulations
         sbml_data = self.parse_sbml(sbml_path=self.sbml_path)
         self.mid: str = sbml_data[0]
-        self.species: Set[str] = sbml_data[1]
-        self.compartments: Set[str] = sbml_data[2]
-        self.parameters: Set[str] = sbml_data[3]
+        self.species: List[str] = sbml_data[1]
+        self.compartments: List[str] = sbml_data[2]
+        self.parameters: List[str] = sbml_data[3]
         self.has_only_substance: Dict[str, bool] = sbml_data[4]
         self.species_compartments: Dict[str, str] = sbml_data[5]
         self.sid2name: Dict[str, str] = sbml_data[6]
@@ -117,9 +117,9 @@ class SimulateSBML:
         """Parses the identifiers."""
         doc: libsbml.SBMLDocument = libsbml.readSBMLFromFile(str(sbml_path))
         model: libsbml.Model = doc.getModel()
-        species: Set[str] = set()
-        parameters: Set[str] = set()
-        compartments: Set[str] = set()
+        species: List[str] = set()
+        parameters: List[str] = set()
+        compartments: List[str] = set()
         has_only_substance: Dict[str, bool] = {}
         species_compartments: Dict[str, str] = {}
         sid2name: Dict[str, str] = {}
@@ -140,9 +140,9 @@ class SimulateSBML:
             for c in model.getListOfCompartments():
                 sid2name[c.getId()] = c.getName() if c.isSetName() else c.getId()
 
-            species = {s.getId() for s in model.getListOfSpecies()}
-            parameters = {p.getId() for p in model.getListOfParameters()}
-            compartments = {c.getId() for c in model.getListOfCompartments()}
+            species = [s.getId() for s in model.getListOfSpecies()]
+            parameters = [p.getId() for p in model.getListOfParameters()]
+            compartments = [c.getId() for c in model.getListOfCompartments()]
 
         return (
             mid,

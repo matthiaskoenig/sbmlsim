@@ -35,14 +35,17 @@ if __name__ == "__main__":
 
     # model
     # model_path = base_path / "resources" / "icg_events_sd.xml"
-    model_path = base_path / "resources" / "icg_sd.xml"
+    # model_path = base_path / "resources" / "icg_sd.xml"
+    model_path = base_path / "resources" / "icg_liver.xml"
+
     print(model_path)
 
     # results
     results_dir: Path = base_path / "results"
 
     # conditions
-    conditions_path = base_path / "resources" / "condition.tsv"
+    # conditions_path = base_path / "resources" / "condition.tsv"
+    conditions_path = base_path / "resources" / "condition_liver.tsv"
 
 
     conditions_list: List[Condition] = Condition.parse_conditions_from_file(
@@ -57,7 +60,8 @@ if __name__ == "__main__":
     # timepoints = np.linspace(0, 1, num=11).tolist()
     absolute_tolerance = 1E-12
     relative_tolerance = 1E-28
-    condition = conditions["infusion1"]
+    # condition = conditions["infusion1"]
+    condition = conditions["icg1"]
     # ----------------------------------------------------------------
 
     print(f"{timepoints=}")
