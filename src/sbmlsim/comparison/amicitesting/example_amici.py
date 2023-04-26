@@ -2,6 +2,7 @@
 from pathlib import Path
 import amici
 import numpy as np
+import pandas as pd
 
 mid = "icg_sd"
 base_path: Path = Path(__file__).parent
@@ -27,20 +28,24 @@ changes = {
     "IVDOSE_icg": 41.7,  # species initial condition
 }
 
+state_ids = model.getStateIds()
+x0 = np.asarray(model.getInitialStates())
 for key, value in changes.items():
-
-    try:
-        # set parameters
+    if key in state_ids:
+        # AMICI state variables
+        x0[state_ids.index(key)] = value
+        print(f"{key} = {value} (state)")
+    else:
+        # AMICI parameters
         model.setParameterById(key, value)
-        print(f"{key} = {value}")
-    except RuntimeError as err:
-        # FIXME: how to set the initial value of the state species IVDOSE_icg ??
-        raise err
+        print(f"{key} = {value} (parameter)")
 
 # set timepoints
-t = np.linspace(0, 10, num=11)
-model.setTimepoints(t)
+timepoints = np.linspace(0, 10, num=11)
+model.setTimepoints(timepoints)
 
 # simulation
 rdata = amici.runAmiciSimulation(model, solver)
-print(rdata)
+df = pd.DataFrame(rdata.x, columns=state_ids)
+df.insert(loc=0, column="time", value=timepoints)
+print(df)

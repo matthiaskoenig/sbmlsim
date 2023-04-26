@@ -35,6 +35,7 @@ class SimulateAmiciSBML(SimulateSBML):
 
         # instantiate model
         self.model = model_module.getModel()
+        self.state_ids = self.model.getStateIds()
 
         # instantiate solver
         self.solver = self.model.getSolver()
@@ -45,17 +46,19 @@ class SimulateAmiciSBML(SimulateSBML):
         print(f"simulate condition: {condition.sid}")
 
         # changes
+        x0 = np.asarray(self.model.getInitialStates())
         for change in condition.changes:
             tid = change.target_id
-            print(tid)
             value = change.value
-            try:
-                self.model.setParameterById(tid, value)
-                console.print(f"{tid} = {value}")
-            except RuntimeError:
-                # FIXME: how to set the initial value of a state
-                pass
 
+            if tid in self.state_ids:
+                # AMICI state variables
+                x0[self.state_ids.index(tid)] = value
+                console.print(f"{tid} = {value} (state)")
+            else:
+                # AMICI parameters
+                self.model.setParameterById(tid, value)
+                console.print(f"{tid} = {value} (parameter)")
 
         # set timepoints
         t = np.asarray(timepoints)

@@ -323,7 +323,6 @@ class DataSetsComparison:
 
         # Filter by different columns to remove clutter
         df_diff_bool: pd.DataFrame = self.diff_tol_bool.copy()
-        print(df_diff_bool)
 
         col_drops = []
         for col in df_diff_bool.columns:
