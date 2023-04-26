@@ -317,16 +317,35 @@ class DataSetsComparison:
         diff_abs = diff_abs.transpose()
 
         # plot all overview
-        f1, ((ax1, ax2), (ax3, ax4)) = plt.subplots(2, 2, figsize=(15, 15), dpi=300)
+        f1, ((ax1, ax2), (ax3, ax4)) = plt.subplots(2, 2, figsize=(12, 12), dpi=300)
         f1.subplots_adjust(wspace=0.35)
         f1.suptitle(self.title, fontsize=14, fontweight="bold")
 
+        # Filter by different columns to remove clutter
+        df_diff_bool: pd.DataFrame = self.diff_tol_bool.copy()
+        print(df_diff_bool)
+
+        col_drops = []
+        for col in df_diff_bool.columns:
+            if df_diff_bool[col].sum() == 0:
+                col_drops.append(col)
+
+        df_diff_bool.drop(labels=col_drops, axis=1, inplace=True)
+
+        # absolute difference
+        df_diff: pd.DataFrame = self.diff_tol.copy()
+        df_diff.drop(labels=col_drops, axis=1, inplace=True)
+
+        vmax = max(abs(df_diff.max().max()), abs(df_diff.min().min()))
         sns.heatmap(
-            data=self.diff_tol_bool.T,
-            cmap="Blues",
+            data=df_diff.T,
+            cmap="seismic",
             linewidths=0.2, linecolor="black",
-            vmin=0, vmax=1, ax=ax1,
-            yticklabels=self.diff_tol_bool.columns,
+            vmin=-vmax,
+            vmax=vmax,
+            ax=ax1,
+            # yticklabels=self.diff_tol_bool.columns,
+            cbar=True,
         )
         ax1.set_title(f"equal = {str(self.is_equal()).upper()}", fontweight="bold")
         ax1.set_ylabel("Tolerance difference", fontweight="bold")
@@ -345,6 +364,7 @@ class DataSetsComparison:
             ax.set_xlabel("time index", fontweight="bold")
             ax.set_yscale("log")
             ax.set_ylim(bottom=1e-10)
+            ax.legend(prop={'size': 6})
 
             if ax.get_ylim()[1] < 10 * DataSetsComparison.tol_abs:
                 ax.set_ylim(top=10 * DataSetsComparison.tol_abs)

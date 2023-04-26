@@ -52,7 +52,9 @@ if __name__ == "__main__":
     )
 
     # simulate condition with simulators
-    timepoints = np.linspace(start=0, stop=100, num=21).tolist()
+    # timepoints = np.linspace(start=0, stop=100, num=21).tolist()
+    timepoints = np.linspace(start=0, stop=1, num=51).tolist()
+
     print(f"{timepoints=}")
     # timepoints = [0, 1, 10, 20, 35]
     # print(f"{timepoints=}")
@@ -63,8 +65,8 @@ if __name__ == "__main__":
     simulator: Type[SimulateSBML]
     for key, simulator in {
         "roadrunner": SimulateRoadrunnerSBML,
-        # "copasi": SimulateCopasiSBML,
-        "amici": SimulateAmiciSBML,
+        "copasi": SimulateCopasiSBML,
+        # "amici": SimulateAmiciSBML,
 
     }.items():
         console.rule(title=key, align="left", style="white")
@@ -74,7 +76,7 @@ if __name__ == "__main__":
             conditions=conditions,
             results_dir=results_dir,
             absolute_tolerance=1E-12,
-            relative_tolerance=1E-15,
+            relative_tolerance=1E-18,
         )
         df = simulator.simulate_condition(
             condition=conditions[0],
@@ -86,7 +88,6 @@ if __name__ == "__main__":
         dfs[key] = df
 
     # comparison
-    exit()
     console.rule(style="white")
     comparison = DataSetsComparison(
         dfs_dict=dfs
