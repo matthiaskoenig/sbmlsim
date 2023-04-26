@@ -26,7 +26,7 @@ from simulate_roadrunner import SimulateRoadrunnerSBML
 from simulate import Condition, SimulateSBML
 from sbmlutils.log import get_logger
 from sbmlutils.console import console
-
+from sbmlutils.comp.flatten import flatten_sbml
 
 if __name__ == "__main__":
     """Comparison of ICG model simulations."""
@@ -34,9 +34,14 @@ if __name__ == "__main__":
     base_path: Path = Path(__file__).parent
 
     # model
-    # model_path = base_path / "resources" / "icg_events_sd.xml"
+    model_path = base_path / "resources" / "icg_events_sd.xml"
     # model_path = base_path / "resources" / "icg_sd.xml"
-    model_path = base_path / "resources" / "icg_liver.xml"
+    # model_path = base_path / "resources" / "icg_liver.xml"
+    # flatten_sbml(
+    #     sbml_path=base_path / "resources" / "icg_liver.xml",
+    #     sbml_flat_path=base_path / "resources" / "icg_liver_flat.xml",
+    # )
+    # model_path = base_path / "resources" / "icg_liver_flat.xml"
 
     print(model_path)
 
@@ -44,9 +49,8 @@ if __name__ == "__main__":
     results_dir: Path = base_path / "results"
 
     # conditions
-    # conditions_path = base_path / "resources" / "condition.tsv"
-    conditions_path = base_path / "resources" / "condition_liver.tsv"
-
+    conditions_path = base_path / "resources" / "condition.tsv"
+    # conditions_path = base_path / "resources" / "condition_liver.tsv"
 
     conditions_list: List[Condition] = Condition.parse_conditions_from_file(
         conditions_path=conditions_path
@@ -55,13 +59,15 @@ if __name__ == "__main__":
 
     # simulate condition with simulators
     # ----------------------------------------------------------------
-    # timepoints = np.linspace(start=0, stop=100, num=21).tolist()
+    timepoints = np.linspace(start=0, stop=100, num=51).tolist()
     # timepoints = np.linspace(start=0, stop=10, num=51).tolist()
-    timepoints = np.linspace(0, 1, num=11).tolist()
+    # timepoints = np.linspace(0, 10, num=11).tolist()
     absolute_tolerance = 1E-12
-    relative_tolerance = 1E-28
+    relative_tolerance = 1E-14
     # condition = conditions["infusion1"]
-    condition = conditions["icg1"]
+    # condition = conditions["bw80"]
+    condition = conditions["Andersen1999_task_icg_iv"]
+    # condition = conditions["icg1"]
     # ----------------------------------------------------------------
 
     print(f"{timepoints=}")
@@ -94,6 +100,19 @@ if __name__ == "__main__":
         # console.print(df["Cve_icg"])
         dfs[key] = df
 
+    # debugging plots
+    from matplotlib import pyplot as plt
+    # f, ax = plt.subplots(nrows=1, ncols=1)
+    # df_roadrunner = dfs["roadrunner"]
+    # df_amici = dfs["amici"]
+    # sid = "LI__bil_ext"
+    # for key, df in dfs.items():
+    #     ax.plot(df.time, df[sid], label=key)
+    # ax.set_xlabel("time")
+    # ax.set_ylabel(sid)
+    # ax.legend()
+
+
     # comparison
     console.rule(style="white")
     comparison = DataSetsComparison(
@@ -101,6 +120,4 @@ if __name__ == "__main__":
     )
     comparison.report()
 
-
-    from matplotlib import pyplot as plt
     plt.show()

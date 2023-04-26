@@ -1,0 +1,6 @@
+#define dxdot0_dflux_ICGIM dxdotdw[0]
+#define dxdot1_dflux_ICGIM dxdotdw[1]
+#define dxdot1_dflux_ICGLI2CA dxdotdw[2]
+#define dxdot2_dflux_ICGLI2CA dxdotdw[3]
+#define dxdot2_dflux_ICGLI2BI dxdotdw[4]
+#define dxdot3_dflux_ICGLI2BI dxdotdw[5]

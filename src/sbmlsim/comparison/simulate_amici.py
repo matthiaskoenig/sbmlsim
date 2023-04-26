@@ -71,6 +71,8 @@ class SimulateAmiciSBML(SimulateSBML):
         # simulation
         rdata = amici.runAmiciSimulation(self.model, self.solver)
         xids = self.model.getStateIds()
+        yids = self.model.getObservableIds()
+        print(f"{yids}")
 
         # def _ids_and_names_to_rdata(
 

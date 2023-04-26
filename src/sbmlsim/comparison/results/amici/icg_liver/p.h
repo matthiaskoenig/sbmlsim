@@ -1,0 +1,7 @@
+#define ICGIM_Vmax p[0]
+#define ICGIM_Km p[1]
+#define ICGIM_ki_bil p[2]
+#define f_oatp1b3 p[3]
+#define ICGLI2CA_Vmax p[4]
+#define ICGLI2CA_Km p[5]
+#define ICGLI2BI_Vmax p[6]
