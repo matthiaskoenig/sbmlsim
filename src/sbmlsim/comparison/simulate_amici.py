@@ -27,8 +27,8 @@ class SimulateAmiciSBML(SimulateSBML):
 
         # custom model loading
         model_dir = self.results_dir / "amici" / self.mid
-        # sbml_importer = amici.SbmlImporter(self.sbml_path)
-        # sbml_importer.sbml2amici(self.mid, model_dir)
+        sbml_importer = amici.SbmlImporter(self.sbml_path)
+        sbml_importer.sbml2amici(self.mid, model_dir)
 
         # load the model module
         model_module = amici.import_model_module(self.mid, model_dir)

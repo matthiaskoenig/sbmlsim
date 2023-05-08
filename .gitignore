@@ -18,6 +18,7 @@ coverage.xml
 *.pyc
 *~
 __pycache__
+src/sbmlsim/comparison/results/amici/
 
 # cached model state
 *.xml.dat

@@ -1,4 +1,4 @@
-#define xdot0 xdot[0]
-#define xdot1 xdot[1]
-#define xdot2 xdot[2]
-#define xdot3 xdot[3]
+#define dicg_extdt xdot[0]
+#define dicgdt xdot[1]
+#define dicg_bidt xdot[2]
+#define dicg_fecesdt xdot[3]

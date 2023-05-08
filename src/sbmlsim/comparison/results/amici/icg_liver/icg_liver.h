@@ -135,7 +135,7 @@ class Model_icg_liver : public amici::Model_ODE {
                   std::vector<realtype>{0.036959884032750301, 0.021659178617926, 0.02, 1.0, 0.00094367276997589099, 0.012388659243625, 0.000114596604507925}        // dynamic parameters
               ),
               amici::SecondOrderMode::none,                                  // o2mode
-              std::vector<realtype>(4, 0.0),   // idlist
+              std::vector<realtype>{1.0, 1.0, 1.0, 1.0},   // idlist
               std::vector<int>{},               // z2events
               true,                                        // pythonGenerated
               0,                       // ndxdotdp_explicit
@@ -569,7 +569,7 @@ class Model_icg_liver : public amici::Model_ODE {
      * @return AMICI git commit hash
      */
     std::string getAmiciCommit() const override {
-        return "unknown";
+        return "05a3cb7e81fd8dd4f12579de8469b0d1ccff1f8e";
     }
 
     bool hasQuadraticLLH() const override {

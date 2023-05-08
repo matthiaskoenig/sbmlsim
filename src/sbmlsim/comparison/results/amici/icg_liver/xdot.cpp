@@ -14,10 +14,10 @@ namespace amici {
 namespace model_icg_liver {
 
 void xdot_icg_liver(realtype *xdot, const realtype t, const realtype *x, const realtype *p, const realtype *k, const realtype *h, const realtype *w){
-    xdot0 = -0.25*flux_ICGIM;  // xdot[0]
-    xdot1 = 0.66666666666666663*flux_ICGIM - 0.66666666666666663*flux_ICGLI2CA;  // xdot[1]
-    xdot2 = -flux_ICGLI2BI + flux_ICGLI2CA;  // xdot[2]
-    xdot3 = flux_ICGLI2BI;  // xdot[3]
+    dicg_extdt = -0.25*flux_ICGIM;  // xdot[0]
+    dicgdt = 0.66666666666666663*flux_ICGIM - 0.66666666666666663*flux_ICGLI2CA;  // xdot[1]
+    dicg_bidt = -flux_ICGLI2BI + flux_ICGLI2CA;  // xdot[2]
+    dicg_fecesdt = flux_ICGLI2BI;  // xdot[3]
 }
 
 } // namespace model_icg_liver
