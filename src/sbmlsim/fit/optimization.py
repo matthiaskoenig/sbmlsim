@@ -437,8 +437,7 @@ class OptimizationProblem(ObjectJSONEncoder):
                     else:
                         logger.warning(
                             f"'{sid}.{mapping_id}': Using '{self.weighting_points}' "
-                            f"with no errors in reference data. Check weighting for "
-                            f"consistency!"
+                            f"with no errors in reference data."
                         )
                         # Weights must be comparable to datasets with data (1/CV)
                         # Assuming an error with CV of 0.5 -> w=2
