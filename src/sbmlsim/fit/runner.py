@@ -176,7 +176,6 @@ def worker(kwargs) -> OptimizationResult:
     return _run_optimization_serial(**kwargs)  # type: ignore
 
 
-@timeit
 def _run_optimization_serial(
     problem: OptimizationProblem,
     size: int = 5,
