@@ -374,7 +374,7 @@ class Units:
             return "None"
 
         # order the unit definition
-        libsbml.UnitDefinition_reorder(udef)
+        libsbml.UnitDefinition.reorder(udef)
 
         # collect formated nominators and denominators
         nom = []
