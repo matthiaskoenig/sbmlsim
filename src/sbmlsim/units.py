@@ -259,7 +259,7 @@ class UnitsInformation(MutableMapping):
                     uid: Optional[str] = None
                     udef_test: libsbml.UnitDefinition
                     for udef_test in model.getListOfUnitDefinitions():
-                        if libsbml.UnitDefinition_areEquivalent(udef_test, udef):
+                        if libsbml.UnitDefinition.areEquivalent(udef_test, udef):
                             uid = udef_test.getId()
                             break
 
