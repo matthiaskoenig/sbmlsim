@@ -888,7 +888,7 @@ class OptimizationAnalysis:
             ax.set_title("Waterfall plot")
         ax.plot(
             range(self.optres.size),
-            1 + (self.optres.df_fits.cost - self.optres.df_fits.cost.iloc[0]),
+            1 + (self.optres.df_fits.cost.values - self.optres.df_fits.cost.values[0]),
             "-o",
             color="black",
         )
