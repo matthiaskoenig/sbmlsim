@@ -368,7 +368,7 @@ class OptimizationAnalysis:
                         markersize=10,
                     )
                 # plot simulation
-                ax.plot(x_obs, y_obs, "-", color="blue", label="observable")
+                ax.plot(x_obs.values, y_obs.values, "-", color="blue", label="observable")
 
                 xdelta = np.max(x_ref) - np.min(x_ref)
                 ax.set_xlim(
@@ -446,7 +446,7 @@ class OptimizationAnalysis:
                 )
 
                 # prediction
-                ax.plot(x_obs, y_obs, "-", color="blue", label="observable")
+                ax.plot(x_obs.values, y_obs.values, "-", color="blue", label="observable")
                 ax.plot(x_ref, y_obsip, "o", color="blue", label="interpolation")
 
                 # reference data
@@ -571,8 +571,8 @@ class OptimizationAnalysis:
 
         for experiment in sorted(dp.experiment.unique()):
             ax.plot(
-                dp.y_ref[dp.experiment == experiment],
-                dp.y_obs[dp.experiment == experiment],
+                dp.y_ref[dp.experiment == experiment].values,
+                dp.y_obs[dp.experiment == experiment].values,
                 # yerr=dp.y_ref_err,
                 linestyle="",
                 marker="o",
@@ -637,8 +637,8 @@ class OptimizationAnalysis:
 
         for experiment in sorted(dp.experiment.unique()):
             ax.plot(
-                xdata[dp.experiment == experiment],
-                ydata[dp.experiment == experiment],
+                xdata[dp.experiment == experiment].values,
+                ydata[dp.experiment == experiment].values,
                 linestyle="",
                 marker="o",
                 # color="black",
@@ -908,12 +908,12 @@ class OptimizationAnalysis:
             ax.set_title("Optimization traces")
         for run in range(self.optres.size):
             df_run = self.optres.df_traces[self.optres.df_traces.run == run]
-            ax.plot(range(len(df_run)), df_run.cost, "-", alpha=0.8)
+            ax.plot(range(len(df_run)), df_run.cost.values, "-", alpha=0.8)
 
         for run in range(self.optres.size):
             df_run = self.optres.df_traces[self.optres.df_traces.run == run]
             ax.plot(
-                len(df_run) - 1, df_run.cost.iloc[-1], "o", color="black", alpha=0.8
+                len(df_run) - 1, df_run.cost.values[-1], "o", color="black", alpha=0.8
             )
 
         ax.set_xlabel("Optimization step")
