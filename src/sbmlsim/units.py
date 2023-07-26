@@ -237,7 +237,6 @@ class UnitsInformation(MutableMapping):
 
                     # store concentration
                     if substance_uid and volume_uid:
-                        # udict[f"[{sid}]"] = f"{uid_dict[substance_uid]}/{uid_dict[volume_uid]}"
                         udict[f"[{sid}]"] = f"{substance_uid}/{volume_uid}"
                     else:
                         logger.warning(
@@ -259,7 +258,7 @@ class UnitsInformation(MutableMapping):
                     uid: Optional[str] = None
                     udef_test: libsbml.UnitDefinition
                     for udef_test in model.getListOfUnitDefinitions():
-                        if libsbml.UnitDefinition.areEquivalent(udef_test, udef):
+                        if libsbml.UnitDefinition.areIdentical(udef_test, udef):
                             uid = udef_test.getId()
                             break
 
@@ -436,6 +435,7 @@ class Units:
 if __name__ == "__main__":
     from sbmlsim.test import MODEL_DEMO, MODEL_GLCWB
 
+    model_path = MODEL_DEMO
     ureg = UnitRegistry()
-    uinfo = UnitsInformation.from_sbml(MODEL_DEMO, ureg=ureg)
+    uinfo = UnitsInformation.from_sbml(model_path, ureg=ureg)
     console.log(uinfo.udict)
