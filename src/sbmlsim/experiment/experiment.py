@@ -451,7 +451,7 @@ class SimulationExperiment:
 
             # load model in simulator
             model: AbstractModel = self._models[model_id]
-            logger.info(f"set model: {type(model)}: {model=}")
+            # logger.info(f"set model: {type(model)}: {model=}")
             simulator.set_model(model=model)
 
             logger.info("set selections")
@@ -471,7 +471,7 @@ class SimulationExperiment:
                 # use the complete selection
                 simulator.set_timecourse_selections(selections=None)
 
-            logger.info("normalize changes")
+            logger.debug("normalize changes")
             # normalize model changes (these must be set in simulation!)
             model.normalize(uinfo=model.uinfo)
 
@@ -490,7 +490,7 @@ class SimulationExperiment:
                 sim = deepcopy(sim)
                 sim.add_model_changes(model.changes)
 
-                logger.info("running timecourse simulation")
+                logger.debug("running timecourse simulation")
                 if isinstance(sim, TimecourseSim):
                     self._results[task_key] = simulator.run_timecourse(sim)
                 elif isinstance(sim, ScanSim):

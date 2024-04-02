@@ -12,6 +12,7 @@ from pathlib import Path
 from typing import Dict, List, Optional, Tuple, Type, Union, Set
 
 from sbmlutils import log
+from sbmlutils.console import console
 
 from sbmlsim.experiment import ExperimentResult, SimulationExperiment
 from sbmlsim.model import RoadrunnerSBMLModel
@@ -130,7 +131,8 @@ class ExperimentRunner(object):
         exp_results = []
         experiment: SimulationExperiment
         for sid, experiment in self.experiments.items():
-            logger.info(f"Running SimulationExperiment: {sid}")
+            console.rule(style="white")
+            logger.info(f"Running SimulationExperiment: '{sid}'")
 
             # ExperimentResult used to create report
             result = experiment.run(

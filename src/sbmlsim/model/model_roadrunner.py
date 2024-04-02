@@ -54,17 +54,20 @@ class RoadrunnerSBMLModel(AbstractModel):
             raise ValueError(f"language_type not supported '{self.language_type}'.")
 
         # load model
-        self.state_path: Path = self.get_state_path()
+        # logger.info("load model")
         self.r: Optional[roadrunner.RoadRunner] = self.load_roadrunner_model(
-            source=self.source, state_path=self.state_path
+            source=self.source
         )
+        # logger.info(self.r)
 
         # set selections
+        # logger.info("set selections")
         self.selections = self.set_timecourse_selections(
             self.r, selections=self.selections
         )
 
         # set integrator settings
+        # logger.info("set integrator settings")
         if settings:
             RoadrunnerSBMLModel.set_integrator_settings(self.r, **settings)
 
@@ -97,20 +100,9 @@ class RoadrunnerSBMLModel(AbstractModel):
             settings=settings,
         )
 
-    def get_state_path(self) -> Optional[Path]:
-        """Get path of the state file.
-
-        The state file is a binary file which allows fast model loading.
-        """
-        if self.source.is_path():
-            md5 = md5_for_path(self.source.path)
-            return Path(f"{self.source.path}_rr{roadrunner.__version__}_{md5}.state")
-        else:
-            return None
-
     @classmethod
     def load_roadrunner_model(
-        cls, source: Source, state_path: Path = None
+        cls, source: Source,
     ) -> roadrunner.RoadRunner:
         """Load model from given source.
 
@@ -123,31 +115,47 @@ class RoadrunnerSBMLModel(AbstractModel):
 
         # load model
         if source.is_path():
-            if state_path and state_path.exists():
-                logger.debug(f"Load model from state: '{state_path}'")
-                r = roadrunner.RoadRunner()
-                r.loadState(str(state_path))
-                logger.debug(f"Model loaded from state: '{state_path}'")
-            else:
-                logger.info(f"Load model from SBML: '{source.path.resolve()}'")
-                r = roadrunner.RoadRunner(str(source.path))
-                # save state path
-                if state_path:
-                    r.saveState(str(state_path))
-                    logger.info(f"Save state: '{state_path}'")
+
+            sbml_path: Path = source.path
+            state_path: Path = RoadrunnerSBMLModel.get_state_path(
+                sbml_path=sbml_path
+            )
+
+            r = roadrunner.RoadRunner(str(sbml_path))
+            # FIXME: see https://github.com/sys-bio/roadrunner/issues/963
+            # if state_path.exists():
+            #     logger.debug(f"Load model from state: '{state_path}'")
+            #     r = roadrunner.RoadRunner()
+            #     r.loadState(str(state_path))
+            #     # with open(state_path, "rb") as fin:
+            #     #     r.loadStateS(fin.read())
+            #     logger.debug(f"Model loaded from state: '{state_path}'")
+            # else:
+            #     logger.info(f"Load model from SBML: '{sbml_path}'")
+            #     r = roadrunner.RoadRunner(str(sbml_path))
+            #     # save state
+            #     r.saveState(str(state_path))
+            #     # with open(state_path, "wb") as fout:
+            #     #     fout.write(r.saveStateS(opt="b"))
+            #     logger.info(f"Save state: '{state_path}'")
 
         elif source.is_content():
             r = roadrunner.RoadRunner(str(source.content))
 
         return r
 
+    @staticmethod
+    def get_state_path(sbml_path: Path) -> Optional[Path]:
+        """Get path of the state file.
+
+        The state file is a binary file which allows fast model loading.
+        """
+        md5 = md5_for_path(sbml_path)
+        return Path(f"{sbml_path}_rr{roadrunner.__version__}_{md5}.state")
+
     @classmethod
     def copy_roadrunner_model(cls, r: roadrunner.RoadRunner) -> roadrunner.RoadRunner:
-        """Copy roadrunner model by using the state.
-
-        :param r:
-        :return:
-        """
+        """Copy roadrunner model by using the state."""
         ftmp = tempfile.NamedTemporaryFile()
         filename = ftmp.name
         r.saveState(filename)

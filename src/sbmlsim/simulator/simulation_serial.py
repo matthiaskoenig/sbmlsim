@@ -44,22 +44,29 @@ class SimulatorSerial:
 
     def set_model(self, model: Union[str|Path|RoadrunnerSBMLModel|AbstractModel]):
         """Set model for simulator and updates the integrator settings."""
-        logger.info("SimulatorSerial.set_model")
+        # logger.info("SimulatorSerial.set_model")
         self.model = None
         if model is not None:
             if isinstance(model, RoadrunnerSBMLModel):
+                # logger.info("SimulatorSerial.set_model from RoadrunnerSBMLModel")
                 self.model = model
             elif isinstance(model, AbstractModel):
+                # logger.info("SimulatorSerial.set_model from AbstractModel")
                 self.model = RoadrunnerSBMLModel.from_abstract_model(
                     abstract_model=model
                 )
             elif isinstance(model, (str, Path)):
+                # logger.info("SimulatorSerial.set_model from Path")
                 self.model = RoadrunnerSBMLModel(
                     source=model,
                 )
 
-            self.r = model.r
+            # logger.info(f"get roadrunner instance from model: {type(self.model)}")
+            self.r = self.model.r
+            # logger.info("set integrator settings")
             self.set_integrator_settings(**self.integrator_settings)
+            # logger.info("model loading finished")
+
 
     def set_integrator_settings(self, **kwargs):
         """Set settings in the integrator."""
@@ -192,11 +199,6 @@ class SimulatorSerial:
                     self.r[key] = float(item)
                 logger.debug(f"\t{key} = {item}")
 
-            # debug model state
-            # FIXME: report issue
-            # sbml_str = self.r.getCurrentSBML()
-            # with open("/home/mkoenig/git/pkdb_models/pkdb_models/models/dextromethorphan/results/debug/test.xml", "w") as f_out:
-            #     f_out.write(sbml_str)
 
             # run simulation
             integrator = self.r.integrator
