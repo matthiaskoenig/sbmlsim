@@ -388,7 +388,6 @@ class SimulationExperiment:
         """Execute given experiment and store results."""
 
         # run simulations (sets self._results)
-        logger.info("_run_tasks")
         self._run_tasks(
             simulator, reduced_selections=reduced_selections
         )
@@ -404,7 +403,7 @@ class SimulationExperiment:
         else:
             if not Path.exists(output_path):
                 Path.mkdir(output_path, parents=True)
-                logger.info(f"'output_path' created: '{output_path}'")
+                logger.debug(f"'output_path' created: '{output_path}'")
 
             # save outputs
             self.save_datasets(output_path)
@@ -451,10 +450,7 @@ class SimulationExperiment:
 
             # load model in simulator
             model: AbstractModel = self._models[model_id]
-            # logger.info(f"set model: {type(model)}: {model=}")
             simulator.set_model(model=model)
-
-            logger.info("set selections")
             if reduced_selections:
                 # set selections based on data
                 selections = {"time"}

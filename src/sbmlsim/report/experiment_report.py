@@ -193,5 +193,5 @@ class ExperimentReport:
             context=context,
             template_str=f"index.{suffix}"
         )
-        logger.info(f"Report created: 'file://{output_path}'")
+        logger.info(f"report created: file://{output_path}'")
         return output_path
