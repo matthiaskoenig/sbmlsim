@@ -10,7 +10,7 @@ from sbmlsim.model import AbstractModel
 from sbmlsim.plot import Axis, Figure, Plot
 from sbmlsim.result.report import Report
 from sbmlsim.simulation import AbstractSim, Timecourse, TimecourseSim
-from sbmlsim.simulator.simulation_ray import SimulatorParallel, SimulatorSerial
+from sbmlsim.simulator.simulation_serial import SimulatorSerial
 from sbmlsim.task import Task
 from sbmlsim.test import MODEL_REPRESSILATOR
 
@@ -95,7 +95,7 @@ def run_curve_types_experiments(output_path: Path) -> Path:
 
     runner = ExperimentRunner(
         CurveTypesExperiment,
-        simulator=SimulatorParallel(),
+        simulator=SimulatorSerial(),
         data_path=data_path,
         base_path=base_path,
     )

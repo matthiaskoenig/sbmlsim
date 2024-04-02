@@ -30,7 +30,7 @@ class RoadrunnerSBMLModel(AbstractModel):
 
     def __init__(
         self,
-        source: Union[str, Path, AbstractModel],
+        source: Union[str, Path],
         base_path: Path = None,
         changes: Dict = None,
         sid: str = None,
@@ -39,66 +39,63 @@ class RoadrunnerSBMLModel(AbstractModel):
         ureg: UnitRegistry = None,
         settings: Dict = None,
     ):
-        logger.debug(f"source: {type(source)}, {source}")
-        if isinstance(source, AbstractModel):
-            logger.debug("RoadrunnerSBMLModel from AbstractModel")
-            super(RoadrunnerSBMLModel, self).__init__(
-                source=source.source,
-                language_type=source.language_type,
-                changes=source.changes,
-                sid=source.sid,
-                name=source.name,
-                base_path=source.base_path,
-                selections=selections,
-            )
-        else:
-            logger.info("RoadrunnerSBMLModel from source")
-            super(RoadrunnerSBMLModel, self).__init__(
-                source=source,
-                language_type=AbstractModel.LanguageType.SBML,
-                changes=changes,
-                sid=sid,
-                name=name,
-                base_path=base_path,
-                selections=selections,
-            )
-        if self.language_type != AbstractModel.LanguageType.SBML:
-            raise ValueError(
-                f"{self.__class__.__name__} only supports "
-                f"language_type '{AbstractModel.LanguageType.SBML}'."
-            )
+        super(RoadrunnerSBMLModel, self).__init__(
+            source=source,
+            language_type=AbstractModel.LanguageType.SBML,
+            changes=changes,
+            sid=sid,
+            name=name,
+            base_path=base_path,
+            selections=selections,
+        )
 
-        # load the model
-        self.state_path = self.get_state_path()
-        logger.debug(f"Load model from state: {self.state_path}")
-        self._model = self.load_roadrunner_model(
+        # check SBML
+        if self.language_type != AbstractModel.LanguageType.SBML:
+            raise ValueError(f"language_type not supported '{self.language_type}'.")
+
+        # load model
+        self.state_path: Path = self.get_state_path()
+        self.r: Optional[roadrunner.RoadRunner] = self.load_roadrunner_model(
             source=self.source, state_path=self.state_path
         )
+
         # set selections
         self.selections = self.set_timecourse_selections(
-            self._model, selections=self.selections
+            self.r, selections=self.selections
         )
 
         # set integrator settings
-        if settings is not None:
-            RoadrunnerSBMLModel.set_integrator_settings(self._model, **settings)
-
-        self.uinfo = self.parse_units(ureg)
+        if settings:
+            RoadrunnerSBMLModel.set_integrator_settings(self.r, **settings)
 
         # normalize model changes
+        self.uinfo = self.parse_units(ureg)
         self.normalize(uinfo=self.uinfo)
-
-        logger.debug(f"model.changes: {self.changes}")
 
     @property
     def Q_(self) -> Quantity:
         """Quantity to create quantities for model changes."""
         return self.uinfo.ureg.Quantity
 
-    @property
-    def r(self) -> roadrunner.RoadRunner:
-        """Roadrunner instance."""
-        return self._model
+    @staticmethod
+    def from_abstract_model(
+        abstract_model: AbstractModel,
+        selections: List[str] = None,
+        ureg: UnitRegistry = None,
+        settings: Dict = None
+    ):
+        """Create from AbstractModel."""
+        logger.debug("RoadrunnerSBMLModel from AbstractModel")
+        return RoadrunnerSBMLModel(
+            source=abstract_model.source.source,
+            changes=abstract_model.changes,
+            sid=abstract_model.sid,
+            name=abstract_model.name,
+            base_path=abstract_model.base_path,
+            selections=selections,
+            ureg=ureg,
+            settings=settings,
+        )
 
     def get_state_path(self) -> Optional[Path]:
         """Get path of the state file.
@@ -107,8 +104,6 @@ class RoadrunnerSBMLModel(AbstractModel):
         """
         if self.source.is_path():
             md5 = md5_for_path(self.source.path)
-            # FIXME: get unique hash for library version
-
             return Path(f"{self.source.path}_rr{roadrunner.__version__}_{md5}.state")
         else:
             return None
@@ -140,6 +135,7 @@ class RoadrunnerSBMLModel(AbstractModel):
                 if state_path:
                     r.saveState(str(state_path))
                     logger.info(f"Save state: '{state_path}'")
+
         elif source.is_content():
             r = roadrunner.RoadRunner(str(source.content))
 

@@ -10,7 +10,6 @@ from sbmlsim.combine.sedml.io import SEDMLReader
 from sbmlsim.combine.sedml.parser import SEDMLParser
 from sbmlsim.experiment import ExperimentRunner, SimulationExperiment
 from sbmlsim.simulator import SimulatorSerial
-from sbmlsim.simulator.simulation_ray import SimulatorParallel
 
 
 def sedmltojson(sedml_path: Path) -> None:

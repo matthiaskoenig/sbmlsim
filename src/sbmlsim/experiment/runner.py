@@ -17,7 +17,6 @@ from sbmlsim.experiment import ExperimentResult, SimulationExperiment
 from sbmlsim.model import RoadrunnerSBMLModel
 from sbmlsim.report.experiment_report import ExperimentReport, ReportResults
 from sbmlsim.simulator import SimulatorSerial
-from sbmlsim.simulator.simulation_ray import SimulatorParallel
 from sbmlsim.units import UnitRegistry, UnitsInformation
 from sbmlsim.utils import timeit
 
@@ -104,15 +103,14 @@ class ExperimentRunner(object):
             for model_id, source in experiment.models().items():
                 if source not in self.models:
                     # not cashed yet, cash the model for lookup
-                    self.models[source] = RoadrunnerSBMLModel(
-                        source=source, ureg=self.ureg
+                    self.models[source] = RoadrunnerSBMLModel.from_abstract_model(
+                        abstract_model=source, ureg=self.ureg
                     )
                 _models[model_id] = self.models[source]
 
             # set resolved models in experiment
             experiment._models = _models
             # only after model loading the unit registry is filled
-
             experiment.initialize()
             self.experiments[experiment.sid] = experiment
 
@@ -130,7 +128,8 @@ class ExperimentRunner(object):
             output_path.mkdir(parents=True)
 
         exp_results = []
-        for sid, experiment in self.experiments.items():  # type: SimulationExperiment
+        experiment: SimulationExperiment
+        for sid, experiment in self.experiments.items():
             logger.info(f"Running SimulationExperiment: {sid}")
 
             # ExperimentResult used to create report
@@ -151,12 +150,11 @@ def run_experiments(
     output_path: Path,
     base_path: Path = None,
     data_path: Union[List[Path], Tuple[Path], Optional[Path]] = None,
-    parallel: bool = True,
 ) -> Path:
     """Run simulation experiments."""
     if not isinstance(experiments, (list, tuple)):
         experiments = [experiments]
-    simulator = SimulatorParallel() if parallel else SimulatorSerial()
+    simulator = SimulatorSerial()
 
     runner = ExperimentRunner(
         experiments,

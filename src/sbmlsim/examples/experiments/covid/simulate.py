@@ -24,7 +24,6 @@ def run_covid_examples(output_path: Path) -> None:
         output_path=output_path / "sbmlsim",
         data_path=output_path,
         base_path=output_path,
-        parallel=True,
     )
 
     for experiment in experiments:

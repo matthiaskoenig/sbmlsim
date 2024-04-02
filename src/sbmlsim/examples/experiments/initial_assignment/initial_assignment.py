@@ -8,7 +8,7 @@ from sbmlsim.experiment import ExperimentRunner, SimulationExperiment
 from sbmlsim.model import AbstractModel, RoadrunnerSBMLModel
 from sbmlsim.plot import Axis, Figure
 from sbmlsim.simulation import AbstractSim, Timecourse, TimecourseSim
-from sbmlsim.simulator.simulation_ray import SimulatorParallel
+from sbmlsim.simulator.simulation_serial import SimulatorSerial
 from sbmlsim.task import Task
 
 
@@ -119,7 +119,7 @@ def run(output_path):
 
     runner = ExperimentRunner(
         AssignmentExperiment,
-        simulator=SimulatorParallel(),
+        simulator=SimulatorSerial(),
         base_path=base_path,
         data_path=base_path,
     )

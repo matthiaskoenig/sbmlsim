@@ -4,13 +4,13 @@ import numpy as np
 from sbmlsim.result import XResult
 from sbmlsim.result.datagenerator import DataGeneratorIndexingFunction
 from sbmlsim.simulation import Dimension, ScanSim, Timecourse, TimecourseSim
-from sbmlsim.simulator.simulation_ray import SimulatorParallel
+from sbmlsim.simulator.simulation_serial import SimulatorSerial
 from sbmlsim.test import MODEL_MIDAZOLAM
 
 
 def example_scan() -> XResult:
     """Run scan and return results."""
-    simulator = SimulatorParallel(model=MODEL_MIDAZOLAM)
+    simulator = SimulatorSerial(model=MODEL_MIDAZOLAM)
     Q_ = simulator.Q_
 
     scan = ScanSim(

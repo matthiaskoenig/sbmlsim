@@ -451,7 +451,7 @@ class SimulationExperiment:
 
             # load model in simulator
             model: AbstractModel = self._models[model_id]
-            logger.info("set model")
+            logger.info(f"set model: {type(model)}: {model=}")
             simulator.set_model(model=model)
 
             logger.info("set selections")
