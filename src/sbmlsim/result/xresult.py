@@ -162,7 +162,7 @@ class XResult:
                 if dim == "_time":
                     continue
                 else:
-                    if xds.dims[dim] != 1:
+                    if xds.sizes[dim] != 1:
                         is_tc = False
         else:
             return False
