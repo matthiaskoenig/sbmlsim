@@ -193,5 +193,6 @@ class ExperimentReport:
             context=context,
             template_str=f"index.{suffix}"
         )
-        logger.info(f"report created: file://{output_path}'")
+        report_path_str: str = str(output_path).replace('\\', '/')
+        logger.info(f"report created: file://{report_path_str}")
         return output_path
