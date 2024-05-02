@@ -380,7 +380,7 @@ class MatplotlibFigureSerializer:
 
             if xax:
                 apply_axis_settings(xax, ax1, axis_type="x")
-            if xax:
+            if yax:
                 apply_axis_settings(yax, ax1, axis_type="y")
             if yax_right:
                 apply_axis_settings(yax_right, ax2, axis_type="y")
