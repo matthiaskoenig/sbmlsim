@@ -1,4 +1,5 @@
 """Definition of Objects used in FitProblems and optimization."""
+from __future__ import annotations
 import json
 import math
 from dataclasses import dataclass
@@ -6,6 +7,7 @@ from pathlib import Path
 from typing import Any, Callable, Dict, Iterable, List, Optional, Sized, Union
 
 import numpy as np
+import pandas as pd
 from sbmlutils import log
 from sbmlutils.console import console
 
@@ -274,6 +276,19 @@ class FitParameter:
         """
         return to_json(object=self, path=path)
 
+    def to_dict(self, path: Path = None) -> Optional[str]:
+        """Serialize to JSON.
+
+        Serializes to file if path is provided, otherwise returns JSON string.
+        """
+        return {
+            "pid": self.pid,
+            "start_value": self.start_value,
+            "lower_bound": self.lower_bound,
+            "upper_bound": self.upper_bound,
+            "unit": self.unit,
+        }
+
     @staticmethod
     def from_json(json_info: Union[str, Path]) -> "FitParameter":
         """Load from JSON."""
@@ -283,6 +298,11 @@ class FitParameter:
         else:
             d = json.loads(json_info)
         return FitParameter(**d)
+
+    @staticmethod
+    def parameters_to_df(parameters: Iterable[FitParameter]) -> pd.DataFrame:
+        """DataFrame of parameters"""
+        return pd.DataFrame([p.to_dict() for p in parameters])
 
 
 class FitData:

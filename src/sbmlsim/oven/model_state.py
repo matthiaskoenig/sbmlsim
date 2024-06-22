@@ -38,6 +38,7 @@ else:
     r = roadrunner.RoadRunner(str(sbml_path))
     # save state
     r.saveState(str(state_path))
+    r.saveStateS()
 
 print(f"Load from state: '{state_path}'")
 r.loadState(str(state_path))

@@ -73,7 +73,6 @@ class ExperimentRunner(object):
             for experiment in self.experiments.values():
                 experiment.simulator = simulator
 
-    @timeit
     def initialize(self, experiment_classes: Union[List[Type[SimulationExperiment]], Tuple[Type[SimulationExperiment]], Set[Type[SimulationExperiment]]], **kwargs):
         """Initialize ExperimentRunner.
 

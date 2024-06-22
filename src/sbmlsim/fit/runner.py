@@ -107,7 +107,7 @@ def run_optimization(
         n_cores = max(1, multiprocessing.cpu_count() - 1)
         logger.error(f"More cores then cpus requested, reducing cores to '{n_cores}'")
 
-    console.rule("START OPTIMIZATION", align="left", style="white")
+    console.rule("Start optimization", align="left", style="white")
     console.log(f"Running {n_cores} workers")
     if size < n_cores:
         logger.warning(
