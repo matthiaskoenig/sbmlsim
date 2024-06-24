@@ -8,7 +8,8 @@ import matplotlib
 import numpy as np
 import pandas as pd
 import seaborn as sns
-from matplotlib.figure import Axes, Figure
+from matplotlib.figure import Figure
+from matplotlib.axes import Axes
 from matplotlib.lines import Line2D
 from sbmlutils import log
 
@@ -151,19 +152,29 @@ class OptimizationAnalysis:
         parameters.update(mpl_parameters)
         plt.rcParams.update(parameters)
 
+
+        # optimization traces
+        self.plot_traces(
+            path=plots_dir / f"traces.{self.image_format}",
+        )
         # waterfall plot
         if self.optres.size > 1:
             self.plot_waterfall(
                 path=plots_dir / f"waterfall.{self.image_format}",
             )
-        # optimization traces
-        self.plot_traces(
-            path=plots_dir / f"traces.{self.image_format}",
-        )
 
         # plot fit results for optimal parameters
         if self.op:
             xopt = self.optres.xopt
+
+            self.plot_datapoint_scatter(
+                x=xopt,
+                path=plots_dir / f"datapoint_scatter.{self.image_format}",
+            )
+            self.plot_residual_scatter(
+                x=xopt,
+                path=plots_dir / f"residual_scatter.{self.image_format}",
+            )
 
             self.plot_cost_scatter(
                 x=xopt,
@@ -173,14 +184,7 @@ class OptimizationAnalysis:
                 x=xopt,
                 path=plots_dir / f"cost_bar.{self.image_format}",
             )
-            self.plot_datapoint_scatter(
-                x=xopt,
-                path=plots_dir / f"datapoint_scatter.{self.image_format}",
-            )
-            self.plot_residual_scatter(
-                x=xopt,
-                path=plots_dir / f"residual_scatter.{self.image_format}",
-            )
+
             self.plot_residual_boxplot(
                 x=xopt,
                 path=plots_dir / f"residual_boxplot.{self.image_format}",
@@ -292,11 +296,11 @@ class OptimizationAnalysis:
             f_out.write(html)
 
     def _create_mpl_figure(
-        self, width: float = 5.0, height: float = 5.0
+        self, width: float = 5.0, height: float = 5.0, layout: str = "constrained"
     ) -> Tuple[Figure, Axes]:
         """Create matplotlib figure."""
-        fig, ax = plt.subplots(nrows=1, ncols=1, figsize=(width, height))
-        fig.subplots_adjust(left=0.2, bottom=0.1)
+        fig, ax = plt.subplots(nrows=1, ncols=1, figsize=(width, height), layout=layout)
+        # fig.subplots_adjust(left=0.2, bottom=0.1)
 
         return fig, ax
 
@@ -559,6 +563,15 @@ class OptimizationAnalysis:
             ],
         )
 
+
+    kwargs_scatter = {
+        "markersize": "10",
+        "markeredgecolor": "black",
+        "alpha": 0.7,
+        "linestyle": "",
+        "marker": "o",
+    }
+
     @timeit
     def plot_datapoint_scatter(self, x: np.ndarray, path: Path):
         """Plot cost scatter plot.
@@ -566,48 +579,41 @@ class OptimizationAnalysis:
         Compares cost of model parameters to the given parameter set.
         """
         fig, ax = self._create_mpl_figure()
-
         dp: pd.DataFrame = self._datapoints_df(x=x)
 
+        # FIXME: plot error bars
+        # plot lines
+        min_dp = np.nanmin([np.nanmin(dp.y_ref), np.nanmin(dp.y_obs)]) * 0.1
+        max_dp = np.nanmax([np.nanmax(dp.y_ref), np.nanmax(dp.y_obs)]) * 10
+
+        ax.fill_between(
+            [min_dp, max_dp, max_dp, min_dp],
+            [min_dp/10, max_dp/10, max_dp*10, min_dp*10],
+            color="lightgray",
+        )
+        ax.plot([min_dp, max_dp], [min_dp, max_dp], color="black")
+        for bfactor in [1/10, 10]:
+            ax.plot(
+                [min_dp, max_dp],
+                [min_dp * bfactor, max_dp * bfactor],
+                "--",
+                color="black",
+            )
+
+        # plot data
         for experiment in sorted(dp.experiment.unique()):
             ax.plot(
                 dp.y_ref[dp.experiment == experiment].values,
                 dp.y_obs[dp.experiment == experiment].values,
                 # yerr=dp.y_ref_err,
-                linestyle="",
-                marker="o",
-                # label="model",
-                # color="black",
-                markersize="10",
-                alpha=0.9,
+                **self.kwargs_scatter
             )
 
-        min_dp = np.min(
-            [
-                np.min(dp.y_ref),
-                np.min(dp.y_obs),
-            ]
-        )
-        max_dp = np.max(
-            [
-                np.max(dp.y_ref),
-                np.max(dp.y_obs),
-            ]
-        )
-
-        ax.plot(
-            [min_dp * 0.5, max_dp * 2],
-            [min_dp * 0.5, max_dp * 2],
-            "--",
-            color="black",
-        )
-
+        # annotations
         for k in range(len(dp)):
-
-            if (
-                np.abs(dp.y_ref.values[k] - dp.y_obs.values[k]) / dp.y_ref.values[k]
-                > 0.5
-            ):
+            # plot labels for datapoints far away
+            ratio = dp.y_ref.values[k]/dp.y_obs.values[k]
+            if (ratio > 10 or ratio < 1/10):
                 ax.annotate(
                     dp.experiment.values[k],
                     xy=(
@@ -616,11 +622,13 @@ class OptimizationAnalysis:
                     ),
                     fontsize="x-small",
                     alpha=0.9,
+                    # textcoords="offset fontsize"
                 )
-        ax.set_xlabel("Experiment $y_{i,k}$")
-        ax.set_ylabel("Prediction $f(x_{i,k})$")
+        ax.set_xlabel("Experiment $y_{i,k}$", fontweight="bold")
+        ax.set_ylabel("Prediction $f(x_{i,k})$", fontweight="bold")
         ax.set_xscale("log")
         ax.set_yscale("log")
+        ax.set_xlim(min_dp, max_dp)
         ax.grid()
         if self.show_titles:
             ax.set_title("Data points")
@@ -639,11 +647,7 @@ class OptimizationAnalysis:
             ax.plot(
                 xdata[dp.experiment == experiment].values,
                 ydata[dp.experiment == experiment].values,
-                linestyle="",
-                marker="o",
-                # color="black",
-                markersize="10",
-                alpha=0.9,
+                **self.kwargs_scatter
             )
 
         min_res = np.min(ydata)
@@ -685,8 +689,8 @@ class OptimizationAnalysis:
                     fontsize="x-small",
                     alpha=0.7,
                 )
-        ax.set_xlabel("Experiment $y_{i,k}$")
-        ax.set_ylabel("Relative residual $\\frac{f(x_{i,k})-y_{i,k}}{y_{i,k}}$")
+        ax.set_xlabel("Experiment $y_{i,k}$", fontweight="bold")
+        ax.set_ylabel("Relative residual $\\frac{f(x_{i,k})-y_{i,k}}{y_{i,k}}$", fontweight="bold")
         ax.set_xscale("log")
         # ax.set_yscale("log")
         ax.grid()

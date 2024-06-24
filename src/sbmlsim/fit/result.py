@@ -44,7 +44,7 @@ class OptimizationResult(ObjectJSONEncoder):
         else:
             uuid_str = str(uuid.uuid4())
             self.sid = (
-                "{:%Y%m%d_%H%M%S}".format(datetime.datetime.now()) + f"__{uuid_str}"
+                "{:%Y%m%d_%H%M%S}".format(datetime.datetime.now()) + f"__{uuid_str[:5]}"
             )
         self.parameters: List[FitParameter] = []
         for p in parameters:
