@@ -534,7 +534,7 @@ class OptimizationAnalysis:
             residuals = res_data["residuals"][k]
             for ix in range(len(y_obs)):
                 if not y_ref_err_type:
-                    y_err = np.NaN
+                    y_err = np.nan
                 else:
                     y_err = y_ref_err[ix]
 

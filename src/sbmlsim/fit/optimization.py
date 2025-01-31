@@ -372,7 +372,7 @@ class OptimizationProblem(ObjectJSONEncoder):
                 # handle missing data (0.0 and NaN)
                 if y_ref_err is not None:
                     # remove 0.0 from y-error
-                    y_ref_err[(y_ref_err == 0.0)] = np.NAN
+                    y_ref_err[(y_ref_err == 0.0)] = np.nan
                     if np.all(np.isnan(y_ref_err)):
                         # handle special case of all NaN errors
                         logger.warning(
