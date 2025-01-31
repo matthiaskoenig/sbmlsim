@@ -43,8 +43,8 @@ class RuntimeErrorOptimizeResult:
     status: str = "-1"
     success: bool = False
     duration: float = -1.0
-    cost: float = np.Inf
-    optimality: float = np.Inf
+    cost: float = np.inf
+    optimality: float = np.inf
 
 
 class OptimizationProblem(ObjectJSONEncoder):

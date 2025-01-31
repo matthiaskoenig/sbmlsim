@@ -224,8 +224,8 @@ class FitParameter:
         self,
         pid: str,
         start_value: float = None,
-        lower_bound: float = -np.Inf,
-        upper_bound: float = np.Inf,
+        lower_bound: float = -np.inf,
+        upper_bound: float = np.inf,
         unit: str = None,
     ):
         """Initialize FitParameter.

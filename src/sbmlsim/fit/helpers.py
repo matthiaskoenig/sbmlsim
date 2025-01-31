@@ -108,8 +108,11 @@ def f_fitexp(
 
     return fit_experiments
 
+
 def filter_empty(fit_mapping_key: str, fit_mapping: FitMapping) -> bool:
     """Return all experiments/mappings."""
     return True
 
-
+def filter_outlier(fit_mapping_key: str, fit_mapping: FitMapping) -> bool:
+    """Return non outlier experiments."""
+    return not fit_mapping.metadata.outlier
