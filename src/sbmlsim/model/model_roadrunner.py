@@ -225,9 +225,9 @@ class RoadrunnerSBMLModel(AbstractModel):
                 # special hack to acount for amount and concentration absolute
                 # tolerances
                 compartment_values = r.model.getCompartmentVolumes()
-                if compartment_values:
+                if len(compartment_values) > 0:
                     value = min(value, value * min(compartment_values))
-                    
+
             integrator.setValue(key, value)
             logger.debug(f"Integrator setting: '{key} = {value}'")
         return integrator
