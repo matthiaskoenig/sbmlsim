@@ -432,7 +432,7 @@ class OptimizationProblem(ObjectJSONEncoder):
                         # The weighting must be normalized to the curve!, i.e. be a
                         # unitless quantity approximately the same for the different
                         # datasets.
-                        weight_points = y_ref / y_ref_err
+                        weight_points = np.abs(y_ref / y_ref_err)
                         # weight_points = 1.0 / y_ref_err  # scale with error;
                     else:
                         logger.warning(
