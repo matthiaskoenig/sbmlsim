@@ -291,7 +291,7 @@ class Style(BasePlotObject):
 
     # https://matplotlib.org/3.1.0/gallery/lines_bars_and_markers/linestyles.html
     MPL2SEDML_LINESTYLE_MAPPING = {
-        
+
         "": LineType.NONE,
         "-": LineType.SOLID,
         "solid": LineType.SOLID,
@@ -1117,6 +1117,8 @@ class Plot(BasePlotObject):
         self,
         xid: str,
         yid: str,
+        xid_sd=None,
+        xid_se=None,
         yid_sd=None,
         yid_se=None,
         count: Union[int, str] = None,
@@ -1169,6 +1171,22 @@ class Plot(BasePlotObject):
         if 'markeredgecolor' not in kwargs:
             kwargs["markeredgecolor"] = "black"
 
+        # xerr data
+        xerr = None
+        xerr_label = ""
+        if xid_sd and xid_se:
+            logger.warning("'xid_sd' and 'xid_se' set, using 'xid_sd'.")
+        if xid_sd:
+            if xid_sd.endswith("se"):
+                logger.warning("SD error column ends with 'se', check names.")
+            xerr_label = "±SD"
+            xerr = Data(xid_sd, dataset=dataset, task=task)
+        elif xid_se:
+            if xid_se.endswith("sd"):
+                logger.warning("SE error column ends with 'sd', check names.")
+            xerr_label = "±SE"
+            xerr = Data(xid_se, dataset=dataset, task=task)
+
         # yerr data
         yerr = None
         yerr_label = ""
@@ -1213,7 +1231,7 @@ class Plot(BasePlotObject):
         self.curve(
             x=Data(xid, dataset=dataset, task=task),
             y=Data(yid, dataset=dataset, task=task),
-            xerr=None,
+            xerr=xerr,
             yerr=yerr,
             label=label,
             type=type,
