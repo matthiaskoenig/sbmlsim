@@ -866,7 +866,7 @@ class SEDMLParser:
         self.name: str = name
 
         # unit registry to handle units throughout the simulation
-        self.ureg: UnitRegistry = UnitRegistry()
+        self.ureg: UnitRegistry = UnitRegistry(on_redefinition='ignore')
 
         # Reference to the experiment class
         self.exp_class: Type[SimulationExperiment]

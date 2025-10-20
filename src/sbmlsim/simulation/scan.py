@@ -144,7 +144,7 @@ if __name__ == "__main__":
     from sbmlsim.simulation import Timecourse, TimecourseSim
     from sbmlsim.units import UnitRegistry
 
-    ureg = UnitRegistry()
+    ureg = UnitRegistry(on_redefinition='ignore')
     Q_ = ureg.Quantity
     uinfo = UnitsInformation(
         udict={k: "dimensionless" for k in ["X", "[X]", "n", "Y"]}, ureg=ureg

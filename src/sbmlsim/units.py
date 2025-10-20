@@ -284,7 +284,7 @@ class UnitsInformation(MutableMapping):
     @staticmethod
     def _default_ureg() -> pint.UnitRegistry:
         """Get default unit registry."""
-        ureg = pint.UnitRegistry()
+        ureg = pint.UnitRegistry(on_redefinition='ignore')
         ureg.define("none = count")
         ureg.define("item = count")
         ureg.define("percent = 0.01*count")
@@ -445,6 +445,6 @@ if __name__ == "__main__":
     from sbmlsim.test import MODEL_DEMO, MODEL_GLCWB
 
     model_path = MODEL_DEMO
-    ureg = UnitRegistry()
+    ureg = UnitRegistry(on_redefinition='ignore')
     uinfo = UnitsInformation.from_sbml(model_path, ureg=ureg)
     console.log(uinfo.udict)
