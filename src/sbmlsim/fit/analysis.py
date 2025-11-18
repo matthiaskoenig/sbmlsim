@@ -916,10 +916,11 @@ class OptimizationAnalysis:
 
         for run in range(self.optres.size):
             df_run = self.optres.df_traces[self.optres.df_traces.run == run]
-            # prepare plot for traces
-            ax.plot(
-                len(df_run) - 1, df_run.cost.max(skipna=True), "o", color="black", alpha=0.8
-            )
+            # plot final optimization cost of trace
+            if len(df_run.cost.values > 0):
+                ax.plot(
+                    len(df_run) - 1, df_run.cost.values[-1], "o", color="black", alpha=0.8
+                )
 
         ax.set_xlabel("Optimization step")
         ax.set_ylabel("Cost")
