@@ -1,7 +1,6 @@
 # Release information
 
 ## make release
-* update ontologies via `ontology.update_ontology_files()`
 * update release notes in `release-notes` with commit
 * make sure all tests run (`tox -p`)
 * check formating and linting (`ruff check`)
@@ -12,7 +11,7 @@
 * test installation in virtualenv from pypi
 ```bash
 uv venv --python 3.13
-uv pip install pymetadata
+uv pip install sbmlsim
 ```
 
 # Install dev dependencies:
