@@ -1,9 +1,87 @@
 [build-system]
-requires = [
-  'setuptools>=40.6.0',
-  'wheel'
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "sbmlsim"
+dynamic = ["version"]
+description = "sbmlsim are utilities for the simulation of SBML models."
+readme = "README.md"
+requires-python = ">=3.12"
+authors = [
+	{name="Matthias König", email="konigmatt@googlemail.com"}
+]
+maintainers = [
+	{name="Matthias König", email="konigmatt@googlemail.com"}
+]
+classifiers = [
+	"Development Status :: 4 - Beta",
+	"Intended Audience :: Science/Research",
+	"License :: OSI Approved :: MIT License",
+	"Operating System :: OS Independent",
+	"Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+	"Programming Language :: Python :: Implementation :: CPython",
+	"Topic :: Scientific/Engineering",
+	"Topic :: Scientific/Engineering :: Bio-Informatics",
+]
+keywords = [
+	"modeling",
+	"standardization",
+	"COMBINE",
+    "SBML",
+]
+dependencies = [
+    "sbmlutils>=0.8.7",
+    "numpy>=2.2",
+    "libroadrunner>=2.8.0",
+    "scipy>=1.12.0",
+    "pint>=0.23",
+
+    # from sbmlutils (no version pin)
+    "python-libsbml",
+    "rich",
+    "pint",
+    "pandas",
+    "Jinja2",
+    "scipy",
+    "sympy",
+    "matplotlib",
+
+    # dependencies
+    "petab>=0.5.0",
+    "pydantic>=2.10.6",
+    "tables>=3.10.2",
+    "xarray>=2025.1.2",
+    "bottleneck>=1.4.2",
+    "psutil>=6.1.1",
+    "setproctitle>=1.3.4",
+    "plotly>=6.0.0",
+    "altair>=5.5.0",
+    "seaborn>=0.13.2",
+    "xmltodict>=0.14.2",
+    "pyDOE>=0.3.8",
+    "python-libsedml>=2.0.32",
+    "python-libnuml>=1.1.6",
 ]
 
-[tool.black]
-line-length = 88
-python-version = ['py38']
+[project.optional-dependencies]
+dev = [
+    "bump-my-version>=1.2.4",
+	"ruff>=0.14.0",
+	"pre-commit>=4.0.1",
+	"mypy>=1.18.2",
+    "tox>=4.31.0",
+    "pytest>=8.4.2",
+    "pytest-cov>=7.0.0",
+]
+
+[project_urls]
+Homepage = "https://github.com/matthiaskoenig/sbmlsim"
+Repository = "https://github.com/matthiaskoenig/sbmlsim"
+Documentation = "https://github.com/matthiaskoenig/sbmlsim"
+Issues = "https://github.com/matthiaskoenig/sbmlsim/issues"
+Download = "https://pypi.org/project/sbmlsim"
+
+[tool.hatch.version]
+path = "./src/sbmlsim/__init__.py"

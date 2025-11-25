@@ -16,9 +16,9 @@ data1 = pd.DataFrame({"x": x, "y": y, "z": z})
 
 
 def f_interpolation(method: str, tmp_path: Path) -> None:
-    """Helper function to test the various interpolations."""
+    """Helper function to tests the various interpolations."""
 
-    tmp_f = tmp_path / "test.xml"
+    tmp_f = tmp_path / "tests.xml"
     interpolation = ip.Interpolation(data=data1, method=method)
     interpolation.write_sbml_to_file(tmp_f)
     assert tmp_f.exists()

@@ -49,7 +49,7 @@ def filtered_fit_experiments(
         mappings = []
         for fm_key, fit_mapping in experiment.fit_mappings().items():
 
-            # test all the filters
+            # tests all the filters
             accept = True
             for filter in filters:
                 if not filter(fm_key, fit_mapping):

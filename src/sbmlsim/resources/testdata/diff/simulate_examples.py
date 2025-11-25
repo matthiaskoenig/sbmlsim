@@ -35,7 +35,7 @@ def run_simulations(create_files=True):
 
 
 def run_comparisons(create_files=True):
-    """Run comparison of test simulations.
+    """Run comparison of tests simulations.
 
     :return:
     """
