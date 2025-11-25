@@ -49,6 +49,7 @@ dependencies = [
     "matplotlib",
 
     # dependencies
+    "SAlib>=1.5.2",
     "petab>=0.5.0",
     "pydantic>=2.12.4",
     "tables>=3.10.2",
