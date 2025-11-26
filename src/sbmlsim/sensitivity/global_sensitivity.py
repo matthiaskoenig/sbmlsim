@@ -2,7 +2,7 @@
 
 TODO:
 - [ ] multi-output model
-- [ ] calculation of pharmacokinetic parameters
+- [ ] calculation of pharmacokinetic parameters (improved PK calculation)
 - [ ] get all parameter ids from model
 - [ ] get defined parameter bounds from model (annotate information);
 - [ ] storage of results
@@ -34,7 +34,7 @@ from dataclasses import dataclass
 from pkdb_analysis.pk.pharmacokinetics import TimecoursePK
 from sbmlutils.console import console
 from roadrunner._roadrunner import NamedArray
-
+from pint import UnitRegistry
 
 @dataclass
 class SBMLSensitivityAnalysis:
@@ -70,18 +70,87 @@ class SBMLSensitivityAnalysis:
             **changes
         }
         for key, value in all_changes.items():
-            print(f"{key=} {value=}")
+            # print(f"{key=} {value=}")
             self.rr.setValue(key, value)
 
         s: NamedArray = self.rr.simulate(start=0, end=5 * 24 * 60)
         console.print(type(s))
-        self.plot_simulation(s)
+        # self.plot_simulation(s)
 
         y: dict[str, float] = self.losartan_pkpd_parameters(s)
+        return y
+
+
+
+    def losartan_pkpd_parameters(self, s: NamedArray) -> dict[str, float]:
+        """This calculation is highly model dependent.
+
+        This requires units.
+        """
+
+        y: dict[str, float] = {}
+
+        # pharmacokinetics
+        ureg = UnitRegistry()
+        Q_ = ureg.Quantity
+
+        # losartan
+        time = Q_(s["time"], "min")
+        tcpk = TimecoursePK(
+            time=time,
+            concentration=Q_(s["[Cve_los]"], "mM"),
+            substance="losartan",
+            ureg=ureg,
+            dose=Q_(10, "mg"),
+        )
+        pk_dict = tcpk.pk.to_dict()
+        # console.print(pk_dict)
+        for pk_key in [
+            "aucinf",
+            "cmax",
+            "thalf",
+            "kel",
+        ]:
+            y[f"[Cve_los]_{pk_key}"] = pk_dict[pk_key]
+
+        # E3174, L158
+        for sid in ["[Cve_e3174]", "[Cve_l158]"]:
+            tcpk = TimecoursePK(
+                time=time,
+                concentration=Q_(s[sid], "mM"),
+                substance="losartan",
+                ureg=ureg,
+                dose=None,
+            )
+            pk_dict = tcpk.pk.to_dict()
+            # console.print(pk_dict)
+            for pk_key in [
+                "aucinf",
+                "cmax",
+                "thalf",
+                "kel",
+            ]:
+                y[f"{sid}_{pk_key}"] = pk_dict[pk_key]
+
+        # pharmacodynamics
+        for sid, f in [
+            ("[ang1]", "max"),
+            ("[ang2]", "max"),
+            ("[ren]", "max"),
+            ("[ald]", "min"),
+            ("SBP", "min"),
+            ("DBP", "min"),
+            ("MAP", "min"),
+        ]:
+            # minimal and maximal value of readout
+            if f == "max":
+                y[f"{sid}_max"] = np.min(s[sid])
+            elif f == "min":
+                y[f"{sid}_min"] = np.max(s[sid])
 
         return y
 
-    def plot_simulation(self, s: NamedArray) -> None:
+    def _plot_simulation(self, s: NamedArray) -> None:
 
         # plotting
         from matplotlib import pyplot as plt
@@ -94,87 +163,57 @@ class SBMLSensitivityAnalysis:
         )
         plt.show()
 
-    def losartan_pkpd_parameters(self, s: NamedArray) -> dict[str, float]:
-        """This calculation is highly model dependent.
 
-        This requires units.
-        """
-        # pharmacokinetics
+    def wrapped_run_simulation(self, X, func=losartan_simulation):
+        # We transpose to obtain each column (the model factors) as separate variables
+        changes: dict[str, float] = {}
+        for k, key in enumerate(self.names):
+            changes[key] = X[k]
 
-        tcpk = TimecoursePK(
-            time=s["time"],
-            concentration=s["[Cve_los]"],
-            substance="losartan",
-            ureg=None,
-            dose=10,
-        )
-        pk_dict = tcpk.pk.to_dict()
-        console.print(pk_dict)
+        # Then call the original model
+        return list(func(self, changes).values())
 
 
-        # pharmacodynamics
-        y: dict[str, float] = {}
-        for sid in [
-            "[ang1]",
-            "[ang2]",
-            "[ren]",
-            "[ald]",
-            "SBP",
-            "DBP",
-            "MAP",
-        ]:
-            # minimal and maximal value of readout
-            y[f"{sid}_min"] = np.max(s[sid])
-            y[f"{sid}_max"] = np.min(s[sid])
+    def calculate_sensitivity(self):
 
-        return y
+        y = self.losartan_simulation(changes={})
+        self.outputs = list(y.keys())
+        self.names = ['BW']
 
+        # Defining the model inputs
+        sp = ProblemSpec({
+            'num_vars': len(self.names),
+            'names': self.names,
+            'bounds': [
+                [50, 150],
+                # [0.003, 0.005]
+            ],
+            "outputs": self.outputs,
+        })
 
-
-
-    # def wrapped_run_simulation(X, func=run_simulation):
-    #     # We transpose to obtain each column (the model factors) as separate variables
-    #     BW, FVKi = X.T
-    #
-    #     # Then call the original model
-    #     return func(BW, FVKi)
+        # Generate samples
+        samples = saltelli.sample(sp, 1024)
+        sp.set_samples(samples)
 
 
-    # def calculate_sensitivity():
-    #
-    #     # Defining the model inputs
-    #     sp = ProblemSpec({
-    #         'num_vars': 2,
-    #         'names': ['BW', 'FVki'],
-    #         'bounds': [
-    #             [50, 150],
-    #             [0.003, 0.005]
-    #         ],
-    #         "outputs": ["Y"],
-    #     })
-    #
-    #     # Generate samples
-    #     samples = saltelli.sample(sp, 1024)
-    #     sp.set_samples(samples)
-    #
-    #
-    #     # Evaluate model
-    #     sp.evaluate(wrapped_run_simulation)
-    #
-    #     # Y = np.zeros([param_values.shape[0]])
-    #     # for k, X in enumerate(param_values):
-    #     #     print(k)
-    #     #     Y[k] = wrapped_run_simulation(X)
-    #
-    #
-    #     # Perform Analysis
-    #     Si = sp.analyze(SALib.analyze.sobol)
-    #     print(Si['S1'])
-    #     print(Si['ST'])
-    #     total_Si, first_Si, second_Si = Si.to_df()
-    #     Si.plot()
-    #     from matplotlib import pyplot as plt
-    #     plt.show()
+        # Evaluate model
+        # sp.evaluate(wrapped_run_simulation)
+
+        Y = np.zeros((samples.shape[0], len(self.outputs)))
+        for k, X in enumerate(samples):
+             print(k)
+             Y[k, :] = self.wrapped_run_simulation(X)
+        sp.set_results(Y)
+
+
+        # Perform Analysis
+        Si = sp.analyze(SALib.analyze.sobol)
+        print(Si['S1'])
+        print(Si['ST'])
+        total_Si, first_Si, second_Si = Si.to_df()
+        Si.plot()
+        from matplotlib import pyplot as plt
+        plt.show()
 
 
 
@@ -203,4 +242,4 @@ if __name__ == '__main__':
 
     # y = run_simulation()
     # print(y)
-    # calculate_sensitivity()
+    sa.calculate_sensitivity()
