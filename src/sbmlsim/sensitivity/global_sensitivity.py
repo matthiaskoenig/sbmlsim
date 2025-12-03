@@ -106,6 +106,7 @@ class SensitivityAnalysis:
     """
 
     sensitivity_simulation: SensitivitySimulation
+    parameters: list[str]
 
     def __init__(self, sensitivity_simulation: SensitivitySimulation,
                  parameters: list[str]) -> None:
@@ -161,6 +162,7 @@ class SensitivityAnalysis:
 
         raise NotImplemented
 
+
 @dataclass
 class LocalSensitivityAnalysis(SensitivityAnalysis):
     """Local sensitivity analysis based on local differences."""
@@ -171,6 +173,7 @@ class LocalSensitivityAnalysis(SensitivityAnalysis):
     def __init__(self, sensitivity_simulation: SensitivitySimulation,
                  parameters: list[str], difference: float = 0.1):
 
+        super().__init__(sensitivity_simulation, parameters)
         self.sensitivity = np.zeros(shape=(self.num_parameters, self.num_outputs))
         self.difference = difference
         self.samples = self.create_samples()
@@ -184,8 +187,19 @@ class LocalSensitivityAnalysis(SensitivityAnalysis):
 
     def create_samples(self) -> np.ndarray:
 
-        for key, value in p_ref.items():
+        # Calculate the parameter values in the reference state
+        parameter_values = self.sensitivity_simulation.parameter_values(
+            changes=self.sensitivity_simulation.changes_simulation
+        )
+
+        # (num_samples x num_outputs)
+        samples = np.empty(shape=(self.num_samples, self.num_parameters))
+
+        for key, value in :
             values = np.ones(shape=(2 * num_pars,)) * value.magnitude
+
+
+
             # change parameters in correct position
             values[index] = value.magnitude * (1.0 + difference)
             values[index + num_pars] = value.magnitude * (1.0 - difference)
