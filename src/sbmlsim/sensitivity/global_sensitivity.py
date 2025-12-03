@@ -123,7 +123,7 @@ class SensitivityAnalysis:
         self.samples: Optional[np.ndarray] = None
         # outputs for given samples; shape: (num_samples x num_outputs)
         self.results: Optional[np.ndarray] = None
-        # sensitivity matrix; shape: (num_parameters x num_outputs)
+        # sensitivity matrix; shape: (num_parameters x num_outputs); could be multiple
         self.sensitivity_results: Optional[np.ndarray] = None
 
     @property
@@ -174,6 +174,8 @@ class LocalSensitivityAnalysis(SensitivityAnalysis):
         self.sensitivity = np.zeros(shape=(self.num_parameters, self.num_outputs))
         self.difference = difference
         self.samples = self.create_samples()
+
+        # TODO: flag left-sided, right-sided, both-sided
 
     @property
     def num_samples(self) -> int:
@@ -227,46 +229,46 @@ class GlobalSobolSensitivityAnalysis:
     #     return list(func(self, changes).values())
 
 
-    # def calculate_sensitivity(self):
-    #
-    #     y = self.losartan_simulation(changes={})
-    #     self.outputs = list(y.keys())
-    #     self.names = ['BW']
-    #
-    #     # Defining the model inputs
-    #     sp = ProblemSpec({
-    #         'num_vars': len(self.names),
-    #         'names': self.names,
-    #         'bounds': [
-    #             [50, 150],
-    #             # [0.003, 0.005]
-    #         ],
-    #         "outputs": self.outputs,
-    #     })
-    #
-    #     # Generate samples
-    #     samples = saltelli.sample(sp, 1024)
-    #     sp.set_samples(samples)
-    #
-    #
-    #     # Evaluate model
-    #     # sp.evaluate(wrapped_run_simulation)
-    #
-    #     Y = np.zeros((samples.shape[0], len(self.outputs)))
-    #     for k, X in enumerate(samples):
-    #          print(k)
-    #          Y[k, :] = self.wrapped_run_simulation(X)
-    #     sp.set_results(Y)
-    #
-    #
-    #     # Perform Analysis
-    #     Si = sp.analyze(SALib.analyze.sobol)
-    #     print(Si['S1'])
-    #     print(Si['ST'])
-    #     total_Si, first_Si, second_Si = Si.to_df()
-    #     Si.plot()
-    #     from matplotlib import pyplot as plt
-    #     plt.show()
+    def calculate_sensitivity(self):
+
+        y = self.losartan_simulation(changes={})
+        self.outputs = list(y.keys())
+        self.names = ['BW']
+
+        # Defining the model inputs
+        sp = ProblemSpec({
+            'num_vars': len(self.names),
+            'names': self.names,
+            'bounds': [
+                [50, 150],
+                # [0.003, 0.005]
+            ],
+            "outputs": self.outputs,
+        })
+
+        # Generate samples
+        samples = saltelli.sample(sp, 1024)
+        sp.set_samples(samples)
+
+
+        # Evaluate model
+        # sp.evaluate(wrapped_run_simulation)
+
+        Y = np.zeros((samples.shape[0], len(self.outputs)))
+        for k, X in enumerate(samples):
+             print(k)
+             Y[k, :] = self.wrapped_run_simulation(X)
+        sp.set_results(Y)
+
+
+        # Perform Analysis
+        Si = sp.analyze(SALib.analyze.sobol)
+        print(Si['S1'])
+        print(Si['ST'])
+        total_Si, first_Si, second_Si = Si.to_df()
+        Si.plot()
+        from matplotlib import pyplot as plt
+        plt.show()
 
 
 
