@@ -20,6 +20,7 @@ TODO:
 
 """
 from typing import Optional
+import xarray as xr
 
 import SALib
 from SALib import ProblemSpec
@@ -79,9 +80,11 @@ class SensitivitySimulation:
     def parameter_values(self, parameters: list[str], changes: dict[str, float]) -> dict[str, float]:
         """Get the parameter values for a given set of changes."""
         self.apply_changes(changes, reset_all=True)
+
         values: dict[str, float] = {}
         for pid in parameters:
             values[pid] = self.rr.getValue(pid)
+
         return values
 
 
@@ -121,11 +124,11 @@ class SensitivityAnalysis:
         # outputs to calculate sensitivity on; shape: (num_outputs,)
         self.outputs: list[str] = sensitivity_simulation.outputs
         # parameter samples for sensitivity; shape: (num_samples x num_parameters)
-        self.samples: Optional[np.ndarray] = None
+        self.samples: Optional[xr.DataArray] = None
         # outputs for given samples; shape: (num_samples x num_outputs)
-        self.results: Optional[np.ndarray] = None
+        self.results: Optional[xr.DataArray] = None
         # sensitivity matrix; shape: (num_parameters x num_outputs); could be multiple
-        self.sensitivity_results: Optional[np.ndarray] = None
+        self.sensitivity_results: Optional[xr.DataArray] = None
 
     @property
     def num_parameters(self) -> int:
@@ -152,7 +155,7 @@ class SensitivityAnalysis:
         self.samples = np.zeros(shape=(self.num_samples, self.num_parameters))
         self.outputs = np.zeros(shape=(self.num_samples, self.num_outputs))
 
-        for k in range(self.num_samples()):
+        for k in range(self.num_samples):
             changes = dict(zip(self.parameters, self.samples[k, :]))
             outputs = self.sensitivity_simulation.simulate(changes=changes)
             self.outputs[k, :] = outputs
@@ -185,26 +188,35 @@ class LocalSensitivityAnalysis(SensitivityAnalysis):
         """Number of parameter samples to simulate."""
         return 2 * self.num_parameters
 
-    def create_samples(self) -> np.ndarray:
+    def create_samples(self) -> None:
 
         # Calculate the parameter values in the reference state
-        parameter_values = self.sensitivity_simulation.parameter_values(
+        parameter_values: dict[str, float] = self.sensitivity_simulation.parameter_values(
+            parameters=self.parameters,
             changes=self.sensitivity_simulation.changes_simulation
         )
 
         # (num_samples x num_outputs)
-        samples = np.empty(shape=(self.num_samples, self.num_parameters))
+        num_samples = 2*self.num_parameters
+        samples = np.empty(shape=(num_samples, self.num_parameters))
+        samples = xr.DataArray(
+            np.full((num_samples, self.num_parameters), np.nan),
+            dims=["sample", "parameter"],
+            coords={"sample": range(num_samples), "parameter": self.parameters},
+            name="samples"
+        )
 
-        for key, value in :
-            values = np.ones(shape=(2 * num_pars,)) * value.magnitude
+        reference_values = np.array(list(parameter_values.values()))
+        for kp, pid in enumerate(parameter_values):
+            value = parameter_values[pid]
 
+            # right sided changes
+            samples[2*kp, :] = reference_values
+            samples[2*kp, kp] = value * (1.0 + self.difference)
+            samples[2 * kp + 1 , :] = reference_values
+            samples[2 * kp + 1, :] = value * (1.0 - self.difference)
 
-
-            # change parameters in correct position
-            values[index] = value.magnitude * (1.0 + difference)
-            values[index + num_pars] = value.magnitude * (1.0 - difference)
-            changes[key] = Q_(values, value.units)
-            index += 1
+        self.samples = samples
 
     def calculate_sensitivity(self):
 
@@ -213,6 +225,117 @@ class LocalSensitivityAnalysis(SensitivityAnalysis):
     def plot_sensitivity(self):
 
         pass
+
+from matplotlib import pyplot as plt
+import seaborn as sns
+import numpy as np
+
+def heatmap(da: xr.DataArray, cutoff: float=0.01, annotate_values=True, transpose: bool=False):
+    """Creates heatmap of model sensitivity"""
+
+    def calculate_mask(df, cutoff=0.01):
+        """Calculates a boolean mask DataFrame for the heatmap based on cutoff."""
+        mask = np.empty(shape=df.shape, dtype="bool")
+        for index, value in np.ndenumerate(df):
+            if np.abs(value) < cutoff:
+                mask[index] = True
+            else:
+                mask[index] = False
+        return pd.DataFrame(data=mask, columns=df.COLUMNS, index=df.index)
+
+    def calculate_subset(df, cutoff=0.01):
+        """Calculates subset of data frame consisting of rows where at least
+        one value is above cutoff."""
+        return df[(df.abs() >= cutoff).any(axis=1)]
+
+
+
+    # filter rows
+    # X.drop(pk_exclude, axis=1, inplace=True)
+
+    # if cutoff > 0:
+    # X_subset = calculate_subset(X, cutoff=cutoff)
+    # X_subset_mask = calculate_mask(X_subset, cutoff)
+    da_subset = da
+
+    # yticklabels = ["{}".format(pid) for pid in X_subset.index]
+    # xticklabels = ["{}".format(pnames[pid]["label"]) for pid in X_subset.COLUMNS]
+
+    xticklabels = da.coords[da.dims[1]]
+    yticklabels = da.coords[da.dims[0]]
+
+    # plot heatmap
+    ax = sns.clustermap(
+        da_subset,
+        center=0,
+        # vmin=-0.2,
+        # vmax=0.2,
+        xticklabels=xticklabels,
+        yticklabels=yticklabels,
+        cmap="seismic",
+        cbar_pos=(0.05, 0.25, 0.03, 0.4),
+        annot=annotate_values,
+        fmt="1.2f",
+        annot_kws={"size": 13},
+        # mask=X_subset_mask,
+        col_cluster=False,
+        method="single",
+        figsize=(20, 20),
+    )
+    plt.setp(
+        ax.ax_heatmap.get_xticklabels(),
+        rotation=45,
+        horizontalalignment="right",
+        size=20,
+    )
+    plt.setp(ax.ax_heatmap.get_yticklabels(), size=20)
+    ax.ax_cbar.tick_params(labelsize=20)
+    ax.ax_row_dendrogram.set_visible(False)
+    ax.ax_col_dendrogram.set_visible(False)
+
+    # create custom legend containing yticklabels and their description
+    # handles = [t.get_text() for t in ax.ax_heatmap.get_yticklabels()]
+    # labels = [pnames[pid]["label"] for pid in handles]
+    #
+    # # FIXME: update after defining labels
+    # idx = [pnames[pid]["idx"] for pid in handles]
+    # # idx = [k for k, pid in enumerate(handles)]
+    #
+    # labels = [label for _, label in sorted(zip(idx, labels))]
+    # handles = [f"{handle}:" for _, handle in sorted(zip(idx, handles))]
+    # handles = [handle.replace("_", "\_") for handle in handles]
+
+    # mid = int(np.ceil(len(handles) / 2))
+    # legend1 = plt.legend(
+    #     handles[:mid],
+    #     labels[:mid],
+    #     handler_map={str: LegendTitle({"fontsize": 16})},
+    #     fontsize=16,
+    #     frameon=False,
+    #     bbox_to_anchor=(1.2, -0.6),
+    #     loc="upper left",
+    #     handlelength=14,
+    # )
+    # legend2 = plt.legend(
+    #     handles[mid:],
+    #     labels[mid:],
+    #     handler_map={str: LegendTitle({"fontsize": 16})},
+    #     fontsize=16,
+    #     frameon=False,
+    #     bbox_to_anchor=(13, -0.6),
+    #     loc="upper left",
+    #     handlelength=19,
+    # )
+    # plt.gca().add_artist(legend1)
+
+    # plt.savefig(
+    #     results_dir / "parameter.sensitivity_cluster.png", dpi=300, bbox_inches="tight"
+    # )
+    # plt.savefig(results_dir / "parameter.sensitivity_cluster.svg", bbox_inches="tight")
+
+    plt.show()
+
+
 
 
 @dataclass
