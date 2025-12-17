@@ -152,13 +152,16 @@ class SensitivityAnalysis:
 
     def simulate_samples(self) -> None:
         """Simulate all samples."""
-        self.samples = np.zeros(shape=(self.num_samples, self.num_parameters))
+        from rich.progress import track
+
         self.outputs = np.zeros(shape=(self.num_samples, self.num_outputs))
 
-        for k in range(self.num_samples):
-            changes = dict(zip(self.parameters, self.samples[k, :]))
+        for k in track(range(self.num_samples), description="Simulating samples"):
+            # console.print(f"{k}/{self.num_samples}")
+            changes = dict(zip(self.parameters, self.samples[k, :].values))
+            # console.print(changes)
             outputs = self.sensitivity_simulation.simulate(changes=changes)
-            self.outputs[k, :] = outputs
+            self.outputs[k, :] = list(outputs.values())
 
     def calculate_sensitivity(self):
         """Calculate the sensitivity matrix."""
@@ -214,7 +217,7 @@ class LocalSensitivityAnalysis(SensitivityAnalysis):
             samples[2*kp, :] = reference_values
             samples[2*kp, kp] = value * (1.0 + self.difference)
             samples[2 * kp + 1 , :] = reference_values
-            samples[2 * kp + 1, :] = value * (1.0 - self.difference)
+            samples[2 * kp + 1, kp] = value * (1.0 - self.difference)
 
         self.samples = samples
 
