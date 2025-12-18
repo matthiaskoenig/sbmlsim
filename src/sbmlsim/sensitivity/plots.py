@@ -1,4 +1,8 @@
-"""Plotting functionality for sensitivity analysis."""
+"""Plotting functionality for sensitivity analysis.
+
+FIXME: use patchcollection
+https://stackoverflow.com/questions/59381273/heatmap-with-circles-indicating-size-of-population
+"""
 import xarray as xr
 
 
