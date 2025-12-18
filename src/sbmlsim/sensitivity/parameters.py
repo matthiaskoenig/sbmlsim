@@ -41,11 +41,9 @@ def parameters_for_sensitivity_analysis(
     def parameter_from_sbase(sbase: libsbml.SBase) -> SensitivityParameter:
         """Create parameter from SBase for sensitivity analysis."""
         uid = sbase.getId()
-        console.print(uid)
         name = sbase.getName() if sbase.isSetName() else uid
         udef: libsbml.UnitDefinition = sbase.getDerivedUnitDefinition()
         unit: str = libsbml.UnitDefinition.printUnits(ud=udef, compact=True)
-        console.print(unit)
 
         # FIXME: get bound information from SBML model or table
         parameter = SensitivityParameter(uid=uid, name=name, unit=unit)
@@ -96,11 +94,13 @@ def parameters_for_sensitivity_analysis(
     # remove excluded ids
     parameters_filtered: list[SensitivityParameter] = []
     parameters_excluded: list[SensitivityParameter] = []
-    for p in parameters:
-        if sid in exclude_ids:
-            parameters_excluded.append(p)
+
+    sp: SensitivityParameter
+    for sp in parameters:
+        if sp.uid in exclude_ids:
+            parameters_excluded.append(sp)
         else:
-            parameters_filtered.append(p)
+            parameters_filtered.append(sp)
 
     console.print(f"Excluded parameters: {parameters_excluded}")
 

@@ -33,13 +33,8 @@ def heatmap(df: pd.DataFrame, cutoff: float=0.01, annotate_values=True, transpos
         df_subset = calculate_subset(df, cutoff=cutoff)
         df_subset_mask = calculate_mask(df_subset, cutoff)
 
-
-
-    # yticklabels = ["{}".format(pid) for pid in X_subset.index]
-    # xticklabels = ["{}".format(pnames[pid]["label"]) for pid in X_subset.COLUMNS]
-
-    xticklabels = df.columns
-    yticklabels = df.index
+    yticklabels = [pid for pid in df_subset.index]
+    xticklabels = [pid for pid in df_subset.columns]
 
     # plot heatmap
     ax = sns.clustermap(
