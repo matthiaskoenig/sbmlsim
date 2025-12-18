@@ -34,7 +34,7 @@ from SALib import ProblemSpec
 from SALib.sample import saltelli
 from SALib.analyze import sobol
 from SALib.test_functions import Ishigami
-
+from rich.progress import track
 import numpy as np
 import roadrunner
 from pathlib import Path
@@ -147,7 +147,8 @@ class SensitivityAnalysis:
         # outputs for given samples; shape: (num_samples x num_outputs)
         self.results: Optional[xr.DataArray] = None
         # sensitivity matrix; shape: (num_parameters x num_outputs); could be multiple
-        self.sensitivity_results: Optional[xr.DataArray] = None
+        self.sensitivity: Optional[xr.DataArray] = None
+
 
     @property
     def num_parameters(self) -> int:
@@ -171,22 +172,34 @@ class SensitivityAnalysis:
 
     def simulate_samples(self) -> None:
         """Simulate all samples."""
-        from rich.progress import track
 
-        self.outputs = np.zeros(shape=(self.num_samples, self.num_outputs))
+        # num_samples x num_outputs
+        self.results = xr.DataArray(
+            np.full((self.num_samples, self.num_outputs), np.nan),
+            dims=["sample", "output"],
+            coords={"sample": range(self.num_samples), "output": self.outputs},
+            name="results"
+        )
 
+        pids = [p.uid for p in self.parameters]
         for k in track(range(self.num_samples), description="Simulating samples"):
             # console.print(f"{k}/{self.num_samples}")
-            changes = dict(zip(self.parameters, self.samples[k, :].values))
+            changes = dict(zip(pids, self.samples[k, :].values))
             # console.print(changes)
             outputs = self.sensitivity_simulation.simulate(changes=changes)
-            self.outputs[k, :] = list(outputs.values())
+            self.results[k, :] = list(outputs.values())
 
 
     def calculate_sensitivity(self):
         """Calculate the sensitivity matrix."""
 
-        raise NotImplemented
+        self.sensitivity = xr.DataArray(
+            np.full((self.num_parameters, self.num_outputs), np.nan),
+            dims=["parameter", "output"],
+            coords={"parameter": [p.uid for p in self.parameters],
+                    "output": self.outputs},
+            name="sensitivity"
+        )
 
 
 @dataclass
@@ -209,7 +222,7 @@ class LocalSensitivityAnalysis(SensitivityAnalysis):
     @property
     def num_samples(self) -> int:
         """Number of parameter samples to simulate."""
-        return 2 * self.num_parameters
+        return 2 * self.num_parameters + 1
 
     def create_samples(self) -> None:
 
@@ -220,8 +233,7 @@ class LocalSensitivityAnalysis(SensitivityAnalysis):
         )
 
         # (num_samples x num_outputs)
-        num_samples = 2*self.num_parameters
-        samples = np.empty(shape=(num_samples, self.num_parameters))
+        num_samples = 2 * self.num_parameters + 1
         samples = xr.DataArray(
             np.full((num_samples, self.num_parameters), np.nan),
             dims=["sample", "parameter"],
@@ -235,19 +247,44 @@ class LocalSensitivityAnalysis(SensitivityAnalysis):
 
             # right sided changes
             samples[2*kp, :] = reference_values
-            samples[2*kp, kp] = value * (1.0 + self.difference)
+            samples[2*kp, kp] = value * (1.0 + self.difference)  # up
             samples[2 * kp + 1 , :] = reference_values
-            samples[2 * kp + 1, kp] = value * (1.0 - self.difference)
+            samples[2 * kp + 1, kp] = value * (1.0 - self.difference) # down
+
+        # reference values
+        samples[-1, :] = reference_values # reference
 
         self.samples = samples
 
     def calculate_sensitivity(self):
+        """Calculate the two-sided local sensitivity matrix."""
 
-        pass
+        # num_parameters x num_outputs
+        super().calculate_sensitivity()
+
+        for kp, p in enumerate(self.parameters):
+            pid = self.parameters[kp].uid
+            for ko, oid in enumerate(self.outputs):
+                # num_samples x num_outputs
+                value_ref = self.results[-1, ko]
+                value_up = self.results[2*kp, ko]
+                value_down = self.results[2 * kp + 1, ko]
+
+                # midpoint method, two-sided sensitivity
+                self.sensitivity[kp, ko] = (value_up - value_down) / (2.0 * value_ref)
+
 
     def plot_sensitivity(self):
+        from sbmlsim.sensitivity.plots import heatmap
+        import pandas as pd
 
-        pass
+        df = pd.DataFrame(
+            self.sensitivity.values,
+            columns=self.sensitivity.coords["output"],
+            index=self.sensitivity.coords["parameter"]
+        )
+        console.print(df)
+        heatmap(df, cutoff=0.01)
 
 
 

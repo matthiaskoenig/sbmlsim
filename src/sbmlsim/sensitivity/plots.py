@@ -5,8 +5,9 @@ import xarray as xr
 from matplotlib import pyplot as plt
 import seaborn as sns
 import numpy as np
+import pandas as pd
 
-def heatmap(da: xr.DataArray, cutoff: float=0.01, annotate_values=True, transpose: bool=False):
+def heatmap(df: pd.DataFrame, cutoff: float=0.01, annotate_values=True, transpose: bool=False):
     """Creates heatmap of model sensitivity"""
 
     def calculate_mask(df, cutoff=0.01):
@@ -17,7 +18,7 @@ def heatmap(da: xr.DataArray, cutoff: float=0.01, annotate_values=True, transpos
                 mask[index] = True
             else:
                 mask[index] = False
-        return pd.DataFrame(data=mask, columns=df.COLUMNS, index=df.index)
+        return pd.DataFrame(data=mask, columns=df.columns, index=df.index)
 
     def calculate_subset(df, cutoff=0.01):
         """Calculates subset of data frame consisting of rows where at least
@@ -25,27 +26,27 @@ def heatmap(da: xr.DataArray, cutoff: float=0.01, annotate_values=True, transpos
         return df[(df.abs() >= cutoff).any(axis=1)]
 
 
-
     # filter rows
     # X.drop(pk_exclude, axis=1, inplace=True)
 
-    # if cutoff > 0:
-    # X_subset = calculate_subset(X, cutoff=cutoff)
-    # X_subset_mask = calculate_mask(X_subset, cutoff)
-    da_subset = da
+    if cutoff > 0:
+        df_subset = calculate_subset(df, cutoff=cutoff)
+        df_subset_mask = calculate_mask(df_subset, cutoff)
+
+
 
     # yticklabels = ["{}".format(pid) for pid in X_subset.index]
     # xticklabels = ["{}".format(pnames[pid]["label"]) for pid in X_subset.COLUMNS]
 
-    xticklabels = da.coords[da.dims[1]]
-    yticklabels = da.coords[da.dims[0]]
+    xticklabels = df.columns
+    yticklabels = df.index
 
     # plot heatmap
     ax = sns.clustermap(
-        da_subset,
+        df_subset,
         center=0,
-        # vmin=-0.2,
-        # vmax=0.2,
+        vmin=-0.2,
+        vmax=0.2,
         xticklabels=xticklabels,
         yticklabels=yticklabels,
         cmap="seismic",
@@ -53,7 +54,7 @@ def heatmap(da: xr.DataArray, cutoff: float=0.01, annotate_values=True, transpos
         annot=annotate_values,
         fmt="1.2f",
         annot_kws={"size": 13},
-        # mask=X_subset_mask,
+        mask=df_subset_mask,
         col_cluster=False,
         method="single",
         figsize=(20, 20),
@@ -109,4 +110,4 @@ def heatmap(da: xr.DataArray, cutoff: float=0.01, annotate_values=True, transpos
     # )
     # plt.savefig(results_dir / "parameter.sensitivity_cluster.svg", bbox_inches="tight")
 
-    plt.show()
+    # plt.show()
