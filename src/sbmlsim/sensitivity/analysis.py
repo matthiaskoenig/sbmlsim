@@ -1,22 +1,29 @@
 """Global sensitivity analysis.
 
-TODO:
-
-- [ ] get defined parameter bounds from model (annotate information);
-- [ ] storage of results simulation
+- [ ] storage of results simulation; outputs
+- [ ] local sensitivity analysis
 - [ ] storage of results sensitivity analysis
 - [ ] visualization of results (heatmap)
+- [ ] define parameter bounds for model (annotate information in SBML);
+    - [ ] bounds from fitting for fit parameters
+    - [ ] default bounds
+    - [ ] biological bounds with references
+- [ ] parameter table with bounds and units & references;
+
+- [ ] SOBOL indices Sobol Sensitivity Analysis (Sobol 2001, Saltelli 2002, Saltelli et al. 2010)
+      http://www.sciencedirect.com/science/article/pii/S0378475400002706
+      https://www.sciencedirect.com/science/article/pii/S0010465502002801
+      https://www.sciencedirect.com/science/article/pii/S0010465509003087
+
+- Report with results (typst);
+
+- [ ] parallelization ? (benchmark)
 - [ ] alternative methods:
-    - [ ] local sensitivity analysis
-    - [ ] SOBOL indices Sobol Sensitivity Analysis (Sobol 2001, Saltelli 2002, Saltelli et al. 2010)
-          http://www.sciencedirect.com/science/article/pii/S0378475400002706
-          https://www.sciencedirect.com/science/article/pii/S0010465502002801
-          https://www.sciencedirect.com/science/article/pii/S0010465509003087
     - [ ] FAST
     - [ ] Morris
     - [ ] Sampling based methods (distribution)
-- [ ] report as PDF with references and description (Typst)
-- [ ] parallelization ? (benchmark)
+
+
 
 """
 from typing import Optional
@@ -36,6 +43,9 @@ from dataclasses import dataclass
 
 from sbmlutils.console import console
 from roadrunner._roadrunner import NamedArray
+
+from sbmlsim.sensitivity.parameters import SensitivityParameter
+from sbmlsim.sensitivity.outputs import SensitivityOutput
 
 
 @dataclass
@@ -70,6 +80,11 @@ class SensitivitySimulation:
         self.outputs = list(y.keys())
 
 
+    # def output_definitions(self) -> list[SensitivityOutput]:
+    #     """Definition of the sensitivity outputs."""
+    #
+    #     raise NotImplemented
+
     def simulate(self, changes: dict[str, float]) -> dict[str, float]:
         """Runs a model simulation and returns the scalar results dictionary.
 
@@ -77,13 +92,14 @@ class SensitivitySimulation:
         """
         raise NotImplemented
 
-    def parameter_values(self, parameters: list[str], changes: dict[str, float]) -> dict[str, float]:
+    def parameter_values(self, parameters: list[SensitivityParameter], changes: dict[str, float]) -> dict[str, float]:
         """Get the parameter values for a given set of changes."""
         self.apply_changes(changes, reset_all=True)
 
         values: dict[str, float] = {}
-        for pid in parameters:
-            values[pid] = self.rr.getValue(pid)
+        p: SensitivityParameter
+        for p in parameters:
+            values[p.uid] = self.rr.getValue(p.uid)
 
         return values
 
@@ -101,6 +117,7 @@ class SensitivitySimulation:
             self.rr.setValue(key, value)
 
 
+
 @dataclass
 class SensitivityAnalysis:
     """Parent class for all sensitivity analysis.
@@ -109,10 +126,11 @@ class SensitivityAnalysis:
     """
 
     sensitivity_simulation: SensitivitySimulation
-    parameters: list[str]
+    parameters: list[SensitivityParameter]
+    outputs: list[str]
 
     def __init__(self, sensitivity_simulation: SensitivitySimulation,
-                 parameters: list[str]) -> None:
+                 parameters: SensitivityParameter) -> None:
         """Create a sensitivity analysis for given parameter ids.
 
         Based on the results matrix the sensitivity is calculated.
@@ -120,9 +138,10 @@ class SensitivityAnalysis:
         self.sensitivity_simulation = sensitivity_simulation
 
         # parameters to vary; shape: (num_parameters,)
-        self.parameters: list[str] = parameters
+        self.parameters: list[SensitivityParameter] = parameters
         # outputs to calculate sensitivity on; shape: (num_outputs,)
-        self.outputs: list[str] = sensitivity_simulation.outputs
+        self.outputs: list[output] = sensitivity_simulation.outputs
+
         # parameter samples for sensitivity; shape: (num_samples x num_parameters)
         self.samples: Optional[xr.DataArray] = None
         # outputs for given samples; shape: (num_samples x num_outputs)
@@ -163,6 +182,7 @@ class SensitivityAnalysis:
             outputs = self.sensitivity_simulation.simulate(changes=changes)
             self.outputs[k, :] = list(outputs.values())
 
+
     def calculate_sensitivity(self):
         """Calculate the sensitivity matrix."""
 
@@ -177,7 +197,7 @@ class LocalSensitivityAnalysis(SensitivityAnalysis):
     sensitivity: np.ndarray = None
 
     def __init__(self, sensitivity_simulation: SensitivitySimulation,
-                 parameters: list[str], difference: float = 0.1):
+                 parameters: list[SensitivityParameter], difference: float = 0.1):
 
         super().__init__(sensitivity_simulation, parameters)
         self.sensitivity = np.zeros(shape=(self.num_parameters, self.num_outputs))
@@ -229,114 +249,8 @@ class LocalSensitivityAnalysis(SensitivityAnalysis):
 
         pass
 
-from matplotlib import pyplot as plt
-import seaborn as sns
-import numpy as np
-
-def heatmap(da: xr.DataArray, cutoff: float=0.01, annotate_values=True, transpose: bool=False):
-    """Creates heatmap of model sensitivity"""
-
-    def calculate_mask(df, cutoff=0.01):
-        """Calculates a boolean mask DataFrame for the heatmap based on cutoff."""
-        mask = np.empty(shape=df.shape, dtype="bool")
-        for index, value in np.ndenumerate(df):
-            if np.abs(value) < cutoff:
-                mask[index] = True
-            else:
-                mask[index] = False
-        return pd.DataFrame(data=mask, columns=df.COLUMNS, index=df.index)
-
-    def calculate_subset(df, cutoff=0.01):
-        """Calculates subset of data frame consisting of rows where at least
-        one value is above cutoff."""
-        return df[(df.abs() >= cutoff).any(axis=1)]
 
 
-
-    # filter rows
-    # X.drop(pk_exclude, axis=1, inplace=True)
-
-    # if cutoff > 0:
-    # X_subset = calculate_subset(X, cutoff=cutoff)
-    # X_subset_mask = calculate_mask(X_subset, cutoff)
-    da_subset = da
-
-    # yticklabels = ["{}".format(pid) for pid in X_subset.index]
-    # xticklabels = ["{}".format(pnames[pid]["label"]) for pid in X_subset.COLUMNS]
-
-    xticklabels = da.coords[da.dims[1]]
-    yticklabels = da.coords[da.dims[0]]
-
-    # plot heatmap
-    ax = sns.clustermap(
-        da_subset,
-        center=0,
-        # vmin=-0.2,
-        # vmax=0.2,
-        xticklabels=xticklabels,
-        yticklabels=yticklabels,
-        cmap="seismic",
-        cbar_pos=(0.05, 0.25, 0.03, 0.4),
-        annot=annotate_values,
-        fmt="1.2f",
-        annot_kws={"size": 13},
-        # mask=X_subset_mask,
-        col_cluster=False,
-        method="single",
-        figsize=(20, 20),
-    )
-    plt.setp(
-        ax.ax_heatmap.get_xticklabels(),
-        rotation=45,
-        horizontalalignment="right",
-        size=20,
-    )
-    plt.setp(ax.ax_heatmap.get_yticklabels(), size=20)
-    ax.ax_cbar.tick_params(labelsize=20)
-    ax.ax_row_dendrogram.set_visible(False)
-    ax.ax_col_dendrogram.set_visible(False)
-
-    # create custom legend containing yticklabels and their description
-    # handles = [t.get_text() for t in ax.ax_heatmap.get_yticklabels()]
-    # labels = [pnames[pid]["label"] for pid in handles]
-    #
-    # # FIXME: update after defining labels
-    # idx = [pnames[pid]["idx"] for pid in handles]
-    # # idx = [k for k, pid in enumerate(handles)]
-    #
-    # labels = [label for _, label in sorted(zip(idx, labels))]
-    # handles = [f"{handle}:" for _, handle in sorted(zip(idx, handles))]
-    # handles = [handle.replace("_", "\_") for handle in handles]
-
-    # mid = int(np.ceil(len(handles) / 2))
-    # legend1 = plt.legend(
-    #     handles[:mid],
-    #     labels[:mid],
-    #     handler_map={str: LegendTitle({"fontsize": 16})},
-    #     fontsize=16,
-    #     frameon=False,
-    #     bbox_to_anchor=(1.2, -0.6),
-    #     loc="upper left",
-    #     handlelength=14,
-    # )
-    # legend2 = plt.legend(
-    #     handles[mid:],
-    #     labels[mid:],
-    #     handler_map={str: LegendTitle({"fontsize": 16})},
-    #     fontsize=16,
-    #     frameon=False,
-    #     bbox_to_anchor=(13, -0.6),
-    #     loc="upper left",
-    #     handlelength=19,
-    # )
-    # plt.gca().add_artist(legend1)
-
-    # plt.savefig(
-    #     results_dir / "parameter.sensitivity_cluster.png", dpi=300, bbox_inches="tight"
-    # )
-    # plt.savefig(results_dir / "parameter.sensitivity_cluster.svg", bbox_inches="tight")
-
-    plt.show()
 
 
 
