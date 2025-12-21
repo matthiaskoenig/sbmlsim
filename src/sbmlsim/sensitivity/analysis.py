@@ -46,7 +46,7 @@ from roadrunner._roadrunner import NamedArray
 
 from sbmlsim.sensitivity.parameters import SensitivityParameter
 from sbmlsim.sensitivity.outputs import SensitivityOutput
-
+import pandas as pd
 
 @dataclass
 class SensitivitySimulation:
@@ -69,7 +69,7 @@ class SensitivitySimulation:
         self.rr: roadrunner.RoadRunner = roadrunner.RoadRunner(str(model_path))
         self.rr.selections = self.selections
         integrator: roadrunner.Integrator = self.rr.integrator
-        integrator.setSetting("variable_step_size", True)
+        # integrator.setSetting("variable_step_size", True)
         # state = rr.saveStateS()
 
         # store the simulation changes
@@ -148,6 +148,7 @@ class SensitivityAnalysis:
         self.results: Optional[xr.DataArray] = None
         # sensitivity matrix; shape: (num_parameters x num_outputs); could be multiple
         self.sensitivity: Optional[xr.DataArray] = None
+        self.sensitivity_normalized: Optional[xr.DataArray] = None
 
 
     @property
@@ -192,25 +193,22 @@ class SensitivityAnalysis:
 
     def calculate_sensitivity(self):
         """Calculate the sensitivity matrix."""
+        pass
 
-        self.sensitivity = xr.DataArray(
-            np.full((self.num_parameters, self.num_outputs), np.nan),
-            dims=["parameter", "output"],
-            coords={"parameter": [p.uid for p in self.parameters],
-                    "output": self.outputs},
-            name="sensitivity"
-        )
 
 
 @dataclass
 class LocalSensitivityAnalysis(SensitivityAnalysis):
-    """Local sensitivity analysis based on local differences."""
+    """Local sensitivity analysis based on local differences.
+
+    param difference: change for calculation of local sensitivity (0.01 = 1% change)
+    """
 
     difference: float
     sensitivity: np.ndarray = None
 
     def __init__(self, sensitivity_simulation: SensitivitySimulation,
-                 parameters: list[SensitivityParameter], difference: float = 0.1):
+                 parameters: list[SensitivityParameter], difference: float = 0.01):
 
         super().__init__(sensitivity_simulation, parameters)
         self.sensitivity = np.zeros(shape=(self.num_parameters, self.num_outputs))
@@ -260,34 +258,62 @@ class LocalSensitivityAnalysis(SensitivityAnalysis):
         """Calculate the two-sided local sensitivity matrix."""
 
         # num_parameters x num_outputs
-        super().calculate_sensitivity()
+        # empty sensitivity
+        self.sensitivity = xr.DataArray(
+            np.full((self.num_parameters, self.num_outputs), np.nan),
+            dims=["parameter", "output"],
+            coords={"parameter": [p.uid for p in self.parameters],
+                    "output": self.outputs},
+            name="sensitivity"
+        )
+        self.sensitivity_normalized = xr.DataArray(
+            np.full((self.num_parameters, self.num_outputs), np.nan),
+            dims=["parameter", "output"],
+            coords={"parameter": [p.uid for p in self.parameters],
+                    "output": self.outputs},
+            name="sensitivity"
+        )
 
         for kp, p in enumerate(self.parameters):
             pid = self.parameters[kp].uid
+            p_ref = self.samples[-1, kp]
+            p_up = self.samples[2*kp, kp]
+            p_down = self.samples[2 * kp + 1, kp]
+
             for ko, oid in enumerate(self.outputs):
                 # num_samples x num_outputs
-                value_ref = self.results[-1, ko]
-                value_up = self.results[2*kp, ko]
-                value_down = self.results[2 * kp + 1, ko]
+                q_ref = self.results[-1, ko]
+                q_up = self.results[2*kp, ko]
+                q_down = self.results[2 * kp + 1, ko]
 
-                # midpoint method, two-sided sensitivity
-                self.sensitivity[kp, ko] = (value_up - value_down) / (2.0 * value_ref)
+                # two-sided sensitivity
+                self.sensitivity[kp, ko] = (q_up - q_down) / (p_up - p_down)
+                # normalized: relative change in output per relative change in parameter
+                self.sensitivity_normalized[kp, ko] = self.sensitivity[kp, ko] * p_ref/q_ref
 
-
-    def plot_sensitivity(self):
-        from sbmlsim.sensitivity.plots import heatmap
-        import pandas as pd
-
-        df = pd.DataFrame(
-            self.sensitivity.values,
+    @property
+    def sensitivity_df(self) -> pd.DataFrame:
+        """Convert sensitivity information to dataframe."""
+        return pd.DataFrame(
+            self.sensitivity_normalized.values,
             columns=self.sensitivity.coords["output"],
             index=self.sensitivity.coords["parameter"]
         )
+
+    def plot_sensitivity(self):
+        df = self.sensitivity_df
+        self.plot_sensitivity_df(df)
+
+    @staticmethod
+    def plot_sensitivity_df(df: pd.DataFrame, cutoff=0.1, cluster_rows: bool = True):
+        from sbmlsim.sensitivity.plots import heatmap
         console.print(df)
-        heatmap(df, cutoff=0.01)
 
+        # TODO: labels of parameters
+        # TODO: labels of outputs
+        # TODO: better position of colorbar
 
-
+        heatmap(df, cutoff=cutoff, cluster_rows=False)
 
 
 

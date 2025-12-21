@@ -11,7 +11,14 @@ import seaborn as sns
 import numpy as np
 import pandas as pd
 
-def heatmap(df: pd.DataFrame, cutoff: float=0.01, annotate_values=True, transpose: bool=False):
+def heatmap(
+    df: pd.DataFrame,
+    cutoff: float=0.01,
+    annotate_values=True,
+    cluster_rows: bool = True, # cluster parameters
+    cluster_cols: bool = False, # cluster outputs
+    transpose: bool=False
+):
     """Creates heatmap of model sensitivity"""
 
     def calculate_mask(df, cutoff=0.01):
@@ -24,7 +31,7 @@ def heatmap(df: pd.DataFrame, cutoff: float=0.01, annotate_values=True, transpos
                 mask[index] = False
         return pd.DataFrame(data=mask, columns=df.columns, index=df.index)
 
-    def calculate_subset(df, cutoff=0.01):
+    def calculate_subset(df, cutoff=0.01) -> pd.DataFrame:
         """Calculates subset of data frame consisting of rows where at least
         one value is above cutoff."""
         return df[(df.abs() >= cutoff).any(axis=1)]
@@ -40,23 +47,35 @@ def heatmap(df: pd.DataFrame, cutoff: float=0.01, annotate_values=True, transpos
     yticklabels = [pid for pid in df_subset.index]
     xticklabels = [pid for pid in df_subset.columns]
 
+    n_outputs = df_subset.shape[1]
+    n_parameters = df_subset.shape[0]
+    figsize = (7, int(n_parameters / n_outputs * 7)/2)
+
+    colorbar_range = 2.0
+
     # plot heatmap
     ax = sns.clustermap(
         df_subset,
         center=0,
-        vmin=-0.2,
-        vmax=0.2,
+        vmin=-colorbar_range,
+        vmax=colorbar_range,
         xticklabels=xticklabels,
         yticklabels=yticklabels,
         cmap="seismic",
-        cbar_pos=(0.05, 0.25, 0.03, 0.4),
+        # cbar_pos=(0.0, 0.0, 0.6, 0.05), #  (left, bottom, width, height),
+        cbar_pos=(0.0, 0.4, 0.03, 0.2),  # (left, bottom, width, height),
+        cbar_kws={
+            "orientation": "vertical",
+            "label": "sensitivity"
+        },
         annot=annotate_values,
         fmt="1.2f",
-        annot_kws={"size": 13},
+        annot_kws={"size": 11},
         mask=df_subset_mask,
         col_cluster=False,
+        row_cluster=True,
         method="single",
-        figsize=(20, 20),
+        figsize=figsize,
     )
     plt.setp(
         ax.ax_heatmap.get_xticklabels(),

@@ -8,6 +8,7 @@ import numpy as np
 from sbmlutils.console import console
 from sbmlutils.factory import ValueWithUnit
 
+import roadrunner
 
 
 @dataclass
@@ -27,6 +28,7 @@ def parameters_for_sensitivity_analysis(
     sbml_path: Path,
     exclude_ids: Optional[set[str]] = None,
     exclude_na: bool = True,
+    exclude_zero: bool = True,
 ) -> list[SensitivityParameter]:
     """Retrieve parameters from model for the sensitivity analysis.
 
@@ -50,7 +52,7 @@ def parameters_for_sensitivity_analysis(
 
         return parameter
 
-
+    r: roadrunner.RoadRunner = roadrunner.RoadRunner(str(sbml_path))
     doc: libsbml.SBMLDocument = libsbml.readSBMLFromFile(str(sbml_path))
     sbml_model: libsbml.Model = doc.getModel()
 
@@ -64,6 +66,8 @@ def parameters_for_sensitivity_analysis(
         if p.getConstant() is True:
             if exclude_na and np.isnan(p.getValue()):
                 exclude_ids.add(sid)
+            if exclude_zero and np.isclose(r.getValue(sid), 0.0):
+                exclude_ids.add(sid)
             parameters.append(parameter_from_sbase(p))
 
     # constant compartments
@@ -72,6 +76,8 @@ def parameters_for_sensitivity_analysis(
         sid = c.getId()
         if c.getConstant() is True:
             if exclude_na and np.isnan(c.getSize()):
+                exclude_ids.add(sid)
+            if exclude_zero and np.isclose(r.getValue(sid), 0.0):
                 exclude_ids.add(sid)
             parameters.append(parameter_from_sbase(c))
 
@@ -86,6 +92,11 @@ def parameters_for_sensitivity_analysis(
             elif s.isSetInitialAmount() and np.isnan(s.getInitialAmount()):
                 exclude_ids.add(sid)
             elif s.isSetInitialConcentration() and np.isnan(s.getInitialConcentration()):
+                exclude_ids.add(sid)
+        if exclude_zero:
+            if s.isSetInitialAmount() and np.isclose(s.getInitialAmount(), 0.0):
+                exclude_ids.add(sid)
+            elif s.isSetInitialConcentration() and np.isclose(s.getInitialConcentration(), 0.0):
                 exclude_ids.add(sid)
 
         if s.getConstant() is True or s.getBoundaryCondition() is True:
