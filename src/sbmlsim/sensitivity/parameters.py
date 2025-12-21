@@ -24,6 +24,8 @@ class SensitivityParameter:
         return hash(self.uid)
 
 
+
+
 def parameters_for_sensitivity_analysis(
     sbml_path: Path,
     exclude_ids: Optional[set[str]] = None,
@@ -113,7 +115,7 @@ def parameters_for_sensitivity_analysis(
         else:
             parameters_filtered.append(sp)
 
-    console.print(f"Excluded parameters: {parameters_excluded}")
+    console.print(f"Excluded parameters: {[sp.uid for sp in parameters_excluded]}")
 
     return parameters_filtered
 
@@ -128,5 +130,4 @@ if __name__ == "__main__":
         }
     )
 
-    console.print("finished")
     console.print(parameters)

@@ -49,6 +49,16 @@ from sbmlsim.sensitivity.outputs import SensitivityOutput
 import pandas as pd
 
 @dataclass
+class SensitivityOutput:
+    """Output for SensitivityAnalysis"""
+    uid: str
+    name: str
+    unit: Optional[str] = None
+
+    def __hash__(self):
+        return hash(self.uid)
+
+@dataclass
 class SensitivitySimulation:
     """Base class for sensitivity calculation.
 
@@ -60,10 +70,10 @@ class SensitivitySimulation:
     model_path: Path
     selections: list[str]
     rr: roadrunner.RoadRunner = None
-    outputs: list[str] = None
+    outputs: list[SensitivityOutput] = None
     changes_simulation: dict[str, float] = None
 
-    def __init__(self, model_path: Path, selections: list[str], changes_simulation: dict[str, float]):
+    def __init__(self, model_path: Path, selections: list[str], changes_simulation: dict[str, float], outputs: list[SensitivityOutput]):
         self.model_path = model_path
         self.selections = selections
         self.rr: roadrunner.RoadRunner = roadrunner.RoadRunner(str(model_path))
@@ -74,10 +84,15 @@ class SensitivitySimulation:
 
         # store the simulation changes
         self.changes_simulation = changes_simulation
+        self.outputs: list[SensitivityOutput] = outputs
 
-        # get the outputs from the simulation
+        # validate the outputs from the simulation
         y = self.simulate(changes={})
-        self.outputs = list(y.keys())
+        outputs_dict = {q.uid for q in self.outputs}
+        for key in y:
+            if key not in outputs_dict:
+                raise ValueError(f"Key '{key}' missing in outputs dictionary: '{outputs_dict}")
+
 
 
     # def output_definitions(self) -> list[SensitivityOutput]:
@@ -118,16 +133,12 @@ class SensitivitySimulation:
 
 
 
-@dataclass
+
 class SensitivityAnalysis:
     """Parent class for all sensitivity analysis.
 
     TODO: additional metadata for the outputs and the parameters; i.e. name, units, bounds, ....
     """
-
-    sensitivity_simulation: SensitivitySimulation
-    parameters: list[SensitivityParameter]
-    outputs: list[str]
 
     def __init__(self, sensitivity_simulation: SensitivitySimulation,
                  parameters: SensitivityParameter) -> None:
@@ -139,8 +150,11 @@ class SensitivityAnalysis:
 
         # parameters to vary; shape: (num_parameters,)
         self.parameters: list[SensitivityParameter] = parameters
+        self.parameter_ids: list[str] = [p.uid for p in self.parameters]
+
         # outputs to calculate sensitivity on; shape: (num_outputs,)
-        self.outputs: list[output] = sensitivity_simulation.outputs
+        self.outputs: list[SensitivityOutput] = sensitivity_simulation.outputs
+        self.output_ids: list[str] = [q.uid for q in self.outputs]
 
         # parameter samples for sensitivity; shape: (num_samples x num_parameters)
         self.samples: Optional[xr.DataArray] = None
@@ -235,7 +249,7 @@ class LocalSensitivityAnalysis(SensitivityAnalysis):
         samples = xr.DataArray(
             np.full((num_samples, self.num_parameters), np.nan),
             dims=["sample", "parameter"],
-            coords={"sample": range(num_samples), "parameter": self.parameters},
+            coords={"sample": range(num_samples), "parameter": [p.uid for p in self.parameters]},
             name="samples"
         )
 
@@ -262,15 +276,15 @@ class LocalSensitivityAnalysis(SensitivityAnalysis):
         self.sensitivity = xr.DataArray(
             np.full((self.num_parameters, self.num_outputs), np.nan),
             dims=["parameter", "output"],
-            coords={"parameter": [p.uid for p in self.parameters],
-                    "output": self.outputs},
+            coords={"parameter": self.parameter_ids,
+                    "output": self.output_ids},
             name="sensitivity"
         )
         self.sensitivity_normalized = xr.DataArray(
             np.full((self.num_parameters, self.num_outputs), np.nan),
             dims=["parameter", "output"],
-            coords={"parameter": [p.uid for p in self.parameters],
-                    "output": self.outputs},
+            coords={"parameter": self.parameter_ids,
+                    "output": self.output_ids},
             name="sensitivity"
         )
 
@@ -302,10 +316,19 @@ class LocalSensitivityAnalysis(SensitivityAnalysis):
 
     def plot_sensitivity(self):
         df = self.sensitivity_df
-        self.plot_sensitivity_df(df)
+        self.plot_sensitivity_df(
+            df=df,
+            parameter_labels={p.uid: p.name for p in self.parameters},
+            output_labels={q.uid: q.name for q in self.outputs},
+        )
 
     @staticmethod
-    def plot_sensitivity_df(df: pd.DataFrame, cutoff=0.1, cluster_rows: bool = True):
+    def plot_sensitivity_df(
+        df: pd.DataFrame,
+        parameter_labels: dict[str, str],
+        output_labels: dict[str, str],
+        cutoff=0.1, cluster_rows: bool = True
+    ):
         from sbmlsim.sensitivity.plots import heatmap
         console.print(df)
 
@@ -313,10 +336,13 @@ class LocalSensitivityAnalysis(SensitivityAnalysis):
         # TODO: labels of outputs
         # TODO: better position of colorbar
 
-        heatmap(df, cutoff=cutoff, cluster_rows=False)
-
-
-
+        heatmap(
+            df,
+            parameter_labels=parameter_labels,
+            output_labels=output_labels,
+            cutoff=cutoff,
+            cluster_rows=False
+        )
 
 @dataclass
 class SamplingSensitivityAnalysis(SensitivityAnalysis):

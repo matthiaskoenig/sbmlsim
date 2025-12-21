@@ -4,15 +4,19 @@ FIXME: use patchcollection
 https://stackoverflow.com/questions/59381273/heatmap-with-circles-indicating-size-of-population
 """
 import xarray as xr
-
+from typing import Optional
 
 from matplotlib import pyplot as plt
 import seaborn as sns
 import numpy as np
 import pandas as pd
+from sbmlutils.console import console
+
 
 def heatmap(
     df: pd.DataFrame,
+    parameter_labels: Optional[dict[str, str]] = None,
+    output_labels: Optional[dict[str, str]] = None,
     cutoff: float=0.01,
     annotate_values=True,
     cluster_rows: bool = True, # cluster parameters
@@ -44,12 +48,20 @@ def heatmap(
         df_subset = calculate_subset(df, cutoff=cutoff)
         df_subset_mask = calculate_mask(df_subset, cutoff)
 
+    # outputs
+    xticklabels = [qid for qid in df_subset.columns]
+    if output_labels:
+        console.print(output_labels)
+        xticklabels = [output_labels[qid] for qid in xticklabels]
+
+    # parameters
     yticklabels = [pid for pid in df_subset.index]
-    xticklabels = [pid for pid in df_subset.columns]
+    if parameter_labels:
+        yticklabels = [f"{pid}: {parameter_labels[pid]}" for pid in yticklabels]
 
     n_outputs = df_subset.shape[1]
     n_parameters = df_subset.shape[0]
-    figsize = (7, int(n_parameters / n_outputs * 7)/2)
+    figsize = (10, 15)
 
     colorbar_range = 2.0
 
@@ -66,7 +78,7 @@ def heatmap(
         cbar_pos=(0.0, 0.4, 0.03, 0.2),  # (left, bottom, width, height),
         cbar_kws={
             "orientation": "vertical",
-            "label": "sensitivity"
+            # "label": "sensitivity"
         },
         annot=annotate_values,
         fmt="1.2f",
@@ -83,8 +95,10 @@ def heatmap(
         horizontalalignment="right",
         size=20,
     )
-    plt.setp(ax.ax_heatmap.get_yticklabels(), size=20)
-    ax.ax_cbar.tick_params(labelsize=20)
+    label_fontsize=10
+    plt.setp(ax.ax_heatmap.get_yticklabels(), size=label_fontsize)
+    plt.setp(ax.ax_heatmap.get_xticklabels(), size=label_fontsize)
+    ax.ax_cbar.tick_params(labelsize=label_fontsize)
     ax.ax_row_dendrogram.set_visible(False)
     ax.ax_col_dendrogram.set_visible(False)
 
