@@ -314,12 +314,15 @@ class LocalSensitivityAnalysis(SensitivityAnalysis):
             index=self.sensitivity.coords["parameter"]
         )
 
-    def plot_sensitivity(self):
+    def plot_sensitivity(self, cutoff=0.1, cluster_rows: bool = True, title: Optional[str] = None):
         df = self.sensitivity_df
         self.plot_sensitivity_df(
             df=df,
             parameter_labels={p.uid: p.name for p in self.parameters},
             output_labels={q.uid: q.name for q in self.outputs},
+            cutoff=cutoff,
+            cluster_rows=cluster_rows,
+            title=title
         )
 
     @staticmethod
@@ -327,21 +330,19 @@ class LocalSensitivityAnalysis(SensitivityAnalysis):
         df: pd.DataFrame,
         parameter_labels: dict[str, str],
         output_labels: dict[str, str],
-        cutoff=0.1, cluster_rows: bool = True
+        cutoff=0.1, cluster_rows: bool = True,
+        title: Optional[str] = None,
     ):
         from sbmlsim.sensitivity.plots import heatmap
         console.print(df)
-
-        # TODO: labels of parameters
-        # TODO: labels of outputs
-        # TODO: better position of colorbar
 
         heatmap(
             df,
             parameter_labels=parameter_labels,
             output_labels=output_labels,
             cutoff=cutoff,
-            cluster_rows=False
+            cluster_rows=False,
+            title=title,
         )
 
 @dataclass

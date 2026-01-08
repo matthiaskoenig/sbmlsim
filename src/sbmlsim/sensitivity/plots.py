@@ -21,7 +21,8 @@ def heatmap(
     annotate_values=True,
     cluster_rows: bool = True, # cluster parameters
     cluster_cols: bool = False, # cluster outputs
-    transpose: bool=False
+    transpose: bool=False,
+    title: Optional[str] = None,
 ):
     """Creates heatmap of model sensitivity"""
 
@@ -61,12 +62,12 @@ def heatmap(
 
     n_outputs = df_subset.shape[1]
     n_parameters = df_subset.shape[0]
-    figsize = (10, 15)
+    figsize = (int(n_outputs/n_parameters*30), 15)
 
     colorbar_range = 2.0
 
     # plot heatmap
-    ax = sns.clustermap(
+    cg = sns.clustermap(
         df_subset,
         center=0,
         vmin=-colorbar_range,
@@ -90,17 +91,26 @@ def heatmap(
         figsize=figsize,
     )
     plt.setp(
-        ax.ax_heatmap.get_xticklabels(),
+        cg.ax_heatmap.get_xticklabels(),
         rotation=45,
         horizontalalignment="right",
         size=20,
     )
     label_fontsize=10
-    plt.setp(ax.ax_heatmap.get_yticklabels(), size=label_fontsize)
-    plt.setp(ax.ax_heatmap.get_xticklabels(), size=label_fontsize)
-    ax.ax_cbar.tick_params(labelsize=label_fontsize)
-    ax.ax_row_dendrogram.set_visible(False)
-    ax.ax_col_dendrogram.set_visible(False)
+    plt.setp(cg.ax_heatmap.get_yticklabels(), size=label_fontsize)
+    plt.setp(cg.ax_heatmap.get_xticklabels(), size=label_fontsize)
+    cg.ax_cbar.tick_params(labelsize=label_fontsize)
+    cg.ax_row_dendrogram.set_visible(False)
+    cg.ax_col_dendrogram.set_visible(False)
+
+    if title:
+        plt.suptitle(title)
+
+    # for label in cg.ax_heatmap.get_xticklabels():
+    #     label.set_bbox(dict(facecolor='tab:blue', edgecolor='black', alpha=0.8))
+    #
+    # for label in cg.ax_heatmap.get_yticklabels():
+    #     label.set_bbox(dict(facecolor='tab:orange', edgecolor='black', alpha=0.8))
 
     # create custom legend containing yticklabels and their description
     # handles = [t.get_text() for t in ax.ax_heatmap.get_yticklabels()]
