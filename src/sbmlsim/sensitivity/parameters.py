@@ -1,29 +1,66 @@
 """Tools and helpers to handle parameters for sensitivity analysis."""
+from __future__ import annotations
+
+from enum import Enum
 from pathlib import Path
-from typing import Optional
-from dataclasses import dataclass
+from typing import Optional, Iterable, Tuple
 
 import libsbml
 import numpy as np
 from sbmlutils.console import console
 from sbmlutils.factory import ValueWithUnit
+from pydantic import BaseModel, Field, validator, ConfigDict
+import pandas as pd
+from sbmlutils.report.units import udef_to_string
 
 import roadrunner
 
+class ParameterType(str, Enum):
+    NA = "NA"
+    FIT = "fitted"
+    SCALING = "scaling"
+    DATA = "data"
 
-@dataclass
-class SensitivityParameter:
-    """Parameter for SensitivityAnalysis"""
+
+class SensitivityParameter(BaseModel):
+    """Parameter for SensitivityAnalysis."""
+    model_config = ConfigDict(use_enum_values=True)
+
     uid: str
     name: str
+    value: float = Field(default=np.nan)
+    lower_bound: float = Field(default=np.nan)
+    upper_bound: float = Field(default=np.nan)
     unit: Optional[str] = None
-    lower_bound: float = np.nan
-    upper_bound: float = np.nan
+    type: ParameterType = ParameterType.NA
 
     def __hash__(self):
         return hash(self.uid)
 
+    @staticmethod
+    def parameters_to_df(parameters: Iterable[SensitivityParameter]) -> pd.DataFrame:
+        """Create parameter table from parameters."""
+        items = []
+        for item in parameters:
+            items.append(item.model_dump())
+        console.print(items)
+        df = pd.DataFrame(items)
+        return df
 
+    @staticmethod
+    def parameters_set_bounds(parameters: Iterable[SensitivityParameter], bounds: Iterable[tuple]) -> None:
+        """Set bounds for sensitivity analysis."""
+
+        parameters_d = {p.uid: p for p in parameters}
+
+        for (key, lb, ub, ptype) in bounds:
+            if key not in parameters_d:
+                console.print(f"unused bounds definition: {key} = [{lb}, {ub}]")
+            else:
+                p = parameters_d[key]
+                p.lower_bound = lb
+                p.upper_bound = ub
+                p.type = ptype
 
 
 def parameters_for_sensitivity_analysis(
@@ -41,22 +78,43 @@ def parameters_for_sensitivity_analysis(
     :param exclude_na: whether to exclude NA values
     :return: dict[id, name]
     """
+    r: roadrunner.RoadRunner = roadrunner.RoadRunner(str(sbml_path))
+    doc: libsbml.SBMLDocument = libsbml.readSBMLFromFile(str(sbml_path))
+    sbml_model: libsbml.Model = doc.getModel()
+
 
     def parameter_from_sbase(sbase: libsbml.SBase) -> SensitivityParameter:
         """Create parameter from SBase for sensitivity analysis."""
         uid = sbase.getId()
+
         name = sbase.getName() if sbase.isSetName() else uid
         udef: libsbml.UnitDefinition = sbase.getDerivedUnitDefinition()
         unit: str = libsbml.UnitDefinition.printUnits(ud=udef, compact=True)
+        unit_str: str = udef_to_string(udef, model=None, format="str")
+
+        # handle the species concentration
+        typecode = sbase.getTypeCode()
+        if typecode == libsbml.SpeciesType:
+            s: libsbml.Species = sbase
+            if s.getHasOnlySubstanceUnits():
+                value = r.getValue(f"[{uid}]")
+            else:
+                value = r.getValue(uid)
+        else:
+            value = r.getValue(uid)
 
         # FIXME: get bound information from SBML model or table
-        parameter = SensitivityParameter(uid=uid, name=name, unit=unit)
+        parameter = SensitivityParameter(
+            uid=uid,
+            name=name,
+            value=value,
+            unit=unit_str,
+            lower_bound=np.nan,
+            upper_bound=np.nan,
+        )
 
         return parameter
 
-    r: roadrunner.RoadRunner = roadrunner.RoadRunner(str(sbml_path))
-    doc: libsbml.SBMLDocument = libsbml.readSBMLFromFile(str(sbml_path))
-    sbml_model: libsbml.Model = doc.getModel()
 
     parameters = []
     excluded: list[SensitivityParameter] = []
