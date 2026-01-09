@@ -24,6 +24,7 @@ from SALib.analyze import sobol
 
 from sbmlsim.sensitivity.parameters import SensitivityParameter
 from sbmlsim.sensitivity.outputs import SensitivityOutput
+from sbmlsim.sensitivity.plots import heatmap
 
 
 class SensitivitySimulation:
@@ -112,9 +113,10 @@ class SensitivityAnalysis:
         self.samples: Optional[xr.DataArray] = None
         # outputs for given samples; shape: (num_samples x num_outputs)
         self.results: Optional[xr.DataArray] = None
+
+        # multiple sensitivities are stored
         # sensitivity matrix; shape: (num_parameters x num_outputs); could be multiple
-        self.sensitivity: Optional[xr.DataArray] = None
-        self.sensitivity_normalized: Optional[xr.DataArray] = None
+        self.sensitivity: dict[str, xr.DataArray] = {}
 
 
     @property
@@ -156,12 +158,19 @@ class SensitivityAnalysis:
             outputs = self.sensitivity_simulation.simulate(changes=changes)
             self.results[k, :] = list(outputs.values())
 
-
     def calculate_sensitivity(self):
-        """Calculate the sensitivity matrix."""
+        """Calculate the sensitivity matrices."""
 
         raise NotImplemented
 
+    def sensitivity_df(self, key="normalized") -> pd.DataFrame:
+        """Convert sensitivity information to dataframe."""
+
+        return pd.DataFrame(
+            self.sensitivity[key].values,
+            columns=self.sensitivity[key].coords["output"],
+            index=self.sensitivity[key].coords["parameter"]
+        )
 
 
 class LocalSensitivityAnalysis(SensitivityAnalysis):
@@ -174,7 +183,7 @@ class LocalSensitivityAnalysis(SensitivityAnalysis):
                  parameters: list[SensitivityParameter], difference: float = 0.01):
 
         super().__init__(sensitivity_simulation, parameters)
-        self.sensitivity: np.ndarray = np.zeros(shape=(self.num_parameters, self.num_outputs))
+
         self.difference: float = difference
         self.create_samples()
 
@@ -224,24 +233,19 @@ class LocalSensitivityAnalysis(SensitivityAnalysis):
         """Calculate the two-sided local sensitivity matrix."""
 
         # num_parameters x num_outputs
-        # empty sensitivity
-        self.sensitivity = xr.DataArray(
+        for key in ["raw", "normalized"]:
+            self.sensitivity[key] = xr.DataArray(
             np.full((self.num_parameters, self.num_outputs), np.nan),
             dims=["parameter", "output"],
             coords={"parameter": self.parameter_ids,
                     "output": self.output_ids},
-            name="sensitivity"
-        )
-        self.sensitivity_normalized = xr.DataArray(
-            np.full((self.num_parameters, self.num_outputs), np.nan),
-            dims=["parameter", "output"],
-            coords={"parameter": self.parameter_ids,
-                    "output": self.output_ids},
-            name="sensitivity"
+            name=key
         )
 
+        sensitivity_raw = self.sensitivity["raw"]
+        sensitivity_normalized = self.sensitivity["normalized"]
+
         for kp, p in enumerate(self.parameters):
-            pid = self.parameters[kp].uid
             p_ref = self.samples[-1, kp]
             p_up = self.samples[2*kp, kp]
             p_down = self.samples[2 * kp + 1, kp]
@@ -253,21 +257,13 @@ class LocalSensitivityAnalysis(SensitivityAnalysis):
                 q_down = self.results[2 * kp + 1, ko]
 
                 # two-sided sensitivity
-                self.sensitivity[kp, ko] = (q_up - q_down) / (p_up - p_down)
+                sensitivity_raw[kp, ko] = (q_up - q_down) / (p_up - p_down)
                 # normalized: relative change in output per relative change in parameter
-                self.sensitivity_normalized[kp, ko] = self.sensitivity[kp, ko] * p_ref/q_ref
+                sensitivity_normalized[kp, ko] = sensitivity_raw[kp, ko] * p_ref/q_ref
 
-    @property
-    def sensitivity_df(self) -> pd.DataFrame:
-        """Convert sensitivity information to dataframe."""
-        return pd.DataFrame(
-            self.sensitivity_normalized.values,
-            columns=self.sensitivity.coords["output"],
-            index=self.sensitivity.coords["parameter"]
-        )
 
     def plot_sensitivity(self, cutoff=0.1, cluster_rows: bool = True, title: Optional[str] = None):
-        df = self.sensitivity_df
+        df = self.sensitivity_df(key="normalized")
         self.plot_sensitivity_df(
             df=df,
             parameter_labels={p.uid: p.name for p in self.parameters},
@@ -285,7 +281,6 @@ class LocalSensitivityAnalysis(SensitivityAnalysis):
         cutoff=0.1, cluster_rows: bool = True,
         title: Optional[str] = None,
     ):
-        from sbmlsim.sensitivity.plots import heatmap
         console.print(df)
 
         heatmap(
@@ -310,9 +305,13 @@ class SobolSensitivityAnalysis:
 
     sensitivity_simulation: SensitivitySimulation
 
-    def __init__(self, sensitivity_simulation: SensitivitySimulation):
+    def __init__(self,
+                 sensitivity_simulation: SensitivitySimulation,
+                 parameters: list[SensitivityParameter],
+                 ):
         # assign simulation
         self.sensitivity_simulation = sensitivity_simulation
+        self.parameters = parameters
 
         self.sensitivity = np.zeros(shape=(self.num_parameters, self.num_outputs))
 
