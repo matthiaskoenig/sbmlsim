@@ -3,6 +3,8 @@
 FIXME: use patchcollection
 https://stackoverflow.com/questions/59381273/heatmap-with-circles-indicating-size-of-population
 """
+from pathlib import Path
+
 import xarray as xr
 from typing import Optional
 
@@ -26,6 +28,7 @@ def heatmap(
     vcenter: float = 0.0,
     vmin: float = -2.0,
     vmax: float = 2.0,
+    fig_path: Optional[Path] = None,
 ):
     """Creates heatmap of model sensitivity"""
 
@@ -63,12 +66,12 @@ def heatmap(
     # parameters
     yticklabels = [pid for pid in df_subset.index]
     if parameter_labels:
-        yticklabels = [f"{pid}: {parameter_labels[pid]}" for pid in yticklabels]
+        yticklabels = [parameter_labels[pid] for pid in yticklabels]
 
     n_outputs = df_subset.shape[1]
     n_parameters = df_subset.shape[0]
-    figsize = (int(n_outputs/n_parameters*15), 15)
-
+    # (width, height)
+    figsize = (15, int(n_parameters/n_outputs*15))
 
     # plot heatmap
     cg = sns.clustermap(
@@ -79,7 +82,6 @@ def heatmap(
         xticklabels=xticklabels,
         yticklabels=yticklabels,
         cmap=cmap,
-        # cbar_pos=(0.0, 0.0, 0.6, 0.05), #  (left, bottom, width, height),
         cbar_pos=(0.0, 0.4, 0.03, 0.2),  # (left, bottom, width, height),
         cbar_kws={
             "orientation": "vertical",
@@ -100,13 +102,20 @@ def heatmap(
         horizontalalignment="right",
         size=20,
     )
-    label_fontsize=13
-    plt.setp(cg.ax_heatmap.get_yticklabels(), size=label_fontsize)
-    plt.setp(cg.ax_heatmap.get_xticklabels(), size=label_fontsize)
+    label_fontsize=15
+    plt.setp(cg.ax_heatmap.get_yticklabels(), size=label_fontsize, weight="bold")
+    plt.setp(cg.ax_heatmap.get_xticklabels(), size=label_fontsize, weight="bold")
     cg.ax_cbar.tick_params(labelsize=label_fontsize)
     cg.ax_row_dendrogram.set_visible(False)
     cg.ax_col_dendrogram.set_visible(False)
 
     if title:
-        plt.suptitle(title)
+        plt.suptitle(title, fontsize=40, fontweight="bold")
 
+    if fig_path:
+        plt.savefig(fig_path, dpi=300, bbox_inches="tight")
+    plt.show()
+
+
+def sobol_barplot():
+    pass

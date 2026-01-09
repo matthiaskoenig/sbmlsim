@@ -105,7 +105,8 @@ class SensitivityAnalysis:
 
     def __init__(self,
                  sensitivity_simulation: SensitivitySimulation,
-                 parameters: list[SensitivityParameter]
+                 parameters: list[SensitivityParameter],
+                 results_path: Path,
                  ) -> None:
         """Create a sensitivity analysis for given parameter ids.
 
@@ -113,13 +114,17 @@ class SensitivityAnalysis:
         """
         self.sensitivity_simulation = sensitivity_simulation
 
+        # outputs to calculate sensitivity on; shape: (num_outputs,)
+        self.outputs: list[SensitivityOutput] = sensitivity_simulation.outputs
+        self.output_ids: list[str] = [q.uid for q in self.outputs]
+
         # parameters to vary; shape: (num_parameters,)
         self.parameters: list[SensitivityParameter] = parameters
         self.parameter_ids: list[str] = [p.uid for p in self.parameters]
 
-        # outputs to calculate sensitivity on; shape: (num_outputs,)
-        self.outputs: list[SensitivityOutput] = sensitivity_simulation.outputs
-        self.output_ids: list[str] = [q.uid for q in self.outputs]
+        # storage directory
+        self.results_path: Path = results_path
+        results_path.mkdir(parents=True, exist_ok=True)
 
         # parameter samples for sensitivity; shape: (num_samples x num_parameters)
         self.samples: Optional[xr.DataArray] = None
@@ -255,17 +260,19 @@ class SensitivityAnalysis:
         cluster_rows: bool = True,
         title: Optional[str] = None,
         cmap: str = "seismic",
+        fig_path: Optional[Path] = None,
         **kwargs
     ) -> None:
         df = self.sensitivity_df(key=key)
         heatmap(
             df=df,
-            parameter_labels={p.uid: p.name for p in self.parameters},
+            parameter_labels={p.uid: f"{p.uid}: {p.name}" for p in self.parameters},
             output_labels={q.uid: q.name for q in self.outputs},
             cutoff=cutoff,
             cluster_rows=cluster_rows,
             title=title,
             cmap=cmap,
+            fig_path=fig_path,
             **kwargs
         )
 
@@ -296,9 +303,11 @@ class LocalSensitivityAnalysis(SensitivityAnalysis):
     """
 
     def __init__(self, sensitivity_simulation: SensitivitySimulation,
-                 parameters: list[SensitivityParameter], difference: float = 0.01):
+                 parameters: list[SensitivityParameter],
+                 results_path: Path,
+                 difference: float = 0.01):
 
-        super().__init__(sensitivity_simulation, parameters)
+        super().__init__(sensitivity_simulation, parameters, results_path)
 
         self.difference: float = difference
 
@@ -345,6 +354,7 @@ class LocalSensitivityAnalysis(SensitivityAnalysis):
         samples[-1, :] = reference_values # reference
 
         self.samples = samples
+        console.print(self.samples)
 
     def calculate_sensitivity(self):
         """Calculate the two-sided local sensitivity matrix."""
@@ -395,9 +405,12 @@ class SobolSensitivityAnalysis(SensitivityAnalysis):
     def __init__(self,
                  sensitivity_simulation: SensitivitySimulation,
                  parameters: list[SensitivityParameter],
+                 N: int,
+                 results_path: Path,
                  ):
 
-        super().__init__(sensitivity_simulation, parameters)
+        super().__init__(sensitivity_simulation, parameters, results_path)
+        self.N: int = N
 
         # define the problem specification
         self.ssa_problem: ProblemSpec = ProblemSpec({
@@ -409,7 +422,7 @@ class SobolSensitivityAnalysis(SensitivityAnalysis):
         # console.print(self.ssa_problem)
 
 
-    def create_samples(self, N: int=1024):
+    def create_samples(self) -> None:
         """Create samples for sobol.
 
         Generates model inputs using Saltelli's extension of the Sobol' sequence
@@ -419,15 +432,14 @@ class SobolSensitivityAnalysis(SensitivityAnalysis):
         """
 
         # libsa samples based on definition
-        ssa_samples = saltelli.sample(self.ssa_problem, N=N, calc_second_order=True)
+        ssa_samples = saltelli.sample(self.ssa_problem, N=self.N, calc_second_order=True)
         self.ssa_problem.set_samples(ssa_samples)
 
         # (num_samples x num_outputs)
         #  total model evaluations are (2d+2) * N for d input factors
-        num_samples = (2 * self.num_parameters + 2) * N
+        num_samples = (2 * self.num_parameters + 2) * self.N
 
         self.samples = xr.DataArray(
-            # np.full((num_samples, self.num_parameters), np.nan),
             ssa_samples,
             dims=["sample", "parameter"],
             coords={"sample": range(num_samples),
@@ -436,7 +448,7 @@ class SobolSensitivityAnalysis(SensitivityAnalysis):
         )
 
 
-    def calculate_sensitivity(self):
+    def calculate_sensitivity(self) -> None:
         """Calculate the sensitivity matrices."""
 
         Y = self.results.values
@@ -465,16 +477,38 @@ class SobolSensitivityAnalysis(SensitivityAnalysis):
             Si = SALib.analyze.sobol.analyze(
                 self.ssa_problem, Yo,
                 calc_second_order=True,
-                print_to_console=True,
+                print_to_console=False,
+                n_processors=4,
             )
-            console.print("S1")
-            console.print(Si["S1"])
             for key in sensitivity_keys:
                 self.sensitivity[key][:, ko] = Si[key]
 
 
-    def plot(self):
-        Si.plot()
-        from matplotlib import pyplot as plt
-        plt.show()
+    def plot_sobol_indices(
+        self,
+        fig_path: Path,
+        ):
+        """Barplots for the Sobol indices.
+
+        """
+        parameter_labels: dict[str, str] = {p.uid: f"{p.uid}: {p.name}" for p in self.parameters}
+        output_labels: dict[str, str] = {q.uid: q.name for q in self.outputs}
+
+
+        for ko, output in enumerate(self.outputs):
+            S1 = self.sensitivity["S1"][:, ko]
+            ST = self.sensitivity["ST"][:, ko]
+            S1_conf = self.sensitivity["S1_conf"][:, ko]
+            ST_conf = self.sensitivity["ST_conf"][:, ko]
+            console.print(S1)
+            console.print(type(S1))
+
+            break
+
+
+
+
+
+
+
 
