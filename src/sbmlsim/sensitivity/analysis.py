@@ -1,64 +1,31 @@
-"""Global sensitivity analysis.
+"""Sensitivity analysis.
 
-- [ ] storage of results simulation; outputs
-- [ ] local sensitivity analysis
-- [ ] storage of results sensitivity analysis
-- [ ] visualization of results (heatmap)
-- [ ] define parameter bounds for model (annotate information in SBML);
-    - [ ] bounds from fitting for fit parameters
-    - [ ] default bounds
-    - [ ] biological bounds with references
-- [ ] parameter table with bounds and units & references;
-
-- [ ] SOBOL indices Sobol Sensitivity Analysis (Sobol 2001, Saltelli 2002, Saltelli et al. 2010)
-      http://www.sciencedirect.com/science/article/pii/S0378475400002706
-      https://www.sciencedirect.com/science/article/pii/S0010465502002801
-      https://www.sciencedirect.com/science/article/pii/S0010465509003087
-
-- Report with results (typst);
-
-- [ ] parallelization ? (benchmark)
-- [ ] alternative methods:
+TODO implementation of alternative methods:
     - [ ] FAST
     - [ ] Morris
     - [ ] Sampling based methods (distribution)
-
-
-
 """
 from typing import Optional
+from pathlib import Path
+from dataclasses import dataclass
+from rich.progress import track
+from pymetadata.console import console
+
+import numpy as np
+import pandas as pd
 import xarray as xr
+
+import roadrunner
 
 import SALib
 from SALib import ProblemSpec
 from SALib.sample import saltelli
 from SALib.analyze import sobol
-from SALib.test_functions import Ishigami
-from rich.progress import track
-import numpy as np
-import roadrunner
-from pathlib import Path
-from dataclasses import dataclass
-
-
-from sbmlutils.console import console
-from roadrunner._roadrunner import NamedArray
 
 from sbmlsim.sensitivity.parameters import SensitivityParameter
 from sbmlsim.sensitivity.outputs import SensitivityOutput
-import pandas as pd
 
-@dataclass
-class SensitivityOutput:
-    """Output for SensitivityAnalysis"""
-    uid: str
-    name: str
-    unit: Optional[str] = None
 
-    def __hash__(self):
-        return hash(self.uid)
-
-@dataclass
 class SensitivitySimulation:
     """Base class for sensitivity calculation.
 
@@ -67,23 +34,17 @@ class SensitivitySimulation:
     This function is called repeatedly during the sensitivity calculation.
     """
 
-    model_path: Path
-    selections: list[str]
-    rr: roadrunner.RoadRunner = None
-    outputs: list[SensitivityOutput] = None
-    changes_simulation: dict[str, float] = None
-
     def __init__(self, model_path: Path, selections: list[str], changes_simulation: dict[str, float], outputs: list[SensitivityOutput]):
         self.model_path = model_path
         self.selections = selections
+
         self.rr: roadrunner.RoadRunner = roadrunner.RoadRunner(str(model_path))
         self.rr.selections = self.selections
-        integrator: roadrunner.Integrator = self.rr.integrator
+        # integrator: roadrunner.Integrator = self.rr.integrator
         # integrator.setSetting("variable_step_size", True)
-        # state = rr.saveStateS()
 
         # store the simulation changes
-        self.changes_simulation = changes_simulation
+        self.changes_simulation: dict[str, float] = changes_simulation
         self.outputs: list[SensitivityOutput] = outputs
 
         # validate the outputs from the simulation
@@ -93,21 +54,23 @@ class SensitivitySimulation:
             if key not in outputs_dict:
                 raise ValueError(f"Key '{key}' missing in outputs dictionary: '{outputs_dict}")
 
-
-
-    # def output_definitions(self) -> list[SensitivityOutput]:
-    #     """Definition of the sensitivity outputs."""
-    #
-    #     raise NotImplemented
+    def apply_changes(self, changes: dict[str, float], reset_all: bool=True) -> None:
+        """Apply changes after possible reset of the model."""
+        if reset_all:
+            self.rr.resetAll()
+        for key, value in changes.items():
+            # print(f"{key=} {value=}")
+            self.rr.setValue(key, value)
 
     def simulate(self, changes: dict[str, float]) -> dict[str, float]:
-        """Runs a model simulation and returns the scalar results dictionary.
+        """Run a model simulation and return scalar results dictionary."""
 
-        This must be implemented by the subclass to work.
-        """
         raise NotImplemented
 
-    def parameter_values(self, parameters: list[SensitivityParameter], changes: dict[str, float]) -> dict[str, float]:
+    def parameter_values(self,
+                         parameters: list[SensitivityParameter],
+                         changes: dict[str, float]
+                         ) -> dict[str, float]:
         """Get the parameter values for a given set of changes."""
         self.apply_changes(changes, reset_all=True)
 
@@ -118,30 +81,19 @@ class SensitivitySimulation:
 
         return values
 
-
     def plot(self) -> None:
-        """Plots the model simulation for debugging."""
+        """Plot the model simulation."""
+
         raise NotImplemented
-
-    def apply_changes(self, changes: dict[str, float], reset_all: bool=True) -> None:
-        """Apply changes after possible reset of the model."""
-        if reset_all:
-            self.rr.resetAll()
-        for key, value in changes.items():
-            # print(f"{key=} {value=}")
-            self.rr.setValue(key, value)
-
-
 
 
 class SensitivityAnalysis:
-    """Parent class for all sensitivity analysis.
+    """Parent class for all sensitivity analysis."""
 
-    TODO: additional metadata for the outputs and the parameters; i.e. name, units, bounds, ....
-    """
-
-    def __init__(self, sensitivity_simulation: SensitivitySimulation,
-                 parameters: SensitivityParameter) -> None:
+    def __init__(self,
+                 sensitivity_simulation: SensitivitySimulation,
+                 parameters: list[SensitivityParameter]
+                 ) -> None:
         """Create a sensitivity analysis for given parameter ids.
 
         Based on the results matrix the sensitivity is calculated.
@@ -207,37 +159,37 @@ class SensitivityAnalysis:
 
     def calculate_sensitivity(self):
         """Calculate the sensitivity matrix."""
-        pass
+
+        raise NotImplemented
 
 
 
-@dataclass
 class LocalSensitivityAnalysis(SensitivityAnalysis):
     """Local sensitivity analysis based on local differences.
 
     param difference: change for calculation of local sensitivity (0.01 = 1% change)
     """
 
-    difference: float
-    sensitivity: np.ndarray = None
-
     def __init__(self, sensitivity_simulation: SensitivitySimulation,
                  parameters: list[SensitivityParameter], difference: float = 0.01):
 
         super().__init__(sensitivity_simulation, parameters)
-        self.sensitivity = np.zeros(shape=(self.num_parameters, self.num_outputs))
-        self.difference = difference
-        self.samples = self.create_samples()
-
-        # TODO: flag left-sided, right-sided, both-sided
+        self.sensitivity: np.ndarray = np.zeros(shape=(self.num_parameters, self.num_outputs))
+        self.difference: float = difference
+        self.create_samples()
 
     @property
     def num_samples(self) -> int:
         """Number of parameter samples to simulate."""
+
         return 2 * self.num_parameters + 1
 
     def create_samples(self) -> None:
+        """Create samples for the local sensitivity analysis.
 
+        This requires a reference simulation and 2 simulations per parameter
+        with increase and decrease of the respective parameter.
+        """
         # Calculate the parameter values in the reference state
         parameter_values: dict[str, float] = self.sensitivity_simulation.parameter_values(
             parameters=self.parameters,
@@ -345,16 +297,16 @@ class LocalSensitivityAnalysis(SensitivityAnalysis):
             title=title,
         )
 
-@dataclass
-class SamplingSensitivityAnalysis(SensitivityAnalysis):
-    """Sample from provided parameter distributions."""
-
-    # TODO: implement
-    pass
 
 @dataclass
-class GlobalSobolSensitivityAnalysis:
-    """Parent class for sensitivity analysis."""
+class SobolSensitivityAnalysis:
+    """Global sensitivity analysis based on Sobol method.
+
+    - [ ] SOBOL indices Sobol Sensitivity Analysis (Sobol 2001, Saltelli 2002, Saltelli et al. 2010)
+      http://www.sciencedirect.com/science/article/pii/S0378475400002706
+      https://www.sciencedirect.com/science/article/pii/S0010465502002801
+      https://www.sciencedirect.com/science/article/pii/S0010465509003087
+    """
 
     sensitivity_simulation: SensitivitySimulation
 
@@ -362,19 +314,9 @@ class GlobalSobolSensitivityAnalysis:
         # assign simulation
         self.sensitivity_simulation = sensitivity_simulation
 
+        self.sensitivity = np.zeros(shape=(self.num_parameters, self.num_outputs))
 
-    # def wrapped_run_simulation(self, X, func=losartan_simulation):
-    #     # We transpose to obtain each column (the model factors) as separate variables
-    #     changes: dict[str, float] = {}
-    #     for k, key in enumerate(self.names):
-    #         changes[key] = X[k]
-    #
-    #     # Then call the original model
-    #     return list(func(self, changes).values())
-
-
-    def calculate_sensitivity(self):
-
+        # init the problem
         y = self.losartan_simulation(changes={})
         self.outputs = list(y.keys())
         self.names = ['BW']
@@ -390,55 +332,49 @@ class GlobalSobolSensitivityAnalysis:
             "outputs": self.outputs,
         })
 
-        # Generate samples
+
+        self.samples = self.create_samples()
+
+
+
+    # def wrapped_run_simulation(self, X, func=losartan_simulation):
+    #     # We transpose to obtain each column (the model factors) as separate variables
+    #     changes: dict[str, float] = {}
+    #     for k, key in enumerate(self.names):
+    #         changes[key] = X[k]
+    #
+    #     # Then call the original model
+    #     return list(func(self, changes).values())
+
+    def create_samples(self):
+
+        # libsa samples based on definition
         samples = saltelli.sample(sp, 1024)
         sp.set_samples(samples)
 
+        # todo: transfer in standard simulation;
 
-        # Evaluate model
-        # sp.evaluate(wrapped_run_simulation)
 
+    def calculate_sensitivity(self):
+
+        # transfer results in libsa results format
         Y = np.zeros((samples.shape[0], len(self.outputs)))
         for k, X in enumerate(samples):
-             print(k)
-             Y[k, :] = self.wrapped_run_simulation(X)
+            print(k)
+            Y[k, :] = self.wrapped_run_simulation(X)
         sp.set_results(Y)
-
 
         # Perform Analysis
         Si = sp.analyze(SALib.analyze.sobol)
+
+        # Store the sensitivity matrices
         print(Si['S1'])
         print(Si['ST'])
         total_Si, first_Si, second_Si = Si.to_df()
+
+
+    def plot(self):
         Si.plot()
         from matplotlib import pyplot as plt
         plt.show()
 
-
-
-
-if __name__ == '__main__':
-    model_path = Path(__file__).parent / "models" / "losartan" / "losartan_body_flat.xml"
-
-    sa = SBMLSensitivityAnalysis(
-        model_path=model_path,
-        selections=[
-            "time",
-            "[Cve_los]",
-            "[Cve_e3174]",
-            "[Cve_l158]",
-            "[ang1]",
-            "[ang2]",
-            "[ren]",
-            "[ald]",
-            "SBP",
-            "DBP",
-            "MAP",
-        ]
-    )
-    y = sa.losartan_simulation(changes={})
-    console.print(y)
-
-    # y = run_simulation()
-    # print(y)
-    sa.calculate_sensitivity()

@@ -42,7 +42,11 @@ class SensitivityParameter(BaseModel):
         """Create parameter table from parameters."""
         items = []
         for item in parameters:
-            items.append(item.model_dump())
+            d_item = item.model_dump()
+            # better printing of type
+            d_item["type"] = d_item["type"].value
+            items.append(d_item)
+
         df = pd.DataFrame(items)
         if sort:
             df.sort_values(by=["type", "uid"], ascending=True, inplace=True, ignore_index=True)
@@ -178,5 +182,5 @@ if __name__ == "__main__":
             "Mr_los",  # molecular weight
         }
     )
+    console.print(parameters[0])
 
-    console.print(parameters)
