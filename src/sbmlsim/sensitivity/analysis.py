@@ -35,50 +35,60 @@ class SensitivitySimulation:
     This function is called repeatedly during the sensitivity calculation.
     """
 
-    def __init__(self, model_path: Path, selections: list[str], changes_simulation: dict[str, float], outputs: list[SensitivityOutput]):
+    def __init__(self, model_path: Path, selections: list[str],
+                 changes_simulation: dict[str, float],
+                 outputs: list[SensitivityOutput]):
         self.model_path = model_path
         self.selections = selections
-
-        self.rr: roadrunner.RoadRunner = roadrunner.RoadRunner(str(model_path))
-        self.rr.selections = self.selections
-        # integrator: roadrunner.Integrator = self.rr.integrator
-        # integrator.setSetting("variable_step_size", True)
+        self.changes_simulation = changes_simulation
 
         # store the simulation changes
-        self.changes_simulation: dict[str, float] = changes_simulation
         self.outputs: list[SensitivityOutput] = outputs
 
         # validate the outputs from the simulation
-        y = self.simulate(changes={})
+        rr = self.load_model(model_path=model_path, selections=self.selections)
+        y = self.simulate(r=rr, changes={})
         outputs_dict = {q.uid for q in self.outputs}
         for key in y:
             if key not in outputs_dict:
                 raise ValueError(f"Key '{key}' missing in outputs dictionary: '{outputs_dict}")
 
-    def apply_changes(self, changes: dict[str, float], reset_all: bool=True) -> None:
+
+    @staticmethod
+    def load_model(model_path: Path, selections: list[str]) -> roadrunner.RoadRunner:
+        """Load roadrunner model."""
+        rr: roadrunner.RoadRunner = roadrunner.RoadRunner(str(model_path))
+        rr.selections = selections
+        # integrator: roadrunner.Integrator = self.rr.integrator
+        # integrator.setSetting("variable_step_size", True)
+        return rr
+
+    @staticmethod
+    def apply_changes(r: roadrunner.RoadRunner, changes: dict[str, float], reset_all: bool=True) -> None:
         """Apply changes after possible reset of the model."""
         if reset_all:
-            self.rr.resetAll()
+            r.resetAll()
         for key, value in changes.items():
             # print(f"{key=} {value=}")
-            self.rr.setValue(key, value)
+            r.setValue(key, value)
 
-    def simulate(self, changes: dict[str, float]) -> dict[str, float]:
+    def simulate(self, r: roadrunner.RoadRunner, changes: dict[str, float]) -> dict[str, float]:
         """Run a model simulation and return scalar results dictionary."""
 
         raise NotImplemented
 
-    def parameter_values(self,
+    @classmethod
+    def parameter_values(cls, r: roadrunner.RoadRunner,
                          parameters: list[SensitivityParameter],
                          changes: dict[str, float]
                          ) -> dict[str, float]:
         """Get the parameter values for a given set of changes."""
-        self.apply_changes(changes, reset_all=True)
+        cls.apply_changes(r, changes, reset_all=True)
 
         values: dict[str, float] = {}
         p: SensitivityParameter
         for p in parameters:
-            values[p.uid] = self.rr.getValue(p.uid)
+            values[p.uid] = r.getValue(p.uid)
 
         return values
 
@@ -151,12 +161,19 @@ class SensitivityAnalysis:
             name="results"
         )
 
-        pids = [p.uid for p in self.parameters]
+        # load the integrators
+        r: roadrunner.RoadRunner = self.sensitivity_simulation.load_model(
+            model_path=self.sensitivity_simulation.model_path,
+            selections=self.sensitivity_simulation.selections,
+        )
+
+        # FIXME: here the parallelization must take place
         for k in track(range(self.num_samples), description="Simulating samples"):
-            # console.print(f"{k}/{self.num_samples}")
-            changes = dict(zip(pids, self.samples[k, :].values))
-            # console.print(changes)
-            outputs = self.sensitivity_simulation.simulate(changes=changes)
+            changes = dict(zip(self.parameter_ids, self.samples[k, :].values))
+            outputs = self.sensitivity_simulation.simulate(
+                r=r,
+                changes=changes
+            )
             self.results[k, :] = list(outputs.values())
 
     def calculate_sensitivity(self):
@@ -200,7 +217,9 @@ class LocalSensitivityAnalysis(SensitivityAnalysis):
         with increase and decrease of the respective parameter.
         """
         # Calculate the parameter values in the reference state
+        r = self.sensitivity_simulation.load_model(self.sensitivity_simulation.model_path, selections=self.sensitivity_simulation.selections)
         parameter_values: dict[str, float] = self.sensitivity_simulation.parameter_values(
+            r=r,
             parameters=self.parameters,
             changes=self.sensitivity_simulation.changes_simulation
         )
