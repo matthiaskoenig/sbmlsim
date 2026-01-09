@@ -176,6 +176,45 @@ class SensitivityAnalysis:
             )
             self.results[k, :] = list(outputs.values())
 
+    def simulate_samples_parallel(self) -> None:
+        """Simulate all samples in parallel."""
+        import multiprocessing
+
+        # num_samples x num_outputs
+        self.results = xr.DataArray(
+            np.full((self.num_samples, self.num_outputs), np.nan),
+            dims=["sample", "output"],
+            coords={"sample": range(self.num_samples), "output": self.outputs},
+            name="results"
+        )
+
+        n_cores = multiprocessing.cpu_count()
+
+        # load model
+        r: roadrunner.RoadRunner = self.sensitivity_simulation.load_model(
+            model_path=self.sensitivity_simulation.model_path,
+            selections=self.sensitivity_simulation.selections,
+        )
+        # this must be handled via batches
+        sa_sim = self.sensitivity_simulation
+        changes_batch = []
+        rrs = [(sa_sim, r, changes_batch) for i in range(n_cores)]
+
+        with multiprocessing.Pool(processes=n_cores) as pool:
+            results = pool.map(run_simulation, rrs)
+
+        # TODO: collect results
+        # # FIXME: here the parallelization must take place
+        # for k in track(range(self.num_samples), description="Simulating samples"):
+        #     changes = dict(zip(self.parameter_ids, self.samples[k, :].values))
+        #
+        #     outputs = self.sensitivity_simulation.simulate(
+        #         r=r,
+        #         changes=changes
+        #     )
+        #     self.results[k, :] = list(outputs.values())
+
+
     def calculate_sensitivity(self):
         """Calculate the sensitivity matrices."""
 
@@ -190,6 +229,20 @@ class SensitivityAnalysis:
             index=self.sensitivity[key].coords["parameter"]
         )
 
+
+def run_simulation(
+    params_tuple
+):
+    """Pass all required arguments as parameter tuple."""
+    # FIXME: this must run a batch of simulations
+    sensitivity_simulation, r, changes_batch = params_tuple
+
+
+    console.print("Simulate parallel")
+    return sensitivity_simulation.simulate(
+        r=r,
+        changes={}
+    )
 
 class LocalSensitivityAnalysis(SensitivityAnalysis):
     """Local sensitivity analysis based on local differences.
