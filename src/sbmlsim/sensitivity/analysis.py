@@ -132,6 +132,7 @@ class SensitivityAnalysis:
 
         raise NotImplemented
 
+    @property
     def num_samples(self) -> int:
         """Number of samples.
 
@@ -185,7 +186,6 @@ class LocalSensitivityAnalysis(SensitivityAnalysis):
         super().__init__(sensitivity_simulation, parameters)
 
         self.difference: float = difference
-        self.create_samples()
 
     @property
     def num_samples(self) -> int:
@@ -294,7 +294,7 @@ class LocalSensitivityAnalysis(SensitivityAnalysis):
 
 
 @dataclass
-class SobolSensitivityAnalysis:
+class SobolSensitivityAnalysis(SensitivityAnalysis):
     """Global sensitivity analysis based on Sobol method.
 
     - [ ] SOBOL indices Sobol Sensitivity Analysis (Sobol 2001, Saltelli 2002, Saltelli et al. 2010)
@@ -303,74 +303,95 @@ class SobolSensitivityAnalysis:
       https://www.sciencedirect.com/science/article/pii/S0010465509003087
     """
 
-    sensitivity_simulation: SensitivitySimulation
-
     def __init__(self,
                  sensitivity_simulation: SensitivitySimulation,
                  parameters: list[SensitivityParameter],
                  ):
-        # assign simulation
-        self.sensitivity_simulation = sensitivity_simulation
-        self.parameters = parameters
 
-        self.sensitivity = np.zeros(shape=(self.num_parameters, self.num_outputs))
+        super().__init__(sensitivity_simulation, parameters)
 
-        # init the problem
-        y = self.losartan_simulation(changes={})
-        self.outputs = list(y.keys())
-        self.names = ['BW']
-
-        # Defining the model inputs
-        sp = ProblemSpec({
-            'num_vars': len(self.names),
-            'names': self.names,
-            'bounds': [
-                [50, 150],
-                # [0.003, 0.005]
-            ],
-            "outputs": self.outputs,
+        # define the problem specification
+        self.ssa_problem: ProblemSpec = ProblemSpec({
+            'num_vars': self.num_parameters,
+            'names': self.parameter_ids,
+            'bounds': [ [p.lower_bound, p.upper_bound] for p in self.parameters],
+            "outputs": self.output_ids,
         })
+        # console.print(self.ssa_problem)
 
 
-        self.samples = self.create_samples()
+    def create_samples(self, N: int=1024):
+        """Create samples for sobol.
 
+        Generates model inputs using Saltelli's extension of the Sobol' sequence
 
-
-    # def wrapped_run_simulation(self, X, func=losartan_simulation):
-    #     # We transpose to obtain each column (the model factors) as separate variables
-    #     changes: dict[str, float] = {}
-    #     for k, key in enumerate(self.names):
-    #         changes[key] = X[k]
-    #
-    #     # Then call the original model
-    #     return list(func(self, changes).values())
-
-    def create_samples(self):
+        The Sobol' sequence is a popular quasi-random low-discrepancy sequence used
+        to generate uniform samples of parameter space.
+        """
 
         # libsa samples based on definition
-        samples = saltelli.sample(sp, 1024)
-        sp.set_samples(samples)
+        ssa_samples = saltelli.sample(self.ssa_problem, N=N, calc_second_order=True)
+        self.ssa_problem.set_samples(ssa_samples)
 
-        # todo: transfer in standard simulation;
+        # (num_samples x num_outputs)
+        #  total model evaluations are (2d+2) * N for d input factors
+        num_samples = (2 * self.num_parameters + 2) * N
+
+        self.samples = xr.DataArray(
+            # np.full((num_samples, self.num_parameters), np.nan),
+            ssa_samples,
+            dims=["sample", "parameter"],
+            coords={"sample": range(num_samples),
+                    "parameter": self.parameter_ids},
+            name="samples"
+        )
 
 
     def calculate_sensitivity(self):
-
         # transfer results in libsa results format
-        Y = np.zeros((samples.shape[0], len(self.outputs)))
-        for k, X in enumerate(samples):
-            print(k)
-            Y[k, :] = self.wrapped_run_simulation(X)
-        sp.set_results(Y)
+
+        Y = self.results.values
+        self.ssa_problem.set_results(Y)
 
         # Perform Analysis
-        Si = sp.analyze(SALib.analyze.sobol)
+        # Si is a Python dict-like with the keys "S1", "S2", "ST",
+        # "S1_conf", "S2_conf", and "ST_conf".
+        # The _conf keys store the corresponding confidence intervals,
+        # typically with a confidence level of 95%.
+
+        # Calculate Sobol indices for every output
+        Si_all = []
+        for ko in range(self.num_outputs):
+            Yo = Y[:, ko]
+            Si = SALib.analyze.sobol.analyze(
+                self.ssa_problem, Yo,
+                calc_second_order=True,
+                print_to_console=True,
+            )
+            Si_all.append(Si)
+
+            Si.plot()
+            from matplotlib import pyplot as plt
+            plt.show()
+
+        # Si = SALib.analyze.sobol.analyze(
+        #     self.ssa_problem, Y,
+        #     calc_second_order=True,
+        #     print_to_console=True,
+        # )
 
         # Store the sensitivity matrices
+
+        sensitivity_total = Si['ST']
+        sensitivity_first = Si['S1']
         print(Si['S1'])
         print(Si['ST'])
-        total_Si, first_Si, second_Si = Si.to_df()
 
+
+
+        Si.plot()
+        from matplotlib import pyplot as plt
+        plt.show()
 
     def plot(self):
         Si.plot()
