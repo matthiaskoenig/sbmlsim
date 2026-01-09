@@ -249,6 +249,26 @@ class SensitivityAnalysis:
             index=self.sensitivity[key].coords["parameter"]
         )
 
+    def plot_sensitivity(
+        self,
+        key: str, cutoff=0.1,
+        cluster_rows: bool = True,
+        title: Optional[str] = None,
+        cmap: str = "seismic",
+        **kwargs
+    ) -> None:
+        df = self.sensitivity_df(key=key)
+        heatmap(
+            df=df,
+            parameter_labels={p.uid: p.name for p in self.parameters},
+            output_labels={q.uid: q.name for q in self.outputs},
+            cutoff=cutoff,
+            cluster_rows=cluster_rows,
+            title=title,
+            cmap=cmap,
+            **kwargs
+        )
+
 import os
 
 def run_simulation(
@@ -256,9 +276,7 @@ def run_simulation(
 ):
     """Pass all required arguments as parameter tuple."""
     sensitivity_simulation, r, chunked_changes = params_tuple
-
     outputs = []
-
     for kc in track(range(len(chunked_changes)), description=f"Simulate samples PID={os.getpid()}"):
         changes = chunked_changes[kc]
         # console.print(f"PID={os.getpid()} | k={kc}")
@@ -269,16 +287,6 @@ def run_simulation(
         outputs.append(Y)
 
     return outputs
-
-
-
-
-
-
-
-
-
-
 
 
 class LocalSensitivityAnalysis(SensitivityAnalysis):
@@ -371,35 +379,7 @@ class LocalSensitivityAnalysis(SensitivityAnalysis):
                 sensitivity_normalized[kp, ko] = sensitivity_raw[kp, ko] * p_ref/q_ref
 
 
-    def plot_sensitivity(self, cutoff=0.1, cluster_rows: bool = True, title: Optional[str] = None):
-        df = self.sensitivity_df(key="normalized")
-        self.plot_sensitivity_df(
-            df=df,
-            parameter_labels={p.uid: p.name for p in self.parameters},
-            output_labels={q.uid: q.name for q in self.outputs},
-            cutoff=cutoff,
-            cluster_rows=cluster_rows,
-            title=title
-        )
 
-    @staticmethod
-    def plot_sensitivity_df(
-        df: pd.DataFrame,
-        parameter_labels: dict[str, str],
-        output_labels: dict[str, str],
-        cutoff=0.1, cluster_rows: bool = True,
-        title: Optional[str] = None,
-    ):
-        console.print(df)
-
-        heatmap(
-            df,
-            parameter_labels=parameter_labels,
-            output_labels=output_labels,
-            cutoff=cutoff,
-            cluster_rows=False,
-            title=title,
-        )
 
 
 @dataclass
@@ -457,10 +437,21 @@ class SobolSensitivityAnalysis(SensitivityAnalysis):
 
 
     def calculate_sensitivity(self):
-        # transfer results in libsa results format
+        """Calculate the sensitivity matrices."""
 
         Y = self.results.values
         self.ssa_problem.set_results(Y)
+
+        # num_parameters x num_outputs
+        sensitivity_keys = ["S1", "ST", "S1_conf", "ST_conf"]
+        for key in sensitivity_keys:
+            self.sensitivity[key] = xr.DataArray(
+                np.full((self.num_parameters, self.num_outputs), np.nan),
+                dims=["parameter", "output"],
+                coords={"parameter": self.parameter_ids,
+                        "output": self.output_ids},
+                name=key
+            )
 
         # Perform Analysis
         # Si is a Python dict-like with the keys "S1", "S2", "ST",
@@ -469,7 +460,6 @@ class SobolSensitivityAnalysis(SensitivityAnalysis):
         # typically with a confidence level of 95%.
 
         # Calculate Sobol indices for every output
-        Si_all = []
         for ko in range(self.num_outputs):
             Yo = Y[:, ko]
             Si = SALib.analyze.sobol.analyze(
@@ -477,30 +467,11 @@ class SobolSensitivityAnalysis(SensitivityAnalysis):
                 calc_second_order=True,
                 print_to_console=True,
             )
-            Si_all.append(Si)
+            console.print("S1")
+            console.print(Si["S1"])
+            for key in sensitivity_keys:
+                self.sensitivity[key][:, ko] = Si[key]
 
-            Si.plot()
-            from matplotlib import pyplot as plt
-            plt.show()
-
-        # Si = SALib.analyze.sobol.analyze(
-        #     self.ssa_problem, Y,
-        #     calc_second_order=True,
-        #     print_to_console=True,
-        # )
-
-        # Store the sensitivity matrices
-
-        sensitivity_total = Si['ST']
-        sensitivity_first = Si['S1']
-        print(Si['S1'])
-        print(Si['ST'])
-
-
-
-        Si.plot()
-        from matplotlib import pyplot as plt
-        plt.show()
 
     def plot(self):
         Si.plot()
