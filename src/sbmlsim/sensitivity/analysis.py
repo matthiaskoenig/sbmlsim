@@ -5,6 +5,8 @@ TODO implementation of alternative methods:
     - [ ] Morris
     - [ ] Sampling based methods (distribution)
 """
+import time
+import multiprocessing
 from typing import Optional
 from pathlib import Path
 from dataclasses import dataclass
@@ -152,6 +154,7 @@ class SensitivityAnalysis:
 
     def simulate_samples(self) -> None:
         """Simulate all samples."""
+        start = time.perf_counter()
 
         # num_samples x num_outputs
         self.results = xr.DataArray(
@@ -176,9 +179,12 @@ class SensitivityAnalysis:
             )
             self.results[k, :] = list(outputs.values())
 
+        elapsed = time.perf_counter() - start
+        console.print(f"Serial: {elapsed:.3f} s")
+
     def simulate_samples_parallel(self) -> None:
         """Simulate all samples in parallel."""
-        import multiprocessing
+        start = time.perf_counter()
 
         # num_samples x num_outputs
         self.results = xr.DataArray(
@@ -188,31 +194,45 @@ class SensitivityAnalysis:
             name="results"
         )
 
-        n_cores = multiprocessing.cpu_count()
-
         # load model
         r: roadrunner.RoadRunner = self.sensitivity_simulation.load_model(
             model_path=self.sensitivity_simulation.model_path,
             selections=self.sensitivity_simulation.selections,
         )
-        # this must be handled via batches
+
+        # number of cores
+        n_cores = multiprocessing.cpu_count()
+
+        # create chunk of samples for core
+        def split_into_chunks(items, n):
+            m = len(items)
+            k, r = divmod(m, n)
+            chunks = [
+                items[i * k + min(i, r):(i + 1) * k + min(i + 1, r)]
+                for i in range(n)
+            ]
+            chunked_samples = [
+                [dict(zip(self.parameter_ids, self.samples[k, :].values)) for k in chunk]
+                for chunk in chunks
+            ]
+            return chunks, chunked_samples
+
+        items = list(range(self.num_samples))
+        chunks, chunked_samples = split_into_chunks(items, n_cores)
+
+        # parameters for multiprocessing
         sa_sim = self.sensitivity_simulation
-        changes_batch = []
-        rrs = [(sa_sim, r, changes_batch) for i in range(n_cores)]
+        rrs = [(sa_sim, r, chunked_samples[i]) for i in range(n_cores)]
 
         with multiprocessing.Pool(processes=n_cores) as pool:
-            results = pool.map(run_simulation, rrs)
+            outputs_list: list = pool.map(run_simulation, rrs)
 
-        # TODO: collect results
-        # # FIXME: here the parallelization must take place
-        # for k in track(range(self.num_samples), description="Simulating samples"):
-        #     changes = dict(zip(self.parameter_ids, self.samples[k, :].values))
-        #
-        #     outputs = self.sensitivity_simulation.simulate(
-        #         r=r,
-        #         changes=changes
-        #     )
-        #     self.results[k, :] = list(outputs.values())
+        for kc, chunk in enumerate(chunks):
+            for kp, idx in enumerate(chunk):
+                self.results[idx, :] = list(outputs_list[kc][kp].values())
+
+        elapsed = time.perf_counter() - start
+        console.print(f"Parallel simulation: {elapsed:.3f} s")
 
 
     def calculate_sensitivity(self):
@@ -229,20 +249,37 @@ class SensitivityAnalysis:
             index=self.sensitivity[key].coords["parameter"]
         )
 
+import os
 
 def run_simulation(
     params_tuple
 ):
     """Pass all required arguments as parameter tuple."""
-    # FIXME: this must run a batch of simulations
-    sensitivity_simulation, r, changes_batch = params_tuple
+    sensitivity_simulation, r, chunked_changes = params_tuple
+
+    outputs = []
+
+    for kc in track(range(len(chunked_changes)), description=f"Simulate samples PID={os.getpid()}"):
+        changes = chunked_changes[kc]
+        # console.print(f"PID={os.getpid()} | k={kc}")
+        Y = sensitivity_simulation.simulate(
+            r=r,
+            changes=changes
+        )
+        outputs.append(Y)
+
+    return outputs
 
 
-    console.print("Simulate parallel")
-    return sensitivity_simulation.simulate(
-        r=r,
-        changes={}
-    )
+
+
+
+
+
+
+
+
+
 
 class LocalSensitivityAnalysis(SensitivityAnalysis):
     """Local sensitivity analysis based on local differences.
