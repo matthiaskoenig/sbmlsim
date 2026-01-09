@@ -38,13 +38,14 @@ class SensitivityParameter(BaseModel):
         return hash(self.uid)
 
     @staticmethod
-    def parameters_to_df(parameters: Iterable[SensitivityParameter]) -> pd.DataFrame:
+    def parameters_to_df(parameters: Iterable[SensitivityParameter], sort: bool = True) -> pd.DataFrame:
         """Create parameter table from parameters."""
         items = []
         for item in parameters:
             items.append(item.model_dump())
-        console.print(items)
         df = pd.DataFrame(items)
+        if sort:
+            df.sort_values(by=["type", "uid"], ascending=True, inplace=True, ignore_index=True)
         return df
 
     @staticmethod
@@ -81,7 +82,7 @@ def parameters_for_sensitivity_analysis(
     r: roadrunner.RoadRunner = roadrunner.RoadRunner(str(sbml_path))
     doc: libsbml.SBMLDocument = libsbml.readSBMLFromFile(str(sbml_path))
     sbml_model: libsbml.Model = doc.getModel()
-
+    parameters = []
 
     def parameter_from_sbase(sbase: libsbml.SBase) -> SensitivityParameter:
         """Create parameter from SBase for sensitivity analysis."""
@@ -89,35 +90,25 @@ def parameters_for_sensitivity_analysis(
 
         name = sbase.getName() if sbase.isSetName() else uid
         udef: libsbml.UnitDefinition = sbase.getDerivedUnitDefinition()
-        unit: str = libsbml.UnitDefinition.printUnits(ud=udef, compact=True)
-        unit_str: str = udef_to_string(udef, model=None, format="str")
+        unit: str = udef_to_string(udef, model=None, format="str")
 
         # handle the species concentration
-        typecode = sbase.getTypeCode()
-        if typecode == libsbml.SpeciesType:
-            s: libsbml.Species = sbase
-            if s.getHasOnlySubstanceUnits():
-                value = r.getValue(f"[{uid}]")
-            else:
-                value = r.getValue(uid)
-        else:
-            value = r.getValue(uid)
+        ruid = uid
+        if (sbase.getTypeCode() == libsbml.SpeciesType) and (sbase.getHasOnlySubstanceUnits()):
+            ruid = f"[{uid}]"
 
-        # FIXME: get bound information from SBML model or table
+        value = r.getValue(ruid)
+
         parameter = SensitivityParameter(
             uid=uid,
             name=name,
             value=value,
-            unit=unit_str,
+            unit=unit,
             lower_bound=np.nan,
             upper_bound=np.nan,
         )
 
         return parameter
-
-
-    parameters = []
-    excluded: list[SensitivityParameter] = []
 
     # constant parameters
     p: libsbml.Parameter
