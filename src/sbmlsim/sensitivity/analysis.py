@@ -26,7 +26,7 @@ from SALib.analyze import sobol
 
 from sbmlsim.sensitivity.parameters import SensitivityParameter
 from sbmlsim.sensitivity.outputs import SensitivityOutput
-from sbmlsim.sensitivity.plots import heatmap
+from sbmlsim.sensitivity.plots import heatmap, sobol_barplot
 
 
 class SensitivitySimulation:
@@ -487,23 +487,40 @@ class SobolSensitivityAnalysis(SensitivityAnalysis):
     def plot_sobol_indices(
         self,
         fig_path: Path,
+        **kwargs
         ):
         """Barplots for the Sobol indices.
 
         """
-        parameter_labels: dict[str, str] = {p.uid: f"{p.uid}: {p.name}" for p in self.parameters}
+        # parameter_labels: dict[str, str] = {p.uid: f"{p.uid}: {p.name}" for p in self.parameters}
+        parameter_labels: dict[str, str] = {p.uid: p.uid for p in self.parameters}
         output_labels: dict[str, str] = {q.uid: q.name for q in self.outputs}
 
+        ymax = self.sensitivity["ST"].max(dim=None)
+        ymin = self.sensitivity["S1"].min(dim=None)
+        console.print(f"{ymax=}")
 
         for ko, output in enumerate(self.outputs):
+            f_path = fig_path.parent / f"{fig_path.stem}_{output.uid}{fig_path.suffix}"
+
             S1 = self.sensitivity["S1"][:, ko]
             ST = self.sensitivity["ST"][:, ko]
             S1_conf = self.sensitivity["S1_conf"][:, ko]
             ST_conf = self.sensitivity["ST_conf"][:, ko]
             console.print(S1)
             console.print(type(S1))
+            sobol_barplot(
+                S1=S1,
+                ST=ST,
+                S1_conf=S1_conf,
+                ST_conf=ST_conf,
+                title=output_labels[output.uid],
+                fig_path=f_path,
+                parameter_labels=parameter_labels,
+                ymax=np.max([1.05, ymax]),
+                ymin=np.min([-0.05, ymin]),
+            )
 
-            break
 
 
 
