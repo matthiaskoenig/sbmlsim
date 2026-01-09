@@ -501,7 +501,7 @@ class SobolSensitivityAnalysis(SensitivityAnalysis):
         console.print(f"{ymax=}")
 
         for ko, output in enumerate(self.outputs):
-            f_path = fig_path.parent / f"{fig_path.stem}_{output.uid}{fig_path.suffix}"
+            f_path = fig_path.parent / f"{fig_path.stem}_{ko:>03}_{output.uid}{fig_path.suffix}"
 
             S1 = self.sensitivity["S1"][:, ko]
             ST = self.sensitivity["ST"][:, ko]
@@ -520,12 +520,3 @@ class SobolSensitivityAnalysis(SensitivityAnalysis):
                 ymax=np.max([1.05, ymax]),
                 ymin=np.min([-0.05, ymin]),
             )
-
-
-
-
-
-
-
-
-
