@@ -8,7 +8,6 @@ from typing import Optional, Iterable, Tuple
 import libsbml
 import numpy as np
 from sbmlutils.console import console
-from sbmlutils.factory import ValueWithUnit
 from pydantic import BaseModel, Field, validator, ConfigDict
 import pandas as pd
 from sbmlutils.report.units import udef_to_string
@@ -16,10 +15,11 @@ from sbmlutils.report.units import udef_to_string
 import roadrunner
 
 class ParameterType(str, Enum):
-    NA = "NA"
-    FIT = "fitted"
-    SCALING = "scaling"
+    """Types of model parameters."""
     DATA = "data"
+    SCALING = "scaling"
+    NA = "na"
+    FIT = "fitted"
 
 
 class SensitivityParameter(BaseModel):
@@ -33,6 +33,7 @@ class SensitivityParameter(BaseModel):
     upper_bound: float = Field(default=np.nan)
     unit: Optional[str] = None
     type: ParameterType = ParameterType.NA
+    reference: str = ""
 
     def __hash__(self):
         return hash(self.uid)
