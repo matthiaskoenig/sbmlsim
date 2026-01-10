@@ -143,7 +143,7 @@ def sobol_barplot(
            edgecolor="black", yerr=S1_conf, capsize=5)
 
 
-    ax.set_xlabel('Parameter', fontsize=label_fontsize, fontweight="bold")
+    # ax.set_xlabel('Parameter', fontsize=label_fontsize, fontweight="bold")
     ax.set_ylabel('Sobol Index', fontsize=label_fontsize, fontweight="bold")
     ax.set_ylim(bottom=ymin, top=ymax)
     ax.grid(True, axis="y")
@@ -157,4 +157,5 @@ def sobol_barplot(
     if fig_path:
         plt.savefig(fig_path, dpi=300, bbox_inches="tight")
     plt.show()
+
 

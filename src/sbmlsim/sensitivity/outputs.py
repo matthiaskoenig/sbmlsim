@@ -7,4 +7,4 @@ class SensitivityOutput:
     """Output measurement for SensitivityAnalysis."""
     uid: str
     name: str
-    # unit: Optional[str]
+    unit: Optional[str]

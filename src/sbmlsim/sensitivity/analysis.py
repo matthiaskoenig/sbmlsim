@@ -3,19 +3,18 @@
 TODO implementation of alternative methods:
     - [ ] FAST
     - [ ] Morris
-    - [ ] Sampling based methods (distribution)
 """
 import time
 import multiprocessing
-from typing import Optional
+from typing import Optional, Any
 from pathlib import Path
-from dataclasses import dataclass
 from rich.progress import track
 from pymetadata.console import console
 
 import numpy as np
 import pandas as pd
 import xarray as xr
+from scipy.stats import qmc
 
 import roadrunner
 
@@ -175,7 +174,6 @@ class SensitivityAnalysis:
             selections=self.sensitivity_simulation.selections,
         )
 
-        # FIXME: here the parallelization must take place
         for k in track(range(self.num_samples), description="Simulating samples"):
             changes = dict(zip(self.parameter_ids, self.samples[k, :].values))
             outputs = self.sensitivity_simulation.simulate(
@@ -389,10 +387,6 @@ class LocalSensitivityAnalysis(SensitivityAnalysis):
                 sensitivity_normalized[kp, ko] = sensitivity_raw[kp, ko] * p_ref/q_ref
 
 
-
-
-
-@dataclass
 class SobolSensitivityAnalysis(SensitivityAnalysis):
     """Global sensitivity analysis based on Sobol method.
 
@@ -520,3 +514,192 @@ class SobolSensitivityAnalysis(SensitivityAnalysis):
                 ymax=np.max([1.05, ymax]),
                 ymin=np.min([-0.05, ymin]),
             )
+
+class SamplingSensitivityAnalysis(SensitivityAnalysis):
+    """Sensitivity/uncertainty analysis based on sampling."""
+
+    sensitivity_keys = [
+        "mean",
+        "median",
+        "std",
+        "cv",
+        "min",
+        "q005",
+        "q095",
+        "max"
+    ]
+
+    def __init__(self,
+                 sensitivity_simulation: SensitivitySimulation,
+                 parameters: list[SensitivityParameter],
+                 N: int,
+                 results_path: Path,
+                 ):
+
+        super().__init__(sensitivity_simulation, parameters, results_path)
+        self.N: int = N
+
+
+    def create_samples(self) -> None:
+        """Create LHS samples.
+
+        Latin hypercube sampling (LHS) is a stratified sampling method used to
+        generate near‑random samples from a multidimensional distribution for Monte
+        Carlo simulations and computer experiments.
+
+        Use LHS sampling of parameters.
+        """
+        # LHS sampling (uniform distributed in bounds)
+        sampler = qmc.LatinHypercube(d=self.num_parameters)  # number of dimensions
+        u = sampler.random(n=self.N)  # shape (n, d), in [0, 1], number of samples
+
+        # Scale to parameter bounds
+        lower = np.array([p.lower_bound for p in self.parameters])
+        upper = np.array([p.upper_bound for p in self.parameters])
+        x = qmc.scale(u, lower, upper)
+
+        self.samples = xr.DataArray(
+            x,
+            dims=["sample", "parameter"],
+            coords={"sample": range(self.N),
+                    "parameter": self.parameter_ids},
+            name="samples"
+        )
+
+    def calculate_sensitivity(self) -> None:
+        """Calculate the sensitivity matrices."""
+
+        # calculate readouts
+        for key in self.sensitivity_keys:
+            self.sensitivity[key] = xr.DataArray(
+                np.full(self.num_outputs, np.nan),
+                dims=["output"],
+                coords={
+                    "output": self.output_ids},
+                name=key
+            )
+
+        for ko, oid in enumerate(self.outputs):
+            # num_samples x num_outputs
+            data = self.results.values[:, ko]
+            for key in self.sensitivity_keys:
+                if key == "mean":
+                    value = np.mean(data)
+                elif key == "median":
+                    value = np.median(data)
+                elif key == "std":
+                    value = np.std(data)
+                elif key == "cv":
+                    value = np.std(data)/np.mean(data)
+                elif key == "min":
+                    value = np.min(data)
+                elif key == "q005":
+                    value = np.quantile(data, q=0.05)
+                elif key == "q095":
+                    value = np.quantile(data, q=0.95)
+                elif key == "max":
+                    value = np.max(data)
+                else:
+                    raise KeyError(key)
+
+                self.sensitivity[key][ko] = value
+
+    def df_sampling_sensitivity(
+        self,
+        df_path: Path,
+    ):
+        # dataframe with the values
+        items = []
+        for ko, output in enumerate(self.outputs):
+            item: dict[str, Any] = {
+                "uid": output.uid,
+                "name": output.name,
+                "N": self.N,
+            }
+            for key in self.sensitivity_keys:
+                item[key] = self.sensitivity[key].values[ko]
+            item["unit"] = output.unit
+
+            items.append(item)
+
+        df = pd.DataFrame(items)
+        console.print(df)
+        if df_path:
+            df.to_csv(df_path, index=False, sep="\t")
+
+            # latex table
+            latex_path = df_path.parent / f"{df_path.stem}.tex"
+            df_latex: pd.DataFrame = df.copy()
+            df_latex.drop('uid', axis=1, inplace=True)
+            df_latex.to_latex(latex_path, index=False, float_format="{:.3g}".format)
+
+        return df
+
+
+
+    def plot_sampling_sensitivity(
+        self,
+        fig_path: Path,
+        **kwargs
+        ):
+        """Boxplots for the Sampling sensitivity."""
+
+        # width
+        figsize = (15, 15)
+        label_fontsize = 15
+        from matplotlib import pyplot as plt
+        ncols = np.ceil(np.sqrt(self.num_outputs))
+        n_empty = ncols*ncols - self.num_outputs
+        n_empty_rows = np.floor(n_empty/ncols)
+
+        nrows = ncols-n_empty_rows
+
+
+        f, axes = plt.subplots(figsize=figsize, nrows=int(nrows), ncols=int(ncols), layout="constrained")
+        for ko, ax in enumerate(axes.flat):
+            if ko > self.num_outputs-1:
+                ax.axis('off')
+            else:
+
+                output = self.outputs[ko]
+                data = self.results.values[:, ko]
+
+                # outliers for scatter
+                # Q1 = np.percentile(data, 25)
+                # Q3 = np.percentile(data, 75)
+                # IQR = Q3 - Q1
+                # lower_fence = Q1 - 1.5 * IQR
+                # upper_fence = Q3 + 1.5 * IQR
+                # data_no_outliers = data[(data > lower_fence) & (data < upper_fence)]
+                data_no_outliers = data
+
+                ax.boxplot(data, positions=[0.2],  # labels=[output.name],
+                           patch_artist=True, showfliers=False,
+                           boxprops=dict(
+                               facecolor='lightblue',
+                               alpha=0.7
+                           )
+                )
+                # ax.violinplot(data, positions=[0.8], showmeans=True,
+                #                showmedians=True,
+                #                showextrema = False
+                #               )
+                # jitter_width = 0.05  # Adjust for spacing
+                # x_jitter = np.random.normal(0.8, jitter_width, len(data_no_outliers))
+                # ax.scatter(x_jitter, data_no_outliers, alpha=0.7, s=30, color='darkgrey',
+                #                edgecolors='black'
+                # )
+
+                # ax.set_xlabel('Parameter', fontsize=label_fontsize, fontweight="bold")
+                # ax.set_ylim(bottom=0)
+                # ax.set_title(output.name, fontsize=15, fontweight="bold")
+                ax.set_ylabel(f"{output.name} [{output.unit}]", fontsize=label_fontsize, fontweight="bold")
+                ax.tick_params(axis='x', which='both', labelbottom=False)
+                # ax.grid(True, axis="y")
+                # ax.tick_params(axis='x', labelrotation=90)
+
+        # if title:
+        #     plt.suptitle(title, fontsize=20, fontweight="bold")
+        if fig_path:
+            plt.savefig(fig_path, dpi=300, bbox_inches="tight")
+        plt.show()
