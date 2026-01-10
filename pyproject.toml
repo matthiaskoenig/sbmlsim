@@ -32,10 +32,10 @@ keywords = [
     "SBML",
 ]
 dependencies = [
-    "sbmlutils>=0.9.5",
+    "sbmlutils>=0.9.6",
     "pkdb-analysis>=0.3.1",
+    "pymetadata>=0.5.10",
     # from sbmlutils (no version pin)
-    "pymetadata",
     "numpy",
     "libroadrunner",
     "python-libsbml",
