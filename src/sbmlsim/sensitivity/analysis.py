@@ -106,6 +106,7 @@ class SensitivityAnalysis:
                  sensitivity_simulation: SensitivitySimulation,
                  parameters: list[SensitivityParameter],
                  results_path: Path,
+                 seed: Optional[int]=None,
                  ) -> None:
         """Create a sensitivity analysis for given parameter ids.
 
@@ -124,6 +125,10 @@ class SensitivityAnalysis:
         # storage directory
         self.results_path: Path = results_path
         results_path.mkdir(parents=True, exist_ok=True)
+
+        # set seed
+        if seed is not None:
+            np.random.seed(seed)
 
         # parameter samples for sensitivity; shape: (num_samples x num_parameters)
         self.samples: Optional[xr.DataArray] = None
@@ -303,9 +308,10 @@ class LocalSensitivityAnalysis(SensitivityAnalysis):
     def __init__(self, sensitivity_simulation: SensitivitySimulation,
                  parameters: list[SensitivityParameter],
                  results_path: Path,
-                 difference: float = 0.01):
+                 difference: float = 0.01,
+                 **kwargs) -> None:
 
-        super().__init__(sensitivity_simulation, parameters, results_path)
+        super().__init__(sensitivity_simulation, parameters, results_path, **kwargs)
 
         self.difference: float = difference
 
@@ -399,11 +405,12 @@ class SobolSensitivityAnalysis(SensitivityAnalysis):
     def __init__(self,
                  sensitivity_simulation: SensitivitySimulation,
                  parameters: list[SensitivityParameter],
-                 N: int,
                  results_path: Path,
+                 N: int,
+                 **kwargs,
                  ):
 
-        super().__init__(sensitivity_simulation, parameters, results_path)
+        super().__init__(sensitivity_simulation, parameters, results_path, **kwargs)
         self.N: int = N
 
         # define the problem specification
@@ -532,11 +539,12 @@ class SamplingSensitivityAnalysis(SensitivityAnalysis):
     def __init__(self,
                  sensitivity_simulation: SensitivitySimulation,
                  parameters: list[SensitivityParameter],
-                 N: int,
                  results_path: Path,
+                 N: int,
+                 **kwargs,
                  ):
 
-        super().__init__(sensitivity_simulation, parameters, results_path)
+        super().__init__(sensitivity_simulation, parameters, results_path, **kwargs)
         self.N: int = N
 
 
@@ -630,8 +638,13 @@ class SamplingSensitivityAnalysis(SensitivityAnalysis):
             # latex table
             latex_path = df_path.parent / f"{df_path.stem}.tex"
             df_latex: pd.DataFrame = df.copy()
-            df_latex.drop('uid', axis=1, inplace=True)
-            df_latex.to_latex(latex_path, index=False, float_format="{:.3g}".format)
+            df_latex.drop(['uid', 'N', "min", "max", "q005", "q095"], axis=1, inplace=True)
+            latex_str = df_latex.to_latex(None, index=False, float_format="{:.3g}".format)
+            latex_str = latex_str.replace("∞", "$\infty$")
+            latex_str = latex_str.replace("*", "$\cdot$")
+
+            with open(latex_path, "w") as f:
+                f.write(latex_str)
 
         return df
 
