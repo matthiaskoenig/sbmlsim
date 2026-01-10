@@ -10,7 +10,7 @@
 * `git push`
 * test installation in virtualenv from pypi
 ```bash
-uv venv --python 3.13
+uv venv --python 3.14
 uv pip install sbmlsim
 ```
 
@@ -20,16 +20,13 @@ uv pip install sbmlsim
 uv sync
 # install dev dependencies
 uv pip install -r pyproject.toml --extra dev
-```
-
-## Setup tox testing
-See information on https://github.com/tox-dev/tox-uv
-```bash
 uv tool install tox --with tox-uv
 ```
+
+## Testing with tox
 Run single tox target
 ```bash
-tox r -e py312
+tox r -e py314
 ```
 Run all tests in parallel
 ```bash
