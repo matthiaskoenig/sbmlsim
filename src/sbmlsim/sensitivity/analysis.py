@@ -678,14 +678,37 @@ class SamplingSensitivityAnalysis(SensitivityAnalysis):
 
         df = pd.DataFrame(items)
         console.print(df)
+
+        # create compact DataFrame
+        items_compact = []
+        for ko, output in enumerate(self.outputs):
+            item: dict[str, Any] = {
+                "output": output.name,
+            }
+            for group in self.groups:
+                m = self.sensitivity[group.uid]["mean"].values[ko]
+                std = self.sensitivity[group.uid]["std"].values[ko]
+                cv = self.sensitivity[group.uid]["cv"].values[ko]
+                q005 = self.sensitivity[group.uid]["q005"].values[ko]
+                q095 = self.sensitivity[group.uid]["q095"].values[ko]
+
+                item[group.uid] = f"{m:.3g} ({cv*100:.1f})"
+            item["unit"] = output.unit
+
+            items_compact.append(item)
+
+        df_compact = pd.DataFrame(items_compact)
+        console.print(df_compact)
+
         if df_path:
             df.to_csv(df_path, index=False, sep="\t")
+            df_compact.to_csv(df_path.parent / f"{df_path.stem}_compact.tsv", index=False, sep="\t")
 
             # latex table
             latex_path = df_path.parent / f"{df_path.stem}.tex"
-            df_latex: pd.DataFrame = df.copy()
-            df_latex.drop(['gid', 'uid', 'N', "min", "max", "q005", "q095"], axis=1, inplace=True)
-            latex_str = df_latex.to_latex(None, index=False, float_format="{:.3g}".format)
+            df_latex: pd.DataFrame = df_compact.copy()
+            # df_latex.drop(['gid', 'uid', 'N', "min", "max", "q005", "q095"], axis=1, inplace=True)
+            latex_str = df_latex.to_latex(None, index=False)
             latex_str = latex_str.replace("∞", r"$\infty$")
             latex_str = latex_str.replace("*", r"$\cdot$")
 
@@ -719,8 +742,9 @@ class SamplingSensitivityAnalysis(SensitivityAnalysis):
             else:
 
                 output = self.outputs[ko]
-                data = self.results.values[:, ko]
-
+                data = [self.results[g.uid].values[:, ko] for g in self.groups]
+                colors = [g.color for g in self.groups]
+                labels = [g.uid for g in self.groups]
                 # outliers for scatter
                 # Q1 = np.percentile(data, 25)
                 # Q3 = np.percentile(data, 75)
@@ -730,13 +754,22 @@ class SamplingSensitivityAnalysis(SensitivityAnalysis):
                 # data_no_outliers = data[(data > lower_fence) & (data < upper_fence)]
                 data_no_outliers = data
 
-                ax.boxplot(data, positions=[0.2],  # labels=[output.name],
-                           patch_artist=True, showfliers=False,
-                           boxprops=dict(
-                               facecolor='lightblue',
-                               alpha=0.7
-                           )
+                bp = ax.boxplot(
+                    data,
+                    positions=range(self.num_groups),
+                    labels=labels,
+                    patch_artist=True, showfliers=False,
+                    medianprops=dict(color="black"),
+                    whiskerprops=dict(color="black"),
+                    capprops=dict(color="black"),
+                    boxprops=dict(
+                       # facecolor=colors,  #'lightblue',
+                       # alpha=0.7
+                    )
                 )
+                for box, color in zip(bp["boxes"], colors):
+                    box.set_facecolor(color)
+
                 # ax.violinplot(data, positions=[0.8], showmeans=True,
                 #                showmedians=True,
                 #                showextrema = False
@@ -751,9 +784,9 @@ class SamplingSensitivityAnalysis(SensitivityAnalysis):
                 # ax.set_ylim(bottom=0)
                 # ax.set_title(output.name, fontsize=15, fontweight="bold")
                 ax.set_ylabel(f"{output.name} [{output.unit}]", fontsize=label_fontsize, fontweight="bold")
-                ax.tick_params(axis='x', which='both', labelbottom=False)
+                # ax.tick_params(axis='x', which='both', labelbottom=False)
                 # ax.grid(True, axis="y")
-                # ax.tick_params(axis='x', labelrotation=90)
+                ax.tick_params(axis='x', labelrotation=90)
 
         # if title:
         #     plt.suptitle(title, fontsize=20, fontweight="bold")
