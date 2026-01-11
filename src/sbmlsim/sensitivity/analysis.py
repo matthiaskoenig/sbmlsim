@@ -502,6 +502,7 @@ class SobolSensitivityAnalysis(SensitivityAnalysis):
         console.print(f"{ymax=}")
 
         for ko, output in enumerate(self.outputs):
+            # f_path = fig_path.parent / f"FigS{ko+22}_{fig_path.stem}_{ko:>03}_{output.uid}{fig_path.suffix}"
             f_path = fig_path.parent / f"{fig_path.stem}_{ko:>03}_{output.uid}{fig_path.suffix}"
 
             S1 = self.sensitivity["S1"][:, ko]
@@ -640,8 +641,8 @@ class SamplingSensitivityAnalysis(SensitivityAnalysis):
             df_latex: pd.DataFrame = df.copy()
             df_latex.drop(['uid', 'N', "min", "max", "q005", "q095"], axis=1, inplace=True)
             latex_str = df_latex.to_latex(None, index=False, float_format="{:.3g}".format)
-            latex_str = latex_str.replace("∞", "$\infty$")
-            latex_str = latex_str.replace("*", "$\cdot$")
+            latex_str = latex_str.replace("∞", r"$\infty$")
+            latex_str = latex_str.replace("*", r"$\cdot$")
 
             with open(latex_path, "w") as f:
                 f.write(latex_str)
