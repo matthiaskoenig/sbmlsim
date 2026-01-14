@@ -4,6 +4,7 @@ TODO implementation of alternative methods:
     - [ ] FAST
     - [ ] Morris
 """
+import os
 import time
 import multiprocessing
 from dataclasses import dataclass
@@ -308,7 +309,7 @@ class SensitivityAnalysis:
             **kwargs
         )
 
-import os
+
 
 def run_simulation(
     params_tuple
@@ -330,6 +331,24 @@ def run_simulation(
 
 class LocalSensitivityAnalysis(SensitivityAnalysis):
     """Local sensitivity analysis based on local differences.
+
+    Each model parameter p_i is perturbed individually by ±1% relative to its
+    reference value p_{i,0}. Local sensitivities are computed using a symmetric
+    midpoint finite-difference approximation:
+
+        S(q_k, p_i) =
+            (q_k(p_i_plus) - q_k(p_i_minus)) / (p_i_plus - p_i_minus),
+
+    where:
+        p_i_plus  = p_{i,0} * (1 + 0.01)
+        p_i_minus = p_{i,0} * (1 - 0.01)
+
+    Sensitivities are normalized to obtain dimensionless measures representing
+    the relative change in model output per relative change in the parameter:
+
+        S_norm(q_k, p_i) =
+            ((q_k(p_i_plus) - q_k(p_i_minus)) / (p_i_plus - p_i_minus))
+            * (p_{i,0} / q_k(p_{i,0}))
 
     param difference: change for calculation of local sensitivity (0.01 = 1% change)
     """
@@ -454,6 +473,12 @@ class SobolSensitivityAnalysis(SensitivityAnalysis):
                  N: int,
                  **kwargs,
                  ):
+        """
+        N: length of chain (Sobol' sequence), must be power of 2, i.e. 2^m e.g. 4096
+
+        The Sobol' sequence is a popular quasi-random low-discrepancy sequence used
+        to generate uniform samples of parameter space.
+        """
 
         super().__init__(sensitivity_simulation, parameters, groups, results_path, **kwargs)
         self.N: int = N
@@ -598,6 +623,8 @@ class SamplingSensitivityAnalysis(SensitivityAnalysis):
         Latin hypercube sampling (LHS) is a stratified sampling method used to
         generate near‑random samples from a multidimensional distribution for Monte
         Carlo simulations and computer experiments.
+
+        Assuming uniform distributions within the provided bounds.
 
         Use LHS sampling of parameters.
         """
