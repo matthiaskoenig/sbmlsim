@@ -60,6 +60,7 @@ class SensitivitySimulation:
 
         # validate the outputs from the simulation
         rr = self.load_model(model_path=model_path, selections=self.selections)
+        self.init_tolerances = list(rr.integrator.getAbsoluteToleranceVector())
         y = self.simulate(r=rr, changes={})
         outputs_dict = {q.uid for q in self.outputs}
         for key in y:
@@ -81,6 +82,7 @@ class SensitivitySimulation:
         """Apply changes after possible reset of the model."""
         if reset_all:
             r.resetAll()
+
         for key, value in changes.items():
             # print(f"{key=} {value=}")
             r.setValue(key, value)
