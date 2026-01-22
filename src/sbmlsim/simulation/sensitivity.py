@@ -7,8 +7,8 @@ from typing import Dict, Iterable
 
 import libsbml
 import numpy as np
-from sbmlutils import log
-from sbmlutils.console import console
+from pymetadata import log
+from pymetadata.console import console
 
 from sbmlsim.model import RoadrunnerSBMLModel
 from sbmlsim.simulation import Dimension, ScanSim, TimecourseSim

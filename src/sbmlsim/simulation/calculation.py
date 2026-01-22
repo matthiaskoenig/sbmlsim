@@ -203,7 +203,7 @@ class FunctionalRange(Calculation):
 
 
 if __name__ == "__main__":
-    from sbmlutils.console import console
+    from pymetadata.console import console
 
     pars: List[Parameter] = [
         Parameter(sid="p1", value=10.0, unit="mM"),

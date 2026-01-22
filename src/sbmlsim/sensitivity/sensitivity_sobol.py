@@ -1,18 +1,17 @@
 from pathlib import Path
 from typing import Optional
 
-from pymetadata.console import console
-
 
 import numpy as np
 import xarray as xr
-
+from matplotlib import pyplot as plt
 
 import SALib
 from SALib import ProblemSpec
 from SALib.sample import saltelli
 from SALib.analyze import sobol
 
+from pymetadata.console import console
 from sbmlsim.sensitivity.analysis import SensitivityAnalysis, SensitivitySimulation, \
     AnalysisGroup
 from sbmlsim.sensitivity.parameters import SensitivityParameter
@@ -162,6 +161,78 @@ class SobolSensitivityAnalysis(SensitivityAnalysis):
                     ymax=np.max([1.05, ymax]),
                     ymin=np.min([-0.05, ymin]),
                 )
+
+    @staticmethod
+    def run_sensitivity_analysis(
+        results_path: Path,
+        sensitivity_simulation: SensitivitySimulation,
+        parameters: list[SensitivityParameter],
+        groups: list[AnalysisGroup],
+        N: int,
+        seed: int,
+        cache_results: bool = False,
+        cache_sensitivity: bool = False,
+    ) -> None:
+        """Sobol sensitivity analysis.
+
+        :param sensitivity_simulation: Sensitivity simulation.
+        :param parameters: Sensitivity parameters.
+        :param groups: Sensitivity groups.
+        :param N: Number of samples for sobol sensitivity analysis (power of 2, 2^x).
+        :param seed: Random seed.
+        """
+        prefix = "sobol"
+        console.rule(f"{prefix.upper()} SENSITIVITY ANALYSIS", style="blue bold", align="center")
+        if cache_sensitivity and not cache_results:
+            # sensitivity must be recalculated for new results
+            cache_sensitivity = False
+
+        sa = SobolSensitivityAnalysis(
+            sensitivity_simulation=sensitivity_simulation,
+            parameters=parameters,
+            groups=groups,
+            results_path=results_path,
+            # N=4096,
+            N=16,
+            seed=1234,
+        )
+
+        console.rule("Samples", style="white")
+        sa.create_samples()
+        console.print(sa.samples_table())
+
+        console.rule("Results", style="white")
+        sa.simulate_samples(cache_filename=f"sobol_results_N{sa.N}.pkl",
+                            cache=cache_results)
+        console.print(sa.results_table())
+
+        console.rule("Sensitivity", style="white")
+        sa.calculate_sensitivity(cache_filename=f"sobol_sensitivity_N{sa.N}.pkl",
+                                 cache=cache_sensitivity)
+
+        console.rule("Plotting", style="white")
+        # Heatmaps
+        for kg, group in enumerate(sa.groups):
+            for key in ["ST", "S1"]:
+                sa.plot_sensitivity(
+                    group_id=group.uid,
+                    sensitivity_key=key,
+                    # title=f"{key} {group.name}",
+                    cutoff=0.05,
+                    cluster_rows=False,
+                    cmap="viridis",
+                    vcenter=0.5,
+                    vmin=0.0,
+                    vmax=1.0,
+                    fig_path=sa.results_path / f"sobol_sensitivity_N{sa.N}_{kg:>02}_{group.uid}_{key}.png"
+                )
+
+            # Barplots
+            sa.plot_sobol_indices(
+                fig_path=sa.results_path / f"sobol_sensitivity_N{sa.N}_{kg:>02}_{group.uid}.png",
+            )
+
+
 
 def sobol_barplot(
     S1, ST, S1_conf, ST_conf,

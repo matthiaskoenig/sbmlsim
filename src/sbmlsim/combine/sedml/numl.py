@@ -10,7 +10,7 @@ import libsbml
 import libsedml
 import numpy as np
 import pandas as pd
-from sbmlutils import log
+from pymetadata import log
 
 
 logger = log.get_logger(__name__)

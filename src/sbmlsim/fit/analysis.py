@@ -11,7 +11,7 @@ import seaborn as sns
 from matplotlib.figure import Figure
 from matplotlib.axes import Axes
 from matplotlib.lines import Line2D
-from sbmlutils import log
+from pymetadata import log
 
 from sbmlsim.fit.optimization import OptimizationProblem
 from sbmlsim.fit.options import (

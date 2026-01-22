@@ -7,7 +7,7 @@ from typing import Optional, Iterable, Tuple
 
 import libsbml
 import numpy as np
-from sbmlutils.console import console
+from pymetadata.console import console
 from pydantic import BaseModel, Field, validator, ConfigDict
 import pandas as pd
 from sbmlutils.report.units import udef_to_string
@@ -106,6 +106,9 @@ def parameters_for_sensitivity_analysis(
     doc: libsbml.SBMLDocument = libsbml.readSBMLFromFile(str(sbml_path))
     sbml_model: libsbml.Model = doc.getModel()
     parameters = []
+
+    if not exclude_ids:
+        exclude_ids = set()
 
     def parameter_from_sbase(sbase: libsbml.SBase) -> SensitivityParameter:
         """Create parameter from SBase for sensitivity analysis."""

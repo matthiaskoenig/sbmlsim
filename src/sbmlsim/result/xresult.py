@@ -5,8 +5,8 @@ from typing import List, Optional
 import numpy as np
 import pandas as pd
 import xarray as xr
-from sbmlutils import log
-from sbmlutils.console import console
+from pymetadata import log
+from pymetadata.console import console
 
 from sbmlsim.simulation import Dimension, ScanSim
 from sbmlsim.units import UnitsInformation

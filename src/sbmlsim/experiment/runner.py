@@ -11,8 +11,8 @@ This includes
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple, Type, Union, Set
 
-from sbmlutils import log
-from sbmlutils.console import console
+from pymetadata import log
+from pymetadata.console import console
 
 from sbmlsim.experiment import ExperimentResult, SimulationExperiment
 from sbmlsim.model import RoadrunnerSBMLModel

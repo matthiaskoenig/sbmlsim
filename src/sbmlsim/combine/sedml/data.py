@@ -9,7 +9,7 @@ from typing import Dict, Optional
 import libsbml
 import libsedml
 import pandas as pd
-from sbmlutils import log
+from pymetadata import log
 
 from .numl import NumlParser
 

@@ -22,7 +22,7 @@ from typing import Any, Dict, List, Optional, Union
 
 import numpy as np
 from matplotlib.colors import to_hex, to_rgba
-from sbmlutils import log
+from pymetadata import log
 
 from sbmlsim.data import Data, DataSet
 

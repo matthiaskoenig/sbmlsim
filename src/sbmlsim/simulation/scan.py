@@ -6,7 +6,7 @@ from copy import deepcopy
 from typing import Dict, List
 
 import numpy as np
-from sbmlutils import log
+from pymetadata import log
 
 from sbmlsim.simulation import AbstractSim, Dimension
 from sbmlsim.units import UnitsInformation

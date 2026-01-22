@@ -10,8 +10,8 @@ from typing import Any, Callable, Collection, Dict, List, Optional, Set, Tuple, 
 import numpy as np
 import pandas as pd
 import scipy
-from sbmlutils import log
-from sbmlutils.console import console
+from pymetadata import log
+from pymetadata.console import console
 from scipy import interpolate, optimize
 
 from sbmlsim.data import Data
