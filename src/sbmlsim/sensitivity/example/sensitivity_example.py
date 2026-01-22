@@ -5,19 +5,17 @@ import numpy as np
 import roadrunner
 from pymetadata.console import console
 
-from sbmlsim.sensitivity.analysis import (
-    SensitivitySimulation,
+from sbmlsim.sensitivity import (
+    SensitivityParameter,
     SensitivityOutput,
     AnalysisGroup,
-)
-from sbmlsim.sensitivity.parameters import (
-    SensitivityParameter,
-    parameters_for_sensitivity_analysis,
+    SensitivitySimulation,
 )
 
+# model
 model_path: Path = Path(__file__).parent / "simple_chain.xml"
 
-# Subgroups to perform sensitivity analysis on
+# subgroups to perform sensitivity analysis on
 sensitivity_groups: list[AnalysisGroup] = [
     AnalysisGroup(
         uid="low S1",
@@ -42,7 +40,7 @@ sensitivity_groups: list[AnalysisGroup] = [
 
 class ExampleSensitivitySimulation(SensitivitySimulation):
     """Simulation for sensitivity calculation."""
-    tend = 1000  #
+    tend = 1000
     steps = 1000
 
     def simulate(self, r: roadrunner.RoadRunner, changes: dict[str, float]) -> dict[
@@ -95,13 +93,12 @@ sensitivity_simulation = ExampleSensitivitySimulation(
 def _sensitivity_parameters() -> list[SensitivityParameter]:
     """Definition of parameters and bounds for sensitivity analysis."""
     console.rule("Parameters", style="white")
-    parameters: list[SensitivityParameter] = parameters_for_sensitivity_analysis(
+    parameters: list[SensitivityParameter] = SensitivityParameter.parameters_from_sbml(
         sbml_path=model_path,
         exclude_ids=None,
         exclude_na=True,
         exclude_zero=True,
     )
-
     # setting bounds;
     bounds_fraction = 0.15  # fraction of bounds relative to value
     for p in parameters:

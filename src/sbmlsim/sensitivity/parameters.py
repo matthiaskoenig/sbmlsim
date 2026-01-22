@@ -122,7 +122,7 @@ class SensitivityParameter(BaseModel):
             # handle the species concentration
             ruid = uid
             if (sbase.getTypeCode() == libsbml.SpeciesType) and (
-            sbase.getHasOnlySubstanceUnits()):
+                sbase.getHasOnlySubstanceUnits()):
                 ruid = f"[{uid}]"
 
             value = r.getValue(ruid)
