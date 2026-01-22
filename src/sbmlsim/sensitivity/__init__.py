@@ -22,6 +22,7 @@ FIXME: add a flag to control resources for parallelization (ncores)
 
 """
 from .analysis import (
+    SensitivityAnalysis,
     SensitivitySimulation,
     SensitivityOutput,
     AnalysisGroup,
@@ -36,6 +37,7 @@ from .sensitivity_fast import FASTSensitivityAnalysis
 
 __all__ = [
     "SensitivityParameter",
+    "SensitivityAnalysis",
     "SensitivitySimulation",
     "SensitivityOutput",
     "AnalysisGroup",

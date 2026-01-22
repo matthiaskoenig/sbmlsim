@@ -1,13 +1,35 @@
 """
-Global sensitivity analysis using FAST - Fourier Amplitude Sensitivity Test.
+Global sensitivity analysis using FAST (Fourier Amplitude Sensitivity Test).
 
-    Cukier, R.I., Fortuin, C.M., Shuler, K.E., Petschek, A.G., Schaibly,
-    J.H., 1973. Study of the sensitivity of coupled reaction systems to uncertainties
-    in rate coefficients. I theory. Journal of Chemical Physics 59, 3873-3878. https://doi.org/10.1063/1.1680571
-    Saltelli, A., S. Tarantola, and K. P.-S. Chan (1999). A Quantitative
-    Model-Independent Method for Global Sensitivity Analysis of Model Output.
-    Technometrics, 41(1):39-56, doi:10.1080/00401706.1999.10485594.
+This module implements variance-based global sensitivity analysis using the
+Fourier Amplitude Sensitivity Test (FAST). FAST quantifies the contribution of
+individual model parameters to the variance of model outputs by mapping
+parameter variations onto periodic functions and analyzing the resulting
+output spectrum in the frequency domain.
 
+The method provides efficient estimation of first-order (main-effect)
+sensitivity indices and, in extended variants (eFAST), total-effect indices.
+Compared to Monte Carlo–based Sobol methods, FAST offers favorable scaling with
+the number of parameters and is well suited for medium- to large-scale
+deterministic models.
+
+The implementation is intended for use in computational modeling workflows,
+including systems biology, pharmacokinetics/pharmacodynamics, and digital twin
+applications, where robust global assessment of parameter influence is required.
+
+References
+----------
+Cukier, R. I., Fortuin, C. M., Shuler, K. E., Petschek, A. G., & Schaibly, J. H. (1973).
+Study of the sensitivity of coupled reaction systems to uncertainties in rate
+coefficients. I. Theory.
+Journal of Chemical Physics, 59, 3873–3878.
+https://doi.org/10.1063/1.1680571
+
+Saltelli, A., Tarantola, S., & Chan, K. P.-S. (1999).
+A quantitative model-independent method for global sensitivity analysis of
+model output.
+Technometrics, 41(1), 39–56.
+https://doi.org/10.1080/00401706.1999.10485594
 """
 
 from pathlib import Path
@@ -19,12 +41,14 @@ import xarray as xr
 from SALib import ProblemSpec
 from SALib.analyze import fast
 from SALib.sample import fast_sampler
-from matplotlib import pyplot as plt
 from pymetadata.console import console
 
-from sbmlsim.sensitivity.analysis import SensitivityAnalysis, SensitivitySimulation, \
-    AnalysisGroup
-from sbmlsim.sensitivity.parameters import SensitivityParameter
+from sbmlsim.sensitivity import (
+    SensitivityAnalysis,
+    SensitivitySimulation,
+    SensitivityParameter,
+    AnalysisGroup,
+)
 from sbmlsim.sensitivity.plots import plot_S1_ST_indices
 
 

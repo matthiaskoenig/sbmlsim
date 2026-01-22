@@ -55,12 +55,14 @@ import xarray as xr
 from SALib import ProblemSpec
 from SALib.analyze import sobol
 from SALib.sample import saltelli
-from matplotlib import pyplot as plt
 from pymetadata.console import console
 
-from sbmlsim.sensitivity.analysis import SensitivityAnalysis, SensitivitySimulation, \
-    AnalysisGroup
-from sbmlsim.sensitivity.parameters import SensitivityParameter
+from sbmlsim.sensitivity import (
+    SensitivityAnalysis,
+    SensitivitySimulation,
+    SensitivityParameter,
+    AnalysisGroup,
+)
 from sbmlsim.sensitivity.plots import plot_S1_ST_indices
 
 
