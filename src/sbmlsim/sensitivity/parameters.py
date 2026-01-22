@@ -38,20 +38,7 @@ class SensitivityParameter(BaseModel):
     def __hash__(self):
         return hash(self.uid)
 
-    @staticmethod
-    def parameters_to_df(parameters: Iterable[SensitivityParameter], sort: bool = True) -> pd.DataFrame:
-        """Create parameter table from parameters."""
-        items = []
-        for item in parameters:
-            d_item = item.model_dump()
-            # better printing of type
-            d_item["type"] = d_item["type"].value
-            items.append(d_item)
 
-        df = pd.DataFrame(items)
-        if sort:
-            df.sort_values(by=["type", "uid"], ascending=True, inplace=True, ignore_index=True)
-        return df
 
     @staticmethod
     def parameters_set_bounds(parameters: Iterable[SensitivityParameter], bounds: Iterable[tuple]) -> None:
@@ -67,6 +54,37 @@ class SensitivityParameter(BaseModel):
                 p.lower_bound = lb
                 p.upper_bound = ub
                 p.type = ptype
+
+    @staticmethod
+    def parameters_to_df(parameters: Iterable[SensitivityParameter], sort: bool = True) -> pd.DataFrame:
+        """Create parameter table from parameters."""
+        items = []
+        for item in parameters:
+            d_item = item.model_dump()
+            # better printing of type
+            d_item["type"] = d_item["type"].value
+            items.append(d_item)
+
+        df = pd.DataFrame(items)
+        if sort:
+            df.sort_values(by=["type", "uid"], ascending=True, inplace=True, ignore_index=True)
+        return df
+
+    @classmethod
+    def parameter_to_latex(
+        cls,
+        tex_path: Path,
+        parameters: list[SensitivityParameter],
+    ) -> None:
+        """Latex parameter table."""
+        df = cls.parameters_to_df(parameters)
+        tex_str = df.to_latex(
+            None, index=False, float_format="{:.3g}".format
+        )
+        tex_str = tex_str.replace("_", r"\_")
+
+        with open(tex_path, 'w') as f:
+            f.write(tex_str)
 
 
 def parameters_for_sensitivity_analysis(

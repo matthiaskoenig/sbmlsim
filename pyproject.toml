@@ -48,7 +48,8 @@ dependencies = [
     "matplotlib",
     "pydantic",
     # dependencies
-    "dill>=0.4.0",
+    "diskcache>=5.6.3",
+    # "dill>=0.4.0",
     "SAlib>=1.5.2",
     "petab>=0.7.0",
     # "tables>=3.10.2",
