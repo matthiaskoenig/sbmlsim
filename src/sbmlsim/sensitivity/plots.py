@@ -142,6 +142,7 @@ def plot_S1_ST_indices(
                 ymin=np.min([-0.05, ymin]),
             )
 
+
 def S1_ST_barplot(
     S1, ST, S1_conf, ST_conf,
     parameter_labels: dict[str, str],

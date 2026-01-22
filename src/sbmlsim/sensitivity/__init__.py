@@ -12,14 +12,6 @@ model parameters, executing simulations, and evaluating changes in selected
 model outputs. The framework is designed for deterministic simulation models
 and integrates sampling, caching, statistical evaluation, and visualization
 within a consistent workflow.
-
-TODO implementation of alternative methods:
-    - [ ] Morris
-
-FIXME: generate simple example
-FIXME: create unittests for the sensitivity
-FIXME: add a flag to control resources for parallelization (ncores)
-
 """
 from .analysis import (
     SensitivityAnalysis,
@@ -30,10 +22,10 @@ from .analysis import (
 from .parameters import (
     SensitivityParameter,
 )
+from .sensitivity_fast import FASTSensitivityAnalysis
 from .sensitivity_local import LocalSensitivityAnalysis
 from .sensitivity_sampling import SamplingSensitivityAnalysis
 from .sensitivity_sobol import SobolSensitivityAnalysis
-from .sensitivity_fast import FASTSensitivityAnalysis
 
 __all__ = [
     "SensitivityParameter",

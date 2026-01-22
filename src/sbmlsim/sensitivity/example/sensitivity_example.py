@@ -112,58 +112,63 @@ def _sensitivity_parameters() -> list[SensitivityParameter]:
 sensitivity_parameters = _sensitivity_parameters()
 
 if __name__ == "__main__":
+    import multiprocessing
     from sbmlsim.sensitivity import (
-        LocalSensitivityAnalysis,
         SobolSensitivityAnalysis,
+        LocalSensitivityAnalysis,
         SamplingSensitivityAnalysis,
         FASTSensitivityAnalysis,
     )
 
     sensitivity_path = Path(__file__).parent / "results"
     console.print(SensitivityParameter.parameters_to_df(sensitivity_parameters))
-    cache = False
 
-    SamplingSensitivityAnalysis.run_sensitivity_analysis(
-        results_path=sensitivity_path / "sampling",
+    settings = {
+        "cache_results": False,
+        "n_cores": int(round(0.9 * multiprocessing.cpu_count())),
+        "seed": 1234
+    }
+
+    sa_sampling = SamplingSensitivityAnalysis(
         sensitivity_simulation=sensitivity_simulation,
         parameters=sensitivity_parameters,
         groups=sensitivity_groups,
-        cache_results=cache,
-        cache_sensitivity=cache,
+        results_path=sensitivity_path / "sampling",
         N=1000,
-        seed=1234,
+        **settings,
     )
+    sa_sampling.execute()
+    sa_sampling.plot()
 
-    LocalSensitivityAnalysis.run_sensitivity_analysis(
+    sa_local = LocalSensitivityAnalysis(
+        sensitivity_simulation=sensitivity_simulation,
+        parameters=sensitivity_parameters,
+        groups=sensitivity_groups,
         results_path=sensitivity_path / "local",
-        sensitivity_simulation=sensitivity_simulation,
-        parameters=sensitivity_parameters,
-        groups=[sensitivity_groups[1]],
-        cache_results=cache,
-        cache_sensitivity=cache,
         difference=0.01,
-        seed=1234,
+        **settings,
     )
+    sa_local.execute()
+    sa_local.plot()
 
-    SobolSensitivityAnalysis.run_sensitivity_analysis(
+    sa_sobol = SobolSensitivityAnalysis(
+        sensitivity_simulation=sensitivity_simulation,
+        parameters=sensitivity_parameters,
+        groups=[sensitivity_groups[1]],
         results_path=sensitivity_path / "sobol",
-        sensitivity_simulation=sensitivity_simulation,
-        parameters=sensitivity_parameters,
-        groups=[sensitivity_groups[1]],
-        cache_results=cache,
-        cache_sensitivity=cache,
         N=4096,
-        # N=8,
-        seed=1234,
+        **settings,
     )
+    sa_sobol.execute()
+    sa_sobol.plot()
 
-    FASTSensitivityAnalysis.run_sensitivity_analysis(
-        results_path=sensitivity_path / "fast",
+    sa_fast = FASTSensitivityAnalysis(
         sensitivity_simulation=sensitivity_simulation,
         parameters=sensitivity_parameters,
-        groups=[sensitivity_groups[1]],
-        cache_results=cache,
-        cache_sensitivity=cache,
+        groups=sensitivity_groups,
+        results_path=sensitivity_path / "fast",
         N=1000,
-        seed=1234,
+        **settings,
     )
+    sa_fast.execute()
+    sa_fast.plot()

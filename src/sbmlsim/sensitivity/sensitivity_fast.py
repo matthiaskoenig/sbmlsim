@@ -41,7 +41,6 @@ import xarray as xr
 from SALib import ProblemSpec
 from SALib.analyze import fast
 from SALib.sample import fast_sampler
-from pymetadata.console import console
 
 from sbmlsim.sensitivity import (
     SensitivityAnalysis,
@@ -66,6 +65,9 @@ class FASTSensitivityAnalysis(SensitivityAnalysis):
         results_path: Path,
         N: int,
         M: int = 4,
+        seed: Optional[int] = None,
+        n_cores: Optional[int] = None,
+        cache_results: bool = False,
         **kwargs,
     ):
         """
@@ -77,10 +79,18 @@ class FASTSensitivityAnalysis(SensitivityAnalysis):
         to generate uniform samples of parameter space.
         """
 
-        super().__init__(sensitivity_simulation, parameters, groups, results_path,
-                         **kwargs)
+        super().__init__(
+            sensitivity_simulation=sensitivity_simulation,
+            parameters=parameters,
+            groups=groups,
+            results_path=results_path,
+            seed=seed,
+            n_cores=n_cores,
+            cache_results=cache_results,
+        )
         self.N: int = N
         self.M: int = M
+        self.prefix = f"fast_M{self.M}_N{self.N}"
 
         # define the problem specification
         self.ssa_problems: dict[str, ProblemSpec] = {}
@@ -158,68 +168,12 @@ class FASTSensitivityAnalysis(SensitivityAnalysis):
         self.write_cache(data=self.sensitivity, cache_filename=cache_filename,
                          cache=cache)
 
-    @staticmethod
-    def run_sensitivity_analysis(
-        results_path: Path,
-        sensitivity_simulation: SensitivitySimulation,
-        parameters: list[SensitivityParameter],
-        groups: list[AnalysisGroup],
-        N: int,
-        seed: int,
-        M: int = 4,
-        cache_results: bool = False,
-        cache_sensitivity: bool = False,
-    ) -> None:
-        """FAST sensitivity analysis.
-
-        First-order FAST (main effects only):
-        100 × num_pars samples is usually sufficient
-
-        Extended FAST (eFAST, total effects):
-        200–500 × k samples recommended
-        (higher frequencies needed to separate interactions)
-
-        :param sensitivity_simulation: Sensitivity simulation.
-        :param parameters: Sensitivity parameters.
-        :param groups: Sensitivity groups.
-        N (int) – The number of samples to generate
-        M (int) – The interference parameter, i.e., the number of harmonics to sum
-        :param seed: Random seed.
-        """
-        prefix = "fast"
-        console.rule(f"{prefix.upper()} SENSITIVITY ANALYSIS", style="blue bold", align="center")
-        if cache_sensitivity and not cache_results:
-            # sensitivity must be recalculated for new results
-            cache_sensitivity = False
-
-        sa = FASTSensitivityAnalysis(
-            sensitivity_simulation=sensitivity_simulation,
-            parameters=parameters,
-            groups=groups,
-            results_path=results_path,
-            N=N,
-            M=M,
-            seed=seed,
-        )
-
-        console.rule("Samples", style="white")
-        sa.create_samples()
-        console.print(sa.samples_table())
-
-        console.rule("Results", style="white")
-        sa.simulate_samples(cache_filename=f"{prefix}_results_N{sa.N}.pkl",
-                            cache=cache_results)
-        console.print(sa.results_table())
-
-        console.rule("Sensitivity", style="white")
-        sa.calculate_sensitivity(cache_filename=f"{prefix}_sensitivity_N{sa.N}.pkl",
-                                 cache=cache_sensitivity)
-
-        console.rule("Plotting", style="white")
-        for kg, group in enumerate(sa.groups):
+    def plot(self):
+        super().plot()
+        for kg, group in enumerate(self.groups):
             # heatmaps
             for key in ["ST", "S1"]:
-                sa.plot_sensitivity(
+                self.plot_sensitivity(
                     group_id=group.uid,
                     sensitivity_key=key,
                     # title=f"{key} {group.name}",
@@ -229,11 +183,11 @@ class FASTSensitivityAnalysis(SensitivityAnalysis):
                     vcenter=0.5,
                     vmin=0.0,
                     vmax=1.0,
-                    fig_path=sa.results_path / f"{prefix}_sensitivity_N{sa.N}_{kg:>02}_{group.uid}_{key}.png"
+                    fig_path=self.results_path / f"{self.prefix}_sensitivity_{kg:>02}_{group.uid}_{key}.png"
                 )
 
             # barplots
             plot_S1_ST_indices(
-                sa=sa,
-                fig_path=sa.results_path / f"{prefix}_sensitivity_N{sa.N}_{kg:>02}_{group.uid}.png",
+                sa=self,
+                fig_path=self.results_path / f"{self.prefix}_sensitivity_{kg:>02}_{group.uid}.png",
             )

@@ -55,7 +55,6 @@ import xarray as xr
 from SALib import ProblemSpec
 from SALib.analyze import sobol
 from SALib.sample import saltelli
-from pymetadata.console import console
 
 from sbmlsim.sensitivity import (
     SensitivityAnalysis,
@@ -71,24 +70,35 @@ class SobolSensitivityAnalysis(SensitivityAnalysis):
 
     sensitivity_keys = ["S1", "ST", "S1_conf", "ST_conf"]
 
-    def __init__(self,
-                 sensitivity_simulation: SensitivitySimulation,
-                 parameters: list[SensitivityParameter],
-                 groups: list[AnalysisGroup],
-                 results_path: Path,
-                 N: int,
-                 **kwargs,
-                 ):
+    def __init__(
+        self,
+        sensitivity_simulation: SensitivitySimulation,
+        parameters: list[SensitivityParameter],
+        groups: list[AnalysisGroup],
+        results_path: Path,
+        N: int,
+        seed: Optional[int] = None,
+        n_cores: Optional[int] = None,
+        cache_results: bool = False,
+        **kwargs,
+    ):
         """
         N: length of chain (Sobol' sequence), must be power of 2, i.e. 2^m e.g. 4096
 
         The Sobol' sequence is a popular quasi-random low-discrepancy sequence used
         to generate uniform samples of parameter space.
         """
-
-        super().__init__(sensitivity_simulation, parameters, groups, results_path,
-                         **kwargs)
+        super().__init__(
+            sensitivity_simulation=sensitivity_simulation,
+            parameters=parameters,
+            groups=groups,
+            results_path=results_path,
+            seed=seed,
+            n_cores=n_cores,
+            cache_results=cache_results,
+        )
         self.N: int = N
+        self.prefix = f"sobol_N{self.N}"
 
         # define the problem specification
         self.ssa_problems: dict[str, ProblemSpec] = {}
@@ -168,59 +178,12 @@ class SobolSensitivityAnalysis(SensitivityAnalysis):
         self.write_cache(data=self.sensitivity, cache_filename=cache_filename,
                          cache=cache)
 
-    @staticmethod
-    def run_sensitivity_analysis(
-        results_path: Path,
-        sensitivity_simulation: SensitivitySimulation,
-        parameters: list[SensitivityParameter],
-        groups: list[AnalysisGroup],
-        N: int,
-        seed: int,
-        cache_results: bool = False,
-        cache_sensitivity: bool = False,
-    ) -> None:
-        """Sobol sensitivity analysis.
-
-        :param sensitivity_simulation: Sensitivity simulation.
-        :param parameters: Sensitivity parameters.
-        :param groups: Sensitivity groups.
-        :param N: Number of samples for sobol sensitivity analysis (power of 2, 2^x).
-        :param seed: Random seed.
-        """
-        prefix = "sobol"
-        console.rule(f"{prefix.upper()} SENSITIVITY ANALYSIS", style="blue bold",
-                     align="center")
-        if cache_sensitivity and not cache_results:
-            # sensitivity must be recalculated for new results
-            cache_sensitivity = False
-
-        sa = SobolSensitivityAnalysis(
-            sensitivity_simulation=sensitivity_simulation,
-            parameters=parameters,
-            groups=groups,
-            results_path=results_path,
-            N=N,
-            seed=seed,
-        )
-
-        console.rule("Samples", style="white")
-        sa.create_samples()
-        console.print(sa.samples_table())
-
-        console.rule("Results", style="white")
-        sa.simulate_samples(cache_filename=f"{prefix}_results_N{sa.N}.pkl",
-                            cache=cache_results)
-        console.print(sa.results_table())
-
-        console.rule("Sensitivity", style="white")
-        sa.calculate_sensitivity(cache_filename=f"{prefix}_sensitivity_N{sa.N}.pkl",
-                                 cache=cache_sensitivity)
-
-        console.rule("Plotting", style="white")
-        for kg, group in enumerate(sa.groups):
+    def plot(self):
+        super().plot()
+        for kg, group in enumerate(self.groups):
             # heatmaps
             for key in ["ST", "S1"]:
-                sa.plot_sensitivity(
+                self.plot_sensitivity(
                     group_id=group.uid,
                     sensitivity_key=key,
                     # title=f"{key} {group.name}",
@@ -230,11 +193,11 @@ class SobolSensitivityAnalysis(SensitivityAnalysis):
                     vcenter=0.5,
                     vmin=0.0,
                     vmax=1.0,
-                    fig_path=sa.results_path / f"{prefix}_sensitivity_N{sa.N}_{kg:>02}_{group.uid}_{key}.png"
+                    fig_path=self.results_path / f"{self.prefix}_sensitivity_{kg:>02}_{group.uid}_{key}.png"
                 )
 
             # barplots
             plot_S1_ST_indices(
-                sa=sa,
-                fig_path=sa.results_path / f"{prefix}_sensitivity_N{sa.N}_{kg:>02}_{group.uid}.png",
+                sa=self,
+                fig_path=self.results_path / f"{self.prefix}_sensitivity_{kg:>02}_{group.uid}.png",
             )
