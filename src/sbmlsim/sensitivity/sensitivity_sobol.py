@@ -64,7 +64,6 @@ class SobolSensitivityAnalysis(SensitivityAnalysis):
         The Sobol' sequence is a popular quasi-random low-discrepancy sequence used
         to generate uniform samples of parameter space.
         """
-        console.rule("Samples", style="white")
         # (num_samples x num_outputs)
         #  total model evaluations are (2d+2) * N for d input factors
         num_samples = (2 * self.num_parameters + 2) * self.N
@@ -81,7 +80,6 @@ class SobolSensitivityAnalysis(SensitivityAnalysis):
                         "parameter": self.parameter_ids},
                 name="samples"
             )
-        console.print(self.samples)
 
 
     def calculate_sensitivity(self, cache_filename: Optional[str] = None, cache: bool = False):
@@ -128,40 +126,6 @@ class SobolSensitivityAnalysis(SensitivityAnalysis):
         # write to cache
         self.write_cache(data=self.sensitivity, cache_filename=cache_filename, cache=cache)
 
-    def plot_sobol_indices(
-        self,
-        fig_path: Path,
-        ):
-        """Barplots for the Sobol indices."""
-        # parameter_labels: dict[str, str] = {p.uid: f"{p.uid}: {p.name}" for p in self.parameters}
-        parameter_labels: dict[str, str] = {p.uid: p.uid for p in self.parameters}
-        output_labels: dict[str, str] = {q.uid: q.name for q in self.outputs}
-
-        for group in self.groups:
-            gid = group.uid
-            ymax = self.sensitivity[gid]["ST"].max(dim=None)
-            ymin = self.sensitivity[gid]["S1"].min(dim=None)
-
-            for ko, output in enumerate(self.outputs):
-                # f_path = fig_path.parent / f"FigS{ko+22}_{fig_path.stem}_{ko:>03}_{output.uid}{fig_path.suffix}"
-                f_path = fig_path.parent / f"{fig_path.stem}_{ko:>03}_{output.uid}{fig_path.suffix}"
-
-                S1 = self.sensitivity[gid]["S1"][:, ko]
-                ST = self.sensitivity[gid]["ST"][:, ko]
-                S1_conf = self.sensitivity[gid]["S1_conf"][:, ko]
-                ST_conf = self.sensitivity[gid]["ST_conf"][:, ko]
-                sobol_barplot(
-                    S1=S1,
-                    ST=ST,
-                    S1_conf=S1_conf,
-                    ST_conf=ST_conf,
-                    title=f"{output_labels[output.uid]} ({group.name})",
-                    fig_path=f_path,
-                    parameter_labels=parameter_labels,
-                    ymax=np.max([1.05, ymax]),
-                    ymin=np.min([-0.05, ymin]),
-                )
-
     @staticmethod
     def run_sensitivity_analysis(
         results_path: Path,
@@ -192,9 +156,8 @@ class SobolSensitivityAnalysis(SensitivityAnalysis):
             parameters=parameters,
             groups=groups,
             results_path=results_path,
-            # N=4096,
-            N=16,
-            seed=1234,
+            N=N,
+            seed=seed,
         )
 
         console.rule("Samples", style="white")
@@ -232,46 +195,79 @@ class SobolSensitivityAnalysis(SensitivityAnalysis):
                 fig_path=sa.results_path / f"sobol_sensitivity_N{sa.N}_{kg:>02}_{group.uid}.png",
             )
 
+    def plot_sobol_indices(
+        self,
+        fig_path: Path,
+        ):
+        """Barplots for the Sobol indices."""
+        # parameter_labels: dict[str, str] = {p.uid: f"{p.uid}: {p.name}" for p in self.parameters}
+        parameter_labels: dict[str, str] = {p.uid: p.uid for p in self.parameters}
+        output_labels: dict[str, str] = {q.uid: q.name for q in self.outputs}
+
+        for group in self.groups:
+            gid = group.uid
+            ymax = self.sensitivity[gid]["ST"].max(dim=None)
+            ymin = self.sensitivity[gid]["S1"].min(dim=None)
+
+            for ko, output in enumerate(self.outputs):
+                # f_path = fig_path.parent / f"FigS{ko+22}_{fig_path.stem}_{ko:>03}_{output.uid}{fig_path.suffix}"
+                f_path = fig_path.parent / f"{fig_path.stem}_{ko:>03}_{output.uid}{fig_path.suffix}"
+
+                S1 = self.sensitivity[gid]["S1"][:, ko]
+                ST = self.sensitivity[gid]["ST"][:, ko]
+                S1_conf = self.sensitivity[gid]["S1_conf"][:, ko]
+                ST_conf = self.sensitivity[gid]["ST_conf"][:, ko]
+                self.sobol_barplot(
+                    S1=S1,
+                    ST=ST,
+                    S1_conf=S1_conf,
+                    ST_conf=ST_conf,
+                    title=f"{output_labels[output.uid]} ({group.name})",
+                    fig_path=f_path,
+                    parameter_labels=parameter_labels,
+                    ymax=np.max([1.05, ymax]),
+                    ymin=np.min([-0.05, ymin]),
+                )
+
+    @staticmethod
+    def sobol_barplot(
+        S1, ST, S1_conf, ST_conf,
+        parameter_labels: dict[str, str],
+        fig_path: Optional[Path] = None,
+        title: Optional[str] = None,
+        ymax: float = 1.1,
+        ymin: float = -0.1,
+    ):
+        # width
+        figsize = (15, 3)
+        label_fontsize = 15
+
+        categories: list[str] = list(parameter_labels.values())
+        f, ax = plt.subplots(figsize=figsize)
+
+        ax.bar(categories, ST, label='ST',
+               color="tab:orange",
+               alpha=1.0,
+               edgecolor="black",
+               yerr=ST_conf, capsize=5
+               )
+
+        ax.bar(categories, S1, label='S1', color="tab:blue",
+               edgecolor="black", yerr=S1_conf, capsize=5)
 
 
-def sobol_barplot(
-    S1, ST, S1_conf, ST_conf,
-    parameter_labels: dict[str, str],
-    fig_path: Optional[Path] = None,
-    title: Optional[str] = None,
-    ymax: float = 1.1,
-    ymin: float = -0.1,
-):
-    # width
-    figsize = (15, 3)
-    label_fontsize = 15
+        # ax.set_xlabel('Parameter', fontsize=label_fontsize, fontweight="bold")
+        ax.set_ylabel('Sobol Index', fontsize=label_fontsize, fontweight="bold")
+        ax.set_ylim(bottom=ymin, top=ymax)
+        ax.grid(True, axis="y")
+        ax.tick_params(axis='x', labelrotation=90)
+        # ax.tick_params(axis='x', labelweight='bold')
+        ax.legend()
 
-    categories: list[str] = list(parameter_labels.values())
-    f, ax = plt.subplots(figsize=figsize)
+        if title:
+            plt.suptitle(title, fontsize=20, fontweight="bold")
 
-    ax.bar(categories, ST, label='ST',
-           color="tab:orange",
-           alpha=1.0,
-           edgecolor="black",
-           yerr=ST_conf, capsize=5
-           )
-
-    ax.bar(categories, S1, label='S1', color="tab:blue",
-           edgecolor="black", yerr=S1_conf, capsize=5)
-
-
-    # ax.set_xlabel('Parameter', fontsize=label_fontsize, fontweight="bold")
-    ax.set_ylabel('Sobol Index', fontsize=label_fontsize, fontweight="bold")
-    ax.set_ylim(bottom=ymin, top=ymax)
-    ax.grid(True, axis="y")
-    ax.tick_params(axis='x', labelrotation=90)
-    # ax.tick_params(axis='x', labelweight='bold')
-    ax.legend()
-
-    if title:
-        plt.suptitle(title, fontsize=20, fontweight="bold")
-
-    if fig_path:
-        plt.savefig(fig_path, dpi=300, bbox_inches="tight")
-    plt.show()
+        if fig_path:
+            plt.savefig(fig_path, dpi=300, bbox_inches="tight")
+        plt.show()
 

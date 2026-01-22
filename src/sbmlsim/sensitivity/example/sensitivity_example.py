@@ -128,29 +128,39 @@ if __name__ == "__main__":
         SobolSensitivityAnalysis,
         SamplingSensitivityAnalysis,
     )
-
     sensitivity_path = Path(__file__).parent / "results"
     console.print(SensitivityParameter.parameters_to_df(sensitivity_parameters))
 
-    SamplingSensitivityAnalysis.run_sensitivity_analysis(
-        results_path=sensitivity_path / "sampling",
-        sensitivity_simulation=sensitivity_simulation,
-        parameters=sensitivity_parameters,
-        groups=sensitivity_groups,
-        # cache_results=False,
-        # cache_sensitivity=False,
-        N=200,
-        seed=1234,
-    )
+    # SamplingSensitivityAnalysis.run_sensitivity_analysis(
+    #     results_path=sensitivity_path / "sampling",
+    #     sensitivity_simulation=sensitivity_simulation,
+    #     parameters=sensitivity_parameters,
+    #     groups=sensitivity_groups,
+    #     # cache_results=False,
+    #     # cache_sensitivity=False,
+    #     N=200,
+    #     seed=1234,
+    # )
+    #
+    # LocalSensitivityAnalysis.run_sensitivity_analysis(
+    #     results_path=sensitivity_path / "local",
+    #     sensitivity_simulation=sensitivity_simulation,
+    #     parameters=sensitivity_parameters,
+    #     groups=[sensitivity_groups[1]],
+    #     # cache_results=False,
+    #     # cache_sensitivity=False,
+    #     difference=0.01,
+    #     seed=1234,
+    # )
 
     SobolSensitivityAnalysis.run_sensitivity_analysis(
         results_path=sensitivity_path / "sobol",
         sensitivity_simulation=sensitivity_simulation,
         parameters=sensitivity_parameters,
-        groups=sensitivity_groups,
+        groups=[sensitivity_groups[1]],
         # cache_results=False,
         # cache_sensitivity=False,
-        # N=2048
+        # N=2048,
         N=8,
         seed=1234,
     )

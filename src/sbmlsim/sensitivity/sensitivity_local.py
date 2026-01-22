@@ -1,6 +1,9 @@
 from pathlib import Path
+from typing import Optional
 
+import numpy as np
 import xarray as xr
+from pymetadata.console import console
 
 from sbmlsim.sensitivity.analysis import SensitivitySimulation, AnalysisGroup, \
     SensitivityAnalysis
@@ -136,45 +139,61 @@ class LocalSensitivityAnalysis(SensitivityAnalysis):
         # write to cache
         self.write_cache(data=self.sensitivity, cache_filename=cache_filename, cache=cache)
 
+    @staticmethod
+    def run_sensitivity_analysis(
+            results_path: Path,
+            sensitivity_simulation: SensitivitySimulation,
+            parameters: list[SensitivityParameter],
+            groups: list[AnalysisGroup],
+            seed: int,
+            difference: float = 0.01,
+            cache_results: bool = False,
+            cache_sensitivity: bool = False,
+    ) -> None:
+        """Local sensitivity analysis.
 
-def local_sensitivity_analysis():
-    """Local sensitivity analysis"""
-    console.rule("LOCAL SENSITIVITY ANALYSIS", style="blue bold", align="center")
+        :param sensitivity_simulation: Sensitivity simulation.
+        :param parameters: Sensitivity parameters.
+        :param groups: Sensitivity groups.
+        :param difference: relative change of parameters.
+        :param seed: Random seed.
+        """
+        console.rule("LOCAL SENSITIVITY ANALYSIS", style="blue bold", align="center")
+        if cache_sensitivity and not cache_results:
+            # sensitivity must be recalculated for new results
+            cache_sensitivity = False
 
-    sensitivity_simulation = CanagliflozinSensitivitySimulation.sensitivity_simulation()
-    parameters = sensitivity_simulation.sensitivity_parameters()
-
-    sa = LocalSensitivityAnalysis(
-        sensitivity_simulation=sensitivity_simulation,
-        parameters=sensitivity_parameters,
-        groups=sensitivity_groups,
-        results_path=RESULTS_PATH / "sensitivity",
-        seed=1234,
-        difference=0.01,  # 1% change
-    )
-
-    console.rule("Samples", style="white")
-    sa.create_samples()
-
-    console.rule("Results", style="white")
-    sa.simulate_samples()
-    console.print(sa.results)
-
-    console.rule("Sensitivity", style="white")
-    sa.calculate_sensitivity()
-    console.print(sa.sensitivity)
-
-    console.rule("Plotting", style="white")
-    for kg, group in enumerate(sa.groups):
-        sa.plot_sensitivity(
-            group_id=group.uid,
-            sensitivity_key="normalized",
-            # title=f"{group.name}",
-            cutoff=0.05,
-            cluster_rows = False,
-            cmap = "seismic",
-            vcenter=0.0,
-            vmin=-2.0,
-            vmax=2.0,
-            fig_path=sa.results_path / f"local_sensitivity_{kg:>02}_{group.uid}_{sa.difference}.png",
+        sa = LocalSensitivityAnalysis(
+            sensitivity_simulation=sensitivity_simulation,
+            parameters=parameters,
+            groups=groups,
+            results_path=results_path,
+            seed=1234,
+            difference=difference,
         )
+        console.rule("Samples", style="white")
+        sa.create_samples()
+        console.print(sa.samples_table())
+
+        console.rule("Results", style="white")
+        sa.simulate_samples(cache_filename=f"local_results_difference{sa.difference}.pkl", cache=cache_results)
+        console.print(sa.results_table())
+
+        console.rule("Sensitivity", style="white")
+        sa.calculate_sensitivity(cache_filename=f"local_sensitivity_difference{sa.difference}.pkl", cache=cache_sensitivity)
+        # console.print(sa.sensitivity_tables())
+
+        console.rule("Plotting", style="white")
+        for kg, group in enumerate(sa.groups):
+            sa.plot_sensitivity(
+                group_id=group.uid,
+                sensitivity_key="normalized",
+                # title=f"{group.name}",
+                cutoff=0.05,
+                cluster_rows=False,
+                cmap="seismic",
+                vcenter=0.0,
+                vmin=-2.0,
+                vmax=2.0,
+                fig_path=sa.results_path / f"local_sensitivity_{kg:>02}_{group.uid}_{sa.difference}.png",
+            )
