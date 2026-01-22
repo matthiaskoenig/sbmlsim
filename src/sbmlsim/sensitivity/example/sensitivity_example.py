@@ -3,7 +3,6 @@ from pathlib import Path
 
 import numpy as np
 import roadrunner
-from roadrunner._roadrunner import NamedArray
 from pymetadata.console import console
 
 from sbmlsim.sensitivity.analysis import (
@@ -13,12 +12,10 @@ from sbmlsim.sensitivity.analysis import (
 )
 from sbmlsim.sensitivity.parameters import (
     SensitivityParameter,
-    ParameterType,
     parameters_for_sensitivity_analysis,
 )
 
 model_path: Path = Path(__file__).parent / "simple_chain.xml"
-
 
 # Subgroups to perform sensitivity analysis on
 sensitivity_groups: list[AnalysisGroup] = [
@@ -48,7 +45,8 @@ class ExampleSensitivitySimulation(SensitivitySimulation):
     tend = 1000  #
     steps = 1000
 
-    def simulate(self, r: roadrunner.RoadRunner, changes: dict[str, float]) -> dict[str, float]:
+    def simulate(self, r: roadrunner.RoadRunner, changes: dict[str, float]) -> dict[
+        str, float]:
 
         # apply changes and simulate
         all_changes = {
@@ -56,14 +54,15 @@ class ExampleSensitivitySimulation(SensitivitySimulation):
             **changes  # sensitivity
         }
         self.apply_changes(r, all_changes, reset_all=True)
-        # ensure tolerances
+
+        # ensure identical tolerances on all simulations
         r.integrator.setValue("absolute_tolerance", self.init_tolerances)
-        s: NamedArray = r.simulate(start=0, end=self.tend, steps=self.steps)
+        s = r.simulate(start=0, end=self.tend, steps=self.steps)
 
-        # pharmacokinetic parameters
+        # calculate outputs y (custom functions)
+        # this can be registered functions calculating scalars based on subsets of the
+        # timecourse vectors
         y: dict[str, float] = {}
-
-        # calculate outputs (custom functions)
         t = s["time"]
         for key in "S1", "S2", "S3":
             rr_key = f"[{key}]"
@@ -79,13 +78,8 @@ class ExampleSensitivitySimulation(SensitivitySimulation):
 
 sensitivity_simulation = ExampleSensitivitySimulation(
     model_path=model_path,
-    selections=[
-        "time",
-        "[S1]",
-        "[S2]",
-        "[S3]",
-    ],
-    changes_simulation = {},
+    selections=["time", "[S1]", "[S2]", "[S3]"],
+    changes_simulation={},
     outputs=[
         SensitivityOutput(uid='[S1]_auc', name='[S1] AUC', unit=None),
         SensitivityOutput(uid='[S2]_tmax', name='[S2] time maximum', unit=None),
@@ -120,49 +114,46 @@ def _sensitivity_parameters() -> list[SensitivityParameter]:
 
 sensitivity_parameters = _sensitivity_parameters()
 
-
 if __name__ == "__main__":
-
     from sbmlsim.sensitivity import (
         LocalSensitivityAnalysis,
         SobolSensitivityAnalysis,
         SamplingSensitivityAnalysis,
     )
+
     sensitivity_path = Path(__file__).parent / "results"
     console.print(SensitivityParameter.parameters_to_df(sensitivity_parameters))
 
-    # SamplingSensitivityAnalysis.run_sensitivity_analysis(
-    #     results_path=sensitivity_path / "sampling",
-    #     sensitivity_simulation=sensitivity_simulation,
-    #     parameters=sensitivity_parameters,
-    #     groups=sensitivity_groups,
-    #     # cache_results=False,
-    #     # cache_sensitivity=False,
-    #     N=200,
-    #     seed=1234,
-    # )
-    #
-    # LocalSensitivityAnalysis.run_sensitivity_analysis(
-    #     results_path=sensitivity_path / "local",
-    #     sensitivity_simulation=sensitivity_simulation,
-    #     parameters=sensitivity_parameters,
-    #     groups=[sensitivity_groups[1]],
-    #     # cache_results=False,
-    #     # cache_sensitivity=False,
-    #     difference=0.01,
-    #     seed=1234,
-    # )
+    SamplingSensitivityAnalysis.run_sensitivity_analysis(
+        results_path=sensitivity_path / "sampling",
+        sensitivity_simulation=sensitivity_simulation,
+        parameters=sensitivity_parameters,
+        groups=sensitivity_groups,
+        cache_results=True,
+        cache_sensitivity=True,
+        N=1000,
+        seed=1234,
+    )
+
+    LocalSensitivityAnalysis.run_sensitivity_analysis(
+        results_path=sensitivity_path / "local",
+        sensitivity_simulation=sensitivity_simulation,
+        parameters=sensitivity_parameters,
+        groups=[sensitivity_groups[1]],
+        cache_results=True,
+        cache_sensitivity=True,
+        difference=0.01,
+        seed=1234,
+    )
 
     SobolSensitivityAnalysis.run_sensitivity_analysis(
         results_path=sensitivity_path / "sobol",
         sensitivity_simulation=sensitivity_simulation,
         parameters=sensitivity_parameters,
         groups=[sensitivity_groups[1]],
-        # cache_results=False,
-        # cache_sensitivity=False,
-        # N=2048,
-        N=8,
+        cache_results=True,
+        cache_sensitivity=True,
+        N=2048,
+        # N=8,
         seed=1234,
     )
-
-

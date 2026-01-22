@@ -2,26 +2,31 @@
 
 
 """
+import multiprocessing
 import os
 import time
-import multiprocessing
 from dataclasses import dataclass
-from typing import Optional, Any
 from pathlib import Path
-from rich.progress import track
-from pymetadata.console import console
+from typing import Optional, Any
 
+import dill
 import numpy as np
 import pandas as pd
-import xarray as xr
-
-
 import roadrunner
-import dill
+import xarray as xr
+from pymetadata.console import console
+from rich.progress import track
 
 from sbmlsim.sensitivity.parameters import SensitivityParameter
-from sbmlsim.sensitivity.outputs import SensitivityOutput
 from sbmlsim.sensitivity.plots import heatmap
+
+
+@dataclass
+class SensitivityOutput:
+    """Output measurement for SensitivityAnalysis."""
+    uid: str
+    name: str
+    unit: Optional[str]
 
 
 @dataclass
@@ -59,8 +64,8 @@ class SensitivitySimulation:
         outputs_dict = {q.uid for q in self.outputs}
         for key in y:
             if key not in outputs_dict:
-                raise ValueError(f"Key '{key}' missing in outputs dictionary: '{outputs_dict}")
-
+                raise ValueError(
+                    f"Key '{key}' missing in outputs dictionary: '{outputs_dict}")
 
     @staticmethod
     def load_model(model_path: Path, selections: list[str]) -> roadrunner.RoadRunner:
@@ -72,7 +77,8 @@ class SensitivitySimulation:
         return rr
 
     @staticmethod
-    def apply_changes(r: roadrunner.RoadRunner, changes: dict[str, float], reset_all: bool=True) -> None:
+    def apply_changes(r: roadrunner.RoadRunner, changes: dict[str, float],
+                      reset_all: bool = True) -> None:
         """Apply changes after possible reset of the model."""
         if reset_all:
             r.resetAll()
@@ -81,7 +87,8 @@ class SensitivitySimulation:
             # print(f"{key=} {value=}")
             r.setValue(key, value)
 
-    def simulate(self, r: roadrunner.RoadRunner, changes: dict[str, float]) -> dict[str, float]:
+    def simulate(self, r: roadrunner.RoadRunner, changes: dict[str, float]) -> dict[
+        str, float]:
         """Run a model simulation and return scalar results dictionary."""
 
         raise NotImplemented
@@ -115,7 +122,7 @@ class SensitivityAnalysis:
                  parameters: list[SensitivityParameter],
                  groups: list[AnalysisGroup],
                  results_path: Path,
-                 seed: Optional[int]=None,
+                 seed: Optional[int] = None,
                  ) -> None:
         """Create a sensitivity analysis for given parameter ids.
 
@@ -161,19 +168,14 @@ class SensitivityAnalysis:
 
         # multiple sensitivities are stored
         # sensitivity matrix; shape: (num_parameters x num_outputs); could be multiple
-        self.sensitivity: dict[str, dict[str, xr.DataArray]] = {g.uid: {} for g in self.groups}
+        self.sensitivity: dict[str, dict[str, xr.DataArray]] = {g.uid: {} for g in
+                                                                self.groups}
 
     def samples_table(self) -> pd.DataFrame:
         return self._data_table(d=self.samples)
 
     def results_table(self) -> pd.DataFrame:
         return self._data_table(d=self.results)
-
-    # def sensitivity_tables(self) -> dict[str, pd.DataFrame]:
-    #
-    #     for group in self.groups:
-    #         for key in group.changes.keys():
-    #             return {k: self._data_table(d=d) for k, d in self.sensitivity.items()}
 
     def _data_table(self, d: dict[str, xr.DataArray]) -> pd.DataFrame:
         items = []
@@ -188,7 +190,8 @@ class SensitivityAnalysis:
         return pd.DataFrame(items)
 
     def read_cache(self, cache_filename: str, cache: bool) -> Optional[Any]:
-        cache_path: Optional[Path] = self.results_path / cache_filename if cache_filename else None
+        cache_path: Optional[
+            Path] = self.results_path / cache_filename if cache_filename else None
         if cache and not cache_path:
             raise ValueError("Cache path is required for caching.")
 
@@ -202,7 +205,8 @@ class SensitivityAnalysis:
         return None
 
     def write_cache(self, data: Any, cache_filename: str, cache: bool) -> Optional[Any]:
-        cache_path: Optional[Path] = self.results_path / cache_filename if cache_filename else None
+        cache_path: Optional[
+            Path] = self.results_path / cache_filename if cache_filename else None
         if cache_path:
             with open(cache_path, 'wb') as f:
                 console.print(f"Simulated samples written to cache: '{cache_path}'")
@@ -247,7 +251,8 @@ class SensitivityAnalysis:
         samples = self.samples[self.group_ids[0]]
         return samples.shape[0]
 
-    def simulate_samples(self, cache_filename: Optional[str] = None, cache: bool = False) -> None:
+    def simulate_samples(self, cache_filename: Optional[str] = None,
+                         cache: bool = False) -> None:
         """Simulate all samples in parallel.
 
         :param cache_filename: Path to the cache path.
@@ -320,7 +325,8 @@ class SensitivityAnalysis:
         # write to cache
         self.write_cache(data=self.results, cache_filename=cache_filename, cache=cache)
 
-    def calculate_sensitivity(self, cache_filename: Optional[str] = None, cache: bool = False):
+    def calculate_sensitivity(self, cache_filename: Optional[str] = None,
+                              cache: bool = False):
         """Calculate the sensitivity matrices."""
 
         raise NotImplemented
@@ -361,14 +367,14 @@ class SensitivityAnalysis:
         )
 
 
-
 def run_simulation(
     params_tuple
 ):
     """Pass all required arguments as parameter tuple."""
     sensitivity_simulation, r, chunked_changes = params_tuple
     outputs = []
-    for kc in track(range(len(chunked_changes)), description=f"Simulate samples PID={os.getpid()}"):
+    for kc in track(range(len(chunked_changes)),
+                    description=f"Simulate samples PID={os.getpid()}"):
         changes = chunked_changes[kc]
         # console.print(f"PID={os.getpid()} | k={kc}")
         Y = sensitivity_simulation.simulate(
@@ -378,6 +384,3 @@ def run_simulation(
         outputs.append(Y)
 
     return outputs
-
-
-

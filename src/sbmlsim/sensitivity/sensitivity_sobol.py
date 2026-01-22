@@ -1,30 +1,70 @@
+"""
+Global sensitivity analysis using Sobol indices.
+
+This module provides routines to perform variance-based global sensitivity
+analysis based on Sobol indices. Sobol sensitivity analysis quantifies how
+uncertainty in model parameters contributes to the variance of one or more
+model outputs, allowing a decomposition into main effects, interaction
+effects, and total effects.
+
+The implemented methodology follows the classical Sobol framework and its
+later refinements, including Monte Carlo–based estimators for first-order,
+higher-order, and total-effect sensitivity indices. The approach is fully
+global, meaning that parameters are varied simultaneously over their entire
+admissible ranges according to prescribed probability distributions.
+
+Sobol indices are defined as:
+- First-order indices (S_i), measuring the contribution of a single parameter
+  to the output variance, ignoring interactions.
+- Higher-order indices (S_ij, S_ijk, ...), measuring interaction effects
+  between parameters.
+- Total-effect indices (S_Ti), measuring the total contribution of a parameter
+  to the output variance, including all interactions.
+
+The analysis requires:
+- A deterministic model or simulation function creating scalar outputs.
+- A set of input parameters with specified bounds.
+- A sampling scheme based on quasi-random or Monte Carlo methods.
+
+References
+----------
+Sobol, I. M. (2001).
+Global sensitivity indices for nonlinear mathematical models and their
+Monte Carlo estimates.
+Mathematics and Computers in Simulation, 55(1–3), 271–280.
+https://www.sciencedirect.com/science/article/pii/S0378475400002706
+
+Saltelli, A. (2002).
+Making best use of model evaluations to compute sensitivity indices.
+Computer Physics Communications, 145(2), 280–297.
+https://www.sciencedirect.com/science/article/pii/S0010465502002801
+
+Saltelli, A., Annoni, P., Azzini, I., Campolongo, F., Ratto, M., & Tarantola, S. (2010).
+Variance based sensitivity analysis of model output. Design and estimator
+for the total sensitivity index.
+Computer Physics Communications, 181(2), 259–270.
+https://www.sciencedirect.com/science/article/pii/S0010465509003087
+"""
+
 from pathlib import Path
 from typing import Optional
 
-
+import SALib
 import numpy as np
 import xarray as xr
-from matplotlib import pyplot as plt
-
-import SALib
 from SALib import ProblemSpec
-from SALib.sample import saltelli
 from SALib.analyze import sobol
-
+from SALib.sample import saltelli
+from matplotlib import pyplot as plt
 from pymetadata.console import console
+
 from sbmlsim.sensitivity.analysis import SensitivityAnalysis, SensitivitySimulation, \
     AnalysisGroup
 from sbmlsim.sensitivity.parameters import SensitivityParameter
 
 
 class SobolSensitivityAnalysis(SensitivityAnalysis):
-    """Global sensitivity analysis based on Sobol method.
-
-    - [ ] SOBOL indices Sobol Sensitivity Analysis (Sobol 2001, Saltelli 2002, Saltelli et al. 2010)
-      http://www.sciencedirect.com/science/article/pii/S0378475400002706
-      https://www.sciencedirect.com/science/article/pii/S0010465502002801
-      https://www.sciencedirect.com/science/article/pii/S0010465509003087
-    """
+    """Global sensitivity analysis based on Sobol method."""
 
     sensitivity_keys = ["S1", "ST", "S1_conf", "ST_conf"]
 
@@ -43,7 +83,8 @@ class SobolSensitivityAnalysis(SensitivityAnalysis):
         to generate uniform samples of parameter space.
         """
 
-        super().__init__(sensitivity_simulation, parameters, groups, results_path, **kwargs)
+        super().__init__(sensitivity_simulation, parameters, groups, results_path,
+                         **kwargs)
         self.N: int = N
 
         # define the problem specification
@@ -52,7 +93,7 @@ class SobolSensitivityAnalysis(SensitivityAnalysis):
             self.ssa_problems[group.uid] = ProblemSpec({
                 'num_vars': self.num_parameters,
                 'names': self.parameter_ids,
-                'bounds': [ [p.lower_bound, p.upper_bound] for p in self.parameters],
+                'bounds': [[p.lower_bound, p.upper_bound] for p in self.parameters],
                 "outputs": self.output_ids,
             })
 
@@ -70,7 +111,8 @@ class SobolSensitivityAnalysis(SensitivityAnalysis):
 
         for gid in self.group_ids:
             # libsa samples based on definition
-            ssa_samples = saltelli.sample(self.ssa_problems[gid], N=self.N, calc_second_order=True)
+            ssa_samples = saltelli.sample(self.ssa_problems[gid], N=self.N,
+                                          calc_second_order=True)
             self.ssa_problems[gid].set_samples(ssa_samples)
 
             self.samples[gid] = xr.DataArray(
@@ -81,8 +123,8 @@ class SobolSensitivityAnalysis(SensitivityAnalysis):
                 name="samples"
             )
 
-
-    def calculate_sensitivity(self, cache_filename: Optional[str] = None, cache: bool = False):
+    def calculate_sensitivity(self, cache_filename: Optional[str] = None,
+                              cache: bool = False):
         """Calculate the sensitivity matrices for SOBOL analysis."""
 
         data = self.read_cache(cache_filename, cache)
@@ -124,7 +166,8 @@ class SobolSensitivityAnalysis(SensitivityAnalysis):
                     self.sensitivity[gid][key][:, ko] = Si[key]
 
         # write to cache
-        self.write_cache(data=self.sensitivity, cache_filename=cache_filename, cache=cache)
+        self.write_cache(data=self.sensitivity, cache_filename=cache_filename,
+                         cache=cache)
 
     @staticmethod
     def run_sensitivity_analysis(
@@ -146,7 +189,8 @@ class SobolSensitivityAnalysis(SensitivityAnalysis):
         :param seed: Random seed.
         """
         prefix = "sobol"
-        console.rule(f"{prefix.upper()} SENSITIVITY ANALYSIS", style="blue bold", align="center")
+        console.rule(f"{prefix.upper()} SENSITIVITY ANALYSIS", style="blue bold",
+                     align="center")
         if cache_sensitivity and not cache_results:
             # sensitivity must be recalculated for new results
             cache_sensitivity = False
@@ -198,7 +242,7 @@ class SobolSensitivityAnalysis(SensitivityAnalysis):
     def plot_sobol_indices(
         self,
         fig_path: Path,
-        ):
+    ):
         """Barplots for the Sobol indices."""
         # parameter_labels: dict[str, str] = {p.uid: f"{p.uid}: {p.name}" for p in self.parameters}
         parameter_labels: dict[str, str] = {p.uid: p.uid for p in self.parameters}
@@ -255,7 +299,6 @@ class SobolSensitivityAnalysis(SensitivityAnalysis):
         ax.bar(categories, S1, label='S1', color="tab:blue",
                edgecolor="black", yerr=S1_conf, capsize=5)
 
-
         # ax.set_xlabel('Parameter', fontsize=label_fontsize, fontweight="bold")
         ax.set_ylabel('Sobol Index', fontsize=label_fontsize, fontweight="bold")
         ax.set_ylim(bottom=ymin, top=ymax)
@@ -270,4 +313,3 @@ class SobolSensitivityAnalysis(SensitivityAnalysis):
         if fig_path:
             plt.savefig(fig_path, dpi=300, bbox_inches="tight")
         plt.show()
-

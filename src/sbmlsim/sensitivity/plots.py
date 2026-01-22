@@ -1,17 +1,11 @@
-"""Plotting functionality for sensitivity analysis.
-
-FIXME: use patchcollection
-https://stackoverflow.com/questions/59381273/heatmap-with-circles-indicating-size-of-population
-"""
+"""Plotting functionality for sensitivity analysis."""
 from pathlib import Path
-
-import xarray as xr
 from typing import Optional
 
-from matplotlib import pyplot as plt
-import seaborn as sns
 import numpy as np
 import pandas as pd
+import seaborn as sns
+from matplotlib import pyplot as plt
 from pymetadata.console import console
 
 
@@ -19,10 +13,10 @@ def heatmap(
     df: pd.DataFrame,
     parameter_labels: Optional[dict[str, str]] = None,
     output_labels: Optional[dict[str, str]] = None,
-    cutoff: float=0.1,
+    cutoff: float = 0.1,
     annotate_values=True,
-    cluster_rows: bool = True, # cluster parameters
-    cluster_cols: bool = False, # cluster outputs
+    cluster_rows: bool = True,  # cluster parameters
+    cluster_cols: bool = False,  # cluster outputs
     title: Optional[str] = None,
     cmap: str = "seismic",
     vcenter: float = 0.0,
@@ -47,7 +41,6 @@ def heatmap(
         one value is above cutoff."""
         return df[(df.abs() >= cutoff).any(axis=1)]
 
-
     # filter rows
     # X.drop(pk_exclude, axis=1, inplace=True)
 
@@ -71,7 +64,7 @@ def heatmap(
     n_outputs = df_subset.shape[1]
     n_parameters = df_subset.shape[0]
     # (width, height)
-    figsize = (15, int(n_parameters/n_outputs*15))
+    figsize = (15, int(n_parameters / n_outputs * 15))
 
     # plot heatmap
     cg = sns.clustermap(
@@ -102,7 +95,7 @@ def heatmap(
         horizontalalignment="right",
         size=20,
     )
-    label_fontsize=15
+    label_fontsize = 15
     plt.setp(cg.ax_heatmap.get_yticklabels(), size=label_fontsize, weight="bold")
     plt.setp(cg.ax_heatmap.get_xticklabels(), size=label_fontsize, weight="bold")
     cg.ax_cbar.tick_params(labelsize=label_fontsize)
@@ -115,6 +108,3 @@ def heatmap(
     if fig_path:
         plt.savefig(fig_path, dpi=300, bbox_inches="tight")
     plt.show()
-
-
-

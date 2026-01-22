@@ -1,11 +1,8 @@
 """Simple model for demonstration."""
 from pathlib import Path
 
-from sbmlutils.console import console
-from sbmlutils.converters import odefac
 from sbmlutils.cytoscape import visualize_sbml
 from sbmlutils.factory import *
-from sbmlutils.metadata import *
 
 _m = Model(
     sid="simple_chain",
@@ -68,9 +65,7 @@ _m.reactions = [
     )
 ]
 
-
 if __name__ == "__main__":
-
     results: FactoryResult = create_model(
         model=_m,
         filepath=Path(__file__).parent / f"{_m.sid}.xml",
@@ -80,6 +75,5 @@ if __name__ == "__main__":
         # TODO: antimony & markdown
 
     )
-
 
     visualize_sbml(sbml_path=results.sbml_path)
