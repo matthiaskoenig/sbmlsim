@@ -14,7 +14,6 @@ and integrates sampling, caching, statistical evaluation, and visualization
 within a consistent workflow.
 
 TODO implementation of alternative methods:
-    - [ ] FAST
     - [ ] Morris
 
 FIXME: generate simple example
@@ -33,6 +32,7 @@ from .parameters import (
 from .sensitivity_local import LocalSensitivityAnalysis
 from .sensitivity_sampling import SamplingSensitivityAnalysis
 from .sensitivity_sobol import SobolSensitivityAnalysis
+from .sensitivity_fast import FASTSensitivityAnalysis
 
 __all__ = [
     "SensitivityParameter",
@@ -42,4 +42,5 @@ __all__ = [
     "SobolSensitivityAnalysis",
     "SamplingSensitivityAnalysis",
     "LocalSensitivityAnalysis",
+    "FASTSensitivityAnalysis",
 ]

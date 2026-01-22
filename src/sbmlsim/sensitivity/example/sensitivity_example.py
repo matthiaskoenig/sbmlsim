@@ -18,19 +18,19 @@ model_path: Path = Path(__file__).parent / "simple_chain.xml"
 # subgroups to perform sensitivity analysis on
 sensitivity_groups: list[AnalysisGroup] = [
     AnalysisGroup(
-        uid="low S1",
+        uid="lowS1",
         name="Low S1",
         changes={"[S1]": 0.1},
         color="tab:red",
     ),
     AnalysisGroup(
-        uid="reference S1",
+        uid="refS1",
         name="Reference S1",
         changes={"[S1]": 1},
         color="dimgrey",
     ),
     AnalysisGroup(
-        uid="high S1",
+        uid="highS1",
         name="High S1",
         changes={"[S1]": 10},
         color="tab:blue",
@@ -116,18 +116,20 @@ if __name__ == "__main__":
         LocalSensitivityAnalysis,
         SobolSensitivityAnalysis,
         SamplingSensitivityAnalysis,
+        FASTSensitivityAnalysis,
     )
 
     sensitivity_path = Path(__file__).parent / "results"
     console.print(SensitivityParameter.parameters_to_df(sensitivity_parameters))
+    cache = False
 
     SamplingSensitivityAnalysis.run_sensitivity_analysis(
         results_path=sensitivity_path / "sampling",
         sensitivity_simulation=sensitivity_simulation,
         parameters=sensitivity_parameters,
         groups=sensitivity_groups,
-        cache_results=True,
-        cache_sensitivity=True,
+        cache_results=cache,
+        cache_sensitivity=cache,
         N=1000,
         seed=1234,
     )
@@ -137,8 +139,8 @@ if __name__ == "__main__":
         sensitivity_simulation=sensitivity_simulation,
         parameters=sensitivity_parameters,
         groups=[sensitivity_groups[1]],
-        cache_results=True,
-        cache_sensitivity=True,
+        cache_results=cache,
+        cache_sensitivity=cache,
         difference=0.01,
         seed=1234,
     )
@@ -148,9 +150,20 @@ if __name__ == "__main__":
         sensitivity_simulation=sensitivity_simulation,
         parameters=sensitivity_parameters,
         groups=[sensitivity_groups[1]],
-        cache_results=True,
-        cache_sensitivity=True,
-        N=2048,
+        cache_results=cache,
+        cache_sensitivity=cache,
+        N=4096,
         # N=8,
+        seed=1234,
+    )
+
+    FASTSensitivityAnalysis.run_sensitivity_analysis(
+        results_path=sensitivity_path / "fast",
+        sensitivity_simulation=sensitivity_simulation,
+        parameters=sensitivity_parameters,
+        groups=[sensitivity_groups[1]],
+        cache_results=cache,
+        cache_sensitivity=cache,
+        N=1000,
         seed=1234,
     )

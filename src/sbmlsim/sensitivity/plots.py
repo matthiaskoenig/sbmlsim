@@ -108,3 +108,76 @@ def heatmap(
     if fig_path:
         plt.savefig(fig_path, dpi=300, bbox_inches="tight")
     plt.show()
+
+
+def plot_S1_ST_indices(
+    sa,  # SensitivityAnalysis,
+    fig_path: Path,
+):
+    """Barplots for the S1 and ST indices."""
+    parameter_labels: dict[str, str] = {p.uid: p.uid for p in sa.parameters}
+    output_labels: dict[str, str] = {q.uid: q.name for q in sa.outputs}
+
+    for group in sa.groups:
+        gid = group.uid
+        ymax = sa.sensitivity[gid]["ST"].max(dim=None)
+        ymin = sa.sensitivity[gid]["S1"].min(dim=None)
+
+        for ko, output in enumerate(sa.outputs):
+            f_path = fig_path.parent / f"{fig_path.stem}_{ko:>03}_{output.uid}{fig_path.suffix}"
+
+            S1 = sa.sensitivity[gid]["S1"][:, ko]
+            ST = sa.sensitivity[gid]["ST"][:, ko]
+            S1_conf = sa.sensitivity[gid]["S1_conf"][:, ko]
+            ST_conf = sa.sensitivity[gid]["ST_conf"][:, ko]
+            S1_ST_barplot(
+                S1=S1,
+                ST=ST,
+                S1_conf=S1_conf,
+                ST_conf=ST_conf,
+                title=f"{output_labels[output.uid]} ({group.name})",
+                fig_path=f_path,
+                parameter_labels=parameter_labels,
+                ymax=np.max([1.05, ymax]),
+                ymin=np.min([-0.05, ymin]),
+            )
+
+def S1_ST_barplot(
+    S1, ST, S1_conf, ST_conf,
+    parameter_labels: dict[str, str],
+    fig_path: Optional[Path] = None,
+    title: Optional[str] = None,
+    ymax: float = 1.1,
+    ymin: float = -0.1,
+):
+    # width
+    figsize = (15, 3)
+    label_fontsize = 15
+
+    categories: list[str] = list(parameter_labels.values())
+    f, ax = plt.subplots(figsize=figsize)
+
+    ax.bar(categories, ST, label='ST',
+           color="black",
+           alpha=1.0,
+           edgecolor="black",
+           yerr=ST_conf, capsize=5
+           )
+
+    ax.bar(categories, S1, label='S1', color="tab:blue",
+           edgecolor="black", yerr=S1_conf, capsize=5)
+
+    # ax.set_xlabel('Parameter', fontsize=label_fontsize, fontweight="bold")
+    ax.set_ylabel('Sensitivity', fontsize=label_fontsize, fontweight="bold")
+    ax.set_ylim(bottom=ymin, top=ymax)
+    ax.grid(True, axis="y")
+    ax.tick_params(axis='x', labelrotation=90)
+    # ax.tick_params(axis='x', labelweight='bold')
+    ax.legend()
+
+    if title:
+        plt.suptitle(title, fontsize=20, fontweight="bold")
+
+    if fig_path:
+        plt.savefig(fig_path, dpi=300, bbox_inches="tight")
+    plt.show()

@@ -1,49 +1,13 @@
 """
-Global sensitivity analysis using Sobol indices.
+Global sensitivity analysis using FAST - Fourier Amplitude Sensitivity Test.
 
-This module provides routines to perform variance-based global sensitivity
-analysis based on Sobol indices. Sobol sensitivity analysis quantifies how
-uncertainty in model parameters contributes to the variance of one or more
-model outputs, allowing a decomposition into main effects, interaction
-effects, and total effects.
+    Cukier, R.I., Fortuin, C.M., Shuler, K.E., Petschek, A.G., Schaibly,
+    J.H., 1973. Study of the sensitivity of coupled reaction systems to uncertainties
+    in rate coefficients. I theory. Journal of Chemical Physics 59, 3873-3878. https://doi.org/10.1063/1.1680571
+    Saltelli, A., S. Tarantola, and K. P.-S. Chan (1999). A Quantitative
+    Model-Independent Method for Global Sensitivity Analysis of Model Output.
+    Technometrics, 41(1):39-56, doi:10.1080/00401706.1999.10485594.
 
-The implemented methodology follows the classical Sobol framework and its
-later refinements, including Monte Carlo–based estimators for first-order,
-higher-order, and total-effect sensitivity indices. The approach is fully
-global, meaning that parameters are varied simultaneously over their entire
-admissible ranges according to prescribed probability distributions.
-
-Sobol indices are defined as:
-- First-order indices (S_i), measuring the contribution of a single parameter
-  to the output variance, ignoring interactions.
-- Higher-order indices (S_ij, S_ijk, ...), measuring interaction effects
-  between parameters.
-- Total-effect indices (S_Ti), measuring the total contribution of a parameter
-  to the output variance, including all interactions.
-
-The analysis requires:
-- A deterministic model or simulation function creating scalar outputs.
-- A set of input parameters with specified bounds.
-- A sampling scheme based on quasi-random or Monte Carlo methods.
-
-References
-----------
-Sobol, I. M. (2001).
-Global sensitivity indices for nonlinear mathematical models and their
-Monte Carlo estimates.
-Mathematics and Computers in Simulation, 55(1–3), 271–280.
-https://www.sciencedirect.com/science/article/pii/S0378475400002706
-
-Saltelli, A. (2002).
-Making best use of model evaluations to compute sensitivity indices.
-Computer Physics Communications, 145(2), 280–297.
-https://www.sciencedirect.com/science/article/pii/S0010465502002801
-
-Saltelli, A., Annoni, P., Azzini, I., Campolongo, F., Ratto, M., & Tarantola, S. (2010).
-Variance based sensitivity analysis of model output. Design and estimator
-for the total sensitivity index.
-Computer Physics Communications, 181(2), 259–270.
-https://www.sciencedirect.com/science/article/pii/S0010465509003087
 """
 
 from pathlib import Path
@@ -53,8 +17,8 @@ import SALib
 import numpy as np
 import xarray as xr
 from SALib import ProblemSpec
-from SALib.analyze import sobol
-from SALib.sample import saltelli
+from SALib.analyze import fast
+from SALib.sample import fast_sampler
 from matplotlib import pyplot as plt
 from pymetadata.console import console
 
@@ -64,21 +28,26 @@ from sbmlsim.sensitivity.parameters import SensitivityParameter
 from sbmlsim.sensitivity.plots import plot_S1_ST_indices
 
 
-class SobolSensitivityAnalysis(SensitivityAnalysis):
-    """Global sensitivity analysis based on Sobol method."""
+class FASTSensitivityAnalysis(SensitivityAnalysis):
+    """Global sensitivity analysis based Fourier Amplitude Sensitivity Test (FAST)
+    (Cukier et al. 1973, Saltelli et al. 1999)."""
 
     sensitivity_keys = ["S1", "ST", "S1_conf", "ST_conf"]
 
-    def __init__(self,
-                 sensitivity_simulation: SensitivitySimulation,
-                 parameters: list[SensitivityParameter],
-                 groups: list[AnalysisGroup],
-                 results_path: Path,
-                 N: int,
-                 **kwargs,
-                 ):
+    def __init__(
+        self,
+        sensitivity_simulation: SensitivitySimulation,
+        parameters: list[SensitivityParameter],
+        groups: list[AnalysisGroup],
+        results_path: Path,
+        N: int,
+        M: int = 4,
+        **kwargs,
+    ):
         """
-        N: length of chain (Sobol' sequence), must be power of 2, i.e. 2^m e.g. 4096
+        N (int) – The number of samples to generate
+        M (int) – The interference parameter, i.e., the number of harmonics to sum
+        in the Fourier series decomposition (default 4)
 
         The Sobol' sequence is a popular quasi-random low-discrepancy sequence used
         to generate uniform samples of parameter space.
@@ -87,6 +56,7 @@ class SobolSensitivityAnalysis(SensitivityAnalysis):
         super().__init__(sensitivity_simulation, parameters, groups, results_path,
                          **kwargs)
         self.N: int = N
+        self.M: int = M
 
         # define the problem specification
         self.ssa_problems: dict[str, ProblemSpec] = {}
@@ -99,21 +69,16 @@ class SobolSensitivityAnalysis(SensitivityAnalysis):
             })
 
     def create_samples(self) -> None:
-        """Create samples for sobol.
-
-        Generates model inputs using Saltelli's extension of the Sobol' sequence
-
-        The Sobol' sequence is a popular quasi-random low-discrepancy sequence used
-        to generate uniform samples of parameter space.
-        """
+        """Create samples for FAST."""
         # (num_samples x num_outputs)
-        #  total model evaluations are (2d+2) * N for d input factors
-        num_samples = (2 * self.num_parameters + 2) * self.N
+        #  total model evaluations are N * num_parameters
+        num_samples = self.N * self.num_parameters
 
         for gid in self.group_ids:
-            # libsa samples based on definition
-            ssa_samples = saltelli.sample(self.ssa_problems[gid], N=self.N,
-                                          calc_second_order=True)
+            # libssa samples based on definition
+            ssa_samples = fast_sampler.sample(
+                self.ssa_problems[gid], N=self.N, M=self.M,
+            )
             self.ssa_problems[gid].set_samples(ssa_samples)
 
             self.samples[gid] = xr.DataArray(
@@ -126,7 +91,12 @@ class SobolSensitivityAnalysis(SensitivityAnalysis):
 
     def calculate_sensitivity(self, cache_filename: Optional[str] = None,
                               cache: bool = False):
-        """Calculate the sensitivity matrices for SOBOL analysis."""
+        """ Perform extended Fourier Amplitude Sensitivity Test on model outputs.
+
+        Returns a dictionary with keys 'S1' and 'ST', where each entry is a list of
+        size D (the number of parameters) containing the indices in the same order
+        as the parameter file.
+        """
 
         data = self.read_cache(cache_filename, cache)
         if data:
@@ -147,17 +117,15 @@ class SobolSensitivityAnalysis(SensitivityAnalysis):
                     name=key
                 )
 
-            # Calculate Sobol indices for every output, typically with a confidence
-            # level of 95%.
+            # Calculate FAST indices
             for ko in range(self.num_outputs):
                 Yo = Y[:, ko]
-                Si = SALib.analyze.sobol.analyze(
+                Si = SALib.analyze.fast.analyze(
                     self.ssa_problems[gid], Yo,
-                    calc_second_order=True,
+                    M=self.M,
                     num_resamples=100,
                     conf_level=0.95,
                     print_to_console=False,
-                    n_processors=4,
                 )
                 for key in self.sensitivity_keys:
                     self.sensitivity[gid][key][:, ko] = Si[key]
@@ -174,30 +142,39 @@ class SobolSensitivityAnalysis(SensitivityAnalysis):
         groups: list[AnalysisGroup],
         N: int,
         seed: int,
+        M: int = 4,
         cache_results: bool = False,
         cache_sensitivity: bool = False,
     ) -> None:
-        """Sobol sensitivity analysis.
+        """FAST sensitivity analysis.
+
+        First-order FAST (main effects only):
+        100 × num_pars samples is usually sufficient
+
+        Extended FAST (eFAST, total effects):
+        200–500 × k samples recommended
+        (higher frequencies needed to separate interactions)
 
         :param sensitivity_simulation: Sensitivity simulation.
         :param parameters: Sensitivity parameters.
         :param groups: Sensitivity groups.
-        :param N: Number of samples for sobol sensitivity analysis (power of 2, 2^x).
+        N (int) – The number of samples to generate
+        M (int) – The interference parameter, i.e., the number of harmonics to sum
         :param seed: Random seed.
         """
-        prefix = "sobol"
-        console.rule(f"{prefix.upper()} SENSITIVITY ANALYSIS", style="blue bold",
-                     align="center")
+        prefix = "fast"
+        console.rule(f"{prefix.upper()} SENSITIVITY ANALYSIS", style="blue bold", align="center")
         if cache_sensitivity and not cache_results:
             # sensitivity must be recalculated for new results
             cache_sensitivity = False
 
-        sa = SobolSensitivityAnalysis(
+        sa = FASTSensitivityAnalysis(
             sensitivity_simulation=sensitivity_simulation,
             parameters=parameters,
             groups=groups,
             results_path=results_path,
             N=N,
+            M=M,
             seed=seed,
         )
 
