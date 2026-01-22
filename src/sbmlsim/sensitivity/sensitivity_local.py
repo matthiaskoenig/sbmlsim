@@ -74,38 +74,25 @@ class LocalSensitivityAnalysis(SensitivityAnalysis):
         parameters: list[SensitivityParameter],
         groups: list[AnalysisGroup],
         results_path: Path,
+        seed: Optional[int] = None,
+        n_cores: Optional[int] = None,
+        cache_results: bool = False,
         difference: float = 0.01,
-        **kwargs,
     ) -> None:
-        """Initialize the local sensitivity analysis.
+        """Initialize the local sensitivity analysis."""
 
-        Parameters
-        ----------
-        sensitivity_simulation : SensitivitySimulation
-            Simulation wrapper defining the model, selections, and simulation
-            settings.
-        parameters : list[SensitivityParameter]
-            List of parameters to be perturbed and analyzed.
-        groups : list[AnalysisGroup]
-            Analysis groups defining sets of model changes or conditions.
-        results_path : Path
-            Directory where results, cache files, and plots are written.
-        difference : float, optional
-            Relative parameter perturbation used for sensitivity calculation
-            (default is 0.01, corresponding to ±1%).
-        **kwargs
-            Additional keyword arguments passed to the base
-            SensitivityAnalysis class.
-        """
         super().__init__(
-            sensitivity_simulation,
-            parameters,
-            groups,
-            results_path,
-            **kwargs,
+            sensitivity_simulation=sensitivity_simulation,
+            parameters=parameters,
+            groups=groups,
+            results_path=results_path,
+            seed=seed,
+            n_cores=n_cores,
+            cache_results=cache_results,
         )
 
         self.difference: float = difference
+        self.prefix = f"local_d{self.difference}"
 
     @property
     def num_samples(self) -> int:
@@ -240,82 +227,11 @@ class LocalSensitivityAnalysis(SensitivityAnalysis):
             cache=cache,
         )
 
-    @staticmethod
-    def run_sensitivity_analysis(
-        results_path: Path,
-        sensitivity_simulation: SensitivitySimulation,
-        parameters: list[SensitivityParameter],
-        groups: list[AnalysisGroup],
-        seed: int,
-        difference: float = 0.01,
-        cache_results: bool = False,
-        cache_sensitivity: bool = False,
-    ) -> None:
-        """Run a complete local sensitivity analysis workflow.
-
-        This convenience method orchestrates:
-        - Sample generation
-        - Simulation of all samples
-        - Sensitivity computation
-        - Visualization of normalized sensitivities
-
-        Parameters
-        ----------
-        results_path : Path
-            Output directory for results and plots.
-        sensitivity_simulation : SensitivitySimulation
-            Simulation configuration and execution backend.
-        parameters : list[SensitivityParameter]
-            Parameters to include in the sensitivity analysis.
-        groups : list[AnalysisGroup]
-            Analysis groups defining simulation conditions.
-        seed : int
-            Random seed for reproducibility.
-        difference : float, optional
-            Relative parameter perturbation (default: 0.01).
-        cache_results : bool, optional
-            Whether to cache simulation results.
-        cache_sensitivity : bool, optional
-            Whether to cache sensitivity results.
-        """
-        console.rule(
-            "LOCAL SENSITIVITY ANALYSIS",
-            style="blue bold",
-            align="center",
-        )
-
-        if cache_sensitivity and not cache_results:
-            cache_sensitivity = False
-
-        sa = LocalSensitivityAnalysis(
-            sensitivity_simulation=sensitivity_simulation,
-            parameters=parameters,
-            groups=groups,
-            results_path=results_path,
-            seed=1234,
-            difference=difference,
-        )
-
-        console.rule("Samples", style="white")
-        sa.create_samples()
-        console.print(sa.samples_table())
-
-        console.rule("Results", style="white")
-        sa.simulate_samples(
-            cache_filename=f"local_results_difference{sa.difference}.pkl",
-            cache=cache_results,
-        )
-        console.print(sa.results_table())
-
-        console.rule("Sensitivity", style="white")
-        sa.calculate_sensitivity(
-            cache_filename=f"local_sensitivity_difference{sa.difference}.pkl",
-            cache=cache_sensitivity,
-        )
-
+    def plot(self):
+        super().plot()
         console.rule("Plotting", style="white")
-        for kg, group in enumerate(sa.groups):
-            sa.plot_sensitivity(
+        for kg, group in enumerate(self.groups):
+            self.plot_sensitivity(
                 group_id=group.uid,
                 sensitivity_key="normalized",
                 cutoff=0.05,
@@ -325,7 +241,7 @@ class LocalSensitivityAnalysis(SensitivityAnalysis):
                 vmin=-2.0,
                 vmax=2.0,
                 fig_path=(
-                    sa.results_path
-                    / f"local_sensitivity_{kg:>02}_{group.uid}_{sa.difference}.png"
+                    self.results_path
+                    / f"{self.prefix}_{kg:>02}_{group.uid}.png"
                 ),
             )

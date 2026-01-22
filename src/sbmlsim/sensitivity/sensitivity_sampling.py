@@ -80,18 +80,29 @@ class SamplingSensitivityAnalysis(SensitivityAnalysis):
         "max"
     ]
 
-    def __init__(self,
-                 sensitivity_simulation: SensitivitySimulation,
-                 parameters: list[SensitivityParameter],
-                 groups: list[AnalysisGroup],
-                 results_path: Path,
-                 N: int,
-                 **kwargs,
-                 ):
+    def __init__(
+        self,
+        sensitivity_simulation: SensitivitySimulation,
+        parameters: list[SensitivityParameter],
+        groups: list[AnalysisGroup],
+        results_path: Path,
+        N: int,
+        seed: Optional[int] = None,
+        n_cores: Optional[int] = None,
+        cache_results: bool = False,
+    ):
 
-        super().__init__(sensitivity_simulation, parameters, groups, results_path,
-                         **kwargs)
+        super().__init__(
+            sensitivity_simulation=sensitivity_simulation,
+            parameters=parameters,
+            groups=groups,
+            results_path=results_path,
+            seed=seed,
+            n_cores=n_cores,
+            cache_results=cache_results,
+        )
         self.N: int = N
+        self.prefix = f"sampling_N{self.N}"
 
     def create_samples(self) -> None:
         """Create LHS samples.
@@ -200,10 +211,10 @@ class SamplingSensitivityAnalysis(SensitivityAnalysis):
             }
             for group in self.groups:
                 m = self.sensitivity[group.uid]["mean"].values[ko]
-                std = self.sensitivity[group.uid]["std"].values[ko]
+                # std = self.sensitivity[group.uid]["std"].values[ko]
                 cv = self.sensitivity[group.uid]["cv"].values[ko]
-                q005 = self.sensitivity[group.uid]["q005"].values[ko]
-                q095 = self.sensitivity[group.uid]["q095"].values[ko]
+                # q005 = self.sensitivity[group.uid]["q005"].values[ko]
+                # q095 = self.sensitivity[group.uid]["q095"].values[ko]
 
                 item[group.uid] = f"{m:.3g} ({cv * 100:.1f})"
             item["unit"] = output.unit
@@ -231,12 +242,10 @@ class SamplingSensitivityAnalysis(SensitivityAnalysis):
 
         return df
 
-    def plot_sampling_sensitivity(
-        self,
-        fig_path: Path,
-        **kwargs
-    ):
+    def plot(self):
         """Boxplots for the Sampling sensitivity."""
+        super().plot()
+        fig_path = self.results_path / f"{self.prefix}_sensitivity.png"
 
         # width
         figsize = (15, 15)
@@ -308,57 +317,3 @@ class SamplingSensitivityAnalysis(SensitivityAnalysis):
         if fig_path:
             plt.savefig(fig_path, dpi=300, bbox_inches="tight")
         plt.show()
-
-    @staticmethod
-    def run_sensitivity_analysis(
-        results_path: Path,
-        sensitivity_simulation: SensitivitySimulation,
-        parameters: list[SensitivityParameter],
-        groups: list[AnalysisGroup],
-        N: int,
-        seed: int,
-        cache_results: bool = False,
-        cache_sensitivity: bool = False,
-    ) -> None:
-        """Sampling sensitivity/uncertainty analysis.
-
-        :param sensitivity_simulation: Sensitivity simulation.
-        :param parameters: Sensitivity parameters.
-        :param groups: Sensitivity groups.
-        :param N: Number of samples.
-        :param seed: Random seed.
-        """
-        console.rule("SAMPLING SENSITIVITY ANALYSIS", style="blue bold", align="center")
-        if cache_sensitivity and not cache_results:
-            # sensitivity must be recalculated for new results
-            cache_sensitivity = False
-
-        sa = SamplingSensitivityAnalysis(
-            sensitivity_simulation=sensitivity_simulation,
-            parameters=parameters,
-            results_path=results_path,
-            N=N,
-            seed=seed,
-            groups=groups,
-        )
-        console.rule("Samples", style="white")
-        sa.create_samples()
-        console.print(sa.samples_table())
-
-        console.rule("Results", style="white")
-        sa.simulate_samples(cache_filename=f"sampling_results_N{sa.N}.pkl",
-                            cache=cache_results)
-        console.print(sa.results_table())
-
-        console.rule("Sensitivity", style="white")
-        sa.calculate_sensitivity(cache_filename=f"sampling_sensitivity_N{sa.N}.pkl",
-                                 cache=cache_sensitivity)
-        sa.df_sampling_sensitivity(
-            df_path=sa.results_path / f"sampling_statistics_N{sa.N}.tsv"
-        )
-        # console.print(sa.sensitivity_tables())
-
-        console.rule("Plotting", style="white")
-        sa.plot_sampling_sensitivity(
-            fig_path=sa.results_path / f"sampling_sensitivity_N{sa.N}.png",
-        )

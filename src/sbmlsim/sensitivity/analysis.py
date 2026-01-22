@@ -123,6 +123,8 @@ class SensitivityAnalysis:
                  groups: list[AnalysisGroup],
                  results_path: Path,
                  seed: Optional[int] = None,
+                 n_cores: Optional[int] = None,
+                 cache_results: bool = False,
                  ) -> None:
         """Create a sensitivity analysis for given parameter ids.
 
@@ -160,6 +162,15 @@ class SensitivityAnalysis:
         if seed is not None:
             np.random.seed(seed)
 
+        # caching
+        self.cache_results: bool = cache_results
+        self.prefix: str = self.__class__.__name__
+
+        # handle compute resources
+        if not n_cores:
+            n_cores = int(round(0.9 * multiprocessing.cpu_count()))
+        self.n_cores = n_cores
+
         # parameter samples for sensitivity; shape: (num_samples x num_parameters)
         self.samples: dict[str, Optional[xr.DataArray]] = {}
 
@@ -170,47 +181,6 @@ class SensitivityAnalysis:
         # sensitivity matrix; shape: (num_parameters x num_outputs); could be multiple
         self.sensitivity: dict[str, dict[str, xr.DataArray]] = {g.uid: {} for g in
                                                                 self.groups}
-
-    def samples_table(self) -> pd.DataFrame:
-        return self._data_table(d=self.samples)
-
-    def results_table(self) -> pd.DataFrame:
-        return self._data_table(d=self.results)
-
-    def _data_table(self, d: dict[str, xr.DataArray]) -> pd.DataFrame:
-        items = []
-        for group in self.groups:
-            da: xr.DataArray = d[group.uid]
-            item = {
-                'group': group.uid,
-                # 'group_name': group.name,
-                **da.sizes,
-            }
-            items.append(item)
-        return pd.DataFrame(items)
-
-    def read_cache(self, cache_filename: str, cache: bool) -> Optional[Any]:
-        cache_path: Optional[
-            Path] = self.results_path / cache_filename if cache_filename else None
-        if cache and not cache_path:
-            raise ValueError("Cache path is required for caching.")
-
-        # retrieve from cache
-        if cache and cache_path.exists():
-            with open(cache_path, 'rb') as f:
-                data = dill.load(f)
-                console.print(f"Simulated samples loaded from cache: '{cache_path}'")
-                return data
-
-        return None
-
-    def write_cache(self, data: Any, cache_filename: str, cache: bool) -> Optional[Any]:
-        cache_path: Optional[
-            Path] = self.results_path / cache_filename if cache_filename else None
-        if cache_path:
-            with open(cache_path, 'wb') as f:
-                console.print(f"Simulated samples written to cache: '{cache_path}'")
-                dill.dump(data, f)
 
     @property
     def output_ids(self) -> list[str]:
@@ -235,6 +205,30 @@ class SensitivityAnalysis:
     @property
     def num_groups(self) -> int:
         return len(self.groups)
+
+    def execute(self):
+        """Execute the sensitivity analysis."""
+        console.rule(
+            f"{self.__class__.__name__}",
+            style="blue bold",
+            align="center",
+        )
+        console.rule("Samples", style="white")
+        self.create_samples()
+        console.print(self.samples_table())
+
+        console.rule("Results", style="white")
+        self.simulate_samples(
+            cache_filename=f"{self.prefix}_results.pkl",
+            cache=self.cache_results,
+        )
+        console.print(self.results_table())
+
+        console.rule("Sensitivity", style="white")
+        self.calculate_sensitivity(
+            cache_filename=f"{self.prefix}_sensitivity.pkl",
+            cache=self.cache_results,
+        )
 
     def create_samples(self) -> None:
         """Create and set parameter samples."""
@@ -283,8 +277,6 @@ class SensitivityAnalysis:
             )
 
             # number of cores
-            n_cores = multiprocessing.cpu_count()
-
             samples = self.samples[group.uid]
 
             # create chunk of samples for core
@@ -305,13 +297,13 @@ class SensitivityAnalysis:
                 return chunks, chunked_samples
 
             items = list(range(self.num_samples))
-            chunks, chunked_samples = split_into_chunks(items, n_cores)
+            chunks, chunked_samples = split_into_chunks(items, self.n_cores)
 
             # parameters for multiprocessing
             sa_sim = self.sensitivity_simulation
-            rrs = [(sa_sim, r, chunked_samples[i]) for i in range(n_cores)]
+            rrs = [(sa_sim, r, chunked_samples[i]) for i in range(self.n_cores)]
 
-            with multiprocessing.Pool(processes=n_cores) as pool:
+            with multiprocessing.Pool(processes=self.n_cores) as pool:
                 outputs_list: list = pool.map(run_simulation, rrs)
 
             for kc, chunk in enumerate(chunks):
@@ -331,6 +323,47 @@ class SensitivityAnalysis:
 
         raise NotImplemented
 
+    def samples_table(self) -> pd.DataFrame:
+        return self._data_table(d=self.samples)
+
+    def results_table(self) -> pd.DataFrame:
+        return self._data_table(d=self.results)
+
+    def _data_table(self, d: dict[str, xr.DataArray]) -> pd.DataFrame:
+        items = []
+        for group in self.groups:
+            da: xr.DataArray = d[group.uid]
+            item = {
+                'group': group.uid,
+                # 'group_name': group.name,
+                **da.sizes,
+            }
+            items.append(item)
+        return pd.DataFrame(items)
+
+    def read_cache(self, cache_filename: str, cache: bool) -> Optional[Any]:
+        cache_path: Optional[
+            Path] = self.results_path / cache_filename if cache_filename else None
+        if cache and not cache_path:
+            raise ValueError("Cache path is required for caching.")
+
+        # retrieve from cache
+        if cache and cache_path.exists():
+            with open(cache_path, 'rb') as f:
+                data = dill.load(f)
+                console.print(f"Simulated samples loaded from cache: '{cache_path}'")
+                return data
+
+        return None
+
+    def write_cache(self, data: Any, cache_filename: str, cache: bool) -> Optional[Any]:
+        cache_path: Optional[
+            Path] = self.results_path / cache_filename if cache_filename else None
+        if cache_path:
+            with open(cache_path, 'wb') as f:
+                console.print(f"Simulated samples written to cache: '{cache_path}'")
+                dill.dump(data, f)
+
     def sensitivity_df(self, group_id: str, key: str) -> pd.DataFrame:
         """Convert sensitivity information to dataframes."""
 
@@ -340,6 +373,10 @@ class SensitivityAnalysis:
             columns=sensitivity.coords["output"],
             index=sensitivity.coords["parameter"]
         )
+
+    def plot(self):
+        """Should be implemented by subclass."""
+        console.rule("Plotting", style="white")
 
     def plot_sensitivity(
         self,
