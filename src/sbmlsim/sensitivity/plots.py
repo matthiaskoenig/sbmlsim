@@ -117,45 +117,4 @@ def heatmap(
     plt.show()
 
 
-def sobol_barplot(
-    S1, ST, S1_conf, ST_conf,
-    parameter_labels: dict[str, str],
-    fig_path: Optional[Path] = None,
-    title: Optional[str] = None,
-    ymax: float = 1.1,
-    ymin: float = -0.1,
-):
-    # width
-    figsize = (15, 3)
-    label_fontsize = 15
-
-    categories: list[str] = list(parameter_labels.values())
-    f, ax = plt.subplots(figsize=figsize)
-
-    ax.bar(categories, ST, label='ST',
-           color="tab:orange",
-           alpha=1.0,
-           edgecolor="black",
-           yerr=ST_conf, capsize=5
-           )
-
-    ax.bar(categories, S1, label='S1', color="tab:blue",
-           edgecolor="black", yerr=S1_conf, capsize=5)
-
-
-    # ax.set_xlabel('Parameter', fontsize=label_fontsize, fontweight="bold")
-    ax.set_ylabel('Sobol Index', fontsize=label_fontsize, fontweight="bold")
-    ax.set_ylim(bottom=ymin, top=ymax)
-    ax.grid(True, axis="y")
-    ax.tick_params(axis='x', labelrotation=90)
-    # ax.tick_params(axis='x', labelweight='bold')
-    ax.legend()
-
-    if title:
-        plt.suptitle(title, fontsize=20, fontweight="bold")
-
-    if fig_path:
-        plt.savefig(fig_path, dpi=300, bbox_inches="tight")
-    plt.show()
-
 

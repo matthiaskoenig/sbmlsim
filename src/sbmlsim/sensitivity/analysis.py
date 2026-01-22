@@ -825,6 +825,3 @@ class SamplingSensitivityAnalysis(SensitivityAnalysis):
             fig_path=sa.results_path / f"sampling_sensitivity_N{sa.N}.png",
         )
 
-
-
-                )
