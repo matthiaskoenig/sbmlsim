@@ -9,7 +9,7 @@ from enum import Enum
 from pathlib import Path
 from typing import Dict, List, Optional, Union
 
-from sbmlutils import log
+from pymetadata import log
 
 from sbmlsim.model.model_resources import Source
 from sbmlsim.units import UnitsInformation

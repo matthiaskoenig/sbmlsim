@@ -6,8 +6,8 @@ import numpy as np
 import pandas as pd
 from matplotlib import pyplot as plt
 from pyDOE import lhs
-from sbmlutils import log
-from sbmlutils.console import console
+from pymetadata import log
+from pymetadata.console import console
 
 # FIXME: make this independent of the fit parameters
 from sbmlsim.fit.objects import FitParameter

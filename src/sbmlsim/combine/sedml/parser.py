@@ -89,7 +89,7 @@ import roadrunner
 from pint import Quantity
 
 from pymetadata import omex as pyomex
-from sbmlutils import log
+from pymetadata import log
 
 from sbmlsim.combine.mathml import formula_to_astnode
 from sbmlsim.combine.sedml.data import DataDescriptionParser

@@ -7,8 +7,8 @@ from matplotlib import pyplot as plt
 from matplotlib.figure import Figure as FigureMPL
 from matplotlib.axis import Axis as AxisMPL
 from matplotlib.gridspec import GridSpec
-from sbmlutils import log
-from sbmlutils.console import console
+from pymetadata import log
+from pymetadata.console import console
 
 from sbmlsim.plot import Axis, Curve, Figure, SubPlot
 from sbmlsim.plot.plotting import (

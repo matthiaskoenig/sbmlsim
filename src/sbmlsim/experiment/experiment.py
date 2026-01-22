@@ -8,7 +8,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Dict, Iterable, List, Union
 
-from sbmlutils import log
+from pymetadata import log
 
 from sbmlsim.data import Data, DataSet
 from sbmlsim.fit import FitMapping

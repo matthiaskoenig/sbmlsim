@@ -8,8 +8,8 @@ from typing import Any, Callable, Dict, Iterable, List, Optional, Sized, Union
 
 import numpy as np
 import pandas as pd
-from sbmlutils import log
-from sbmlutils.console import console
+from pymetadata import log
+from pymetadata.console import console
 
 from sbmlsim.data import Data
 from sbmlsim.serialization import to_json

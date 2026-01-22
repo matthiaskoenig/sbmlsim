@@ -9,7 +9,7 @@ import roadrunner
 from matplotlib import pyplot as plt
 from matplotlib.pyplot import Axes, Figure
 
-from sbmlutils import log
+from pymetadata import log
 from sbmlutils.manipulation import interpolation as ip
 
 

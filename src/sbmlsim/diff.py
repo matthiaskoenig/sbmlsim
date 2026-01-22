@@ -10,8 +10,8 @@ from typing import Dict
 import pandas as pd
 import seaborn as sns
 from matplotlib import pyplot as plt
-from sbmlutils import log
-from sbmlutils.console import console
+from pymetadata import log
+from pymetadata.console import console
 
 from sbmlsim.utils import timeit
 

@@ -3,7 +3,7 @@
 from typing import List, Optional, Union
 
 from pymetadata.metadata import KISAO, KISAOType
-from sbmlutils import log
+from pymetadata import log
 
 from sbmlsim.simulation.base import BaseObject
 

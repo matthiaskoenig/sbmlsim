@@ -3,8 +3,8 @@ from pathlib import Path
 
 from sbmlsim.fit import FitExperiment, FitMapping
 import pandas as pd
-from sbmlutils.console import console
-from sbmlutils.log import get_logger
+from pymetadata.console import console
+from pymetadata import log
 
 
 from sbmlsim.experiment import ExperimentRunner, SimulationExperiment
@@ -14,7 +14,7 @@ from typing import Dict, List, Type, Union, Callable, Iterable, Tuple, Any
 
 from sbmlsim.fit.objects import MappingMetaData
 
-logger = get_logger(__name__)
+logger = log.get_logger(__name__)
 
 
 def filtered_fit_experiments(

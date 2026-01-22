@@ -7,7 +7,7 @@ import libsbml
 import numpy as np
 import pandas as pd
 import roadrunner
-from sbmlutils import log
+from pymetadata import log
 
 from sbmlsim.model import AbstractModel
 from sbmlsim.model.model_resources import Source

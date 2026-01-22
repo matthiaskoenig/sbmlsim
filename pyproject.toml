@@ -50,7 +50,7 @@ dependencies = [
     # dependencies
     "dill>=0.4.0",
     "SAlib>=1.5.2",
-    "petab>=0.7.0",
+    "petab>=0.8.1",
     # "tables>=3.10.2",
     "statsmodels>=0.14.6",
     "typst>=0.14.5",

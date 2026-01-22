@@ -6,7 +6,7 @@ import itertools
 
 import pandas as pd
 from matplotlib import pyplot as plt
-from sbmlutils import log
+from pymetadata import log
 
 from sbmlsim.data import DataSet
 from sbmlsim.result import XResult

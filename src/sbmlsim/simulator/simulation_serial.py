@@ -4,7 +4,7 @@ from pathlib import Path
 import roadrunner
 import pandas as pd
 from pint import Quantity
-from sbmlutils import log
+from pymetadata import log
 
 from sbmlsim.model import AbstractModel, RoadrunnerSBMLModel, ModelChange
 from sbmlsim.result import XResult

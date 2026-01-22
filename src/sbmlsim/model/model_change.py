@@ -5,7 +5,7 @@ Changes of values and initial conditions are encoded via
 the changes instead.
 """
 import roadrunner
-from sbmlutils import log
+from pymetadata import log
 
 
 logger = log.get_logger(__name__)

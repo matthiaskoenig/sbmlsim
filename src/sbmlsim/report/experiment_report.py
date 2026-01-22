@@ -8,8 +8,8 @@ from pathlib import Path
 from typing import Dict, Optional
 
 import jinja2
-from sbmlutils import log
-from sbmlutils.console import console
+from pymetadata import log
+from pymetadata.console import console
 
 from sbmlsim import RESOURCES_DIR, __version__
 from sbmlsim.experiment import ExperimentResult, SimulationExperiment

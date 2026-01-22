@@ -6,8 +6,8 @@ from typing import Dict, Iterable, List, Optional, Set, Tuple, Union
 
 import numpy as np
 import pandas as pd
-from sbmlutils import log
-from sbmlutils.console import console
+from pymetadata import log
+from pymetadata.console import console
 from scipy.optimize import OptimizeResult
 
 from sbmlsim.fit.objects import FitParameter

@@ -6,7 +6,7 @@ from typing import Any, Dict, List, Optional, Union
 
 import numpy as np
 from pint import Quantity
-from sbmlutils import log
+from pymetadata import log
 
 from sbmlsim.serialization import ObjectJSONEncoder
 from sbmlsim.simulation import AbstractSim, Dimension

@@ -25,8 +25,8 @@ import os
 from typing import List, Optional
 
 import numpy as np
-from sbmlutils import log
-from sbmlutils.console import console
+from pymetadata import log
+from pymetadata.console import console
 
 from sbmlsim.fit.optimization import OptimizationProblem
 from sbmlsim.fit.options import (
