@@ -175,6 +175,8 @@ class SamplingSensitivityAnalysis(SensitivityAnalysis):
 
                     self.sensitivity[gid][key][ko] = value
 
+        self.df_sampling_sensitivity(self.results_path / f"{self.prefix}.tsv")
+
         # write to cache
         self.write_cache(data=self.sensitivity, cache_filename=cache_filename,
                          cache=cache)
