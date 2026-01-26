@@ -261,9 +261,9 @@ class SamplingSensitivityAnalysis(SensitivityAnalysis):
         nrows = ncols - n_empty_rows
         return int(nrows), int(ncols)
 
-    def plot_data(self, type: str):
+    def plot_data(self, type: str, show_jitter: bool = True, show_violin: bool = True, **kwargs):
         """Boxplots for the sampled output."""
-        super().plot()
+        super().plot(**kwargs)
 
         # calculate number of rows and columns
         if type == "samples":
@@ -314,27 +314,29 @@ class SamplingSensitivityAnalysis(SensitivityAnalysis):
                     box.set_facecolor(color)
 
                 # violin
-                violin_offset = 0.3
-                vp = ax.violinplot(
-                    data,
-                    positions=[k + violin_offset for k in range(self.num_groups)],
-                    showmeans=True,
-                    showmedians=True,
-                    showextrema=False,
-                )
+                if show_violin:
+                    violin_offset = 0.3
+                    vp = ax.violinplot(
+                        data,
+                        positions=[k + violin_offset for k in range(self.num_groups)],
+                        showmeans=True,
+                        showmedians=True,
+                        showextrema=False,
+                    )
 
-                for body, color in zip(vp["bodies"], colors):
-                    body.set_facecolor(color)
+                    for body, color in zip(vp["bodies"], colors):
+                        body.set_facecolor(color)
 
                 # jitter
-                jitter_offset = 0.3
-                jitter_width = 0.02  # Adjust for spacing
-                for kg, g in enumerate(self.groups):
-                    data_g = data[kg]
-                    x_jitter = np.random.normal(kg + jitter_offset, jitter_width, len(data_g))
-                    ax.scatter(x_jitter, data_g, alpha=0.7, s=30, color='white',
-                               edgecolors='black'
-                )
+                if show_jitter:
+                    jitter_offset = 0.3
+                    jitter_width = 0.02  # Adjust for spacing
+                    for kg, g in enumerate(self.groups):
+                        data_g = data[kg]
+                        x_jitter = np.random.normal(kg + jitter_offset, jitter_width, len(data_g))
+                        ax.scatter(x_jitter, data_g, alpha=0.7, s=30, color='white',
+                                   edgecolors='black'
+                    )
 
                 # ax.set_xlabel('Parameter', fontsize=label_fontsize, fontweight="bold")
                 # ax.set_ylim(bottom=0)
@@ -371,7 +373,7 @@ class SamplingSensitivityAnalysis(SensitivityAnalysis):
 
 
 
-    def plot(self):
+    def plot(self, **kwargs):
         """Boxplots for the Sampling sensitivity."""
-        self.plot_data(type="samples")
-        self.plot_data(type="outputs")
+        self.plot_data(type="samples", **kwargs)
+        self.plot_data(type="outputs", **kwargs)

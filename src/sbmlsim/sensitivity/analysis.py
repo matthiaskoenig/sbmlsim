@@ -374,7 +374,7 @@ class SensitivityAnalysis:
             index=sensitivity.coords["parameter"]
         )
 
-    def plot(self):
+    def plot(self, **kwargs):
         """Should be implemented by subclass."""
         console.rule("Plotting", style="white")
 
