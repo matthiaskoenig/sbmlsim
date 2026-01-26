@@ -124,7 +124,7 @@ if __name__ == "__main__":
     console.print(SensitivityParameter.parameters_to_df(sensitivity_parameters))
 
     settings = {
-        "cache_results": False,
+        "cache_results": True,
         "n_cores": int(round(0.9 * multiprocessing.cpu_count())),
         "seed": 1234
     }
@@ -137,8 +137,6 @@ if __name__ == "__main__":
         N=1000,
         **settings,
     )
-    sa_sampling.execute()
-    sa_sampling.plot()
 
     sa_local = LocalSensitivityAnalysis(
         sensitivity_simulation=sensitivity_simulation,
@@ -148,8 +146,6 @@ if __name__ == "__main__":
         difference=0.01,
         **settings,
     )
-    sa_local.execute()
-    sa_local.plot()
 
     sa_sobol = SobolSensitivityAnalysis(
         sensitivity_simulation=sensitivity_simulation,
@@ -159,8 +155,6 @@ if __name__ == "__main__":
         N=4096,
         **settings,
     )
-    sa_sobol.execute()
-    sa_sobol.plot()
 
     sa_fast = FASTSensitivityAnalysis(
         sensitivity_simulation=sensitivity_simulation,
@@ -170,5 +164,13 @@ if __name__ == "__main__":
         N=1000,
         **settings,
     )
-    sa_fast.execute()
-    sa_fast.plot()
+
+    sas = [
+        # sa_local,
+        sa_sampling,
+        # sa_sobol,
+        # sa_fast,
+    ]
+    for sa in sas:
+        sa.execute()
+        sa.plot()

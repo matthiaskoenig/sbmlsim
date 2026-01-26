@@ -54,6 +54,7 @@ import pandas as pd
 import xarray as xr
 from pymetadata.console import console
 from scipy.stats import qmc
+from matplotlib import pyplot as plt
 
 from sbmlsim.sensitivity.analysis import SensitivitySimulation, AnalysisGroup, \
     SensitivityAnalysis
@@ -244,30 +245,47 @@ class SamplingSensitivityAnalysis(SensitivityAnalysis):
 
         return df
 
-    def plot(self):
-        """Boxplots for the Sampling sensitivity."""
-        super().plot()
-        fig_path = self.results_path / f"{self.prefix}_sensitivity.png"
 
-        # width
-        figsize = (15, 15)
-        label_fontsize = 15
-        from matplotlib import pyplot as plt
-        ncols = np.ceil(np.sqrt(self.num_outputs))
-        n_empty = ncols * ncols - self.num_outputs
+    @staticmethod
+    def _figshape(n: int) -> tuple[int, int]:
+        """Calculates a reasonable figure shape for a number of panels n.
+
+        returns: (nrows, ncols)
+        """
+        if n <= 4:
+            return 1, n
+
+        ncols = np.ceil(np.sqrt(n))
+        n_empty = ncols * ncols - n
         n_empty_rows = np.floor(n_empty / ncols)
-
         nrows = ncols - n_empty_rows
+        return int(nrows), int(ncols)
 
-        f, axes = plt.subplots(figsize=figsize, nrows=int(nrows), ncols=int(ncols),
+    def plot_data(self, type: str):
+        """Boxplots for the sampled output."""
+        super().plot()
+
+        # calculate number of rows and columns
+        if type == "samples":
+            n = self.num_parameters
+        elif type == "outputs":
+            n = self.num_outputs
+
+        nrows, ncols = self._figshape(n=n)
+        label_fontsize = 13
+
+        f, axes = plt.subplots(figsize=(4 * ncols, 4 * nrows),
+                               nrows=int(nrows), ncols=int(ncols),
                                layout="constrained")
-        for ko, ax in enumerate(axes.flat):
-            if ko > self.num_outputs - 1:
+        for ka, ax in enumerate(axes.flat):
+            if ka > n - 1:
                 ax.axis('off')
             else:
 
-                output = self.outputs[ko]
-                data = [self.results[g.uid].values[:, ko] for g in self.groups]
+                if type == "samples":
+                    data = [self.samples[g.uid].values[:, ka] for g in self.groups]
+                elif type == "outputs":
+                    data = [self.results[g.uid].values[:, ka] for g in self.groups]
                 colors = [g.color for g in self.groups]
                 labels = [g.uid for g in self.groups]
                 # outliers for scatter
@@ -277,7 +295,7 @@ class SamplingSensitivityAnalysis(SensitivityAnalysis):
                 # lower_fence = Q1 - 1.5 * IQR
                 # upper_fence = Q3 + 1.5 * IQR
                 # data_no_outliers = data[(data > lower_fence) & (data < upper_fence)]
-                data_no_outliers = data
+                # data_no_outliers = data
 
                 bp = ax.boxplot(
                     data,
@@ -295,27 +313,65 @@ class SamplingSensitivityAnalysis(SensitivityAnalysis):
                 for box, color in zip(bp["boxes"], colors):
                     box.set_facecolor(color)
 
-                # ax.violinplot(data, positions=[0.8], showmeans=True,
-                #                showmedians=True,
-                #                showextrema = False
-                #               )
-                # jitter_width = 0.05  # Adjust for spacing
-                # x_jitter = np.random.normal(0.8, jitter_width, len(data_no_outliers))
-                # ax.scatter(x_jitter, data_no_outliers, alpha=0.7, s=30, color='darkgrey',
-                #                edgecolors='black'
-                # )
+                # violin
+                violin_offset = 0.3
+                vp = ax.violinplot(
+                    data,
+                    positions=[k + violin_offset for k in range(self.num_groups)],
+                    showmeans=True,
+                    showmedians=True,
+                    showextrema=False,
+                )
+
+                for body, color in zip(vp["bodies"], colors):
+                    body.set_facecolor(color)
+
+                # jitter
+                jitter_offset = 0.3
+                jitter_width = 0.02  # Adjust for spacing
+                for kg, g in enumerate(self.groups):
+                    data_g = data[kg]
+                    x_jitter = np.random.normal(kg + jitter_offset, jitter_width, len(data_g))
+                    ax.scatter(x_jitter, data_g, alpha=0.7, s=30, color='white',
+                               edgecolors='black'
+                )
 
                 # ax.set_xlabel('Parameter', fontsize=label_fontsize, fontweight="bold")
                 # ax.set_ylim(bottom=0)
                 # ax.set_title(output.name, fontsize=15, fontweight="bold")
-                ax.set_ylabel(f"{output.name} [{output.unit}]", fontsize=label_fontsize,
-                              fontweight="bold")
-                # ax.tick_params(axis='x', which='both', labelbottom=False)
-                # ax.grid(True, axis="y")
+
+                if type == "samples":
+                    parameter = self.parameters[ka]
+                    ylabel = f"{parameter.uid}: {parameter.name} [{parameter.unit if parameter.unit else 'AU'}]"
+                    ax.set_ylabel(ylabel, fontsize=label_fontsize,
+                                  fontweight="bold")
+                elif type == "outputs":
+                    output = self.outputs[ka]
+                    ylabel = f"{output.name} [{output.unit if output.unit else 'AU'}]"
+                    ax.set_ylabel(ylabel,
+                                  fontsize=label_fontsize,
+                                  fontweight="bold")
+
+                # Make x and y tick labels bold
+                for label in ax.get_xticklabels() + ax.get_yticklabels():
+                    label.set_fontweight('bold')
                 ax.tick_params(axis='x', labelrotation=90)
+                # ax.legend(True)
+
 
         # if title:
         #     plt.suptitle(title, fontsize=20, fontweight="bold")
-        if fig_path:
-            plt.savefig(fig_path, dpi=300, bbox_inches="tight")
+
+        plt.savefig(
+            self.results_path / f"{self.prefix}_sensitivity_{type}.png",
+            dpi=300,
+            bbox_inches="tight"
+        )
         plt.show()
+
+
+
+    def plot(self):
+        """Boxplots for the Sampling sensitivity."""
+        self.plot_data(type="samples")
+        self.plot_data(type="outputs")

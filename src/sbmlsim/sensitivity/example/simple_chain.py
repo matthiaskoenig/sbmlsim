@@ -7,7 +7,7 @@ from sbmlutils.factory import *
 _m = Model(
     sid="simple_chain",
     name="Model Simple Chain",
-    notes="""Simple S1 -> S2 -> S3 conversion for testing.""",
+    notes="""Simple S1 ➞ S2 ➞ S3 conversion for testing.""",
     creators=[
         Creator(
             familyName="König",
@@ -48,18 +48,20 @@ _m.species = [
 ]
 
 _m.parameters = [
-    Parameter(sid="k1", value=1.0, name="rate S1 -> S2 conversion"),
-    Parameter(sid="k2", value=1.0, name="rate S2 -> S3 conversion"),
+    Parameter(sid="k1", value=1.0, name="rate S1 ➞ S2 conversion"),
+    Parameter(sid="k2", value=1.0, name="rate S2 ➞ S3 conversion"),
 ]
 
 _m.reactions = [
     Reaction(
         sid="R1",
+        name="R1: S1 ➞ S2 conversion",
         equation="S1 -> S2",
         formula="k1 * S1",
     ),
     Reaction(
         sid="R2",
+        name="R2: S2 ➞ S3 conversion",
         equation="S2 -> S3",
         formula="k2 * S2",
     )
