@@ -121,7 +121,9 @@ if __name__ == "__main__":
     )
 
     sensitivity_path = Path(__file__).parent / "results"
-    console.print(SensitivityParameter.parameters_to_df(sensitivity_parameters))
+    df = SensitivityParameter.parameters_to_df(sensitivity_parameters)
+    df.to_csv(sensitivity_path / "parameters.tsv", sep="\t", index=False)
+    console.print(df)
 
     settings = {
         "cache_results": True,
@@ -166,8 +168,8 @@ if __name__ == "__main__":
     )
 
     sas = [
-        # sa_local,
-        sa_sampling,
+        sa_local,
+        # sa_sampling,
         # sa_sobol,
         # sa_fast,
     ]
