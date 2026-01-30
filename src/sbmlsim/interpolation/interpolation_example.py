@@ -1,6 +1,5 @@
 """Exmpample demonstrating the interpolation of data."""
-import os
-import shutil
+
 import tempfile
 from pathlib import Path
 
@@ -10,7 +9,7 @@ from matplotlib import pyplot as plt
 from matplotlib.pyplot import Axes, Figure
 
 from pymetadata import log
-from sbmlutils.manipulation import interpolation as ip
+from sbmlsim.interpolation import interpolation as ip
 
 
 logger = log.get_logger(__name__)

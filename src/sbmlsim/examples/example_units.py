@@ -8,14 +8,14 @@ from pymetadata.console import console
 
 from sbmlsim.resources import DEMO_SBML
 from sbmlsim.simulation import Dimension, ScanSim, Timecourse, TimecourseSim
-from sbmlsim.simulator.rr_simulator_serial import SimulatorSerialRR
+from sbmlsim.simulator import SimulatorSerial
 from sbmlsim.units import UnitsInformation
 from sbmlsim.result import XResult
 
 
 def run_demo_example():
     """Run various timecourses."""
-    simulator = SimulatorSerialRR.from_sbml(DEMO_SBML)
+    simulator = SimulatorSerial.from_sbml(DEMO_SBML)
 
     # units information
     uinfo = UnitsInformation.from_sbml(DEMO_SBML)

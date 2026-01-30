@@ -10,7 +10,7 @@ from sbmlsim.model import ModelChange, RoadrunnerSBMLModel
 from sbmlsim.plot.serialization_matplotlib import plt
 from sbmlsim.resources import REPRESSILATOR_SBML
 from sbmlsim.simulation import Timecourse, TimecourseSim
-from sbmlsim.simulator.rr_simulator_serial import SimulatorSerialRR
+from sbmlsim.simulator import SimulatorSerial
 from sbmlsim.result import XResult
 
 
@@ -59,7 +59,7 @@ def run_model_change_example1():
 
 def run_model_clamp1():
     """Using Timecourse simulations for clamps."""
-    simulator = SimulatorSerialRR.from_sbml(REPRESSILATOR_SBML)
+    simulator = SimulatorSerial.from_sbml(REPRESSILATOR_SBML)
 
     # setting a species as boundary condition
     tcsim = TimecourseSim(
@@ -114,7 +114,7 @@ def run_model_clamp2():
         plt.show()
 
     # reference simulation
-    simulator = SimulatorSerialRR.from_sbml(REPRESSILATOR_SBML)
+    simulator = SimulatorSerial.from_sbml(REPRESSILATOR_SBML)
     tcsim = TimecourseSim(
         [
             Timecourse(start=0, end=220, steps=300, changes={"X": 10}),
