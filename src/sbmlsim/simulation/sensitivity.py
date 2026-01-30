@@ -10,8 +10,7 @@ import libsbml
 import numpy as np
 from pymetadata import log
 from pymetadata.console import console
-
-from sbmlsim.model.rr_model import roadrunner
+import roadrunner
 from sbmlsim.simulation import Dimension, ScanSim, TimecourseSim
 
 

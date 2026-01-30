@@ -10,7 +10,7 @@ from sbmlsim.resources import DEMO_SBML
 from sbmlsim.simulation import Dimension, ScanSim, Timecourse, TimecourseSim
 from sbmlsim.simulator.rr_simulator_serial import SimulatorSerialRR
 from sbmlsim.units import UnitsInformation
-from sbmlsim.xresult import XResult
+from sbmlsim.result import XResult
 
 
 def run_demo_example():

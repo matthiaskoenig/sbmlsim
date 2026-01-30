@@ -1,8 +1,9 @@
 """DataGenerator."""
+
 from typing import Dict
 
 from sbmlsim.data import DataSet
-from sbmlsim.xresult import XResult
+from sbmlsim.result import XResult
 
 
 class DataGeneratorFunction:

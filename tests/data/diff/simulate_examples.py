@@ -1,4 +1,5 @@
 """Simulation of examples."""
+
 from pathlib import Path
 
 import pandas as pd
@@ -7,16 +8,16 @@ from matplotlib import pyplot as plt
 from sbmlsim.comparison.diff import DataSetsComparison, get_files_by_extension
 from sbmlsim.resources import REPRESSILATOR_SBML
 from sbmlsim.simulation import TimecourseSim
-from sbmlsim.simulator import SimulatorSerialRR
+from sbmlsim.simulator import SimulatorSerial
 
-
-diff_path = Path(__file__) / "diff"
+DATA_DIR = Path(__file__).parent / "data"
+diff_path = Path(__file__).parent / "diff"
 
 
 def run_simulations(create_files: bool = True) -> None:
     """Run all the simulations."""
 
-    simulator = SimulatorSerialRR.from_sbml(REPRESSILATOR_SBML)
+    simulator = SimulatorSerial.from_sbml(REPRESSILATOR_SBML)
     simulator.set_integrator_settings(
         absolute_tolerance=1e-16,
         relative_tolerance=1e-13,

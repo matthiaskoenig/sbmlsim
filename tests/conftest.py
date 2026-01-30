@@ -3,8 +3,8 @@
 from pathlib import Path
 
 import pytest
+import roadrunner
 
-from sbmlsim.model.rr_model import roadrunner
 from sbmlsim.resources import DEMO_SBML, REPRESSILATOR_SBML
 
 

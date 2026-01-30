@@ -7,7 +7,7 @@ import pytest
 
 from sbmlsim.simulation import Dimension, ScanSim, Timecourse, TimecourseSim
 from sbmlsim.simulator.rr_simulator_serial import SimulatorSerialRR
-from sbmlsim.xresult import XResult
+from sbmlsim.result import XResult
 
 
 def test_from_sbml(repressilator_path: Path) -> None:

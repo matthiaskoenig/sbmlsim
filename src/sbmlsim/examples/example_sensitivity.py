@@ -2,13 +2,13 @@
 Example shows basic model simulations and plotting.
 """
 
-from sbmlsim.model.rr_model import roadrunner
+import roadrunner
 from sbmlsim.plot.serialization_matplotlib import plt
 from sbmlsim.resources import REPRESSILATOR_SBML
 from sbmlsim.simulation import Timecourse, TimecourseSim
 from sbmlsim.simulation.sensitivity import ModelSensitivity
-from sbmlsim.simulator import SimulatorSerialRR
-from sbmlsim.xresult import XResult
+from sbmlsim.simulator import SimulatorSerial
+from sbmlsim.result import XResult
 
 
 def plot_results(xres: XResult):
@@ -61,7 +61,7 @@ def run_sensitivity():
 
     :return:
     """
-    simulator = SimulatorSerialRR.from_sbml(REPRESSILATOR_SBML)
+    simulator = SimulatorSerial.from_sbml(REPRESSILATOR_SBML)
 
     # parameter sensitivity
     tcsim = TimecourseSim(

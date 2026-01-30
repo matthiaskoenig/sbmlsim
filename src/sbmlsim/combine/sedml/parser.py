@@ -78,6 +78,7 @@ and the SED-ML specification.
 import re
 import shutil
 import warnings
+import roadrunner
 from collections import defaultdict
 from enum import Enum
 from pathlib import Path
@@ -98,7 +99,6 @@ from sbmlsim.experiment import ExperimentRunner, SimulationExperiment
 from sbmlsim.fit import FitData, FitExperiment, FitMapping, FitParameter
 from sbmlsim.model import RoadrunnerSBMLModel
 from sbmlsim.model.model import AbstractModel
-from sbmlsim.model.rr_model import roadrunner
 from sbmlsim.plot import Axis, Curve, Figure, Plot
 from sbmlsim.plot.plotting import (
     AbstractCurve,

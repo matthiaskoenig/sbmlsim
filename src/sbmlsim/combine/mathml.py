@@ -2,11 +2,11 @@
 
 Using sympy to evaluate the expressions.
 """
-from typing import Any, Dict, Set, Tuple
+
+from typing import Any, Dict, Set
 from pymetadata import log
 import libsedml
-from sbmlutils import log
-from sympy import Symbol, lambdify, sympify
+from sympy import lambdify, sympify
 
 
 logger = log.get_logger(__name__)
@@ -172,7 +172,6 @@ def replace_piecewise(formula):
 
 
 if __name__ == "__main__":
-
     # Piecewise in sympy
     # https://docs.sympy.org/latest/modules/functions/elementary.html#piecewise
     # Piecewise((expr, cond), (expr, cond), … )
