@@ -2,7 +2,7 @@
 Example shows basic model simulations and plotting.
 """
 
-from sbmlsim.model.model_roadrunner import roadrunner
+from sbmlsim.model.rr_model import roadrunner
 from sbmlsim.plot.serialization_matplotlib import plt
 from sbmlsim.resources import REPRESSILATOR_SBML
 from sbmlsim.simulation import Timecourse, TimecourseSim

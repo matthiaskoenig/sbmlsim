@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pytest
 
-from sbmlsim.model.model_roadrunner import roadrunner
+from sbmlsim.model.rr_model import roadrunner
 from sbmlsim.resources import DEMO_SBML, REPRESSILATOR_SBML
 
 

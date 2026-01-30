@@ -1,15 +1,15 @@
 """Definition of Objects used in FitProblems and optimization."""
+
 from __future__ import annotations
 import json
 import math
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Callable, Dict, Iterable, List, Optional, Sized, Union
+from typing import Any, Callable, Dict, Iterable, List, Optional, Union
 
 import numpy as np
 import pandas as pd
 from pymetadata import log
-from pymetadata.console import console
 
 from sbmlsim.data import Data
 from sbmlsim.serialization import to_json
@@ -90,7 +90,7 @@ class FitExperiment:
                 weights_processed = weights
 
             # all weights have to be None, i.e [None, ..., None].
-            # the weights are calculated dynamically by evalutating the fit mappings.
+            # the weights are calculated dynamically by evaluating the fit mappings.
             if weights_processed != mapping_weights:
                 logger.error(
                     f"Either 'weights' can be set on a FitExperiment or the weight of "

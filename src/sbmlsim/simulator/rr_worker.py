@@ -6,7 +6,7 @@ import pandas as pd
 from sbmlutils import log
 
 from sbmlsim.model import ModelChange
-from sbmlsim.model.model_roadrunner import IntegratorSettingKeys, roadrunner
+from sbmlsim.model.rr_model import IntegratorSettingKeys, roadrunner
 from sbmlsim.simulation import Timecourse, TimecourseSim
 
 
