@@ -6,8 +6,8 @@ from typing import Dict, Iterable, List, Optional, Set, Tuple, Union
 
 import numpy as np
 import pandas as pd
-from sbmlutils import log
-from sbmlutils.console import console
+from pymetadata import log
+from pymetadata.console import console
 from scipy.optimize import OptimizeResult
 
 from sbmlsim.fit.objects import FitParameter
@@ -44,7 +44,7 @@ class OptimizationResult(ObjectJSONEncoder):
         else:
             uuid_str = str(uuid.uuid4())
             self.sid = (
-                "{:%Y%m%d_%H%M%S}".format(datetime.datetime.now()) + f"__{uuid_str}"
+                "{:%Y%m%d_%H%M%S}".format(datetime.datetime.now()) + f"__{uuid_str[:5]}"
             )
         self.parameters: List[FitParameter] = []
         for p in parameters:

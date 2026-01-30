@@ -10,8 +10,8 @@ from typing import Any, Callable, Collection, Dict, List, Optional, Set, Tuple, 
 import numpy as np
 import pandas as pd
 import scipy
-from sbmlutils import log
-from sbmlutils.console import console
+from pymetadata import log
+from pymetadata.console import console
 from scipy import interpolate, optimize
 
 from sbmlsim.data import Data
@@ -43,8 +43,8 @@ class RuntimeErrorOptimizeResult:
     status: str = "-1"
     success: bool = False
     duration: float = -1.0
-    cost: float = np.Inf
-    optimality: float = np.Inf
+    cost: float = np.inf
+    optimality: float = np.inf
 
 
 class OptimizationProblem(ObjectJSONEncoder):
@@ -372,7 +372,7 @@ class OptimizationProblem(ObjectJSONEncoder):
                 # handle missing data (0.0 and NaN)
                 if y_ref_err is not None:
                     # remove 0.0 from y-error
-                    y_ref_err[(y_ref_err == 0.0)] = np.NAN
+                    y_ref_err[(y_ref_err == 0.0)] = np.nan
                     if np.all(np.isnan(y_ref_err)):
                         # handle special case of all NaN errors
                         logger.warning(
@@ -432,13 +432,12 @@ class OptimizationProblem(ObjectJSONEncoder):
                         # The weighting must be normalized to the curve!, i.e. be a
                         # unitless quantity approximately the same for the different
                         # datasets.
-                        weight_points = y_ref / y_ref_err
+                        weight_points = np.abs(y_ref / y_ref_err)
                         # weight_points = 1.0 / y_ref_err  # scale with error;
                     else:
                         logger.warning(
                             f"'{sid}.{mapping_id}': Using '{self.weighting_points}' "
-                            f"with no errors in reference data. Check weighting for "
-                            f"consistency!"
+                            f"with no errors in reference data."
                         )
                         # Weights must be comparable to datasets with data (1/CV)
                         # Assuming an error with CV of 0.5 -> w=2

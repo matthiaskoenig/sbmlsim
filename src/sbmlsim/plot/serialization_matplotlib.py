@@ -7,7 +7,8 @@ from matplotlib import pyplot as plt
 from matplotlib.axis import Axis as AxisMPL
 from matplotlib.figure import Figure as FigureMPL
 from matplotlib.gridspec import GridSpec
-from sbmlutils import log
+from pymetadata import log
+from pymetadata.console import console
 
 from sbmlsim.plot import Axis, Curve, Figure, SubPlot
 from sbmlsim.plot.plotting import (
@@ -378,7 +379,7 @@ class MatplotlibFigureSerializer:
 
             if xax:
                 apply_axis_settings(xax, ax1, axis_type="x")
-            if xax:
+            if yax:
                 apply_axis_settings(yax, ax1, axis_type="y")
             if yax_right:
                 apply_axis_settings(yax_right, ax2, axis_type="y")
@@ -400,12 +401,15 @@ class MatplotlibFigureSerializer:
                 ax.tick_params(axis="y", labelsize=Figure.ytick_labelsize)
 
             # hide none-existing axes
-            if xax is None:
-                ax1.tick_params(axis="x", colors=Figure.fig_facecolor)
-                ax1.xaxis.label.set_color(Figure.fig_facecolor)
-            if yax is None:
-                ax1.tick_params(axis="y", colors=Figure.fig_facecolor)
-                ax1.yaxis.label.set_color(Figure.fig_facecolor)
+            if plot.xaxis is None:
+                ax.spines['right'].set_visible(False)
+                ax.spines['left'].set_visible(False)
+                ax1.xaxis.set_visible(False)
+
+            if plot.yaxis is None:
+                ax.spines['top'].set_visible(False)
+                ax.spines['bottom'].set_visible(False)
+                ax1.yaxis.set_visible(False)
 
             xgrid = xax.grid if xax else None
             ygrid = yax.grid if yax else None

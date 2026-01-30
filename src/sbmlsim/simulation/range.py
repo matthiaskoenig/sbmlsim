@@ -275,7 +275,7 @@ class Dimension:
 
 
 if __name__ == "__main__":
-    from sbmlutils.console import console
+    from pymetadata.console import console
 
     console.rule("[bold red]Range examples")
     ranges = [

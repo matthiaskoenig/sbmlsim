@@ -32,8 +32,12 @@ def run_simulations(create_files: bool = True) -> None:
             df.to_csv(tsv_path, sep="\t", index=False)
 
 
-def run_comparisons(create_files: bool = True) -> None:
-    """Run comparison of tests simulations."""
+def run_comparisons(create_files=True):
+    """Run comparison of tests simulations.
+
+    :return:
+    """
+    diff_path = Path(DATA_DIR) / "diff"
 
     simulation_keys = get_files_by_extension(diff_path)
     print(simulation_keys)

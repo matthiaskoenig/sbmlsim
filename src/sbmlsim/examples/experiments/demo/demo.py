@@ -20,8 +20,8 @@ from sbmlsim.simulation import (
     Timecourse,
     TimecourseSim,
 )
-from sbmlsim.simulation.sensitivity import ModelSensitivity
-from sbmlsim.simulator import SimulatorSerialRR
+from sbmlsim.simulation.sensitivity import ModelSensitivity, SensitivityType
+from sbmlsim.simulator.simulation_serial import SimulatorSerial
 from sbmlsim.task import Task
 
 
@@ -115,7 +115,7 @@ def run_demo_experiments(output_path: Path) -> None:
 
     runner = ExperimentRunner(
         DemoExperiment,
-        simulator=SimulatorSerialRR(),
+        simulator=SimulatorSerial(),
         data_path=data_path,
         base_path=base_path,
     )

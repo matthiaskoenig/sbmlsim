@@ -8,8 +8,8 @@ from pathlib import Path
 from typing import Dict, Optional
 
 import jinja2
-from sbmlutils import log
-from sbmlutils.console import console
+from pymetadata import log
+from pymetadata.console import console
 
 from sbmlsim import RESOURCES_DIR, __version__
 from sbmlsim.experiment import ExperimentResult, SimulationExperiment
@@ -191,5 +191,6 @@ class ExperimentReport:
         output_path = write_report(
             filename=filename, context=context, template_str=f"index.{suffix}"
         )
-        logger.info(f"Report created: 'file://{output_path}'")
+        report_path_str: str = str(output_path).replace('\\', '/')
+        logger.info(f"report created: file://{report_path_str}")
         return output_path

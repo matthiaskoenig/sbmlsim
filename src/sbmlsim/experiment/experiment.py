@@ -8,7 +8,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Dict, Iterable, List, Union
 
-from sbmlutils import log
+from pymetadata import log
 
 from sbmlsim.data import Data, DataSet
 from sbmlsim.fit import FitMapping
@@ -389,8 +389,9 @@ class SimulationExperiment:
         """Execute given experiment and store results."""
 
         # run simulations (sets self._results)
-        logger.info("_run_tasks")
-        self._run_tasks(simulator, reduced_selections=reduced_selections)
+        self._run_tasks(
+            simulator, reduced_selections=reduced_selections
+        )
 
         # evaluate mappings
         self.evaluate_fit_mappings()
@@ -403,7 +404,7 @@ class SimulationExperiment:
         else:
             if not Path.exists(output_path):
                 Path.mkdir(output_path, parents=True)
-                logger.info(f"'output_path' created: '{output_path}'")
+                logger.debug(f"'output_path' created: '{output_path}'")
 
             # save outputs
             self.save_datasets(output_path)
@@ -452,10 +453,7 @@ class SimulationExperiment:
 
             # load model in simulator
             model: AbstractModel = self._models[model_id]
-            logger.info("set model")
             simulator.set_model(model=model)
-
-            logger.info("set selections")
             if reduced_selections:
                 # set selections based on data
                 selections = {"time"}
@@ -472,7 +470,7 @@ class SimulationExperiment:
                 # use the complete selection
                 simulator.set_timecourse_selections(selections=None)
 
-            logger.info("normalize changes")
+            logger.debug("normalize changes")
             # normalize model changes (these must be set in simulation!)
             model.normalize(uinfo=model.uinfo)
 
@@ -491,7 +489,7 @@ class SimulationExperiment:
                 sim = deepcopy(sim)
                 sim.add_model_changes(model.changes)
 
-                logger.info("running timecourse simulation")
+                logger.debug("running timecourse simulation")
                 if isinstance(sim, TimecourseSim):
                     self._results[task_key] = simulator.run_timecourse(sim)
                 elif isinstance(sim, ScanSim):

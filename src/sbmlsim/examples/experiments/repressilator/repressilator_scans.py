@@ -18,8 +18,7 @@ from sbmlsim.simulation import (
     Timecourse,
     TimecourseSim,
 )
-from sbmlsim.simulator.rr_simulator_ray import SimulatorRayRR
-from sbmlsim.simulator.rr_simulator_serial import SimulatorSerialRR
+from sbmlsim.simulator.simulation_serial import SimulatorSerial
 from sbmlsim.task import Task
 
 
@@ -220,7 +219,7 @@ def run_repressilator_experiments(output_path: Path) -> Path:
     base_path = Path(__file__).parent
     data_path = base_path
 
-    for simulator in [SimulatorSerialRR(), SimulatorRayRR()]:
+    for simulator in [SimulatorSerial()]:
         runner = ExperimentRunner(
             [RepressilatorScanExperiment],
             simulator=simulator,

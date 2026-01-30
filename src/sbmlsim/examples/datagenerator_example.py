@@ -4,15 +4,14 @@ import numpy as np
 from sbmlsim.combine.datagenerator import DataGeneratorIndexingFunction
 from sbmlsim.resources import MIDAZOLAM_SBML
 from sbmlsim.simulation import Dimension, ScanSim, Timecourse, TimecourseSim
-from sbmlsim.simulator.rr_simulator_serial import SimulatorSerialRR
-from sbmlsim.units import Quantity
-from sbmlsim.xresult import XResult
+from sbmlsim.simulator.simulation_serial import SimulatorSerial
+from sbmlsim.test import MODEL_MIDAZOLAM
 
 
 def example_scan() -> XResult:
     """Run scan and return results."""
-    simulator = SimulatorSerialRR.from_sbml(MIDAZOLAM_SBML)
-    Q_ = Quantity
+    simulator = SimulatorSerial(model=MODEL_MIDAZOLAM)
+    Q_ = simulator.Q_
 
     scan = ScanSim(
         simulation=TimecourseSim(

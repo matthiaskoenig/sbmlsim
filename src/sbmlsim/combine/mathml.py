@@ -3,7 +3,7 @@
 Using sympy to evaluate the expressions.
 """
 from typing import Any, Dict, Set, Tuple
-
+from pymetadata import log
 import libsedml
 from sbmlutils import log
 from sympy import Symbol, lambdify, sympify

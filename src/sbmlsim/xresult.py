@@ -7,8 +7,8 @@ from typing import Dict, List, Optional
 import numpy as np
 import pandas as pd
 import xarray as xr
-from sbmlutils import log
-from sbmlutils.console import console
+from pymetadata import log
+from pymetadata.console import console
 
 from sbmlsim.simulation import Dimension, ScanSim
 
@@ -119,20 +119,31 @@ class XResult:
                 for key, data in data_dict.items()
             }
         )
+        for key in data_dict:
+            if key in uinfo:
+                # set units attribute
+                ds[key].attrs["units"] = uinfo[key]
+        return XResult(xdataset=ds, uinfo=uinfo)
 
-        xres = XResult(xdataset=ds)
-        xres.set_units(udict)
-        return xres
+    def to_netcdf(self, path_nc):
+        """Store results as netcdf."""
+        self.xds.to_netcdf(path_nc)
 
-    def to_netcdf(self, path: Path):
-        """Store results as netcdf4/HDF5."""
-        self.xds.to_netcdf(path, format="NETCDF4", engine="h5netcdf")
-
-    @staticmethod
-    def from_netcdf(path: Path) -> XResult:
-        """Read from netCDF."""
-        ds: xr.Dataset = xr.open_dataset(path)
-        return XResult(xdataset=ds)
+    def is_timecourse(self) -> bool:
+        """Check if timecourse."""
+        # FIXME: better implementation necessary
+        is_tc = True
+        xds = self.xds
+        if len(xds.dims) == 2:
+            for dim in xds.dims:
+                if dim == "_time":
+                    continue
+                else:
+                    if xds.sizes[dim] != 1:
+                        is_tc = False
+        else:
+            return False
+        return is_tc
 
     def to_mean_dataframe(self) -> pd.DataFrame:
         """Convert to DataFrame with mean data."""

@@ -9,7 +9,7 @@ from xml.etree import ElementTree
 
 import libsedml
 from pymetadata import omex as pyomex
-from sbmlutils import log
+from pymetadata import log
 
 
 logger = log.get_logger(__name__)

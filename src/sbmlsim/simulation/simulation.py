@@ -3,7 +3,7 @@ import abc
 from abc import ABC
 from typing import Dict, List
 
-from sbmlutils import log
+from pymetadata import log
 
 from sbmlsim.simulation.algorithm import Algorithm
 from sbmlsim.simulation.base import BaseObject

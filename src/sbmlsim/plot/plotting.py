@@ -13,6 +13,7 @@ Additional settings are required which allow to define how things
         E.g. over which dimensions should an error be calculated and which
         dimensions should be plotted individually.
 """
+from __future__ import annotations
 import copy
 from copy import deepcopy
 from dataclasses import dataclass
@@ -21,7 +22,7 @@ from typing import Any, Dict, List, Optional, Union
 
 import numpy as np
 from matplotlib.colors import to_hex, to_rgba
-from sbmlutils import log
+from pymetadata import log
 
 from sbmlsim.data import Data, DataSet
 
@@ -114,7 +115,7 @@ class ColorType:
         return self.color
 
     @staticmethod
-    def parse_color(color: str, alpha: float = 1.0) -> Optional["ColorType"]:
+    def parse_color(color: str, alpha: float = 1.0) -> Optional[ColorType]:
         """Parse given color and add alpha information.
 
         :param color:
@@ -293,6 +294,7 @@ class Style(BasePlotObject):
 
     # https://matplotlib.org/3.1.0/gallery/lines_bars_and_markers/linestyles.html
     MPL2SEDML_LINESTYLE_MAPPING = {
+
         "": LineType.NONE,
         "-": LineType.SOLID,
         "solid": LineType.SOLID,
@@ -437,6 +439,10 @@ class Style(BasePlotObject):
             color=kwargs.get("color", None),
             alpha=kwargs.get("alpha", 1.0),
         )
+        line_color = ColorType.parse_color(
+            color=kwargs.get("markeredgecolor", None),
+        )
+
 
         # Line
         linestyle = Style.MPL2SEDML_LINESTYLE_MAPPING[kwargs.get("linestyle", "-")]
@@ -448,7 +454,7 @@ class Style(BasePlotObject):
             type=marker_symbol,
             size=kwargs.get("markersize", None),
             fill=kwargs.get("markerfacecolor", color),
-            line_color=kwargs.get("markeredgecolor", None),
+            line_color=line_color,
             line_thickness=kwargs.get("markeredgewidth", None),
         )
 
@@ -1116,6 +1122,8 @@ class Plot(BasePlotObject):
         self,
         xid: str,
         yid: str,
+        xid_sd=None,
+        xid_se=None,
         yid_sd=None,
         yid_se=None,
         count: Union[int, str] = None,
@@ -1165,6 +1173,24 @@ class Plot(BasePlotObject):
                 "No label provided on curve, using default label 'yid'. "
                 "To not plot a label use 'label=None'"
             )
+        if 'markeredgecolor' not in kwargs:
+            kwargs["markeredgecolor"] = "black"
+
+        # xerr data
+        xerr = None
+        xerr_label = ""
+        if xid_sd and xid_se:
+            logger.warning("'xid_sd' and 'xid_se' set, using 'xid_sd'.")
+        if xid_sd:
+            if xid_sd.endswith("se"):
+                logger.warning("SD error column ends with 'se', check names.")
+            xerr_label = "±SD"
+            xerr = Data(xid_sd, dataset=dataset, task=task)
+        elif xid_se:
+            if xid_se.endswith("sd"):
+                logger.warning("SE error column ends with 'sd', check names.")
+            xerr_label = "±SE"
+            xerr = Data(xid_se, dataset=dataset, task=task)
 
         # yerr data
         yerr = None
@@ -1210,7 +1236,7 @@ class Plot(BasePlotObject):
         self.curve(
             x=Data(xid, dataset=dataset, task=task),
             y=Data(yid, dataset=dataset, task=task),
-            xerr=None,
+            xerr=xerr,
             yerr=yerr,
             label=label,
             type=type,
@@ -1297,10 +1323,13 @@ class Figure(BasePlotObject):
         self.subplots: List[SubPlot] = subplots
         self.num_rows: int = num_rows
         self.num_cols: int = num_cols
-        self._height: float = self.num_rows * Figure.panel_height
-        self._width: float = self.num_cols * Figure.panel_height
-        self.width: float = width
+        self._height: float = height
+        self._width: float = width
         self.height: float = height
+        self.width: float = width
+        # print(f"[{self.num_rows}, {self.num_cols}], ({self.height}, {self.width})")
+        # print(f"Figure: [{self.panel_height}, {self.panel_width}]")
+
 
     def __repr__(self) -> str:
         """Get representation string."""
@@ -1319,7 +1348,7 @@ class Figure(BasePlotObject):
     def height(self, value: float) -> None:
         """Set height."""
         if value is None:
-            value = self.num_rows * Figure.panel_height
+            value = self.num_rows * self.panel_height
         self._height = value
 
     @property
@@ -1331,7 +1360,7 @@ class Figure(BasePlotObject):
     def width(self, value: float) -> None:
         """Set width."""
         if value is None:
-            value = self.num_cols * Figure.panel_width
+            value = self.num_cols * self.panel_width
         self._width = value
 
     def num_subplots(self) -> int:

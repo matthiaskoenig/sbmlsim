@@ -2,7 +2,7 @@
 
 from typing import Dict
 
-from sbmlutils import log
+from pymetadata import log
 
 
 logger = log.get_logger(__name__)

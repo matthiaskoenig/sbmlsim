@@ -11,8 +11,8 @@ from typing import Dict, Iterator, Optional, Union
 
 import libsbml
 import numpy as np
-from sbmlutils import log
-from sbmlutils.console import console
+from pymetadata import log
+from pymetadata.console import console
 from sbmlutils.io import read_sbml
 
 
@@ -264,7 +264,7 @@ class UnitsInformation(MutableMapping):
                     uid: Optional[str] = None
                     udef_test: libsbml.UnitDefinition
                     for udef_test in model.getListOfUnitDefinitions():
-                        if libsbml.UnitDefinition_areEquivalent(udef_test, udef):
+                        if libsbml.UnitDefinition.areIdentical(udef_test, udef):
                             uid = udef_test.getId()
                             break
 
@@ -290,7 +290,7 @@ class UnitsInformation(MutableMapping):
     @staticmethod
     def _default_ureg() -> pint.UnitRegistry:
         """Get default unit registry."""
-        ureg = pint.UnitRegistry()
+        ureg = pint.UnitRegistry(on_redefinition='ignore')
         ureg.define("none = count")
         ureg.define("item = count")
         ureg.define("percent = 0.01*count")
@@ -300,7 +300,7 @@ class UnitsInformation(MutableMapping):
             "IU = 0.0347 * mg"
         )  # IU for insulin ! FIXME better handling of general IU
         ureg.define(
-            "IU/ml = 0.0347 * mg/ml"
+            "IU_per_ml = 0.0347 * mg/ml"
         )  # IU for insulin ! FIXME better handling of general IU
         return ureg
 
@@ -335,10 +335,19 @@ class UnitsInformation(MutableMapping):
                     )
                     raise err
             else:
-                item = Q_(item, uinfo[key])
                 logger.warning(
                     f"No units provided, assuming dictionary units: {key} = {item}"
                 )
+                try:
+                    # convert to model units
+                    item = Q_(item, uinfo[key])
+                except DimensionalityError as err:
+                    logger.error(
+                        f"DimensionalityError "
+                        f"'{key} = {item}'."
+                        f"\n{err}"
+                    )
+
             changes_normed[key] = item
 
         return changes_normed
@@ -379,7 +388,7 @@ class Units:
             return "None"
 
         # order the unit definition
-        libsbml.UnitDefinition_reorder(udef)
+        libsbml.UnitDefinition.reorder(udef)
 
         # collect formated nominators and denominators
         nom = []
@@ -441,6 +450,7 @@ class Units:
 if __name__ == "__main__":
     from sbmlsim.resources import DEMO_SBML
 
-    ureg = UnitRegistry()
-    uinfo = UnitsInformation.from_sbml(MODEL_DEMO, ureg=ureg)
+    model_path = MODEL_DEMO
+    ureg = UnitRegistry(on_redefinition='ignore')
+    uinfo = UnitsInformation.from_sbml(model_path, ureg=ureg)
     console.log(uinfo.udict)

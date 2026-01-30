@@ -6,8 +6,7 @@ import libsbml
 import numpy as np
 import pandas as pd
 import roadrunner
-from roadrunner import Config
-from sbmlutils import log
+from pymetadata import log
 
 from sbmlsim.model import AbstractModel
 from sbmlsim.model.model_resources import Source
@@ -31,7 +30,7 @@ class RoadrunnerSBMLModel(AbstractModel):
 
     def __init__(
         self,
-        source: Union[str, Path, AbstractModel],
+        source: Union[str, Path],
         base_path: Path = None,
         changes: Dict = None,
         sid: str = None,
@@ -40,84 +39,70 @@ class RoadrunnerSBMLModel(AbstractModel):
         ureg: UnitRegistry = None,
         settings: Dict = None,
     ):
-        """Initialize RoadrunnerSBMLModel."""
-        logger.debug(f"source: {type(source)}, {source}")
-        if isinstance(source, AbstractModel):
-            logger.debug("RoadrunnerSBMLModel from AbstractModel")
-            super(RoadrunnerSBMLModel, self).__init__(
-                source=source.source,
-                language_type=source.language_type,
-                changes=source.changes,
-                sid=source.sid,
-                name=source.name,
-                base_path=source.base_path,
-                selections=selections,
-            )
-        else:
-            logger.debug("RoadrunnerSBMLModel from source")
-            super(RoadrunnerSBMLModel, self).__init__(
-                source=source,
-                language_type=AbstractModel.LanguageType.SBML,
-                changes=changes,
-                sid=sid,
-                name=name,
-                base_path=base_path,
-                selections=selections,
-            )
-        if self.language_type != AbstractModel.LanguageType.SBML:
-            raise ValueError(
-                f"{self.__class__.__name__} only supports "
-                f"language_type '{AbstractModel.LanguageType.SBML}'."
-            )
-
-        # load the model
-        self.state_path = self.get_state_path()
-        logger.debug(f"Load model from state: {self.state_path}")
-        self.model: roadrunner.RoadRunner = self.loda_model_from_source(
-            source=self.source, state_path=self.state_path
+        super(RoadrunnerSBMLModel, self).__init__(
+            source=source,
+            language_type=AbstractModel.LanguageType.SBML,
+            changes=changes,
+            sid=sid,
+            name=name,
+            base_path=base_path,
+            selections=selections,
         )
+
+        # check SBML
+        if self.language_type != AbstractModel.LanguageType.SBML:
+            raise ValueError(f"language_type not supported '{self.language_type}'.")
+
+        # load model
+        # logger.info("load model")
+        self.r: Optional[roadrunner.RoadRunner] = self.load_roadrunner_model(
+            source=self.source
+        )
+        # logger.info(self.r)
+
         # set selections
-        self.selections: List[str] = self.set_timecourse_selections(
-            self.model, selections=self.selections
+        # logger.info("set selections")
+        self.selections = self.set_timecourse_selections(
+            self.r, selections=self.selections
         )
 
         # set integrator settings
-        if settings is not None:
-            RoadrunnerSBMLModel.set_integrator_settings(self.model, **settings)
-
-        self.uinfo = self.parse_units(ureg)
+        # logger.info("set integrator settings")
+        if settings:
+            RoadrunnerSBMLModel.set_integrator_settings(self.r, **settings)
 
         # normalize model changes
+        self.uinfo = self.parse_units(ureg)
         self.normalize(uinfo=self.uinfo)
-
-        logger.debug(f"model.changes: {self.changes}")
 
     @property
     def Q_(self) -> Quantity:
         """Quantity to create quantities for model changes."""
         return self.uinfo.ureg.Quantity
 
-    @property
-    def r(self) -> roadrunner.RoadRunner:
-        """Roadrunner instance."""
-        return self.model
-
-    def get_state_path(self) -> Optional[Path]:
-        """Get path of the state file.
-
-        The state file is a binary file which allows fast model loading.
-        """
-        if self.source.is_path():
-            md5 = md5_for_path(self.source.path)
-            # FIXME: get unique hash for library version
-
-            return Path(f"{self.source.path}_rr{roadrunner.__version__}_{md5}.state")
-        else:
-            return None
+    @staticmethod
+    def from_abstract_model(
+        abstract_model: AbstractModel,
+        selections: List[str] = None,
+        ureg: UnitRegistry = None,
+        settings: Dict = None
+    ):
+        """Create from AbstractModel."""
+        logger.debug("RoadrunnerSBMLModel from AbstractModel")
+        return RoadrunnerSBMLModel(
+            source=abstract_model.source.source,
+            changes=abstract_model.changes,
+            sid=abstract_model.sid,
+            name=abstract_model.name,
+            base_path=abstract_model.base_path,
+            selections=selections,
+            ureg=ureg,
+            settings=settings,
+        )
 
     @classmethod
-    def loda_model_from_source(
-        cls, source: Source, state_path: Path = None
+    def load_roadrunner_model(
+        cls, source: Source,
     ) -> roadrunner.RoadRunner:
         """Load model from given source.
 
@@ -148,20 +133,50 @@ class RoadrunnerSBMLModel(AbstractModel):
 
         # backup without state handling
         if source.is_path():
-            logger.debug(f"Load model from SBML: '{source.path.resolve()}'")
-            r = roadrunner.RoadRunner(str(source.path))
+
+            sbml_path: Path = source.path
+            state_path: Path = RoadrunnerSBMLModel.get_state_path(
+                sbml_path=sbml_path
+            )
+
+            r = roadrunner.RoadRunner(str(sbml_path))
+            # FIXME: see https://github.com/sys-bio/roadrunner/issues/963
+            # if state_path.exists():
+            #     logger.debug(f"Load model from state: '{state_path}'")
+            #     r = roadrunner.RoadRunner()
+            #     r.loadState(str(state_path))
+            #     # with open(state_path, "rb") as fin:
+            #     #     r.loadStateS(fin.read())
+            #     logger.debug(f"Model loaded from state: '{state_path}'")
+            # else:
+            #     logger.info(f"Load model from SBML: '{sbml_path}'")
+            #     r = roadrunner.RoadRunner(str(sbml_path))
+            #     # save state
+            #     r.saveState(str(state_path))
+            #     # with open(state_path, "wb") as fout:
+            #     #     fout.write(r.saveStateS(opt="b"))
+            #     logger.info(f"Save state: '{state_path}'")
 
         elif source.is_content():
             r = roadrunner.RoadRunner(str(source.content))
 
         return r
 
+    @staticmethod
+    def get_state_path(sbml_path: Path) -> Optional[Path]:
+        """Get path of the state file.
+
+        The state file is a binary file which allows fast model loading.
+        """
+        md5 = md5_for_path(sbml_path)
+        return Path(f"{sbml_path}_rr{roadrunner.__version__}_{md5}.state")
+
     @classmethod
-    def copy_roadrunner_instance(
-        cls, r: roadrunner.RoadRunner
-    ) -> roadrunner.RoadRunner:
+    def copy_roadrunner_model(cls, r: roadrunner.RoadRunner) -> roadrunner.RoadRunner:
         """Copy roadrunner model by using the state."""
-        state: str = r.saveStateS()
+        ftmp = tempfile.NamedTemporaryFile()
+        filename = ftmp.name
+        r.saveState(filename)
         r2 = roadrunner.RoadRunner()
         r2.loadStateS(state)
         return r2
@@ -227,7 +242,10 @@ class RoadrunnerSBMLModel(AbstractModel):
             if key == "absolute_tolerance":
                 # special hack to acount for amount and concentration absolute
                 # tolerances
-                value = min(value, value * min(r.model.getCompartmentVolumes()))
+                compartment_values = r.model.getCompartmentVolumes()
+                if len(compartment_values) > 0:
+                    value = min(value, value * min(compartment_values))
+
             integrator.setValue(key, value)
             logger.debug(f"Integrator setting: '{key} = {value}'")
         return integrator

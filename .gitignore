@@ -1,10 +1,10 @@
 .vscode
 workspace.code-workspace
-
+.venv
 .idea
 .vscode
 workspace.code-workspace
-
+uv.lock
 dist
 build
 sbmlsim.egg-info
@@ -28,7 +28,6 @@ src/sbmlsim/comparison/results/amici/
 .pytest_cache
 
 # documentation
-docs_builder/_build/
 src/sbmlsim/examples/experiments/covid/results/
 src/sbmlsim/examples/experiments/glucose/results/DoseResponseExperiment/DoseResponseExperiment_fig1.svg
 src/sbmlsim/examples/experiments/repressilator/RepressilatorExperiment/RepressilatorExperiment_task_tc.h5

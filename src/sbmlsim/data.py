@@ -4,7 +4,7 @@ from pathlib import Path
 from typing import Dict, List, Optional, Union
 
 import pandas as pd
-from sbmlutils import log
+from pymetadata import log
 
 from sbmlsim.combine import mathml
 from sbmlsim.units import DimensionalityError, Quantity, UnitRegistry, UnitsInformation

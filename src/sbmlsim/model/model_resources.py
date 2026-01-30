@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import Dict, Optional, Union
 
 import requests
-from sbmlutils import log
+from pymetadata import log
 
 
 logger = log.get_logger(__name__)

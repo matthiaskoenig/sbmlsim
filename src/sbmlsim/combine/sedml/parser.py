@@ -87,7 +87,7 @@ import libsedml
 import pandas as pd
 from pint import Quantity
 from pymetadata import omex as pyomex
-from sbmlutils import log
+from pymetadata import log
 
 from sbmlsim.combine.mathml import formula_to_astnode
 from sbmlsim.combine.sedml.data import DataDescriptionParser
@@ -867,7 +867,7 @@ class SEDMLParser:
         self.name: str = name
 
         # unit registry to handle units throughout the simulation
-        self.ureg: UnitRegistry = UnitRegistry()
+        self.ureg: UnitRegistry = UnitRegistry(on_redefinition='ignore')
 
         # Reference to the experiment class
         self.exp_class: Type[SimulationExperiment]

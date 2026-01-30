@@ -12,7 +12,7 @@ from sbmlsim.examples.experiments.midazolam.experiments.kupferschmidt1995 import
 from sbmlsim.examples.experiments.midazolam.experiments.mandema1992 import Mandema1992
 from sbmlsim.experiment import ExperimentRunner, SimulationExperiment
 from sbmlsim.report.experiment_report import ExperimentReport, ReportResults
-from sbmlsim.simulator import SimulatorSerialRR
+from sbmlsim.simulator.simulation_serial import SimulatorSerial
 
 
 def run_midazolam_experiments(output_path: Path) -> None:
@@ -23,7 +23,7 @@ def run_midazolam_experiments(output_path: Path) -> None:
             Mandema1992,
             Kupferschmidt1995,
         ],
-        simulator=SimulatorSerialRR(),
+        simulator=SimulatorSerial(),
         base_path=base_path,
         data_path=base_path / "data",
     )

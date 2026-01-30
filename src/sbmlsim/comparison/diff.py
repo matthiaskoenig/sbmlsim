@@ -1,6 +1,5 @@
 """Helpers for numerical comparison of data.
 
-Used in the context of model comparison and simulations between different simulators.
 Allows to tests semi-automatically for problems with the various models.
 Used to benchmark the simulation results.
 """
@@ -12,8 +11,8 @@ import numpy as np
 import pandas as pd
 import seaborn as sns
 from matplotlib import pyplot as plt
-from sbmlutils import log
-from sbmlutils.console import console
+from pymetadata import log
+from pymetadata.console import console
 
 from sbmlsim.utils import timeit
 

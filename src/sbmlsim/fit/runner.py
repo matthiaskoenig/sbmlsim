@@ -25,8 +25,8 @@ import os
 from typing import List, Optional
 
 import numpy as np
-from sbmlutils import log
-from sbmlutils.console import console
+from pymetadata import log
+from pymetadata.console import console
 
 from sbmlsim.fit.optimization import OptimizationProblem
 from sbmlsim.fit.options import (
@@ -107,7 +107,7 @@ def run_optimization(
         n_cores = max(1, multiprocessing.cpu_count() - 1)
         logger.error(f"More cores then cpus requested, reducing cores to '{n_cores}'")
 
-    console.rule("START OPTIMIZATION", align="left", style="white")
+    console.rule("Start optimization", align="left", style="white")
     console.log(f"Running {n_cores} workers")
     if size < n_cores:
         logger.warning(
@@ -176,7 +176,6 @@ def worker(kwargs) -> OptimizationResult:
     return _run_optimization_serial(**kwargs)  # type: ignore
 
 
-@timeit
 def _run_optimization_serial(
     problem: OptimizationProblem,
     size: int = 5,

@@ -11,13 +11,13 @@ This includes
 from pathlib import Path
 from typing import Dict, List, Optional, Set, Tuple, Type, Union
 
-from sbmlutils import log
+from pymetadata import log
+from pymetadata.console import console
 
 from sbmlsim.experiment import ExperimentResult, SimulationExperiment
 from sbmlsim.model import RoadrunnerSBMLModel
 from sbmlsim.report.experiment_report import ExperimentReport, ReportResults
-from sbmlsim.simulator import SimulatorSerialRR
-from sbmlsim.simulator.rr_simulator_ray import SimulatorRayRR
+from sbmlsim.simulator import SimulatorSerial
 from sbmlsim.units import UnitRegistry, UnitsInformation
 from sbmlsim.utils import timeit
 
@@ -73,16 +73,7 @@ class ExperimentRunner(object):
             for experiment in self.experiments.values():
                 experiment.simulator = simulator
 
-    @timeit
-    def initialize(
-        self,
-        experiment_classes: Union[
-            List[Type[SimulationExperiment]],
-            Tuple[Type[SimulationExperiment]],
-            Set[Type[SimulationExperiment]],
-        ],
-        **kwargs,
-    ):
+    def initialize(self, experiment_classes: Union[List[Type[SimulationExperiment]], Tuple[Type[SimulationExperiment]], Set[Type[SimulationExperiment]]], **kwargs):
         """Initialize ExperimentRunner.
 
         Initialization is required in addition to construction to allow serialization
@@ -112,15 +103,14 @@ class ExperimentRunner(object):
             for model_id, source in experiment.models().items():
                 if source not in self.models:
                     # not cashed yet, cash the model for lookup
-                    self.models[source] = RoadrunnerSBMLModel(
-                        source=source, ureg=self.ureg
+                    self.models[source] = RoadrunnerSBMLModel.from_abstract_model(
+                        abstract_model=source, ureg=self.ureg
                     )
                 _models[model_id] = self.models[source]
 
             # set resolved models in experiment
             experiment._models = _models
             # only after model loading the unit registry is filled
-
             experiment.initialize()
             self.experiments[experiment.sid] = experiment
 
@@ -138,10 +128,10 @@ class ExperimentRunner(object):
             output_path.mkdir(parents=True)
 
         exp_results = []
-        sid: str
         experiment: SimulationExperiment
         for sid, experiment in self.experiments.items():
-            logger.info(f"Running SimulationExperiment: {sid}")
+            console.rule(style="white")
+            logger.info(f"Running SimulationExperiment: '{sid}'")
 
             # ExperimentResult used to create report
             result = experiment.run(
@@ -161,12 +151,11 @@ def run_experiments(
     output_path: Path,
     base_path: Path = None,
     data_path: Union[List[Path], Tuple[Path], Optional[Path]] = None,
-    parallel: bool = True,
 ) -> Path:
     """Run simulation experiments."""
     if not isinstance(experiments, (list, tuple)):
         experiments = [experiments]
-    simulator = SimulatorRayRR() if parallel else SimulatorSerialRR()
+    simulator = SimulatorSerial()
 
     runner = ExperimentRunner(
         experiments,

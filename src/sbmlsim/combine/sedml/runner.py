@@ -9,8 +9,7 @@ import xmltodict
 from sbmlsim.combine.sedml.io import SEDMLReader
 from sbmlsim.combine.sedml.parser import SEDMLParser
 from sbmlsim.experiment import ExperimentRunner, SimulationExperiment
-from sbmlsim.simulator import SimulatorSerialRR
-from sbmlsim.simulator.rr_simulator_ray import SimulatorRayRR
+from sbmlsim.simulator import SimulatorSerial
 
 
 def sedmltojson(sedml_path: Path) -> None:
