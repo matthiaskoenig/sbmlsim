@@ -3,7 +3,7 @@
 from __future__ import annotations
 from enum import Enum
 from pathlib import Path
-from typing import Dict, List, Optional, Union
+from typing import Optional, Union
 
 import pandas as pd
 from pymetadata import log
@@ -48,8 +48,8 @@ class Data(object):
         task: str = None,
         dataset: str = None,
         function: str = None,
-        variables: Dict[str, "Data"] = None,
-        parameters: Dict[str, float] = None,
+        variables: dict[str, "Data"] = None,
+        parameters: dict[str, float] = None,
         sid: str = None,
     ):
         """Construct data."""
@@ -70,8 +70,8 @@ class Data(object):
         self.task_id: str = task
         self.dset_id: str = dataset
         self.function: str = function
-        self.variables: Dict[str, "Data"] = variables
-        self.parameters: Dict[str, float] = parameters
+        self.variables: dict[str, "Data"] = variables
+        self.parameters: dict[str, float] = parameters
         self.unit: Optional[str] = None
         self._sid = sid
 
@@ -333,7 +333,7 @@ class DataSet(pd.DataFrame):
 
     @classmethod
     def from_df(
-        cls, df: pd.DataFrame, ureg: UnitRegistry, udict: Dict[str, str] = None
+        cls, df: pd.DataFrame, ureg: UnitRegistry, udict: dict[str, str] = None
     ) -> "DataSet":
         """Create DataSet from given pandas.DataFrame.
 
@@ -360,7 +360,7 @@ class DataSet(pd.DataFrame):
             udict = {}
 
         # all units from udict and DataFrame
-        all_udict: Dict[str, str] = {}
+        all_udict: dict[str, str] = {}
 
         for key in df.columns:
             # handle '*_unit columns'
@@ -507,7 +507,7 @@ class DataSet(pd.DataFrame):
 
 # @deprecated
 def load_pkdb_dataframe(
-    sid, data_path: Union[Path, List[Path]], sep="\t", comment="#", **kwargs
+    sid, data_path: Union[Path, list[Path]], sep="\t", comment="#", **kwargs
 ) -> pd.DataFrame:
     """Load TSV data from PKDB figure or table id.
 
@@ -554,7 +554,7 @@ def load_pkdb_dataframe(
 # @deprecated
 def load_pkdb_dataframes_by_substance(
     sid, data_path, **kwargs
-) -> Dict[str, pd.DataFrame]:
+) -> dict[str, pd.DataFrame]:
     """Load dataframes from given PKDB figure/table id split on substance.
 
     The DataFrame is split on the 'substance' key.
@@ -567,7 +567,7 @@ def load_pkdb_dataframes_by_substance(
     :param sid:
     :param data_path:
     :param kwargs:
-    :return: Dict[substance, pd.DataFrame]
+    :return: dict[substance, pd.DataFrame]
     """
     df = load_pkdb_dataframe(sid=sid, data_path=data_path, na_values=["na"], **kwargs)
     frames = {}

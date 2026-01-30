@@ -1,5 +1,4 @@
 from pathlib import Path
-from typing import Dict
 
 from sbmlsim.experiment import SimulationExperiment
 from sbmlsim.model import AbstractModel
@@ -9,8 +8,8 @@ from sbmlsim.task import Task
 
 
 class Carcione2020(SimulationExperiment):
-    def models(self) -> Dict[str, AbstractModel]:
-        Q_ = self.Q_
+    def models(self) -> dict[str, AbstractModel]:
+        # Q_ = self.Q_
         models = {
             "model": AbstractModel(
                 source=Path(__file__).parent
@@ -24,7 +23,7 @@ class Carcione2020(SimulationExperiment):
         }
         return models
 
-    def tasks(self) -> Dict[str, Task]:
+    def tasks(self) -> dict[str, Task]:
         tasks = {}
         if self.simulations():
             tasks = {
@@ -33,8 +32,8 @@ class Carcione2020(SimulationExperiment):
             }
         return tasks
 
-    def simulations(self) -> Dict[str, TimecourseSim]:
-        Q_ = self.Q_
+    def simulations(self) -> dict[str, TimecourseSim]:
+        # Q_ = self.Q_
 
         tcsims = {}
         tcsims["sim1"] = TimecourseSim(
@@ -49,7 +48,7 @@ class Carcione2020(SimulationExperiment):
         )
         return tcsims
 
-    def figures(self) -> Dict[str, Figure]:
+    def figures(self) -> dict[str, Figure]:
         return {**self.figure_plot_1()}
 
     def figure_plot_1(self):

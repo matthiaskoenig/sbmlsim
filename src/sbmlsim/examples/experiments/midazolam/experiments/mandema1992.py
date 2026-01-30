@@ -1,5 +1,3 @@
-from typing import Dict, List
-
 from sbmlsim.data import DataSet, load_pkdb_dataframes_by_substance
 from sbmlsim.fit import FitData, FitMapping
 from sbmlsim.plot import Axis, Figure
@@ -11,7 +9,7 @@ from . import MidazolamSimulationExperiment
 class Mandema1992(MidazolamSimulationExperiment):
     """Mandema1992."""
 
-    def datasets(self) -> Dict[str, DataSet]:
+    def datasets(self) -> dict[str, DataSet]:
         dsets = {}
         for fig_id in ["Fig1A", "Fig2A", "Fig3A"]:
             dframes = load_pkdb_dataframes_by_substance(
@@ -30,10 +28,10 @@ class Mandema1992(MidazolamSimulationExperiment):
                 dsets[f"{fig_id}_{substance}"] = dset
         return dsets
 
-    def simulations(self) -> Dict[str, TimecourseSim]:
+    def simulations(self) -> dict[str, TimecourseSim]:
         return {**self.simulation_mid()}
 
-    def simulation_mid(self) -> Dict[str, TimecourseSim]:
+    def simulation_mid(self) -> dict[str, TimecourseSim]:
         """Mandema1992
 
         - midazolam, iv, 0.1 [mg/kg] (infusion over 15 min)
@@ -113,7 +111,7 @@ class Mandema1992(MidazolamSimulationExperiment):
 
         return tcsims
 
-    def fit_mappings(self) -> Dict[str, FitMapping]:
+    def fit_mappings(self) -> dict[str, FitMapping]:
         # fit mapping: which data maps on which simulation
         fit_dict = {
             "fm1": {"ref": "Fig1A_midazolam", "obs": "task_mid_iv", "yid": "[Cve_mid]"},
@@ -152,7 +150,7 @@ class Mandema1992(MidazolamSimulationExperiment):
             )
         return mappings
 
-    def figures(self) -> Dict[str, Figure]:
+    def figures(self) -> dict[str, Figure]:
         return {
             **self.figure_mid(),
         }

@@ -1,10 +1,11 @@
 """Reading NUML, CSV and TSV data from DataDescriptions."""
+
 import http.client as httplib
 import importlib
 import os
 import tempfile
 from pathlib import Path
-from typing import Dict, Optional
+from typing import Optional
 
 import libsbml
 import libsedml
@@ -30,7 +31,7 @@ class DataDescriptionParser:
     @classmethod
     def parse(
         cls, dd: libsedml.SedDataDescription, working_dir: Path = None
-    ) -> Dict[str, pd.Series]:
+    ) -> dict[str, pd.Series]:
         """Parse single DataDescription.
 
         Returns dictionary of data sources {DataSource.id, slice_data}
@@ -129,7 +130,6 @@ class DataDescriptionParser:
         # -------------------------------
         data_sources = {}
         for ds in dd.getListOfDataSources():
-
             dsid = ds.getId()
 
             # log DataSource

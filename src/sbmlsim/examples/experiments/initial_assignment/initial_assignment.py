@@ -1,8 +1,8 @@
 """
 Example simulation experiment.
 """
+
 from pathlib import Path
-from typing import Dict
 
 from sbmlsim.experiment import ExperimentRunner, SimulationExperiment
 from sbmlsim.model import AbstractModel, RoadrunnerSBMLModel
@@ -18,7 +18,7 @@ base_path = Path(__file__).parent
 class AssignmentExperiment(SimulationExperiment):
     """Testing initial assignments."""
 
-    def models(self) -> Dict[str, AbstractModel]:
+    def models(self) -> dict[str, AbstractModel]:
         return {
             "model": RoadrunnerSBMLModel(
                 source=base_path / "initial_assignment.xml", ureg=self.ureg
@@ -30,7 +30,7 @@ class AssignmentExperiment(SimulationExperiment):
             ),
         }
 
-    def tasks(self) -> Dict[str, Task]:
+    def tasks(self) -> dict[str, Task]:
         tasks = {}
         for model_key in self._models.keys():
             for sim_key in self._simulations.keys():
@@ -39,7 +39,7 @@ class AssignmentExperiment(SimulationExperiment):
                 )
         return tasks
 
-    def simulations(self) -> Dict[str, AbstractSim]:
+    def simulations(self) -> dict[str, AbstractSim]:
         Q_ = self.Q_
         tcs = {}
         tcs["sim1"] = TimecourseSim(
@@ -61,7 +61,7 @@ class AssignmentExperiment(SimulationExperiment):
 
         return tcs
 
-    def figures(self) -> Dict[str, Figure]:
+    def figures(self) -> dict[str, Figure]:
         unit_time = "min"
         unit_amount = "mmole"
         unit_concentration = "mM"
@@ -80,7 +80,6 @@ class AssignmentExperiment(SimulationExperiment):
         colors = ["black", "blue", "red"]
         for ks, sim_key in enumerate(self._simulations.keys()):
             for km, model_key in enumerate(self._models.keys()):
-
                 task_key = f"task_{model_key}_{sim_key}"
 
                 kwargs = {

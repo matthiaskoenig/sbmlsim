@@ -1,4 +1,5 @@
 """Test sensitivity simulations."""
+
 import pytest
 
 from sbmlsim.examples import example_sensitivity
@@ -52,5 +53,5 @@ def test_sensitivity_change() -> None:
     plus = ModelSensitivity.apply_change_to_dict(p_ref, change=0.1)
     minus = ModelSensitivity.apply_change_to_dict(p_ref, change=-0.1)
     for key in ["KM", "eff", "n", "ps_0", "ps_a", "tau_mRNA", "tau_prot"]:
-        assert pytest.approx(1.1 * p_ref[key].magnitude) == plus[key].magnitude
-        assert pytest.approx(0.9 * p_ref[key].magnitude) == minus[key].magnitude
+        assert pytest.approx(1.1 * p_ref[key]) == plus[key]
+        assert pytest.approx(0.9 * p_ref[key]) == minus[key]

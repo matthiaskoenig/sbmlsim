@@ -1,6 +1,7 @@
 """Test fit."""
+
 from pathlib import Path
-from typing import Any, Dict
+from typing import Any
 
 import pytest
 
@@ -47,7 +48,7 @@ for residual_type in [
 
 @pytest.mark.skip(reason="no fit support")
 @pytest.mark.parametrize("fit_kwargs", fit_kwargs_testdata)
-def test_fit_settings(fit_kwargs: Dict[str, Any]) -> None:
+def test_fit_settings(fit_kwargs: dict[str, Any]) -> None:
     """Test various arguments to optimization problem."""
     op = op_mid1oh_iv()
     opt_result: OptimizationResult = run_optimization(
@@ -56,7 +57,7 @@ def test_fit_settings(fit_kwargs: Dict[str, Any]) -> None:
         size=1,
         n_cores=1,
         serial=True,
-        **fit_kwargs
+        **fit_kwargs,
     )
 
     assert opt_result is not None
@@ -83,7 +84,7 @@ def test_optimization_analysis(tmp_path: Path) -> None:
         algorithm=OptimizationAlgorithmType.LEAST_SQUARE,
         size=1,
         n_cores=1,
-        **fit_kwargs_default
+        **fit_kwargs_default,
     )
     op_analysis = OptimizationAnalysis(
         opt_result=opt_result,
@@ -91,7 +92,7 @@ def test_optimization_analysis(tmp_path: Path) -> None:
         output_name="tests",
         op=op,
         show_plots=False,
-        **fit_kwargs_default
+        **fit_kwargs_default,
     )
     op_analysis.run()
 
@@ -116,7 +117,7 @@ def test_loss_function(loss_function: LossFunctionType) -> None:
         size=1,
         n_cores=1,
         serial=True,
-        **fit_kwargs_default
+        **fit_kwargs_default,
     )
     assert opt_result
     assert op.loss_function == loss_function
@@ -131,7 +132,7 @@ def test_fit_lsq_serial() -> None:
         size=1,
         n_cores=1,
         serial=True,
-        **fit_kwargs_default
+        **fit_kwargs_default,
     )
     assert opt_result is not None
 
@@ -145,7 +146,7 @@ def test_fit_de_serial() -> None:
         size=1,
         n_cores=1,
         serial=True,
-        **fit_kwargs_default
+        **fit_kwargs_default,
     )
     assert opt_result is not None
 
@@ -159,7 +160,7 @@ def test_fit_lsq_parallel() -> None:
         size=1,
         n_cores=1,
         serial=False,
-        **fit_kwargs_default
+        **fit_kwargs_default,
     )
     assert opt_result is not None
 
@@ -173,6 +174,6 @@ def test_fit_de_parallel():
         size=1,
         n_cores=1,
         serial=False,
-        **fit_kwargs_default
+        **fit_kwargs_default,
     )
     assert opt_result is not None

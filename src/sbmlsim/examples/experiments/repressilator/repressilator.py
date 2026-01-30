@@ -1,8 +1,9 @@
 """
 Example simulation experiment.
 """
+
 from pathlib import Path
-from typing import Dict, Union
+from typing import Union
 
 from sbmlsim.combine.sedml.report import Report
 
@@ -21,7 +22,7 @@ from sbmlsim.task import Task
 class RepressilatorExperiment(SimulationExperiment):
     """Simple repressilator experiment."""
 
-    def models(self) -> Dict[str, Union[Path, AbstractModel]]:
+    def models(self) -> dict[str, Union[Path, AbstractModel]]:
         """Define models."""
         return {
             "model1": REPRESSILATOR_SBML,
@@ -34,7 +35,7 @@ class RepressilatorExperiment(SimulationExperiment):
             ),
         }
 
-    def simulations(self) -> Dict[str, AbstractSim]:
+    def simulations(self) -> dict[str, AbstractSim]:
         """Define simulations."""
         tc = TimecourseSim(
             timecourses=Timecourse(start=0, end=1000, steps=1000),
@@ -42,14 +43,14 @@ class RepressilatorExperiment(SimulationExperiment):
         )
         return {"tc": tc}
 
-    def tasks(self) -> Dict[str, Task]:
+    def tasks(self) -> dict[str, Task]:
         """Define tasks."""
         tasks = dict()
         for model in ["model1", "model2"]:
             tasks[f"task_{model}_tc"] = Task(model=model, simulation="tc")
         return tasks
 
-    def data(self) -> Dict[str, Data]:
+    def data(self) -> dict[str, Data]:
         """Define data generators."""
         # direct access via id
         data = []
@@ -79,7 +80,7 @@ class RepressilatorExperiment(SimulationExperiment):
         pprint(data_dict)
         return data_dict
 
-    def figures(self) -> Dict[str, Figure]:
+    def figures(self) -> dict[str, Figure]:
         """Define figure outputs (plots)."""
         fig = Figure(
             experiment=self,
@@ -96,29 +97,29 @@ class RepressilatorExperiment(SimulationExperiment):
             Plot(sid="plot2", name="Postprocessing"), row=2, col=1, col_span=2
         )
 
-        p0.set_title(f"Timecourse")
+        p0.set_title("Timecourse")
         p0.set_xaxis("time", unit="second")
         p0.set_yaxis("data", unit="dimensionless")
-        p1.set_title(f"Preprocessing")
+        p1.set_title("Preprocessing")
         p1.set_xaxis("time", unit="second")
         p1.set_yaxis("data", unit="dimensionless")
         colors = ["tab:red", "tab:green", "tab:blue"]
         for k, sid in enumerate(["PX", "PY", "PZ"]):
             p0.curve(
-                x=Data("time", task=f"task_model1_tc"),
-                y=Data(f"{sid}", task=f"task_model1_tc"),
+                x=Data("time", task="task_model1_tc"),
+                y=Data(f"{sid}", task="task_model1_tc"),
                 label=f"{sid}",
                 color=colors[k],
             )
             p1.curve(
-                x=Data("time", task=f"task_model2_tc"),
-                y=Data(f"{sid}", task=f"task_model2_tc"),
+                x=Data("time", task="task_model2_tc"),
+                y=Data(f"{sid}", task="task_model2_tc"),
                 label=f"{sid}",
                 color=colors[k],
                 linewidth=2.0,
             )
 
-        p2.set_title(f"Postprocessing")
+        p2.set_title("Postprocessing")
         p2.set_xaxis("data", unit="dimensionless")
         p2.set_yaxis("data", unit="dimensionless")
 
@@ -136,7 +137,7 @@ class RepressilatorExperiment(SimulationExperiment):
             fig.sid: fig,
         }
 
-    def reports(self) -> Dict[str, Report]:
+    def reports(self) -> dict[str, Report]:
         """Define reports.
 
         HashMap of DataGenerators.

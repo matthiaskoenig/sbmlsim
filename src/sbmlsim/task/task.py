@@ -1,5 +1,4 @@
 """Tasks."""
-from typing import Dict
 
 
 class Task:
@@ -34,7 +33,7 @@ class Task:
         """Get representation."""
         return f"Task(model={self.model_id} simulation={self.simulation_id})"
 
-    def to_dict(self) -> Dict[str, str]:
+    def to_dict(self) -> dict[str, str]:
         """Convert to dictionary."""
         d = {
             "model": self.model_id,

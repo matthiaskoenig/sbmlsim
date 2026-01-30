@@ -1,8 +1,9 @@
 """
 Example simulation experiment.
 """
+
 from pathlib import Path
-from typing import Dict, Union
+from typing import Union
 
 import numpy as np
 
@@ -25,7 +26,7 @@ from sbmlsim.task import Task
 class RepressilatorScanExperiment(SimulationExperiment):
     """Simple repressilator experiment."""
 
-    def models(self) -> Dict[str, Union[Path, AbstractModel]]:
+    def models(self) -> dict[str, Union[Path, AbstractModel]]:
         return {
             "model1": REPRESSILATOR_SBML,
             "model2": AbstractModel(
@@ -33,20 +34,20 @@ class RepressilatorScanExperiment(SimulationExperiment):
             ),
         }
 
-    def simulations(self) -> Dict[str, AbstractSim]:
+    def simulations(self) -> dict[str, AbstractSim]:
         return {
             **self.sim_scans(),
             # **self.sim_sensitivities(),
         }
 
-    def tasks(self) -> Dict[str, Task]:
+    def tasks(self) -> dict[str, Task]:
         tasks = dict()
         for model in ["model1", "model2"]:
             for sim_key in self.simulations():
                 tasks[f"task_{model}_{sim_key}"] = Task(model=model, simulation=sim_key)
         return tasks
 
-    def sim_scans(self) -> Dict[str, AbstractSim]:
+    def sim_scans(self) -> dict[str, AbstractSim]:
         Q_ = self.Q_
         unit_data = "dimensionless"
         tc = TimecourseSim(
@@ -82,20 +83,20 @@ class RepressilatorScanExperiment(SimulationExperiment):
                 ),
             ],
         )
-        scan3d = ScanSim(
-            simulation=tc,
-            dimensions=[
-                Dimension(
-                    "dim1", changes={"X": Q_(np.linspace(0, 10, num=5), unit_data)}
-                ),
-                Dimension(
-                    "dim2", changes={"Y": Q_(np.linspace(0, 10, num=5), unit_data)}
-                ),
-                Dimension(
-                    "dim3", changes={"Z": Q_(np.linspace(0, 10, num=5), unit_data)}
-                ),
-            ],
-        )
+        # scan3d = ScanSim(
+        #     simulation=tc,
+        #     dimensions=[
+        #         Dimension(
+        #             "dim1", changes={"X": Q_(np.linspace(0, 10, num=5), unit_data)}
+        #         ),
+        #         Dimension(
+        #             "dim2", changes={"Y": Q_(np.linspace(0, 10, num=5), unit_data)}
+        #         ),
+        #         Dimension(
+        #             "dim3", changes={"Z": Q_(np.linspace(0, 10, num=5), unit_data)}
+        #         ),
+        #     ],
+        # )
 
         return {
             "tc": tc,
@@ -104,7 +105,7 @@ class RepressilatorScanExperiment(SimulationExperiment):
             # "scan3d": scan3d,
         }
 
-    def data(self) -> Dict[str, Data]:
+    def data(self) -> dict[str, Data]:
         """Data used for plotting and analysis.
         Generates promises for results.
 
@@ -147,7 +148,7 @@ class RepressilatorScanExperiment(SimulationExperiment):
 
         return {d.sid: d for d in data}
 
-    def figures(self) -> Dict[str, Figure]:
+    def figures(self) -> dict[str, Figure]:
         unit_time = "min"
         unit_data = "dimensionless"
 

@@ -1,5 +1,5 @@
 from pathlib import Path
-from typing import Dict, Union
+from typing import Union
 
 import numpy as np
 import pandas as pd
@@ -23,11 +23,11 @@ class DoseResponseExperiment(SimulationExperiment):
     """Hormone dose-response curves."""
 
     @timeit
-    def models(self) -> Dict[str, Union[AbstractModel, Path]]:
+    def models(self) -> dict[str, Union[AbstractModel, Path]]:
         return {"model1": Path(__file__).parent.parent / "model" / "liver_glucose.xml"}
 
     @timeit
-    def datasets(self) -> Dict[str, DataSet]:
+    def datasets(self) -> dict[str, DataSet]:
         dsets = {}
 
         # dose-response data for hormones
@@ -107,12 +107,12 @@ class DoseResponseExperiment(SimulationExperiment):
         return dsets
 
     @timeit
-    def tasks(self) -> Dict[str, Task]:
+    def tasks(self) -> dict[str, Task]:
         """Tasks"""
         return {"task_glc_scan": Task(model="model1", simulation="glc_scan")}
 
     @timeit
-    def simulations(self) -> Dict[str, ScanSim]:
+    def simulations(self) -> dict[str, ScanSim]:
         """Scanning dose-response curves of hormones and gamma function.
 
         Vary external glucose concentrations (boundary condition).
@@ -128,14 +128,14 @@ class DoseResponseExperiment(SimulationExperiment):
         )
         return {"glc_scan": glc_scan}
 
-    def data(self) -> Dict[str, Data]:
+    def data(self) -> dict[str, Data]:
         self.add_selections_data(
             selections=["time", "glu", "ins", "epi", "gamma"],
             task_ids=["task_glc_scan"],
         )
         return {}
 
-    def figures_mpl(self) -> Dict[str, Figure]:
+    def figures_mpl(self) -> dict[str, Figure]:
         xunit = "mM"
         yunit_hormone = "pmol/l"
         yunit_gamma = "dimensionless"

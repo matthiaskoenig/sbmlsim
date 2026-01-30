@@ -1,23 +1,14 @@
-"""Example using pypesto, petab, amici.
-
-
-
-"""
-import os.path
-
-import amici
+"""Example using pypesto, petab, amici."""
 
 # import matplotlib and increase image resolution
 import matplotlib as mpl
 import numpy as np
-import petab
 
 import pypesto
 import pypesto.optimize as optimize
 import pypesto.petab
-import pypesto.visualize as visualize
 
-mpl.rcParams['figure.dpi'] = 300
+mpl.rcParams["figure.dpi"] = 300
 
 
 # define objective function

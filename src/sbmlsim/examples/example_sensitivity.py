@@ -61,7 +61,7 @@ def run_sensitivity():
 
     :return:
     """
-    simulator = SimulatorSerial.from_sbml(REPRESSILATOR_SBML)
+    simulator = SimulatorSerial(REPRESSILATOR_SBML)
 
     # parameter sensitivity
     tcsim = TimecourseSim(

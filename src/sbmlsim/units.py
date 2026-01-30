@@ -2,12 +2,13 @@
 
 Used for model and data unit conversions.
 """
+
 from __future__ import annotations
 import os
 import warnings
 from collections.abc import MutableMapping
 from pathlib import Path
-from typing import Dict, Iterator, Optional, Union
+from typing import Iterator, Optional, Union
 
 import libsbml
 import numpy as np
@@ -30,7 +31,7 @@ with warnings.catch_warnings():
     Quantity([])
 
 logger = log.get_logger(__name__)
-UdictType = Dict[str, str]
+UdictType = dict[str, str]
 
 
 class UnitsInformation(MutableMapping):
@@ -128,10 +129,10 @@ class UnitsInformation(MutableMapping):
     ]
 
     @staticmethod
-    def model_uid_dict(model: libsbml.Model, ureg: UnitRegistry) -> Dict[str, str]:
+    def model_uid_dict(model: libsbml.Model, ureg: UnitRegistry) -> dict[str, str]:
         """Populate the model uid dict for lookup."""
 
-        uid_dict: Dict[str, str] = {}
+        uid_dict: dict[str, str] = {}
 
         # add SBML definitions
         for key in UnitsInformation.sbml_uids:
@@ -195,10 +196,10 @@ class UnitsInformation(MutableMapping):
         if not model:
             ValueError(f"No model found in SBMLDocument: {doc}")
 
-        uid_dict: Dict[str, str] = UnitsInformation.model_uid_dict(model, ureg=ureg)
+        uid_dict: dict[str, str] = UnitsInformation.model_uid_dict(model, ureg=ureg)
 
         # add additional units
-        udict: Dict[str, str] = {}
+        udict: dict[str, str] = {}
 
         # add time unit
         time_uid: str = model.getTimeUnits()
@@ -290,7 +291,7 @@ class UnitsInformation(MutableMapping):
     @staticmethod
     def _default_ureg() -> pint.UnitRegistry:
         """Get default unit registry."""
-        ureg = pint.UnitRegistry(on_redefinition='ignore')
+        ureg = pint.UnitRegistry(on_redefinition="ignore")
         ureg.define("none = count")
         ureg.define("item = count")
         ureg.define("percent = 0.01*count")
@@ -306,8 +307,8 @@ class UnitsInformation(MutableMapping):
 
     @staticmethod
     def normalize_changes(
-        changes: Dict[str, Quantity], uinfo: "UnitsInformation"
-    ) -> Dict[str, Quantity]:
+        changes: dict[str, Quantity], uinfo: "UnitsInformation"
+    ) -> dict[str, Quantity]:
         """Normalize all changes to units in given units dictionary.
 
         This is a major helper function allowing to convert changes
@@ -343,9 +344,7 @@ class UnitsInformation(MutableMapping):
                     item = Q_(item, uinfo[key])
                 except DimensionalityError as err:
                     logger.error(
-                        f"DimensionalityError "
-                        f"'{key} = {item}'."
-                        f"\n{err}"
+                        f"DimensionalityError " f"'{key} = {item}'." f"\n{err}"
                     )
 
             changes_normed[key] = item
@@ -450,7 +449,6 @@ class Units:
 if __name__ == "__main__":
     from sbmlsim.resources import DEMO_SBML
 
-    model_path = MODEL_DEMO
-    ureg = UnitRegistry(on_redefinition='ignore')
-    uinfo = UnitsInformation.from_sbml(model_path, ureg=ureg)
+    ureg = UnitRegistry(on_redefinition="ignore")
+    uinfo = UnitsInformation.from_sbml(DEMO_SBML, ureg=ureg)
     console.log(uinfo.udict)

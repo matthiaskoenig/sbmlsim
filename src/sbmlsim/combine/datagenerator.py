@@ -1,7 +1,5 @@
 """DataGenerator."""
 
-from typing import Dict
-
 from sbmlsim.data import DataSet
 from sbmlsim.result import XResult
 
@@ -10,8 +8,8 @@ class DataGeneratorFunction:
     """DataGeneratorFunction."""
 
     def __call__(
-        self, xresults: Dict[str, XResult], dsets: Dict[str, DataSet] = None
-    ) -> Dict[str, XResult]:
+        self, xresults: dict[str, XResult], dsets: dict[str, DataSet] = None
+    ) -> dict[str, XResult]:
         """Call the function."""
         raise NotImplementedError
 
@@ -24,7 +22,7 @@ class DataGeneratorIndexingFunction(DataGeneratorFunction):
         self.index = index
         self.dimension = dimension
 
-    def __call__(self, xresults: Dict[str, XResult], dsets=None) -> Dict[str, XResult]:
+    def __call__(self, xresults: dict[str, XResult], dsets=None) -> dict[str, XResult]:
         """Reduce based on '_time' dimension with given index."""
         results = {}
         for key, xres in xresults.items():
@@ -50,8 +48,8 @@ class DataGenerator:
     def __init__(
         self,
         f: DataGeneratorFunction,
-        xresults: Dict[str, XResult],
-        dsets: Dict[str, DataSet] = None,
+        xresults: dict[str, XResult],
+        dsets: dict[str, DataSet] = None,
     ):
         """Initialize DataGenerator."""
         self.xresults = xresults

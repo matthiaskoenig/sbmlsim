@@ -3,7 +3,7 @@
 Using sympy to evaluate the expressions.
 """
 
-from typing import Any, Dict, Set
+from typing import Any
 from pymetadata import log
 import libsedml
 from sympy import lambdify, sympify
@@ -92,7 +92,7 @@ def expr_from_formula(formula: str):
     return expr
 
 
-def evaluate(astnode: libsedml.ASTNode, variables: Dict):
+def evaluate(astnode: libsedml.ASTNode, variables: dict):
     """Evaluate the astnode with values."""
     expr = parse_astnode(astnode)
     f = lambdify(args=list(expr.free_symbols), expr=expr)
@@ -100,9 +100,9 @@ def evaluate(astnode: libsedml.ASTNode, variables: Dict):
     return res
 
 
-def _get_variables(astnode: libsedml.ASTNode, variables=None) -> Set[str]:
+def _get_variables(astnode: libsedml.ASTNode, variables=None) -> set[str]:
     """Add variable names to the variables."""
-    variables: Set
+    variables: set
     if variables is None:
         variables = set()
 

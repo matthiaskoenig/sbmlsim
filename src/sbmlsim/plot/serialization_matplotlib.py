@@ -1,14 +1,13 @@
 """Serialization of Figure object to matplotlib."""
 
-from typing import Any, Dict, List, Optional
+from __future__ import annotations
+from typing import Any, Optional
 
 import numpy as np
 from matplotlib import pyplot as plt
-from matplotlib.axis import Axis as AxisMPL
 from matplotlib.figure import Figure as FigureMPL
 from matplotlib.gridspec import GridSpec
 from pymetadata import log
-from pymetadata.console import console
 
 from sbmlsim.plot import Axis, Curve, Figure, SubPlot
 from sbmlsim.plot.plotting import (
@@ -60,7 +59,9 @@ class MatplotlibFigureSerializer:
 
     @classmethod
     def to_figure(
-        cls, experiment: "SimulationExperiment", figure: Figure  # noqa: F821
+        cls,
+        experiment,  # "SimulationExperiment",
+        figure: Figure,  # noqa: F821
     ) -> FigureMPL:
         """Convert sbmlsim.Figure to matplotlib figure."""
 
@@ -102,7 +103,7 @@ class MatplotlibFigureSerializer:
             )
             # secondary axis
             ax2: Optional[plt.Axes] = None
-            axes: List[plt.Axes] = [ax1]
+            axes: list[plt.Axes] = [ax1]
             if yax_right:
                 for curve in plot.curves:
                     if (
@@ -142,11 +143,10 @@ class MatplotlibFigureSerializer:
             barhstack_y = None
 
             # plot ordered curves
-            abstract_curves: List[AbstractCurve] = sorted(
+            abstract_curves: list[AbstractCurve] = sorted(
                 plot.curves + plot.areas, key=lambda x: x.order
             )
             for abstract_curve in abstract_curves:
-
                 if (
                     abstract_curve.yaxis_position
                     and abstract_curve.yaxis_position == YAxisPosition.RIGHT
@@ -207,7 +207,7 @@ class MatplotlibFigureSerializer:
                             else yerr.magnitude
                         )
 
-                    kwargs: Dict[str, Any] = {}
+                    kwargs: dict[str, Any] = {}
                     if curve.style:
                         style: Style = curve.style.resolve_style()
                         if curve.type == CurveType.POINTS:
@@ -295,7 +295,7 @@ class MatplotlibFigureSerializer:
                     yto_data = yto.magnitude[:, 0] if yto is not None else None
 
                     label = area.name if area.name else "__nolabel__"
-                    kwargs: Dict[str, Any] = {}
+                    kwargs: dict[str, Any] = {}
                     if area.style:
                         style: Style = area.style.resolve_style()
                         kwargs = style.to_mpl_area_kwargs()
@@ -402,13 +402,13 @@ class MatplotlibFigureSerializer:
 
             # hide none-existing axes
             if plot.xaxis is None:
-                ax.spines['right'].set_visible(False)
-                ax.spines['left'].set_visible(False)
+                ax.spines["right"].set_visible(False)
+                ax.spines["left"].set_visible(False)
                 ax1.xaxis.set_visible(False)
 
             if plot.yaxis is None:
-                ax.spines['top'].set_visible(False)
-                ax.spines['bottom'].set_visible(False)
+                ax.spines["top"].set_visible(False)
+                ax.spines["bottom"].set_visible(False)
                 ax1.yaxis.set_visible(False)
 
             xgrid = xax.grid if xax else None

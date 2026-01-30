@@ -6,7 +6,6 @@ from sbmlsim.examples.experiments.midazolam.fitting_problems import (
     op_mandema1992,
     op_mid1oh_iv,
 )
-from sbmlsim.fit.analysis import OptimizationAnalysis
 from sbmlsim.fit.optimization import OptimizationProblem
 from sbmlsim.fit.options import (
     OptimizationAlgorithmType,
@@ -14,7 +13,6 @@ from sbmlsim.fit.options import (
     WeightingCurvesType,
     WeightingPointsType,
 )
-from sbmlsim.fit.result import OptimizationResult
 from sbmlsim.fit.runner import run_optimization
 
 
@@ -34,16 +32,14 @@ def fitting_example(op_factory: Callable, size: int = 10, n_cores: int = 10) -> 
         ("lsq", OptimizationAlgorithmType.LEAST_SQUARE),
         ("de", OptimizationAlgorithmType.DIFFERENTIAL_EVOLUTION),
     ]:
-
         op: OptimizationProblem = op_factory()
         fit_path = MIDAZOLAM_PATH / "results_fit" / op.opid / alg_key
         if not fit_path.exists():
             fit_path.mkdir(parents=True)
 
-        opt_result: OptimizationResult = run_optimization(
+        run_optimization(
             problem=op, algorithm=algorithm, size=size, n_cores=n_cores, **fit_kwargs
         )
-
         # OptimizationAnalysis(opt_result=opt_result, op=op)
 
 

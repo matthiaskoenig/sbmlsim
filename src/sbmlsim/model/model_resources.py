@@ -3,10 +3,11 @@
 Interacting with model resources to retrieve models.
 This currently includes BioModels, but can easily be extended to other models.
 """
+
 import re
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Dict, Optional, Union
+from typing import Optional, Union
 
 import requests
 from pymetadata import log
@@ -31,7 +32,7 @@ class Source:
         """Check if the source is Content."""
         return self.content is not None
 
-    def to_dict(self) -> Dict[str, Optional[str]]:
+    def to_dict(self) -> dict[str, Optional[str]]:
         """Convert to dict.
 
         Used for serialization.

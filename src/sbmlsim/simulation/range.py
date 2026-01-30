@@ -1,8 +1,9 @@
 """Module handling ranges."""
+
 import itertools
-from abc import ABC, abstractmethod
-from enum import Enum, auto, unique
-from typing import Dict, Iterable, List, Tuple, Union
+from abc import abstractmethod
+from enum import Enum, auto
+from typing import Iterable, Tuple, Union
 
 import numpy as np
 
@@ -52,7 +53,7 @@ class VectorRange(Range):
     def __init__(
         self,
         sid: str,
-        values: Union[List, Tuple, np.ndarray],
+        values: Union[list, Tuple, np.ndarray],
         name: str = None,
     ):
         """Construct VectorRange."""
@@ -192,8 +193,8 @@ class FunctionalRange(Calculation, Range):
     def __init__(
         self,
         sid: str,
-        variables: List[Variable],
-        parameters: List[Parameter],
+        variables: list[Variable],
+        parameters: list[Parameter],
         math: str,
         range: str,
         name: str = None,
@@ -227,7 +228,7 @@ class Dimension:
     the index is the corresponding index of the dimension.
     """
 
-    def __init__(self, dimension: str, index: np.ndarray = None, changes: Dict = None):
+    def __init__(self, dimension: str, index: np.ndarray = None, changes: dict = None):
         """Dimension.
 
         If no index is provided the index is calculated from the changes.
@@ -268,7 +269,7 @@ class Dimension:
         return len(self.index)
 
     @staticmethod
-    def indices_from_dimensions(dimensions: List["Dimension"]):
+    def indices_from_dimensions(dimensions: list["Dimension"]):
         """Get indices of all combinations of dimensions."""
         index_vecs = [dim.index for dim in dimensions]
         return list(itertools.product(*index_vecs))

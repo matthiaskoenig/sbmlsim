@@ -1,5 +1,6 @@
 """Serial simulator."""
-from typing import List, Optional, Union
+
+from typing import Optional, Union
 from pathlib import Path
 import roadrunner
 import pandas as pd
@@ -23,7 +24,11 @@ class SimulatorSerial:
     cores.
     """
 
-    def __init__(self, model: Union[str|Path|RoadrunnerSBMLModel|AbstractModel] = None, **kwargs):
+    def __init__(
+        self,
+        model: Union[str | Path | RoadrunnerSBMLModel | AbstractModel] = None,
+        **kwargs,
+    ):
         """Initialize serial simulator.
 
         :param model: Path to model or model
@@ -36,13 +41,13 @@ class SimulatorSerial:
         self.integrator_settings = {
             "absolute_tolerance": 1e-10,
             "relative_tolerance": 1e-10,
-            **kwargs
+            **kwargs,
         }
 
         # set model
         self.set_model(model)
 
-    def set_model(self, model: Union[str|Path|RoadrunnerSBMLModel|AbstractModel]):
+    def set_model(self, model: Union[str | Path | RoadrunnerSBMLModel | AbstractModel]):
         """Set model for simulator and updates the integrator settings."""
         # logger.info("SimulatorSerial.set_model")
         self.model = None
@@ -66,7 +71,6 @@ class SimulatorSerial:
             # logger.info("set integrator settings")
             self.set_integrator_settings(**self.integrator_settings)
             # logger.info("model loading finished")
-
 
     def set_integrator_settings(self, **kwargs):
         """Set settings in the integrator."""
@@ -109,7 +113,7 @@ class SimulatorSerial:
         # based on the indices the result structure must be created
         return XResult.from_dfs(dfs=dfs, scan=scan, uinfo=self.uinfo)
 
-    def _timecourses(self, simulations: List[TimecourseSim]) -> List[pd.DataFrame]:
+    def _timecourses(self, simulations: list[TimecourseSim]) -> list[pd.DataFrame]:
         return [self._timecourse(sim) for sim in simulations]
 
     def _timecourse(self, simulation: TimecourseSim) -> pd.DataFrame:
@@ -132,7 +136,6 @@ class SimulatorSerial:
         frames = []
         t_offset = simulation.time_offset
         for k, tc in enumerate(simulation.timecourses):
-
             if k == 0 and tc.model_changes:
                 # [1] apply model changes of first simulation
                 logger.debug("Applying model changes")
@@ -188,7 +191,6 @@ class SimulatorSerial:
             if tc.changes:
                 logger.debug("Applying simulation changes")
             for key, item in tc.changes.items():
-
                 # FIXME: handle concentrations/amounts/default
                 # TODO: Figure out the hasOnlySubstanceUnit flag! (roadrunner)
                 # r: roadrunner.ExecutableModel = self.r
@@ -198,7 +200,6 @@ class SimulatorSerial:
                 except AttributeError:
                     self.r[key] = float(item)
                 logger.debug(f"\t{key} = {item}")
-
 
             # run simulation
             integrator = self.r.integrator

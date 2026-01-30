@@ -5,9 +5,10 @@ Model can be in different formats, main supported format being SBML.
 
 Other formats could be supported like CellML or NeuroML.
 """
+
 from enum import Enum
 from pathlib import Path
-from typing import Dict, List, Optional, Union
+from typing import Optional, Union
 
 from pymetadata import log
 
@@ -49,8 +50,8 @@ class AbstractModel:
         language: Optional[str] = None,
         language_type: LanguageType = LanguageType.SBML,
         base_path: Optional[Path] = None,
-        changes: Dict = None,
-        selections: List[str] = None,
+        changes: dict = None,
+        selections: list[str] = None,
     ):
         """Initialize SourceType."""
 

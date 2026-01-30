@@ -56,7 +56,7 @@ def execute_sedml(path: Path, working_dir: Path, output_path: Path) -> None:
     # execute simulation experiment
     runner = ExperimentRunner(
         [sedml_parser.exp_class],
-        simulator=SimulatorSerialRR(),
+        simulator=SimulatorSerial(),
         data_path=sedml_reader.exec_dir,
         base_path=sedml_reader.exec_dir,
     )

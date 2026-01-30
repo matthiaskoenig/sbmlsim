@@ -1,17 +1,17 @@
 """Helper module for downloading COVID-19 biomodels."""
+
 import json
 from pathlib import Path
 from pprint import pprint
-from typing import Dict, List
 
 import requests
 from sbmlutils.biomodels import download_biomodel_omex
 
 
-def query_covid19_biomodels() -> List[str]:
+def query_covid19_biomodels() -> list[str]:
     """Query the COVID-19 biomodels.
 
-    :return List of biomodel identifiers
+    :return list of biomodel identifiers
     """
     url = "https://www.ebi.ac.uk/biomodels/search?query=submitter_keywords%3A%22COVID-19%22%20AND%20curationstatus%3A%22Manually%20curated%22&numResults=100&format=json"
     response = requests.get(url)
@@ -21,7 +21,7 @@ def query_covid19_biomodels() -> List[str]:
     return sorted(biomodel_ids)
 
 
-def get_covid19_model(output_dir: Path) -> Dict[str, Path]:
+def get_covid19_model(output_dir: Path) -> dict[str, Path]:
     """Get all manually curated COVID-19 models.
 
     :return dictionary of model ids to Paths.

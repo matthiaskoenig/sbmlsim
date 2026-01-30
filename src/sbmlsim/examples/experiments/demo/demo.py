@@ -3,8 +3,8 @@ Example simulation experiment.
 
 Various scans.
 """
+
 from pathlib import Path
-from typing import Dict
 
 import numpy as np
 
@@ -20,7 +20,7 @@ from sbmlsim.simulation import (
     Timecourse,
     TimecourseSim,
 )
-from sbmlsim.simulation.sensitivity import ModelSensitivity, SensitivityType
+from sbmlsim.simulation.sensitivity import ModelSensitivity
 from sbmlsim.simulator.simulation_serial import SimulatorSerial
 from sbmlsim.task import Task
 
@@ -28,24 +28,24 @@ from sbmlsim.task import Task
 class DemoExperiment(SimulationExperiment):
     """Simple repressilator experiment."""
 
-    def models(self) -> Dict[str, AbstractModel]:
+    def models(self) -> dict[str, AbstractModel]:
         """Define models."""
         return {"model": RoadrunnerSBMLModel(source=DEMO_SBML, ureg=self.ureg)}
 
-    def tasks(self) -> Dict[str, Task]:
+    def tasks(self) -> dict[str, Task]:
         """Define tasks."""
         return {
             f"task_{key}": Task(model="model", simulation=key)
             for key in self.simulations()
         }
 
-    def simulations(self) -> Dict[str, AbstractSim]:
+    def simulations(self) -> dict[str, AbstractSim]:
         """Define simulations."""
         return {
             **self.sim_scans(),
         }
 
-    def sim_scans(self) -> Dict[str, AbstractSim]:
+    def sim_scans(self) -> dict[str, AbstractSim]:
         Q_ = self.Q_
         scan_init = ScanSim(
             simulation=TimecourseSim(
@@ -74,7 +74,7 @@ class DemoExperiment(SimulationExperiment):
             "scan_init": scan_init,
         }
 
-    def figures(self) -> Dict[str, Figure]:
+    def figures(self) -> dict[str, Figure]:
         # print(self._results.keys())
         # print(self._results["task_scan_init"])
 

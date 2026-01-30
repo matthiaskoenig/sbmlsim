@@ -15,7 +15,7 @@ This supports:
 """
 
 from pathlib import Path
-from typing import List, Dict, Type
+from typing import Type
 
 import numpy as np
 import pandas as pd
@@ -51,10 +51,10 @@ if __name__ == "__main__":
     # conditions_path = base_path / "resources" / "condition.tsv"
     conditions_path = base_path / "resources" / "condition_liver.tsv"
 
-    conditions_list: List[Condition] = Condition.parse_conditions_from_file(
+    conditions_list: list[Condition] = Condition.parse_conditions_from_file(
         conditions_path=conditions_path
     )
-    conditions: Dict[str, Condition] = {c.sid: c for c in conditions_list}
+    conditions: dict[str, Condition] = {c.sid: c for c in conditions_list}
 
     # simulate condition with simulators
     # ----------------------------------------------------------------
@@ -74,7 +74,7 @@ if __name__ == "__main__":
     # print(f"{timepoints=}")
 
     # run comparison
-    dfs: Dict[str, pd.DataFrame] = {}
+    dfs: dict[str, pd.DataFrame] = {}
     simulator: Type[SimulateSBML]
     for key, simulator in {
         "roadrunner": SimulateRoadrunnerSBML,

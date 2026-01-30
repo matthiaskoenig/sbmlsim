@@ -1,28 +1,17 @@
-"""Example using pypesto, petab, amici.
-
-
-
-"""
-import os.path
-
-import amici
+"""Example using pypesto, petab, amici."""
 
 # import matplotlib and increase image resolution
 import matplotlib as mpl
-import numpy as np
-import petab
 
 import pypesto
 import pypesto.optimize as optimize
 import pypesto.petab
-import pypesto.visualize as visualize
 
-mpl.rcParams['figure.dpi'] = 300
-
+mpl.rcParams["figure.dpi"] = 300
 
 
 # directory of the PEtab problem
-petab_yaml = './boehm_JProteomeRes2014/Boehm_JProteomeRes2014.yaml'
+petab_yaml = "./boehm_JProteomeRes2014/Boehm_JProteomeRes2014.yaml"
 
 importer = pypesto.petab.PetabImporter.from_yaml(petab_yaml)
 problem = importer.create_problem()
@@ -48,7 +37,6 @@ optimizer = optimize.ScipyOptimizer()
 engine = pypesto.engine.MultiProcessEngine()
 
 # Optimize
-result = optimize.minimize(problem=problem,
-                           optimizer=optimizer,
-                           engine=engine,
-                           n_starts=100)
+result = optimize.minimize(
+    problem=problem, optimizer=optimizer, engine=engine, n_starts=100
+)

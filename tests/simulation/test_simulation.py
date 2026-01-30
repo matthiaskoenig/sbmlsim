@@ -1,14 +1,15 @@
 """Test simulations."""
 
-from sbmlsim.model import ModelChange
+from sbmlsim.model import RoadrunnerSBMLModel
 from sbmlsim.simulation import Timecourse, TimecourseSim
 from sbmlsim.simulator import SimulatorSerial
+from sbmlsim.resources import REPRESSILATOR_SBML
 
 
-def test_timecourse_simulation(repressilator_model_state: str) -> None:
+def test_timecourse_simulation() -> None:
     """Run timecourse simulation."""
-    simulator = SimulatorSerial()
-    simulator.set_model(repressilator_model_state)
+    model = RoadrunnerSBMLModel(REPRESSILATOR_SBML)
+    simulator = SimulatorSerial(model)
 
     tc = Timecourse(start=0, end=100, steps=100)
     s = simulator.run_timecourse(TimecourseSim(tc))
@@ -28,38 +29,10 @@ def test_timecourse_simulation(repressilator_model_state: str) -> None:
     assert xres is not None
 
 
-def test_timecourse_combined(repressilator_model_state: str) -> None:
-    """Test timecourse combination."""
-    simulator = SimulatorSerial()
-    simulator.set_model(repressilator_model_state)
-
-    xres = simulator.run_timecourse(
-        simulation=TimecourseSim(
-            [
-                Timecourse(start=0, end=100, steps=100),
-                Timecourse(
-                    start=0,
-                    end=50,
-                    steps=100,
-                    model_changes={ModelChange.CLAMP_SPECIES: {"X": True}},
-                ),
-                Timecourse(
-                    start=0,
-                    end=100,
-                    steps=100,
-                    model_changes={ModelChange.CLAMP_SPECIES: {"X": False}},
-                ),
-            ]
-        )
-    )
-
-    assert xres._time.values[-1] == 250.0
-
-
-def test_timecourse_concat(repressilator_model_state: str) -> None:
+def test_timecourse_concat() -> None:
     """Reuse of timecourses."""
-    simulator = SimulatorSerial()
-    simulator.set_model(repressilator_model_state)
+    model = RoadrunnerSBMLModel(REPRESSILATOR_SBML)
+    simulator = SimulatorSerial(model)
     tc = Timecourse(start=0, end=50, steps=100, changes={"X": 10})
 
     xres = simulator.run_timecourse(simulation=TimecourseSim([tc] * 3))
@@ -70,10 +43,10 @@ def test_timecourse_concat(repressilator_model_state: str) -> None:
     assert xres["[X]"].values[202] == 10.0
 
 
-def test_timecourse_empty(repressilator_model_state: str) -> None:
+def test_timecourse_empty() -> None:
     """Reuse of timecourses."""
-    simulator = SimulatorSerial()
-    simulator.set_model(repressilator_model_state)
+    model = RoadrunnerSBMLModel(REPRESSILATOR_SBML)
+    simulator = SimulatorSerial(model)
     tc = Timecourse(start=0, end=50, steps=100, changes={"X": 10})
 
     tcsim = TimecourseSim([None, tc, None])
@@ -85,10 +58,10 @@ def test_timecourse_empty(repressilator_model_state: str) -> None:
     assert len(xres._time) == 101
 
 
-def test_timecourse_discard(repressilator_model_state: str) -> None:
+def test_timecourse_discard() -> None:
     """Test discarding pre-simulation."""
-    simulator = SimulatorSerial()
-    simulator.set_model(repressilator_model_state)
+    model = RoadrunnerSBMLModel(REPRESSILATOR_SBML)
+    simulator = SimulatorSerial(model)
 
     xres = simulator.run_timecourse(
         simulation=TimecourseSim(

@@ -25,7 +25,6 @@
 [experiments/dose_response.py](experiments/dose_response.py)
 
 ```python
-from typing import Dict
 import numpy as np
 import pandas as pd
 import xarray as xr
@@ -46,14 +45,14 @@ class DoseResponseExperiment(SimulationExperiment):
     """Hormone dose-response curves."""
 
     @timeit
-    def models(self) -> Dict[str, AbstractModel]:
+    def models(self) -> dict[str, AbstractModel]:
         return {
             "model1": RoadrunnerSBMLModel(source="model/liver_glucose.xml",
                                           base_path=self.base_path)
         }
 
     @timeit
-    def datasets(self) -> Dict[str, DataSet]:
+    def datasets(self) -> dict[str, DataSet]:
         dsets = {}
 
         # dose-response data for hormones
@@ -114,14 +113,14 @@ class DoseResponseExperiment(SimulationExperiment):
         return dsets
 
     @timeit
-    def tasks(self) -> Dict[str, Task]:
+    def tasks(self) -> dict[str, Task]:
         """Tasks"""
         return {
             "task_glc_scan": Task(model="model1", simulation="glc_scan")
         }
 
     @timeit
-    def simulations(self) -> Dict[str, ScanSim]:
+    def simulations(self) -> dict[str, ScanSim]:
         """Scanning dose-response curves of hormones and gamma function.
 
                 Vary external glucose concentrations (boundary condition).
@@ -142,7 +141,7 @@ class DoseResponseExperiment(SimulationExperiment):
         }
 
     @timeit
-    def figures(self) -> Dict[str, Figure]:
+    def figures(self) -> dict[str, Figure]:
         xunit = "mM"
         yunit_hormone = "pmol/l"
         yunit_gamma = "dimensionless"
