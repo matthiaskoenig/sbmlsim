@@ -6,7 +6,6 @@ import numpy as np
 import pandas as pd
 import xarray as xr
 from pymetadata import log
-from pymetadata.console import console
 
 from sbmlsim.simulation import Dimension, ScanSim
 from sbmlsim.units import UnitsInformation
@@ -199,17 +198,3 @@ class XResult:
         """Read from netCDF."""
         ds = xr.open_dataset(path)
         return XResult(xdataset=ds, uinfo=None)
-
-
-if __name__ == "__main__":
-    from sbmlsim.model import RoadrunnerSBMLModel
-    from sbmlsim.test import MODEL_REPRESSILATOR
-
-    r = RoadrunnerSBMLModel(source=MODEL_REPRESSILATOR)._model
-    dfs = []
-    for _ in range(10):
-        s = r.simulate(0, 10, steps=10)
-        dfs.append(pd.DataFrame(s, columns=s.colnames))
-
-    xres = XResult.from_dfs(dfs)
-    console.print(xres)
