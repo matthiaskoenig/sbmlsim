@@ -6,12 +6,12 @@ import pandas as pd
 import xarray as xr
 from matplotlib.pyplot import Figure
 
-from build.lib.sbmlsim.plot.plotting_deprecated_matplotlib import add_data
+
 from sbmlsim.data import Data, DataSet, load_pkdb_dataframe
 from sbmlsim.experiment import SimulationExperiment
 from sbmlsim.model import AbstractModel
 
-# from sbmlsim.plot.plotting_deprecated_matplotlib import add_data
+from sbmlsim.plot.plotting_deprecated_matplotlib import add_data
 from sbmlsim.plot.serialization_matplotlib import plt
 from sbmlsim.simulation import Dimension, ScanSim, Timecourse, TimecourseSim
 from sbmlsim.task import Task

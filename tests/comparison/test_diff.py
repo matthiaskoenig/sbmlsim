@@ -1,7 +1,8 @@
 """Test difference."""
+
 import pytest
 
-from tests.data.diff import simulate_examples
+from data.diff import simulate_examples
 
 
 @pytest.mark.skip(reason="no diff support")
