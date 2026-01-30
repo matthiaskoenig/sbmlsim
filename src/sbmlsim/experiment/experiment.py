@@ -6,7 +6,7 @@ from collections import defaultdict
 from copy import deepcopy
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Dict, Iterable, List, Union
+from typing import Iterable, Union
 
 from pymetadata import log
 
@@ -87,15 +87,15 @@ class SimulationExperiment:
         self.settings = kwargs
 
         # init variables
-        self._models: Dict[str, RoadrunnerSBMLModel] = {}
-        self._data: Dict[str, Data] = {}
-        self._datasets: Dict[str, DataSet] = {}
-        self._fit_mappings: Dict[str, FitMapping] = {}
-        self._simulations: Dict[str, AbstractSim] = {}
-        self._tasks: Dict[str, Task] = {}
-        self._figures: Dict[str, Figure] = {}
-        self._results: Dict[str, XResult] = {}
-        self._reports: Dict[str, Dict[str, str]] = {}
+        self._models: dict[str, RoadrunnerSBMLModel] = {}
+        self._data: dict[str, Data] = {}
+        self._datasets: dict[str, DataSet] = {}
+        self._fit_mappings: dict[str, FitMapping] = {}
+        self._simulations: dict[str, AbstractSim] = {}
+        self._tasks: dict[str, Task] = {}
+        self._figures: dict[str, Figure] = {}
+        self._results: dict[str, XResult] = {}
+        self._reports: dict[str, dict[str, str]] = {}
 
     def initialize(self) -> None:
         """Initialize SimulationExperiment.
@@ -107,7 +107,7 @@ class SimulationExperiment:
         """
         try:
             # initialized from the outside
-            # self._models: Dict[str, AbstractModel] = self.models()
+            # self._models: dict[str, AbstractModel] = self.models()
             self._datasets.update(self.datasets())
             self._simulations.update(self.simulations())
             self._tasks.update(self.tasks())
@@ -138,35 +138,35 @@ class SimulationExperiment:
         ]
         return "\n".join(info)
 
-    def models(self) -> Dict[str, Union[AbstractModel, Path]]:
+    def models(self) -> dict[str, Union[AbstractModel, Path]]:
         """Define model definitions.
 
         The child classes fill out the information.
         """
         return dict()
 
-    def datasets(self) -> Dict[str, DataSet]:
+    def datasets(self) -> dict[str, DataSet]:
         """Define dataset definitions (experimental data).
 
         The child classes fill out the information.
         """
         return dict()
 
-    def simulations(self) -> Dict[str, AbstractSim]:
+    def simulations(self) -> dict[str, AbstractSim]:
         """Define simulation definitions.
 
         The child classes fill out the information.
         """
         return dict()
 
-    def tasks(self) -> Dict[str, Task]:
+    def tasks(self) -> dict[str, Task]:
         """Define task definitions.
 
         The child classes fill out the information.
         """
         return dict()
 
-    def data(self) -> Dict[str, Data]:
+    def data(self) -> dict[str, Data]:
         """Define DataGenerators including functions.
         This determines the selection in the model.
 
@@ -176,7 +176,7 @@ class SimulationExperiment:
         """
         return dict()
 
-    def figures(self) -> Dict[str, Figure]:
+    def figures(self) -> dict[str, Figure]:
         """Figure definition.
 
         Selections accessed in figures and analyses must be registered beforehand
@@ -187,7 +187,7 @@ class SimulationExperiment:
         """
         return {}
 
-    def figures_mpl(self) -> Dict[str, FigureMPL]:
+    def figures_mpl(self) -> dict[str, FigureMPL]:
         """Matplotlib figure definition.
 
         Selections accessed in figures and analyses must be registered beforehand
@@ -198,7 +198,7 @@ class SimulationExperiment:
         """
         return {}
 
-    def fit_mappings(self) -> Dict[str, FitMapping]:
+    def fit_mappings(self) -> dict[str, FitMapping]:
         """Define fit mappings.
 
         Mapping reference data on observables.
@@ -207,7 +207,7 @@ class SimulationExperiment:
         """
         return dict()
 
-    def reports(self) -> Dict[str, Dict[str, str]]:
+    def reports(self) -> dict[str, dict[str, str]]:
         """Define reports.
 
         Reports are defined by a hashmap label:Data.
@@ -248,7 +248,7 @@ class SimulationExperiment:
 
     # --- RESULTS ---------------------------------------------------------------------
     @property
-    def results(self) -> Dict[str, XResult]:
+    def results(self) -> dict[str, XResult]:
         """Access simulation results.
 
         Results are mapped on tasks based on the task_ids. E.g.
@@ -381,7 +381,7 @@ class SimulationExperiment:
         output_path: Path = None,
         show_figures: bool = True,
         save_results: bool = False,
-        figure_formats: List[str] = None,
+        figure_formats: list[str] = None,
         reduced_selections: bool = True,
     ) -> "ExperimentResult":
         """Execute given experiment and store results."""
@@ -440,7 +440,7 @@ class SimulationExperiment:
             self._results = dict()
 
         # get all tasks for given model
-        model_tasks: Dict[str, List[str]] = defaultdict(list)
+        model_tasks: dict[str, list[str]] = defaultdict(list)
         for task_key, task in self._tasks.items():
             model_tasks[task.model_id].append(task_key)
 
@@ -571,7 +571,7 @@ class SimulationExperiment:
                 result.to_tsv(results_path / f"{self.sid}_{rkey}.tsv")
 
     @timeit
-    def create_mpl_figures(self) -> Dict[str, Union[FigureMPL, Figure]]:
+    def create_mpl_figures(self) -> dict[str, Union[FigureMPL, Figure]]:
         """Create matplotlib figures."""
         mpl_figures = {}
         for fig_key, fig in self._figures.items():
@@ -585,7 +585,7 @@ class SimulationExperiment:
         return mpl_figures
 
     @timeit
-    def show_mpl_figures(self, mpl_figures: Dict[str, FigureMPL]) -> None:
+    def show_mpl_figures(self, mpl_figures: dict[str, FigureMPL]) -> None:
         """Show matplotlib figures."""
         for _, fig_mpl in mpl_figures.items():
             # see https://stackoverflow.com/questions/23141452/difference-between-plt-draw-and-plt-show-in-matplotlib/23141491#23141491
@@ -596,9 +596,9 @@ class SimulationExperiment:
     def save_mpl_figures(
         self,
         results_path: Path,
-        mpl_figures: Dict[str, FigureMPL],
-        figure_formats: List[str] = None,
-    ) -> Dict[str, List[Path]]:
+        mpl_figures: dict[str, FigureMPL],
+        figure_formats: list[str] = None,
+    ) -> dict[str, list[Path]]:
         """Save matplotlib figures."""
         if figure_formats is None:
             # default to SVG output
@@ -614,7 +614,7 @@ class SimulationExperiment:
         return paths
 
     @classmethod
-    def close_mpl_figures(cls, mpl_figures: Dict[str, FigureMPL]):
+    def close_mpl_figures(cls, mpl_figures: dict[str, FigureMPL]):
         """Close matplotlib figures."""
         for _, fig_mpl in mpl_figures.items():
             plt.close(fig_mpl)
@@ -627,7 +627,7 @@ class ExperimentResult:
     experiment: SimulationExperiment
     output_path: Path
 
-    def to_dict(self) -> Dict:
+    def to_dict(self) -> dict:
         """Conversion to dictionary.
 
         Used in serialization and required for reports.

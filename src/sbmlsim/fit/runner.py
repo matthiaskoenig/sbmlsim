@@ -20,9 +20,10 @@ Locks (in CPython) so both can use up to 100% of a CPU on a multi-cpu box, as lo
 they dont contend for other lower-level (OS) resources. That's the "multiprocessing"
 part.
 """
+
 import multiprocessing
 import os
-from typing import List, Optional
+from typing import Optional
 
 import numpy as np
 from pymetadata import log
@@ -51,7 +52,7 @@ def run_optimization(
     algorithm: OptimizationAlgorithmType = OptimizationAlgorithmType.LEAST_SQUARE,
     residual: ResidualType = ResidualType.ABSOLUTE,
     loss_function: LossFunctionType = LossFunctionType.LINEAR,
-    weighting_curves: List[WeightingCurvesType] = None,
+    weighting_curves: list[WeightingCurvesType] = None,
     weighting_points: WeightingPointsType = WeightingPointsType.NO_WEIGHTING,
     seed: Optional[int] = None,
     variable_step_size: bool = True,
@@ -156,7 +157,7 @@ def run_optimization(
 
         # worker pool
         with multiprocessing.Pool(processes=n_cores) as pool:
-            opt_results: List[OptimizationResult] = pool.map(worker, args_list)
+            opt_results: list[OptimizationResult] = pool.map(worker, args_list)
 
         # combine simulation results
         opt_result = OptimizationResult.combine(opt_results)
@@ -182,7 +183,7 @@ def _run_optimization_serial(
     algorithm: OptimizationAlgorithmType = OptimizationAlgorithmType.LEAST_SQUARE,
     residual: ResidualType = ResidualType.ABSOLUTE,
     loss_function: LossFunctionType = LossFunctionType.LINEAR,
-    weighting_curves: List[WeightingCurvesType] = None,
+    weighting_curves: list[WeightingCurvesType] = None,
     weighting_points: WeightingPointsType = WeightingPointsType.NO_WEIGHTING,
     seed: Optional[int] = None,
     variable_step_size: bool = True,

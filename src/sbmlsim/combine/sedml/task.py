@@ -1,8 +1,9 @@
-from typing import List
+import warnings
 
 import libsedml
+import numpy as np
 from pymetadata import log
-
+from sbmlutils.converters.mathml import evaluableMathML
 
 logger = log.get_logger(__name__)
 
@@ -108,17 +109,21 @@ class TaskTree(object):
     @staticmethod
     def get_ordered_subtasks(
         repeated_task: libsedml.SedRepeatedTask,
-    ) -> List[libsedml.SedSubTask]:
+    ) -> list[libsedml.SedSubTask]:
         """Ordered list of subtasks for repeated task."""
         subtasks: libsedml.SedListOfSubTasks = repeated_task.getListOfSubTasks()
-        subtaskOrder: List[int] = [st.getOrder() for st in subtasks]
+        subtaskOrder: list[int] = [st.getOrder() for st in subtasks]
         # sort by order, if all subtasks have order (not required)
-        if all(subtaskOrder) != None:
+        if all(subtaskOrder) is not None:
             subtasks = [st for (stOrder, st) in sorted(zip(subtaskOrder, subtasks))]
         return subtasks
 
 
 # -------------------------------------------------------------------------------------
+
+
+class SEDMLCodeFactory:
+    pass
 
 
 class Test(object):

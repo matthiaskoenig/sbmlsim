@@ -13,18 +13,19 @@ Additional settings are required which allow to define how things
         E.g. over which dimensions should an error be calculated and which
         dimensions should be plotted individually.
 """
+
 from __future__ import annotations
 import copy
 from copy import deepcopy
 from dataclasses import dataclass
 from enum import Enum
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Optional, Union
 
 import numpy as np
 from matplotlib.colors import to_hex, to_rgba
 from pymetadata import log
 
-from sbmlsim.data import Data, DataSet
+from sbmlsim.data import Data
 
 
 logger = log.get_logger(__name__)
@@ -156,7 +157,7 @@ class Line:
     color: ColorType = None
     thickness: float = 2.0
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary for serialization."""
         return {
             "type": self.type,
@@ -175,7 +176,7 @@ class Marker:
     line_color: ColorType = None
     line_thickness: float = 1.0
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary for serialization."""
         return {
             "size": self.size,
@@ -193,7 +194,7 @@ class Fill:
     color: ColorType = None
     second_color: ColorType = None
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary for serialization."""
         return {
             "color": self.color,
@@ -294,7 +295,6 @@ class Style(BasePlotObject):
 
     # https://matplotlib.org/3.1.0/gallery/lines_bars_and_markers/linestyles.html
     MPL2SEDML_LINESTYLE_MAPPING = {
-
         "": LineType.NONE,
         "-": LineType.SOLID,
         "solid": LineType.SOLID,
@@ -328,9 +328,9 @@ class Style(BasePlotObject):
     }
     SEDML2MPL_MARKER_MAPPING = {v: k for (k, v) in MPL2SEDML_MARKER_MAPPING.items()}
 
-    def to_mpl_curve_kwargs(self) -> Dict:
+    def to_mpl_curve_kwargs(self) -> dict:
         """Convert to matplotlib curve keyword arguments."""
-        kwargs: Dict[str, Any] = {}
+        kwargs: dict[str, Any] = {}
         if self.line:
             if self.line.color:
                 kwargs["color"] = self.line.color.color
@@ -358,7 +358,7 @@ class Style(BasePlotObject):
 
         return kwargs
 
-    def _mpl_error_kwargs(self) -> Dict[str, Any]:
+    def _mpl_error_kwargs(self) -> dict[str, Any]:
         """Define keywords for error bars."""
         error_kwargs = {
             "error_kw": {
@@ -368,7 +368,7 @@ class Style(BasePlotObject):
         }
         return error_kwargs
 
-    def to_mpl_points_kwargs(self) -> Dict[str, Any]:
+    def to_mpl_points_kwargs(self) -> dict[str, Any]:
         """Convert to matplotlib point curve keyword arguments."""
         points_kwargs = self.to_mpl_curve_kwargs()
         for key in ["fill.color", "fill.second_color"]:
@@ -405,9 +405,9 @@ class Style(BasePlotObject):
             **self._mpl_error_kwargs(),
         }
 
-    def to_mpl_area_kwargs(self) -> Dict[str, Any]:
+    def to_mpl_area_kwargs(self) -> dict[str, Any]:
         """Define keyword dictionary for a shaded area."""
-        kwargs: Dict[str, Any] = {}
+        kwargs: dict[str, Any] = {}
 
         if self.line:
             if self.line.color:
@@ -442,7 +442,6 @@ class Style(BasePlotObject):
         line_color = ColorType.parse_color(
             color=kwargs.get("markeredgecolor", None),
         )
-
 
         # Line
         linestyle = Style.MPL2SEDML_LINESTYLE_MAPPING[kwargs.get("linestyle", "-")]
@@ -695,7 +694,7 @@ class Curve(AbstractCurve):
         return "\n".join(info)
 
     @staticmethod
-    def _add_default_style_kwargs(d: Dict, dtype: str) -> Dict:
+    def _add_default_style_kwargs(d: dict, dtype: str) -> dict:
         """Add the default plotting style arguments."""
 
         if dtype == Data.Types.TASK:
@@ -762,7 +761,7 @@ class ShadedArea(AbstractCurve):
         if "name" in kwargs:
             self.name = kwargs["name"]
 
-        self.kwargs: Dict[str, Any] = kwargs
+        self.kwargs: dict[str, Any] = kwargs
 
     def __repr__(self) -> str:
         """Get representation string."""
@@ -816,8 +815,8 @@ class Plot(BasePlotObject):
         xaxis: Axis = None,
         yaxis: Axis = None,
         yaxis_right: Axis = None,
-        curves: List[Curve] = None,
-        areas: List[ShadedArea] = None,
+        curves: list[Curve] = None,
+        areas: list[ShadedArea] = None,
         legend: bool = True,
         facecolor: ColorType = None,
         title_visible: bool = True,
@@ -856,15 +855,15 @@ class Plot(BasePlotObject):
         self._xaxis: Axis = None
         self._yaxis: Axis = None
         self._yaxis_right: Axis = None
-        self._curves: List[Curve] = None
-        self._areas: List[ShadedArea] = None
+        self._curves: list[Curve] = None
+        self._areas: list[ShadedArea] = None
         self._figure: Figure = None
 
         self.xaxis: Axis = xaxis
         self.yaxis: Axis = yaxis
         self.yaxis_right: Axis = yaxis_right
-        self.curves: List[Curve] = curves
-        self.areas: List[ShadedArea] = areas
+        self.curves: list[Curve] = curves
+        self.areas: list[ShadedArea] = areas
 
         self.legend: bool = legend
         self.facecolor: ColorType = facecolor
@@ -1069,12 +1068,12 @@ class Plot(BasePlotObject):
         self.areas.append(area)
 
     @property
-    def curves(self) -> List[Curve]:
+    def curves(self) -> list[Curve]:
         """Get curves."""
         return self._curves
 
     @curves.setter
-    def curves(self, value: List[Curve]):
+    def curves(self, value: list[Curve]):
         """Set curves."""
         self._curves = list()
         if value is not None:
@@ -1082,12 +1081,12 @@ class Plot(BasePlotObject):
                 self.add_curve(curve)
 
     @property
-    def areas(self) -> List[ShadedArea]:
+    def areas(self) -> list[ShadedArea]:
         """Get areas."""
         return self._areas
 
     @areas.setter
-    def areas(self, value: List[ShadedArea]) -> None:
+    def areas(self, value: list[ShadedArea]) -> None:
         """Set areas."""
         self._areas = list()
         if value is not None:
@@ -1173,7 +1172,7 @@ class Plot(BasePlotObject):
                 "No label provided on curve, using default label 'yid'. "
                 "To not plot a label use 'label=None'"
             )
-        if 'markeredgecolor' not in kwargs:
+        if "markeredgecolor" not in kwargs:
             kwargs["markeredgecolor"] = "black"
 
         # xerr data
@@ -1191,6 +1190,8 @@ class Plot(BasePlotObject):
                 logger.warning("SE error column ends with 'sd', check names.")
             xerr_label = "±SE"
             xerr = Data(xid_se, dataset=dataset, task=task)
+
+        _ = xerr_label
 
         # yerr data
         yerr = None
@@ -1309,7 +1310,7 @@ class Figure(BasePlotObject):
         experiment: "SimulationExperiment",  # noqa: F821
         sid: str,
         name: str = None,
-        subplots: List[SubPlot] = None,
+        subplots: list[SubPlot] = None,
         height: float = None,
         width: float = None,
         num_rows: int = 1,
@@ -1320,7 +1321,7 @@ class Figure(BasePlotObject):
         self.experiment: "SimulationExperiment" = experiment  # noqa: F821
         if subplots is None:
             subplots = list()
-        self.subplots: List[SubPlot] = subplots
+        self.subplots: list[SubPlot] = subplots
         self.num_rows: int = num_rows
         self.num_cols: int = num_cols
         self._height: float = height
@@ -1329,7 +1330,6 @@ class Figure(BasePlotObject):
         self.width: float = width
         # print(f"[{self.num_rows}, {self.num_cols}], ({self.height}, {self.width})")
         # print(f"Figure: [{self.panel_height}, {self.panel_width}]")
-
 
     def __repr__(self) -> str:
         """Get representation string."""
@@ -1380,7 +1380,7 @@ class Figure(BasePlotObject):
 
     def create_plots(
         self, xaxis: Axis = None, yaxis: Axis = None, legend: bool = True
-    ) -> List[Plot]:
+    ) -> list[Plot]:
         """Create plots in the figure.
 
         Settings are applied to all generated plots. E.g. if an xaxis is provided
@@ -1399,11 +1399,11 @@ class Figure(BasePlotObject):
         return plots
 
     @property
-    def plots(self) -> List[Plot]:
+    def plots(self) -> list[Plot]:
         """Get plots in this figure."""
         return self.get_plots()
 
-    def get_plots(self) -> List[Plot]:
+    def get_plots(self) -> list[Plot]:
         """Get plots in this figure."""
         return [subplot.plot for subplot in self.subplots]
 
@@ -1450,7 +1450,7 @@ class Figure(BasePlotObject):
         )
         return plot
 
-    def add_plots(self, plots: List[Plot], copy_plots: bool = False) -> None:
+    def add_plots(self, plots: list[Plot], copy_plots: bool = False) -> None:
         """Add plots to figure.
 
         For every plot a subplot is generated.
@@ -1481,7 +1481,7 @@ class Figure(BasePlotObject):
             plot.figure = self
 
     @staticmethod
-    def from_plots(sid, plots: List[Plot]) -> "Figure":
+    def from_plots(sid, plots: list[Plot]) -> "Figure":
         """Create figure object from list of plots."""
         num_plots = len(plots)
         return Figure(

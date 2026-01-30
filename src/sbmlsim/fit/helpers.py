@@ -1,4 +1,5 @@
 """Helper functions for fitting."""
+
 from pathlib import Path
 
 from sbmlsim.fit import FitExperiment, FitMapping
@@ -8,9 +9,8 @@ from pymetadata import log
 
 
 from sbmlsim.experiment import ExperimentRunner, SimulationExperiment
-from sbmlsim.fit import FitExperiment, FitMapping, FitData
 
-from typing import Dict, List, Type, Union, Callable, Iterable, Tuple, Any
+from typing import Type, Union, Callable, Iterable, Tuple, Any
 
 from sbmlsim.fit.objects import MappingMetaData
 
@@ -18,17 +18,21 @@ logger = log.get_logger(__name__)
 
 
 def filtered_fit_experiments(
-    experiment_classes: List[Type[SimulationExperiment]],
+    experiment_classes: list[Type[SimulationExperiment]],
     metadata_filters: Union[Callable, Iterable[Callable]],
     base_path: Path,
     data_path: Path,
-) -> Tuple[Dict[str, List[FitExperiment]], pd.DataFrame]:
+) -> Tuple[dict[str, list[FitExperiment]], pd.DataFrame]:
     """Fit experiments based on MappingMetaData.
 
     :param experiment_classes: List of SimulationExperiment class definition
     :param metadata_filter:
     """
-    filters = [metadata_filters] if isinstance(metadata_filters, Callable) else metadata_filters
+    filters = (
+        [metadata_filters]
+        if isinstance(metadata_filters, Callable)
+        else metadata_filters
+    )
 
     # instantiate objects for filtering of fit mappings
     runner = ExperimentRunner(
@@ -37,8 +41,8 @@ def filtered_fit_experiments(
         data_path=data_path,
     )
 
-    fit_experiments: Dict[str, List[FitExperiment]] = {}
-    all_info: List[Dict] = []
+    fit_experiments: dict[str, list[FitExperiment]] = {}
+    all_info: list[dict] = []
 
     for k, experiment_name in enumerate(runner.experiments):
         # print(experiment_name)
@@ -48,7 +52,6 @@ def filtered_fit_experiments(
         # filter mappings by metadata
         mappings = []
         for fm_key, fit_mapping in experiment.fit_mappings().items():
-
             # tests all the filters
             accept = True
             for filter in filters:
@@ -63,11 +66,11 @@ def filtered_fit_experiments(
                 try:
                     metadata: MappingMetaData = fit_mapping.metadata
                     yid = "__".join(fit_mapping.observable.y.sid.split("__")[1:])
-                    info: Dict[str, Any] = {
+                    info: dict[str, Any] = {
                         "experiment": experiment_name,
                         "fm_key": fm_key,
                         "yid": yid,
-                        **metadata.to_dict()
+                        **metadata.to_dict(),
                     }
                     all_info.append(info)
                 except Exception as err:
@@ -91,8 +94,9 @@ def filtered_fit_experiments(
 
     return fit_experiments, df
 
+
 def f_fitexp(
-    experiment_classes: List[Type[SimulationExperiment]],
+    experiment_classes: list[Type[SimulationExperiment]],
     metadata_filters: Union[Callable, Iterable[Callable]],
     base_path: Path,
     data_path: Path,
@@ -112,6 +116,7 @@ def f_fitexp(
 def filter_empty(fit_mapping_key: str, fit_mapping: FitMapping) -> bool:
     """Return all experiments/mappings."""
     return True
+
 
 def filter_outlier(fit_mapping_key: str, fit_mapping: FitMapping) -> bool:
     """Return non outlier experiments."""

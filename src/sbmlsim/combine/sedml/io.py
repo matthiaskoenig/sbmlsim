@@ -1,10 +1,11 @@
 """Template functions to run the example cases."""
+
 import importlib
 import os
 import zipfile
 from enum import Enum
 from pathlib import Path
-from typing import Dict, Optional, Tuple, Union
+from typing import Optional, Tuple, Union
 from xml.etree import ElementTree
 
 import libsedml
@@ -147,7 +148,6 @@ class SEDMLReader:
                 omex = pyomex.Omex.from_omex(omex_path=file_path)
                 sedml_entries = omex.entries_by_format(format_key="sed-ml")
                 for entry in sedml_entries:
-
                     logger.info("SED-ML location: ", entry.location)
                     if entry.master:
                         sedml_path = omex.get_path(entry.location)

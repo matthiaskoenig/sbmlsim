@@ -5,7 +5,6 @@ Used to benchmark the simulation results.
 """
 
 from pathlib import Path
-from typing import Dict
 
 import numpy as np
 import pandas as pd
@@ -20,7 +19,7 @@ from sbmlsim.utils import timeit
 logger = log.get_logger(__name__)
 
 
-def get_files_by_extension(base_path: Path, extension: str = ".json") -> Dict[str, str]:
+def get_files_by_extension(base_path: Path, extension: str = ".json") -> dict[str, str]:
     """Get all files by given extension.
 
     Simulation definitions are json files.
@@ -49,12 +48,12 @@ class DataSetsComparison:
     @timeit
     def __init__(
         self,
-        dfs_dict: Dict[str, pd.DataFrame],
+        dfs_dict: dict[str, pd.DataFrame],
         columns_filter=None,
         time_column: bool = True,
         title: str = None,
-        selections: Dict[str, str] = None,
-        factors: Dict[str, float] = None,
+        selections: dict[str, str] = None,
+        factors: dict[str, float] = None,
     ):
         """Initialize the comparison.
 
@@ -341,7 +340,8 @@ class DataSetsComparison:
         sns.heatmap(
             data=df_diff.T,
             cmap="seismic",
-            linewidths=0.2, linecolor="black",
+            linewidths=0.2,
+            linecolor="black",
             vmin=-vmax,
             vmax=vmax,
             ax=ax1,
@@ -357,7 +357,7 @@ class DataSetsComparison:
             ax4.plot(diff_rel[cid], label=cid)
 
         ax2.set_ylabel("Tolerance difference", fontweight="bold")
-        ax2.legend(prop={'size': 6})
+        ax2.legend(prop={"size": 6})
         ax3.set_ylabel("Absolute difference", fontweight="bold")
         ax4.set_ylabel("Relative difference", fontweight="bold")
 
@@ -365,7 +365,7 @@ class DataSetsComparison:
             ax.set_xlabel("time index", fontweight="bold")
             ax.set_yscale("log")
             ax.set_ylim(bottom=1e-10)
-            ax.legend(prop={'size': 6})
+            ax.legend(prop={"size": 6})
 
             if ax.get_ylim()[1] < 10 * DataSetsComparison.tol_abs:
                 ax.set_ylim(top=10 * DataSetsComparison.tol_abs)

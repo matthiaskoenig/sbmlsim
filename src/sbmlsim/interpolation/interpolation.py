@@ -8,16 +8,16 @@ TODO: support coupling with existing models via comp
 The functionality is very useful, but only if this can be applied to existing
 models in a simple manner.
 """
+
 from pathlib import Path
-from typing import Any, List, Optional, Tuple, Union
+from typing import Tuple, Union
 
 import libsbml
 import pandas as pd
 
 from pymetadata import log
 from sbmlutils.io.sbml import write_sbml
-from sbmlutils.validation import validate_doc
-
+from sbmlutils.validation import validate_doc, ValidationOptions
 
 logger = log.get_logger(__name__)
 
@@ -122,10 +122,10 @@ class Interpolator:
         from the spline interpolation.
         """
         # calculate spline coefficients
-        coeffs: List[Tuple[float]] = Interpolator._natural_spline_coeffs(x, y)
+        coeffs: list[Tuple[float]] = Interpolator._natural_spline_coeffs(x, y)
 
         # create piecewise terms
-        items: List[str] = []
+        items: list[str] = []
         for k in range(len(x) - 1):
             x1 = x.iloc[k]
             x2 = x.iloc[k + 1]
@@ -140,7 +140,7 @@ class Interpolator:
         return "piecewise({})".format(", ".join(items))
 
     @staticmethod
-    def _natural_spline_coeffs(X: pd.Series, Y: pd.Series) -> List[Tuple[float]]:
+    def _natural_spline_coeffs(X: pd.Series, Y: pd.Series) -> list[Tuple[float]]:
         """Calculate natural spline coefficients.
 
         Calculation of coefficients for
@@ -185,7 +185,7 @@ class Interpolator:
             b[j] = (a[j + 1] - a[j]) / h[j] - (h[j] * (c[j + 1] + 2 * c[j])) / 3
             d[j] = (c[j + 1] - c[j]) / (3 * h[j])
         # store coefficients
-        coeffs: List[Tuple[float]] = []
+        coeffs: list[Tuple[float]] = []
         for i in range(n):
             coeffs.append((a[i], b[i], c[i], d[i]))  # type: ignore
         return coeffs
@@ -256,7 +256,7 @@ class Interpolation:
         self.model: libsbml.Model = None
         self.data: pd.DataFrame = data
         self.method: str = method
-        self.interpolators: List[Interpolator] = []
+        self.interpolators: list[Interpolator] = []
 
         self.validate_data()
 
@@ -282,7 +282,7 @@ class Interpolation:
 
         # first column has to be ascending (times)
         def is_sorted(df: pd.DataFrame, colname: str) -> bool:
-            return bool(pd.Index(df[colname]).is_monotonic)
+            return bool(pd.Index(df[colname]).is_monotonic_increasing)
 
         if not is_sorted(self.data, colname=self.data.columns[0]):
             logger.warning("First column should contain ascending values.")
@@ -328,7 +328,7 @@ class Interpolation:
             Interpolation.add_interpolator_to_model(interpolator, self.model)
 
         # validation of SBML document
-        validate_doc(self.doc, units_consistency=False)
+        validate_doc(self.doc, options=ValidationOptions(units_consistency=False))
 
     def _init_sbml_model(self) -> None:
         """Create and initialize the SBML model."""
@@ -346,13 +346,13 @@ class Interpolation:
         self.model = model
 
     @staticmethod
-    def create_interpolators(data: pd.DataFrame, method: str) -> List[Interpolator]:
+    def create_interpolators(data: pd.DataFrame, method: str) -> list[Interpolator]:
         """Create all interpolators for the given data set.
 
         The columns 1, ... (Ncol-1) are interpolated against
         column 0.
         """
-        interpolators: List[Interpolator] = []
+        interpolators: list[Interpolator] = []
         columns = data.columns
         time = data[columns[0]]
         for k in range(1, len(columns)):

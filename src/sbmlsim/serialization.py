@@ -1,17 +1,18 @@
 """Helpers for JSON serialization of experiments."""
+
 import json
 from enum import Enum
 from json import JSONEncoder
 from pathlib import Path
-from typing import Any, Dict, Optional, Union
+from typing import Any, Optional, Union
 
 from matplotlib.pyplot import Figure as MPLFigure
 from numpy import ndarray
 
 
-def from_json(json_info: Union[str, Path]) -> Dict[Any, Any]:
+def from_json(json_info: Union[str, Path]) -> dict[Any, Any]:
     """Load data from JSON."""
-    d: Dict[Any, Any]
+    d: dict[Any, Any]
     if isinstance(json_info, Path):
         with open(json_info, "r") as f_json:
             d = json.load(f_json)

@@ -1,6 +1,6 @@
 """Handling of algorithms and algorithm parameters."""
 
-from typing import List, Optional, Union
+from typing import Optional, Union
 
 from pymetadata.metadata import KISAO, KISAOType
 from pymetadata import log
@@ -51,7 +51,7 @@ class Algorithm(BaseObject):
     def __init__(
         self,
         kisao: KISAOType,
-        parameters: Optional[List[AlgorithmParameter]] = None,
+        parameters: Optional[list[AlgorithmParameter]] = None,
         sid: Optional[str] = None,
         name: Optional[str] = None,
     ):
@@ -66,7 +66,7 @@ class Algorithm(BaseObject):
 
         super(Algorithm, self).__init__(sid, name)
         self.kisao: KISAO = kisao
-        self.parameters: Optional[List[AlgorithmParameter]] = parameters
+        self.parameters: Optional[list[AlgorithmParameter]] = parameters
 
     def __repr__(self) -> str:
         """Get string representation."""

@@ -2,8 +2,8 @@
 
 Allows scans over other simulations.
 """
+
 from copy import deepcopy
-from typing import Dict, List
 
 import numpy as np
 from pymetadata import log
@@ -24,8 +24,8 @@ class ScanSim(AbstractSim):
     def __init__(
         self,
         simulation: AbstractSim,
-        dimensions: List[Dimension] = None,
-        mapping: Dict[str, int] = None,
+        dimensions: list[Dimension] = None,
+        mapping: dict[str, int] = None,
     ):
         """Scan a simulation.
 
@@ -69,7 +69,7 @@ class ScanSim(AbstractSim):
             f"[{', '.join([str(d) for d in self.dimensions])}])"
         )
 
-    def dimensions(self) -> List[Dimension]:
+    def dimensions(self) -> list[Dimension]:
         """Get dimensions."""
         return self.dimensions
 
@@ -84,7 +84,7 @@ class ScanSim(AbstractSim):
         """Get indices of all combinations."""
         return Dimension.indices_from_dimensions(self.dimensions)
 
-    def add_model_changes(self, model_changes: Dict) -> None:
+    def add_model_changes(self, model_changes: dict) -> None:
         """Add model changes to first timecourse."""
         # import here to avoid circular import
         from sbmlsim.simulation import TimecourseSim
@@ -144,7 +144,7 @@ if __name__ == "__main__":
     from sbmlsim.simulation import Timecourse, TimecourseSim
     from sbmlsim.units import UnitRegistry
 
-    ureg = UnitRegistry(on_redefinition='ignore')
+    ureg = UnitRegistry(on_redefinition="ignore")
     Q_ = ureg.Quantity
     uinfo = UnitsInformation(
         udict={k: "dimensionless" for k in ["X", "[X]", "n", "Y"]}, ureg=ureg

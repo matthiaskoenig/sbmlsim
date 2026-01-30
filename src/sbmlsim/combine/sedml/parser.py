@@ -83,7 +83,7 @@ from collections import defaultdict
 from enum import Enum
 from pathlib import Path
 from pprint import pprint
-from typing import Dict, List, Optional, Set, Type, Union
+from typing import Optional, Type, Union
 
 import libsedml
 import pandas as pd
@@ -191,9 +191,9 @@ class SBMLModelTarget:
     @staticmethod
     def sbmlsim_model_targets(
         r: roadrunner.ExecutableModel,
-    ) -> Dict[str, "SBMLModelTarget"]:
+    ) -> dict[str, "SBMLModelTarget"]:
         """Model targets which are supported by sbmlsim."""
-        d: Dict[str, "SBMLModelTarget"] = {}
+        d: dict[str, "SBMLModelTarget"] = {}
 
         # time
         d["time"] = SBMLModelTarget(
@@ -295,9 +295,9 @@ class SEDMLSerializer:
             omex = pyomex.Omex.from_directory(working_dir)
             omex.to_omex(omex_path=omex_path)
 
-    def _selection_lookup_table(self) -> Dict[str, Dict[str, SBMLModelTarget]]:
+    def _selection_lookup_table(self) -> dict[str, dict[str, SBMLModelTarget]]:
         """Lookup table for sbmlsim model selections."""
-        d: Dict[str, Dict[str, SBMLModelTarget]] = {}
+        d: dict[str, dict[str, SBMLModelTarget]] = {}
         for model_id in self.exp.models():
             rrsbml_model: RoadrunnerSBMLModel = self.exp._models[model_id]
             rr_model: roadrunner.ExecutableModel = rrsbml_model.r.model
@@ -331,7 +331,7 @@ class SEDMLSerializer:
         # FIXME: Data must be unit converted to the actual plot/report;
         # FIXME: same for the model
 
-        dset_indices: Dict[str, Set[str]] = defaultdict(set)
+        dset_indices: dict[str, set[str]] = defaultdict(set)
         # THIS CREATES PROBLEMS
         # for did, data in self.exp._data.items():
         #     sed_dg: libsedml.SedDataGenerator = self.sed_doc.createDataGenerator()
@@ -425,7 +425,7 @@ class SEDMLSerializer:
         for model_id, model in self.exp.models().items():
             print(model_id, model)
             rrsbml_model: RoadrunnerSBMLModel = self.exp._models[model_id]
-            selection_map: Dict[str, SBMLModelTarget] = self.selection_lookup[model_id]
+            selection_map: dict[str, SBMLModelTarget] = self.selection_lookup[model_id]
 
             sed_model: libsedml.SedModel = self.sed_doc.createModel()
             sed_model.setId(model_id)
@@ -452,7 +452,7 @@ class SEDMLSerializer:
             sed_model.setSource(str(model_path_rel))
 
             # get normalized changes (to model units)
-            changes: Dict[str, Quantity] = UnitsInformation.normalize_changes(
+            changes: dict[str, Quantity] = UnitsInformation.normalize_changes(
                 changes=abstract_model.changes, uinfo=rrsbml_model.uinfo
             )
 
@@ -479,7 +479,7 @@ class SEDMLSerializer:
         Write experiment simulations in SedDocument.
         """
         sim_id: str
-        simulation: Dict[str, AbstractSim]
+        simulation: dict[str, AbstractSim]
         for sim_id, simulation in self.exp._simulations.items():
             if isinstance(simulation, (TimecourseSim, ScanSim)):
                 if isinstance(simulation, TimecourseSim):
@@ -867,7 +867,7 @@ class SEDMLParser:
         self.exp_class: Type[SimulationExperiment]
 
         # --- Models ---
-        self.models: Dict[str, AbstractModel] = {}
+        self.models: dict[str, AbstractModel] = {}
 
         # resolve original model source and changes
         model_sources, model_changes = self.resolve_model_changes()
@@ -882,12 +882,12 @@ class SEDMLParser:
         logger.debug(f"models: {self.models}")
 
         # --- DataDescriptions ---
-        self.data_descriptions: Dict[str, Dict[str, pd.Series]] = {}
-        self.datasets: Dict[str, DataSet] = {}
+        self.data_descriptions: dict[str, dict[str, pd.Series]] = {}
+        self.datasets: dict[str, DataSet] = {}
         sed_dd: libsedml.SedDataDescription
         for sed_dd in sed_doc.getListOfDataDescriptions():
             did = sed_dd.getId()
-            data_description: Dict[str, pd.Series] = DataDescriptionParser.parse(
+            data_description: dict[str, pd.Series] = DataDescriptionParser.parse(
                 sed_dd, self.working_dir
             )
             self.data_descriptions[did] = data_description
@@ -901,7 +901,7 @@ class SEDMLParser:
         logger.debug(f"data_descriptions: {self.data_descriptions}")
 
         # --- AlgorithmParameters ---
-        self.algorithm_parameters: List[AlgorithmParameter] = []
+        self.algorithm_parameters: list[AlgorithmParameter] = []
         sed_alg_par: libsedml.SedAlgorithmParameter
         for sed_alg_par in sed_doc.getListOfAlgorithmParameters():
             self.algorithm_parameters.append(
@@ -910,14 +910,14 @@ class SEDMLParser:
         logger.debug(f"algorithm_parameters: {self.algorithm_parameters}")
 
         # --- Simulations ---
-        self.simulations: Dict[str, AbstractSim] = {}
+        self.simulations: dict[str, AbstractSim] = {}
         sed_sim: libsedml.SedSimulation
         for sed_sim in sed_doc.getListOfSimulations():
             self.simulations[sed_sim.getId()] = self.parse_simulation(sed_sim)
         logger.debug(f"simulations: {self.simulations}")
 
         # --- Tasks ---
-        self.tasks: Dict[str, Task] = {}
+        self.tasks: dict[str, Task] = {}
         sed_task: libsedml.SedTask
         for sed_task in sed_doc.getListOfTasks():
             task = self.parse_task(sed_task)
@@ -939,7 +939,7 @@ class SEDMLParser:
 
                 # Fit Experiments
                 print("*** FitExperiments & FitMappings ***")
-                fit_experiments: List[FitExperiment] = []
+                fit_experiments: list[FitExperiment] = []
                 sed_fit_experiment: libsedml.SedFitExperiment
                 for sed_fit_experiment in sed_petask.getListOfFitExperiments():
                     pprint(sed_fit_experiment)
@@ -961,7 +961,7 @@ class SEDMLParser:
                     )
 
                     # fit_mappings
-                    mappings: List[FitMapping] = []
+                    mappings: list[FitMapping] = []
                     sed_fit_mapping: libsedml.SedFitMapping
                     for sed_fit_mapping in sed_fit_experiment.getListOfFitMappings():
                         weight: float = sed_fit_mapping.getWeight()
@@ -996,7 +996,7 @@ class SEDMLParser:
 
                 # Fit Parameters
                 print("*** FitParameters ***")
-                parameters: List[FitParameter] = []
+                parameters: list[FitParameter] = []
                 sed_adjustable_parameter: libsedml.SedAdjustableParameter
                 for (
                     sed_adjustable_parameter
@@ -1030,7 +1030,7 @@ class SEDMLParser:
                     )
 
                     # resolve links to experiments!
-                    experiment_refs: List[str] = []
+                    experiment_refs: list[str] = []
 
                     for (
                         sed_experiment_ref
@@ -1045,10 +1045,10 @@ class SEDMLParser:
 
         # --- Data ---
         # data is generated in the figures and reports
-        self.data: Dict[str, Data] = {}
+        self.data: dict[str, Data] = {}
 
         # --- Styles ---
-        self.styles: Dict[str, Style] = {}
+        self.styles: dict[str, Style] = {}
         sed_style: libsedml.SedStyle
         for sed_style in sed_doc.getListOfStyles():
             self.styles[sed_style.getId()] = self.parse_style(sed_style)
@@ -1056,7 +1056,7 @@ class SEDMLParser:
         logger.debug(f"styles: {self.styles}")
 
         # --- Outputs: Figures/Plots ---
-        self.figures: Dict[str, Figure] = {}
+        self.figures: dict[str, Figure] = {}
         sed_output: libsedml.SedOutput
 
         # which plots are not in figures
@@ -1089,13 +1089,13 @@ class SEDMLParser:
         logger.debug(f"figures: {self.figures}")
 
         # --- Outputs: Reports---
-        self.reports: Dict[str, Dict[str, Data]] = {}
+        self.reports: dict[str, dict[str, Data]] = {}
 
         for sed_output in sed_doc.getListOfOutputs():
             type_code = sed_output.getTypeCode()
             if type_code == libsedml.SEDML_OUTPUT_REPORT:
                 sed_report: libsedml.SedReport = sed_output
-                report: Dict[str, str] = self.parse_report(sed_report=sed_report)
+                report: dict[str, str] = self.parse_report(sed_report=sed_report)
                 self.reports[sed_output.getId()] = report
 
         logger.debug(f"reports: {self.reports}")
@@ -1134,29 +1134,29 @@ class SEDMLParser:
         """
 
         # Create the experiment object
-        def f_algorithm_parameters(obj) -> List[AlgorithmParameter]:
+        def f_algorithm_parameters(obj) -> list[AlgorithmParameter]:
             return self.algorithm_parameters
 
-        def f_models(obj) -> Dict[str, AbstractModel]:
+        def f_models(obj) -> dict[str, AbstractModel]:
             return self.models
 
-        def f_datasets(obj) -> Dict[str, DataSet]:
+        def f_datasets(obj) -> dict[str, DataSet]:
             """Dataset definition (experimental data)."""
             return self.datasets
 
-        def f_simulations(obj) -> Dict[str, AbstractSim]:
+        def f_simulations(obj) -> dict[str, AbstractSim]:
             return self.simulations
 
-        def f_tasks(obj) -> Dict[str, Task]:
+        def f_tasks(obj) -> dict[str, Task]:
             return self.tasks
 
-        def f_data(obj) -> Dict[str, Data]:
+        def f_data(obj) -> dict[str, Data]:
             return self.data
 
-        def f_figures(obj) -> Dict[str, Figure]:
+        def f_figures(obj) -> dict[str, Figure]:
             return self.figures
 
-        def f_reports(obj) -> Dict[str, Dict[str, str]]:
+        def f_reports(obj) -> dict[str, dict[str, str]]:
             return self.reports
 
         class_name = self.name
@@ -1213,7 +1213,7 @@ class SEDMLParser:
         self,
         sed_model: libsedml.SedModel,
         source: str,
-        sed_changes: List[libsedml.SedChange],
+        sed_changes: list[libsedml.SedChange],
     ) -> AbstractModel:
         """Convert SedModel to AbstractModel.
 
@@ -1309,7 +1309,7 @@ class SEDMLParser:
 
         return model_sources, all_changes
 
-    def parse_change(self, sed_change: libsedml.SedChange) -> Dict:
+    def parse_change(self, sed_change: libsedml.SedChange) -> dict:
         """Parse the libsedml.Change.
 
         Currently only a limited subset of model changes is supported.
@@ -1431,7 +1431,7 @@ class SEDMLParser:
     def parse_task(self, sed_task: libsedml.SedAbstractTask) -> Task:
         """Parse arbitrary task (repeated or simple, or simple repeated)."""
         # If no DataGenerator references the task, no execution is necessary
-        dgs: List[libsedml.SedDataGenerator] = self.data_generators_for_task(sed_task)
+        dgs: list[libsedml.SedDataGenerator] = self.data_generators_for_task(sed_task)
         if len(dgs) == 0:
             logger.warning(
                 f"Task '{sed_task.getId()}' is not used in any DataGenerator."
@@ -1560,8 +1560,8 @@ class SEDMLParser:
         plot.yaxis_right = self.parse_axis(sed_plot2d.getRightYAxis())
 
         # curves
-        curves: List[Curve] = []
-        areas: List[ShadedArea] = []
+        curves: list[Curve] = []
+        areas: list[ShadedArea] = []
         for sed_abstract_curve in sed_plot2d.getListOfCurves():
             abstract_curve = self.parse_abstract_curve(sed_abstract_curve)
             if isinstance(abstract_curve, Curve):
@@ -1577,13 +1577,13 @@ class SEDMLParser:
         # FIXME: implement
         raise NotImplementedError
 
-    def parse_report(self, sed_report: libsedml.SedReport) -> Dict[str, str]:
+    def parse_report(self, sed_report: libsedml.SedReport) -> dict[str, str]:
         """Parse Report.
 
         :return dictionary of label: dataGenerator.id mapping.
         """
         sed_dataset: libsedml.SedDataSet
-        report: Dict[str, str] = {}
+        report: dict[str, str] = {}
         for sed_dataset in sed_report.getListOfDataSets():
             sed_dg_id: str = sed_dataset.getDataReference()
             if self.sed_doc.getDataGenerator(sed_dg_id) is None:
@@ -1878,12 +1878,12 @@ class SEDMLParser:
         astnode: libsedml.ASTNode = sed_dg.getMath()
         function: str = libsedml.formulaToL3String(astnode)
 
-        parameters: Dict[str, float] = {}
+        parameters: dict[str, float] = {}
         sed_par: libsedml.SedParameter
         for sed_par in sed_dg.getListOfParameters():
             parameters[sed_par.getId()] = sed_par.getValue()
 
-        variables: Dict[str, Data] = {}
+        variables: dict[str, Data] = {}
         sed_var: libsedml.SedVariable
         for sed_var in sed_dg.getListOfVariables():
             task_id = sed_var.getTaskReference()
@@ -1925,7 +1925,7 @@ class SEDMLParser:
     def data_generators_for_task(
         self,
         sed_task: libsedml.SedTask,
-    ) -> List[libsedml.SedDataGenerator]:
+    ) -> list[libsedml.SedDataGenerator]:
         """Get DataGenerators which reference the given task."""
         sed_dgs = []
         sed_dg: libsedml.SedDataGenerator
@@ -1939,7 +1939,7 @@ class SEDMLParser:
         return sed_dgs
 
     @staticmethod
-    def get_ordered_subtasks(sed_task: libsedml.SedTask) -> List[libsedml.SedTask]:
+    def get_ordered_subtasks(sed_task: libsedml.SedTask) -> list[libsedml.SedTask]:
         """Ordered list of subtasks for task."""
         subtasks = sed_task.getListOfSubTasks()
         subtask_order = [st.getOrder() for st in subtasks]

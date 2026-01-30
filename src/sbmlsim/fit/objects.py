@@ -5,7 +5,7 @@ import json
 import math
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Callable, Dict, Iterable, List, Optional, Union
+from typing import Any, Callable, Iterable, Optional, Union
 
 import numpy as np
 import pandas as pd
@@ -28,10 +28,10 @@ class FitExperiment:
     def __init__(
         self,
         experiment: Callable,
-        mappings: List[str] = None,
-        weights: Union[float, List[float]] = None,
+        mappings: list[str] = None,
+        weights: Union[float, list[float]] = None,
         use_mapping_weights: bool = False,
-        fit_parameters: Dict[str, List["FitParameter"]] = None,
+        fit_parameters: dict[str, list["FitParameter"]] = None,
         exclude: bool = False,
     ):
         """Initialize simulation experiment used in a fitting.
@@ -72,12 +72,12 @@ class FitExperiment:
             )
 
     @property
-    def weights(self) -> List[float]:
+    def weights(self) -> list[float]:
         """Weights of fit mappings."""
         return self._weights
 
     @weights.setter
-    def weights(self, weights: Union[float, List[float]] = None) -> None:
+    def weights(self, weights: Union[float, list[float]] = None) -> None:
         """Set weights for mappings in fit experiment."""
 
         weights_processed = None
@@ -117,7 +117,7 @@ class FitExperiment:
         self._weights = weights_processed
 
     @staticmethod
-    def reduce(fit_experiments: Iterable["FitExperiment"]) -> List["FitExperiment"]:
+    def reduce(fit_experiments: Iterable["FitExperiment"]) -> list["FitExperiment"]:
         """Collect fit mappings of multiple FitExperiments if these can be combined."""
         red_experiments = {}
         for fit_exp in fit_experiments:

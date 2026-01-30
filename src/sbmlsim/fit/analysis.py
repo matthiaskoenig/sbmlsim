@@ -2,7 +2,7 @@
 
 import webbrowser
 from pathlib import Path
-from typing import Any, Dict, List, Tuple
+from typing import Any, Tuple
 
 import matplotlib
 import numpy as np
@@ -44,7 +44,7 @@ class OptimizationAnalysis:
         show_titles: bool = True,
         residual: ResidualType = None,
         loss_function: LossFunctionType = None,
-        weighting_curves: List[WeightingCurvesType] = None,
+        weighting_curves: list[WeightingCurvesType] = None,
         weighting_points: WeightingPointsType = None,
         variable_step_size: bool = True,
         absolute_tolerance: float = 1e-6,
@@ -100,7 +100,7 @@ class OptimizationAnalysis:
 
         self.op: OptimizationProblem = op  # type: ignore
 
-    def run(self, mpl_parameters: Dict[str, Any] = None) -> None:
+    def run(self, mpl_parameters: dict[str, Any] = None) -> None:
         """Execute complete analysis.
 
         This creates all plots and reports.
@@ -151,7 +151,6 @@ class OptimizationAnalysis:
         }
         parameters.update(mpl_parameters)
         plt.rcParams.update(parameters)
-
 
         # optimization traces
         self.plot_traces(
@@ -372,7 +371,9 @@ class OptimizationAnalysis:
                         markersize=10,
                     )
                 # plot simulation
-                ax.plot(x_obs.values, y_obs.values, "-", color="blue", label="observable")
+                ax.plot(
+                    x_obs.values, y_obs.values, "-", color="blue", label="observable"
+                )
 
                 xdelta = np.max(x_ref) - np.min(x_ref)
                 ax.set_xlim(
@@ -450,7 +451,9 @@ class OptimizationAnalysis:
                 )
 
                 # prediction
-                ax.plot(x_obs.values, y_obs.values, "-", color="blue", label="observable")
+                ax.plot(
+                    x_obs.values, y_obs.values, "-", color="blue", label="observable"
+                )
                 ax.plot(x_ref, y_obsip, "o", color="blue", label="interpolation")
 
                 # reference data
@@ -467,7 +470,6 @@ class OptimizationAnalysis:
                     )
 
             for ax in (ax3, ax4):
-
                 ax.plot(
                     x_ref,
                     res_weighted2,
@@ -563,7 +565,6 @@ class OptimizationAnalysis:
             ],
         )
 
-
     kwargs_scatter = {
         "markersize": "10",
         "markeredgecolor": "black",
@@ -588,11 +589,11 @@ class OptimizationAnalysis:
 
         ax.fill_between(
             [min_dp, max_dp, max_dp, min_dp],
-            [min_dp/10, max_dp/10, max_dp*10, min_dp*10],
+            [min_dp / 10, max_dp / 10, max_dp * 10, min_dp * 10],
             color="lightgray",
         )
         ax.plot([min_dp, max_dp], [min_dp, max_dp], color="black")
-        for bfactor in [1/10, 10]:
+        for bfactor in [1 / 10, 10]:
             ax.plot(
                 [min_dp, max_dp],
                 [min_dp * bfactor, max_dp * bfactor],
@@ -606,14 +607,14 @@ class OptimizationAnalysis:
                 dp.y_ref[dp.experiment == experiment].values,
                 dp.y_obs[dp.experiment == experiment].values,
                 # yerr=dp.y_ref_err,
-                **self.kwargs_scatter
+                **self.kwargs_scatter,
             )
 
         # annotations
         for k in range(len(dp)):
             # plot labels for datapoints far away
-            ratio = dp.y_ref.values[k]/dp.y_obs.values[k]
-            if (ratio > 10 or ratio < 1/10):
+            ratio = dp.y_ref.values[k] / dp.y_obs.values[k]
+            if ratio > 10 or ratio < 1 / 10:
                 ax.annotate(
                     dp.experiment.values[k],
                     xy=(
@@ -647,7 +648,7 @@ class OptimizationAnalysis:
             ax.plot(
                 xdata[dp.experiment == experiment].values,
                 ydata[dp.experiment == experiment].values,
-                **self.kwargs_scatter
+                **self.kwargs_scatter,
             )
 
         min_res = np.min(ydata)
@@ -690,7 +691,9 @@ class OptimizationAnalysis:
                     alpha=0.7,
                 )
         ax.set_xlabel("Experiment $y_{i,k}$", fontweight="bold")
-        ax.set_ylabel("Relative residual $\\frac{f(x_{i,k})-y_{i,k}}{y_{i,k}}$", fontweight="bold")
+        ax.set_ylabel(
+            "Relative residual $\\frac{f(x_{i,k})-y_{i,k}}{y_{i,k}}$", fontweight="bold"
+        )
         ax.set_xscale("log")
         # ax.set_yscale("log")
         ax.grid()
@@ -778,7 +781,7 @@ class OptimizationAnalysis:
         ax.boxplot(
             # position,
             box_data,
-            vert=False
+            vert=False,
             # color="black",
             # alpha=0.8
         )
@@ -919,7 +922,11 @@ class OptimizationAnalysis:
             # plot final optimization cost of trace
             if len(df_run.cost.values > 0):
                 ax.plot(
-                    len(df_run) - 1, df_run.cost.values[-1], "o", color="black", alpha=0.8
+                    len(df_run) - 1,
+                    df_run.cost.values[-1],
+                    "o",
+                    color="black",
+                    alpha=0.8,
                 )
 
         ax.set_xlabel("Optimization step")
@@ -994,9 +1001,11 @@ class OptimizationAnalysis:
                         alpha=0.5,
                     )
                     # optimal values
-                    ax.scatter(
-                        df[pidx], df[pidy], c=df.cost, s=size, alpha=0.9, cmap="jet"
-                    ),
+                    (
+                        ax.scatter(
+                            df[pidx], df[pidy], c=df.cost, s=size, alpha=0.9, cmap="jet"
+                        ),
+                    )
 
                     ax.plot(
                         self.optres.xopt[kx],

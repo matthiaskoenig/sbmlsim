@@ -1,8 +1,9 @@
 """Definition of timecourses and timecourse simulations."""
+
 import json
 from copy import deepcopy
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Optional, Union
 
 import numpy as np
 from pint import Quantity
@@ -10,7 +11,7 @@ from pymetadata import log
 
 from sbmlsim.serialization import ObjectJSONEncoder
 from sbmlsim.simulation import AbstractSim, Dimension
-from sbmlsim.units import Units, UnitsInformation
+from sbmlsim.units import UnitsInformation
 
 
 logger = log.get_logger(__name__)
@@ -33,8 +34,8 @@ class Timecourse(ObjectJSONEncoder):
         start: float,
         end: float,
         steps: int,
-        changes: Dict[str, Quantity] = None,
-        model_changes: Dict[str, Quantity] = None,
+        changes: dict[str, Quantity] = None,
+        model_changes: dict[str, Quantity] = None,
         model_manipulations: dict = None,
         discard: bool = False,
     ):
@@ -71,7 +72,7 @@ class Timecourse(ObjectJSONEncoder):
         """Get string representation."""
         return f"Timecourse([{self.start}:{self.end}])"
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary."""
         d = dict()
         for key in self.__dict__:
@@ -90,7 +91,7 @@ class Timecourse(ObjectJSONEncoder):
         """Add model change."""
         self.model_changes[sid] = change
 
-    def add_model_changes(self, model_changes: Dict[str, str]) -> None:
+    def add_model_changes(self, model_changes: dict[str, str]) -> None:
         """Add model changes."""
         self.model_changes.update(model_changes)
 
@@ -124,8 +125,8 @@ class TimecourseSim(AbstractSim):
 
     def __init__(
         self,
-        timecourses: Union[List[Timecourse], Timecourse],
-        selections: Optional[List[str]] = None,
+        timecourses: Union[list[Timecourse], Timecourse],
+        selections: Optional[list[str]] = None,
         reset: bool = True,
         time_offset: float = 0.0,
     ):
@@ -181,11 +182,11 @@ class TimecourseSim(AbstractSim):
         res: np.ndarray = np.concatenate(time_vecs)
         return res
 
-    def dimensions(self) -> List[Dimension]:
+    def dimensions(self) -> list[Dimension]:
         """Get dimensions."""
         return [Dimension(dimension="time", index=self.time)]
 
-    def add_model_changes(self, model_changes: Dict) -> None:
+    def add_model_changes(self, model_changes: dict) -> None:
         """Add model changes to given simulation."""
         if self.timecourses:
             tc = self.timecourses[0]  # type: Timecourse
@@ -202,7 +203,7 @@ class TimecourseSim(AbstractSim):
         for tc in self.timecourses:
             tc.strip_units()
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary."""
         d = {
             "type": self.__class__.__name__,

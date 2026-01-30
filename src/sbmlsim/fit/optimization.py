@@ -5,7 +5,7 @@ from collections import defaultdict
 from copy import deepcopy
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Set, Tuple, Union
+from typing import Any, Optional, Tuple, Union
 
 import numpy as np
 import pandas as pd
@@ -52,8 +52,8 @@ class OptimizationProblem(ObjectJSONEncoder):
     def __init__(
         self,
         opid: str,
-        fit_experiments: List[FitExperiment],
-        fit_parameters: List[FitParameter],
+        fit_experiments: list[FitExperiment],
+        fit_parameters: list[FitParameter],
         base_path: Path = None,
         data_path: Path = None,
     ):
@@ -99,24 +99,24 @@ class OptimizationProblem(ObjectJSONEncoder):
         self.weighting_curves: Optional[WeightingCurvesType] = None
         self.weighting_points: Optional[WeightingPointsType] = None
 
-        self.experiment_keys: List[str] = []
-        self.mapping_keys: List[str] = []
-        self.xid_observable: List[str] = []
-        self.yid_observable: List[str] = []
-        self.x_references: List[Any] = []
-        self.y_references: List[Any] = []
-        self.y_errors: List[Any] = []
-        self.y_errors_type: List[str] = []
-        self.weights: List[
+        self.experiment_keys: list[str] = []
+        self.mapping_keys: list[str] = []
+        self.xid_observable: list[str] = []
+        self.yid_observable: list[str] = []
+        self.x_references: list[Any] = []
+        self.y_references: list[Any] = []
+        self.y_errors: list[Any] = []
+        self.y_errors_type: list[str] = []
+        self.weights: list[
             Any
         ] = []  # total weights for points (data points and curve weights)
-        self.weights_points: List[Any] = []  # weights for data points based on errors
-        self.weights_curves: List[Any] = []  # user defined weights per mapping/curve
+        self.weights_points: list[Any] = []  # weights for data points based on errors
+        self.weights_curves: list[Any] = []  # user defined weights per mapping/curve
 
-        self.models: List[Any] = []
+        self.models: list[Any] = []
         self.xmodel: np.ndarray = np.empty(shape=(len(self.pids)))
-        self.simulations: List[Any] = []
-        self.selections: List[Any] = []
+        self.simulations: list[Any] = []
+        self.selections: list[Any] = []
 
     def __repr__(self) -> str:
         """Get representation."""
@@ -138,7 +138,7 @@ class OptimizationProblem(ObjectJSONEncoder):
         info.extend([f"\t{p}" for p in self.parameters])
         return "\n".join(info)
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary."""
         d = dict()
         for key in ["opid", "fit_experiments", "parameters", "base_path", "data_path"]:
@@ -194,7 +194,7 @@ class OptimizationProblem(ObjectJSONEncoder):
         self,
         residual: Optional[ResidualType],
         loss_function: LossFunctionType,
-        weighting_curves: List[WeightingCurvesType],
+        weighting_curves: list[WeightingCurvesType],
         weighting_points: Optional[WeightingPointsType],
         variable_step_size: bool = True,
         relative_tolerance: float = 1e-6,
@@ -218,7 +218,7 @@ class OptimizationProblem(ObjectJSONEncoder):
             weighting_curves = []
         if isinstance(weighting_curves, WeightingCurvesType):
             raise TypeError(
-                f"weighting_curves must be a 'List[WeightingCurvesType]', "
+                f"weighting_curves must be a 'list[WeightingCurvesType]', "
                 f"but '{type(weighting_curves)}' given."
             )
 
@@ -250,7 +250,7 @@ class OptimizationProblem(ObjectJSONEncoder):
 
             # FIXME: selections should be based on fit mappings; this will reduce
             # selections and speed up calculations
-            selections_set: Set[str] = set()
+            selections_set: set[str] = set()
             # for d in sim_experiment._data.values():  # type: Data
             #     if d.is_task():
             #         selections_set.add(d.selection)
@@ -473,7 +473,7 @@ class OptimizationProblem(ObjectJSONEncoder):
                             pid_value = model.changes[pid]
                     self.xmodel[k] = pid_value
 
-                selections: List[str] = list(selections_set)
+                selections: list[str] = list(selections_set)
 
                 # lookup maps
                 self.models.append(model)
@@ -526,7 +526,7 @@ class OptimizationProblem(ObjectJSONEncoder):
         sampling: SamplingType = SamplingType.UNIFORM,
         seed: Optional[int] = None,
         **kwargs,
-    ) -> Tuple[List[optimize.OptimizeResult], List]:
+    ) -> Tuple[list[optimize.OptimizeResult], list]:
         """Run parameter optimization.
 
         To change the weighting or handling of residuals reinitialize the optimization
@@ -570,7 +570,7 @@ class OptimizationProblem(ObjectJSONEncoder):
         x0: np.ndarray = None,
         algorithm=OptimizationAlgorithmType.LEAST_SQUARE,
         **kwargs,
-    ) -> Tuple[scipy.optimize.OptimizeResult, List]:
+    ) -> Tuple[scipy.optimize.OptimizeResult, list]:
         """Run single optimization with x0 start values.
 
         :param x0: parameter start vector (important for deterministic optimizers)

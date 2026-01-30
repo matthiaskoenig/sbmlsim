@@ -1,7 +1,7 @@
 """Abstract base simulation."""
+
 import abc
 from abc import ABC
-from typing import Dict, List
 
 from pymetadata import log
 
@@ -117,7 +117,7 @@ class AbstractSim(ABC):
     """
 
     @abc.abstractmethod
-    def dimensions(self) -> List[Dimension]:
+    def dimensions(self) -> list[Dimension]:
         """Get dimension of the simulation."""
         raise NotImplementedError
 
@@ -127,11 +127,11 @@ class AbstractSim(ABC):
         raise NotImplementedError
 
     @abc.abstractmethod
-    def add_model_changes(self, changes: Dict) -> None:
+    def add_model_changes(self, changes: dict) -> None:
         """Add model changes to model."""
         raise NotImplementedError
 
-    def to_dict(self) -> Dict[str, str]:
+    def to_dict(self) -> dict[str, str]:
         """Convert to dictionary."""
         d = {
             "type": self.__class__.__name__,

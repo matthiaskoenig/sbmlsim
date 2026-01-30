@@ -15,7 +15,7 @@ from sbmlsim.result import XResult
 
 def run_demo_example():
     """Run various timecourses."""
-    simulator = SimulatorSerial.from_sbml(DEMO_SBML)
+    simulator = SimulatorSerial(DEMO_SBML)
 
     # units information
     uinfo = UnitsInformation.from_sbml(DEMO_SBML)
@@ -54,7 +54,8 @@ def run_demo_example():
 
     # print(tc_sim)
     xres: XResult = simulator.run_scan(tc_scan)
-    xres.set_units(udict=uinfo.udict)
+    xres.uinfo = uinfo
+
     console.log(xres)
 
     # create figure
@@ -75,14 +76,9 @@ def run_demo_example():
         yunit = ax_units["yunit"]
 
         for key in ["[e__A]", "[e__B]", "[e__C]", "[c__A]", "[c__B]", "[c__C]"]:
-            # => How to better handle units !!!
-            # FIXME: correct handling of units; and subsequent conversion
-            # Mapping of model to units needed
-
-            # FIXME: correct reduction of additional dimensions!
             ax.plot(
-                Q_(xres["time"].values, xres.units["time"]).to(xunit).m,
-                Q_(xres[key].values, xres.units[key]).to(yunit).m,
+                Q_(xres["time"].values, xres.uinfo["time"]).to(xunit).m,
+                Q_(xres[key].values, xres.uinfo[key]).to(yunit).m,
                 label=f"{key} [{yunit}]",
             )
         ax.legend()

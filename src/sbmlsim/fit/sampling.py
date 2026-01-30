@@ -1,6 +1,6 @@
 """Sampling of parameter values."""
+
 from enum import Enum
-from typing import Dict, Iterable, List, Sized
 
 import numpy as np
 import pandas as pd
@@ -29,7 +29,7 @@ class SamplingType(Enum):
 
 
 def create_samples(
-    parameters: List[FitParameter],
+    parameters: list[FitParameter],
     size,
     sampling=SamplingType.LOGUNIFORM,
     seed=None,
@@ -130,12 +130,12 @@ def plot_samples(samples):
 
 def example_sampling() -> None:
     """Run sampling exa how to use sampling."""
-    parameters: List[FitParameter] = [
+    parameters: list[FitParameter] = [
         FitParameter(pid="p1", lower_bound=10, upper_bound=1e4),
         FitParameter(pid="p2", lower_bound=1, upper_bound=1e3),
         FitParameter(pid="p3", lower_bound=1, upper_bound=1e3),
     ]
-    samples: Dict[str, pd.DataFrame] = {}
+    samples: dict[str, pd.DataFrame] = {}
     for sampling in [
         SamplingType.UNIFORM,
         SamplingType.UNIFORM_LHS,

@@ -2,7 +2,7 @@
 
 import tempfile
 from pathlib import Path
-from typing import Dict, List, Optional, Union
+from typing import Optional, Union
 
 import libsbml
 import numpy as np
@@ -33,12 +33,12 @@ class RoadrunnerSBMLModel(AbstractModel):
         self,
         source: Union[str, Path],
         base_path: Path = None,
-        changes: Dict = None,
+        changes: dict = None,
         sid: str = None,
         name: str = None,
-        selections: List[str] = None,
+        selections: list[str] = None,
         ureg: UnitRegistry = None,
-        settings: Dict = None,
+        settings: dict = None,
     ):
         super(RoadrunnerSBMLModel, self).__init__(
             source=source,
@@ -84,9 +84,9 @@ class RoadrunnerSBMLModel(AbstractModel):
     @staticmethod
     def from_abstract_model(
         abstract_model: AbstractModel,
-        selections: List[str] = None,
+        selections: list[str] = None,
         ureg: UnitRegistry = None,
-        settings: Dict = None,
+        settings: dict = None,
     ):
         """Create from AbstractModel."""
         logger.debug("RoadrunnerSBMLModel from AbstractModel")
@@ -174,8 +174,8 @@ class RoadrunnerSBMLModel(AbstractModel):
 
     @classmethod
     def set_timecourse_selections(
-        cls, r: roadrunner.RoadRunner, selections: List[str] = None
-    ) -> List[str]:
+        cls, r: roadrunner.RoadRunner, selections: list[str] = None
+    ) -> list[str]:
         """Set the model selections for timecourse simulation."""
         if selections is None:
             r_model: roadrunner.ExecutableModel = r.model
@@ -252,7 +252,7 @@ class RoadrunnerSBMLModel(AbstractModel):
         doc: libsbml.SBMLDocument = libsbml.readSBMLFromString(r.getCurrentSBML())
         model: libsbml.Model = doc.getModel()
         sids = r_model.getGlobalParameterIds()
-        parameters: List[libsbml.Parameter] = [model.getParameter(sid) for sid in sids]
+        parameters: list[libsbml.Parameter] = [model.getParameter(sid) for sid in sids]
         data = {
             "sid": sids,
             "value": r_model.getGlobalParameterValues(),
@@ -276,7 +276,7 @@ class RoadrunnerSBMLModel(AbstractModel):
         model: libsbml.Model = doc.getModel()
 
         sids = r_model.getFloatingSpeciesIds() + r_model.getBoundarySpeciesIds()
-        species: List[libsbml.Species] = [model.getSpecies(sid) for sid in sids]
+        species: list[libsbml.Species] = [model.getSpecies(sid) for sid in sids]
 
         data = {
             "sid": sids,

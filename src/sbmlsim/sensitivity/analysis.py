@@ -1,7 +1,5 @@
-"""Sensitivity analysis.
+"""Sensitivity analysis."""
 
-
-"""
 import multiprocessing
 import os
 import time
@@ -24,6 +22,7 @@ from sbmlsim.sensitivity.plots import heatmap
 @dataclass
 class SensitivityOutput:
     """Output measurement for SensitivityAnalysis."""
+
     uid: str
     name: str
     unit: Optional[str]
@@ -47,9 +46,13 @@ class SensitivitySimulation:
     This function is called repeatedly during the sensitivity calculation.
     """
 
-    def __init__(self, model_path: Path, selections: list[str],
-                 changes_simulation: dict[str, float],
-                 outputs: list[SensitivityOutput]):
+    def __init__(
+        self,
+        model_path: Path,
+        selections: list[str],
+        changes_simulation: dict[str, float],
+        outputs: list[SensitivityOutput],
+    ):
         self.model_path = model_path
         self.selections = selections
         self.changes_simulation = changes_simulation
@@ -65,7 +68,8 @@ class SensitivitySimulation:
         for key in y:
             if key not in outputs_dict:
                 raise ValueError(
-                    f"Key '{key}' missing in outputs dictionary: '{outputs_dict}")
+                    f"Key '{key}' missing in outputs dictionary: '{outputs_dict}"
+                )
 
     @staticmethod
     def load_model(model_path: Path, selections: list[str]) -> roadrunner.RoadRunner:
@@ -77,8 +81,9 @@ class SensitivitySimulation:
         return rr
 
     @staticmethod
-    def apply_changes(r: roadrunner.RoadRunner, changes: dict[str, float],
-                      reset_all: bool = True) -> None:
+    def apply_changes(
+        r: roadrunner.RoadRunner, changes: dict[str, float], reset_all: bool = True
+    ) -> None:
         """Apply changes after possible reset of the model."""
         if reset_all:
             r.resetAll()
@@ -87,17 +92,20 @@ class SensitivitySimulation:
             # print(f"{key=} {value=}")
             r.setValue(key, value)
 
-    def simulate(self, r: roadrunner.RoadRunner, changes: dict[str, float]) -> dict[
-        str, float]:
+    def simulate(
+        self, r: roadrunner.RoadRunner, changes: dict[str, float]
+    ) -> dict[str, float]:
         """Run a model simulation and return scalar results dictionary."""
 
-        raise NotImplemented
+        raise NotImplementedError
 
     @classmethod
-    def parameter_values(cls, r: roadrunner.RoadRunner,
-                         parameters: list[SensitivityParameter],
-                         changes: dict[str, float]
-                         ) -> dict[str, float]:
+    def parameter_values(
+        cls,
+        r: roadrunner.RoadRunner,
+        parameters: list[SensitivityParameter],
+        changes: dict[str, float],
+    ) -> dict[str, float]:
         """Get the parameter values for a given set of changes."""
         cls.apply_changes(r, changes, reset_all=True)
 
@@ -111,21 +119,22 @@ class SensitivitySimulation:
     def plot(self) -> None:
         """Plot the model simulation."""
 
-        raise NotImplemented
+        raise NotImplementedError
 
 
 class SensitivityAnalysis:
     """Parent class for all sensitivity analysis."""
 
-    def __init__(self,
-                 sensitivity_simulation: SensitivitySimulation,
-                 parameters: list[SensitivityParameter],
-                 groups: list[AnalysisGroup],
-                 results_path: Path,
-                 seed: Optional[int] = None,
-                 n_cores: Optional[int] = None,
-                 cache_results: bool = False,
-                 ) -> None:
+    def __init__(
+        self,
+        sensitivity_simulation: SensitivitySimulation,
+        parameters: list[SensitivityParameter],
+        groups: list[AnalysisGroup],
+        results_path: Path,
+        seed: Optional[int] = None,
+        n_cores: Optional[int] = None,
+        cache_results: bool = False,
+    ) -> None:
         """Create a sensitivity analysis for given parameter ids.
 
         Based on the results matrix the sensitivity is calculated.
@@ -179,8 +188,9 @@ class SensitivityAnalysis:
 
         # multiple sensitivities are stored
         # sensitivity matrix; shape: (num_parameters x num_outputs); could be multiple
-        self.sensitivity: dict[str, dict[str, xr.DataArray]] = {g.uid: {} for g in
-                                                                self.groups}
+        self.sensitivity: dict[str, dict[str, xr.DataArray]] = {
+            g.uid: {} for g in self.groups
+        }
 
     @property
     def output_ids(self) -> list[str]:
@@ -233,7 +243,7 @@ class SensitivityAnalysis:
     def create_samples(self) -> None:
         """Create and set parameter samples."""
 
-        raise NotImplemented
+        raise NotImplementedError
 
     @property
     def num_samples(self) -> int:
@@ -245,8 +255,9 @@ class SensitivityAnalysis:
         samples = self.samples[self.group_ids[0]]
         return samples.shape[0]
 
-    def simulate_samples(self, cache_filename: Optional[str] = None,
-                         cache: bool = False) -> None:
+    def simulate_samples(
+        self, cache_filename: Optional[str] = None, cache: bool = False
+    ) -> None:
         """Simulate all samples in parallel.
 
         :param cache_filename: Path to the cache path.
@@ -267,7 +278,7 @@ class SensitivityAnalysis:
                 np.full((self.num_samples, self.num_outputs), np.nan),
                 dims=["sample", "output"],
                 coords={"sample": range(self.num_samples), "output": self.outputs},
-                name="results"
+                name="results",
             )
 
             # load model
@@ -284,14 +295,17 @@ class SensitivityAnalysis:
                 m = len(items)
                 k, r = divmod(m, n)
                 chunks = [
-                    items[i * k + min(i, r):(i + 1) * k + min(i + 1, r)]
+                    items[i * k + min(i, r) : (i + 1) * k + min(i + 1, r)]
                     for i in range(n)
                 ]
                 chunked_samples = [
-                    [{
-                        **group.changes,
-                        **dict(zip(self.parameter_ids, samples[k, :].values))
-                    } for k in chunk]
+                    [
+                        {
+                            **group.changes,
+                            **dict(zip(self.parameter_ids, samples[k, :].values)),
+                        }
+                        for k in chunk
+                    ]
                     for chunk in chunks
                 ]
                 return chunks, chunked_samples
@@ -317,11 +331,12 @@ class SensitivityAnalysis:
         # write to cache
         self.write_cache(data=self.results, cache_filename=cache_filename, cache=cache)
 
-    def calculate_sensitivity(self, cache_filename: Optional[str] = None,
-                              cache: bool = False):
+    def calculate_sensitivity(
+        self, cache_filename: Optional[str] = None, cache: bool = False
+    ):
         """Calculate the sensitivity matrices."""
 
-        raise NotImplemented
+        raise NotImplementedError
 
     def samples_table(self) -> pd.DataFrame:
         return self._data_table(d=self.samples)
@@ -334,7 +349,7 @@ class SensitivityAnalysis:
         for group in self.groups:
             da: xr.DataArray = d[group.uid]
             item = {
-                'group': group.uid,
+                "group": group.uid,
                 # 'group_name': group.name,
                 **da.sizes,
             }
@@ -342,14 +357,15 @@ class SensitivityAnalysis:
         return pd.DataFrame(items)
 
     def read_cache(self, cache_filename: str, cache: bool) -> Optional[Any]:
-        cache_path: Optional[
-            Path] = self.results_path / cache_filename if cache_filename else None
+        cache_path: Optional[Path] = (
+            self.results_path / cache_filename if cache_filename else None
+        )
         if cache and not cache_path:
             raise ValueError("Cache path is required for caching.")
 
         # retrieve from cache
         if cache and cache_path.exists():
-            with open(cache_path, 'rb') as f:
+            with open(cache_path, "rb") as f:
                 data = dill.load(f)
                 console.print(f"Simulated samples loaded from cache: '{cache_path}'")
                 return data
@@ -357,10 +373,11 @@ class SensitivityAnalysis:
         return None
 
     def write_cache(self, data: Any, cache_filename: str, cache: bool) -> Optional[Any]:
-        cache_path: Optional[
-            Path] = self.results_path / cache_filename if cache_filename else None
+        cache_path: Optional[Path] = (
+            self.results_path / cache_filename if cache_filename else None
+        )
         if cache_path:
-            with open(cache_path, 'wb') as f:
+            with open(cache_path, "wb") as f:
                 console.print(f"Simulated samples written to cache: '{cache_path}'")
                 dill.dump(data, f)
 
@@ -371,7 +388,7 @@ class SensitivityAnalysis:
         return pd.DataFrame(
             sensitivity.values,
             columns=sensitivity.coords["output"],
-            index=sensitivity.coords["parameter"]
+            index=sensitivity.coords["parameter"],
         )
 
     def plot(self, **kwargs):
@@ -387,9 +404,8 @@ class SensitivityAnalysis:
         title: Optional[str] = None,
         cmap: str = "seismic",
         fig_path: Optional[Path] = None,
-        **kwargs
+        **kwargs,
     ) -> None:
-
         df = self.sensitivity_df(group_id=group_id, key=sensitivity_key)
         heatmap(
             df=df,
@@ -400,24 +416,20 @@ class SensitivityAnalysis:
             title=title,
             cmap=cmap,
             fig_path=fig_path,
-            **kwargs
+            **kwargs,
         )
 
 
-def run_simulation(
-    params_tuple
-):
+def run_simulation(params_tuple):
     """Pass all required arguments as parameter tuple."""
     sensitivity_simulation, r, chunked_changes = params_tuple
     outputs = []
-    for kc in track(range(len(chunked_changes)),
-                    description=f"Simulate samples PID={os.getpid()}"):
+    for kc in track(
+        range(len(chunked_changes)), description=f"Simulate samples PID={os.getpid()}"
+    ):
         changes = chunked_changes[kc]
         # console.print(f"PID={os.getpid()} | k={kc}")
-        Y = sensitivity_simulation.simulate(
-            r=r,
-            changes=changes
-        )
+        Y = sensitivity_simulation.simulate(r=r, changes=changes)
         outputs.append(Y)
 
     return outputs

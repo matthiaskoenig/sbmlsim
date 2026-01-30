@@ -1,5 +1,4 @@
 from pathlib import Path
-from typing import Dict
 
 from sbmlsim.experiment import SimulationExperiment
 from sbmlsim.model import AbstractModel
@@ -9,8 +8,8 @@ from sbmlsim.task import Task
 
 
 class Cuadros2020(SimulationExperiment):
-    def models(self) -> Dict[str, AbstractModel]:
-        Q_ = self.Q_
+    def models(self) -> dict[str, AbstractModel]:
+        # Q_ = self.Q_
         models = {
             "model": AbstractModel(
                 source=Path(__file__).parent
@@ -24,8 +23,8 @@ class Cuadros2020(SimulationExperiment):
         }
         return models
 
-    def simulations(self) -> Dict[str, TimecourseSim]:
-        Q_ = self.Q_
+    def simulations(self) -> dict[str, TimecourseSim]:
+        # Q_ = self.Q_
         tcsims = {}
         tcsims["sim1"] = TimecourseSim(
             [
@@ -39,14 +38,14 @@ class Cuadros2020(SimulationExperiment):
         )
         return tcsims
 
-    def tasks(self) -> Dict[str, Task]:
+    def tasks(self) -> dict[str, Task]:
         if self.simulations():
             return {
                 f"task_{key}": Task(model="model", simulation=key)
                 for key in self.simulations()
             }
 
-    def figures(self) -> Dict[str, Figure]:
+    def figures(self) -> dict[str, Figure]:
         unit_time = "time"
         unit_y = "substance"
 

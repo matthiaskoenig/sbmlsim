@@ -1,11 +1,11 @@
 """Create omex files from SED-ML files."""
 
 from pathlib import Path
-from typing import List
 
 from pymetadata import omex as pyomex
 
 from pymetadata import log
+
 logger = log.get_logger(__name__)
 
 
@@ -29,7 +29,7 @@ def create_omex_from_sedml(sedml_path: Path, omex_path: Path) -> None:
 def create_all_omex() -> None:
     """Create all omex from the SED-ML file."""
 
-    sedml_paths: List[Path] = []
+    sedml_paths: list[Path] = []
     for p in SEDML_DIR.rglob("*"):
         sedml_suffixes = {".xml", ".sedml"}
         if p.is_file() and p.suffix in sedml_suffixes:

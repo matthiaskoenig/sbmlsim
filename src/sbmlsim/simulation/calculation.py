@@ -1,8 +1,6 @@
 """Module for performing all the Calculations."""
 
-
-from abc import abstractmethod
-from typing import List, Optional
+from typing import Optional
 
 from sbmlsim.simulation.base import BaseObject, BaseObjectSIdRequired, Symbol, Target
 
@@ -86,7 +84,7 @@ class Variable(BaseObjectSIdRequired):
         unit: Optional[str] = None,
         name: Optional[str] = None,
         term: Optional[str] = None,
-        applied_dimensions: Optional[List[AppliedDimension]] = None,
+        applied_dimensions: Optional[list[AppliedDimension]] = None,
     ):
         """Construct Variable."""
         super(Variable, self).__init__(sid=sid, name=name)
@@ -96,7 +94,7 @@ class Variable(BaseObjectSIdRequired):
         self.symbol: Optional[Symbol] = symbol
         self.unit: Optional[str] = unit
         self.term: Optional[str] = term
-        self.applied_dimensions: Optional[List[AppliedDimension]] = applied_dimensions
+        self.applied_dimensions: Optional[list[AppliedDimension]] = applied_dimensions
 
     def __repr__(self) -> str:
         """Get string representation."""
@@ -123,7 +121,7 @@ class DependentVariable(Variable):
         unit: Optional[str] = None,
         name: Optional[str] = None,
         term: Optional[str] = None,
-        applied_dimensions: Optional[List[AppliedDimension]] = None,
+        applied_dimensions: Optional[list[AppliedDimension]] = None,
     ):
         """Construct DependentVariable."""
         super(DependentVariable, self).__init__(
@@ -150,15 +148,15 @@ class Calculation(BaseObjectSIdRequired):
     def __init__(
         self,
         sid: str,
-        variables: List[Variable],
-        parameters: List[Parameter],
+        variables: list[Variable],
+        parameters: list[Parameter],
         math: str,
         name: Optional[str] = None,
     ):
         """Construct Calculation."""
         super(Calculation, self).__init__(sid=sid, name=name)
-        self.variables: List[Variable] = variables
-        self.parameters: List[Parameter] = pars
+        self.variables: list[Variable] = variables
+        self.parameters: list[Parameter] = pars
         self.math: str = math
 
     # @abstractmethod
@@ -206,18 +204,18 @@ class FunctionalRange(Calculation):
 if __name__ == "__main__":
     from pymetadata.console import console
 
-    pars: List[Parameter] = [
+    pars: list[Parameter] = [
         Parameter(sid="p1", value=10.0, unit="mM"),
         Parameter(sid="p2", value=0),
     ]
     console.log(pars)
 
-    dims: List[AppliedDimension] = [
+    dims: list[AppliedDimension] = [
         AppliedDimension(sid="dim1", target="repeated_task1")
     ]
     console.log(dims)
 
-    vars: List[Variable] = [
+    vars: list[Variable] = [
         Variable(
             sid="S1_model1",
             target="S1",

@@ -1,15 +1,15 @@
 """Create report of simulation experiments."""
+
 import json
 import os
 import shutil
 import sys
 from enum import Enum
 from pathlib import Path
-from typing import Dict, Optional
+from typing import Optional
 
 import jinja2
 from pymetadata import log
-from pymetadata.console import console
 
 from sbmlsim import RESOURCES_DIR, __version__
 from sbmlsim.experiment import ExperimentResult, SimulationExperiment
@@ -25,7 +25,7 @@ class ReportResults:
 
     def __init__(self):
         """Construct ReportResults."""
-        self.data: Dict[str, Dict] = {}
+        self.data: dict[str, dict] = {}
 
     def to_json(self, json_path: Path):
         """Write to JSON."""
@@ -94,7 +94,7 @@ class ExperimentReport:
         LATEX = 3
 
     def __init__(
-        self, results: ReportResults, metadata: Dict = None, template_path=TEMPLATE_PATH
+        self, results: ReportResults, metadata: dict = None, template_path=TEMPLATE_PATH
     ):
         """Construct an ExperimentReport."""
         if isinstance(results, list):
@@ -116,7 +116,7 @@ class ExperimentReport:
         output_path: Path,
         filename: Optional[str] = None,
         report_type: ReportType = ReportType.HTML,
-        f_filter_context: Optional[Dict] = None,
+        f_filter_context: Optional[dict] = None,
         **kwargs,
     ) -> Path:
         """Create report of SimulationExperiments.
@@ -134,7 +134,7 @@ class ExperimentReport:
             lstrip_blocks=True,
         )
 
-        def write_report(filename: str, context: Dict, template_str: str) -> Path:
+        def write_report(filename: str, context: dict, template_str: str) -> Path:
             """Write the report file from given context and template."""
             template = env.get_template(template_str)
             text = template.render(context)
@@ -191,6 +191,6 @@ class ExperimentReport:
         output_path = write_report(
             filename=filename, context=context, template_str=f"index.{suffix}"
         )
-        report_path_str: str = str(output_path).replace('\\', '/')
+        report_path_str: str = str(output_path).replace("\\", "/")
         logger.info(f"report created: file://{report_path_str}")
         return output_path

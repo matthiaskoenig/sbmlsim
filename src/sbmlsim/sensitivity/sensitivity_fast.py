@@ -39,7 +39,6 @@ import SALib
 import numpy as np
 import xarray as xr
 from SALib import ProblemSpec
-from SALib.analyze import fast
 from SALib.sample import fast_sampler
 
 from sbmlsim.sensitivity import (
@@ -95,12 +94,14 @@ class FASTSensitivityAnalysis(SensitivityAnalysis):
         # define the problem specification
         self.ssa_problems: dict[str, ProblemSpec] = {}
         for group in self.groups:
-            self.ssa_problems[group.uid] = ProblemSpec({
-                'num_vars': self.num_parameters,
-                'names': self.parameter_ids,
-                'bounds': [[p.lower_bound, p.upper_bound] for p in self.parameters],
-                "outputs": self.output_ids,
-            })
+            self.ssa_problems[group.uid] = ProblemSpec(
+                {
+                    "num_vars": self.num_parameters,
+                    "names": self.parameter_ids,
+                    "bounds": [[p.lower_bound, p.upper_bound] for p in self.parameters],
+                    "outputs": self.output_ids,
+                }
+            )
 
     def create_samples(self) -> None:
         """Create samples for FAST."""
@@ -111,21 +112,23 @@ class FASTSensitivityAnalysis(SensitivityAnalysis):
         for gid in self.group_ids:
             # libssa samples based on definition
             ssa_samples = fast_sampler.sample(
-                self.ssa_problems[gid], N=self.N, M=self.M,
+                self.ssa_problems[gid],
+                N=self.N,
+                M=self.M,
             )
             self.ssa_problems[gid].set_samples(ssa_samples)
 
             self.samples[gid] = xr.DataArray(
                 ssa_samples,
                 dims=["sample", "parameter"],
-                coords={"sample": range(num_samples),
-                        "parameter": self.parameter_ids},
-                name="samples"
+                coords={"sample": range(num_samples), "parameter": self.parameter_ids},
+                name="samples",
             )
 
-    def calculate_sensitivity(self, cache_filename: Optional[str] = None,
-                              cache: bool = False):
-        """ Perform extended Fourier Amplitude Sensitivity Test on model outputs.
+    def calculate_sensitivity(
+        self, cache_filename: Optional[str] = None, cache: bool = False
+    ):
+        """Perform extended Fourier Amplitude Sensitivity Test on model outputs.
 
         Returns a dictionary with keys 'S1' and 'ST', where each entry is a list of
         size D (the number of parameters) containing the indices in the same order
@@ -146,16 +149,16 @@ class FASTSensitivityAnalysis(SensitivityAnalysis):
                 self.sensitivity[gid][key] = xr.DataArray(
                     np.full((self.num_parameters, self.num_outputs), np.nan),
                     dims=["parameter", "output"],
-                    coords={"parameter": self.parameter_ids,
-                            "output": self.output_ids},
-                    name=key
+                    coords={"parameter": self.parameter_ids, "output": self.output_ids},
+                    name=key,
                 )
 
             # Calculate FAST indices
             for ko in range(self.num_outputs):
                 Yo = Y[:, ko]
                 Si = SALib.analyze.fast.analyze(
-                    self.ssa_problems[gid], Yo,
+                    self.ssa_problems[gid],
+                    Yo,
                     M=self.M,
                     num_resamples=100,
                     conf_level=0.95,
@@ -165,8 +168,9 @@ class FASTSensitivityAnalysis(SensitivityAnalysis):
                     self.sensitivity[gid][key][:, ko] = Si[key]
 
         # write to cache
-        self.write_cache(data=self.sensitivity, cache_filename=cache_filename,
-                         cache=cache)
+        self.write_cache(
+            data=self.sensitivity, cache_filename=cache_filename, cache=cache
+        )
 
     def plot(self):
         super().plot()
@@ -183,11 +187,13 @@ class FASTSensitivityAnalysis(SensitivityAnalysis):
                     vcenter=0.5,
                     vmin=0.0,
                     vmax=1.0,
-                    fig_path=self.results_path / f"{self.prefix}_sensitivity_{kg:>02}_{group.uid}_{key}.png"
+                    fig_path=self.results_path
+                    / f"{self.prefix}_sensitivity_{kg:>02}_{group.uid}_{key}.png",
                 )
 
             # barplots
             plot_S1_ST_indices(
                 sa=self,
-                fig_path=self.results_path / f"{self.prefix}_sensitivity_{kg:>02}_{group.uid}.png",
+                fig_path=self.results_path
+                / f"{self.prefix}_sensitivity_{kg:>02}_{group.uid}.png",
             )

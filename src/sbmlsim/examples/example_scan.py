@@ -2,6 +2,7 @@
 
 import numpy as np
 
+from sbmlsim.model import RoadrunnerSBMLModel
 from sbmlsim.resources import REPRESSILATOR_SBML
 from sbmlsim.simulation import Dimension, ScanSim, Timecourse, TimecourseSim
 from sbmlsim.simulator import SimulatorSerial
@@ -10,7 +11,8 @@ from sbmlsim.result import XResult
 
 def run_scan0d() -> XResult:
     """Perform a parameter 0D scan, i.e., simple simulation"""
-    simulator = SimulatorSerial.from_sbml(sbml_path=REPRESSILATOR_SBML)
+    model = RoadrunnerSBMLModel(REPRESSILATOR_SBML)
+    simulator = SimulatorSerial(model)
 
     scan0d = ScanSim(
         simulation=TimecourseSim(
@@ -30,7 +32,8 @@ def run_scan1d() -> XResult:
 
     Scanning a single parameter.
     """
-    simulator = SimulatorSerial.from_sbml(sbml_path=REPRESSILATOR_SBML)
+    model = RoadrunnerSBMLModel(REPRESSILATOR_SBML)
+    simulator = SimulatorSerial(model)
 
     scan1d = ScanSim(
         simulation=TimecourseSim(
@@ -55,7 +58,8 @@ def run_scan1d() -> XResult:
 
 def run_scan2d() -> XResult:
     """Perform a parameter scan"""
-    simulator = SimulatorSerial.from_sbml(sbml_path=REPRESSILATOR_SBML)
+    model = RoadrunnerSBMLModel(REPRESSILATOR_SBML)
+    simulator = SimulatorSerial(model)
 
     scan2d = ScanSim(
         simulation=TimecourseSim(
@@ -85,7 +89,8 @@ def run_scan2d() -> XResult:
 
 def run_scan1d_distribution() -> XResult:
     """Perform a parameter scan by sampling from a distribution"""
-    simulator = SimulatorSerial.from_sbml(sbml_path=REPRESSILATOR_SBML)
+    model = RoadrunnerSBMLModel(REPRESSILATOR_SBML)
+    simulator = SimulatorSerial(model)
 
     scan1d = ScanSim(
         simulation=TimecourseSim(
@@ -132,7 +137,7 @@ if __name__ == "__main__":
     plt.show()
 
     da = xres[column]
-    for k in range(xres.dims["dim1"]):
+    for k in range(xres.sizes["dim1"]):
         # individual timecourses
         plt.plot(da.coords["time"], da.isel(dim1=k))
 

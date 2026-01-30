@@ -4,13 +4,15 @@ Allows to get sets of changes from given model instance.
 """
 
 from enum import Enum
-from typing import Dict, Iterable
+from typing import Iterable
 
 import libsbml
 import numpy as np
 from pymetadata import log
 from pymetadata.console import console
 import roadrunner
+
+from sbmlsim.model import RoadrunnerSBMLModel
 from sbmlsim.simulation import Dimension, ScanSim, TimecourseSim
 
 
@@ -114,7 +116,7 @@ class ModelSensitivity(object):
     @staticmethod
     def create_sampling_dimension(
         model: roadrunner.RoadRunner,
-        changes: Dict = None,
+        changes: dict = None,
         cv: float = 0.1,
         size: int = 10,
         distribution: DistributionType = DistributionType.NORMAL_DISTRIBUTION,
@@ -155,7 +157,7 @@ class ModelSensitivity(object):
     @staticmethod
     def create_difference_dimension(
         model: roadrunner.RoadRunner,
-        changes: Dict = None,
+        changes: dict = None,
         difference: float = 0.1,
         stype: SensitivityType = SensitivityType.PARAMETER_SENSITIVITY,
         exclude_filter=None,
@@ -193,13 +195,13 @@ class ModelSensitivity(object):
 
     @staticmethod
     def reference_dict(
-        model: roadrunner.RoadRunner,
-        changes: Dict = None,
+        model: RoadrunnerSBMLModel,
+        changes: dict = None,
         stype: SensitivityType = SensitivityType.PARAMETER_SENSITIVITY,
         exclude_filter=None,
         exclude_zero: bool = True,
         zero_eps: float = 1e-8,
-    ) -> Dict:
+    ) -> dict:
         """Get key:value dict for sensitivity analysis.
 
         Values are based on the reference state of the model with the applied
@@ -212,14 +214,14 @@ class ModelSensitivity(object):
         :return:
         """
         # reset model
-        model.resetAll()
+        model.r.resetAll()
 
         # apply normalized model changes
         if changes is None:
             changes = {}
         for key, item in changes.items():
             try:
-                model[key] = item.magnitude
+                model.r[key] = item.magnitude
             except AttributeError as err:
                 logger.error(
                     f"Change is not a Quantity with unit: '{key} = {item}'. "
@@ -227,7 +229,7 @@ class ModelSensitivity(object):
                 )
                 raise err
 
-        doc: libsbml.SBMLDocument = libsbml.readSBMLFromString(model.getSBML())
+        doc: libsbml.SBMLDocument = libsbml.readSBMLFromString(model.r.getSBML())
         sbml_model: libsbml.Model = doc.getModel()
 
         ids = []
@@ -250,17 +252,17 @@ class ModelSensitivity(object):
             for s in sbml_model.getListOfSpecies():
                 ids.append(s.getId())
 
-        def value_dict(ids: Iterable[str]) -> Dict[str, float]:
+        def value_dict(ids: Iterable[str]) -> dict[str, float]:
             """Key: value dict from current model state.
 
             Non-zero and exclude filtering is applied.
             """
-            d: Dict[str, float] = {}
+            d: dict[str, float] = {}
             for key in sorted(ids):
                 if exclude_filter and exclude_filter(key):
                     continue
 
-                value = model[key]
+                value = model.r[key]
                 if exclude_zero:
                     if np.abs(value) < zero_eps:
                         continue

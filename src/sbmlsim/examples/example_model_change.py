@@ -19,7 +19,8 @@ def run_model_change_example1():
 
     :return:
     """
-    r = RoadrunnerSBMLModel.loda_model_from_source(REPRESSILATOR_SBML)
+    model = RoadrunnerSBMLModel(REPRESSILATOR_SBML)
+    r = model.r
     RoadrunnerSBMLModel.set_timecourse_selections(r)
 
     s1 = r.simulate(start=0, end=100, steps=500)
@@ -59,7 +60,7 @@ def run_model_change_example1():
 
 def run_model_clamp1():
     """Using Timecourse simulations for clamps."""
-    simulator = SimulatorSerial.from_sbml(REPRESSILATOR_SBML)
+    simulator = SimulatorSerial(REPRESSILATOR_SBML)
 
     # setting a species as boundary condition
     tcsim = TimecourseSim(
@@ -114,7 +115,7 @@ def run_model_clamp2():
         plt.show()
 
     # reference simulation
-    simulator = SimulatorSerial.from_sbml(REPRESSILATOR_SBML)
+    simulator = SimulatorSerial(REPRESSILATOR_SBML)
     tcsim = TimecourseSim(
         [
             Timecourse(start=0, end=220, steps=300, changes={"X": 10}),

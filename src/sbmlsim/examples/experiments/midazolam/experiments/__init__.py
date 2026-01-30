@@ -1,10 +1,8 @@
-from typing import Dict, Tuple
 from collections import namedtuple
 
 from sbmlsim.experiment import SimulationExperiment
 from sbmlsim.model import AbstractModel
 from sbmlsim.simulation import TimecourseSim
-from sbmlsim.simulation.sensitivity import ModelSensitivity
 from sbmlsim.task import Task
 
 from ...midazolam import MODEL_PATH
@@ -16,7 +14,7 @@ MolecularWeights = namedtuple("MolecularWeights", "mid mid1oh")
 class MidazolamSimulationExperiment(SimulationExperiment):
     """Base class for all GlucoseSimulationExperiments."""
 
-    def models(self) -> Dict[str, AbstractModel]:
+    def models(self) -> dict[str, AbstractModel]:
         Q_ = self.Q_
         models = {
             "model": AbstractModel(
@@ -32,7 +30,7 @@ class MidazolamSimulationExperiment(SimulationExperiment):
         }
         return models
 
-    def tasks(self) -> Dict[str, Task]:
+    def tasks(self) -> dict[str, Task]:
         if self.simulations():
             return {
                 f"task_{key}": Task(model="model", simulation=key)
@@ -41,7 +39,7 @@ class MidazolamSimulationExperiment(SimulationExperiment):
         else:
             return {}
 
-    def simulations(self, simulations=None) -> Dict[str, TimecourseSim]:
+    def simulations(self, simulations=None) -> dict[str, TimecourseSim]:
         if simulations is None:
             return simulations
 

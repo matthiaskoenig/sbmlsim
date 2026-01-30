@@ -9,7 +9,7 @@ This includes
 """
 
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple, Type, Union, Set
+from typing import Optional, Tuple, Type, Union
 
 from pymetadata import log
 from pymetadata.console import console
@@ -31,7 +31,7 @@ class ExperimentRunner(object):
     def __init__(
         self,
         experiment_classes: Union[
-            Type[SimulationExperiment], List[Type[SimulationExperiment]]
+            Type[SimulationExperiment], list[Type[SimulationExperiment]]
         ],
         base_path: Path,
         data_path: Path,
@@ -54,7 +54,7 @@ class ExperimentRunner(object):
         # initialize experiments
         self.base_path = base_path
         self.data_path = data_path
-        self.experiments: Dict[str, SimulationExperiment] = {}
+        self.experiments: dict[str, SimulationExperiment] = {}
         self.models = {}
         self.simulator: Optional[SimulatorSerial] = None
 
@@ -76,9 +76,9 @@ class ExperimentRunner(object):
     def initialize(
         self,
         experiment_classes: Union[
-            List[Type[SimulationExperiment]],
+            list[Type[SimulationExperiment]],
             Tuple[Type[SimulationExperiment]],
-            Set[Type[SimulationExperiment]],
+            set[Type[SimulationExperiment]],
         ],
         **kwargs,
     ):
@@ -128,9 +128,9 @@ class ExperimentRunner(object):
         output_path: Path,
         show_figures: bool = False,
         save_results: bool = False,
-        figure_formats: List[str] = None,
+        figure_formats: list[str] = None,
         reduced_selections: bool = True,
-    ) -> List[ExperimentResult]:
+    ) -> list[ExperimentResult]:
         """Run the experiments."""
         if not output_path.exists():
             output_path.mkdir(parents=True)
@@ -155,10 +155,10 @@ class ExperimentRunner(object):
 
 
 def run_experiments(
-    experiments: Union[Type[SimulationExperiment], List[Type[SimulationExperiment]]],
+    experiments: Union[Type[SimulationExperiment], list[Type[SimulationExperiment]]],
     output_path: Path,
     base_path: Path = None,
-    data_path: Union[List[Path], Tuple[Path], Optional[Path]] = None,
+    data_path: Union[list[Path], Tuple[Path], Optional[Path]] = None,
 ) -> Path:
     """Run simulation experiments."""
     if not isinstance(experiments, (list, tuple)):

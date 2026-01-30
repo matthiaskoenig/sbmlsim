@@ -1,5 +1,3 @@
-from typing import List
-
 import numpy as np
 import pandas as pd
 import roadrunner
@@ -36,7 +34,7 @@ class SimulateRoadrunnerSBML(SimulateSBML):
         integrator.setValue("relative_tolerance", self.relative_tolerance)
 
     def simulate_condition(
-        self, condition: Condition, timepoints: List[float]
+        self, condition: Condition, timepoints: list[float]
     ) -> pd.DataFrame:
         """Simulate condition"""
         # print(f"simulate condition: {condition.sid}")

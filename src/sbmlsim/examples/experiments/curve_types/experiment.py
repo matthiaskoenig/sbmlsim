@@ -1,8 +1,9 @@
 """
 Example simulation experiment.
 """
+
 from pathlib import Path
-from typing import Dict, Union
+from typing import Union
 
 from sbmlsim.combine.sedml.report import Report
 from sbmlsim.data import Data
@@ -17,13 +18,13 @@ from sbmlsim.task import Task
 class CurveTypesExperiment(SimulationExperiment):
     """Simulation experiments for curve types."""
 
-    def models(self) -> Dict[str, Union[Path, AbstractModel]]:
+    def models(self) -> dict[str, Union[Path, AbstractModel]]:
         """Define models."""
         return {
             "model": Path(__file__).parent / "results" / "curve_types_model.xml",
         }
 
-    def simulations(self) -> Dict[str, AbstractSim]:
+    def simulations(self) -> dict[str, AbstractSim]:
         """Define simulations."""
         tc = TimecourseSim(
             timecourses=Timecourse(start=0, end=10, steps=10),
@@ -31,14 +32,14 @@ class CurveTypesExperiment(SimulationExperiment):
         )
         return {"tc": tc}
 
-    def tasks(self) -> Dict[str, Task]:
+    def tasks(self) -> dict[str, Task]:
         """Define tasks."""
         tasks = dict()
         for model in ["model"]:
             tasks[f"task_{model}_tc"] = Task(model=model, simulation="tc")
         return tasks
 
-    def data(self) -> Dict[str, Data]:
+    def data(self) -> dict[str, Data]:
         """Define data generators."""
         # direct access via id
         data = []
@@ -47,7 +48,7 @@ class CurveTypesExperiment(SimulationExperiment):
                 data.append(Data(task=f"task_{model}_tc", index=selection))
         return {d.sid: d for d in data}
 
-    def reports(self) -> Dict[str, Report]:
+    def reports(self) -> dict[str, Report]:
         """Define reports."""
         report1 = Report(
             sid="report1",
@@ -58,7 +59,7 @@ class CurveTypesExperiment(SimulationExperiment):
         )
         return {report1.sid: report1}
 
-    def figures(self) -> Dict[str, Figure]:
+    def figures(self) -> dict[str, Figure]:
         """Define figure outputs (plots)."""
         fig = Figure(
             experiment=self,
@@ -72,14 +73,14 @@ class CurveTypesExperiment(SimulationExperiment):
 
         # FIXME: add helper to easily create figure layouts with plots
         p0 = fig.add_subplot(Plot(sid="plot0", name="Timecourse"), row=1, col=1)
-        p0.set_title(f"Timecourse")
+        p0.set_title("Timecourse")
         p0.set_xaxis("time", unit="min")
         p0.set_yaxis("data", unit="mM")
 
         p0.curve(
-            x=Data("time", task=f"task_model_tc"),
-            y=Data("[S1]", task=f"task_model_tc"),
-            label=f"[S1]",
+            x=Data("time", task="task_model_tc"),
+            y=Data("[S1]", task="task_model_tc"),
+            label="[S1]",
         )
 
         return {

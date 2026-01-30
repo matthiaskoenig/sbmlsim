@@ -19,7 +19,6 @@ Then, for each SubTask child of the RepeatedTask, in the order specified by its 
 """
 
 from dataclasses import dataclass
-from typing import List
 
 from sbmlsim.simulation import Dimension
 
@@ -32,8 +31,8 @@ class Change:
     target: str
     symbol: str
 
-    variables: List  # current values
-    parameters: List
+    variables: list  # current values
+    parameters: list
     math: str
     range: str  # this is precalculated
 
@@ -68,8 +67,8 @@ class SubTask:
 
     model: str
     simulation: str
-    changes: List[str]
-    model_changes: List[str]
-    model_manipulations: List[str]
+    changes: list[str]
+    model_changes: list[str]
+    model_manipulations: list[str]
     order: int
     discard: bool = False

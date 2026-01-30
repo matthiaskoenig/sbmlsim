@@ -1,7 +1,5 @@
 """Reports."""
 
-from typing import Dict
-
 from pymetadata import log
 
 
@@ -14,7 +12,7 @@ class Report:
     Collections of data generators.
     """
 
-    def __init__(self, sid: str, name: str = None, datasets: Dict[str, str] = None):
+    def __init__(self, sid: str, name: str = None, datasets: dict[str, str] = None):
         """Construct report."""
         self.sid: str = sid
         self.name: str = name
@@ -22,7 +20,7 @@ class Report:
         if datasets is None:
             self.datasets = {}
 
-        self.datasets: Dict[str, str] = datasets
+        self.datasets: dict[str, str] = datasets
 
     def add_dataset(self, label: str, data_id: str) -> None:
         """Add dataset for given label."""

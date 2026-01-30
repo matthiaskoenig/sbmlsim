@@ -1,8 +1,9 @@
 """Result of optimization."""
+
 import datetime
 import uuid
 from pathlib import Path
-from typing import Dict, Iterable, List, Optional, Set, Tuple, Union
+from typing import Iterable, Optional, Union
 
 import numpy as np
 import pandas as pd
@@ -23,8 +24,8 @@ class OptimizationResult(ObjectJSONEncoder):
     def __init__(
         self,
         parameters: Iterable[FitParameter],
-        fits: List[OptimizeResult],
-        trajectories: List,
+        fits: list[OptimizeResult],
+        trajectories: list,
         sid: str = None,
     ):
         """Initialize optimization result.
@@ -46,15 +47,15 @@ class OptimizationResult(ObjectJSONEncoder):
             self.sid = (
                 "{:%Y%m%d_%H%M%S}".format(datetime.datetime.now()) + f"__{uuid_str[:5]}"
             )
-        self.parameters: List[FitParameter] = []
+        self.parameters: list[FitParameter] = []
         for p in parameters:
-            if isinstance(p, Dict):
+            if isinstance(p, dict):
                 p = FitParameter(**p)
             self.parameters.append(p)
 
-        self.fits: List[OptimizeResult] = []
+        self.fits: list[OptimizeResult] = []
         for fit in fits:
-            if isinstance(fit, Dict):
+            if isinstance(fit, dict):
                 fit = OptimizeResult(**fit)
             self.fits.append(fit)
 
@@ -100,7 +101,7 @@ class OptimizationResult(ObjectJSONEncoder):
         return info
 
     @staticmethod
-    def combine(opt_results: List["OptimizationResult"]) -> "OptimizationResult":
+    def combine(opt_results: list["OptimizationResult"]) -> "OptimizationResult":
         """Combine results from multiple parameter fitting experiments."""
         # FIXME: check that the parameters are fitting
         parameters = opt_results[0].parameters
@@ -134,11 +135,11 @@ class OptimizationResult(ObjectJSONEncoder):
         return values
 
     @property
-    def xopt_fit_parameters(self) -> List[FitParameter]:
+    def xopt_fit_parameters(self) -> list[FitParameter]:
         """Optimal parameters as Fit parameters."""
         return self._x_as_fit_parameters(x=self.xopt)
 
-    def _x_as_fit_parameters(self, x) -> List[FitParameter]:
+    def _x_as_fit_parameters(self, x) -> list[FitParameter]:
         """Convert numerical parameter vector to fit parameters."""
         fit_pars = []
         for k, p in enumerate(self.parameters):
@@ -154,7 +155,7 @@ class OptimizationResult(ObjectJSONEncoder):
         return fit_pars
 
     @staticmethod
-    def process_traces(parameters: List[FitParameter], trajectories):
+    def process_traces(parameters: list[FitParameter], trajectories):
         """Process the optimization results."""
         results = []
         pids = [p.pid for p in parameters]
@@ -172,7 +173,7 @@ class OptimizationResult(ObjectJSONEncoder):
         return df
 
     @staticmethod
-    def process_fits(parameters: List[FitParameter], fits: List[OptimizeResult]):
+    def process_fits(parameters: list[FitParameter], fits: list[OptimizeResult]):
         """Process the optimization results."""
         results = []
         pids = [p.pid for p in parameters]
