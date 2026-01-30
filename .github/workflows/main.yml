@@ -2,28 +2,16 @@ name: CI-CD
 
 on: [push]
 jobs:
-  tests:
+  test:
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, windows-latest, macos-latest]
-        python-version: ["3.10", "3.11", "3.12", "3.13", "3.14"]
+        python-version: ["3.13", "3.14"]
         exclude:
           - os: windows-latest
-            python-version: "3.10"
-          - os: windows-latest
-            python-version: "3.11"
-          - os: windows-latest
-            python-version: "3.12"
-          - os: windows-latest
-            python-version: "3.14"
-          - os: macos-latest
-            python-version: "3.10"
-          - os: macos-latest
-            python-version: "3.11"
-          - os: macos-latest
-            python-version: "3.12"
+            python-version: "3.13"
           - os: macos-latest
             python-version: "3.14"
 
@@ -39,13 +27,13 @@ jobs:
         uvx --with tox-uv tox -e py${{ matrix.python-version }}
 
   release:
-    needs: tests
+    needs: test
     if: startsWith(github.ref, 'refs/tags')
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
         os: [ubuntu-latest]
-        python-version: ["3.13"]
+        python-version: ["3.14"]
     environment:
       name: pypi
       url: https://pypi.org/p/<your-pypi-project-name>
@@ -81,11 +69,3 @@ jobs:
         body_path: "release-notes/${{ github.ref_name }}.md"
         draft: false
         prerelease: false
-    - name: Send release tweet
-      uses: ethomson/send-tweet-action@v1
-      with:
-        status: "New ${{ github.event.repository.name }} release ${{ steps.tag.outputs.version }}! https://github.com/matthiaskoenig/sbmlsim/releases/tag/${{ steps.tag.outputs.version }} #python #SBML #release"
-        consumer-key: ${{ secrets.TWITTER_CONSUMER_API_KEY }}
-        consumer-secret: ${{ secrets.TWITTER_CONSUMER_API_SECRET }}
-        access-token: ${{ secrets.TWITTER_ACCESS_TOKEN }}
-        access-token-secret: ${{ secrets.TWITTER_ACCESS_TOKEN_SECRET }}

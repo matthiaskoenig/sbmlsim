@@ -1,6 +1,6 @@
 """Example showing basic timecourse simulations and plotting."""
 
-from sbmlutils.console import console
+from pymetadata.console import console
 
 from sbmlsim.plot.serialization_matplotlib import plt
 from sbmlsim.resources import REPRESSILATOR_SBML

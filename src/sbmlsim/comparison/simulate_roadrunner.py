@@ -6,7 +6,7 @@ import roadrunner
 
 
 from sbmlsim.comparison.simulate import SimulateSBML, Condition
-from sbmlutils.console import console
+from pymetadata.console import console
 
 
 class SimulateRoadrunnerSBML(SimulateSBML):
@@ -35,7 +35,9 @@ class SimulateRoadrunnerSBML(SimulateSBML):
         integrator.setValue("absolute_tolerance", self.absolute_tolerance)
         integrator.setValue("relative_tolerance", self.relative_tolerance)
 
-    def simulate_condition(self, condition: Condition, timepoints: List[float]) -> pd.DataFrame:
+    def simulate_condition(
+        self, condition: Condition, timepoints: List[float]
+    ) -> pd.DataFrame:
         """Simulate condition"""
         print(f"simulate condition: {condition.sid}")
 

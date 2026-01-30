@@ -1,5 +1,4 @@
-from pathlib import Path
-from typing import List, Dict
+from typing import List
 
 import numpy as np
 import pandas as pd
@@ -13,7 +12,8 @@ from basico import (
 
 
 from sbmlsim.comparison.simulate import SimulateSBML, Condition
-from sbmlutils.console import console
+from pymetadata.console import console
+
 
 class SimulateCopasiSBML(SimulateSBML):
     """Class for simulating an SBML model with COPASI via basico."""
@@ -24,7 +24,9 @@ class SimulateCopasiSBML(SimulateSBML):
         # custom model loading
         load_model(location=str(self.sbml_path))
 
-    def simulate_condition(self, condition: Condition, timepoints: List[float]) -> pd.DataFrame:
+    def simulate_condition(
+        self, condition: Condition, timepoints: List[float]
+    ) -> pd.DataFrame:
         print(f"simulate condition: {condition.sid}")
 
         # reset ? (reloading for resetting)
@@ -48,7 +50,10 @@ class SimulateCopasiSBML(SimulateSBML):
                 console.print(f"{tid} = {value}")
             elif tid in self.species:
                 if self.has_only_substance[tid] is True:
-                    set_species(tname, initial_expression=f"{value}/{self.species_compartments_names[tid]}")
+                    set_species(
+                        tname,
+                        initial_expression=f"{value}/{self.species_compartments_names[tid]}",
+                    )
                     console.print(f"{tid} = {value}")
                 else:
                     # concentration
@@ -65,11 +70,12 @@ class SimulateCopasiSBML(SimulateSBML):
         )
 
         # cleanup amount columns
-        df.columns = [c.replace("Values[amount(", "").replace(")]", "") for c in df.columns]
+        df.columns = [
+            c.replace("Values[amount(", "").replace(")]", "") for c in df.columns
+        ]
 
         # add time column & remove index
         df.reset_index(inplace=True)
         df.rename(columns={"Time": "time"}, inplace=True)
 
         return df
-
