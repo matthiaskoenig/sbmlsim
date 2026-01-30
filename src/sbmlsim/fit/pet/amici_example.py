@@ -6,11 +6,13 @@ https://github.com/AMICI-dev/AMICI/blob/master/documentation/GettingStarted.ipyn
 
 """
 
+import numpy as np
 import amici
-sbml_importer = amici.SbmlImporter('pravastatin_body_all_flat.xml')
 
-model_name = 'model_pravastatin'
-model_dir = 'model_pravastatin'
+sbml_importer = amici.SbmlImporter("pravastatin_body_all_flat.xml")
+
+model_name = "model_pravastatin"
+model_dir = "model_pravastatin"
 sbml_importer.sbml2amici(model_name, model_dir)
 
 # load the model module
@@ -24,8 +26,8 @@ solver = model.getSolver()
 solver.setAbsoluteTolerance(1e-10)
 
 # set timepoints
-import numpy as np
-timepoints = np.linspace(0, 24*60, 10)
+
+timepoints = np.linspace(0, 24 * 60, 10)
 model.setTimepoints(timepoints)
 rdata = amici.runAmiciSimulation(model, solver)
 
@@ -37,4 +39,3 @@ print(rdata.by_id("IVDOSE_pra"))
 # FIXME: How to make this fast and access parameters, compartments, variables, ...?
 # https://amici.readthedocs.io/en/latest/ExampleSteadystate.html
 # amici.pandas: rdata
-

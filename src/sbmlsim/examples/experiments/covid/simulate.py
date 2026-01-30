@@ -1,6 +1,7 @@
 """
 Run COVID-19 model experiments.
 """
+
 from pathlib import Path
 
 from sbmlsim.combine.sedml.parser import SEDMLSerializer
@@ -30,7 +31,7 @@ def run_covid_examples(output_path: Path) -> None:
         exp_id = experiment.__name__
         # serialize to SED-ML/OMEX archive
         omex_path = output_path / f"{exp_id}.omex"
-        serializer = SEDMLSerializer(
+        SEDMLSerializer(
             exp_class=experiment,
             working_dir=output_path / "omex",
             sedml_filename=f"{exp_id}_sedml.xml",
