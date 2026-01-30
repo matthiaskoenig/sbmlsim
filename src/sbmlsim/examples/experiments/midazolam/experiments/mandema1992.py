@@ -9,6 +9,8 @@ from . import MidazolamSimulationExperiment
 
 
 class Mandema1992(MidazolamSimulationExperiment):
+    """Mandema1992."""
+
     def datasets(self) -> Dict[str, DataSet]:
         dsets = {}
         for fig_id in ["Fig1A", "Fig2A", "Fig3A"]:
@@ -159,6 +161,8 @@ class Mandema1992(MidazolamSimulationExperiment):
         unit_time = "min"
         unit_mid = "nmol/ml"
         unit_mid1oh = "nmol/ml"
+
+        self.add_selections_data(selections=["time", "[Cve_mid]", "[Cve_mid1oh]"])
 
         fig = Figure(self, sid="Fig1", num_rows=2, num_cols=3, name=self.sid)
         plots = fig.create_plots(Axis("time", unit=unit_time), legend=True)

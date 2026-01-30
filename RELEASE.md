@@ -1,15 +1,10 @@
 # Release information
 
-## update documentation
-* make necessary updates to notebooks
-* build documentation `cd docs_builder` and `./make_docs.sh 2>&1 | tee ./make_docs.log`
 
 ## make release
-* sort imports (`isort src/sbmlsim`)
-* code formating (`black src/sbmlsim`)
-* make sure all tests run (`tox`)
+* make sure all tests run (`tox -p`)
 * update release notes in `release-notes`
-* bump version (`bumpversion patch` or `bumpversion` minor)
+* bump version (`bumpversion patch` or `bumpversion minor` or `bumpversion major`)
 * `git push --tags` (triggers release)
 * add release-notes for next version
 

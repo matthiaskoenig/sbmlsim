@@ -15,12 +15,15 @@
 # sys.path.insert(0, os.path.abspath('.'))
 
 import os
+import sys
+
+import sphinx_rtd_theme
 on_rtd = os.environ.get('READTHEDOCS') == 'True'
 
 # -- Project information -----------------------------------------------------
 
 project = 'sbmlsim'
-copyright = '2019-2020, Matthias König'
+copyright = '2019-2021, Matthias König'
 author = 'Matthias König'
 
 
@@ -31,12 +34,11 @@ author = 'Matthias König'
 # ones.
 extensions = [
     'recommonmark',
-    'sphinx_rtd_theme',
     'sphinx.ext.autodoc',
     'sphinx.ext.mathjax',
     'sphinx.ext.viewcode',
     'sphinx.ext.autosectionlabel',
-    'IPython.sphinxext.ipython_console_highlighting',  # https://github.com/jupyter/nbconvert/issues/528
+    "autoapi.extension",
 ]
 
 master_doc = 'index'
@@ -52,6 +54,18 @@ templates_path = ['_templates']
 # This pattern also affects html_static_path and html_extra_path.
 exclude_patterns = ['_build', 'Thumbs.db', '.DS_Store', 'README.md']
 
+nbsphinx_kernel_name = 'python3'
+nbsphinx_allow_errors = False
+
+# autoapi settings: https://sphinx-autoapi.readthedocs.io
+autodoc_typehints = 'description'
+
+autoapi_dirs = [
+     "../src/sbmlsim",
+]
+autoapi_type = "python"
+autoapi_ignore = ["*odefac_template*"]
+
 
 # -- Options for HTML output -------------------------------------------------
 
@@ -59,6 +73,7 @@ exclude_patterns = ['_build', 'Thumbs.db', '.DS_Store', 'README.md']
 # a list of builtin themes.
 #
 html_theme = 'sphinx_rtd_theme'
+html_theme_path = [sphinx_rtd_theme.get_html_theme_path()]
 
 # Add any paths that contain custom static files (such as style sheets) here,
 # relative to this directory. They are copied after the builtin static files,

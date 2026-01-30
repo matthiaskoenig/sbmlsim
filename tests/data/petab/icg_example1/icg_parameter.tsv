@@ -1,0 +1,11 @@
+parameterId	parameterName	parameterScale	lowerBound	upperBound	nominalValue	estimate	initializationPriorType	initializationPriorParameters	objectivePriorType	objectivePriorParameters
+LI__ICGIM_Vmax	Vmax ICG import [mmole/min/l]	log	1e-05	100.0	0.03695988403275034	1	parameterScaleUniform	1E-5;1E2	parameterScaleUniform	1E-5;1E2
+LI__ICGIM_Km	Km ICG import [mM]	log	0.0001	1.0	0.021659178617926003	1	parameterScaleUniform	1E-4;1	parameterScaleUniform	1E-4;1
+LI__ICGLI2CA_Vmax	Vmax ICG to CA transport [mmole/min/l]	log	0.0001	10.0	0.0009436727699758908	1	parameterScaleUniform	1E-4;10	parameterScaleUniform	1E-4;10
+LI__ICGLI2CA_Km	Km ICG to CA transport [mM]	log	0.0001	10000.0	0.01238865924362501	1	parameterScaleUniform	1E-4;1E4	parameterScaleUniform	1E-4;1E4
+LI__ICGLI2BI_Vmax	Vmax ICG to BI transport [1/min]	log	1e-05	10.0	0.00011459660450792535	1	parameterScaleUniform	1E-5;10	parameterScaleUniform	1E-5;10
+noiseparameter1_observable_model__Cve_icg	noise parameter for model__Cve_icg	log	0.01	10.0	1.0	1	parameterScaleUniform	0.01;10	parameterScaleUniform	0.01;10
+noiseparameter1_observable_model__Chv_icg	noise parameter for model__Chv_icg	log	0.01	10.0	1.0	1	parameterScaleUniform	0.01;10	parameterScaleUniform	0.01;10
+noiseparameter1_observable_model__Car_icg	noise parameter for model__Car_icg	log	0.01	10.0	1.0	1	parameterScaleUniform	0.01;10	parameterScaleUniform	0.01;10
+noiseparameter1_observable_model__ER_icg	noise parameter for model__ER_icg	log	0.01	10.0	1.0	1	parameterScaleUniform	0.01;10	parameterScaleUniform	0.01;10
+noiseparameter1_observable_model__LI__ICGLI2BI	noise parameter for model__LI__ICGLI2BI	log	0.01	10.0	1.0	1	parameterScaleUniform	0.01;10	parameterScaleUniform	0.01;10

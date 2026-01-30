@@ -1,129 +1,184 @@
-"""
-Template functions to run the example cases.
-"""
+"""Template functions to run the example cases."""
 import importlib
-import logging
 import os
 import zipfile
+from enum import Enum
 from pathlib import Path
-from typing import Dict, Union
+from typing import Dict, Optional, Tuple, Union
 from xml.etree import ElementTree
 
-import libcombine
 import libsedml
+from pymetadata import omex as pyomex
+from sbmlutils import log
 
 
-logger = logging.getLogger(__name__)
+logger = log.get_logger(__name__)
 
 
-INPUT_TYPE_STR = "SEDML_STRING"
-INPUT_TYPE_FILE_SEDML = "SEDML_FILE"
-INPUT_TYPE_FILE_COMBINE = "COMBINE_FILE"  # includes .sedx archives
+def check_sedml_doc(sed_doc: libsedml.SedDocument) -> libsedml.SedErrorLog:
+    """Check SedDocument for errors.
 
+    Logs errors and warnings
 
-def check_sedml(doc: libsedml.SedDocument) -> str:
-    """Checks the SedDocument for errors.
-
-    :param doc: SedDocument.
+    :param sed_doc: SedDocument.
+    :return SedErrorLog.
     """
-    errorlog = doc.getErrorLog()
+    errorlog: libsedml.SedErrorLog = sed_doc.getErrorLog()
     msg = errorlog.toString()
-    if doc.getErrorLog().getNumFailsWithSeverity(libsedml.LIBSEDML_SEV_ERROR) > 0:
-        # FIXME: workaround for https://github.com/fbergmann/libSEDML/issues/47
-        logger.warning(msg)
-        # raise IOError(msg)
+    if sed_doc.getErrorLog().getNumFailsWithSeverity(libsedml.LIBSEDML_SEV_ERROR) > 0:
+        logger.error(msg)
     if errorlog.getNumFailsWithSeverity(libsedml.LIBSEDML_SEV_FATAL) > 0:
-        # raise IOError(msg)
-        logger.warning(msg)
+        logger.error(msg)
     if errorlog.getNumFailsWithSeverity(libsedml.LIBSEDML_SEV_WARNING) > 0:
         logger.warning(msg)
     if errorlog.getNumFailsWithSeverity(libsedml.LIBSEDML_SEV_SCHEMA_ERROR) > 0:
         logger.warning(msg)
     if errorlog.getNumFailsWithSeverity(libsedml.LIBSEDML_SEV_GENERAL_WARNING) > 0:
         logger.warning(msg)
-    print(f"errors: {msg}")
-    return msg
+
+    if errorlog.getNumErrors() > 0:
+        logger.error(f"errors: {msg}")
+    return errorlog
 
 
-def read_sedml(source: Union[Path, str], working_dir: Path = None) -> Dict:
-    """Parses SedMLDocument from given input.
+# FIXME: use proper results data structure
+# FIXME: support execution of multiple SED-ML files
+# FIXME: cleanup of function
 
-    :return: dictionary of SedDocument, input_type and working directory.
+
+class SEDMLInputType(Enum):
+    """Types of SED-ML input.
+
+    SED-ML can be read from string, file or a COMBINE archive (or zip archives).
     """
 
-    if isinstance(source, str) and not Path(source).exists:
-        logger.info("SED-ML from string")
-        input_type = INPUT_TYPE_STR
-        try:
-            # check if XML can be parsed
-            ElementTree.fromstring(source)
-            # is parsable xml string
-        except ElementTree.ParseError as err:
-            logger.error(f"SED-ML string is not valid XML: '{source}'")
-            raise err
+    SEDML_STRING = 0
+    SEDML_FILE = 1
+    OMEX = 2
 
-        doc = libsedml.readSedMLFromString(source)
 
-        if working_dir is None:
-            working_dir = Path.cwd()
+class SEDMLReader:
+    """Class for reading SED-ML document from various sources.
 
-    else:
-        file_path = Path(source)
-        file_stem, file_suffix = file_path.stem, file_path.suffix
+    SED-ML can be provided as string, file or as file in a COMBINE
+    archive.
 
-        if zipfile.is_zipfile(file_path):
-            print(f"SED-ML from archive: {file_path}")
-            input_type = INPUT_TYPE_FILE_COMBINE
-            omex_path = file_path
+    Execution must be performed where the master SED-ML is located.
+    """
 
-            # in case of an archive a working directory is created
-            # in which the files are extracted
-            if working_dir is None:
-                extract_dir = omex_path.parent / f"_sbmlsim_{file_stem}"
-            else:
-                extract_dir = working_dir
-            print(f"extracting archive to '{extract_dir}'")
+    def __init__(self, source: Union[Path, str], working_dir: Path = None):
+        """Initialize SEDMLReader."""
+        self.source: Union[Path, str] = source
+        self.exec_dir: Path = os.getcwd()
+        self.working_dir: Path = working_dir
+        self.input_type: Optional[SEDMLInputType] = None
+        self.error_log: Optional[libsedml.SedErrorLog] = None
+        self.sed_doc: Optional[libsedml.SedDocument] = None
 
-            # extract archive to working directory
-            importlib.reload(libcombine)
-            libcombine.CombineArchive.extractArchive(str(omex_path), str(extract_dir))
-            sedml_files = libcombine.CombineArchive.filePathsFromExtractedArchive(
-                str(extract_dir), filetype="sed-ml"
-            )
-            if len(sedml_files) == 0:
-                raise IOError(f"No SEDML files found in archive: {omex_path}")
-            elif len(sedml_files) > 1:
-                logger.warning(
-                    "More than one sedml file in archive, only "
-                    f"processing first file."
-                )
-
-            sedml_path = extract_dir / sedml_files[0]
-            if not file_path.exists():
-                raise IOError(f"SED-ML file does not exist: {sedml_path}")
-
-            importlib.reload(libsedml)
-            doc = libsedml.readSedMLFromFile(str(sedml_path))
-
-            # we have to work relative to the SED-ML file
-            working_dir = sedml_path.parent
-
-        elif file_path.exists():
-            print(f"SED-ML from file: {file_path}")
-            input_type = INPUT_TYPE_FILE_SEDML
-            if file_suffix not in [".sedml", ".xml"]:
-                raise IOError(
-                    f"SEDML file must have [.sedml|.xml] extension:" f"'{source}'"
-                )
-
-            doc = libsedml.readSedMLFromFile(str(source))
-
-            # working directory is where the sedml file is
-            if working_dir is None:
-                working_dir = file_path.parent
+        # read document
+        self.sed_doc, self.input_type = self.read_sedml()
 
         # check document
-        check_sedml(doc)
-        print
+        if self.sed_doc:
+            self.error_log: Optional[libsedml.SedErrorLog] = check_sedml_doc(
+                self.sed_doc
+            )
 
-        return doc, working_dir, input_type
+    def __repr__(self) -> None:
+        """Get string representation."""
+
+        source_str = (
+            self.source
+            if self.input_type is not SEDMLInputType.SEDML_STRING
+            else "string"
+        )
+        return f"<SEDMLReader(source={source_str}, input_type={self.input_type}), exec_dir={self.exec_dir}>"
+
+    def __str__(self) -> str:
+        """Get string."""
+        source_str = (
+            self.source
+            if self.input_type is not SEDMLInputType.SEDML_STRING
+            else "string"
+        )
+        info = [
+            "SEDMLReader(",
+            f"\tinput_type: {self.input_type}",
+            f"\tsource: {source_str}",
+            f"\texec_dir: {self.exec_dir}",
+            ")",
+        ]
+        return "\n".join(info)
+
+    def read_sedml(self) -> Tuple[libsedml.SedDocument, SEDMLInputType]:
+        """Read SedMLDocument.
+
+        Sets the instance variables as a result.
+        """
+        sed_doc: libsedml.SedDocument
+        input_type: SEDMLInputType
+
+        if isinstance(self.source, str) and "<sedML" in self.source:
+            logger.warning("SED-ML from string")
+            sedml_str: str = self.source
+            input_type = SEDMLInputType.SEDML_STRING
+            try:
+                # check if XML can be parsed
+                ElementTree.fromstring(sedml_str)
+                # is parsable xml string
+            except ElementTree.ParseError as err:
+                logger.error(f"SED-ML string is not valid XML: '{sedml_str}'")
+                raise err
+
+            sed_doc: libsedml.SedDocument = libsedml.readSedMLFromString(sedml_str)
+        else:
+            file_path = Path(self.source)
+            if not file_path.exists():
+                raise IOError(f"SED-ML file/archive does not exist: {file_path}")
+
+            _, file_suffix = file_path.stem, file_path.suffix
+
+            if zipfile.is_zipfile(file_path):
+                logger.warning(f"SED-ML from archive: {file_path}")
+                input_type = SEDMLInputType.OMEX
+
+                # in case of an archive a working directory is created
+                # in which the files are extracted
+                omex = pyomex.Omex.from_omex(omex_path=file_path)
+                sedml_entries = omex.entries_by_format(format_key="sed-ml")
+                for entry in sedml_entries:
+
+                    logger.info("SED-ML location: ", entry.location)
+                    if entry.master:
+                        sedml_path = omex.get_path(entry.location)
+                        break
+                else:
+                    logger.error(
+                        f"No SED-ML file with master flag found in archive: "
+                        f"'{file_path}'. Using first file."
+                    )
+                    if len(sedml_entries) > 0:
+                        sedml_path = omex.get_path(sedml_entries[0].location)
+                    else:
+                        raise ValueError("No SED-ML in archive.")
+
+                importlib.reload(libsedml)
+                self.exec_dir = sedml_path.parent
+                sed_doc = libsedml.readSedMLFromFile(str(sedml_path))
+
+            else:
+                logger.warning(f"SED-ML from file: {file_path}")
+                input_type = SEDMLInputType.SEDML_FILE
+                if file_suffix not in [".sedml", ".xml"]:
+                    logger.error(
+                        f"SEDML should have [.sedml|.xml] extension: '{file_path}'"
+                    )
+
+                self.exec_dir = file_path.parent
+                sed_doc = libsedml.readSedMLFromFile(str(file_path))
+
+        if sed_doc is None:
+            raise IOError("SED-ML could not be read.")
+
+        # FIXME: figure out the working dir, i.e. relative to the SED-ML files
+        return sed_doc, input_type

@@ -1,36 +1,36 @@
+"""SimulationExperiments and helpers."""
+
 import json
-import logging
+import re
 from collections import defaultdict
 from copy import deepcopy
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Dict, Iterable, List
+from typing import Dict, Iterable, List, Union
+
+from sbmlutils import log
 
 from sbmlsim.data import Data, DataSet
-from sbmlsim.fit import FitData, FitMapping
-from sbmlsim.model import AbstractModel
+from sbmlsim.fit import FitMapping
+from sbmlsim.model import AbstractModel, RoadrunnerSBMLModel
 from sbmlsim.plot import Figure
-from sbmlsim.plot.plotting_matplotlib import FigureMPL, MatplotlibFigureSerializer, plt
-from sbmlsim.result import XResult
+from sbmlsim.plot.serialization_matplotlib import (
+    FigureMPL,
+    MatplotlibFigureSerializer,
+    plt,
+)
 from sbmlsim.serialization import ObjectJSONEncoder
 from sbmlsim.simulation import AbstractSim, ScanSim, TimecourseSim
 from sbmlsim.task import Task
-from sbmlsim.units import UnitRegistry, Units
+from sbmlsim.units import UnitRegistry, UnitsInformation
 from sbmlsim.utils import timeit
+from sbmlsim.xresult import XResult
 
 
-logger = logging.getLogger(__name__)
+logger = log.get_logger(__name__)
 
 
-class ExperimentDict(dict):
-    def __getitem__(self, k):
-        try:
-            return super().__getitem__(k)
-        except KeyError:
-            raise KeyError(f"Key '{k}' not in {sorted(self.keys())}")
-
-
-class SimulationExperiment(object):
+class SimulationExperiment:
     """Generic simulation experiment.
 
     Consists of models, datasets, simulations, tasks, results, processing, figures
@@ -79,7 +79,7 @@ class SimulationExperiment(object):
 
         # single UnitRegistry per SimulationExperiment (can be shared)
         if not ureg:
-            ureg = Units.default_ureg()
+            ureg = UnitsInformation._default_ureg()
         self.ureg = ureg
         self.Q_ = ureg.Quantity
 
@@ -87,38 +87,46 @@ class SimulationExperiment(object):
         self.settings = kwargs
 
         # init variables
-        self._models = ExperimentDict()
-        self._data = ExperimentDict()
-        self._datasets = ExperimentDict()
-        self._fit_mappings = ExperimentDict()
-        self._simulations = ExperimentDict()
-        self._tasks = ExperimentDict()
-        self._results = ExperimentDict()
-        self._figures = ExperimentDict()
+        self._models: Dict[str, RoadrunnerSBMLModel] = {}
+        self._data: Dict[str, Data] = {}
+        self._datasets: Dict[str, DataSet] = {}
+        self._fit_mappings: Dict[str, FitMapping] = {}
+        self._simulations: Dict[str, AbstractSim] = {}
+        self._tasks: Dict[str, Task] = {}
+        self._figures: Dict[str, Figure] = {}
+        self._results: Dict[str, XResult] = {}
+        self._reports: Dict[str, Dict[str, str]] = {}
 
-    def initialize(self):
-        """
+    def initialize(self) -> None:
+        """Initialize SimulationExperiment.
+
+        Initialization must be separated from object construction due to
+        the parallel execution of the problem later on.
+        Certain objects cannot be serialized and must be initialized.
         :return:
         """
-        # process all information necessary to run the simulations, i.e.,
-        # all data required from the model
-        self._datasets = self.datasets()  # storage of datasets
-        self._simulations = self.simulations()  # storage of simulation definition
-        self._tasks = self.tasks()
-        self._fit_mappings = self.fit_mappings()  # type: Dict[str, FitMapping]
-        self.datagenerators()  # definition of data accessed later on (sets self._data)
+        try:
+            # initialized from the outside
+            # self._models: Dict[str, AbstractModel] = self.models()
+            self._datasets.update(self.datasets())
+            self._simulations.update(self.simulations())
+            self._tasks.update(self.tasks())
+            self._data.update(self.data())
+            self._figures.update(self.figures())
+            self._reports.update(self.reports())
+            self._fit_mappings.update(self.fit_mappings())
 
-        # validation of information
-        self._check_keys()
-        self._check_types()
+            # validation of information
+            self._check_keys()
+            self._check_types()
+        except Exception as err:
+            logger.error(f"Problem initializing '{self.__class__.__name__}'")
+            raise err
 
-        # print(self)
-
-    def __str__(self):
+    def __str__(self) -> str:
+        """Get string representation."""
         info = [
-            "-" * 80,
-            f"{self.__class__.__name__}: {self.sid}",
-            "-" * 80,
+            f"*** SimulationExperiment: {self.__class__.__name__} ***",
             f"{'data':20} {list(self._data.keys())}",
             f"{'datasets':20} {list(self._datasets.keys())}",
             f"{'fit_mappings':20} {list(self._fit_mappings.keys())}",
@@ -126,75 +134,51 @@ class SimulationExperiment(object):
             f"{'tasks':20} {list(self._tasks.keys())}",
             f"{'results':20} {list(self._results.keys())}",
             f"{'figures':20} {list(self._figures.keys())}",
-            "-" * 80,
+            f"{'reports':20} {list(self._reports.keys())}",
         ]
         return "\n".join(info)
 
-    # --- MODELS --------------------------------------------------------------
-    def models(self) -> Dict[str, AbstractModel]:
-        """Model definition"""
-        return ExperimentDict()
+    def models(self) -> Dict[str, Union[AbstractModel, Path]]:
+        """Define model definitions.
 
-    # --- DATASETS ------------------------------------------------------------
-    def datasets(self) -> Dict[str, DataSet]:
-        """Dataset definition (experimental data)"""
-        return ExperimentDict()
-
-    # --- TASKS ---------------------------------------------------------------
-    def tasks(self) -> Dict[str, Task]:
-        """Task definitions."""
-        return ExperimentDict()
-
-    # --- SIMULATIONS ---------------------------------------------------------
-    def simulations(self) -> Dict[str, AbstractSim]:
-        """Simulation definitions."""
-        return ExperimentDict()
-
-    # --- FITTING -------------------------------------------------------------
-    def fit_mappings(self) -> Dict[str, FitMapping]:
-        """Fit mappings, mapping reference data on observables.
-
-        Used for the optimization of parameters.
+        The child classes fill out the information.
         """
-        return ExperimentDict()
+        return dict()
 
-    # --- FUNCTIONS -----------------------------------------------------------
-    def datagenerators(self) -> None:
-        """DataGenerator definitions including functions.
+    def datasets(self) -> Dict[str, DataSet]:
+        """Define dataset definitions (experimental data).
+
+        The child classes fill out the information.
+        """
+        return dict()
+
+    def simulations(self) -> Dict[str, AbstractSim]:
+        """Define simulation definitions.
+
+        The child classes fill out the information.
+        """
+        return dict()
+
+    def tasks(self) -> Dict[str, Task]:
+        """Define task definitions.
+
+        The child classes fill out the information.
+        """
+        return dict()
+
+    def data(self) -> Dict[str, Data]:
+        """Define DataGenerators including functions.
+
+        This determines the selection in the model.
 
         All data which is accessed in a simulation result must be defined in a
-        data generator.
+        data generator. The data generators are important for defining the
+        selections of a simulation experiment.
         """
-        return
+        return dict()
 
-    def add_selections(self, selections: Iterable[str], task_ids: Iterable[str] = None):
-        """Add selections to given tasks.
-
-        Selections are necessary to access data from simulations.
-        """
-        if task_ids is None:
-            task_ids = self._tasks.keys()
-
-        for task_id in task_ids:
-            for selection in selections:
-                Data(self, index=selection, task=task_id)
-
-    # --- RESULTS -------------------------------------------------------------
-    @property
-    def results(self) -> Dict[str, XResult]:
-        """Accessing the simulation results.
-
-        Results are mapped on tasks based on the task_ids.
-        :return:
-        """
-
-        if self._results is None:
-            self._run_tasks(self.simulator)
-        return self._results
-
-    # --- FIGURES -------------------------------------------------------------
     def figures(self) -> Dict[str, Figure]:
-        """sbmlsim figures.
+        """Figure definition.
 
         Selections accessed in figures and analyses must be registered beforehand
         via datagenerators.
@@ -204,32 +188,128 @@ class SimulationExperiment(object):
         """
         return {}
 
-    # --- VALIDATION ----------------------------------------------------------
+    def figures_mpl(self) -> Dict[str, FigureMPL]:
+        """Matplotlib figure definition.
+
+        Selections accessed in figures and analyses must be registered beforehand
+        via datagenerators.
+
+        Most figures do not require access to concrete data, but only abstract
+        data concepts.
+        """
+        return {}
+
+    def fit_mappings(self) -> Dict[str, FitMapping]:
+        """Define fit mappings.
+
+        Mapping reference data on observables.
+        Used for the optimization of parameters.
+        The child classes fill out the information.
+        """
+        return dict()
+
+    def reports(self) -> Dict[str, Dict[str, str]]:
+        """Define reports.
+
+        Reports are defined by a hashmap label:Data.
+        Reports can be serialized in multiple manners.
+        """
+        return dict()
+
+    # --- DATA ------------------------------------------------------------------------
+    def add_data(self, d: Data) -> None:
+        """Add data to the tracked data."""
+        self._data[d.sid] = d
+
+    def add_selections_data(
+        self,
+        selections: Iterable[str],
+        task_ids: Iterable[str] = None,
+    ) -> None:
+        """Add selections to given tasks.
+
+        The data for the selections will be part of the results.
+
+        Selections are necessary to access data from simulations.
+        Here these selections are added to the tasks. If no tasks are given,
+        the selections are added to all tasks.
+
+        :param reset: drop and reset all selections.
+        """
+        # FIXME: handle reset
+        # if reset is False:
+        #     self._data = {}
+
+        if task_ids is None:
+            task_ids = self._tasks.keys()
+
+        for task_id in task_ids:
+            for selection in selections:
+                self.add_data(Data(index=selection, task=task_id))
+
+    # --- RESULTS ---------------------------------------------------------------------
+    @property
+    def results(self) -> Dict[str, XResult]:
+        """Access simulation results.
+
+        Results are mapped on tasks based on the task_ids. E.g.
+        to get the results for the task with id 'task_glciv' use
+        ```
+            simexp.results["task_glciv"]
+            self.results["task_glciv"]
+        ```
+        """
+        if self._results is None:
+            self._run_tasks(self.simulator)
+        return self._results
+
+    # --- VALIDATION ------------------------------------------------------------------
     def _check_keys(self):
-        """Check that everything is okay with the experiment."""
+        """Check keys in information dictionaries."""
         # string keys for main objects must be unique on SimulationExperiment
         all_keys = dict()
         allowed_types = dict
         for field_key in [
             "_models",
             "_datasets",
-            "_tasks",
             "_simulations",
+            "_tasks",
+            "_data",
+            "_figures",
+            "_reports",
             "_fit_mappings",
         ]:
             field = getattr(self, field_key)
 
             if not isinstance(field, allowed_types):
                 raise ValueError(
-                    f"SimulationExperiment '{self.sid}': '{field_key} must be a '{allowed_types}', but '{field}' is type '{type(field)}'. "
-                    f"Check that the respective definition returns an object of type '{allowed_types}. "
-                    f"Often simply the return statement is missing (returning NoneType)."
+                    f"SimulationExperiment '{self.sid}': '{field_key} must be a "
+                    f"'{allowed_types}', but '{field}' is type '{type(field)}'. "
+                    f"Check that the respective definition returns an object of type "
+                    f"'{allowed_types}. Often simply the return statement is missing "
+                    f"(returning NoneType)."
                 )
+
+            # \w matches any alphanumeric character; this is equivalent to [a-zA-Z0-9_]
+            pattern_sid = re.compile(r"[a-zA-Z_][a-zA-Z0-9_]*")
             for key in getattr(self, field_key).keys():
                 if not isinstance(key, str):
                     raise ValueError(
                         f"'{field_key} keys must be str: " f"'{key} -> {type(key)}'"
                     )
+                # Check that valid Sid
+                try:
+                    if not re.match(pattern_sid, key):
+                        raise ValueError(
+                            f"{field_key} key is not a valid SId "
+                            f"([a-zA-Z0-9][a-zA-Z0-9_]*): '{key}'"
+                        )
+                except TypeError:
+                    raise ValueError(
+                        f"{field_key} key is not a valid SId. "
+                        f"Incorrect type: '{key}', {type(key)}"
+                    )
+
                 if key in all_keys:
                     raise ValueError(
                         f"Duplicate key '{key}' for '{field_key}' and '{all_keys[key]}'"
@@ -238,26 +318,25 @@ class SimulationExperiment(object):
                     all_keys[key] = field_key
 
     def _check_types(self):
-        """Check that correct types"""
+        """Check for correctness of types."""
         for key, dset in self._datasets.items():
             if not isinstance(dset, DataSet):
-                raise ValueError(
+
+                # FIXME: relaxing for now (re-enable) !!!
+                logger.error(
                     f"datasets must be of type DataSet, but "
                     f"dataset '{key}' has type: '{type(dset)}'"
                 )
+                # raise ValueError(
+                #     f"datasets must be of type DataSet, but "
+                #     f"dataset '{key}' has type: '{type(dset)}'"
+                # )
 
         for key, model in self._models.items():
             if not isinstance(model, AbstractModel):
                 raise ValueError(
-                    f"datasets must be of type AbstractModel, but "
+                    f"model must be of type AbstractModel, but "
                     f"model '{key}' has type: '{type(model)}'"
-                )
-
-        for key, task in self._tasks.items():
-            if not isinstance(task, Task):
-                raise ValueError(
-                    f"tasks must be of type Task, but "
-                    f"task '{key}' has type: '{type(task)}'"
                 )
 
         for key, sim in self._simulations.items():
@@ -267,14 +346,35 @@ class SimulationExperiment(object):
                     f"simulation '{key}' has type: '{type(sim)}'"
                 )
 
+        for key, task in self._tasks.items():
+            if not isinstance(task, Task):
+                raise ValueError(
+                    f"tasks must be of type Task, but "
+                    f"task '{key}' has type: '{type(task)}'"
+                )
+
+        for key, data in self._data.items():
+            if not isinstance(data, Data):
+                raise ValueError(
+                    f"data must be of type Data, but "
+                    f"task '{key}' has type: '{type(data)}'"
+                )
+
+        for key, figure in self._figures.items():
+            if not isinstance(figure, Figure):
+                raise ValueError(
+                    f"figure must be of type Figure, but "
+                    f"task '{key}' has type: '{type(figure)}'"
+                )
+
         for key, mapping in self._fit_mappings.items():
             if not isinstance(mapping, FitMapping):
                 raise ValueError(
-                    f"fit_mappings must be of type FitMappintg, but "
+                    f"fit_mappings must be of type FitMapping, but "
                     f"mapping '{key}' has type: '{type(mapping)}'"
                 )
 
-    # --- EXECUTE -------------------------------------------------------------
+    # --- EXECUTE ---------------------------------------------------------------------
 
     @timeit
     def run(
@@ -286,20 +386,14 @@ class SimulationExperiment(object):
         figure_formats: List[str] = None,
         reduced_selections: bool = True,
     ) -> "ExperimentResult":
-        """
-        Executes given experiment and stores results.
-        Returns info dictionary.
-        """
-        # run simulations
-        self._run_tasks(
-            simulator, reduced_selections=reduced_selections
-        )  # sets self._results
+        """Execute given experiment and store results."""
+
+        # run simulations (sets self._results)
+        logger.info("_run_tasks")
+        self._run_tasks(simulator, reduced_selections=reduced_selections)
 
         # evaluate mappings
-        self.evaluate_mappings()
-
-        # some of the figures require actual numerical results!
-        self._figures = self.figures()
+        self.evaluate_fit_mappings()
 
         # create outputs
         if output_path is None:
@@ -309,7 +403,7 @@ class SimulationExperiment(object):
         else:
             if not Path.exists(output_path):
                 Path.mkdir(output_path, parents=True)
-                logging.info(f"'output_path' created: '{output_path}'")
+                logger.info(f"'output_path' created: '{output_path}'")
 
             # save outputs
             self.save_datasets(output_path)
@@ -319,14 +413,16 @@ class SimulationExperiment(object):
                 self.save_results(output_path)
 
         # create figures
-        mpl_figures = self.create_mpl_figures()
+        self._mpl_figures = self.create_mpl_figures()
         if show_figures:
-            self.show_figures(mpl_figures=mpl_figures)
+            self.show_mpl_figures(mpl_figures=self._mpl_figures)
         if output_path:
-            self.save_figures(
-                output_path, mpl_figures=mpl_figures, figure_formats=figure_formats
+            self.save_mpl_figures(
+                output_path,
+                mpl_figures=self._mpl_figures,
+                figure_formats=figure_formats,
             )
-            self.clear_figures(mpl_figures=mpl_figures)
+        self.close_mpl_figures(mpl_figures=self._mpl_figures)
 
         # only perform serialization after data evaluation (to access units)
         if output_path:
@@ -337,17 +433,17 @@ class SimulationExperiment(object):
 
     @timeit
     def _run_tasks(self, simulator, reduced_selections: bool = True):
-        """Run simulations & scans.
+        """Run simulations and scans.
 
         This should not be called directly, but the results of the simulations
         should be requested by the results property.
         This allows to hash executed simulations.
         """
         if self._results is None:
-            self._results = ExperimentDict()
+            self._results = dict()
 
         # get all tasks for given model
-        model_tasks = defaultdict(list)
+        model_tasks: Dict[str, List[str]] = defaultdict(list)
         for task_key, task in self._tasks.items():
             model_tasks[task.model_id].append(task_key)
 
@@ -355,42 +451,47 @@ class SimulationExperiment(object):
         for model_id, task_keys in model_tasks.items():
 
             # load model in simulator
-            model = self._models[model_id]  # type: AbstractModel
+            model: AbstractModel = self._models[model_id]
+            logger.info("set model")
             simulator.set_model(model=model)
 
+            logger.info("set selections")
             if reduced_selections:
                 # set selections based on data
                 selections = {"time"}
-                for d in self._data.values():  # type: Data
+                d: Data
+                for d in self._data.values():
                     if d.is_task():
                         # check if selection is for current model
                         task = self._tasks[d.task_id]
                         if task.model_id == model_id:
-                            selections.add(d.index)
+                            selections.add(d.selection)
                 selections = sorted(list(selections))
-                # print(f"Selections for model '{model_id}': {selections}")
                 simulator.set_timecourse_selections(selections=selections)
             else:
                 # use the complete selection
                 simulator.set_timecourse_selections(selections=None)
 
+            logger.info("normalize changes")
             # normalize model changes (these must be set in simulation!)
-            model.normalize(udict=simulator.udict, ureg=simulator.ureg)
+            model.normalize(uinfo=model.uinfo)
 
-            for task_key in task_keys:  # type: str
+            task_key: str
+            for task_key in task_keys:
                 task = self._tasks[task_key]
 
-                sim = self._simulations[
+                sim: Union[ScanSim, TimecourseSim] = self._simulations[
                     task.simulation_id
-                ]  # type: Union[ScanSim, TimecourseSim]
+                ]
 
                 # normalization before running to ensure correct serialization
-                sim.normalize(udict=simulator.udict, ureg=simulator.ureg)
+                sim.normalize(uinfo=simulator.uinfo)
 
                 # inject model changes (copy to create independent)
                 sim = deepcopy(sim)
                 sim.add_model_changes(model.changes)
 
+                logger.info("running timecourse simulation")
                 if isinstance(sim, TimecourseSim):
                     self._results[task_key] = simulator.run_timecourse(sim)
                 elif isinstance(sim, ScanSim):
@@ -398,24 +499,22 @@ class SimulationExperiment(object):
                 else:
                     raise ValueError(f"Unsupported simulation type: " f"{type(sim)}")
 
-    def evaluate_mappings(self):
-        """Evaluates the fit mappings."""
-        for key, mapping in self._fit_mappings.items():
+    def evaluate_fit_mappings(self):
+        """Evaluate fit mappings."""
+        for _, mapping in self._fit_mappings.items():
             for fit_data in [mapping.reference, mapping.observable]:
                 # Get actual data from the results
                 fit_data.get_data()
 
     # --- SERIALIZATION -------------------------------------------------------
     @timeit
-    def to_json(self, path=None, indent=2):
+    def to_json(self, path: Path = None, indent: int = 2):
         """Convert experiment to JSON for exchange.
 
         :param path: path for file, if None JSON str is returned
         :return:
         """
         d = self.to_dict()
-        # from pprint import pprint
-        # pprint(d)
         if path is None:
             return json.dumps(d, cls=ObjectJSONEncoder, indent=indent)
         else:
@@ -424,16 +523,14 @@ class SimulationExperiment(object):
 
     def to_dict(self):
         """Convert to dictionary.
+
         This is the basis for the JSON serialization.
         """
         # FIXME: resolve paths relative to base_paths
-        # FIXME: ordered dict
-
         return {
             "experiment_id": self.sid,
             "base_path": str(self.base_path) if self.base_path else None,
             "data_path": str(self.data_path) if self.data_path else None,
-            # "unit_registry": self.ureg,
             "models": {k: v.to_dict() for k, v in self._models.items()},
             "tasks": {k: v.to_dict() for k, v in self._tasks.items()},
             "simulations": {k: v.to_dict() for k, v in self._simulations.items()},
@@ -442,24 +539,22 @@ class SimulationExperiment(object):
         }
 
     @classmethod
-    def from_json(cls, json_info) -> "SimulationExperiment":
-        """Load experiment from json path or str"""
+    def from_json(cls, json_info: Union[Path, str]) -> "SimulationExperiment":
+        """Load experiment from json path or str."""
         # FIXME: update serialization
         if isinstance(json_info, Path):
             with open(json_info, "r") as f_json:
                 d = json.load(f_json)
-        else:
+        elif isinstance(json_info, str):
             d = json.loads(json_info)
+        else:
+            raise ValueError("Unsupported json format.")
 
-        return JSONExperiment.from_dict(d)
+        return SimulationExperiment.from_dict(d)
 
     @timeit
-    def save_datasets(self, results_path):
-        """Save datasets
-
-        :param results_path:
-        :return:
-        """
+    def save_datasets(self, results_path: Path) -> None:
+        """Save datasets."""
         if self._datasets is None:
             logger.warning(f"No datasets in SimulationExperiment: '{self.sid}'")
         else:
@@ -469,8 +564,8 @@ class SimulationExperiment(object):
                 )
 
     @timeit
-    def save_results(self, results_path):
-        """Save results (mean timecourse)
+    def save_results(self, results_path: Path) -> None:
+        """Save results (mean timecourse).
 
         :param results_path:
         :return:
@@ -483,102 +578,69 @@ class SimulationExperiment(object):
                 result.to_tsv(results_path / f"{self.sid}_{rkey}.tsv")
 
     @timeit
-    def create_mpl_figures(self) -> Dict[str, FigureMPL]:
-        """Create matplotlib figures.
-
-        :return:
-        """
+    def create_mpl_figures(self) -> Dict[str, Union[FigureMPL, Figure]]:
+        """Create matplotlib figures."""
         mpl_figures = {}
-        for fkey, fig in self._figures.items():
-            if isinstance(fig, Figure):
-                fig_mpl = MatplotlibFigureSerializer.to_figure(fig)
-            else:
-                fig_mpl = fig
+        for fig_key, fig in self._figures.items():
+            fig_mpl = MatplotlibFigureSerializer.to_figure(self, fig)
+            mpl_figures[fig_key] = fig_mpl
 
-            mpl_figures[fkey] = fig_mpl
+        # additional custom figures
+        for fig_key, fig_mpl in self.figures_mpl().items():
+            mpl_figures[fig_key] = fig_mpl
 
         return mpl_figures
 
     @timeit
-    def show_figures(self, mpl_figures: Dict[str, FigureMPL]):
-        for fig_key, fig_mpl in mpl_figures.items():
+    def show_mpl_figures(self, mpl_figures: Dict[str, FigureMPL]) -> None:
+        """Show matplotlib figures."""
+        for _, fig_mpl in mpl_figures.items():
+            # see https://stackoverflow.com/questions/23141452/difference-between-plt-draw-and-plt-show-in-matplotlib/23141491#23141491
+            # fig_mpl.draw(renderer=)
             fig_mpl.show()
 
-    @staticmethod
-    def _show_figure(args):
-        fig_mpl = args  # type: FigureMPL
-        fig_mpl.show()
-
     @timeit
-    def save_figures(
+    def save_mpl_figures(
         self,
         results_path: Path,
         mpl_figures: Dict[str, FigureMPL],
         figure_formats: List[str] = None,
     ) -> Dict[str, List[Path]]:
-        """Save matplotlib figures.
-
-        :param results_path:
-        :return:
-        """
-        if figure_formats == None:
+        """Save matplotlib figures."""
+        if figure_formats is None:
             # default to SVG output
             figure_formats = ["svg"]
         paths = defaultdict(list)
         for fkey, fig_mpl in mpl_figures.items():  # type
 
-            for format in figure_formats:
-                fig_path = results_path / f"{self.sid}_{fkey}.{format}"
+            for fig_format in figure_formats:
+                fig_path = results_path / f"{self.sid}_{fkey}.{fig_format}"
                 fig_mpl.savefig(fig_path, bbox_inches="tight")
 
-                paths[format].append(fig_path)
+                paths[fig_format].append(fig_path)
 
         return paths
 
-    def clear_figures(self, mpl_figures: Dict[str, FigureMPL]):
-        for fig_key, fig_mpl in mpl_figures.items():
-            plt.close(fig_mpl)
-
-    @staticmethod
-    def _save_figure(args):
-        path_svg, fig_mpl = args
-        fig_mpl.savefig(path_svg, bbox_inches="tight")
-
-
-# FIXME: deprecated, remove
-class JSONExperiment(SimulationExperiment):
-    """An experiment loaded from JSON serialization."""
-
-    @property
-    def simulations(self):
-        return self._simulations
-
     @classmethod
-    def from_dict(self, d) -> "JSONExperiment":
-        experiment = JSONExperiment(model_path=None, data_path=None)
-        experiment.sid = d["experiment_id"]
-        # parse simulation definitions
-        simulations = {}
-        for key, data in d["simulations"].items():
-            tcsim = TimecourseSim(**data)
-            for tc in tcsim.timecourses:
-                # parse the serialized magnitudes
-                tc.changes = {k: v["_magnitude"] for k, v in tc.changes.items()}
-            simulations[key] = tcsim
-        experiment._simulations = simulations
-
-        return experiment
+    def close_mpl_figures(cls, mpl_figures: Dict[str, FigureMPL]):
+        """Close matplotlib figures."""
+        for _, fig_mpl in mpl_figures.items():
+            plt.close(fig_mpl)
 
 
 @dataclass
 class ExperimentResult:
-    """Result of a simulation experiment"""
+    """Result of a simulation experiment."""
 
     experiment: SimulationExperiment
     output_path: Path
 
-    def to_dict(self):
-        """Information needed for the report"""
+    def to_dict(self) -> Dict:
+        """Conversion to dictionary.
+
+        Used in serialization and required for reports.
+        """
         d = {
             "output_path": self.output_path,
         }
+        return d

@@ -1,0 +1,360 @@
+{
+  "experiment_id": "linetype",
+  "base_path": "/home/mkoenig/git/sbmlsim/src/sbmlsim/examples/sedml/l1v4_plotting",
+  "data_path": "[PosixPath('/home/mkoenig/git/sbmlsim/src/sbmlsim/examples/sedml/l1v4_plotting')]",
+  "models": {
+    "model0": {
+      "sid": "model0",
+      "name": "",
+      "language": "SBML",
+      "language_type": "SBML",
+      "source": {
+        "source": "case_01.xml",
+        "path": "/home/mkoenig/git/sbmlsim/src/sbmlsim/examples/sedml/l1v4_plotting/case_01.xml",
+        "content": "None"
+      },
+      "changes": {}
+    }
+  },
+  "tasks": {
+    "task0": {
+      "model": "model0",
+      "simulation": "sim0"
+    }
+  },
+  "simulations": {
+    "sim0": {
+      "type": "TimecourseSim",
+      "selections": null,
+      "reset": true,
+      "time_offset": 0.0,
+      "timecourses": [
+        {
+          "start": 0.0,
+          "end": 10.0,
+          "steps": 29,
+          "changes": {},
+          "model_changes": {},
+          "model_manipulations": {},
+          "discard": false
+        }
+      ]
+    }
+  },
+  "data": {
+    "task0__time": {
+      "type": "TASK",
+      "index": "time",
+      "unit": "second",
+      "task": "task0",
+      "dataset": null,
+      "function": null,
+      "variables": null
+    },
+    "task0__S1": {
+      "type": "TASK",
+      "index": "S1",
+      "unit": "",
+      "task": "task0",
+      "dataset": null,
+      "function": null,
+      "variables": null
+    },
+    "dg_SOLID": {
+      "type": "FUNCTION",
+      "index": "dg_SOLID",
+      "unit": "dimensionless",
+      "task": null,
+      "dataset": null,
+      "function": "S1 + 5",
+      "variables": {
+        "S1": {
+          "type": "TASK",
+          "index": "S1",
+          "unit": "",
+          "task": "task0",
+          "dataset": null,
+          "function": null,
+          "variables": null
+        }
+      }
+    },
+    "dg_DASH": {
+      "type": "FUNCTION",
+      "index": "dg_DASH",
+      "unit": "dimensionless",
+      "task": null,
+      "dataset": null,
+      "function": "S1 + 4",
+      "variables": {
+        "S1": {
+          "type": "TASK",
+          "index": "S1",
+          "unit": "",
+          "task": "task0",
+          "dataset": null,
+          "function": null,
+          "variables": null
+        }
+      }
+    },
+    "dg_DOT": {
+      "type": "FUNCTION",
+      "index": "dg_DOT",
+      "unit": "dimensionless",
+      "task": null,
+      "dataset": null,
+      "function": "S1 + 3",
+      "variables": {
+        "S1": {
+          "type": "TASK",
+          "index": "S1",
+          "unit": "",
+          "task": "task0",
+          "dataset": null,
+          "function": null,
+          "variables": null
+        }
+      }
+    },
+    "dg_DASHDOT": {
+      "type": "FUNCTION",
+      "index": "dg_DASHDOT",
+      "unit": "dimensionless",
+      "task": null,
+      "dataset": null,
+      "function": "S1 + 2",
+      "variables": {
+        "S1": {
+          "type": "TASK",
+          "index": "S1",
+          "unit": "",
+          "task": "task0",
+          "dataset": null,
+          "function": null,
+          "variables": null
+        }
+      }
+    },
+    "dg_DASHDOTDOT": {
+      "type": "FUNCTION",
+      "index": "dg_DASHDOTDOT",
+      "unit": "dimensionless",
+      "task": null,
+      "dataset": null,
+      "function": "S1 + 1",
+      "variables": {
+        "S1": {
+          "type": "TASK",
+          "index": "S1",
+          "unit": "",
+          "task": "task0",
+          "dataset": null,
+          "function": null,
+          "variables": null
+        }
+      }
+    }
+  },
+  "figures": {
+    "plot_0": {
+      "sid": "plot_0",
+      "name": null,
+      "num_rows": 1,
+      "num_cols": 1,
+      "width": 7.0,
+      "height": 5.0,
+      "subplots": [
+        {
+          "sid": null,
+          "name": null,
+          "plot": {
+            "sid": "plot_0",
+            "name": "LineTypes",
+            "xaxis": null,
+            "yaxis": null,
+            "yaxis_right": null,
+            "legend": true,
+            "facecolor": "#ffffffff",
+            "title_visible": true,
+            "curves": [
+              {
+                "sid": "curve_NONE",
+                "name": "none",
+                "x": "task0__time",
+                "y": "task0__S1",
+                "xerr": null,
+                "yerr": null,
+                "yaxis_position": null,
+                "style": {
+                  "sid": "style_NONE",
+                  "name": null,
+                  "base_style": null,
+                  "line": {
+                    "type": "NONE",
+                    "color": "#000000ff",
+                    "thickness": 2.0
+                  },
+                  "marker": {
+                    "size": null,
+                    "type": "NONE",
+                    "fill": null,
+                    "line_color": null,
+                    "line_thickness": null
+                  },
+                  "fill": null
+                },
+                "order": 0
+              },
+              {
+                "sid": "curve_SOLID",
+                "name": "solid",
+                "x": "task0__time",
+                "y": "dg_SOLID",
+                "xerr": null,
+                "yerr": null,
+                "yaxis_position": null,
+                "style": {
+                  "sid": "style_SOLID",
+                  "name": null,
+                  "base_style": null,
+                  "line": {
+                    "type": "SOLID",
+                    "color": "#000000ff",
+                    "thickness": 2.0
+                  },
+                  "marker": {
+                    "size": null,
+                    "type": "NONE",
+                    "fill": null,
+                    "line_color": null,
+                    "line_thickness": null
+                  },
+                  "fill": null
+                },
+                "order": 1
+              },
+              {
+                "sid": "curve_DASH",
+                "name": "dash",
+                "x": "task0__time",
+                "y": "dg_DASH",
+                "xerr": null,
+                "yerr": null,
+                "yaxis_position": null,
+                "style": {
+                  "sid": "style_DASH",
+                  "name": null,
+                  "base_style": null,
+                  "line": {
+                    "type": "DASH",
+                    "color": "#000000ff",
+                    "thickness": 2.0
+                  },
+                  "marker": {
+                    "size": null,
+                    "type": "NONE",
+                    "fill": null,
+                    "line_color": null,
+                    "line_thickness": null
+                  },
+                  "fill": null
+                },
+                "order": 2
+              },
+              {
+                "sid": "curve_DOT",
+                "name": "dot",
+                "x": "task0__time",
+                "y": "dg_DOT",
+                "xerr": null,
+                "yerr": null,
+                "yaxis_position": null,
+                "style": {
+                  "sid": "style_DOT",
+                  "name": null,
+                  "base_style": null,
+                  "line": {
+                    "type": "DOT",
+                    "color": "#000000ff",
+                    "thickness": 2.0
+                  },
+                  "marker": {
+                    "size": null,
+                    "type": "NONE",
+                    "fill": null,
+                    "line_color": null,
+                    "line_thickness": null
+                  },
+                  "fill": null
+                },
+                "order": 3
+              },
+              {
+                "sid": "curve_DASHDOT",
+                "name": "dashDot",
+                "x": "task0__time",
+                "y": "dg_DASHDOT",
+                "xerr": null,
+                "yerr": null,
+                "yaxis_position": null,
+                "style": {
+                  "sid": "style_DASHDOT",
+                  "name": null,
+                  "base_style": null,
+                  "line": {
+                    "type": "DASHDOT",
+                    "color": "#000000ff",
+                    "thickness": 2.0
+                  },
+                  "marker": {
+                    "size": null,
+                    "type": "NONE",
+                    "fill": null,
+                    "line_color": null,
+                    "line_thickness": null
+                  },
+                  "fill": null
+                },
+                "order": 4
+              },
+              {
+                "sid": "curve_DASHDOTDOT",
+                "name": "dashDotDot",
+                "x": "task0__time",
+                "y": "dg_DASHDOTDOT",
+                "xerr": null,
+                "yerr": null,
+                "yaxis_position": null,
+                "style": {
+                  "sid": "style_DASHDOTDOT",
+                  "name": null,
+                  "base_style": null,
+                  "line": {
+                    "type": "DASHDOTDOT",
+                    "color": "#000000ff",
+                    "thickness": 2.0
+                  },
+                  "marker": {
+                    "size": null,
+                    "type": "NONE",
+                    "fill": null,
+                    "line_color": null,
+                    "line_thickness": null
+                  },
+                  "fill": null
+                },
+                "order": 5
+              }
+            ],
+            "areas": []
+          },
+          "row": 1,
+          "col": 1,
+          "row_span": 1,
+          "col_span": 1
+        }
+      ]
+    }
+  }
+}

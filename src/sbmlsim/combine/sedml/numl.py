@@ -1,5 +1,6 @@
+"""Parser for NuML data."""
+
 import importlib
-import logging
 import warnings
 from enum import Enum
 from pathlib import Path
@@ -9,27 +10,30 @@ import libsbml
 import libsedml
 import numpy as np
 import pandas as pd
+from sbmlutils import log
 
 
-logger = logging.getLogger(__name__)
+logger = log.get_logger(__name__)
 
 
 class NumlParser(object):
     """Helper class for parsing Numl data files."""
 
     class Library(Enum):
+        """Bugfix helper for managing the library issues."""
+
         LIBNUML = 1
         LIBSEDML = 2
 
     @classmethod
-    def read_numl_document(cls, path):
-        """Helper to read external numl document and check for errors
+    def read_numl_document(cls, path: Path) -> libnuml.NUMLDocument:
+        """Read NuML document and check for errors.
 
         :param path: path of file
-        :return:
+        :return: libnuml.NUMLDocument
         """
         importlib.reload(libnuml)
-        doc_numl = libnuml.readNUMLFromFile(path)  # type: libnuml.NUMLDocument
+        doc_numl: libnuml.NUMLDocument = libnuml.readNUMLFromFile(path)
 
         # check for errors
         errorlog = doc_numl.getErrorLog()
@@ -50,7 +54,7 @@ class NumlParser(object):
 
     @classmethod
     def load_numl_data(cls, path) -> pd.DataFrame:
-        """Reading NuML data from file.
+        """Read NuML data from file.
 
         This loads the complete numl data.
         For more information see: https://github.com/numl/numl
@@ -96,7 +100,7 @@ class NumlParser(object):
             # column ids from DimensionDescription
             column_ids = []
             for entry in data_types:
-                for cid, dtype in entry.items():
+                for cid, _dtype in entry.items():
                     column_ids.append(cid)
 
             df = pd.DataFrame(flat_data, columns=column_ids)
@@ -120,7 +124,7 @@ class NumlParser(object):
     def parse_dimension_description(
         cls, description, library: Library = Library.LIBNUML
     ):
-        """Parses the given dimension description.
+        """Parse the given dimension description.
 
         Returns dictionary of { key: dtype }
 
@@ -150,7 +154,7 @@ class NumlParser(object):
     def _parse_description(
         cls, d, info=None, entry=None, library: Library = Library.LIBNUML
     ):
-        """Parses the recursive DimensionDescription, TupleDescription, AtomicDescription.
+        """Parse the recursive DimensionDescription, TupleDescription, AtomicDescription.
 
         This gets the dimension information from NuML.
 
@@ -204,7 +208,6 @@ class NumlParser(object):
 
             content = {d.getId(): d.getIndexType()}
             info.append(content)
-            # print('\t* CompositeDescription:', content)
             if d.isContentCompositeDescription():
                 for k in range(d.size()):
                     info = cls._parse_description(
@@ -224,7 +227,6 @@ class NumlParser(object):
         ):
             content = {d.getId(): d.getValueType()}
             info.append(content)
-            # print('\t* AtomicDescription:', content)
 
         elif (
             library == cls.Library.LIBNUML
@@ -241,7 +243,6 @@ class NumlParser(object):
                 valueTypes.append(atomic.getValueType())
 
             info.append(valueTypes)
-            # print('\t* TupleDescription:', valueTypes)
 
         else:
             raise NotImplementedError("Type code: {}".format(type_code))
@@ -252,13 +253,9 @@ class NumlParser(object):
     def _parse_dimension(
         cls, d, data=None, entry=None, library: Library = Library.LIBNUML
     ):
-        """Parses the recursive CompositeValue, Tuple, AtomicValue.
+        """Parse the recursive CompositeValue, Tuple, AtomicValue.
 
         This gets the actual data from NuML.
-
-        :param d:
-        :param data:
-        :return:
         """
         if library == cls.Library.LIBNUML:
             importlib.reload(libnuml)
@@ -270,7 +267,6 @@ class NumlParser(object):
             entry = []
 
         type_code = d.getTypeCode()
-        # print('typecode:', type_code)
 
         if (
             library == cls.Library.LIBNUML and type_code == libnuml.NUML_COMPOSITEVALUE
@@ -281,7 +277,6 @@ class NumlParser(object):
 
             indexValue = d.getIndexValue()
             entry.append(indexValue)
-            # print('\t* CompositeValue:', indexValue)
 
             if d.isContentCompositeValue():
                 for k in range(d.size()):
@@ -303,7 +298,6 @@ class NumlParser(object):
             entry.append(value)
             # entry finished, we are appending
             data.append(entry)
-            # print('\t* AtomicValue:', value)
 
         elif (library == cls.Library.LIBNUML and type_code == libnuml.NUML_TUPLE) or (
             library == cls.Library.LIBSEDML and type_code == libsedml.NUML_TUPLE
@@ -316,7 +310,6 @@ class NumlParser(object):
                 values.append(atomic.getDoubleValue())
 
             data.append(values)
-            # print('\t* TupleDescription:', values)
 
         else:
             raise NotImplementedError

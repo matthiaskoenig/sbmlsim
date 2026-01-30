@@ -1,0 +1,177 @@
+{
+  "experiment_id": "CurveTypesExperiment",
+  "base_path": "/home/mkoenig/git/sbmlsim/src/sbmlsim/examples/experiments/curve_types",
+  "data_path": "[PosixPath('/home/mkoenig/git/sbmlsim/src/sbmlsim/examples/experiments/curve_types')]",
+  "models": {
+    "model": {
+      "sid": null,
+      "name": null,
+      "language": "SBML",
+      "language_type": "SBML",
+      "source": {
+        "source": "/home/mkoenig/git/sbmlsim/src/sbmlsim/examples/experiments/curve_types/results/curve_types_model.xml",
+        "path": "/home/mkoenig/git/sbmlsim/src/sbmlsim/examples/experiments/curve_types/results/curve_types_model.xml",
+        "content": "None"
+      },
+      "changes": {}
+    }
+  },
+  "tasks": {
+    "task_model_tc": {
+      "model": "model",
+      "simulation": "tc"
+    }
+  },
+  "simulations": {
+    "tc": {
+      "type": "TimecourseSim",
+      "selections": null,
+      "reset": true,
+      "time_offset": 0,
+      "timecourses": [
+        {
+          "start": 0,
+          "end": 10,
+          "steps": 10,
+          "changes": {},
+          "model_changes": {},
+          "model_manipulations": {},
+          "discard": false
+        }
+      ]
+    }
+  },
+  "data": {
+    "task_model_tc__time": {
+      "type": "TASK",
+      "index": "time",
+      "unit": null,
+      "task": "task_model_tc",
+      "dataset": null,
+      "function": null,
+      "variables": null
+    },
+    "task_model_tc__S1": {
+      "type": "TASK",
+      "index": "S1",
+      "unit": null,
+      "task": "task_model_tc",
+      "dataset": null,
+      "function": null,
+      "variables": null
+    },
+    "task_model_tc__S2": {
+      "type": "TASK",
+      "index": "S2",
+      "unit": null,
+      "task": "task_model_tc",
+      "dataset": null,
+      "function": null,
+      "variables": null
+    },
+    "task_model_tc__[S1]": {
+      "type": "TASK",
+      "index": "[S1]",
+      "unit": null,
+      "task": "task_model_tc",
+      "dataset": null,
+      "function": null,
+      "variables": null
+    },
+    "task_model_tc__[S2]": {
+      "type": "TASK",
+      "index": "[S2]",
+      "unit": null,
+      "task": "task_model_tc",
+      "dataset": null,
+      "function": null,
+      "variables": null
+    }
+  },
+  "figures": {
+    "figure0": {
+      "sid": "figure0",
+      "name": "Example curve type",
+      "num_rows": 1,
+      "num_cols": 1,
+      "width": 5,
+      "height": 5,
+      "subplots": [
+        {
+          "sid": null,
+          "name": null,
+          "plot": {
+            "sid": "plot0",
+            "name": "Timecourse",
+            "xaxis": {
+              "sid": "plot0_xaxis",
+              "name": "time [min]",
+              "label": "time",
+              "unit": "min",
+              "scale": "LINEAR",
+              "min": null,
+              "max": null,
+              "grid": false,
+              "label_visible": true,
+              "ticks_visible": true
+            },
+            "yaxis": {
+              "sid": "plot0_yaxis",
+              "name": "data [mM]",
+              "label": "data",
+              "unit": "mM",
+              "scale": "LINEAR",
+              "min": null,
+              "max": null,
+              "grid": false,
+              "label_visible": true,
+              "ticks_visible": true
+            },
+            "yaxis_right": null,
+            "legend": true,
+            "facecolor": "#ffffffff",
+            "title_visible": true,
+            "curves": [
+              {
+                "sid": "plot0_curve0",
+                "name": "[S1]",
+                "x": "task_model_tc__time",
+                "y": "task_model_tc__[S1]",
+                "xerr": null,
+                "yerr": null,
+                "yaxis_position": null,
+                "style": {
+                  "sid": null,
+                  "name": null,
+                  "base_style": null,
+                  "line": {
+                    "type": "SOLID",
+                    "color": null,
+                    "thickness": 2.0
+                  },
+                  "marker": {
+                    "size": null,
+                    "type": "NONE",
+                    "fill": null,
+                    "line_color": null,
+                    "line_thickness": null
+                  },
+                  "fill": {
+                    "color": null,
+                    "second_color": null
+                  }
+                },
+                "order": 0
+              }
+            ],
+            "areas": []
+          },
+          "row": 1,
+          "col": 1,
+          "row_span": 1,
+          "col_span": 1
+        }
+      ]
+    }
+  }
+}

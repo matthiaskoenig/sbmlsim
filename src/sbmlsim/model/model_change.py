@@ -1,12 +1,23 @@
-import logging
+"""Model changes.
 
-import roadrunner
+Model changes are structural changes to the model structure.
+Changes of values and initial conditions are encoded via
+the changes instead.
+"""
+from sbmlutils import log
+
+from sbmlsim.model.rr_model import roadrunner
 
 
-logger = logging.getLogger(__name__)
+logger = log.get_logger(__name__)
 
 
 class ModelChange(object):
+    """ModelChange.
+
+    Structural change to a model.
+    """
+
     CLAMP_SPECIES = "clamp_species"
 
     @staticmethod

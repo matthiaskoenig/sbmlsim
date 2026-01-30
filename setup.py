@@ -1,6 +1,7 @@
 #!/usr/bin/env python
-from setuptools import setup
+"""Setup script for sbmlsim."""
+from setuptools import setup  # type: ignore
 
 
 if __name__ == "__main__":
-    setup(version="0.1.12")
+    setup(version="0.2.2")

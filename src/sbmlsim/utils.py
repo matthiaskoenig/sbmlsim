@@ -1,3 +1,4 @@
+"""Utility functions."""
 import functools
 import hashlib
 import inspect
@@ -5,16 +6,14 @@ import os
 import time
 import warnings
 
-from depinfo import print_dependencies
+from sbmlutils import log
 
 
-def show_versions() -> None:
-    """Print dependency information."""
-    print_dependencies("sbmlsim")
+logger = log.get_logger(__name__)
 
 
 def md5_for_path(path):
-    """Calculates MD5 of file content."""
+    """Calculate MD5 of file content."""
 
     # Open,close, read file and calculate MD5 on its contents
     with open(path, "rb") as f_check:
@@ -24,40 +23,44 @@ def md5_for_path(path):
         return hashlib.md5(data).hexdigest()
 
 
-def deprecated(func):
-    """This is a decorator which can be used to mark functions
-    as deprecated. It will result in a warning being emitted
-    when the function is used."""
+def deprecated(function):
+    """Get decorator for deprecation.
 
-    @functools.wraps(func)
+    This is a decorator which can be used to mark functions
+    as deprecated. It will result in a warning being emitted
+    when the function is used.
+    """
+
+    @functools.wraps(function)
     def new_func(*args, **kwargs):
         warnings.simplefilter("always", DeprecationWarning)  # turn off filter
         warnings.warn(
-            "Call to deprecated function {}.".format(func.__name__),
+            "Call to deprecated function {}.".format(function.__name__),
             category=DeprecationWarning,
             stacklevel=2,
         )
         warnings.simplefilter("default", DeprecationWarning)  # reset filter
-        return func(*args, **kwargs)
+        return function(*args, **kwargs)
 
     return new_func
 
 
-def timeit(method):
-    """Timing decorator"""
+def timeit(function):
+    """Time function via timing decorator."""
 
+    @functools.wraps(function)
     def timed(*args, **kw):
         ts = time.time()
-        result = method(*args, **kw)
+        result = function(*args, **kw)
         te = time.time()
 
         if "log_time" in kw:
-            name = kw.get("log_name", method.__name__.upper())
+            name = kw.get("log_name", function.__name__.upper())
             kw["log_time"][name] = int((te - ts) * 1000)
         else:
-            print(
+            logger.info(
                 "{:20}  {:8.4f} [s]".format(
-                    f"{method.__name__} <{os.getpid()}>", (te - ts)
+                    f"{function.__name__} <{os.getpid()}>", (te - ts)
                 )
             )
         return result
@@ -65,7 +68,7 @@ def timeit(method):
     return timed
 
 
-def function_name():
-    """Returns current function name"""
+def function_name() -> str:
+    """Get current function name."""
     frame = inspect.currentframe()
     return inspect.getframeinfo(frame).function

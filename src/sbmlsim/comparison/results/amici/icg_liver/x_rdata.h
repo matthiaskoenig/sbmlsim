@@ -1,0 +1,5 @@
+#define icg_ext x_rdata[0]
+#define bil_ext x_rdata[1]
+#define icg x_rdata[2]
+#define icg_bi x_rdata[3]
+#define icg_feces x_rdata[4]

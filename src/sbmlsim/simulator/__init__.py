@@ -1,2 +1,2 @@
-from .simulation import SimulatorWorker
-from .simulation_serial import SimulatorSerial
+"""Package for simulator."""
+from .rr_simulator_serial import SimulatorSerialRR

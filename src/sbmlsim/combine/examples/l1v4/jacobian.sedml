@@ -1,0 +1,53 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<sedML xmlns="http://sed-ml.org/sed-ml/level1/version4" level="1" version="4">
+  <listOfModels>
+    <model id="model0" language="urn:sedml:language:sbml.level-3.version-1" source="case_01.xml"/>
+  </listOfModels>
+  <listOfSimulations>
+    <uniformTimeCourse id="sim0" initialTime="0" outputStartTime="0" outputEndTime="10" numberOfSteps="10">
+      <algorithm kisaoID="KISAO:0000019"/>
+    </uniformTimeCourse>
+  </listOfSimulations>
+  <listOfTasks>
+    <task id="task0" modelReference="model0" simulationReference="sim0"/>
+  </listOfTasks>
+  <listOfDataGenerators>
+    <dataGenerator id="report_0_0_0" name="task0.time">
+      <math xmlns="http://www.w3.org/1998/Math/MathML">
+        <ci> task0_____time </ci>
+      </math>
+      <listOfVariables>
+        <variable id="task0_____time" symbol="urn:sedml:symbol:time" taskReference="task0" modelReference="model0"/>
+      </listOfVariables>
+    </dataGenerator>
+    <dataGenerator id="report_0_0_1" name="task0.S1">
+      <math xmlns="http://www.w3.org/1998/Math/MathML">
+        <ci> task0_____S1 </ci>
+      </math>
+      <listOfVariables>
+        <variable id="task0_____S1" target="/sbml:sbml/sbml:model/sbml:listOfSpecies/sbml:species[@id=&apos;S1&apos;]" taskReference="task0" modelReference="model0"/>
+      </listOfVariables>
+    </dataGenerator>
+    <dataGenerator id="jacobian">
+      <math xmlns="http://www.w3.org/1998/Math/MathML">
+        <ci> j </ci>
+      </math>
+      <listOfVariables>
+        <dependentVariable id="j" taskReference="task0" modelReference="model0" term="urn:sedml:analysis:jacobian:full"/>
+      </listOfVariables>
+    </dataGenerator>
+  </listOfDataGenerators>
+  <listOfOutputs>
+    <report id="report_0">
+      <listOfDataSets>
+        <dataSet id="report_0_0_0_dataset" label="task0.time" dataReference="report_0_0_0"/>
+        <dataSet id="report_0_0_1_dataset" label="task0.S1" dataReference="report_0_0_1"/>
+      </listOfDataSets>
+    </report>
+    <report id="report_2">
+      <listOfDataSets>
+        <dataSet id="Jacobian_report" label="Jacobian" dataReference="jacobian"/>
+      </listOfDataSets>
+    </report>
+  </listOfOutputs>
+</sedML>

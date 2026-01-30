@@ -1,0 +1,415 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<sedML xmlns="http://sed-ml.org/sed-ml/level1/version4" level="1" version="4">
+  <listOfDataDescriptions>
+    <dataDescription id="data1" format="urn:sedml:format:tsv" source="Sneyd_PNAS2002_Ca_dose_response__1.tsv">
+      <dimensionDescription xmlns="http://www.numl.org/numl/level1/version1">
+        <compositeDescription xmlns="http://www.numl.org/numl/level1/version1" id="time" indexType="double">
+          <compositeDescription xmlns="http://www.numl.org/numl/level1/version1" id="columnNames" indexType="string">
+            <atomicDescription xmlns="http://www.numl.org/numl/level1/version1" name="concentration" valueType="double"/>
+          </compositeDescription>
+        </compositeDescription>
+      </dimensionDescription>
+      <listOfDataSources>
+        <dataSource id="ds_time_Ca_dose_response__1" indexSet="time"/>
+        <dataSource id="ds_open_probability_Ca_dose_response__1">
+          <listOfSlices>
+            <slice reference="columnNames" value="Values[open_probability]"/>
+          </listOfSlices>
+        </dataSource>
+        <dataSource id="ds_IP3_Ca_dose_response__1">
+          <listOfSlices>
+            <slice reference="columnNames" value="Values[IP3].InitialValue"/>
+          </listOfSlices>
+        </dataSource>
+        <dataSource id="ds_Ca_Ca_dose_response__1">
+          <listOfSlices>
+            <slice reference="columnNames" value="Values[Ca].InitialValue"/>
+          </listOfSlices>
+        </dataSource>
+      </listOfDataSources>
+    </dataDescription>
+    <dataDescription id="data1" format="urn:sedml:format:tsv" source="Sneyd_PNAS2002_Ca_dose_response__2.tsv">
+      <dimensionDescription xmlns="http://www.numl.org/numl/level1/version1">
+        <compositeDescription xmlns="http://www.numl.org/numl/level1/version1" id="time" indexType="double">
+          <compositeDescription xmlns="http://www.numl.org/numl/level1/version1" id="columnNames" indexType="string">
+            <atomicDescription xmlns="http://www.numl.org/numl/level1/version1" name="concentration" valueType="double"/>
+          </compositeDescription>
+        </compositeDescription>
+      </dimensionDescription>
+      <listOfDataSources>
+        <dataSource id="ds_time_Ca_dose_response__2" indexSet="time"/>
+        <dataSource id="ds_open_probability_Ca_dose_response__2">
+          <listOfSlices>
+            <slice reference="columnNames" value="Values[open_probability]"/>
+          </listOfSlices>
+        </dataSource>
+        <dataSource id="ds_IP3_Ca_dose_response__2">
+          <listOfSlices>
+            <slice reference="columnNames" value="Values[IP3].InitialValue"/>
+          </listOfSlices>
+        </dataSource>
+        <dataSource id="ds_Ca_Ca_dose_response__2">
+          <listOfSlices>
+            <slice reference="columnNames" value="Values[Ca].InitialValue"/>
+          </listOfSlices>
+        </dataSource>
+      </listOfDataSources>
+    </dataDescription>
+    <dataDescription id="data1" format="urn:sedml:format:tsv" source="Sneyd_PNAS2002_Ca_dose_response__3.tsv">
+      <dimensionDescription xmlns="http://www.numl.org/numl/level1/version1">
+        <compositeDescription xmlns="http://www.numl.org/numl/level1/version1" id="time" indexType="double">
+          <compositeDescription xmlns="http://www.numl.org/numl/level1/version1" id="columnNames" indexType="string">
+            <atomicDescription xmlns="http://www.numl.org/numl/level1/version1" name="concentration" valueType="double"/>
+          </compositeDescription>
+        </compositeDescription>
+      </dimensionDescription>
+      <listOfDataSources>
+        <dataSource id="ds_time_Ca_dose_response__3" indexSet="time"/>
+        <dataSource id="ds_open_probability_Ca_dose_response__3">
+          <listOfSlices>
+            <slice reference="columnNames" value="Values[open_probability]"/>
+          </listOfSlices>
+        </dataSource>
+        <dataSource id="ds_IP3_Ca_dose_response__3">
+          <listOfSlices>
+            <slice reference="columnNames" value="Values[IP3].InitialValue"/>
+          </listOfSlices>
+        </dataSource>
+        <dataSource id="ds_Ca_Ca_dose_response__3">
+          <listOfSlices>
+            <slice reference="columnNames" value="Values[Ca].InitialValue"/>
+          </listOfSlices>
+        </dataSource>
+      </listOfDataSources>
+    </dataDescription>
+    <dataDescription id="data1" format="urn:sedml:format:tsv" source="Sneyd_PNAS2002_Ca_dose_response__4.tsv">
+      <dimensionDescription xmlns="http://www.numl.org/numl/level1/version1">
+        <compositeDescription xmlns="http://www.numl.org/numl/level1/version1" id="time" indexType="double">
+          <compositeDescription xmlns="http://www.numl.org/numl/level1/version1" id="columnNames" indexType="string">
+            <atomicDescription xmlns="http://www.numl.org/numl/level1/version1" name="concentration" valueType="double"/>
+          </compositeDescription>
+        </compositeDescription>
+      </dimensionDescription>
+      <listOfDataSources>
+        <dataSource id="ds_time_Ca_dose_response__4" indexSet="time"/>
+        <dataSource id="ds_open_probability_Ca_dose_response__4">
+          <listOfSlices>
+            <slice reference="columnNames" value="Values[open_probability]"/>
+          </listOfSlices>
+        </dataSource>
+        <dataSource id="ds_IP3_Ca_dose_response__4">
+          <listOfSlices>
+            <slice reference="columnNames" value="Values[IP3].InitialValue"/>
+          </listOfSlices>
+        </dataSource>
+        <dataSource id="ds_Ca_Ca_dose_response__4">
+          <listOfSlices>
+            <slice reference="columnNames" value="Values[Ca].InitialValue"/>
+          </listOfSlices>
+        </dataSource>
+      </listOfDataSources>
+    </dataDescription>
+    <dataDescription id="data1" format="urn:sedml:format:tsv" source="Sneyd_PNAS2002_Ca_dose_response__5.tsv">
+      <dimensionDescription xmlns="http://www.numl.org/numl/level1/version1">
+        <compositeDescription xmlns="http://www.numl.org/numl/level1/version1" id="time" indexType="double">
+          <compositeDescription xmlns="http://www.numl.org/numl/level1/version1" id="columnNames" indexType="string">
+            <atomicDescription xmlns="http://www.numl.org/numl/level1/version1" name="concentration" valueType="double"/>
+          </compositeDescription>
+        </compositeDescription>
+      </dimensionDescription>
+      <listOfDataSources>
+        <dataSource id="ds_time_Ca_dose_response__5" indexSet="time"/>
+        <dataSource id="ds_open_probability_Ca_dose_response__5">
+          <listOfSlices>
+            <slice reference="columnNames" value="Values[open_probability]"/>
+          </listOfSlices>
+        </dataSource>
+        <dataSource id="ds_IP3_Ca_dose_response__5">
+          <listOfSlices>
+            <slice reference="columnNames" value="Values[IP3].InitialValue"/>
+          </listOfSlices>
+        </dataSource>
+        <dataSource id="ds_Ca_Ca_dose_response__5">
+          <listOfSlices>
+            <slice reference="columnNames" value="Values[Ca].InitialValue"/>
+          </listOfSlices>
+        </dataSource>
+      </listOfDataSources>
+    </dataDescription>
+    <dataDescription id="data1" format="urn:sedml:format:tsv" source="Sneyd_PNAS2002_Ca_dose_response__6.tsv">
+      <dimensionDescription xmlns="http://www.numl.org/numl/level1/version1">
+        <compositeDescription xmlns="http://www.numl.org/numl/level1/version1" id="time" indexType="double">
+          <compositeDescription xmlns="http://www.numl.org/numl/level1/version1" id="columnNames" indexType="string">
+            <atomicDescription xmlns="http://www.numl.org/numl/level1/version1" name="concentration" valueType="double"/>
+          </compositeDescription>
+        </compositeDescription>
+      </dimensionDescription>
+      <listOfDataSources>
+        <dataSource id="ds_time_Ca_dose_response__6" indexSet="time"/>
+        <dataSource id="ds_open_probability_Ca_dose_response__6">
+          <listOfSlices>
+            <slice reference="columnNames" value="Values[open_probability]"/>
+          </listOfSlices>
+        </dataSource>
+        <dataSource id="ds_IP3_Ca_dose_response__6">
+          <listOfSlices>
+            <slice reference="columnNames" value="Values[IP3].InitialValue"/>
+          </listOfSlices>
+        </dataSource>
+        <dataSource id="ds_Ca_Ca_dose_response__6">
+          <listOfSlices>
+            <slice reference="columnNames" value="Values[Ca].InitialValue"/>
+          </listOfSlices>
+        </dataSource>
+      </listOfDataSources>
+    </dataDescription>
+    <dataDescription id="data1" format="urn:sedml:format:tsv" source="Sneyd_PNAS2002_IP3_dose_response__1.tsv">
+      <dimensionDescription xmlns="http://www.numl.org/numl/level1/version1">
+        <compositeDescription xmlns="http://www.numl.org/numl/level1/version1" id="time" indexType="double">
+          <compositeDescription xmlns="http://www.numl.org/numl/level1/version1" id="columnNames" indexType="string">
+            <atomicDescription xmlns="http://www.numl.org/numl/level1/version1" name="concentration" valueType="double"/>
+          </compositeDescription>
+        </compositeDescription>
+      </dimensionDescription>
+      <listOfDataSources>
+        <dataSource id="ds_time_IP3_dose_response__1" indexSet="time"/>
+        <dataSource id="ds_open_probability_IP3_dose_response__1">
+          <listOfSlices>
+            <slice reference="columnNames" value="Values[open_probability]"/>
+          </listOfSlices>
+        </dataSource>
+        <dataSource id="ds_IP3_IP3_dose_response__1">
+          <listOfSlices>
+            <slice reference="columnNames" value="Values[IP3].InitialValue"/>
+          </listOfSlices>
+        </dataSource>
+        <dataSource id="ds_Ca_IP3_dose_response__1">
+          <listOfSlices>
+            <slice reference="columnNames" value="Values[Ca].InitialValue"/>
+          </listOfSlices>
+        </dataSource>
+      </listOfDataSources>
+    </dataDescription>
+    <dataDescription id="data1" format="urn:sedml:format:tsv" source="Sneyd_PNAS2002_IP3_dose_response__2.tsv">
+      <dimensionDescription xmlns="http://www.numl.org/numl/level1/version1">
+        <compositeDescription xmlns="http://www.numl.org/numl/level1/version1" id="time" indexType="double">
+          <compositeDescription xmlns="http://www.numl.org/numl/level1/version1" id="columnNames" indexType="string">
+            <atomicDescription xmlns="http://www.numl.org/numl/level1/version1" name="concentration" valueType="double"/>
+          </compositeDescription>
+        </compositeDescription>
+      </dimensionDescription>
+      <listOfDataSources>
+        <dataSource id="ds_time_IP3_dose_response__2" indexSet="time"/>
+        <dataSource id="ds_open_probability_IP3_dose_response__2">
+          <listOfSlices>
+            <slice reference="columnNames" value="Values[open_probability]"/>
+          </listOfSlices>
+        </dataSource>
+        <dataSource id="ds_IP3_IP3_dose_response__2">
+          <listOfSlices>
+            <slice reference="columnNames" value="Values[IP3].InitialValue"/>
+          </listOfSlices>
+        </dataSource>
+        <dataSource id="ds_Ca_IP3_dose_response__2">
+          <listOfSlices>
+            <slice reference="columnNames" value="Values[Ca].InitialValue"/>
+          </listOfSlices>
+        </dataSource>
+      </listOfDataSources>
+    </dataDescription>
+    <dataDescription id="data1" format="urn:sedml:format:tsv" source="Sneyd_PNAS2002_IP3_dose_response__3.tsv">
+      <dimensionDescription xmlns="http://www.numl.org/numl/level1/version1">
+        <compositeDescription xmlns="http://www.numl.org/numl/level1/version1" id="time" indexType="double">
+          <compositeDescription xmlns="http://www.numl.org/numl/level1/version1" id="columnNames" indexType="string">
+            <atomicDescription xmlns="http://www.numl.org/numl/level1/version1" name="concentration" valueType="double"/>
+          </compositeDescription>
+        </compositeDescription>
+      </dimensionDescription>
+      <listOfDataSources>
+        <dataSource id="ds_time_IP3_dose_response__3" indexSet="time"/>
+        <dataSource id="ds_open_probability_IP3_dose_response__3">
+          <listOfSlices>
+            <slice reference="columnNames" value="Values[open_probability]"/>
+          </listOfSlices>
+        </dataSource>
+        <dataSource id="ds_IP3_IP3_dose_response__3">
+          <listOfSlices>
+            <slice reference="columnNames" value="Values[IP3].InitialValue"/>
+          </listOfSlices>
+        </dataSource>
+        <dataSource id="ds_Ca_IP3_dose_response__3">
+          <listOfSlices>
+            <slice reference="columnNames" value="Values[Ca].InitialValue"/>
+          </listOfSlices>
+        </dataSource>
+      </listOfDataSources>
+    </dataDescription>
+  </listOfDataDescriptions>
+  <listOfModels>
+    <model id="model1" language="urn:sedml:language:sbml" source="model_Sneyd_PNAS2002.xml"/>
+  </listOfModels>
+  <listOfTasks>
+    <parameterEstimationTask id="pe1">
+      <algorithm kisaoID="KISAO:0000515"/>
+      <leastSquareObjectiveFunction/>
+      <listOfAdjustableParameters>
+        <adjustableParameter initialValue="3.72721095730996" modelReference="model1" target="/sbml:sbml/sbml:model/sbml:listOfParameters/sbml:parameter[@id=&quot;k1&quot;]">
+          <bounds lowerBound="0.001" upperBound="100000"/>
+        </adjustableParameter>
+        <adjustableParameter initialValue="99999.9999999908" modelReference="model1" target="/sbml:sbml/sbml:model/sbml:listOfParameters/sbml:parameter[@id=&quot;k2&quot;]">
+          <bounds lowerBound="0.001" upperBound="100000"/>
+        </adjustableParameter>
+        <adjustableParameter initialValue="15.7453406923706" modelReference="model1" target="/sbml:sbml/sbml:model/sbml:listOfParameters/sbml:parameter[@id=&quot;k3&quot;]">
+          <bounds lowerBound="0.001" upperBound="100000"/>
+        </adjustableParameter>
+        <adjustableParameter initialValue="99938.2576283144" modelReference="model1" target="/sbml:sbml/sbml:model/sbml:listOfParameters/sbml:parameter[@id=&quot;k4&quot;]">
+          <bounds lowerBound="0.001" upperBound="100000"/>
+        </adjustableParameter>
+        <adjustableParameter initialValue="0.923924728172173" modelReference="model1" target="/sbml:sbml/sbml:model/sbml:listOfParameters/sbml:parameter[@id=&quot;k_1&quot;]">
+          <bounds lowerBound="0.001" upperBound="100000"/>
+        </adjustableParameter>
+        <adjustableParameter initialValue="0.001002494725324" modelReference="model1" target="/sbml:sbml/sbml:model/sbml:listOfParameters/sbml:parameter[@id=&quot;k_2&quot;]">
+          <bounds lowerBound="0.001" upperBound="100000"/>
+        </adjustableParameter>
+        <adjustableParameter initialValue="1.91463005974811" modelReference="model1" target="/sbml:sbml/sbml:model/sbml:listOfParameters/sbml:parameter[@id=&quot;k_3&quot;]">
+          <bounds lowerBound="0.001" upperBound="100000"/>
+        </adjustableParameter>
+        <adjustableParameter initialValue="3079.20732487903" modelReference="model1" target="/sbml:sbml/sbml:model/sbml:listOfParameters/sbml:parameter[@id=&quot;k_4&quot;]">
+          <bounds lowerBound="0.001" upperBound="100000"/>
+        </adjustableParameter>
+        <adjustableParameter initialValue="0.940077018858089" modelReference="model1" target="/sbml:sbml/sbml:model/sbml:listOfParameters/sbml:parameter[@id=&quot;l2&quot;]">
+          <bounds lowerBound="0.001" upperBound="100000"/>
+        </adjustableParameter>
+        <adjustableParameter initialValue="2.85837713545253" modelReference="model1" target="/sbml:sbml/sbml:model/sbml:listOfParameters/sbml:parameter[@id=&quot;l4&quot;]">
+          <bounds lowerBound="0.001" upperBound="100000"/>
+        </adjustableParameter>
+        <adjustableParameter initialValue="99999.9999999908" modelReference="model1" target="/sbml:sbml/sbml:model/sbml:listOfParameters/sbml:parameter[@id=&quot;l6&quot;]">
+          <bounds lowerBound="0.001" upperBound="100000"/>
+        </adjustableParameter>
+        <adjustableParameter initialValue="0.347664459128102" modelReference="model1" target="/sbml:sbml/sbml:model/sbml:listOfParameters/sbml:parameter[@id=&quot;l_2&quot;]">
+          <bounds lowerBound="0.001" upperBound="100000"/>
+        </adjustableParameter>
+        <adjustableParameter initialValue="0.01388020361713" modelReference="model1" target="/sbml:sbml/sbml:model/sbml:listOfParameters/sbml:parameter[@id=&quot;l_4&quot;]">
+          <bounds lowerBound="0.001" upperBound="100000"/>
+        </adjustableParameter>
+        <adjustableParameter initialValue="0.001" modelReference="model1" target="/sbml:sbml/sbml:model/sbml:listOfParameters/sbml:parameter[@id=&quot;l_6&quot;]">
+          <bounds lowerBound="0.001" upperBound="100000"/>
+        </adjustableParameter>
+        <adjustableParameter initialValue="0.022665679544462" modelReference="model1" target="/sbml:sbml/sbml:model/sbml:listOfParameters/sbml:parameter[@id=&quot;sigma&quot;]">
+          <bounds lowerBound="1e-05" upperBound="1000"/>
+        </adjustableParameter>
+      </listOfAdjustableParameters>
+      <listOfFitExperiments>
+        <fitExperiment id="Ca_dose_response__1" type="timeCourse">
+          <listOfFitMappings>
+            <fitMapping dataSource="ds_time_Ca_dose_response__1" target="dg_time" type="time" weight="1"/>
+            <fitMapping dataSource="ds_open_probability_Ca_dose_response__1" target="dg_open_probability" type="observable" weight="1"/>
+            <fitMapping dataSource="ds_IP3_Ca_dose_response__1" target="dg_IP3" type="experimentalCondition" weight="1"/>
+            <fitMapping dataSource="ds_Ca_Ca_dose_response__1" target="dg_Ca" type="experimentalCondition" weight="1"/>
+          </listOfFitMappings>
+        </fitExperiment>
+        <fitExperiment id="Ca_dose_response__2" type="timeCourse">
+          <listOfFitMappings>
+            <fitMapping dataSource="ds_time_Ca_dose_response__2" target="dg_time" type="time" weight="1"/>
+            <fitMapping dataSource="ds_open_probability_Ca_dose_response__2" target="dg_open_probability" type="observable" weight="1"/>
+            <fitMapping dataSource="ds_IP3_Ca_dose_response__2" target="dg_IP3" type="experimentalCondition" weight="1"/>
+            <fitMapping dataSource="ds_Ca_Ca_dose_response__2" target="dg_Ca" type="experimentalCondition" weight="1"/>
+          </listOfFitMappings>
+        </fitExperiment>
+        <fitExperiment id="Ca_dose_response__3" type="timeCourse">
+          <listOfFitMappings>
+            <fitMapping dataSource="ds_time_Ca_dose_response__3" target="dg_time" type="time" weight="1"/>
+            <fitMapping dataSource="ds_open_probability_Ca_dose_response__3" target="dg_open_probability" type="observable" weight="1"/>
+            <fitMapping dataSource="ds_IP3_Ca_dose_response__3" target="dg_IP3" type="experimentalCondition" weight="1"/>
+            <fitMapping dataSource="ds_Ca_Ca_dose_response__3" target="dg_Ca" type="experimentalCondition" weight="1"/>
+          </listOfFitMappings>
+        </fitExperiment>
+        <fitExperiment id="Ca_dose_response__4" type="timeCourse">
+          <listOfFitMappings>
+            <fitMapping dataSource="ds_time_Ca_dose_response__4" target="dg_time" type="time" weight="1"/>
+            <fitMapping dataSource="ds_open_probability_Ca_dose_response__4" target="dg_open_probability" type="observable" weight="1"/>
+            <fitMapping dataSource="ds_IP3_Ca_dose_response__4" target="dg_IP3" type="experimentalCondition" weight="1"/>
+            <fitMapping dataSource="ds_Ca_Ca_dose_response__4" target="dg_Ca" type="experimentalCondition" weight="1"/>
+          </listOfFitMappings>
+        </fitExperiment>
+        <fitExperiment id="Ca_dose_response__5" type="timeCourse">
+          <listOfFitMappings>
+            <fitMapping dataSource="ds_time_Ca_dose_response__5" target="dg_time" type="time" weight="1"/>
+            <fitMapping dataSource="ds_open_probability_Ca_dose_response__5" target="dg_open_probability" type="observable" weight="1"/>
+            <fitMapping dataSource="ds_IP3_Ca_dose_response__5" target="dg_IP3" type="experimentalCondition" weight="1"/>
+            <fitMapping dataSource="ds_Ca_Ca_dose_response__5" target="dg_Ca" type="experimentalCondition" weight="1"/>
+          </listOfFitMappings>
+        </fitExperiment>
+        <fitExperiment id="Ca_dose_response__6" type="timeCourse">
+          <listOfFitMappings>
+            <fitMapping dataSource="ds_time_Ca_dose_response__6" target="dg_time" type="time" weight="1"/>
+            <fitMapping dataSource="ds_open_probability_Ca_dose_response__6" target="dg_open_probability" type="observable" weight="1"/>
+            <fitMapping dataSource="ds_IP3_Ca_dose_response__6" target="dg_IP3" type="experimentalCondition" weight="1"/>
+            <fitMapping dataSource="ds_Ca_Ca_dose_response__6" target="dg_Ca" type="experimentalCondition" weight="1"/>
+          </listOfFitMappings>
+        </fitExperiment>
+        <fitExperiment id="IP3_dose_response__1" type="timeCourse">
+          <listOfFitMappings>
+            <fitMapping dataSource="ds_time_IP3_dose_response__1" target="dg_time" type="time" weight="1"/>
+            <fitMapping dataSource="ds_open_probability_IP3_dose_response__1" target="dg_open_probability" type="observable" weight="1"/>
+            <fitMapping dataSource="ds_IP3_IP3_dose_response__1" target="dg_IP3" type="experimentalCondition" weight="1"/>
+            <fitMapping dataSource="ds_Ca_IP3_dose_response__1" target="dg_Ca" type="experimentalCondition" weight="1"/>
+          </listOfFitMappings>
+        </fitExperiment>
+        <fitExperiment id="IP3_dose_response__2" type="timeCourse">
+          <listOfFitMappings>
+            <fitMapping dataSource="ds_time_IP3_dose_response__2" target="dg_time" type="time" weight="1"/>
+            <fitMapping dataSource="ds_open_probability_IP3_dose_response__2" target="dg_open_probability" type="observable" weight="1"/>
+            <fitMapping dataSource="ds_IP3_IP3_dose_response__2" target="dg_IP3" type="experimentalCondition" weight="1"/>
+            <fitMapping dataSource="ds_Ca_IP3_dose_response__2" target="dg_Ca" type="experimentalCondition" weight="1"/>
+          </listOfFitMappings>
+        </fitExperiment>
+        <fitExperiment id="IP3_dose_response__3" type="timeCourse">
+          <listOfFitMappings>
+            <fitMapping dataSource="ds_time_IP3_dose_response__3" target="dg_time" type="time" weight="1"/>
+            <fitMapping dataSource="ds_open_probability_IP3_dose_response__3" target="dg_open_probability" type="observable" weight="1"/>
+            <fitMapping dataSource="ds_IP3_IP3_dose_response__3" target="dg_IP3" type="experimentalCondition" weight="1"/>
+            <fitMapping dataSource="ds_Ca_IP3_dose_response__3" target="dg_Ca" type="experimentalCondition" weight="1"/>
+          </listOfFitMappings>
+        </fitExperiment>
+      </listOfFitExperiments>
+    </parameterEstimationTask>
+  </listOfTasks>
+  <listOfDataGenerators>
+    <dataGenerator id="dg_time">
+      <math xmlns="http://www.w3.org/1998/Math/MathML">
+        <ci> var_time </ci>
+      </math>
+      <listOfVariables>
+        <variable id="var_time" symbol="urn:sedml:symbol:time" taskReference="pe1" modelReference="model1"/>
+      </listOfVariables>
+    </dataGenerator>
+    <dataGenerator id="dg_open_probability">
+      <math xmlns="http://www.w3.org/1998/Math/MathML">
+        <ci> var_open_probability </ci>
+      </math>
+      <listOfVariables>
+        <variable id="var_open_probability" target="/sbml:sbml/sbml:model/sbml:listOfParameters/sbml:parameter[@id=&quot;open_probability&quot;]" taskReference="pe1" modelReference="model1"/>
+      </listOfVariables>
+    </dataGenerator>
+    <dataGenerator id="dg_IP3">
+      <math xmlns="http://www.w3.org/1998/Math/MathML">
+        <ci> var_IP3 </ci>
+      </math>
+      <listOfVariables>
+        <variable id="var_IP3" target="/sbml:sbml/sbml:model/sbml:listOfParameters/sbml:parameter[@id=&quot;IP3&quot;]" taskReference="pe1" modelReference="model1"/>
+      </listOfVariables>
+    </dataGenerator>
+    <dataGenerator id="dg_Ca">
+      <math xmlns="http://www.w3.org/1998/Math/MathML">
+        <ci> var_Ca </ci>
+      </math>
+      <listOfVariables>
+        <variable id="var_Ca" target="/sbml:sbml/sbml:model/sbml:listOfParameters/sbml:parameter[@id=&quot;Ca&quot;]" taskReference="pe1" modelReference="model1"/>
+      </listOfVariables>
+    </dataGenerator>
+  </listOfDataGenerators>
+  <listOfOutputs>
+    <parameterEstimationResultPlot id="plot1" taskRef="pe1"/>
+  </listOfOutputs>
+</sedML>

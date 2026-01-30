@@ -1,0 +1,46 @@
+{
+  "experiment_id": "algorithm_parameters",
+  "base_path": "/home/mkoenig/git/sbmlsim/src/sbmlsim/combine/examples/l1v4",
+  "data_path": "[PosixPath('/home/mkoenig/git/sbmlsim/src/sbmlsim/combine/examples/l1v4')]",
+  "models": {
+    "model0": {
+      "sid": "model0",
+      "name": "",
+      "language": "SBML",
+      "language_type": "SBML",
+      "source": {
+        "source": "case_01.xml",
+        "path": "/home/mkoenig/git/sbmlsim/src/sbmlsim/combine/examples/l1v4/case_01.xml",
+        "content": "None"
+      },
+      "changes": {}
+    }
+  },
+  "tasks": {
+    "task0": {
+      "model": "model0",
+      "simulation": "sim0"
+    }
+  },
+  "simulations": {
+    "sim0": {
+      "type": "TimecourseSim",
+      "selections": null,
+      "reset": true,
+      "time_offset": 0.0,
+      "timecourses": [
+        {
+          "start": 0.0,
+          "end": 10.0,
+          "steps": 29,
+          "changes": {},
+          "model_changes": {},
+          "model_manipulations": {},
+          "discard": false
+        }
+      ]
+    }
+  },
+  "data": {},
+  "figures": {}
+}

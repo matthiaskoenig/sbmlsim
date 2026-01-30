@@ -1,20 +1,21 @@
-"""
+"""Models.
+
 Functions for model loading, model manipulation and settings on the integrator.
 Model can be in different formats, main supported format being SBML.
 
 Other formats could be supported like CellML or NeuroML.
-
 """
-import logging
 from enum import Enum
 from pathlib import Path
-from typing import Dict, List, Tuple, Union
+from typing import Dict, List, Optional, Union
+
+from sbmlutils import log
 
 from sbmlsim.model.model_resources import Source
-from sbmlsim.units import Units
+from sbmlsim.units import UnitsInformation
 
 
-logger = logging.getLogger(__name__)
+logger = log.get_logger(__name__)
 
 
 class AbstractModel(object):
@@ -24,28 +25,34 @@ class AbstractModel(object):
     """
 
     class LanguageType(Enum):
+        """Language types."""
+
         SBML = 1
         CELLML = 2
 
     class SourceType(Enum):
+        """Source types."""
+
         PATH = 1
         URN = 2
         URL = 3
 
-    def __repr__(self):
+    def __repr__(self) -> str:
+        """Get string representation."""
         return f"{self.language_type.name}({self.source.source}, changes={len(self.changes)})"
 
     def __init__(
         self,
         source: Union[str, Path],
-        sid: str = None,
-        name: str = None,
-        language: str = None,
+        sid: Optional[str] = None,
+        name: Optional[str] = None,
+        language: Optional[str] = None,
         language_type: LanguageType = LanguageType.SBML,
-        base_path: Path = None,
+        base_path: Optional[Path] = None,
         changes: Dict = None,
         selections: List[str] = None,
     ):
+        """Initialize SourceType."""
 
         if not language and not language_type:
             raise ValueError(
@@ -69,7 +76,7 @@ class AbstractModel(object):
         self.language = language
         self.language_type = language_type
         self.base_path = base_path
-        self.source = Source.from_source(source, base_dir=base_path)  # type: Source
+        self.source: Source = Source.from_source(source, base_dir=base_path)
 
         if changes is None:
             changes = {}
@@ -78,9 +85,9 @@ class AbstractModel(object):
 
         # normalize parameters at end of initialization
 
-    def normalize(self, udict, ureg):
-        """ Normalize values to model units for all changes."""
-        self.changes = Units.normalize_changes(self.changes, udict=udict, ureg=ureg)
+    def normalize(self, uinfo: UnitsInformation):
+        """Normalize values to model units for all changes."""
+        self.changes = UnitsInformation.normalize_changes(self.changes, uinfo=uinfo)
 
     def to_dict(self):
         """Convert to dictionary."""

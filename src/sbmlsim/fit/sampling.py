@@ -1,23 +1,27 @@
-"""
-Sampling of parameter values
-"""
-import logging
+"""Sampling of parameter values."""
 from enum import Enum
-from typing import List
+from typing import Dict, Iterable, List, Sized
 
 import numpy as np
 import pandas as pd
 from matplotlib import pyplot as plt
 from pyDOE import lhs
+from sbmlutils import log
+from sbmlutils.console import console
 
+# FIXME: make this independent of the fit parameters
 from sbmlsim.fit.objects import FitParameter
-from sbmlsim.utils import timeit
 
 
-logger = logging.getLogger(__name__)
+logger = log.get_logger(__name__)
 
 
 class SamplingType(Enum):
+    """Type of sampling used.
+
+    The LHS options are latin hypercube sampling types.
+    """
+
     LOGUNIFORM = 1
     UNIFORM = 2
     LOGUNIFORM_LHS = 3
@@ -52,7 +56,6 @@ def create_samples(
     if sampling in {SamplingType.UNIFORM, SamplingType.LOGUNIFORM}:
         # samples = np.random.uniform(0, 1, size=size)
         x = np.random.rand(size, len(parameters))
-        # print(type(x), x.shape)
 
     elif sampling in {SamplingType.UNIFORM_LHS, SamplingType.LOGUNIFORM_LHS}:
         # Latin-Hypercube sampling
@@ -89,12 +92,11 @@ def create_samples(
             # parameter values in real space
             x[:, k] = np.power(10, values_log)
 
-    # print(type(x), x.shape)
     return pd.DataFrame(x, columns=[p.pid for p in parameters])
 
 
 def plot_samples(samples):
-    """Plot samples"""
+    """Plot samples."""
     df = list(samples.values())[0]
     pids = df.columns
 
@@ -126,28 +128,29 @@ def plot_samples(samples):
     plt.show()
 
 
-def example1():
-    parameters = [
+def example_sampling() -> None:
+    """Run sampling exa how to use sampling."""
+    parameters: List[FitParameter] = [
         FitParameter(pid="p1", lower_bound=10, upper_bound=1e4),
         FitParameter(pid="p2", lower_bound=1, upper_bound=1e3),
         FitParameter(pid="p3", lower_bound=1, upper_bound=1e3),
     ]
-    samples = {}
+    samples: Dict[str, pd.DataFrame] = {}
     for sampling in [
         SamplingType.UNIFORM,
         SamplingType.UNIFORM_LHS,
         SamplingType.LOGUNIFORM,
         SamplingType.LOGUNIFORM_LHS,
     ]:
-        print(f"* {sampling.name} *")
+        console.log(f"* {sampling.name} *")
         df = create_samples(
             parameters=parameters, size=10, sampling=sampling, seed=1234
         )
         samples[sampling.name] = df
 
-    print(samples)
+    console.log(samples)
     plot_samples(samples)
 
 
 if __name__ == "__main__":
-    example1()
+    example_sampling()

@@ -22,7 +22,7 @@
             <h2>Models</h2>
             <p>
             <ul>
-                <li><strong>model1</strong>: <a href="../../model/liver_glucose.xml">../../model/liver_glucose.xml</a></li>
+                <li><strong>model1</strong>: <a href="../../../../../home/mkoenig/git/sbmlsim/src/sbmlsim/examples/experiments/glucose/model/liver_glucose.xml">../../../../../home/mkoenig/git/sbmlsim/src/sbmlsim/examples/experiments/glucose/model/liver_glucose.xml</a></li>
             </ul>
             </p>
 
@@ -60,10 +60,10 @@
 
             <h2>Code</h2>
             <p>
-                <a href="../../experiments/dose_response.py">../../experiments/dose_response.py</a>
+                <a href="../../../../../home/mkoenig/git/sbmlsim/src/sbmlsim/examples/experiments/glucose/experiments/dose_response.py">../../../../../home/mkoenig/git/sbmlsim/src/sbmlsim/examples/experiments/glucose/experiments/dose_response.py</a>
             <pre>
 <code class="python">from pathlib import Path
-from typing import Dict
+from typing import Dict, Union
 
 import numpy as np
 import pandas as pd
@@ -73,9 +73,11 @@ from matplotlib.pyplot import Figure
 from sbmlsim.data import Data, DataSet, load_pkdb_dataframe
 from sbmlsim.experiment import SimulationExperiment
 from sbmlsim.model import AbstractModel, RoadrunnerSBMLModel
-from sbmlsim.plot.plotting_matplotlib import add_data, plt
+from sbmlsim.plot.plotting_deprecated_matplotlib import add_data, plt
+from sbmlsim.xresult import XResult
 from sbmlsim.simulation import Dimension, ScanSim, Timecourse, TimecourseSim
 from sbmlsim.task import Task
+from sbmlsim.units import UnitsInformation
 from sbmlsim.utils import timeit
 
 
@@ -83,7 +85,7 @@ class DoseResponseExperiment(SimulationExperiment):
     """Hormone dose-response curves."""
 
     @timeit
-    def models(self) -> Dict[str, AbstractModel]:
+    def models(self) -> Dict[str, Union[AbstractModel, Path]]:
         return {"model1": Path(__file__).parent.parent / "model" / "liver_glucose.xml"}
 
     @timeit
@@ -161,14 +163,10 @@ class DoseResponseExperiment(SimulationExperiment):
                 "mean": df["unit"].unique()[0],
             }
             dsets[hormone_key.lower()] = DataSet.from_df(
-                df, udict=udict, ureg=self.ureg
+                df, ureg=self.ureg, udict=udict
             )
 
         return dsets
-
-    def datagenerators(self) -> None:
-        for key in ["time", "glu", "ins", "epi", "gamma"]:
-            Data(experiment=self, task="task_glc_scan", index=key)
 
     @timeit
     def tasks(self) -> Dict[str, Task]:
@@ -192,30 +190,36 @@ class DoseResponseExperiment(SimulationExperiment):
         )
         return {"glc_scan": glc_scan}
 
-    @timeit
-    def figures(self) -> Dict[str, Figure]:
+    def data(self) -> Dict[str, Data]:
+        self.add_selections_data(
+            selections=["time", "glu", "ins", "epi", "gamma"],
+            task_ids=["task_glc_scan"],
+        )
+        return {}
+
+    def figures_mpl(self) -> Dict[str, Figure]:
         xunit = "mM"
         yunit_hormone = "pmol/l"
         yunit_gamma = "dimensionless"
 
-        f, ((ax1, ax2), (ax3, ax4)) = plt.subplots(2, 2, figsize=(10, 10))
-        f.subplots_adjust(wspace=0.3, hspace=0.3)
+        fig_mpl, ((ax1, ax2), (ax3, ax4)) = plt.subplots(2, 2, figsize=(10, 10))
+        fig_mpl.subplots_adjust(wspace=0.3, hspace=0.3)
         axes = (ax1, ax2, ax3, ax4)
 
         # process scan results
         task = self._tasks["task_glc_scan"]
         model = self._models[task.model_id]
-        tcscan = self._simulations[task.simulation_id]  # TimecourseScan Definition
+        tcscan = self._simulations[task.simulation_id]
 
         # FIXME: this must be simpler
         glc_vec = tcscan.dimensions[0].changes["[glc_ext]"]
-        xres = self.results["task_glc_scan"]  # type: Result
+        xres: XResult = self.results["task_glc_scan"]
 
         # we already have all the data ordered, we only want the steady state value
 
         dose_response = {}
         for sid in ["glu", "epi", "ins", "gamma"]:
-            da = xres[sid]  # type: xr.DataArray
+            da: xr.DataArray = xres[sid]
 
             # get initial time
             head = da.head({"_time": 1}).to_series()
@@ -223,8 +227,7 @@ class DoseResponseExperiment(SimulationExperiment):
 
         dose_response["[glc_ext]"] = glc_vec
         df = pd.DataFrame(dose_response)
-        dset = DataSet.from_df(df, udict=model.udict, ureg=self.ureg)
-        print(dset)
+        dset = DataSet.from_df(df, udict=model.uinfo.udict, ureg=self.ureg)
 
         # plot scan results
         kwargs = {"linewidth": 2, "linestyle": "-", "marker": "None", "color": "black"}
@@ -320,7 +323,7 @@ class DoseResponseExperiment(SimulationExperiment):
 
         ax2.set_xlim(2, 8)
 
-        return {"fig1": f}
+        return {"fig1": fig_mpl}
 </code>
         </pre>
             </p>

@@ -1,0 +1,31 @@
+{
+  "upload_type": "software",
+  "title": "sbmlsim: SBML simulation made easy",
+  "creators": [
+    {
+      "orcid": "0000-0003-1725-179X",
+      "affiliation": "Humboldt-University Berlin, Institute for Theoretical Biology, Berlin",
+      "name": "König, Matthias"
+    }
+  ],
+  "description": "<p><code>sbmlsim</code> is a collection of python utilities to simplify simulations with <a href=\"http://www.sbml.org\">SBML</a> models implemented on top of <code><a href=\"http://libroadrunner.org/\">roadrunner</a></code> and other libraries with source code available from <a href=\"https://github.com/matthiaskoenig/sbmlsim\">https://github.com/matthiaskoenig/sbmlsim</a></p>\n<p>Features include among others<ul><li>simulation experiments</li><li>simulation reports</a></li><li>parameter fitting</li></ul></p>\n<p>The documentation is available on <a href=\"https://sbmlsim.readthedocs.io\">https://sbmlsim.readthedocs.io</a></p>\n<p>If you have any questions or issues please <a href=\"https://github.com/matthiaskoenig/sbmlsim/issues\">open an issue</a></p>\n<h2>Funding</h2><p>Matthias König is supported by the Federal Ministry of Education and Research (BMBF, Germany) within the research network Systems Medicine of the Liver (<strong>LiSyM</strong>, grant number 031L0054) and by the German Research Foundation (DFG) within the Research Unit Programme FOR 5151 <strong><a href=\"https://qualiperf.de\">QuaLiPerF</a></strong> (Quantifying Liver Perfusion-Function Relationship in Complex Resection - A Systems Medicine Approach)\" by grant number 436883643 and by grant number 465194077 (Priority Programme SPP 2311, Subproject SimLivA). Matthias König has received funds from the EOSCsecretariat.eu which has received funding from the European Union's Horizon Programme call H2020-INFRAEOSC-05-2018-2019, grant Agreement number 831644.</p>",
+  "access_right": "open",
+  "license": "LGPL-3.0",
+  "keywords": [
+    "modeling",
+    "standardization",
+    "SBML",
+    "SED-ML",
+    "COMBINE"
+  ],
+  "communities": [
+    {
+      "identifier": "eoscsecretariat"
+    }
+  ],
+  "grants": [
+    {
+      "id": "831644"
+    }
+  ]
+}

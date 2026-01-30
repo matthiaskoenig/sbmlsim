@@ -1,29 +1,23 @@
-"""
-Example shows basic model simulations and plotting.
+"""Example shows basic model simulations and plotting with scan.
 """
 import numpy as np
 
-from sbmlsim.result import XResult
+from sbmlsim.resources import REPRESSILATOR_SBML
 from sbmlsim.simulation import Dimension, ScanSim, Timecourse, TimecourseSim
-from sbmlsim.simulator import SimulatorSerial
-from sbmlsim.test import MODEL_REPRESSILATOR
+from sbmlsim.simulator import SimulatorSerialRR
+from sbmlsim.xresult import XResult
 
 
 def run_scan0d() -> XResult:
     """Perform a parameter 0D scan, i.e., simple simulation"""
-    simulator = SimulatorSerial(model=MODEL_REPRESSILATOR)
-    Q_ = simulator.ureg.Quantity
+    simulator = SimulatorSerialRR.from_sbml(sbml_path=REPRESSILATOR_SBML)
 
     scan0d = ScanSim(
         simulation=TimecourseSim(
             [
                 Timecourse(start=0, end=100, steps=100, changes={}),
-                Timecourse(
-                    start=0, end=60, steps=100, changes={"[X]": Q_(10, "dimensionless")}
-                ),
-                Timecourse(
-                    start=0, end=60, steps=100, changes={"X": Q_(10, "dimensionless")}
-                ),
+                Timecourse(start=0, end=60, steps=100, changes={"[X]": 10}),
+                Timecourse(start=0, end=60, steps=100, changes={"X": 10}),
             ]
         ),
         dimensions=[],
@@ -36,26 +30,21 @@ def run_scan1d() -> XResult:
 
     Scanning a single parameter.
     """
-    simulator = SimulatorSerial(model=MODEL_REPRESSILATOR)
-    Q_ = simulator.ureg.Quantity
+    simulator = SimulatorSerialRR.from_sbml(sbml_path=REPRESSILATOR_SBML)
 
     scan1d = ScanSim(
         simulation=TimecourseSim(
             [
                 Timecourse(start=0, end=100, steps=100, changes={}),
-                Timecourse(
-                    start=0, end=60, steps=100, changes={"[X]": Q_(10, "dimensionless")}
-                ),
-                Timecourse(
-                    start=0, end=60, steps=100, changes={"X": Q_(10, "dimensionless")}
-                ),
+                Timecourse(start=0, end=60, steps=100, changes={"[X]": 10}),
+                Timecourse(start=0, end=60, steps=100, changes={"X": 10}),
             ]
         ),
         dimensions=[
             Dimension(
                 "dim1",
                 changes={
-                    "n": Q_(np.linspace(start=2, stop=10, num=8), "dimensionless"),
+                    "n": np.linspace(start=2, stop=10, num=8),
                 },
             )
         ],
@@ -66,32 +55,27 @@ def run_scan1d() -> XResult:
 
 def run_scan2d() -> XResult:
     """Perform a parameter scan"""
-    simulator = SimulatorSerial(model=MODEL_REPRESSILATOR)
-    Q_ = simulator.ureg.Quantity
+    simulator = SimulatorSerialRR.from_sbml(sbml_path=REPRESSILATOR_SBML)
 
     scan2d = ScanSim(
         simulation=TimecourseSim(
             [
                 Timecourse(start=0, end=100, steps=100, changes={}),
-                Timecourse(
-                    start=0, end=60, steps=100, changes={"[X]": Q_(10, "dimensionless")}
-                ),
-                Timecourse(
-                    start=0, end=60, steps=100, changes={"X": Q_(10, "dimensionless")}
-                ),
+                Timecourse(start=0, end=60, steps=100, changes={"[X]": 10}),
+                Timecourse(start=0, end=60, steps=100, changes={"X": 10}),
             ]
         ),
         dimensions=[
             Dimension(
                 "dim1",
                 changes={
-                    "n": Q_(np.linspace(start=2, stop=10, num=8), "dimensionless"),
+                    "n": np.linspace(start=2, stop=10, num=8),
                 },
             ),
             Dimension(
                 "dim2",
                 changes={
-                    "Y": Q_(np.logspace(start=2, stop=2.5, num=4), "dimensionless"),
+                    "Y": np.logspace(start=2, stop=2.5, num=4),
                 },
             ),
         ],
@@ -101,28 +85,21 @@ def run_scan2d() -> XResult:
 
 def run_scan1d_distribution() -> XResult:
     """Perform a parameter scan by sampling from a distribution"""
-    simulator = SimulatorSerial(model=MODEL_REPRESSILATOR)
-    Q_ = simulator.ureg.Quantity
+    simulator = SimulatorSerialRR.from_sbml(sbml_path=REPRESSILATOR_SBML)
 
     scan1d = ScanSim(
         simulation=TimecourseSim(
             [
                 Timecourse(start=0, end=100, steps=100, changes={}),
-                Timecourse(
-                    start=0, end=60, steps=100, changes={"[X]": Q_(10, "dimensionless")}
-                ),
-                Timecourse(
-                    start=0, end=60, steps=100, changes={"X": Q_(10, "dimensionless")}
-                ),
+                Timecourse(start=0, end=60, steps=100, changes={"[X]": 10}),
+                Timecourse(start=0, end=60, steps=100, changes={"X": 10}),
             ]
         ),
         dimensions=[
             Dimension(
                 "dim1",
                 changes={
-                    "n": Q_(
-                        np.random.normal(loc=5.0, scale=0.2, size=50), "dimensionless"
-                    ),
+                    "n": np.random.normal(loc=5.0, scale=0.2, size=50),
                 },
             )
         ],
@@ -135,20 +112,17 @@ if __name__ == "__main__":
 
     column = "PX"
 
-    """
     # scan0d
     xres = run_scan0d()
-    for key in ['PX', 'PY', 'PZ']:
+    for key in ["PX", "PY", "PZ"]:
         plt.plot(xres.time, xres[key], label=key)
     plt.legend()
     plt.show()
-
 
     # scan1d
     xres = run_scan1d()
     xres.xds[column].plot()
     plt.show()
-    """
 
     # scan1d_distrib
     xres = run_scan1d_distribution()

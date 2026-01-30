@@ -1,0 +1,153 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<sedML xmlns="http://sed-ml.org/sed-ml/level1/version4" level="1" version="4">
+  <listOfModels>
+    <model id="model0" language="urn:sedml:language:sbml.level-3.version-1" source="case_01.xml"/>
+  </listOfModels>
+  <listOfSimulations>
+    <uniformTimeCourse id="sim0" initialTime="0" outputStartTime="0" outputEndTime="10" numberOfSteps="10">
+      <algorithm kisaoID="KISAO:0000019"/>
+    </uniformTimeCourse>
+  </listOfSimulations>
+  <listOfTasks>
+    <task id="task0" modelReference="model0" simulationReference="sim0"/>
+  </listOfTasks>
+  <listOfDataGenerators>
+    <dataGenerator id="dg_time" name="time">
+      <math xmlns="http://www.w3.org/1998/Math/MathML">
+        <ci> time </ci>
+      </math>
+      <listOfVariables>
+        <variable id="time" symbol="urn:sedml:symbol:time" taskReference="task0" modelReference="model0"/>
+      </listOfVariables>
+    </dataGenerator>
+    <dataGenerator id="dg_S1" name="S1">
+      <math xmlns="http://www.w3.org/1998/Math/MathML">
+        <ci> S1 </ci>
+      </math>
+      <listOfVariables>
+        <variable id="S1" target="/sbml:sbml/sbml:model/sbml:listOfSpecies/sbml:species[@id=&apos;S1&apos;]" taskReference="task0" modelReference="model0"/>
+      </listOfVariables>
+    </dataGenerator>
+    <dataGenerator id="dg_S1_error">
+      <math xmlns="http://www.w3.org/1998/Math/MathML">
+      <apply>
+        <times/>
+        <cn>0.2</cn>
+        <ci> S1 </ci>
+        </apply>
+      </math>
+      <listOfVariables>
+        <variable id="S1" target="/sbml:sbml/sbml:model/sbml:listOfSpecies/sbml:species[@id=&apos;S1&apos;]" taskReference="task0" modelReference="model0"/>
+      </listOfVariables>
+    </dataGenerator>
+    <dataGenerator id="dg_S2" name="S2">
+      <math xmlns="http://www.w3.org/1998/Math/MathML">
+        <ci> S2 </ci>
+      </math>
+      <listOfVariables>
+        <variable id="S2" target="/sbml:sbml/sbml:model/sbml:listOfSpecies/sbml:species[@id=&apos;S2&apos;]" taskReference="task0" modelReference="model0"/>
+      </listOfVariables>
+    </dataGenerator>
+    <dataGenerator id="dg_S2_error">
+      <math xmlns="http://www.w3.org/1998/Math/MathML">
+      <apply>
+        <times/>
+        <cn>0.1</cn>
+        <ci> S2 </ci>
+        </apply>
+      </math>
+      <listOfVariables>
+        <variable id="S2" target="/sbml:sbml/sbml:model/sbml:listOfSpecies/sbml:species[@id=&apos;S2&apos;]" taskReference="task0" modelReference="model0"/>
+      </listOfVariables>
+    </dataGenerator>
+    <dataGenerator id="dg_time_error">
+      <math xmlns="http://www.w3.org/1998/Math/MathML">
+      <apply>
+        <times/>
+        <cn>0.1</cn>
+        <ci> time </ci>
+      </apply>
+      </math>
+      <listOfVariables>
+         <variable id="time" symbol="urn:sedml:symbol:time" taskReference="task0" modelReference="model0"/>
+      </listOfVariables>
+    </dataGenerator>
+  </listOfDataGenerators>
+  <listOfOutputs>
+    <plot2D id="plot_points" name="points">
+      <xAxis name="time" type="lin"/>
+      <yAxis name="concentration" type="lin"/>
+      <listOfCurves>
+        <curve id="curve_S1_points" name="S1" xDataReference="dg_time" yDataReference="dg_S1" xErrorUpper="dg_time_error" yErrorUpper="dg_S1_error" type="points" style="style_blue"/>
+        <curve id="curve_S2_points" name="S2" xDataReference="dg_time" yDataReference="dg_S2" xErrorUpper="dg_time_error" yErrorUpper="dg_S2_error" type="points" style="style_orange"/>
+      </listOfCurves>
+    </plot2D>
+    <plot2D id="plot_bar" name="bar">
+      <xAxis name="time" type="lin"/>
+      <yAxis name="concentration" type="lin"/>
+      <listOfCurves>
+        <curve id="curve_S1_bar" name="S1" xDataReference="dg_time" yDataReference="dg_S1" xErrorUpper="dg_time_error" yErrorUpper="dg_S1_error" type="bar" style="style_blue_bar"/>
+        <curve id="curve_S2_bar" name="S2" xDataReference="dg_time" yDataReference="dg_S2" xErrorUpper="dg_time_error" yErrorUpper="dg_S2_error" type="bar" style="style_orange_bar"/>
+      </listOfCurves>
+    </plot2D>
+    <plot2D id="plot_barStacked" name="barStacked">
+      <xAxis name="time" type="lin"/>
+      <yAxis name="concentration" type="lin"/>
+      <listOfCurves>
+        <curve id="curve_S1_barStacked" name="S1" xDataReference="dg_time" yDataReference="dg_S1" xErrorUpper="dg_time_error" yErrorUpper="dg_S1_error" type="barStacked" style="style_blue_bar"/>
+        <curve id="curve_S2_barStacked" name="S2" xDataReference="dg_time" yDataReference="dg_S2" xErrorUpper="dg_time_error" yErrorUpper="dg_S2_error" type="barStacked" style="style_orange_bar"/>
+      </listOfCurves>
+    </plot2D>
+    <plot2D id="plot_horizontalBar" name="horizontalBar">
+      <xAxis name="time" type="lin"/>
+      <yAxis name="concentration" type="lin"/>
+      <listOfCurves>
+        <curve id="curve_S1_horizontalBar" name="S1" xDataReference="dg_time" yDataReference="dg_S1" xErrorUpper="dg_time_error" yErrorUpper="dg_S1_error" type="horizontalBar" style="style_blue_bar"/>
+        <curve id="curve_S2_horizontalBar" name="S2" xDataReference="dg_time" yDataReference="dg_S2" xErrorUpper="dg_time_error" yErrorUpper="dg_S2_error" type="horizontalBar" style="style_orange_bar"/>
+      </listOfCurves>
+    </plot2D>
+    <plot2D id="plot_horizontalBarStacked" name="horizontalBarStacked">
+      <xAxis name="time" type="lin"/>
+      <yAxis name="concentration" type="lin"/>
+      <listOfCurves>
+        <curve id="curve_S1_horizontalBarStacked" name="S1" xDataReference="dg_time" yDataReference="dg_S1" xErrorUpper="dg_time_error" yErrorUpper="dg_S1_error" type="horizontalBarStacked" style="style_blue_bar"/>
+        <curve id="curve_S2_horizontalBarStacked" name="S2" xDataReference="dg_time" yDataReference="dg_S2" xErrorUpper="dg_time_error" yErrorUpper="dg_S2_error" type="horizontalBarStacked" style="style_orange_bar"/>
+      </listOfCurves>
+    </plot2D>
+    <figure id="figure0" numRows="3" numCols="2">
+      <listOfSubPlots>
+        <subPlot id="subplot_points" plot="plot_points" row="1" col="1" rowSpan="1" colSpan="2"/>
+        <subPlot id="subplot_bar" plot="plot_bar" row="2" col="1" rowSpan="1" colSpan="1"/>
+        <subPlot id="subplot_barStacked" plot="plot_barStacked" row="2" col="2" rowSpan="1" colSpan="1"/>
+        <subPlot id="subplot_horizontalBar" plot="plot_horizontalBar" row="3" col="1" rowSpan="1" colSpan="1"/>
+        <subPlot id="subplot_horizontalBarStacked" plot="plot_horizontalBarStacked" row="3" col="2" rowSpan="1" colSpan="1"/>
+      </listOfSubPlots>
+    </figure>
+  </listOfOutputs>
+  <listOfStyles>
+    <style id="style_blue">
+      <line type="solid" color="#1f77b4aa" thickness="4"/>
+      <marker type="square" size="6" fill="#1f77b4aa" lineColor="#000000ff" lineThickness="2"/>
+    </style>
+    <style id="style_blue_bar">
+      <line type="solid" color="#000000ff" thickness="2"/>
+      <fill color="#1f77b4aa"/>
+    </style>
+    <style id="style_orange">
+      <line type="solid" color="#ff7f0eaa" thickness="4"/>
+      <marker type="square" size="6" fill="#ff7f0eaa" lineColor="#000000ff" lineThickness="2"/>
+    </style>
+    <style id="style_orange_bar">
+      <line type="solid" color="#000000ff" thickness="2"/>
+      <fill color="#ff7f0eaa"/>
+    </style>
+    <style id="style_green">
+      <line type="solid" color="#2ca02caa" thickness="4"/>
+      <marker type="square" size="6" fill="#2ca02caa" lineColor="#000000ff" lineThickness="2"/>
+    </style>
+    <style id="style_green_bar">
+      <line type="solid" color="#000000ff" thickness="2"/>
+      <fill color="#2ca02caa"/>
+    </style>
+  </listOfStyles>
+</sedML>

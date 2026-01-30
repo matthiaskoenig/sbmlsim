@@ -1,0 +1,130 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<sedML xmlns="http://sed-ml.org/sed-ml/level1/version4" level="1" version="4">
+  <listOfModels>
+    <model id="model0" language="urn:sedml:language:sbml.level-3.version-1" source="case_01.xml"/>
+  </listOfModels>
+  <listOfSimulations>
+    <uniformTimeCourse id="sim0" initialTime="0" outputStartTime="0" outputEndTime="10" numberOfSteps="30">
+      <algorithm kisaoID="KISAO:0000019"/>
+    </uniformTimeCourse>
+  </listOfSimulations>
+  <listOfTasks>
+    <task id="task0" modelReference="model0" simulationReference="sim0"/>
+  </listOfTasks>
+  <listOfDataGenerators>
+    <dataGenerator id="dg_NONE">
+      <math xmlns="http://www.w3.org/1998/Math/MathML">
+        <ci> S1 </ci>
+      </math>
+      <listOfVariables>
+        <variable id="S1" target="/sbml:sbml/sbml:model/sbml:listOfSpecies/sbml:species[@id=&apos;S1&apos;]" taskReference="task0" modelReference="model0"/>
+      </listOfVariables>
+    </dataGenerator>
+    <dataGenerator id="dg_SOLID">
+      <math xmlns="http://www.w3.org/1998/Math/MathML">
+      <apply>
+          <plus/>
+          <ci> S1 </ci>
+          <ci> 5 </ci>
+        </apply>
+      </math>
+      <listOfVariables>
+        <variable id="S1" target="/sbml:sbml/sbml:model/sbml:listOfSpecies/sbml:species[@id=&apos;S1&apos;]" taskReference="task0" modelReference="model0"/>
+      </listOfVariables>
+    </dataGenerator>
+        <dataGenerator id="dg_DASH">
+      <math xmlns="http://www.w3.org/1998/Math/MathML">
+      <apply>
+          <plus/>
+          <ci> S1 </ci>
+          <ci> 4 </ci>
+        </apply>
+      </math>
+      <listOfVariables>
+        <variable id="S1" target="/sbml:sbml/sbml:model/sbml:listOfSpecies/sbml:species[@id=&apos;S1&apos;]" taskReference="task0" modelReference="model0"/>
+      </listOfVariables>
+    </dataGenerator>
+        <dataGenerator id="dg_DOT">
+      <math xmlns="http://www.w3.org/1998/Math/MathML">
+      <apply>
+          <plus/>
+          <ci> S1 </ci>
+          <ci> 3 </ci>
+        </apply>
+      </math>
+      <listOfVariables>
+        <variable id="S1" target="/sbml:sbml/sbml:model/sbml:listOfSpecies/sbml:species[@id=&apos;S1&apos;]" taskReference="task0" modelReference="model0"/>
+      </listOfVariables>
+    </dataGenerator>
+        <dataGenerator id="dg_DASHDOT">
+      <math xmlns="http://www.w3.org/1998/Math/MathML">
+      <apply>
+          <plus/>
+          <ci> S1 </ci>
+          <ci> 2 </ci>
+        </apply>
+      </math>
+      <listOfVariables>
+        <variable id="S1" target="/sbml:sbml/sbml:model/sbml:listOfSpecies/sbml:species[@id=&apos;S1&apos;]" taskReference="task0" modelReference="model0"/>
+      </listOfVariables>
+    </dataGenerator>
+    <dataGenerator id="dg_DASHDOTDOT">
+      <math xmlns="http://www.w3.org/1998/Math/MathML">
+      <apply>
+          <plus/>
+          <ci> S1 </ci>
+          <ci> 1 </ci>
+        </apply>
+      </math>
+      <listOfVariables>
+        <variable id="S1" target="/sbml:sbml/sbml:model/sbml:listOfSpecies/sbml:species[@id=&apos;S1&apos;]" taskReference="task0" modelReference="model0"/>
+      </listOfVariables>
+    </dataGenerator>
+    <dataGenerator id="dg_time" name="task0.time">
+      <math xmlns="http://www.w3.org/1998/Math/MathML">
+        <ci> task0_____time </ci>
+      </math>
+      <listOfVariables>
+        <variable id="task0_____time" symbol="urn:sedml:symbol:time" taskReference="task0" modelReference="model0"/>
+      </listOfVariables>
+    </dataGenerator>
+  </listOfDataGenerators>
+  <listOfOutputs>
+    <plot2D id="plot_0" name="LineTypes">
+      <listOfCurves>
+        <curve id="curve_NONE" name="none" logX="false" style="style_NONE" xDataReference="dg_time" logY="false" yDataReference="dg_NONE" type="points"/>
+        <curve id="curve_SOLID" name="solid" logX="false" style="style_SOLID" xDataReference="dg_time" logY="false" yDataReference="dg_SOLID" type="points"/>
+        <curve id="curve_DASH" name="dash" logX="false" style="style_DASH" xDataReference="dg_time" logY="false" yDataReference="dg_DASH" type="points"/>
+        <curve id="curve_DOT" name="dot" logX="false" style="style_DOT" xDataReference="dg_time" logY="false" yDataReference="dg_DOT" type="points"/>
+        <curve id="curve_DASHDOT" name="dashDot" logX="false" style="style_DASHDOT" xDataReference="dg_time" logY="false" yDataReference="dg_DASHDOT" type="points"/>
+        <curve id="curve_DASHDOTDOT" name="dashDotDot" logX="false" style="style_DASHDOTDOT" xDataReference="dg_time" logY="false" yDataReference="dg_DASHDOTDOT" type="points"/>
+      </listOfCurves>
+    </plot2D>
+  </listOfOutputs>
+  <listOfStyles>
+    <style id="style_NONE">
+      <line type="none" color="#000000" thickness="2"/>
+      <marker type="none"/>
+    </style>
+    <style id="style_SOLID">
+      <line type="solid" color="#000000" thickness="2"/>
+      <marker type="none"/>
+    </style>
+    <style id="style_DASH">
+      <line type="dash" color="#000000" thickness="2"/>
+      <marker type="none"/>
+    </style>
+    <style id="style_DOT">
+      <line type="dot" color="#000000" thickness="2"/>
+      <marker type="none"/>
+    </style>
+    <style id="style_DASHDOT">
+      <line type="dashDot" color="#000000" thickness="2"/>
+      <marker type="none"/>
+    </style>
+    <style id="style_DASHDOTDOT">
+      <line type="dashDotDot" color="#000000" thickness="2"/>
+      <marker type="none"/>
+    </style>
+  </listOfStyles>
+</sedML>

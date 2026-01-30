@@ -1,28 +1,31 @@
 """
 Example for handling units in simulations and results.
 """
-from pprint import pprint
 
 import numpy as np
 from matplotlib import pyplot as plt
+from sbmlutils.console import console
 
-from sbmlsim.plot.plotting_matplotlib import add_line
-from sbmlsim.result import XResult
+from sbmlsim.resources import DEMO_SBML
 from sbmlsim.simulation import Dimension, ScanSim, Timecourse, TimecourseSim
-from sbmlsim.simulator.simulation_serial import SimulatorSerial as Simulator
-from sbmlsim.test import MODEL_DEMO
+from sbmlsim.simulator.rr_simulator_serial import SimulatorSerialRR
+from sbmlsim.units import Quantity, UnitsInformation
+from sbmlsim.xresult import XResult
+
 
 
 def run_demo_example():
-    """ Run various timecourses. """
-    simulator = Simulator(MODEL_DEMO)
-    # build quantities using the unit registry for the model
-    Q_ = simulator.ureg.Quantity
-    pprint(simulator.udict)
+    """Run various timecourses."""
+    simulator = SimulatorSerialRR.from_sbml(DEMO_SBML)
+
+    # units information
+    uinfo = UnitsInformation.from_sbml(DEMO_SBML)
+    Q_ = uinfo.Q_
 
     # 1. simple timecourse simulation
     print("*** setting concentrations and amounts ***")
 
+    # FIXME: units of changes are not used for conversion
     tc_scan = ScanSim(
         simulation=TimecourseSim(
             [
@@ -51,9 +54,9 @@ def run_demo_example():
     )
 
     # print(tc_sim)
-    # xres = simulator.run_timecourse(tc_sim)  # type: XResult
-    xres = simulator.run_scan(tc_scan)  # type: XResult
-    # print(tc_sim)  # simulation has been unit normalized
+    xres: XResult = simulator.run_scan(tc_scan)
+    xres.set_units(udict=uinfo.udict)
+    console.log(xres)
 
     # create figure
     fig, (ax1, ax2, ax3, ax4) = plt.subplots(nrows=1, ncols=4, figsize=(20, 5))
@@ -67,18 +70,20 @@ def run_demo_example():
         {"xunit": "hr", "yunit": "pmole/cm**3"},
     ]
 
+    ax: plt.Axes
     for ax, ax_units in dict(zip(axes, axes_units)).items():
         xunit = ax_units["xunit"]
         yunit = ax_units["yunit"]
 
         for key in ["[e__A]", "[e__B]", "[e__C]", "[c__A]", "[c__B]", "[c__C]"]:
-            add_line(
-                ax,
-                xres,
-                "time",
-                key,
-                xunit=xunit,
-                yunit=yunit,
+            # => How to better handle units !!!
+            # FIXME: correct handling of units; and subsequent conversion
+            # Mapping of model to units needed
+
+            # FIXME: correct reduction of additional dimensions!
+            ax.plot(
+                Q_(xres["time"].values, xres.units["time"]).to(xunit).m,
+                Q_(xres[key].values, xres.units[key]).to(yunit).m,
                 label=f"{key} [{yunit}]",
             )
         ax.legend()

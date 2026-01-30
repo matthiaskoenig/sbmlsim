@@ -1,0 +1,17 @@
+conditionId	conditionName	BW	Ri_icg	IVDOSE_icg
+Andersen1999_task_icg_iv	Andersen1999 (0.5 mg/kg ICG)	83.4		41.7
+Burns1991_task_icg_iv_healthy	Burns1991 (0.5 mg/kg ICG)	75.0		37.5
+Caesar1961_task_icg_inf_Control	Caesar1961 (0.5 mg/min ICG)		0.5	
+Chijiiwa2000_task_icg_iv	Chijiiwa2000 (37.5 mg ICG)			37.5
+Grainger1983_task_icg_iv	Grainger1983 (0.25 mg/kg ICG)	75.0		18.75
+Grundmann1992_task_icg_iv	Grundmann1992 (0.3 mg/kg ICG)	75.0		22.5
+Kamimori2000_task_icg_iv	Kamimori2000 (0.5 mg/kg ICG)	58.6		29.3
+Klockowski1990_task_icg_iv	Klockowski1990 (0.5 mg/kg ICG)	75.0		37.5
+Leevy1962_task_icg_iv0__DOT__15	Leevy1962 (0.15 mg/kg ICG)	75.0		11.25
+Leevy1962_task_icg_iv0__DOT__25	Leevy1962 (0.25 mg/kg ICG)	75.0		18.75
+Leevy1962_task_icg_iv0__DOT__5	Leevy1962 (0.5 mg/kg ICG)	75.0		37.5
+Leevy1962_task_icg_inf03	Leevy1962 (0.3 mg/min/m^2 ICG and 10 mg)		0.5214	10.0
+Meijer1988_task_icg_iv_0__DOT__5	Meijer1988 (0.5 mg/kg ICG)	62.167		31.0835
+Meijer1988_task_icg_iv_1__DOT__0	Meijer1988 (1.0 mg/kg ICG)	63.8		63.8
+Meijer1988_task_icg_iv_2__DOT__0	Meijer1988 (2.0 mg/kg ICG)	70.0		140.0
+Niemann2000_task_icg_iv	Niemann2000 (10 mg ICG)	80.0		10.0

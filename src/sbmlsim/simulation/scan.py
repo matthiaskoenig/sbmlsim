@@ -1,15 +1,18 @@
-import itertools
-import logging
+"""Scan simulation.
+
+Allows scans over other simulations.
+"""
 from copy import deepcopy
 from typing import Dict, List
 
 import numpy as np
+from sbmlutils import log
 
-from sbmlsim.simulation import AbstractSim, Dimension, TimecourseSim
-from sbmlsim.units import UnitRegistry, Units
+from sbmlsim.simulation import AbstractSim, Dimension
+from sbmlsim.units import UnitsInformation
 
 
-logger = logging.getLogger()
+logger = log.get_logger(__name__)
 
 
 class ScanSim(AbstractSim):
@@ -24,7 +27,7 @@ class ScanSim(AbstractSim):
         dimensions: List[Dimension] = None,
         mapping: Dict[str, int] = None,
     ):
-        """Scanning a simulation.
+        """Scan a simulation.
 
         Parameters or initial conditions can be scanned.
         Multiple parameters will result in a multi-dimensional scan.
@@ -43,7 +46,7 @@ class ScanSim(AbstractSim):
         self.simulation = simulation
         if dimensions is None:
             # handling the simple simulation case
-            dimensions = [Dimension("dim0", index=np.arange(1))]
+            dimensions = []
         self.dimensions = dimensions
         dimension_keys = [dim.dimension for dim in self.dimensions]
         if len(dimension_keys) > len(set(dimension_keys)):
@@ -59,16 +62,18 @@ class ScanSim(AbstractSim):
             )
         self.mapping = mapping
 
-    def __repr__(self):
+    def __repr__(self) -> str:
+        """Get representation."""
         return (
             f"Scan({self.simulation.__class__.__name__}: "
             f"[{', '.join([str(d) for d in self.dimensions])}])"
         )
 
-    def dimensions(self):
+    def dimensions(self) -> List[Dimension]:
+        """Get dimensions."""
         return self.dimensions
 
-    def get_dimension(self, key):
+    def get_dimension(self, key: str) -> Dimension:
         """Get dimension by key."""
         for dim in self.dimensions:
             if dim.dimension == dim:
@@ -76,34 +81,38 @@ class ScanSim(AbstractSim):
         raise KeyError(f"Dimension with key '{key}' does not exist.")
 
     def indices(self):
-        """Indices of all combinations."""
+        """Get indices of all combinations."""
         return Dimension.indices_from_dimensions(self.dimensions)
 
     def add_model_changes(self, model_changes: Dict) -> None:
-        """Adds model changes to first timecourse."""
+        """Add model changes to first timecourse."""
+        # import here to avoid circular import
+        from sbmlsim.simulation import TimecourseSim
+
         if self.simulation and isinstance(self.simulation, TimecourseSim):
             self.simulation.add_model_changes(model_changes)
 
-    def normalize(self, udict: Dict, ureg: UnitRegistry):
-        """Normalizes the scan.
+    def normalize(self, uinfo: UnitsInformation):
+        """Normalize units in scan.
+
         Requires normalization of timecourse simulation as well
         as all dimensions in the scan.
         """
         # normalize simulation
-        self.simulation.normalize(udict=udict, ureg=ureg)
+        # logger.error("NORMALIZING SCAN")
+        self.simulation.normalize(uinfo=uinfo)
 
         # normalize changes in all dimensions
         for scan_dim in self.dimensions:
-            scan_dim.changes = Units.normalize_changes(
-                scan_dim.changes, udict=udict, ureg=ureg
+            scan_dim.changes = UnitsInformation.normalize_changes(
+                scan_dim.changes, uinfo=uinfo
             )
 
     def to_simulations(self):
-        """Flattens the scan to individual simulations.
+        """Flatten the scan to individual simulations.
+
         Here the changes are appended.
-
         Scan should be normalized before calling this function.
-
         Necessary to track the results.
         """
         # create all combinations of the scan
@@ -128,29 +137,18 @@ class ScanSim(AbstractSim):
 
             simulations.append(sim_new)
 
-        # print(simulations)
-        # for sim in simulations:
-        #    print("-" * 80)
-        #    print(sim)
-
         return indices, simulations
 
 
 if __name__ == "__main__":
-    import warnings
-
-    import numpy as np
-
     from sbmlsim.simulation import Timecourse, TimecourseSim
-    from sbmlsim.units import Quantity, UnitRegistry
-
-    with warnings.catch_warnings():
-        warnings.simplefilter("ignore")
-        Quantity([])
+    from sbmlsim.units import UnitRegistry
 
     ureg = UnitRegistry()
     Q_ = ureg.Quantity
-    udict = {k: "dimensionless" for k in ["X", "[X]", "n", "Y"]}
+    uinfo = UnitsInformation(
+        udict={k: "dimensionless" for k in ["X", "[X]", "n", "Y"]}, ureg=ureg
+    )
 
     scan2d = ScanSim(
         simulation=TimecourseSim(
@@ -184,4 +182,4 @@ if __name__ == "__main__":
         ],
     )
     indices, sims = scan2d.to_simulations()
-    scan2d.normalize(udict=udict, ureg=ureg)
+    scan2d.normalize(uinfo=uinfo)

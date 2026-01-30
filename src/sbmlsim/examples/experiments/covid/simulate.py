@@ -3,45 +3,48 @@ Run COVID-19 model experiments.
 """
 from pathlib import Path
 
+from sbmlsim.combine.sedml.parser import SEDMLSerializer
+from sbmlsim.combine.sedml.runner import execute_sedml
 from sbmlsim.examples.experiments.covid.experiments import (
     Bertozzi2020,
     Carcione2020,
     Cuadros2020,
 )
-from sbmlsim.experiment import ExperimentRunner
-from sbmlsim.report.experiment_report import ExperimentReport, ReportResults
-from sbmlsim.simulator import SimulatorSerial
-from sbmlsim.simulator.simulation_ray import SimulatorParallel
+from sbmlsim.experiment.runner import run_experiments
 
 
-def covid_experiments(base_path: Path, results_path: Path):
-    runner = ExperimentRunner(
-        [
-            Cuadros2020,
-            # Bertozzi2020,
-            Carcione2020,
-        ],
-        simulator=SimulatorParallel(),
-        base_path=base_path,
-        data_path=base_path,
+def run_covid_examples(output_path: Path) -> None:
+    experiments = [
+        Bertozzi2020,
+        Cuadros2020,
+        Carcione2020,
+    ]
+    run_experiments(
+        experiments=experiments,
+        output_path=output_path / "sbmlsim",
+        data_path=output_path,
+        base_path=output_path,
+        parallel=True,
     )
-    results = runner.run_experiments(
-        output_path=base_path / "results",
-        show_figures=True,
-        reduced_selections=False,
-    )
-    report_results = ReportResults()
-    for exp_result in results:
-        report_results.add_experiment_result(exp_result=exp_result)
 
-    report = ExperimentReport(report_results)
-    report.create_report(output_path=results_path)
+    for experiment in experiments:
+        exp_id = experiment.__name__
+        # serialize to SED-ML/OMEX archive
+        omex_path = output_path / f"{exp_id}.omex"
+        serializer = SEDMLSerializer(
+            exp_class=experiment,
+            working_dir=output_path / "omex",
+            sedml_filename=f"{exp_id}_sedml.xml",
+            omex_path=omex_path,
+        )
+
+        # execute OMEX archive
+        execute_sedml(
+            path=omex_path,
+            working_dir=output_path / "sbmlsim_omex",
+            output_path=output_path / "sbmlsim_omex",
+        )
 
 
 if __name__ == "__main__":
-    base_path = Path(__file__).parent
-    results_path = base_path / "results"
-    if not results_path.exists():
-        results_path.mkdir(parents=True)
-
-    covid_experiments(base_path=base_path, results_path=results_path)
+    run_covid_examples(output_path=Path(__file__).parent / "results")

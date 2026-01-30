@@ -9,9 +9,10 @@ from typing import Dict
 import numpy as np
 
 from sbmlsim.data import Data
-from sbmlsim.experiment import SimulationExperiment
+from sbmlsim.experiment import ExperimentRunner, SimulationExperiment
 from sbmlsim.model import AbstractModel, RoadrunnerSBMLModel
 from sbmlsim.plot import Axis, Figure
+from sbmlsim.resources import DEMO_SBML
 from sbmlsim.simulation import (
     AbstractSim,
     Dimension,
@@ -19,25 +20,27 @@ from sbmlsim.simulation import (
     Timecourse,
     TimecourseSim,
 )
-from sbmlsim.simulation.sensititvity import ModelSensitivity, SensitivityType
-from sbmlsim.simulator.simulation_ray import SimulatorParallel, SimulatorSerial
+from sbmlsim.simulation.sensitivity import ModelSensitivity
+from sbmlsim.simulator import SimulatorSerialRR
 from sbmlsim.task import Task
-from sbmlsim.test import MODEL_DEMO
 
 
 class DemoExperiment(SimulationExperiment):
     """Simple repressilator experiment."""
 
     def models(self) -> Dict[str, AbstractModel]:
-        return {"model": RoadrunnerSBMLModel(source=MODEL_DEMO, ureg=self.ureg)}
+        """Define models."""
+        return {"model": RoadrunnerSBMLModel(source=DEMO_SBML, ureg=self.ureg)}
 
     def tasks(self) -> Dict[str, Task]:
+        """Define tasks."""
         return {
             f"task_{key}": Task(model="model", simulation=key)
             for key in self.simulations()
         }
 
     def simulations(self) -> Dict[str, AbstractSim]:
+        """Define simulations."""
         return {
             **self.sim_scans(),
         }
@@ -57,7 +60,7 @@ class DemoExperiment(SimulationExperiment):
             ),
             dimensions=[
                 Dimension(
-                    "dim_init", changes={"[e__A]": Q_(np.linspace(5, 15, num=10), "mM")}
+                    "dim_init", changes={"[e__A]": Q_(np.linspace(5, 15, num=11), "mM")}
                 ),
                 ModelSensitivity.create_difference_dimension(
                     model=self._models["model"],
@@ -72,40 +75,55 @@ class DemoExperiment(SimulationExperiment):
         }
 
     def figures(self) -> Dict[str, Figure]:
+        # print(self._results.keys())
+        # print(self._results["task_scan_init"])
+
         unit_time = "min"
         unit_data = "mM"
 
-        fig1 = Figure(experiment=self, sid="Fig1", num_cols=2, num_rows=2)
+        selections = ["[e__A]", "[e__B]", "[e__C]", "[c__A]", "[c__B]", "[c__C]"]
+        self.add_selections_data(selections=["time"] + selections)
+
+        fig1 = Figure(experiment=self, sid="Fig1", num_cols=2, num_rows=1)
         plots = fig1.create_plots(
             xaxis=Axis("time", unit=unit_time),
             yaxis=Axis("data", unit=unit_data),
             legend=True,
         )
-        for k in [0, 2]:
-            for key in ["[e__A]", "[e__B]", "[e__C]", "[c__A]", "[c__B]", "[c__C]"]:
+        for k in [0, 1]:
+            for key in selections:
                 task_id = "task_scan_init"
+
+                # This should plot the individual curve(s), i.e. in a scan the
+                # additional dimensions have to be iterated over
                 plots[k].curve(
-                    x=Data(self, "time", task=task_id, unit=unit_time),
-                    y=Data(self, key, task=task_id, unit=unit_data),
+                    x=Data("time", task=task_id),
+                    y=Data(key, task=task_id),
                     label=key,
                 )
-        plots[2].yaxis.scale = "log"
+        plots[1].yaxis.scale = "log"
 
         return {
             fig1.sid: fig1,
         }
 
 
-def run(output_path):
+def run_demo_experiments(output_path: Path) -> None:
     """Run the example."""
     base_path = Path(__file__).parent
     data_path = base_path
-    simulator = SimulatorParallel()
 
-    exp = DemoExperiment(simulator=simulator, data_path=data_path, base_path=base_path)
-    exp.run(output_path=output_path / "results", show_figures=True)
+    runner = ExperimentRunner(
+        DemoExperiment,
+        simulator=SimulatorSerialRR(),
+        data_path=data_path,
+        base_path=base_path,
+    )
+    _results = runner.run_experiments(
+        output_path=output_path / "results", show_figures=True, reduced_selections=False
+    )
 
 
 if __name__ == "__main__":
     output_path = Path(".")
-    run(output_path=output_path)
+    run_demo_experiments(output_path=output_path)

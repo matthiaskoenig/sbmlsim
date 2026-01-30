@@ -37,7 +37,7 @@ Create a [minimal, complete, verifiable example](https://stackoverflow.com/help/
 <!-- Run the following code and paste the output between the ``` tickmarks below
 inside the details block.
 
-python -c "import sbmlsim;sbmlsim.show_versions()"
+depinfo sbmlsim
 
 -->
 

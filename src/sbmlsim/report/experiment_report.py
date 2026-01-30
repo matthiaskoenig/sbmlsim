@@ -1,42 +1,40 @@
-"""
-Create markdown report of simulation experiments.
-"""
+"""Create report of simulation experiments."""
 import json
-import logging
 import os
 import shutil
 import sys
-from collections import OrderedDict
 from enum import Enum
 from pathlib import Path
-from typing import Dict, List
+from typing import Dict, Optional
 
 import jinja2
+from sbmlutils import log
+from sbmlutils.console import console
 
 from sbmlsim import RESOURCES_DIR, __version__
 from sbmlsim.experiment import ExperimentResult, SimulationExperiment
 from sbmlsim.model import AbstractModel
 
 
-logger = logging.getLogger(__name__)
+logger = log.get_logger(__name__)
 TEMPLATE_PATH = RESOURCES_DIR / "templates"
 
 
 class ReportResults:
-
-    # FIXME: support filters
+    """Results for a ExperimentReport."""
 
     def __init__(self):
-        self.data = OrderedDict()  # type: OrderedDict[str, Dict]
+        """Construct ReportResults."""
+        self.data: Dict[str, Dict] = {}
 
     def to_json(self, json_path: Path):
-        """Write to JSON"""
+        """Write to JSON."""
         with open(json_path, "w") as fp:
-            json.dumps(self.data, indent=2)
+            json.dump(fp, self.data, indent=2)  # type: ignore
 
     @staticmethod
-    def from_json(self, json_path: Path):
-        """Read from JSON"""
+    def from_json(json_path: Path) -> "ReportResults":
+        """Read from JSON."""
         with open(json_path, "r") as fp:
             data = json.load(fp)
         results = ReportResults()
@@ -44,12 +42,8 @@ class ReportResults:
         return results
 
     def add_experiment_result(self, exp_result: ExperimentResult):
-        """Retrieves information for report from the ExperimentResult.
-
-        :param ExperimentResult:
-        :return:
-        """
-        experiment = exp_result.experiment  # type: SimulationExperiment
+        """Retrieve information for report from the ExperimentResult."""
+        experiment: SimulationExperiment = exp_result.experiment
         abs_path = exp_result.output_path
         rel_path = Path(".")
         exp_id = experiment.sid
@@ -60,7 +54,7 @@ class ReportResults:
             if isinstance(model, (Path, str)):
                 model_path = Path(model)
             elif isinstance(model, AbstractModel):
-                model_path = model.source.path
+                model_path = model.source.path  # type: ignore
 
             models[model_key] = Path(os.path.relpath(model_path, str(abs_path)))
 
@@ -68,7 +62,7 @@ class ReportResults:
         code_path = sys.modules[experiment.__module__].__file__
         with open(code_path, "r") as f_code:
             code = f_code.read()
-        code_path = Path(os.path.relpath(code_path, str(abs_path)))
+        code_path = Path(os.path.relpath(code_path, str(abs_path)))  # type: ignore
 
         datasets = {
             key: rel_path / f"{exp_id}_{key}.tsv" for key in experiment._datasets.keys()
@@ -76,7 +70,7 @@ class ReportResults:
 
         # parse meta data for figures (mapping based on figure keys)
         figures = {
-            key: rel_path / f"{exp_id}_{key}" for key in experiment._figures.keys()
+            key: rel_path / f"{exp_id}_{key}" for key in experiment._mpl_figures.keys()
         }
 
         self.data[exp_id] = {
@@ -90,7 +84,11 @@ class ReportResults:
 
 
 class ExperimentReport:
+    """Report for an experiment."""
+
     class ReportType(Enum):
+        """Type of report."""
+
         MARKDOWN = 1
         HTML = 2
         LATEX = 3
@@ -98,6 +96,7 @@ class ExperimentReport:
     def __init__(
         self, results: ReportResults, metadata: Dict = None, template_path=TEMPLATE_PATH
     ):
+        """Construct an ExperimentReport."""
         if isinstance(results, list):
             # FIXME: just a bugfix for handling the old outputs
             report_results = ReportResults()
@@ -115,11 +114,11 @@ class ExperimentReport:
     def create_report(
         self,
         output_path: Path,
-        filename=None,
+        filename: Optional[str] = None,
         report_type: ReportType = ReportType.HTML,
-        f_filter_context=None,
+        f_filter_context: Optional[Dict] = None,
         **kwargs,
-    ):
+    ) -> Path:
         """Create report of SimulationExperiments.
 
         Processes ExperimentResults to generate overall report.
@@ -130,19 +129,20 @@ class ExperimentReport:
         """
         env = jinja2.Environment(
             loader=jinja2.FileSystemLoader(str(self.template_path)),
-            extensions=["jinja2.ext.autoescape"],
+            extensions=[],
             trim_blocks=True,
             lstrip_blocks=True,
         )
 
-        def write_report(filename: str, context: Dict, template_str: str):
-            """Writes the report file from given context and template."""
+        def write_report(filename: str, context: Dict, template_str: str) -> Path:
+            """Write the report file from given context and template."""
             template = env.get_template(template_str)
             text = template.render(context)
             suffix = template_str.split(".")[-1]
-            out_file = output_path / f"{filename}.{suffix}"
+            out_file: Path = output_path / f"{filename}.{suffix}"
             with open(out_file, "w") as f_out:
                 f_out.write(text)
+            return out_file
 
         if report_type == self.ReportType.HTML:
             suffix = "html"
@@ -154,7 +154,6 @@ class ExperimentReport:
         if report_type in [self.ReportType.HTML, self.ReportType.MARKDOWN]:
             # report for individual simulation experiment
             for exp_id, context in self.data_dict.items():
-                # pprint(context)
                 write_report(
                     filename=f"{exp_id}/{exp_id}",
                     context=context,
@@ -171,12 +170,10 @@ class ExperimentReport:
         # for latex report the pngs have to be collected with correct paths
         # adapt context
         if report_type == self.ReportType.LATEX:
-            # pprint(context)
             if f_filter_context:
                 # filter subset of figures
                 # FIXME: more robust
                 f_filter_context(self.data_dict)
-            # pprint(context)
 
             # collect and copy figures
 
@@ -185,10 +182,14 @@ class ExperimentReport:
             if not figure_base_path.exists():
                 figure_base_path.mkdir(parents=True)
             for exp_id, exp_context in self.data_dict.items():
-                for fig_id, fig_path in exp_context["figures"].items():
+                for fig_path in exp_context["figures"].values():
                     shutil.copy(
                         str(output_path / exp_id / f"{fig_path}.png"),
                         str(figure_base_path / f"{fig_path}.png"),
                     )
 
-        write_report(filename=filename, context=context, template_str=f"index.{suffix}")
+        output_path = write_report(
+            filename=filename, context=context, template_str=f"index.{suffix}"
+        )
+        logger.info(f"Report created: 'file://{output_path}'")
+        return output_path

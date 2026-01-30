@@ -7,7 +7,7 @@ To create the documentation use
 ```
 
 ```bash
-(sbmlsim) cd docs
+(sbmlsim) cd docs_builder
 (sbmlsim) ./make_docs.sh
 ```
 

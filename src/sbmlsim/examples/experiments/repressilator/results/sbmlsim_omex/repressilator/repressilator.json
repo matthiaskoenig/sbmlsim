@@ -1,0 +1,624 @@
+{
+  "experiment_id": "repressilator",
+  "base_path": "/home/mkoenig/git/sbmlsim/src/sbmlsim/examples/experiments/repressilator/results/sbmlsim_omex",
+  "data_path": "[PosixPath('/home/mkoenig/git/sbmlsim/src/sbmlsim/examples/experiments/repressilator/results/sbmlsim_omex')]",
+  "models": {
+    "model1": {
+      "sid": "model1",
+      "name": "repressilator.xml",
+      "language": "SBML",
+      "language_type": "SBML",
+      "source": {
+        "source": "models/repressilator.xml",
+        "path": "/home/mkoenig/git/sbmlsim/src/sbmlsim/examples/experiments/repressilator/results/sbmlsim_omex/models/repressilator.xml",
+        "content": "None"
+      },
+      "changes": {}
+    },
+    "model2": {
+      "sid": "model2",
+      "name": "",
+      "language": "SBML",
+      "language_type": "SBML",
+      "source": {
+        "source": "models/repressilator.xml",
+        "path": "/home/mkoenig/git/sbmlsim/src/sbmlsim/examples/experiments/repressilator/results/sbmlsim_omex/models/repressilator.xml",
+        "content": "None"
+      },
+      "changes": {
+        "ps_a": {
+          "_magnitude": 0.013,
+          "_units": "dimensionless",
+          "_Quantity__used": false,
+          "_Quantity__handling": null
+        },
+        "ps_0": {
+          "_magnitude": 1.3e-05,
+          "_units": "dimensionless",
+          "_Quantity__used": false,
+          "_Quantity__handling": null
+        }
+      }
+    }
+  },
+  "tasks": {
+    "task_model1_tc": {
+      "model": "model1",
+      "simulation": "tc"
+    },
+    "task_model2_tc": {
+      "model": "model2",
+      "simulation": "tc"
+    }
+  },
+  "simulations": {
+    "tc": {
+      "type": "TimecourseSim",
+      "selections": null,
+      "reset": true,
+      "time_offset": 0.0,
+      "timecourses": [
+        {
+          "start": 0.0,
+          "end": 1000.0,
+          "steps": 999,
+          "changes": {},
+          "model_changes": {},
+          "model_manipulations": {},
+          "discard": false
+        }
+      ]
+    }
+  },
+  "data": {
+    "task_model1_tc__time": {
+      "type": "TASK",
+      "index": "time",
+      "unit": "second",
+      "task": "task_model1_tc",
+      "dataset": null,
+      "function": null,
+      "variables": null
+    },
+    "task_model1_tc__PX": {
+      "type": "TASK",
+      "index": "PX",
+      "unit": "",
+      "task": "task_model1_tc",
+      "dataset": null,
+      "function": null,
+      "variables": null
+    },
+    "task_model1_tc__PY": {
+      "type": "TASK",
+      "index": "PY",
+      "unit": "",
+      "task": "task_model1_tc",
+      "dataset": null,
+      "function": null,
+      "variables": null
+    },
+    "task_model1_tc__PZ": {
+      "type": "TASK",
+      "index": "PZ",
+      "unit": "",
+      "task": "task_model1_tc",
+      "dataset": null,
+      "function": null,
+      "variables": null
+    },
+    "task_model2_tc__time": {
+      "type": "TASK",
+      "index": "time",
+      "unit": "second",
+      "task": "task_model2_tc",
+      "dataset": null,
+      "function": null,
+      "variables": null
+    },
+    "task_model2_tc__PX": {
+      "type": "TASK",
+      "index": "PX",
+      "unit": "",
+      "task": "task_model2_tc",
+      "dataset": null,
+      "function": null,
+      "variables": null
+    },
+    "task_model2_tc__PY": {
+      "type": "TASK",
+      "index": "PY",
+      "unit": "",
+      "task": "task_model2_tc",
+      "dataset": null,
+      "function": null,
+      "variables": null
+    },
+    "task_model2_tc__PZ": {
+      "type": "TASK",
+      "index": "PZ",
+      "unit": "",
+      "task": "task_model2_tc",
+      "dataset": null,
+      "function": null,
+      "variables": null
+    },
+    "f_PX_normalized": {
+      "type": "FUNCTION",
+      "index": "f_PX_normalized",
+      "unit": "dimensionless",
+      "task": null,
+      "dataset": null,
+      "function": "f_PX_normalized__PX / max(f_PX_normalized__PX)",
+      "variables": {
+        "f_PX_normalized__PX": {
+          "type": "TASK",
+          "index": "PX",
+          "unit": "",
+          "task": "task_model1_tc",
+          "dataset": null,
+          "function": null,
+          "variables": null
+        }
+      }
+    },
+    "f_PZ_normalized": {
+      "type": "FUNCTION",
+      "index": "f_PZ_normalized",
+      "unit": "dimensionless",
+      "task": null,
+      "dataset": null,
+      "function": "f_PZ_normalized__PZ / max(f_PZ_normalized__PZ)",
+      "variables": {
+        "f_PZ_normalized__PZ": {
+          "type": "TASK",
+          "index": "PZ",
+          "unit": "",
+          "task": "task_model1_tc",
+          "dataset": null,
+          "function": null,
+          "variables": null
+        }
+      }
+    },
+    "f_PY_normalized": {
+      "type": "FUNCTION",
+      "index": "f_PY_normalized",
+      "unit": "dimensionless",
+      "task": null,
+      "dataset": null,
+      "function": "f_PY_normalized__PY / max(f_PY_normalized__PY)",
+      "variables": {
+        "f_PY_normalized__PY": {
+          "type": "TASK",
+          "index": "PY",
+          "unit": "",
+          "task": "task_model1_tc",
+          "dataset": null,
+          "function": null,
+          "variables": null
+        }
+      }
+    }
+  },
+  "figures": {
+    "figure0": {
+      "sid": "figure0",
+      "name": "Repressilator",
+      "num_rows": 2,
+      "num_cols": 2,
+      "width": 10.0,
+      "height": 10.0,
+      "subplots": [
+        {
+          "sid": null,
+          "name": null,
+          "plot": {
+            "sid": "plot0",
+            "name": "Timecourse",
+            "xaxis": {
+              "sid": "plot0_xaxis",
+              "name": "time [second]",
+              "label": "time [second]",
+              "unit": null,
+              "scale": "LINEAR",
+              "min": null,
+              "max": null,
+              "grid": false,
+              "label_visible": true,
+              "ticks_visible": true
+            },
+            "yaxis": {
+              "sid": "plot0_yaxis",
+              "name": "data [-]",
+              "label": "data [-]",
+              "unit": null,
+              "scale": "LINEAR",
+              "min": null,
+              "max": null,
+              "grid": false,
+              "label_visible": true,
+              "ticks_visible": true
+            },
+            "yaxis_right": null,
+            "legend": true,
+            "facecolor": "#ffffffff",
+            "title_visible": true,
+            "curves": [
+              {
+                "sid": "plot0_curve0",
+                "name": "PX",
+                "x": "task_model1_tc__time",
+                "y": "task_model1_tc__PX",
+                "xerr": null,
+                "yerr": null,
+                "yaxis_position": null,
+                "style": {
+                  "sid": "style_plot0_curve0",
+                  "name": null,
+                  "base_style": null,
+                  "line": {
+                    "type": "SOLID",
+                    "color": "#d62728ff",
+                    "thickness": 2.0
+                  },
+                  "marker": {
+                    "size": null,
+                    "type": "NONE",
+                    "fill": "#d62728ff",
+                    "line_color": null,
+                    "line_thickness": null
+                  },
+                  "fill": {
+                    "color": "#d62728ff",
+                    "second_color": null
+                  }
+                },
+                "order": 0
+              },
+              {
+                "sid": "plot0_curve1",
+                "name": "PY",
+                "x": "task_model1_tc__time",
+                "y": "task_model1_tc__PY",
+                "xerr": null,
+                "yerr": null,
+                "yaxis_position": null,
+                "style": {
+                  "sid": "style_plot0_curve1",
+                  "name": null,
+                  "base_style": null,
+                  "line": {
+                    "type": "SOLID",
+                    "color": "#2ca02cff",
+                    "thickness": 2.0
+                  },
+                  "marker": {
+                    "size": null,
+                    "type": "NONE",
+                    "fill": "#2ca02cff",
+                    "line_color": null,
+                    "line_thickness": null
+                  },
+                  "fill": {
+                    "color": "#2ca02cff",
+                    "second_color": null
+                  }
+                },
+                "order": 1
+              },
+              {
+                "sid": "plot0_curve2",
+                "name": "PZ",
+                "x": "task_model1_tc__time",
+                "y": "task_model1_tc__PZ",
+                "xerr": null,
+                "yerr": null,
+                "yaxis_position": null,
+                "style": {
+                  "sid": "style_plot0_curve2",
+                  "name": null,
+                  "base_style": null,
+                  "line": {
+                    "type": "SOLID",
+                    "color": "#1f77b4ff",
+                    "thickness": 2.0
+                  },
+                  "marker": {
+                    "size": null,
+                    "type": "NONE",
+                    "fill": "#1f77b4ff",
+                    "line_color": null,
+                    "line_thickness": null
+                  },
+                  "fill": {
+                    "color": "#1f77b4ff",
+                    "second_color": null
+                  }
+                },
+                "order": 2
+              }
+            ],
+            "areas": []
+          },
+          "row": 1,
+          "col": 1,
+          "row_span": 1,
+          "col_span": 1
+        },
+        {
+          "sid": null,
+          "name": null,
+          "plot": {
+            "sid": "plot1",
+            "name": "Preprocessing",
+            "xaxis": {
+              "sid": "plot1_xaxis",
+              "name": "time [second]",
+              "label": "time [second]",
+              "unit": null,
+              "scale": "LINEAR",
+              "min": null,
+              "max": null,
+              "grid": false,
+              "label_visible": true,
+              "ticks_visible": true
+            },
+            "yaxis": {
+              "sid": "plot1_yaxis",
+              "name": "data [-]",
+              "label": "data [-]",
+              "unit": null,
+              "scale": "LINEAR",
+              "min": null,
+              "max": null,
+              "grid": false,
+              "label_visible": true,
+              "ticks_visible": true
+            },
+            "yaxis_right": null,
+            "legend": true,
+            "facecolor": "#ffffffff",
+            "title_visible": true,
+            "curves": [
+              {
+                "sid": "plot1_curve0",
+                "name": "PX",
+                "x": "task_model2_tc__time",
+                "y": "task_model2_tc__PX",
+                "xerr": null,
+                "yerr": null,
+                "yaxis_position": null,
+                "style": {
+                  "sid": "style_plot1_curve0",
+                  "name": null,
+                  "base_style": null,
+                  "line": {
+                    "type": "SOLID",
+                    "color": "#d62728ff",
+                    "thickness": 2.0
+                  },
+                  "marker": {
+                    "size": null,
+                    "type": "NONE",
+                    "fill": "#d62728ff",
+                    "line_color": null,
+                    "line_thickness": null
+                  },
+                  "fill": {
+                    "color": "#d62728ff",
+                    "second_color": null
+                  }
+                },
+                "order": 0
+              },
+              {
+                "sid": "plot1_curve1",
+                "name": "PY",
+                "x": "task_model2_tc__time",
+                "y": "task_model2_tc__PY",
+                "xerr": null,
+                "yerr": null,
+                "yaxis_position": null,
+                "style": {
+                  "sid": "style_plot1_curve1",
+                  "name": null,
+                  "base_style": null,
+                  "line": {
+                    "type": "SOLID",
+                    "color": "#2ca02cff",
+                    "thickness": 2.0
+                  },
+                  "marker": {
+                    "size": null,
+                    "type": "NONE",
+                    "fill": "#2ca02cff",
+                    "line_color": null,
+                    "line_thickness": null
+                  },
+                  "fill": {
+                    "color": "#2ca02cff",
+                    "second_color": null
+                  }
+                },
+                "order": 1
+              },
+              {
+                "sid": "plot1_curve2",
+                "name": "PZ",
+                "x": "task_model2_tc__time",
+                "y": "task_model2_tc__PZ",
+                "xerr": null,
+                "yerr": null,
+                "yaxis_position": null,
+                "style": {
+                  "sid": "style_plot1_curve2",
+                  "name": null,
+                  "base_style": null,
+                  "line": {
+                    "type": "SOLID",
+                    "color": "#1f77b4ff",
+                    "thickness": 2.0
+                  },
+                  "marker": {
+                    "size": null,
+                    "type": "NONE",
+                    "fill": "#1f77b4ff",
+                    "line_color": null,
+                    "line_thickness": null
+                  },
+                  "fill": {
+                    "color": "#1f77b4ff",
+                    "second_color": null
+                  }
+                },
+                "order": 2
+              }
+            ],
+            "areas": []
+          },
+          "row": 1,
+          "col": 2,
+          "row_span": 1,
+          "col_span": 1
+        },
+        {
+          "sid": null,
+          "name": null,
+          "plot": {
+            "sid": "plot2",
+            "name": "Postprocessing",
+            "xaxis": {
+              "sid": "plot2_xaxis",
+              "name": "data [-]",
+              "label": "data [-]",
+              "unit": null,
+              "scale": "LINEAR",
+              "min": null,
+              "max": null,
+              "grid": false,
+              "label_visible": true,
+              "ticks_visible": true
+            },
+            "yaxis": {
+              "sid": "plot2_yaxis",
+              "name": "data [-]",
+              "label": "data [-]",
+              "unit": null,
+              "scale": "LINEAR",
+              "min": null,
+              "max": null,
+              "grid": false,
+              "label_visible": true,
+              "ticks_visible": true
+            },
+            "yaxis_right": null,
+            "legend": true,
+            "facecolor": "#ffffffff",
+            "title_visible": true,
+            "curves": [
+              {
+                "sid": "plot2_curve0",
+                "name": "PZ/max(PZ) ~ PX/max(PX)",
+                "x": "f_PX_normalized",
+                "y": "f_PZ_normalized",
+                "xerr": null,
+                "yerr": null,
+                "yaxis_position": null,
+                "style": {
+                  "sid": "style_plot2_curve0",
+                  "name": null,
+                  "base_style": null,
+                  "line": {
+                    "type": "SOLID",
+                    "color": "#ff7f0eff",
+                    "thickness": 2.0
+                  },
+                  "marker": {
+                    "size": null,
+                    "type": "NONE",
+                    "fill": "#ff7f0eff",
+                    "line_color": null,
+                    "line_thickness": null
+                  },
+                  "fill": {
+                    "color": "#ff7f0eff",
+                    "second_color": null
+                  }
+                },
+                "order": 0
+              },
+              {
+                "sid": "plot2_curve1",
+                "name": "PY/max(PY) ~ PZ/max(PZ)",
+                "x": "f_PZ_normalized",
+                "y": "f_PY_normalized",
+                "xerr": null,
+                "yerr": null,
+                "yaxis_position": null,
+                "style": {
+                  "sid": "style_plot2_curve1",
+                  "name": null,
+                  "base_style": null,
+                  "line": {
+                    "type": "SOLID",
+                    "color": "#8c564bff",
+                    "thickness": 2.0
+                  },
+                  "marker": {
+                    "size": null,
+                    "type": "NONE",
+                    "fill": "#8c564bff",
+                    "line_color": null,
+                    "line_thickness": null
+                  },
+                  "fill": {
+                    "color": "#8c564bff",
+                    "second_color": null
+                  }
+                },
+                "order": 1
+              },
+              {
+                "sid": "plot2_curve2",
+                "name": "PX/max(PX) ~ PY/max(PY)",
+                "x": "f_PY_normalized",
+                "y": "f_PX_normalized",
+                "xerr": null,
+                "yerr": null,
+                "yaxis_position": null,
+                "style": {
+                  "sid": "style_plot2_curve2",
+                  "name": null,
+                  "base_style": null,
+                  "line": {
+                    "type": "SOLID",
+                    "color": "#9467bdff",
+                    "thickness": 2.0
+                  },
+                  "marker": {
+                    "size": null,
+                    "type": "NONE",
+                    "fill": "#9467bdff",
+                    "line_color": null,
+                    "line_thickness": null
+                  },
+                  "fill": {
+                    "color": "#9467bdff",
+                    "second_color": null
+                  }
+                },
+                "order": 2
+              }
+            ],
+            "areas": []
+          },
+          "row": 2,
+          "col": 1,
+          "row_span": 1,
+          "col_span": 2
+        }
+      ]
+    }
+  }
+}
