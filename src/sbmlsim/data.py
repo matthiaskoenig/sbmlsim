@@ -7,11 +7,10 @@ from typing import Dict, List, Optional, Union
 
 import pandas as pd
 from pymetadata import log
-from pymetadata.console import console
 
 from sbmlsim.combine import mathml
 from sbmlsim.units import DimensionalityError, Quantity, UnitRegistry, UnitsInformation
-from sbmlsim.xresult import XResult
+from sbmlsim.result import XResult
 
 
 logger = log.get_logger(__name__)
@@ -238,7 +237,6 @@ class Data(object):
             print(experiment.results.keys())
             xres: XResult = experiment.results[self.task_id]
             if not isinstance(xres, XResult):
-                console.print(xres)
                 raise ValueError("Only Result objects supported in task data.")
 
             # units match the symbols
