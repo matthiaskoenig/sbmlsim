@@ -9,7 +9,7 @@ This includes
 """
 
 from pathlib import Path
-from typing import Dict, List, Optional, Set, Tuple, Type, Union
+from typing import Dict, List, Optional, Tuple, Type, Union, Set
 
 from pymetadata import log
 from pymetadata.console import console
@@ -35,7 +35,7 @@ class ExperimentRunner(object):
         ],
         base_path: Path,
         data_path: Path,
-        simulator: Union[SimulatorSerialRR, SimulatorRayRR] = None,
+        simulator: SimulatorSerial = None,
         ureg: UnitRegistry = None,  # FIXME: is this needed on ExperimentRunner?
         **kwargs,
     ):
@@ -56,12 +56,12 @@ class ExperimentRunner(object):
         self.data_path = data_path
         self.experiments: Dict[str, SimulationExperiment] = {}
         self.models = {}
-        self.simulator: Optional[SimulatorSerialRR] = None
+        self.simulator: Optional[SimulatorSerial] = None
 
         self.initialize(experiment_classes, **kwargs)
         self.set_simulator(simulator)
 
-    def set_simulator(self, simulator: SimulatorSerialRR) -> None:
+    def set_simulator(self, simulator: SimulatorSerial) -> None:
         """Set simulator on the runner and experiments."""
         if simulator is None:
             logger.debug(
@@ -69,11 +69,19 @@ class ExperimentRunner(object):
                 "ignored in parameter fitting."
             )
         else:
-            self.simulator: SimulatorSerialRR = simulator
+            self.simulator: SimulatorSerial = simulator
             for experiment in self.experiments.values():
                 experiment.simulator = simulator
 
-    def initialize(self, experiment_classes: Union[List[Type[SimulationExperiment]], Tuple[Type[SimulationExperiment]], Set[Type[SimulationExperiment]]], **kwargs):
+    def initialize(
+        self,
+        experiment_classes: Union[
+            List[Type[SimulationExperiment]],
+            Tuple[Type[SimulationExperiment]],
+            Set[Type[SimulationExperiment]],
+        ],
+        **kwargs,
+    ):
         """Initialize ExperimentRunner.
 
         Initialization is required in addition to construction to allow serialization
@@ -143,7 +151,7 @@ class ExperimentRunner(object):
                 reduced_selections=reduced_selections,
             )
             exp_results.append(result)
-        return exp_results  # from sbmlsim.simulator.rr_simulator_ray import SimulatorParallel
+        return exp_results
 
 
 def run_experiments(

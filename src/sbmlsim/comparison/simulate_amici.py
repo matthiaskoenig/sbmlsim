@@ -4,17 +4,12 @@ sudo apt-get install libatlas-base-dev swig libhdf5-serial-dev
 pip install amici --upgrade
 """
 
-from typing import List, Dict
-from sbmlutils.console import console
+from pymetadata.console import console
 import pandas as pd
 
-from pathlib import Path
-from typing import List
 
 import amici
-from amici.numpy import ReturnDataView
 import numpy as np
-import pandas as pd
 
 from sbmlsim.comparison.simulate import SimulateSBML, Condition
 
@@ -42,7 +37,9 @@ class SimulateAmiciSBML(SimulateSBML):
         self.solver.setAbsoluteTolerance(self.absolute_tolerance)
         self.solver.setRelativeTolerance(self.relative_tolerance)
 
-    def simulate_condition(self, condition: Condition, timepoints: np.ndarray) -> pd.DataFrame:
+    def simulate_condition(
+        self, condition: Condition, timepoints: np.ndarray
+    ) -> pd.DataFrame:
         print(f"simulate condition: {condition.sid}")
 
         # changes

@@ -1,14 +1,13 @@
 """Test simulations."""
-import pandas as pd
 
 from sbmlsim.model import ModelChange
 from sbmlsim.simulation import Timecourse, TimecourseSim
-from sbmlsim.simulator import SimulatorSerialRR
+from sbmlsim.simulator import SimulatorSerial
 
 
 def test_timecourse_simulation(repressilator_model_state: str) -> None:
     """Run timecourse simulation."""
-    simulator = SimulatorSerialRR()
+    simulator = SimulatorSerial()
     simulator.set_model(repressilator_model_state)
 
     tc = Timecourse(start=0, end=100, steps=100)
@@ -31,7 +30,7 @@ def test_timecourse_simulation(repressilator_model_state: str) -> None:
 
 def test_timecourse_combined(repressilator_model_state: str) -> None:
     """Test timecourse combination."""
-    simulator = SimulatorSerialRR()
+    simulator = SimulatorSerial()
     simulator.set_model(repressilator_model_state)
 
     xres = simulator.run_timecourse(
@@ -59,7 +58,7 @@ def test_timecourse_combined(repressilator_model_state: str) -> None:
 
 def test_timecourse_concat(repressilator_model_state: str) -> None:
     """Reuse of timecourses."""
-    simulator = SimulatorSerialRR()
+    simulator = SimulatorSerial()
     simulator.set_model(repressilator_model_state)
     tc = Timecourse(start=0, end=50, steps=100, changes={"X": 10})
 
@@ -73,7 +72,7 @@ def test_timecourse_concat(repressilator_model_state: str) -> None:
 
 def test_timecourse_empty(repressilator_model_state: str) -> None:
     """Reuse of timecourses."""
-    simulator = SimulatorSerialRR()
+    simulator = SimulatorSerial()
     simulator.set_model(repressilator_model_state)
     tc = Timecourse(start=0, end=50, steps=100, changes={"X": 10})
 
@@ -88,7 +87,7 @@ def test_timecourse_empty(repressilator_model_state: str) -> None:
 
 def test_timecourse_discard(repressilator_model_state: str) -> None:
     """Test discarding pre-simulation."""
-    simulator = SimulatorSerialRR()
+    simulator = SimulatorSerial()
     simulator.set_model(repressilator_model_state)
 
     xres = simulator.run_timecourse(

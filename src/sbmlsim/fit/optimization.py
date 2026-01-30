@@ -5,7 +5,7 @@ from collections import defaultdict
 from copy import deepcopy
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Callable, Collection, Dict, List, Optional, Set, Tuple, Union
+from typing import Any, Dict, List, Optional, Set, Tuple, Union
 
 import numpy as np
 import pandas as pd
@@ -14,7 +14,6 @@ from pymetadata import log
 from pymetadata.console import console
 from scipy import interpolate, optimize
 
-from sbmlsim.data import Data
 from sbmlsim.experiment import ExperimentRunner
 from sbmlsim.fit.objects import FitExperiment, FitMapping, FitParameter
 from sbmlsim.fit.options import (
@@ -28,7 +27,7 @@ from sbmlsim.fit.sampling import SamplingType, create_samples
 from sbmlsim.model import RoadrunnerSBMLModel
 from sbmlsim.serialization import ObjectJSONEncoder, to_json
 from sbmlsim.simulation import TimecourseSim
-from sbmlsim.simulator import SimulatorSerialRR
+from sbmlsim.simulator import SimulatorSerial
 from sbmlsim.units import DimensionalityError
 from sbmlsim.utils import timeit
 
@@ -243,9 +242,8 @@ class OptimizationProblem(ObjectJSONEncoder):
         )
 
         # Collect information for simulations
-        fit_exp: Callable
+        # fit_exp: Callable
         for fit_experiment in self.fit_experiments:
-
             # get simulation experiment
             sid = fit_experiment.experiment_class.__name__
             sim_experiment = self.runner.experiments[sid]
@@ -671,7 +669,7 @@ class OptimizationProblem(ObjectJSONEncoder):
             residual_data = defaultdict(list)
 
         # simulate all mappings for all experiments
-        simulator: SimulatorSerialRR = self.runner.simulator
+        simulator: SimulatorSerial = self.runner.simulator
         Q_ = self.runner.Q_
 
         for k, _ in enumerate(self.mapping_keys):
@@ -701,15 +699,7 @@ class OptimizationProblem(ObjectJSONEncoder):
                     copy=False,
                     assume_sorted=True,
                 )
-                try:
-                    y_obsip = f(self.x_references[k])
-                except ValueError as err:
-                    logger.error(
-                        f"x data outside of interpolation range, increase simulation "
-                        f"times in mapping `{self.mapping_keys[k]}` in "
-                        f"{self.experiment_keys[k]}."
-                    )
-                    raise err
+                y_obsip = f(self.x_references[k])
 
                 if self.residual in {
                     ResidualType.ABSOLUTE_TO_BASELINE,

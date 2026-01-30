@@ -1,12 +1,13 @@
 """Test interpolation."""
+
 from pathlib import Path
 
 import pandas as pd
 import pytest
 import roadrunner
 
-from sbmlutils.manipulation import interpolation as ip
-from sbmlutils.manipulation.interpolation_example import interpolation_example
+from sbmlsim.interpolation import interpolation as ip
+from sbmlsim.interpolation.interpolation_example import interpolation_example
 
 
 x = [0.0, 1.0, 2.0, 3.0, 4.0, 5.0]

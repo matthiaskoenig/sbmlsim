@@ -19,12 +19,12 @@ from sbmlsim.plot.serialization_matplotlib import (
     MatplotlibFigureSerializer,
     plt,
 )
+from sbmlsim.result import XResult
 from sbmlsim.serialization import ObjectJSONEncoder
 from sbmlsim.simulation import AbstractSim, ScanSim, TimecourseSim
 from sbmlsim.task import Task
 from sbmlsim.units import UnitRegistry, UnitsInformation
 from sbmlsim.utils import timeit
-from sbmlsim.xresult import XResult
 
 
 logger = log.get_logger(__name__)
@@ -168,7 +168,6 @@ class SimulationExperiment:
 
     def data(self) -> Dict[str, Data]:
         """Define DataGenerators including functions.
-
         This determines the selection in the model.
 
         All data which is accessed in a simulation result must be defined in a
@@ -321,7 +320,6 @@ class SimulationExperiment:
         """Check for correctness of types."""
         for key, dset in self._datasets.items():
             if not isinstance(dset, DataSet):
-
                 # FIXME: relaxing for now (re-enable) !!!
                 logger.error(
                     f"datasets must be of type DataSet, but "
@@ -389,9 +387,7 @@ class SimulationExperiment:
         """Execute given experiment and store results."""
 
         # run simulations (sets self._results)
-        self._run_tasks(
-            simulator, reduced_selections=reduced_selections
-        )
+        self._run_tasks(simulator, reduced_selections=reduced_selections)
 
         # evaluate mappings
         self.evaluate_fit_mappings()
@@ -450,7 +446,6 @@ class SimulationExperiment:
 
         # execute all tasks for given model
         for model_id, task_keys in model_tasks.items():
-
             # load model in simulator
             model: AbstractModel = self._models[model_id]
             simulator.set_model(model=model)
@@ -610,7 +605,6 @@ class SimulationExperiment:
             figure_formats = ["svg"]
         paths = defaultdict(list)
         for fkey, fig_mpl in mpl_figures.items():  # type
-
             for fig_format in figure_formats:
                 fig_path = results_path / f"{self.sid}_{fkey}.{fig_format}"
                 fig_mpl.savefig(fig_path, bbox_inches="tight")

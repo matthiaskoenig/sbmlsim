@@ -3,9 +3,9 @@
 from pathlib import Path
 
 import pytest
+import roadrunner
 
-from sbmlsim.model.rr_model import roadrunner
-from sbmlsim.resources import DEMO_SBML, MIDAZOLAM_SBML, REPRESSILATOR_SBML
+from sbmlsim.resources import DEMO_SBML, REPRESSILATOR_SBML
 
 
 data_dir = Path(__file__).parent / "data"

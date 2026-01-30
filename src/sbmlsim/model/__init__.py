@@ -2,4 +2,10 @@
 
 from .model import AbstractModel
 from .model_change import ModelChange
-from .rr_model import RoadrunnerSBMLModel
+from .model_roadrunner import RoadrunnerSBMLModel
+
+__all__ = [
+    "AbstractModel",
+    "ModelChange",
+    "RoadrunnerSBMLModel",
+]

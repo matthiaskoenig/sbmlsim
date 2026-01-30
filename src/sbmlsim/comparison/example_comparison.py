@@ -13,6 +13,7 @@ This supports:
 # add additional information for comparison: AMICI/COPASI
 # FIXME: run all conditions and make comparison
 """
+
 from pathlib import Path
 from typing import List, Dict, Type
 
@@ -21,12 +22,9 @@ import pandas as pd
 
 from sbmlsim.comparison.diff import DataSetsComparison
 from sbmlsim.comparison.simulate_amici import SimulateAmiciSBML
-from sbmlsim.comparison.simulate_copasi import SimulateCopasiSBML
 from simulate_roadrunner import SimulateRoadrunnerSBML
 from simulate import Condition, SimulateSBML
-from sbmlutils.log import get_logger
-from sbmlutils.console import console
-from sbmlutils.comp.flatten import flatten_sbml
+from pymetadata.console import console
 
 if __name__ == "__main__":
     """Comparison of ICG model simulations."""
@@ -63,8 +61,8 @@ if __name__ == "__main__":
     # timepoints = np.linspace(start=0, stop=100, num=51).tolist()
     timepoints = np.linspace(start=0, stop=10, num=51).tolist()
     # timepoints = np.linspace(0, 10, num=11).tolist()
-    absolute_tolerance = 1E-12
-    relative_tolerance = 1E-14
+    absolute_tolerance = 1e-12
+    relative_tolerance = 1e-14
     # condition = conditions["infusion1"]
     # condition = conditions["bw80"]
     # condition = conditions["Andersen1999_task_icg_iv"]
@@ -82,7 +80,6 @@ if __name__ == "__main__":
         "roadrunner": SimulateRoadrunnerSBML,
         # "copasi": SimulateCopasiSBML,
         "amici": SimulateAmiciSBML,
-
     }.items():
         console.rule(title=key, align="left", style="white")
 
@@ -113,12 +110,9 @@ if __name__ == "__main__":
     # ax.set_ylabel(sid)
     # ax.legend()
 
-
     # comparison
     console.rule(style="white")
-    comparison = DataSetsComparison(
-        dfs_dict=dfs
-    )
+    comparison = DataSetsComparison(dfs_dict=dfs)
     comparison.report()
 
     plt.show()

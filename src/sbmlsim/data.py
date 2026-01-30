@@ -1,4 +1,6 @@
 """Module handling data (experiment and simulation)."""
+
+from __future__ import annotations
 from enum import Enum
 from pathlib import Path
 from typing import Dict, List, Optional, Union
@@ -8,7 +10,7 @@ from pymetadata import log
 
 from sbmlsim.combine import mathml
 from sbmlsim.units import DimensionalityError, Quantity, UnitRegistry, UnitsInformation
-from sbmlsim.xresult import XResult
+from sbmlsim.result import XResult
 
 
 logger = log.get_logger(__name__)
@@ -54,7 +56,6 @@ class Data(object):
         # FIXME: get rid of backwards compatibility
         if not symbol:
             if index.startswith("[") and index.endswith("]"):
-
                 index = index[1:-1]
                 symbol = Data.Symbols.CONCENTRATION
                 logger.debug(
@@ -181,7 +182,9 @@ class Data(object):
         return d
 
     def get_data(
-        self, experiment: "SimulationExperiment", to_units: str = None  # noqa: F821
+        self,
+        experiment,  # "SimulationExperiment"
+        to_units: str = None,  # noqa: F821
     ) -> Quantity:
         """Return actual data from the data object.
 
@@ -381,7 +384,7 @@ class DataSet(pd.DataFrame):
             elif key == "unit":
                 # add unit to "mean" and "value"
                 for key in ["mean", "value", "median"]:
-                    if (key in df.columns) and not (f"{key}_unit" in df.columns):
+                    if (key in df.columns) and f"{key}_unit" not in df.columns:
                         # FIXME: probably not a good idea to add columns while iterating over them
                         df[f"{key}_unit"] = df.unit
                         unit_keys = df.unit.unique()

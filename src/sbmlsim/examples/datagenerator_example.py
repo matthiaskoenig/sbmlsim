@@ -1,16 +1,18 @@
 """Example for DataGenerator functionality."""
+
 import numpy as np
+from matplotlib import pyplot as plt
 
 from sbmlsim.combine.datagenerator import DataGeneratorIndexingFunction
 from sbmlsim.resources import MIDAZOLAM_SBML
 from sbmlsim.simulation import Dimension, ScanSim, Timecourse, TimecourseSim
 from sbmlsim.simulator.simulation_serial import SimulatorSerial
-from sbmlsim.test import MODEL_MIDAZOLAM
+from sbmlsim.result import XResult
 
 
 def example_scan() -> XResult:
     """Run scan and return results."""
-    simulator = SimulatorSerial(model=MODEL_MIDAZOLAM)
+    simulator = SimulatorSerial(model=MIDAZOLAM_SBML)
     Q_ = simulator.Q_
 
     scan = ScanSim(
@@ -50,9 +52,6 @@ def datagenerator_example() -> None:
 
     res_first = dgen_first(xresults={"res1": xres})
     res_last = dgen_last(xresults={"res1": xres})
-    xres1 = res_first["res1"]
-
-    from matplotlib import pyplot as plt
 
     x = (res_first["res1"]["IVDOSE_mid"]).mean(dim="dim_bw")
     y = (res_last["res1"]["[Cve_mid]"]).mean(dim="dim_bw")

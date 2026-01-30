@@ -6,7 +6,7 @@ import roadrunner
 
 
 from sbmlsim.comparison.simulate import SimulateSBML, Condition
-from sbmlutils.console import console
+from pymetadata.console import console
 
 
 class SimulateRoadrunnerSBML(SimulateSBML):
@@ -35,9 +35,11 @@ class SimulateRoadrunnerSBML(SimulateSBML):
         integrator.setValue("absolute_tolerance", self.absolute_tolerance)
         integrator.setValue("relative_tolerance", self.relative_tolerance)
 
-    def simulate_condition(self, condition: Condition, timepoints: List[float]) -> pd.DataFrame:
+    def simulate_condition(
+        self, condition: Condition, timepoints: List[float]
+    ) -> pd.DataFrame:
         """Simulate condition"""
-        print(f"simulate condition: {condition.sid}")
+        # print(f"simulate condition: {condition.sid}")
 
         # reset
         self.r.resetAll()
@@ -49,7 +51,7 @@ class SimulateRoadrunnerSBML(SimulateSBML):
             if np.isnan(value):
                 continue
             # is species
-            print(tid)
+            # print(tid)
             if tid in self.species:
                 if self.has_only_substance[tid] is True:
                     # amount
@@ -58,7 +60,7 @@ class SimulateRoadrunnerSBML(SimulateSBML):
                     # concentration
                     target = f"init([{tid}])"
                 self.r.setValue(target, value)
-                print(f"{target} = {value}")
+                # print(f"{target} = {value}")
             else:
                 self.r.setValue(tid, value)
                 console.print(f"{tid} = {value}")
