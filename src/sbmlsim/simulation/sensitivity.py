@@ -2,6 +2,7 @@
 
 Allows to get sets of changes from given model instance.
 """
+
 from enum import Enum
 from typing import Dict, Iterable
 
@@ -10,9 +11,8 @@ import numpy as np
 from pymetadata import log
 from pymetadata.console import console
 
-from sbmlsim.model.rr_model import roadrunner
+from sbmlsim.model.model_roadrunner import roadrunner
 from sbmlsim.simulation import Dimension, ScanSim, TimecourseSim
-from sbmlsim.units import UnitsInformation
 
 
 logger = log.get_logger(__name__)
@@ -143,7 +143,6 @@ class ModelSensitivity(object):
 
         changes = {}
         for key, value in p_ref.items():
-
             magnitude = value.magnitude
             # FIXME: use lognormal to avoid negative values, or remove negative samples
             if distribution == DistributionType.NORMAL_DISTRIBUTION:
@@ -285,7 +284,6 @@ class ModelSensitivity(object):
 
 
 if __name__ == "__main__":
-
     from sbmlsim.resources import REPRESSILATOR_SBML
 
     console.print("Loading model")

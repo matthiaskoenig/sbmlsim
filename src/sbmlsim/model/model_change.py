@@ -4,10 +4,9 @@ Model changes are structural changes to the model structure.
 Changes of values and initial conditions are encoded via
 the changes instead.
 """
+
 import roadrunner
 from pymetadata import log
-
-from sbmlsim.model.rr_model import roadrunner
 
 
 logger = log.get_logger(__name__)

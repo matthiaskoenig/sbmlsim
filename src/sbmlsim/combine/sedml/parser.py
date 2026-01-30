@@ -74,6 +74,7 @@ DataGenerator class.
 For information about SED-ML please refer to http://www.sed-ml.org/
 and the SED-ML specification.
 """
+
 import re
 import shutil
 import warnings
@@ -97,7 +98,7 @@ from sbmlsim.experiment import ExperimentRunner, SimulationExperiment
 from sbmlsim.fit import FitData, FitExperiment, FitMapping, FitParameter
 from sbmlsim.model import RoadrunnerSBMLModel
 from sbmlsim.model.model import AbstractModel
-from sbmlsim.model.rr_model import roadrunner
+from sbmlsim.model.model_roadrunner import roadrunner
 from sbmlsim.plot import Axis, Curve, Figure, Plot
 from sbmlsim.plot.plotting import (
     AbstractCurve,
@@ -329,8 +330,6 @@ class SEDMLSerializer:
         # Only store this subset of data for the experiment.
         # FIXME: Data must be unit converted to the actual plot/report;
         # FIXME: same for the model
-        did: str
-        data: Data
 
         dset_indices: Dict[str, Set[str]] = defaultdict(set)
         # THIS CREATES PROBLEMS
@@ -347,7 +346,6 @@ class SEDMLSerializer:
         reference = "column_ids"
 
         for dset_id, dataset in self.exp._datasets.items():
-
             sed_data_description: libsedml.SedDataDescription = (
                 self.sed_doc.createDataDescription()
             )
@@ -417,7 +415,6 @@ class SEDMLSerializer:
         Write experiment models in SedDocument.
         """
         # Get the unresolved model files or URNs
-        model_key: str
         model: AbstractModel
 
         if self.exp.models():
@@ -596,7 +593,6 @@ class SEDMLSerializer:
                 sed_dg.setMath(math)
 
             elif data.is_dataset():
-
                 sed_variable: libsedml.SedVariable = sed_dg.createVariable()
                 sed_variable.setId(f"{did}__{data.index}")
 
@@ -641,9 +637,7 @@ class SEDMLSerializer:
                     self.serialize_style(acurve.style, sed_style)
                 sed_acurve.setStyle(sed_style.getId())
 
-        fig_id: str
         figure: Figure
-        task: Task
         for _, figure in self.exp._figures.items():
             sed_figure: libsedml.SedFigure = self.sed_doc.createFigure()
             sed_figure.setId(figure.sid)
@@ -867,7 +861,7 @@ class SEDMLParser:
         self.name: str = name
 
         # unit registry to handle units throughout the simulation
-        self.ureg: UnitRegistry = UnitRegistry(on_redefinition='ignore')
+        self.ureg: UnitRegistry = UnitRegistry(on_redefinition="ignore")
 
         # Reference to the experiment class
         self.exp_class: Type[SimulationExperiment]
@@ -930,7 +924,6 @@ class SEDMLParser:
             if isinstance(task, Task):
                 self.tasks[sed_task.getId()] = task
             elif isinstance(task, libsedml.SedParameterEstimationTask):
-
                 # --------------------------------------------------------------------
                 # Parameter Estimation Task
                 # --------------------------------------------------------------------
@@ -1008,7 +1001,6 @@ class SEDMLParser:
                 for (
                     sed_adjustable_parameter
                 ) in sed_petask.getListOfAdjustableParameters():
-
                     sid = sed_adjustable_parameter.getId()  # noqa: F841
                     # FIXME: this must be the parameter name in the model -> resolve target
                     # The target of an AdjustableParameter must point to an adjustable
@@ -1064,7 +1056,6 @@ class SEDMLParser:
         logger.debug(f"styles: {self.styles}")
 
         # --- Outputs: Figures/Plots ---
-        fig: Figure
         self.figures: Dict[str, Figure] = {}
         sed_output: libsedml.SedOutput
 
@@ -1571,7 +1562,6 @@ class SEDMLParser:
         # curves
         curves: List[Curve] = []
         areas: List[ShadedArea] = []
-        sed_curve: libsedml.Curve
         for sed_abstract_curve in sed_plot2d.getListOfCurves():
             abstract_curve = self.parse_abstract_curve(sed_abstract_curve)
             if isinstance(abstract_curve, Curve):
@@ -1681,9 +1671,6 @@ class SEDMLParser:
         sed_acurve_type = sed_acurve.getTypeCode()
         if sed_acurve_type == libsedml.SEDML_OUTPUT_CURVE:
             sed_curve: libsedml.SedCurve = sed_acurve
-            y: Data
-            xerr: Data
-            yerr: Data
             curve_type: CurveType
             if not sed_curve.isSetType():
                 logger.warning(

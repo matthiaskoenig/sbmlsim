@@ -1,11 +1,12 @@
 """Classes for running simulations with SBML models."""
+
 from typing import Any, Iterator, List, Optional
 
 import pandas as pd
 from sbmlutils import log
 
 from sbmlsim.model import ModelChange
-from sbmlsim.model.rr_model import IntegratorSettingKeys, roadrunner
+from sbmlsim.model.model_roadrunner import IntegratorSettingKeys, roadrunner
 from sbmlsim.simulation import Timecourse, TimecourseSim
 
 
@@ -146,7 +147,6 @@ class SimulationWorkerRR:
         frames = []
         t_offset = simulation.time_offset
         for k, tc in enumerate(simulation.timecourses):
-
             if k == 0 and tc.model_changes:
                 # [1] apply model changes of first simulation
                 logger.debug("Applying model changes")
@@ -202,7 +202,6 @@ class SimulationWorkerRR:
             if tc.changes:
                 logger.debug("Applying simulation changes")
             for key, item in tc.changes.items():
-
                 # FIXME: handle concentrations/amounts/default
                 # TODO: Figure out the hasOnlySubstanceUnit flag! (roadrunner)
                 # r: roadrunner.ExecutableModel = self.r

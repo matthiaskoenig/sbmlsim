@@ -1,4 +1,6 @@
 """RoadRunner model."""
+
+import tempfile
 from pathlib import Path
 from typing import Dict, List, Optional, Union
 
@@ -14,19 +16,18 @@ from sbmlsim.units import Quantity, UnitRegistry, UnitsInformation
 from sbmlsim.utils import md5_for_path
 
 
-Config.setValue(Config.LLVM_BACKEND, Config.LLJIT)
 logger = log.get_logger(__name__)
-
-IntegratorSettingKeys = {
-    "variable_step_size",
-    "stiff",
-    "absolute_tolerance",
-    "relative_tolerance",
-}
 
 
 class RoadrunnerSBMLModel(AbstractModel):
     """Roadrunner model wrapper."""
+
+    IntegratorSettingKeys = {
+        "variable_step_size",
+        "stiff",
+        "absolute_tolerance",
+        "relative_tolerance",
+    }
 
     def __init__(
         self,
@@ -85,7 +86,7 @@ class RoadrunnerSBMLModel(AbstractModel):
         abstract_model: AbstractModel,
         selections: List[str] = None,
         ureg: UnitRegistry = None,
-        settings: Dict = None
+        settings: Dict = None,
     ):
         """Create from AbstractModel."""
         logger.debug("RoadrunnerSBMLModel from AbstractModel")
@@ -102,7 +103,8 @@ class RoadrunnerSBMLModel(AbstractModel):
 
     @classmethod
     def load_roadrunner_model(
-        cls, source: Source,
+        cls,
+        source: Source,
     ) -> roadrunner.RoadRunner:
         """Load model from given source.
 
@@ -114,30 +116,9 @@ class RoadrunnerSBMLModel(AbstractModel):
             source = Source.from_source(source=source)
 
         # load model
-        # if source.is_path():
-        #     if state_path and state_path.exists():
-        #         logger.debug(f"Load model from state: '{state_path}'")
-        #         r = roadrunner.RoadRunner()
-        #         with FileLock(state_path):
-        #             r.loadState(str(state_path))
-        #         logger.debug(f"Model loaded from state: '{state_path}'")
-        #     else:
-        #         logger.debug(f"Load model from SBML: '{source.path.resolve()}'")
-        #         with FileLock(source.path):
-        #             r = roadrunner.RoadRunner(str(source.path))
-        #         # save state path
-        #         if state_path:
-        #             with FileLock(state_path):
-        #                 r.saveState(str(state_path))
-        #             logger.debug(f"Save state: '{state_path}'")
-
-        # backup without state handling
         if source.is_path():
-
             sbml_path: Path = source.path
-            state_path: Path = RoadrunnerSBMLModel.get_state_path(
-                sbml_path=sbml_path
-            )
+            # state_path: Path = RoadrunnerSBMLModel.get_state_path(sbml_path=sbml_path)
 
             r = roadrunner.RoadRunner(str(sbml_path))
             # FIXME: see https://github.com/sys-bio/roadrunner/issues/963
@@ -178,7 +159,7 @@ class RoadrunnerSBMLModel(AbstractModel):
         filename = ftmp.name
         r.saveState(filename)
         r2 = roadrunner.RoadRunner()
-        r2.loadStateS(state)
+        r2.loadState(filename)
         return r2
 
     def parse_units(self, ureg: UnitRegistry) -> UnitsInformation:

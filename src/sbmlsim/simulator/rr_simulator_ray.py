@@ -1,4 +1,5 @@
 """Parallel simulation using ray."""
+
 from __future__ import annotations
 from pathlib import Path
 from typing import Iterator, List, Optional
@@ -9,7 +10,7 @@ import psutil
 import ray
 from sbmlutils import log
 
-from sbmlsim.model.rr_model import IntegratorSettingKeys, roadrunner
+from sbmlsim.model.model_roadrunner import roadrunner
 from sbmlsim.simulation import TimecourseSim
 from sbmlsim.simulator.rr_simulator_abstract import SimulatorAbstractRR
 from sbmlsim.simulator.rr_worker import SimulationWorkerRR
