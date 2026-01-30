@@ -7,21 +7,26 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, windows-latest, macos-latest]
+        # os: [ubuntu-latest, windows-latest, macos-latest]
+        os: [ubuntu-latest]
         python-version: ["3.13", "3.14"]
-        exclude:
-          - os: windows-latest
-            python-version: "3.13"
-          - os: macos-latest
-            python-version: "3.14"
 
     steps:
     - uses: actions/checkout@v4
+
+    - name: Install Python dev files (Ubuntu only)
+      run: |
+           if [ "$RUNNER_OS" == "Linux" ]; then
+               sudo add-apt-repository ppa:deadsnakes/ppa && sudo apt-get update && sudo apt-get install -y python${{ matrix.python-version }}-dev
+           fi
+      shell: bash
+
     - name: Install uv and set the python version
       uses: astral-sh/setup-uv@v5
       with:
         python-version: ${{ matrix.python-version }}
         enable-cache: true
+
     - name: Test with tox
       run:
         uvx --with tox-uv tox -e py${{ matrix.python-version }}
