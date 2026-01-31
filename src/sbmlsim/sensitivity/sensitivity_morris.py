@@ -13,6 +13,8 @@ import xarray as xr
 from SALib import ProblemSpec
 from SALib.sample.morris import sample as morris_sample
 
+from matplotlib import pyplot as plt
+
 from sbmlsim.sensitivity import (
     SensitivityAnalysis,
     SensitivitySimulation,
@@ -36,7 +38,7 @@ class MorrisSensitivityAnalysis(SensitivityAnalysis):
 
     """
 
-    sensitivity_keys = ["mu", "mu_star", "sigma", "mu_star_conf"]
+    sensitivity_keys = ["mu", "mu_star", "sigma", "mu_star_conf", "r"]
 
     def __init__(
         self,
@@ -76,7 +78,7 @@ class MorrisSensitivityAnalysis(SensitivityAnalysis):
         self.optimal_trajectories: int = optimal_trajectories
         self.num_levels: int = num_levels
         self.local_optimization: bool = local_optimization
-        self.prefix = f"morris_levels{self.num_levels}_N{self.N}"
+        self.prefix = f"morris_L{self.num_levels}_N{self.N}"
 
         # define the problem specification
         self.ssa_problems: dict[str, ProblemSpec] = {}
@@ -163,16 +165,22 @@ class MorrisSensitivityAnalysis(SensitivityAnalysis):
             for ko in range(self.num_outputs):
                 Yo = Y[:, ko]
                 Si = SALib.analyze.morris.analyze(
-                    self.ssa_problems[gid],
-                    Yo,
-                    scaled=False,
+                    problem=self.ssa_problems[gid],
+                    X=self.samples[gid].values,
+                    Y=Yo,
+                    scaled=True,
                     num_levels=self.num_levels,
                     num_resamples=100,
                     conf_level=0.95,
                     print_to_console=False,
                 )
                 for key in self.sensitivity_keys:
+                    if key == "r":
+                        continue
                     self.sensitivity[gid][key][:, ko] = Si[key]
+
+                # calculate importance
+                self.sensitivity[gid]["r"][:, ko] = np.sqrt(Si["mu_star"]**2 + Si["sigma"]**2)
 
         # write to cache
         self.write_cache(
@@ -180,14 +188,24 @@ class MorrisSensitivityAnalysis(SensitivityAnalysis):
         )
 
     def plot(self):
+        """Morris plot.
+
+        ["mu", "mu_star", "sigma", "mu_star_conf"]
+        """
+
         super().plot()
+
+        # plot ["mu", "mu_star", "sigma", "mu_star_conf"]
+        # sigma ~ mu_star +- mu_star_conf
+
         for kg, group in enumerate(self.groups):
-            # morris plots
-            for key in ["ST", "S1"]:
+
+            # heatmap: of µ* (mu_star)
+            for key in ["mu_star"]:
                 self.plot_sensitivity(
                     group_id=group.uid,
                     sensitivity_key=key,
-                    # title=f"{key} {group.name}",
+                    title=f"Morris µ* {group.name}",
                     cutoff=0.05,
                     cluster_rows=False,
                     cmap="viridis",
@@ -197,3 +215,101 @@ class MorrisSensitivityAnalysis(SensitivityAnalysis):
                     fig_path=self.results_path
                     / f"{self.prefix}_sensitivity_{kg:>02}_{group.uid}_{key}.png",
                 )
+
+        # individual plots;
+        plot_morris_indices(
+            sa=self,
+            fig_path=self.results_path / f"{self.prefix}_sensitivity_{kg:>02}_{group.uid}.png",
+        )
+
+def plot_morris_indices(
+    sa,  # SensitivityAnalysis,
+    fig_path: Path,
+):
+    """Barplots and scatterplots of Morris indices."""
+    parameter_labels: dict[str, str] = {p.uid: p.uid for p in sa.parameters}
+    output_labels: dict[str, str] = {q.uid: q.name for q in sa.outputs}
+
+    categories: list[str] = list(parameter_labels.values())
+    cmap = plt.get_cmap("tab20b")
+    colors = cmap(np.linspace(0, 1, len(categories)))
+
+    for group in sa.groups:
+        gid = group.uid
+
+        for ko, output in enumerate(sa.outputs):
+            f_path = fig_path.parent / f"{fig_path.stem}_{ko:>03}_{output.uid}{fig_path.suffix}"
+
+            mu_star = sa.sensitivity[gid]["mu_star"][:, ko]
+            sigma = sa.sensitivity[gid]["sigma"][:, ko]
+            mu_star_conf = sa.sensitivity[gid]["mu_star_conf"][:, ko]
+            r = sa.sensitivity[gid]["r"][:, ko]
+
+            # width
+            figsize = (10, 5)
+            label_fontsize = 15
+
+            f, axes = plt.subplots(nrows=1, ncols=2, figsize=figsize, layout="constrained")
+            f.suptitle(output_labels[output.uid], fontsize=20, fontweight="bold")
+
+            sorted_idx = np.argsort(mu_star.values) #[::-1]
+
+            axes[0].barh(
+                y=[categories[i] for i in sorted_idx],
+                width=[mu_star.values[i] for i in sorted_idx],
+                label='µ*',
+                facecolor=[colors[i] for i in sorted_idx],
+                edgecolor="black",
+                alpha=0.8,
+                xerr=[mu_star_conf.values[i] for i in sorted_idx],
+                capsize=5,
+            )
+
+            axes[0].set_xlabel('µ*', fontsize=label_fontsize, fontweight="bold")
+            axes[0].set_ylabel('Parameter', fontsize=label_fontsize, fontweight="bold")
+            # axes[0].set_title(output_labels[output.uid], fontsize=20, fontweight="bold")
+            # ax.grid(True, axis="y")
+            # ax.tick_params(axis='x', labelrotation=90)
+            # axes[0].tick_params(axis='y', labelweight='bold')
+            # ax.legend()
+            for label in axes[0].get_yticklabels():
+                label.set_fontweight('bold')
+
+            for kp in range(len(categories)):
+                axes[1].errorbar(
+                    x=mu_star.values[kp],
+                    y=sigma.values[kp],
+                    xerr=mu_star_conf.values[kp],
+                    marker="o",
+                    label=categories[kp],
+                    color=colors[kp],
+                    markeredgecolor="black",
+                    markersize=10,
+                    alpha=0.8,
+                    capsize=5,
+                )
+            for kp in range(len(categories)):
+                axes[1].annotate(
+                    categories[kp],
+                    xy=(mu_star.values[kp], sigma.values[kp]),
+                    xytext=(5, 5),
+                    textcoords="offset points",
+                    fontweight="bold",
+                )
+            axes[1].set_xlabel('µ*', fontsize=label_fontsize, fontweight="bold")
+            axes[1].set_ylabel('σ', fontsize=label_fontsize, fontweight="bold")
+            # axes[1].legend()
+
+            for kax, ax in enumerate(axes):
+                xlim = ax.get_xlim()
+                if xlim[1] < 1.1:
+                    ax.set_xlim(xlim[0], 1.1)
+                if kax == 1:
+                    ax.set_ylim(bottom=0)
+                    ylim = ax.get_ylim()
+                    if ylim[1] < 0.1:
+                        ax.set_ylim(top=0.1)
+
+            plt.savefig(f_path, dpi=300, bbox_inches="tight")
+            plt.show()
+

@@ -174,8 +174,8 @@ if __name__ == "__main__":
         sensitivity_simulation=sensitivity_simulation,
         parameters=sensitivity_parameters,
         groups=sensitivity_groups,
-        results_path=sensitivity_path / "fast",
-        N=50,
+        results_path=sensitivity_path / "morris",
+        N=100,
         num_levels=4,
         optimal_trajectories=25,
         **settings,
@@ -190,4 +190,4 @@ if __name__ == "__main__":
     ]
     for sa in sas:
         sa.execute()
-        # sa.plot()
+        sa.plot()
