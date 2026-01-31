@@ -13,6 +13,7 @@ model outputs. The framework is designed for deterministic simulation models
 and integrates sampling, caching, statistical evaluation, and visualization
 within a consistent workflow.
 """
+
 from .analysis import (
     SensitivityAnalysis,
     SensitivitySimulation,
@@ -26,6 +27,7 @@ from .sensitivity_fast import FASTSensitivityAnalysis
 from .sensitivity_local import LocalSensitivityAnalysis
 from .sensitivity_sampling import SamplingSensitivityAnalysis
 from .sensitivity_sobol import SobolSensitivityAnalysis
+from .sensitivity_morris import MorrisSensitivityAnalysis
 
 __all__ = [
     "SensitivityParameter",
@@ -37,4 +39,5 @@ __all__ = [
     "SamplingSensitivityAnalysis",
     "LocalSensitivityAnalysis",
     "FASTSensitivityAnalysis",
+    "MorrisSensitivityAnalysis",
 ]
