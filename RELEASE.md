@@ -21,6 +21,9 @@ uv sync
 # install dev dependencies
 uv pip install -r pyproject.toml --extra dev
 uv tool install tox --with tox-uv
+uv pip install pre-commit
+pre-commit install
+pre-commit run
 ```
 
 ## Testing with tox
@@ -31,11 +34,4 @@ tox r -e py314
 Run all tests in parallel
 ```bash
 tox run-parallel
-```
-
-# Setup pre-commit
-```bash
-uv pip install pre-commit
-pre-commit install
-pre-commit run
 ```

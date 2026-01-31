@@ -180,7 +180,9 @@ class MorrisSensitivityAnalysis(SensitivityAnalysis):
                     self.sensitivity[gid][key][:, ko] = Si[key]
 
                 # calculate importance
-                self.sensitivity[gid]["r"][:, ko] = np.sqrt(Si["mu_star"]**2 + Si["sigma"]**2)
+                self.sensitivity[gid]["r"][:, ko] = np.sqrt(
+                    Si["mu_star"] ** 2 + Si["sigma"] ** 2
+                )
 
         # write to cache
         self.write_cache(
@@ -199,7 +201,6 @@ class MorrisSensitivityAnalysis(SensitivityAnalysis):
         # sigma ~ mu_star +- mu_star_conf
 
         for kg, group in enumerate(self.groups):
-
             # heatmap: of µ* (mu_star)
             for key in ["mu_star"]:
                 self.plot_sensitivity(
@@ -219,8 +220,10 @@ class MorrisSensitivityAnalysis(SensitivityAnalysis):
         # individual plots;
         plot_morris_indices(
             sa=self,
-            fig_path=self.results_path / f"{self.prefix}_sensitivity_{kg:>02}_{group.uid}.png",
+            fig_path=self.results_path
+            / f"{self.prefix}_sensitivity_{kg:>02}_{group.uid}.png",
         )
+
 
 def plot_morris_indices(
     sa,  # SensitivityAnalysis,
@@ -238,26 +241,31 @@ def plot_morris_indices(
         gid = group.uid
 
         for ko, output in enumerate(sa.outputs):
-            f_path = fig_path.parent / f"{fig_path.stem}_{ko:>03}_{output.uid}{fig_path.suffix}"
+            f_path = (
+                fig_path.parent
+                / f"{fig_path.stem}_{ko:>03}_{output.uid}{fig_path.suffix}"
+            )
 
             mu_star = sa.sensitivity[gid]["mu_star"][:, ko]
             sigma = sa.sensitivity[gid]["sigma"][:, ko]
             mu_star_conf = sa.sensitivity[gid]["mu_star_conf"][:, ko]
-            r = sa.sensitivity[gid]["r"][:, ko]
+            # r = sa.sensitivity[gid]["r"][:, ko]
 
             # width
             figsize = (10, 5)
             label_fontsize = 15
 
-            f, axes = plt.subplots(nrows=1, ncols=2, figsize=figsize, layout="constrained")
+            f, axes = plt.subplots(
+                nrows=1, ncols=2, figsize=figsize, layout="constrained"
+            )
             f.suptitle(output_labels[output.uid], fontsize=20, fontweight="bold")
 
-            sorted_idx = np.argsort(mu_star.values) #[::-1]
+            sorted_idx = np.argsort(mu_star.values)  # [::-1]
 
             axes[0].barh(
                 y=[categories[i] for i in sorted_idx],
                 width=[mu_star.values[i] for i in sorted_idx],
-                label='µ*',
+                label="µ*",
                 facecolor=[colors[i] for i in sorted_idx],
                 edgecolor="black",
                 alpha=0.8,
@@ -265,15 +273,15 @@ def plot_morris_indices(
                 capsize=5,
             )
 
-            axes[0].set_xlabel('µ*', fontsize=label_fontsize, fontweight="bold")
-            axes[0].set_ylabel('Parameter', fontsize=label_fontsize, fontweight="bold")
+            axes[0].set_xlabel("µ*", fontsize=label_fontsize, fontweight="bold")
+            axes[0].set_ylabel("Parameter", fontsize=label_fontsize, fontweight="bold")
             # axes[0].set_title(output_labels[output.uid], fontsize=20, fontweight="bold")
             # ax.grid(True, axis="y")
             # ax.tick_params(axis='x', labelrotation=90)
             # axes[0].tick_params(axis='y', labelweight='bold')
             # ax.legend()
             for label in axes[0].get_yticklabels():
-                label.set_fontweight('bold')
+                label.set_fontweight("bold")
 
             for kp in range(len(categories)):
                 axes[1].errorbar(
@@ -296,8 +304,8 @@ def plot_morris_indices(
                     textcoords="offset points",
                     fontweight="bold",
                 )
-            axes[1].set_xlabel('µ*', fontsize=label_fontsize, fontweight="bold")
-            axes[1].set_ylabel('σ', fontsize=label_fontsize, fontweight="bold")
+            axes[1].set_xlabel("µ*", fontsize=label_fontsize, fontweight="bold")
+            axes[1].set_ylabel("σ", fontsize=label_fontsize, fontweight="bold")
             # axes[1].legend()
 
             for kax, ax in enumerate(axes):
@@ -312,4 +320,3 @@ def plot_morris_indices(
 
             plt.savefig(f_path, dpi=300, bbox_inches="tight")
             plt.show()
-
