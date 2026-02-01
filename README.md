@@ -39,8 +39,7 @@ pip install git+https://github.com/matthiaskoenig/sbmlsim.git@develop
 ```
 
 ## How to cite
-[![](https://zenodo.org/badge/55952847.svg)](https://zenodo.org/badge/latestdoi/55952847)
-
+[![DOI](https://zenodo.org/badge/55952847.svg)](https://zenodo.org/badge/latestdoi/55952847)
 
 ## License
 - Source Code: [MIT](https://opensource.org/license/MIT)
