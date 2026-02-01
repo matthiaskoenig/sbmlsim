@@ -1,5 +1,6 @@
 project:
   type: website
+  output-dir: _site
 
   render:
     - "*.qmd"
@@ -9,10 +10,11 @@ project:
     - "!src/"
 
 website:
+  title: "sbmlsim"
+  "description": "SBML simulation made easy"
   favicon: images/favicon/favicon.ico
   site-url: https://matthiaskoenig.github.io/sbmlsim
   open-graph: true
-  title: "sbmlsim"
   page-navigation: true
   bread-crumbs: true
   repo-url: https://github.com/matthiaskoenig/sbmlsim
@@ -100,3 +102,9 @@ quartodoc:
         - name: sensitivity.sensitivity_sobol
         - name: sensitivity.sensitivity_morris
         - name: sensitivity.sensitivity_sampling
+
+#filters:
+#  - interlinks
+#
+#interlinks:
+#  sources: {}
