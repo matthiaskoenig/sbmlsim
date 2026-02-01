@@ -1,13 +1,10 @@
 # Create documentation
 
 ```bash
-cd docs
+cd _docs
 ```
 
 ```bash
 quartodoc build
-```
-
-```bash
-quarto preview
+quarto render
 ```
