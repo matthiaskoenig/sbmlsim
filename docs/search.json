@@ -4,175 +4,266 @@
     "href": "sensitivity.html",
     "title": "Sensitivity Analysis for ODE Models",
     "section": "",
-    "text": "Sensitivity analysis (SA) quantifies how uncertainty or variation in model parameters influences model outputs.\nIn ordinary differential equation (ODE) models, parameters represent biological processes (reaction rates, transport constants, synthesis/decay rates, volumes). Their values may be uncertain.\nSA helps to\n\nEvaluate robustness and stability\nIdentify key parameters\nSupport model reduction, parameter estimation, and experimental design\nPrioritize data acquisition\n\nTwo major categories:\n\nLocal sensitivity analysis (LSA) – small perturbations around nominal parameters\nGlobal sensitivity analysis (GSA) – variations across full parameter ranges\n\n\n\n\n\n\nGeneral ODE model dx/dt = f(x(t), p, t), with parameters p and outputs y = g(x,p)\nParameter sensitivity measures ( y / p_i )\nSensitivity targets include:\n\nState trajectories\nSteady states\nPeak times and amplitudes\nCost functions\n\nUncertainty types\n\nParameter uncertainty\nStructural/model uncertainty\nInitial-condition uncertainty\n\n\n\n\n\n\n\n\nStudies the effect of small perturbations in parameters.\nUseful when model is calibrated or when exploring local behavior.\nUses derivatives or numerical approximations.\n\n\n\n\n\n\n\nPerturb one parameter at a time: ( S_i / )\nSimple and derivative-free.\nSensitive to numerical noise and step size.\n\n\n\n\n\nAugment ODE system with sensitivity equations: ( dS_{x,p_i}/dt = (f/x) S_{x,p_i} + (f/p_i) )\nAccurate and efficient for models with few parameters.\nDisadvantage: number of additional ODEs = states × parameters.\n\n\n\n\n\nComputes sensitivities of a scalar objective with many parameters.\nSolves adjoint ODE backward in time.\nEfficient for high-dimensional parameter spaces.\nMore complex to implement.\n\n\n\n\n\n\nScaled sensitivities allow comparison: ( S_i^{scaled} = (p_i / y)(y/p_i) )\nDetect:\n\nStiff vs sloppy parameters\nParameters dominating specific observables\nReduction candidates\n\n\n\n\n\n\n\n\n\nInvestigates the effect of parameter variability across full parameter ranges.\nCaptures nonlinearities and parameter interactions.\nEssential when parameters are highly uncertain.\n\n\n\n\n\nMonte Carlo (MC)\nLatin Hypercube Sampling (LHS) – more efficient stratified sampling\nSobol or Halton sequences – low-discrepancy quasi-random samples\nParameter distributions based on prior knowledge or uncertainty bounds.\n\n\n\n\n\n\n\n\n\nDecomposes output variance into contributions from each parameter.\nProvides:\n\nFirst-order index ( S_i ): effect of parameter alone\nTotal-order index ( S_{Ti} ): parameter including interactions\n\nStrengths:\n\nModel-agnostic\nDetects nonlinear interactions\n\nWeakness:\n\nComputationally expensive for many parameters\n\nImplementations:\n\nSALib, UQLab, pyPESTO, Matlab UQ Toolbox\n\n\n\n\n\n\nUses spectral decomposition to estimate variance contributions.\nEfficient for high-dimensional systems.\nInterpretation for interactions less intuitive than Sobol.\n\n\n\n\n\n\n\n\n\nQualitative GSA for identifying influential parameters.\nComputes multiple elementary effects via one-at-a-time perturbations.\nOutputs:\n\nμ: mean effect → overall importance\nσ: standard deviation → interactions/nonlinearities\n\nAdvantages:\n\nVery efficient\nSuitable for high-dimensional models\n\nDisadvantages:\n\nNot a full quantitative sensitivity measure\n\n\n\n\n\n\nVaries one parameter while holding others fixed.\nSimple and intuitive.\nMisses interactions → only preliminary use.\n\n\n\n\n\n\n\nBased on expected squared derivatives: ( _i = E[(y / p_i)^2] )\nEfficient when local sensitivities (FSE or adjoint) are available.\nCan provide bounds for total Sobol indices.\nUseful when traditional variance-based GSA is too expensive.\n\n\n\n\n\n\n\n\nSteady-state (x^*) satisfies ( f(x^*, p) = 0 ).\nSensitivity: ( x^*/p_i = -J^{-1} (f/p_i)|_{x^*} )\nKey in metabolic and signaling networks.\n\n\n\n\n\nQuantifies parameter effects on bifurcation points (Hopf, saddle-node, pitchfork).\nImportant in oscillatory or switch-like systems.\nTools include AUTO and MATCONT.\n\n\n\n\n\n\n\n\n\nDetermines if parameters can be uniquely inferred from noise-free data.\nRelated to rank of the sensitivity matrix.\n\n\n\n\n\nFocuses on uncertainty with real data.\nPoor sensitivities → wide confidence intervals.\nMethods:\n\nFisher Information Matrix (FIM)\nProfile likelihood\nBayesian posteriors\n\n\n\n\n\n\n\n\nSA helps guide optimal experiment design, for example:\n\nChoosing informative sampling time points\nSelecting perturbations that maximize parameter identifiability\nMinimizing uncertainty\n\nMetrics:\n\nD-optimality – maximize determinant of FIM\nRobust design to account for uncertain priors\n\n\n\n\n\n\n\nDefine specific goals and outputs before SA.\nCombine local and global approaches.\nUse normalized sensitivities for comparability.\nApply GSA when:\n\nParameters are uncertain\nDynamics are nonlinear\nInteractions are expected\n\nCheck numerical accuracy of ODE solver.\nDocument all choices: sampling strategy, priors, solver tolerances, metrics.\n\n\n\n\n\n\nSensitivity analysis is central to understanding ODE models in systems biology.\nLocal methods (FSE, adjoint, finite differences) give derivative-based information near nominal parameters.\nGlobal methods (Sobol, FAST, Morris) explore full parameter uncertainty and interactions.\nLinks to identifiability, parameter estimation, bifurcation analysis, and experimental design.\nCombining multiple methods gives the most reliable insight.",
-    "crumbs": [
-      "Analysis",
-      "Sensitivity Analysis"
-    ]
+    "text": "Sensitivity analysis (SA) quantifies how uncertainty or variation in model parameters influences model outputs.\nIn ordinary differential equation (ODE) models, parameters represent biological processes (reaction rates, transport constants, synthesis/decay rates, volumes). Their values may be uncertain.\nSA helps to\n\nEvaluate robustness and stability\nIdentify key parameters\nSupport model reduction, parameter estimation, and experimental design\nPrioritize data acquisition\n\nTwo major categories:\n\nLocal sensitivity analysis (LSA) – small perturbations around nominal parameters\nGlobal sensitivity analysis (GSA) – variations across full parameter ranges\n\n\n\n\n\n\nGeneral ODE model dx/dt = f(x(t), p, t), with parameters p and outputs y = g(x,p)\nParameter sensitivity measures ( y / p_i )\nSensitivity targets include:\n\nState trajectories\nSteady states\nPeak times and amplitudes\nCost functions\n\nUncertainty types\n\nParameter uncertainty\nStructural/model uncertainty\nInitial-condition uncertainty\n\n\n\n\n\n\n\n\nStudies the effect of small perturbations in parameters.\nUseful when model is calibrated or when exploring local behavior.\nUses derivatives or numerical approximations.\n\n\n\n\n\n\n\nPerturb one parameter at a time: ( S_i / )\nSimple and derivative-free.\nSensitive to numerical noise and step size.\n\n\n\n\n\nAugment ODE system with sensitivity equations: ( dS_{x,p_i}/dt = (f/x) S_{x,p_i} + (f/p_i) )\nAccurate and efficient for models with few parameters.\nDisadvantage: number of additional ODEs = states × parameters.\n\n\n\n\n\nComputes sensitivities of a scalar objective with many parameters.\nSolves adjoint ODE backward in time.\nEfficient for high-dimensional parameter spaces.\nMore complex to implement.\n\n\n\n\n\n\nScaled sensitivities allow comparison: ( S_i^{scaled} = (p_i / y)(y/p_i) )\nDetect:\n\nStiff vs sloppy parameters\nParameters dominating specific observables\nReduction candidates\n\n\n\n\n\n\n\n\n\nInvestigates the effect of parameter variability across full parameter ranges.\nCaptures nonlinearities and parameter interactions.\nEssential when parameters are highly uncertain.\n\n\n\n\n\nMonte Carlo (MC)\nLatin Hypercube Sampling (LHS) – more efficient stratified sampling\nSobol or Halton sequences – low-discrepancy quasi-random samples\nParameter distributions based on prior knowledge or uncertainty bounds.\n\n\n\n\n\n\n\n\n\nDecomposes output variance into contributions from each parameter.\nProvides:\n\nFirst-order index ( S_i ): effect of parameter alone\nTotal-order index ( S_{Ti} ): parameter including interactions\n\nStrengths:\n\nModel-agnostic\nDetects nonlinear interactions\n\nWeakness:\n\nComputationally expensive for many parameters\n\nImplementations:\n\nSALib, UQLab, pyPESTO, Matlab UQ Toolbox\n\n\n\n\n\n\nUses spectral decomposition to estimate variance contributions.\nEfficient for high-dimensional systems.\nInterpretation for interactions less intuitive than Sobol.\n\n\n\n\n\n\n\n\n\nQualitative GSA for identifying influential parameters.\nComputes multiple elementary effects via one-at-a-time perturbations.\nOutputs:\n\nμ: mean effect → overall importance\nσ: standard deviation → interactions/nonlinearities\n\nAdvantages:\n\nVery efficient\nSuitable for high-dimensional models\n\nDisadvantages:\n\nNot a full quantitative sensitivity measure\n\n\n\n\n\n\nVaries one parameter while holding others fixed.\nSimple and intuitive.\nMisses interactions → only preliminary use.\n\n\n\n\n\n\n\nBased on expected squared derivatives: ( _i = E[(y / p_i)^2] )\nEfficient when local sensitivities (FSE or adjoint) are available.\nCan provide bounds for total Sobol indices.\nUseful when traditional variance-based GSA is too expensive.\n\n\n\n\n\n\n\n\nSteady-state (x^*) satisfies ( f(x^*, p) = 0 ).\nSensitivity: ( x^*/p_i = -J^{-1} (f/p_i)|_{x^*} )\nKey in metabolic and signaling networks.\n\n\n\n\n\nQuantifies parameter effects on bifurcation points (Hopf, saddle-node, pitchfork).\nImportant in oscillatory or switch-like systems.\nTools include AUTO and MATCONT.\n\n\n\n\n\n\n\n\n\nDetermines if parameters can be uniquely inferred from noise-free data.\nRelated to rank of the sensitivity matrix.\n\n\n\n\n\nFocuses on uncertainty with real data.\nPoor sensitivities → wide confidence intervals.\nMethods:\n\nFisher Information Matrix (FIM)\nProfile likelihood\nBayesian posteriors\n\n\n\n\n\n\n\n\nSA helps guide optimal experiment design, for example:\n\nChoosing informative sampling time points\nSelecting perturbations that maximize parameter identifiability\nMinimizing uncertainty\n\nMetrics:\n\nD-optimality – maximize determinant of FIM\nRobust design to account for uncertain priors\n\n\n\n\n\n\n\nDefine specific goals and outputs before SA.\nCombine local and global approaches.\nUse normalized sensitivities for comparability.\nApply GSA when:\n\nParameters are uncertain\nDynamics are nonlinear\nInteractions are expected\n\nCheck numerical accuracy of ODE solver.\nDocument all choices: sampling strategy, priors, solver tolerances, metrics.\n\n\n\n\n\n\nSensitivity analysis is central to understanding ODE models in systems biology.\nLocal methods (FSE, adjoint, finite differences) give derivative-based information near nominal parameters.\nGlobal methods (Sobol, FAST, Morris) explore full parameter uncertainty and interactions.\nLinks to identifiability, parameter estimation, bifurcation analysis, and experimental design.\nCombining multiple methods gives the most reliable insight."
   },
   {
     "objectID": "sensitivity.html#introduction",
     "href": "sensitivity.html#introduction",
     "title": "Sensitivity Analysis for ODE Models",
     "section": "",
-    "text": "Sensitivity analysis (SA) quantifies how uncertainty or variation in model parameters influences model outputs.\nIn ordinary differential equation (ODE) models, parameters represent biological processes (reaction rates, transport constants, synthesis/decay rates, volumes). Their values may be uncertain.\nSA helps to\n\nEvaluate robustness and stability\nIdentify key parameters\nSupport model reduction, parameter estimation, and experimental design\nPrioritize data acquisition\n\nTwo major categories:\n\nLocal sensitivity analysis (LSA) – small perturbations around nominal parameters\nGlobal sensitivity analysis (GSA) – variations across full parameter ranges",
-    "crumbs": [
-      "Analysis",
-      "Sensitivity Analysis"
-    ]
+    "text": "Sensitivity analysis (SA) quantifies how uncertainty or variation in model parameters influences model outputs.\nIn ordinary differential equation (ODE) models, parameters represent biological processes (reaction rates, transport constants, synthesis/decay rates, volumes). Their values may be uncertain.\nSA helps to\n\nEvaluate robustness and stability\nIdentify key parameters\nSupport model reduction, parameter estimation, and experimental design\nPrioritize data acquisition\n\nTwo major categories:\n\nLocal sensitivity analysis (LSA) – small perturbations around nominal parameters\nGlobal sensitivity analysis (GSA) – variations across full parameter ranges"
   },
   {
     "objectID": "sensitivity.html#key-concepts",
     "href": "sensitivity.html#key-concepts",
     "title": "Sensitivity Analysis for ODE Models",
     "section": "",
-    "text": "General ODE model dx/dt = f(x(t), p, t), with parameters p and outputs y = g(x,p)\nParameter sensitivity measures ( y / p_i )\nSensitivity targets include:\n\nState trajectories\nSteady states\nPeak times and amplitudes\nCost functions\n\nUncertainty types\n\nParameter uncertainty\nStructural/model uncertainty\nInitial-condition uncertainty",
-    "crumbs": [
-      "Analysis",
-      "Sensitivity Analysis"
-    ]
+    "text": "General ODE model dx/dt = f(x(t), p, t), with parameters p and outputs y = g(x,p)\nParameter sensitivity measures ( y / p_i )\nSensitivity targets include:\n\nState trajectories\nSteady states\nPeak times and amplitudes\nCost functions\n\nUncertainty types\n\nParameter uncertainty\nStructural/model uncertainty\nInitial-condition uncertainty"
   },
   {
     "objectID": "sensitivity.html#local-sensitivity-analysis-lsa",
     "href": "sensitivity.html#local-sensitivity-analysis-lsa",
     "title": "Sensitivity Analysis for ODE Models",
     "section": "",
-    "text": "Studies the effect of small perturbations in parameters.\nUseful when model is calibrated or when exploring local behavior.\nUses derivatives or numerical approximations.\n\n\n\n\n\n\n\nPerturb one parameter at a time: ( S_i / )\nSimple and derivative-free.\nSensitive to numerical noise and step size.\n\n\n\n\n\nAugment ODE system with sensitivity equations: ( dS_{x,p_i}/dt = (f/x) S_{x,p_i} + (f/p_i) )\nAccurate and efficient for models with few parameters.\nDisadvantage: number of additional ODEs = states × parameters.\n\n\n\n\n\nComputes sensitivities of a scalar objective with many parameters.\nSolves adjoint ODE backward in time.\nEfficient for high-dimensional parameter spaces.\nMore complex to implement.\n\n\n\n\n\n\nScaled sensitivities allow comparison: ( S_i^{scaled} = (p_i / y)(y/p_i) )\nDetect:\n\nStiff vs sloppy parameters\nParameters dominating specific observables\nReduction candidates",
-    "crumbs": [
-      "Analysis",
-      "Sensitivity Analysis"
-    ]
+    "text": "Studies the effect of small perturbations in parameters.\nUseful when model is calibrated or when exploring local behavior.\nUses derivatives or numerical approximations.\n\n\n\n\n\n\n\nPerturb one parameter at a time: ( S_i / )\nSimple and derivative-free.\nSensitive to numerical noise and step size.\n\n\n\n\n\nAugment ODE system with sensitivity equations: ( dS_{x,p_i}/dt = (f/x) S_{x,p_i} + (f/p_i) )\nAccurate and efficient for models with few parameters.\nDisadvantage: number of additional ODEs = states × parameters.\n\n\n\n\n\nComputes sensitivities of a scalar objective with many parameters.\nSolves adjoint ODE backward in time.\nEfficient for high-dimensional parameter spaces.\nMore complex to implement.\n\n\n\n\n\n\nScaled sensitivities allow comparison: ( S_i^{scaled} = (p_i / y)(y/p_i) )\nDetect:\n\nStiff vs sloppy parameters\nParameters dominating specific observables\nReduction candidates"
   },
   {
     "objectID": "sensitivity.html#global-sensitivity-analysis-gsa",
     "href": "sensitivity.html#global-sensitivity-analysis-gsa",
     "title": "Sensitivity Analysis for ODE Models",
     "section": "",
-    "text": "Investigates the effect of parameter variability across full parameter ranges.\nCaptures nonlinearities and parameter interactions.\nEssential when parameters are highly uncertain.\n\n\n\n\n\nMonte Carlo (MC)\nLatin Hypercube Sampling (LHS) – more efficient stratified sampling\nSobol or Halton sequences – low-discrepancy quasi-random samples\nParameter distributions based on prior knowledge or uncertainty bounds.",
-    "crumbs": [
-      "Analysis",
-      "Sensitivity Analysis"
-    ]
+    "text": "Investigates the effect of parameter variability across full parameter ranges.\nCaptures nonlinearities and parameter interactions.\nEssential when parameters are highly uncertain.\n\n\n\n\n\nMonte Carlo (MC)\nLatin Hypercube Sampling (LHS) – more efficient stratified sampling\nSobol or Halton sequences – low-discrepancy quasi-random samples\nParameter distributions based on prior knowledge or uncertainty bounds."
   },
   {
     "objectID": "sensitivity.html#variance-based-global-sensitivity-methods",
     "href": "sensitivity.html#variance-based-global-sensitivity-methods",
     "title": "Sensitivity Analysis for ODE Models",
     "section": "",
-    "text": "Decomposes output variance into contributions from each parameter.\nProvides:\n\nFirst-order index ( S_i ): effect of parameter alone\nTotal-order index ( S_{Ti} ): parameter including interactions\n\nStrengths:\n\nModel-agnostic\nDetects nonlinear interactions\n\nWeakness:\n\nComputationally expensive for many parameters\n\nImplementations:\n\nSALib, UQLab, pyPESTO, Matlab UQ Toolbox\n\n\n\n\n\n\nUses spectral decomposition to estimate variance contributions.\nEfficient for high-dimensional systems.\nInterpretation for interactions less intuitive than Sobol.",
-    "crumbs": [
-      "Analysis",
-      "Sensitivity Analysis"
-    ]
+    "text": "Decomposes output variance into contributions from each parameter.\nProvides:\n\nFirst-order index ( S_i ): effect of parameter alone\nTotal-order index ( S_{Ti} ): parameter including interactions\n\nStrengths:\n\nModel-agnostic\nDetects nonlinear interactions\n\nWeakness:\n\nComputationally expensive for many parameters\n\nImplementations:\n\nSALib, UQLab, pyPESTO, Matlab UQ Toolbox\n\n\n\n\n\n\nUses spectral decomposition to estimate variance contributions.\nEfficient for high-dimensional systems.\nInterpretation for interactions less intuitive than Sobol."
   },
   {
     "objectID": "sensitivity.html#screening-and-factor-prioritization",
     "href": "sensitivity.html#screening-and-factor-prioritization",
     "title": "Sensitivity Analysis for ODE Models",
     "section": "",
-    "text": "Qualitative GSA for identifying influential parameters.\nComputes multiple elementary effects via one-at-a-time perturbations.\nOutputs:\n\nμ: mean effect → overall importance\nσ: standard deviation → interactions/nonlinearities\n\nAdvantages:\n\nVery efficient\nSuitable for high-dimensional models\n\nDisadvantages:\n\nNot a full quantitative sensitivity measure\n\n\n\n\n\n\nVaries one parameter while holding others fixed.\nSimple and intuitive.\nMisses interactions → only preliminary use.",
-    "crumbs": [
-      "Analysis",
-      "Sensitivity Analysis"
-    ]
+    "text": "Qualitative GSA for identifying influential parameters.\nComputes multiple elementary effects via one-at-a-time perturbations.\nOutputs:\n\nμ: mean effect → overall importance\nσ: standard deviation → interactions/nonlinearities\n\nAdvantages:\n\nVery efficient\nSuitable for high-dimensional models\n\nDisadvantages:\n\nNot a full quantitative sensitivity measure\n\n\n\n\n\n\nVaries one parameter while holding others fixed.\nSimple and intuitive.\nMisses interactions → only preliminary use."
   },
   {
     "objectID": "sensitivity.html#derivative-based-global-sensitivity-measures-dgsm",
     "href": "sensitivity.html#derivative-based-global-sensitivity-measures-dgsm",
     "title": "Sensitivity Analysis for ODE Models",
     "section": "",
-    "text": "Based on expected squared derivatives: ( _i = E[(y / p_i)^2] )\nEfficient when local sensitivities (FSE or adjoint) are available.\nCan provide bounds for total Sobol indices.\nUseful when traditional variance-based GSA is too expensive.",
-    "crumbs": [
-      "Analysis",
-      "Sensitivity Analysis"
-    ]
+    "text": "Based on expected squared derivatives: ( _i = E[(y / p_i)^2] )\nEfficient when local sensitivities (FSE or adjoint) are available.\nCan provide bounds for total Sobol indices.\nUseful when traditional variance-based GSA is too expensive."
   },
   {
     "objectID": "sensitivity.html#sensitivity-of-steady-states-and-stability",
     "href": "sensitivity.html#sensitivity-of-steady-states-and-stability",
     "title": "Sensitivity Analysis for ODE Models",
     "section": "",
-    "text": "Steady-state (x^*) satisfies ( f(x^*, p) = 0 ).\nSensitivity: ( x^*/p_i = -J^{-1} (f/p_i)|_{x^*} )\nKey in metabolic and signaling networks.\n\n\n\n\n\nQuantifies parameter effects on bifurcation points (Hopf, saddle-node, pitchfork).\nImportant in oscillatory or switch-like systems.\nTools include AUTO and MATCONT.",
-    "crumbs": [
-      "Analysis",
-      "Sensitivity Analysis"
-    ]
+    "text": "Steady-state (x^*) satisfies ( f(x^*, p) = 0 ).\nSensitivity: ( x^*/p_i = -J^{-1} (f/p_i)|_{x^*} )\nKey in metabolic and signaling networks.\n\n\n\n\n\nQuantifies parameter effects on bifurcation points (Hopf, saddle-node, pitchfork).\nImportant in oscillatory or switch-like systems.\nTools include AUTO and MATCONT."
   },
   {
     "objectID": "sensitivity.html#sensitivity-in-parameter-estimation-and-identifiability",
     "href": "sensitivity.html#sensitivity-in-parameter-estimation-and-identifiability",
     "title": "Sensitivity Analysis for ODE Models",
     "section": "",
-    "text": "Determines if parameters can be uniquely inferred from noise-free data.\nRelated to rank of the sensitivity matrix.\n\n\n\n\n\nFocuses on uncertainty with real data.\nPoor sensitivities → wide confidence intervals.\nMethods:\n\nFisher Information Matrix (FIM)\nProfile likelihood\nBayesian posteriors",
-    "crumbs": [
-      "Analysis",
-      "Sensitivity Analysis"
-    ]
+    "text": "Determines if parameters can be uniquely inferred from noise-free data.\nRelated to rank of the sensitivity matrix.\n\n\n\n\n\nFocuses on uncertainty with real data.\nPoor sensitivities → wide confidence intervals.\nMethods:\n\nFisher Information Matrix (FIM)\nProfile likelihood\nBayesian posteriors"
   },
   {
     "objectID": "sensitivity.html#role-in-experimental-design",
     "href": "sensitivity.html#role-in-experimental-design",
     "title": "Sensitivity Analysis for ODE Models",
     "section": "",
-    "text": "SA helps guide optimal experiment design, for example:\n\nChoosing informative sampling time points\nSelecting perturbations that maximize parameter identifiability\nMinimizing uncertainty\n\nMetrics:\n\nD-optimality – maximize determinant of FIM\nRobust design to account for uncertain priors",
-    "crumbs": [
-      "Analysis",
-      "Sensitivity Analysis"
-    ]
+    "text": "SA helps guide optimal experiment design, for example:\n\nChoosing informative sampling time points\nSelecting perturbations that maximize parameter identifiability\nMinimizing uncertainty\n\nMetrics:\n\nD-optimality – maximize determinant of FIM\nRobust design to account for uncertain priors"
   },
   {
     "objectID": "sensitivity.html#best-practices",
     "href": "sensitivity.html#best-practices",
     "title": "Sensitivity Analysis for ODE Models",
     "section": "",
-    "text": "Define specific goals and outputs before SA.\nCombine local and global approaches.\nUse normalized sensitivities for comparability.\nApply GSA when:\n\nParameters are uncertain\nDynamics are nonlinear\nInteractions are expected\n\nCheck numerical accuracy of ODE solver.\nDocument all choices: sampling strategy, priors, solver tolerances, metrics.",
-    "crumbs": [
-      "Analysis",
-      "Sensitivity Analysis"
-    ]
+    "text": "Define specific goals and outputs before SA.\nCombine local and global approaches.\nUse normalized sensitivities for comparability.\nApply GSA when:\n\nParameters are uncertain\nDynamics are nonlinear\nInteractions are expected\n\nCheck numerical accuracy of ODE solver.\nDocument all choices: sampling strategy, priors, solver tolerances, metrics."
   },
   {
     "objectID": "sensitivity.html#summary",
     "href": "sensitivity.html#summary",
     "title": "Sensitivity Analysis for ODE Models",
     "section": "",
-    "text": "Sensitivity analysis is central to understanding ODE models in systems biology.\nLocal methods (FSE, adjoint, finite differences) give derivative-based information near nominal parameters.\nGlobal methods (Sobol, FAST, Morris) explore full parameter uncertainty and interactions.\nLinks to identifiability, parameter estimation, bifurcation analysis, and experimental design.\nCombining multiple methods gives the most reliable insight.",
+    "text": "Sensitivity analysis is central to understanding ODE models in systems biology.\nLocal methods (FSE, adjoint, finite differences) give derivative-based information near nominal parameters.\nGlobal methods (Sobol, FAST, Morris) explore full parameter uncertainty and interactions.\nLinks to identifiability, parameter estimation, bifurcation analysis, and experimental design.\nCombining multiple methods gives the most reliable insight."
+  },
+  {
+    "objectID": "development.html",
+    "href": "development.html",
+    "title": "Development",
+    "section": "",
+    "text": "To set up everything for the develop environment use\n# install core dependencies\nuv sync\n\n# install dev dependencies\nuv pip install -r pyproject.toml --extra dev\nuv tool install tox --with tox-uv\n\n# setup pre-commit hook\nuv pip install pre-commit\npre-commit install\npre-commit run\n\n\n\nTesting is performed with pytest and tox:\nRun single tox target:\ntox r -e py314\nRun all tests in parallel:\ntox run-parallel",
     "crumbs": [
-      "Analysis",
-      "Sensitivity Analysis"
+      "Contributing",
+      "Development"
     ]
   },
   {
-    "objectID": "api/sensitivity.sensitivity_sobol.html",
-    "href": "api/sensitivity.sensitivity_sobol.html",
-    "title": "sensitivity.sensitivity_sobol",
+    "objectID": "development.html#setup-development-environment",
+    "href": "development.html#setup-development-environment",
+    "title": "Development",
     "section": "",
-    "text": "sensitivity.sensitivity_sobol\nGlobal sensitivity analysis using Sobol indices.\nThis module provides routines to perform variance-based global sensitivity analysis based on Sobol indices. Sobol sensitivity analysis quantifies how uncertainty in model parameters contributes to the variance of one or more model outputs, allowing a decomposition into main effects, interaction effects, and total effects.\nThe implemented methodology follows the classical Sobol framework and its later refinements, including Monte Carlo–based estimators for first-order, higher-order, and total-effect sensitivity indices. The approach is fully global, meaning that parameters are varied simultaneously over their entire admissible ranges according to prescribed probability distributions.\nSobol indices are defined as: - First-order indices (S_i), measuring the contribution of a single parameter to the output variance, ignoring interactions. - Higher-order indices (S_ij, S_ijk, …), measuring interaction effects between parameters. - Total-effect indices (S_Ti), measuring the total contribution of a parameter to the output variance, including all interactions.\nThe analysis requires: - A deterministic model or simulation function creating scalar outputs. - A set of input parameters with specified bounds. - A sampling scheme based on quasi-random or Monte Carlo methods.\n\n\nSobol, I. M. (2001). Global sensitivity indices for nonlinear mathematical models and their Monte Carlo estimates. Mathematics and Computers in Simulation, 55(1–3), 271–280. https://www.sciencedirect.com/science/article/pii/S0378475400002706\nSaltelli, A. (2002). Making best use of model evaluations to compute sensitivity indices. Computer Physics Communications, 145(2), 280–297. https://www.sciencedirect.com/science/article/pii/S0010465502002801\nSaltelli, A., Annoni, P., Azzini, I., Campolongo, F., Ratto, M., & Tarantola, S. (2010). Variance based sensitivity analysis of model output. Design and estimator for the total sensitivity index. Computer Physics Communications, 181(2), 259–270. https://www.sciencedirect.com/science/article/pii/S0010465509003087\n\n\n\n\n\n\nName\nDescription\n\n\n\n\nSobolSensitivityAnalysis\nGlobal sensitivity analysis based on Sobol method.\n\n\n\n\n\nsensitivity.sensitivity_sobol.SobolSensitivityAnalysis(\n    sensitivity_simulation,\n    parameters,\n    groups,\n    results_path,\n    N,\n    seed=None,\n    n_cores=None,\n    cache_results=False,\n    **kwargs,\n)\nGlobal sensitivity analysis based on Sobol method.\n\n\n\n\n\nName\nDescription\n\n\n\n\ncalculate_sensitivity\nCalculate the sensitivity matrices for SOBOL analysis.\n\n\ncreate_samples\nCreate samples for sobol.\n\n\n\n\n\nsensitivity.sensitivity_sobol.SobolSensitivityAnalysis.calculate_sensitivity(\n    cache_filename=None,\n    cache=False,\n)\nCalculate the sensitivity matrices for SOBOL analysis.\n\n\n\nsensitivity.sensitivity_sobol.SobolSensitivityAnalysis.create_samples()\nCreate samples for sobol.\nGenerates model inputs using Saltelli’s extension of the Sobol’ sequence\nThe Sobol’ sequence is a popular quasi-random low-discrepancy sequence used to generate uniform samples of parameter space.",
+    "text": "To set up everything for the develop environment use\n# install core dependencies\nuv sync\n\n# install dev dependencies\nuv pip install -r pyproject.toml --extra dev\nuv tool install tox --with tox-uv\n\n# setup pre-commit hook\nuv pip install pre-commit\npre-commit install\npre-commit run",
     "crumbs": [
-      "API",
-      "`sensitivity_sobol`"
+      "Contributing",
+      "Development"
     ]
   },
   {
-    "objectID": "api/sensitivity.sensitivity_sobol.html#references",
-    "href": "api/sensitivity.sensitivity_sobol.html#references",
-    "title": "sensitivity.sensitivity_sobol",
+    "objectID": "development.html#testing",
+    "href": "development.html#testing",
+    "title": "Development",
     "section": "",
-    "text": "Sobol, I. M. (2001). Global sensitivity indices for nonlinear mathematical models and their Monte Carlo estimates. Mathematics and Computers in Simulation, 55(1–3), 271–280. https://www.sciencedirect.com/science/article/pii/S0378475400002706\nSaltelli, A. (2002). Making best use of model evaluations to compute sensitivity indices. Computer Physics Communications, 145(2), 280–297. https://www.sciencedirect.com/science/article/pii/S0010465502002801\nSaltelli, A., Annoni, P., Azzini, I., Campolongo, F., Ratto, M., & Tarantola, S. (2010). Variance based sensitivity analysis of model output. Design and estimator for the total sensitivity index. Computer Physics Communications, 181(2), 259–270. https://www.sciencedirect.com/science/article/pii/S0010465509003087",
+    "text": "Testing is performed with pytest and tox:\nRun single tox target:\ntox r -e py314\nRun all tests in parallel:\ntox run-parallel",
     "crumbs": [
-      "API",
-      "`sensitivity_sobol`"
+      "Contributing",
+      "Development"
     ]
   },
   {
-    "objectID": "api/sensitivity.sensitivity_sobol.html#classes",
-    "href": "api/sensitivity.sensitivity_sobol.html#classes",
-    "title": "sensitivity.sensitivity_sobol",
+    "objectID": "api/sensitivity.sensitivity_sampling.html",
+    "href": "api/sensitivity.sensitivity_sampling.html",
+    "title": "sensitivity.sensitivity_sampling",
     "section": "",
-    "text": "Name\nDescription\n\n\n\n\nSobolSensitivityAnalysis\nGlobal sensitivity analysis based on Sobol method.\n\n\n\n\n\nsensitivity.sensitivity_sobol.SobolSensitivityAnalysis(\n    sensitivity_simulation,\n    parameters,\n    groups,\n    results_path,\n    N,\n    seed=None,\n    n_cores=None,\n    cache_results=False,\n    **kwargs,\n)\nGlobal sensitivity analysis based on Sobol method.\n\n\n\n\n\nName\nDescription\n\n\n\n\ncalculate_sensitivity\nCalculate the sensitivity matrices for SOBOL analysis.\n\n\ncreate_samples\nCreate samples for sobol.\n\n\n\n\n\nsensitivity.sensitivity_sobol.SobolSensitivityAnalysis.calculate_sensitivity(\n    cache_filename=None,\n    cache=False,\n)\nCalculate the sensitivity matrices for SOBOL analysis.\n\n\n\nsensitivity.sensitivity_sobol.SobolSensitivityAnalysis.create_samples()\nCreate samples for sobol.\nGenerates model inputs using Saltelli’s extension of the Sobol’ sequence\nThe Sobol’ sequence is a popular quasi-random low-discrepancy sequence used to generate uniform samples of parameter space.",
+    "text": "sensitivity.sensitivity_sampling\nSampling-based sensitivity and uncertainty analysis.\nThis module implements a sampling-based sensitivity analysis in which model parameters are varied simultaneously according to predefined bounds and probability assumptions, and the resulting distribution of model outputs is analyzed statistically.\nThe primary purpose of this approach is to quantify output uncertainty and variability induced by parameter uncertainty, rather than to compute variance-decomposition sensitivity indices. It is therefore complementary to local (derivative-based) and global (variance-based) sensitivity analyses.\nParameter samples are generated using Latin Hypercube Sampling (LHS), a stratified Monte Carlo method that ensures efficient coverage of the multidimensional parameter space. In the current implementation, parameters are sampled independently assuming uniform distributions within their bounds.\nFor each analysis group and output variable, descriptive statistics are computed from the simulated sample ensemble, including: - mean and median - standard deviation and coefficient of variation - minimum and maximum - selected quantiles (5% and 95%)\nThese statistics provide a compact summary of output uncertainty and enable comparisons across model outputs and experimental or physiological conditions.\nThe module is intended for: - uncertainty propagation analyses - robustness and variability assessments - exploratory model analysis and screening - reporting uncertainty ranges in computational modeling studies\nIt integrates with the sbmlsim sensitivity framework and supports result caching, tabular export, and visualization of output distributions.\n\n\nThis method does not compute sensitivity indices in the strict variance-based sense (e.g., Sobol indices). Instead, it characterizes how uncertainty in parameters propagates to uncertainty in model outputs via sampling.\nTypical workflows combine this approach with local or global sensitivity analysis to obtain both quantitative sensitivity measures and uncertainty estimates.\n\n\n\n\n\n\nName\nDescription\n\n\n\n\nSamplingSensitivityAnalysis\nSensitivity/uncertainty analysis based on sampling.\n\n\n\n\n\nsensitivity.sensitivity_sampling.SamplingSensitivityAnalysis(\n    sensitivity_simulation,\n    parameters,\n    groups,\n    results_path,\n    N,\n    seed=None,\n    n_cores=None,\n    cache_results=False,\n)\nSensitivity/uncertainty analysis based on sampling.\n\n\ncv: float = 0.1, distribution: DistributionType = DistributionType.NORMAL_DISTRIBUTION,\n\n\n\n\n\n\nName\nDescription\n\n\n\n\ncalculate_sensitivity\nCalculate the sensitivity matrices for sampling sensitivity.\n\n\ncreate_samples\nCreate LHS samples.\n\n\nplot\nBoxplots for the Sampling sensitivity.\n\n\nplot_data\nBoxplots for the sampled output.\n\n\n\n\n\nsensitivity.sensitivity_sampling.SamplingSensitivityAnalysis.calculate_sensitivity(\n    cache_filename=None,\n    cache=False,\n)\nCalculate the sensitivity matrices for sampling sensitivity.\n\n\n\nsensitivity.sensitivity_sampling.SamplingSensitivityAnalysis.create_samples()\nCreate LHS samples.\nLatin hypercube sampling (LHS) is a stratified sampling method used to generate near‑random samples from a multidimensional distribution for Monte Carlo simulations and computer experiments.\nAssuming uniform distributions within the provided bounds.\nUse LHS sampling of parameters.\n\n\n\nsensitivity.sensitivity_sampling.SamplingSensitivityAnalysis.plot(**kwargs)\nBoxplots for the Sampling sensitivity.\n\n\n\nsensitivity.sensitivity_sampling.SamplingSensitivityAnalysis.plot_data(\n    type,\n    show_jitter=True,\n    show_violin=True,\n    **kwargs,\n)\nBoxplots for the sampled output.",
     "crumbs": [
       "API",
-      "`sensitivity_sobol`"
+      "`sensitivity_sampling`"
+    ]
+  },
+  {
+    "objectID": "api/sensitivity.sensitivity_sampling.html#notes",
+    "href": "api/sensitivity.sensitivity_sampling.html#notes",
+    "title": "sensitivity.sensitivity_sampling",
+    "section": "",
+    "text": "This method does not compute sensitivity indices in the strict variance-based sense (e.g., Sobol indices). Instead, it characterizes how uncertainty in parameters propagates to uncertainty in model outputs via sampling.\nTypical workflows combine this approach with local or global sensitivity analysis to obtain both quantitative sensitivity measures and uncertainty estimates.",
+    "crumbs": [
+      "API",
+      "`sensitivity_sampling`"
+    ]
+  },
+  {
+    "objectID": "api/sensitivity.sensitivity_sampling.html#classes",
+    "href": "api/sensitivity.sensitivity_sampling.html#classes",
+    "title": "sensitivity.sensitivity_sampling",
+    "section": "",
+    "text": "Name\nDescription\n\n\n\n\nSamplingSensitivityAnalysis\nSensitivity/uncertainty analysis based on sampling.\n\n\n\n\n\nsensitivity.sensitivity_sampling.SamplingSensitivityAnalysis(\n    sensitivity_simulation,\n    parameters,\n    groups,\n    results_path,\n    N,\n    seed=None,\n    n_cores=None,\n    cache_results=False,\n)\nSensitivity/uncertainty analysis based on sampling.\n\n\ncv: float = 0.1, distribution: DistributionType = DistributionType.NORMAL_DISTRIBUTION,\n\n\n\n\n\n\nName\nDescription\n\n\n\n\ncalculate_sensitivity\nCalculate the sensitivity matrices for sampling sensitivity.\n\n\ncreate_samples\nCreate LHS samples.\n\n\nplot\nBoxplots for the Sampling sensitivity.\n\n\nplot_data\nBoxplots for the sampled output.\n\n\n\n\n\nsensitivity.sensitivity_sampling.SamplingSensitivityAnalysis.calculate_sensitivity(\n    cache_filename=None,\n    cache=False,\n)\nCalculate the sensitivity matrices for sampling sensitivity.\n\n\n\nsensitivity.sensitivity_sampling.SamplingSensitivityAnalysis.create_samples()\nCreate LHS samples.\nLatin hypercube sampling (LHS) is a stratified sampling method used to generate near‑random samples from a multidimensional distribution for Monte Carlo simulations and computer experiments.\nAssuming uniform distributions within the provided bounds.\nUse LHS sampling of parameters.\n\n\n\nsensitivity.sensitivity_sampling.SamplingSensitivityAnalysis.plot(**kwargs)\nBoxplots for the Sampling sensitivity.\n\n\n\nsensitivity.sensitivity_sampling.SamplingSensitivityAnalysis.plot_data(\n    type,\n    show_jitter=True,\n    show_violin=True,\n    **kwargs,\n)\nBoxplots for the sampled output.",
+    "crumbs": [
+      "API",
+      "`sensitivity_sampling`"
+    ]
+  },
+  {
+    "objectID": "api/sensitivity.sensitivity_local.html",
+    "href": "api/sensitivity.sensitivity_local.html",
+    "title": "sensitivity.sensitivity_local",
+    "section": "",
+    "text": "sensitivity.sensitivity_local\nLocal sensitivity analysis based on finite differences.\nThis module implements a local (derivative-based) sensitivity analysis using two-sided finite differences around a reference parameter set. Each model parameter is perturbed individually by a small relative amount, and the resulting change in model outputs is used to approximate local sensitivities.\nThe analysis is designed for deterministic simulation models and is particularly suited for: - Identifying locally influential parameters - Debugging and model inspection - Complementing global sensitivity analyses - Supporting parameter screening prior to optimization or uncertainty analysis\nSensitivities are computed for each analysis group and output variable, and can be reported both as raw sensitivities and as normalized, dimensionless sensitivities.\nThe implementation builds on the sbmlsim sensitivity framework and integrates with existing simulation, caching, and plotting utilities.\n\n\nFor each parameter p_i with reference value p_{i,0}, two perturbed simulations are generated: p_i_plus = p_{i,0} * (1 + difference) p_i_minus = p_{i,0} * (1 - difference)\n\n\n\nS(q_k, p_i) = (q_k(p_i_plus) - q_k(p_i_minus)) / (p_i_plus - p_i_minus)\nNormalized sensitivities represent the relative change in output per relative change in parameter: S_norm(q_k, p_i) = S(q_k, p_i) * (p_{i,0} / q_k(p_{i,0}))\n\n\n\n\n\n\nName\nDescription\n\n\n\n\nLocalSensitivityAnalysis\nLocal sensitivity analysis based on symmetric finite differences.\n\n\n\n\n\nsensitivity.sensitivity_local.LocalSensitivityAnalysis(\n    sensitivity_simulation,\n    parameters,\n    groups,\n    results_path,\n    seed=None,\n    n_cores=None,\n    cache_results=False,\n    difference=0.01,\n)\nLocal sensitivity analysis based on symmetric finite differences.\nThis class implements a local sensitivity analysis in which each model parameter is perturbed individually by a small relative amount while all other parameters are kept at their reference values.\nFor each parameter, two simulations are performed (increase and decrease), in addition to a reference simulation. Sensitivities are computed for each output variable and analysis group.\n\n\ndifference : float Relative parameter perturbation used for the finite-difference approximation (e.g., 0.01 corresponds to ±1% changes).\n\n\n\n\n\n\nName\nDescription\n\n\n\n\nnum_samples\nReturn the number of samples required for the analysis.\n\n\n\n\n\n\n\n\n\nName\nDescription\n\n\n\n\ncalculate_sensitivity\nCompute raw and normalized local sensitivity matrices.\n\n\ncreate_samples\nCreate parameter samples for the local sensitivity analysis.\n\n\n\n\n\nsensitivity.sensitivity_local.LocalSensitivityAnalysis.calculate_sensitivity(\n    cache_filename=None,\n    cache=False,\n)\nCompute raw and normalized local sensitivity matrices.\nThis method calculates two-sided finite-difference sensitivities for each parameter–output combination and stores both raw and normalized sensitivity matrices.\nOptionally, results can be read from or written to a cache file.\n\n\ncache_filename : str, optional Filename for caching sensitivity results. cache : bool, optional Whether to read from and/or write to the cache.\n\n\n\n\nsensitivity.sensitivity_local.LocalSensitivityAnalysis.create_samples()\nCreate parameter samples for the local sensitivity analysis.\nFor each analysis group, this method constructs a sample matrix containing: - One reference parameter vector - Two perturbed parameter vectors per parameter (±difference)\nThe samples are stored as xarray.DataArray objects and indexed by sample and parameter identifiers.",
+    "crumbs": [
+      "API",
+      "`sensitivity_local`"
+    ]
+  },
+  {
+    "objectID": "api/sensitivity.sensitivity_local.html#notes",
+    "href": "api/sensitivity.sensitivity_local.html#notes",
+    "title": "sensitivity.sensitivity_local",
+    "section": "",
+    "text": "For each parameter p_i with reference value p_{i,0}, two perturbed simulations are generated: p_i_plus = p_{i,0} * (1 + difference) p_i_minus = p_{i,0} * (1 - difference)",
+    "crumbs": [
+      "API",
+      "`sensitivity_local`"
+    ]
+  },
+  {
+    "objectID": "api/sensitivity.sensitivity_local.html#raw-sensitivities-are-computed-using-a-symmetric-finite-difference-scheme",
+    "href": "api/sensitivity.sensitivity_local.html#raw-sensitivities-are-computed-using-a-symmetric-finite-difference-scheme",
+    "title": "sensitivity.sensitivity_local",
+    "section": "",
+    "text": "S(q_k, p_i) = (q_k(p_i_plus) - q_k(p_i_minus)) / (p_i_plus - p_i_minus)\nNormalized sensitivities represent the relative change in output per relative change in parameter: S_norm(q_k, p_i) = S(q_k, p_i) * (p_{i,0} / q_k(p_{i,0}))",
+    "crumbs": [
+      "API",
+      "`sensitivity_local`"
+    ]
+  },
+  {
+    "objectID": "api/sensitivity.sensitivity_local.html#classes",
+    "href": "api/sensitivity.sensitivity_local.html#classes",
+    "title": "sensitivity.sensitivity_local",
+    "section": "",
+    "text": "Name\nDescription\n\n\n\n\nLocalSensitivityAnalysis\nLocal sensitivity analysis based on symmetric finite differences.\n\n\n\n\n\nsensitivity.sensitivity_local.LocalSensitivityAnalysis(\n    sensitivity_simulation,\n    parameters,\n    groups,\n    results_path,\n    seed=None,\n    n_cores=None,\n    cache_results=False,\n    difference=0.01,\n)\nLocal sensitivity analysis based on symmetric finite differences.\nThis class implements a local sensitivity analysis in which each model parameter is perturbed individually by a small relative amount while all other parameters are kept at their reference values.\nFor each parameter, two simulations are performed (increase and decrease), in addition to a reference simulation. Sensitivities are computed for each output variable and analysis group.\n\n\ndifference : float Relative parameter perturbation used for the finite-difference approximation (e.g., 0.01 corresponds to ±1% changes).\n\n\n\n\n\n\nName\nDescription\n\n\n\n\nnum_samples\nReturn the number of samples required for the analysis.\n\n\n\n\n\n\n\n\n\nName\nDescription\n\n\n\n\ncalculate_sensitivity\nCompute raw and normalized local sensitivity matrices.\n\n\ncreate_samples\nCreate parameter samples for the local sensitivity analysis.\n\n\n\n\n\nsensitivity.sensitivity_local.LocalSensitivityAnalysis.calculate_sensitivity(\n    cache_filename=None,\n    cache=False,\n)\nCompute raw and normalized local sensitivity matrices.\nThis method calculates two-sided finite-difference sensitivities for each parameter–output combination and stores both raw and normalized sensitivity matrices.\nOptionally, results can be read from or written to a cache file.\n\n\ncache_filename : str, optional Filename for caching sensitivity results. cache : bool, optional Whether to read from and/or write to the cache.\n\n\n\n\nsensitivity.sensitivity_local.LocalSensitivityAnalysis.create_samples()\nCreate parameter samples for the local sensitivity analysis.\nFor each analysis group, this method constructs a sample matrix containing: - One reference parameter vector - Two perturbed parameter vectors per parameter (±difference)\nThe samples are stored as xarray.DataArray objects and indexed by sample and parameter identifiers.",
+    "crumbs": [
+      "API",
+      "`sensitivity_local`"
+    ]
+  },
+  {
+    "objectID": "api/sensitivity.html",
+    "href": "api/sensitivity.html",
+    "title": "sensitivity",
+    "section": "",
+    "text": "sensitivity\nsensitivity\nSensitivity analysis.\nThis package provides a unified framework for analyzing how uncertainty and variability in model parameters affect model outputs. It supports multiple complementary sensitivity analysis strategies, including local, sampling-based, and global methods. Together, these enable both qualitative and quantitative assessment of parameter influence on model behavior.\nThe available sensitivity analysis methods are implemented in the following modules:\n\nsensitivity.sensitivity_fast: Global sensitivity analysis using FAST (Fourier Amplitude Sensitivity Test).\nsensitivity.sensitivity_local: Local (derivative-based) sensitivity analysis around a nominal parameter set.\nsensitivity.sensitivity_morris: Global screening based on Morris elementary effects.\nsensitivity.sensitivity_sampling: Sampling-based sensitivity analysis using parameter perturbations and statistical summaries.\nsensitivity.sensitivity_sobol: Variance-based global sensitivity analysis using Sobol indices.\n\nAll methods share a common interface and data model. This allows consistent configuration, execution, and comparison of sensitivity analysis results across different techniques.",
+    "crumbs": [
+      "API",
+      "`sensitivity`"
+    ]
+  },
+  {
+    "objectID": "api/index.html",
+    "href": "api/index.html",
+    "title": "Function reference",
+    "section": "",
+    "text": "Sensitivity functionality.\n\n\n\nsensitivity\nSensitivity analysis.\n\n\nsensitivity.sensitivity_local\nLocal sensitivity analysis based on finite differences.\n\n\nsensitivity.sensitivity_fast\nGlobal sensitivity analysis using FAST (Fourier Amplitude Sensitivity Test).\n\n\nsensitivity.sensitivity_sobol\nGlobal sensitivity analysis using Sobol indices.\n\n\nsensitivity.sensitivity_morris\nMorris sensitivity analysis.\n\n\nsensitivity.sensitivity_sampling\nSampling-based sensitivity and uncertainty analysis.",
+    "crumbs": [
+      "API",
+      "Sensitivity"
+    ]
+  },
+  {
+    "objectID": "api/index.html#api-sensitivity",
+    "href": "api/index.html#api-sensitivity",
+    "title": "Function reference",
+    "section": "",
+    "text": "Sensitivity functionality.\n\n\n\nsensitivity\nSensitivity analysis.\n\n\nsensitivity.sensitivity_local\nLocal sensitivity analysis based on finite differences.\n\n\nsensitivity.sensitivity_fast\nGlobal sensitivity analysis using FAST (Fourier Amplitude Sensitivity Test).\n\n\nsensitivity.sensitivity_sobol\nGlobal sensitivity analysis using Sobol indices.\n\n\nsensitivity.sensitivity_morris\nMorris sensitivity analysis.\n\n\nsensitivity.sensitivity_sampling\nSampling-based sensitivity and uncertainty analysis.",
+    "crumbs": [
+      "API",
+      "Sensitivity"
+    ]
+  },
+  {
+    "objectID": "api/sensitivity.sensitivity_fast.html",
+    "href": "api/sensitivity.sensitivity_fast.html",
+    "title": "sensitivity.sensitivity_fast",
+    "section": "",
+    "text": "sensitivity.sensitivity_fast\nGlobal sensitivity analysis using FAST (Fourier Amplitude Sensitivity Test).\nThis module implements variance-based global sensitivity analysis using the Fourier Amplitude Sensitivity Test (FAST). FAST quantifies the contribution of individual model parameters to the variance of model outputs by mapping parameter variations onto periodic functions and analyzing the resulting output spectrum in the frequency domain.\nThe method provides efficient estimation of first-order (main-effect) sensitivity indices and, in extended variants (eFAST), total-effect indices. Compared to Monte Carlo–based Sobol methods, FAST offers favorable scaling with the number of parameters and is well suited for medium- to large-scale deterministic models.\nThis implementation is intended for use in computational modeling workflows, including systems biology, pharmacokinetics/pharmacodynamics, and digital twin applications, where a robust global assessment of parameter influence is required.\n\n\nCukier, R. I., Fortuin, C. M., Shuler, K. E., Petschek, A. G., & Schaibly, J. H. (1973). Study of the sensitivity of coupled reaction systems to uncertainties in rate coefficients. I. Theory. Journal of Chemical Physics, 59, 3873–3878. https://doi.org/10.1063/1.1680571\nSaltelli, A., Tarantola, S., & Chan, K. P.-S. (1999). A quantitative model-independent method for global sensitivity analysis of model output. Technometrics, 41(1), 39–56. https://doi.org/10.1080/00401706.1999.10485594\n\n\n\n\n\n\nName\nDescription\n\n\n\n\nFASTSensitivityAnalysis\nGlobal sensitivity analysis using the Fourier Amplitude Sensitivity Test.\n\n\n\n\n\nsensitivity.sensitivity_fast.FASTSensitivityAnalysis(\n    sensitivity_simulation,\n    parameters,\n    groups,\n    results_path,\n    N,\n    M=4,\n    seed=None,\n    n_cores=None,\n    cache_results=False,\n    **kwargs,\n)\nGlobal sensitivity analysis using the Fourier Amplitude Sensitivity Test.\nThis class implements the FAST methodology for estimating first-order and total-effect sensitivity indices. It integrates with the common sensitivity analysis infrastructure provided by SensitivityAnalysis and supports grouped analyses and multiple model outputs.\n\n\nCukier et al. (1973); Saltelli et al. (1999)\n\n\n\n\n\n\nName\nDescription\n\n\n\n\ncalculate_sensitivity\nCompute FAST sensitivity indices for all model outputs.\n\n\ncreate_samples\nCreate parameter samples for FAST analysis.\n\n\nplot\nGenerate standard FAST sensitivity plots.\n\n\n\n\n\nsensitivity.sensitivity_fast.FASTSensitivityAnalysis.calculate_sensitivity(\n    cache_filename=None,\n    cache=False,\n)\nCompute FAST sensitivity indices for all model outputs.\nThis method performs the extended Fourier Amplitude Sensitivity Test (eFAST) to estimate first-order (S1) and total-effect (ST) sensitivity indices, along with corresponding confidence intervals, for each model output and parameter.\n\n\n\n\n\n\n\n\n\n\n\nName\nType\nDescription\nDefault\n\n\n\n\ncache_filename\nOptional[str]\nOptional filename for reading or writing cached sensitivity results.\nNone\n\n\ncache\nbool\nWhether to read from or write results to cache.\nFalse\n\n\n\n\n\n\nThe sensitivity indices are computed independently for each output variable and stored in a structured xarray-based format.\n\n\n\n\nsensitivity.sensitivity_fast.FASTSensitivityAnalysis.create_samples()\nCreate parameter samples for FAST analysis.\nThis method generates FAST samples for each analysis group using the SALib FAST sampler. The resulting samples are stored as xarray objects and later used for model evaluation.\n\n\n\nsensitivity.sensitivity_fast.FASTSensitivityAnalysis.plot()\nGenerate standard FAST sensitivity plots.\nThis method creates heatmaps and bar plots for first-order (S1) and total-effect (ST) sensitivity indices for each analysis group and stores the resulting figures in the configured results directory.",
+    "crumbs": [
+      "API",
+      "`sensitivity_fast`"
+    ]
+  },
+  {
+    "objectID": "api/sensitivity.sensitivity_fast.html#references",
+    "href": "api/sensitivity.sensitivity_fast.html#references",
+    "title": "sensitivity.sensitivity_fast",
+    "section": "",
+    "text": "Cukier, R. I., Fortuin, C. M., Shuler, K. E., Petschek, A. G., & Schaibly, J. H. (1973). Study of the sensitivity of coupled reaction systems to uncertainties in rate coefficients. I. Theory. Journal of Chemical Physics, 59, 3873–3878. https://doi.org/10.1063/1.1680571\nSaltelli, A., Tarantola, S., & Chan, K. P.-S. (1999). A quantitative model-independent method for global sensitivity analysis of model output. Technometrics, 41(1), 39–56. https://doi.org/10.1080/00401706.1999.10485594",
+    "crumbs": [
+      "API",
+      "`sensitivity_fast`"
+    ]
+  },
+  {
+    "objectID": "api/sensitivity.sensitivity_fast.html#classes",
+    "href": "api/sensitivity.sensitivity_fast.html#classes",
+    "title": "sensitivity.sensitivity_fast",
+    "section": "",
+    "text": "Name\nDescription\n\n\n\n\nFASTSensitivityAnalysis\nGlobal sensitivity analysis using the Fourier Amplitude Sensitivity Test.\n\n\n\n\n\nsensitivity.sensitivity_fast.FASTSensitivityAnalysis(\n    sensitivity_simulation,\n    parameters,\n    groups,\n    results_path,\n    N,\n    M=4,\n    seed=None,\n    n_cores=None,\n    cache_results=False,\n    **kwargs,\n)\nGlobal sensitivity analysis using the Fourier Amplitude Sensitivity Test.\nThis class implements the FAST methodology for estimating first-order and total-effect sensitivity indices. It integrates with the common sensitivity analysis infrastructure provided by SensitivityAnalysis and supports grouped analyses and multiple model outputs.\n\n\nCukier et al. (1973); Saltelli et al. (1999)\n\n\n\n\n\n\nName\nDescription\n\n\n\n\ncalculate_sensitivity\nCompute FAST sensitivity indices for all model outputs.\n\n\ncreate_samples\nCreate parameter samples for FAST analysis.\n\n\nplot\nGenerate standard FAST sensitivity plots.\n\n\n\n\n\nsensitivity.sensitivity_fast.FASTSensitivityAnalysis.calculate_sensitivity(\n    cache_filename=None,\n    cache=False,\n)\nCompute FAST sensitivity indices for all model outputs.\nThis method performs the extended Fourier Amplitude Sensitivity Test (eFAST) to estimate first-order (S1) and total-effect (ST) sensitivity indices, along with corresponding confidence intervals, for each model output and parameter.\n\n\n\n\n\n\n\n\n\n\n\nName\nType\nDescription\nDefault\n\n\n\n\ncache_filename\nOptional[str]\nOptional filename for reading or writing cached sensitivity results.\nNone\n\n\ncache\nbool\nWhether to read from or write results to cache.\nFalse\n\n\n\n\n\n\nThe sensitivity indices are computed independently for each output variable and stored in a structured xarray-based format.\n\n\n\n\nsensitivity.sensitivity_fast.FASTSensitivityAnalysis.create_samples()\nCreate parameter samples for FAST analysis.\nThis method generates FAST samples for each analysis group using the SALib FAST sampler. The resulting samples are stored as xarray objects and later used for model evaluation.\n\n\n\nsensitivity.sensitivity_fast.FASTSensitivityAnalysis.plot()\nGenerate standard FAST sensitivity plots.\nThis method creates heatmaps and bar plots for first-order (S1) and total-effect (ST) sensitivity indices for each analysis group and stores the resulting figures in the configured results directory.",
+    "crumbs": [
+      "API",
+      "`sensitivity_fast`"
     ]
   },
   {
@@ -209,135 +300,36 @@
     ]
   },
   {
-    "objectID": "api/sensitivity.sensitivity_fast.html",
-    "href": "api/sensitivity.sensitivity_fast.html",
-    "title": "sensitivity.sensitivity_fast",
+    "objectID": "api/sensitivity.sensitivity_sobol.html",
+    "href": "api/sensitivity.sensitivity_sobol.html",
+    "title": "sensitivity.sensitivity_sobol",
     "section": "",
-    "text": "sensitivity.sensitivity_fast\nGlobal sensitivity analysis using FAST (Fourier Amplitude Sensitivity Test).\nThis module implements variance-based global sensitivity analysis using the Fourier Amplitude Sensitivity Test (FAST). FAST quantifies the contribution of individual model parameters to the variance of model outputs by mapping parameter variations onto periodic functions and analyzing the resulting output spectrum in the frequency domain.\nThe method provides efficient estimation of first-order (main-effect) sensitivity indices and, in extended variants (eFAST), total-effect indices. Compared to Monte Carlo–based Sobol methods, FAST offers favorable scaling with the number of parameters and is well suited for medium- to large-scale deterministic models.\nThe implementation is intended for use in computational modeling workflows, including systems biology, pharmacokinetics/pharmacodynamics, and digital twin applications, where robust global assessment of parameter influence is required.\n\n\nCukier, R. I., Fortuin, C. M., Shuler, K. E., Petschek, A. G., & Schaibly, J. H. (1973). Study of the sensitivity of coupled reaction systems to uncertainties in rate coefficients. I. Theory. Journal of Chemical Physics, 59, 3873–3878. https://doi.org/10.1063/1.1680571\nSaltelli, A., Tarantola, S., & Chan, K. P.-S. (1999). A quantitative model-independent method for global sensitivity analysis of model output. Technometrics, 41(1), 39–56. https://doi.org/10.1080/00401706.1999.10485594\n\n\n\n\n\n\nName\nDescription\n\n\n\n\nFASTSensitivityAnalysis\nGlobal sensitivity analysis based Fourier Amplitude Sensitivity Test (FAST)\n\n\n\n\n\nsensitivity.sensitivity_fast.FASTSensitivityAnalysis(\n    sensitivity_simulation,\n    parameters,\n    groups,\n    results_path,\n    N,\n    M=4,\n    seed=None,\n    n_cores=None,\n    cache_results=False,\n    **kwargs,\n)\nGlobal sensitivity analysis based Fourier Amplitude Sensitivity Test (FAST) (Cukier et al. 1973, Saltelli et al. 1999).\n\n\n\n\n\nName\nDescription\n\n\n\n\ncalculate_sensitivity\nPerform extended Fourier Amplitude Sensitivity Test on model outputs.\n\n\ncreate_samples\nCreate samples for FAST.\n\n\n\n\n\nsensitivity.sensitivity_fast.FASTSensitivityAnalysis.calculate_sensitivity(\n    cache_filename=None,\n    cache=False,\n)\nPerform extended Fourier Amplitude Sensitivity Test on model outputs.\nReturns a dictionary with keys ‘S1’ and ‘ST’, where each entry is a list of size D (the number of parameters) containing the indices in the same order as the parameter file.\n\n\n\nsensitivity.sensitivity_fast.FASTSensitivityAnalysis.create_samples()\nCreate samples for FAST.",
+    "text": "sensitivity.sensitivity_sobol\nGlobal sensitivity analysis using Sobol indices.\nThis module provides routines to perform variance-based global sensitivity analysis based on Sobol indices. Sobol sensitivity analysis quantifies how uncertainty in model parameters contributes to the variance of one or more model outputs, allowing a decomposition into main effects, interaction effects, and total effects.\nThe implemented methodology follows the classical Sobol framework and its later refinements, including Monte Carlo–based estimators for first-order, higher-order, and total-effect sensitivity indices. The approach is fully global, meaning that parameters are varied simultaneously over their entire admissible ranges according to prescribed probability distributions.\nSobol indices are defined as: - First-order indices (S_i), measuring the contribution of a single parameter to the output variance, ignoring interactions. - Higher-order indices (S_ij, S_ijk, …), measuring interaction effects between parameters. - Total-effect indices (S_Ti), measuring the total contribution of a parameter to the output variance, including all interactions.\nThe analysis requires: - A deterministic model or simulation function creating scalar outputs. - A set of input parameters with specified bounds. - A sampling scheme based on quasi-random or Monte Carlo methods.\n\n\nSobol, I. M. (2001). Global sensitivity indices for nonlinear mathematical models and their Monte Carlo estimates. Mathematics and Computers in Simulation, 55(1–3), 271–280. https://www.sciencedirect.com/science/article/pii/S0378475400002706\nSaltelli, A. (2002). Making best use of model evaluations to compute sensitivity indices. Computer Physics Communications, 145(2), 280–297. https://www.sciencedirect.com/science/article/pii/S0010465502002801\nSaltelli, A., Annoni, P., Azzini, I., Campolongo, F., Ratto, M., & Tarantola, S. (2010). Variance based sensitivity analysis of model output. Design and estimator for the total sensitivity index. Computer Physics Communications, 181(2), 259–270. https://www.sciencedirect.com/science/article/pii/S0010465509003087\n\n\n\n\n\n\nName\nDescription\n\n\n\n\nSobolSensitivityAnalysis\nGlobal sensitivity analysis based on Sobol method.\n\n\n\n\n\nsensitivity.sensitivity_sobol.SobolSensitivityAnalysis(\n    sensitivity_simulation,\n    parameters,\n    groups,\n    results_path,\n    N,\n    seed=None,\n    n_cores=None,\n    cache_results=False,\n    **kwargs,\n)\nGlobal sensitivity analysis based on Sobol method.\n\n\n\n\n\nName\nDescription\n\n\n\n\ncalculate_sensitivity\nCalculate the sensitivity matrices for SOBOL analysis.\n\n\ncreate_samples\nCreate samples for sobol.\n\n\n\n\n\nsensitivity.sensitivity_sobol.SobolSensitivityAnalysis.calculate_sensitivity(\n    cache_filename=None,\n    cache=False,\n)\nCalculate the sensitivity matrices for SOBOL analysis.\n\n\n\nsensitivity.sensitivity_sobol.SobolSensitivityAnalysis.create_samples()\nCreate samples for sobol.\nGenerates model inputs using Saltelli’s extension of the Sobol’ sequence\nThe Sobol’ sequence is a popular quasi-random low-discrepancy sequence used to generate uniform samples of parameter space.",
     "crumbs": [
       "API",
-      "`sensitivity_fast`"
+      "`sensitivity_sobol`"
     ]
   },
   {
-    "objectID": "api/sensitivity.sensitivity_fast.html#references",
-    "href": "api/sensitivity.sensitivity_fast.html#references",
-    "title": "sensitivity.sensitivity_fast",
+    "objectID": "api/sensitivity.sensitivity_sobol.html#references",
+    "href": "api/sensitivity.sensitivity_sobol.html#references",
+    "title": "sensitivity.sensitivity_sobol",
     "section": "",
-    "text": "Cukier, R. I., Fortuin, C. M., Shuler, K. E., Petschek, A. G., & Schaibly, J. H. (1973). Study of the sensitivity of coupled reaction systems to uncertainties in rate coefficients. I. Theory. Journal of Chemical Physics, 59, 3873–3878. https://doi.org/10.1063/1.1680571\nSaltelli, A., Tarantola, S., & Chan, K. P.-S. (1999). A quantitative model-independent method for global sensitivity analysis of model output. Technometrics, 41(1), 39–56. https://doi.org/10.1080/00401706.1999.10485594",
+    "text": "Sobol, I. M. (2001). Global sensitivity indices for nonlinear mathematical models and their Monte Carlo estimates. Mathematics and Computers in Simulation, 55(1–3), 271–280. https://www.sciencedirect.com/science/article/pii/S0378475400002706\nSaltelli, A. (2002). Making best use of model evaluations to compute sensitivity indices. Computer Physics Communications, 145(2), 280–297. https://www.sciencedirect.com/science/article/pii/S0010465502002801\nSaltelli, A., Annoni, P., Azzini, I., Campolongo, F., Ratto, M., & Tarantola, S. (2010). Variance based sensitivity analysis of model output. Design and estimator for the total sensitivity index. Computer Physics Communications, 181(2), 259–270. https://www.sciencedirect.com/science/article/pii/S0010465509003087",
     "crumbs": [
       "API",
-      "`sensitivity_fast`"
+      "`sensitivity_sobol`"
     ]
   },
   {
-    "objectID": "api/sensitivity.sensitivity_fast.html#classes",
-    "href": "api/sensitivity.sensitivity_fast.html#classes",
-    "title": "sensitivity.sensitivity_fast",
+    "objectID": "api/sensitivity.sensitivity_sobol.html#classes",
+    "href": "api/sensitivity.sensitivity_sobol.html#classes",
+    "title": "sensitivity.sensitivity_sobol",
     "section": "",
-    "text": "Name\nDescription\n\n\n\n\nFASTSensitivityAnalysis\nGlobal sensitivity analysis based Fourier Amplitude Sensitivity Test (FAST)\n\n\n\n\n\nsensitivity.sensitivity_fast.FASTSensitivityAnalysis(\n    sensitivity_simulation,\n    parameters,\n    groups,\n    results_path,\n    N,\n    M=4,\n    seed=None,\n    n_cores=None,\n    cache_results=False,\n    **kwargs,\n)\nGlobal sensitivity analysis based Fourier Amplitude Sensitivity Test (FAST) (Cukier et al. 1973, Saltelli et al. 1999).\n\n\n\n\n\nName\nDescription\n\n\n\n\ncalculate_sensitivity\nPerform extended Fourier Amplitude Sensitivity Test on model outputs.\n\n\ncreate_samples\nCreate samples for FAST.\n\n\n\n\n\nsensitivity.sensitivity_fast.FASTSensitivityAnalysis.calculate_sensitivity(\n    cache_filename=None,\n    cache=False,\n)\nPerform extended Fourier Amplitude Sensitivity Test on model outputs.\nReturns a dictionary with keys ‘S1’ and ‘ST’, where each entry is a list of size D (the number of parameters) containing the indices in the same order as the parameter file.\n\n\n\nsensitivity.sensitivity_fast.FASTSensitivityAnalysis.create_samples()\nCreate samples for FAST.",
+    "text": "Name\nDescription\n\n\n\n\nSobolSensitivityAnalysis\nGlobal sensitivity analysis based on Sobol method.\n\n\n\n\n\nsensitivity.sensitivity_sobol.SobolSensitivityAnalysis(\n    sensitivity_simulation,\n    parameters,\n    groups,\n    results_path,\n    N,\n    seed=None,\n    n_cores=None,\n    cache_results=False,\n    **kwargs,\n)\nGlobal sensitivity analysis based on Sobol method.\n\n\n\n\n\nName\nDescription\n\n\n\n\ncalculate_sensitivity\nCalculate the sensitivity matrices for SOBOL analysis.\n\n\ncreate_samples\nCreate samples for sobol.\n\n\n\n\n\nsensitivity.sensitivity_sobol.SobolSensitivityAnalysis.calculate_sensitivity(\n    cache_filename=None,\n    cache=False,\n)\nCalculate the sensitivity matrices for SOBOL analysis.\n\n\n\nsensitivity.sensitivity_sobol.SobolSensitivityAnalysis.create_samples()\nCreate samples for sobol.\nGenerates model inputs using Saltelli’s extension of the Sobol’ sequence\nThe Sobol’ sequence is a popular quasi-random low-discrepancy sequence used to generate uniform samples of parameter space.",
     "crumbs": [
       "API",
-      "`sensitivity_fast`"
-    ]
-  },
-  {
-    "objectID": "api/index.html",
-    "href": "api/index.html",
-    "title": "Function reference",
-    "section": "",
-    "text": "Sensitivity functionality.\n\n\n\nsensitivity\nSensitivity analysis.\n\n\nsensitivity.sensitivity_local\nLocal sensitivity analysis based on finite differences.\n\n\nsensitivity.sensitivity_fast\nGlobal sensitivity analysis using FAST (Fourier Amplitude Sensitivity Test).\n\n\nsensitivity.sensitivity_sobol\nGlobal sensitivity analysis using Sobol indices.\n\n\nsensitivity.sensitivity_morris\nMorris sensitivity analysis.\n\n\nsensitivity.sensitivity_sampling\nSampling-based sensitivity and uncertainty analysis.",
-    "crumbs": [
-      "API",
-      "Sensitivity"
-    ]
-  },
-  {
-    "objectID": "api/index.html#api-sensitivity",
-    "href": "api/index.html#api-sensitivity",
-    "title": "Function reference",
-    "section": "",
-    "text": "Sensitivity functionality.\n\n\n\nsensitivity\nSensitivity analysis.\n\n\nsensitivity.sensitivity_local\nLocal sensitivity analysis based on finite differences.\n\n\nsensitivity.sensitivity_fast\nGlobal sensitivity analysis using FAST (Fourier Amplitude Sensitivity Test).\n\n\nsensitivity.sensitivity_sobol\nGlobal sensitivity analysis using Sobol indices.\n\n\nsensitivity.sensitivity_morris\nMorris sensitivity analysis.\n\n\nsensitivity.sensitivity_sampling\nSampling-based sensitivity and uncertainty analysis.",
-    "crumbs": [
-      "API",
-      "Sensitivity"
-    ]
-  },
-  {
-    "objectID": "api/sensitivity.html",
-    "href": "api/sensitivity.html",
-    "title": "sensitivity",
-    "section": "",
-    "text": "sensitivity\nsensitivity\nSensitivity analysis.\nThis package provides a unified framework for analyzing how uncertainty and variability in model parameters affect model outputs. It supports multiple complementary sensitivity analysis strategies, including local, sampling-based, and global methods, enabling both qualitative and quantitative assessment of parameter influence.",
-    "crumbs": [
-      "API",
-      "`sensitivity`"
-    ]
-  },
-  {
-    "objectID": "api/sensitivity.sensitivity_local.html",
-    "href": "api/sensitivity.sensitivity_local.html",
-    "title": "sensitivity.sensitivity_local",
-    "section": "",
-    "text": "sensitivity.sensitivity_local\nLocal sensitivity analysis based on finite differences.\nThis module implements a local (derivative-based) sensitivity analysis using two-sided finite differences around a reference parameter set. Each model parameter is perturbed individually by a small relative amount, and the resulting change in model outputs is used to approximate local sensitivities.\nThe analysis is designed for deterministic simulation models and is particularly suited for: - Identifying locally influential parameters - Debugging and model inspection - Complementing global sensitivity analyses - Supporting parameter screening prior to optimization or uncertainty analysis\nSensitivities are computed for each analysis group and output variable, and can be reported both as raw sensitivities and as normalized, dimensionless sensitivities.\nThe implementation builds on the sbmlsim sensitivity framework and integrates with existing simulation, caching, and plotting utilities.\n\n\nFor each parameter p_i with reference value p_{i,0}, two perturbed simulations are generated: p_i_plus = p_{i,0} * (1 + difference) p_i_minus = p_{i,0} * (1 - difference)\nRaw sensitivities are computed using a symmetric finite-difference scheme: S(q_k, p_i) = (q_k(p_i_plus) - q_k(p_i_minus)) / (p_i_plus - p_i_minus)\nNormalized sensitivities represent the relative change in output per relative change in parameter: S_norm(q_k, p_i) = S(q_k, p_i) * (p_{i,0} / q_k(p_{i,0}))\n\n\n\n\n\n\nName\nDescription\n\n\n\n\nLocalSensitivityAnalysis\nLocal sensitivity analysis based on symmetric finite differences.\n\n\n\n\n\nsensitivity.sensitivity_local.LocalSensitivityAnalysis(\n    sensitivity_simulation,\n    parameters,\n    groups,\n    results_path,\n    seed=None,\n    n_cores=None,\n    cache_results=False,\n    difference=0.01,\n)\nLocal sensitivity analysis based on symmetric finite differences.\nThis class implements a local sensitivity analysis in which each model parameter is perturbed individually by a small relative amount while all other parameters are kept at their reference values.\nFor each parameter, two simulations are performed (increase and decrease), in addition to a reference simulation. Sensitivities are computed for each output variable and analysis group.\n\n\n\n\n\n\n\n\n\n\nName\nType\nDescription\n\n\n\n\ndifference\nfloat\nRelative parameter perturbation used for the finite-difference approximation (e.g., 0.01 corresponds to ±1% changes).\n\n\n\n\n\n\n\n\n\nName\nDescription\n\n\n\n\ncalculate_sensitivity\nCompute raw and normalized local sensitivity matrices.\n\n\ncreate_samples\nCreate parameter samples for the local sensitivity analysis.\n\n\n\n\n\nsensitivity.sensitivity_local.LocalSensitivityAnalysis.calculate_sensitivity(\n    cache_filename=None,\n    cache=False,\n)\nCompute raw and normalized local sensitivity matrices.\nThis method calculates two-sided finite-difference sensitivities for each parameter–output combination and stores both raw and normalized sensitivity matrices.\nOptionally, results can be read from or written to a cache file.\n\n\n\n\n\n\n\n\n\n\n\nName\nType\nDescription\nDefault\n\n\n\n\ncache_filename\nstr\nFilename for caching sensitivity results.\nNone\n\n\ncache\nbool\nWhether to read from and/or write to the cache.\nFalse\n\n\n\n\n\n\n\nsensitivity.sensitivity_local.LocalSensitivityAnalysis.create_samples()\nCreate parameter samples for the local sensitivity analysis.\nFor each analysis group, this method constructs a sample matrix containing: - One reference parameter vector - Two perturbed parameter vectors per parameter (±difference)\nThe samples are stored as xarray.DataArray objects and indexed by sample and parameter identifiers.",
-    "crumbs": [
-      "API",
-      "`sensitivity_local`"
-    ]
-  },
-  {
-    "objectID": "api/sensitivity.sensitivity_local.html#notes",
-    "href": "api/sensitivity.sensitivity_local.html#notes",
-    "title": "sensitivity.sensitivity_local",
-    "section": "",
-    "text": "For each parameter p_i with reference value p_{i,0}, two perturbed simulations are generated: p_i_plus = p_{i,0} * (1 + difference) p_i_minus = p_{i,0} * (1 - difference)\nRaw sensitivities are computed using a symmetric finite-difference scheme: S(q_k, p_i) = (q_k(p_i_plus) - q_k(p_i_minus)) / (p_i_plus - p_i_minus)\nNormalized sensitivities represent the relative change in output per relative change in parameter: S_norm(q_k, p_i) = S(q_k, p_i) * (p_{i,0} / q_k(p_{i,0}))",
-    "crumbs": [
-      "API",
-      "`sensitivity_local`"
-    ]
-  },
-  {
-    "objectID": "api/sensitivity.sensitivity_local.html#classes",
-    "href": "api/sensitivity.sensitivity_local.html#classes",
-    "title": "sensitivity.sensitivity_local",
-    "section": "",
-    "text": "Name\nDescription\n\n\n\n\nLocalSensitivityAnalysis\nLocal sensitivity analysis based on symmetric finite differences.\n\n\n\n\n\nsensitivity.sensitivity_local.LocalSensitivityAnalysis(\n    sensitivity_simulation,\n    parameters,\n    groups,\n    results_path,\n    seed=None,\n    n_cores=None,\n    cache_results=False,\n    difference=0.01,\n)\nLocal sensitivity analysis based on symmetric finite differences.\nThis class implements a local sensitivity analysis in which each model parameter is perturbed individually by a small relative amount while all other parameters are kept at their reference values.\nFor each parameter, two simulations are performed (increase and decrease), in addition to a reference simulation. Sensitivities are computed for each output variable and analysis group.\n\n\n\n\n\n\n\n\n\n\nName\nType\nDescription\n\n\n\n\ndifference\nfloat\nRelative parameter perturbation used for the finite-difference approximation (e.g., 0.01 corresponds to ±1% changes).\n\n\n\n\n\n\n\n\n\nName\nDescription\n\n\n\n\ncalculate_sensitivity\nCompute raw and normalized local sensitivity matrices.\n\n\ncreate_samples\nCreate parameter samples for the local sensitivity analysis.\n\n\n\n\n\nsensitivity.sensitivity_local.LocalSensitivityAnalysis.calculate_sensitivity(\n    cache_filename=None,\n    cache=False,\n)\nCompute raw and normalized local sensitivity matrices.\nThis method calculates two-sided finite-difference sensitivities for each parameter–output combination and stores both raw and normalized sensitivity matrices.\nOptionally, results can be read from or written to a cache file.\n\n\n\n\n\n\n\n\n\n\n\nName\nType\nDescription\nDefault\n\n\n\n\ncache_filename\nstr\nFilename for caching sensitivity results.\nNone\n\n\ncache\nbool\nWhether to read from and/or write to the cache.\nFalse\n\n\n\n\n\n\n\nsensitivity.sensitivity_local.LocalSensitivityAnalysis.create_samples()\nCreate parameter samples for the local sensitivity analysis.\nFor each analysis group, this method constructs a sample matrix containing: - One reference parameter vector - Two perturbed parameter vectors per parameter (±difference)\nThe samples are stored as xarray.DataArray objects and indexed by sample and parameter identifiers.",
-    "crumbs": [
-      "API",
-      "`sensitivity_local`"
-    ]
-  },
-  {
-    "objectID": "api/sensitivity.sensitivity_sampling.html",
-    "href": "api/sensitivity.sensitivity_sampling.html",
-    "title": "sensitivity.sensitivity_sampling",
-    "section": "",
-    "text": "sensitivity.sensitivity_sampling\nSampling-based sensitivity and uncertainty analysis.\nThis module implements a sampling-based sensitivity analysis in which model parameters are varied simultaneously according to predefined bounds and probability assumptions, and the resulting distribution of model outputs is analyzed statistically.\nThe primary purpose of this approach is to quantify output uncertainty and variability induced by parameter uncertainty, rather than to compute variance-decomposition sensitivity indices. It is therefore complementary to local (derivative-based) and global (variance-based) sensitivity analyses.\nParameter samples are generated using Latin Hypercube Sampling (LHS), a stratified Monte Carlo method that ensures efficient coverage of the multidimensional parameter space. In the current implementation, parameters are sampled independently assuming uniform distributions within their bounds.\nFor each analysis group and output variable, descriptive statistics are computed from the simulated sample ensemble, including: - mean and median - standard deviation and coefficient of variation - minimum and maximum - selected quantiles (5% and 95%)\nThese statistics provide a compact summary of output uncertainty and enable comparisons across model outputs and experimental or physiological conditions.\nThe module is intended for: - uncertainty propagation analyses - robustness and variability assessments - exploratory model analysis and screening - reporting uncertainty ranges in computational modeling studies\nIt integrates with the sbmlsim sensitivity framework and supports result caching, tabular export, and visualization of output distributions.\n\n\nThis method does not compute sensitivity indices in the strict variance-based sense (e.g., Sobol indices). Instead, it characterizes how uncertainty in parameters propagates to uncertainty in model outputs via sampling.\nTypical workflows combine this approach with local or global sensitivity analysis to obtain both quantitative sensitivity measures and uncertainty estimates.\n\n\n\n\n\n\nName\nDescription\n\n\n\n\nSamplingSensitivityAnalysis\nSensitivity/uncertainty analysis based on sampling.\n\n\n\n\n\nsensitivity.sensitivity_sampling.SamplingSensitivityAnalysis(\n    sensitivity_simulation,\n    parameters,\n    groups,\n    results_path,\n    N,\n    seed=None,\n    n_cores=None,\n    cache_results=False,\n)\nSensitivity/uncertainty analysis based on sampling.\nFIXME: more control on sampling cv: float = 0.1, distribution: DistributionType = DistributionType.NORMAL_DISTRIBUTION,\n\n\n\n\n\nName\nDescription\n\n\n\n\ncalculate_sensitivity\nCalculate the sensitivity matrices for sampling sensitivity.\n\n\ncreate_samples\nCreate LHS samples.\n\n\nplot\nBoxplots for the Sampling sensitivity.\n\n\nplot_data\nBoxplots for the sampled output.\n\n\n\n\n\nsensitivity.sensitivity_sampling.SamplingSensitivityAnalysis.calculate_sensitivity(\n    cache_filename=None,\n    cache=False,\n)\nCalculate the sensitivity matrices for sampling sensitivity.\n\n\n\nsensitivity.sensitivity_sampling.SamplingSensitivityAnalysis.create_samples()\nCreate LHS samples.\nLatin hypercube sampling (LHS) is a stratified sampling method used to generate near‑random samples from a multidimensional distribution for Monte Carlo simulations and computer experiments.\nAssuming uniform distributions within the provided bounds.\nUse LHS sampling of parameters.\n\n\n\nsensitivity.sensitivity_sampling.SamplingSensitivityAnalysis.plot(**kwargs)\nBoxplots for the Sampling sensitivity.\n\n\n\nsensitivity.sensitivity_sampling.SamplingSensitivityAnalysis.plot_data(\n    type,\n    show_jitter=True,\n    show_violin=True,\n    **kwargs,\n)\nBoxplots for the sampled output.",
-    "crumbs": [
-      "API",
-      "`sensitivity_sampling`"
-    ]
-  },
-  {
-    "objectID": "api/sensitivity.sensitivity_sampling.html#notes",
-    "href": "api/sensitivity.sensitivity_sampling.html#notes",
-    "title": "sensitivity.sensitivity_sampling",
-    "section": "",
-    "text": "This method does not compute sensitivity indices in the strict variance-based sense (e.g., Sobol indices). Instead, it characterizes how uncertainty in parameters propagates to uncertainty in model outputs via sampling.\nTypical workflows combine this approach with local or global sensitivity analysis to obtain both quantitative sensitivity measures and uncertainty estimates.",
-    "crumbs": [
-      "API",
-      "`sensitivity_sampling`"
-    ]
-  },
-  {
-    "objectID": "api/sensitivity.sensitivity_sampling.html#classes",
-    "href": "api/sensitivity.sensitivity_sampling.html#classes",
-    "title": "sensitivity.sensitivity_sampling",
-    "section": "",
-    "text": "Name\nDescription\n\n\n\n\nSamplingSensitivityAnalysis\nSensitivity/uncertainty analysis based on sampling.\n\n\n\n\n\nsensitivity.sensitivity_sampling.SamplingSensitivityAnalysis(\n    sensitivity_simulation,\n    parameters,\n    groups,\n    results_path,\n    N,\n    seed=None,\n    n_cores=None,\n    cache_results=False,\n)\nSensitivity/uncertainty analysis based on sampling.\nFIXME: more control on sampling cv: float = 0.1, distribution: DistributionType = DistributionType.NORMAL_DISTRIBUTION,\n\n\n\n\n\nName\nDescription\n\n\n\n\ncalculate_sensitivity\nCalculate the sensitivity matrices for sampling sensitivity.\n\n\ncreate_samples\nCreate LHS samples.\n\n\nplot\nBoxplots for the Sampling sensitivity.\n\n\nplot_data\nBoxplots for the sampled output.\n\n\n\n\n\nsensitivity.sensitivity_sampling.SamplingSensitivityAnalysis.calculate_sensitivity(\n    cache_filename=None,\n    cache=False,\n)\nCalculate the sensitivity matrices for sampling sensitivity.\n\n\n\nsensitivity.sensitivity_sampling.SamplingSensitivityAnalysis.create_samples()\nCreate LHS samples.\nLatin hypercube sampling (LHS) is a stratified sampling method used to generate near‑random samples from a multidimensional distribution for Monte Carlo simulations and computer experiments.\nAssuming uniform distributions within the provided bounds.\nUse LHS sampling of parameters.\n\n\n\nsensitivity.sensitivity_sampling.SamplingSensitivityAnalysis.plot(**kwargs)\nBoxplots for the Sampling sensitivity.\n\n\n\nsensitivity.sensitivity_sampling.SamplingSensitivityAnalysis.plot_data(\n    type,\n    show_jitter=True,\n    show_violin=True,\n    **kwargs,\n)\nBoxplots for the sampled output.",
-    "crumbs": [
-      "API",
-      "`sensitivity_sampling`"
+      "`sensitivity_sobol`"
     ]
   },
   {
@@ -375,27 +367,7 @@
     "href": "index.html#funding",
     "title": "sbmlsim: SBML simulation made easy",
     "section": "Funding",
-    "text": "Funding\nMatthias König is supported and by the German Research Foundation (DFG) within the Research Unit Programme FOR 5151 “QuaLiPerF (Quantifying Liver Perfusion-Function Relationship in Complex Resection - A Systems Medicine Approach)” by grant number 436883643 and by grant number 465194077 (Priority Programme SPP 2311, Subproject SimLivA).\nMatthias König was supported by the Federal Ministry of Education and Research (BMBF, Germany) within the research network Systems Medicine of the Liver (LiSyM, grant number 031L0054).",
-    "crumbs": [
-      "sbmlsim: SBML simulation made easy"
-    ]
-  },
-  {
-    "objectID": "index.html#development",
-    "href": "index.html#development",
-    "title": "sbmlsim: SBML simulation made easy",
-    "section": "Development",
-    "text": "Development\n\nInstall dev dependencies:\nTo setup everything for the develop environment use\n# install core dependencies\nuv sync\n# install dev dependencies\nuv pip install -r pyproject.toml --extra dev\nuv tool install tox --with tox-uv\nuv pip install pre-commit\npre-commit install\npre-commit run\n\n\nTesting\nTesting is performed with tox Run single tox target\ntox r -e py314\nRun all tests in parallel\ntox run-parallel",
-    "crumbs": [
-      "sbmlsim: SBML simulation made easy"
-    ]
-  },
-  {
-    "objectID": "index.html#documentation",
-    "href": "index.html#documentation",
-    "title": "sbmlsim: SBML simulation made easy",
-    "section": "Documentation",
-    "text": "Documentation\nIf you haven’t already, you’ll need to install Quarto.\n© 2019-2026 Matthias König",
+    "text": "Funding\nMatthias König is supported and by the German Research Foundation (DFG) within the Research Unit Programme FOR 5151 “QuaLiPerF (Quantifying Liver Perfusion-Function Relationship in Complex Resection - A Systems Medicine Approach)” by grant number 436883643 and by grant number 465194077 (Priority Programme SPP 2311, Subproject SimLivA).\nMatthias König was supported by the Federal Ministry of Education and Research (BMBF, Germany) within the research network Systems Medicine of the Liver (LiSyM, grant number 031L0054).\n© 2019-2026 Matthias König",
     "crumbs": [
       "sbmlsim: SBML simulation made easy"
     ]

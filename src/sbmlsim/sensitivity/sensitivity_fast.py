@@ -4,8 +4,8 @@ Global sensitivity analysis using FAST (Fourier Amplitude Sensitivity Test).
 This module implements variance-based global sensitivity analysis using the
 Fourier Amplitude Sensitivity Test (FAST). FAST quantifies the contribution of
 individual model parameters to the variance of model outputs by mapping
-parameter variations onto periodic functions and analyzing the resulting
-output spectrum in the frequency domain.
+parameter variations onto periodic functions and analyzing the resulting output
+spectrum in the frequency domain.
 
 The method provides efficient estimation of first-order (main-effect)
 sensitivity indices and, in extended variants (eFAST), total-effect indices.
@@ -13,23 +13,21 @@ Compared to Monte Carlo–based Sobol methods, FAST offers favorable scaling wit
 the number of parameters and is well suited for medium- to large-scale
 deterministic models.
 
-The implementation is intended for use in computational modeling workflows,
+This implementation is intended for use in computational modeling workflows,
 including systems biology, pharmacokinetics/pharmacodynamics, and digital twin
-applications, where robust global assessment of parameter influence is required.
+applications, where a robust global assessment of parameter influence is
+required.
 
-References
-----------
-Cukier, R. I., Fortuin, C. M., Shuler, K. E., Petschek, A. G., & Schaibly, J. H. (1973).
-Study of the sensitivity of coupled reaction systems to uncertainties in rate
-coefficients. I. Theory.
-Journal of Chemical Physics, 59, 3873–3878.
-https://doi.org/10.1063/1.1680571
+References:
+    Cukier, R. I., Fortuin, C. M., Shuler, K. E., Petschek, A. G., & Schaibly, J. H.
+    (1973). Study of the sensitivity of coupled reaction systems to uncertainties
+    in rate coefficients. I. Theory. Journal of Chemical Physics, 59, 3873–3878.
+    https://doi.org/10.1063/1.1680571
 
-Saltelli, A., Tarantola, S., & Chan, K. P.-S. (1999).
-A quantitative model-independent method for global sensitivity analysis of
-model output.
-Technometrics, 41(1), 39–56.
-https://doi.org/10.1080/00401706.1999.10485594
+    Saltelli, A., Tarantola, S., & Chan, K. P.-S. (1999). A quantitative
+    model-independent method for global sensitivity analysis of model output.
+    Technometrics, 41(1), 39–56.
+    https://doi.org/10.1080/00401706.1999.10485594
 """
 
 from pathlib import Path
@@ -51,8 +49,17 @@ from sbmlsim.sensitivity.plots import plot_S1_ST_indices
 
 
 class FASTSensitivityAnalysis(SensitivityAnalysis):
-    """Global sensitivity analysis based Fourier Amplitude Sensitivity Test (FAST)
-    (Cukier et al. 1973, Saltelli et al. 1999)."""
+    """Global sensitivity analysis using the Fourier Amplitude Sensitivity Test.
+
+    This class implements the FAST methodology for
+    estimating first-order and total-effect sensitivity indices. It integrates
+    with the common sensitivity analysis infrastructure provided by
+    `SensitivityAnalysis` and supports grouped analyses and multiple model
+    outputs.
+
+    References:
+        Cukier et al. (1973); Saltelli et al. (1999)
+    """
 
     sensitivity_keys = ["S1", "ST", "S1_conf", "ST_conf"]
 
@@ -69,13 +76,22 @@ class FASTSensitivityAnalysis(SensitivityAnalysis):
         cache_results: bool = False,
         **kwargs,
     ):
-        """
-        N (int) – The number of samples to generate
-        M (int) – The interference parameter, i.e., the number of harmonics to sum
-        in the Fourier series decomposition (default 4)
+        """Initialize a FAST sensitivity analysis.
 
-        The Sobol' sequence is a popular quasi-random low-discrepancy sequence used
-        to generate uniform samples of parameter space.
+        Args:
+            sensitivity_simulation: Simulation object defining how model
+                evaluations are performed.
+            parameters: List of parameters included in the sensitivity analysis.
+            groups: Analysis groups defining parameter perturbations or scenarios.
+            results_path: Directory where results and figures are stored.
+            N: Base sample size controlling the total number of model evaluations.
+                The total number of samples scales with `N * num_parameters`.
+            M: Interference parameter defining the number of harmonics used in
+                the Fourier series decomposition (default: 4).
+            seed: Optional random seed for reproducibility.
+            n_cores: Optional number of CPU cores used for parallel execution.
+            cache_results: Whether to cache sensitivity results to disk.
+            **kwargs: Additional keyword arguments passed to the base class.
         """
 
         super().__init__(
@@ -104,7 +120,12 @@ class FASTSensitivityAnalysis(SensitivityAnalysis):
             )
 
     def create_samples(self) -> None:
-        """Create samples for FAST."""
+        """Create parameter samples for FAST analysis.
+
+        This method generates FAST samples for each analysis group using the
+        SALib FAST sampler. The resulting samples are stored as xarray objects
+        and later used for model evaluation.
+        """
         # (num_samples x num_outputs)
         #  total model evaluations are N * num_parameters
         num_samples = self.N * self.num_parameters
@@ -128,11 +149,21 @@ class FASTSensitivityAnalysis(SensitivityAnalysis):
     def calculate_sensitivity(
         self, cache_filename: Optional[str] = None, cache: bool = False
     ):
-        """Perform extended Fourier Amplitude Sensitivity Test on model outputs.
+        """Compute FAST sensitivity indices for all model outputs.
 
-        Returns a dictionary with keys 'S1' and 'ST', where each entry is a list of
-        size D (the number of parameters) containing the indices in the same order
-        as the parameter file.
+        This method performs the extended Fourier Amplitude Sensitivity Test
+        (eFAST) to estimate first-order (S1) and total-effect (ST) sensitivity
+        indices, along with corresponding confidence intervals, for each model
+        output and parameter.
+
+        Args:
+            cache_filename: Optional filename for reading or writing cached
+                sensitivity results.
+            cache: Whether to read from or write results to cache.
+
+        Notes:
+            The sensitivity indices are computed independently for each output
+            variable and stored in a structured xarray-based format.
         """
 
         data = self.read_cache(cache_filename, cache)
@@ -173,6 +204,12 @@ class FASTSensitivityAnalysis(SensitivityAnalysis):
         )
 
     def plot(self):
+        """Generate standard FAST sensitivity plots.
+
+        This method creates heatmaps and bar plots for first-order (S1) and
+        total-effect (ST) sensitivity indices for each analysis group and stores
+        the resulting figures in the configured results directory.
+        """
         super().plot()
         for kg, group in enumerate(self.groups):
             # heatmaps

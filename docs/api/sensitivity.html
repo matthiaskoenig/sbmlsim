@@ -139,21 +139,8 @@ ul.task-list li input[type="checkbox"] {
   </div>
 </li>
         <li class="sidebar-item sidebar-item-section">
-      <div class="sidebar-item-container">
-            <a class="sidebar-item-text sidebar-link text-start" data-bs-toggle="collapse" data-bs-target="#quarto-sidebar-section-1" role="navigation" aria-expanded="true">
- <span class="menu-text">Analysis</span></a>
-          <a class="sidebar-item-toggle text-start" data-bs-toggle="collapse" data-bs-target="#quarto-sidebar-section-1" role="navigation" aria-expanded="true" aria-label="Toggle section">
-            <i class="bi bi-chevron-right ms-2"></i>
-          </a>
-      </div>
-      <ul id="quarto-sidebar-section-1" class="collapse list-unstyled sidebar-section depth1 show">
-          <li class="sidebar-item">
-  <div class="sidebar-item-container">
-  <a href="../sensitivity.html" class="sidebar-item-text sidebar-link">
- <span class="menu-text">Sensitivity Analysis</span></a>
-  </div>
-</li>
-      </ul>
+      <span class="sidebar-item-text sidebar-link text-start">
+ <span class="menu-text">Analysis</span></span>
   </li>
         <li class="sidebar-item sidebar-item-section">
       <div class="sidebar-item-container">
@@ -204,6 +191,23 @@ ul.task-list li input[type="checkbox"] {
   <div class="sidebar-item-container">
   <a href="../api/sensitivity.sensitivity_sampling.html" class="sidebar-item-text sidebar-link">
  <span class="menu-text"><code>sensitivity_sampling</code></span></a>
+  </div>
+</li>
+      </ul>
+  </li>
+        <li class="sidebar-item sidebar-item-section">
+      <div class="sidebar-item-container">
+            <a class="sidebar-item-text sidebar-link text-start" data-bs-toggle="collapse" data-bs-target="#quarto-sidebar-section-3" role="navigation" aria-expanded="true">
+ <span class="menu-text">Contributing</span></a>
+          <a class="sidebar-item-toggle text-start" data-bs-toggle="collapse" data-bs-target="#quarto-sidebar-section-3" role="navigation" aria-expanded="true" aria-label="Toggle section">
+            <i class="bi bi-chevron-right ms-2"></i>
+          </a>
+      </div>
+      <ul id="quarto-sidebar-section-3" class="collapse list-unstyled sidebar-section depth1 show">
+          <li class="sidebar-item">
+  <div class="sidebar-item-container">
+  <a href="../development.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Development</span></a>
   </div>
 </li>
       </ul>
@@ -362,7 +366,16 @@ ul.task-list li input[type="checkbox"] {
 <h1>sensitivity</h1>
 <p><code>sensitivity</code></p>
 <p>Sensitivity analysis.</p>
-<p>This package provides a unified framework for analyzing how uncertainty and variability in model parameters affect model outputs. It supports multiple complementary sensitivity analysis strategies, including local, sampling-based, and global methods, enabling both qualitative and quantitative assessment of parameter influence.</p>
+<p>This package provides a unified framework for analyzing how uncertainty and variability in model parameters affect model outputs. It supports multiple complementary sensitivity analysis strategies, including local, sampling-based, and global methods. Together, these enable both qualitative and quantitative assessment of parameter influence on model behavior.</p>
+<p>The available sensitivity analysis methods are implemented in the following modules:</p>
+<ul>
+<li><p><a href="../api/sensitivity.sensitivity_fast.html"><code>sensitivity.sensitivity_fast</code></a>: Global sensitivity analysis using FAST (Fourier Amplitude Sensitivity Test).</p></li>
+<li><p><a href="../api/sensitivity.sensitivity_local.html"><code>sensitivity.sensitivity_local</code></a>: Local (derivative-based) sensitivity analysis around a nominal parameter set.</p></li>
+<li><p><a href="../api/sensitivity.sensitivity_morris.html"><code>sensitivity.sensitivity_morris</code></a>: Global screening based on Morris elementary effects.</p></li>
+<li><p><a href="../api/sensitivity.sensitivity_sampling.html"><code>sensitivity.sensitivity_sampling</code></a>: Sampling-based sensitivity analysis using parameter perturbations and statistical summaries.</p></li>
+<li><p><a href="../api/sensitivity.sensitivity_sobol.html"><code>sensitivity.sensitivity_sobol</code></a>: Variance-based global sensitivity analysis using Sobol indices.</p></li>
+</ul>
+<p>All methods share a common interface and data model. This allows consistent configuration, execution, and comparison of sensitivity analysis results across different techniques.</p>
 
 
 </section>

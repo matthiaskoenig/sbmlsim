@@ -23,6 +23,8 @@ sensitivities.
 The implementation builds on the sbmlsim sensitivity framework and integrates
 with existing simulation, caching, and plotting utilities.
 
+
+
 ## Notes {.doc-section .doc-section-notes}
 
 For each parameter p_i with reference value p_{i,0}, two perturbed simulations
@@ -30,8 +32,9 @@ are generated:
     p_i_plus  = p_{i,0} * (1 + difference)
     p_i_minus = p_{i,0} * (1 - difference)
 
-Raw sensitivities are computed using a symmetric finite-difference scheme:
-    S(q_k, p_i) = (q_k(p_i_plus) - q_k(p_i_minus)) / (p_i_plus - p_i_minus)
+## Raw sensitivities are computed using a symmetric finite-difference scheme {.doc-section .doc-section-raw-sensitivities-are-computed-using-a-symmetric-finite-difference-scheme}
+
+S(q_k, p_i) = (q_k(p_i_plus) - q_k(p_i_minus)) / (p_i_plus - p_i_minus)
 
 Normalized sensitivities represent the relative change in output per relative
 change in parameter:
@@ -68,11 +71,19 @@ For each parameter, two simulations are performed (increase and decrease),
 in addition to a reference simulation. Sensitivities are computed for each
 output variable and analysis group.
 
+
+
 #### Attributes {.doc-section .doc-section-attributes}
 
-| Name       | Type   | Description                                                                                                           |
-|------------|--------|-----------------------------------------------------------------------------------------------------------------------|
-| difference | float  | Relative parameter perturbation used for the finite-difference approximation (e.g., 0.01 corresponds to ±1% changes). |
+difference : float
+    Relative parameter perturbation used for the finite-difference
+    approximation (e.g., 0.01 corresponds to ±1% changes).
+
+#### Attributes
+
+| Name | Description |
+| --- | --- |
+| [num_samples](#sbmlsim.sensitivity.sensitivity_local.LocalSensitivityAnalysis.num_samples) | Return the number of samples required for the analysis. |
 
 #### Methods
 
@@ -98,12 +109,14 @@ sensitivity matrices.
 
 Optionally, results can be read from or written to a cache file.
 
+
+
 ###### Parameters {.doc-section .doc-section-parameters}
 
-| Name           | Type   | Description                                     | Default   |
-|----------------|--------|-------------------------------------------------|-----------|
-| cache_filename | str    | Filename for caching sensitivity results.       | `None`    |
-| cache          | bool   | Whether to read from and/or write to the cache. | `False`   |
+cache_filename : str, optional
+    Filename for caching sensitivity results.
+cache : bool, optional
+    Whether to read from and/or write to the cache.
 
 ##### create_samples { #sbmlsim.sensitivity.sensitivity_local.LocalSensitivityAnalysis.create_samples }
 

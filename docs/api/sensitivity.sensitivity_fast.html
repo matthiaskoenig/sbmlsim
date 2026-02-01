@@ -174,21 +174,8 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
   </div>
 </li>
         <li class="sidebar-item sidebar-item-section">
-      <div class="sidebar-item-container">
-            <a class="sidebar-item-text sidebar-link text-start" data-bs-toggle="collapse" data-bs-target="#quarto-sidebar-section-1" role="navigation" aria-expanded="true">
- <span class="menu-text">Analysis</span></a>
-          <a class="sidebar-item-toggle text-start" data-bs-toggle="collapse" data-bs-target="#quarto-sidebar-section-1" role="navigation" aria-expanded="true" aria-label="Toggle section">
-            <i class="bi bi-chevron-right ms-2"></i>
-          </a>
-      </div>
-      <ul id="quarto-sidebar-section-1" class="collapse list-unstyled sidebar-section depth1 show">
-          <li class="sidebar-item">
-  <div class="sidebar-item-container">
-  <a href="../sensitivity.html" class="sidebar-item-text sidebar-link">
- <span class="menu-text">Sensitivity Analysis</span></a>
-  </div>
-</li>
-      </ul>
+      <span class="sidebar-item-text sidebar-link text-start">
+ <span class="menu-text">Analysis</span></span>
   </li>
         <li class="sidebar-item sidebar-item-section">
       <div class="sidebar-item-container">
@@ -239,6 +226,23 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
   <div class="sidebar-item-container">
   <a href="../api/sensitivity.sensitivity_sampling.html" class="sidebar-item-text sidebar-link">
  <span class="menu-text"><code>sensitivity_sampling</code></span></a>
+  </div>
+</li>
+      </ul>
+  </li>
+        <li class="sidebar-item sidebar-item-section">
+      <div class="sidebar-item-container">
+            <a class="sidebar-item-text sidebar-link text-start" data-bs-toggle="collapse" data-bs-target="#quarto-sidebar-section-3" role="navigation" aria-expanded="true">
+ <span class="menu-text">Contributing</span></a>
+          <a class="sidebar-item-toggle text-start" data-bs-toggle="collapse" data-bs-target="#quarto-sidebar-section-3" role="navigation" aria-expanded="true" aria-label="Toggle section">
+            <i class="bi bi-chevron-right ms-2"></i>
+          </a>
+      </div>
+      <ul id="quarto-sidebar-section-3" class="collapse list-unstyled sidebar-section depth1 show">
+          <li class="sidebar-item">
+  <div class="sidebar-item-container">
+  <a href="../development.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Development</span></a>
   </div>
 </li>
       </ul>
@@ -406,7 +410,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <p>Global sensitivity analysis using FAST (Fourier Amplitude Sensitivity Test).</p>
 <p>This module implements variance-based global sensitivity analysis using the Fourier Amplitude Sensitivity Test (FAST). FAST quantifies the contribution of individual model parameters to the variance of model outputs by mapping parameter variations onto periodic functions and analyzing the resulting output spectrum in the frequency domain.</p>
 <p>The method provides efficient estimation of first-order (main-effect) sensitivity indices and, in extended variants (eFAST), total-effect indices. Compared to Monte Carlo–based Sobol methods, FAST offers favorable scaling with the number of parameters and is well suited for medium- to large-scale deterministic models.</p>
-<p>The implementation is intended for use in computational modeling workflows, including systems biology, pharmacokinetics/pharmacodynamics, and digital twin applications, where robust global assessment of parameter influence is required.</p>
+<p>This implementation is intended for use in computational modeling workflows, including systems biology, pharmacokinetics/pharmacodynamics, and digital twin applications, where a robust global assessment of parameter influence is required.</p>
 <section id="references" class="level2 doc-section doc-section-references">
 <h2 class="doc-section doc-section-references anchored" data-anchor-id="references">References</h2>
 <p>Cukier, R. I., Fortuin, C. M., Shuler, K. E., Petschek, A. G., &amp; Schaibly, J. H. (1973). Study of the sensitivity of coupled reaction systems to uncertainties in rate coefficients. I. Theory. Journal of Chemical Physics, 59, 3873–3878. https://doi.org/10.1063/1.1680571</p>
@@ -424,7 +428,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <tbody>
 <tr class="odd">
 <td><a href="#sbmlsim.sensitivity.sensitivity_fast.FASTSensitivityAnalysis">FASTSensitivityAnalysis</a></td>
-<td>Global sensitivity analysis based Fourier Amplitude Sensitivity Test (FAST)</td>
+<td>Global sensitivity analysis using the Fourier Amplitude Sensitivity Test.</td>
 </tr>
 </tbody>
 </table>
@@ -442,7 +446,12 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <span id="cb1-10"><a href="#cb1-10" aria-hidden="true" tabindex="-1"></a>    cache_results<span class="op">=</span><span class="va">False</span>,</span>
 <span id="cb1-11"><a href="#cb1-11" aria-hidden="true" tabindex="-1"></a>    <span class="op">**</span>kwargs,</span>
 <span id="cb1-12"><a href="#cb1-12" aria-hidden="true" tabindex="-1"></a>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
-<p>Global sensitivity analysis based Fourier Amplitude Sensitivity Test (FAST) (Cukier et al.&nbsp;1973, Saltelli et al.&nbsp;1999).</p>
+<p>Global sensitivity analysis using the Fourier Amplitude Sensitivity Test.</p>
+<p>This class implements the FAST methodology for estimating first-order and total-effect sensitivity indices. It integrates with the common sensitivity analysis infrastructure provided by <code>SensitivityAnalysis</code> and supports grouped analyses and multiple model outputs.</p>
+<section id="references-1" class="level4 doc-section doc-section-references">
+<h4 class="doc-section doc-section-references anchored" data-anchor-id="references-1">References</h4>
+<p>Cukier et al.&nbsp;(1973); Saltelli et al.&nbsp;(1999)</p>
+</section>
 <section id="methods" class="level4">
 <h4 class="anchored" data-anchor-id="methods">Methods</h4>
 <table class="caption-top table">
@@ -455,11 +464,15 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <tbody>
 <tr class="odd">
 <td><a href="#sbmlsim.sensitivity.sensitivity_fast.FASTSensitivityAnalysis.calculate_sensitivity">calculate_sensitivity</a></td>
-<td>Perform extended Fourier Amplitude Sensitivity Test on model outputs.</td>
+<td>Compute FAST sensitivity indices for all model outputs.</td>
 </tr>
 <tr class="even">
 <td><a href="#sbmlsim.sensitivity.sensitivity_fast.FASTSensitivityAnalysis.create_samples">create_samples</a></td>
-<td>Create samples for FAST.</td>
+<td>Create parameter samples for FAST analysis.</td>
+</tr>
+<tr class="odd">
+<td><a href="#sbmlsim.sensitivity.sensitivity_fast.FASTSensitivityAnalysis.plot">plot</a></td>
+<td>Generate standard FAST sensitivity plots.</td>
 </tr>
 </tbody>
 </table>
@@ -469,13 +482,57 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <span id="cb2-2"><a href="#cb2-2" aria-hidden="true" tabindex="-1"></a>    cache_filename<span class="op">=</span><span class="va">None</span>,</span>
 <span id="cb2-3"><a href="#cb2-3" aria-hidden="true" tabindex="-1"></a>    cache<span class="op">=</span><span class="va">False</span>,</span>
 <span id="cb2-4"><a href="#cb2-4" aria-hidden="true" tabindex="-1"></a>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
-<p>Perform extended Fourier Amplitude Sensitivity Test on model outputs.</p>
-<p>Returns a dictionary with keys ‘S1’ and ‘ST’, where each entry is a list of size D (the number of parameters) containing the indices in the same order as the parameter file.</p>
+<p>Compute FAST sensitivity indices for all model outputs.</p>
+<p>This method performs the extended Fourier Amplitude Sensitivity Test (eFAST) to estimate first-order (S1) and total-effect (ST) sensitivity indices, along with corresponding confidence intervals, for each model output and parameter.</p>
+<section id="parameters" class="level6 doc-section doc-section-parameters">
+<h6 class="doc-section doc-section-parameters anchored" data-anchor-id="parameters">Parameters</h6>
+<table class="caption-top table">
+<colgroup>
+<col style="width: 11%">
+<col style="width: 32%">
+<col style="width: 48%">
+<col style="width: 7%">
+</colgroup>
+<thead>
+<tr class="header">
+<th>Name</th>
+<th>Type</th>
+<th>Description</th>
+<th>Default</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>cache_filename</td>
+<td><code>Optional</code>[<code>str</code>]</td>
+<td>Optional filename for reading or writing cached sensitivity results.</td>
+<td><code>None</code></td>
+</tr>
+<tr class="even">
+<td>cache</td>
+<td><code>bool</code></td>
+<td>Whether to read from or write results to cache.</td>
+<td><code>False</code></td>
+</tr>
+</tbody>
+</table>
+</section>
+<section id="notes" class="level6 doc-section doc-section-notes">
+<h6 class="doc-section doc-section-notes anchored" data-anchor-id="notes">Notes</h6>
+<p>The sensitivity indices are computed independently for each output variable and stored in a structured xarray-based format.</p>
+</section>
 </section>
 <section id="sbmlsim.sensitivity.sensitivity_fast.FASTSensitivityAnalysis.create_samples" class="level5">
 <h5 class="anchored" data-anchor-id="sbmlsim.sensitivity.sensitivity_fast.FASTSensitivityAnalysis.create_samples">create_samples</h5>
 <div class="sourceCode" id="cb3"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a>sensitivity.sensitivity_fast.FASTSensitivityAnalysis.create_samples()</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
-<p>Create samples for FAST.</p>
+<p>Create parameter samples for FAST analysis.</p>
+<p>This method generates FAST samples for each analysis group using the SALib FAST sampler. The resulting samples are stored as xarray objects and later used for model evaluation.</p>
+</section>
+<section id="sbmlsim.sensitivity.sensitivity_fast.FASTSensitivityAnalysis.plot" class="level5">
+<h5 class="anchored" data-anchor-id="sbmlsim.sensitivity.sensitivity_fast.FASTSensitivityAnalysis.plot">plot</h5>
+<div class="sourceCode" id="cb4"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb4-1"><a href="#cb4-1" aria-hidden="true" tabindex="-1"></a>sensitivity.sensitivity_fast.FASTSensitivityAnalysis.plot()</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<p>Generate standard FAST sensitivity plots.</p>
+<p>This method creates heatmaps and bar plots for first-order (S1) and total-effect (ST) sensitivity indices for each analysis group and stores the resulting figures in the configured results directory.</p>
 
 
 </section>

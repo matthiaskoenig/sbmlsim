@@ -38,6 +38,8 @@ The module is intended for:
 It integrates with the sbmlsim sensitivity framework and supports result
 caching, tabular export, and visualization of output distributions.
 
+
+
 ## Notes {.doc-section .doc-section-notes}
 
 This method does not compute sensitivity indices in the strict variance-based
@@ -71,9 +73,10 @@ sensitivity.sensitivity_sampling.SamplingSensitivityAnalysis(
 
 Sensitivity/uncertainty analysis based on sampling.
 
-FIXME: more control on sampling
-    cv: float = 0.1,
-    distribution: DistributionType = DistributionType.NORMAL_DISTRIBUTION,
+#### more control on sampling {.doc-section .doc-section-more-control-on-sampling}
+
+cv: float = 0.1,
+distribution: DistributionType = DistributionType.NORMAL_DISTRIBUTION,
 
 #### Methods
 

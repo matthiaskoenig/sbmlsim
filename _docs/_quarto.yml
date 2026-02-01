@@ -33,9 +33,9 @@ website:
     contents:
        - index.qmd
        - section: "Analysis"
-         contents:
-          - text: Sensitivity Analysis
-            href: sensitivity.qmd
+#         contents:
+#          - text: Sensitivity Analysis
+#            href: sensitivity.qmd
        - section: "API"
          contents:
           - text: "Sensitivity"
@@ -52,6 +52,9 @@ website:
             href: api/sensitivity.sensitivity_sobol.qmd
           - text: "`sensitivity_sampling`"
             href: api/sensitivity.sensitivity_sampling.qmd
+       - section: "Contributing"
+         contents:
+          - href: development.qmd
 
     tools:
       - icon: github
@@ -86,6 +89,8 @@ metadata-files:
 quartodoc:
   # the name used to import the package you want to create reference docs for
   package: sbmlsim
+  render_interlinks: true
+  parser: google  # google, sphinx, numpy
 
   # write sidebar and style data
   sidebar: api/_sidebar.yml
@@ -106,8 +111,8 @@ quartodoc:
         - name: sensitivity.sensitivity_morris
         - name: sensitivity.sensitivity_sampling
 
-#filters:
-#  - interlinks
-#
-#interlinks:
-#  sources: {}
+filters:
+  - interlinks
+
+interlinks:
+  sources: {}
