@@ -1,43 +1,39 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
   <url>
-    <loc>https://matthiaskoenig.github.io/sbmlsim/release.html</loc>
+    <loc>https://matthiaskoenig.github.io/sbmlsim/sensitivity.html</loc>
     <lastmod>2026-02-01T15:25:24.205Z</lastmod>
-  </url>
-  <url>
-    <loc>https://matthiaskoenig.github.io/sbmlsim/index.html</loc>
-    <lastmod>2026-02-01T15:25:24.204Z</lastmod>
-  </url>
-  <url>
-    <loc>https://matthiaskoenig.github.io/sbmlsim/api/sensitivity.sensitivity_sampling.html</loc>
-    <lastmod>2026-02-01T15:42:23.972Z</lastmod>
-  </url>
-  <url>
-    <loc>https://matthiaskoenig.github.io/sbmlsim/api/sensitivity.sensitivity_local.html</loc>
-    <lastmod>2026-02-01T15:42:23.952Z</lastmod>
-  </url>
-  <url>
-    <loc>https://matthiaskoenig.github.io/sbmlsim/api/sensitivity.html</loc>
-    <lastmod>2026-02-01T15:42:23.946Z</lastmod>
-  </url>
-  <url>
-    <loc>https://matthiaskoenig.github.io/sbmlsim/api/index.html</loc>
-    <lastmod>2026-02-01T15:42:23.937Z</lastmod>
-  </url>
-  <url>
-    <loc>https://matthiaskoenig.github.io/sbmlsim/api/sensitivity.sensitivity_fast.html</loc>
-    <lastmod>2026-02-01T15:42:23.957Z</lastmod>
-  </url>
-  <url>
-    <loc>https://matthiaskoenig.github.io/sbmlsim/api/sensitivity.sensitivity_morris.html</loc>
-    <lastmod>2026-02-01T15:42:23.966Z</lastmod>
   </url>
   <url>
     <loc>https://matthiaskoenig.github.io/sbmlsim/api/sensitivity.sensitivity_sobol.html</loc>
-    <lastmod>2026-02-01T15:42:23.961Z</lastmod>
+    <lastmod>2026-02-01T16:00:53.246Z</lastmod>
   </url>
   <url>
-    <loc>https://matthiaskoenig.github.io/sbmlsim/sensitivity.html</loc>
-    <lastmod>2026-02-01T15:25:24.205Z</lastmod>
+    <loc>https://matthiaskoenig.github.io/sbmlsim/api/sensitivity.sensitivity_morris.html</loc>
+    <lastmod>2026-02-01T16:00:53.252Z</lastmod>
+  </url>
+  <url>
+    <loc>https://matthiaskoenig.github.io/sbmlsim/api/sensitivity.sensitivity_fast.html</loc>
+    <lastmod>2026-02-01T16:00:53.242Z</lastmod>
+  </url>
+  <url>
+    <loc>https://matthiaskoenig.github.io/sbmlsim/api/index.html</loc>
+    <lastmod>2026-02-01T16:06:06.935Z</lastmod>
+  </url>
+  <url>
+    <loc>https://matthiaskoenig.github.io/sbmlsim/api/sensitivity.html</loc>
+    <lastmod>2026-02-01T16:00:53.231Z</lastmod>
+  </url>
+  <url>
+    <loc>https://matthiaskoenig.github.io/sbmlsim/api/sensitivity.sensitivity_local.html</loc>
+    <lastmod>2026-02-01T16:00:53.237Z</lastmod>
+  </url>
+  <url>
+    <loc>https://matthiaskoenig.github.io/sbmlsim/api/sensitivity.sensitivity_sampling.html</loc>
+    <lastmod>2026-02-01T16:00:53.258Z</lastmod>
+  </url>
+  <url>
+    <loc>https://matthiaskoenig.github.io/sbmlsim/index.html</loc>
+    <lastmod>2026-02-01T16:00:32.964Z</lastmod>
   </url>
 </urlset>
