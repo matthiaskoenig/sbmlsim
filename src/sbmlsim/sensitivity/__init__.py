@@ -21,6 +21,7 @@ from .analysis import (
     AnalysisGroup,
 )
 from .parameters import (
+    ParameterType,
     SensitivityParameter,
 )
 from .sensitivity_fast import FASTSensitivityAnalysis
@@ -30,6 +31,7 @@ from .sensitivity_sobol import SobolSensitivityAnalysis
 from .sensitivity_morris import MorrisSensitivityAnalysis
 
 __all__ = [
+    "ParameterType",
     "SensitivityParameter",
     "SensitivityAnalysis",
     "SensitivitySimulation",

@@ -1,4 +1,5 @@
 """Tools and helpers to handle parameters for sensitivity analysis."""
+
 from __future__ import annotations
 
 from enum import Enum
@@ -16,6 +17,7 @@ from sbmlutils.report.units import udef_to_string
 
 class ParameterType(str, Enum):
     """Types of model parameters."""
+
     DATA = "data"
     SCALING = "scaling"
     NA = "na"
@@ -24,6 +26,7 @@ class ParameterType(str, Enum):
 
 class SensitivityParameter(BaseModel):
     """Parameter for SensitivityAnalysis."""
+
     model_config = ConfigDict(use_enum_values=True)
 
     uid: str
@@ -39,13 +42,14 @@ class SensitivityParameter(BaseModel):
         return hash(self.uid)
 
     @staticmethod
-    def parameters_set_bounds(parameters: Iterable[SensitivityParameter],
-                              bounds: Iterable[tuple]) -> None:
+    def parameters_set_bounds(
+        parameters: Iterable[SensitivityParameter], bounds: Iterable[tuple]
+    ) -> None:
         """Set bounds for sensitivity analysis."""
 
         parameters_d = {p.uid: p for p in parameters}
 
-        for (key, lb, ub, ptype) in bounds:
+        for key, lb, ub, ptype in bounds:
             if key not in parameters_d:
                 console.print(f"unused bounds definition: {key} = [{lb}, {ub}]")
             else:
@@ -55,20 +59,22 @@ class SensitivityParameter(BaseModel):
                 p.type = ptype
 
     @staticmethod
-    def parameters_to_df(parameters: Iterable[SensitivityParameter],
-                         sort: bool = True) -> pd.DataFrame:
+    def parameters_to_df(
+        parameters: Iterable[SensitivityParameter], sort: bool = True
+    ) -> pd.DataFrame:
         """Create parameter table from parameters."""
         items = []
         for item in parameters:
             d_item = item.model_dump()
             # better printing of type
-            d_item["type"] = d_item["type"].value
+            # d_item["type"] = d_item["type"].value
             items.append(d_item)
 
         df = pd.DataFrame(items)
         if sort:
-            df.sort_values(by=["type", "uid"], ascending=True, inplace=True,
-                           ignore_index=True)
+            df.sort_values(
+                by=["type", "uid"], ascending=True, inplace=True, ignore_index=True
+            )
         return df
 
     @classmethod
@@ -79,12 +85,10 @@ class SensitivityParameter(BaseModel):
     ) -> None:
         """Latex parameter table."""
         df = cls.parameters_to_df(parameters)
-        tex_str = df.to_latex(
-            None, index=False, float_format="{:.3g}".format
-        )
+        tex_str = df.to_latex(None, index=False, float_format="{:.3g}".format)
         tex_str = tex_str.replace("_", r"\_")
 
-        with open(tex_path, 'w') as f:
+        with open(tex_path, "w") as f:
             f.write(tex_str)
 
     @staticmethod
@@ -122,7 +126,8 @@ class SensitivityParameter(BaseModel):
             # handle the species concentration
             ruid = uid
             if (sbase.getTypeCode() == libsbml.SpeciesType) and (
-                sbase.getHasOnlySubstanceUnits()):
+                sbase.getHasOnlySubstanceUnits()
+            ):
                 ruid = f"[{uid}]"
 
             value = r.getValue(ruid)
@@ -171,13 +176,15 @@ class SensitivityParameter(BaseModel):
                 elif s.isSetInitialAmount() and np.isnan(s.getInitialAmount()):
                     exclude_ids.add(sid)
                 elif s.isSetInitialConcentration() and np.isnan(
-                    s.getInitialConcentration()):
+                    s.getInitialConcentration()
+                ):
                     exclude_ids.add(sid)
             if exclude_zero:
                 if s.isSetInitialAmount() and np.isclose(s.getInitialAmount(), 0.0):
                     exclude_ids.add(sid)
                 elif s.isSetInitialConcentration() and np.isclose(
-                    s.getInitialConcentration(), 0.0):
+                    s.getInitialConcentration(), 0.0
+                ):
                     exclude_ids.add(sid)
 
             if s.getConstant() is True or s.getBoundaryCondition() is True:
