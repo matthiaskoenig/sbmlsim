@@ -103,7 +103,7 @@ quartodoc:
   # write sidebar and style data
   sidebar: api/_sidebar.yml
   css: api/_styles-quartodoc.css
-  version: 0.3.0
+  version: 0.4.0
   dir: api
 
   sections:
