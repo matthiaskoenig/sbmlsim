@@ -1,0 +1,29 @@
+# Development
+
+## Setup development environment:
+To set up everything for the develop environment use
+```bash
+# install core dependencies
+uv sync
+
+# install dev dependencies
+uv pip install -r pyproject.toml --extra dev
+uv tool install tox --with tox-uv
+
+# setup pre-commit hook
+uv pip install pre-commit
+pre-commit install
+pre-commit run
+```
+
+## Testing
+Testing is performed with pytest and tox:
+
+Run single tox target:
+```bash
+tox r -e py314
+```
+Run all tests in parallel:
+```bash
+tox run-parallel
+```

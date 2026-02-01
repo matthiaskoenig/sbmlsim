@@ -174,21 +174,8 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
   </div>
 </li>
         <li class="sidebar-item sidebar-item-section">
-      <div class="sidebar-item-container">
-            <a class="sidebar-item-text sidebar-link text-start" data-bs-toggle="collapse" data-bs-target="#quarto-sidebar-section-1" role="navigation" aria-expanded="true">
- <span class="menu-text">Analysis</span></a>
-          <a class="sidebar-item-toggle text-start" data-bs-toggle="collapse" data-bs-target="#quarto-sidebar-section-1" role="navigation" aria-expanded="true" aria-label="Toggle section">
-            <i class="bi bi-chevron-right ms-2"></i>
-          </a>
-      </div>
-      <ul id="quarto-sidebar-section-1" class="collapse list-unstyled sidebar-section depth1 show">
-          <li class="sidebar-item">
-  <div class="sidebar-item-container">
-  <a href="../sensitivity.html" class="sidebar-item-text sidebar-link">
- <span class="menu-text">Sensitivity Analysis</span></a>
-  </div>
-</li>
-      </ul>
+      <span class="sidebar-item-text sidebar-link text-start">
+ <span class="menu-text">Analysis</span></span>
   </li>
         <li class="sidebar-item sidebar-item-section">
       <div class="sidebar-item-container">
@@ -243,6 +230,23 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 </li>
       </ul>
   </li>
+        <li class="sidebar-item sidebar-item-section">
+      <div class="sidebar-item-container">
+            <a class="sidebar-item-text sidebar-link text-start" data-bs-toggle="collapse" data-bs-target="#quarto-sidebar-section-3" role="navigation" aria-expanded="true">
+ <span class="menu-text">Contributing</span></a>
+          <a class="sidebar-item-toggle text-start" data-bs-toggle="collapse" data-bs-target="#quarto-sidebar-section-3" role="navigation" aria-expanded="true" aria-label="Toggle section">
+            <i class="bi bi-chevron-right ms-2"></i>
+          </a>
+      </div>
+      <ul id="quarto-sidebar-section-3" class="collapse list-unstyled sidebar-section depth1 show">
+          <li class="sidebar-item">
+  <div class="sidebar-item-container">
+  <a href="../development.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Development</span></a>
+  </div>
+</li>
+      </ul>
+  </li>
     </ul>
     </div>
 </nav>
@@ -256,6 +260,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
   <li><a href="#sbmlsim.sensitivity.sensitivity_local" id="toc-sbmlsim.sensitivity.sensitivity_local" class="nav-link active" data-scroll-target="#sbmlsim.sensitivity.sensitivity_local">sensitivity.sensitivity_local</a>
   <ul class="collapse">
   <li><a href="#notes" id="toc-notes" class="nav-link" data-scroll-target="#notes">Notes</a></li>
+  <li><a href="#raw-sensitivities-are-computed-using-a-symmetric-finite-difference-scheme" id="toc-raw-sensitivities-are-computed-using-a-symmetric-finite-difference-scheme" class="nav-link" data-scroll-target="#raw-sensitivities-are-computed-using-a-symmetric-finite-difference-scheme">Raw sensitivities are computed using a symmetric finite-difference scheme</a></li>
   <li><a href="#classes" id="toc-classes" class="nav-link" data-scroll-target="#classes">Classes</a>
   <ul class="collapse">
   <li><a href="#sbmlsim.sensitivity.sensitivity_local.LocalSensitivityAnalysis" id="toc-sbmlsim.sensitivity.sensitivity_local.LocalSensitivityAnalysis" class="nav-link" data-scroll-target="#sbmlsim.sensitivity.sensitivity_local.LocalSensitivityAnalysis">LocalSensitivityAnalysis</a></li>
@@ -411,7 +416,10 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <section id="notes" class="level2 doc-section doc-section-notes">
 <h2 class="doc-section doc-section-notes anchored" data-anchor-id="notes">Notes</h2>
 <p>For each parameter p_i with reference value p_{i,0}, two perturbed simulations are generated: p_i_plus = p_{i,0} * (1 + difference) p_i_minus = p_{i,0} * (1 - difference)</p>
-<p>Raw sensitivities are computed using a symmetric finite-difference scheme: S(q_k, p_i) = (q_k(p_i_plus) - q_k(p_i_minus)) / (p_i_plus - p_i_minus)</p>
+</section>
+<section id="raw-sensitivities-are-computed-using-a-symmetric-finite-difference-scheme" class="level2 doc-section doc-section-raw-sensitivities-are-computed-using-a-symmetric-finite-difference-scheme">
+<h2 class="doc-section doc-section-raw-sensitivities-are-computed-using-a-symmetric-finite-difference-scheme anchored" data-anchor-id="raw-sensitivities-are-computed-using-a-symmetric-finite-difference-scheme">Raw sensitivities are computed using a symmetric finite-difference scheme</h2>
+<p>S(q_k, p_i) = (q_k(p_i_plus) - q_k(p_i_minus)) / (p_i_plus - p_i_minus)</p>
 <p>Normalized sensitivities represent the relative change in output per relative change in parameter: S_norm(q_k, p_i) = S(q_k, p_i) * (p_{i,0} / q_k(p_{i,0}))</p>
 </section>
 <section id="classes" class="level2">
@@ -447,24 +455,21 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <p>For each parameter, two simulations are performed (increase and decrease), in addition to a reference simulation. Sensitivities are computed for each output variable and analysis group.</p>
 <section id="attributes" class="level4 doc-section doc-section-attributes">
 <h4 class="doc-section doc-section-attributes anchored" data-anchor-id="attributes">Attributes</h4>
+<p>difference : float Relative parameter perturbation used for the finite-difference approximation (e.g., 0.01 corresponds to ±1% changes).</p>
+</section>
+<section id="attributes-1" class="level4">
+<h4 class="anchored" data-anchor-id="attributes-1">Attributes</h4>
 <table class="caption-top table">
-<colgroup>
-<col style="width: 8%">
-<col style="width: 5%">
-<col style="width: 85%">
-</colgroup>
 <thead>
 <tr class="header">
 <th>Name</th>
-<th>Type</th>
 <th>Description</th>
 </tr>
 </thead>
 <tbody>
 <tr class="odd">
-<td>difference</td>
-<td>float</td>
-<td>Relative parameter perturbation used for the finite-difference approximation (e.g., 0.01 corresponds to ±1% changes).</td>
+<td><a href="#sbmlsim.sensitivity.sensitivity_local.LocalSensitivityAnalysis.num_samples">num_samples</a></td>
+<td>Return the number of samples required for the analysis.</td>
 </tr>
 </tbody>
 </table>
@@ -500,36 +505,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <p>Optionally, results can be read from or written to a cache file.</p>
 <section id="parameters" class="level6 doc-section doc-section-parameters">
 <h6 class="doc-section doc-section-parameters anchored" data-anchor-id="parameters">Parameters</h6>
-<table class="caption-top table">
-<colgroup>
-<col style="width: 19%">
-<col style="width: 9%">
-<col style="width: 58%">
-<col style="width: 13%">
-</colgroup>
-<thead>
-<tr class="header">
-<th>Name</th>
-<th>Type</th>
-<th>Description</th>
-<th>Default</th>
-</tr>
-</thead>
-<tbody>
-<tr class="odd">
-<td>cache_filename</td>
-<td>str</td>
-<td>Filename for caching sensitivity results.</td>
-<td><code>None</code></td>
-</tr>
-<tr class="even">
-<td>cache</td>
-<td>bool</td>
-<td>Whether to read from and/or write to the cache.</td>
-<td><code>False</code></td>
-</tr>
-</tbody>
-</table>
+<p>cache_filename : str, optional Filename for caching sensitivity results. cache : bool, optional Whether to read from and/or write to the cache.</p>
 </section>
 </section>
 <section id="sbmlsim.sensitivity.sensitivity_local.LocalSensitivityAnalysis.create_samples" class="level5">

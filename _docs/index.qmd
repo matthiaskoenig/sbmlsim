@@ -21,6 +21,7 @@ Features include among others
 - sensitivity analysis
 
 Documentation is available from [https://matthiaskoenig.github.io/sbmlsim/](https://matthiaskoenig.github.io/sbmlsim/).
+
 If you have any questions or issues please [open an issue](https://github.com/matthiaskoenig/sbmlsim/issues).
 
 ## Installation
@@ -52,33 +53,5 @@ A Systems Medicine Approach)" by grant number 436883643 and by grant number
 
 Matthias König was supported by the Federal Ministry of Education and Research (BMBF, Germany)
 within the research network Systems Medicine of the Liver (LiSyM, grant number 031L0054).
-
-## Development
-### Install dev dependencies:
-To setup everything for the develop environment use
-```bash
-# install core dependencies
-uv sync
-# install dev dependencies
-uv pip install -r pyproject.toml --extra dev
-uv tool install tox --with tox-uv
-uv pip install pre-commit
-pre-commit install
-pre-commit run
-```
-
-### Testing
-Testing is performed with tox
-Run single tox target
-```bash
-tox r -e py314
-```
-Run all tests in parallel
-```bash
-tox run-parallel
-```
-
-## Documentation
-If you haven’t already, you’ll need to [install Quarto](https://quarto.org/docs/get-started/).
 
 © 2019-2026 Matthias König
