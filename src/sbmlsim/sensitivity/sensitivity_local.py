@@ -1,38 +1,30 @@
-"""
-Local sensitivity analysis based on finite differences.
+"""Local sensitivity analysis using finite differences.
 
-This module implements a local (derivative-based) sensitivity analysis using
-two-sided finite differences around a reference parameter set. Each model
-parameter is perturbed individually by a small relative amount, and the
-resulting change in model outputs is used to approximate local sensitivities.
+This module implements a local, derivative-based sensitivity analysis using
+symmetric finite differences around a reference parameter set. Each model
+parameter is perturbed individually while all other parameters are kept
+constant.
 
-The analysis is designed for deterministic simulation models and is
-particularly suited for:
+The method is intended for deterministic simulation models and is useful for:
 - Identifying locally influential parameters
-- Debugging and model inspection
-- Complementing global sensitivity analyses
-- Supporting parameter screening prior to optimization or uncertainty analysis
+- Debugging and inspecting model behavior
+- Screening parameters prior to optimization or uncertainty analysis
+- Complementing global sensitivity analysis methods
 
-Sensitivities are computed for each analysis group and output variable, and
-can be reported both as raw sensitivities and as normalized, dimensionless
-sensitivities.
+Sensitivities are computed per analysis group and output variable and are
+reported as both raw and normalized (dimensionless) sensitivities.
 
-The implementation builds on the sbmlsim sensitivity framework and integrates
-with existing simulation, caching, and plotting utilities.
+Notes:
+    For a parameter p with reference value p0, sensitivities are computed as:
 
-Notes
------
-For each parameter p_i with reference value p_{i,0}, two perturbed simulations
-are generated:
-    p_i_plus  = p_{i,0} * (1 + difference)
-    p_i_minus = p_{i,0} * (1 - difference)
+        p_plus  = p0 * (1 + difference)
+        p_minus = p0 * (1 - difference)
 
-Raw sensitivities are computed using a symmetric finite-difference scheme:
-    S(q_k, p_i) = (q_k(p_i_plus) - q_k(p_i_minus)) / (p_i_plus - p_i_minus)
+        S = (q(p_plus) - q(p_minus)) / (p_plus - p_minus)
 
-Normalized sensitivities represent the relative change in output per relative
-change in parameter:
-    S_norm(q_k, p_i) = S(q_k, p_i) * (p_{i,0} / q_k(p_{i,0}))
+    Normalized sensitivities are defined as:
+
+        S_norm = S * (p0 / q(p0))
 """
 
 from pathlib import Path
@@ -53,19 +45,15 @@ from sbmlsim.sensitivity.parameters import SensitivityParameter
 class LocalSensitivityAnalysis(SensitivityAnalysis):
     """Local sensitivity analysis based on symmetric finite differences.
 
-    This class implements a local sensitivity analysis in which each model
-    parameter is perturbed individually by a small relative amount while all
-    other parameters are kept at their reference values.
+    Each model parameter is perturbed individually by a small relative amount
+    around a reference parameter set, while all other parameters are held
+    constant. For each parameter, two perturbed simulations (increase and
+    decrease) are evaluated in addition to a reference simulation.
 
-    For each parameter, two simulations are performed (increase and decrease),
-    in addition to a reference simulation. Sensitivities are computed for each
-    output variable and analysis group.
-
-    Attributes
-    ----------
-    difference : float
-        Relative parameter perturbation used for the finite-difference
-        approximation (e.g., 0.01 corresponds to ±1% changes).
+    Attributes:
+        difference (float): Relative parameter perturbation used for the
+            finite-difference approximation (e.g., 0.01 corresponds to ±1%).
+        prefix (str): Prefix used for naming result files.
     """
 
     def __init__(
@@ -79,8 +67,27 @@ class LocalSensitivityAnalysis(SensitivityAnalysis):
         cache_results: bool = False,
         difference: float = 0.01,
     ) -> None:
-        """Initialize the local sensitivity analysis."""
+        """Initialize the local sensitivity analysis.
 
+        Args:
+            sensitivity_simulation (SensitivitySimulation):
+                Simulation wrapper providing model execution and result handling.
+            parameters (list[SensitivityParameter]):
+                List of model parameters to perturb.
+            groups (list[AnalysisGroup]):
+                Analysis groups defining parameter modifications and conditions.
+            results_path (Path):
+                Directory where results and plots will be stored.
+            seed (int, optional):
+                Random seed for reproducibility.
+            n_cores (int, optional):
+                Number of CPU cores used for parallel simulations.
+            cache_results (bool, optional):
+                Whether simulation and sensitivity results should be cached.
+            difference (float, optional):
+                Relative perturbation size used for finite differences.
+                Defaults to 0.01 (±1%).
+        """
         super().__init__(
             sensitivity_simulation=sensitivity_simulation,
             parameters=parameters,
@@ -96,29 +103,27 @@ class LocalSensitivityAnalysis(SensitivityAnalysis):
 
     @property
     def num_samples(self) -> int:
-        """Return the number of samples required for the analysis.
+        """Return the total number of required simulation samples.
 
         The local sensitivity analysis requires:
-        - Two simulations per parameter (increase and decrease)
+        - Two simulations per parameter (positive and negative perturbation)
         - One reference simulation
 
-        Returns
-        -------
-        int
-            Total number of parameter samples.
+        Returns:
+            int: Total number of parameter samples.
         """
         return 2 * self.num_parameters + 1
 
     def create_samples(self) -> None:
-        """Create parameter samples for the local sensitivity analysis.
+        """Create parameter samples for local sensitivity analysis.
 
         For each analysis group, this method constructs a sample matrix
         containing:
         - One reference parameter vector
         - Two perturbed parameter vectors per parameter (±difference)
 
-        The samples are stored as xarray.DataArray objects and indexed by
-        sample and parameter identifiers.
+        Samples are stored as an ``xarray.DataArray`` indexed by sample and
+        parameter identifiers.
         """
         for group in self.groups:
             # Load reference model state
@@ -168,20 +173,16 @@ class LocalSensitivityAnalysis(SensitivityAnalysis):
         cache_filename: Optional[str] = None,
         cache: bool = False,
     ) -> None:
-        """Compute raw and normalized local sensitivity matrices.
+        """Compute raw and normalized local sensitivities.
 
-        This method calculates two-sided finite-difference sensitivities for
-        each parameter–output combination and stores both raw and normalized
-        sensitivity matrices.
+        Sensitivities are calculated using a symmetric finite-difference scheme
+        for each parameter–output combination.
 
-        Optionally, results can be read from or written to a cache file.
-
-        Parameters
-        ----------
-        cache_filename : str, optional
-            Filename for caching sensitivity results.
-        cache : bool, optional
-            Whether to read from and/or write to the cache.
+        Args:
+            cache_filename (str, optional):
+                Filename used to read/write cached sensitivity results.
+            cache (bool, optional):
+                Whether cached results should be used.
         """
         data = self.read_cache(cache_filename, cache)
         if data:
@@ -206,12 +207,12 @@ class LocalSensitivityAnalysis(SensitivityAnalysis):
             samples = self.samples[gid]
             results = self.results[gid]
 
-            for kp, p in enumerate(self.parameters):
+            for kp, _ in enumerate(self.parameters):
                 p_ref = samples[-1, kp]
                 p_up = samples[2 * kp, kp]
                 p_down = samples[2 * kp + 1, kp]
 
-                for ko, oid in enumerate(self.outputs):
+                for ko, _ in enumerate(self.outputs):
                     q_ref = results[-1, ko]
                     q_up = results[2 * kp, ko]
                     q_down = results[2 * kp + 1, ko]
@@ -227,7 +228,12 @@ class LocalSensitivityAnalysis(SensitivityAnalysis):
             cache=cache,
         )
 
-    def plot(self):
+    def plot(self) -> None:
+        """Generate plots for normalized local sensitivities.
+
+        Produces heatmaps of normalized sensitivities for each analysis group
+        and saves the figures to the results directory.
+        """
         super().plot()
         console.rule("Plotting", style="white")
         for kg, group in enumerate(self.groups):
@@ -241,7 +247,6 @@ class LocalSensitivityAnalysis(SensitivityAnalysis):
                 vmin=-2.0,
                 vmax=2.0,
                 fig_path=(
-                    self.results_path
-                    / f"{self.prefix}_{kg:>02}_{group.uid}.png"
+                    self.results_path / f"{self.prefix}_{kg:>02}_{group.uid}.png"
                 ),
             )

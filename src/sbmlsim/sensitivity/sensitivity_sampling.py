@@ -1,49 +1,23 @@
-"""
-Sampling-based sensitivity and uncertainty analysis.
+"""Sampling-based sensitivity and uncertainty analysis.
 
-This module implements a sampling-based sensitivity analysis in which model
-parameters are varied simultaneously according to predefined bounds and
-probability assumptions, and the resulting distribution of model outputs is
-analyzed statistically.
+This module implements a sampling-based sensitivity and uncertainty analysis
+approach. Model parameters are varied simultaneously within their bounds, and
+the resulting distribution of model outputs is analyzed statistically.
 
-The primary purpose of this approach is to quantify output uncertainty and
-variability induced by parameter uncertainty, rather than to compute
-variance-decomposition sensitivity indices. It is therefore complementary to
-local (derivative-based) and global (variance-based) sensitivity analyses.
-
-Parameter samples are generated using Latin Hypercube Sampling (LHS), a
-stratified Monte Carlo method that ensures efficient coverage of the
-multidimensional parameter space. In the current implementation, parameters
-are sampled independently assuming uniform distributions within their bounds.
+Parameter samples are generated using Latin Hypercube Sampling (LHS), assuming
+independent and uniformly distributed parameters.
 
 For each analysis group and output variable, descriptive statistics are
-computed from the simulated sample ensemble, including:
+computed, including:
+
 - mean and median
 - standard deviation and coefficient of variation
 - minimum and maximum
-- selected quantiles (5% and 95%)
+- lower and upper quantiles (5% and 95%)
 
-These statistics provide a compact summary of output uncertainty and enable
-comparisons across model outputs and experimental or physiological conditions.
-
-The module is intended for:
-- uncertainty propagation analyses
-- robustness and variability assessments
-- exploratory model analysis and screening
-- reporting uncertainty ranges in computational modeling studies
-
-It integrates with the sbmlsim sensitivity framework and supports result
-caching, tabular export, and visualization of output distributions.
-
-Notes
------
-This method does not compute sensitivity indices in the strict variance-based
-sense (e.g., Sobol indices). Instead, it characterizes how uncertainty in
-parameters propagates to uncertainty in model outputs via sampling.
-
-Typical workflows combine this approach with local or global sensitivity
-analysis to obtain both quantitative sensitivity measures and uncertainty
-estimates.
+This approach focuses on uncertainty propagation rather than variance-based
+sensitivity indices and is therefore complementary to local and Sobol-based
+methods.
 """
 
 from pathlib import Path
@@ -56,30 +30,18 @@ from pymetadata.console import console
 from scipy.stats import qmc
 from matplotlib import pyplot as plt
 
-from sbmlsim.sensitivity.analysis import SensitivitySimulation, AnalysisGroup, \
-    SensitivityAnalysis
+from sbmlsim.sensitivity.analysis import (
+    SensitivitySimulation,
+    AnalysisGroup,
+    SensitivityAnalysis,
+)
 from sbmlsim.sensitivity.parameters import SensitivityParameter
 
 
 class SamplingSensitivityAnalysis(SensitivityAnalysis):
-    """Sensitivity/uncertainty analysis based on sampling.
+    """Sensitivity/uncertainty analysis based on sampling."""
 
-    FIXME: more control on sampling
-        cv: float = 0.1,
-        distribution: DistributionType = DistributionType.NORMAL_DISTRIBUTION,
-
-    """
-
-    sensitivity_keys = [
-        "mean",
-        "median",
-        "std",
-        "cv",
-        "min",
-        "q005",
-        "q095",
-        "max"
-    ]
+    sensitivity_keys = ["mean", "median", "std", "cv", "min", "q005", "q095", "max"]
 
     def __init__(
         self,
@@ -92,7 +54,6 @@ class SamplingSensitivityAnalysis(SensitivityAnalysis):
         n_cores: Optional[int] = None,
         cache_results: bool = False,
     ):
-
         super().__init__(
             sensitivity_simulation=sensitivity_simulation,
             parameters=parameters,
@@ -126,13 +87,13 @@ class SamplingSensitivityAnalysis(SensitivityAnalysis):
             self.samples[gid] = xr.DataArray(
                 qmc.scale(u, lower, upper),  # scale to parameter bounds
                 dims=["sample", "parameter"],
-                coords={"sample": range(self.N),
-                        "parameter": self.parameter_ids},
-                name="samples"
+                coords={"sample": range(self.N), "parameter": self.parameter_ids},
+                name="samples",
             )
 
-    def calculate_sensitivity(self, cache_filename: Optional[str] = None,
-                              cache: bool = False) -> None:
+    def calculate_sensitivity(
+        self, cache_filename: Optional[str] = None, cache: bool = False
+    ) -> None:
         """Calculate the sensitivity matrices for sampling sensitivity."""
 
         data = self.read_cache(cache_filename, cache)
@@ -146,9 +107,8 @@ class SamplingSensitivityAnalysis(SensitivityAnalysis):
                 self.sensitivity[gid][key] = xr.DataArray(
                     np.full(self.num_outputs, np.nan),
                     dims=["output"],
-                    coords={
-                        "output": self.output_ids},
-                    name=key
+                    coords={"output": self.output_ids},
+                    name=key,
                 )
 
             for ko, oid in enumerate(self.outputs):
@@ -179,8 +139,9 @@ class SamplingSensitivityAnalysis(SensitivityAnalysis):
         self.df_sampling_sensitivity(self.results_path / f"{self.prefix}.tsv")
 
         # write to cache
-        self.write_cache(data=self.sensitivity, cache_filename=cache_filename,
-                         cache=cache)
+        self.write_cache(
+            data=self.sensitivity, cache_filename=cache_filename, cache=cache
+        )
 
     def df_sampling_sensitivity(
         self,
@@ -229,8 +190,9 @@ class SamplingSensitivityAnalysis(SensitivityAnalysis):
 
         if df_path:
             df.to_csv(df_path, index=False, sep="\t")
-            df_compact.to_csv(df_path.parent / f"{df_path.stem}_compact.tsv",
-                              index=False, sep="\t")
+            df_compact.to_csv(
+                df_path.parent / f"{df_path.stem}_compact.tsv", index=False, sep="\t"
+            )
 
             # latex table
             latex_path = df_path.parent / f"{df_path.stem}.tex"
@@ -244,7 +206,6 @@ class SamplingSensitivityAnalysis(SensitivityAnalysis):
                 f.write(latex_str)
 
         return df
-
 
     @staticmethod
     def _figshape(n: int) -> tuple[int, int]:
@@ -261,7 +222,9 @@ class SamplingSensitivityAnalysis(SensitivityAnalysis):
         nrows = ncols - n_empty_rows
         return int(nrows), int(ncols)
 
-    def plot_data(self, type: str, show_jitter: bool = True, show_violin: bool = True, **kwargs):
+    def plot_data(
+        self, type: str, show_jitter: bool = True, show_violin: bool = True, **kwargs
+    ):
         """Boxplots for the sampled output."""
         super().plot(**kwargs)
 
@@ -274,14 +237,16 @@ class SamplingSensitivityAnalysis(SensitivityAnalysis):
         nrows, ncols = self._figshape(n=n)
         label_fontsize = 13
 
-        f, axes = plt.subplots(figsize=(4 * ncols, 4 * nrows),
-                               nrows=int(nrows), ncols=int(ncols),
-                               layout="constrained")
+        f, axes = plt.subplots(
+            figsize=(4 * ncols, 4 * nrows),
+            nrows=int(nrows),
+            ncols=int(ncols),
+            layout="constrained",
+        )
         for ka, ax in enumerate(axes.flat):
             if ka > n - 1:
-                ax.axis('off')
+                ax.axis("off")
             else:
-
                 if type == "samples":
                     data = [self.samples[g.uid].values[:, ka] for g in self.groups]
                 elif type == "outputs":
@@ -301,14 +266,15 @@ class SamplingSensitivityAnalysis(SensitivityAnalysis):
                     data,
                     positions=range(self.num_groups),
                     labels=labels,
-                    patch_artist=True, showfliers=False,
+                    patch_artist=True,
+                    showfliers=False,
                     medianprops=dict(color="black"),
                     whiskerprops=dict(color="black"),
                     capprops=dict(color="black"),
                     boxprops=dict(
                         # facecolor=colors,  #'lightblue',
                         # alpha=0.7
-                    )
+                    ),
                 )
                 for box, color in zip(bp["boxes"], colors):
                     box.set_facecolor(color)
@@ -333,10 +299,17 @@ class SamplingSensitivityAnalysis(SensitivityAnalysis):
                     jitter_width = 0.02  # Adjust for spacing
                     for kg, g in enumerate(self.groups):
                         data_g = data[kg]
-                        x_jitter = np.random.normal(kg + jitter_offset, jitter_width, len(data_g))
-                        ax.scatter(x_jitter, data_g, alpha=0.7, s=30, color='white',
-                                   edgecolors='black'
-                    )
+                        x_jitter = np.random.normal(
+                            kg + jitter_offset, jitter_width, len(data_g)
+                        )
+                        ax.scatter(
+                            x_jitter,
+                            data_g,
+                            alpha=0.7,
+                            s=30,
+                            color="white",
+                            edgecolors="black",
+                        )
 
                 # ax.set_xlabel('Parameter', fontsize=label_fontsize, fontweight="bold")
                 # ax.set_ylim(bottom=0)
@@ -345,21 +318,17 @@ class SamplingSensitivityAnalysis(SensitivityAnalysis):
                 if type == "samples":
                     parameter = self.parameters[ka]
                     ylabel = f"{parameter.uid}: {parameter.name} [{parameter.unit if parameter.unit else 'AU'}]"
-                    ax.set_ylabel(ylabel, fontsize=label_fontsize,
-                                  fontweight="bold")
+                    ax.set_ylabel(ylabel, fontsize=label_fontsize, fontweight="bold")
                 elif type == "outputs":
                     output = self.outputs[ka]
                     ylabel = f"{output.name} [{output.unit if output.unit else 'AU'}]"
-                    ax.set_ylabel(ylabel,
-                                  fontsize=label_fontsize,
-                                  fontweight="bold")
+                    ax.set_ylabel(ylabel, fontsize=label_fontsize, fontweight="bold")
 
                 # Make x and y tick labels bold
                 for label in ax.get_xticklabels() + ax.get_yticklabels():
-                    label.set_fontweight('bold')
-                ax.tick_params(axis='x', labelrotation=90)
+                    label.set_fontweight("bold")
+                ax.tick_params(axis="x", labelrotation=90)
                 # ax.legend(True)
-
 
         # if title:
         #     plt.suptitle(title, fontsize=20, fontweight="bold")
@@ -367,11 +336,9 @@ class SamplingSensitivityAnalysis(SensitivityAnalysis):
         plt.savefig(
             self.results_path / f"{self.prefix}_sensitivity_{type}.png",
             dpi=300,
-            bbox_inches="tight"
+            bbox_inches="tight",
         )
         plt.show()
-
-
 
     def plot(self, **kwargs):
         """Boxplots for the Sampling sensitivity."""
