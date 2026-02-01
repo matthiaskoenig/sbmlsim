@@ -25,21 +25,36 @@ Notes:
     Normalized sensitivities are defined as:
 
         S_norm = S * (p0 / q(p0))
+
+    Here a multistep method is implemented following Najjar et al.
+
+References:
+
+    - Najjar A, Hamadeh A, Krause S, Schepky A, Edginton A. Global sensitivity analysis of Open Systems Pharmacology Suite physiologically based pharmacokinetic models. CPT Pharmacometrics Syst Pharmacol. 2024 Dec;13(12):2052-2067. doi: 10.1002/psp4.13256. Epub 2024 Nov 5. PMID: 39498820; PMCID: PMC11646943.
+
 """
 
 from pathlib import Path
 from typing import Optional
 
 import numpy as np
+import pandas as pd
 import xarray as xr
 from pymetadata.console import console
+from pymetadata.log import get_logger
 
 from sbmlsim.sensitivity.analysis import (
     SensitivitySimulation,
     AnalysisGroup,
     SensitivityAnalysis,
 )
+from sbmlsim.sensitivity.classification import (
+    sensitivity_classification,
+    sensitivity_classification_symbol,
+)
 from sbmlsim.sensitivity.parameters import SensitivityParameter
+
+logger = get_logger(__name__)
 
 
 class LocalSensitivityAnalysis(SensitivityAnalysis):
@@ -66,6 +81,7 @@ class LocalSensitivityAnalysis(SensitivityAnalysis):
         n_cores: Optional[int] = None,
         cache_results: bool = False,
         difference: float = 0.01,
+        n_var: int = 3,
     ) -> None:
         """Initialize the local sensitivity analysis.
 
@@ -87,6 +103,9 @@ class LocalSensitivityAnalysis(SensitivityAnalysis):
             difference (float, optional):
                 Relative perturbation size used for finite differences.
                 Defaults to 0.01 (±1%).
+            n_var (int, optional):
+                Represents the number of steps at which sensitivity is to be evaluated
+                within the variation fold change
         """
         super().__init__(
             sensitivity_simulation=sensitivity_simulation,
@@ -99,20 +118,21 @@ class LocalSensitivityAnalysis(SensitivityAnalysis):
         )
 
         self.difference: float = difference
-        self.prefix = f"local_d{self.difference}"
+        self.n_var: int = n_var
+        self.prefix = f"local_d{self.difference}_nvar{self.n_var}"
 
     @property
     def num_samples(self) -> int:
         """Return the total number of required simulation samples.
 
         The local sensitivity analysis requires:
-        - Two simulations per parameter (positive and negative perturbation)
+        - 2 + n_var simulations per parameter (positive and negative perturbations)
         - One reference simulation
 
         Returns:
             int: Total number of parameter samples.
         """
-        return 2 * self.num_parameters + 1
+        return 2 * self.n_var * self.num_parameters + 1
 
     def create_samples(self) -> None:
         """Create parameter samples for local sensitivity analysis.
@@ -120,7 +140,8 @@ class LocalSensitivityAnalysis(SensitivityAnalysis):
         For each analysis group, this method constructs a sample matrix
         containing:
         - One reference parameter vector
-        - Two perturbed parameter vectors per parameter (±difference)
+        - n_var perturbed parameter vectors per parameter (+difference)
+        - n_var perturbed parameter vectors per parameter (-difference)
 
         Samples are stored as an ``xarray.DataArray`` indexed by sample and
         parameter identifiers.
@@ -144,7 +165,7 @@ class LocalSensitivityAnalysis(SensitivityAnalysis):
                 )
             )
 
-            num_samples = 2 * self.num_parameters + 1
+            num_samples = 2 * self.n_var * self.num_parameters + 1
             samples = xr.DataArray(
                 np.full((num_samples, self.num_parameters), np.nan),
                 dims=["sample", "parameter"],
@@ -159,11 +180,17 @@ class LocalSensitivityAnalysis(SensitivityAnalysis):
             for kp, pid in enumerate(parameter_values):
                 value = parameter_values[pid]
 
-                samples[2 * kp, :] = reference_values
-                samples[2 * kp, kp] = value * (1.0 + self.difference)
+                for kv in range(self.n_var):
+                    samples[2 * self.n_var * kp + kv, :] = reference_values
+                    samples[2 * self.n_var * kp + kv, kp] = value * (
+                        1.0 + (kv + 1) / self.n_var * self.difference
+                    )
 
-                samples[2 * kp + 1, :] = reference_values
-                samples[2 * kp + 1, kp] = value * (1.0 - self.difference)
+                for kv in range(self.n_var):
+                    samples[2 * self.n_var * kp + self.n_var + kv, :] = reference_values
+                    samples[2 * self.n_var * kp + self.n_var + kv, kp] = value * (
+                        1.0 - (kv + 1) / self.n_var * self.difference
+                    )
 
             samples[-1, :] = reference_values
             self.samples[group.uid] = samples
@@ -209,18 +236,63 @@ class LocalSensitivityAnalysis(SensitivityAnalysis):
 
             for kp, _ in enumerate(self.parameters):
                 p_ref = samples[-1, kp]
-                p_up = samples[2 * kp, kp]
-                p_down = samples[2 * kp + 1, kp]
+                p_up = samples[
+                    (2 * self.n_var * kp) : (2 * self.n_var * kp + self.n_var), kp
+                ].values
+                p_down = samples[
+                    (2 * self.n_var * kp + self.n_var) : (
+                        2 * self.n_var * kp + 2 * self.n_var
+                    ),
+                    kp,
+                ].values
 
                 for ko, _ in enumerate(self.outputs):
-                    q_ref = results[-1, ko]
-                    q_up = results[2 * kp, ko]
-                    q_down = results[2 * kp + 1, ko]
+                    q_ref = results[-1, ko].values
+                    q_up = results[
+                        (2 * self.n_var * kp) : (2 * self.n_var * kp + self.n_var), ko
+                    ].values
+                    q_down = results[
+                        (2 * self.n_var * kp + self.n_var) : (
+                            2 * self.n_var * kp + 2 * self.n_var
+                        ),
+                        ko,
+                    ].values
 
-                    sensitivity_raw[kp, ko] = (q_up - q_down) / (p_up - p_down)
+                    # console.print(f"{q_up=}")
+                    # console.print(f"{q_down=}")
+                    # console.print(f"{p_up=}")
+                    # console.print(f"{p_down=}")
+                    delta = (q_up - q_down) / (p_up - p_down)
+                    delta_mean = delta.mean()
+                    # check linearity within range
+                    if not np.isclose(delta_mean, 0.0):
+                        max_diff = (delta.max() - delta.min()) / delta_mean
+                        if max_diff > 0.10:
+                            # this happens if the output is highly nonlinear in the scanned range,
+                            # or if large numerical differences exist in the solution (e.g. incorrect discretization)
+                            # This can also be due to problems in calculating the respective output (e.g. highly
+                            # variable due to numerical fluctuations).
+                            # This warning should be taken seriously and be investigated.
+                            logger.error(
+                                f"Large delta difference: {max_diff*100:.1f} % for {delta}. "
+                                f"Parameter {self.parameter_ids[kp]} on output {self.output_ids[ko]}."
+                            )
+                    sensitivity_raw[kp, ko] = np.sum(delta) / self.n_var
+
                     sensitivity_normalized[kp, ko] = (
                         sensitivity_raw[kp, ko] * p_ref / q_ref
                     )
+                    # console.print(f"{sensitivity_raw=}")
+
+        # create tables
+        dfs = self.dfs_sensitivity()
+        for kg, gid in enumerate(self.group_ids):
+            df = dfs[gid]
+            df.to_csv(
+                self.results_path / f"{self.prefix}_{kg:>02}_{gid}.tsv",
+                sep="\t",
+                index=False,
+            )
 
         self.write_cache(
             data=self.sensitivity,
@@ -228,11 +300,51 @@ class LocalSensitivityAnalysis(SensitivityAnalysis):
             cache=cache,
         )
 
+    def dfs_sensitivity(self) -> dict[str, pd.DataFrame]:
+        """Return sensitivity dataframe."""
+        dfs: dict[str, pd.DataFrame] = {}
+        for gid in self.group_ids:
+            items = []
+            sensitivity = self.sensitivity[gid]["normalized"].values
+            for kp, pid in enumerate(self.parameter_ids):
+                for ko, oid in enumerate(self.output_ids):
+                    s = sensitivity[kp, ko]
+                    classification = sensitivity_classification(s)
+
+                    items.append(
+                        {
+                            "parameter": pid,
+                            "output": oid,
+                            "effect": sensitivity_classification_symbol(s),
+                            "Sij": s,
+                            "|Sij|": np.abs(s),
+                            "classification": classification.value,
+                            "method": "LocalSensitivity",
+                            "difference": self.difference,
+                            "n_var": self.n_var,
+                        }
+                    )
+            df = pd.DataFrame(items)
+            df.sort_values(
+                inplace=True,
+                by="|Sij|",
+                ascending=False,
+                na_position="last",
+                ignore_index=True,
+            )
+            dfs[gid] = df
+            console.print(df)
+            console.print()
+
+        return dfs
+
     def plot(self) -> None:
         """Generate plots for normalized local sensitivities.
 
         Produces heatmaps of normalized sensitivities for each analysis group
         and saves the figures to the results directory.
+
+        Using default cutoff of 0.1 for negligible.
         """
         super().plot()
         console.rule("Plotting", style="white")
@@ -240,7 +352,7 @@ class LocalSensitivityAnalysis(SensitivityAnalysis):
             self.plot_sensitivity(
                 group_id=group.uid,
                 sensitivity_key="normalized",
-                cutoff=0.05,
+                cutoff=0.1,
                 cluster_rows=False,
                 cmap="seismic",
                 vcenter=0.0,

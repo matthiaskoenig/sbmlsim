@@ -1,8 +1,8 @@
 # Function reference {.doc .doc-index}
 
-## API sensitivity
+## Sensitivity
 
-Sensitivity functionality.
+Functionality related to sensitivity and uncertainty analysis.
 
 | | |
 | --- | --- |
@@ -12,3 +12,12 @@ Sensitivity functionality.
 | [sensitivity.sensitivity_sobol](sensitivity.sensitivity_sobol.qmd#sbmlsim.sensitivity.sensitivity_sobol) | Global sensitivity analysis using Sobol indices. |
 | [sensitivity.sensitivity_morris](sensitivity.sensitivity_morris.qmd#sbmlsim.sensitivity.sensitivity_morris) | Morris sensitivity analysis. |
 | [sensitivity.sensitivity_sampling](sensitivity.sensitivity_sampling.qmd#sbmlsim.sensitivity.sensitivity_sampling) | Sampling-based sensitivity and uncertainty analysis. |
+| [sensitivity.classification](sensitivity.classification.qmd#sbmlsim.sensitivity.classification) | Classification of sensitivities and uncertainties. |
+
+## Parameter optimization
+
+Functionality related to parameter optimization.
+
+| | |
+| --- | --- |
+| [fit](fit.qmd#sbmlsim.fit) | Package for parameter fitting and parameter optimization. |

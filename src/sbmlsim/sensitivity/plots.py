@@ -1,4 +1,5 @@
 """Plotting functionality for sensitivity analysis."""
+
 from pathlib import Path
 from typing import Optional
 
@@ -6,7 +7,6 @@ import numpy as np
 import pandas as pd
 import seaborn as sns
 from matplotlib import pyplot as plt
-from pymetadata.console import console
 
 
 def heatmap(
@@ -53,7 +53,6 @@ def heatmap(
     # outputs
     xticklabels = [qid for qid in df_subset.columns]
     if output_labels:
-        console.print(output_labels)
         xticklabels = [output_labels[qid] for qid in xticklabels]
 
     # parameters
@@ -124,7 +123,10 @@ def plot_S1_ST_indices(
         ymin = sa.sensitivity[gid]["S1"].min(dim=None)
 
         for ko, output in enumerate(sa.outputs):
-            f_path = fig_path.parent / f"{fig_path.stem}_{ko:>03}_{output.uid}{fig_path.suffix}"
+            f_path = (
+                fig_path.parent
+                / f"{fig_path.stem}_{ko:>03}_{output.uid}{fig_path.suffix}"
+            )
 
             S1 = sa.sensitivity[gid]["S1"][:, ko]
             ST = sa.sensitivity[gid]["ST"][:, ko]
@@ -144,7 +146,10 @@ def plot_S1_ST_indices(
 
 
 def S1_ST_barplot(
-    S1, ST, S1_conf, ST_conf,
+    S1,
+    ST,
+    S1_conf,
+    ST_conf,
     parameter_labels: dict[str, str],
     fig_path: Optional[Path] = None,
     title: Optional[str] = None,
@@ -158,21 +163,32 @@ def S1_ST_barplot(
     categories: list[str] = list(parameter_labels.values())
     f, ax = plt.subplots(figsize=figsize)
 
-    ax.bar(categories, ST, label='ST',
-           color="black",
-           alpha=1.0,
-           edgecolor="black",
-           yerr=ST_conf, capsize=5
-           )
+    ax.bar(
+        categories,
+        ST,
+        label="ST",
+        color="black",
+        alpha=1.0,
+        edgecolor="black",
+        yerr=ST_conf,
+        capsize=5,
+    )
 
-    ax.bar(categories, S1, label='S1', color="tab:blue",
-           edgecolor="black", yerr=S1_conf, capsize=5)
+    ax.bar(
+        categories,
+        S1,
+        label="S1",
+        color="tab:blue",
+        edgecolor="black",
+        yerr=S1_conf,
+        capsize=5,
+    )
 
     # ax.set_xlabel('Parameter', fontsize=label_fontsize, fontweight="bold")
-    ax.set_ylabel('Sensitivity', fontsize=label_fontsize, fontweight="bold")
+    ax.set_ylabel("Sensitivity", fontsize=label_fontsize, fontweight="bold")
     ax.set_ylim(bottom=ymin, top=ymax)
     ax.grid(True, axis="y")
-    ax.tick_params(axis='x', labelrotation=90)
+    ax.tick_params(axis="x", labelrotation=90)
     # ax.tick_params(axis='x', labelweight='bold')
     ax.legend()
 

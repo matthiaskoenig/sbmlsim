@@ -32,15 +32,16 @@ website:
     search: true
     contents:
        - index.qmd
-       - section: "Analysis"
+#       - section: "Analysis"
 #         contents:
 #          - text: Sensitivity Analysis
 #            href: sensitivity.qmd
-       - section: "API"
+       - section: "Reference"
          contents:
-          - text: "Sensitivity"
+          - text: "Overview"
             href: api/index.qmd
-          - text: "`sensitivity`"
+
+          - text: "Sensitivity & Uncertainty"
             href: api/sensitivity.qmd
           - text: "`sensitivity_fast`"
             href: api/sensitivity.sensitivity_fast.qmd
@@ -52,6 +53,13 @@ website:
             href: api/sensitivity.sensitivity_sobol.qmd
           - text: "`sensitivity_sampling`"
             href: api/sensitivity.sensitivity_sampling.qmd
+          - text: "`classification`"
+            href: api/sensitivity.classification.qmd
+
+
+          - text: "Parameter optimization"
+            href: api/fit.qmd
+
        - section: "Contributing"
          contents:
           - href: development.qmd
@@ -99,8 +107,8 @@ quartodoc:
   dir: api
 
   sections:
-    - title: API sensitivity
-      desc: Sensitivity functionality.
+    - title: Sensitivity
+      desc: Functionality related to sensitivity and uncertainty analysis.
       contents:
         # the functions being documented in the package.
         # you can refer to anything: class methods, modules, etc..
@@ -110,6 +118,11 @@ quartodoc:
         - name: sensitivity.sensitivity_sobol
         - name: sensitivity.sensitivity_morris
         - name: sensitivity.sensitivity_sampling
+        - name: sensitivity.classification
+    - title: Parameter optimization
+      desc: Functionality related to parameter optimization.
+      contents:
+        - name: fit
 
 filters:
   - interlinks
