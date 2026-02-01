@@ -58,6 +58,8 @@ class ExampleSensitivitySimulation(SensitivitySimulation):
         # ensure identical tolerances on all simulations
         r.integrator.setValue("absolute_tolerance", self.init_tolerances)
         s = r.simulate(start=0, end=self.tend, steps=self.steps)
+        # r.integrator.setValue("variable_step_size", True)
+        # s = r.simulate(start=0, end=self.tend)
 
         # calculate outputs y (custom functions)
         # this can be registered functions calculating scalars based on subsets of the
@@ -68,7 +70,7 @@ class ExampleSensitivitySimulation(SensitivitySimulation):
             rr_key = f"[{key}]"
             v = s[rr_key]
             t_idx = np.argmax(v)
-            if key in ["S2", "S3"]:
+            if key in ["S2"]:
                 y[f"{rr_key}_tmax"] = t[t_idx]
                 y[f"{rr_key}_max"] = v[t_idx]
             y[f"{rr_key}_auc"] = np.trapezoid(y=v, x=t)
@@ -85,8 +87,6 @@ sensitivity_simulation = ExampleSensitivitySimulation(
         SensitivityOutput(uid="[S2]_tmax", name="[S2] time maximum", unit=None),
         SensitivityOutput(uid="[S2]_max", name="[S2] maximum", unit=None),
         SensitivityOutput(uid="[S2]_auc", name="[S2] AUC", unit=None),
-        SensitivityOutput(uid="[S3]_tmax", name="[S3] time maximum", unit=None),
-        SensitivityOutput(uid="[S3]_max", name="[S3] maximum", unit=None),
         SensitivityOutput(uid="[S3]_auc", name="[S3] AUC", unit=None),
     ],
 )
@@ -129,7 +129,7 @@ if __name__ == "__main__":
     console.print(df)
 
     settings = {
-        "cache_results": True,
+        "cache_results": False,
         "n_cores": int(round(0.9 * multiprocessing.cpu_count())),
         "seed": 1234,
     }
@@ -183,10 +183,10 @@ if __name__ == "__main__":
 
     sas = [
         # sa_local,
-        # sa_sampling,
+        sa_sampling,
         # sa_sobol,
         # sa_fast,
-        sa_morris,
+        # sa_morris,
     ]
     for sa in sas:
         sa.execute()

@@ -15,6 +15,8 @@ computed, including:
 - minimum and maximum
 - lower and upper quantiles (5% and 95%)
 
+Uncertainty is calculated as Ui,j = (Percentile97.5(i,j) - Percentile2.5(i,j)) / Percentile50(i,j)
+
 This approach focuses on uncertainty propagation rather than variance-based
 sensitivity indices and is therefore complementary to local and Sobol-based
 methods.
@@ -35,13 +37,27 @@ from sbmlsim.sensitivity.analysis import (
     AnalysisGroup,
     SensitivityAnalysis,
 )
+from sbmlsim.sensitivity.classification import (
+    uncertainty_classification_symbol,
+    uncertainty_classification,
+)
 from sbmlsim.sensitivity.parameters import SensitivityParameter
 
 
 class SamplingSensitivityAnalysis(SensitivityAnalysis):
     """Sensitivity/uncertainty analysis based on sampling."""
 
-    sensitivity_keys = ["mean", "median", "std", "cv", "min", "q005", "q095", "max"]
+    sensitivity_keys = [
+        "mean",
+        "median",
+        "std",
+        "cv",
+        "min",
+        "q005",
+        "q095",
+        "max",
+        "U",
+    ]
 
     def __init__(
         self,
@@ -131,6 +147,10 @@ class SamplingSensitivityAnalysis(SensitivityAnalysis):
                         value = np.quantile(data, q=0.95)
                     elif key == "max":
                         value = np.max(data)
+                    elif key == "U":
+                        value = (
+                            np.percentile(data, 97.5) - np.percentile(data, 2.5)
+                        ) / np.percentile(data, 50)
                     else:
                         raise KeyError(key)
 
@@ -160,12 +180,16 @@ class SamplingSensitivityAnalysis(SensitivityAnalysis):
                 }
                 for key in self.sensitivity_keys:
                     item[key] = self.sensitivity[group.uid][key].values[ko]
+
+                item["symbol"] = uncertainty_classification_symbol(item["U"])
+                item["classification"] = uncertainty_classification(item["U"]).value
                 item["unit"] = output.unit
 
                 items.append(item)
 
         df = pd.DataFrame(items)
         console.print(df)
+        console.print()
 
         # create compact DataFrame
         items_compact = []

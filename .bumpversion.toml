@@ -17,3 +17,4 @@ commit_args = ""
 
 [[tool.bumpversion.files]]
 filename = "./src/sbmlsim/__init__.py"
+filename = "./_docs/_quarto.yml"

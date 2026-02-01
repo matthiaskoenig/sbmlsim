@@ -7,7 +7,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
 
 
-<title>sensitivity.sensitivity_morris – sbmlsim</title>
+<title>sensitivity.classification – sbmlsim</title>
 <style>
 code{white-space: pre-wrap;}
 span.smallcaps{font-variant: small-caps;}
@@ -65,8 +65,8 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <script src="../site_libs/quarto-search/fuse.min.js"></script>
 <script src="../site_libs/quarto-search/quarto-search.js"></script>
 <meta name="quarto:offset" content="../">
-<link href="../api/sensitivity.sensitivity_sobol.html" rel="next">
-<link href="../api/sensitivity.sensitivity_local.html" rel="prev">
+<link href="../api/fit.html" rel="next">
+<link href="../api/sensitivity.sensitivity_sampling.html" rel="prev">
 <link href="../images/favicon/favicon.ico" rel="icon">
 <script src="../site_libs/quarto-html/quarto.js" type="module"></script>
 <script src="../site_libs/quarto-html/tabsets/tabsets.js" type="module"></script>
@@ -289,7 +289,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
       <button type="button" class="quarto-btn-toggle btn" data-bs-toggle="collapse" role="button" data-bs-target=".quarto-sidebar-collapse-item" aria-controls="quarto-sidebar" aria-expanded="false" aria-label="Toggle sidebar navigation" onclick="if (window.quartoToggleHeadroom) { window.quartoToggleHeadroom(); }">
         <i class="bi bi-layout-text-sidebar-reverse"></i>
       </button>
-        <nav class="quarto-page-breadcrumbs" aria-label="breadcrumb"><ol class="breadcrumb"><li class="breadcrumb-item"><a href="../api/index.html">Reference</a></li><li class="breadcrumb-item"><a href="../api/sensitivity.sensitivity_morris.html"><code>sensitivity_morris</code></a></li></ol></nav>
+        <nav class="quarto-page-breadcrumbs" aria-label="breadcrumb"><ol class="breadcrumb"><li class="breadcrumb-item"><a href="../api/index.html">Reference</a></li><li class="breadcrumb-item"><a href="../api/sensitivity.classification.html"><code>classification</code></a></li></ol></nav>
         <a class="flex-grow-1" role="navigation" data-bs-toggle="collapse" data-bs-target=".quarto-sidebar-collapse-item" aria-controls="quarto-sidebar" aria-expanded="false" aria-label="Toggle sidebar navigation" onclick="if (window.quartoToggleHeadroom) { window.quartoToggleHeadroom(); }">
         </a>
       <button type="button" class="btn quarto-search-button" aria-label="Search" onclick="window.quartoOpenSearch();">
@@ -373,7 +373,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 </li>
           <li class="sidebar-item">
   <div class="sidebar-item-container">
-  <a href="../api/sensitivity.sensitivity_morris.html" class="sidebar-item-text sidebar-link active">
+  <a href="../api/sensitivity.sensitivity_morris.html" class="sidebar-item-text sidebar-link">
  <span class="menu-text"><code>sensitivity_morris</code></span></a>
   </div>
 </li>
@@ -391,7 +391,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 </li>
           <li class="sidebar-item">
   <div class="sidebar-item-container">
-  <a href="../api/sensitivity.classification.html" class="sidebar-item-text sidebar-link">
+  <a href="../api/sensitivity.classification.html" class="sidebar-item-text sidebar-link active">
  <span class="menu-text"><code>classification</code></span></a>
   </div>
 </li>
@@ -430,51 +430,35 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
     <h2 id="toc-title">On this page</h2>
 
   <ul>
-  <li><a href="#sbmlsim.sensitivity.sensitivity_morris" id="toc-sbmlsim.sensitivity.sensitivity_morris" class="nav-link active" data-scroll-target="#sbmlsim.sensitivity.sensitivity_morris">sensitivity.sensitivity_morris</a>
+  <li><a href="#sbmlsim.sensitivity.classification" id="toc-sbmlsim.sensitivity.classification" class="nav-link active" data-scroll-target="#sbmlsim.sensitivity.classification">sensitivity.classification</a>
   <ul class="collapse">
-  <li><a href="#references" id="toc-references" class="nav-link" data-scroll-target="#references">References</a></li>
   <li><a href="#classes" id="toc-classes" class="nav-link" data-scroll-target="#classes">Classes</a>
   <ul class="collapse">
-  <li><a href="#sbmlsim.sensitivity.sensitivity_morris.MorrisSensitivityAnalysis" id="toc-sbmlsim.sensitivity.sensitivity_morris.MorrisSensitivityAnalysis" class="nav-link" data-scroll-target="#sbmlsim.sensitivity.sensitivity_morris.MorrisSensitivityAnalysis">MorrisSensitivityAnalysis</a></li>
+  <li><a href="#sbmlsim.sensitivity.classification.SensitivityClassification" id="toc-sbmlsim.sensitivity.classification.SensitivityClassification" class="nav-link" data-scroll-target="#sbmlsim.sensitivity.classification.SensitivityClassification">SensitivityClassification</a></li>
+  <li><a href="#sbmlsim.sensitivity.classification.UncertaintyClassification" id="toc-sbmlsim.sensitivity.classification.UncertaintyClassification" class="nav-link" data-scroll-target="#sbmlsim.sensitivity.classification.UncertaintyClassification">UncertaintyClassification</a></li>
+  </ul></li>
+  <li><a href="#functions" id="toc-functions" class="nav-link" data-scroll-target="#functions">Functions</a>
+  <ul class="collapse">
+  <li><a href="#sbmlsim.sensitivity.classification.sensitivity_classification" id="toc-sbmlsim.sensitivity.classification.sensitivity_classification" class="nav-link" data-scroll-target="#sbmlsim.sensitivity.classification.sensitivity_classification">sensitivity_classification</a></li>
+  <li><a href="#sbmlsim.sensitivity.classification.sensitivity_classification_symbol" id="toc-sbmlsim.sensitivity.classification.sensitivity_classification_symbol" class="nav-link" data-scroll-target="#sbmlsim.sensitivity.classification.sensitivity_classification_symbol">sensitivity_classification_symbol</a></li>
+  <li><a href="#sbmlsim.sensitivity.classification.uncertainty_classification" id="toc-sbmlsim.sensitivity.classification.uncertainty_classification" class="nav-link" data-scroll-target="#sbmlsim.sensitivity.classification.uncertainty_classification">uncertainty_classification</a></li>
+  <li><a href="#sbmlsim.sensitivity.classification.uncertainty_classification_symbol" id="toc-sbmlsim.sensitivity.classification.uncertainty_classification_symbol" class="nav-link" data-scroll-target="#sbmlsim.sensitivity.classification.uncertainty_classification_symbol">uncertainty_classification_symbol</a></li>
   </ul></li>
   </ul></li>
   </ul>
-<div class="toc-actions"><ul><li><a href="https://github.com/matthiaskoenig/sbmlsim/edit/develop/_docs/api/sensitivity.sensitivity_morris.qmd" target="_blank" class="toc-action"><i class="bi bi-github"></i>Edit this page</a></li><li><a href="https://github.com/matthiaskoenig/sbmlsim/blob/develop/_docs/api/sensitivity.sensitivity_morris.qmd" target="_blank" class="toc-action"><i class="bi empty"></i>View source</a></li><li><a href="https://github.com/matthiaskoenig/sbmlsim/issues/new" target="_blank" class="toc-action"><i class="bi empty"></i>Report an issue</a></li></ul></div></nav>
+<div class="toc-actions"><ul><li><a href="https://github.com/matthiaskoenig/sbmlsim/edit/develop/_docs/api/sensitivity.classification.qmd" target="_blank" class="toc-action"><i class="bi bi-github"></i>Edit this page</a></li><li><a href="https://github.com/matthiaskoenig/sbmlsim/blob/develop/_docs/api/sensitivity.classification.qmd" target="_blank" class="toc-action"><i class="bi empty"></i>View source</a></li><li><a href="https://github.com/matthiaskoenig/sbmlsim/issues/new" target="_blank" class="toc-action"><i class="bi empty"></i>Report an issue</a></li></ul></div></nav>
     </div>
 <!-- main -->
-<main class="content" id="quarto-document-content"><header id="title-block-header" class="quarto-title-block"><nav class="quarto-page-breadcrumbs quarto-title-breadcrumbs d-none d-lg-block" aria-label="breadcrumb"><ol class="breadcrumb"><li class="breadcrumb-item"><a href="../api/index.html">Reference</a></li><li class="breadcrumb-item"><a href="../api/sensitivity.sensitivity_morris.html"><code>sensitivity_morris</code></a></li></ol></nav></header>
+<main class="content" id="quarto-document-content"><header id="title-block-header" class="quarto-title-block"><nav class="quarto-page-breadcrumbs quarto-title-breadcrumbs d-none d-lg-block" aria-label="breadcrumb"><ol class="breadcrumb"><li class="breadcrumb-item"><a href="../api/index.html">Reference</a></li><li class="breadcrumb-item"><a href="../api/sensitivity.classification.html"><code>classification</code></a></li></ol></nav></header>
 
 
 
 
 
-<section id="sbmlsim.sensitivity.sensitivity_morris" class="level1">
-<h1>sensitivity.sensitivity_morris</h1>
-<p><code>sensitivity.sensitivity_morris</code></p>
-<p>Morris sensitivity analysis.</p>
-<p>This module implements the Method of Morris for global screening-based sensitivity analysis. The Morris method estimates <em>elementary effects</em> by sampling trajectories through the parameter space and provides qualitative and semi-quantitative measures of parameter importance.</p>
-<p>The implementation supports:</p>
-<ul>
-<li>Classical Morris sampling (Morris, 1991)</li>
-<li>Optimized trajectories (Campolongo et al., 2007)</li>
-<li>Local optimization of trajectories (Ruano et al., 2012)</li>
-</ul>
-<p>For each output variable, the following Morris indices are computed:</p>
-<ul>
-<li>mu: Mean of elementary effects</li>
-<li>mu_star: Mean of absolute elementary effects</li>
-<li>sigma: Standard deviation of elementary effects</li>
-<li>mu_star_conf: Confidence interval of mu_star</li>
-<li>r: Combined importance measure</li>
-</ul>
-<section id="references" class="level2 doc-section doc-section-references">
-<h2 class="doc-section doc-section-references anchored" data-anchor-id="references">References</h2>
-<ul>
-<li>Morris, M.D., 1991. Factorial Sampling Plans for Preliminary Computational Experiments. Technometrics 33, 161-174. https://doi.org/10.1080/00401706.1991.10484804</li>
-<li>Campolongo, F., Cariboni, J., &amp; Saltelli, A. 2007. An effective screening design for sensitivity analysis of large models. Environmental Modelling &amp; Software, 22(10), 1509-1518. https://doi.org/10.1016/j.envsoft.2006.10.004</li>
-<li>Ruano, M.V., Ribes, J., Seco, A., Ferrer, J., 2012. An improved sampling strategy based on trajectory design for application of the Morris method to systems with many input factors. Environmental Modelling &amp; Software 37, 103-109. https://doi.org/10.1016/j.envsoft.2012.03.008</li>
-</ul>
-</section>
+<section id="sbmlsim.sensitivity.classification" class="level1">
+<h1>sensitivity.classification</h1>
+<p><code>sensitivity.classification</code></p>
+<p>Classification of sensitivities and uncertainties.</p>
 <section id="classes" class="level2">
 <h2 class="anchored" data-anchor-id="classes">Classes</h2>
 <table class="caption-top table">
@@ -486,33 +470,28 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 </thead>
 <tbody>
 <tr class="odd">
-<td><a href="#sbmlsim.sensitivity.sensitivity_morris.MorrisSensitivityAnalysis">MorrisSensitivityAnalysis</a></td>
-<td>Morris sensitivity analysis.</td>
+<td><a href="#sbmlsim.sensitivity.classification.SensitivityClassification">SensitivityClassification</a></td>
+<td>Sensitivity classification.</td>
+</tr>
+<tr class="even">
+<td><a href="#sbmlsim.sensitivity.classification.UncertaintyClassification">UncertaintyClassification</a></td>
+<td>Uncertainty classification.</td>
 </tr>
 </tbody>
 </table>
-<section id="sbmlsim.sensitivity.sensitivity_morris.MorrisSensitivityAnalysis" class="level3">
-<h3 class="anchored" data-anchor-id="sbmlsim.sensitivity.sensitivity_morris.MorrisSensitivityAnalysis">MorrisSensitivityAnalysis</h3>
-<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb1"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a>sensitivity.sensitivity_morris.MorrisSensitivityAnalysis(</span>
-<span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a>    sensitivity_simulation,</span>
-<span id="cb1-3"><a href="#cb1-3" aria-hidden="true" tabindex="-1"></a>    parameters,</span>
-<span id="cb1-4"><a href="#cb1-4" aria-hidden="true" tabindex="-1"></a>    groups,</span>
-<span id="cb1-5"><a href="#cb1-5" aria-hidden="true" tabindex="-1"></a>    results_path,</span>
-<span id="cb1-6"><a href="#cb1-6" aria-hidden="true" tabindex="-1"></a>    N,</span>
-<span id="cb1-7"><a href="#cb1-7" aria-hidden="true" tabindex="-1"></a>    optimal_trajectories,</span>
-<span id="cb1-8"><a href="#cb1-8" aria-hidden="true" tabindex="-1"></a>    num_levels<span class="op">=</span><span class="dv">4</span>,</span>
-<span id="cb1-9"><a href="#cb1-9" aria-hidden="true" tabindex="-1"></a>    local_optimization<span class="op">=</span><span class="va">True</span>,</span>
-<span id="cb1-10"><a href="#cb1-10" aria-hidden="true" tabindex="-1"></a>    seed<span class="op">=</span><span class="va">None</span>,</span>
-<span id="cb1-11"><a href="#cb1-11" aria-hidden="true" tabindex="-1"></a>    n_cores<span class="op">=</span><span class="va">None</span>,</span>
-<span id="cb1-12"><a href="#cb1-12" aria-hidden="true" tabindex="-1"></a>    cache_results<span class="op">=</span><span class="va">False</span>,</span>
-<span id="cb1-13"><a href="#cb1-13" aria-hidden="true" tabindex="-1"></a>    <span class="op">**</span>kwargs,</span>
-<span id="cb1-14"><a href="#cb1-14" aria-hidden="true" tabindex="-1"></a>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
-<p>Morris sensitivity analysis.</p>
-<p>Campolongo et al., introduces an optimal trajectories approach which attempts to maximize the parameter space scanned for a given number of trajectories (where optimal_trajectories). The approach accomplishes this aim by randomly generating a high number of possible trajectories (500 to 1000) and selecting a subset of r trajectories which have the highest spread in parameter space. The r variable in corresponds to the optimal_trajectories parameter here.</p>
-<p>Calculating all possible combinations of trajectories can be computationally expensive. The number of factors makes little difference, but the ratio between number of optimal trajectories and the sample size results in an exponentially increasing number of scores that must be computed to find the optimal combination of trajectories. We suggest going no higher than 4 levels from a pool of 100 samples with this “brute force” approach.</p>
-<p>Ruano et al., proposed an alternative approach with an iterative process that maximizes the distance between subgroups of generated trajectories, from which the final set of trajectories are selected, again maximizing the distance between each. The approach is not guaranteed to produce the most optimal spread of trajectories, but are at least locally maximized and significantly reduce the time taken to select trajectories. With local_optimization = True (which is default), it is possible to go higher than the previously suggested 4 levels from a pool of 100 samples.</p>
-<section id="methods" class="level4">
-<h4 class="anchored" data-anchor-id="methods">Methods</h4>
+<section id="sbmlsim.sensitivity.classification.SensitivityClassification" class="level3">
+<h3 class="anchored" data-anchor-id="sbmlsim.sensitivity.classification.SensitivityClassification">SensitivityClassification</h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb1"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a>sensitivity.classification.SensitivityClassification()</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p>Sensitivity classification.</p>
+</section>
+<section id="sbmlsim.sensitivity.classification.UncertaintyClassification" class="level3">
+<h3 class="anchored" data-anchor-id="sbmlsim.sensitivity.classification.UncertaintyClassification">UncertaintyClassification</h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb2"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a>sensitivity.classification.UncertaintyClassification()</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p>Uncertainty classification.</p>
+</section>
+</section>
+<section id="functions" class="level2">
+<h2 class="anchored" data-anchor-id="functions">Functions</h2>
 <table class="caption-top table">
 <thead>
 <tr class="header">
@@ -522,48 +501,64 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 </thead>
 <tbody>
 <tr class="odd">
-<td><a href="#sbmlsim.sensitivity.sensitivity_morris.MorrisSensitivityAnalysis.calculate_sensitivity">calculate_sensitivity</a></td>
-<td>Perform extended Fourier Amplitude Sensitivity Test on model outputs.</td>
+<td><a href="#sbmlsim.sensitivity.classification.sensitivity_classification">sensitivity_classification</a></td>
+<td>Classification of local sensitivity as per WHO IPCS guidance.</td>
 </tr>
 <tr class="even">
-<td><a href="#sbmlsim.sensitivity.sensitivity_morris.MorrisSensitivityAnalysis.create_samples">create_samples</a></td>
-<td>Create samples using the Method of Morris.</td>
+<td><a href="#sbmlsim.sensitivity.classification.sensitivity_classification_symbol">sensitivity_classification_symbol</a></td>
+<td>Calculates symbol for sensitivity classification.</td>
 </tr>
 <tr class="odd">
-<td><a href="#sbmlsim.sensitivity.sensitivity_morris.MorrisSensitivityAnalysis.plot">plot</a></td>
-<td>Morris plot.</td>
+<td><a href="#sbmlsim.sensitivity.classification.uncertainty_classification">uncertainty_classification</a></td>
+<td>Classification of uncertainty as per WHO IPCS guidance.</td>
+</tr>
+<tr class="even">
+<td><a href="#sbmlsim.sensitivity.classification.uncertainty_classification_symbol">uncertainty_classification_symbol</a></td>
+<td>Calculates symbol for uncertainty classification.</td>
 </tr>
 </tbody>
 </table>
-<section id="sbmlsim.sensitivity.sensitivity_morris.MorrisSensitivityAnalysis.calculate_sensitivity" class="level5">
-<h5 class="anchored" data-anchor-id="sbmlsim.sensitivity.sensitivity_morris.MorrisSensitivityAnalysis.calculate_sensitivity">calculate_sensitivity</h5>
-<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb2"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a>sensitivity.sensitivity_morris.MorrisSensitivityAnalysis.calculate_sensitivity(</span>
-<span id="cb2-2"><a href="#cb2-2" aria-hidden="true" tabindex="-1"></a>    cache_filename<span class="op">=</span><span class="va">None</span>,</span>
-<span id="cb2-3"><a href="#cb2-3" aria-hidden="true" tabindex="-1"></a>    cache<span class="op">=</span><span class="va">False</span>,</span>
-<span id="cb2-4"><a href="#cb2-4" aria-hidden="true" tabindex="-1"></a>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
-<p>Perform extended Fourier Amplitude Sensitivity Test on model outputs.</p>
-<p>Returns a dictionary with keys ‘S1’ and ‘ST’, where each entry is a list of size D (the number of parameters) containing the indices in the same order as the parameter file.</p>
-<p>Returns a result set with keys mu, mu_star, sigma, and mu_star_conf, where each entry corresponds to the parameters defined in the problem spec or parameter file.</p>
-<p>mu metric indicates the mean of the distribution mu_star metric indicates the mean of the distribution of absolute values sigma is the standard deviation of the distribution</p>
-</section>
-<section id="sbmlsim.sensitivity.sensitivity_morris.MorrisSensitivityAnalysis.create_samples" class="level5">
-<h5 class="anchored" data-anchor-id="sbmlsim.sensitivity.sensitivity_morris.MorrisSensitivityAnalysis.create_samples">create_samples</h5>
-<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb3"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a>sensitivity.sensitivity_morris.MorrisSensitivityAnalysis.create_samples()</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
-<p>Create samples using the Method of Morris. Three variants of Morris’ sampling for elementary effects is supported:</p>
+<section id="sbmlsim.sensitivity.classification.sensitivity_classification" class="level3">
+<h3 class="anchored" data-anchor-id="sbmlsim.sensitivity.classification.sensitivity_classification">sensitivity_classification</h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb3"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a>sensitivity.classification.sensitivity_classification(s)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p>Classification of local sensitivity as per WHO IPCS guidance.</p>
+<p>Classification based on absolute sensitivity:</p>
 <ul>
-<li>Vanilla Morris when <code>optimal_trajectories</code> is <code>None</code>/<code>False</code> and <code>local_optimization</code> is <code>False</code></li>
-<li>Optimised trajectories when <code>optimal_trajectories=True</code> using Campolongo’s enhancements and optionally Ruano’s enhancement when <code>local_optimization=True</code></li>
-<li>Morris with groups when the problem definition specifies groups of parameters</li>
+<li>High: <code>|Si,j| &gt;= 0.5</code></li>
+<li>Medium: <code>0.2 &lt;= |Si,j| &lt; 0.5</code></li>
+<li>Low: <code>0.1 &lt;= |Si,j| &lt; 0.2</code></li>
+<li>Negligible: <code>|Si,j| &lt; 0.1</code></li>
 </ul>
+<section id="references" class="level4 doc-section doc-section-references">
+<h4 class="doc-section doc-section-references anchored" data-anchor-id="references">References</h4>
+<p>International Programme on Chemical Safety (IPCS). Characterization and application of physiologically based pharmacokinetic models in risk assessment. World Health Organization; 2010. Contract No.: 9.</p>
 </section>
-<section id="sbmlsim.sensitivity.sensitivity_morris.MorrisSensitivityAnalysis.plot" class="level5">
-<h5 class="anchored" data-anchor-id="sbmlsim.sensitivity.sensitivity_morris.MorrisSensitivityAnalysis.plot">plot</h5>
-<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb4"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb4-1"><a href="#cb4-1" aria-hidden="true" tabindex="-1"></a>sensitivity.sensitivity_morris.MorrisSensitivityAnalysis.plot()</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
-<p>Morris plot.</p>
+</section>
+<section id="sbmlsim.sensitivity.classification.sensitivity_classification_symbol" class="level3">
+<h3 class="anchored" data-anchor-id="sbmlsim.sensitivity.classification.sensitivity_classification_symbol">sensitivity_classification_symbol</h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb4"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb4-1"><a href="#cb4-1" aria-hidden="true" tabindex="-1"></a>sensitivity.classification.sensitivity_classification_symbol(s)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p>Calculates symbol for sensitivity classification.</p>
+</section>
+<section id="sbmlsim.sensitivity.classification.uncertainty_classification" class="level3">
+<h3 class="anchored" data-anchor-id="sbmlsim.sensitivity.classification.uncertainty_classification">uncertainty_classification</h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb5"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb5-1"><a href="#cb5-1" aria-hidden="true" tabindex="-1"></a>sensitivity.classification.uncertainty_classification(u)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p>Classification of uncertainty as per WHO IPCS guidance.</p>
+<ul>
+<li>High: <code>Ui,j &gt;= 2</code></li>
+<li>Medium: <code>0.3 &lt;= |Ui,j| &lt; 2</code></li>
+<li>Low: <code>0 &lt;= |Ui,j| &lt; 0.3</code></li>
+</ul>
+<section id="references-1" class="level4 doc-section doc-section-references">
+<h4 class="doc-section doc-section-references anchored" data-anchor-id="references-1">References</h4>
+<p>International Programme on Chemical Safety (IPCS). Characterization and application of physiologically based pharmacokinetic models in risk assessment. World Health Organization; 2010. Contract No.: 9.</p>
+</section>
+</section>
+<section id="sbmlsim.sensitivity.classification.uncertainty_classification_symbol" class="level3">
+<h3 class="anchored" data-anchor-id="sbmlsim.sensitivity.classification.uncertainty_classification_symbol">uncertainty_classification_symbol</h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb6"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb6-1"><a href="#cb6-1" aria-hidden="true" tabindex="-1"></a>sensitivity.classification.uncertainty_classification_symbol(u)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p>Calculates symbol for uncertainty classification.</p>
 
 
-</section>
-</section>
 </section>
 </section>
 </section>
@@ -984,13 +979,13 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
   </script>
 <nav class="page-navigation">
   <div class="nav-page nav-page-previous">
-      <a href="../api/sensitivity.sensitivity_local.html" class="pagination-link" aria-label="`sensitivity_local`">
-        <i class="bi bi-arrow-left-short"></i> <span class="nav-page-text"><code>sensitivity_local</code></span>
+      <a href="../api/sensitivity.sensitivity_sampling.html" class="pagination-link" aria-label="`sensitivity_sampling`">
+        <i class="bi bi-arrow-left-short"></i> <span class="nav-page-text"><code>sensitivity_sampling</code></span>
       </a>
   </div>
   <div class="nav-page nav-page-next">
-      <a href="../api/sensitivity.sensitivity_sobol.html" class="pagination-link" aria-label="`sensitivity_sobol`">
-        <span class="nav-page-text"><code>sensitivity_sobol</code></span> <i class="bi bi-arrow-right-short"></i>
+      <a href="../api/fit.html" class="pagination-link" aria-label="Parameter optimization">
+        <span class="nav-page-text">Parameter optimization</span> <i class="bi bi-arrow-right-short"></i>
       </a>
   </div>
 </nav>
@@ -1002,7 +997,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 </div>
     <div class="nav-footer-center">
       &nbsp;
-    <div class="toc-actions d-sm-block d-md-none"><ul><li><a href="https://github.com/matthiaskoenig/sbmlsim/edit/develop/_docs/api/sensitivity.sensitivity_morris.qmd" target="_blank" class="toc-action"><i class="bi bi-github"></i>Edit this page</a></li><li><a href="https://github.com/matthiaskoenig/sbmlsim/blob/develop/_docs/api/sensitivity.sensitivity_morris.qmd" target="_blank" class="toc-action"><i class="bi empty"></i>View source</a></li><li><a href="https://github.com/matthiaskoenig/sbmlsim/issues/new" target="_blank" class="toc-action"><i class="bi empty"></i>Report an issue</a></li></ul></div></div>
+    <div class="toc-actions d-sm-block d-md-none"><ul><li><a href="https://github.com/matthiaskoenig/sbmlsim/edit/develop/_docs/api/sensitivity.classification.qmd" target="_blank" class="toc-action"><i class="bi bi-github"></i>Edit this page</a></li><li><a href="https://github.com/matthiaskoenig/sbmlsim/blob/develop/_docs/api/sensitivity.classification.qmd" target="_blank" class="toc-action"><i class="bi empty"></i>View source</a></li><li><a href="https://github.com/matthiaskoenig/sbmlsim/issues/new" target="_blank" class="toc-action"><i class="bi empty"></i>Report an issue</a></li></ul></div></div>
     <div class="nav-footer-right">
       <ul class="footer-items list-unstyled">
     <li class="nav-item compact">

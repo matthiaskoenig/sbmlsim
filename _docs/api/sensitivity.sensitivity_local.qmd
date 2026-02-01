@@ -31,6 +31,12 @@ Normalized sensitivities are defined as:
 
     S_norm = S * (p0 / q(p0))
 
+Here a multistep method is implemented following Najjar et al.
+
+References:
+
+    - Najjar A, Hamadeh A, Krause S, Schepky A, Edginton A. Global sensitivity analysis of Open Systems Pharmacology Suite physiologically based pharmacokinetic models. CPT Pharmacometrics Syst Pharmacol. 2024 Dec;13(12):2052-2067. doi: 10.1002/psp4.13256. Epub 2024 Nov 5. PMID: 39498820; PMCID: PMC11646943.
+
 ## Classes
 
 | Name | Description |
@@ -49,6 +55,7 @@ sensitivity.sensitivity_local.LocalSensitivityAnalysis(
     n_cores=None,
     cache_results=False,
     difference=0.01,
+    n_var=3,
 )
 ```
 
@@ -72,6 +79,7 @@ decrease) are evaluated in addition to a reference simulation.
 | --- | --- |
 | [calculate_sensitivity](#sbmlsim.sensitivity.sensitivity_local.LocalSensitivityAnalysis.calculate_sensitivity) | Compute raw and normalized local sensitivities. |
 | [create_samples](#sbmlsim.sensitivity.sensitivity_local.LocalSensitivityAnalysis.create_samples) | Create parameter samples for local sensitivity analysis. |
+| [dfs_sensitivity](#sbmlsim.sensitivity.sensitivity_local.LocalSensitivityAnalysis.dfs_sensitivity) | Return sensitivity dataframe. |
 | [plot](#sbmlsim.sensitivity.sensitivity_local.LocalSensitivityAnalysis.plot) | Generate plots for normalized local sensitivities. |
 
 ##### calculate_sensitivity { #sbmlsim.sensitivity.sensitivity_local.LocalSensitivityAnalysis.calculate_sensitivity }
@@ -106,10 +114,19 @@ Create parameter samples for local sensitivity analysis.
 For each analysis group, this method constructs a sample matrix
 containing:
 - One reference parameter vector
-- Two perturbed parameter vectors per parameter (±difference)
+- n_var perturbed parameter vectors per parameter (+difference)
+- n_var perturbed parameter vectors per parameter (-difference)
 
 Samples are stored as an ``xarray.DataArray`` indexed by sample and
 parameter identifiers.
+
+##### dfs_sensitivity { #sbmlsim.sensitivity.sensitivity_local.LocalSensitivityAnalysis.dfs_sensitivity }
+
+```python
+sensitivity.sensitivity_local.LocalSensitivityAnalysis.dfs_sensitivity()
+```
+
+Return sensitivity dataframe.
 
 ##### plot { #sbmlsim.sensitivity.sensitivity_local.LocalSensitivityAnalysis.plot }
 
@@ -121,3 +138,5 @@ Generate plots for normalized local sensitivities.
 
 Produces heatmaps of normalized sensitivities for each analysis group
 and saves the figures to the results directory.
+
+Using default cutoff of 0.1 for negligible.
