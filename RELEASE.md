@@ -4,6 +4,7 @@
 * update release notes in `release-notes` with commit
 * make sure all tests run (`tox -p`)
 * check formating and linting (`ruff check`)
+* build documentation
 * test bump version (`uvx bump-my-version bump [major|minor|patch] --dry-run -vv`)
 * bump version (`uvx bump-my-version bump [major|minor|patch]`)
 * `git push --tags` (triggers release)

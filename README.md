@@ -1,4 +1,4 @@
-![](https://github.com/matthiaskoenig/sbmlsim/raw/develop/docs/images/favicon/sbmlsim-100x100-300dpi.png)
+![](./_docs/images/favicon/sbmlsim-100x100-300dpi.png)
 
 
 # sbmlsim: SBML simulation made easy
@@ -21,6 +21,7 @@ Features include among others
 - parameter fitting
 - sensitivity analysis
 
+Documentation is available from [https://matthiaskoenig.github.io/sbmlsim/](https://matthiaskoenig.github.io/sbmlsim/).
 If you have any questions or issues please [open an issue](https://github.com/matthiaskoenig/sbmlsim/issues).
 
 ## Installation
@@ -77,8 +78,5 @@ Run all tests in parallel
 ```bash
 tox run-parallel
 ```
-
-## Documentation
-If you haven’t already, you’ll need to [install Quarto](https://quarto.org/docs/get-started/).
 
 © 2019-2026 Matthias König

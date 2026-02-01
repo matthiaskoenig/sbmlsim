@@ -19,8 +19,11 @@ website:
   bread-crumbs: true
   repo-url: https://github.com/matthiaskoenig/sbmlsim
   repo-branch: develop
+  repo-subdir: _docs
   repo-link-target: _blank
   repo-actions: [ edit, source, issue ]
+
+
   sidebar:
     # title: sbmlsim
     # logo: images/favicon/sbmlsim-100x100-300dpi.png
