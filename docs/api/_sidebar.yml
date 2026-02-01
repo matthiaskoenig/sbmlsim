@@ -1,0 +1,14 @@
+website:
+  sidebar:
+  - contents:
+    - api/index.qmd
+    - contents:
+      - api/sensitivity.qmd
+      - api/sensitivity.sensitivity_local.qmd
+      - api/sensitivity.sensitivity_fast.qmd
+      - api/sensitivity.sensitivity_sobol.qmd
+      - api/sensitivity.sensitivity_morris.qmd
+      - api/sensitivity.sensitivity_sampling.qmd
+      section: API sensitivity
+    id: api
+  - id: dummy-sidebar

@@ -1,0 +1,4 @@
+tests/
+release_notes/
+build/
+**/__pycache__/

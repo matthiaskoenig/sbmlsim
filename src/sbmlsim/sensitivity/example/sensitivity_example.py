@@ -1,4 +1,5 @@
 """Example for sensitivity analysis."""
+
 from pathlib import Path
 
 import numpy as np
@@ -40,16 +41,17 @@ sensitivity_groups: list[AnalysisGroup] = [
 
 class ExampleSensitivitySimulation(SensitivitySimulation):
     """Simulation for sensitivity calculation."""
+
     tend = 1000
     steps = 1000
 
-    def simulate(self, r: roadrunner.RoadRunner, changes: dict[str, float]) -> dict[
-        str, float]:
-
+    def simulate(
+        self, r: roadrunner.RoadRunner, changes: dict[str, float]
+    ) -> dict[str, float]:
         # apply changes and simulate
         all_changes = {
             **self.changes_simulation,  # model
-            **changes  # sensitivity
+            **changes,  # sensitivity
         }
         self.apply_changes(r, all_changes, reset_all=True)
 
@@ -79,14 +81,14 @@ sensitivity_simulation = ExampleSensitivitySimulation(
     selections=["time", "[S1]", "[S2]", "[S3]"],
     changes_simulation={},
     outputs=[
-        SensitivityOutput(uid='[S1]_auc', name='[S1] AUC', unit=None),
-        SensitivityOutput(uid='[S2]_tmax', name='[S2] time maximum', unit=None),
-        SensitivityOutput(uid='[S2]_max', name='[S2] maximum', unit=None),
-        SensitivityOutput(uid='[S2]_auc', name='[S2] AUC', unit=None),
-        SensitivityOutput(uid='[S3]_tmax', name='[S3] time maximum', unit=None),
-        SensitivityOutput(uid='[S3]_max', name='[S3] maximum', unit=None),
-        SensitivityOutput(uid='[S3]_auc', name='[S3] AUC', unit=None),
-    ]
+        SensitivityOutput(uid="[S1]_auc", name="[S1] AUC", unit=None),
+        SensitivityOutput(uid="[S2]_tmax", name="[S2] time maximum", unit=None),
+        SensitivityOutput(uid="[S2]_max", name="[S2] maximum", unit=None),
+        SensitivityOutput(uid="[S2]_auc", name="[S2] AUC", unit=None),
+        SensitivityOutput(uid="[S3]_tmax", name="[S3] time maximum", unit=None),
+        SensitivityOutput(uid="[S3]_max", name="[S3] maximum", unit=None),
+        SensitivityOutput(uid="[S3]_auc", name="[S3] AUC", unit=None),
+    ],
 )
 
 
@@ -118,6 +120,7 @@ if __name__ == "__main__":
         LocalSensitivityAnalysis,
         SamplingSensitivityAnalysis,
         FASTSensitivityAnalysis,
+        MorrisSensitivityAnalysis,
     )
 
     sensitivity_path = Path(__file__).parent / "results"
@@ -128,7 +131,7 @@ if __name__ == "__main__":
     settings = {
         "cache_results": True,
         "n_cores": int(round(0.9 * multiprocessing.cpu_count())),
-        "seed": 1234
+        "seed": 1234,
     }
 
     sa_sampling = SamplingSensitivityAnalysis(
@@ -167,11 +170,23 @@ if __name__ == "__main__":
         **settings,
     )
 
+    sa_morris = MorrisSensitivityAnalysis(
+        sensitivity_simulation=sensitivity_simulation,
+        parameters=sensitivity_parameters,
+        groups=sensitivity_groups,
+        results_path=sensitivity_path / "morris",
+        N=100,
+        num_levels=4,
+        optimal_trajectories=25,
+        **settings,
+    )
+
     sas = [
-        sa_local,
+        # sa_local,
         # sa_sampling,
         # sa_sobol,
         # sa_fast,
+        sa_morris,
     ]
     for sa in sas:
         sa.execute()
