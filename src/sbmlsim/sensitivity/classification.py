@@ -90,3 +90,17 @@ def uncertainty_classification(u: float) -> UncertaintyClassification:
         return UncertaintyClassification.LOW
     else:
         raise ValueError(f"Unsupported uncertainty classification for u={u}.")
+
+
+def uncertainty_classification_symbol(u: float) -> str:
+    """Calculates symbol for uncertainty classification."""
+    classification = uncertainty_classification(u)
+    n = 0
+    if classification == UncertaintyClassification.HIGH:
+        n = 3
+    elif classification == UncertaintyClassification.MEDIUM:
+        n = 2
+    elif classification == UncertaintyClassification.LOW:
+        n = 1
+
+    return f"<{'*'*n}>"

@@ -182,8 +182,8 @@ if __name__ == "__main__":
     )
 
     sas = [
-        sa_local,
-        # sa_sampling,
+        # sa_local,
+        sa_sampling,
         # sa_sobol,
         # sa_fast,
         # sa_morris,
