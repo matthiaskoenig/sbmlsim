@@ -19,6 +19,8 @@ computed, including:
 - minimum and maximum
 - lower and upper quantiles (5% and 95%)
 
+Uncertainty is calculated as Ui,j = (Percentile97.5(i,j) - Percentile2.5(i,j)) / Percentile50(i,j)
+
 This approach focuses on uncertainty propagation rather than variance-based
 sensitivity indices and is therefore complementary to local and Sobol-based
 methods.

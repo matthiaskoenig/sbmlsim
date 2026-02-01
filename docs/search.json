@@ -128,7 +128,7 @@
     "href": "api/sensitivity.sensitivity_sampling.html",
     "title": "sensitivity.sensitivity_sampling",
     "section": "",
-    "text": "sensitivity.sensitivity_sampling\nSampling-based sensitivity and uncertainty analysis.\nThis module implements a sampling-based sensitivity and uncertainty analysis approach. Model parameters are varied simultaneously within their bounds, and the resulting distribution of model outputs is analyzed statistically.\nParameter samples are generated using Latin Hypercube Sampling (LHS), assuming independent and uniformly distributed parameters.\nFor each analysis group and output variable, descriptive statistics are computed, including:\n\nmean and median\nstandard deviation and coefficient of variation\nminimum and maximum\nlower and upper quantiles (5% and 95%)\n\nThis approach focuses on uncertainty propagation rather than variance-based sensitivity indices and is therefore complementary to local and Sobol-based methods.\n\n\n\n\n\nName\nDescription\n\n\n\n\nSamplingSensitivityAnalysis\nSensitivity/uncertainty analysis based on sampling.\n\n\n\n\n\nsensitivity.sensitivity_sampling.SamplingSensitivityAnalysis(\n    sensitivity_simulation,\n    parameters,\n    groups,\n    results_path,\n    N,\n    seed=None,\n    n_cores=None,\n    cache_results=False,\n)\nSensitivity/uncertainty analysis based on sampling.\n\n\n\n\n\nName\nDescription\n\n\n\n\ncalculate_sensitivity\nCalculate the sensitivity matrices for sampling sensitivity.\n\n\ncreate_samples\nCreate LHS samples.\n\n\nplot\nBoxplots for the Sampling sensitivity.\n\n\nplot_data\nBoxplots for the sampled output.\n\n\n\n\n\nsensitivity.sensitivity_sampling.SamplingSensitivityAnalysis.calculate_sensitivity(\n    cache_filename=None,\n    cache=False,\n)\nCalculate the sensitivity matrices for sampling sensitivity.\n\n\n\nsensitivity.sensitivity_sampling.SamplingSensitivityAnalysis.create_samples()\nCreate LHS samples.\nLatin hypercube sampling (LHS) is a stratified sampling method used to generate near‑random samples from a multidimensional distribution for Monte Carlo simulations and computer experiments.\nAssuming uniform distributions within the provided bounds.\nUse LHS sampling of parameters.\n\n\n\nsensitivity.sensitivity_sampling.SamplingSensitivityAnalysis.plot(**kwargs)\nBoxplots for the Sampling sensitivity.\n\n\n\nsensitivity.sensitivity_sampling.SamplingSensitivityAnalysis.plot_data(\n    type,\n    show_jitter=True,\n    show_violin=True,\n    **kwargs,\n)\nBoxplots for the sampled output.",
+    "text": "sensitivity.sensitivity_sampling\nSampling-based sensitivity and uncertainty analysis.\nThis module implements a sampling-based sensitivity and uncertainty analysis approach. Model parameters are varied simultaneously within their bounds, and the resulting distribution of model outputs is analyzed statistically.\nParameter samples are generated using Latin Hypercube Sampling (LHS), assuming independent and uniformly distributed parameters.\nFor each analysis group and output variable, descriptive statistics are computed, including:\n\nmean and median\nstandard deviation and coefficient of variation\nminimum and maximum\nlower and upper quantiles (5% and 95%)\n\nUncertainty is calculated as Ui,j = (Percentile97.5(i,j) - Percentile2.5(i,j)) / Percentile50(i,j)\nThis approach focuses on uncertainty propagation rather than variance-based sensitivity indices and is therefore complementary to local and Sobol-based methods.\n\n\n\n\n\nName\nDescription\n\n\n\n\nSamplingSensitivityAnalysis\nSensitivity/uncertainty analysis based on sampling.\n\n\n\n\n\nsensitivity.sensitivity_sampling.SamplingSensitivityAnalysis(\n    sensitivity_simulation,\n    parameters,\n    groups,\n    results_path,\n    N,\n    seed=None,\n    n_cores=None,\n    cache_results=False,\n)\nSensitivity/uncertainty analysis based on sampling.\n\n\n\n\n\nName\nDescription\n\n\n\n\ncalculate_sensitivity\nCalculate the sensitivity matrices for sampling sensitivity.\n\n\ncreate_samples\nCreate LHS samples.\n\n\nplot\nBoxplots for the Sampling sensitivity.\n\n\nplot_data\nBoxplots for the sampled output.\n\n\n\n\n\nsensitivity.sensitivity_sampling.SamplingSensitivityAnalysis.calculate_sensitivity(\n    cache_filename=None,\n    cache=False,\n)\nCalculate the sensitivity matrices for sampling sensitivity.\n\n\n\nsensitivity.sensitivity_sampling.SamplingSensitivityAnalysis.create_samples()\nCreate LHS samples.\nLatin hypercube sampling (LHS) is a stratified sampling method used to generate near‑random samples from a multidimensional distribution for Monte Carlo simulations and computer experiments.\nAssuming uniform distributions within the provided bounds.\nUse LHS sampling of parameters.\n\n\n\nsensitivity.sensitivity_sampling.SamplingSensitivityAnalysis.plot(**kwargs)\nBoxplots for the Sampling sensitivity.\n\n\n\nsensitivity.sensitivity_sampling.SamplingSensitivityAnalysis.plot_data(\n    type,\n    show_jitter=True,\n    show_violin=True,\n    **kwargs,\n)\nBoxplots for the sampled output.",
     "crumbs": [
       "Reference",
       "`sensitivity_sampling`"
@@ -201,14 +201,69 @@
     ]
   },
   {
-    "objectID": "api/index.html#api-sensitivity",
-    "href": "api/index.html#api-sensitivity",
+    "objectID": "api/index.html#sensitivity",
+    "href": "api/index.html#sensitivity",
     "title": "Function reference",
     "section": "",
-    "text": "Sensitivity functionality.\n\n\n\nsensitivity\nSensitivity analysis.\n\n\nsensitivity.sensitivity_local\nLocal sensitivity analysis using finite differences.\n\n\nsensitivity.sensitivity_fast\nGlobal sensitivity analysis using FAST (Fourier Amplitude Sensitivity Test).\n\n\nsensitivity.sensitivity_sobol\nGlobal sensitivity analysis using Sobol indices.\n\n\nsensitivity.sensitivity_morris\nMorris sensitivity analysis.\n\n\nsensitivity.sensitivity_sampling\nSampling-based sensitivity and uncertainty analysis.",
+    "text": "Functionality related to sensitivity and uncertainty analysis.\n\n\n\nsensitivity\nSensitivity analysis.\n\n\nsensitivity.sensitivity_local\nLocal sensitivity analysis using finite differences.\n\n\nsensitivity.sensitivity_fast\nGlobal sensitivity analysis using FAST (Fourier Amplitude Sensitivity Test).\n\n\nsensitivity.sensitivity_sobol\nGlobal sensitivity analysis using Sobol indices.\n\n\nsensitivity.sensitivity_morris\nMorris sensitivity analysis.\n\n\nsensitivity.sensitivity_sampling\nSampling-based sensitivity and uncertainty analysis.\n\n\nsensitivity.classification\nClassification of sensitivities and uncertainties.",
     "crumbs": [
-      "API",
-      "Sensitivity"
+      "Reference",
+      "Overview"
+    ]
+  },
+  {
+    "objectID": "api/index.html#parameter-optimization",
+    "href": "api/index.html#parameter-optimization",
+    "title": "Function reference",
+    "section": "",
+    "text": "Functionality related to parameter optimization.\n\n\n\nfit\nPackage for parameter fitting and parameter optimization.",
+    "crumbs": [
+      "Reference",
+      "Overview"
+    ]
+  },
+  {
+    "objectID": "api/fit.html",
+    "href": "api/fit.html",
+    "title": "fit",
+    "section": "",
+    "text": "fit\nfit\nPackage for parameter fitting and parameter optimization.\nFor additional resources see for instance https://petab.readthedocs.io/en/latest/index.html https://pyabc.readthedocs.io/en/latest/index.html",
+    "crumbs": [
+      "Reference",
+      "Parameter optimization"
+    ]
+  },
+  {
+    "objectID": "api/sensitivity.classification.html",
+    "href": "api/sensitivity.classification.html",
+    "title": "sensitivity.classification",
+    "section": "",
+    "text": "sensitivity.classification\nClassification of sensitivities and uncertainties.\n\n\n\n\n\nName\nDescription\n\n\n\n\nSensitivityClassification\nSensitivity classification.\n\n\nUncertaintyClassification\nUncertainty classification.\n\n\n\n\n\nsensitivity.classification.SensitivityClassification()\nSensitivity classification.\n\n\n\nsensitivity.classification.UncertaintyClassification()\nUncertainty classification.\n\n\n\n\n\n\n\nName\nDescription\n\n\n\n\nsensitivity_classification\nClassification of local sensitivity as per WHO IPCS guidance.\n\n\nsensitivity_classification_symbol\nCalculates symbol for sensitivity classification.\n\n\nuncertainty_classification\nClassification of uncertainty as per WHO IPCS guidance.\n\n\nuncertainty_classification_symbol\nCalculates symbol for uncertainty classification.\n\n\n\n\n\nsensitivity.classification.sensitivity_classification(s)\nClassification of local sensitivity as per WHO IPCS guidance.\nClassification based on absolute sensitivity:\n\nHigh: |Si,j| &gt;= 0.5\nMedium: 0.2 &lt;= |Si,j| &lt; 0.5\nLow: 0.1 &lt;= |Si,j| &lt; 0.2\nNegligible: |Si,j| &lt; 0.1\n\n\n\nInternational Programme on Chemical Safety (IPCS). Characterization and application of physiologically based pharmacokinetic models in risk assessment. World Health Organization; 2010. Contract No.: 9.\n\n\n\n\nsensitivity.classification.sensitivity_classification_symbol(s)\nCalculates symbol for sensitivity classification.\n\n\n\nsensitivity.classification.uncertainty_classification(u)\nClassification of uncertainty as per WHO IPCS guidance.\n\nHigh: Ui,j &gt;= 2\nMedium: 0.3 &lt;= |Ui,j| &lt; 2\nLow: 0 &lt;= |Ui,j| &lt; 0.3\n\n\n\nInternational Programme on Chemical Safety (IPCS). Characterization and application of physiologically based pharmacokinetic models in risk assessment. World Health Organization; 2010. Contract No.: 9.\n\n\n\n\nsensitivity.classification.uncertainty_classification_symbol(u)\nCalculates symbol for uncertainty classification.",
+    "crumbs": [
+      "Reference",
+      "`classification`"
+    ]
+  },
+  {
+    "objectID": "api/sensitivity.classification.html#classes",
+    "href": "api/sensitivity.classification.html#classes",
+    "title": "sensitivity.classification",
+    "section": "",
+    "text": "Name\nDescription\n\n\n\n\nSensitivityClassification\nSensitivity classification.\n\n\nUncertaintyClassification\nUncertainty classification.\n\n\n\n\n\nsensitivity.classification.SensitivityClassification()\nSensitivity classification.\n\n\n\nsensitivity.classification.UncertaintyClassification()\nUncertainty classification.",
+    "crumbs": [
+      "Reference",
+      "`classification`"
+    ]
+  },
+  {
+    "objectID": "api/sensitivity.classification.html#functions",
+    "href": "api/sensitivity.classification.html#functions",
+    "title": "sensitivity.classification",
+    "section": "",
+    "text": "Name\nDescription\n\n\n\n\nsensitivity_classification\nClassification of local sensitivity as per WHO IPCS guidance.\n\n\nsensitivity_classification_symbol\nCalculates symbol for sensitivity classification.\n\n\nuncertainty_classification\nClassification of uncertainty as per WHO IPCS guidance.\n\n\nuncertainty_classification_symbol\nCalculates symbol for uncertainty classification.\n\n\n\n\n\nsensitivity.classification.sensitivity_classification(s)\nClassification of local sensitivity as per WHO IPCS guidance.\nClassification based on absolute sensitivity:\n\nHigh: |Si,j| &gt;= 0.5\nMedium: 0.2 &lt;= |Si,j| &lt; 0.5\nLow: 0.1 &lt;= |Si,j| &lt; 0.2\nNegligible: |Si,j| &lt; 0.1\n\n\n\nInternational Programme on Chemical Safety (IPCS). Characterization and application of physiologically based pharmacokinetic models in risk assessment. World Health Organization; 2010. Contract No.: 9.\n\n\n\n\nsensitivity.classification.sensitivity_classification_symbol(s)\nCalculates symbol for sensitivity classification.\n\n\n\nsensitivity.classification.uncertainty_classification(u)\nClassification of uncertainty as per WHO IPCS guidance.\n\nHigh: Ui,j &gt;= 2\nMedium: 0.3 &lt;= |Ui,j| &lt; 2\nLow: 0 &lt;= |Ui,j| &lt; 0.3\n\n\n\nInternational Programme on Chemical Safety (IPCS). Characterization and application of physiologically based pharmacokinetic models in risk assessment. World Health Organization; 2010. Contract No.: 9.\n\n\n\n\nsensitivity.classification.uncertainty_classification_symbol(u)\nCalculates symbol for uncertainty classification.",
+    "crumbs": [
+      "Reference",
+      "`classification`"
     ]
   },
   {
@@ -337,72 +392,6 @@
     "text": "Funding\nMatthias König is supported and by the German Research Foundation (DFG) within the Research Unit Programme FOR 5151 “QuaLiPerF (Quantifying Liver Perfusion-Function Relationship in Complex Resection - A Systems Medicine Approach)” by grant number 436883643 and by grant number 465194077 (Priority Programme SPP 2311, Subproject SimLivA).\nMatthias König was supported by the Federal Ministry of Education and Research (BMBF, Germany) within the research network Systems Medicine of the Liver (LiSyM, grant number 031L0054).\n© 2019-2026 Matthias König",
     "crumbs": [
       "sbmlsim: SBML simulation made easy"
-    ]
-  },
-  {
-    "objectID": "api/index.html#sensitivity",
-    "href": "api/index.html#sensitivity",
-    "title": "Function reference",
-    "section": "",
-    "text": "Functionality related to sensitivity and uncertainty analysis.\n\n\n\nsensitivity\nSensitivity analysis.\n\n\nsensitivity.sensitivity_local\nLocal sensitivity analysis using finite differences.\n\n\nsensitivity.sensitivity_fast\nGlobal sensitivity analysis using FAST (Fourier Amplitude Sensitivity Test).\n\n\nsensitivity.sensitivity_sobol\nGlobal sensitivity analysis using Sobol indices.\n\n\nsensitivity.sensitivity_morris\nMorris sensitivity analysis.\n\n\nsensitivity.sensitivity_sampling\nSampling-based sensitivity and uncertainty analysis.\n\n\nsensitivity.classification\nClassification of sensitivities and uncertainties.",
-    "crumbs": [
-      "Reference",
-      "Overview"
-    ]
-  },
-  {
-    "objectID": "api/index.html#parameter-optimization",
-    "href": "api/index.html#parameter-optimization",
-    "title": "Function reference",
-    "section": "",
-    "text": "Functionality related to parameter optimization.\n\n\n\nfit\nPackage for parameter fitting and parameter optimization.",
-    "crumbs": [
-      "Reference",
-      "Overview"
-    ]
-  },
-  {
-    "objectID": "api/fit.html",
-    "href": "api/fit.html",
-    "title": "fit",
-    "section": "",
-    "text": "fit\nfit\nPackage for parameter fitting and parameter optimization.\nFor additional resources see for instance https://petab.readthedocs.io/en/latest/index.html https://pyabc.readthedocs.io/en/latest/index.html",
-    "crumbs": [
-      "Reference",
-      "Parameter optimization"
-    ]
-  },
-  {
-    "objectID": "api/sensitivity.classification.html",
-    "href": "api/sensitivity.classification.html",
-    "title": "sensitivity.classification",
-    "section": "",
-    "text": "sensitivity.classification\nClassification of sensitivities and uncertainties.\n\n\n\n\n\nName\nDescription\n\n\n\n\nSensitivityClassification\nSensitivity classification.\n\n\nUncertaintyClassification\nUncertainty classification.\n\n\n\n\n\nsensitivity.classification.SensitivityClassification()\nSensitivity classification.\n\n\n\nsensitivity.classification.UncertaintyClassification()\nUncertainty classification.\n\n\n\n\n\n\n\nName\nDescription\n\n\n\n\nsensitivity_classification\nClassification of local sensitivity as per WHO IPCS guidance.\n\n\nsensitivity_classification_symbol\nCalculates symbol for sensitivity classification.\n\n\nuncertainty_classification\nClassification of uncertainty as per WHO IPCS guidance.\n\n\n\n\n\nsensitivity.classification.sensitivity_classification(s)\nClassification of local sensitivity as per WHO IPCS guidance.\nClassification based on absolute sensitivity:\n\nHigh: |Si,j| &gt;= 0.5\nMedium: 0.2 &lt;= |Si,j| &lt; 0.5\nLow: 0.1 &lt;= |Si,j| &lt; 0.2\nNegligible: |Si,j| &lt; 0.1\n\n\n\nInternational Programme on Chemical Safety (IPCS). Characterization and application of physiologically based pharmacokinetic models in risk assessment. World Health Organization; 2010. Contract No.: 9.\n\n\n\n\nsensitivity.classification.sensitivity_classification_symbol(s)\nCalculates symbol for sensitivity classification.\n\n\n\nsensitivity.classification.uncertainty_classification(u)\nClassification of uncertainty as per WHO IPCS guidance.\n\nHigh: Ui,j &gt;= 2\nMedium: 0.3 &lt;= |Ui,j| &lt; 2\nLow: 0 &lt;= |Ui,j| &lt; 0.3\n\n\n\nInternational Programme on Chemical Safety (IPCS). Characterization and application of physiologically based pharmacokinetic models in risk assessment. World Health Organization; 2010. Contract No.: 9.",
-    "crumbs": [
-      "Reference",
-      "`classification`"
-    ]
-  },
-  {
-    "objectID": "api/sensitivity.classification.html#classes",
-    "href": "api/sensitivity.classification.html#classes",
-    "title": "sensitivity.classification",
-    "section": "",
-    "text": "Name\nDescription\n\n\n\n\nSensitivityClassification\nSensitivity classification.\n\n\nUncertaintyClassification\nUncertainty classification.\n\n\n\n\n\nsensitivity.classification.SensitivityClassification()\nSensitivity classification.\n\n\n\nsensitivity.classification.UncertaintyClassification()\nUncertainty classification.",
-    "crumbs": [
-      "Reference",
-      "`classification`"
-    ]
-  },
-  {
-    "objectID": "api/sensitivity.classification.html#functions",
-    "href": "api/sensitivity.classification.html#functions",
-    "title": "sensitivity.classification",
-    "section": "",
-    "text": "Name\nDescription\n\n\n\n\nsensitivity_classification\nClassification of local sensitivity as per WHO IPCS guidance.\n\n\nsensitivity_classification_symbol\nCalculates symbol for sensitivity classification.\n\n\nuncertainty_classification\nClassification of uncertainty as per WHO IPCS guidance.\n\n\n\n\n\nsensitivity.classification.sensitivity_classification(s)\nClassification of local sensitivity as per WHO IPCS guidance.\nClassification based on absolute sensitivity:\n\nHigh: |Si,j| &gt;= 0.5\nMedium: 0.2 &lt;= |Si,j| &lt; 0.5\nLow: 0.1 &lt;= |Si,j| &lt; 0.2\nNegligible: |Si,j| &lt; 0.1\n\n\n\nInternational Programme on Chemical Safety (IPCS). Characterization and application of physiologically based pharmacokinetic models in risk assessment. World Health Organization; 2010. Contract No.: 9.\n\n\n\n\nsensitivity.classification.sensitivity_classification_symbol(s)\nCalculates symbol for sensitivity classification.\n\n\n\nsensitivity.classification.uncertainty_classification(u)\nClassification of uncertainty as per WHO IPCS guidance.\n\nHigh: Ui,j &gt;= 2\nMedium: 0.3 &lt;= |Ui,j| &lt; 2\nLow: 0 &lt;= |Ui,j| &lt; 0.3\n\n\n\nInternational Programme on Chemical Safety (IPCS). Characterization and application of physiologically based pharmacokinetic models in risk assessment. World Health Organization; 2010. Contract No.: 9.",
-    "crumbs": [
-      "Reference",
-      "`classification`"
     ]
   }
 ]

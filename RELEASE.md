@@ -4,7 +4,7 @@
 * update release notes in `release-notes` with commit
 * make sure all tests run (`tox -p`)
 * check formating and linting (`ruff check`)
-* build documentation
+* build documentation (`cd _docs | quartodoc build | quatro render`)
 * test bump version (`uvx bump-my-version bump [major|minor|patch] --dry-run -vv`)
 * bump version (`uvx bump-my-version bump [major|minor|patch]`)
 * `git push --tags` (triggers release)

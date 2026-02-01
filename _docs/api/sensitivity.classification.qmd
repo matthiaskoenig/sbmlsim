@@ -34,6 +34,7 @@ Uncertainty classification.
 | [sensitivity_classification](#sbmlsim.sensitivity.classification.sensitivity_classification) | Classification of local sensitivity as per WHO IPCS guidance. |
 | [sensitivity_classification_symbol](#sbmlsim.sensitivity.classification.sensitivity_classification_symbol) | Calculates symbol for sensitivity classification. |
 | [uncertainty_classification](#sbmlsim.sensitivity.classification.uncertainty_classification) | Classification of uncertainty as per WHO IPCS guidance. |
+| [uncertainty_classification_symbol](#sbmlsim.sensitivity.classification.uncertainty_classification_symbol) | Calculates symbol for uncertainty classification. |
 
 ### sensitivity_classification { #sbmlsim.sensitivity.classification.sensitivity_classification }
 
@@ -80,3 +81,11 @@ Classification of uncertainty as per WHO IPCS guidance.
 
 International Programme on Chemical Safety (IPCS). Characterization and application of physiologically based pharmacokinetic models in risk assessment.
 World Health Organization; 2010. Contract No.: 9.
+
+### uncertainty_classification_symbol { #sbmlsim.sensitivity.classification.uncertainty_classification_symbol }
+
+```python
+sensitivity.classification.uncertainty_classification_symbol(u)
+```
+
+Calculates symbol for uncertainty classification.

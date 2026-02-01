@@ -356,7 +356,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
           <li class="sidebar-item">
   <div class="sidebar-item-container">
   <a href="../api/sensitivity.html" class="sidebar-item-text sidebar-link">
- <span class="menu-text">Sensitivity</span></a>
+ <span class="menu-text">Sensitivity &amp; Uncertainty</span></a>
   </div>
 </li>
           <li class="sidebar-item">
@@ -460,6 +460,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <li>minimum and maximum</li>
 <li>lower and upper quantiles (5% and 95%)</li>
 </ul>
+<p>Uncertainty is calculated as Ui,j = (Percentile97.5(i,j) - Percentile2.5(i,j)) / Percentile50(i,j)</p>
 <p>This approach focuses on uncertainty propagation rather than variance-based sensitivity indices and is therefore complementary to local and Sobol-based methods.</p>
 <section id="classes" class="level2">
 <h2 class="anchored" data-anchor-id="classes">Classes</h2>
