@@ -7,7 +7,7 @@ Sensitivity functionality.
 | | |
 | --- | --- |
 | [sensitivity](sensitivity.qmd#sbmlsim.sensitivity) | Sensitivity analysis. |
-| [sensitivity.sensitivity_local](sensitivity.sensitivity_local.qmd#sbmlsim.sensitivity.sensitivity_local) | Local sensitivity analysis based on finite differences. |
+| [sensitivity.sensitivity_local](sensitivity.sensitivity_local.qmd#sbmlsim.sensitivity.sensitivity_local) | Local sensitivity analysis using finite differences. |
 | [sensitivity.sensitivity_fast](sensitivity.sensitivity_fast.qmd#sbmlsim.sensitivity.sensitivity_fast) | Global sensitivity analysis using FAST (Fourier Amplitude Sensitivity Test). |
 | [sensitivity.sensitivity_sobol](sensitivity.sensitivity_sobol.qmd#sbmlsim.sensitivity.sensitivity_sobol) | Global sensitivity analysis using Sobol indices. |
 | [sensitivity.sensitivity_morris](sensitivity.sensitivity_morris.qmd#sbmlsim.sensitivity.sensitivity_morris) | Morris sensitivity analysis. |

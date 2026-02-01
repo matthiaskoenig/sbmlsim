@@ -4,51 +4,24 @@
 
 Sampling-based sensitivity and uncertainty analysis.
 
-This module implements a sampling-based sensitivity analysis in which model
-parameters are varied simultaneously according to predefined bounds and
-probability assumptions, and the resulting distribution of model outputs is
-analyzed statistically.
+This module implements a sampling-based sensitivity and uncertainty analysis
+approach. Model parameters are varied simultaneously within their bounds, and
+the resulting distribution of model outputs is analyzed statistically.
 
-The primary purpose of this approach is to quantify output uncertainty and
-variability induced by parameter uncertainty, rather than to compute
-variance-decomposition sensitivity indices. It is therefore complementary to
-local (derivative-based) and global (variance-based) sensitivity analyses.
-
-Parameter samples are generated using Latin Hypercube Sampling (LHS), a
-stratified Monte Carlo method that ensures efficient coverage of the
-multidimensional parameter space. In the current implementation, parameters
-are sampled independently assuming uniform distributions within their bounds.
+Parameter samples are generated using Latin Hypercube Sampling (LHS), assuming
+independent and uniformly distributed parameters.
 
 For each analysis group and output variable, descriptive statistics are
-computed from the simulated sample ensemble, including:
+computed, including:
+
 - mean and median
 - standard deviation and coefficient of variation
 - minimum and maximum
-- selected quantiles (5% and 95%)
+- lower and upper quantiles (5% and 95%)
 
-These statistics provide a compact summary of output uncertainty and enable
-comparisons across model outputs and experimental or physiological conditions.
-
-The module is intended for:
-- uncertainty propagation analyses
-- robustness and variability assessments
-- exploratory model analysis and screening
-- reporting uncertainty ranges in computational modeling studies
-
-It integrates with the sbmlsim sensitivity framework and supports result
-caching, tabular export, and visualization of output distributions.
-
-
-
-## Notes {.doc-section .doc-section-notes}
-
-This method does not compute sensitivity indices in the strict variance-based
-sense (e.g., Sobol indices). Instead, it characterizes how uncertainty in
-parameters propagates to uncertainty in model outputs via sampling.
-
-Typical workflows combine this approach with local or global sensitivity
-analysis to obtain both quantitative sensitivity measures and uncertainty
-estimates.
+This approach focuses on uncertainty propagation rather than variance-based
+sensitivity indices and is therefore complementary to local and Sobol-based
+methods.
 
 ## Classes
 
@@ -72,11 +45,6 @@ sensitivity.sensitivity_sampling.SamplingSensitivityAnalysis(
 ```
 
 Sensitivity/uncertainty analysis based on sampling.
-
-#### more control on sampling {.doc-section .doc-section-more-control-on-sampling}
-
-cv: float = 0.1,
-distribution: DistributionType = DistributionType.NORMAL_DISTRIBUTION,
 
 #### Methods
 

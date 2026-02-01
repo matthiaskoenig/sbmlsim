@@ -1,49 +1,23 @@
-"""
-Global sensitivity analysis using Sobol indices.
+"""Global sensitivity analysis using Sobol indices.
 
-This module provides routines to perform variance-based global sensitivity
-analysis based on Sobol indices. Sobol sensitivity analysis quantifies how
-uncertainty in model parameters contributes to the variance of one or more
-model outputs, allowing a decomposition into main effects, interaction
-effects, and total effects.
+This module provides routines for variance-based global sensitivity analysis
+using Sobol indices. Sobol analysis decomposes the variance of model outputs
+into contributions from individual parameters and their interactions.
 
-The implemented methodology follows the classical Sobol framework and its
-later refinements, including Monte Carlo–based estimators for first-order,
-higher-order, and total-effect sensitivity indices. The approach is fully
-global, meaning that parameters are varied simultaneously over their entire
-admissible ranges according to prescribed probability distributions.
+The following indices are computed:
 
-Sobol indices are defined as:
-- First-order indices (S_i), measuring the contribution of a single parameter
-  to the output variance, ignoring interactions.
-- Higher-order indices (S_ij, S_ijk, ...), measuring interaction effects
-  between parameters.
-- Total-effect indices (S_Ti), measuring the total contribution of a parameter
-  to the output variance, including all interactions.
+- First-order indices (S1)
+- Total-effect indices (ST)
+- Associated confidence intervals
 
-The analysis requires:
-- A deterministic model or simulation function creating scalar outputs.
-- A set of input parameters with specified bounds.
-- A sampling scheme based on quasi-random or Monte Carlo methods.
+Sampling is based on Saltelli's extension of the Sobol sequence and requires
+(2D + 2) * N model evaluations for D parameters.
 
-References
-----------
-Sobol, I. M. (2001).
-Global sensitivity indices for nonlinear mathematical models and their
-Monte Carlo estimates.
-Mathematics and Computers in Simulation, 55(1–3), 271–280.
-https://www.sciencedirect.com/science/article/pii/S0378475400002706
+References:
 
-Saltelli, A. (2002).
-Making best use of model evaluations to compute sensitivity indices.
-Computer Physics Communications, 145(2), 280–297.
-https://www.sciencedirect.com/science/article/pii/S0010465502002801
-
-Saltelli, A., Annoni, P., Azzini, I., Campolongo, F., Ratto, M., & Tarantola, S. (2010).
-Variance based sensitivity analysis of model output. Design and estimator
-for the total sensitivity index.
-Computer Physics Communications, 181(2), 259–270.
-https://www.sciencedirect.com/science/article/pii/S0010465509003087
+    - Sobol, I. M. (2001). Math. Comput. Simul., 55, 271–280.
+    - Saltelli, A. (2002). Comput. Phys. Commun., 145, 280–297.
+    - Saltelli et al. (2010). Comput. Phys. Commun., 181, 259–270.
 """
 
 from pathlib import Path
