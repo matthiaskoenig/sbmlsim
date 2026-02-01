@@ -1,0 +1,133 @@
+# sensitivity.sensitivity_sampling { #sbmlsim.sensitivity.sensitivity_sampling }
+
+`sensitivity.sensitivity_sampling`
+
+Sampling-based sensitivity and uncertainty analysis.
+
+This module implements a sampling-based sensitivity analysis in which model
+parameters are varied simultaneously according to predefined bounds and
+probability assumptions, and the resulting distribution of model outputs is
+analyzed statistically.
+
+The primary purpose of this approach is to quantify output uncertainty and
+variability induced by parameter uncertainty, rather than to compute
+variance-decomposition sensitivity indices. It is therefore complementary to
+local (derivative-based) and global (variance-based) sensitivity analyses.
+
+Parameter samples are generated using Latin Hypercube Sampling (LHS), a
+stratified Monte Carlo method that ensures efficient coverage of the
+multidimensional parameter space. In the current implementation, parameters
+are sampled independently assuming uniform distributions within their bounds.
+
+For each analysis group and output variable, descriptive statistics are
+computed from the simulated sample ensemble, including:
+- mean and median
+- standard deviation and coefficient of variation
+- minimum and maximum
+- selected quantiles (5% and 95%)
+
+These statistics provide a compact summary of output uncertainty and enable
+comparisons across model outputs and experimental or physiological conditions.
+
+The module is intended for:
+- uncertainty propagation analyses
+- robustness and variability assessments
+- exploratory model analysis and screening
+- reporting uncertainty ranges in computational modeling studies
+
+It integrates with the sbmlsim sensitivity framework and supports result
+caching, tabular export, and visualization of output distributions.
+
+## Notes {.doc-section .doc-section-notes}
+
+This method does not compute sensitivity indices in the strict variance-based
+sense (e.g., Sobol indices). Instead, it characterizes how uncertainty in
+parameters propagates to uncertainty in model outputs via sampling.
+
+Typical workflows combine this approach with local or global sensitivity
+analysis to obtain both quantitative sensitivity measures and uncertainty
+estimates.
+
+## Classes
+
+| Name | Description |
+| --- | --- |
+| [SamplingSensitivityAnalysis](#sbmlsim.sensitivity.sensitivity_sampling.SamplingSensitivityAnalysis) | Sensitivity/uncertainty analysis based on sampling. |
+
+### SamplingSensitivityAnalysis { #sbmlsim.sensitivity.sensitivity_sampling.SamplingSensitivityAnalysis }
+
+```python
+sensitivity.sensitivity_sampling.SamplingSensitivityAnalysis(
+    sensitivity_simulation,
+    parameters,
+    groups,
+    results_path,
+    N,
+    seed=None,
+    n_cores=None,
+    cache_results=False,
+)
+```
+
+Sensitivity/uncertainty analysis based on sampling.
+
+FIXME: more control on sampling
+    cv: float = 0.1,
+    distribution: DistributionType = DistributionType.NORMAL_DISTRIBUTION,
+
+#### Methods
+
+| Name | Description |
+| --- | --- |
+| [calculate_sensitivity](#sbmlsim.sensitivity.sensitivity_sampling.SamplingSensitivityAnalysis.calculate_sensitivity) | Calculate the sensitivity matrices for sampling sensitivity. |
+| [create_samples](#sbmlsim.sensitivity.sensitivity_sampling.SamplingSensitivityAnalysis.create_samples) | Create LHS samples. |
+| [plot](#sbmlsim.sensitivity.sensitivity_sampling.SamplingSensitivityAnalysis.plot) | Boxplots for the Sampling sensitivity. |
+| [plot_data](#sbmlsim.sensitivity.sensitivity_sampling.SamplingSensitivityAnalysis.plot_data) | Boxplots for the sampled output. |
+
+##### calculate_sensitivity { #sbmlsim.sensitivity.sensitivity_sampling.SamplingSensitivityAnalysis.calculate_sensitivity }
+
+```python
+sensitivity.sensitivity_sampling.SamplingSensitivityAnalysis.calculate_sensitivity(
+    cache_filename=None,
+    cache=False,
+)
+```
+
+Calculate the sensitivity matrices for sampling sensitivity.
+
+##### create_samples { #sbmlsim.sensitivity.sensitivity_sampling.SamplingSensitivityAnalysis.create_samples }
+
+```python
+sensitivity.sensitivity_sampling.SamplingSensitivityAnalysis.create_samples()
+```
+
+Create LHS samples.
+
+Latin hypercube sampling (LHS) is a stratified sampling method used to
+generate near‑random samples from a multidimensional distribution for Monte
+Carlo simulations and computer experiments.
+
+Assuming uniform distributions within the provided bounds.
+
+Use LHS sampling of parameters.
+
+##### plot { #sbmlsim.sensitivity.sensitivity_sampling.SamplingSensitivityAnalysis.plot }
+
+```python
+sensitivity.sensitivity_sampling.SamplingSensitivityAnalysis.plot(**kwargs)
+```
+
+Boxplots for the Sampling sensitivity.
+
+##### plot_data { #sbmlsim.sensitivity.sensitivity_sampling.SamplingSensitivityAnalysis.plot_data }
+
+```python
+sensitivity.sensitivity_sampling.SamplingSensitivityAnalysis.plot_data(
+    type,
+    show_jitter=True,
+    show_violin=True,
+    **kwargs,
+)
+```
+
+Boxplots for the sampled output.

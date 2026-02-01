@@ -1,0 +1,122 @@
+# sensitivity.sensitivity_local { #sbmlsim.sensitivity.sensitivity_local }
+
+`sensitivity.sensitivity_local`
+
+Local sensitivity analysis based on finite differences.
+
+This module implements a local (derivative-based) sensitivity analysis using
+two-sided finite differences around a reference parameter set. Each model
+parameter is perturbed individually by a small relative amount, and the
+resulting change in model outputs is used to approximate local sensitivities.
+
+The analysis is designed for deterministic simulation models and is
+particularly suited for:
+- Identifying locally influential parameters
+- Debugging and model inspection
+- Complementing global sensitivity analyses
+- Supporting parameter screening prior to optimization or uncertainty analysis
+
+Sensitivities are computed for each analysis group and output variable, and
+can be reported both as raw sensitivities and as normalized, dimensionless
+sensitivities.
+
+The implementation builds on the sbmlsim sensitivity framework and integrates
+with existing simulation, caching, and plotting utilities.
+
+## Notes {.doc-section .doc-section-notes}
+
+For each parameter p_i with reference value p_{i,0}, two perturbed simulations
+are generated:
+    p_i_plus  = p_{i,0} * (1 + difference)
+    p_i_minus = p_{i,0} * (1 - difference)
+
+Raw sensitivities are computed using a symmetric finite-difference scheme:
+    S(q_k, p_i) = (q_k(p_i_plus) - q_k(p_i_minus)) / (p_i_plus - p_i_minus)
+
+Normalized sensitivities represent the relative change in output per relative
+change in parameter:
+    S_norm(q_k, p_i) = S(q_k, p_i) * (p_{i,0} / q_k(p_{i,0}))
+
+## Classes
+
+| Name | Description |
+| --- | --- |
+| [LocalSensitivityAnalysis](#sbmlsim.sensitivity.sensitivity_local.LocalSensitivityAnalysis) | Local sensitivity analysis based on symmetric finite differences. |
+
+### LocalSensitivityAnalysis { #sbmlsim.sensitivity.sensitivity_local.LocalSensitivityAnalysis }
+
+```python
+sensitivity.sensitivity_local.LocalSensitivityAnalysis(
+    sensitivity_simulation,
+    parameters,
+    groups,
+    results_path,
+    seed=None,
+    n_cores=None,
+    cache_results=False,
+    difference=0.01,
+)
+```
+
+Local sensitivity analysis based on symmetric finite differences.
+
+This class implements a local sensitivity analysis in which each model
+parameter is perturbed individually by a small relative amount while all
+other parameters are kept at their reference values.
+
+For each parameter, two simulations are performed (increase and decrease),
+in addition to a reference simulation. Sensitivities are computed for each
+output variable and analysis group.
+
+#### Attributes {.doc-section .doc-section-attributes}
+
+| Name       | Type   | Description                                                                                                           |
+|------------|--------|-----------------------------------------------------------------------------------------------------------------------|
+| difference | float  | Relative parameter perturbation used for the finite-difference approximation (e.g., 0.01 corresponds to ±1% changes). |
+
+#### Methods
+
+| Name | Description |
+| --- | --- |
+| [calculate_sensitivity](#sbmlsim.sensitivity.sensitivity_local.LocalSensitivityAnalysis.calculate_sensitivity) | Compute raw and normalized local sensitivity matrices. |
+| [create_samples](#sbmlsim.sensitivity.sensitivity_local.LocalSensitivityAnalysis.create_samples) | Create parameter samples for the local sensitivity analysis. |
+
+##### calculate_sensitivity { #sbmlsim.sensitivity.sensitivity_local.LocalSensitivityAnalysis.calculate_sensitivity }
+
+```python
+sensitivity.sensitivity_local.LocalSensitivityAnalysis.calculate_sensitivity(
+    cache_filename=None,
+    cache=False,
+)
+```
+
+Compute raw and normalized local sensitivity matrices.
+
+This method calculates two-sided finite-difference sensitivities for
+each parameter–output combination and stores both raw and normalized
+sensitivity matrices.
+
+Optionally, results can be read from or written to a cache file.
+
+###### Parameters {.doc-section .doc-section-parameters}
+
+| Name           | Type   | Description                                     | Default   |
+|----------------|--------|-------------------------------------------------|-----------|
+| cache_filename | str    | Filename for caching sensitivity results.       | `None`    |
+| cache          | bool   | Whether to read from and/or write to the cache. | `False`   |
+
+##### create_samples { #sbmlsim.sensitivity.sensitivity_local.LocalSensitivityAnalysis.create_samples }
+
+```python
+sensitivity.sensitivity_local.LocalSensitivityAnalysis.create_samples()
+```
+
+Create parameter samples for the local sensitivity analysis.
+
+For each analysis group, this method constructs a sample matrix
+containing:
+- One reference parameter vector
+- Two perturbed parameter vectors per parameter (±difference)
+
+The samples are stored as xarray.DataArray objects and indexed by
+sample and parameter identifiers.

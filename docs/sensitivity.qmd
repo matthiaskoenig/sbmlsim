@@ -4,32 +4,32 @@
 
 - **Sensitivity analysis (SA)** quantifies how uncertainty or variation in model parameters influences model outputs.
 - In **ordinary differential equation (ODE)** models, parameters represent biological processes (reaction rates, transport constants, synthesis/decay rates, volumes). Their values may be uncertain.
-- SA helps to  
-  - Evaluate **robustness** and **stability**  
-  - Identify **key parameters**  
-  - Support **model reduction**, **parameter estimation**, and **experimental design**  
+- SA helps to
+  - Evaluate **robustness** and **stability**
+  - Identify **key parameters**
+  - Support **model reduction**, **parameter estimation**, and **experimental design**
   - Prioritize **data acquisition**
 - Two major categories:
-  - **Local sensitivity analysis (LSA)** – small perturbations around nominal parameters  
+  - **Local sensitivity analysis (LSA)** – small perturbations around nominal parameters
   - **Global sensitivity analysis (GSA)** – variations across full parameter ranges
 
 ## Key Concepts
 
-- **General ODE model**  
+- **General ODE model**
   `dx/dt = f(x(t), p, t)`, with parameters `p` and outputs `y = g(x,p)`
-- **Parameter sensitivity** measures  
+- **Parameter sensitivity** measures
   \( \partial y / \partial p_i \)
 - **Sensitivity targets** include:
-  - State trajectories  
-  - Steady states  
-  - Peak times and amplitudes  
-  - Cost functions  
+  - State trajectories
+  - Steady states
+  - Peak times and amplitudes
+  - Cost functions
 - **Uncertainty types**
-  - Parameter uncertainty  
-  - Structural/model uncertainty  
+  - Parameter uncertainty
+  - Structural/model uncertainty
   - Initial-condition uncertainty
 
-    
+
 ## Local Sensitivity Analysis (LSA)
 
 ### Concept
@@ -42,14 +42,14 @@
 
 #### Finite Difference Sensitivities
 
-- Perturb one parameter at a time:  
+- Perturb one parameter at a time:
   \( S_i \approx [y(p_i + \Delta) - y(p_i)] / \Delta \)
 - Simple and derivative-free.
 - Sensitive to numerical noise and step size.
 
 #### Forward Sensitivity Equations (FSE)
 
-- Augment ODE system with sensitivity equations:  
+- Augment ODE system with sensitivity equations:
   \( dS_{x,p_i}/dt = (\partial f/\partial x) S_{x,p_i} + (\partial f/\partial p_i) \)
 - Accurate and efficient for models with **few parameters**.
 - Disadvantage: number of additional ODEs = states × parameters.
@@ -63,11 +63,11 @@
 
 ### Interpretation
 
-- **Scaled sensitivities** allow comparison:  
+- **Scaled sensitivities** allow comparison:
   \( S_i^{scaled} = (p_i / y)(\partial y/\partial p_i) \)
 - Detect:
-  - Stiff vs sloppy parameters  
-  - Parameters dominating specific observables  
+  - Stiff vs sloppy parameters
+  - Parameters dominating specific observables
   - Reduction candidates
 
 
@@ -81,8 +81,8 @@
 
 ### 4.2 Sampling Strategies
 
-- **Monte Carlo (MC)**  
-- **Latin Hypercube Sampling (LHS)** – more efficient stratified sampling  
+- **Monte Carlo (MC)**
+- **Latin Hypercube Sampling (LHS)** – more efficient stratified sampling
 - **Sobol or Halton sequences** – low-discrepancy quasi-random samples
 - Parameter distributions based on prior knowledge or uncertainty bounds.
 
@@ -94,11 +94,11 @@
 
 - Decomposes output variance into contributions from each parameter.
 - Provides:
-  - **First-order index** \( S_i \): effect of parameter alone  
-  - **Total-order index** \( S_{Ti} \): parameter including interactions  
+  - **First-order index** \( S_i \): effect of parameter alone
+  - **Total-order index** \( S_{Ti} \): parameter including interactions
 - Strengths:
-  - Model-agnostic  
-  - Detects nonlinear interactions  
+  - Model-agnostic
+  - Detects nonlinear interactions
 - Weakness:
   - Computationally expensive for many parameters
 - Implementations:
@@ -119,11 +119,11 @@
 - Qualitative GSA for identifying influential parameters.
 - Computes multiple elementary effects via one-at-a-time perturbations.
 - Outputs:
-  - **μ**: mean effect → overall importance  
-  - **σ**: standard deviation → interactions/nonlinearities  
+  - **μ**: mean effect → overall importance
+  - **σ**: standard deviation → interactions/nonlinearities
 - Advantages:
-  - Very efficient  
-  - Suitable for high-dimensional models  
+  - Very efficient
+  - Suitable for high-dimensional models
 - Disadvantages:
   - Not a full quantitative sensitivity measure
 
@@ -137,7 +137,7 @@
 
 ## 7. Derivative-Based Global Sensitivity Measures (DGSM)
 
-- Based on expected squared derivatives:  
+- Based on expected squared derivatives:
   \( \nu_i = E[(\partial y / \partial p_i)^2] \)
 - Efficient when local sensitivities (FSE or adjoint) are available.
 - Can provide bounds for total Sobol indices.
@@ -150,7 +150,7 @@
 ### 8.1 Steady-State Sensitivity
 
 - Steady-state \(x^\*\) satisfies \( f(x^\*, p) = 0 \).
-- Sensitivity:  
+- Sensitivity:
   \( \partial x^\*/\partial p_i = -J^{-1} (\partial f/\partial p_i)|_{x^\*} \)
 - Key in metabolic and signaling networks.
 
@@ -174,8 +174,8 @@
 - Focuses on uncertainty with real data.
 - Poor sensitivities → wide confidence intervals.
 - Methods:
-  - Fisher Information Matrix (FIM)  
-  - Profile likelihood  
+  - Fisher Information Matrix (FIM)
+  - Profile likelihood
   - Bayesian posteriors
 
 ---
@@ -183,34 +183,33 @@
 ## 10. Role in Experimental Design
 
 - SA helps guide **optimal experiment design**, for example:
-  - Choosing informative sampling time points  
-  - Selecting perturbations that maximize parameter identifiability  
+  - Choosing informative sampling time points
+  - Selecting perturbations that maximize parameter identifiability
   - Minimizing uncertainty
 - Metrics:
-  - **D-optimality** – maximize determinant of FIM  
+  - **D-optimality** – maximize determinant of FIM
   - **Robust design** to account for uncertain priors
 
 ---
 
 ## 11. Best Practices
 
-- Define specific goals and outputs before SA.  
-- Combine **local** and **global** approaches.  
-- Use normalized sensitivities for comparability.  
+- Define specific goals and outputs before SA.
+- Combine **local** and **global** approaches.
+- Use normalized sensitivities for comparability.
 - Apply GSA when:
-  - Parameters are uncertain  
-  - Dynamics are nonlinear  
-  - Interactions are expected  
-- Check numerical accuracy of ODE solver.  
+  - Parameters are uncertain
+  - Dynamics are nonlinear
+  - Interactions are expected
+- Check numerical accuracy of ODE solver.
 - Document all choices: sampling strategy, priors, solver tolerances, metrics.
 
 ---
 
 ## 12. Summary
 
-- Sensitivity analysis is central to understanding ODE models in systems biology.  
-- **Local methods** (FSE, adjoint, finite differences) give derivative-based information near nominal parameters.  
-- **Global methods** (Sobol, FAST, Morris) explore full parameter uncertainty and interactions.  
-- Links to **identifiability**, **parameter estimation**, **bifurcation analysis**, and **experimental design**.  
+- Sensitivity analysis is central to understanding ODE models in systems biology.
+- **Local methods** (FSE, adjoint, finite differences) give derivative-based information near nominal parameters.
+- **Global methods** (Sobol, FAST, Morris) explore full parameter uncertainty and interactions.
+- Links to **identifiability**, **parameter estimation**, **bifurcation analysis**, and **experimental design**.
 - Combining multiple methods gives the most reliable insight.
-

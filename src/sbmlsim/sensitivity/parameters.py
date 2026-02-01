@@ -31,9 +31,9 @@ class SensitivityParameter(BaseModel):
 
     uid: str
     name: str
-    value: float = Field(default=np.nan)
-    lower_bound: float = Field(default=np.nan)
-    upper_bound: float = Field(default=np.nan)
+    value: float = Field(default=float("nan"))
+    lower_bound: float = Field(default=float("nan"))
+    upper_bound: float = Field(default=float("nan"))
     unit: Optional[str] = None
     type: ParameterType = ParameterType.NA
     reference: str = ""

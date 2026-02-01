@@ -1,4 +1,5 @@
 """Calculation of statistics."""
+
 import numpy as np
 import pandas as pd
 from pymetadata.console import console
@@ -8,14 +9,14 @@ def rmse(mse: float):
     """Root Mean Square Error."""
     return np.sqrt(mse)
 
+
 def aic(mse: float, N: int, k: int):
     """Akaike Information Criterion (AIC).
 
     N: datapoints
     k: parameters
     """
-    return N * np.log(mse) + 2*k
-
+    return N * np.log(mse) + 2 * k
 
 
 if __name__ == "__main__":
@@ -33,7 +34,7 @@ if __name__ == "__main__":
             "N": 460,
             "k": 4,
             "MSE": 73.095901,
-         }
+        },
     ]
     for item in items:
         item["RMSE"] = rmse(item["MSE"])
@@ -44,7 +45,7 @@ if __name__ == "__main__":
 
     console.rule()
     tex = df.to_latex(None, index=False, float_format="{:.2f}".format)
-    tex = tex.replace("_", "\_")
+    tex = tex.replace(r"_", r"\_")
     console.print(tex)
 
     console.rule()

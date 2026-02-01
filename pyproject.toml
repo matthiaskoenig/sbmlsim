@@ -46,7 +46,7 @@ dependencies = [
     "scipy",
     "sympy",
     "matplotlib",
-    "pydantic",
+    "pydantic>=2.12.5",
     # dependencies
     "dill>=0.4.0",
     "SAlib>=1.5.2",
@@ -76,6 +76,7 @@ dev = [
     "tox>=4.31.0",
     "pytest>=8.4.2",
     "pytest-cov>=7.0.0",
+    "quartodoc",
 ]
 
 [project_urls]

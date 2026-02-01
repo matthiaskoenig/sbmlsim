@@ -1,0 +1,91 @@
+# sensitivity.sensitivity_fast { #sbmlsim.sensitivity.sensitivity_fast }
+
+`sensitivity.sensitivity_fast`
+
+Global sensitivity analysis using FAST (Fourier Amplitude Sensitivity Test).
+
+This module implements variance-based global sensitivity analysis using the
+Fourier Amplitude Sensitivity Test (FAST). FAST quantifies the contribution of
+individual model parameters to the variance of model outputs by mapping
+parameter variations onto periodic functions and analyzing the resulting
+output spectrum in the frequency domain.
+
+The method provides efficient estimation of first-order (main-effect)
+sensitivity indices and, in extended variants (eFAST), total-effect indices.
+Compared to Monte Carlo–based Sobol methods, FAST offers favorable scaling with
+the number of parameters and is well suited for medium- to large-scale
+deterministic models.
+
+The implementation is intended for use in computational modeling workflows,
+including systems biology, pharmacokinetics/pharmacodynamics, and digital twin
+applications, where robust global assessment of parameter influence is required.
+
+## References {.doc-section .doc-section-references}
+
+Cukier, R. I., Fortuin, C. M., Shuler, K. E., Petschek, A. G., & Schaibly, J. H. (1973).
+Study of the sensitivity of coupled reaction systems to uncertainties in rate
+coefficients. I. Theory.
+Journal of Chemical Physics, 59, 3873–3878.
+https://doi.org/10.1063/1.1680571
+
+Saltelli, A., Tarantola, S., & Chan, K. P.-S. (1999).
+A quantitative model-independent method for global sensitivity analysis of
+model output.
+Technometrics, 41(1), 39–56.
+https://doi.org/10.1080/00401706.1999.10485594
+
+## Classes
+
+| Name | Description |
+| --- | --- |
+| [FASTSensitivityAnalysis](#sbmlsim.sensitivity.sensitivity_fast.FASTSensitivityAnalysis) | Global sensitivity analysis based Fourier Amplitude Sensitivity Test (FAST) |
+
+### FASTSensitivityAnalysis { #sbmlsim.sensitivity.sensitivity_fast.FASTSensitivityAnalysis }
+
+```python
+sensitivity.sensitivity_fast.FASTSensitivityAnalysis(
+    sensitivity_simulation,
+    parameters,
+    groups,
+    results_path,
+    N,
+    M=4,
+    seed=None,
+    n_cores=None,
+    cache_results=False,
+    **kwargs,
+)
+```
+
+Global sensitivity analysis based Fourier Amplitude Sensitivity Test (FAST)
+(Cukier et al. 1973, Saltelli et al. 1999).
+
+#### Methods
+
+| Name | Description |
+| --- | --- |
+| [calculate_sensitivity](#sbmlsim.sensitivity.sensitivity_fast.FASTSensitivityAnalysis.calculate_sensitivity) | Perform extended Fourier Amplitude Sensitivity Test on model outputs. |
+| [create_samples](#sbmlsim.sensitivity.sensitivity_fast.FASTSensitivityAnalysis.create_samples) | Create samples for FAST. |
+
+##### calculate_sensitivity { #sbmlsim.sensitivity.sensitivity_fast.FASTSensitivityAnalysis.calculate_sensitivity }
+
+```python
+sensitivity.sensitivity_fast.FASTSensitivityAnalysis.calculate_sensitivity(
+    cache_filename=None,
+    cache=False,
+)
+```
+
+Perform extended Fourier Amplitude Sensitivity Test on model outputs.
+
+Returns a dictionary with keys 'S1' and 'ST', where each entry is a list of
+size D (the number of parameters) containing the indices in the same order
+as the parameter file.
+
+##### create_samples { #sbmlsim.sensitivity.sensitivity_fast.FASTSensitivityAnalysis.create_samples }
+
+```python
+sensitivity.sensitivity_fast.FASTSensitivityAnalysis.create_samples()
+```
+
+Create samples for FAST.
