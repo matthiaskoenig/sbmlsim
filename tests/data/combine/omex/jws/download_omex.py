@@ -58,7 +58,7 @@ def download_omex(url, omex_path):
     """
     r = requests.get(url, stream=True)
     if r.status_code == 200:
-        with open(omex_path, "wb") as f:
+        with open(omex_path, "wb", encoding="utf-8") as f:
             r.raw.decode_content = True
             shutil.copyfileobj(r.raw, f)
 

@@ -64,7 +64,7 @@ def run_comparisons(create_files=True):
             plt.show()
 
             report_path = diff_path / f"{simulation_key}_diff.tsv"
-            with open(report_path, "w") as f_report:
+            with open(report_path, "w", encoding="utf-8") as f_report:
                 f_report.write(dsc.report_str())
 
 

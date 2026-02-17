@@ -21,7 +21,7 @@ Testing is performed with pytest and tox:
 
 Run single tox target:
 ```bash
-tox r -e py314
+tox -e py314
 ```
 Run all tests in parallel:
 ```bash
