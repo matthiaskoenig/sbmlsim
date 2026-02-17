@@ -186,7 +186,7 @@ class OptimizationProblem(ObjectJSONEncoder):
         if print_output:
             console.log(info)
         if path:
-            with open(path, "w") as f:
+            with open(path, "w", encoding="utf-8") as f:
                 f.write(info)
         return info
 

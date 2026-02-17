@@ -128,7 +128,7 @@ class OptimizationAnalysis:
             print_output=True,
         )
         info = problem_info + result_info
-        with open(self.results_dir / "report.txt", "w") as f_report:
+        with open(self.results_dir / "report.txt", "w", encoding="utf-8") as f_report:
             f_report.write(info)
 
         # FIXME: create JSON information for problem
@@ -291,7 +291,7 @@ class OptimizationAnalysis:
         </body>
         </html>
         """
-        with open(path, "w") as f_out:
+        with open(path, "w", encoding="utf-8") as f_out:
             f_out.write(html)
 
     def _create_mpl_figure(

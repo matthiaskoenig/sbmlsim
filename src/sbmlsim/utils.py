@@ -16,7 +16,7 @@ def md5_for_path(path):
     """Calculate MD5 of file content."""
 
     # Open,close, read file and calculate MD5 on its contents
-    with open(path, "rb") as f_check:
+    with open(path, "rb", encoding="utf-8") as f_check:
         # read contents of the file
         data = f_check.read()
         # pipe contents of the file through

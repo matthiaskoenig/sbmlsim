@@ -226,7 +226,7 @@ class SamplingSensitivityAnalysis(SensitivityAnalysis):
             latex_str = latex_str.replace("∞", r"$\infty$")
             latex_str = latex_str.replace("*", r"$\cdot$")
 
-            with open(latex_path, "w") as f:
+            with open(latex_path, "w", encoding="utf-8") as f:
                 f.write(latex_str)
 
         return df

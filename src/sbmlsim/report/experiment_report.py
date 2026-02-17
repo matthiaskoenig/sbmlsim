@@ -29,13 +29,13 @@ class ReportResults:
 
     def to_json(self, json_path: Path):
         """Write to JSON."""
-        with open(json_path, "w") as fp:
+        with open(json_path, "w", encoding="utf-8") as fp:
             json.dump(fp, self.data, indent=2)  # type: ignore
 
     @staticmethod
     def from_json(json_path: Path) -> "ReportResults":
         """Read from JSON."""
-        with open(json_path, "r") as fp:
+        with open(json_path, "r", encoding="utf-8") as fp:
             data = json.load(fp)
         results = ReportResults()
         results.data = data
@@ -60,7 +60,7 @@ class ReportResults:
 
         # code path
         code_path = sys.modules[experiment.__module__].__file__
-        with open(code_path, "r") as f_code:
+        with open(code_path, "r", encoding="utf-8") as f_code:
             code = f_code.read()
         code_path = Path(os.path.relpath(code_path, str(abs_path)))  # type: ignore
 
@@ -140,7 +140,7 @@ class ExperimentReport:
             text = template.render(context)
             suffix = template_str.split(".")[-1]
             out_file: Path = output_path / f"{filename}.{suffix}"
-            with open(out_file, "w") as f_out:
+            with open(out_file, "w", encoding="utf-8") as f_out:
                 f_out.write(text)
             return out_file
 

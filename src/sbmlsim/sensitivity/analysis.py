@@ -365,7 +365,7 @@ class SensitivityAnalysis:
 
         # retrieve from cache
         if cache and cache_path.exists():
-            with open(cache_path, "rb") as f:
+            with open(cache_path, "rb", encoding="utf-8") as f:
                 data = dill.load(f)
                 console.print(f"Simulated samples loaded from cache: '{cache_path}'")
                 return data
@@ -377,7 +377,7 @@ class SensitivityAnalysis:
             self.results_path / cache_filename if cache_filename else None
         )
         if cache_path:
-            with open(cache_path, "wb") as f:
+            with open(cache_path, "wb", encoding="utf-8") as f:
                 console.print(f"Simulated samples written to cache: '{cache_path}'")
                 dill.dump(data, f)
 

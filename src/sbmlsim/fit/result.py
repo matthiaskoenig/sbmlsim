@@ -246,7 +246,7 @@ class OptimizationResult(ObjectJSONEncoder):
             console.print(info_str)
 
         if path:
-            with open(path, "w") as f_out:
+            with open(path, "w", encoding="utf-8") as f_out:
                 f_out.write(info_str)
 
         return info_str

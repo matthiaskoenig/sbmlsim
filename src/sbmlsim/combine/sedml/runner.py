@@ -14,14 +14,14 @@ from sbmlsim.simulator import SimulatorSerial
 
 def sedmltojson(sedml_path: Path) -> None:
     """Convert SED-ML to JSON file."""
-    with open(sedml_path, "r") as f_sedml:
+    with open(sedml_path, "r", encoding="utf-8") as f_sedml:
         xml = f_sedml.read()
 
     my_dict = xmltodict.parse(xml)
     json_data = json.dumps(my_dict, indent=2)
 
     json_path = sedml_path.parent / f"{sedml_path.name}.json"
-    with open(json_path, "w") as f_json:
+    with open(json_path, "w", encoding="utf-8") as f_json:
         # print(json_data)
         f_json.write(json_data)
 

@@ -295,7 +295,7 @@ class FitParameter:
     def from_json(json_info: Union[str, Path]) -> "FitParameter":
         """Load from JSON."""
         if isinstance(json_info, Path):
-            with open(json_info, "r") as f_json:
+            with open(json_info, "r", encoding="utf-8") as f_json:
                 d = json.load(f_json)
         else:
             d = json.loads(json_info)

@@ -511,7 +511,7 @@ class SimulationExperiment:
         if path is None:
             return json.dumps(d, cls=ObjectJSONEncoder, indent=indent)
         else:
-            with open(path, "w") as f_json:
+            with open(path, "w", encoding="utf-8") as f_json:
                 json.dump(d, fp=f_json, cls=ObjectJSONEncoder, indent=indent)
 
     def to_dict(self):
@@ -536,7 +536,7 @@ class SimulationExperiment:
         """Load experiment from json path or str."""
         # FIXME: update serialization
         if isinstance(json_info, Path):
-            with open(json_info, "r") as f_json:
+            with open(json_info, "r", encoding="utf-8") as f_json:
                 d = json.load(f_json)
         elif isinstance(json_info, str):
             d = json.loads(json_info)

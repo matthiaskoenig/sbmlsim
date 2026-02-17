@@ -14,7 +14,7 @@ def from_json(json_info: Union[str, Path]) -> dict[Any, Any]:
     """Load data from JSON."""
     d: dict[Any, Any]
     if isinstance(json_info, Path):
-        with open(json_info, "r") as f_json:
+        with open(json_info, "r", encoding="utf-8") as f_json:
             d = json.load(f_json)
     else:
         d = json.loads(json_info)
@@ -26,7 +26,7 @@ def to_json(object, path: Path = None) -> Union[str, Path]:
     if path is None:
         return json.dumps(object, cls=ObjectJSONEncoder, indent=2)
     else:
-        with open(path, "w") as f_json:
+        with open(path, "w", encoding="utf-8") as f_json:
             json.dump(object, fp=f_json, cls=ObjectJSONEncoder, indent=2)
         return path
 

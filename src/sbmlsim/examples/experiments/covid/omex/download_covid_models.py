@@ -42,5 +42,5 @@ def get_covid19_model(output_dir: Path) -> dict[str, Path]:
 if __name__ == "__main__":
     omex_paths = get_covid19_model(output_dir=Path(__file__).parent / "results")
     # store json
-    with open(Path(__file__).parent / "models.json", "w") as f_json:
+    with open(Path(__file__).parent / "models.json", "w", encoding="utf-8") as f_json:
         json.dump(omex_paths, f_json, indent=2)

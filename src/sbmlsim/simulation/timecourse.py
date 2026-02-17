@@ -219,14 +219,14 @@ class TimecourseSim(AbstractSim):
         if path is None:
             return json.dumps(self, cls=ObjectJSONEncoder, indent=2)
         else:
-            with open(path, "w") as f_json:
+            with open(path, "w", encoding="utf-8") as f_json:
                 json.dump(self, fp=f_json, cls=ObjectJSONEncoder, indent=2)
 
     @staticmethod
     def from_json(json_info: Union[str, Path]) -> "TimecourseSim":
         """Load from JSON."""
         if isinstance(json_info, Path):
-            with open(json_info, "r") as f_json:
+            with open(json_info, "r", encoding="utf-8") as f_json:
                 d = json.load(f_json)
         else:
             d = json.loads(json_info)

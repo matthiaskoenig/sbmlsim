@@ -7,7 +7,7 @@ from pathlib import Path
 from sbmlsim.combine.sedml.runner import execute_sedml
 
 
-with open(Path(__file__).parent / "omex" / "models.json", "r") as f_json:
+with open(Path(__file__).parent / "omex" / "models.json", "r", encoding="utf-8") as f_json:
     omex_paths = json.load(f_json)
 
     for biomodel_id, omex_path_str in omex_paths.items():

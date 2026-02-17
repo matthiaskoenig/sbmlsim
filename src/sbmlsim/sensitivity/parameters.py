@@ -88,7 +88,7 @@ class SensitivityParameter(BaseModel):
         tex_str = df.to_latex(None, index=False, float_format="{:.3g}".format)
         tex_str = tex_str.replace("_", r"\_")
 
-        with open(tex_path, "w") as f:
+        with open(tex_path, "w", encoding="utf-8") as f:
             f.write(tex_str)
 
     @staticmethod
