@@ -76,7 +76,7 @@ dev = [
     "tox>=4.31.0",
     "pytest>=8.4.2",
     "pytest-cov>=7.0.0",
-    "quartodoc",
+    "quartodoc>=0.11.1",
 ]
 
 [project_urls]
