@@ -399,7 +399,7 @@ class SensitivityAnalysis:
         self,
         group_id: str,
         sensitivity_key: str,
-        cutoff=0.1,
+        cutoff: Optional[float] = 0.1,
         cluster_rows: bool = True,
         title: Optional[str] = None,
         cmap: str = "seismic",

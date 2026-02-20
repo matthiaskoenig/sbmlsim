@@ -13,7 +13,7 @@ def heatmap(
     df: pd.DataFrame,
     parameter_labels: Optional[dict[str, str]] = None,
     output_labels: Optional[dict[str, str]] = None,
-    cutoff: float = 0.1,
+    cutoff: Optional[float] = 0.1,
     annotate_values=True,
     cluster_rows: bool = True,  # cluster parameters
     cluster_cols: bool = False,  # cluster outputs
@@ -26,12 +26,18 @@ def heatmap(
 ):
     """Creates heatmap of model sensitivity"""
 
-    def calculate_mask(df, cutoff=0.01):
-        """Calculates a boolean mask DataFrame for the heatmap based on cutoff."""
+    def calculate_mask(df, cutoff: Optional[float] = 0.01) -> pd.DataFrame:
+        """Calculates a boolean mask DataFrame for the heatmap based on cutoff.
+
+        The masked values are removed.
+        """
         mask = np.empty(shape=df.shape, dtype="bool")
         for index, value in np.ndenumerate(df):
-            if np.abs(value) < cutoff:
-                mask[index] = True
+            if cutoff is not None:
+                if np.abs(value) < cutoff:
+                    mask[index] = True
+                else:
+                    mask[index] = False
             else:
                 mask[index] = False
         return pd.DataFrame(data=mask, columns=df.columns, index=df.index)
@@ -44,7 +50,7 @@ def heatmap(
     # filter rows
     # X.drop(pk_exclude, axis=1, inplace=True)
 
-    if cutoff > 0:
+    if cutoff and cutoff > 0:
         df_subset = calculate_subset(df, cutoff=cutoff)
     else:
         df_subset = df

@@ -352,7 +352,7 @@ class LocalSensitivityAnalysis(SensitivityAnalysis):
             self.plot_sensitivity(
                 group_id=group.uid,
                 sensitivity_key="normalized",
-                cutoff=0.1,
+                cutoff=0.001,
                 cluster_rows=False,
                 cmap="seismic",
                 vcenter=0.0,
