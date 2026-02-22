@@ -32,6 +32,15 @@ can be installed via
 pip install sbmlsim
 ```
 
+## Quickstart
+
+Clone the repository and install sbmlsim in editable mode:
+
+```bash
+git clone https://github.com/matthiaskoenig/sbmlsim.git
+cd sbmlsim
+pip install -e .
+
 ### Develop version
 The latest develop version can be installed via
 ```bash
