@@ -506,7 +506,7 @@ class Axis(BasePlotObject):
         """
         super(Axis, self).__init__(sid=None, name=None)
         if label and name:
-            ValueError("Either set label or name on Axis.")
+            raise ValueError("Either set label or name on Axis.")
         # if unit is None:
         #     unit = "?"
         if not name:
@@ -517,9 +517,11 @@ class Axis(BasePlotObject):
             else:
                 name = f"{label} [-]"
 
-        self.label: str = label
-        self.name: str = name
-        self.unit: str = unit
+        self._label = label
+        self._unit = unit
+        self._auto_name = name is None
+        self._name = name
+        self._update_name()
         self.scale: AxisScale = scale
         self.min: float = min
         self.max: float = max
@@ -528,6 +530,46 @@ class Axis(BasePlotObject):
         self.label_visible: bool = label_visible
         self.ticks_visible: bool = ticks_visible
         self.style = style
+        
+    def _update_name(self):
+        if not self._auto_name:
+            return
+
+        if not self._label and not self._unit:
+            self._name = ""
+        elif self._unit != "dimensionless":
+            self._name = f"{self._label} [{self._unit}]"
+        else:
+            self._name = f"{self._label} [-]"
+
+    @property
+    def label(self) -> str:
+      return self._label
+
+    @label.setter
+    def label(self, value: str) -> None:
+        self._label = value
+        self._update_name()
+
+    @property
+    def unit(self) -> str:
+        return self._unit
+
+    @unit.setter
+    def unit(self, value: str) -> None:
+        self._unit = value
+        self._update_name()
+
+    @property
+    def name(self) -> str:
+        return self._name
+
+    @name.setter
+    def name(self, value: str) -> None:
+        self._name = value
+        self._auto_name = value is None
+        if self._auto_name:
+            self._update_name()
 
     def __repr__(self) -> str:
         """Get string."""
@@ -1478,3 +1520,5 @@ class Figure(BasePlotObject):
             "subplots": self.subplots,
         }
         return d
+
+
