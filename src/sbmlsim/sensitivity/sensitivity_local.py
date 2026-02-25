@@ -267,15 +267,15 @@ class LocalSensitivityAnalysis(SensitivityAnalysis):
                     # check linearity within range
                     if not np.isclose(delta_mean, 0.0):
                         max_diff = (delta.max() - delta.min()) / delta_mean
-                        if max_diff > 0.10:
+                        if max_diff > 0.10 and delta_mean * (p_ref / q_ref) > 0.01:
                             # this happens if the output is highly nonlinear in the scanned range,
                             # or if large numerical differences exist in the solution (e.g. incorrect discretization)
                             # This can also be due to problems in calculating the respective output (e.g. highly
                             # variable due to numerical fluctuations).
                             # This warning should be taken seriously and be investigated.
                             logger.error(
-                                f"Large delta difference: {max_diff*100:.1f} % for {delta}. "
-                                f"Parameter {self.parameter_ids[kp]} on output {self.output_ids[ko]}."
+                                f"Large delta difference: {max_diff*100:.1f}% for {delta}. "
+                                f"Parameter '{self.parameter_ids[kp]}' on output '{self.output_ids[ko]}'."
                             )
                     sensitivity_raw[kp, ko] = np.sum(delta) / self.n_var
 
@@ -352,7 +352,7 @@ class LocalSensitivityAnalysis(SensitivityAnalysis):
             self.plot_sensitivity(
                 group_id=group.uid,
                 sensitivity_key="normalized",
-                cutoff=0.001,
+                cutoff=0.05,
                 cluster_rows=False,
                 cmap="seismic",
                 vcenter=0.0,
