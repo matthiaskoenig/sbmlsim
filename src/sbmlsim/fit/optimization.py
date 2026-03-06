@@ -672,7 +672,7 @@ class OptimizationProblem(ObjectJSONEncoder):
         simulator: SimulatorSerial = self.runner.simulator
         Q_ = self.runner.Q_
 
-        for k, _ in enumerate(self.mapping_keys):
+        for k, mapping_key in enumerate(self.mapping_keys):
             # update initial changes
             changes = {
                 self.pids[ix]: Q_(value, self.punits[ix]) for ix, value in enumerate(x)
@@ -699,7 +699,11 @@ class OptimizationProblem(ObjectJSONEncoder):
                     copy=False,
                     assume_sorted=True,
                 )
-                y_obsip = f(self.x_references[k])
+                try:
+                    y_obsip = f(self.x_references[k])
+                except ValueError as err:
+                    console.print(f"Interpolation error in mapping key: {mapping_key}")
+                    raise err
 
                 if self.residual in {
                     ResidualType.ABSOLUTE_TO_BASELINE,
