@@ -37,7 +37,7 @@ dependencies = [
     "pymetadata>=0.5.10",
     # from sbmlutils (no version pin)
     "numpy",
-    "libroadrunner",
+    "libroadrunner>=2.9.2",
     "python-libsbml",
     "rich",
     "pint",
