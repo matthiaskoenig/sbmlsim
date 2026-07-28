@@ -8,36 +8,27 @@ dynamic = ["version"]
 description = "sbmlsim are utilities for the simulation of SBML models."
 readme = "README.md"
 requires-python = ">=3.13"
-authors = [
-	{name="Matthias König", email="konigmatt@googlemail.com"}
-]
-maintainers = [
-	{name="Matthias König", email="konigmatt@googlemail.com"}
-]
+authors = [{ name = "Matthias König", email = "konigmatt@googlemail.com" }]
+maintainers = [{ name = "Matthias König", email = "konigmatt@googlemail.com" }]
 classifiers = [
-	"Development Status :: 4 - Beta",
-	"Intended Audience :: Science/Research",
-	"License :: OSI Approved :: MIT License",
-	"Operating System :: OS Independent",
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
     "Programming Language :: Python :: 3.13",
     "Programming Language :: Python :: 3.14",
-	"Programming Language :: Python :: Implementation :: CPython",
-	"Topic :: Scientific/Engineering",
-	"Topic :: Scientific/Engineering :: Bio-Informatics",
+    "Programming Language :: Python :: Implementation :: CPython",
+    "Topic :: Scientific/Engineering",
+    "Topic :: Scientific/Engineering :: Bio-Informatics",
 ]
-keywords = [
-	"modeling",
-	"standardization",
-	"COMBINE",
-    "SBML",
-]
+keywords = ["modeling", "standardization", "COMBINE", "SBML"]
 dependencies = [
     "sbmlutils>=0.9.6",
     "pkdb-analysis>=0.3.1",
     "pymetadata>=0.5.10",
     # from sbmlutils (no version pin)
     "numpy",
-    "libroadrunner>=2.9.2",
+    "libroadrunner>=2.9.3",
     "python-libsbml",
     "rich",
     "pint",
@@ -70,9 +61,9 @@ dependencies = [
 [project.optional-dependencies]
 dev = [
     "bump-my-version>=1.2.4",
-	"ruff>=0.14.0",
-	"pre-commit>=4.0.1",
-	"mypy>=1.18.2",
+    "ruff>=0.14.0",
+    "pre-commit>=4.0.1",
+    "mypy>=1.18.2",
     "tox>=4.31.0",
     "pytest>=8.4.2",
     "pytest-cov>=7.0.0",
