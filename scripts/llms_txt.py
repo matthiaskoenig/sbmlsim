@@ -117,7 +117,7 @@ def signature(obj: Any) -> str:
     """
     try:
         return f"{obj.__name__}{inspect.signature(obj)}"
-    except (TypeError, ValueError):
+    except (AttributeError, NameError, TypeError, ValueError):
         return str(obj.__name__)
 
 

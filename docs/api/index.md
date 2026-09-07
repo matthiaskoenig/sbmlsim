@@ -122,7 +122,6 @@ SED-ML, NuML and COMBINE archives, see [SED-ML and COMBINE archives](../sedml.md
 | [combine.sedml.io](combine.sedml.io.md) | reading and writing SED-ML documents |
 | [combine.datagenerator](combine.datagenerator.md) | data generators of SED-ML |
 | [combine.mathml](combine.mathml.md) | evaluation of MathML expressions |
-| [combine.validation](combine.validation.md) | validation of COMBINE archives |
 
 ## sbmlsim.interpolation, sbmlsim.comparison
 

@@ -109,7 +109,6 @@ nav = [
       { "sedml.io" = "api/combine.sedml.io.md" },
       { "datagenerator" = "api/combine.datagenerator.md" },
       { "mathml" = "api/combine.mathml.md" },
-      { "validation" = "api/combine.validation.md" },
     ] },
     { "sbmlsim.interpolation" = [
       { "interpolation" = "api/interpolation.interpolation.md" },

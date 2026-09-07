@@ -11,7 +11,7 @@ from typing import Any
 import numpy as np
 import pandas as pd
 import scipy
-from scipy import interpolate, optimize
+from scipy import interpolate
 
 from sbmlsim.console import console
 from sbmlsim.experiment import ExperimentRunner, SimulationExperiment
@@ -561,7 +561,7 @@ class OptimizationProblem(ObjectJSONEncoder):
         sampling: SamplingType = SamplingType.UNIFORM,
         seed: int | None = None,
         **kwargs,
-    ) -> tuple[list[optimize.OptimizeResult], list]:
+    ) -> tuple[list[scipy.optimize.OptimizeResult], list]:
         """Run parameter optimization.
 
         To change the weighting or handling of residuals reinitialize the optimization
