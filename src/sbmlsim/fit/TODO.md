@@ -6,7 +6,7 @@ Important features:
 *IO*
 - [ ] serialization of problem(s) to PEtab (v2) + additional metadata (i.e. all simulations, data, metadata); i.e. the complete problem is stored in PEtab; store problem and metadata (for filtering & validation) => full problem => create subset problems
 - [ ] inject model parameters/changes and serialize SBML
-- [ ] generation of subsets of problems easily (filter) => new PEtab problems; all serialized; 
+- [ ] generation of subsets of problems easily (filter) => new PEtab problems; all serialized;
 
 *Optimization*
 - simulate only timepoints which are necessary
@@ -23,4 +23,4 @@ Important features:
 - interactive reports (quarto); => use best of both worlds R, nlmixr2 , Pypesto; petab; much better interactive/static reports as overview
 
 Profile-Likelihood analysis
-- Parameter identifiability analysis; 
+- Parameter identifiability analysis;

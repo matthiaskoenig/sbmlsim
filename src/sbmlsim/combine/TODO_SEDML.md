@@ -43,12 +43,12 @@ sbmlsim.Experiment
 - [x] data generators
 - [x] figures
   - [x] plot2d
-  - [ ] plot3d 
+  - [ ] plot3d
   - [x] styles
 - [ ] reports
 - [ ] concentrations/amounts xpath (parse symbols and use for evaluation)
   - [ ] data generators
-  - [ ] model changes; changesets  
+  - [ ] model changes; changesets
 
 # Parsing (SED-ML -> SimulationExperiment)
 - [ ] datasets !
@@ -63,10 +63,10 @@ sbmlsim.Experiment
 - [x] use curve.name as label in legend
 - [x] support style on axis
 - [x] support setting label (name of axis)
-- [x] plot width and height  
+- [x] plot width and height
 - [x] curve type (points, bar, ...)
 - [~] error bars; assymetrical error bars; see https://github.com/SED-ML/sed-ml/issues/137
-- [x] styling of bar plots; 
+- [x] styling of bar plots;
 - [x] yAxis right
 - [x] order of abstract curve
 - [x] shaded areas & fills

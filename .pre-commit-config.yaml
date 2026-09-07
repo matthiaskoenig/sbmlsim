@@ -27,10 +27,10 @@ repos:
     description: Check for symlinks which do not point to anything
   - id: trailing-whitespace
     description: Trim trailing whitespaces
-    exclude: '^(src/sbmlsim/resources/|src/sbmlsim/comparison/(amicitesting|results)/|tests/data/|examples/.*\.(xml|sedml|omex|tsv|csv|txt|json|yaml|rdf|cps|md|svg|html)$)'
+    exclude: '^(src/sbmlsim/resources/|src/sbmlsim/comparison/(amicitesting|results|resources)/|tests/data/|examples/.*\.(xml|sedml|omex|tsv|csv|txt|json|yaml|rdf|cps|md|svg|html)$)'
   - id: end-of-file-fixer
     description: Fix empty lines at ends of files
-    exclude: '^(src/sbmlsim/resources/|src/sbmlsim/comparison/(amicitesting|results)/|tests/data/|examples/.*\.(xml|sedml|omex|tsv|csv|txt|json|yaml|rdf|cps|md|svg|html)$)'
+    exclude: '^(src/sbmlsim/resources/|src/sbmlsim/comparison/(amicitesting|results|resources)/|tests/data/|examples/.*\.(xml|sedml|omex|tsv|csv|txt|json|yaml|rdf|cps|md|svg|html)$)'
   - id: detect-private-key
     description: Detects the presence of private keys
   - id: check-case-conflict
@@ -38,7 +38,7 @@ repos:
   - id: mixed-line-ending
     description: Normalize mixed line endings
     args: [ --fix=lf ]
-    exclude: '^(src/sbmlsim/resources/|src/sbmlsim/comparison/(amicitesting|results)/|tests/data/|examples/.*\.(xml|sedml|omex|tsv|csv|txt|json|yaml|rdf|cps|md|svg|html)$)'
+    exclude: '^(src/sbmlsim/resources/|src/sbmlsim/comparison/(amicitesting|results|resources)/|tests/data/|examples/.*\.(xml|sedml|omex|tsv|csv|txt|json|yaml|rdf|cps|md|svg|html)$)'
   - id: debug-statements
     description: Check for forgotten breakpoints and debugger imports
 
