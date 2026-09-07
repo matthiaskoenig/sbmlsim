@@ -118,7 +118,9 @@ def run_demo_experiments(output_path: Path) -> None:
         base_path=base_path,
     )
     _results = runner.run_experiments(
-        output_path=output_path / "results", show_figures=True, reduced_selections=False
+        output_path=output_path / "results",
+        show_figures=False,
+        reduced_selections=False,
     )
 
 

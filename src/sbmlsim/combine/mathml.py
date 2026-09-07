@@ -90,8 +90,10 @@ def expr_from_formula(formula: str):
 def evaluate(astnode: libsedml.ASTNode, variables: dict):
     """Evaluate the astnode with values."""
     expr = parse_astnode(astnode)
-    f = lambdify(args=list(expr.free_symbols), expr=expr)
-    return f(**variables)
+    symbols = sorted(expr.free_symbols, key=str)
+    f = lambdify(args=symbols, expr=expr)
+    # only the variables of the expression are passed
+    return f(*[variables[str(symbol)] for symbol in symbols])
 
 
 def _get_variables(

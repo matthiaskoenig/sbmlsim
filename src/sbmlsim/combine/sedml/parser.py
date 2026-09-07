@@ -833,7 +833,7 @@ class SEDMLSerializer:
             if marker.fill:
                 sed_marker.setFill(marker.fill.color)
             if marker.line_color:
-                sed_marker.setLineColor(marker.line_color)
+                sed_marker.setLineColor(marker.line_color.color)
             if marker.line_thickness is not None:
                 sed_marker.setLineThickness(marker.line_thickness)
 

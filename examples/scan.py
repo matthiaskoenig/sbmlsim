@@ -136,13 +136,14 @@ if __name__ == "__main__":
 
     da = xres[column]
     fig, ax = plt.subplots()
+    time = xres["time"]
     for k in range(xres.sizes["dim1"]):
         # individual timecourses
-        ax.plot(da.coords["time"], da.isel(dim1=k))
+        ax.plot(time, da.isel(dim1=k))
 
-    ax.plot(da.coords["time"], da.mean(dim="dim1"), color="black", linewidth=4.0)
-    ax.plot(da.coords["time"], da.min(dim="dim1"), color="black", linewidth=2.0)
-    ax.plot(da.coords["time"], da.max(dim="dim1"), color="black", linewidth=2.0)
+    ax.plot(time, da.mean(dim="dim1"), color="black", linewidth=4.0)
+    ax.plot(time, da.min(dim="dim1"), color="black", linewidth=2.0)
+    ax.plot(time, da.max(dim="dim1"), color="black", linewidth=2.0)
     fig.savefig("scan1d_distribution.png", bbox_inches="tight")
     plt.close(fig)
 

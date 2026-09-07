@@ -24,8 +24,8 @@ def plot_results(xres: XResult, filename: str) -> None:
         ]:
             # mean line
             ax.plot(
-                xres._time,
-                xres.mean_all_dims(key=sid),
+                xres["time"],
+                xres.dim_mean(sid).magnitude,
                 color=color,
                 label=sid,
             )
@@ -34,8 +34,8 @@ def plot_results(xres: XResult, filename: str) -> None:
 
     for ax in (ax2, ax4):
         ax.plot(
-            xres.mean_all_dims(key="[X]"),
-            xres.mean_all_dims(key="[Y]"),
+            xres.dim_mean("[X]").magnitude,
+            xres.dim_mean("[Y]").magnitude,
             color="black",
             label="Y~X",
         )

@@ -119,7 +119,11 @@ def run(output_path):
         base_path=base_path,
         data_path=base_path,
     )
-    runner.run_experiments(output_path=output_path / "results", show_figures=True)
+    runner.run_experiments(
+        output_path=output_path / "results",
+        show_figures=False,
+        reduced_selections=False,
+    )
 
 
 if __name__ == "__main__":

@@ -178,7 +178,7 @@ def run_experiments(
     )
     results = runner.run_experiments(
         output_path=output_path,
-        show_figures=True,
+        show_figures=False,
     )
     report_results = ReportResults()
     for exp_result in results:

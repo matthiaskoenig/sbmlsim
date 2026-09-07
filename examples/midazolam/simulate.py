@@ -27,7 +27,7 @@ def run_midazolam_experiments(output_path: Path) -> None:
         base_path=base_path,
         data_path=base_path / "data",
     )
-    results = runner.run_experiments(output_path=output_path, show_figures=True)
+    results = runner.run_experiments(output_path=output_path, show_figures=False)
     report_results = ReportResults()
     for exp_result in results:
         report_results.add_experiment_result(exp_result=exp_result)

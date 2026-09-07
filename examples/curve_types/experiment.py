@@ -100,7 +100,7 @@ def run_curve_types_experiments(output_path: Path) -> None:
         base_path=base_path,
     )
     _results = runner.run_experiments(
-        output_path=output_path / "results", show_figures=True
+        output_path=output_path / "results", show_figures=False
     )
 
 

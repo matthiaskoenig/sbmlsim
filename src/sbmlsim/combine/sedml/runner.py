@@ -63,7 +63,7 @@ def execute_sedml(path: Path, working_dir: Path, output_path: Path) -> None:
         base_path=sedml_reader.exec_dir,
     )
     runner.run_experiments(
-        output_path=output_path, show_figures=True, figure_formats=["svg", "png"]
+        output_path=output_path, show_figures=False, figure_formats=["svg", "png"]
     )
 
     # TODO: write experiment to SED-ML file

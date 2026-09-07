@@ -140,7 +140,7 @@ class SEDMLReader:
                 # in case of an archive a working directory is created
                 # in which the files are extracted
                 omex = pyomex.Omex.from_omex(omex_path=file_path)
-                sedml_entries = omex.entries_by_format(format_key="sed-ml")
+                sedml_entries = omex.entries_by_format(format_key="sedml")
                 for entry in sedml_entries:
                     logger.info("SED-ML location: ", entry.location)
                     if entry.master:

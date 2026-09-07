@@ -48,4 +48,6 @@ def run_covid_examples(output_path: Path) -> None:
 
 
 if __name__ == "__main__":
-    run_covid_examples(output_path=Path(__file__).parent / "results")
+    output_path = Path.cwd() / "results"
+    output_path.mkdir(parents=True, exist_ok=True)
+    run_covid_examples(output_path=output_path)
