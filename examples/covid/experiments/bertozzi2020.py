@@ -10,7 +10,7 @@ from sbmlsim.task import Task
 class Bertozzi2020(SimulationExperiment):
     def models(self) -> dict[str, AbstractModel]:
         # Q_ = self.Q_
-        models = {
+        return {
             "model": AbstractModel(
                 source=Path(__file__).parent
                 / ".."
@@ -21,7 +21,6 @@ class Bertozzi2020(SimulationExperiment):
                 changes={},
             )
         }
-        return models
 
     def simulations(self) -> dict[str, TimecourseSim]:
         Q_ = self.Q_
@@ -53,13 +52,14 @@ class Bertozzi2020(SimulationExperiment):
                 f"task_{key}": Task(model="model", simulation=key)
                 for key in self.simulations()
             }
+        return None
 
     def figures(self) -> dict[str, Figure]:
         unit_time = "time"
         unit_y = "substance"
 
         selections = ["Infected", "Susceptible", "Recovered", "Peak_Time"]
-        self.add_selections_data(selections=["time"] + selections)
+        self.add_selections_data(selections=["time", *selections])
 
         fig_1 = Figure(self, sid="plot_1", name=f"{self.sid} (plot_1)")
         plots = fig_1.create_plots(Axis("time", unit=unit_time), legend=True)

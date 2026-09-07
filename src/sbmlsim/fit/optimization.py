@@ -70,14 +70,15 @@ class OptimizationProblem(ObjectJSONEncoder):
         self.fit_experiments = []
         for fit_exp in fit_experiments:
             if fit_exp.exclude:
-                logger.warning(f"FitExperiment excluded: {fit_exp}")
+                logger.warning("FitExperiment excluded: %s", fit_exp)
             else:
                 self.fit_experiments.append(fit_exp)
         self.parameters = fit_parameters
         if self.parameters is None or len(self.parameters) == 0:
             logger.error(
-                f"{opid}: parameters in optimization problem cannot be empty, "
-                f"but '{self.parameters}'"
+                "%s: parameters in optimization problem cannot be empty, but '%s'",
+                opid,
+                self.parameters,
             )
 
         # parameter information
@@ -326,16 +327,22 @@ class OptimizationProblem(ObjectJSONEncoder):
                     data_ref.x = data_ref.x.to(obs_x_unit)
                 except DimensionalityError as e:
                     logger.error(
-                        f"{sid}.{mapping_id}: Unit conversion fails for '{data_ref.x}' "
-                        f"to '{obs_x_unit}"
+                        "%s.%s: Unit conversion fails for '%s' to '%s",
+                        sid,
+                        mapping_id,
+                        data_ref.x,
+                        obs_x_unit,
                     )
                     raise e
                 try:
                     data_ref.y = data_ref.y.to(obs_y_unit)
                 except DimensionalityError as e:
                     logger.error(
-                        f"{sid}.{mapping_id}: Unit conversion fails for '{data_ref.y}' "
-                        f"to '{obs_y_unit}'."
+                        "%s.%s: Unit conversion fails for '%s' to '%s'.",
+                        sid,
+                        mapping_id,
+                        data_ref.y,
+                        obs_y_unit,
                     )
                     raise e
                 x_ref = data_ref.x.magnitude
@@ -372,8 +379,10 @@ class OptimizationProblem(ObjectJSONEncoder):
                     if np.all(np.isnan(y_ref_err)):
                         # handle special case of all NaN errors
                         logger.warning(
-                            f"Errors are all NaN '{sid}.{mapping_id}' y data: "
-                            f"'{y_ref_err}'"
+                            "Errors are all NaN '%s.%s' y data: '%s'",
+                            sid,
+                            mapping_id,
+                            y_ref_err,
                         )
                         y_ref_err = None
                         y_ref_err_type = None
@@ -386,7 +395,10 @@ class OptimizationProblem(ObjectJSONEncoder):
                 nonnan_mask = ~np.isnan(y_ref)
                 if not np.all(nonnan_mask):
                     logger.debug(
-                        f"Removing NaN values in '{sid}.{mapping_id}' y data: '{y_ref}'"
+                        "Removing NaN values in '%s.%s' y data: '%s'",
+                        sid,
+                        mapping_id,
+                        y_ref,
                     )
                 x_ref = x_ref[nonnan_mask]
                 y_ref = y_ref[nonnan_mask]
@@ -432,8 +444,10 @@ class OptimizationProblem(ObjectJSONEncoder):
                         # weight_points = 1.0 / y_ref_err  # scale with error;
                     else:
                         logger.warning(
-                            f"'{sid}.{mapping_id}': Using '{self.weighting_points}' "
-                            f"with no errors in reference data."
+                            "'%s.%s': Using '%s' with no errors in reference data.",
+                            sid,
+                            mapping_id,
+                            self.weighting_points,
                         )
                         # Weights must be comparable to datasets with data (1/CV)
                         # Assuming an error with CV of 0.5 -> w=2
@@ -552,11 +566,11 @@ class OptimizationProblem(ObjectJSONEncoder):
             else:
                 x0 = None
 
-            logger.debug(f"[{k + 1}/{size}] x0={x0}")
+            logger.debug("[%s/%s] x0=%s", k + 1, size, x0)
             fit, trajectory = self._optimize_single(
                 x0=x0, algorithm=algorithm, **kwargs
             )
-            logger.debug(f"\t{fit.duration:8.4f} [s]")
+            logger.debug("	%s [s]", format(fit.duration, "8.4f"))
 
             fits.append(fit)
             trajectories.append(trajectory)
@@ -605,7 +619,10 @@ class OptimizationProblem(ObjectJSONEncoder):
                     )
             except RuntimeError as err:
                 logger.error(
-                    f"RuntimeError in ODE integration (optimize) for '{self.pids} = {x0}': \n{err}"
+                    "RuntimeError in ODE integration (optimize) for '%s = %s': \n%s",
+                    self.pids,
+                    x0,
+                    err,
                 )
                 opt_result = RuntimeErrorOptimizeResult()
                 opt_result.x = x0log
@@ -629,7 +646,10 @@ class OptimizationProblem(ObjectJSONEncoder):
                 )
             except RuntimeError as err:
                 logger.error(
-                    f"RuntimeError in ODE integration (optimize) for '{self.pids} = {x0}': \n{err}"
+                    "RuntimeError in ODE integration (optimize) for '%s = %s': \n%s",
+                    self.pids,
+                    x0,
+                    err,
                 )
                 opt_result = RuntimeErrorOptimizeResult()
                 opt_result.x = x0log
@@ -715,7 +735,10 @@ class OptimizationProblem(ObjectJSONEncoder):
             except RuntimeError as err:
                 # error in integration (setting high residuals & cost)
                 logger.error(
-                    f"RuntimeError in ODE integration ('{self.pids} = {x}'): \n{err}"
+                    "RuntimeError in ODE integration ('%s = %s'): \n%s",
+                    self.pids,
+                    x,
+                    err,
                 )
                 res_abs = 5.0 * self.y_references[k]  # total error
 

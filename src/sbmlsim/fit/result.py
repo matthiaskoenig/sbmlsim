@@ -109,8 +109,9 @@ class OptimizationResult(ObjectJSONEncoder):
             pids_next = {p.pid for p in opt_res.parameters}
             if pids != pids_next:
                 logger.error(
-                    f"Parameters of OptimizationResults do not match: "
-                    f"{pids} != {pids_next}"
+                    "Parameters of OptimizationResults do not match: %s != %s",
+                    pids,
+                    pids_next,
                 )
 
             fits.extend(opt_res.fits)

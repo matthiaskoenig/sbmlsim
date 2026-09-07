@@ -16,6 +16,7 @@ class SimulateAmiciSBML(SimulateSBML):
     """Class for simulating an SBML model with AMICI."""
 
     def __init__(self, **kwargs):
+        """Import the model into AMICI and create the solver."""
         super().__init__(**kwargs)
 
         # custom model loading
@@ -38,6 +39,7 @@ class SimulateAmiciSBML(SimulateSBML):
     def simulate_condition(
         self, condition: Condition, timepoints: np.ndarray
     ) -> pd.DataFrame:
+        """Simulate the condition with AMICI."""
         print(f"simulate condition: {condition.sid}")
 
         # changes

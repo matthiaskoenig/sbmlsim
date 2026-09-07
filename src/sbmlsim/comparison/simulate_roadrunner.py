@@ -1,3 +1,5 @@
+"""Simulation of SBML models with roadrunner."""
+
 import numpy as np
 import pandas as pd
 import roadrunner
@@ -10,6 +12,7 @@ class SimulateRoadrunnerSBML(SimulateSBML):
     """Class for simulating an SBML model."""
 
     def __init__(self, **kwargs):
+        """Load the model into roadrunner."""
         super().__init__(**kwargs)
 
         # custom model loading

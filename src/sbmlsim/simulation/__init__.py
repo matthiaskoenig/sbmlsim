@@ -1,7 +1,7 @@
 """Package for simulation."""
 
-from .scan import ScanSim
 from .range import Dimension
+from .scan import ScanSim
 from .simulation import AbstractSim
 from .timecourse import Timecourse, TimecourseSim
 

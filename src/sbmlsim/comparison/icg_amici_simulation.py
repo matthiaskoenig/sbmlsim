@@ -1,3 +1,5 @@
+"""Simulation of the ICG model with AMICI."""
+
 from pathlib import Path
 
 import amici

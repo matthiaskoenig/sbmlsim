@@ -53,6 +53,7 @@ class SensitivitySimulation:
         changes_simulation: dict[str, float],
         outputs: list[SensitivityOutput],
     ):
+        """Initialize the simulation with model, selections, changes and outputs."""
         self.model_path = model_path
         self.selections = selections
         self.changes_simulation = changes_simulation
@@ -192,26 +193,32 @@ class SensitivityAnalysis:
 
     @property
     def output_ids(self) -> list[str]:
+        """Ids of the outputs."""
         return [o.uid for o in self.outputs]
 
     @property
     def parameter_ids(self) -> list[str]:
+        """Ids of the parameters."""
         return [p.uid for p in self.parameters]
 
     @property
     def group_ids(self) -> list[str]:
+        """Ids of the analysis groups."""
         return [g.uid for g in self.groups]
 
     @property
     def num_parameters(self) -> int:
+        """Number of parameters."""
         return len(self.parameters)
 
     @property
     def num_outputs(self) -> int:
+        """Number of outputs."""
         return len(self.outputs)
 
     @property
     def num_groups(self) -> int:
+        """Number of analysis groups."""
         return len(self.groups)
 
     def execute(self):
@@ -288,27 +295,24 @@ class SensitivityAnalysis:
             samples = self.samples[group.uid]
 
             # create chunk of samples for core
-            def split_into_chunks(items, n):
-                m = len(items)
-                k, r = divmod(m, n)
-                chunks = [
-                    items[i * k + min(i, r) : (i + 1) * k + min(i + 1, r)]
-                    for i in range(n)
-                ]
-                chunked_samples = [
-                    [
-                        {
-                            **group.changes,
-                            **dict(zip(self.parameter_ids, samples[k, :].values, strict=False)),
-                        }
-                        for k in chunk
-                    ]
-                    for chunk in chunks
-                ]
-                return chunks, chunked_samples
-
             items = list(range(self.num_samples))
-            chunks, chunked_samples = split_into_chunks(items, self.n_cores)
+            chunks = self._split_into_chunks(items, self.n_cores)
+            chunked_samples = [
+                [
+                    {
+                        **group.changes,
+                        **dict(
+                            zip(
+                                self.parameter_ids,
+                                samples[k, :].values,
+                                strict=False,
+                            )
+                        ),
+                    }
+                    for k in chunk
+                ]
+                for chunk in chunks
+            ]
 
             # parameters for multiprocessing
             sa_sim = self.sensitivity_simulation
@@ -334,10 +338,21 @@ class SensitivityAnalysis:
         """Calculate the sensitivity matrices."""
         raise NotImplementedError
 
+    @staticmethod
+    def _split_into_chunks(items: list[int], n: int) -> list[list[int]]:
+        """Split the items into n chunks of (almost) equal size."""
+        m = len(items)
+        k, r = divmod(m, n)
+        return [
+            items[i * k + min(i, r) : (i + 1) * k + min(i + 1, r)] for i in range(n)
+        ]
+
     def samples_table(self) -> pd.DataFrame:
+        """Sizes of the sample arrays per group."""
         return self._data_table(d=self.samples)
 
     def results_table(self) -> pd.DataFrame:
+        """Sizes of the result arrays per group."""
         return self._data_table(d=self.results)
 
     def _data_table(self, d: dict[str, xr.DataArray]) -> pd.DataFrame:
@@ -353,6 +368,7 @@ class SensitivityAnalysis:
         return pd.DataFrame(items)
 
     def read_cache(self, cache_filename: str, cache: bool) -> Any | None:
+        """Read cached data from the results path, None if not cached."""
         cache_path: Path | None = (
             self.results_path / cache_filename if cache_filename else None
         )
@@ -368,7 +384,8 @@ class SensitivityAnalysis:
 
         return None
 
-    def write_cache(self, data: Any, cache_filename: str, cache: bool) -> Any | None:
+    def write_cache(self, data: Any, cache_filename: str, cache: bool) -> None:
+        """Write data to the cache file in the results path."""
         cache_path: Path | None = (
             self.results_path / cache_filename if cache_filename else None
         )
@@ -390,7 +407,7 @@ class SensitivityAnalysis:
         """Should be implemented by subclass."""
         console.rule("Plotting", style="white")
 
-    def plot_sensitivity(
+    def plot_sensitivity(  # noqa: D102 -- documented below the signature
         self,
         group_id: str,
         sensitivity_key: str,

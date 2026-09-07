@@ -4,7 +4,6 @@ import pytest
 
 from sbmlsim.plot.plotting import ColorType
 
-
 color_data = [
     # not supporting one-characters
     # ("r", "#ff0000ff", 1.0),  # depend on mpl settings and version

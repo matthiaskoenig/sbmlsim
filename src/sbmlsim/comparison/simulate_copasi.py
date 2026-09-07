@@ -1,3 +1,5 @@
+"""Simulation of SBML models with COPASI via basico."""
+
 import numpy as np
 import pandas as pd
 from basico import (
@@ -16,6 +18,7 @@ class SimulateCopasiSBML(SimulateSBML):
     """Class for simulating an SBML model with COPASI via basico."""
 
     def __init__(self, **kwargs):
+        """Load the model into COPASI."""
         super().__init__(**kwargs)
 
         # custom model loading
@@ -24,6 +27,7 @@ class SimulateCopasiSBML(SimulateSBML):
     def simulate_condition(
         self, condition: Condition, timepoints: list[float]
     ) -> pd.DataFrame:
+        """Simulate the condition with COPASI."""
         print(f"simulate condition: {condition.sid}")
 
         # reset ? (reloading for resetting)

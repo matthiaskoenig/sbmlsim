@@ -272,8 +272,11 @@ class LocalSensitivityAnalysis(SensitivityAnalysis):
                             # variable due to numerical fluctuations).
                             # This warning should be taken seriously and be investigated.
                             logger.error(
-                                f"Large delta difference: {max_diff * 100:.1f}% for {delta}. "
-                                f"Parameter '{self.parameter_ids[kp]}' on output '{self.output_ids[ko]}'."
+                                "Large delta difference: %s%% for %s. Parameter '%s' on output '%s'.",
+                                format(max_diff * 100, ".1f"),
+                                delta,
+                                self.parameter_ids[kp],
+                                self.output_ids[ko],
                             )
                     sensitivity_raw[kp, ko] = np.sum(delta) / self.n_var
 

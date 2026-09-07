@@ -42,9 +42,7 @@ def heatmap(
         return pd.DataFrame(data=mask, columns=df.columns, index=df.index)
 
     def calculate_subset(df, cutoff=0.01) -> pd.DataFrame:
-        """Calculates subset of data frame consisting of rows where at least
-        one value is above cutoff.
-        """
+        """Calculate the rows of the data frame with at least one value above the cutoff."""
         return df[(df.abs() >= cutoff).any(axis=1)]
 
     # filter rows
@@ -148,7 +146,7 @@ def plot_S1_ST_indices(
             )
 
 
-def S1_ST_barplot(
+def S1_ST_barplot(  # noqa: D103 -- documented below the signature
     S1,
     ST,
     S1_conf,

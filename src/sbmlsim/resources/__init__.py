@@ -1,3 +1,5 @@
+"""Models shipped with the package, used by the examples and tests."""
+
 from sbmlsim import RESOURCES_DIR
 
 DEMO_SBML = RESOURCES_DIR / "models" / "Koenig_demo_14.xml"

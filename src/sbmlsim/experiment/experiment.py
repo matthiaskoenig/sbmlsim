@@ -118,7 +118,7 @@ class SimulationExperiment:
             self._check_keys()
             self._check_types()
         except Exception as err:
-            logger.error(f"Problem initializing '{self.__class__.__name__}'")
+            logger.error("Problem initializing '%s'", self.__class__.__name__)
             raise err
 
     def __str__(self) -> str:
@@ -166,6 +166,7 @@ class SimulationExperiment:
 
     def data(self) -> dict[str, Data]:
         """Define DataGenerators including functions.
+
         This determines the selection in the model.
 
         All data which is accessed in a simulation result must be defined in a
@@ -301,11 +302,11 @@ class SimulationExperiment:
                             f"{field_key} key is not a valid SId "
                             f"([a-zA-Z0-9][a-zA-Z0-9_]*): '{key}'"
                         )
-                except TypeError:
+                except TypeError as err:
                     raise ValueError(
                         f"{field_key} key is not a valid SId. "
                         f"Incorrect type: '{key}', {type(key)}"
-                    )
+                    ) from err
 
                 if key in all_keys:
                     raise ValueError(
@@ -319,8 +320,9 @@ class SimulationExperiment:
             if not isinstance(dset, DataSet):
                 # FIXME: relaxing for now (re-enable) !!!
                 logger.error(
-                    f"datasets must be of type DataSet, but "
-                    f"dataset '{key}' has type: '{type(dset)}'"
+                    "datasets must be of type DataSet, but dataset '%s' has type: '%s'",
+                    key,
+                    type(dset),
                 )
                 # raise ValueError(
                 #     f"datasets must be of type DataSet, but "
@@ -396,7 +398,7 @@ class SimulationExperiment:
         else:
             if not Path.exists(output_path):
                 Path.mkdir(output_path, parents=True)
-                logger.debug(f"'output_path' created: '{output_path}'")
+                logger.debug("'output_path' created: '%s'", output_path)
 
             # save outputs
             self.save_datasets(output_path)
@@ -543,7 +545,7 @@ class SimulationExperiment:
     def save_datasets(self, results_path: Path) -> None:
         """Save datasets."""
         if self._datasets is None:
-            logger.warning(f"No datasets in SimulationExperiment: '{self.sid}'")
+            logger.warning("No datasets in SimulationExperiment: '%s'", self.sid)
         else:
             for dkey, dset in self._datasets.items():
                 dset.to_csv(
@@ -558,7 +560,7 @@ class SimulationExperiment:
         :return:
         """
         if self.results is None:
-            logger.warning(f"No results in SimulationExperiment: '{self.sid}'")
+            logger.warning("No results in SimulationExperiment: '%s'", self.sid)
         else:
             for rkey, result in self.results.items():
                 result.to_netcdf(results_path / f"{self.sid}_{rkey}.nc")

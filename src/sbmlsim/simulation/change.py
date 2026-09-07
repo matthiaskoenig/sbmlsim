@@ -16,9 +16,7 @@ class Change(BaseObject):
       (AddXML, ChangeXML, RemoveXML)
     """
 
-    def __init__(
-        self, target: Target, sid: str | None = None, name: str | None = None
-    ):
+    def __init__(self, target: Target, sid: str | None = None, name: str | None = None):
         """Construct Change."""
         super().__init__(sid=sid, name=name)
         self.target: Target = target
@@ -44,5 +42,10 @@ class ComputeChange(Change, Calculation):
         """Construct ComputeChange."""
         Change.__init__(self, target=target, sid=sid, name=name)
         Calculation.__init__(
-            self, sid=sid, variables=variables, parameters=parameters, math=math, name=name
+            self,
+            sid=sid,
+            variables=variables,
+            parameters=parameters,
+            math=math,
+            name=name,
         )

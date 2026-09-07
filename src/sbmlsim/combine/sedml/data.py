@@ -6,6 +6,7 @@ import logging
 import os
 import tempfile
 from pathlib import Path
+from typing import ClassVar
 
 import libsbml
 import libsedml
@@ -24,11 +25,11 @@ class DataDescriptionParser:
     FORMAT_CSV = "urn:sedml:format:csv"
     FORMAT_TSV = "urn:sedml:format:tsv"
 
-    SUPPORTED_FORMATS = [FORMAT_NUML, FORMAT_CSV, FORMAT_TSV]
+    SUPPORTED_FORMATS: ClassVar[list[str]] = [FORMAT_NUML, FORMAT_CSV, FORMAT_TSV]
 
     @classmethod
     def parse(
-        cls, dd: libsedml.SedDataDescription, working_dir: Path = None
+        cls, dd: libsedml.SedDataDescription, working_dir: Path | None = None
     ) -> dict[str, pd.Series]:
         """Parse single DataDescription.
 
@@ -54,7 +55,7 @@ class DataDescriptionParser:
 
         # TODO: refactor in general resource module (for resolving anyURI and resource)
         tmp_file = None
-        if source.startswith("http") or source.startswith("HTTP"):
+        if source.startswith(("http", "HTTP")):
             conn = httplib.HTTPConnection(source)
             conn.request("GET", "")
             r1 = conn.getresponse()
@@ -66,8 +67,10 @@ class DataDescriptionParser:
             except UnicodeDecodeError:
                 file_str = str(data)
 
-            tmp_file = tempfile.NamedTemporaryFile("w")
+            # the file has to outlive this block, it is read by the parser below
+            tmp_file = tempfile.NamedTemporaryFile("w", delete=False)  # noqa: SIM115
             tmp_file.write(file_str)
+            tmp_file.close()
             source_path = tmp_file.name
         else:
             source_path = os.path.join(working_dir, source)
@@ -93,9 +96,8 @@ class DataDescriptionParser:
         # -------------------------------
         # FIXME: uses the data_types to check the actual data type
         dim_description = dd.getDimensionDescription()
-        data_types = None
         if dim_description is not None:
-            data_types = NumlParser.parse_dimension_description(
+            NumlParser.parse_dimension_description(
                 dim_description, library=NumlParser.Library.LIBSEDML
             )
 
@@ -155,8 +157,8 @@ class DataDescriptionParser:
                     except KeyError as err:
                         # something does not fit between data and data sources
                         logger.error("-" * 80)
-                        logger.error(f"Format: {format}")
-                        logger.error(f"Source: {source_path}")
+                        logger.error("Format: %s", format)
+                        logger.error("Source: %s", source_path)
                         logger.error("-" * 80)
                         logger.error(data)
                         logger.error("-" * 80)
@@ -165,7 +167,7 @@ class DataDescriptionParser:
             # NUML
             elif format == cls.FORMAT_NUML:
                 # Using the first results component only in SED-ML L1V3
-                rc_id, rc, data_types = data[0]
+                _rc_id, rc, _data_types = data[0]
 
                 index_set = ds.getIndexSet()
                 if ds.getIndexSet() and len(ds.getIndexSet()) != 0:
@@ -186,7 +188,7 @@ class DataDescriptionParser:
         logger.info("DataSources")
         logger.info("-" * 80)
         for key, value in data_sources.items():
-            logger.info(f"{key} : {type(value)}; shape={value.shape}")
+            logger.info("%s : %s; shape=%s", key, type(value), value.shape)
         logger.info("-" * 80)
 
         # cleanup
@@ -254,7 +256,7 @@ class DataDescriptionParser:
 
         CSV files must have a header. Handles file and online resources.
         """
-        df = pd.read_csv(
+        return pd.read_csv(
             path,
             sep=separator,
             index_col=False,
@@ -264,4 +266,3 @@ class DataDescriptionParser:
             skipinitialspace=True,
             na_values="nan",
         )
-        return df

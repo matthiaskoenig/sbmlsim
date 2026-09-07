@@ -21,7 +21,7 @@ def from_json(json_info: str | Path) -> dict[Any, Any]:
     return d
 
 
-def to_json(object, path: Path = None) -> str | Path:
+def to_json(object, path: Path | None = None) -> str | Path:
     """Serialize to JSON."""
     if path is None:
         return json.dumps(object, cls=ObjectJSONEncoder, indent=2)

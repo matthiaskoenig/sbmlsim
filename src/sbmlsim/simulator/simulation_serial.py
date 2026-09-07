@@ -141,8 +141,9 @@ class SimulatorSerial:
                 for key, item in tc.model_changes.items():
                     if key.startswith("init"):
                         logger.error(
-                            f"Initial model changes should be provided "
-                            f"without 'init': '{key} = {item}'"
+                            "Initial model changes should be provided without 'init': '%s = %s'",
+                            key,
+                            item,
                         )
                     # FIXME: implement model changes via init
                     # init_key = f"init({key})"
@@ -155,13 +156,15 @@ class SimulatorSerial:
                     try:
                         self.r[init_key] = value
                     except RuntimeError:
-                        logger.error(f"roadrunner RuntimeError: '{init_key} = {item}'")
+                        logger.error(
+                            "roadrunner RuntimeError: '%s = %s'", init_key, item
+                        )
                         # boundary condition=true species, trying direct fallback
                         # see https://github.com/sys-bio/roadrunner/issues/711
                         init_key = key
                         self.r[key] = value
 
-                    logger.debug(f"\t{init_key} = {item}")
+                    logger.debug("	%s = %s", init_key, item)
 
                 # [2] re-evaluate initial assignments
                 # https://github.com/sys-bio/roadrunner/issues/710
@@ -198,7 +201,7 @@ class SimulatorSerial:
                     self.r[key] = float(item.magnitude)
                 except AttributeError:
                     self.r[key] = float(item)
-                logger.debug(f"\t{key} = {item}")
+                logger.debug("	%s = %s", key, item)
 
             # run simulation
             integrator = self.r.integrator

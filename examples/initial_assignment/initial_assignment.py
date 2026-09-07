@@ -31,8 +31,8 @@ class AssignmentExperiment(SimulationExperiment):
 
     def tasks(self) -> dict[str, Task]:
         tasks = {}
-        for model_key in self._models.keys():
-            for sim_key in self._simulations.keys():
+        for model_key in self._models:
+            for sim_key in self._simulations:
                 tasks[f"task_{model_key}_{sim_key}"] = Task(
                     model=model_key, simulation=sim_key
                 )
@@ -78,7 +78,7 @@ class AssignmentExperiment(SimulationExperiment):
 
         colors = ["black", "blue", "red"]
         for ks, sim_key in enumerate(self._simulations.keys()):
-            for km, model_key in enumerate(self._models.keys()):
+            for _km, model_key in enumerate(self._models.keys()):
                 task_key = f"task_{model_key}_{sim_key}"
 
                 kwargs = {

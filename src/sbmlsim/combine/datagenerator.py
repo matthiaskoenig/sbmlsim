@@ -8,7 +8,7 @@ class DataGeneratorFunction:
     """DataGeneratorFunction."""
 
     def __call__(
-        self, xresults: dict[str, XResult], dsets: dict[str, DataSet] = None
+        self, xresults: dict[str, XResult], dsets: dict[str, DataSet] | None = None
     ) -> dict[str, XResult]:
         """Call the function."""
         raise NotImplementedError
@@ -49,7 +49,7 @@ class DataGenerator:
         self,
         f: DataGeneratorFunction,
         xresults: dict[str, XResult],
-        dsets: dict[str, DataSet] = None,
+        dsets: dict[str, DataSet] | None = None,
     ):
         """Initialize DataGenerator."""
         self.xresults = xresults

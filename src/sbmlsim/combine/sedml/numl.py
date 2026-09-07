@@ -42,11 +42,11 @@ class NumlParser:
         if errorlog.getNumFailsWithSeverity(libnuml.LIBNUML_SEV_FATAL) > 0:
             raise OSError(msg)
         if errorlog.getNumFailsWithSeverity(libnuml.LIBNUML_SEV_WARNING) > 0:
-            warnings.warn(msg)
+            warnings.warn(msg, stacklevel=2)
         if errorlog.getNumFailsWithSeverity(libnuml.LIBNUML_SEV_SCHEMA_ERROR) > 0:
-            warnings.warn(msg)
+            warnings.warn(msg, stacklevel=2)
         if errorlog.getNumFailsWithSeverity(libnuml.LIBNUML_SEV_GENERAL_WARNING) > 0:
-            warnings.warn(msg)
+            warnings.warn(msg, stacklevel=2)
 
         importlib.reload(libsbml)
         return doc_numl

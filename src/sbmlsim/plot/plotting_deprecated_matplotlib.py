@@ -86,7 +86,7 @@ def add_line(
         index_vecs = [xres.coords[dim].values for dim in dims]
         indices = list(itertools.product(*index_vecs))
         for k, item in enumerate(indices):
-            d = dict(zip(dims, item))
+            d = dict(zip(dims, item, strict=False))
             xi = Q_(xres[xid].isel(d).values, xres.uinfo[xid])
             yi = Q_(xres[yid].isel(d).values, xres.uinfo[yid])
             # FIXME: these conversions should not be necessary
@@ -189,7 +189,7 @@ def add_data(
         dset = DataSet.from_df(df=data, udict=None, ureg=None)
 
     if dset.empty:
-        logger.error(f"Empty dataset in adding data: {dset}")
+        logger.error("Empty dataset in adding data: %s", dset)
 
     if abs(xf - 1.0) > 1e-8:
         logger.warning("xf attributes are deprecated, use units instead.")

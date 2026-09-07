@@ -35,7 +35,7 @@ def create_all_omex() -> None:
             sedml_paths.append(SEDML_DIR / p)
 
     for p in sorted(sedml_paths):
-        logger.info(f"{p.name}")
+        logger.info("%s", p.name)
         create_omex_from_sedml(sedml_path=p, omex_path=OMEX_DIR / f"{p.stem}.omex")
 
 

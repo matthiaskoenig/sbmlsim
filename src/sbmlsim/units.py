@@ -21,6 +21,8 @@ from sbmlsim.console import console
 os.environ["PINT_ARRAY_PROTOCOL_FALLBACK"] = "0"
 
 
+from typing import ClassVar
+
 import pint
 from pint import Quantity, UnitRegistry
 from pint.errors import DimensionalityError, UndefinedUnitError
@@ -90,7 +92,7 @@ class UnitsInformation(MutableMapping):
         doc: libsbml.SBMLDocument = read_sbml(sbml)
         return UnitsInformation.from_sbml_doc(doc, ureg=ureg)
 
-    sbml_uids = [
+    sbml_uids: ClassVar[list[str]] = [
         "ampere",
         "farad",
         "joule",
@@ -137,7 +139,7 @@ class UnitsInformation(MutableMapping):
                 _ = ureg(key)
                 uid_dict[key] = key
             except UndefinedUnitError:
-                logger.debug(f"SBML unit kind can not be used in pint: '{key}'")
+                logger.debug("SBML unit kind can not be used in pint: '%s'", key)
 
         # map no units on dimensionless
         uid_dict[""] = "dimensionless"
@@ -164,8 +166,11 @@ class UnitsInformation(MutableMapping):
                 # check if identical
                 if q_uid != q:
                     logger.debug(
-                        f"SBML uid interpretation of '{uid}' does not match unit "
-                        f"registry: '{uid} = {q} != {q_uid}'."
+                        "SBML uid interpretation of '%s' does not match unit registry: '%s = %s != %s'.",
+                        uid,
+                        uid,
+                        q,
+                        q_uid,
                     )
                 else:
                     unit_str = uid
@@ -174,7 +179,7 @@ class UnitsInformation(MutableMapping):
                 definition = f"{uid} = {unit_str}"
                 ureg.define(definition)
 
-            logger.debug(f"{uid} = {unit_str} ({q})")
+            logger.debug("%s = %s (%s)", uid, unit_str, q)
             uid_dict[uid] = unit_str
 
         return uid_dict
@@ -238,14 +243,14 @@ class UnitsInformation(MutableMapping):
                         udict[f"[{sid}]"] = f"{substance_uid}/{volume_uid}"
                     elif not substance_uid:
                         logger.warning(
-                            f"Substance unit missing, "
-                            f"undefined concentration unit for '[{sid}]')"
+                            "Substance unit missing, undefined concentration unit for '[%s]')",
+                            sid,
                         )
                         udict[f"[{sid}]"] = ""
                     elif not volume_uid:
                         logger.warning(
-                            f"Volume unit missing, "
-                            f"undefined concentration unit for '[{sid}]')"
+                            "Volume unit missing, undefined concentration unit for '[%s]')",
+                            sid,
                         )
                         udict[f"[{sid}]"] = ""
 
@@ -270,8 +275,8 @@ class UnitsInformation(MutableMapping):
                         udict[sid] = uid
                     else:
                         logger.warning(
-                            f"DerivedUnit not in UnitDefinitions: "
-                            f"'{Units.udef_to_str(udef)}'"
+                            "DerivedUnit not in UnitDefinitions: '%s'",
+                            Units.udef_to_str(udef),
                         )
                         udict[sid] = Units.udef_to_str(udef)
 
@@ -280,7 +285,7 @@ class UnitsInformation(MutableMapping):
                 udef = model.getUnitDefinition(sid)
                 if udef is None:
                     # elements in packages
-                    logger.debug(f"No element found for id '{sid}'")
+                    logger.debug("No element found for id '%s'", sid)
 
         return UnitsInformation(udict=udict, ureg=ureg)
 
@@ -319,26 +324,27 @@ class UnitsInformation(MutableMapping):
                     item = item.to(uinfo[key])
                 except DimensionalityError as err:
                     logger.error(
-                        f"DimensionalityError "
-                        f"'{key} = {item}'. Check that model "
-                        f"units fit with changes units."
-                        f"\n{err}"
+                        "DimensionalityError '%s = %s'. Check that model units fit with changes units.\n%s",
+                        key,
+                        item,
+                        err,
                     )
                     raise err
                 except KeyError as err:
                     logger.error(
-                        f"KeyError: '{key}' does not exist in unit dictionary of model."
+                        "KeyError: '%s' does not exist in unit dictionary of model.",
+                        key,
                     )
                     raise err
             else:
                 logger.warning(
-                    f"No units provided, assuming dictionary units: {key} = {item}"
+                    "No units provided, assuming dictionary units: %s = %s", key, item
                 )
                 try:
                     # convert to model units
                     item = Q_(item, uinfo[key])
                 except DimensionalityError as err:
-                    logger.error(f"DimensionalityError '{key} = {item}'.\n{err}")
+                    logger.error("DimensionalityError '%s = %s'.\n%s", key, item, err)
 
             changes_normed[key] = item
 
@@ -354,7 +360,7 @@ class Units:
     """
 
     # abbreviation dictionary for string representation
-    _units_abbreviation = {
+    _units_abbreviation: ClassVar[dict[str, str]] = {
         "kilogram": "kg",
         "meter": "m",
         "metre": "m",
@@ -397,15 +403,9 @@ class Units:
             # (m * 10^s *k)^e
 
             # handle m
-            if np.isclose(m, 1.0):
-                m_str = ""
-            else:
-                m_str = str(m) + "*"
+            m_str = "" if np.isclose(m, 1.0) else str(m) + "*"
 
-            if np.isclose(abs(e), 1.0):
-                e_str = ""
-            else:
-                e_str = "^" + str(abs(e))
+            e_str = "" if np.isclose(abs(e), 1.0) else "^" + str(abs(e))
 
             # FIXME: handle unit prefixes;
 

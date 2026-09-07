@@ -44,7 +44,7 @@ class RepressilatorExperiment(SimulationExperiment):
 
     def tasks(self) -> dict[str, Task]:
         """Define tasks."""
-        tasks = dict()
+        tasks = {}
         for model in ["model1", "model2"]:
             tasks[f"task_{model}_tc"] = Task(model=model, simulation="tc")
         return tasks

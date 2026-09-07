@@ -1,3 +1,5 @@
+"""Example for the simulation of a model with COPASI via basico."""
+
 from pathlib import Path
 
 from basico import get_parameters, load_model, set_parameters

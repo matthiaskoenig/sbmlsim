@@ -169,6 +169,7 @@ class SBMLModelTarget:
             return "urn:sedml:symbol:concentration"
         if self.target_type == SBMLModelTargetType.TIME:
             return "urn:sedml:symbol:time"
+        return None
 
     @property
     def sedml_target(self) -> str | None:
@@ -185,6 +186,7 @@ class SBMLModelTarget:
             return f"/sbml:sbml/sbml:model/sbml:listOfSpecies/sbml:species[@id='{self.sid}']"
         if self.target_type == SBMLModelTargetType.TIME:
             return None
+        return None
 
     @staticmethod
     def sbmlsim_model_targets(
@@ -242,8 +244,8 @@ class SEDMLSerializer:
         exp_class: type[SimulationExperiment],
         working_dir: Path,
         sedml_filename: str,
-        omex_path: Path = None,
-        data_path: Path = None,
+        omex_path: Path | None = None,
+        data_path: Path | None = None,
     ):
         """Initialize SED-ML serializer."""
         self.experiment: type[SimulationExperiment] = exp_class
@@ -258,7 +260,7 @@ class SEDMLSerializer:
             data_path=data_path,
             base_path=None,
         )
-        self.exp: SimulationExperiment = list(runner.experiments.values())[0]
+        self.exp: SimulationExperiment = next(iter(runner.experiments.values()))
         # lookup of sbmlsim selections
         self.selection_lookup = self._selection_lookup_table()
 
@@ -310,6 +312,7 @@ class SEDMLSerializer:
             return f"{data.index}"
         if data.is_dataset():
             return f"{data.dset_id}__{data.index}"
+        return None
 
     def serialize_datasets(self):
         """Serialize sbmlsim.DataSets to libsedml.DataDescription.
@@ -497,7 +500,7 @@ class SEDMLSerializer:
                     else:
                         tc_id = f"{sim_id}_{k}"
                         logger.error(
-                            f"Concatenated timecourses not supported: '{tc_id}'"
+                            "Concatenated timecourses not supported: '%s'", tc_id
                         )
                     sed_uniform_tc.setId(tc_id)
                     sed_uniform_tc.setInitialTime(tc.start)
@@ -875,7 +878,7 @@ class SEDMLParser:
             self.models[mid] = self.parse_model(
                 sed_model, source=source, sed_changes=sed_changes
             )
-        logger.debug(f"models: {self.models}")
+        logger.debug("models: %s", self.models)
 
         # --- DataDescriptions ---
         self.data_descriptions: dict[str, dict[str, pd.Series]] = {}
@@ -894,7 +897,7 @@ class SEDMLParser:
             # dset = DataSet.from_df(df=df, ureg=None, udict=None)
             # self.datasets[did] = dset
 
-        logger.debug(f"data_descriptions: {self.data_descriptions}")
+        logger.debug("data_descriptions: %s", self.data_descriptions)
 
         # --- AlgorithmParameters ---
         self.algorithm_parameters: list[AlgorithmParameter] = []
@@ -903,14 +906,14 @@ class SEDMLParser:
             self.algorithm_parameters.append(
                 self.parse_algorithm_parameter(sed_alg_par)
             )
-        logger.debug(f"algorithm_parameters: {self.algorithm_parameters}")
+        logger.debug("algorithm_parameters: %s", self.algorithm_parameters)
 
         # --- Simulations ---
         self.simulations: dict[str, AbstractSim] = {}
         sed_sim: libsedml.SedSimulation
         for sed_sim in sed_doc.getListOfSimulations():
             self.simulations[sed_sim.getId()] = self.parse_simulation(sed_sim)
-        logger.debug(f"simulations: {self.simulations}")
+        logger.debug("simulations: %s", self.simulations)
 
         # --- Tasks ---
         self.tasks: dict[str, Task] = {}
@@ -1037,7 +1040,7 @@ class SEDMLParser:
                 print(sed_objective)
 
         print("-" * 80)
-        logger.debug(f"tasks: {self.tasks}")
+        logger.debug("tasks: %s", self.tasks)
 
         # --- Data ---
         # data is generated in the figures and reports
@@ -1049,7 +1052,7 @@ class SEDMLParser:
         for sed_style in sed_doc.getListOfStyles():
             self.styles[sed_style.getId()] = self.parse_style(sed_style)
 
-        logger.debug(f"styles: {self.styles}")
+        logger.debug("styles: %s", self.styles)
 
         # --- Outputs: Figures/Plots ---
         self.figures: dict[str, Figure] = {}
@@ -1082,7 +1085,7 @@ class SEDMLParser:
             if sed_output_id in single_plots:
                 self.figures[sed_output_id] = self._wrap_plot_in_figure(sed_output)
 
-        logger.debug(f"figures: {self.figures}")
+        logger.debug("figures: %s", self.figures)
 
         # --- Outputs: Reports---
         self.reports: dict[str, dict[str, Data]] = {}
@@ -1094,7 +1097,7 @@ class SEDMLParser:
                 report: dict[str, str] = self.parse_report(sed_report=sed_report)
                 self.reports[sed_output.getId()] = report
 
-        logger.debug(f"reports: {self.reports}")
+        logger.debug("reports: %s", self.reports)
 
         self.exp_class = self._create_experiment_class()
         self.experiment: SimulationExperiment = self.exp_class()
@@ -1159,7 +1162,7 @@ class SEDMLParser:
         if not class_name:
             class_name = "SedmlSimulationExperiment"
 
-        exp_class = type(
+        return type(
             class_name,
             (SimulationExperiment,),
             {
@@ -1173,7 +1176,6 @@ class SEDMLParser:
                 "reports": f_reports,
             },
         )
-        return exp_class
 
     def print_info(self) -> None:
         """Print information."""
@@ -1200,10 +1202,8 @@ class SEDMLParser:
         xpath = xpath.replace('"', "'")
         match = re.findall(r"id='(.*?)'", xpath)
         if (match is None) or (len(match) == 0):
-            warnings.warn(f"xpath could not be resolved: {xpath}")
-        target = match[0]
-
-        return target
+            warnings.warn(f"xpath could not be resolved: {xpath}", stacklevel=2)
+        return match[0]
 
     def parse_model(
         self,
@@ -1218,7 +1218,7 @@ class SEDMLParser:
         :param sed_model:
         :return:
         """
-        changes = dict()
+        changes = {}
         for sed_change in sed_changes:
             d = self.parse_change(sed_change)
             for xpath, value in d.items():
@@ -1233,7 +1233,7 @@ class SEDMLParser:
             logger.warning("No language attribute set on model, using SBML.")
             language = "urn:sedml:language:sbml"
 
-        model = AbstractModel(
+        return AbstractModel(
             source=source,
             sid=mid,
             name=sed_model.getName(),
@@ -1243,8 +1243,6 @@ class SEDMLParser:
             changes=changes,
             selections=None,
         )
-
-        return model
 
     def resolve_model_changes(self):
         """Resolve the original model sources and full change lists.
@@ -1271,7 +1269,7 @@ class SEDMLParser:
             changes which have to be applied in the list of changes.
             """
             # mid is node above
-            if mid in model_sources and not model_sources[mid] == mid:
+            if mid in model_sources and model_sources[mid] != mid:
                 # add changes for node
                 for c in model_changes[mid]:
                     changes.append(c)
@@ -1299,7 +1297,7 @@ class SEDMLParser:
         all_changes = {}
         mids = [m.getId() for m in self.sed_doc.getListOfModels()]
         for mid in mids:
-            source, changes = find_source(mid, changes=list())
+            source, changes = find_source(mid, changes=[])
             model_sources[mid] = source
             all_changes[mid] = changes[::-1]
 
@@ -1346,7 +1344,7 @@ class SEDMLParser:
             value = -1.0
             return {xpath: value}
 
-        logger.error(f"Unsupported change: {sed_change.getElementName()}")
+        logger.error("Unsupported change: %s", sed_change.getElementName())
         # TODO: libsedml.SEDML_CHANGE_REMOVEXML
         # TODO: libsedml.SEDML_CHANGE_ADDXML
         # TODO: libsedml.SEDML_CHANGE_CHANGEXML
@@ -1380,8 +1378,10 @@ class SEDMLParser:
             kisao=kisao, sim_type=sim_type
         ):
             logger.error(
-                f"Algorithm '{kisao}' unsupported for simulation "
-                f"'{sed_sim.getId()}' of  type '{sim_type}'"
+                "Algorithm '%s' unsupported for simulation '%s' of  type '%s'",
+                kisao,
+                sed_sim.getId(),
+                sim_type,
             )
 
         if sim_type == libsedml.SEDML_SIMULATION_UNIFORMTIMECOURSE:
@@ -1392,7 +1392,7 @@ class SEDMLParser:
 
             # FIXME: handle time offset correctly (either separate presimulation)
             # FIXME: important to have the correct numbers of points
-            tcsim = TimecourseSim(
+            return TimecourseSim(
                 timecourses=[
                     Timecourse(
                         start=initial_time,
@@ -1402,11 +1402,10 @@ class SEDMLParser:
                 ],
                 time_offset=output_start_time,
             )
-            return tcsim
 
         if sim_type == libsedml.SEDML_SIMULATION_ONESTEP:
             step: float = sed_sim.getStep()
-            tcsim = TimecourseSim(
+            return TimecourseSim(
                 timecourses=[
                     Timecourse(
                         start=0,
@@ -1415,10 +1414,10 @@ class SEDMLParser:
                     ),
                 ]
             )
-            return tcsim
 
         if sim_type == libsedml.SEDML_SIMULATION_STEADYSTATE:
             raise NotImplementedError("steady state simulation not yet supported")
+        return None
 
         # TODO/FIXME: handle all the algorithm parameters as integrator parameters
 
@@ -1428,7 +1427,7 @@ class SEDMLParser:
         dgs: list[libsedml.SedDataGenerator] = self.data_generators_for_task(sed_task)
         if len(dgs) == 0:
             logger.warning(
-                f"Task '{sed_task.getId()}' is not used in any DataGenerator."
+                "Task '%s' is not used in any DataGenerator.", sed_task.getId()
             )
 
         # tasks contain other subtasks, which can contain subtasks. This
@@ -1440,7 +1439,7 @@ class SEDMLParser:
         task_tree_root = TaskTree.from_sedml_task(self.sed_doc, root_task=sed_task)
 
         # go forward through task tree
-        tree_nodes = [n for n in task_tree_root]
+        tree_nodes = list(task_tree_root)
 
         for node in tree_nodes:
             task_type = node.task.getTypeCode()
@@ -1448,8 +1447,7 @@ class SEDMLParser:
             print(node.task)
             # Create simulation for task
             if task_type == libsedml.SEDML_TASK:
-                task = self._parse_simple_task(task_node=node)
-                return task
+                return self._parse_simple_task(task_node=node)
 
             # Repeated tasks are multi-dimensional scans
             if task_type == libsedml.SEDML_TASK_REPEATEDTASK:
@@ -1460,6 +1458,7 @@ class SEDMLParser:
 
             else:
                 raise ValueError(f"Unsupported task: {task_type}")
+        return None
 
     def _parse_simple_task(self, task_node: TaskNode) -> Task:
         """Parse simple task."""
@@ -1590,7 +1589,9 @@ class SEDMLParser:
                 continue
             label = sed_dataset.getLabel()
             if label in report:
-                logger.error(f"Duplicate label in report '{report.getId()}': '{label}'")
+                logger.error(
+                    "Duplicate label in report '%s': '%s'", report.getId(), label
+                )
 
             report[label] = sed_dg_id
         return report
@@ -1668,9 +1669,8 @@ class SEDMLParser:
             curve_type: CurveType
             if not sed_curve.isSetType():
                 logger.warning(
-                    f"No curve.type set on {sed_curve}, "
-                    f"defaulting to POINTS. It is highly "
-                    f"recommended to set curve.type."
+                    "No curve.type set on %s, defaulting to POINTS. It is highly recommended to set curve.type.",
+                    sed_curve,
                 )
                 curve_type = CurveType.POINTS
             else:
@@ -1824,7 +1824,7 @@ class SEDMLParser:
             elif sed_marker_type == libsedml.SEDML_MARKERTYPE_VDASH:
                 marker_type = MarkerType.VDASH
 
-        marker = Marker(
+        return Marker(
             size=sed_marker.getSize() if sed_marker.isSetSize() else None,
             type=marker_type,
             fill=ColorType(sed_marker.getFill()) if sed_marker.isSetFill() else None,
@@ -1835,8 +1835,6 @@ class SEDMLParser:
             if sed_marker.isSetLineColor()
             else None,
         )
-
-        return marker
 
     def parse_fill(self, sed_fill: libsedml.SedFill) -> Fill | None:
         """Parse fill information."""
@@ -1881,10 +1879,9 @@ class SEDMLParser:
         for sed_var in sed_dg.getListOfVariables():
             task_id = sed_var.getTaskReference()
             symbol = None
-            if sed_var.isSetSymbol():
-                if sed_var.getSymbol() == "urn:sedml:symbol:time":
-                    index = "time"
-                    symbol = Data.Symbols.TIME
+            if sed_var.isSetSymbol() and sed_var.getSymbol() == "urn:sedml:symbol:time":
+                index = "time"
+                symbol = Data.Symbols.TIME
             if sed_var.isSetTarget():
                 index = self.parse_xpath_target(sed_var.getTarget())
                 sed_symbol = sed_var.getSymbol() if sed_var.isSetSymbol() else None
@@ -1894,7 +1891,7 @@ class SEDMLParser:
                     elif symbol == "urn:sedml:symbol:concentration":
                         index = Data.Symbols.CONCENTRATION
                     else:
-                        logger.error(f"symbol not supported: '{symbol}'")
+                        logger.error("symbol not supported: '%s'", symbol)
 
             d_var = Data(index=index, symbol=symbol, task=task_id)
             # register data
@@ -1939,5 +1936,8 @@ class SEDMLParser:
 
         # sort by order, if all subtasks have order (not required)
         if all(subtask_order) is not None:
-            subtasks = [st for (stOrder, st) in sorted(zip(subtask_order, subtasks))]
+            subtasks = [
+                st
+                for (stOrder, st) in sorted(zip(subtask_order, subtasks, strict=False))
+            ]
         return subtasks

@@ -40,7 +40,7 @@ def interp(x, xp, fp):
     #
     # y = interpolate.splev(x, tck, der=0)
     if not np.all(np.isfinite(y)):
-        logger.error(f"NaN or Inf values in interpolation: {fp} -> {y}")
+        logger.error("NaN or Inf values in interpolation: %s -> %s", fp, y)
     return y
 
 
@@ -116,19 +116,18 @@ class MatplotlibFigureSerializer:
 
             # units
             if xax is None:
-                logger.warning(f"No xaxis in plot: {subplot}")
+                logger.warning("No xaxis in plot: %s", subplot)
                 ax1.spines["bottom"].set_color(Figure.fig_facecolor)
                 ax1.spines["top"].set_color(Figure.fig_facecolor)
             if yax is None:
-                logger.warning(f"No yaxis in plot: {subplot}")
+                logger.warning("No yaxis in plot: %s", subplot)
                 ax1.spines["right"].set_color(Figure.fig_facecolor)
                 ax1.spines["left"].set_color(Figure.fig_facecolor)
-            if (not xax) or (not yax):
-                if len(plot.curves) > 0:
-                    raise ValueError(
-                        f"xaxis and yaxis are required for plotting curves, but "
-                        f"'xaxis={xax}' and 'yaxis={yax}'."
-                    )
+            if ((not xax) or (not yax)) and len(plot.curves) > 0:
+                raise ValueError(
+                    f"xaxis and yaxis are required for plotting curves, but "
+                    f"'xaxis={xax}' and 'yaxis={yax}'."
+                )
 
             xunit = xax.unit if xax else None
             yunit_left = yax.unit if yax else None

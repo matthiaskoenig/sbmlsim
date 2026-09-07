@@ -1,3 +1,5 @@
+"""Base classes for the simulation of a model under conditions with different simulators."""
+
 from __future__ import annotations
 
 import uuid
@@ -29,6 +31,7 @@ class Change:
     """
 
     def __init__(self, target_id: str, value: float, unit: str | None):
+        """Initialize the change of a target."""
         self.target_id: str = target_id
         self.value: float = value
         self.unit: str = unit
@@ -38,6 +41,7 @@ class Condition:
     """Collection of assignments with a given id."""
 
     def __init__(self, sid: str, name: str | None, changes: list[Change] | None):
+        """Initialize the condition."""
         self.sid: str = sid
         self.name: str | None = name
         if changes is None:
@@ -86,7 +90,9 @@ class SimulateSBML:
         absolute_tolerance: float = 1e-8,
         relative_tolerance=1e-8,
     ):
-        """:param sbml_path: Path to SBML model.
+        """Initialize the simulator for a model.
+
+        :param sbml_path: Path to SBML model.
         :param results_dir: Path to results dir and intermediate results,
         :param absolute_tolerance: absolute tolerance for simulation
         :param relative_tolerance: relatvie tolerance for simulation
@@ -158,4 +164,4 @@ class SimulateSBML:
         )
 
     def simulate_condition(self, condition: Condition, timepoints: list[float]):
-        pass
+        """Simulate the condition at the timepoints, implemented by the subclasses."""

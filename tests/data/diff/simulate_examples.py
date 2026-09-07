@@ -43,7 +43,7 @@ def run_comparisons(create_files=True):
     simulation_keys = get_files_by_extension(diff_path)
     print(simulation_keys)
 
-    for simulation_key in simulation_keys.keys():
+    for simulation_key in simulation_keys:
         # run the comparison
         df_dict = {}
         for simulator_key in ["sbmlsim", "jws"]:

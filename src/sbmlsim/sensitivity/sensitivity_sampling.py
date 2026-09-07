@@ -23,7 +23,7 @@ methods.
 """
 
 from pathlib import Path
-from typing import Any
+from typing import Any, ClassVar
 
 import numpy as np
 import pandas as pd
@@ -47,7 +47,7 @@ from sbmlsim.sensitivity.parameters import SensitivityParameter
 class SamplingSensitivityAnalysis(SensitivityAnalysis):
     """Sensitivity/uncertainty analysis based on sampling."""
 
-    sensitivity_keys = [
+    sensitivity_keys: ClassVar[list[str]] = [
         "mean",
         "median",
         "std",
@@ -70,6 +70,7 @@ class SamplingSensitivityAnalysis(SensitivityAnalysis):
         n_cores: int | None = None,
         cache_results: bool = False,
     ):
+        """Initialize the sampling analysis with N samples per group."""
         super().__init__(
             sensitivity_simulation=sensitivity_simulation,
             parameters=parameters,
@@ -166,6 +167,7 @@ class SamplingSensitivityAnalysis(SensitivityAnalysis):
         self,
         df_path: Path,
     ):
+        """Write the sampling sensitivities as a table to the given path."""
         # dataframe with the values
         items = []
         for group in self.groups:

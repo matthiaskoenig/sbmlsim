@@ -15,7 +15,7 @@ class MidazolamSimulationExperiment(SimulationExperiment):
 
     def models(self) -> dict[str, AbstractModel]:
         Q_ = self.Q_
-        models = {
+        return {
             "model": AbstractModel(
                 source=MODEL_PATH,
                 language_type=AbstractModel.LanguageType.SBML,
@@ -27,7 +27,6 @@ class MidazolamSimulationExperiment(SimulationExperiment):
                 },
             )
         }
-        return models
 
     def tasks(self) -> dict[str, Task]:
         if self.simulations():
@@ -71,7 +70,4 @@ def exclude_parameters_midazolam(pid: str) -> bool:
         return True
     if pid.startswith("F_"):
         return True
-    if pid.startswith("BP_"):
-        return True
-
-    return False
+    return bool(pid.startswith("BP_"))

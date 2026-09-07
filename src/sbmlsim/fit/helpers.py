@@ -73,7 +73,9 @@ def filtered_fit_experiments(
                     all_info.append(info)
                 except Exception as err:
                     logger.error(
-                        f"Error in metadata for experiment '{experiment_name}', {fm_key=}"
+                        "Error in metadata for experiment '%s', fm_key=%r",
+                        experiment_name,
+                        fm_key,
                     )
                     raise err
 

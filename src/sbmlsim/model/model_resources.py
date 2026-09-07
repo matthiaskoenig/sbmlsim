@@ -61,11 +61,8 @@ class Source:
 
         # is path
         if content is None:
-            if base_dir:
-                path = Path(base_dir) / Path(source)
-            else:
-                # uses current working dir as base_dir
-                path = Path(source).resolve()
+            # without a base_dir the current working directory is the base
+            path = Path(base_dir) / Path(source) if base_dir else Path(source)
             path = path.resolve()
             if not path.exists():
                 raise OSError(
@@ -87,7 +84,7 @@ def is_http(source: str) -> bool:
 
 def model_from_urn(urn: str) -> str:
     """Get model string from given URN."""
-    logger.debug(f"Loading model from urn: {urn}")
+    logger.debug("Loading model from urn: %s", urn)
     if "biomodel" in urn:
         mid = parse_biomodels_mid(urn)
         content = model_from_biomodels(mid)
@@ -109,9 +106,10 @@ def model_from_url(url: str) -> str:
     if url.startswith("https://www.ebi.ac.uk/biomodels-main/download?mid="):
         mid = parse_biomodels_mid(url)
         logger.error(
-            f"Use of deprecated biomodels URL '{url}',"
-            f"use updated url instead: "
-            f"'https://www.ebi.ac.uk/biomodels/model/download/{mid}?filename={mid}_url.xml'"
+            "Use of deprecated biomodels URL '%s',use updated url instead: 'https://www.ebi.ac.uk/biomodels/model/download/%s?filename=%s_url.xml'",
+            url,
+            mid,
+            mid,
         )
         return model_from_biomodels(mid)
 
@@ -155,7 +153,7 @@ def model_from_biomodels(mid: str) -> str:
         )
     except (TypeError, KeyError) as err:
         logger.error(
-            f"Filename of 'main' file could not be resolved from response: '{json}'"
+            "Filename of 'main' file could not be resolved from response: '%s'", json
         )
         raise err
 

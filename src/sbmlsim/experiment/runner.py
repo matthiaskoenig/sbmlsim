@@ -91,7 +91,7 @@ class ExperimentRunner:
                     f"'{type(exp_class)}'."
                 )
 
-            logger.debug(f"Initialize SimulationExperiment: {exp_class.__name__}")
+            logger.debug("Initialize SimulationExperiment: %s", exp_class.__name__)
             experiment: SimulationExperiment = exp_class(
                 base_path=self.base_path,
                 data_path=self.data_path,
@@ -132,7 +132,7 @@ class ExperimentRunner:
         experiment: SimulationExperiment
         for sid, experiment in self.experiments.items():
             console.rule(style="white")
-            logger.info(f"Running SimulationExperiment: '{sid}'")
+            logger.info("Running SimulationExperiment: '%s'", sid)
 
             # ExperimentResult used to create report
             result = experiment.run(

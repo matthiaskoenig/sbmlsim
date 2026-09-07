@@ -3,7 +3,7 @@
 import logging
 import webbrowser
 from pathlib import Path
-from typing import Any
+from typing import Any, ClassVar
 
 import matplotlib
 import numpy as np
@@ -72,7 +72,7 @@ class OptimizationAnalysis:
         # the results directory uses the hash of the OptimizationResult
         results_dir: Path = output_dir / self.sid / output_name
         if not results_dir.exists():
-            logger.warning(f"create output directory: '{results_dir}'")
+            logger.warning("create output directory: '%s'", results_dir)
             results_dir.mkdir(parents=True, exist_ok=True)
         self.results_dir = results_dir
 
@@ -83,7 +83,7 @@ class OptimizationAnalysis:
         if kwargs:
             for key, value in kwargs.items():
                 logger.warning(
-                    f"Unsupported argument to OptimizationAnalysis '{key}: {value}'."
+                    "Unsupported argument to OptimizationAnalysis '%s: %s'.", key, value
                 )
 
         if op:
@@ -202,7 +202,7 @@ class OptimizationAnalysis:
         plt.rcParams.update(rc_params_copy)
 
         logger.warning("-" * 80)
-        logger.warning(f"Analysis finished: file://{self.results_dir / 'index.html'!s}")
+        logger.warning("Analysis finished: file://%s", self.results_dir / "index.html")
         logger.warning("-" * 80)
 
         webbrowser.open(f"file://{self.results_dir / 'index.html'!s}", new=2)
@@ -555,7 +555,7 @@ class OptimizationAnalysis:
             ],
         )
 
-    kwargs_scatter = {
+    kwargs_scatter: ClassVar[dict[str, Any]] = {
         "markersize": "10",
         "markeredgecolor": "black",
         "alpha": 0.7,

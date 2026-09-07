@@ -33,7 +33,7 @@ class CurveTypesExperiment(SimulationExperiment):
 
     def tasks(self) -> dict[str, Task]:
         """Define tasks."""
-        tasks = dict()
+        tasks = {}
         for model in ["model"]:
             tasks[f"task_{model}_tc"] = Task(model=model, simulation="tc")
         return tasks

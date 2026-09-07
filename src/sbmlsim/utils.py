@@ -57,9 +57,7 @@ def timeit(function):
             kw["log_time"][name] = int((te - ts) * 1000)
         else:
             logger.info(
-                "{:20}  {:8.4f} [s]".format(
-                    f"{function.__name__} <{os.getpid()}>", (te - ts)
-                )
+                "%-20s  %8.4f [s]", f"{function.__name__} <{os.getpid()}>", te - ts
             )
         return result
 

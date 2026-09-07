@@ -11,7 +11,9 @@ class Report:
     Collections of data generators.
     """
 
-    def __init__(self, sid: str, name: str = None, datasets: dict[str, str] = None):
+    def __init__(
+        self, sid: str, name: str | None = None, datasets: dict[str, str] | None = None
+    ):
         """Construct report."""
         self.sid: str = sid
         self.name: str = name
@@ -24,5 +26,7 @@ class Report:
     def add_dataset(self, label: str, data_id: str) -> None:
         """Add dataset for given label."""
         if label in self.datasets:
-            logger.warning(f"label '{label}' does already exist in report '{self.sid}'")
+            logger.warning(
+                "label '%s' does already exist in report '%s'", label, self.sid
+            )
         self.datasets[label] = data_id

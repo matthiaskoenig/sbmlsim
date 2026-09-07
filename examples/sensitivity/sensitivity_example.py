@@ -131,7 +131,7 @@ if __name__ == "__main__":
 
     settings = {
         "cache_results": False,
-        "n_cores": int(round(0.9 * multiprocessing.cpu_count())),
+        "n_cores": round(0.9 * multiprocessing.cpu_count()),
         "seed": 1234,
     }
 

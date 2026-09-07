@@ -30,6 +30,7 @@ References:
 """
 
 from pathlib import Path
+from typing import ClassVar
 
 import numpy as np
 import SALib
@@ -59,7 +60,7 @@ class FASTSensitivityAnalysis(SensitivityAnalysis):
         Cukier et al. (1973); Saltelli et al. (1999)
     """
 
-    sensitivity_keys = ["S1", "ST", "S1_conf", "ST_conf"]
+    sensitivity_keys: ClassVar[list[str]] = ["S1", "ST", "S1_conf", "ST_conf"]
 
     def __init__(
         self,

@@ -104,14 +104,16 @@ def run_optimization(
         n_cores = max(1, multiprocessing.cpu_count() - 1)
     if n_cores > cpu_count:
         n_cores = max(1, multiprocessing.cpu_count() - 1)
-        logger.error(f"More cores then cpus requested, reducing cores to '{n_cores}'")
+        logger.error("More cores then cpus requested, reducing cores to '%s'", n_cores)
 
     console.rule("Start optimization", align="left", style="white")
     console.log(f"Running {n_cores} workers")
     if size < n_cores:
         logger.warning(
-            f"Less simulations then cores: '{size} < {n_cores}', "
-            f"increasing number of simulations to '{n_cores}'."
+            "Less simulations then cores: '%s < %s', increasing number of simulations to '%s'.",
+            size,
+            n_cores,
+            n_cores,
         )
         size = n_cores
 
@@ -168,7 +170,7 @@ def worker(kwargs) -> OptimizationResult:
     """Worker for running optimization problem."""
     lock.acquire()
     try:
-        logger.info(f"worker <{os.getpid()}> running optimization ...")
+        logger.info("worker <%s> running optimization ...", os.getpid())
     finally:
         lock.release()
 

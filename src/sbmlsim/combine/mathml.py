@@ -16,15 +16,14 @@ def formula_to_astnode(formula: str) -> libsedml.ASTNode:
     """Parse ASTNode from formula."""
     astnode = libsedml.parseL3Formula(formula)
     if not astnode:
-        logger.error(f"Formula could not be parsed: '{formula}'")
+        logger.error("Formula could not be parsed: '%s'", formula)
         logger.error(libsedml.getLastParseL3Error())
     return astnode
 
 
 def astnode_to_formula(astnode: libsedml.ASTNode) -> str:
     """Write ASTNode as formula."""
-    formula = libsedml.formulaToL3String(astnode)
-    return formula
+    return libsedml.formulaToL3String(astnode)
 
 
 def parse_mathml_str(mathml_str: str):
@@ -61,10 +60,9 @@ def parse_astnode(astnode: libsedml.ASTNode) -> Any:
     # variables = _get_variables(astnode)
 
     # create sympy expression
-    expr = expr_from_formula(formula)
+    return expr_from_formula(formula)
 
     # print(formula, expr)
-    return expr
 
 
 def expr_from_formula(formula: str):
@@ -86,17 +84,14 @@ def expr_from_formula(formula: str):
     #    ns[variable] = symbol
     #    symbols.append(symbol)
     # expr = sympify(formula, locals=ns)
-    expr = sympify(formula)
-
-    return expr
+    return sympify(formula)
 
 
 def evaluate(astnode: libsedml.ASTNode, variables: dict):
     """Evaluate the astnode with values."""
     expr = parse_astnode(astnode)
     f = lambdify(args=list(expr.free_symbols), expr=expr)
-    res = f(**variables)
-    return res
+    return f(**variables)
 
 
 def _get_variables(astnode: libsedml.ASTNode, variables=None) -> set[str]:

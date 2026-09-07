@@ -1,3 +1,8 @@
+"""Task trees of SED-ML and their translation into python code.
+
+The code generation is the legacy approach of tellurium, it is kept for reference.
+"""
+
 import logging
 import warnings
 
@@ -12,19 +17,23 @@ class TaskNode:
     """Tree implementation of task tree."""
 
     def __init__(self, task: libsedml.SedAbstractTask, depth: int):
+        """Initialize the node for the task at the given depth."""
         self.task = task
         self.depth = depth
         self.children = []
         self.parent = None
 
     def add_child(self, obj):
+        """Add a child node."""
         obj.parent = self
         self.children.append(obj)
 
     def is_leaf(self):
+        """Check if the node has no children."""
         return len(self.children) == 0
 
     def __str__(self) -> str:
+        """Render the subtree, one line per node."""
         lines = [f"<[{self.depth}] {self.task.getId()} ({self.task.getElementName()})>"]
         for child in self.children:
             child_str = child.__str__()
@@ -32,16 +41,17 @@ class TaskNode:
         return "\n".join(lines)
 
     def info(self) -> str:
+        """Render the node."""
         return f"<[{self.depth}] {self.task.getId()} ({self.task.getElementName()})>"
 
     def __iter__(self):
         """Depth-first iterator which yields TaskNodes."""
         yield self
         for child in self.children:
-            for node in child:
-                yield node
+            yield from child
 
     def __repr__(self) -> str:
+        """Render the node."""
         return self.info()
 
 
@@ -49,39 +59,48 @@ class Stack:
     """Stack implementation for nodes."""
 
     def __init__(self):
+        """Initialize the empty stack."""
         self.items = []
 
     def isEmpty(self):
+        """Check if the stack is empty."""
         return self.items == []
 
     def push(self, item):
+        """Push an item on the stack."""
         self.items.append(item)
 
     def pop(self):
+        """Pop the top item."""
         return self.items.pop()
 
     def peek(self):
+        """Return the top item without removing it."""
         return self.items[len(self.items) - 1]
 
     def size(self):
+        """Number of items on the stack."""
         return len(self.items)
 
     def __str__(self):
+        """Render the stack."""
         return "stack: " + str([item.info() for item in self.items])
 
 
 class TaskTree:
+    """Tree of the tasks of a SED-ML document."""
+
     @staticmethod
     def from_sedml_task(
         sed_task: libsedml.SedDocument, root_task: libsedml.SedAbstractTask
     ) -> TaskNode:
-        """Creates task tree for given SedTask
+        """Creates task tree for given SedTask.
 
         The task tree is used to resolve the order of all simulations.
         """
 
         def add_children(node):
-            """Adds task children to given node"""
+            """Adds task children to given node."""
             typeCode = node.task.getTypeCode()
             if typeCode == libsedml.SEDML_TASK:
                 return  # no children
@@ -115,7 +134,10 @@ class TaskTree:
         subtaskOrder: list[int] = [st.getOrder() for st in subtasks]
         # sort by order, if all subtasks have order (not required)
         if all(subtaskOrder) is not None:
-            subtasks = [st for (stOrder, st) in sorted(zip(subtaskOrder, subtasks))]
+            subtasks = [
+                st
+                for (stOrder, st) in sorted(zip(subtaskOrder, subtasks, strict=False))
+            ]
         return subtasks
 
 
@@ -123,10 +145,12 @@ class TaskTree:
 
 
 class SEDMLCodeFactory:
-    pass
+    """Placeholder of the code factory, not implemented."""
 
 
 class Test:
+    """Translation of tasks into python code, kept for reference."""
+
     @staticmethod
     def simpleTaskToPython(doc, node: TaskNode):
         """Creates the simulation python code for a given taskNode.
@@ -154,7 +178,8 @@ class Test:
         algorithm = simulation.getAlgorithm()
         if algorithm is None:
             warnings.warn(
-                "Algorithm missing on simulation, defaulting to 'cvode: KISAO:0000019'"
+                "Algorithm missing on simulation, defaulting to 'cvode: KISAO:0000019'",
+                stacklevel=2,
             )
             algorithm = simulation.createAlgorithm()
             algorithm.setKisaoID("KISAO:0000019")
@@ -165,7 +190,8 @@ class Test:
             kisao=kisao, sim_type=simType
         ):
             warnings.warn(
-                f"Algorithm {kisao} unsupported for simulation {simulation.getId()} type {simType} in task {task.getId()}"
+                f"Algorithm {kisao} unsupported for simulation {simulation.getId()} type {simType} in task {task.getId()}",
+                stacklevel=2,
             )
             lines.append(
                 f"# Unsupported Algorithm {kisao} for SimulationType {simulation.getElementName()}"
@@ -175,7 +201,9 @@ class Test:
         # set integrator/solver
         integratorName = SEDMLCodeFactory.integrator_from_kisao(kisao)
         if not integratorName:
-            warnings.warn(f"No integrator exists for {kisao} in roadrunner")
+            warnings.warn(
+                f"No integrator exists for {kisao} in roadrunner", stacklevel=2
+            )
             return lines
 
         if simType is libsedml.SEDML_SIMULATION_STEADYSTATE:
@@ -201,10 +229,7 @@ class Test:
             pkey = SEDMLCodeFactory.algorithm_parameter_to_parameter_key(par)
             # only set supported algorithm paramters
             if pkey:
-                if pkey.dtype is str:
-                    value = f"'{pkey.value}'"
-                else:
-                    value = pkey.value
+                value = f"'{pkey.value}'" if pkey.dtype is str else pkey.value
 
                 if value == "inf" or pkey.value == float("inf"):
                     value = "float('inf')"
@@ -367,7 +392,9 @@ class Test:
         elif masterRange.getTypeCode() == libsedml.SEDML_RANGE_VECTORRANGE:
             lines.extend(SEDMLCodeFactory.vectorRangeToPython(masterRange))
         elif masterRange.getTypeCode() == libsedml.SEDML_RANGE_FUNCTIONALRANGE:
-            warnings.warn("FunctionalRange for master range not supported in task.")
+            warnings.warn(
+                "FunctionalRange for master range not supported in task.", stacklevel=2
+            )
         # lock-in ranges
         for r in task.getListOfRanges():
             if r.getId() != rangeId:
@@ -425,7 +452,7 @@ class Test:
 
         # <resetModels>
         # models to reset via task tree below node
-        mids = set([])
+        mids = set()
         for child in node:
             t = child.task_id
             if t.getTypeCode() == libsedml.SEDML_TASK:
@@ -447,12 +474,7 @@ class Test:
 
     @staticmethod
     def uniformRangeToPython(r):
-        """Create python lines for uniform range.
-        :param r:
-        :type r:
-        :return:
-        :rtype:
-        """
+        """Create python lines for a uniform range."""
         lines = []
         rId = r.getId()
         rStart = r.getStart()
@@ -468,11 +490,14 @@ class Test:
                 f"__range__{rId} = np.logspace(start={rStart}, stop={rEnd}, num={rPoints})"
             )
         else:
-            warnings.warn(f"Unsupported range type in UniformRange: {rType}")
+            warnings.warn(
+                f"Unsupported range type in UniformRange: {rType}", stacklevel=2
+            )
         return lines
 
     @staticmethod
     def vectorRangeToPython(r):
+        """Create python lines for a vector range."""
         lines = []
         __range = np.zeros(shape=[r.getNumValues()])
         for k, v in enumerate(r.getValues()):

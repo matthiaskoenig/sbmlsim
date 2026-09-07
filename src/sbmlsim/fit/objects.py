@@ -90,10 +90,9 @@ class FitExperiment:
             # the weights are calculated dynamically by evaluating the fit mappings.
             if weights_processed != mapping_weights:
                 logger.error(
-                    f"Either 'weights' can be set on a FitExperiment or the weight of "
-                    f"the FitMapping can be used via the 'use_mapping_weights=True' "
-                    f"flag.\n"
-                    f"Weights were provided: '{weights}' in {self!s}"
+                    "Either 'weights' can be set on a FitExperiment or the weight of the FitMapping can be used via the 'use_mapping_weights=True' flag.\nWeights were provided: '%s' in %s",
+                    weights,
+                    self,
                 )
         else:
             # weights processing
@@ -195,10 +194,10 @@ class FitMapping:
             return self._weight
         try:
             return self.reference.count
-        except AttributeError:
+        except AttributeError as err:
             msg = f"Count data missing on FitMapping: '{self}'"
             logger.error(msg)
-            raise AttributeError(msg)
+            raise AttributeError(msg) from err
 
     def __str__(self) -> str:
         """Get string."""
@@ -238,7 +237,8 @@ class FitParameter:
         self.unit = unit
         if unit is None:
             logger.warning(
-                f"No unit provided for FitParameter '{self.pid}', assuming model units."
+                "No unit provided for FitParameter '%s', assuming model units.",
+                self.pid,
             )
 
     def __eq__(self, other: object) -> bool:
@@ -339,7 +339,7 @@ class FitData:
                 counts = count_data.get_data(self.experiment)
                 counts_unique = np.unique(counts.magnitude)
                 if counts_unique.size > 1:
-                    logger.warning(f"count is not unique for dataset: '{counts}'")
+                    logger.warning("count is not unique for dataset: '%s'", counts)
                 count = int(counts[0].magnitude)
             else:
                 raise ValueError(
@@ -442,7 +442,7 @@ class FitData:
         """
         result = FitDataInitialized()
         for key in ["x", "y", "x_sd", "x_se", "y_sd", "y_se"]:
-            logger.debug(f"FitData.get_data: {self}.{key}")
+            logger.debug("FitData.get_data: %s.%s", self, key)
             d = getattr(self, key)
             if d is not None:
                 setattr(result, key, d.get_data(self.experiment))

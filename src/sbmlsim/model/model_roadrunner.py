@@ -3,6 +3,7 @@
 import logging
 import tempfile
 from pathlib import Path
+from typing import ClassVar
 
 import libsbml
 import numpy as np
@@ -20,7 +21,7 @@ logger = logging.getLogger(__name__)
 class RoadrunnerSBMLModel(AbstractModel):
     """Roadrunner model wrapper."""
 
-    IntegratorSettingKeys = {
+    IntegratorSettingKeys: ClassVar[set[str]] = {
         "variable_step_size",
         "stiff",
         "absolute_tolerance",
@@ -38,6 +39,7 @@ class RoadrunnerSBMLModel(AbstractModel):
         ureg: UnitRegistry = None,
         settings: dict | None = None,
     ):
+        """Load the model into roadrunner, with changes, selections and settings."""
         super().__init__(
             source=source,
             language_type=AbstractModel.LanguageType.SBML,
@@ -153,11 +155,11 @@ class RoadrunnerSBMLModel(AbstractModel):
     @classmethod
     def copy_roadrunner_model(cls, r: roadrunner.RoadRunner) -> roadrunner.RoadRunner:
         """Copy roadrunner model by using the state."""
-        ftmp = tempfile.NamedTemporaryFile()
-        filename = ftmp.name
-        r.saveState(filename)
-        r2 = roadrunner.RoadRunner()
-        r2.loadState(filename)
+        with tempfile.NamedTemporaryFile() as ftmp:
+            filename = ftmp.name
+            r.saveState(filename)
+            r2 = roadrunner.RoadRunner()
+            r2.loadState(filename)
         return r2
 
     def parse_units(self, ureg: UnitRegistry) -> UnitsInformation:
@@ -178,9 +180,14 @@ class RoadrunnerSBMLModel(AbstractModel):
         if selections is None:
             r_model: roadrunner.ExecutableModel = r.model
 
-            r.timeCourseSelections = (
-                ["time", *r_model.getFloatingSpeciesIds(), *r_model.getBoundarySpeciesIds(), *r_model.getGlobalParameterIds(), *r_model.getReactionIds(), *r_model.getCompartmentIds()]
-            )
+            r.timeCourseSelections = [
+                "time",
+                *r_model.getFloatingSpeciesIds(),
+                *r_model.getBoundarySpeciesIds(),
+                *r_model.getGlobalParameterIds(),
+                *r_model.getReactionIds(),
+                *r_model.getCompartmentIds(),
+            ]
             r.timeCourseSelections += [
                 f"[{key}]"
                 for key in (
@@ -208,7 +215,7 @@ class RoadrunnerSBMLModel(AbstractModel):
         for key, value in kwargs.items():
             if key not in RoadrunnerSBMLModel.IntegratorSettingKeys:
                 logger.debug(
-                    f"Unsupported integrator key for roadrunner integrator: '{key}'"
+                    "Unsupported integrator key for roadrunner integrator: '%s'", key
                 )
                 continue
 
@@ -221,7 +228,7 @@ class RoadrunnerSBMLModel(AbstractModel):
                     value = min(value, value * min(compartment_values))
 
             integrator.setValue(key, value)
-            logger.debug(f"Integrator setting: '{key} = {value}'")
+            logger.debug("Integrator setting: '%s = %s'", key, value)
         return integrator
 
     @staticmethod

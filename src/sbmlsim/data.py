@@ -5,6 +5,7 @@ from __future__ import annotations
 import logging
 from enum import Enum
 from pathlib import Path
+from typing import ClassVar
 
 import pandas as pd
 
@@ -44,12 +45,12 @@ class Data:
         self,
         index: str,
         symbol: Symbols | None = None,
-        task: str = None,
-        dataset: str = None,
-        function: str = None,
-        variables: dict[str, Data] = None,
-        parameters: dict[str, float] = None,
-        sid: str = None,
+        task: str | None = None,
+        dataset: str | None = None,
+        function: str | None = None,
+        variables: dict[str, Data] | None = None,
+        parameters: dict[str, float] | None = None,
+        sid: str | None = None,
     ):
         """Construct data."""
         # FIXME: get rid of backwards compatibility
@@ -58,8 +59,10 @@ class Data:
                 index = index[1:-1]
                 symbol = Data.Symbols.CONCENTRATION
                 logger.debug(
-                    f"Encoding concentration '[{index}]' as 'index={index}' "
-                    f"and 'symbol={symbol}'."
+                    "Encoding concentration '[%s]' as 'index=%s' and 'symbol=%s'.",
+                    index,
+                    index,
+                    symbol,
                 )
             else:
                 symbol = Data.Symbols.AMOUNT
@@ -140,7 +143,7 @@ class Data:
             name = self.index
         elif dtype == Data.Types.FUNCTION:
             if len(self.variables) == 1:
-                name = list(self.variables.values())[0].index
+                name = next(iter(self.variables.values())).index
             else:
                 name = self.index
         return name
@@ -169,7 +172,7 @@ class Data:
         #        it is serialized. Currently only the plotted variables are
         #        evaluated (-> units can not be resolved for the remainder).
 
-        d = {
+        return {
             "type": self.dtype,
             "index": self.index,
             "unit": self.unit,
@@ -178,12 +181,11 @@ class Data:
             "function": self.function,
             "variables": self.variables if self.variables else None,
         }
-        return d
 
     def get_data(
         self,
         experiment,  # "SimulationExperiment"
-        to_units: str = None,
+        to_units: str | None = None,
     ) -> Quantity:
         """Return actual data from the data object.
 
@@ -206,7 +208,7 @@ class Data:
                     f"{dset}"
                 )
             if dset.empty:
-                logger.error(f"Adding empty dataset '{dset}' for '{self.dset_id}'.")
+                logger.error("Adding empty dataset '%s' for '%s'.", dset, self.dset_id)
 
             # data with units
             if self.index.endswith("_se") or self.index.endswith("_sd"):
@@ -225,8 +227,9 @@ class Data:
                 self.unit = dset.uinfo[uindex]
             except KeyError as err:
                 logger.error(
-                    f"Units missing for key '{uindex}' in dataset: "
-                    f"'{self.dset_id}'. Add missing units to dataset."
+                    "Units missing for key '%s' in dataset: '%s'. Add missing units to dataset.",
+                    uindex,
+                    self.dset_id,
                 )
                 raise err
             x = dset[self.index].values * dset.uinfo.ureg(dset.uinfo[uindex])
@@ -265,15 +268,19 @@ class Data:
                 x = x.to(to_units)
             except DimensionalityError as err:
                 logger.error(
-                    f"Could not convert '{self!s}' to units '{to_units}' with "
-                    f"data \n'{x}'"
+                    "Could not convert '%s' to units '%s' with data \n'%s'",
+                    self,
+                    to_units,
+                    x,
                 )
                 raise err
             except AttributeError as err:
                 logger.error(
-                    f"Could not convert '{self!s}' with "
-                    f"data '{x} ({type(x)})' to "
-                    f"units '{to_units}'"
+                    "Could not convert '%s' with data '%s (%s)' to units '%s'",
+                    self,
+                    x,
+                    type(x),
+                    to_units,
                 )
                 raise err
 
@@ -284,7 +291,7 @@ class DataSeries(pd.Series):
     """DataSet - a pd.Series with additional unit information."""
 
     # additional properties
-    _metadata = ["uinfo"]
+    _metadata: ClassVar[list[str]] = ["uinfo"]
 
     @property
     def _constructor(self):
@@ -296,14 +303,10 @@ class DataSeries(pd.Series):
 
 
 class DataSet(pd.DataFrame):
-    """DataSet.
-
-     pd.DataFrame with additional unit information in the form
-    of UnitInformations.
-    """
+    """DataSet, a pd.DataFrame with additional unit information."""
 
     # additional properties
-    _metadata = ["uinfo", "Q_"]
+    _metadata: ClassVar[list[str]] = ["uinfo", "Q_"]
 
     @property
     def _constructor(self):
@@ -332,7 +335,7 @@ class DataSet(pd.DataFrame):
 
     @classmethod
     def from_df(
-        cls, df: pd.DataFrame, ureg: UnitRegistry, udict: dict[str, str] = None
+        cls, df: pd.DataFrame, ureg: UnitRegistry, udict: dict[str, str] | None = None
     ) -> DataSet:
         """Create DataSet from given pandas.DataFrame.
 
@@ -368,14 +371,14 @@ class DataSet(pd.DataFrame):
                 units = df[key].unique()
                 if len(units) > 1:
                     logger.error(
-                        f"Column '{key}' units are not unique: '{units}' in \n{df}"
+                        "Column '%s' units are not unique: '%s' in \n%s", key, units, df
                     )
                 elif len(units) == 0:
-                    logger.error(f"Column '{key}' units are missing: '{units}'")
+                    logger.error("Column '%s' units are missing: '%s'", key, units)
                 item_key = key[0:-5]
                 if item_key not in df.columns:
                     logger.error(
-                        f"Missing * column '{item_key}' for unit column: '{key}'"
+                        "Missing * column '%s' for unit column: '%s'", item_key, key
                     )
                 else:
                     all_udict[item_key] = units[0]
@@ -389,8 +392,8 @@ class DataSet(pd.DataFrame):
                         unit_keys = df.unit.unique()
                         if len(df.unit.unique()) > 1:
                             logger.error(
-                                f"More than one unit in 'unit' column will create issues in "
-                                f"unit conversion, filter data to reduce units: '{df.unit.unique()}'"
+                                "More than one unit in 'unit' column will create issues in unit conversion, filter data to reduce units: '%s'",
+                                df.unit.unique(),
                             )
                         udict[key] = unit_keys[0]
 
@@ -407,9 +410,9 @@ class DataSet(pd.DataFrame):
                                     # remove existing mean_sd column
                                     del df[f"mean_{err_key}"]
                                     logger.warning(
-                                        f"Removing existing column: 'mean_{err_key}' "
-                                        f"from DataSet. Column should be named: "
-                                        f"'{err_key}'"
+                                        "Removing existing column: 'mean_%s' from DataSet. Column should be named: '%s'",
+                                        err_key,
+                                        err_key,
                                     )
 
                                 df.rename(
@@ -429,7 +432,7 @@ class DataSet(pd.DataFrame):
         if udict:
             for key, unit in udict.items():
                 if key in all_udict:
-                    logger.error(f"Duplicate unit definition for: '{key}'")
+                    logger.error("Duplicate unit definition for: '%s'", key)
                 else:
                     all_udict[key] = unit
                     # add the unit columns to the data frame
@@ -500,7 +503,9 @@ class DataSet(pd.DataFrame):
                 self[f"{key}_unit"] = new_units_str
         else:
             logger.error(
-                f"Key '{key}' not in DataSet, unit conversion not applied: '{factor}'"
+                "Key '%s' not in DataSet, unit conversion not applied: '%s'",
+                key,
+                factor,
             )
 
 
@@ -541,13 +546,12 @@ def load_pkdb_dataframe(
     try:
         df = pd.read_csv(path, sep=sep, comment=comment, **kwargs)
     except pd.errors.ParserError as err:
-        logger.error(f"Could not read DataFrame for '{sid}' at '{path}'.")
+        logger.error("Could not read DataFrame for '%s' at '%s'.", sid, path)
         raise err
 
     # FIXME: handle unnecessary UnitStrippedWarning: The unit of the quantity is stripped when downcasting to ndarray.
     # At this point we only work with numpy arrays, units not important here
-    df = df.dropna(how="all")  # drop all NA rows
-    return df
+    return df.dropna(how="all")  # drop all NA rows
 
 
 # @deprecated

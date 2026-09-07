@@ -354,9 +354,7 @@ class Style(BasePlotObject):
             else:
                 for key in ["style", "size", "fill", "lineColor", "lineThickness"]:
                     if hasattr(self.marker, key) and getattr(self.marker, key):
-                        logger.debug(
-                            "marker: %s = %s", key, getattr(self.marker, key)
-                        )
+                        logger.debug("marker: %s = %s", key, getattr(self.marker, key))
                         setattr(style.marker, key, getattr(self.marker, key))
 
         if self.fill:
@@ -495,9 +493,8 @@ class Style(BasePlotObject):
             if self.line.thickness:
                 kwargs["linewidth"] = self.line.thickness
 
-        if self.fill:
-            if self.fill.color:
-                kwargs["color"] = self.fill.color.color
+        if self.fill and self.fill.color:
+            kwargs["color"] = self.fill.color.color
             # FIXME: second color not supported (gradients)
             # if self.fill.second_color:
             #    kwargs["second.color"] = self.fill.second_color
@@ -1221,9 +1218,7 @@ class Plot(BasePlotObject):
         """
         if abstract_curve.order is None:
             orders = [
-                ac.order
-                for ac in [*self.curves, *self.areas]
-                if ac.order is not None
+                ac.order for ac in [*self.curves, *self.areas] if ac.order is not None
             ]
             if not orders:
                 abstract_curve.order = 0

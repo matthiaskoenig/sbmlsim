@@ -82,7 +82,7 @@ class DemoExperiment(SimulationExperiment):
         unit_data = "mM"
 
         selections = ["[e__A]", "[e__B]", "[e__C]", "[c__A]", "[c__B]", "[c__C]"]
-        self.add_selections_data(selections=["time"] + selections)
+        self.add_selections_data(selections=["time", *selections])
 
         fig1 = Figure(experiment=self, sid="Fig1", num_cols=2, num_rows=1)
         plots = fig1.create_plots(

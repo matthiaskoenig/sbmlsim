@@ -26,6 +26,7 @@ References:
 """
 
 from pathlib import Path
+from typing import ClassVar
 
 import numpy as np
 import SALib
@@ -52,7 +53,13 @@ class MorrisSensitivityAnalysis(SensitivityAnalysis):
     Ruano et al., proposed an alternative approach with an iterative process that maximizes the distance between subgroups of generated trajectories, from which the final set of trajectories are selected, again maximizing the distance between each. The approach is not guaranteed to produce the most optimal spread of trajectories, but are at least locally maximized and significantly reduce the time taken to select trajectories. With local_optimization = True (which is default), it is possible to go higher than the previously suggested 4 levels from a pool of 100 samples.
     """
 
-    sensitivity_keys = ["mu", "mu_star", "sigma", "mu_star_conf", "r"]
+    sensitivity_keys: ClassVar[list[str]] = [
+        "mu",
+        "mu_star",
+        "sigma",
+        "mu_star_conf",
+        "r",
+    ]
 
     def __init__(
         self,
@@ -105,7 +112,8 @@ class MorrisSensitivityAnalysis(SensitivityAnalysis):
 
     def create_samples(self) -> None:
         """Create samples using the Method of Morris.
-         Three variants of Morris' sampling for elementary effects is supported:
+
+        Three variants of Morris' sampling for elementary effects are supported:
 
         - Vanilla Morris
           when ``optimal_trajectories`` is ``None``/``False`` and

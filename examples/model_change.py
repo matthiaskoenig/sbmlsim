@@ -83,9 +83,8 @@ def run_model_clamp1():
     xres = simulator.run_timecourse(tcsim)
 
     # create figure
-    fig: plt.Figure
     ax: plt.Axes
-    fig, ax = plt.subplots(nrows=1, ncols=1, figsize=(5, 5))
+    _fig, ax = plt.subplots(nrows=1, ncols=1, figsize=(5, 5))
     ax.set_xlabel("time")
     ax.set_ylabel("concentration")
 
@@ -97,7 +96,7 @@ def run_model_clamp1():
 
 
 def run_model_clamp2():
-    def plot_result(xres: XResult, title: str = None) -> None:
+    def plot_result(xres: XResult, title: str | None = None) -> None:
         """Plot the results with title."""
         fig: plt.Figure
         ax: plt.Axes

@@ -39,7 +39,8 @@ class SensitivityParameter(BaseModel):
     type: ParameterType = ParameterType.NA
     reference: str = ""
 
-    def __hash__(self):
+    def __hash__(self) -> int:
+        """Hash by the unique id."""
         return hash(self.uid)
 
     @staticmethod
@@ -141,7 +142,6 @@ class SensitivityParameter(BaseModel):
                 upper_bound=np.nan,
             )
 
-
         # constant parameters
         p: libsbml.Parameter
         for p in sbml_model.getListOfParameters():
@@ -178,12 +178,13 @@ class SensitivityParameter(BaseModel):
                 )
             ):
                 exclude_ids.add(sid)
-            if exclude_zero and ((
-                s.isSetInitialAmount() and np.isclose(s.getInitialAmount(), 0.0)
-            ) or (
-                s.isSetInitialConcentration()
-                and np.isclose(s.getInitialConcentration(), 0.0)
-            )):
+            if exclude_zero and (
+                (s.isSetInitialAmount() and np.isclose(s.getInitialAmount(), 0.0))
+                or (
+                    s.isSetInitialConcentration()
+                    and np.isclose(s.getInitialConcentration(), 0.0)
+                )
+            ):
                 exclude_ids.add(sid)
 
             if s.getConstant() is True or s.getBoundaryCondition() is True:

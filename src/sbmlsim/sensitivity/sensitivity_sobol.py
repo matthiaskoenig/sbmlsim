@@ -20,6 +20,7 @@ References:
 """
 
 from pathlib import Path
+from typing import ClassVar
 
 import numpy as np
 import SALib
@@ -39,7 +40,7 @@ from sbmlsim.sensitivity.plots import plot_S1_ST_indices
 class SobolSensitivityAnalysis(SensitivityAnalysis):
     """Global sensitivity analysis based on Sobol method."""
 
-    sensitivity_keys = ["S1", "ST", "S1_conf", "ST_conf"]
+    sensitivity_keys: ClassVar[list[str]] = ["S1", "ST", "S1_conf", "ST_conf"]
 
     def __init__(
         self,
@@ -152,6 +153,7 @@ class SobolSensitivityAnalysis(SensitivityAnalysis):
         )
 
     def plot(self):
+        """Plot the Sobol indices as heatmaps and bar plots."""
         super().plot()
         for kg, group in enumerate(self.groups):
             # heatmaps

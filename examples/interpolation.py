@@ -7,7 +7,7 @@ from pathlib import Path
 import pandas as pd
 import roadrunner
 from matplotlib import pyplot as plt
-from matplotlib.pyplot import Axes, Figure
+from matplotlib.pyplot import Axes
 
 from sbmlsim.interpolation import interpolation as ip
 
@@ -21,9 +21,8 @@ def interpolation_example() -> None:
     z = [10.0, 5.0, 2.5, 1.25, 0.6, 0.3]
     data1 = pd.DataFrame({"x": x, "y": y, "z": z})
 
-    f: Figure
     ax1: Axes
-    f, ax1 = plt.subplots(nrows=1, ncols=1)
+    _f, ax1 = plt.subplots(nrows=1, ncols=1)
     ax1.set_xlabel("time [AU]")
     ax1.set_ylabel("data [AU]")
     ax1.set_title("Interpolation Example")

@@ -190,5 +190,5 @@ def algorithm_parameter_to_parameter_key(par):
             value = dtype(value)
         return ParameterKey(key, value, dtype)
     # algorithm parameter not supported
-    logger.warning(f"Unsupported AlgorithmParameter: {kisao} = {value})")
+    logger.warning("Unsupported AlgorithmParameter: %s = %s)", kisao, value)
     return None

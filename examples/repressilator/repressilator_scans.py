@@ -40,7 +40,7 @@ class RepressilatorScanExperiment(SimulationExperiment):
         }
 
     def tasks(self) -> dict[str, Task]:
-        tasks = dict()
+        tasks = {}
         for model in ["model1", "model2"]:
             for sim_key in self.simulations():
                 tasks[f"task_{model}_{sim_key}"] = Task(model=model, simulation=sim_key)

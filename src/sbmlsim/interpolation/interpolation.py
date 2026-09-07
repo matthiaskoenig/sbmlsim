@@ -69,6 +69,7 @@ class Interpolator:
         z: pd.Series = None,
         method: str = INTERPOLATION_CONSTANT,
     ):
+        """Initialize the interpolator for the data series."""
         self.x: pd.Series = x
         self.y: pd.Series = y
         self.z: pd.Series = z
@@ -249,6 +250,7 @@ class Interpolation:
     """
 
     def __init__(self, data: pd.DataFrame, method: str = "linear"):
+        """Initialize the interpolation of the data frame."""
         self.doc: libsbml.SBMLDocument = None
         self.model: libsbml.Model = None
         self.data: pd.DataFrame = data
@@ -374,7 +376,7 @@ class Interpolation:
 
         # if parameter exists remove it
         if model.getParameter(pid):
-            logger.warning(f"Model contains parameter: {pid}. Parameter is removed.")
+            logger.warning("Model contains parameter: %s. Parameter is removed.", pid)
             model.removeParameter(pid)
 
         # if assignment rule exists remove it

@@ -69,16 +69,18 @@ def create_samples(
         # handle bounds
         lb = p.lower_bound
         if np.isinf(lb):
-            logger.warning(f"infinite lower bound set to '{-max_bound}'")
+            logger.warning("infinite lower bound set to '%s'", -max_bound)
             lb = -max_bound
-            if sampling in [SamplingType.LOGUNIFORM, SamplingType.LOGUNIFORM_LHS]:
-                if lb <= 0.0:
-                    logger.warning(f"negative lower bound set to '{min_bound}'")
-                    lb = min_bound
+            if (
+                sampling in [SamplingType.LOGUNIFORM, SamplingType.LOGUNIFORM_LHS]
+                and lb <= 0.0
+            ):
+                logger.warning("negative lower bound set to '%s'", min_bound)
+                lb = min_bound
 
         ub = p.upper_bound
         if np.isinf(ub):
-            logger.warning(f"infinite upper bound set to '{max_bound}'")
+            logger.warning("infinite upper bound set to '%s'", max_bound)
             ub = min_bound
 
         # stretch sampling dimension from [0, 1) to [lb, ub)

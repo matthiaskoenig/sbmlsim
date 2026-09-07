@@ -100,7 +100,9 @@ class DataSetsComparison:
                     df_new.loc[:, sel] *= fs[k]  # type: ignore
 
                 # do renaming
-                df_new = df_new.rename(columns=dict(zip(sel_keys, colnames, strict=False)))
+                df_new = df_new.rename(
+                    columns=dict(zip(sel_keys, colnames, strict=False))
+                )
                 # store updated df
                 console.log(df_new.head())
                 dfs_dict[key] = df_new
@@ -112,7 +114,7 @@ class DataSetsComparison:
         if columns_filter:
             columns = [col for col in columns if columns_filter(col)]
         self.columns = columns
-        logger.info(f"Comparing: {self.columns}")
+        logger.info("Comparing: %s", self.columns)
 
         # get common subset of data
         self.dfs, self.labels = self._filter_dfs(dfs_dict, self.columns)
@@ -146,7 +148,8 @@ class DataSetsComparison:
             num_df = df.select_dtypes(include=numerics)
             if len(num_df.columns) < len(df.columns):
                 logger.warning(
-                    f"Non-numeric columns in DataFrame: {set(df.columns) - set(num_df.columns)}"
+                    "Non-numeric columns in DataFrame: %s",
+                    set(df.columns) - set(num_df.columns),
                 )
 
             cols = set(num_df.columns)
@@ -158,8 +161,8 @@ class DataSetsComparison:
                 col_union = col_union.union(cols)
                 col_intersection = col_intersection.intersection(cols)
 
-        logger.info(f"Column Union #: {len(col_union)}")
-        logger.info(f"Column Intersection #: {len(col_intersection)}")
+        logger.info("Column Union #: %s", len(col_union))
+        logger.info("Column Intersection #: %s", len(col_intersection))
 
         columns = list(col_intersection.copy())
         columns.remove("time")
@@ -182,12 +185,13 @@ class DataSetsComparison:
         for label, df in dataframes.items():
             try:
                 df_filtered = df[columns]
-            except KeyError:
+            except KeyError as err:
                 logger.error(
-                    f"Some keys from '{columns}' do not exist in DataFrame columns "
-                    f"'{df.columns}'"
+                    "Some keys from '%s' do not exist in DataFrame columns '%s'",
+                    columns,
+                    df.columns,
                 )
-                raise ValueError
+                raise ValueError from err
             dfs.append(df_filtered)
             labels.append(label)
 

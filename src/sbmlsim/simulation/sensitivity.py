@@ -178,15 +178,13 @@ class ModelSensitivity:
         Q_ = model.Q_
 
         changes = {}
-        index = 0
         num_pars = len(p_ref)
-        for key, value in p_ref.items():
+        for index, (key, value) in enumerate(p_ref.items()):
             values = np.ones(shape=(2 * num_pars,)) * value.magnitude
             # change parameters in correct position
             values[index] = value.magnitude * (1.0 + difference)
             values[index + num_pars] = value.magnitude * (1.0 - difference)
             changes[key] = Q_(values, value.units)
-            index += 1
         return Dimension("dim_sens", changes=changes)
 
     @staticmethod
@@ -220,8 +218,9 @@ class ModelSensitivity:
                 model.r[key] = item.magnitude
             except AttributeError as err:
                 logger.error(
-                    f"Change is not a Quantity with unit: '{key} = {item}'. "
-                    f"Add units to all changes."
+                    "Change is not a Quantity with unit: '%s = %s'. Add units to all changes.",
+                    key,
+                    item,
                 )
                 raise err
 

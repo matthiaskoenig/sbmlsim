@@ -10,7 +10,7 @@ from sbmlsim.task import Task
 class Carcione2020(SimulationExperiment):
     def models(self) -> dict[str, AbstractModel]:
         # Q_ = self.Q_
-        models = {
+        return {
             "model": AbstractModel(
                 source=Path(__file__).parent
                 / ".."
@@ -21,7 +21,6 @@ class Carcione2020(SimulationExperiment):
                 changes={},
             )
         }
-        return models
 
     def tasks(self) -> dict[str, Task]:
         tasks = {}
@@ -56,7 +55,7 @@ class Carcione2020(SimulationExperiment):
         unit_y = "substance"
 
         selections = ["Susceptible", "Exposed", "Infected", "Recovered"]
-        self.add_selections_data(["time"] + selections)
+        self.add_selections_data(["time", *selections])
 
         fig_1 = Figure(self, sid="plot_1", name=f"{self.sid} (plot_1)", num_rows=1)
         plots = fig_1.create_plots(Axis("time", unit=unit_time), legend=True)

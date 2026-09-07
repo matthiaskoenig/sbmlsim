@@ -71,7 +71,7 @@ def run_demo_example():
     ]
 
     ax: plt.Axes
-    for ax, ax_units in dict(zip(axes, axes_units)).items():
+    for ax, ax_units in dict(zip(axes, axes_units, strict=False)).items():
         xunit = ax_units["xunit"]
         yunit = ax_units["yunit"]
 

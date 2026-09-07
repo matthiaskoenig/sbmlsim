@@ -10,7 +10,7 @@ from sbmlsim.task import Task
 class Cuadros2020(SimulationExperiment):
     def models(self) -> dict[str, AbstractModel]:
         # Q_ = self.Q_
-        models = {
+        return {
             "model": AbstractModel(
                 source=Path(__file__).parent
                 / ".."
@@ -21,7 +21,6 @@ class Cuadros2020(SimulationExperiment):
                 changes={},
             )
         }
-        return models
 
     def simulations(self) -> dict[str, TimecourseSim]:
         # Q_ = self.Q_
@@ -44,6 +43,7 @@ class Cuadros2020(SimulationExperiment):
                 f"task_{key}": Task(model="model", simulation=key)
                 for key in self.simulations()
             }
+        return None
 
     def figures(self) -> dict[str, Figure]:
         unit_time = "time"
