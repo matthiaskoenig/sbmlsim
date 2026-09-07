@@ -14,7 +14,7 @@ import scipy
 from scipy import interpolate, optimize
 
 from sbmlsim.console import console
-from sbmlsim.experiment import ExperimentRunner
+from sbmlsim.experiment import ExperimentRunner, SimulationExperiment
 from sbmlsim.fit.objects import FitExperiment, FitMapping, FitParameter
 from sbmlsim.fit.options import (
     LossFunctionType,
@@ -28,7 +28,7 @@ from sbmlsim.model import RoadrunnerSBMLModel
 from sbmlsim.serialization import ObjectJSONEncoder, to_json
 from sbmlsim.simulation import TimecourseSim
 from sbmlsim.simulator import SimulatorSerial
-from sbmlsim.units import DimensionalityError
+from sbmlsim.units import DimensionalityError, Quantity
 from sbmlsim.utils import timeit
 
 logger = logging.getLogger(__name__)
@@ -36,13 +36,19 @@ logger = logging.getLogger(__name__)
 
 @dataclass
 class RuntimeErrorOptimizeResult:
-    """Error in opimization."""
+    """Result of an optimization which failed with a RuntimeError.
+
+    Carries the same attributes as the `scipy.optimize.OptimizeResult` of a
+    successful optimization, so that the results can be processed together.
+    """
 
     status: str = "-1"
     success: bool = False
     duration: float = -1.0
     cost: float = np.inf
     optimality: float = np.inf
+    x: np.ndarray | None = None
+    x0: np.ndarray | None = None
 
 
 class OptimizationProblem(ObjectJSONEncoder):
@@ -96,7 +102,7 @@ class OptimizationProblem(ObjectJSONEncoder):
         # set in initialization
         self.runner: ExperimentRunner | None = None
         self.residual: ResidualType | None = None
-        self.weighting_curves: WeightingCurvesType | None = None
+        self.weighting_curves: list[WeightingCurvesType] = []
         self.weighting_points: WeightingPointsType | None = None
 
         self.experiment_keys: list[str] = []
@@ -106,7 +112,7 @@ class OptimizationProblem(ObjectJSONEncoder):
         self.x_references: list[Any] = []
         self.y_references: list[Any] = []
         self.y_errors: list[Any] = []
-        self.y_errors_type: list[str] = []
+        self.y_errors_type: list[str | None] = []
         self.weights: list[
             Any
         ] = []  # total weights for points (data points and curve weights)
@@ -233,10 +239,12 @@ class OptimizationProblem(ObjectJSONEncoder):
         self.weighting_points = weighting_points
 
         # Create experiment runner (loads the experiments & all models)
-        exp_classes = {fit_exp.experiment_class for fit_exp in self.fit_experiments}
+        exp_classes: set[type[SimulationExperiment]] = {
+            fit_exp.experiment_class for fit_exp in self.fit_experiments
+        }
 
         self.runner = ExperimentRunner(
-            experiment_classes=exp_classes,
+            experiment_classes=list(exp_classes),
             base_path=self.base_path,
             data_path=self.data_path,
         )
@@ -297,7 +305,7 @@ class OptimizationProblem(ObjectJSONEncoder):
                 else:
                     weight_curve_user = fit_experiment.weights[k]
 
-                if weight_curve_user < 0:
+                if weight_curve_user is not None and weight_curve_user < 0:
                     raise ValueError(
                         f"Mapping weights must be positive but "
                         f"weight '{mapping.weight}' in {mapping}"
@@ -323,6 +331,10 @@ class OptimizationProblem(ObjectJSONEncoder):
 
                 # prepare data
                 data_ref = mapping.reference.get_data()
+                if data_ref.x is None or data_ref.y is None:
+                    raise ValueError(
+                        f"{sid}.{mapping_id}: reference data requires x and y data."
+                    )
                 try:
                     data_ref.x = data_ref.x.to(obs_x_unit)
                 except DimensionalityError as e:
@@ -461,6 +473,10 @@ class OptimizationProblem(ObjectJSONEncoder):
                 # curve weight
                 weight_curve: float = 1.0
                 if WeightingCurvesType.MAPPING in self.weighting_curves:
+                    if weight_curve_user is None:
+                        raise ValueError(
+                            f"{sid}.{mapping_id}: weight of mapping is required."
+                        )
                     weight_curve = weight_curve * weight_curve_user
                 if WeightingCurvesType.POINTS in self.weighting_curves:
                     weight_curve = weight_curve / len(y_ref)
@@ -475,14 +491,16 @@ class OptimizationProblem(ObjectJSONEncoder):
 
                 # --- STORE INITIAL PARAMETERS ---
                 # store initial model parameters
+                if model.r is None:
+                    raise ValueError(f"Model '{model}' is not loaded in roadrunner.")
                 for k, pid in enumerate(self.pids):
                     pid_value = model.r[pid]
                     if pid in model.changes:
-                        try:
-                            # model changes have units
-                            pid_value = model.changes[pid].magnitude
-                        except AttributeError:
-                            pid_value = model.changes[pid]
+                        change = model.changes[pid]
+                        # model changes have units
+                        pid_value = (
+                            change.magnitude if isinstance(change, Quantity) else change
+                        )
                     self.xmodel[k] = pid_value
 
                 selections: list[str] = list(selections_set)
@@ -523,17 +541,22 @@ class OptimizationProblem(ObjectJSONEncoder):
         )
         self.set_simulator(simulator)
 
-    def set_simulator(self, simulator):
-        """Set the simulator on the runner and the experiments.
+    def set_simulator(self, simulator: SimulatorSerial | None) -> None:
+        """Set the simulator on the runner and the experiments."""
+        self.runner_initialized.set_simulator(simulator)
 
-        :param simulator:
-        :return:
-        """
-        self.runner.set_simulator(simulator)
+    @property
+    def runner_initialized(self) -> ExperimentRunner:
+        """Runner of the problem, created in `initialize`."""
+        if self.runner is None:
+            raise ValueError(
+                f"OptimizationProblem '{self.opid}' must be initialized first."
+            )
+        return self.runner
 
     def optimize(
         self,
-        size: int | None = 5,
+        size: int = 5,
         algorithm: OptimizationAlgorithmType = OptimizationAlgorithmType.LEAST_SQUARE,
         sampling: SamplingType = SamplingType.UNIFORM,
         seed: int | None = None,
@@ -579,7 +602,7 @@ class OptimizationProblem(ObjectJSONEncoder):
     @timeit
     def _optimize_single(
         self,
-        x0: np.ndarray = None,
+        x0: np.ndarray | None = None,
         algorithm=OptimizationAlgorithmType.LEAST_SQUARE,
         **kwargs,
     ) -> tuple[scipy.optimize.OptimizeResult, list]:
@@ -592,10 +615,10 @@ class OptimizationProblem(ObjectJSONEncoder):
         """
         # FIXME: this should not be necessary, handle outside
         if x0 is None:
-            x0 = self.x0
+            x0 = np.array(self.x0, dtype=float)
 
         # logarithmic parameters for optimizer
-        x0log = np.log10(x0)
+        x0log: np.ndarray = np.log10(x0)
 
         self._trajectory = []
         if algorithm == OptimizationAlgorithmType.LEAST_SQUARE:
@@ -629,7 +652,7 @@ class OptimizationProblem(ObjectJSONEncoder):
             te = time.time()
             opt_result.x0 = x0  # store start value
             opt_result.duration = te - ts
-            opt_result.x = np.power(10, opt_result.x)
+            opt_result.x = np.power(10, np.asarray(opt_result.x))
             return opt_result, deepcopy(self._trajectory)
 
         if algorithm == OptimizationAlgorithmType.DIFFERENTIAL_EVOLUTION:
@@ -656,8 +679,8 @@ class OptimizationProblem(ObjectJSONEncoder):
             te = time.time()
             opt_result.x0 = x0  # store start value
             opt_result.duration = te - ts
-            opt_result.cost = self.cost_least_square(opt_result.x)
-            opt_result.x = np.power(10, opt_result.x)
+            opt_result.cost = self.cost_least_square(np.asarray(opt_result.x))
+            opt_result.x = np.power(10, np.asarray(opt_result.x))
             return opt_result, deepcopy(self._trajectory)
 
         raise ValueError(f"optimizer is not supported: {algorithm}")
@@ -686,8 +709,10 @@ class OptimizationProblem(ObjectJSONEncoder):
             residual_data = defaultdict(list)
 
         # simulate all mappings for all experiments
-        simulator: SimulatorSerial = self.runner.simulator
-        Q_ = self.runner.Q_
+        simulator: SimulatorSerial | None = self.runner_initialized.simulator
+        if simulator is None:
+            raise ValueError(f"No simulator set on OptimizationProblem '{self.opid}'.")
+        Q_ = self.runner_initialized.Q_
 
         for k, mapping_key in enumerate(self.mapping_keys):
             # update initial changes

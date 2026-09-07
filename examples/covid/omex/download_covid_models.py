@@ -30,11 +30,11 @@ def get_covid19_model(output_dir: Path) -> dict[str, Path]:
         output_dir.mkdir(parents=True, exist_ok=True)
     biomodel_ids = query_covid19_biomodels()
     pprint(biomodel_ids)
-    omex_paths = {}
+    omex_paths: dict[str, Path] = {}
     for biomodel_id in biomodel_ids:
         omex_path = output_dir / f"{biomodel_id}.omex"
         path = download_biomodel_omex(biomodel_id, omex_path=omex_path)
-        omex_paths[biomodel_id] = str(path)
+        omex_paths[biomodel_id] = Path(path)
 
     return omex_paths
 

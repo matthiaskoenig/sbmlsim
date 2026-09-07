@@ -1,4 +1,4 @@
-import h5py
+import h5py  # ty: ignore[unresolved-import]
 
 
 class DataProvider:

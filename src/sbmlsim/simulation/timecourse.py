@@ -8,12 +8,11 @@ from pathlib import Path
 from typing import Any
 
 import numpy as np
-from pint import Quantity
 
 from sbmlsim.serialization import ObjectJSONEncoder
 from sbmlsim.simulation.range import Dimension
 from sbmlsim.simulation.simulation import AbstractSim
-from sbmlsim.units import UnitsInformation
+from sbmlsim.units import Quantity, UnitsInformation
 
 logger = logging.getLogger(__name__)
 

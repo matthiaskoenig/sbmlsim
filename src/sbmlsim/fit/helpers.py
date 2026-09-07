@@ -62,7 +62,9 @@ def filtered_fit_experiments(
 
                 # collect information
                 try:
-                    metadata: MappingMetaData = fit_mapping.metadata
+                    metadata: MappingMetaData | None = fit_mapping.metadata
+                    if metadata is None:
+                        continue
                     yid = "__".join(fit_mapping.observable.y.sid.split("__")[1:])
                     info: dict[str, Any] = {
                         "experiment": experiment_name,
@@ -120,4 +122,4 @@ def filter_empty(fit_mapping_key: str, fit_mapping: FitMapping) -> bool:
 
 def filter_outlier(fit_mapping_key: str, fit_mapping: FitMapping) -> bool:
     """Return non outlier experiments."""
-    return not fit_mapping.metadata.outlier
+    return fit_mapping.metadata is None or not fit_mapping.metadata.outlier

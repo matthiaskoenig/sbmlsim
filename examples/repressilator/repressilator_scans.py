@@ -201,20 +201,14 @@ class RepressilatorScanExperiment(SimulationExperiment):
             alpha=0.3,
         )
 
-        plots[0].xaxis.min = -1.0
-        plots[0].xaxis.max = 2.0
-        plots[0].xaxis.grid = True
+        plots[0].set_xaxis("data", unit=unit_data, min=-1.0, max=2.0, grid=True)
+        plots[1].set_xaxis("data", unit=unit_data, scale="log")
+        plots[1].set_yaxis("data", unit=unit_data, scale="log")
 
-        plots[1].xaxis.scale = "log"
-        plots[1].yaxis.scale = "log"
-
-        return {
-            fig1.sid: fig1,
-            fig2.sid: fig2,
-        }
+        return {"fig1": fig1, "fig2": fig2}
 
 
-def run_repressilator_experiments(output_path: Path) -> Path:
+def run_repressilator_experiments(output_path: Path) -> None:
     """Run the repressilator simulation experiments."""
     base_path = Path(__file__).parent
     data_path = base_path
@@ -232,4 +226,4 @@ def run_repressilator_experiments(output_path: Path) -> Path:
 
 
 if __name__ == "__main__":
-    run_repressilator_experiments(Path(__file__).parent / "results")
+    run_repressilator_experiments(Path.cwd())

@@ -1,8 +1,9 @@
 from collections import namedtuple
+from pathlib import Path
 
 from sbmlsim.experiment import SimulationExperiment
 from sbmlsim.model import AbstractModel
-from sbmlsim.simulation import TimecourseSim
+from sbmlsim.simulation import AbstractSim
 from sbmlsim.task import Task
 
 from ...midazolam import MODEL_PATH
@@ -13,7 +14,7 @@ MolecularWeights = namedtuple("MolecularWeights", "mid mid1oh")
 class MidazolamSimulationExperiment(SimulationExperiment):
     """Base class for all GlucoseSimulationExperiments."""
 
-    def models(self) -> dict[str, AbstractModel]:
+    def models(self) -> dict[str, AbstractModel | Path]:
         Q_ = self.Q_
         return {
             "model": AbstractModel(
@@ -36,9 +37,13 @@ class MidazolamSimulationExperiment(SimulationExperiment):
             }
         return {}
 
-    def simulations(self, simulations=None) -> dict[str, TimecourseSim]:
-        if simulations is None:
-            return simulations
+    def simulations(self) -> dict[str, AbstractSim]:
+        return {}
+
+    def simulations_with_sensitivity(
+        self, simulations: dict[str, AbstractSim]
+    ) -> dict[str, AbstractSim]:
+        """Return the simulations, optionally with additional sensitivity scans."""
 
         # injecting additional scan dimension for timecourse simulation
         # for sim_key, sim in simulations.copy().items():

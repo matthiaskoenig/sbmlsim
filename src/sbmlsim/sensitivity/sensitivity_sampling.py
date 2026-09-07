@@ -129,7 +129,7 @@ class SamplingSensitivityAnalysis(SensitivityAnalysis):
 
             for ko, _oid in enumerate(self.outputs):
                 # num_samples x num_outputs
-                data = self.results[gid].values[:, ko]
+                data = self.results_required(gid).values[:, ko]
                 for key in self.sensitivity_keys:
                     if key == "mean":
                         value = np.mean(data)
@@ -273,9 +273,13 @@ class SamplingSensitivityAnalysis(SensitivityAnalysis):
                 ax.axis("off")
             else:
                 if type == "samples":
-                    data = [self.samples[g.uid].values[:, ka] for g in self.groups]
+                    data = [
+                        self.samples_required(g.uid).values[:, ka] for g in self.groups
+                    ]
                 elif type == "outputs":
-                    data = [self.results[g.uid].values[:, ka] for g in self.groups]
+                    data = [
+                        self.results_required(g.uid).values[:, ka] for g in self.groups
+                    ]
                 colors = [g.color for g in self.groups]
                 labels = [g.uid for g in self.groups]
                 # outliers for scatter

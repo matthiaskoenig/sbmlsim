@@ -45,17 +45,16 @@ class AbstractModel:
         sid: str | None = None,
         name: str | None = None,
         language: str | None = None,
-        language_type: LanguageType = LanguageType.SBML,
+        language_type: LanguageType | None = None,
         base_path: Path | None = None,
         changes: dict | None = None,
         selections: list[str] | None = None,
     ):
         """Initialize SourceType."""
-        if not language and not language_type:
-            raise ValueError(
-                "Either 'language' or 'language_type' argument are required"
-            )
-        if language and language_type:
+        if not language and language_type is None:
+            # SBML is the default language
+            language_type = AbstractModel.LanguageType.SBML
+        if language and language_type is not None:
             raise ValueError(
                 "Either 'language' or 'language_type' can be set, but not both."
             )
@@ -67,10 +66,12 @@ class AbstractModel:
             else:
                 raise ValueError(f"Unsupported model language: '{language}'")
 
+        if language_type is None:
+            raise ValueError("Either 'language' or 'language_type' is required.")
         self.sid = sid
         self.name = name
         self.language = language
-        self.language_type = language_type
+        self.language_type: AbstractModel.LanguageType = language_type
         self.base_path = base_path
         self.source: Source = Source.from_source(source, base_dir=base_path)
 

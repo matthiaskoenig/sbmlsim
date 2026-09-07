@@ -1,7 +1,7 @@
 from sbmlsim.data import DataSet, load_pkdb_dataframes_by_substance
 from sbmlsim.fit import FitData, FitMapping
-from sbmlsim.plot import Axis, Figure
-from sbmlsim.simulation import Timecourse, TimecourseSim
+from sbmlsim.plot import Axis, Figure, Plot
+from sbmlsim.simulation import AbstractSim, Timecourse, TimecourseSim
 
 from . import MidazolamSimulationExperiment
 
@@ -28,7 +28,7 @@ class Mandema1992(MidazolamSimulationExperiment):
                 dsets[f"{fig_id}_{substance}"] = dset
         return dsets
 
-    def simulations(self) -> dict[str, TimecourseSim]:
+    def simulations(self) -> dict[str, AbstractSim]:
         return {**self.simulation_mid()}
 
     def simulation_mid(self) -> dict[str, TimecourseSim]:
@@ -171,7 +171,7 @@ class Mandema1992(MidazolamSimulationExperiment):
         plots[2].set_title("midazolam po, 7.5 [mg]")
         for k in (0, 1, 2):
             plots[k].set_yaxis("midazolam", unit_mid)
-            plots[k].xaxis.label_visible = False
+            plots[k].set_xaxis("time", unit=unit_time, label_visible=False)
         for k in (3, 4, 5):
             plots[k].set_yaxis("1-hydroxymidazolam", unit_mid1oh)
 
@@ -202,15 +202,14 @@ class Mandema1992(MidazolamSimulationExperiment):
             )
 
         # plot data
-        data_def = {
-            "Fig1A_midazolam": {"plot": plots[0], "key": "mid"},
-            "Fig1A_1-hydroxymidazolam": {"plot": plots[3], "key": "mid1oh"},
-            "Fig2A_1-hydroxymidazolam": {"plot": plots[4], "key": "mid1oh"},
-            "Fig3A_midazolam": {"plot": plots[2], "key": "mid"},
-            "Fig3A_1-hydroxymidazolam": {"plot": plots[5], "key": "mid1oh"},
+        data_def: dict[str, tuple[Plot, str]] = {
+            "Fig1A_midazolam": (plots[0], "mid"),
+            "Fig1A_1-hydroxymidazolam": (plots[3], "mid1oh"),
+            "Fig2A_1-hydroxymidazolam": (plots[4], "mid1oh"),
+            "Fig3A_midazolam": (plots[2], "mid"),
+            "Fig3A_1-hydroxymidazolam": (plots[5], "mid1oh"),
         }
-        for dset_key, dset_info in data_def.items():
-            p = dset_info["plot"]
+        for dset_key, (p, label) in data_def.items():
             p.add_data(
                 dataset=dset_key,
                 xid="time",
@@ -218,7 +217,7 @@ class Mandema1992(MidazolamSimulationExperiment):
                 yid_sd="mean_sd",
                 count=None,
                 color="black",
-                label=dset_info["key"],
+                label=label,
             )
 
         return {"fig1": fig}

@@ -2,7 +2,7 @@
 
 import numpy as np
 import pandas as pd
-from basico import (
+from basico import (  # ty: ignore[unresolved-import]
     load_model,
     run_time_course,
     set_compartment,
@@ -25,7 +25,7 @@ class SimulateCopasiSBML(SimulateSBML):
         load_model(location=str(self.sbml_path))
 
     def simulate_condition(
-        self, condition: Condition, timepoints: list[float]
+        self, condition: Condition, timepoints: np.ndarray
     ) -> pd.DataFrame:
         """Simulate the condition with COPASI."""
         print(f"simulate condition: {condition.sid}")

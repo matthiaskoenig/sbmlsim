@@ -7,6 +7,15 @@ from pathlib import Path
 from sbmlsim.experiment import ExperimentRunner, SimulationExperiment
 from sbmlsim.model import AbstractModel, RoadrunnerSBMLModel
 from sbmlsim.plot import Axis, Figure
+from sbmlsim.plot.plotting import (
+    ColorType,
+    CurveType,
+    Line,
+    LineType,
+    Marker,
+    MarkerType,
+    Style,
+)
 from sbmlsim.simulation import AbstractSim, Timecourse, TimecourseSim
 from sbmlsim.simulator.simulation_serial import SimulatorSerial
 from sbmlsim.task import Task
@@ -17,7 +26,7 @@ base_path = Path(__file__).parent
 class AssignmentExperiment(SimulationExperiment):
     """Testing initial assignments."""
 
-    def models(self) -> dict[str, AbstractModel]:
+    def models(self) -> dict[str, AbstractModel | Path]:
         return {
             "model": RoadrunnerSBMLModel(
                 source=base_path / "initial_assignment.xml", ureg=self.ureg
@@ -81,34 +90,23 @@ class AssignmentExperiment(SimulationExperiment):
             for _km, model_key in enumerate(self._models.keys()):
                 task_key = f"task_{model_key}_{sim_key}"
 
-                kwargs = {
-                    "color": colors[ks],
-                    "linestyle": "-" if model_key == "model" else "--",
-                }
-                plots[0].add_data(
-                    task=task_key,
-                    xid="time",
-                    yid="A1",
-                    label=f"{model_key} {sim_key}",
-                    **kwargs,
+                style = Style(
+                    line=Line(
+                        color=ColorType(colors[ks]),
+                        type=LineType.SOLID if model_key == "model" else LineType.DASH,
+                    ),
+                    marker=Marker(type=MarkerType.NONE),
                 )
-                plots[1].add_data(
-                    task=task_key,
-                    xid="time",
-                    yid="[A1]",
-                    label=f"{model_key} {sim_key}",
-                    **kwargs,
-                )
-                plots[2].add_data(
-                    task=task_key,
-                    xid="time",
-                    yid="D",
-                    label=f"{model_key} {sim_key}",
-                    **kwargs,
-                )
-        return {
-            fig1.sid: fig1,
-        }
+                for plot, yid in zip(plots[:3], ["A1", "[A1]", "D"], strict=True):
+                    plot.add_data(
+                        task=task_key,
+                        xid="time",
+                        yid=yid,
+                        label=f"{model_key} {sim_key}",
+                        type=CurveType.POINTS,
+                        style=style,
+                    )
+        return {"fig1": fig1}
 
 
 def run(output_path):
@@ -125,5 +123,4 @@ def run(output_path):
 
 
 if __name__ == "__main__":
-    output_path = Path(".")
-    run(output_path=output_path)
+    run(output_path=Path.cwd())

@@ -7,7 +7,7 @@ import os
 import shutil
 
 import requests
-from bs4 import BeautifulSoup
+from bs4 import BeautifulSoup  # ty: ignore[unresolved-import]
 
 THIS_DIR = os.path.dirname(os.path.realpath(__file__))
 NUM_PAGES = 4

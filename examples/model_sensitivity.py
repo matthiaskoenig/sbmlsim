@@ -2,8 +2,6 @@
 Example shows basic model simulations and plotting.
 """
 
-import roadrunner
-
 from sbmlsim.plot.serialization_matplotlib import plt
 from sbmlsim.resources import REPRESSILATOR_SBML
 from sbmlsim.result import XResult
@@ -12,7 +10,7 @@ from sbmlsim.simulation.sensitivity import ModelSensitivity
 from sbmlsim.simulator import SimulatorSerial
 
 
-def plot_results(xres: XResult):
+def plot_results(xres: XResult, filename: str) -> None:
     fig, ((ax1, ax2), (ax3, ax4)) = plt.subplots(nrows=2, ncols=2, figsize=(10, 10))
     fig.subplots_adjust(wspace=0.3, hspace=0.3)
     axes = (ax1, ax2, ax3, ax4)
@@ -54,7 +52,8 @@ def plot_results(xres: XResult):
     for ax in axes:
         ax.set_ylabel("value [dimensionless]")
         ax.legend()
-    plt.show()
+    fig.savefig(filename, bbox_inches="tight")
+    plt.close(fig)
 
 
 def run_sensitivity():
@@ -71,7 +70,7 @@ def run_sensitivity():
         ]
     )
 
-    model: roadrunner.RoadRunner = simulator.worker.r
+    model = simulator.model_loaded
 
     distrib_scan = ModelSensitivity.distribution_sensitivity_scan(
         model=model, simulation=tcsim, cv=0.03, size=50
@@ -79,13 +78,13 @@ def run_sensitivity():
     res_distrib_scan = simulator.run_scan(distrib_scan)
 
     diff_scan = ModelSensitivity.difference_sensitivity_scan(
-        model=simulator.model, simulation=tcsim, difference=0.1
+        model=model, simulation=tcsim, difference=0.1
     )
     res_diff_scan = simulator.run_scan(diff_scan)
 
-    # create figure
-    plot_results(res_distrib_scan)
-    plot_results(res_diff_scan)
+    # create figures
+    plot_results(res_distrib_scan, "model_sensitivity_distribution.png")
+    plot_results(res_diff_scan, "model_sensitivity_difference.png")
 
 
 if __name__ == "__main__":

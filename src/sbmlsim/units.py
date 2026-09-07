@@ -24,14 +24,20 @@ os.environ["PINT_ARRAY_PROTOCOL_FALLBACK"] = "0"
 from typing import ClassVar
 
 import pint
-from pint import Quantity, UnitRegistry
+from pint import UnitRegistry
 from pint.errors import DimensionalityError, UndefinedUnitError
+from pint.facets.plain import PlainQuantity
+
+#: type of the quantities of a unit registry; `pint.Quantity` is a subclass, the
+#: registry itself creates `PlainQuantity` instances
+Quantity = PlainQuantity
 
 with warnings.catch_warnings():
     warnings.simplefilter("ignore")
     Quantity([])
 
 logger = logging.getLogger(__name__)
+
 UdictType = dict[str, str]
 
 
@@ -308,8 +314,8 @@ class UnitsInformation(MutableMapping):
 
     @staticmethod
     def normalize_changes(
-        changes: dict[str, Quantity], uinfo: UnitsInformation
-    ) -> dict[str, Quantity]:
+        changes: dict[str, Quantity | float], uinfo: UnitsInformation
+    ) -> dict[str, Quantity | float]:
         """Normalize all changes to units in given units dictionary.
 
         This is a major helper function allowing to convert changes
@@ -318,7 +324,7 @@ class UnitsInformation(MutableMapping):
         Q_ = uinfo.ureg.Quantity
         changes_normed = {}
         for key, item in changes.items():
-            if hasattr(item, "units"):
+            if isinstance(item, Quantity):
                 try:
                     # convert to model units
                     item = item.to(uinfo[key])

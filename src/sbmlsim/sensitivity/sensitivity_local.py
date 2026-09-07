@@ -229,8 +229,8 @@ class LocalSensitivityAnalysis(SensitivityAnalysis):
             sensitivity_raw = self.sensitivity[gid]["raw"]
             sensitivity_normalized = self.sensitivity[gid]["normalized"]
 
-            samples = self.samples[gid]
-            results = self.results[gid]
+            samples = self.samples_required(gid)
+            results = self.results_required(gid)
 
             for kp, _ in enumerate(self.parameters):
                 p_ref = samples[-1, kp]

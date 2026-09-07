@@ -1,5 +1,7 @@
 """Calculation of statistics."""
 
+from typing import Any
+
 import numpy as np
 import pandas as pd
 
@@ -21,7 +23,7 @@ def aic(mse: float, N: int, k: int):
 
 
 if __name__ == "__main__":
-    items = [
+    items: list[dict[str, Any]] = [
         {
             "uid": "20250708_183921__4fba0",
             "name": "LOSARTAN_LSQ_PK",

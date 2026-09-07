@@ -65,7 +65,7 @@ def test_fit_settings(fit_kwargs: dict[str, Any]) -> None:
     assert op.weighting_points == fit_kwargs["weighting_points"]
 
 
-fit_kwargs_default = {
+fit_kwargs_default: dict[str, Any] = {
     "residual": ResidualType.NORMALIZED,
     "weighting_curves": [WeightingCurvesType.POINTS],
     "weighting_points": WeightingPointsType.ERROR_WEIGHTING,

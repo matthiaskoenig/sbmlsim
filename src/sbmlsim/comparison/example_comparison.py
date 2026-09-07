@@ -18,11 +18,11 @@ from pathlib import Path
 
 import numpy as np
 import pandas as pd
-from simulate import Condition, SimulateSBML
-from simulate_roadrunner import SimulateRoadrunnerSBML
 
 from sbmlsim.comparison.diff import DataSetsComparison
+from sbmlsim.comparison.simulate import Condition, SimulateSBML
 from sbmlsim.comparison.simulate_amici import SimulateAmiciSBML
+from sbmlsim.comparison.simulate_roadrunner import SimulateRoadrunnerSBML
 from sbmlsim.console import console
 
 if __name__ == "__main__":
@@ -74,15 +74,15 @@ if __name__ == "__main__":
 
     # run comparison
     dfs: dict[str, pd.DataFrame] = {}
-    simulator: type[SimulateSBML]
-    for key, simulator in {
+    simulator_class: type[SimulateSBML]
+    for key, simulator_class in {
         "roadrunner": SimulateRoadrunnerSBML,
         # "copasi": SimulateCopasiSBML,
         "amici": SimulateAmiciSBML,
     }.items():
         console.rule(title=key, align="left", style="white")
 
-        simulator = simulator(
+        simulator = simulator_class(
             sbml_path=model_path,
             results_dir=results_dir,
             absolute_tolerance=absolute_tolerance,

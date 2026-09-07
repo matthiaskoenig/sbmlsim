@@ -21,6 +21,8 @@ def run_model_change_example1():
     """
     model = RoadrunnerSBMLModel(REPRESSILATOR_SBML)
     r = model.r
+    if r is None:
+        raise ValueError("Model not loaded in roadrunner.")
     RoadrunnerSBMLModel.set_timecourse_selections(r)
 
     s1 = r.simulate(start=0, end=100, steps=500)
@@ -50,12 +52,11 @@ def run_model_change_example1():
     s5 = pd.DataFrame(s5, columns=s5.colnames)
     s5.time = s5.time + 400.0
 
-    plt.plot(s1.time, s1.X, "o-")
-    plt.plot(s2.time, s2.X, "o-")
-    plt.plot(s3.time, s3.X, "o-")
-    plt.plot(s4.time, s4.X, "o-")
-    plt.plot(s5.time, s5.X, "o-")
-    plt.show()
+    fig, ax = plt.subplots(nrows=1, ncols=1, figsize=(5, 5))
+    for s in [s1, s2, s3, s4, s5]:
+        ax.plot(s.time, s.X, "o-")
+    fig.savefig("model_change_clamp_manual.png", bbox_inches="tight")
+    plt.close(fig)
 
 
 def run_model_clamp1():
@@ -83,8 +84,7 @@ def run_model_clamp1():
     xres = simulator.run_timecourse(tcsim)
 
     # create figure
-    ax: plt.Axes
-    _fig, ax = plt.subplots(nrows=1, ncols=1, figsize=(5, 5))
+    fig, ax = plt.subplots(nrows=1, ncols=1, figsize=(5, 5))
     ax.set_xlabel("time")
     ax.set_ylabel("concentration")
 
@@ -92,7 +92,8 @@ def run_model_clamp1():
         ax.plot(xres["time"], xres[f"[{sid}]"], label=sid)
 
     ax.legend()
-    plt.show()
+    fig.savefig("model_change_clamp1.png", bbox_inches="tight")
+    plt.close(fig)
 
 
 def run_model_clamp2():
@@ -111,7 +112,8 @@ def run_model_clamp2():
             ax.set_title(title)
 
         ax.legend()
-        plt.show()
+        fig.savefig(f"model_change_clamp2_{title}.png", bbox_inches="tight")
+        plt.close(fig)
 
     # reference simulation
     simulator = SimulatorSerial(REPRESSILATOR_SBML)

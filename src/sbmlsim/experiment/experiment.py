@@ -21,6 +21,7 @@ from sbmlsim.plot.serialization_matplotlib import (
 from sbmlsim.result import XResult
 from sbmlsim.serialization import ObjectJSONEncoder
 from sbmlsim.simulation import AbstractSim, ScanSim, TimecourseSim
+from sbmlsim.simulator import SimulatorSerial
 from sbmlsim.task import Task
 from sbmlsim.units import UnitRegistry, UnitsInformation
 from sbmlsim.utils import timeit
@@ -38,8 +39,8 @@ class SimulationExperiment:
         self,
         sid: str | None = None,
         base_path: Path | None = None,
-        data_path: Path | None = None,
-        ureg: UnitRegistry = None,
+        data_path: Path | Iterable[Path] | None = None,
+        ureg: UnitRegistry | None = None,
         **kwargs,
     ):
         """SimulationExperiement.
@@ -52,6 +53,8 @@ class SimulationExperiment:
         """
         if not sid:
             self.sid = self.__class__.__name__
+        # the simulator is set by the ExperimentRunner
+        self.simulator: SimulatorSerial | None = None
 
         if base_path:
             base_path = Path(base_path).resolve()
@@ -63,17 +66,18 @@ class SimulationExperiment:
             )
         self.base_path = base_path
 
+        data_paths: list[Path] | None = None
         if data_path:
-            if isinstance(data_path, (list, tuple, set)):
-                data_path = [Path(p).resolve() for p in data_path]
+            if isinstance(data_path, (str, Path)):
+                data_paths = [Path(data_path).resolve()]
             else:
-                data_path = [Path(data_path).resolve()]
-            for p in data_path:
+                data_paths = [Path(p).resolve() for p in data_path]
+            for p in data_paths:
                 if not p.exists():
                     raise OSError(f"data_path '{p}' does not exist")
         else:
             logger.warning("No 'data_path' provided, reading of datasets may fail.")
-        self.data_path = data_path
+        self.data_path: list[Path] | None = data_paths
 
         # single UnitRegistry per SimulationExperiment (can be shared)
         if not ureg:
@@ -452,7 +456,7 @@ class SimulationExperiment:
                 selections = {"time"}
                 d: Data
                 for d in self._data.values():
-                    if d.is_task():
+                    if d.is_task() and d.task_id is not None:
                         # check if selection is for current model
                         task = self._tasks[d.task_id]
                         if task.model_id == model_id:
@@ -471,7 +475,7 @@ class SimulationExperiment:
             for task_key in task_keys:
                 task = self._tasks[task_key]
 
-                sim: ScanSim | TimecourseSim = self._simulations[task.simulation_id]
+                sim: AbstractSim = self._simulations[task.simulation_id]
 
                 # normalization before running to ensure correct serialization
                 sim.normalize(uinfo=simulator.uinfo)
@@ -539,7 +543,9 @@ class SimulationExperiment:
         else:
             raise ValueError("Unsupported json format.")
 
-        return SimulationExperiment.from_dict(d)
+        raise NotImplementedError(
+            f"Deserialization of SimulationExperiment not supported: {d.keys()}"
+        )
 
     @timeit
     def save_datasets(self, results_path: Path) -> None:
@@ -621,7 +627,7 @@ class ExperimentResult:
     """Result of a simulation experiment."""
 
     experiment: SimulationExperiment
-    output_path: Path
+    output_path: Path | None
 
     def to_dict(self) -> dict:
         """Conversion to dictionary.

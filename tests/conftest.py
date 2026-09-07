@@ -18,12 +18,12 @@ def repressilator_model_state() -> str:
 
 
 @pytest.fixture
-def repressilator_path() -> str:
+def repressilator_path() -> Path:
     """Get repressilator SBML path."""
     return REPRESSILATOR_SBML
 
 
 @pytest.fixture
-def demo_path() -> str:
+def demo_path() -> Path:
     """Get demo SBML path."""
     return DEMO_SBML

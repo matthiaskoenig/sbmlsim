@@ -122,13 +122,11 @@ class SensitivityParameter(BaseModel):
 
             name = sbase.getName() if sbase.isSetName() else uid
             udef: libsbml.UnitDefinition = sbase.getDerivedUnitDefinition()
-            unit: str = udef_to_string(udef, model=None, format="str")
+            unit: str | None = udef_to_string(udef, model=None, format="str")
 
             # handle the species concentration
             ruid = uid
-            if (sbase.getTypeCode() == libsbml.SpeciesType) and (
-                sbase.getHasOnlySubstanceUnits()
-            ):
+            if isinstance(sbase, libsbml.Species) and sbase.getHasOnlySubstanceUnits():
                 ruid = f"[{uid}]"
 
             value = r.getValue(ruid)

@@ -154,12 +154,14 @@ class DataSetsComparison:
 
             cols = set(num_df.columns)
 
-            if not col_union or not col_intersection:
+            if col_union is None or col_intersection is None:
                 col_union = cols
                 col_intersection = cols
             else:
                 col_union = col_union.union(cols)
                 col_intersection = col_intersection.intersection(cols)
+        if col_union is None or col_intersection is None:
+            raise ValueError("No DataFrames to compare.")
 
         logger.info("Column Union #: %s", len(col_union))
         logger.info("Column Intersection #: %s", len(col_intersection))
@@ -249,7 +251,7 @@ class DataSetsComparison:
 
     def __repr__(self):
         """Get representation."""
-        return f"{self.__class__.__name__} [{self.id}] ({self.labels})"
+        return f"{self.__class__.__name__} ({self.labels})"
 
     @timeit
     def report_str(self) -> str:
@@ -308,7 +310,7 @@ class DataSetsComparison:
         diff_abs = self.diff_abs.copy()
         diff_rel = self.diff_rel.copy()
         diff_tol = self.diff_tol.copy()
-        diff_tol[diff_tol < 0] = np.NaN  # remove the identical tolerance
+        diff_tol[diff_tol < 0] = np.nan  # remove the identical tolerance
         diff_max = diff_abs.max()
         column_index = diff_max >= DataSetsComparison.eps_plot
 
@@ -335,7 +337,7 @@ class DataSetsComparison:
         # absolute difference
         df_diff: pd.DataFrame = self.diff_tol.copy()
         df_diff.drop(labels=col_drops, axis=1, inplace=True)
-        df_diff[df_diff < 0] = np.NaN
+        df_diff[df_diff < 0] = np.nan
 
         vmax = max(abs(df_diff.max().max()), abs(df_diff.min().min()))
         sns.heatmap(

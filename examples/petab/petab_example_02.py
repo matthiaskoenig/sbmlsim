@@ -2,9 +2,9 @@
 
 # import matplotlib and increase image resolution
 import matplotlib as mpl
-import pypesto
-import pypesto.optimize as optimize
-import pypesto.petab
+import pypesto  # ty: ignore[unresolved-import]
+import pypesto.optimize as optimize  # ty: ignore[unresolved-import]
+import pypesto.petab  # ty: ignore[unresolved-import]
 
 mpl.rcParams["figure.dpi"] = 300
 

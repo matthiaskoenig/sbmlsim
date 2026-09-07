@@ -24,6 +24,7 @@ from typing import ClassVar
 
 import numpy as np
 import SALib
+import SALib.analyze.sobol
 import xarray as xr
 from SALib import ProblemSpec
 from SALib.sample import saltelli
@@ -119,7 +120,7 @@ class SobolSensitivityAnalysis(SensitivityAnalysis):
             return
 
         for gid in self.group_ids:
-            Y = self.results[gid].values
+            Y = self.results_required(gid).values
             self.ssa_problems[gid].set_results(Y)
 
             # num_parameters x num_outputs
@@ -152,7 +153,7 @@ class SobolSensitivityAnalysis(SensitivityAnalysis):
             data=self.sensitivity, cache_filename=cache_filename, cache=cache
         )
 
-    def plot(self):
+    def plot(self) -> None:
         """Plot the Sobol indices as heatmaps and bar plots."""
         super().plot()
         for kg, group in enumerate(self.groups):

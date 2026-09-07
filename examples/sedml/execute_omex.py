@@ -1,39 +1,30 @@
-"""
-Execute a COMBINE archive.
+"""Execute a COMBINE archive.
+
+The results are written into `results/` in the working directory.
 """
 
 from pathlib import Path
 
-from examples.sedml import execute_sedml
-from tests import DATA_DIR
+from sbmlsim.combine.sedml.runner import execute_sedml
+
+#: test data of the repository, the archives are not part of the package
+DATA_DIR = Path(__file__).parents[2] / "tests" / "data"
 
 
-def run_repressilator():
-    repressilator_omex = DATA_DIR / "omex" / "tellurium" / "repressilator.omex"
-    working_dir = Path(__file__).parent / "results" / "repressilator_omex"
-    working_dir.mkdir(exist_ok=True)
-    execute_sedml(path=repressilator_omex, working_dir=working_dir)
-
-
-def run_omex(omex_path: Path):
-    # print(omex_path)
-    working_dir = Path(__file__).parent / "results" / omex_path.name
-    # print(working_dir)
+def run_omex(omex_path: Path, output_path: Path) -> None:
+    """Execute the COMBINE archive and write the results to the output path."""
+    working_dir = output_path / omex_path.stem
     working_dir.mkdir(parents=True, exist_ok=True)
     execute_sedml(path=omex_path, working_dir=working_dir, output_path=working_dir)
 
 
+def run_repressilator(output_path: Path) -> None:
+    """Execute the repressilator archive of tellurium."""
+    run_omex(
+        omex_path=DATA_DIR / "combine" / "omex" / "tellurium" / "repressilator.omex",
+        output_path=output_path,
+    )
+
+
 if __name__ == "__main__":
-    biomodels_omex_base_path = DATA_DIR / "combine" / "omex" / "biomodels" / "omex"
-    biomodels_omex_paths = []
-    for path in Path(biomodels_omex_base_path).rglob("*.omex"):
-        biomodels_omex_paths.append(path)
-    biomodels_omex_paths = sorted(biomodels_omex_paths)
-
-    for omex_path in [biomodels_omex_base_path / "BIOMD0000000111_fi4_sedml.omex"]:
-        run_omex(omex_path)
-
-    # for omex_path in sorted(biomodels_omex_paths):
-    #     run_biomodel_omex(omex_path)
-
-    "/home/mkoenig/git/sbmlsim/src/sbmlsim/tests/data/combine/omex/jws/omex/martins2016_fig4b.sedx"
+    run_repressilator(output_path=Path.cwd() / "results")

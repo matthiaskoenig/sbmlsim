@@ -3,20 +3,20 @@
 # import matplotlib and increase image resolution
 import matplotlib as mpl
 import numpy as np
-import pypesto
-import pypesto.optimize as optimize
-import pypesto.petab
+import pypesto  # ty: ignore[unresolved-import]
+import pypesto.optimize as optimize  # ty: ignore[unresolved-import]
+import pypesto.petab  # ty: ignore[unresolved-import]
 
 mpl.rcParams["figure.dpi"] = 300
 
 
 # define objective function
-def f(x: np.array):
+def f(x: np.ndarray) -> float:
     return x[0] ** 2 + x[1] ** 2
 
 
 # define gradient
-def grad(x: np.array):
+def grad(x: np.ndarray) -> np.ndarray:
     return 2 * x
 
 

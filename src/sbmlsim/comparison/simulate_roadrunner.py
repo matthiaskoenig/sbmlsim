@@ -36,7 +36,7 @@ class SimulateRoadrunnerSBML(SimulateSBML):
         integrator.setValue("relative_tolerance", self.relative_tolerance)
 
     def simulate_condition(
-        self, condition: Condition, timepoints: list[float]
+        self, condition: Condition, timepoints: np.ndarray
     ) -> pd.DataFrame:
         """Simulate condition."""
         # print(f"simulate condition: {condition.sid}")

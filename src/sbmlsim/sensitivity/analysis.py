@@ -256,7 +256,7 @@ class SensitivityAnalysis:
         Requires that samples have been created.
         Assumes all groups have the same number of samples.
         """
-        samples = self.samples[self.group_ids[0]]
+        samples = self.samples_required(self.group_ids[0])
         return samples.shape[0]
 
     def simulate_samples(
@@ -292,7 +292,7 @@ class SensitivityAnalysis:
             )
 
             # number of cores
-            samples = self.samples[group.uid]
+            samples = self.samples_required(group.uid)
 
             # create chunk of samples for core
             items = list(range(self.num_samples))
@@ -347,6 +347,22 @@ class SensitivityAnalysis:
             items[i * k + min(i, r) : (i + 1) * k + min(i + 1, r)] for i in range(n)
         ]
 
+    def samples_required(self, group_id: str) -> xr.DataArray:
+        """Samples of a group, raises if the samples are not created yet."""
+        samples = self.samples[group_id]
+        if samples is None:
+            raise ValueError(
+                f"No samples for group '{group_id}', create samples first."
+            )
+        return samples
+
+    def results_required(self, group_id: str) -> xr.DataArray:
+        """Results of a group, raises if the samples are not simulated yet."""
+        results = self.results[group_id]
+        if results is None:
+            raise ValueError(f"No results for group '{group_id}', simulate first.")
+        return results
+
     def samples_table(self) -> pd.DataFrame:
         """Sizes of the sample arrays per group."""
         return self._data_table(d=self.samples)
@@ -355,10 +371,12 @@ class SensitivityAnalysis:
         """Sizes of the result arrays per group."""
         return self._data_table(d=self.results)
 
-    def _data_table(self, d: dict[str, xr.DataArray]) -> pd.DataFrame:
+    def _data_table(self, d: dict[str, xr.DataArray | None]) -> pd.DataFrame:
         items = []
         for group in self.groups:
-            da: xr.DataArray = d[group.uid]
+            da = d[group.uid]
+            if da is None:
+                continue
             item = {
                 "group": group.uid,
                 # 'group_name': group.name,
@@ -367,16 +385,16 @@ class SensitivityAnalysis:
             items.append(item)
         return pd.DataFrame(items)
 
-    def read_cache(self, cache_filename: str, cache: bool) -> Any | None:
+    def read_cache(self, cache_filename: str | None, cache: bool) -> Any | None:
         """Read cached data from the results path, None if not cached."""
         cache_path: Path | None = (
             self.results_path / cache_filename if cache_filename else None
         )
-        if cache and not cache_path:
+        if cache and cache_path is None:
             raise ValueError("Cache path is required for caching.")
 
         # retrieve from cache
-        if cache and cache_path.exists():
+        if cache and cache_path is not None and cache_path.exists():
             with open(cache_path, "rb") as f:
                 data = dill.load(f)
                 console.print(f"Simulated samples loaded from cache: '{cache_path}'")
@@ -384,7 +402,7 @@ class SensitivityAnalysis:
 
         return None
 
-    def write_cache(self, data: Any, cache_filename: str, cache: bool) -> None:
+    def write_cache(self, data: Any, cache_filename: str | None, cache: bool) -> None:
         """Write data to the cache file in the results path."""
         cache_path: Path | None = (
             self.results_path / cache_filename if cache_filename else None
@@ -403,8 +421,8 @@ class SensitivityAnalysis:
             index=sensitivity.coords["parameter"],
         )
 
-    def plot(self, **kwargs):
-        """Should be implemented by subclass."""
+    def plot(self) -> None:
+        """Plot the results, implemented by the subclasses."""
         console.rule("Plotting", style="white")
 
     def plot_sensitivity(  # noqa: D102 -- documented below the signature

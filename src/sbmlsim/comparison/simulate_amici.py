@@ -4,7 +4,7 @@ sudo apt-get install libatlas-base-dev swig libhdf5-serial-dev
 pip install amici --upgrade
 """
 
-import amici
+import amici  # ty: ignore[unresolved-import]
 import numpy as np
 import pandas as pd
 

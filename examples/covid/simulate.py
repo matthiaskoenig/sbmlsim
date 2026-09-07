@@ -11,11 +11,12 @@ from examples.covid.experiments import (
 )
 from sbmlsim.combine.sedml.parser import SEDMLSerializer
 from sbmlsim.combine.sedml.runner import execute_sedml
+from sbmlsim.experiment import SimulationExperiment
 from sbmlsim.experiment.runner import run_experiments
 
 
 def run_covid_examples(output_path: Path) -> None:
-    experiments = [
+    experiments: list[type[SimulationExperiment]] = [
         Bertozzi2020,
         Cuadros2020,
         Carcione2020,

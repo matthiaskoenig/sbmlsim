@@ -7,8 +7,9 @@ from pathlib import Path
 from typing import Any
 
 import libsbml
+import numpy as np
 import pandas as pd
-from petab.conditions import get_condition_df
+from petab.v1.conditions import get_condition_df
 
 
 class Change:
@@ -34,7 +35,7 @@ class Change:
         """Initialize the change of a target."""
         self.target_id: str = target_id
         self.value: float = value
-        self.unit: str = unit
+        self.unit: str | None = unit
 
 
 class Condition:
@@ -115,7 +116,7 @@ class SimulateSBML:
         self.sid2name: dict[str, str] = sbml_data[7]
 
     @staticmethod
-    def parse_sbml(sbml_path: Path) -> tuple[Any]:
+    def parse_sbml(sbml_path: Path) -> tuple[Any, ...]:
         """Parses the identifiers."""
         doc: libsbml.SBMLDocument = libsbml.readSBMLFromFile(str(sbml_path))
         model: libsbml.Model = doc.getModel()
@@ -163,5 +164,8 @@ class SimulateSBML:
             sid2name,
         )
 
-    def simulate_condition(self, condition: Condition, timepoints: list[float]):
+    def simulate_condition(
+        self, condition: Condition, timepoints: np.ndarray
+    ) -> pd.DataFrame:
         """Simulate the condition at the timepoints, implemented by the subclasses."""
+        raise NotImplementedError

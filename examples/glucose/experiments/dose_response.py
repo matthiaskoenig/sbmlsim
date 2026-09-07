@@ -26,6 +26,8 @@ class DoseResponseExperiment(SimulationExperiment):
     @timeit
     def datasets(self) -> dict[str, DataSet]:
         dsets = {}
+        if self.data_path is None:
+            raise ValueError("data_path is required for the dose response data.")
 
         # dose-response data for hormones
         for hormone_key in ["Epinephrine", "Glucagon", "Insulin"]:
@@ -145,6 +147,8 @@ class DoseResponseExperiment(SimulationExperiment):
         task = self._tasks["task_glc_scan"]
         model = self._models[task.model_id]
         tcscan = self._simulations[task.simulation_id]
+        if not isinstance(tcscan, ScanSim):
+            raise ValueError("The glucose scan must be a ScanSim.")
 
         # FIXME: this must be simpler
         glc_vec = tcscan.dimensions[0].changes["[glc_ext]"]

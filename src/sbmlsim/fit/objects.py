@@ -5,10 +5,10 @@ from __future__ import annotations
 import json
 import logging
 import math
-from collections.abc import Callable, Iterable
+from collections.abc import Iterable
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import numpy as np
 import pandas as pd
@@ -16,7 +16,17 @@ import pandas as pd
 from sbmlsim.data import Data
 from sbmlsim.serialization import to_json
 
+if TYPE_CHECKING:
+    from sbmlsim.experiment import SimulationExperiment
+
 logger = logging.getLogger(__name__)
+
+
+def _isclose(a: float | None, b: float | None) -> bool:
+    """Compare two optional floats, None only equals None."""
+    if a is None or b is None:
+        return a is b
+    return math.isclose(a, b)
 
 
 class FitExperiment:
@@ -28,7 +38,7 @@ class FitExperiment:
 
     def __init__(
         self,
-        experiment: Callable,
+        experiment: type[SimulationExperiment],
         mappings: list[str] | None = None,
         weights: float | list[float] | None = None,
         use_mapping_weights: bool = False,
@@ -48,8 +58,9 @@ class FitExperiment:
         :param exclude: boolean flag to exclude experiment. This will not be considered
                         in fitting.
         """
-        self._weights = None
-        self.experiment_class = experiment
+        self.experiment_class: type[SimulationExperiment] = experiment
+        if mappings is None:
+            mappings = []
 
         if len(mappings) > len(set(mappings)):
             raise ValueError(
@@ -57,7 +68,7 @@ class FitExperiment:
                 f"changing weights of single mappings: "
                 f"{self.experiment_class.__name__}: '{sorted(mappings)}'"
             )
-        self.mappings = mappings
+        self.mappings: list[str] = mappings
         self.use_mapping_weights = use_mapping_weights
         self.weights = weights
         self.exclude: bool = exclude
@@ -73,18 +84,20 @@ class FitExperiment:
             )
 
     @property
-    def weights(self) -> list[float]:
-        """Weights of fit mappings."""
+    def weights(self) -> list[float | None]:
+        """Weights of fit mappings, None if the weight of the mapping is used."""
         return self._weights
 
     @weights.setter
     def weights(self, weights: float | list[float] | None = None) -> None:
         """Set weights for mappings in fit experiment."""
-        weights_processed = None
+        weights_processed: list[float | None]
         if self.use_mapping_weights is True:
-            mapping_weights = [None] * len(self.mappings)
+            mapping_weights: list[float | None] = [None] * len(self.mappings)
             # no weights provided use default empty weights
-            weights_processed = mapping_weights if weights is None else weights
+            weights_processed = (
+                mapping_weights if weights is None else list(weights)  # ty: ignore[invalid-argument-type]
+            )
 
             # all weights have to be None, i.e [None, ..., None].
             # the weights are calculated dynamically by evaluating the fit mappings.
@@ -108,9 +121,11 @@ class FitExperiment:
                         f"Mapping weights '{weights}' must have same length as "
                         f"mappings '{self.mappings}'."
                     )
-                weights_processed = weights
+                weights_processed = list(weights)
+            else:
+                raise ValueError(f"Unsupported weights: '{weights}'")
 
-        self._weights = weights_processed
+        self._weights: list[float | None] = weights_processed
 
     @staticmethod
     def reduce(fit_experiments: Iterable[FitExperiment]) -> list[FitExperiment]:
@@ -126,7 +141,7 @@ class FitExperiment:
 
                 red_exp = red_experiments[sid]
                 red_exp.mappings = red_exp.mappings + fit_exp.mappings
-                red_exp.weights = red_exp.weights + fit_exp.weights
+                red_exp._weights = red_exp._weights + fit_exp._weights
 
         return list(red_experiments.values())
 
@@ -152,7 +167,18 @@ class FitExperiment:
 
 @dataclass
 class MappingMetaData:
-    """Metadata for mapping."""
+    """Metadata for mapping.
+
+    Applications derive their metadata from this class, e.g., the tissue, the
+    dosing or the group of a study; `outlier` marks a mapping which is excluded
+    from the fit.
+    """
+
+    outlier: bool = False
+
+    def to_dict(self) -> dict[str, Any]:
+        """Convert to dictionary for serialization."""
+        return dict(self.__dict__)
 
 
 class FitMapping:
@@ -169,7 +195,7 @@ class FitMapping:
         reference: FitData,
         observable: FitData,
         weight: float | None = None,
-        metadata: MappingMetaData = None,
+        metadata: MappingMetaData | None = None,
     ):
         """FitMapping.
 
@@ -251,9 +277,9 @@ class FitParameter:
 
         return (
             self.pid == other.pid
-            and math.isclose(self.start_value, other.start_value)
-            and math.isclose(self.lower_bound, other.lower_bound)
-            and math.isclose(self.upper_bound, other.upper_bound)
+            and _isclose(self.start_value, other.start_value)
+            and _isclose(self.lower_bound, other.lower_bound)
+            and _isclose(self.upper_bound, other.upper_bound)
             and self.unit == other.unit
         )
 
@@ -264,18 +290,15 @@ class FitParameter:
             f"[{self.lower_bound} - {self.upper_bound}]>"
         )
 
-    def to_json(self, path: Path | None = None) -> str | None:
+    def to_json(self, path: Path | None = None) -> str | Path:
         """Serialize to JSON.
 
         Serializes to file if path is provided, otherwise returns JSON string.
         """
         return to_json(object=self, path=path)
 
-    def to_dict(self, path: Path | None = None) -> str | None:
-        """Serialize to JSON.
-
-        Serializes to file if path is provided, otherwise returns JSON string.
-        """
+    def to_dict(self) -> dict[str, Any]:
+        """Convert to dictionary for serialization."""
         return {
             "pid": self.pid,
             "start_value": self.start_value,
@@ -340,7 +363,7 @@ class FitData:
                 counts_unique = np.unique(counts.magnitude)
                 if counts_unique.size > 1:
                     logger.warning("count is not unique for dataset: '%s'", counts)
-                count = int(counts[0].magnitude)
+                count = int(counts_unique[0])
             else:
                 raise ValueError(
                     f"'count' must be integer or a column in a "

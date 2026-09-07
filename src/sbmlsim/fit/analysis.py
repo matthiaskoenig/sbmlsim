@@ -38,13 +38,13 @@ class OptimizationAnalysis:
         opt_result: OptimizationResult,
         output_name: str,
         output_dir: Path,
-        op: OptimizationProblem = None,
+        op: OptimizationProblem | None = None,
         show_plots: bool = True,
         show_titles: bool = True,
-        residual: ResidualType = None,
-        loss_function: LossFunctionType = None,
+        residual: ResidualType | None = None,
+        loss_function: LossFunctionType | None = None,
         weighting_curves: list[WeightingCurvesType] | None = None,
-        weighting_points: WeightingPointsType = None,
+        weighting_points: WeightingPointsType | None = None,
         variable_step_size: bool = True,
         absolute_tolerance: float = 1e-6,
         relative_tolerance: float = 1e-6,
@@ -89,15 +89,24 @@ class OptimizationAnalysis:
         if op:
             op.initialize(
                 residual=residual,
-                loss_function=loss_function,
-                weighting_curves=weighting_curves,
+                loss_function=loss_function
+                if loss_function is not None
+                else LossFunctionType.LINEAR,
+                weighting_curves=weighting_curves if weighting_curves else [],
                 weighting_points=weighting_points,
                 variable_step_size=variable_step_size,
                 absolute_tolerance=absolute_tolerance,
                 relative_tolerance=relative_tolerance,
             )
 
-        self.op: OptimizationProblem = op  # type: ignore
+        self._op: OptimizationProblem | None = op
+
+    @property
+    def op(self) -> OptimizationProblem:
+        """Optimization problem of the analysis, required for the fit plots."""
+        if self._op is None:
+            raise ValueError("OptimizationAnalysis requires the OptimizationProblem.")
+        return self._op
 
     def run(self, mpl_parameters: dict[str, Any] | None = None) -> None:
         """Execute complete analysis.
@@ -117,7 +126,7 @@ class OptimizationAnalysis:
         # Write text report
         # ----------------------
         problem_info: str = ""
-        if self.op:
+        if self._op:
             problem_info = self.op.report(
                 path=None,
                 print_output=False,
@@ -162,7 +171,7 @@ class OptimizationAnalysis:
             )
 
         # plot fit results for optimal parameters
-        if self.op:
+        if self._op:
             xopt = self.optres.xopt
 
             self.plot_datapoint_scatter(
@@ -509,7 +518,8 @@ class OptimizationAnalysis:
             )
 
         return pd.DataFrame(
-            data, columns=["id", "experiment", "mapping", "cost", "weight_curve"]
+            data,
+            columns=pd.Index(["id", "experiment", "mapping", "cost", "weight_curve"]),
         )
 
     def _datapoints_df(self, x: np.ndarray) -> pd.DataFrame:
@@ -544,15 +554,17 @@ class OptimizationAnalysis:
 
         return pd.DataFrame(
             data,
-            columns=[
-                "experiment",
-                "mapping",
-                "x_ref",
-                "y_ref",
-                "y_ref_err",
-                "y_obs",
-                "residual",
-            ],
+            columns=pd.Index(
+                [
+                    "experiment",
+                    "mapping",
+                    "x_ref",
+                    "y_ref",
+                    "y_ref_err",
+                    "y_obs",
+                    "residual",
+                ]
+            ),
         )
 
     kwargs_scatter: ClassVar[dict[str, Any]] = {

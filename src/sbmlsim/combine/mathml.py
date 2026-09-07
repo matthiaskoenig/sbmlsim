@@ -28,7 +28,7 @@ def astnode_to_formula(astnode: libsedml.ASTNode) -> str:
 
 def parse_mathml_str(mathml_str: str):
     """Parse MathML string."""
-    astnode: libsedml.AstNode = libsedml.readMathMLFromString(mathml_str)
+    astnode: libsedml.ASTNode = libsedml.readMathMLFromString(mathml_str)
     return parse_astnode(astnode)
 
 
@@ -94,9 +94,10 @@ def evaluate(astnode: libsedml.ASTNode, variables: dict):
     return f(**variables)
 
 
-def _get_variables(astnode: libsedml.ASTNode, variables=None) -> set[str]:
+def _get_variables(
+    astnode: libsedml.ASTNode, variables: set[str] | None = None
+) -> set[str]:
     """Add variable names to the variables."""
-    variables: set
     if variables is None:
         variables = set()
 
@@ -179,7 +180,7 @@ if __name__ == "__main__":
 
     # evaluate expression
     expr = parse_formula("x + y")
-    print(expr.free_symbols, type(expr))
+    print(expr, type(expr))
 
     """
     # evaluate the function with the values

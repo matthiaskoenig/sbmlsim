@@ -4,6 +4,7 @@ Example simulation experiment.
 
 from pathlib import Path
 
+from examples.curve_types.model import create
 from sbmlsim.combine.sedml.report import Report
 from sbmlsim.data import Data
 from sbmlsim.experiment import ExperimentRunner, SimulationExperiment
@@ -17,11 +18,12 @@ from sbmlsim.task import Task
 class CurveTypesExperiment(SimulationExperiment):
     """Simulation experiments for curve types."""
 
-    def models(self) -> dict[str, Path | AbstractModel]:
+    #: path of the model, created by `run_curve_types_experiments`
+    model_path: Path = Path.cwd() / "results" / "curve_types_model.xml"
+
+    def models(self) -> dict[str, AbstractModel | Path]:
         """Define models."""
-        return {
-            "model": Path(__file__).parent / "results" / "curve_types_model.xml",
-        }
+        return {"model": self.model_path}
 
     def simulations(self) -> dict[str, AbstractSim]:
         """Define simulations."""
@@ -47,8 +49,8 @@ class CurveTypesExperiment(SimulationExperiment):
                 data.append(Data(task=f"task_{model}_tc", index=selection))
         return {d.sid: d for d in data}
 
-    def reports(self) -> dict[str, Report]:
-        """Define reports."""
+    def reports(self) -> dict[str, dict[str, str]]:
+        """Define reports, i.e., the labels of the data generators."""
         report1 = Report(
             sid="report1",
             datasets={
@@ -56,7 +58,7 @@ class CurveTypesExperiment(SimulationExperiment):
                 for sid in ["time", "S1", "S2", "[S1]", "[S2]"]
             },
         )
-        return {report1.sid: report1}
+        return {report1.sid: report1.datasets}
 
     def figures(self) -> dict[str, Figure]:
         """Define figure outputs (plots)."""
@@ -82,16 +84,15 @@ class CurveTypesExperiment(SimulationExperiment):
             label="[S1]",
         )
 
-        return {
-            fig.sid: fig,
-        }
+        return {"fig1": fig}
 
 
-def run_curve_types_experiments(output_path: Path) -> Path:
-    """Run simulation experiments."""
+def run_curve_types_experiments(output_path: Path) -> None:
+    """Create the model and run the simulation experiments."""
     base_path = Path(__file__).parent
     data_path = base_path
 
+    CurveTypesExperiment.model_path = create(output_dir=output_path / "results")
     runner = ExperimentRunner(
         CurveTypesExperiment,
         simulator=SimulatorSerial(),
@@ -104,4 +105,4 @@ def run_curve_types_experiments(output_path: Path) -> Path:
 
 
 if __name__ == "__main__":
-    run_curve_types_experiments(Path(__file__).parent / "results")
+    run_curve_types_experiments(Path.cwd())

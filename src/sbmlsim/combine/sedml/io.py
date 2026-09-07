@@ -2,7 +2,6 @@
 
 import importlib
 import logging
-import os
 import zipfile
 from enum import Enum
 from pathlib import Path
@@ -68,8 +67,8 @@ class SEDMLReader:
     def __init__(self, source: Path | str, working_dir: Path | None = None):
         """Initialize SEDMLReader."""
         self.source: Path | str = source
-        self.exec_dir: Path = os.getcwd()
-        self.working_dir: Path = working_dir
+        self.exec_dir: Path = Path.cwd()
+        self.working_dir: Path | None = working_dir
         self.input_type: SEDMLInputType | None = None
         self.error_log: libsedml.SedErrorLog | None = None
         self.sed_doc: libsedml.SedDocument | None = None
@@ -81,7 +80,7 @@ class SEDMLReader:
         if self.sed_doc:
             self.error_log: libsedml.SedErrorLog | None = check_sedml_doc(self.sed_doc)
 
-    def __repr__(self) -> None:
+    def __repr__(self) -> str:
         """Get string representation."""
         source_str = (
             self.source

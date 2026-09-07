@@ -1033,6 +1033,8 @@ class Plot(BasePlotObject):
 
     def __copy__(self) -> Plot:
         """Copy the existing object."""
+        if self.sid is None:
+            raise ValueError("Plot requires an sid to be copied.")
         return Plot(
             sid=self.sid,
             name=self.name,
@@ -1084,7 +1086,7 @@ class Plot(BasePlotObject):
         self._figure = value
 
     @property
-    def experiment(self) -> SimulationExperiment:
+    def experiment(self) -> SimulationExperiment | None:
         """Get simulation experiment for this plot."""
         return self.figure.experiment
 
@@ -1426,7 +1428,7 @@ class Plot(BasePlotObject):
                     counts_unique = np.unique(counts.magnitude)
                     if counts_unique.size > 1:
                         logger.warning("count is not unique for dataset: '%s'", counts)
-                    count = int(counts[0].magnitude)
+                    count = int(counts_unique[0])
                 else:
                     raise ValueError(
                         f"'count' must be integer or a column in a "
@@ -1519,7 +1521,7 @@ class Figure(BasePlotObject):
 
     def __init__(
         self,
-        experiment: SimulationExperiment,
+        experiment: SimulationExperiment | None,
         sid: str,
         name: str | None = None,
         subplots: list[SubPlot] | None = None,
@@ -1541,7 +1543,7 @@ class Figure(BasePlotObject):
             num_cols: number of panel columns
         """
         super().__init__(sid, name)
-        self.experiment: SimulationExperiment = experiment
+        self.experiment: SimulationExperiment | None = experiment
         if subplots is None:
             subplots = []
         self.subplots: list[SubPlot] = subplots

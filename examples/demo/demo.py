@@ -28,7 +28,7 @@ from sbmlsim.task import Task
 class DemoExperiment(SimulationExperiment):
     """Simple repressilator experiment."""
 
-    def models(self) -> dict[str, AbstractModel]:
+    def models(self) -> dict[str, AbstractModel | Path]:
         """Define models."""
         return {"model": RoadrunnerSBMLModel(source=DEMO_SBML, ureg=self.ureg)}
 
@@ -101,11 +101,9 @@ class DemoExperiment(SimulationExperiment):
                     y=Data(key, task=task_id),
                     label=key,
                 )
-        plots[1].yaxis.scale = "log"
+        plots[1].set_yaxis("data", unit=unit_data, scale="log")
 
-        return {
-            fig1.sid: fig1,
-        }
+        return {"fig1": fig1}
 
 
 def run_demo_experiments(output_path: Path) -> None:
@@ -125,5 +123,4 @@ def run_demo_experiments(output_path: Path) -> None:
 
 
 if __name__ == "__main__":
-    output_path = Path(".")
-    run_demo_experiments(output_path=output_path)
+    run_demo_experiments(output_path=Path.cwd())

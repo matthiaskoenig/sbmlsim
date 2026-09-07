@@ -36,7 +36,7 @@ class RoadrunnerSBMLModel(AbstractModel):
         sid: str | None = None,
         name: str | None = None,
         selections: list[str] | None = None,
-        ureg: UnitRegistry = None,
+        ureg: UnitRegistry | None = None,
         settings: dict | None = None,
     ):
         """Load the model into roadrunner, with changes, selections and settings."""
@@ -73,11 +73,13 @@ class RoadrunnerSBMLModel(AbstractModel):
             RoadrunnerSBMLModel.set_integrator_settings(self.r, **settings)
 
         # normalize model changes
-        self.uinfo = self.parse_units(ureg)
+        self.uinfo = self.parse_units(
+            ureg if ureg is not None else UnitsInformation._default_ureg()
+        )
         self.normalize(uinfo=self.uinfo)
 
     @property
-    def Q_(self) -> Quantity:
+    def Q_(self) -> type[Quantity]:
         """Quantity to create quantities for model changes."""
         return self.uinfo.ureg.Quantity
 
@@ -85,7 +87,7 @@ class RoadrunnerSBMLModel(AbstractModel):
     def from_abstract_model(
         abstract_model: AbstractModel,
         selections: list[str] | None = None,
-        ureg: UnitRegistry = None,
+        ureg: UnitRegistry | None = None,
         settings: dict | None = None,
     ):
         """Create from AbstractModel."""
@@ -116,7 +118,7 @@ class RoadrunnerSBMLModel(AbstractModel):
             source = Source.from_source(source=source)
 
         # load model
-        if source.is_path():
+        if source.path is not None:
             sbml_path: Path = source.path
             # state_path: Path = RoadrunnerSBMLModel.get_state_path(sbml_path=sbml_path)
 
@@ -165,10 +167,12 @@ class RoadrunnerSBMLModel(AbstractModel):
     def parse_units(self, ureg: UnitRegistry) -> UnitsInformation:
         """Parse units from SBML model."""
         uinfo: UnitsInformation
-        if self.source.is_content():
+        if self.source.content is not None:
             uinfo = UnitsInformation.from_sbml(sbml=self.source.content, ureg=ureg)
-        elif self.source.is_path():
+        elif self.source.path is not None:
             uinfo = UnitsInformation.from_sbml(sbml=self.source.path, ureg=ureg)
+        else:
+            raise ValueError(f"Model source has no content and no path: {self.source}")
 
         return uinfo
 
@@ -196,7 +200,7 @@ class RoadrunnerSBMLModel(AbstractModel):
             ]
         else:
             r.timeCourseSelections = selections
-        return selections
+        return list(r.timeCourseSelections)
 
     @staticmethod
     def set_integrator_settings(
@@ -256,11 +260,13 @@ class RoadrunnerSBMLModel(AbstractModel):
         data = {
             "sid": sids,
             "value": r_model.getGlobalParameterValues(),
-            "unit": [p.units for p in parameters],
-            "constant": [p.constant for p in parameters],
-            "name": [p.name for p in parameters],
+            "unit": [p.getUnits() for p in parameters],
+            "constant": [p.getConstant() for p in parameters],
+            "name": [p.getName() for p in parameters],
         }
-        return pd.DataFrame(data, columns=["sid", "value", "unit", "constant", "name"])
+        return pd.DataFrame(
+            data, columns=pd.Index(["sid", "value", "unit", "constant", "name"])
+        )
 
     @staticmethod
     def species_df(r: roadrunner.RoadRunner) -> pd.DataFrame:
@@ -301,14 +307,16 @@ class RoadrunnerSBMLModel(AbstractModel):
 
         return pd.DataFrame(
             data,
-            columns=[
-                "sid",
-                "concentration",
-                "amount",
-                "unit",
-                "constant",
-                "boundaryCondition",
-                "species",
-                "name",
-            ],
+            columns=pd.Index(
+                [
+                    "sid",
+                    "concentration",
+                    "amount",
+                    "unit",
+                    "constant",
+                    "boundaryCondition",
+                    "species",
+                    "name",
+                ]
+            ),
         )

@@ -5,6 +5,7 @@ import logging
 import warnings
 from enum import Enum
 from pathlib import Path
+from typing import Any
 
 import libnuml
 import libsbml
@@ -25,7 +26,7 @@ class NumlParser:
         LIBSEDML = 2
 
     @classmethod
-    def read_numl_document(cls, path: Path) -> libnuml.NUMLDocument:
+    def read_numl_document(cls, path: Path | str) -> libnuml.NUMLDocument:
         """Read NuML document and check for errors.
 
         :param path: path of file
@@ -52,21 +53,17 @@ class NumlParser:
         return doc_numl
 
     @classmethod
-    def load_numl_data(cls, path) -> pd.DataFrame:
+    def load_numl_data(cls, path: Path | str) -> list[list[Any]]:
         """Read NuML data from file.
 
         This loads the complete numl data.
         For more information see: https://github.com/numl/numl
 
         :param path: NuML path
-        :return: data
+        :return: list of `[result component id, DataFrame, data types]` entries
         """
         importlib.reload(libnuml)
-        path_str = path
-        if isinstance(path, Path):
-            path_str = str(path)
-
-        doc_numl = NumlParser.read_numl_document(path_str)
+        doc_numl = NumlParser.read_numl_document(str(path))
 
         # reads all the resultComponents from the numl file
         results = []
@@ -102,7 +99,9 @@ class NumlParser:
                 for cid, _dtype in entry.items():
                     column_ids.append(cid)
 
-            df = pd.DataFrame(flat_data, columns=column_ids)
+            df = pd.DataFrame(
+                np.array(flat_data, dtype=object), columns=pd.Index(column_ids)
+            )
 
             # convert data types to actual data types
             for entry in data_types:

@@ -1,6 +1,7 @@
 """Example for sensitivity analysis."""
 
 from pathlib import Path
+from typing import Any
 
 import numpy as np
 import roadrunner
@@ -129,7 +130,7 @@ if __name__ == "__main__":
     df.to_csv(sensitivity_path / "parameters.tsv", sep="\t", index=False)
     console.print(df)
 
-    settings = {
+    settings: dict[str, Any] = {
         "cache_results": False,
         "n_cores": round(0.9 * multiprocessing.cpu_count()),
         "seed": 1234,

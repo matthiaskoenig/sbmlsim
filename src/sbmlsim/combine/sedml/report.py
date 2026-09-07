@@ -16,12 +16,8 @@ class Report:
     ):
         """Construct report."""
         self.sid: str = sid
-        self.name: str = name
-
-        if datasets is None:
-            self.datasets = {}
-
-        self.datasets: dict[str, str] = datasets
+        self.name: str | None = name
+        self.datasets: dict[str, str] = datasets if datasets is not None else {}
 
     def add_dataset(self, label: str, data_id: str) -> None:
         """Add dataset for given label."""

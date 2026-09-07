@@ -1,7 +1,9 @@
+from typing import Any
+
 from sbmlsim.data import DataSet, load_pkdb_dataframes_by_substance
 from sbmlsim.fit import FitData, FitMapping
 from sbmlsim.plot import Axis, Figure
-from sbmlsim.simulation import Timecourse, TimecourseSim
+from sbmlsim.simulation import AbstractSim, Timecourse, TimecourseSim
 
 from . import MidazolamSimulationExperiment
 
@@ -40,8 +42,8 @@ class Kupferschmidt1995(MidazolamSimulationExperiment):
                     ]
         return dsets
 
-    def simulations(self) -> dict[str, TimecourseSim]:
-        return super().simulations(simulations={**self.simulations_mid()})
+    def simulations(self) -> dict[str, AbstractSim]:
+        return self.simulations_with_sensitivity({**self.simulations_mid()})
 
     def simulations_mid(self) -> dict[str, TimecourseSim]:
         """Kupferschmidt1995
@@ -57,7 +59,7 @@ class Kupferschmidt1995(MidazolamSimulationExperiment):
         mid_iv = Q_(5, "mg")
         mid_po = Q_(15, "mg")
 
-        sim_def = {
+        sim_def: dict[str, dict[str, Any]] = {
             "mid_iv_c": {
                 "end": 1500,
                 "steps": 3000,
@@ -146,12 +148,12 @@ class Kupferschmidt1995(MidazolamSimulationExperiment):
         plots[3].set_title("midazolam po, 15 [mg] + Grapefruit Juice")
         for k in (0, 1):
             plots[k].set_yaxis("midazolam", unit_mid)
-            plots[k].xaxis.label_visible = False
+            plots[k].set_xaxis("time", unit=unit_time, label_visible=False)
         for k in (2, 3):
             plots[k].set_yaxis("1-hydroxymidazolam", unit_mid1oh)
 
         # simulation
-        plot_dict = {
+        plot_dict: dict[str, dict[str, Any]] = {
             "mid_iv_c": {
                 "plot": (0, 1),
                 "label": "mid (ve blood; control)",
@@ -189,7 +191,7 @@ class Kupferschmidt1995(MidazolamSimulationExperiment):
                 )
 
         # plot data
-        data_def = {
+        data_def: dict[str, dict[str, Any]] = {
             "Fig1_midazolam_iv_control": {
                 "plot": 0,
                 "key": "control",

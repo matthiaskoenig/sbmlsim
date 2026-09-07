@@ -6,7 +6,7 @@ https://github.com/AMICI-dev/AMICI/blob/master/documentation/GettingStarted.ipyn
 
 """
 
-import amici
+import amici  # ty: ignore[unresolved-import]
 import numpy as np
 
 sbml_importer = amici.SbmlImporter("pravastatin_body_all_flat.xml")

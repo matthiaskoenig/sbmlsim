@@ -83,7 +83,7 @@ class XResult:
         """
         if self.uinfo is None:
             raise ValueError(f"No units information available for key '{key}'.")
-        return values * self.uinfo.ureg(self.uinfo[key])
+        return self.uinfo.ureg.Quantity(values, self.uinfo[key])
 
     def dim_mean(self, key: str) -> Quantity:
         """Get mean over all added dimensions.
@@ -192,7 +192,7 @@ class XResult:
         if scan is None:
             dimensions = [Dimension("_dfs", index=np.arange(num_dfs))]
         else:
-            dimensions = scan.dimensions  # ty: ignore[invalid-assignment]  # FIXME(cross-area): ScanSim.dimensions attribute shadows the method of the same name
+            dimensions = scan.dimensions
 
         # add additional dimensions
         for dimension in dimensions:

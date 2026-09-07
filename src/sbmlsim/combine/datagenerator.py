@@ -56,6 +56,6 @@ class DataGenerator:
         self.dsets = dsets
         self.f = f
 
-    def process(self) -> XResult:
+    def process(self) -> dict[str, XResult]:
         """Process the data generator."""
         return self.f(xresults=self.xresults, dsets=self.dsets)

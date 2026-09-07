@@ -67,4 +67,6 @@ def timeit(function):
 def function_name() -> str:
     """Get current function name."""
     frame = inspect.currentframe()
+    if frame is None:
+        raise RuntimeError("No current frame available.")
     return inspect.getframeinfo(frame).function

@@ -94,7 +94,7 @@ def create_samples(
             # parameter values in real space
             x[:, k] = np.power(10, values_log)
 
-    return pd.DataFrame(x, columns=[p.pid for p in parameters])
+    return pd.DataFrame(x, columns=pd.Index([p.pid for p in parameters]))
 
 
 def plot_samples(samples):

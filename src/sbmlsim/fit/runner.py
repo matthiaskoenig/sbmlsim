@@ -174,7 +174,7 @@ def worker(kwargs) -> OptimizationResult:
     finally:
         lock.release()
 
-    return _run_optimization_serial(**kwargs)  # type: ignore
+    return _run_optimization_serial(**kwargs)
 
 
 def _run_optimization_serial(

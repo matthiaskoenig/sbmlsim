@@ -4,8 +4,6 @@ Example simulation experiment.
 
 from pathlib import Path
 
-from sbmlsim.combine.sedml.report import Report
-
 # from sbmlsim.combine.sedml.parser import SEDMLSerializer
 # from sbmlsim.combine.sedml.runner import execute_sedml
 from sbmlsim.data import Data
@@ -131,12 +129,9 @@ class RepressilatorExperiment(SimulationExperiment):
                 color=colors2[k],
                 linewidth=2.0,
             )
-        print(fig, fig.name)
-        return {
-            fig.sid: fig,
-        }
+        return {"fig1": fig}
 
-    def reports(self) -> dict[str, Report]:
+    def reports(self) -> dict[str, dict[str, str]]:
         """Define reports.
 
         HashMap of DataGenerators.

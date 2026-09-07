@@ -40,6 +40,8 @@ def execute_sedml(path: Path, working_dir: Path, output_path: Path) -> None:
     os.chdir(sedml_reader.exec_dir)
     print(os.getcwd())
 
+    if sedml_reader.sed_doc is None:
+        raise ValueError(f"SED-ML document could not be read: '{sedml_reader}'")
     sedml_parser = SEDMLParser(
         sed_doc=sedml_reader.sed_doc,
         exec_dir=sedml_reader.exec_dir,

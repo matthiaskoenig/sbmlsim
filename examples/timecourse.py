@@ -1,17 +1,20 @@
-"""Example showing basic timecourse simulations and plotting."""
+"""Example showing basic timecourse simulations and plotting.
 
-from sbmlsim.xresult import XResult
+The figure is written to `timecourse.png` in the working directory.
+"""
+
+from matplotlib import pyplot as plt
 
 from sbmlsim.console import console
-from sbmlsim.plot.serialization_matplotlib import plt
 from sbmlsim.resources import REPRESSILATOR_SBML
+from sbmlsim.result import XResult
 from sbmlsim.simulation import Timecourse, TimecourseSim
-from sbmlsim.simulator import SimulatorSerialRR
+from sbmlsim.simulator import SimulatorSerial
 
 
-def run_timecourse_examples():
+def run_timecourse_examples() -> None:
     """Run various timecourses."""
-    simulator = SimulatorSerialRR.from_sbml(REPRESSILATOR_SBML)
+    simulator = SimulatorSerial(model=REPRESSILATOR_SBML)
 
     # 1. simple timecourse simulation
     console.rule(title="simple timecourse")
@@ -48,15 +51,16 @@ def run_timecourse_examples():
 
     for xres, ax in [(xr1, ax1), (xr2, ax2), (xr3, ax3)]:
         console.print(xres)
-        ax.plot(xres.time, xres["[X]"], label="[X]")
-        ax.plot(xres.time, xres["[Y]"], label="[Y]")
-        ax.plot(xres.time, xres["[Z]"], label="[Z]")
+        ax.plot(xres["time"], xres["[X]"], label="[X]")
+        ax.plot(xres["time"], xres["[Y]"], label="[Y]")
+        ax.plot(xres["time"], xres["[Z]"], label="[Z]")
 
     for ax in (ax1, ax2, ax3):
         ax.legend()
         ax.set_xlabel("time")
         ax.set_ylabel("concentration")
-    plt.show()
+    fig.savefig("timecourse.png", bbox_inches="tight")
+    plt.close(fig)
 
 
 if __name__ == "__main__":

@@ -6,7 +6,7 @@ import logging
 import os
 import tempfile
 from pathlib import Path
-from typing import ClassVar
+from typing import Any, ClassVar
 
 import libsbml
 import libsedml
@@ -51,7 +51,7 @@ class DataDescriptionParser:
         # -------------------------------
         # FIXME: this must work for absolute paths and URL paths
         if working_dir is None:
-            working_dir = "."
+            working_dir = Path()
 
         # TODO: refactor in general resource module (for resolving anyURI and resource)
         tmp_file = None
@@ -60,20 +60,20 @@ class DataDescriptionParser:
             conn.request("GET", "")
             r1 = conn.getresponse()
             # print(r1.status, r1.reason)
-            data = r1.read()
+            content: bytes = r1.read()
             conn.close()
             try:
-                file_str = str(data.decode("utf-8"))
+                file_str = content.decode("utf-8")
             except UnicodeDecodeError:
-                file_str = str(data)
+                file_str = str(content)
 
             # the file has to outlive this block, it is read by the parser below
             tmp_file = tempfile.NamedTemporaryFile("w", delete=False)  # noqa: SIM115
             tmp_file.write(file_str)
             tmp_file.close()
-            source_path = tmp_file.name
+            source_path = Path(tmp_file.name)
         else:
-            source_path = os.path.join(working_dir, source)
+            source_path = Path(working_dir) / source
 
         # -------------------------------
         # Find the format
@@ -104,21 +104,23 @@ class DataDescriptionParser:
         # -------------------------------
         # Load complete data
         # -------------------------------
-        data = None
+        data: pd.DataFrame | list[list[Any]]
         if format == cls.FORMAT_CSV:
             data = cls._load_csv(path=source_path)
         elif format == cls.FORMAT_TSV:
             data = cls._load_tsv(path=source_path)
         elif format == cls.FORMAT_NUML:
             data = NumlParser.load_numl_data(path=source_path)
+        else:
+            raise ValueError(f"Unsupported data format: '{format}'")
 
         # log data
         logger.info("-" * 80)
         logger.info("Data")
         logger.info("-" * 80)
-        if format in [cls.FORMAT_CSV, cls.FORMAT_TSV]:
+        if isinstance(data, pd.DataFrame):
             logger.info(data.head(10))
-        elif format == cls.FORMAT_NUML:
+        else:
             # multiple result components via id
             for result in data:
                 logger.info(result[0])  # rc id
@@ -140,7 +142,7 @@ class DataDescriptionParser:
             logger.info("\t\tslices")
 
             # CSV/TSV
-            if format in [cls.FORMAT_CSV, cls.FORMAT_TSV]:
+            if isinstance(data, pd.DataFrame):
                 if len(ds.getIndexSet()) > 0:
                     # if index set we return the index
                     data_sources[dsid] = pd.Series(data.index.tolist())
@@ -165,7 +167,7 @@ class DataDescriptionParser:
                         raise err
 
             # NUML
-            elif format == cls.FORMAT_NUML:
+            else:
                 # Using the first results component only in SED-ML L1V3
                 _rc_id, rc, _data_types = data[0]
 
@@ -194,7 +196,7 @@ class DataDescriptionParser:
         # cleanup
         # FIXME: handle in finally
         if tmp_file is not None:
-            os.remove(tmp_file)
+            os.remove(tmp_file.name)
 
         importlib.reload(libsbml)
 

@@ -94,6 +94,8 @@ class MatplotlibFigureSerializer:
             yax: Axis = plot.yaxis if plot.yaxis else Axis()
             yax_right = plot.yaxis_right
 
+            if subplot.row is None or subplot.col is None:
+                raise ValueError(f"SubPlot requires row and col: {subplot}")
             ridx = subplot.row - 1
             cidx = subplot.col - 1
             ax1: plt.Axes = fig.add_subplot(
@@ -141,14 +143,18 @@ class MatplotlibFigureSerializer:
 
             # plot ordered curves
             abstract_curves: list[AbstractCurve] = sorted(
-                plot.curves + plot.areas, key=lambda x: x.order
+                [*plot.curves, *plot.areas],
+                key=lambda x: x.order if x.order is not None else 0,
             )
+            ax: plt.Axes
             for abstract_curve in abstract_curves:
                 if (
                     abstract_curve.yaxis_position
                     and abstract_curve.yaxis_position == YAxisPosition.RIGHT
                 ):
                     # right axis
+                    if ax2 is None:
+                        raise ValueError("Curve on right yaxis, but no right yaxis.")
                     yunit = yunit_right
                     ax = ax2
                 else:
@@ -179,19 +185,27 @@ class MatplotlibFigureSerializer:
                     if x is None:
                         x_data = None
                     else:
-                        x_data = x.magnitude[:, 0] if len(x.shape) == 2 else x.magnitude
+                        x_data = (
+                            x.magnitude[:, 0]
+                            if np.ndim(x.magnitude) == 2
+                            else x.magnitude
+                        )
 
                     if y is None:
                         y_data = None
                     else:
-                        y_data = y.magnitude[:, 0] if len(y.shape) == 2 else y.magnitude
+                        y_data = (
+                            y.magnitude[:, 0]
+                            if np.ndim(y.magnitude) == 2
+                            else y.magnitude
+                        )
 
                     if xerr is None:
                         xerr_data = None
                     else:
                         xerr_data = (
                             xerr.magnitude[:, 0]
-                            if len(xerr.shape) == 2
+                            if np.ndim(xerr.magnitude) == 2
                             else xerr.magnitude
                         )
 
@@ -200,7 +214,7 @@ class MatplotlibFigureSerializer:
                     else:
                         yerr_data = (
                             yerr.magnitude[:, 0]
-                            if len(yerr.shape) == 2
+                            if np.ndim(yerr.magnitude) == 2
                             else yerr.magnitude
                         )
 
@@ -370,7 +384,7 @@ class MatplotlibFigureSerializer:
                             for axis in directions:
                                 ax.spines[axis].set_color(str(color))
 
-                        if style.line.type and style.line.type == LineType.NONE:
+                        if style.line.type == LineType.NONE:
                             for axis in directions:
                                 ax.spines[axis].set_color(Figure.fig_facecolor)
 
@@ -378,7 +392,7 @@ class MatplotlibFigureSerializer:
                 apply_axis_settings(xax, ax1, axis_type="x")
             if yax:
                 apply_axis_settings(yax, ax1, axis_type="y")
-            if yax_right:
+            if yax_right and ax2 is not None:
                 apply_axis_settings(yax_right, ax2, axis_type="y")
 
             # recompute the ax.dataLim
@@ -434,7 +448,7 @@ class MatplotlibFigureSerializer:
                                 loc="upper left",
                                 bbox_to_anchor=(1.04, 1),
                             )
-                elif len(axes) == 2:
+                elif len(axes) == 2 and ax2 is not None:
                     handles1, _ = ax1.get_legend_handles_labels()
                     if handles1:
                         ax1.legend(fontsize=Figure.legend_fontsize, loc="upper left")

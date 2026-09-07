@@ -3,12 +3,12 @@ from pathlib import Path
 from sbmlsim.experiment import SimulationExperiment
 from sbmlsim.model import AbstractModel
 from sbmlsim.plot import Axis, Figure
-from sbmlsim.simulation import Timecourse, TimecourseSim
+from sbmlsim.simulation import AbstractSim, Timecourse, TimecourseSim
 from sbmlsim.task import Task
 
 
 class Carcione2020(SimulationExperiment):
-    def models(self) -> dict[str, AbstractModel]:
+    def models(self) -> dict[str, AbstractModel | Path]:
         # Q_ = self.Q_
         return {
             "model": AbstractModel(
@@ -31,7 +31,7 @@ class Carcione2020(SimulationExperiment):
             }
         return tasks
 
-    def simulations(self) -> dict[str, TimecourseSim]:
+    def simulations(self) -> dict[str, AbstractSim]:
         # Q_ = self.Q_
 
         tcsims = {}

@@ -5,12 +5,11 @@ from pathlib import Path
 
 import pandas as pd
 import roadrunner
-from pint import Quantity
 
 from sbmlsim.model import AbstractModel, ModelChange, RoadrunnerSBMLModel
 from sbmlsim.result import XResult
 from sbmlsim.simulation import ScanSim, Timecourse, TimecourseSim
-from sbmlsim.units import UnitsInformation
+from sbmlsim.units import Quantity, UnitsInformation
 
 logger = logging.getLogger(__name__)
 
@@ -25,7 +24,7 @@ class SimulatorSerial:
 
     def __init__(
         self,
-        model: str | Path | RoadrunnerSBMLModel | AbstractModel = None,
+        model: str | Path | RoadrunnerSBMLModel | AbstractModel | None = None,
         **kwargs,
     ):
         """Initialize serial simulator.
@@ -46,7 +45,9 @@ class SimulatorSerial:
         # set model
         self.set_model(model)
 
-    def set_model(self, model: str | Path | RoadrunnerSBMLModel | AbstractModel):
+    def set_model(
+        self, model: str | Path | RoadrunnerSBMLModel | AbstractModel | None
+    ) -> None:
         """Set model for simulator and updates the integrator settings."""
         # logger.info("SimulatorSerial.set_model")
         self.model = None
@@ -65,7 +66,8 @@ class SimulatorSerial:
                     source=model,
                 )
 
-            # logger.info(f"get roadrunner instance from model: {type(self.model)}")
+            if self.model is None:
+                raise ValueError(f"Unsupported model type: {type(model)}")
             self.r = self.model.r
             # logger.info("set integrator settings")
             self.set_integrator_settings(**self.integrator_settings)
@@ -73,21 +75,37 @@ class SimulatorSerial:
 
     def set_integrator_settings(self, **kwargs):
         """Set settings in the integrator."""
-        RoadrunnerSBMLModel.set_integrator_settings(self.r, **kwargs)
+        RoadrunnerSBMLModel.set_integrator_settings(self.r_loaded, **kwargs)
 
     def set_timecourse_selections(self, selections):
         """Set timecourse selection in model."""
-        RoadrunnerSBMLModel.set_timecourse_selections(self.r, selections=selections)
+        RoadrunnerSBMLModel.set_timecourse_selections(
+            self.r_loaded, selections=selections
+        )
+
+    @property
+    def model_loaded(self) -> RoadrunnerSBMLModel:
+        """Model of the simulator, raises if no model is set."""
+        if self.model is None:
+            raise ValueError("No model set on the simulator.")
+        return self.model
+
+    @property
+    def r_loaded(self) -> roadrunner.RoadRunner:
+        """Roadrunner instance of the simulator, raises if no model is set."""
+        if self.r is None:
+            raise ValueError("No model set on the simulator.")
+        return self.r
 
     @property
     def uinfo(self) -> UnitsInformation:
         """Get model unit information."""
-        return self.model.uinfo
+        return self.model_loaded.uinfo
 
     @property
-    def Q_(self) -> Quantity:
-        """Get model unit information."""
-        return self.model.uinfo.ureg.Quantity
+    def Q_(self) -> type[Quantity]:
+        """Quantity of the unit registry of the model."""
+        return self.model_loaded.uinfo.ureg.Quantity
 
     def run_timecourse(self, simulation: TimecourseSim) -> XResult:
         """Run single timecourse."""
@@ -129,8 +147,9 @@ class SimulatorSerial:
         if isinstance(simulation, Timecourse):
             simulation = TimecourseSim(timecourses=[simulation])
 
+        r = self.r_loaded
         if simulation.reset:
-            self.r.resetToOrigin()
+            r.resetToOrigin()
 
         frames = []
         t_offset = simulation.time_offset
@@ -154,7 +173,7 @@ class SimulatorSerial:
                         value = item
 
                     try:
-                        self.r[init_key] = value
+                        r[init_key] = value
                     except RuntimeError:
                         logger.error(
                             "roadrunner RuntimeError: '%s = %s'", init_key, item
@@ -162,7 +181,7 @@ class SimulatorSerial:
                         # boundary condition=true species, trying direct fallback
                         # see https://github.com/sys-bio/roadrunner/issues/711
                         init_key = key
-                        self.r[key] = value
+                        r[key] = value
 
                     logger.debug("	%s = %s", init_key, item)
 
@@ -170,9 +189,9 @@ class SimulatorSerial:
                 # https://github.com/sys-bio/roadrunner/issues/710
                 # logger.debug("Reevaluate initial conditions")
                 # FIXME/TODO: support initial model changes
-                # self.r.resetAll()
-                # self.r.reset(SelectionRecord.DEPENDENT_FLOATING_AMOUNT)
-                # self.r.reset(SelectionRecord.DEPENDENT_INITIAL_GLOBAL_PARAMETER)
+                # r.resetAll()
+                # r.reset(SelectionRecord.DEPENDENT_FLOATING_AMOUNT)
+                # r.reset(SelectionRecord.DEPENDENT_INITIAL_GLOBAL_PARAMETER)
 
             # [3] apply model manipulations
             # model manipulations are applied to model
@@ -181,7 +200,7 @@ class SimulatorSerial:
                 for key, value in tc.model_changes.items():
                     if key == ModelChange.CLAMP_SPECIES:
                         for sid, formula in value.items():
-                            ModelChange.clamp_species(self.r, sid, formula)
+                            ModelChange.clamp_species(r, sid, formula)
                     else:
                         raise ValueError(
                             f"Unsupported model change: "
@@ -197,19 +216,18 @@ class SimulatorSerial:
                 # TODO: Figure out the hasOnlySubstanceUnit flag! (roadrunner)
                 # r: roadrunner.ExecutableModel = self.r
 
-                try:
-                    self.r[key] = float(item.magnitude)
-                except AttributeError:
-                    self.r[key] = float(item)
+                r[key] = (
+                    float(item.magnitude) if isinstance(item, Quantity) else float(item)
+                )
                 logger.debug("	%s = %s", key, item)
 
             # run simulation
-            integrator = self.r.integrator
+            integrator = r.integrator
             # FIXME: support simulation by times
             if integrator.getValue("variable_step_size"):
-                s = self.r.simulate(start=tc.start, end=tc.end)
+                s = r.simulate(start=tc.start, end=tc.end)
             else:
-                s = self.r.simulate(start=tc.start, end=tc.end, steps=tc.steps)
+                s = r.simulate(start=tc.start, end=tc.end, steps=tc.steps)
 
             df = pd.DataFrame(s, columns=s.colnames)
             df.time = df.time + t_offset

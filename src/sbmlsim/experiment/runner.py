@@ -9,11 +9,13 @@ This includes
 """
 
 import logging
+from collections.abc import Iterable
 from pathlib import Path
+from typing import cast
 
 from sbmlsim.console import console
 from sbmlsim.experiment.experiment import ExperimentResult, SimulationExperiment
-from sbmlsim.model import RoadrunnerSBMLModel
+from sbmlsim.model import AbstractModel, RoadrunnerSBMLModel
 from sbmlsim.report.experiment_report import ExperimentReport, ReportResults
 from sbmlsim.simulator import SimulatorSerial
 from sbmlsim.units import UnitRegistry, UnitsInformation
@@ -28,11 +30,11 @@ class ExperimentRunner:
     def __init__(
         self,
         experiment_classes: type[SimulationExperiment]
-        | list[type[SimulationExperiment]],
-        base_path: Path,
-        data_path: Path,
-        simulator: SimulatorSerial = None,
-        ureg: UnitRegistry = None,  # FIXME: is this needed on ExperimentRunner?
+        | Iterable[type[SimulationExperiment]],
+        base_path: Path | None,
+        data_path: Path | None,
+        simulator: SimulatorSerial | None = None,
+        ureg: UnitRegistry | None = None,  # FIXME: is this needed on ExperimentRunner?
         **kwargs,
     ):
         """Initialize the runner.
@@ -50,13 +52,18 @@ class ExperimentRunner:
         self.base_path = base_path
         self.data_path = data_path
         self.experiments: dict[str, SimulationExperiment] = {}
-        self.models = {}
+        self.models: dict[AbstractModel | Path, RoadrunnerSBMLModel] = {}
         self.simulator: SimulatorSerial | None = None
 
-        self.initialize(experiment_classes, **kwargs)
+        classes: list[type[SimulationExperiment]] = (
+            list(experiment_classes)
+            if isinstance(experiment_classes, (list, tuple, set))
+            else [cast(type[SimulationExperiment], experiment_classes)]
+        )
+        self.initialize(classes, **kwargs)
         self.set_simulator(simulator)
 
-    def set_simulator(self, simulator: SimulatorSerial) -> None:
+    def set_simulator(self, simulator: SimulatorSerial | None) -> None:
         """Set simulator on the runner and experiments."""
         if simulator is None:
             logger.debug(
@@ -103,9 +110,14 @@ class ExperimentRunner:
             _models = {}
             for model_id, source in experiment.models().items():
                 if source not in self.models:
-                    # not cashed yet, cash the model for lookup
+                    # not cached yet, cache the model for lookup
+                    abstract_model = (
+                        source
+                        if isinstance(source, AbstractModel)
+                        else AbstractModel(source=source)
+                    )
                     self.models[source] = RoadrunnerSBMLModel.from_abstract_model(
-                        abstract_model=source, ureg=self.ureg
+                        abstract_model=abstract_model, ureg=self.ureg
                     )
                 _models[model_id] = self.models[source]
 
@@ -151,9 +163,9 @@ def run_experiments(
     experiments: type[SimulationExperiment] | list[type[SimulationExperiment]],
     output_path: Path,
     base_path: Path | None = None,
-    data_path: list[Path] | tuple[Path] | Path | None = None,
-) -> Path:
-    """Run simulation experiments."""
+    data_path: Path | None = None,
+) -> None:
+    """Run simulation experiments and write their report to the output path."""
     if not isinstance(experiments, (list, tuple)):
         experiments = [experiments]
     simulator = SimulatorSerial()

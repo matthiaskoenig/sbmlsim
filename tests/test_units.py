@@ -53,7 +53,7 @@ def test_example_units() -> None:
     example_units.run_demo_example()
 
 
-def create_udef_examples() -> list[tuple[libsbml.UnitDefinition, str]]:
+def create_udef_examples() -> list[tuple[libsbml.UnitDefinition | None, str]]:
     """Create example UnitDefinitions for testing."""
     udef0 = libsbml.UnitDefinition(3, 1)
 

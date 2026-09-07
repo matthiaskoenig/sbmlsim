@@ -9,7 +9,6 @@ from enum import Enum
 
 import libsbml
 import numpy as np
-import roadrunner
 
 from sbmlsim.console import console
 from sbmlsim.model import RoadrunnerSBMLModel
@@ -40,7 +39,7 @@ class ModelSensitivity:
 
     @staticmethod
     def difference_sensitivity_scan(
-        model: roadrunner.RoadRunner,
+        model: RoadrunnerSBMLModel,
         simulation: TimecourseSim,
         difference: float = 0.1,
         stype: SensitivityType = SensitivityType.PARAMETER_SENSITIVITY,
@@ -79,7 +78,7 @@ class ModelSensitivity:
 
     @staticmethod
     def distribution_sensitivity_scan(
-        model: roadrunner.RoadRunner,
+        model: RoadrunnerSBMLModel,
         simulation: TimecourseSim,
         cv: float = 0.1,
         size: int = 10,
@@ -111,7 +110,7 @@ class ModelSensitivity:
 
     @staticmethod
     def create_sampling_dimension(
-        model: roadrunner.RoadRunner,
+        model: RoadrunnerSBMLModel,
         changes: dict | None = None,
         cv: float = 0.1,
         size: int = 10,
@@ -152,7 +151,7 @@ class ModelSensitivity:
 
     @staticmethod
     def create_difference_dimension(
-        model: roadrunner.RoadRunner,
+        model: RoadrunnerSBMLModel,
         changes: dict | None = None,
         difference: float = 0.1,
         stype: SensitivityType = SensitivityType.PARAMETER_SENSITIVITY,
@@ -208,14 +207,17 @@ class ModelSensitivity:
         :return:
         """
         # reset model
-        model.r.resetAll()
+        r = model.r
+        if r is None:
+            raise ValueError(f"Model '{model}' is not loaded in roadrunner.")
+        r.resetAll()
 
         # apply normalized model changes
         if changes is None:
             changes = {}
         for key, item in changes.items():
             try:
-                model.r[key] = item.magnitude
+                r[key] = item.magnitude
             except AttributeError as err:
                 logger.error(
                     "Change is not a Quantity with unit: '%s = %s'. Add units to all changes.",
@@ -224,7 +226,7 @@ class ModelSensitivity:
                 )
                 raise err
 
-        doc: libsbml.SBMLDocument = libsbml.readSBMLFromString(model.r.getSBML())
+        doc: libsbml.SBMLDocument = libsbml.readSBMLFromString(r.getSBML())
         sbml_model: libsbml.Model = doc.getModel()
 
         ids = []
@@ -257,7 +259,7 @@ class ModelSensitivity:
                 if exclude_filter and exclude_filter(key):
                     continue
 
-                value = model.r[key]
+                value = r[key]
                 if exclude_zero and np.abs(value) < zero_eps:
                     continue
                 d[key] = value
@@ -281,7 +283,7 @@ if __name__ == "__main__":
     from sbmlsim.resources import REPRESSILATOR_SBML
 
     console.print("Loading model")
-    model = roadrunner.RoadRunner(str(REPRESSILATOR_SBML))
+    model = RoadrunnerSBMLModel(source=REPRESSILATOR_SBML)
 
     console.print("Reference dict")
     p_ref = ModelSensitivity.reference_dict(

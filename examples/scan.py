@@ -119,32 +119,32 @@ if __name__ == "__main__":
 
     # scan0d
     xres = run_scan0d()
+    fig, ax = plt.subplots()
     for key in ["PX", "PY", "PZ"]:
-        plt.plot(xres.time, xres[key], label=key)
-    plt.legend()
-    plt.show()
+        ax.plot(xres["time"], xres[key], label=key)
+    ax.legend()
+    fig.savefig("scan0d.png", bbox_inches="tight")
+    plt.close(fig)
 
     # scan1d
     xres = run_scan1d()
-    xres.xds[column].plot()
-    plt.show()
+    print(xres.xds)
 
     # scan1d_distrib
     xres = run_scan1d_distribution()
     print(xres.xds)
 
-    xres[column].plot()
-    plt.show()
-
     da = xres[column]
+    fig, ax = plt.subplots()
     for k in range(xres.sizes["dim1"]):
         # individual timecourses
-        plt.plot(da.coords["time"], da.isel(dim1=k))
+        ax.plot(da.coords["time"], da.isel(dim1=k))
 
-    plt.plot(da.coords["time"], da.mean(dim="dim1"), color="black", linewidth=4.0)
-    plt.plot(da.coords["time"], da.min(dim="dim1"), color="black", linewidth=2.0)
-    plt.plot(da.coords["time"], da.max(dim="dim1"), color="black", linewidth=2.0)
-    plt.show()
+    ax.plot(da.coords["time"], da.mean(dim="dim1"), color="black", linewidth=4.0)
+    ax.plot(da.coords["time"], da.min(dim="dim1"), color="black", linewidth=2.0)
+    ax.plot(da.coords["time"], da.max(dim="dim1"), color="black", linewidth=2.0)
+    fig.savefig("scan1d_distribution.png", bbox_inches="tight")
+    plt.close(fig)
 
     """
     # scan2d

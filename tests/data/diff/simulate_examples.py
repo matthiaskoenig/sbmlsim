@@ -17,7 +17,7 @@ diff_path = Path(__file__).parent / "diff"
 def run_simulations(create_files: bool = True) -> None:
     """Run all the simulations."""
 
-    simulator = SimulatorSerial.from_sbml(REPRESSILATOR_SBML)
+    simulator = SimulatorSerial(model=REPRESSILATOR_SBML)
     simulator.set_integrator_settings(
         absolute_tolerance=1e-16,
         relative_tolerance=1e-13,

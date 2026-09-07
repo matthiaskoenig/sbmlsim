@@ -5,7 +5,6 @@ from __future__ import annotations
 import logging
 from enum import Enum
 from pathlib import Path
-from typing import ClassVar
 
 import pandas as pd
 
@@ -68,12 +67,12 @@ class Data:
                 symbol = Data.Symbols.AMOUNT
 
         self.index: str = index
-        self.symbol: Symbols = symbol  # noqa: F821
-        self.task_id: str = task
-        self.dset_id: str = dataset
-        self.function: str = function
-        self.variables: dict[str, Data] = variables
-        self.parameters: dict[str, float] = parameters
+        self.symbol: Data.Symbols | None = symbol
+        self.task_id: str | None = task
+        self.dset_id: str | None = dataset
+        self.function: str | None = function
+        self.variables: dict[str, Data] = variables if variables is not None else {}
+        self.parameters: dict[str, float] = parameters if parameters is not None else {}
         self.unit: str | None = None
         self._sid = sid
 
@@ -241,13 +240,17 @@ class Data:
             if not isinstance(xres, XResult):
                 raise ValueError("Only Result objects supported in task data.")
 
+            if xres.uinfo is None:
+                raise ValueError(f"No units information in result of '{self.task_id}'.")
             # units match the symbols
             self.unit = xres.uinfo[self.selection]
             # x = xres.dim_mean(self.index)
-            x = xres[self.selection].values * xres.uinfo.ureg(self.unit)
+            x = xres.uinfo.ureg.Quantity(xres[self.selection].values, self.unit)
 
         elif self.dtype == Data.Types.FUNCTION:
             # evaluate with actual data
+            if self.function is None:
+                raise ValueError(f"Data '{self}' has no function.")
             astnode = mathml.formula_to_astnode(self.function)
             variables = {}
             for var_key, variable in self.variables.items():
@@ -291,7 +294,7 @@ class DataSeries(pd.Series):
     """DataSet - a pd.Series with additional unit information."""
 
     # additional properties
-    _metadata: ClassVar[list[str]] = ["uinfo"]
+    _metadata = ["uinfo"]  # noqa: RUF012 -- pandas declares it as an instance variable
 
     @property
     def _constructor(self):
@@ -306,7 +309,7 @@ class DataSet(pd.DataFrame):
     """DataSet, a pd.DataFrame with additional unit information."""
 
     # additional properties
-    _metadata: ClassVar[list[str]] = ["uinfo", "Q_"]
+    _metadata = ["uinfo", "Q_"]  # noqa: RUF012 -- pandas declares it as an instance variable
 
     @property
     def _constructor(self):

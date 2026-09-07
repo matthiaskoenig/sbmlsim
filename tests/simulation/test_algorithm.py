@@ -39,6 +39,7 @@ def test_algorithm() -> None:
     assert algorithm
     assert algorithm.sid == "algorithm"
     assert algorithm.name == "algorithm name"
+    assert algorithm.parameters is not None
     assert len(algorithm.parameters) == 2
     for p in algorithm.parameters:
         assert p

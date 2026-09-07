@@ -69,7 +69,7 @@ class Source:
                     f"Path '{path}' for model source '{source}' does not exist."
                 )
 
-        return Source(source, path, content)
+        return Source(str(source), path, content)
 
 
 def is_urn(source: str) -> bool:

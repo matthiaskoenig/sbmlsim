@@ -30,6 +30,7 @@ from typing import ClassVar
 
 import numpy as np
 import SALib
+import SALib.analyze.morris
 import xarray as xr
 from matplotlib import pyplot as plt
 from SALib import ProblemSpec
@@ -167,7 +168,7 @@ class MorrisSensitivityAnalysis(SensitivityAnalysis):
             return
 
         for gid in self.group_ids:
-            Y = self.results[gid].values
+            Y = self.results_required(gid).values
             self.ssa_problems[gid].set_results(Y)
 
             # num_parameters x num_outputs
@@ -184,7 +185,7 @@ class MorrisSensitivityAnalysis(SensitivityAnalysis):
                 Yo = Y[:, ko]
                 Si = SALib.analyze.morris.analyze(
                     problem=self.ssa_problems[gid],
-                    X=self.samples[gid].values,
+                    X=self.samples_required(gid).values,
                     Y=Yo,
                     scaled=True,
                     num_levels=self.num_levels,
@@ -207,7 +208,7 @@ class MorrisSensitivityAnalysis(SensitivityAnalysis):
             data=self.sensitivity, cache_filename=cache_filename, cache=cache
         )
 
-    def plot(self):
+    def plot(self) -> None:
         """Morris plot."""
         super().plot()
 
