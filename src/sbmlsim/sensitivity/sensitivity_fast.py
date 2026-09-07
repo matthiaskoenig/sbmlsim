@@ -1,5 +1,4 @@
-"""
-Global sensitivity analysis using FAST (Fourier Amplitude Sensitivity Test).
+"""Global sensitivity analysis using FAST (Fourier Amplitude Sensitivity Test).
 
 This module implements variance-based global sensitivity analysis using the
 Fourier Amplitude Sensitivity Test (FAST). FAST quantifies the contribution of
@@ -31,19 +30,18 @@ References:
 """
 
 from pathlib import Path
-from typing import Optional
 
-import SALib
 import numpy as np
+import SALib
 import xarray as xr
 from SALib import ProblemSpec
 from SALib.sample import fast_sampler
 
 from sbmlsim.sensitivity import (
-    SensitivityAnalysis,
-    SensitivitySimulation,
-    SensitivityParameter,
     AnalysisGroup,
+    SensitivityAnalysis,
+    SensitivityParameter,
+    SensitivitySimulation,
 )
 from sbmlsim.sensitivity.plots import plot_S1_ST_indices
 
@@ -71,8 +69,8 @@ class FASTSensitivityAnalysis(SensitivityAnalysis):
         results_path: Path,
         N: int,
         M: int = 4,
-        seed: Optional[int] = None,
-        n_cores: Optional[int] = None,
+        seed: int | None = None,
+        n_cores: int | None = None,
         cache_results: bool = False,
         **kwargs,
     ):
@@ -93,7 +91,6 @@ class FASTSensitivityAnalysis(SensitivityAnalysis):
             cache_results: Whether to cache sensitivity results to disk.
             **kwargs: Additional keyword arguments passed to the base class.
         """
-
         super().__init__(
             sensitivity_simulation=sensitivity_simulation,
             parameters=parameters,
@@ -147,7 +144,7 @@ class FASTSensitivityAnalysis(SensitivityAnalysis):
             )
 
     def calculate_sensitivity(
-        self, cache_filename: Optional[str] = None, cache: bool = False
+        self, cache_filename: str | None = None, cache: bool = False
     ):
         """Compute FAST sensitivity indices for all model outputs.
 
@@ -165,7 +162,6 @@ class FASTSensitivityAnalysis(SensitivityAnalysis):
             The sensitivity indices are computed independently for each output
             variable and stored in a structured xarray-based format.
         """
-
         data = self.read_cache(cache_filename, cache)
         if data:
             self.sensitivity = data

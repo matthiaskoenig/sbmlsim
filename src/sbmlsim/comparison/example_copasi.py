@@ -1,5 +1,6 @@
 from pathlib import Path
-from basico import load_model, set_parameters, get_parameters
+
+from basico import get_parameters, load_model, set_parameters
 
 base_path: Path = Path(__file__).parent
 model_path = base_path / "resources" / "icg_sd.xml"

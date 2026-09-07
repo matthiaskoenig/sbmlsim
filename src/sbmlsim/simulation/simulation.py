@@ -3,10 +3,10 @@
 import abc
 import logging
 from abc import ABC
+from typing import Any
 
 from sbmlsim.simulation.algorithm import Algorithm
 from sbmlsim.simulation.base import BaseObject
-from sbmlsim.simulation.range import Dimension
 from sbmlsim.units import UnitsInformation
 
 logger = logging.getLogger(__name__)
@@ -23,7 +23,7 @@ class Simulation(BaseObject):
     types of simulations.
     """
 
-    def __init__(self, sid: str, algorithm: Algorithm, name: str = None):
+    def __init__(self, sid: str, algorithm: Algorithm, name: str | None = None):
         """Construct Simulation.
 
         The mandatory attribute algorithm defines the simulation algorithms used
@@ -73,7 +73,9 @@ class OneStep(Simulation):
         """Get string representation."""
         return f"OneStep({self.sid}, {self.name}, {self.algorithm}"
 
-    def __init__(self, sid: str, step: float, algorithm: Algorithm, name: str = None):
+    def __init__(
+        self, sid: str, step: float, algorithm: Algorithm, name: str | None = None
+    ):
         """Construct OneStep."""
         super().__init__(sid=sid, name=name, algorithm=algorithm)
         self.step: float = step
@@ -98,7 +100,7 @@ class UniformTimeCourse(Simulation):
         end: float,
         steps: int,
         initial_time: float,
-        name: str = None,
+        name: str | None = None,
     ):
         """Construct UniformTimeCourse."""
         super().__init__(sid=sid, name=name, algorithm=algorithm)
@@ -115,23 +117,17 @@ class AbstractSim(ABC):
     """
 
     @abc.abstractmethod
-    def dimensions(self) -> list[Dimension]:
-        """Get dimension of the simulation."""
-        raise NotImplementedError
-
-    @abc.abstractmethod
     def normalize(self, uinfo: UnitsInformation) -> None:
         """Normalize simulation."""
         raise NotImplementedError
 
     @abc.abstractmethod
-    def add_model_changes(self, changes: dict) -> None:
+    def add_model_changes(self, model_changes: dict[str, Any]) -> None:
         """Add model changes to model."""
         raise NotImplementedError
 
-    def to_dict(self) -> dict[str, str]:
+    def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary."""
-        d = {
+        return {
             "type": self.__class__.__name__,
         }
-        return d

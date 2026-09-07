@@ -69,14 +69,13 @@ class ModelSensitivity:
             exclude_zero=exclude_zero,
             zero_eps=zero_eps,
         )
-        scan = ScanSim(
+        return ScanSim(
             simulation=simulation,
             dimensions=[
                 dim,
             ],
             mapping={"dim_sens": 0},
         )
-        return scan
 
     @staticmethod
     def distribution_sensitivity_scan(
@@ -102,19 +101,18 @@ class ModelSensitivity:
             exclude_zero=exclude_zero,
             zero_eps=zero_eps,
         )
-        scan = ScanSim(
+        return ScanSim(
             simulation=simulation,
             dimensions=[
                 dim,
             ],
             mapping={"dim_sens": 0},
         )
-        return scan
 
     @staticmethod
     def create_sampling_dimension(
         model: roadrunner.RoadRunner,
-        changes: dict = None,
+        changes: dict | None = None,
         cv: float = 0.1,
         size: int = 10,
         distribution: DistributionType = DistributionType.NORMAL_DISTRIBUTION,
@@ -155,7 +153,7 @@ class ModelSensitivity:
     @staticmethod
     def create_difference_dimension(
         model: roadrunner.RoadRunner,
-        changes: dict = None,
+        changes: dict | None = None,
         difference: float = 0.1,
         stype: SensitivityType = SensitivityType.PARAMETER_SENSITIVITY,
         exclude_filter=None,
@@ -194,7 +192,7 @@ class ModelSensitivity:
     @staticmethod
     def reference_dict(
         model: RoadrunnerSBMLModel,
-        changes: dict = None,
+        changes: dict | None = None,
         stype: SensitivityType = SensitivityType.PARAMETER_SENSITIVITY,
         exclude_filter=None,
         exclude_zero: bool = True,
@@ -261,9 +259,8 @@ class ModelSensitivity:
                     continue
 
                 value = model.r[key]
-                if exclude_zero:
-                    if np.abs(value) < zero_eps:
-                        continue
+                if exclude_zero and np.abs(value) < zero_eps:
+                    continue
                 d[key] = value
             return d
 
@@ -278,8 +275,7 @@ class ModelSensitivity:
         :return:
         """
         d = ref_dict.copy()
-        d = {k: v * (1.0 + change) for k, v in d.items()}
-        return d
+        return {k: v * (1.0 + change) for k, v in d.items()}
 
 
 if __name__ == "__main__":

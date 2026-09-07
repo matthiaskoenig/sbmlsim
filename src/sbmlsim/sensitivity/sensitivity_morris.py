@@ -26,21 +26,19 @@ References:
 """
 
 from pathlib import Path
-from typing import Optional
 
-import SALib
 import numpy as np
+import SALib
 import xarray as xr
+from matplotlib import pyplot as plt
 from SALib import ProblemSpec
 from SALib.sample.morris import sample as morris_sample
 
-from matplotlib import pyplot as plt
-
 from sbmlsim.sensitivity import (
-    SensitivityAnalysis,
-    SensitivitySimulation,
-    SensitivityParameter,
     AnalysisGroup,
+    SensitivityAnalysis,
+    SensitivityParameter,
+    SensitivitySimulation,
 )
 
 
@@ -66,21 +64,18 @@ class MorrisSensitivityAnalysis(SensitivityAnalysis):
         optimal_trajectories: int,
         num_levels: int = 4,
         local_optimization: bool = True,
-        seed: Optional[int] = None,
-        n_cores: Optional[int] = None,
+        seed: int | None = None,
+        n_cores: int | None = None,
         cache_results: bool = False,
         **kwargs,
     ):
-        """
-        Resulting simulations are (D+1) * N/T with D number of parameters.
-
+        """Resulting simulations are (D+1) * N/T with D number of parameters.
 
         N (int) – The number of trajectories to generate
         optimal_trajectories - The number of optimal trajectories to sample (between 2 and N)
         num_levels - The number of grid levels to use (should be even)
         local_optimization - Flag whether to use local optimization according to Ruano et al. (2012) Speeds up the process tremendously for bigger N and num_levels. If set to False brute force method is used
         """
-
         super().__init__(
             sensitivity_simulation=sensitivity_simulation,
             parameters=parameters,
@@ -144,7 +139,7 @@ class MorrisSensitivityAnalysis(SensitivityAnalysis):
             )
 
     def calculate_sensitivity(
-        self, cache_filename: Optional[str] = None, cache: bool = False
+        self, cache_filename: str | None = None, cache: bool = False
     ):
         """Perform extended Fourier Amplitude Sensitivity Test on model outputs.
 
@@ -158,7 +153,6 @@ class MorrisSensitivityAnalysis(SensitivityAnalysis):
         mu_star metric indicates the mean of the distribution of absolute values
         sigma is the standard deviation of the distribution
         """
-
         data = self.read_cache(cache_filename, cache)
         if data:
             self.sensitivity = data
@@ -207,7 +201,6 @@ class MorrisSensitivityAnalysis(SensitivityAnalysis):
 
     def plot(self):
         """Morris plot."""
-
         super().plot()
 
         # plot ["mu", "mu_star", "sigma", "mu_star_conf"]

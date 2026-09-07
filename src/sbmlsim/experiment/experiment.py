@@ -36,9 +36,9 @@ class SimulationExperiment:
 
     def __init__(
         self,
-        sid: str = None,
-        base_path: Path = None,
-        data_path: Path = None,
+        sid: str | None = None,
+        base_path: Path | None = None,
+        data_path: Path | None = None,
         ureg: UnitRegistry = None,
         **kwargs,
     ):
@@ -141,28 +141,28 @@ class SimulationExperiment:
 
         The child classes fill out the information.
         """
-        return dict()
+        return {}
 
     def datasets(self) -> dict[str, DataSet]:
         """Define dataset definitions (experimental data).
 
         The child classes fill out the information.
         """
-        return dict()
+        return {}
 
     def simulations(self) -> dict[str, AbstractSim]:
         """Define simulation definitions.
 
         The child classes fill out the information.
         """
-        return dict()
+        return {}
 
     def tasks(self) -> dict[str, Task]:
         """Define task definitions.
 
         The child classes fill out the information.
         """
-        return dict()
+        return {}
 
     def data(self) -> dict[str, Data]:
         """Define DataGenerators including functions.
@@ -172,7 +172,7 @@ class SimulationExperiment:
         data generator. The data generators are important for defining the
         selections of a simulation experiment.
         """
-        return dict()
+        return {}
 
     def figures(self) -> dict[str, Figure]:
         """Figure definition.
@@ -203,7 +203,7 @@ class SimulationExperiment:
         Used for the optimization of parameters.
         The child classes fill out the information.
         """
-        return dict()
+        return {}
 
     def reports(self) -> dict[str, dict[str, str]]:
         """Define reports.
@@ -211,7 +211,7 @@ class SimulationExperiment:
         Reports are defined by a hashmap label:Data.
         Reports can be serialized in multiple manners.
         """
-        return dict()
+        return {}
 
     # --- DATA ------------------------------------------------------------------------
     def add_data(self, d: Data) -> None:
@@ -221,7 +221,7 @@ class SimulationExperiment:
     def add_selections_data(
         self,
         selections: Iterable[str],
-        task_ids: Iterable[str] = None,
+        task_ids: Iterable[str] | None = None,
     ) -> None:
         """Add selections to given tasks.
 
@@ -264,7 +264,7 @@ class SimulationExperiment:
     def _check_keys(self):
         """Check keys in information dictionaries."""
         # string keys for main objects must be unique on SimulationExperiment
-        all_keys = dict()
+        all_keys = {}
         allowed_types = dict
         for field_key in [
             "_models",
@@ -289,7 +289,7 @@ class SimulationExperiment:
 
             # \w matches any alphanumeric character; this is equivalent to [a-zA-Z0-9_]
             pattern_sid = re.compile(r"[a-zA-Z_][a-zA-Z0-9_]*")
-            for key in getattr(self, field_key).keys():
+            for key in getattr(self, field_key):
                 if not isinstance(key, str):
                     raise ValueError(
                         f"'{field_key} keys must be str: '{key} -> {type(key)}'"
@@ -375,10 +375,10 @@ class SimulationExperiment:
     def run(
         self,
         simulator,
-        output_path: Path = None,
+        output_path: Path | None = None,
         show_figures: bool = True,
         save_results: bool = False,
-        figure_formats: list[str] = None,
+        figure_formats: list[str] | None = None,
         reduced_selections: bool = True,
     ) -> "ExperimentResult":
         """Execute given experiment and store results."""
@@ -433,7 +433,7 @@ class SimulationExperiment:
         This allows to hash executed simulations.
         """
         if self._results is None:
-            self._results = dict()
+            self._results = {}
 
         # get all tasks for given model
         model_tasks: dict[str, list[str]] = defaultdict(list)
@@ -455,7 +455,7 @@ class SimulationExperiment:
                         task = self._tasks[d.task_id]
                         if task.model_id == model_id:
                             selections.add(d.selection)
-                selections = sorted(list(selections))
+                selections = sorted(selections)
                 simulator.set_timecourse_selections(selections=selections)
             else:
                 # use the complete selection
@@ -495,7 +495,7 @@ class SimulationExperiment:
 
     # --- SERIALIZATION -------------------------------------------------------
     @timeit
-    def to_json(self, path: Path = None, indent: int = 2):
+    def to_json(self, path: Path | None = None, indent: int = 2):
         """Convert experiment to JSON for exchange.
 
         :param path: path for file, if None JSON str is returned
@@ -506,6 +506,7 @@ class SimulationExperiment:
             return json.dumps(d, cls=ObjectJSONEncoder, indent=indent)
         with open(path, "w", encoding="utf-8") as f_json:
             json.dump(d, fp=f_json, cls=ObjectJSONEncoder, indent=indent)
+        return None
 
     def to_dict(self):
         """Convert to dictionary.
@@ -590,7 +591,7 @@ class SimulationExperiment:
         self,
         results_path: Path,
         mpl_figures: dict[str, FigureMPL],
-        figure_formats: list[str] = None,
+        figure_formats: list[str] | None = None,
     ) -> dict[str, list[Path]]:
         """Save matplotlib figures."""
         if figure_formats is None:
@@ -625,7 +626,6 @@ class ExperimentResult:
 
         Used in serialization and required for reports.
         """
-        d = {
+        return {
             "output_path": self.output_path,
         }
-        return d

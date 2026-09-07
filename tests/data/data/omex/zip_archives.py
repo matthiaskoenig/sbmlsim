@@ -17,7 +17,7 @@ def create_all_zip(base_dir, out_dir, extension):
     """
 
     if not os.path.exists(base_dir):
-        raise IOError
+        raise OSError
 
     # only in base dir, otherwise use os.walk for recursive subdirectories
     for directory in [f for f in os.listdir(base_dir) if os.path.isdir(f)]:

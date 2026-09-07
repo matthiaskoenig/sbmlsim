@@ -5,7 +5,6 @@ import pytest
 
 from sbmlsim.sensitivity import ParameterType, SensitivityParameter
 
-
 # -----------------------------------------------------------------------------
 # Fixtures
 # -----------------------------------------------------------------------------

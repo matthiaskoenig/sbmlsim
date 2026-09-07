@@ -1,11 +1,11 @@
 """Classification of sensitivities and uncertainties."""
 
-from enum import Enum
+from enum import StrEnum
 
 import numpy as np
 
 
-class SensitivityClassification(str, Enum):
+class SensitivityClassification(StrEnum):
     """Sensitivity classification."""
 
     HIGH = "high"
@@ -33,14 +33,13 @@ def sensitivity_classification(s: float) -> SensitivityClassification:
 
     if np.greater_equal(s_abs, 0.5):
         return SensitivityClassification.HIGH
-    elif np.greater_equal(s_abs, 0.2) and s_abs < 0.5:
+    if np.greater_equal(s_abs, 0.2) and s_abs < 0.5:
         return SensitivityClassification.MEDIUM
-    elif np.greater_equal(s_abs, 0.1) and s_abs < 0.2:
+    if np.greater_equal(s_abs, 0.1) and s_abs < 0.2:
         return SensitivityClassification.LOW
-    elif s_abs < 0.1:
+    if s_abs < 0.1:
         return SensitivityClassification.NEGLIGIBLE
-    else:
-        raise ValueError(f"Unsupported sensitivity classification for s={s}.")
+    raise ValueError(f"Unsupported sensitivity classification for s={s}.")
 
 
 def sensitivity_classification_symbol(s: float) -> str:
@@ -62,7 +61,7 @@ def sensitivity_classification_symbol(s: float) -> str:
     return symbol
 
 
-class UncertaintyClassification(str, Enum):
+class UncertaintyClassification(StrEnum):
     """Uncertainty classification."""
 
     HIGH = "high"
@@ -81,15 +80,13 @@ def uncertainty_classification(u: float) -> UncertaintyClassification:
         International Programme on Chemical Safety (IPCS). Characterization and application of physiologically based pharmacokinetic models in risk assessment.
         World Health Organization; 2010. Contract No.: 9.
     """
-
     if np.greater_equal(u, 2.0):
         return UncertaintyClassification.HIGH
-    elif np.greater_equal(u, 0.3) and u < 2.0:
+    if np.greater_equal(u, 0.3) and u < 2.0:
         return UncertaintyClassification.MEDIUM
-    elif np.greater_equal(u, 0.0) and u < 0.3:
+    if np.greater_equal(u, 0.0) and u < 0.3:
         return UncertaintyClassification.LOW
-    else:
-        raise ValueError(f"Unsupported uncertainty classification for u={u}.")
+    raise ValueError(f"Unsupported uncertainty classification for u={u}.")
 
 
 def uncertainty_classification_symbol(u: float) -> str:

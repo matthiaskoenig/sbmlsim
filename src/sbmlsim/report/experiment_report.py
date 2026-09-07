@@ -5,13 +5,15 @@ import logging
 import os
 import shutil
 import sys
+from collections.abc import Callable
 from enum import Enum
 from pathlib import Path
+from typing import Any
 
 import jinja2
 
 from sbmlsim import RESOURCES_DIR, __version__
-from sbmlsim.experiment import ExperimentResult, SimulationExperiment
+from sbmlsim.experiment.experiment import ExperimentResult, SimulationExperiment
 from sbmlsim.model import AbstractModel
 
 logger = logging.getLogger(__name__)
@@ -23,52 +25,77 @@ class ReportResults:
 
     def __init__(self):
         """Construct ReportResults."""
-        self.data: dict[str, dict] = {}
+        self.data: dict[str, dict[str, Any]] = {}
 
-    def to_json(self, json_path: Path):
-        """Write to JSON."""
+    def to_json(self, json_path: Path) -> None:
+        """Write to JSON.
+
+        Args:
+            json_path: Path to the JSON file.
+        """
         with open(json_path, "w", encoding="utf-8") as fp:
-            json.dump(fp, self.data, indent=2)  # type: ignore
+            json.dump(self.data, fp, indent=2)
 
     @staticmethod
     def from_json(json_path: Path) -> "ReportResults":
-        """Read from JSON."""
+        """Read from JSON.
+
+        Args:
+            json_path: Path to the JSON file.
+
+        Returns:
+            ReportResults read from the file.
+        """
         with open(json_path, encoding="utf-8") as fp:
             data = json.load(fp)
         results = ReportResults()
         results.data = data
         return results
 
-    def add_experiment_result(self, exp_result: ExperimentResult):
-        """Retrieve information for report from the ExperimentResult."""
+    def add_experiment_result(self, exp_result: ExperimentResult) -> None:
+        """Retrieve information for report from the ExperimentResult.
+
+        Args:
+            exp_result: Result of the simulation experiment.
+
+        Raises:
+            ValueError: If a model has no resolvable path.
+        """
         experiment: SimulationExperiment = exp_result.experiment
         abs_path = exp_result.output_path
         rel_path = Path(".")
         exp_id = experiment.sid
 
         # model links
-        models = {}
+        models: dict[str, Path] = {}
         for model_key, model in experiment.models().items():
+            model_path: Path
             if isinstance(model, (Path, str)):
                 model_path = Path(model)
             elif isinstance(model, AbstractModel):
-                model_path = model.source.path  # type: ignore
+                if model.source.path is None:
+                    raise ValueError(f"Model '{model_key}' has no source path.")
+                model_path = model.source.path
+            else:
+                raise ValueError(f"Unsupported model type: '{type(model)}'")
 
             models[model_key] = Path(os.path.relpath(model_path, str(abs_path)))
 
         # code path
         code_path = sys.modules[experiment.__module__].__file__
+        if code_path is None:
+            raise ValueError(f"No source file for experiment '{exp_id}'.")
         with open(code_path, encoding="utf-8") as f_code:
             code = f_code.read()
-        code_path = Path(os.path.relpath(code_path, str(abs_path)))  # type: ignore
+        code_rel_path = Path(os.path.relpath(code_path, str(abs_path)))
 
         datasets = {
-            key: rel_path / f"{exp_id}_{key}.tsv" for key in experiment._datasets.keys()
+            key: rel_path / f"{exp_id}_{key}.tsv" for key in experiment._datasets
         }
 
         # parse meta data for figures (mapping based on figure keys)
         figures = {
-            key: rel_path / f"{exp_id}_{key}" for key in experiment._mpl_figures.keys()
+            key: rel_path / f"{exp_id}_{key}" for key in experiment._mpl_figures
         }
 
         self.data[exp_id] = {
@@ -76,7 +103,7 @@ class ReportResults:
             "models": models,
             "datasets": datasets,
             "figures": figures,
-            "code_path": code_path,
+            "code_path": code_rel_path,
             "code": code,
         }
 
@@ -92,9 +119,19 @@ class ExperimentReport:
         LATEX = 3
 
     def __init__(
-        self, results: ReportResults, metadata: dict = None, template_path=TEMPLATE_PATH
+        self,
+        results: ReportResults | list[ExperimentResult],
+        metadata: dict[str, Any] | None = None,
+        template_path: Path = TEMPLATE_PATH,
     ):
-        """Construct an ExperimentReport."""
+        """Construct an ExperimentReport.
+
+        Args:
+            results: Report results or list of experiment results.
+            metadata: Additional metadata for the report.
+            template_path: Directory with the jinja2 templates.
+        """
+        report_results: ReportResults
         if isinstance(results, list):
             # FIXME: just a bugfix for handling the old outputs
             report_results = ReportResults()
@@ -103,10 +140,9 @@ class ExperimentReport:
         else:
             report_results = results
 
-        self.data_dict = (
-            report_results.data
-        )  # dictionary of exp_ids and information for report rendering
-        self.metadata = metadata if metadata else dict()
+        # dictionary of exp_ids and information for report rendering
+        self.data_dict = report_results.data
+        self.metadata = metadata if metadata else {}
         self.template_path = template_path
 
     def create_report(
@@ -114,8 +150,8 @@ class ExperimentReport:
         output_path: Path,
         filename: str | None = None,
         report_type: ReportType = ReportType.HTML,
-        f_filter_context: dict | None = None,
-        **kwargs,
+        f_filter_context: Callable[[dict[str, Any]], None] | None = None,
+        **kwargs: Any,
     ) -> Path:
         """Create report of SimulationExperiments.
 
@@ -124,6 +160,19 @@ class ExperimentReport:
         All relative paths only can be resolved in the report if the
         paths are below the report or at the same level in the file
         hierarchy.
+
+        Args:
+            output_path: Directory for the report.
+            filename: Name of the index file (without suffix).
+            report_type: Type of the report.
+            f_filter_context: Function filtering the context (latex reports).
+            **kwargs: Additional arguments, e.g. `latex_path_prefix`.
+
+        Returns:
+            Path to the created index file.
+
+        Raises:
+            ValueError: If the report type is not supported.
         """
         env = jinja2.Environment(
             loader=jinja2.FileSystemLoader(str(self.template_path)),
@@ -132,7 +181,9 @@ class ExperimentReport:
             lstrip_blocks=True,
         )
 
-        def write_report(filename: str, context: dict, template_str: str) -> Path:
+        def write_report(
+            filename: str, context: dict[str, Any], template_str: str
+        ) -> Path:
             """Write the report file from given context and template."""
             template = env.get_template(template_str)
             text = template.render(context)
@@ -148,6 +199,8 @@ class ExperimentReport:
             suffix = "md"
         elif report_type == self.ReportType.LATEX:
             suffix = "tex"
+        else:
+            raise ValueError(f"Unsupported report type: '{report_type}'")
 
         if report_type in [self.ReportType.HTML, self.ReportType.MARKDOWN]:
             # report for individual simulation experiment
@@ -186,9 +239,9 @@ class ExperimentReport:
                         str(figure_base_path / f"{fig_path}.png"),
                     )
 
-        output_path = write_report(
+        report_path = write_report(
             filename=filename, context=context, template_str=f"index.{suffix}"
         )
-        report_path_str: str = str(output_path).replace("\\", "/")
-        logger.info(f"report created: file://{report_path_str}")
-        return output_path
+        report_path_str: str = str(report_path).replace("\\", "/")
+        logger.info("report created: file://%s", report_path_str)
+        return report_path

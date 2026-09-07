@@ -1,5 +1,4 @@
-"""
-Sensitivity analysis.
+"""Sensitivity analysis.
 
 This package provides a unified framework for analyzing how uncertainty and
 variability in model parameters affect model outputs. It supports multiple
@@ -32,10 +31,10 @@ different techniques.
 """
 
 from .analysis import (
-    SensitivityAnalysis,
-    SensitivitySimulation,
-    SensitivityOutput,
     AnalysisGroup,
+    SensitivityAnalysis,
+    SensitivityOutput,
+    SensitivitySimulation,
 )
 from .parameters import (
     ParameterType,
@@ -43,20 +42,20 @@ from .parameters import (
 )
 from .sensitivity_fast import FASTSensitivityAnalysis
 from .sensitivity_local import LocalSensitivityAnalysis
+from .sensitivity_morris import MorrisSensitivityAnalysis
 from .sensitivity_sampling import SamplingSensitivityAnalysis
 from .sensitivity_sobol import SobolSensitivityAnalysis
-from .sensitivity_morris import MorrisSensitivityAnalysis
 
 __all__ = [
-    "ParameterType",
-    "SensitivityParameter",
-    "SensitivityAnalysis",
-    "SensitivitySimulation",
-    "SensitivityOutput",
     "AnalysisGroup",
-    "SobolSensitivityAnalysis",
-    "SamplingSensitivityAnalysis",
-    "LocalSensitivityAnalysis",
     "FASTSensitivityAnalysis",
+    "LocalSensitivityAnalysis",
     "MorrisSensitivityAnalysis",
+    "ParameterType",
+    "SamplingSensitivityAnalysis",
+    "SensitivityAnalysis",
+    "SensitivityOutput",
+    "SensitivityParameter",
+    "SensitivitySimulation",
+    "SobolSensitivityAnalysis",
 ]

@@ -29,10 +29,10 @@ class FitExperiment:
     def __init__(
         self,
         experiment: Callable,
-        mappings: list[str] = None,
-        weights: float | list[float] = None,
+        mappings: list[str] | None = None,
+        weights: float | list[float] | None = None,
         use_mapping_weights: bool = False,
-        fit_parameters: dict[str, list[FitParameter]] = None,
+        fit_parameters: dict[str, list[FitParameter]] | None = None,
         exclude: bool = False,
     ):
         """Initialize simulation experiment used in a fitting.
@@ -78,16 +78,13 @@ class FitExperiment:
         return self._weights
 
     @weights.setter
-    def weights(self, weights: float | list[float] = None) -> None:
+    def weights(self, weights: float | list[float] | None = None) -> None:
         """Set weights for mappings in fit experiment."""
         weights_processed = None
         if self.use_mapping_weights is True:
             mapping_weights = [None] * len(self.mappings)
             # no weights provided use default empty weights
-            if weights is None:
-                weights_processed = mapping_weights
-            else:
-                weights_processed = weights
+            weights_processed = mapping_weights if weights is None else weights
 
             # all weights have to be None, i.e [None, ..., None].
             # the weights are calculated dynamically by evaluating the fit mappings.
@@ -138,7 +135,7 @@ class FitExperiment:
         """Get representation."""
         return (
             f"{self.__class__.__name__}({self.experiment_class.__name__} "
-            f"{[f'{m} x {w}' for (m, w) in list(zip(self.mappings, self.weights))]})"
+            f"{[f'{m} x {w}' for (m, w) in list(zip(self.mappings, self.weights, strict=False))]})"
         )
 
     def __str__(self) -> str:
@@ -172,7 +169,7 @@ class FitMapping:
         experiment: Any,  # SimulationExperiment (avoid circular import)
         reference: FitData,
         observable: FitData,
-        weight: float = None,
+        weight: float | None = None,
         metadata: MappingMetaData = None,
     ):
         """FitMapping.
@@ -222,10 +219,10 @@ class FitParameter:
     def __init__(
         self,
         pid: str,
-        start_value: float = None,
+        start_value: float | None = None,
         lower_bound: float = -np.inf,
         upper_bound: float = np.inf,
-        unit: str = None,
+        unit: str | None = None,
     ):
         """Initialize FitParameter.
 
@@ -267,14 +264,14 @@ class FitParameter:
             f"[{self.lower_bound} - {self.upper_bound}]>"
         )
 
-    def to_json(self, path: Path = None) -> str | None:
+    def to_json(self, path: Path | None = None) -> str | None:
         """Serialize to JSON.
 
         Serializes to file if path is provided, otherwise returns JSON string.
         """
         return to_json(object=self, path=path)
 
-    def to_dict(self, path: Path = None) -> str | None:
+    def to_dict(self, path: Path | None = None) -> str | None:
         """Serialize to JSON.
 
         Serializes to file if path is provided, otherwise returns JSON string.
@@ -299,7 +296,7 @@ class FitParameter:
 
     @staticmethod
     def parameters_to_df(parameters: Iterable[FitParameter]) -> pd.DataFrame:
-        """DataFrame of parameters"""
+        """DataFrame of parameters."""
         return pd.DataFrame([p.to_dict() for p in parameters])
 
 

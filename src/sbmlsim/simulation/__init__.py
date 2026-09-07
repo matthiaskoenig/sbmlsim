@@ -1,13 +1,14 @@
 """Package for simulation."""
 
-from .simulation import AbstractSim, Dimension
-from .timecourse import TimecourseSim, Timecourse
 from .scan import ScanSim
+from .range import Dimension
+from .simulation import AbstractSim
+from .timecourse import Timecourse, TimecourseSim
 
 __all__ = [
     "AbstractSim",
     "Dimension",
-    "TimecourseSim",
-    "Timecourse",
     "ScanSim",
+    "Timecourse",
+    "TimecourseSim",
 ]

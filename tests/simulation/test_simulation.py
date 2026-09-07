@@ -1,9 +1,9 @@
 """Test simulations."""
 
 from sbmlsim.model import RoadrunnerSBMLModel
+from sbmlsim.resources import REPRESSILATOR_SBML
 from sbmlsim.simulation import Timecourse, TimecourseSim
 from sbmlsim.simulator import SimulatorSerial
-from sbmlsim.resources import REPRESSILATOR_SBML
 
 
 def test_timecourse_simulation() -> None:

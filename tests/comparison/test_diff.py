@@ -1,7 +1,6 @@
 """Test difference."""
 
 import pytest
-
 from data.diff import simulate_examples
 
 

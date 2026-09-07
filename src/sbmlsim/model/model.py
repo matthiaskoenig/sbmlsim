@@ -47,8 +47,8 @@ class AbstractModel:
         language: str | None = None,
         language_type: LanguageType = LanguageType.SBML,
         base_path: Path | None = None,
-        changes: dict = None,
-        selections: list[str] = None,
+        changes: dict | None = None,
+        selections: list[str] | None = None,
     ):
         """Initialize SourceType."""
         if not language and not language_type:
@@ -61,12 +61,11 @@ class AbstractModel:
             )
 
         # parse language_type
-        if language:
-            if isinstance(language, str):
-                if "sbml" in language:
-                    language_type = AbstractModel.LanguageType.SBML
-                else:
-                    raise ValueError(f"Unsupported model language: '{language}'")
+        if language and isinstance(language, str):
+            if "sbml" in language:
+                language_type = AbstractModel.LanguageType.SBML
+            else:
+                raise ValueError(f"Unsupported model language: '{language}'")
 
         self.sid = sid
         self.name = name
@@ -88,7 +87,7 @@ class AbstractModel:
 
     def to_dict(self):
         """Convert to dictionary."""
-        d = {
+        return {
             "sid": self.sid,
             "name": self.name,
             "language": self.language_type,
@@ -96,4 +95,3 @@ class AbstractModel:
             "source": self.source.to_dict(),
             "changes": self.changes,
         }
-        return d

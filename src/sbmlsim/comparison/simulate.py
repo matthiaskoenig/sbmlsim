@@ -1,11 +1,12 @@
 from __future__ import annotations
-from pathlib import Path
-from typing import Optional, Tuple, Any
 
-import pandas as pd
-import libsbml
-from petab.conditions import get_condition_df
 import uuid
+from pathlib import Path
+from typing import Any
+
+import libsbml
+import pandas as pd
+from petab.conditions import get_condition_df
 
 
 class Change:
@@ -27,7 +28,7 @@ class Change:
         compartment size.
     """
 
-    def __init__(self, target_id: str, value: float, unit: Optional[str]):
+    def __init__(self, target_id: str, value: float, unit: str | None):
         self.target_id: str = target_id
         self.value: float = value
         self.unit: str = unit
@@ -36,9 +37,9 @@ class Change:
 class Condition:
     """Collection of assignments with a given id."""
 
-    def __init__(self, sid: str, name: Optional[str], changes: Optional[list[Change]]):
+    def __init__(self, sid: str, name: str | None, changes: list[Change] | None):
         self.sid: str = sid
-        self.name: Optional[str] = name
+        self.name: str | None = name
         if changes is None:
             changes = []
         self.changes: list[Change] = changes
@@ -85,15 +86,12 @@ class SimulateSBML:
         absolute_tolerance: float = 1e-8,
         relative_tolerance=1e-8,
     ):
-        """
-
-        :param sbml_path: Path to SBML model.
+        """:param sbml_path: Path to SBML model.
         :param results_dir: Path to results dir and intermediate results,
         :param absolute_tolerance: absolute tolerance for simulation
         :param relative_tolerance: relatvie tolerance for simulation
         :param conditions: conditions to simulate
         """
-
         self.sbml_path: Path = sbml_path
         self.results_dir = results_dir
         self.absolute_tolerance = absolute_tolerance
@@ -111,13 +109,13 @@ class SimulateSBML:
         self.sid2name: dict[str, str] = sbml_data[7]
 
     @staticmethod
-    def parse_sbml(sbml_path: Path) -> Tuple[Any]:
+    def parse_sbml(sbml_path: Path) -> tuple[Any]:
         """Parses the identifiers."""
         doc: libsbml.SBMLDocument = libsbml.readSBMLFromFile(str(sbml_path))
         model: libsbml.Model = doc.getModel()
-        species: list[str] = list()
-        parameters: list[str] = list()
-        compartments: list[str] = list()
+        species: list[str] = []
+        parameters: list[str] = []
+        compartments: list[str] = []
         has_only_substance: dict[str, bool] = {}
         species_compartments: dict[str, str] = {}
         species_compartments_names: dict[str, str] = {}

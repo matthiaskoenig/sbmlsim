@@ -154,11 +154,11 @@ class Calculation(BaseObjectSIdRequired):
         """Construct Calculation."""
         super().__init__(sid=sid, name=name)
         self.variables: list[Variable] = variables
-        self.parameters: list[Parameter] = pars
+        self.parameters: list[Parameter] = parameters
         self.math: str = math
 
     # @abstractmethod
-    def values(self):
+    def values(self) -> None:
         """Access to values."""
         # FIXME
         # evaluate with actual data
@@ -209,13 +209,13 @@ if __name__ == "__main__":
     vars: list[Variable] = [
         Variable(
             sid="S1_model1",
-            target="S1",
+            target=Target("S1"),
             model_reference="model1",
             task_reference="repeated_task1",
         ),
         Variable(
             sid="S2_model1",
-            target="S2",
+            target=Target("S2"),
             model_reference="model1",
             task_reference="repeated_task1",
             applied_dimensions=dims,

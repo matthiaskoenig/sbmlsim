@@ -35,7 +35,7 @@ class SimulateRoadrunnerSBML(SimulateSBML):
     def simulate_condition(
         self, condition: Condition, timepoints: list[float]
     ) -> pd.DataFrame:
-        """Simulate condition"""
+        """Simulate condition."""
         # print(f"simulate condition: {condition.sid}")
 
         # reset

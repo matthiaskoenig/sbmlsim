@@ -1,14 +1,18 @@
 """Module handling ranges."""
 
 import itertools
+import logging
 from abc import abstractmethod
 from collections.abc import Iterable
 from enum import Enum, auto
+from typing import Any
 
 import numpy as np
 
 from sbmlsim.simulation.base import BaseObject
 from sbmlsim.simulation.calculation import Calculation, Parameter, Variable
+
+logger = logging.getLogger(__name__)
 
 
 class Range(BaseObject):
@@ -18,7 +22,7 @@ class Range(BaseObject):
     i.e. UniformRange, VectorRange, FunctionalRange, and DataRange.
     """
 
-    def __init__(self, sid: str, name: str = None):
+    def __init__(self, sid: str, name: str | None = None):
         """Construct Range."""
         super().__init__(sid=sid, name=name)
         self._values: np.ndarray
@@ -29,18 +33,19 @@ class Range(BaseObject):
 
     @property
     @abstractmethod
-    def values(self) -> np.ndarray:
+    def values(self) -> np.ndarray | None:
         """Get values of the range."""
         return self._values
 
     @values.setter
-    def values(self, data: np.ndarray):
+    def values(self, data: np.ndarray) -> None:
         """Set values for range."""
         if not isinstance(data, np.ndarray):
             raise ValueError(
                 f"'data' in Range must be numpy.ndarray, but '{type(data)}' for "
                 f"'{data}'"
             )
+        self._values = data
 
 
 class VectorRange(Range):
@@ -54,7 +59,7 @@ class VectorRange(Range):
         self,
         sid: str,
         values: list | tuple | np.ndarray,
-        name: str = None,
+        name: str | None = None,
     ):
         """Construct VectorRange."""
         super().__init__(sid=sid, name=name)
@@ -75,9 +80,9 @@ class VectorRange(Range):
         # values are sorted
         values_sorted: np.ndarray = np.sort(values)
         if not np.allclose(values, values_sorted):
-            console.log(
-                f"'values' in VectorRange must be one-dimensional, but ndim='{values.ndim}' for "
-                f"'{values}'"
+            logger.warning(
+                "'values' in VectorRange are not sorted, using sorted values: '%s'",
+                values,
             )
 
         self._values: np.ndarray = values_sorted
@@ -118,7 +123,7 @@ class UniformRange(Range):
         end: float,
         steps: int,
         range_type: UniformRangeType = UniformRangeType.linear,
-        name: str = None,
+        name: str | None = None,
     ):
         """Construct VectorRange."""
         super().__init__(sid=sid, name=name)
@@ -161,7 +166,7 @@ class DataRange(Range):
     whose values are used as the values of the range.
     """
 
-    def __init__(self, sid: str, source_ref: str, name: str = None):
+    def __init__(self, sid: str, source_ref: str, name: str | None = None):
         """Construct DataRange."""
         super().__init__(sid=sid, name=name)
         self.source_ref: str = source_ref
@@ -173,7 +178,7 @@ class DataRange(Range):
         )
 
     @property
-    def values(self) -> np.ndarray:
+    def values(self) -> np.ndarray | None:
         """Resolve data from data generator."""
         # FIXME: implement; requires access to the resolved DataDescriptions of the experiment.
         # raise NotImplementedError
@@ -196,9 +201,9 @@ class FunctionalRange(Calculation, Range):
         parameters: list[Parameter],
         math: str,
         range: str,
-        name: str = None,
+        name: str | None = None,
     ):
-        """Construct DataRange."""
+        """Construct FunctionalRange."""
         super().__init__(
             sid=sid, name=name, variables=variables, parameters=parameters, math=math
         )
@@ -206,12 +211,10 @@ class FunctionalRange(Calculation, Range):
 
     def __repr__(self) -> str:
         """Get string representation."""
-        return (
-            f"DataRange(sid={self.sid}, name={self.name}, source_ref={self.source_ref})"
-        )
+        return f"FunctionalRange(sid={self.sid}, name={self.name}, range={self.range})"
 
     @property
-    def values(self) -> np.ndarray:
+    def values(self) -> np.ndarray | None:
         """Resolve data from data generator."""
         # FIXME: implement; requires access to all numerical values in the variables and the ranges.
         # raise NotImplementedError
@@ -226,7 +229,12 @@ class Dimension:
     the index is the corresponding index of the dimension.
     """
 
-    def __init__(self, dimension: str, index: np.ndarray = None, changes: dict = None):
+    def __init__(
+        self,
+        dimension: str,
+        index: np.ndarray | None = None,
+        changes: dict[str, Any] | None = None,
+    ):
         """Dimension.
 
         If no index is provided the index is calculated from the changes.
@@ -243,7 +251,7 @@ class Dimension:
 
         if changes is None:
             changes = {}
-        self.changes = changes
+        self.changes: dict[str, Any] = changes
         if index is None:
             # figure out index from changes
             num = 1
@@ -256,7 +264,7 @@ class Dimension:
                         )
                     num = n
             index = np.arange(num)
-        self.index = index
+        self.index: np.ndarray = index
 
     def __repr__(self) -> str:
         """Get representation."""
@@ -267,7 +275,7 @@ class Dimension:
         return len(self.index)
 
     @staticmethod
-    def indices_from_dimensions(dimensions: list["Dimension"]):
+    def indices_from_dimensions(dimensions: list["Dimension"]) -> list[tuple[Any, ...]]:
         """Get indices of all combinations of dimensions."""
         index_vecs = [dim.index for dim in dimensions]
         return list(itertools.product(*index_vecs))
@@ -283,9 +291,11 @@ if __name__ == "__main__":
         UniformRange(sid="ufrange1", start=0, end=10, steps=100),
         UniformRange("ufrange2", start=1, end=2, steps=1),
         DataRange("drange1", source_ref="datasource1"),
-        FunctionalRange(sid="frange1"),
+        FunctionalRange(
+            sid="frange1", variables=[], parameters=[], math="1", range="ufrange1"
+        ),
     ]
-    range: Range
-    for range in ranges:
-        console.log(range)
-        console.log(range.values)
+    r: Range
+    for r in ranges:
+        console.log(r)
+        console.log(r.values)

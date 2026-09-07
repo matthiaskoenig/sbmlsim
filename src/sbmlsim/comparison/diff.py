@@ -28,7 +28,7 @@ def get_files_by_extension(base_path: Path, extension: str = ".json") -> dict[st
     offset = len(extension)
     keys = [f.name[:-offset] for f in files]
 
-    return dict(zip(keys, files))  # type: ignore
+    return dict(zip(keys, files, strict=False))  # type: ignore
 
 
 class DataSetsComparison:
@@ -50,9 +50,9 @@ class DataSetsComparison:
         dfs_dict: dict[str, pd.DataFrame],
         columns_filter=None,
         time_column: bool = True,
-        title: str = None,
-        selections: dict[str, str] = None,
-        factors: dict[str, float] = None,
+        title: str | None = None,
+        selections: dict[str, str] | None = None,
+        factors: dict[str, float] | None = None,
     ):
         """Initialize the comparison.
 
@@ -100,7 +100,7 @@ class DataSetsComparison:
                     df_new.loc[:, sel] *= fs[k]  # type: ignore
 
                 # do renaming
-                df_new = df_new.rename(columns=dict(zip(sel_keys, colnames)))
+                df_new = df_new.rename(columns=dict(zip(sel_keys, colnames, strict=False)))
                 # store updated df
                 console.log(df_new.head())
                 dfs_dict[key] = df_new
@@ -163,7 +163,7 @@ class DataSetsComparison:
 
         columns = list(col_intersection.copy())
         columns.remove("time")
-        columns = ["time"] + sorted(columns)
+        columns = ["time", *sorted(columns)]
 
         return columns, col_intersection, col_union
 
@@ -295,8 +295,7 @@ class DataSetsComparison:
         console.log(self.report_str())
 
         # plot figure
-        f = self.plot_diff()
-        return f
+        return self.plot_diff()
 
     @timeit
     def plot_diff(self):

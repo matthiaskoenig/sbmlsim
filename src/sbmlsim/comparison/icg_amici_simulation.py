@@ -1,13 +1,11 @@
 from pathlib import Path
-from typing import List
 
 import amici
 import numpy as np
 import pandas as pd
 
-
 output_dir: Path = Path(__file__).parent / "results"
-model_mids: List[str] = ["icg_body_flat", "icg_body_events_flat"]
+model_mids: list[str] = ["icg_body_flat", "icg_body_events_flat"]
 
 # Check if AMICI can simulate the model
 for mid in model_mids:

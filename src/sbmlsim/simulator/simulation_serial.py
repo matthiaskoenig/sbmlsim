@@ -104,7 +104,7 @@ class SimulatorSerial:
         scan.normalize(uinfo=self.uinfo)
 
         # create all possible combinations of the scan
-        indices, simulations = scan.to_simulations()
+        _indices, simulations = scan.to_simulations()
 
         # simulate (uses respective function of simulator)
         dfs = self._timecourses(simulations)

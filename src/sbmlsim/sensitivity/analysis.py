@@ -151,10 +151,10 @@ class SensitivityAnalysis:
         # remove parameters which are set in the base simulation or group
         # sensitivity does not make sense on these
         fixed_parameters = set()
-        for pid in sensitivity_simulation.changes_simulation.keys():
+        for pid in sensitivity_simulation.changes_simulation:
             fixed_parameters.add(pid)
         for group in self.groups:
-            for pid in group.changes.keys():
+            for pid in group.changes:
                 fixed_parameters.add(pid)
         for p in self.parameters:
             if p.uid in fixed_parameters:
@@ -175,7 +175,7 @@ class SensitivityAnalysis:
 
         # handle compute resources
         if not n_cores:
-            n_cores = int(round(0.9 * multiprocessing.cpu_count()))
+            n_cores = round(0.9 * multiprocessing.cpu_count())
         self.n_cores = n_cores
 
         # parameter samples for sensitivity; shape: (num_samples x num_parameters)
@@ -299,7 +299,7 @@ class SensitivityAnalysis:
                     [
                         {
                             **group.changes,
-                            **dict(zip(self.parameter_ids, samples[k, :].values)),
+                            **dict(zip(self.parameter_ids, samples[k, :].values, strict=False)),
                         }
                         for k in chunk
                     ]

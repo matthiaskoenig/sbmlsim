@@ -1,0 +1,222 @@
+[project]
+site_name = "sbmlsim"
+site_url = "https://matthiaskoenig.github.io/sbmlsim/"
+site_description = "SBML simulation made easy: simulation experiments, parameter scans, parameter fitting, sensitivity analysis and SED-ML for SBML models"
+site_author = "Matthias König"
+
+copyright = 'Copyright &copy; 2019-2026 <a href="https://livermetabolism.com">Matthias König</a>'
+
+repo_url = "https://github.com/matthiaskoenig/sbmlsim"
+repo_name = "matthiaskoenig/sbmlsim"
+edit_uri = "edit/develop/docs/"
+
+nav = [
+  { "Home" = "index.md" },
+  { "Installation" = "installation.md" },
+  { "User guide" = [
+    { "Models" = "models.md" },
+    { "Timecourse simulations" = "simulation.md" },
+    { "Parameter scans" = "scans.md" },
+    { "Units" = "units.md" },
+    { "Simulation experiments" = "experiments.md" },
+    { "Data" = "data.md" },
+    { "Plots and reports" = "plotting.md" },
+    { "Parameter fitting" = "fitting.md" },
+    { "Sensitivity analysis" = "sensitivity.md" },
+    { "SED-ML and COMBINE archives" = "sedml.md" },
+  ] },
+  { "References" = "references.md" },
+  { "API reference" = [
+    { "Overview" = "api/index.md" },
+    { "sbmlsim" = [
+      { "data" = "api/data.md" },
+      { "units" = "api/units.md" },
+      { "serialization" = "api/serialization.md" },
+      { "utils" = "api/utils.md" },
+      { "console" = "api/console.md" },
+      { "log" = "api/log.md" },
+    ] },
+    { "sbmlsim.model" = [
+      { "model" = "api/model.model.md" },
+      { "model_roadrunner" = "api/model.model_roadrunner.md" },
+      { "model_change" = "api/model.model_change.md" },
+      { "model_resources" = "api/model.model_resources.md" },
+    ] },
+    { "sbmlsim.simulation" = [
+      { "timecourse" = "api/simulation.timecourse.md" },
+      { "scan" = "api/simulation.scan.md" },
+      { "sensitivity" = "api/simulation.sensitivity.md" },
+      { "range" = "api/simulation.range.md" },
+      { "change" = "api/simulation.change.md" },
+      { "algorithm" = "api/simulation.algorithm.md" },
+      { "kisaos" = "api/simulation.kisaos.md" },
+      { "calculation" = "api/simulation.calculation.md" },
+      { "base" = "api/simulation.base.md" },
+      { "simulation" = "api/simulation.simulation.md" },
+    ] },
+    { "sbmlsim.simulator" = [
+      { "simulation_serial" = "api/simulator.simulation_serial.md" },
+    ] },
+    { "sbmlsim.task" = [
+      { "task" = "api/task.task.md" },
+    ] },
+    { "sbmlsim.experiment" = [
+      { "experiment" = "api/experiment.experiment.md" },
+      { "runner" = "api/experiment.runner.md" },
+    ] },
+    { "sbmlsim.result" = [
+      { "xresult" = "api/result.xresult.md" },
+      { "datagenerator" = "api/result.datagenerator.md" },
+      { "report" = "api/result.report.md" },
+    ] },
+    { "sbmlsim.plot" = [
+      { "plotting" = "api/plot.plotting.md" },
+      { "serialization_matplotlib" = "api/plot.serialization_matplotlib.md" },
+    ] },
+    { "sbmlsim.report" = [
+      { "experiment_report" = "api/report.experiment_report.md" },
+    ] },
+    { "sbmlsim.fit" = [
+      { "objects" = "api/fit.objects.md" },
+      { "optimization" = "api/fit.optimization.md" },
+      { "options" = "api/fit.options.md" },
+      { "result" = "api/fit.result.md" },
+      { "runner" = "api/fit.runner.md" },
+      { "analysis" = "api/fit.analysis.md" },
+      { "sampling" = "api/fit.sampling.md" },
+      { "rmse" = "api/fit.rmse.md" },
+      { "helpers" = "api/fit.helpers.md" },
+      { "petab_omex" = "api/fit.petab_omex.md" },
+    ] },
+    { "sbmlsim.sensitivity" = [
+      { "analysis" = "api/sensitivity.analysis.md" },
+      { "parameters" = "api/sensitivity.parameters.md" },
+      { "sensitivity_local" = "api/sensitivity.sensitivity_local.md" },
+      { "sensitivity_sampling" = "api/sensitivity.sensitivity_sampling.md" },
+      { "sensitivity_morris" = "api/sensitivity.sensitivity_morris.md" },
+      { "sensitivity_sobol" = "api/sensitivity.sensitivity_sobol.md" },
+      { "sensitivity_fast" = "api/sensitivity.sensitivity_fast.md" },
+      { "classification" = "api/sensitivity.classification.md" },
+      { "plots" = "api/sensitivity.plots.md" },
+    ] },
+    { "sbmlsim.combine" = [
+      { "sedml.parser" = "api/combine.sedml.parser.md" },
+      { "sedml.runner" = "api/combine.sedml.runner.md" },
+      { "sedml.task" = "api/combine.sedml.task.md" },
+      { "sedml.data" = "api/combine.sedml.data.md" },
+      { "sedml.numl" = "api/combine.sedml.numl.md" },
+      { "sedml.report" = "api/combine.sedml.report.md" },
+      { "sedml.io" = "api/combine.sedml.io.md" },
+      { "datagenerator" = "api/combine.datagenerator.md" },
+      { "mathml" = "api/combine.mathml.md" },
+      { "validation" = "api/combine.validation.md" },
+    ] },
+    { "sbmlsim.interpolation" = [
+      { "interpolation" = "api/interpolation.interpolation.md" },
+    ] },
+    { "sbmlsim.comparison" = [
+      { "diff" = "api/comparison.diff.md" },
+    ] },
+  ] },
+  { "Contributing" = "development.md" },
+]
+
+[project.theme]
+language = "en"
+favicon = "images/favicon/favicon.ico"
+logo = "images/favicon/sbmlsim-100x100-300dpi.png"
+features = [
+  "content.action.edit",
+  "content.code.annotate",
+  "content.code.copy",
+  "content.tooltips",
+  "navigation.footer",
+  "navigation.indexes",
+  "navigation.instant",
+  "navigation.instant.prefetch",
+  "navigation.sections",
+  "navigation.top",
+  "navigation.tracking",
+  "search.highlight",
+  "search.suggest",
+  "toc.follow",
+]
+
+[[project.theme.palette]]
+media = "(prefers-color-scheme)"
+toggle.icon = "lucide/sun-moon"
+toggle.name = "Switch to light mode"
+
+[[project.theme.palette]]
+media = "(prefers-color-scheme: light)"
+scheme = "default"
+primary = "indigo"
+accent = "indigo"
+toggle.icon = "lucide/sun"
+toggle.name = "Switch to dark mode"
+
+[[project.theme.palette]]
+media = "(prefers-color-scheme: dark)"
+scheme = "slate"
+primary = "indigo"
+accent = "indigo"
+toggle.icon = "lucide/moon"
+toggle.name = "Switch to system preference"
+
+[[project.extra.social]]
+icon = "fontawesome/brands/github"
+link = "https://github.com/matthiaskoenig/sbmlsim"
+
+[[project.extra.social]]
+icon = "fontawesome/brands/python"
+link = "https://pypi.org/project/sbmlsim/"
+
+# API reference is rendered from the docstrings, see the `docs/api` pages
+[project.plugins.mkdocstrings.config]
+default_handler = "python"
+
+[project.plugins.mkdocstrings.config.handlers.python]
+paths = ["src"]
+
+[project.plugins.mkdocstrings.config.handlers.python.options]
+docstring_style = "google"
+docstring_section_style = "table"
+show_source = false
+# the page provides the heading, see the `docs/api` pages
+show_root_heading = false
+show_root_toc_entry = false
+show_root_full_path = false
+show_symbol_type_heading = true
+show_symbol_type_toc = true
+members_order = "source"
+separate_signature = true
+signature_crossrefs = true
+merge_init_into_class = true
+filters = ["!^_"]
+
+[project.markdown_extensions]
+abbr = {}
+admonition = {}
+attr_list = {}
+def_list = {}
+footnotes = {}
+md_in_html = {}
+tables = {}
+toc.permalink = true
+pymdownx.betterem = {}
+pymdownx.caret = {}
+pymdownx.details = {}
+pymdownx.emoji.emoji_generator = "zensical.extensions.emoji.to_svg"
+pymdownx.emoji.emoji_index = "zensical.extensions.emoji.twemoji"
+pymdownx.highlight.anchor_linenums = true
+pymdownx.highlight.line_spans = "__span"
+pymdownx.highlight.pygments_lang_class = true
+pymdownx.inlinehilite = {}
+pymdownx.keys = {}
+pymdownx.magiclink = {}
+pymdownx.mark = {}
+pymdownx.smartsymbols = {}
+pymdownx.superfences = {}
+pymdownx.tabbed.alternate_style = true
+pymdownx.tasklist.custom_checkbox = true
+pymdownx.tilde = {}

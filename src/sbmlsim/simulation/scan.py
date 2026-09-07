@@ -5,10 +5,13 @@ Allows scans over other simulations.
 
 import logging
 from copy import deepcopy
+from typing import Any
 
 import numpy as np
 
-from sbmlsim.simulation import AbstractSim, Dimension
+from sbmlsim.simulation.range import Dimension
+from sbmlsim.simulation.simulation import AbstractSim
+from sbmlsim.simulation.timecourse import TimecourseSim
 from sbmlsim.units import UnitsInformation
 
 logger = logging.getLogger(__name__)
@@ -23,8 +26,8 @@ class ScanSim(AbstractSim):
     def __init__(
         self,
         simulation: AbstractSim,
-        dimensions: list[Dimension] = None,
-        mapping: dict[str, int] = None,
+        dimensions: list[Dimension] | None = None,
+        mapping: dict[str, int] | None = None,
     ):
         """Scan a simulation.
 
@@ -42,11 +45,11 @@ class ScanSim(AbstractSim):
         :param scan: dictionary of parameters or conditions to scan
         :param mapping: map of changes to parts of simulations
         """
-        self.simulation = simulation
+        self.simulation: AbstractSim = simulation
         if dimensions is None:
             # handling the simple simulation case
             dimensions = []
-        self.dimensions = dimensions
+        self.dimensions: list[Dimension] = dimensions
         dimension_keys = [dim.dimension for dim in self.dimensions]
         if len(dimension_keys) > len(set(dimension_keys)):
             raise ValueError(f"duplicate dimension keys in scan: {dimension_keys}")
@@ -59,7 +62,7 @@ class ScanSim(AbstractSim):
             raise ValueError(
                 f"mapping '{mapping}' incompatible with dimensions '{dimensions}'."
             )
-        self.mapping = mapping
+        self.mapping: dict[str, int] = mapping
 
     def __repr__(self) -> str:
         """Get representation."""
@@ -68,30 +71,23 @@ class ScanSim(AbstractSim):
             f"[{', '.join([str(d) for d in self.dimensions])}])"
         )
 
-    def dimensions(self) -> list[Dimension]:
-        """Get dimensions."""
-        return self.dimensions
-
     def get_dimension(self, key: str) -> Dimension:
         """Get dimension by key."""
         for dim in self.dimensions:
-            if dim.dimension == dim:
+            if dim.dimension == key:
                 return dim
         raise KeyError(f"Dimension with key '{key}' does not exist.")
 
-    def indices(self):
+    def indices(self) -> list[tuple[Any, ...]]:
         """Get indices of all combinations."""
         return Dimension.indices_from_dimensions(self.dimensions)
 
-    def add_model_changes(self, model_changes: dict) -> None:
+    def add_model_changes(self, model_changes: dict[str, Any]) -> None:
         """Add model changes to first timecourse."""
-        # import here to avoid circular import
-        from sbmlsim.simulation import TimecourseSim
-
         if self.simulation and isinstance(self.simulation, TimecourseSim):
             self.simulation.add_model_changes(model_changes)
 
-    def normalize(self, uinfo: UnitsInformation):
+    def normalize(self, uinfo: UnitsInformation) -> None:
         """Normalize units in scan.
 
         Requires normalization of timecourse simulation as well
@@ -107,22 +103,27 @@ class ScanSim(AbstractSim):
                 scan_dim.changes, uinfo=uinfo
             )
 
-    def to_simulations(self):
+    def to_simulations(self) -> tuple[list[tuple[Any, ...]], list[TimecourseSim]]:
         """Flatten the scan to individual simulations.
 
         Here the changes are appended.
         Scan should be normalized before calling this function.
         Necessary to track the results.
         """
+        # TODO: support additional simulation types (currently
+        #       only Timecourses assumed.
+        if not isinstance(self.simulation, TimecourseSim):
+            raise NotImplementedError(
+                f"Only TimecourseSim supported in scan, but '{type(self.simulation)}'"
+            )
+
         # create all combinations of the scan
         indices = self.indices()
         # create respective simulations
-        simulations = []
+        simulations: list[TimecourseSim] = []
         for index_list in indices:
             sim_new = deepcopy(self.simulation)
 
-            # TODO: support additional simulation types (currently
-            #       only Timecourses assumed.
             for k_dim, k_index in enumerate(index_list):
                 # add all changes for the given dimension and index
                 dim = self.dimensions[k_dim]
@@ -130,7 +131,7 @@ class ScanSim(AbstractSim):
                 map_index = self.mapping[dim.dimension]
                 # changes have to be applied to correct part of simulation
                 tc = sim_new.timecourses[map_index]
-                for key in changes.keys():
+                for key in changes:
                     value = changes[key][k_index]
                     tc.add_change(key, value)
 
@@ -140,7 +141,7 @@ class ScanSim(AbstractSim):
 
 
 if __name__ == "__main__":
-    from sbmlsim.simulation import Timecourse, TimecourseSim
+    from sbmlsim.simulation import Timecourse
     from sbmlsim.units import UnitRegistry
 
     ureg = UnitRegistry(on_redefinition="ignore")
@@ -166,14 +167,14 @@ if __name__ == "__main__":
         dimensions=[
             Dimension(
                 "dim1",
-                index=range(8),
+                index=np.arange(8),
                 changes={
                     "n": Q_(np.linspace(start=2, stop=10, num=8), "dimensionless"),
                 },
             ),
             Dimension(
                 "dim2",
-                index=range(4),
+                index=np.arange(4),
                 changes={
                     "Y": Q_(np.linspace(start=10, stop=20, num=4), "dimensionless"),
                 },

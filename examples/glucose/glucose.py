@@ -7,7 +7,8 @@ from pathlib import Path
 from examples.glucose.experiments.dose_response import (
     DoseResponseExperiment,
 )
-from sbmlsim.experiment import ExperimentReport, ExperimentRunner
+from sbmlsim.experiment import ExperimentRunner
+from sbmlsim.report.experiment_report import ExperimentReport
 from sbmlsim.simulator import SimulatorSerial
 
 

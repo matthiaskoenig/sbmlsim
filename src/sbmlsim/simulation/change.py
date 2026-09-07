@@ -1,7 +1,7 @@
 """Module handling changes."""
 
 from sbmlsim.simulation.base import BaseObject, Target
-from sbmlsim.simulation.calculation import Calculation
+from sbmlsim.simulation.calculation import Calculation, Parameter, Variable
 
 
 class Change(BaseObject):
@@ -16,13 +16,15 @@ class Change(BaseObject):
       (AddXML, ChangeXML, RemoveXML)
     """
 
-    def __init__(self, target: Target, sid: str = None, name: str = None):
-        """Construct Calculation."""
-        super(Change, self).__init__(sid=sid, name=name)
-        self.target = target
+    def __init__(
+        self, target: Target, sid: str | None = None, name: str | None = None
+    ):
+        """Construct Change."""
+        super().__init__(sid=sid, name=name)
+        self.target: Target = target
 
 
-class ComputeChange(Calculation):
+class ComputeChange(Change, Calculation):
     """ComputeChange class.
 
     The ComputeChange class permits to change
@@ -30,6 +32,17 @@ class ComputeChange(Calculation):
     addressable by a target, based on a calculation.
     """
 
-    def __init__(self, sid: str, target: Target, name: str = None):
-        """Construct Calculation."""
-        super(Change, self).__init__(sid=sid, name=name, target=target)
+    def __init__(
+        self,
+        sid: str,
+        target: Target,
+        variables: list[Variable],
+        parameters: list[Parameter],
+        math: str,
+        name: str | None = None,
+    ):
+        """Construct ComputeChange."""
+        Change.__init__(self, target=target, sid=sid, name=name)
+        Calculation.__init__(
+            self, sid=sid, variables=variables, parameters=parameters, math=math, name=name
+        )

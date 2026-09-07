@@ -53,8 +53,8 @@ class OptimizationProblem(ObjectJSONEncoder):
         opid: str,
         fit_experiments: list[FitExperiment],
         fit_parameters: list[FitParameter],
-        base_path: Path = None,
-        data_path: Path = None,
+        base_path: Path | None = None,
+        data_path: Path | None = None,
     ):
         """Optimization problem.
 
@@ -139,7 +139,7 @@ class OptimizationProblem(ObjectJSONEncoder):
 
     def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary."""
-        d = dict()
+        d = {}
         for key in ["opid", "fit_experiments", "parameters", "base_path", "data_path"]:
             d[key] = self.__dict__[key]
         return d
@@ -151,7 +151,7 @@ class OptimizationProblem(ObjectJSONEncoder):
         """
         return to_json(object=self, path=path)
 
-    def report(self, path: Path = None, print_output: bool = True) -> str:
+    def report(self, path: Path | None = None, print_output: bool = True) -> str:
         """Print and write report.
 
         Can only be called after initialization.

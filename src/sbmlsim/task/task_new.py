@@ -42,7 +42,7 @@ class RepeatedTask:
     """RepeatedTask."""
 
     range: str  # dimension id
-    ranges: [Dimension]
+    ranges: list[Dimension]
     reset_model: bool
     concatenate: bool
 

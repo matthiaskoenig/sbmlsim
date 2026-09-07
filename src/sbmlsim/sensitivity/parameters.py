@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Iterable
-from enum import Enum
+from enum import StrEnum
 from pathlib import Path
 
 import libsbml
@@ -16,7 +16,7 @@ from sbmlutils.report.units import udef_to_string
 from sbmlsim.console import console
 
 
-class ParameterType(str, Enum):
+class ParameterType(StrEnum):
     """Types of model parameters."""
 
     DATA = "data"
@@ -132,7 +132,7 @@ class SensitivityParameter(BaseModel):
 
             value = r.getValue(ruid)
 
-            parameter = SensitivityParameter(
+            return SensitivityParameter(
                 uid=uid,
                 name=name,
                 value=value,
@@ -141,7 +141,6 @@ class SensitivityParameter(BaseModel):
                 upper_bound=np.nan,
             )
 
-            return parameter
 
         # constant parameters
         p: libsbml.Parameter
@@ -170,24 +169,22 @@ class SensitivityParameter(BaseModel):
         for s in sbml_model.getListOfSpecies():
             sid = s.getId()
 
-            if exclude_na:
-                if (
-                    (not s.isSetInitialAmount() and not s.isSetInitialConcentration())
-                    or (s.isSetInitialAmount() and np.isnan(s.getInitialAmount()))
-                    or (
-                        s.isSetInitialConcentration()
-                        and np.isnan(s.getInitialConcentration())
-                    )
-                ):
-                    exclude_ids.add(sid)
-            if exclude_zero:
-                if (
-                    s.isSetInitialAmount() and np.isclose(s.getInitialAmount(), 0.0)
-                ) or (
+            if exclude_na and (
+                (not s.isSetInitialAmount() and not s.isSetInitialConcentration())
+                or (s.isSetInitialAmount() and np.isnan(s.getInitialAmount()))
+                or (
                     s.isSetInitialConcentration()
-                    and np.isclose(s.getInitialConcentration(), 0.0)
-                ):
-                    exclude_ids.add(sid)
+                    and np.isnan(s.getInitialConcentration())
+                )
+            ):
+                exclude_ids.add(sid)
+            if exclude_zero and ((
+                s.isSetInitialAmount() and np.isclose(s.getInitialAmount(), 0.0)
+            ) or (
+                s.isSetInitialConcentration()
+                and np.isclose(s.getInitialConcentration(), 0.0)
+            )):
+                exclude_ids.add(sid)
 
             if s.getConstant() is True or s.getBoundaryCondition() is True:
                 parameters.append(parameter_from_sbase(s))

@@ -22,15 +22,16 @@ class AlgorithmParameter(BaseObject):
         self,
         kisao: KISAOType,
         value: str | float,
-        sid: str = None,
-        name: str = None,
+        sid: str | None = None,
+        name: str | None = None,
     ):
         """Initialize AlgorithmParameter."""
-        term: KISAO = KISAO.validate(kisao)
-        term_name: str = KISAO.get_name(term)
+        term = KISAO.validate(kisao)
+        assert isinstance(term, KISAO)
+        term_name: str | None = KISAO.get_name(term)
         if name:
             if name != term_name:
-                logger.warning("Using name '{name}' instead of '{term_name}'.")
+                logger.warning("Using name '%s' instead of '%s'.", name, term_name)
             else:
                 name = term_name
 
@@ -54,16 +55,17 @@ class Algorithm(BaseObject):
         name: str | None = None,
     ):
         """Initialize Algorithm."""
-        term: KISAO = KISAO.validate(kisao)
-        term_name: str = KISAO.get_name(term)
+        term = KISAO.validate(kisao)
+        assert isinstance(term, KISAO)
+        term_name: str | None = KISAO.get_name(term)
         if name:
             if name != term_name:
-                logger.warning("Using name '{name}' instead of '{term_name}'.")
+                logger.warning("Using name '%s' instead of '%s'.", name, term_name)
             else:
                 name = term_name
 
         super().__init__(sid, name)
-        self.kisao: KISAO = kisao
+        self.kisao: KISAO = term
         self.parameters: list[AlgorithmParameter] | None = parameters
 
     def __repr__(self) -> str:

@@ -30,13 +30,13 @@ class RoadrunnerSBMLModel(AbstractModel):
     def __init__(
         self,
         source: str | Path,
-        base_path: Path = None,
-        changes: dict = None,
-        sid: str = None,
-        name: str = None,
-        selections: list[str] = None,
+        base_path: Path | None = None,
+        changes: dict | None = None,
+        sid: str | None = None,
+        name: str | None = None,
+        selections: list[str] | None = None,
         ureg: UnitRegistry = None,
-        settings: dict = None,
+        settings: dict | None = None,
     ):
         super().__init__(
             source=source,
@@ -82,9 +82,9 @@ class RoadrunnerSBMLModel(AbstractModel):
     @staticmethod
     def from_abstract_model(
         abstract_model: AbstractModel,
-        selections: list[str] = None,
+        selections: list[str] | None = None,
         ureg: UnitRegistry = None,
-        settings: dict = None,
+        settings: dict | None = None,
     ):
         """Create from AbstractModel."""
         logger.debug("RoadrunnerSBMLModel from AbstractModel")
@@ -172,19 +172,14 @@ class RoadrunnerSBMLModel(AbstractModel):
 
     @classmethod
     def set_timecourse_selections(
-        cls, r: roadrunner.RoadRunner, selections: list[str] = None
+        cls, r: roadrunner.RoadRunner, selections: list[str] | None = None
     ) -> list[str]:
         """Set the model selections for timecourse simulation."""
         if selections is None:
             r_model: roadrunner.ExecutableModel = r.model
 
             r.timeCourseSelections = (
-                ["time"]
-                + r_model.getFloatingSpeciesIds()
-                + r_model.getBoundarySpeciesIds()
-                + r_model.getGlobalParameterIds()
-                + r_model.getReactionIds()
-                + r_model.getCompartmentIds()
+                ["time", *r_model.getFloatingSpeciesIds(), *r_model.getBoundarySpeciesIds(), *r_model.getGlobalParameterIds(), *r_model.getReactionIds(), *r_model.getCompartmentIds()]
             )
             r.timeCourseSelections += [
                 f"[{key}]"
@@ -258,8 +253,7 @@ class RoadrunnerSBMLModel(AbstractModel):
             "constant": [p.constant for p in parameters],
             "name": [p.name for p in parameters],
         }
-        df = pd.DataFrame(data, columns=["sid", "value", "unit", "constant", "name"])
-        return df
+        return pd.DataFrame(data, columns=["sid", "value", "unit", "constant", "name"])
 
     @staticmethod
     def species_df(r: roadrunner.RoadRunner) -> pd.DataFrame:

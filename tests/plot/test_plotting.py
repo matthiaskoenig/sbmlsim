@@ -19,7 +19,8 @@ color_data = [
 
 
 @pytest.mark.parametrize("color, hex, alpha", color_data)
-def test_parse_color(color, hex, alpha):
+def test_parse_color(color: str, hex: str, alpha: float) -> None:
     """Test parsing of color."""
     c = ColorType.parse_color(color, alpha=alpha)
+    assert c is not None
     assert c.color == hex

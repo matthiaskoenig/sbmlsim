@@ -44,7 +44,7 @@ class Source:
 
     @classmethod
     def from_source(
-        cls, source: Union["Source", str, Path], base_dir: Path = None
+        cls, source: Union["Source", str, Path], base_dir: Path | None = None
     ) -> "Source":
         """Resolve the source string."""
         if isinstance(source, Source):

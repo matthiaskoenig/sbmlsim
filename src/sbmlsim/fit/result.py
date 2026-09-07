@@ -25,7 +25,7 @@ class OptimizationResult(ObjectJSONEncoder):
         parameters: Iterable[FitParameter],
         fits: list[OptimizeResult],
         trajectories: list,
-        sid: str = None,
+        sid: str | None = None,
     ):
         """Initialize optimization result.
 
@@ -70,7 +70,7 @@ class OptimizationResult(ObjectJSONEncoder):
 
     def to_dict(self):
         """Convert to dictionary."""
-        d = dict()
+        d = {}
         for key in ["sid", "parameters", "fits", "trajectories"]:
             d[key] = self.__dict__[key]
         return d
@@ -94,8 +94,7 @@ class OptimizationResult(ObjectJSONEncoder):
 
     def __str__(self) -> str:
         """Get string representation."""
-        info = f"<OptimizationResult: n={self.size}>"
-        return info
+        return f"<OptimizationResult: n={self.size}>"
 
     @staticmethod
     def combine(opt_results: list["OptimizationResult"]) -> "OptimizationResult":
@@ -166,8 +165,7 @@ class OptimizationResult(ObjectJSONEncoder):
                 for k, pid in enumerate(pids):
                     res[pid] = step[0][k]
                 results.append(res)
-        df = pd.DataFrame(results)
-        return df
+        return pd.DataFrame(results)
 
     @staticmethod
     def process_fits(parameters: list[FitParameter], fits: list[OptimizeResult]):

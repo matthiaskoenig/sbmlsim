@@ -76,7 +76,7 @@ class Interpolator:
 
     def __str__(self) -> str:
         """Convert to string."""
-        s = (
+        return (
             "--------------------------\n"
             f"Interpolator<{self.method}>\n"
             "--------------------------\n"
@@ -84,7 +84,6 @@ class Interpolator:
             f"{self.y}\n"
             f"formula:\n {self.formula()}\n"
         )
-        return s
 
     @property
     def xid(self) -> str:
@@ -380,10 +379,9 @@ class Interpolation:
 
         # if assignment rule exists remove it
         for rule in model.getListOfRules():
-            if rule.isAssignment():
-                if rule.getVariable() == pid:
-                    model.removeRule(rule)
-                    break
+            if rule.isAssignment() and rule.getVariable() == pid:
+                model.removeRule(rule)
+                break
 
         p = model.createParameter()
         p.setId(pid)

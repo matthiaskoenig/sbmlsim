@@ -97,10 +97,10 @@ def create_samples(
 
 def plot_samples(samples):
     """Plot samples."""
-    df = list(samples.values())[0]
+    df = next(iter(samples.values()))
     pids = df.columns
 
-    fig, [[ax1, ax2], [ax3, ax4]] = plt.subplots(2, ncols=2, figsize=(10, 10))
+    _fig, [[ax1, ax2], [ax3, ax4]] = plt.subplots(2, ncols=2, figsize=(10, 10))
     axes = (ax1, ax2, ax3, ax4)
     for k, key in enumerate(samples.keys()):
         ax = axes[k]

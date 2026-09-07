@@ -8,7 +8,6 @@ from biosimulators_utils.utils.core import flatten_nested_list_of_strings
 
 from tests import DATA_DIR
 
-
 repressilator_omex = DATA_DIR / "combine" / "omex" / "tellurium" / "repressilator.omex"
 working_dir = Path(__file__).parent / "results" / "repressilator_omex"
 

@@ -126,7 +126,7 @@ class SamplingSensitivityAnalysis(SensitivityAnalysis):
                     name=key,
                 )
 
-            for ko, oid in enumerate(self.outputs):
+            for ko, _oid in enumerate(self.outputs):
                 # num_samples x num_outputs
                 data = self.results[gid].values[:, ko]
                 for key in self.sensitivity_keys:
@@ -260,7 +260,7 @@ class SamplingSensitivityAnalysis(SensitivityAnalysis):
         nrows, ncols = self._figshape(n=n)
         label_fontsize = 13
 
-        f, axes = plt.subplots(
+        _f, axes = plt.subplots(
             figsize=(4 * ncols, 4 * nrows),
             nrows=int(nrows),
             ncols=int(ncols),
@@ -291,15 +291,15 @@ class SamplingSensitivityAnalysis(SensitivityAnalysis):
                     labels=labels,
                     patch_artist=True,
                     showfliers=False,
-                    medianprops=dict(color="black"),
-                    whiskerprops=dict(color="black"),
-                    capprops=dict(color="black"),
-                    boxprops=dict(
+                    medianprops={"color": "black"},
+                    whiskerprops={"color": "black"},
+                    capprops={"color": "black"},
+                    boxprops={
                         # facecolor=colors,  #'lightblue',
                         # alpha=0.7
-                    ),
+                    },
                 )
-                for box, color in zip(bp["boxes"], colors):
+                for box, color in zip(bp["boxes"], colors, strict=False):
                     box.set_facecolor(color)
 
                 # violin
@@ -313,14 +313,14 @@ class SamplingSensitivityAnalysis(SensitivityAnalysis):
                         showextrema=False,
                     )
 
-                    for body, color in zip(vp["bodies"], colors):
+                    for body, color in zip(vp["bodies"], colors, strict=False):
                         body.set_facecolor(color)
 
                 # jitter
                 if show_jitter:
                     jitter_offset = 0.3
                     jitter_width = 0.02  # Adjust for spacing
-                    for kg, g in enumerate(self.groups):
+                    for kg, _g in enumerate(self.groups):
                         data_g = data[kg]
                         x_jitter = np.random.normal(
                             kg + jitter_offset, jitter_width, len(data_g)

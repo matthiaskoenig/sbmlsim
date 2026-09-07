@@ -7,7 +7,6 @@ import roadrunner
 
 from sbmlsim.resources import DEMO_SBML, REPRESSILATOR_SBML
 
-
 data_dir = Path(__file__).parent / "data"
 
 

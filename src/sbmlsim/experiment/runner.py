@@ -12,7 +12,7 @@ import logging
 from pathlib import Path
 
 from sbmlsim.console import console
-from sbmlsim.experiment import ExperimentResult, SimulationExperiment
+from sbmlsim.experiment.experiment import ExperimentResult, SimulationExperiment
 from sbmlsim.model import RoadrunnerSBMLModel
 from sbmlsim.report.experiment_report import ExperimentReport, ReportResults
 from sbmlsim.simulator import SimulatorSerial
@@ -121,7 +121,7 @@ class ExperimentRunner:
         output_path: Path,
         show_figures: bool = False,
         save_results: bool = False,
-        figure_formats: list[str] = None,
+        figure_formats: list[str] | None = None,
         reduced_selections: bool = True,
     ) -> list[ExperimentResult]:
         """Run the experiments."""
@@ -150,7 +150,7 @@ class ExperimentRunner:
 def run_experiments(
     experiments: type[SimulationExperiment] | list[type[SimulationExperiment]],
     output_path: Path,
-    base_path: Path = None,
+    base_path: Path | None = None,
     data_path: list[Path] | tuple[Path] | Path | None = None,
 ) -> Path:
     """Run simulation experiments."""

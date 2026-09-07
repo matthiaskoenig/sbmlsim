@@ -9,7 +9,6 @@ import shutil
 import requests
 from bs4 import BeautifulSoup
 
-
 THIS_DIR = os.path.dirname(os.path.realpath(__file__))
 NUM_PAGES = 4
 URL = "http://jjj.mib.ac.uk/models/experiments/?&page={}"
@@ -37,7 +36,7 @@ def jws_omex_dict():
                 for a in items
                 if "combinearchive?download=1" in a.get("href")
             ]
-            print("N(page={}) = {}".format(page_iter + 1, len(links)))
+            print(f"N(page={page_iter + 1}) = {len(links)}")
             num_omex += len(links)
             for url in links:
                 tokens = url.split("/")
@@ -70,7 +69,7 @@ def download_jws_omex():
     num_omex = len(jws_dict)
     count = 1
     for sid, url in jws_dict.items():
-        omex_path = os.path.join(OMEX_DIR, "{}.sedx".format(sid))
+        omex_path = os.path.join(OMEX_DIR, f"{sid}.sedx")
         if os.path.exists(omex_path):
             os.remove(omex_path)
         print(count, "/", num_omex, ":", url, "-->", omex_path)

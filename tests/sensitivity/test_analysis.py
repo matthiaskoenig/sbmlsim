@@ -1,7 +1,6 @@
 from dataclasses import asdict
 
-from sbmlsim.sensitivity import SensitivityOutput, AnalysisGroup
-
+from sbmlsim.sensitivity import AnalysisGroup, SensitivityOutput
 
 # -----------------------------------------------------------------------------
 # SensitivityOutput

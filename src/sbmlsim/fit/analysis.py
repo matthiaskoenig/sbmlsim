@@ -43,7 +43,7 @@ class OptimizationAnalysis:
         show_titles: bool = True,
         residual: ResidualType = None,
         loss_function: LossFunctionType = None,
-        weighting_curves: list[WeightingCurvesType] = None,
+        weighting_curves: list[WeightingCurvesType] | None = None,
         weighting_points: WeightingPointsType = None,
         variable_step_size: bool = True,
         absolute_tolerance: float = 1e-6,
@@ -99,7 +99,7 @@ class OptimizationAnalysis:
 
         self.op: OptimizationProblem = op  # type: ignore
 
-    def run(self, mpl_parameters: dict[str, Any] = None) -> None:
+    def run(self, mpl_parameters: dict[str, Any] | None = None) -> None:
         """Execute complete analysis.
 
         This creates all plots and reports.
@@ -528,10 +528,7 @@ class OptimizationAnalysis:
             y_obs = res_data["y_obsip"][k]
             residuals = res_data["residuals"][k]
             for ix in range(len(y_obs)):
-                if not y_ref_err_type:
-                    y_err = np.nan
-                else:
-                    y_err = y_ref_err[ix]
+                y_err = np.nan if not y_ref_err_type else y_ref_err[ix]
 
                 data.append(
                     {
@@ -952,10 +949,7 @@ class OptimizationAnalysis:
 
         for kx, pidx in enumerate(pids):
             for ky, pidy in enumerate(pids):
-                if npars == 1:
-                    ax = axes
-                else:
-                    ax = axes[ky][kx]
+                ax = axes if npars == 1 else axes[ky][kx]
 
                 # optimal values
                 if kx > ky:

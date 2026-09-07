@@ -1,7 +1,6 @@
 """Plotting functionality for sensitivity analysis."""
 
 from pathlib import Path
-from typing import Optional
 
 import numpy as np
 import pandas as pd
@@ -11,22 +10,22 @@ from matplotlib import pyplot as plt
 
 def heatmap(
     df: pd.DataFrame,
-    parameter_labels: Optional[dict[str, str]] = None,
-    output_labels: Optional[dict[str, str]] = None,
-    cutoff: Optional[float] = 0.1,
+    parameter_labels: dict[str, str] | None = None,
+    output_labels: dict[str, str] | None = None,
+    cutoff: float | None = 0.1,
     annotate_values=True,
     cluster_rows: bool = True,  # cluster parameters
     cluster_cols: bool = False,  # cluster outputs
-    title: Optional[str] = None,
+    title: str | None = None,
     cmap: str = "seismic",
     vcenter: float = 0.0,
     vmin: float = -2.0,
     vmax: float = 2.0,
-    fig_path: Optional[Path] = None,
+    fig_path: Path | None = None,
 ):
-    """Creates heatmap of model sensitivity"""
+    """Creates heatmap of model sensitivity."""
 
-    def calculate_mask(df, cutoff: Optional[float] = 0.01) -> pd.DataFrame:
+    def calculate_mask(df, cutoff: float | None = 0.01) -> pd.DataFrame:
         """Calculates a boolean mask DataFrame for the heatmap based on cutoff.
 
         The masked values are removed.
@@ -44,25 +43,23 @@ def heatmap(
 
     def calculate_subset(df, cutoff=0.01) -> pd.DataFrame:
         """Calculates subset of data frame consisting of rows where at least
-        one value is above cutoff."""
+        one value is above cutoff.
+        """
         return df[(df.abs() >= cutoff).any(axis=1)]
 
     # filter rows
     # X.drop(pk_exclude, axis=1, inplace=True)
 
-    if cutoff and cutoff > 0:
-        df_subset = calculate_subset(df, cutoff=cutoff)
-    else:
-        df_subset = df
+    df_subset = calculate_subset(df, cutoff=cutoff) if cutoff and cutoff > 0 else df
     df_subset_mask = calculate_mask(df_subset, cutoff)
 
     # outputs
-    xticklabels = [qid for qid in df_subset.columns]
+    xticklabels = list(df_subset.columns)
     if output_labels:
         xticklabels = [output_labels[qid] for qid in xticklabels]
 
     # parameters
-    yticklabels = [pid for pid in df_subset.index]
+    yticklabels = list(df_subset.index)
     if parameter_labels:
         yticklabels = [parameter_labels[pid] for pid in yticklabels]
 
@@ -157,8 +154,8 @@ def S1_ST_barplot(
     S1_conf,
     ST_conf,
     parameter_labels: dict[str, str],
-    fig_path: Optional[Path] = None,
-    title: Optional[str] = None,
+    fig_path: Path | None = None,
+    title: str | None = None,
     ymax: float = 1.1,
     ymin: float = -0.1,
 ):
@@ -167,7 +164,7 @@ def S1_ST_barplot(
     label_fontsize = 15
 
     categories: list[str] = list(parameter_labels.values())
-    f, ax = plt.subplots(figsize=figsize)
+    _f, ax = plt.subplots(figsize=figsize)
 
     ax.bar(
         categories,

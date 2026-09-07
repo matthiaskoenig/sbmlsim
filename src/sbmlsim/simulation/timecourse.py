@@ -2,6 +2,7 @@
 
 import json
 import logging
+from collections.abc import Sequence
 from copy import deepcopy
 from pathlib import Path
 from typing import Any
@@ -10,7 +11,8 @@ import numpy as np
 from pint import Quantity
 
 from sbmlsim.serialization import ObjectJSONEncoder
-from sbmlsim.simulation import AbstractSim, Dimension
+from sbmlsim.simulation.range import Dimension
+from sbmlsim.simulation.simulation import AbstractSim
 from sbmlsim.units import UnitsInformation
 
 logger = logging.getLogger(__name__)
@@ -33,9 +35,9 @@ class Timecourse(ObjectJSONEncoder):
         start: float,
         end: float,
         steps: int,
-        changes: dict[str, Quantity] = None,
-        model_changes: dict[str, Quantity] = None,
-        model_manipulations: dict = None,
+        changes: dict[str, Quantity | float] | None = None,
+        model_changes: dict[str, Any] | None = None,
+        model_manipulations: dict[str, Any] | None = None,
         discard: bool = False,
     ):
         """Create a time course definition for simulation.
@@ -59,13 +61,13 @@ class Timecourse(ObjectJSONEncoder):
         if model_manipulations is None:
             model_manipulations = {}
 
-        self.start = start
-        self.end = end
-        self.steps = steps
-        self.changes = deepcopy(changes)
-        self.model_changes = deepcopy(model_changes)
-        self.model_manipulations = deepcopy(model_manipulations)
-        self.discard = discard
+        self.start: float = start
+        self.end: float = end
+        self.steps: int = steps
+        self.changes: dict[str, Quantity | float] = deepcopy(changes)
+        self.model_changes: dict[str, Any] = deepcopy(model_changes)
+        self.model_manipulations: dict[str, Any] = deepcopy(model_manipulations)
+        self.discard: bool = discard
 
     def __repr__(self) -> str:
         """Get string representation."""
@@ -73,12 +75,12 @@ class Timecourse(ObjectJSONEncoder):
 
     def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary."""
-        d = dict()
+        d: dict[str, Any] = {}
         for key in self.__dict__:
             d[key] = self.__dict__[key]
         return d
 
-    def add_change(self, sid: str, value: float) -> None:
+    def add_change(self, sid: str, value: Quantity | float) -> None:
         """Add change."""
         self.changes[sid] = value
 
@@ -86,11 +88,11 @@ class Timecourse(ObjectJSONEncoder):
         """Remove change for given id."""
         del self.changes[sid]
 
-    def add_model_change(self, sid: str, change) -> None:
+    def add_model_change(self, sid: str, change: Any) -> None:
         """Add model change."""
         self.model_changes[sid] = change
 
-    def add_model_changes(self, model_changes: dict[str, str]) -> None:
+    def add_model_changes(self, model_changes: dict[str, Any]) -> None:
         """Add model changes."""
         self.model_changes.update(model_changes)
 
@@ -112,8 +114,14 @@ class Timecourse(ObjectJSONEncoder):
 
         All changes must be normalized before stripping !.
         """
-        self.model_changes = {k: v.magnitude for k, v in self.model_changes.items()}
-        self.changes = {k: v.magnitude for k, v in self.changes.items()}
+        self.model_changes = {
+            k: v.magnitude if isinstance(v, Quantity) else v
+            for k, v in self.model_changes.items()
+        }
+        self.changes = {
+            k: v.magnitude if isinstance(v, Quantity) else v
+            for k, v in self.changes.items()
+        }
 
 
 class TimecourseSim(AbstractSim):
@@ -124,14 +132,15 @@ class TimecourseSim(AbstractSim):
 
     def __init__(
         self,
-        timecourses: list[Timecourse] | Timecourse,
+        timecourses: Sequence[Timecourse | dict[str, Any] | None] | Timecourse,
         selections: list[str] | None = None,
         reset: bool = True,
         time_offset: float = 0.0,
     ):
         """Initialize timecourse sim.
 
-        :param timecourses:
+        :param timecourses: timecourses (or their dictionary representations);
+            empty elements are removed
         :param selections:
         :param reset: complete reset of model
         :param time_offset: time shift of simulation
@@ -139,15 +148,14 @@ class TimecourseSim(AbstractSim):
         if isinstance(timecourses, Timecourse):
             timecourses = [timecourses]
 
-        self.timecourses = []
-        for tc in timecourses:
-            if not tc:
+        self.timecourses: list[Timecourse] = []
+        for item in timecourses:
+            if not item:
                 # remove empty elements (allows for cleaner syntax)
                 continue
 
-            if isinstance(tc, dict):
-                # construct from dict
-                tc = Timecourse(**tc)
+            # construct from dict
+            tc = Timecourse(**item) if isinstance(item, dict) else item
 
             # make a copy to ensure independence of instances
             self.timecourses.append(deepcopy(tc))
@@ -158,18 +166,18 @@ class TimecourseSim(AbstractSim):
             for k, tc in enumerate(self.timecourses):
                 if k > 0 and tc.model_changes:
                     logger.error(
-                        f"'model_changes' only allowed on first timecourse: {tc}"
+                        "'model_changes' only allowed on first timecourse: %s", tc
                     )
 
-        self.selections = deepcopy(selections)
-        self.reset = reset
-        self.time_offset = time_offset
+        self.selections: list[str] | None = deepcopy(selections)
+        self.reset: bool = reset
+        self.time_offset: float = time_offset
 
-        self.time = self._time()
+        self.time: np.ndarray = self._time()
 
     def __repr__(self) -> str:
         """Get representation."""
-        return f"TimecourseSim({[tc for tc in self.timecourses]})"
+        return f"TimecourseSim({list(self.timecourses)})"
 
     def _time(self) -> np.ndarray:
         """Calculate the time vector complete simulation."""
@@ -185,10 +193,10 @@ class TimecourseSim(AbstractSim):
         """Get dimensions."""
         return [Dimension(dimension="time", index=self.time)]
 
-    def add_model_changes(self, model_changes: dict) -> None:
+    def add_model_changes(self, model_changes: dict[str, Any]) -> None:
         """Add model changes to given simulation."""
         if self.timecourses:
-            tc = self.timecourses[0]  # type: Timecourse
+            tc: Timecourse = self.timecourses[0]
             tc.add_model_changes(model_changes)
 
     def normalize(self, uinfo: UnitsInformation) -> None:
@@ -204,21 +212,24 @@ class TimecourseSim(AbstractSim):
 
     def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary."""
-        d = {
+        return {
             "type": self.__class__.__name__,
             "selections": self.selections,
             "reset": self.reset,
             "time_offset": self.time_offset,
             "timecourses": [tc.to_dict() for tc in self.timecourses],
         }
-        return d
 
-    def to_json(self, path: Path = None) -> str:
-        """Convert definition to JSON."""
+    def to_json(self, path: Path | None = None) -> str | None:
+        """Convert definition to JSON.
+
+        :param path: path for file, if None the JSON str is returned
+        """
         if path is None:
             return json.dumps(self, cls=ObjectJSONEncoder, indent=2)
         with open(path, "w", encoding="utf-8") as f_json:
             json.dump(self, fp=f_json, cls=ObjectJSONEncoder, indent=2)
+        return None
 
     @staticmethod
     def from_json(json_info: str | Path) -> "TimecourseSim":
@@ -234,5 +245,5 @@ class TimecourseSim(AbstractSim):
 
     def __str__(self) -> str:
         """Get string representation."""
-        lines = ["-" * 40, f"{self.__class__.__name__}", "-" * 40, self.to_json()]
+        lines = ["-" * 40, f"{self.__class__.__name__}", "-" * 40, str(self.to_json())]
         return "\n".join(lines)

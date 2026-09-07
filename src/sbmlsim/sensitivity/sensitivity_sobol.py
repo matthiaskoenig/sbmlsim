@@ -14,26 +14,24 @@ Sampling is based on Saltelli's extension of the Sobol sequence and requires
 (2D + 2) * N model evaluations for D parameters.
 
 References:
-
     - Sobol, I. M. (2001). Math. Comput. Simul., 55, 271–280.
     - Saltelli, A. (2002). Comput. Phys. Commun., 145, 280–297.
     - Saltelli et al. (2010). Comput. Phys. Commun., 181, 259–270.
 """
 
 from pathlib import Path
-from typing import Optional
 
-import SALib
 import numpy as np
+import SALib
 import xarray as xr
 from SALib import ProblemSpec
 from SALib.sample import saltelli
 
 from sbmlsim.sensitivity import (
-    SensitivityAnalysis,
-    SensitivitySimulation,
-    SensitivityParameter,
     AnalysisGroup,
+    SensitivityAnalysis,
+    SensitivityParameter,
+    SensitivitySimulation,
 )
 from sbmlsim.sensitivity.plots import plot_S1_ST_indices
 
@@ -50,13 +48,12 @@ class SobolSensitivityAnalysis(SensitivityAnalysis):
         groups: list[AnalysisGroup],
         results_path: Path,
         N: int,
-        seed: Optional[int] = None,
-        n_cores: Optional[int] = None,
+        seed: int | None = None,
+        n_cores: int | None = None,
         cache_results: bool = False,
         **kwargs,
     ):
-        """
-        N: length of chain (Sobol' sequence), must be power of 2, i.e. 2^m e.g. 4096
+        """N: length of chain (Sobol' sequence), must be power of 2, i.e. 2^m e.g. 4096.
 
         The Sobol' sequence is a popular quasi-random low-discrepancy sequence used
         to generate uniform samples of parameter space.
@@ -112,10 +109,9 @@ class SobolSensitivityAnalysis(SensitivityAnalysis):
             )
 
     def calculate_sensitivity(
-        self, cache_filename: Optional[str] = None, cache: bool = False
+        self, cache_filename: str | None = None, cache: bool = False
     ):
         """Calculate the sensitivity matrices for SOBOL analysis."""
-
         data = self.read_cache(cache_filename, cache)
         if data:
             self.sensitivity = data

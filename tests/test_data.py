@@ -1,15 +1,13 @@
 """Testing DataSet and Data functionality."""
 
-import pandas as pd
-from conftest import data_dir
-
-from sbmlsim.data import DataSet, load_pkdb_dataframe
-from sbmlsim.units import UnitRegistry
-
-
 from pathlib import Path
 
+import pandas as pd
+
+from conftest import data_dir
 from sbmlsim import RESOURCES_DIR
+from sbmlsim.data import DataSet, load_pkdb_dataframe
+from sbmlsim.units import UnitRegistry
 
 TEST_PATH = Path(__file__).parents[0]  # directory of tests files
 DATA_DIR = RESOURCES_DIR / "testdata"  # directory of data for tests
