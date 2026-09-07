@@ -1,6 +1,7 @@
 """Parser for NuML data."""
 
 import importlib
+import logging
 import warnings
 from enum import Enum
 from pathlib import Path
@@ -10,13 +11,11 @@ import libsbml
 import libsedml
 import numpy as np
 import pandas as pd
-from pymetadata import log
+
+logger = logging.getLogger(__name__)
 
 
-logger = log.get_logger(__name__)
-
-
-class NumlParser(object):
+class NumlParser:
     """Helper class for parsing Numl data files."""
 
     class Library(Enum):
@@ -37,11 +36,11 @@ class NumlParser(object):
 
         # check for errors
         errorlog = doc_numl.getErrorLog()
-        msg = "NUML ERROR in '{}': {}".format(path, errorlog.toString())
+        msg = f"NUML ERROR in '{path}': {errorlog.toString()}"
         if errorlog.getNumFailsWithSeverity(libnuml.LIBNUML_SEV_ERROR) > 0:
-            raise IOError(msg)
+            raise OSError(msg)
         if errorlog.getNumFailsWithSeverity(libnuml.LIBNUML_SEV_FATAL) > 0:
-            raise IOError(msg)
+            raise OSError(msg)
         if errorlog.getNumFailsWithSeverity(libnuml.LIBNUML_SEV_WARNING) > 0:
             warnings.warn(msg)
         if errorlog.getNumFailsWithSeverity(libnuml.LIBNUML_SEV_SCHEMA_ERROR) > 0:
@@ -205,7 +204,6 @@ class NumlParser(object):
             library == cls.Library.LIBSEDML
             and type_code == libsedml.NUML_COMPOSITEDESCRIPTION
         ):
-
             content = {d.getId(): d.getIndexType()}
             info.append(content)
             if d.isContentCompositeDescription():
@@ -245,7 +243,7 @@ class NumlParser(object):
             info.append(valueTypes)
 
         else:
-            raise NotImplementedError("Type code: {}".format(type_code))
+            raise NotImplementedError(f"Type code: {type_code}")
 
         return info
 
@@ -274,7 +272,6 @@ class NumlParser(object):
             library == cls.Library.LIBSEDML
             and type_code == libsedml.NUML_COMPOSITEVALUE
         ):
-
             indexValue = d.getIndexValue()
             entry.append(indexValue)
 

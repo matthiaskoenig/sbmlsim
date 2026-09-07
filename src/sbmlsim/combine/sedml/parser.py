@@ -75,21 +75,20 @@ For information about SED-ML please refer to http://www.sed-ml.org/
 and the SED-ML specification.
 """
 
+import logging
 import re
 import shutil
 import warnings
-import roadrunner
 from collections import defaultdict
 from enum import Enum
 from pathlib import Path
 from pprint import pprint
-from typing import Optional, Type, Union
 
 import libsedml
 import pandas as pd
+import roadrunner
 from pint import Quantity
 from pymetadata import omex as pyomex
-from pymetadata import log
 
 from sbmlsim.combine.mathml import formula_to_astnode
 from sbmlsim.combine.sedml.data import DataDescriptionParser
@@ -121,8 +120,7 @@ from sbmlsim.simulation.kisaos import is_supported_algorithm_for_simulation_type
 from sbmlsim.task import Task
 from sbmlsim.units import UnitRegistry, UnitsInformation
 
-
-logger = log.get_logger(__file__)
+logger = logging.getLogger(__name__)
 
 
 class SBMLModelTargetType(Enum):
@@ -157,7 +155,7 @@ class SBMLModelTarget:
         self.target_type: SBMLModelTargetType = target_type
 
     @property
-    def sedml_symbol(self) -> Optional[str]:
+    def sedml_symbol(self) -> str | None:
         """Get symbol for model target."""
         if self.target_type in {
             SBMLModelTargetType.PARAMETER,
@@ -165,27 +163,27 @@ class SBMLModelTarget:
             SBMLModelTargetType.SPECIES,
         }:
             return None
-        elif self.target_type == SBMLModelTargetType.SPECIES_AMOUNT:
+        if self.target_type == SBMLModelTargetType.SPECIES_AMOUNT:
             return "urn:sedml:symbol:amount"
-        elif self.target_type == SBMLModelTargetType.SPECIES_CONCENTRATION:
+        if self.target_type == SBMLModelTargetType.SPECIES_CONCENTRATION:
             return "urn:sedml:symbol:concentration"
-        elif self.target_type == SBMLModelTargetType.TIME:
+        if self.target_type == SBMLModelTargetType.TIME:
             return "urn:sedml:symbol:time"
 
     @property
-    def sedml_target(self) -> Optional[str]:
+    def sedml_target(self) -> str | None:
         """Get xpath target."""
         if self.target_type == SBMLModelTargetType.PARAMETER:
             return f"/sbml:sbml/sbml:model/sbml:listOfParameters/sbml:parameter[@id='{self.sid}']"
-        elif self.target_type == SBMLModelTargetType.COMPARTMENT:
+        if self.target_type == SBMLModelTargetType.COMPARTMENT:
             return f"/sbml:sbml/sbml:model/sbml:listOfCompartments/sbml:compartment[@id='{self.sid}']"
-        elif self.target_type in {
+        if self.target_type in {
             SBMLModelTargetType.SPECIES,
             SBMLModelTargetType.SPECIES_AMOUNT,
             SBMLModelTargetType.SPECIES_CONCENTRATION,
         }:
             return f"/sbml:sbml/sbml:model/sbml:listOfSpecies/sbml:species[@id='{self.sid}']"
-        elif self.target_type == SBMLModelTargetType.TIME:
+        if self.target_type == SBMLModelTargetType.TIME:
             return None
 
     @staticmethod
@@ -193,7 +191,7 @@ class SBMLModelTarget:
         r: roadrunner.ExecutableModel,
     ) -> dict[str, "SBMLModelTarget"]:
         """Model targets which are supported by sbmlsim."""
-        d: dict[str, "SBMLModelTarget"] = {}
+        d: dict[str, SBMLModelTarget] = {}
 
         # time
         d["time"] = SBMLModelTarget(
@@ -241,17 +239,17 @@ class SEDMLSerializer:
 
     def __init__(
         self,
-        exp_class: Type[SimulationExperiment],
+        exp_class: type[SimulationExperiment],
         working_dir: Path,
         sedml_filename: str,
         omex_path: Path = None,
         data_path: Path = None,
     ):
         """Initialize SED-ML serializer."""
-        self.experiment: Type[SimulationExperiment] = exp_class
+        self.experiment: type[SimulationExperiment] = exp_class
         self.working_dir: Path = working_dir
         self.sedml_filename: str = sedml_filename
-        self.omex_path: Optional[Path] = omex_path
+        self.omex_path: Path | None = omex_path
 
         # initialize experiment
         runner = ExperimentRunner(
@@ -308,9 +306,9 @@ class SEDMLSerializer:
         """Get the data generator id from data."""
         if data.is_task():
             return f"{data.task_id}__{data.index}"
-        elif data.is_function():
+        if data.is_function():
             return f"{data.index}"
-        elif data.is_dataset():
+        if data.is_dataset():
             return f"{data.dset_id}__{data.index}"
 
     def serialize_datasets(self):
@@ -801,9 +799,7 @@ class SEDMLSerializer:
                     sed_marker_type = libsedml.SEDML_MARKERTYPE_DIAMOND
                 elif marker_type == MarkerType.XCROSS:
                     sed_marker_type = libsedml.SEDML_MARKERTYPE_XCROSS
-                elif marker_type == MarkerType.PLUS:
-                    sed_marker_type = libsedml.SEDML_MARKERTYPE_PLUS
-                elif marker_type == MarkerType.PLUS:
+                elif marker_type == MarkerType.PLUS or marker_type == MarkerType.PLUS:
                     sed_marker_type = libsedml.SEDML_MARKERTYPE_PLUS
                 elif marker_type == MarkerType.STAR:
                     sed_marker_type = libsedml.SEDML_MARKERTYPE_STAR
@@ -846,7 +842,7 @@ class SEDMLParser:
         sed_doc: libsedml.SedDocument,
         exec_dir: Path,
         working_dir: Path,
-        name: Optional[str] = None,
+        name: str | None = None,
     ):
         """Initialize SED-ML parser from SedDocument.
 
@@ -864,7 +860,7 @@ class SEDMLParser:
         self.ureg: UnitRegistry = UnitRegistry(on_redefinition="ignore")
 
         # Reference to the experiment class
-        self.exp_class: Type[SimulationExperiment]
+        self.exp_class: type[SimulationExperiment]
 
         # --- Models ---
         self.models: dict[str, AbstractModel] = {}
@@ -1108,7 +1104,7 @@ class SEDMLParser:
             figure.experiment = self.experiment
 
     def _wrap_plot_in_figure(
-        self, sed_plot: Union[libsedml.SedPlot2D, libsedml.SedPlot3D]
+        self, sed_plot: libsedml.SedPlot2D | libsedml.SedPlot3D
     ) -> Figure:
         """Create sbmlsim.Plot from libsedml.Plot and wraps in sbmlsim.Figure."""
         typecode = sed_plot.getTypeCode()
@@ -1127,7 +1123,7 @@ class SEDMLParser:
         f.add_plots([plot])
         return f
 
-    def _create_experiment_class(self) -> Type[SimulationExperiment]:
+    def _create_experiment_class(self) -> type[SimulationExperiment]:
         """Create SimulationExperiment class from information.
 
         See sbmlsim.experiment.Experiment for the expected functions.
@@ -1323,7 +1319,7 @@ class SEDMLParser:
             value = float(sed_change.getNewValue())
             return {xpath: value}
 
-        elif sed_change.getTypeCode() == libsedml.SEDML_CHANGE_COMPUTECHANGE:
+        if sed_change.getTypeCode() == libsedml.SEDML_CHANGE_COMPUTECHANGE:
             # change based on a model calculation (with optional parameters)
 
             logger.error("ComputeChange not implemented correctly")
@@ -1350,12 +1346,11 @@ class SEDMLParser:
             value = -1.0
             return {xpath: value}
 
-        else:
-            logger.error(f"Unsupported change: {sed_change.getElementName()}")
-            # TODO: libsedml.SEDML_CHANGE_REMOVEXML
-            # TODO: libsedml.SEDML_CHANGE_ADDXML
-            # TODO: libsedml.SEDML_CHANGE_CHANGEXML
-            return {}
+        logger.error(f"Unsupported change: {sed_change.getElementName()}")
+        # TODO: libsedml.SEDML_CHANGE_REMOVEXML
+        # TODO: libsedml.SEDML_CHANGE_ADDXML
+        # TODO: libsedml.SEDML_CHANGE_CHANGEXML
+        return {}
 
     def parse_algorithm_parameter(
         self, sed_alg_par: libsedml.SedAlgorithmParameter
@@ -1373,8 +1368,7 @@ class SEDMLParser:
         algorithm = sed_sim.getAlgorithm()
         if algorithm is None:
             logger.warning(
-                "Algorithm missing on simulation, defaulting to "
-                "'cvode: KISAO:0000019'"
+                "Algorithm missing on simulation, defaulting to 'cvode: KISAO:0000019'"
             )
             algorithm = sed_sim.createAlgorithm()
             algorithm.setKisaoID("KISAO:0000019")
@@ -1410,7 +1404,7 @@ class SEDMLParser:
             )
             return tcsim
 
-        elif sim_type == libsedml.SEDML_SIMULATION_ONESTEP:
+        if sim_type == libsedml.SEDML_SIMULATION_ONESTEP:
             step: float = sed_sim.getStep()
             tcsim = TimecourseSim(
                 timecourses=[
@@ -1423,7 +1417,7 @@ class SEDMLParser:
             )
             return tcsim
 
-        elif sim_type == libsedml.SEDML_SIMULATION_STEADYSTATE:
+        if sim_type == libsedml.SEDML_SIMULATION_STEADYSTATE:
             raise NotImplementedError("steady state simulation not yet supported")
 
         # TODO/FIXME: handle all the algorithm parameters as integrator parameters
@@ -1458,7 +1452,7 @@ class SEDMLParser:
                 return task
 
             # Repeated tasks are multi-dimensional scans
-            elif task_type == libsedml.SEDML_TASK_REPEATEDTASK:
+            if task_type == libsedml.SEDML_TASK_REPEATEDTASK:
                 self._parse_repeated_task(node=node)
 
             elif task_type == libsedml.SEDML_TASK_PARAMETER_ESTIMATION:
@@ -1601,7 +1595,7 @@ class SEDMLParser:
             report[label] = sed_dg_id
         return report
 
-    def parse_axis(self, sed_axis: libsedml.SedAxis) -> Optional[Axis]:
+    def parse_axis(self, sed_axis: libsedml.SedAxis) -> Axis | None:
         """Parse axes information."""
         if sed_axis is None:
             return None
@@ -1638,10 +1632,10 @@ class SEDMLParser:
 
     def parse_abstract_curve(
         self, sed_acurve: libsedml.SedAbstractCurve
-    ) -> Union[ShadedArea, Curve]:
+    ) -> ShadedArea | Curve:
         """Parse abstract curve."""
         sid: str = sed_acurve.getId()
-        name: Optional[str] = sed_acurve.getName() if sed_acurve.isSetName() else None
+        name: str | None = sed_acurve.getName() if sed_acurve.isSetName() else None
         x: Data = self.data_from_datagenerator(sed_acurve.getXDataReference())
         order: int = sed_acurve.getOrder() if sed_acurve.isSetOrder() else None
 
@@ -1693,7 +1687,7 @@ class SEDMLParser:
                     curve_type = CurveType.HORIZONTALBARSTACKED
                 elif sed_curve_type == libsedml.SEDML_CURVETYPE_INVALID:
                     raise ValueError(
-                        f"Invalid CurveType: {sed_curve.getType()} on " f"{sed_curve}"
+                        f"Invalid CurveType: {sed_curve.getType()} on {sed_curve}"
                     )
             curve = Curve(
                 sid=sid,
@@ -1712,7 +1706,7 @@ class SEDMLParser:
                 curve.name = f"{curve.y.name}({curve.x.name})"
 
             return curve
-        elif sed_acurve_type == libsedml.SEDML_SHADEDAREA:
+        if sed_acurve_type == libsedml.SEDML_SHADEDAREA:
             sed_shaded_area: libsedml.SedShadedArea = sed_acurve
             area = ShadedArea(
                 sid=sid,
@@ -1731,13 +1725,12 @@ class SEDMLParser:
                 area.name = f"{area.yfrom.name}|{area.yto.name}({area.x.name})"
 
             return area
-        else:
-            raise ValueError(
-                f"Type of AbstractCurve '{sed_acurve}' is not supported: "
-                f"'{sed_acurve_type}'"
-            )
+        raise ValueError(
+            f"Type of AbstractCurve '{sed_acurve}' is not supported: "
+            f"'{sed_acurve_type}'"
+        )
 
-    def parse_style(self, sed_style: Union[str, libsedml.SedStyle]) -> Optional[Style]:
+    def parse_style(self, sed_style: str | libsedml.SedStyle) -> Style | None:
         """Parse SED-ML style."""
         if not sed_style:
             return None
@@ -1763,12 +1756,12 @@ class SEDMLParser:
         style.fill = self.parse_fill(sed_fill)
         return style
 
-    def parse_line(self, sed_line: libsedml.SedLine) -> Optional[Line]:
+    def parse_line(self, sed_line: libsedml.SedLine) -> Line | None:
         """Parse line information."""
         if sed_line is None:
             return None
 
-        line_type: Optional[LineType]
+        line_type: LineType | None
         if not sed_line.isSetType():
             line_type = None
         else:
@@ -1794,12 +1787,12 @@ class SEDMLParser:
             thickness=sed_line.getThickness() if sed_line.isSetThickness() else None,
         )
 
-    def parse_marker(self, sed_marker: libsedml.SedMarker) -> Optional[Marker]:
+    def parse_marker(self, sed_marker: libsedml.SedMarker) -> Marker | None:
         """Parse the line information."""
         if sed_marker is None:
             return None
 
-        marker_type: Optional[MarkerType]
+        marker_type: MarkerType | None
         if not sed_marker.isSetType():
             marker_type = None
         else:
@@ -1845,7 +1838,7 @@ class SEDMLParser:
 
         return marker
 
-    def parse_fill(self, sed_fill: libsedml.SedFill) -> Optional[Fill]:
+    def parse_fill(self, sed_fill: libsedml.SedFill) -> Fill | None:
         """Parse fill information."""
         if sed_fill is None:
             return None
@@ -1859,7 +1852,7 @@ class SEDMLParser:
             else None,
         )
 
-    def data_from_datagenerator(self, sed_dg_ref: Optional[str]) -> Optional[Data]:
+    def data_from_datagenerator(self, sed_dg_ref: str | None) -> Data | None:
         """Evaluate DataGenerator with actual data.
 
         Uses results of SimulationExperiment for evaluation.

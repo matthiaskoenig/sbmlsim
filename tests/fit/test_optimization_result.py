@@ -1,9 +1,10 @@
 """Test optimization results."""
+
 from pathlib import Path
 
 import pytest
 
-from sbmlsim.examples.experiments.midazolam.fitting_problems import op_mid1oh_iv
+from examples.midazolam.fitting_problems import op_mid1oh_iv
 from sbmlsim.fit.analysis import OptimizationResult
 from sbmlsim.fit.options import (
     OptimizationAlgorithmType,
@@ -12,7 +13,6 @@ from sbmlsim.fit.options import (
     WeightingPointsType,
 )
 from sbmlsim.fit.runner import run_optimization
-
 
 fit_kwargs_default = {
     "residual": ResidualType.ABSOLUTE,
@@ -32,7 +32,7 @@ def test_serialization(tmp_path: Path) -> None:
         size=1,
         n_cores=1,
         serial=True,
-        **fit_kwargs_default
+        **fit_kwargs_default,
     )
 
     opt_res_path = tmp_path / "opt_res.json"
@@ -55,7 +55,7 @@ def test_combine(tmp_path: Path) -> None:
             n_cores=1,
             serial=True,
             seed=seed,
-            **fit_kwargs_default
+            **fit_kwargs_default,
         )
         opt_results.append(opt_res)
 

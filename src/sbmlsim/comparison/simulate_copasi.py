@@ -1,18 +1,15 @@
-from typing import List
-
 import numpy as np
 import pandas as pd
 from basico import (
     load_model,
     run_time_course,
+    set_compartment,
     set_parameters,
     set_species,
-    set_compartment,
 )
 
-
-from sbmlsim.comparison.simulate import SimulateSBML, Condition
-from pymetadata.console import console
+from sbmlsim.comparison.simulate import Condition, SimulateSBML
+from sbmlsim.console import console
 
 
 class SimulateCopasiSBML(SimulateSBML):
@@ -25,7 +22,7 @@ class SimulateCopasiSBML(SimulateSBML):
         load_model(location=str(self.sbml_path))
 
     def simulate_condition(
-        self, condition: Condition, timepoints: List[float]
+        self, condition: Condition, timepoints: list[float]
     ) -> pd.DataFrame:
         print(f"simulate condition: {condition.sid}")
 

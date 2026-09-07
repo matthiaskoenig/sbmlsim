@@ -1,28 +1,26 @@
 """Helper functions for fitting."""
 
+import logging
+from collections.abc import Callable, Iterable
 from pathlib import Path
+from typing import Any
 
-from sbmlsim.fit import FitExperiment, FitMapping
 import pandas as pd
-from pymetadata.console import console
-from pymetadata import log
 
-
+from sbmlsim.console import console
 from sbmlsim.experiment import ExperimentRunner, SimulationExperiment
-
-from typing import Type, Union, Callable, Iterable, Tuple, Any
-
+from sbmlsim.fit import FitExperiment, FitMapping
 from sbmlsim.fit.objects import MappingMetaData
 
-logger = log.get_logger(__name__)
+logger = logging.getLogger(__name__)
 
 
 def filtered_fit_experiments(
-    experiment_classes: list[Type[SimulationExperiment]],
-    metadata_filters: Union[Callable, Iterable[Callable]],
+    experiment_classes: list[type[SimulationExperiment]],
+    metadata_filters: Callable | Iterable[Callable],
     base_path: Path,
     data_path: Path,
-) -> Tuple[dict[str, list[FitExperiment]], pd.DataFrame]:
+) -> tuple[dict[str, list[FitExperiment]], pd.DataFrame]:
     """Fit experiments based on MappingMetaData.
 
     :param experiment_classes: List of SimulationExperiment class definition
@@ -96,8 +94,8 @@ def filtered_fit_experiments(
 
 
 def f_fitexp(
-    experiment_classes: list[Type[SimulationExperiment]],
-    metadata_filters: Union[Callable, Iterable[Callable]],
+    experiment_classes: list[type[SimulationExperiment]],
+    metadata_filters: Callable | Iterable[Callable],
     base_path: Path,
     data_path: Path,
 ):

@@ -3,20 +3,19 @@
 Allows to get sets of changes from given model instance.
 """
 
+import logging
+from collections.abc import Iterable
 from enum import Enum
-from typing import Iterable
 
 import libsbml
 import numpy as np
-from pymetadata import log
-from pymetadata.console import console
 import roadrunner
 
+from sbmlsim.console import console
 from sbmlsim.model import RoadrunnerSBMLModel
 from sbmlsim.simulation import Dimension, ScanSim, TimecourseSim
 
-
-logger = log.get_logger(__name__)
+logger = logging.getLogger(__name__)
 
 
 class SensitivityType(Enum):
@@ -36,7 +35,7 @@ class DistributionType(Enum):
     NORMAL_DISTRIBUTION = 1
 
 
-class ModelSensitivity(object):
+class ModelSensitivity:
     """Helpers for calculating model sensitivity."""
 
     @staticmethod
@@ -61,7 +60,6 @@ class ModelSensitivity(object):
         :param zero_eps: epsilon for zero values
         :return:
         """
-
         dim = ModelSensitivity.create_difference_dimension(
             model=model,
             changes=simulation.timecourses[0].changes,

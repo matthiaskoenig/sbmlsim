@@ -1,22 +1,21 @@
 """Module handling data (experiment and simulation)."""
 
 from __future__ import annotations
+
+import logging
 from enum import Enum
 from pathlib import Path
-from typing import Optional, Union
 
 import pandas as pd
-from pymetadata import log
 
 from sbmlsim.combine import mathml
-from sbmlsim.units import DimensionalityError, Quantity, UnitRegistry, UnitsInformation
 from sbmlsim.result import XResult
+from sbmlsim.units import DimensionalityError, Quantity, UnitRegistry, UnitsInformation
+
+logger = logging.getLogger(__name__)
 
 
-logger = log.get_logger(__name__)
-
-
-class Data(object):
+class Data:
     """Data.
 
     Main data generator class which uses data either from
@@ -44,11 +43,11 @@ class Data(object):
     def __init__(
         self,
         index: str,
-        symbol: Optional[Symbols] = None,
+        symbol: Symbols | None = None,
         task: str = None,
         dataset: str = None,
         function: str = None,
-        variables: dict[str, "Data"] = None,
+        variables: dict[str, Data] = None,
         parameters: dict[str, float] = None,
         sid: str = None,
     ):
@@ -66,13 +65,13 @@ class Data(object):
                 symbol = Data.Symbols.AMOUNT
 
         self.index: str = index
-        self.symbol: "Symbols" = symbol  # noqa: F821
+        self.symbol: Symbols = symbol  # noqa: F821
         self.task_id: str = task
         self.dset_id: str = dataset
         self.function: str = function
-        self.variables: dict[str, "Data"] = variables
+        self.variables: dict[str, Data] = variables
         self.parameters: dict[str, float] = parameters
-        self.unit: Optional[str] = None
+        self.unit: str | None = None
         self._sid = sid
 
         if (not self.task_id) and (not self.dset_id) and (not self.function):
@@ -147,7 +146,7 @@ class Data(object):
         return name
 
     @property
-    def dtype(self) -> "Data.Types":
+    def dtype(self) -> Data.Types:
         """Get data type."""
         if self.task_id:
             dtype = Data.Types.TASK
@@ -184,7 +183,7 @@ class Data(object):
     def get_data(
         self,
         experiment,  # "SimulationExperiment"
-        to_units: str = None,  # noqa: F821
+        to_units: str = None,
     ) -> Quantity:
         """Return actual data from the data object.
 
@@ -266,13 +265,13 @@ class Data(object):
                 x = x.to(to_units)
             except DimensionalityError as err:
                 logger.error(
-                    f"Could not convert '{str(self)}' to units '{to_units}' with "
+                    f"Could not convert '{self!s}' to units '{to_units}' with "
                     f"data \n'{x}'"
                 )
                 raise err
             except AttributeError as err:
                 logger.error(
-                    f"Could not convert '{str(self)}' with "
+                    f"Could not convert '{self!s}' with "
                     f"data '{x} ({type(x)})' to "
                     f"units '{to_units}'"
                 )
@@ -334,7 +333,7 @@ class DataSet(pd.DataFrame):
     @classmethod
     def from_df(
         cls, df: pd.DataFrame, ureg: UnitRegistry, udict: dict[str, str] = None
-    ) -> "DataSet":
+    ) -> DataSet:
         """Create DataSet from given pandas.DataFrame.
 
         The DataFrame can have various formats which should be handled.
@@ -369,14 +368,14 @@ class DataSet(pd.DataFrame):
                 units = df[key].unique()
                 if len(units) > 1:
                     logger.error(
-                        f"Column '{key}' units are not unique: '{units}' in \n" f"{df}"
+                        f"Column '{key}' units are not unique: '{units}' in \n{df}"
                     )
                 elif len(units) == 0:
                     logger.error(f"Column '{key}' units are missing: '{units}'")
                 item_key = key[0:-5]
                 if item_key not in df.columns:
                     logger.error(
-                        f"Missing * column '{item_key}' for unit " f"column: '{key}'"
+                        f"Missing * column '{item_key}' for unit column: '{key}'"
                     )
                 else:
                     all_udict[item_key] = units[0]
@@ -507,7 +506,7 @@ class DataSet(pd.DataFrame):
 
 # @deprecated
 def load_pkdb_dataframe(
-    sid, data_path: Union[Path, list[Path]], sep="\t", comment="#", **kwargs
+    sid, data_path: Path | list[Path], sep="\t", comment="#", **kwargs
 ) -> pd.DataFrame:
     """Load TSV data from PKDB figure or table id.
 

@@ -1,4 +1,5 @@
 """Testing DataSet and Data functionality."""
+
 import pandas as pd
 from conftest import data_dir
 
@@ -23,7 +24,9 @@ MODEL_MIDAZOLAM = MODEL_DIR / "midazolam_body_flat.xml"
 
 def test_dataset():
     df = pd.DataFrame({"col1": [1, 2, 3], "col2": [2, 3, 4], "col3": [4, 5, 6]})
-    dset = DataSet.from_df(df, udict={"col1": "mM"}, ureg=UnitRegistry(on_redefinition='ignore'))
+    dset = DataSet.from_df(
+        df, udict={"col1": "mM"}, ureg=UnitRegistry(on_redefinition="ignore")
+    )
     assert "col1" in dset.uinfo
     assert dset.uinfo["col1"] == "mM"
 
@@ -32,7 +35,7 @@ def test_Faber1978_Fig1() -> None:
     """Test Faber1978 Fig1."""
     data_path = data_dir / "datasets"
     df = load_pkdb_dataframe(sid="Faber1978_Fig1", data_path=data_path)
-    dset = DataSet.from_df(df, udict={}, ureg=UnitRegistry(on_redefinition='ignore'))
+    dset = DataSet.from_df(df, udict={}, ureg=UnitRegistry(on_redefinition="ignore"))
     assert "cpep" in dset.uinfo
     assert "time" in dset.uinfo
     assert dset.uinfo["time"] == "min"
@@ -48,7 +51,9 @@ def test_Allonen1981_Fig3A() -> None:
     data_path = data_dir / "datasets"
     df = load_pkdb_dataframe(sid="Allonen1981_Fig3A", data_path=data_path)
     for substance in df.substance.unique():
-        dset = DataSet.from_df(df[df.substance == substance], ureg=UnitRegistry(on_redefinition='ignore'))
+        dset = DataSet.from_df(
+            df[df.substance == substance], ureg=UnitRegistry(on_redefinition="ignore")
+        )
 
         assert "mean" in dset.uinfo
         assert "time" in dset.uinfo
@@ -66,7 +71,7 @@ def test_unit_conversion() -> None:
     data_path = data_dir / "datasets"
     df = load_pkdb_dataframe(sid="Allonen1981_Fig3A", data_path=data_path)
 
-    ureg = UnitRegistry(on_redefinition='ignore')
+    ureg = UnitRegistry(on_redefinition="ignore")
     Q_ = ureg.Quantity
     Mr = Q_(300, "g/mole")
     for substance in df.substance.unique():

@@ -1,14 +1,12 @@
 """Handling of algorithms and algorithm parameters."""
 
-from typing import Optional, Union
+import logging
 
-from pymetadata.metadata import KISAO, KISAOType
-from pymetadata import log
+from pymetadata.ontologies import KISAO, KISAOType
 
 from sbmlsim.simulation.base import BaseObject
 
-
-logger = log.get_logger(__name__)
+logger = logging.getLogger(__name__)
 
 
 class AlgorithmParameter(BaseObject):
@@ -23,7 +21,7 @@ class AlgorithmParameter(BaseObject):
     def __init__(
         self,
         kisao: KISAOType,
-        value: Union[str, float],
+        value: str | float,
         sid: str = None,
         name: str = None,
     ):
@@ -36,7 +34,7 @@ class AlgorithmParameter(BaseObject):
             else:
                 name = term_name
 
-        super(AlgorithmParameter, self).__init__(sid=sid, name=name)
+        super().__init__(sid=sid, name=name)
         self.kisao: KISAO = term
         self.value: str = str(value)
 
@@ -51,9 +49,9 @@ class Algorithm(BaseObject):
     def __init__(
         self,
         kisao: KISAOType,
-        parameters: Optional[list[AlgorithmParameter]] = None,
-        sid: Optional[str] = None,
-        name: Optional[str] = None,
+        parameters: list[AlgorithmParameter] | None = None,
+        sid: str | None = None,
+        name: str | None = None,
     ):
         """Initialize Algorithm."""
         term: KISAO = KISAO.validate(kisao)
@@ -64,9 +62,9 @@ class Algorithm(BaseObject):
             else:
                 name = term_name
 
-        super(Algorithm, self).__init__(sid, name)
+        super().__init__(sid, name)
         self.kisao: KISAO = kisao
-        self.parameters: Optional[list[AlgorithmParameter]] = parameters
+        self.parameters: list[AlgorithmParameter] | None = parameters
 
     def __repr__(self) -> str:
         """Get string representation."""

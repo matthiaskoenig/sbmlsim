@@ -1,17 +1,17 @@
 """Analysis of fitting results."""
 
+import logging
 import webbrowser
 from pathlib import Path
-from typing import Any, Tuple
+from typing import Any
 
 import matplotlib
 import numpy as np
 import pandas as pd
 import seaborn as sns
-from matplotlib.figure import Figure
 from matplotlib.axes import Axes
+from matplotlib.figure import Figure
 from matplotlib.lines import Line2D
-from pymetadata import log
 
 from sbmlsim.fit.optimization import OptimizationProblem
 from sbmlsim.fit.options import (
@@ -24,8 +24,7 @@ from sbmlsim.fit.result import OptimizationResult
 from sbmlsim.plot.serialization_matplotlib import plt
 from sbmlsim.utils import timeit
 
-
-logger = log.get_logger(__name__)
+logger = logging.getLogger(__name__)
 
 
 class OptimizationAnalysis:
@@ -203,16 +202,13 @@ class OptimizationAnalysis:
         plt.rcParams.update(rc_params_copy)
 
         logger.warning("-" * 80)
-        logger.warning(
-            f"Analysis finished: file://{str(self.results_dir / 'index.html')}"
-        )
+        logger.warning(f"Analysis finished: file://{self.results_dir / 'index.html'!s}")
         logger.warning("-" * 80)
 
-        webbrowser.open(f"file://{str(self.results_dir / 'index.html')}", new=2)
+        webbrowser.open(f"file://{self.results_dir / 'index.html'!s}", new=2)
 
     def html_report(self, path: Path):
         """Create HTML report of the fit."""
-
         title = f"{self.op.opid} [{self.sid}]"
 
         parameter_info = []
@@ -232,9 +228,7 @@ class OptimizationAnalysis:
 
         for key, value in fitted_pars.items():
             parameter_info.append(
-                "<strong>{}</strong>: {} {}, [{} - {}]".format(
-                    key, value[0], value[1], value[2], value[3]
-                )
+                f"<strong>{key}</strong>: {value[0]} {value[1]}, [{value[2]} - {value[3]}]"
             )
         parameters = "<br/>".join(parameter_info)
 
@@ -296,7 +290,7 @@ class OptimizationAnalysis:
 
     def _create_mpl_figure(
         self, width: float = 5.0, height: float = 5.0, layout: str = "constrained"
-    ) -> Tuple[Figure, Axes]:
+    ) -> tuple[Figure, Axes]:
         """Create matplotlib figure."""
         fig, ax = plt.subplots(nrows=1, ncols=1, figsize=(width, height), layout=layout)
         # fig.subplots_adjust(left=0.2, bottom=0.1)
@@ -402,7 +396,6 @@ class OptimizationAnalysis:
         For better analysis log and linear results are depicted.
         :param x: parameters to evaluate
         """
-
         res_data = self.op.residuals(xlog=np.log10(x), complete_data=True)
 
         for k, mapping_id in enumerate(self.op.mapping_keys):

@@ -3,20 +3,20 @@
 Using sympy to evaluate the expressions.
 """
 
+import logging
 from typing import Any
-from pymetadata import log
+
 import libsedml
 from sympy import lambdify, sympify
 
-
-logger = log.get_logger(__name__)
+logger = logging.getLogger(__name__)
 
 
 def formula_to_astnode(formula: str) -> libsedml.ASTNode:
     """Parse ASTNode from formula."""
     astnode = libsedml.parseL3Formula(formula)
     if not astnode:
-        logger.error("Formula could not be parsed: '{}'".format(formula))
+        logger.error(f"Formula could not be parsed: '{formula}'")
         logger.error(libsedml.getLastParseL3Error())
     return astnode
 
@@ -69,7 +69,6 @@ def parse_astnode(astnode: libsedml.ASTNode) -> Any:
 
 def expr_from_formula(formula: str):
     """Parse sympy expression from given formula string."""
-
     # [2] create sympy expressions with variables and formula
     # necessary to map the expression trees
     # create symbols
@@ -163,8 +162,8 @@ def replace_piecewise(formula):
         if (len(pieces) % 2) == 1:
             pieces.append("True")  # last condition is True
         sympy_pieces = []
-        for k in range(0, int(len(pieces) / 2)):
-            sympy_pieces.append(f"({pieces[2*k]}, {pieces[2*k+1]})")
+        for k in range(int(len(pieces) / 2)):
+            sympy_pieces.append(f"({pieces[2 * k]}, {pieces[2 * k + 1]})")
         new_str = f"Piecewise({','.join(sympy_pieces)})"
         formula = formula.replace(formula[index : search_idx + 1], new_str)
 

@@ -1,12 +1,11 @@
 """Create omex files from SED-ML files."""
 
+import logging
 from pathlib import Path
 
 from pymetadata import omex as pyomex
 
-from pymetadata import log
-
-logger = log.get_logger(__name__)
+logger = logging.getLogger(__name__)
 
 
 EXAMPLES_DIR: Path = Path(__file__).parent

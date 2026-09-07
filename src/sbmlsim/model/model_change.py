@@ -5,14 +5,14 @@ Changes of values and initial conditions are encoded via
 the changes instead.
 """
 
+import logging
+
 import roadrunner
-from pymetadata import log
+
+logger = logging.getLogger(__name__)
 
 
-logger = log.get_logger(__name__)
-
-
-class ModelChange(object):
+class ModelChange:
     """ModelChange.
 
     Structural change to a model.

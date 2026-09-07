@@ -1,5 +1,6 @@
 """Test DataGenerators."""
-from sbmlsim.examples.datagenerator_example import datagenerator_example
+
+from examples.datagenerator import datagenerator_example
 
 
 def test_datagenerator_example():

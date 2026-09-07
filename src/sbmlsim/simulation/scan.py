@@ -3,16 +3,15 @@
 Allows scans over other simulations.
 """
 
+import logging
 from copy import deepcopy
 
 import numpy as np
-from pymetadata import log
 
 from sbmlsim.simulation import AbstractSim, Dimension
 from sbmlsim.units import UnitsInformation
 
-
-logger = log.get_logger(__name__)
+logger = logging.getLogger(__name__)
 
 
 class ScanSim(AbstractSim):
@@ -58,7 +57,7 @@ class ScanSim(AbstractSim):
             mapping = {dim.dimension: 0 for dim in self.dimensions}
         if len(mapping) != len(dimensions):
             raise ValueError(
-                f"mapping '{mapping}' incompatible with dimensions " f"'{dimensions}'."
+                f"mapping '{mapping}' incompatible with dimensions '{dimensions}'."
             )
         self.mapping = mapping
 
@@ -147,7 +146,7 @@ if __name__ == "__main__":
     ureg = UnitRegistry(on_redefinition="ignore")
     Q_ = ureg.Quantity
     uinfo = UnitsInformation(
-        udict={k: "dimensionless" for k in ["X", "[X]", "n", "Y"]}, ureg=ureg
+        udict=dict.fromkeys(["X", "[X]", "n", "Y"], "dimensionless"), ureg=ureg
     )
 
     scan2d = ScanSim(

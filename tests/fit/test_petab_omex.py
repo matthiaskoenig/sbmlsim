@@ -1,4 +1,5 @@
 """Testing OMEX generation for PETab problems."""
+
 import pytest
 from pymetadata.omex import Omex
 

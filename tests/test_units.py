@@ -1,15 +1,13 @@
 """Test units."""
 
 from pathlib import Path
-from typing import Tuple
 
 import libsbml
 import pytest
 
-from sbmlsim.examples import example_units
+from examples import units as example_units
 from sbmlsim.resources import DEMO_SBML, MIDAZOLAM_SBML, REPRESSILATOR_SBML
 from sbmlsim.units import UnitRegistry, Units, UnitsInformation
-
 
 sbml_paths: list[Path] = [
     DEMO_SBML,
@@ -55,7 +53,7 @@ def test_example_units() -> None:
     example_units.run_demo_example()
 
 
-def create_udef_examples() -> list[Tuple[libsbml.UnitDefinition, str]]:
+def create_udef_examples() -> list[tuple[libsbml.UnitDefinition, str]]:
     """Create example UnitDefinitions for testing."""
     udef0 = libsbml.UnitDefinition(3, 1)
 

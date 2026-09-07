@@ -1,4 +1,5 @@
 """Test fit objects."""
+
 import pytest
 
 from sbmlsim.fit import FitParameter

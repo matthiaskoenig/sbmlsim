@@ -2,17 +2,17 @@
 
 from pathlib import Path
 
-from sbmlsim.sensitivity import (
-    SobolSensitivityAnalysis,
-    LocalSensitivityAnalysis,
-    SamplingSensitivityAnalysis,
-    FASTSensitivityAnalysis,
-    MorrisSensitivityAnalysis,
-)
-from sbmlsim.sensitivity.example.sensitivity_example import (
-    sensitivity_simulation,
-    sensitivity_parameters,
+from examples.sensitivity.sensitivity_example import (
     sensitivity_groups,
+    sensitivity_parameters,
+    sensitivity_simulation,
+)
+from sbmlsim.sensitivity import (
+    FASTSensitivityAnalysis,
+    LocalSensitivityAnalysis,
+    MorrisSensitivityAnalysis,
+    SamplingSensitivityAnalysis,
+    SobolSensitivityAnalysis,
 )
 
 

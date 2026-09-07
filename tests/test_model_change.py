@@ -1,5 +1,6 @@
 """Test model changes."""
-from sbmlsim.examples import example_model_change
+
+from examples import model_change as example_model_change
 
 
 def test_example1() -> None:

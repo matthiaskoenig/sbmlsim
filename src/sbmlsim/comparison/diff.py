@@ -4,19 +4,18 @@ Allows to tests semi-automatically for problems with the various models.
 Used to benchmark the simulation results.
 """
 
+import logging
 from pathlib import Path
 
 import numpy as np
 import pandas as pd
 import seaborn as sns
 from matplotlib import pyplot as plt
-from pymetadata import log
-from pymetadata.console import console
 
+from sbmlsim.console import console
 from sbmlsim.utils import timeit
 
-
-logger = log.get_logger(__name__)
+logger = logging.getLogger(__name__)
 
 
 def get_files_by_extension(base_path: Path, extension: str = ".json") -> dict[str, str]:
@@ -147,7 +146,7 @@ class DataSetsComparison:
             num_df = df.select_dtypes(include=numerics)
             if len(num_df.columns) < len(df.columns):
                 logger.warning(
-                    f"Non-numeric columns in DataFrame: {set(df.columns)-set(num_df.columns)}"
+                    f"Non-numeric columns in DataFrame: {set(df.columns) - set(num_df.columns)}"
                 )
 
             cols = set(num_df.columns)
@@ -302,7 +301,6 @@ class DataSetsComparison:
     @timeit
     def plot_diff(self):
         """Plot lines for entries which are above epsilon treshold."""
-
         # filter data
         diff_abs = self.diff_abs.copy()
         diff_rel = self.diff_rel.copy()

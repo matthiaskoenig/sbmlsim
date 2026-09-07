@@ -2,7 +2,7 @@ from pathlib import Path
 
 import pytest
 
-from sbmlsim.examples.experiments.covid.simulate import run_covid_examples
+from examples.covid.simulate import run_covid_examples
 
 
 @pytest.mark.skip("SED-ML relative paths")

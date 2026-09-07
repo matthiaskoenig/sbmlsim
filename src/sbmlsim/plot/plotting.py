@@ -1,5 +1,4 @@
-"""
-Classes for storing plotting information.
+"""Classes for storing plotting information.
 
 The general workflow of generating plotting information is the following.
 
@@ -15,20 +14,20 @@ Additional settings are required which allow to define how things
 """
 
 from __future__ import annotations
+
 import copy
+import logging
 from copy import deepcopy
 from dataclasses import dataclass
 from enum import Enum
-from typing import Any, Optional, Union
+from typing import Any
 
 import numpy as np
 from matplotlib.colors import to_hex, to_rgba
-from pymetadata import log
 
 from sbmlsim.data import Data
 
-
-logger = log.get_logger(__name__)
+logger = logging.getLogger(__name__)
 
 # The colors in the default property cycle have been changed
 # to the category10 color palette used by Vega and d3 originally developed at Tableau.
@@ -116,7 +115,7 @@ class ColorType:
         return self.color
 
     @staticmethod
-    def parse_color(color: str, alpha: float = 1.0) -> Optional[ColorType]:
+    def parse_color(color: str, alpha: float = 1.0) -> ColorType | None:
         """Parse given color and add alpha information.
 
         :param color:
@@ -127,7 +126,7 @@ class ColorType:
         if color is None or len(color) == 0:
             return None
 
-        elif isinstance(color, str) and color.startswith("#"):
+        if isinstance(color, str) and color.startswith("#"):
             # handle hex colors
             if len(color) == 7:
                 # parse alpha
@@ -214,13 +213,13 @@ class Style(BasePlotObject):
         self,
         sid: str = None,
         name: str = None,
-        base_style: Optional["Style"] = None,
-        line: Optional[Line] = None,
-        marker: Optional[Marker] = None,
-        fill: Optional[Fill] = None,
+        base_style: Style | None = None,
+        line: Line | None = None,
+        marker: Marker | None = None,
+        fill: Fill | None = None,
     ):
         """Initialize Style."""
-        super(Style, self).__init__(sid, name)
+        super().__init__(sid, name)
 
         # using default styling if not otherwise provided
         if marker is None:
@@ -228,12 +227,12 @@ class Style(BasePlotObject):
         if line is None:
             line = Line()
 
-        self.base_style: Optional["Style"] = base_style
-        self.line: Optional[Line] = line
-        self.marker: Optional[Marker] = marker
-        self.fill: Optional[Fill] = fill
+        self.base_style: Style | None = base_style
+        self.line: Line | None = line
+        self.marker: Marker | None = marker
+        self.fill: Fill | None = fill
 
-    def resolve_style(self) -> "Style":
+    def resolve_style(self) -> Style:
         """Resolve all basestyle information.
 
         Resolves the actual style information.
@@ -283,7 +282,7 @@ class Style(BasePlotObject):
             f"fill={self.fill}]"
         )
 
-    def __copy__(self) -> "Style":
+    def __copy__(self) -> Style:
         """Copy axis object."""
         return Style(
             sid=self.sid,
@@ -427,7 +426,7 @@ class Style(BasePlotObject):
         return kwargs
 
     @staticmethod
-    def from_mpl_kwargs(**kwargs) -> "Style":
+    def from_mpl_kwargs(**kwargs) -> Style:
         """Create style from matplotlib arguments.
 
         :keyword alpha: alpha setting
@@ -436,11 +435,11 @@ class Style(BasePlotObject):
         :return:
         """
         color = ColorType.parse_color(
-            color=kwargs.get("color", None),
+            color=kwargs.get("color"),
             alpha=kwargs.get("alpha", 1.0),
         )
         line_color = ColorType.parse_color(
-            color=kwargs.get("markeredgecolor", None),
+            color=kwargs.get("markeredgecolor"),
         )
 
         # Line
@@ -451,10 +450,10 @@ class Style(BasePlotObject):
         marker_symbol = Style.MPL2SEDML_MARKER_MAPPING[kwargs.get("marker", "")]
         marker = Marker(
             type=marker_symbol,
-            size=kwargs.get("markersize", None),
+            size=kwargs.get("markersize"),
             fill=kwargs.get("markerfacecolor", color),
             line_color=line_color,
-            line_thickness=kwargs.get("markeredgewidth", None),
+            line_thickness=kwargs.get("markeredgewidth"),
         )
 
         # Fill
@@ -509,7 +508,7 @@ class Axis(BasePlotObject):
         :param label_visible: show/hide the label text
         :param ticks_visible: show/hide axis ticks
         """
-        super(Axis, self).__init__(sid=None, name=None)
+        super().__init__(sid=None, name=None)
         if label and name:
             ValueError("Either set label or name on Axis.")
         # if unit is None:
@@ -545,7 +544,7 @@ class Axis(BasePlotObject):
         """Get string."""
         return f"Axis({self.name, self.scale})"
 
-    def __copy__(self) -> "Axis":
+    def __copy__(self) -> Axis:
         """Copy axis object."""
         return Axis(
             label=self.label,
@@ -615,7 +614,7 @@ class AbstractCurve(BasePlotObject):
         :param style:
         :param yaxis_position:
         """
-        super(AbstractCurve, self).__init__(sid, name)
+        super().__init__(sid, name)
         self.x = x
         self.order = order
         self.style = style
@@ -640,7 +639,7 @@ class Curve(AbstractCurve):
         **kwargs,
     ):
         """Initialize Curve."""
-        super(Curve, self).__init__(
+        super().__init__(
             sid=sid,
             name=name if name else y.name,
             x=x,
@@ -696,7 +695,6 @@ class Curve(AbstractCurve):
     @staticmethod
     def _add_default_style_kwargs(d: dict, dtype: str) -> dict:
         """Add the default plotting style arguments."""
-
         if dtype == Data.Types.TASK:
             if "linestyle" not in d:
                 d["linestyle"] = "-"
@@ -737,13 +735,13 @@ class ShadedArea(AbstractCurve):
         x: Data,
         yfrom: Data,
         yto: Data,
-        order: Optional[int] = None,
+        order: int | None = None,
         style: Style = None,
         yaxis_position: YAxisPosition = None,
         **kwargs,
     ):
         """Initialize ShadedArea."""
-        super(ShadedArea, self).__init__(
+        super().__init__(
             sid=None,
             name=None,
             x=x,
@@ -836,7 +834,7 @@ class Plot(BasePlotObject):
         :param height: plot height (should be set on figure)
         :param width: plot width (should be set on figure)
         """
-        super(Plot, self).__init__(sid, name)
+        super().__init__(sid, name)
         if curves is None:
             curves = list()
         if legend is None:
@@ -883,7 +881,7 @@ class Plot(BasePlotObject):
         """Get string."""
         return f"Plot({self.to_dict()})"
 
-    def __copy__(self) -> "Plot":
+    def __copy__(self) -> Plot:
         """Copy the existing object."""
         return Plot(
             sid=self.sid,
@@ -916,7 +914,7 @@ class Plot(BasePlotObject):
         return d
 
     @property
-    def figure(self) -> "Figure":
+    def figure(self) -> Figure:
         """Get figure for plot."""
         if not self._figure:
             raise ValueError(f"The plot '{self}' has no associated figure.")
@@ -924,7 +922,7 @@ class Plot(BasePlotObject):
         return self._figure
 
     @figure.setter
-    def figure(self, value: "Figure"):
+    def figure(self, value: Figure):
         """Set figure for plot."""
         self._figure = value
 
@@ -957,9 +955,7 @@ class Plot(BasePlotObject):
         """Set xaxis."""
         self.set_xaxis(label=value)
 
-    def set_xaxis(
-        self, label: Optional[Union[str, Axis]], unit: str = None, **kwargs
-    ) -> None:
+    def set_xaxis(self, label: str | Axis | None, unit: str = None, **kwargs) -> None:
         """Set axis with all axes attributes.
 
         All argument of Axis are supported.
@@ -979,7 +975,7 @@ class Plot(BasePlotObject):
         """Set yaxis."""
         self.set_yaxis(label=value)
 
-    def set_yaxis(self, label: Union[str, Axis], unit: str = None, **kwargs):
+    def set_yaxis(self, label: str | Axis, unit: str = None, **kwargs):
         """Set axis with all axes attributes.
 
         All argument of Axis are supported.
@@ -1005,9 +1001,7 @@ class Plot(BasePlotObject):
         """Set right yaxis."""
         self.set_yaxis_right(label=value)
 
-    def set_yaxis_right(
-        self, label: Union[str, Axis], unit: str = None, **kwargs
-    ) -> None:
+    def set_yaxis_right(self, label: str | Axis, unit: str = None, **kwargs) -> None:
         """Set axis with all axes attributes.
 
         All argument of Axis are supported.
@@ -1025,8 +1019,8 @@ class Plot(BasePlotObject):
 
     @staticmethod
     def _create_axis(
-        label: Optional[Union[str, Axis]], unit: str = None, **kwargs
-    ) -> Optional[Axis]:
+        label: str | Axis | None, unit: str = None, **kwargs
+    ) -> Axis | None:
         if not label:
             ax = None
         elif isinstance(label, Axis):
@@ -1125,10 +1119,10 @@ class Plot(BasePlotObject):
         xid_se=None,
         yid_sd=None,
         yid_se=None,
-        count: Union[int, str] = None,
+        count: int | str = None,
         dataset: str = None,
         task: str = None,
-        label: Optional[str] = "__yid__",
+        label: str | None = "__yid__",
         type: CurveType = CurveType.POINTS,
         style: Style = None,
         yaxis_position: YAxisPosition = None,
@@ -1261,11 +1255,11 @@ class SubPlot(BasePlotObject):
         col: int = None,
         row_span: int = 1,
         col_span: int = 1,
-        sid: Optional[str] = None,
-        name: Optional[str] = None,
+        sid: str | None = None,
+        name: str | None = None,
     ):
         """Initialize SubPlot."""
-        super(SubPlot, self).__init__(sid=sid, name=name)
+        super().__init__(sid=sid, name=name)
         self.plot = plot
         self.row = row
         self.col = col
@@ -1307,7 +1301,7 @@ class Figure(BasePlotObject):
 
     def __init__(
         self,
-        experiment: "SimulationExperiment",  # noqa: F821
+        experiment: SimulationExperiment,  # noqa: F821
         sid: str,
         name: str = None,
         subplots: list[SubPlot] = None,
@@ -1317,8 +1311,8 @@ class Figure(BasePlotObject):
         num_cols: int = 1,
     ):
         """Initialize Figure."""
-        super(Figure, self).__init__(sid, name)
-        self.experiment: "SimulationExperiment" = experiment  # noqa: F821
+        super().__init__(sid, name)
+        self.experiment: SimulationExperiment = experiment  # noqa: F821
         if subplots is None:
             subplots = list()
         self.subplots: list[SubPlot] = subplots
@@ -1455,7 +1449,6 @@ class Figure(BasePlotObject):
 
         For every plot a subplot is generated.
         """
-
         # FIXME: handle correct copying of plots
         if copy_plots:
             new_plots = [copy.copy(p) for p in plots]
@@ -1481,7 +1474,7 @@ class Figure(BasePlotObject):
             plot.figure = self
 
     @staticmethod
-    def from_plots(sid, plots: list[Plot]) -> "Figure":
+    def from_plots(sid, plots: list[Plot]) -> Figure:
         """Create figure object from list of plots."""
         num_plots = len(plots)
         return Figure(

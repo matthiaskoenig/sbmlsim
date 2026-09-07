@@ -4,16 +4,15 @@ Interacting with model resources to retrieve models.
 This currently includes BioModels, but can easily be extended to other models.
 """
 
+import logging
 import re
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Optional, Union
+from typing import Union
 
 import requests
-from pymetadata import log
 
-
-logger = log.get_logger(__name__)
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -21,8 +20,8 @@ class Source:
     """Class for keeping track of the resolved sources."""
 
     source: str
-    path: Optional[Path] = None  # if source is a path
-    content: Optional[str] = None  # if source is something which has to be resolved
+    path: Path | None = None  # if source is a path
+    content: str | None = None  # if source is something which has to be resolved
 
     def is_path(self) -> bool:
         """Check if the source is a Path."""
@@ -32,7 +31,7 @@ class Source:
         """Check if the source is Content."""
         return self.content is not None
 
-    def to_dict(self) -> dict[str, Optional[str]]:
+    def to_dict(self) -> dict[str, str | None]:
         """Convert to dict.
 
         Used for serialization.
@@ -51,8 +50,8 @@ class Source:
         if isinstance(source, Source):
             return source
 
-        path: Optional[Path] = None
-        content: Optional[str] = None
+        path: Path | None = None
+        content: str | None = None
 
         if isinstance(source, str):
             if is_urn(source):
@@ -69,8 +68,8 @@ class Source:
                 path = Path(source).resolve()
             path = path.resolve()
             if not path.exists():
-                raise IOError(
-                    f"Path '{path}' for model source '{source}' " f"does not exist."
+                raise OSError(
+                    f"Path '{path}' for model source '{source}' does not exist."
                 )
 
         return Source(source, path, content)
@@ -156,7 +155,7 @@ def model_from_biomodels(mid: str) -> str:
         )
     except (TypeError, KeyError) as err:
         logger.error(
-            f"Filename of 'main' file could not be resolved from response: " f"'{json}'"
+            f"Filename of 'main' file could not be resolved from response: '{json}'"
         )
         raise err
 

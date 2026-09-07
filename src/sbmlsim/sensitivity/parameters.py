@@ -2,17 +2,18 @@
 
 from __future__ import annotations
 
+from collections.abc import Iterable
 from enum import Enum
 from pathlib import Path
-from typing import Optional, Iterable
 
 import libsbml
 import numpy as np
 import pandas as pd
 import roadrunner
-from pydantic import BaseModel, Field, ConfigDict
-from pymetadata.console import console
+from pydantic import BaseModel, ConfigDict, Field
 from sbmlutils.report.units import udef_to_string
+
+from sbmlsim.console import console
 
 
 class ParameterType(str, Enum):
@@ -34,7 +35,7 @@ class SensitivityParameter(BaseModel):
     value: float = Field(default=float("nan"))
     lower_bound: float = Field(default=float("nan"))
     upper_bound: float = Field(default=float("nan"))
-    unit: Optional[str] = None
+    unit: str | None = None
     type: ParameterType = ParameterType.NA
     reference: str = ""
 
@@ -46,7 +47,6 @@ class SensitivityParameter(BaseModel):
         parameters: Iterable[SensitivityParameter], bounds: Iterable[tuple]
     ) -> None:
         """Set bounds for sensitivity analysis."""
-
         parameters_d = {p.uid: p for p in parameters}
 
         for key, lb, ub, ptype in bounds:
@@ -94,7 +94,7 @@ class SensitivityParameter(BaseModel):
     @staticmethod
     def parameters_from_sbml(
         sbml_path: Path,
-        exclude_ids: Optional[set[str]] = None,
+        exclude_ids: set[str] | None = None,
         exclude_na: bool = True,
         exclude_zero: bool = True,
     ) -> list[SensitivityParameter]:
@@ -171,19 +171,21 @@ class SensitivityParameter(BaseModel):
             sid = s.getId()
 
             if exclude_na:
-                if not s.isSetInitialAmount() and not s.isSetInitialConcentration():
-                    exclude_ids.add(sid)
-                elif s.isSetInitialAmount() and np.isnan(s.getInitialAmount()):
-                    exclude_ids.add(sid)
-                elif s.isSetInitialConcentration() and np.isnan(
-                    s.getInitialConcentration()
+                if (
+                    (not s.isSetInitialAmount() and not s.isSetInitialConcentration())
+                    or (s.isSetInitialAmount() and np.isnan(s.getInitialAmount()))
+                    or (
+                        s.isSetInitialConcentration()
+                        and np.isnan(s.getInitialConcentration())
+                    )
                 ):
                     exclude_ids.add(sid)
             if exclude_zero:
-                if s.isSetInitialAmount() and np.isclose(s.getInitialAmount(), 0.0):
-                    exclude_ids.add(sid)
-                elif s.isSetInitialConcentration() and np.isclose(
-                    s.getInitialConcentration(), 0.0
+                if (
+                    s.isSetInitialAmount() and np.isclose(s.getInitialAmount(), 0.0)
+                ) or (
+                    s.isSetInitialConcentration()
+                    and np.isclose(s.getInitialConcentration(), 0.0)
                 ):
                     exclude_ids.add(sid)
 

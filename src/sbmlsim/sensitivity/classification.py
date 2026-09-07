@@ -103,4 +103,4 @@ def uncertainty_classification_symbol(u: float) -> str:
     elif classification == UncertaintyClassification.LOW:
         n = 1
 
-    return f"<{'*'*n}>"
+    return f"<{'*' * n}>"

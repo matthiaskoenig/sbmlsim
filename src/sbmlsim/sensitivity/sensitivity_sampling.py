@@ -23,23 +23,23 @@ methods.
 """
 
 from pathlib import Path
-from typing import Optional, Any
+from typing import Any
 
 import numpy as np
 import pandas as pd
 import xarray as xr
-from pymetadata.console import console
-from scipy.stats import qmc
 from matplotlib import pyplot as plt
+from scipy.stats import qmc
 
+from sbmlsim.console import console
 from sbmlsim.sensitivity.analysis import (
-    SensitivitySimulation,
     AnalysisGroup,
     SensitivityAnalysis,
+    SensitivitySimulation,
 )
 from sbmlsim.sensitivity.classification import (
-    uncertainty_classification_symbol,
     uncertainty_classification,
+    uncertainty_classification_symbol,
 )
 from sbmlsim.sensitivity.parameters import SensitivityParameter
 
@@ -66,8 +66,8 @@ class SamplingSensitivityAnalysis(SensitivityAnalysis):
         groups: list[AnalysisGroup],
         results_path: Path,
         N: int,
-        seed: Optional[int] = None,
-        n_cores: Optional[int] = None,
+        seed: int | None = None,
+        n_cores: int | None = None,
         cache_results: bool = False,
     ):
         super().__init__(
@@ -108,10 +108,9 @@ class SamplingSensitivityAnalysis(SensitivityAnalysis):
             )
 
     def calculate_sensitivity(
-        self, cache_filename: Optional[str] = None, cache: bool = False
+        self, cache_filename: str | None = None, cache: bool = False
     ) -> None:
         """Calculate the sensitivity matrices for sampling sensitivity."""
-
         data = self.read_cache(cache_filename, cache)
         if data:
             self.sensitivity = data

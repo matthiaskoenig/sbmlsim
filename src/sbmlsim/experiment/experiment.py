@@ -1,14 +1,13 @@
 """SimulationExperiments and helpers."""
 
 import json
+import logging
 import re
 from collections import defaultdict
+from collections.abc import Iterable
 from copy import deepcopy
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Iterable, Union
-
-from pymetadata import log
 
 from sbmlsim.data import Data, DataSet
 from sbmlsim.fit import FitMapping
@@ -26,8 +25,7 @@ from sbmlsim.task import Task
 from sbmlsim.units import UnitRegistry, UnitsInformation
 from sbmlsim.utils import timeit
 
-
-logger = log.get_logger(__name__)
+logger = logging.getLogger(__name__)
 
 
 class SimulationExperiment:
@@ -58,7 +56,7 @@ class SimulationExperiment:
         if base_path:
             base_path = Path(base_path).resolve()
             if not base_path.exists():
-                raise IOError(f"base_path '{base_path}' does not exist")
+                raise OSError(f"base_path '{base_path}' does not exist")
         else:
             logger.warning(
                 "No 'base_path' provided, reading/writing of resources may fail."
@@ -72,7 +70,7 @@ class SimulationExperiment:
                 data_path = [Path(data_path).resolve()]
             for p in data_path:
                 if not p.exists():
-                    raise IOError(f"data_path '{p}' does not exist")
+                    raise OSError(f"data_path '{p}' does not exist")
         else:
             logger.warning("No 'data_path' provided, reading of datasets may fail.")
         self.data_path = data_path
@@ -138,7 +136,7 @@ class SimulationExperiment:
         ]
         return "\n".join(info)
 
-    def models(self) -> dict[str, Union[AbstractModel, Path]]:
+    def models(self) -> dict[str, AbstractModel | Path]:
         """Define model definitions.
 
         The child classes fill out the information.
@@ -294,7 +292,7 @@ class SimulationExperiment:
             for key in getattr(self, field_key).keys():
                 if not isinstance(key, str):
                     raise ValueError(
-                        f"'{field_key} keys must be str: " f"'{key} -> {type(key)}'"
+                        f"'{field_key} keys must be str: '{key} -> {type(key)}'"
                     )
                 # Check that valid Sid
                 try:
@@ -313,8 +311,7 @@ class SimulationExperiment:
                     raise ValueError(
                         f"Duplicate key '{key}' for '{field_key}' and '{all_keys[key]}'"
                     )
-                else:
-                    all_keys[key] = field_key
+                all_keys[key] = field_key
 
     def _check_types(self):
         """Check for correctness of types."""
@@ -385,7 +382,6 @@ class SimulationExperiment:
         reduced_selections: bool = True,
     ) -> "ExperimentResult":
         """Execute given experiment and store results."""
-
         # run simulations (sets self._results)
         self._run_tasks(simulator, reduced_selections=reduced_selections)
 
@@ -473,9 +469,7 @@ class SimulationExperiment:
             for task_key in task_keys:
                 task = self._tasks[task_key]
 
-                sim: Union[ScanSim, TimecourseSim] = self._simulations[
-                    task.simulation_id
-                ]
+                sim: ScanSim | TimecourseSim = self._simulations[task.simulation_id]
 
                 # normalization before running to ensure correct serialization
                 sim.normalize(uinfo=simulator.uinfo)
@@ -490,7 +484,7 @@ class SimulationExperiment:
                 elif isinstance(sim, ScanSim):
                     self._results[task_key] = simulator.run_scan(sim)
                 else:
-                    raise ValueError(f"Unsupported simulation type: " f"{type(sim)}")
+                    raise ValueError(f"Unsupported simulation type: {type(sim)}")
 
     def evaluate_fit_mappings(self):
         """Evaluate fit mappings."""
@@ -510,9 +504,8 @@ class SimulationExperiment:
         d = self.to_dict()
         if path is None:
             return json.dumps(d, cls=ObjectJSONEncoder, indent=indent)
-        else:
-            with open(path, "w", encoding="utf-8") as f_json:
-                json.dump(d, fp=f_json, cls=ObjectJSONEncoder, indent=indent)
+        with open(path, "w", encoding="utf-8") as f_json:
+            json.dump(d, fp=f_json, cls=ObjectJSONEncoder, indent=indent)
 
     def to_dict(self):
         """Convert to dictionary.
@@ -532,11 +525,11 @@ class SimulationExperiment:
         }
 
     @classmethod
-    def from_json(cls, json_info: Union[Path, str]) -> "SimulationExperiment":
+    def from_json(cls, json_info: Path | str) -> "SimulationExperiment":
         """Load experiment from json path or str."""
         # FIXME: update serialization
         if isinstance(json_info, Path):
-            with open(json_info, "r", encoding="utf-8") as f_json:
+            with open(json_info, encoding="utf-8") as f_json:
                 d = json.load(f_json)
         elif isinstance(json_info, str):
             d = json.loads(json_info)
@@ -571,7 +564,7 @@ class SimulationExperiment:
                 result.to_tsv(results_path / f"{self.sid}_{rkey}.tsv")
 
     @timeit
-    def create_mpl_figures(self) -> dict[str, Union[FigureMPL, Figure]]:
+    def create_mpl_figures(self) -> dict[str, FigureMPL | Figure]:
         """Create matplotlib figures."""
         mpl_figures = {}
         for fig_key, fig in self._figures.items():

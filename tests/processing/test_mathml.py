@@ -1,4 +1,5 @@
 """Test MathML functionality."""
+
 import numpy as np
 import pytest
 

@@ -1,12 +1,13 @@
 """Testing experiment examples."""
+
 from pathlib import Path
 
 import pytest
 
-from sbmlsim.examples.experiments.demo.demo import run_demo_experiments
-from sbmlsim.examples.experiments.glucose.glucose import run_glucose_experiments
-from sbmlsim.examples.experiments.midazolam.simulate import run_midazolam_experiments
-from sbmlsim.examples.experiments.repressilator.repressilator import (
+from examples.demo.demo import run_demo_experiments
+from examples.glucose.glucose import run_glucose_experiments
+from examples.midazolam.simulate import run_midazolam_experiments
+from examples.repressilator.repressilator import (
     run_repressilator_example,
 )
 

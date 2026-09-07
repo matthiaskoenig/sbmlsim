@@ -1,12 +1,11 @@
 """Working with the KISAO ontology."""
 
+import logging
 from collections import namedtuple
 
 import libsedml
-from pymetadata import log
 
-
-logger = log.get_logger(__name__)
+logger = logging.getLogger(__name__)
 
 
 # ----------------
@@ -190,7 +189,6 @@ def algorithm_parameter_to_parameter_key(par):
             # cast to data type of parameter
             value = dtype(value)
         return ParameterKey(key, value, dtype)
-    else:
-        # algorithm parameter not supported
-        logger.warning(f"Unsupported AlgorithmParameter: {kisao} = {value})")
-        return None
+    # algorithm parameter not supported
+    logger.warning(f"Unsupported AlgorithmParameter: {kisao} = {value})")
+    return None

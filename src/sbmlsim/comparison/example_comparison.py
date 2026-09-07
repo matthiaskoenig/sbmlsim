@@ -15,16 +15,15 @@ This supports:
 """
 
 from pathlib import Path
-from typing import Type
 
 import numpy as np
 import pandas as pd
+from simulate import Condition, SimulateSBML
+from simulate_roadrunner import SimulateRoadrunnerSBML
 
 from sbmlsim.comparison.diff import DataSetsComparison
 from sbmlsim.comparison.simulate_amici import SimulateAmiciSBML
-from simulate_roadrunner import SimulateRoadrunnerSBML
-from simulate import Condition, SimulateSBML
-from pymetadata.console import console
+from sbmlsim.console import console
 
 if __name__ == "__main__":
     """Comparison of ICG model simulations."""
@@ -75,7 +74,7 @@ if __name__ == "__main__":
 
     # run comparison
     dfs: dict[str, pd.DataFrame] = {}
-    simulator: Type[SimulateSBML]
+    simulator: type[SimulateSBML]
     for key, simulator in {
         "roadrunner": SimulateRoadrunnerSBML,
         # "copasi": SimulateCopasiSBML,

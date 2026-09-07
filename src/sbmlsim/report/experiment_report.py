@@ -1,22 +1,20 @@
 """Create report of simulation experiments."""
 
 import json
+import logging
 import os
 import shutil
 import sys
 from enum import Enum
 from pathlib import Path
-from typing import Optional
 
 import jinja2
-from pymetadata import log
 
 from sbmlsim import RESOURCES_DIR, __version__
 from sbmlsim.experiment import ExperimentResult, SimulationExperiment
 from sbmlsim.model import AbstractModel
 
-
-logger = log.get_logger(__name__)
+logger = logging.getLogger(__name__)
 TEMPLATE_PATH = RESOURCES_DIR / "templates"
 
 
@@ -35,7 +33,7 @@ class ReportResults:
     @staticmethod
     def from_json(json_path: Path) -> "ReportResults":
         """Read from JSON."""
-        with open(json_path, "r", encoding="utf-8") as fp:
+        with open(json_path, encoding="utf-8") as fp:
             data = json.load(fp)
         results = ReportResults()
         results.data = data
@@ -60,7 +58,7 @@ class ReportResults:
 
         # code path
         code_path = sys.modules[experiment.__module__].__file__
-        with open(code_path, "r", encoding="utf-8") as f_code:
+        with open(code_path, encoding="utf-8") as f_code:
             code = f_code.read()
         code_path = Path(os.path.relpath(code_path, str(abs_path)))  # type: ignore
 
@@ -114,9 +112,9 @@ class ExperimentReport:
     def create_report(
         self,
         output_path: Path,
-        filename: Optional[str] = None,
+        filename: str | None = None,
         report_type: ReportType = ReportType.HTML,
-        f_filter_context: Optional[dict] = None,
+        f_filter_context: dict | None = None,
         **kwargs,
     ) -> Path:
         """Create report of SimulationExperiments.

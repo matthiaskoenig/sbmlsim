@@ -1,7 +1,5 @@
 """Module for performing all the Calculations."""
 
-from typing import Optional
-
 from sbmlsim.simulation.base import BaseObject, BaseObjectSIdRequired, Symbol, Target
 
 
@@ -18,13 +16,13 @@ class Parameter(BaseObjectSIdRequired):
         self,
         sid: str,
         value: float,
-        unit: Optional[str] = None,
-        name: Optional[str] = None,
+        unit: str | None = None,
+        name: str | None = None,
     ):
         """Construct Parameter."""
-        super(Parameter, self).__init__(sid=sid, name=name)
+        super().__init__(sid=sid, name=name)
         self.value: float = value
-        self.unit: Optional[str] = unit
+        self.unit: str | None = unit
 
     def __repr__(self) -> str:
         """Get string representation."""
@@ -52,15 +50,15 @@ class AppliedDimension(BaseObject):
 
     def __init__(
         self,
-        target: Optional[str] = None,
-        dimension_target: Optional[str] = None,
-        sid: Optional[str] = None,
-        name: Optional[str] = None,
+        target: str | None = None,
+        dimension_target: str | None = None,
+        sid: str | None = None,
+        name: str | None = None,
     ):
         """Construct Parameter."""
-        super(AppliedDimension, self).__init__(sid=sid, name=name)
-        self.target: Optional[str] = target
-        self.dimension_target: Optional[str] = dimension_target
+        super().__init__(sid=sid, name=name)
+        self.target: str | None = target
+        self.dimension_target: str | None = dimension_target
 
     def __repr__(self) -> str:
         """Get string representation."""
@@ -77,24 +75,24 @@ class Variable(BaseObjectSIdRequired):
     def __init__(
         self,
         sid: str,
-        model_reference: Optional[str],
-        task_reference: Optional[str],
-        target: Optional[Target] = None,
-        symbol: Optional[Symbol] = None,
-        unit: Optional[str] = None,
-        name: Optional[str] = None,
-        term: Optional[str] = None,
-        applied_dimensions: Optional[list[AppliedDimension]] = None,
+        model_reference: str | None,
+        task_reference: str | None,
+        target: Target | None = None,
+        symbol: Symbol | None = None,
+        unit: str | None = None,
+        name: str | None = None,
+        term: str | None = None,
+        applied_dimensions: list[AppliedDimension] | None = None,
     ):
         """Construct Variable."""
-        super(Variable, self).__init__(sid=sid, name=name)
-        self.model_reference: Optional[str] = model_reference
-        self.task_reference: Optional[str] = task_reference
-        self.target: Optional[Target] = target
-        self.symbol: Optional[Symbol] = symbol
-        self.unit: Optional[str] = unit
-        self.term: Optional[str] = term
-        self.applied_dimensions: Optional[list[AppliedDimension]] = applied_dimensions
+        super().__init__(sid=sid, name=name)
+        self.model_reference: str | None = model_reference
+        self.task_reference: str | None = task_reference
+        self.target: Target | None = target
+        self.symbol: Symbol | None = symbol
+        self.unit: str | None = unit
+        self.term: str | None = term
+        self.applied_dimensions: list[AppliedDimension] | None = applied_dimensions
 
     def __repr__(self) -> str:
         """Get string representation."""
@@ -112,19 +110,19 @@ class DependentVariable(Variable):
     def __init__(
         self,
         sid: str,
-        model_reference: Optional[str],
-        task_reference: Optional[str],
-        target: Optional[Target] = None,
-        symbol: Optional[Symbol] = None,
-        target2: Optional[Target] = None,
-        symbol2: Optional[Symbol] = None,
-        unit: Optional[str] = None,
-        name: Optional[str] = None,
-        term: Optional[str] = None,
-        applied_dimensions: Optional[list[AppliedDimension]] = None,
+        model_reference: str | None,
+        task_reference: str | None,
+        target: Target | None = None,
+        symbol: Symbol | None = None,
+        target2: Target | None = None,
+        symbol2: Symbol | None = None,
+        unit: str | None = None,
+        name: str | None = None,
+        term: str | None = None,
+        applied_dimensions: list[AppliedDimension] | None = None,
     ):
         """Construct DependentVariable."""
-        super(DependentVariable, self).__init__(
+        super().__init__(
             sid=sid,
             name=name,
             model_reference=model_reference,
@@ -135,8 +133,8 @@ class DependentVariable(Variable):
             term=term,
             applied_dimensions=applied_dimensions,
         )
-        self.target2: Optional[Target] = target2
-        self.symbol2: Optional[Symbol] = symbol2
+        self.target2: Target | None = target2
+        self.symbol2: Symbol | None = symbol2
 
 
 class Calculation(BaseObjectSIdRequired):
@@ -151,10 +149,10 @@ class Calculation(BaseObjectSIdRequired):
         variables: list[Variable],
         parameters: list[Parameter],
         math: str,
-        name: Optional[str] = None,
+        name: str | None = None,
     ):
         """Construct Calculation."""
-        super(Calculation, self).__init__(sid=sid, name=name)
+        super().__init__(sid=sid, name=name)
         self.variables: list[Variable] = variables
         self.parameters: list[Parameter] = pars
         self.math: str = math
@@ -162,7 +160,6 @@ class Calculation(BaseObjectSIdRequired):
     # @abstractmethod
     def values(self):
         """Access to values."""
-        pass
         # FIXME
         # evaluate with actual data
         # astnode = mathml.formula_to_astnode(self.function)
@@ -186,23 +183,17 @@ class Calculation(BaseObjectSIdRequired):
 class ComputeChange(Calculation):
     """ComputeChange class."""
 
-    pass
-
 
 class DataGenerator(Calculation):
     """DataGenerator class."""
-
-    pass
 
 
 class FunctionalRange(Calculation):
     """FunctionalRange class."""
 
-    pass
-
 
 if __name__ == "__main__":
-    from pymetadata.console import console
+    from sbmlsim.console import console
 
     pars: list[Parameter] = [
         Parameter(sid="p1", value=10.0, unit="mM"),

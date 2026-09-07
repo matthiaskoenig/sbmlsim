@@ -1,22 +1,20 @@
 """RoadRunner model."""
 
+import logging
 import tempfile
 from pathlib import Path
-from typing import Optional, Union
 
 import libsbml
 import numpy as np
 import pandas as pd
 import roadrunner
-from pymetadata import log
 
 from sbmlsim.model import AbstractModel
 from sbmlsim.model.model_resources import Source
 from sbmlsim.units import Quantity, UnitRegistry, UnitsInformation
 from sbmlsim.utils import md5_for_path
 
-
-logger = log.get_logger(__name__)
+logger = logging.getLogger(__name__)
 
 
 class RoadrunnerSBMLModel(AbstractModel):
@@ -31,7 +29,7 @@ class RoadrunnerSBMLModel(AbstractModel):
 
     def __init__(
         self,
-        source: Union[str, Path],
+        source: str | Path,
         base_path: Path = None,
         changes: dict = None,
         sid: str = None,
@@ -40,7 +38,7 @@ class RoadrunnerSBMLModel(AbstractModel):
         ureg: UnitRegistry = None,
         settings: dict = None,
     ):
-        super(RoadrunnerSBMLModel, self).__init__(
+        super().__init__(
             source=source,
             language_type=AbstractModel.LanguageType.SBML,
             changes=changes,
@@ -56,7 +54,7 @@ class RoadrunnerSBMLModel(AbstractModel):
 
         # load model
         # logger.info("load model")
-        self.r: Optional[roadrunner.RoadRunner] = self.load_roadrunner_model(
+        self.r: roadrunner.RoadRunner | None = self.load_roadrunner_model(
             source=self.source
         )
         # logger.info(self.r)
@@ -144,7 +142,7 @@ class RoadrunnerSBMLModel(AbstractModel):
         return r
 
     @staticmethod
-    def get_state_path(sbml_path: Path) -> Optional[Path]:
+    def get_state_path(sbml_path: Path) -> Path | None:
         """Get path of the state file.
 
         The state file is a binary file which allows fast model loading.
@@ -215,7 +213,7 @@ class RoadrunnerSBMLModel(AbstractModel):
         for key, value in kwargs.items():
             if key not in RoadrunnerSBMLModel.IntegratorSettingKeys:
                 logger.debug(
-                    f"Unsupported integrator key for roadrunner " f"integrator: '{key}'"
+                    f"Unsupported integrator key for roadrunner integrator: '{key}'"
                 )
                 continue
 

@@ -21,14 +21,13 @@ they dont contend for other lower-level (OS) resources. That's the "multiprocess
 part.
 """
 
+import logging
 import multiprocessing
 import os
-from typing import Optional
 
 import numpy as np
-from pymetadata import log
-from pymetadata.console import console
 
+from sbmlsim.console import console
 from sbmlsim.fit.optimization import OptimizationProblem
 from sbmlsim.fit.options import (
     LossFunctionType,
@@ -40,8 +39,7 @@ from sbmlsim.fit.options import (
 from sbmlsim.fit.result import OptimizationResult
 from sbmlsim.utils import timeit
 
-
-logger = log.get_logger(__name__)
+logger = logging.getLogger(__name__)
 lock = multiprocessing.Lock()
 
 
@@ -54,11 +52,11 @@ def run_optimization(
     loss_function: LossFunctionType = LossFunctionType.LINEAR,
     weighting_curves: list[WeightingCurvesType] = None,
     weighting_points: WeightingPointsType = WeightingPointsType.NO_WEIGHTING,
-    seed: Optional[int] = None,
+    seed: int | None = None,
     variable_step_size: bool = True,
     relative_tolerance: float = 1e-6,
     absolute_tolerance: float = 1e-6,
-    n_cores: Optional[int] = 1,
+    n_cores: int | None = 1,
     serial: bool = False,
     **kwargs,
 ) -> OptimizationResult:
@@ -185,7 +183,7 @@ def _run_optimization_serial(
     loss_function: LossFunctionType = LossFunctionType.LINEAR,
     weighting_curves: list[WeightingCurvesType] = None,
     weighting_points: WeightingPointsType = WeightingPointsType.NO_WEIGHTING,
-    seed: Optional[int] = None,
+    seed: int | None = None,
     variable_step_size: bool = True,
     relative_tolerance: float = 1e-6,
     absolute_tolerance: float = 1e-6,

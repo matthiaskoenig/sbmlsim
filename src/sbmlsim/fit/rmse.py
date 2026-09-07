@@ -2,7 +2,8 @@
 
 import numpy as np
 import pandas as pd
-from pymetadata.console import console
+
+from sbmlsim.console import console
 
 
 def rmse(mse: float):

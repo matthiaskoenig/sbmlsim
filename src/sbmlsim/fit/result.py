@@ -1,21 +1,20 @@
 """Result of optimization."""
 
 import datetime
+import logging
 import uuid
+from collections.abc import Iterable
 from pathlib import Path
-from typing import Iterable, Optional, Union
 
 import numpy as np
 import pandas as pd
-from pymetadata import log
-from pymetadata.console import console
 from scipy.optimize import OptimizeResult
 
+from sbmlsim.console import console
 from sbmlsim.fit.objects import FitParameter
 from sbmlsim.serialization import ObjectJSONEncoder, from_json, to_json
 
-
-logger = log.get_logger(__name__)
+logger = logging.getLogger(__name__)
 
 
 class OptimizationResult(ObjectJSONEncoder):
@@ -39,14 +38,12 @@ class OptimizationResult(ObjectJSONEncoder):
         :param fits:
         :param trajectories:
         """
-        super(OptimizationResult, self).__init__()
+        super().__init__()
         if sid:
             self.sid = sid
         else:
             uuid_str = str(uuid.uuid4())
-            self.sid = (
-                "{:%Y%m%d_%H%M%S}".format(datetime.datetime.now()) + f"__{uuid_str[:5]}"
-            )
+            self.sid = f"{datetime.datetime.now():%Y%m%d_%H%M%S}" + f"__{uuid_str[:5]}"
         self.parameters: list[FitParameter] = []
         for p in parameters:
             if isinstance(p, dict):
@@ -78,7 +75,7 @@ class OptimizationResult(ObjectJSONEncoder):
             d[key] = self.__dict__[key]
         return d
 
-    def to_json(self, path: Optional[Path] = None) -> Union[str, Path]:
+    def to_json(self, path: Path | None = None) -> str | Path:
         """Store OptimizationResult as json.
 
         Uses the to_dict method.
@@ -86,7 +83,7 @@ class OptimizationResult(ObjectJSONEncoder):
         return to_json(object=self, path=path)
 
     @staticmethod
-    def from_json(json_info: Union[str, Path]) -> "OptimizationResult":
+    def from_json(json_info: str | Path) -> "OptimizationResult":
         """Load OptimizationResult from Path or str.
 
         :param json_info:
@@ -201,7 +198,7 @@ class OptimizationResult(ObjectJSONEncoder):
 
         return df
 
-    def report(self, path: Optional[Path] = None, print_output: bool = True) -> str:
+    def report(self, path: Path | None = None, print_output: bool = True) -> str:
         """Report of optimization."""
         pd.set_option("display.max_columns", None)
         pd.set_option("display.expand_frame_repr", False)
@@ -235,9 +232,7 @@ class OptimizationResult(ObjectJSONEncoder):
 
         for key, value in fitted_pars.items():
             info.append(
-                "\t'{}': Q_({}, '{}'),  # [{} - {}]".format(
-                    key, value[0], value[1], value[2], value[3]
-                )
+                f"\t'{key}': Q_({value[0]}, '{value[1]}'),  # [{value[2]} - {value[3]}]"
             )
         info.append("-" * 80)
         info_str: str = "\n".join(info)

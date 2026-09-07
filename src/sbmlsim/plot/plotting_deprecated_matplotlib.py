@@ -2,18 +2,18 @@
 
 These functions will be removed in future releases.
 """
+
 import itertools
+import logging
 
 import pandas as pd
 from matplotlib import pyplot as plt
-from pymetadata import log
 
 from sbmlsim.data import DataSet
 from sbmlsim.result import XResult
 from sbmlsim.utils import deprecated
 
-
-logger = log.get_logger(__name__)
+logger = logging.getLogger(__name__)
 
 kwargs_data = {"marker": "s", "linestyle": "--", "linewidth": 1, "capsize": 3}
 kwargs_sim = {"marker": None, "linestyle": "-", "linewidth": 2}
@@ -52,7 +52,7 @@ def add_line(
     """
     if not isinstance(xres, XResult):
         raise ValueError(
-            f"Only XResult supported in plotting, but found: " f"'{type(xres)}'"
+            f"Only XResult supported in plotting, but found: '{type(xres)}'"
         )
 
     # mean data with units

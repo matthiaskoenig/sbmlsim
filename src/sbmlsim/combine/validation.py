@@ -1,4 +1,5 @@
 """Validation of OMEX."""
+
 from pathlib import Path
 
 from biosimulators_utils.combine.io import CombineArchiveReader

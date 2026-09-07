@@ -1,4 +1,5 @@
 """BaseObjects for SED-ML and simulation."""
+
 from abc import ABC
 from typing import Optional
 

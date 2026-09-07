@@ -9,17 +9,15 @@ The functionality is very useful, but only if this can be applied to existing
 models in a simple manner.
 """
 
+import logging
 from pathlib import Path
-from typing import Tuple, Union
 
 import libsbml
 import pandas as pd
-
-from pymetadata import log
 from sbmlutils.io.sbml import write_sbml
-from sbmlutils.validation import validate_doc, ValidationOptions
+from sbmlutils.validation import ValidationOptions, validate_doc
 
-logger = log.get_logger(__name__)
+logger = logging.getLogger(__name__)
 
 
 notes = libsbml.XMLNode.convertStringToXMLNode(
@@ -80,11 +78,11 @@ class Interpolator:
         """Convert to string."""
         s = (
             "--------------------------\n"
-            "Interpolator<{}>\n"
+            f"Interpolator<{self.method}>\n"
             "--------------------------\n"
-            "{}\n"
-            "{}\n"
-            "formula:\n {}\n".format(self.method, self.x, self.y, self.formula())
+            f"{self.x}\n"
+            f"{self.y}\n"
+            f"formula:\n {self.formula()}\n"
         )
         return s
 
@@ -122,7 +120,7 @@ class Interpolator:
         from the spline interpolation.
         """
         # calculate spline coefficients
-        coeffs: list[Tuple[float]] = Interpolator._natural_spline_coeffs(x, y)
+        coeffs: list[tuple[float]] = Interpolator._natural_spline_coeffs(x, y)
 
         # create piecewise terms
         items: list[str] = []
@@ -140,7 +138,7 @@ class Interpolator:
         return "piecewise({})".format(", ".join(items))
 
     @staticmethod
-    def _natural_spline_coeffs(X: pd.Series, Y: pd.Series) -> list[Tuple[float]]:
+    def _natural_spline_coeffs(X: pd.Series, Y: pd.Series) -> list[tuple[float]]:
         """Calculate natural spline coefficients.
 
         Calculation of coefficients for
@@ -185,7 +183,7 @@ class Interpolator:
             b[j] = (a[j + 1] - a[j]) / h[j] - (h[j] * (c[j + 1] + 2 * c[j])) / 3
             d[j] = (c[j + 1] - c[j]) / (3 * h[j])
         # store coefficients
-        coeffs: list[Tuple[float]] = []
+        coeffs: list[tuple[float]] = []
         for i in range(n):
             coeffs.append((a[i], b[i], c[i], d[i]))  # type: ignore
         return coeffs
@@ -204,12 +202,12 @@ class Interpolator:
             y1 = col2.iloc[k]
             y2 = col2.iloc[k + 1]
             m = (y2 - y1) / (x2 - x1)
-            formula = "{} + {}*(time-{})".format(y1, m, x1)
-            condition = "time >= {} && time < {}".format(x1, x2)
-            s = "{}, {}".format(formula, condition)
+            formula = f"{y1} + {m}*(time-{x1})"
+            condition = f"time >= {x1} && time < {x2}"
+            s = f"{formula}, {condition}"
             items.append(s)
         # last value after last time
-        s = "{}, time >= {}".format(col2.iloc[len(col1) - 1], col1.iloc[len(col1) - 1])
+        s = f"{col2.iloc[len(col1) - 1]}, time >= {col1.iloc[len(col1) - 1]}"
         items.append(s)
         # otherwise
         items.append("0.0")
@@ -226,18 +224,18 @@ class Interpolator:
         """
         items = []
         # first value before first time
-        s = "{}, time < {}".format(col2.iloc[0], col1.iloc[0])
+        s = f"{col2.iloc[0]}, time < {col1.iloc[0]}"
         items.append(s)
 
         # intermediate vales
         for k in range(len(col1) - 1):
-            condition = "time >= {} && time < {}".format(col1.iloc[k], col1.iloc[k + 1])
-            formula = "{}".format(col2.iloc[k])
-            s = "{}, {}".format(formula, condition)
+            condition = f"time >= {col1.iloc[k]} && time < {col1.iloc[k + 1]}"
+            formula = f"{col2.iloc[k]}"
+            s = f"{formula}, {condition}"
             items.append(s)
 
         # last value after last time
-        s = "{}, time >= {}".format(col2.iloc[len(col1) - 1], col1.iloc[len(col1) - 1])
+        s = f"{col2.iloc[len(col1) - 1]}, time >= {col1.iloc[len(col1) - 1]}"
         items.append(s)
 
         # otherwise
@@ -290,14 +288,14 @@ class Interpolation:
 
     @staticmethod
     def from_csv(
-        csv_file: Union[Path, str], method: str = "linear", sep: str = ","
+        csv_file: Path | str, method: str = "linear", sep: str = ","
     ) -> "Interpolation":
         """Interpolation object from csv file."""
         data: pd.DataFrame = pd.read_csv(csv_file, sep=sep)
         return Interpolation(data=data, method=method)
 
     @staticmethod
-    def from_tsv(tsv_file: Union[Path, str], method: str = "linear") -> "Interpolation":
+    def from_tsv(tsv_file: Path | str, method: str = "linear") -> "Interpolation":
         """Interpolate object from tsv file."""
         return Interpolation.from_csv(csv_file=tsv_file, method=method, sep="\t")
 
@@ -372,15 +370,12 @@ class Interpolation:
         :param model: Model
         :return:
         """
-
         # create parameter
         pid = interpolator.yid
 
         # if parameter exists remove it
         if model.getParameter(pid):
-            logger.warning(
-                "Model contains parameter: {}. Parameter is removed.".format(pid)
-            )
+            logger.warning(f"Model contains parameter: {pid}. Parameter is removed.")
             model.removeParameter(pid)
 
         # if assignment rule exists remove it

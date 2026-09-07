@@ -6,17 +6,14 @@ Model can be in different formats, main supported format being SBML.
 Other formats could be supported like CellML or NeuroML.
 """
 
+import logging
 from enum import Enum
 from pathlib import Path
-from typing import Optional, Union
-
-from pymetadata import log
 
 from sbmlsim.model.model_resources import Source
 from sbmlsim.units import UnitsInformation
 
-
-logger = log.get_logger(__name__)
+logger = logging.getLogger(__name__)
 
 
 class AbstractModel:
@@ -44,17 +41,16 @@ class AbstractModel:
 
     def __init__(
         self,
-        source: Union[str, Path],
-        sid: Optional[str] = None,
-        name: Optional[str] = None,
-        language: Optional[str] = None,
+        source: str | Path,
+        sid: str | None = None,
+        name: str | None = None,
+        language: str | None = None,
         language_type: LanguageType = LanguageType.SBML,
-        base_path: Optional[Path] = None,
+        base_path: Path | None = None,
         changes: dict = None,
         selections: list[str] = None,
     ):
         """Initialize SourceType."""
-
         if not language and not language_type:
             raise ValueError(
                 "Either 'language' or 'language_type' argument are required"

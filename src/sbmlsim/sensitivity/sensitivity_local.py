@@ -29,24 +29,22 @@ Notes:
     Here a multistep method is implemented following Najjar et al.
 
 References:
-
     - Najjar A, Hamadeh A, Krause S, Schepky A, Edginton A. Global sensitivity analysis of Open Systems Pharmacology Suite physiologically based pharmacokinetic models. CPT Pharmacometrics Syst Pharmacol. 2024 Dec;13(12):2052-2067. doi: 10.1002/psp4.13256. Epub 2024 Nov 5. PMID: 39498820; PMCID: PMC11646943.
 
 """
 
+import logging
 from pathlib import Path
-from typing import Optional
 
 import numpy as np
 import pandas as pd
 import xarray as xr
-from pymetadata.console import console
-from pymetadata.log import get_logger
 
+from sbmlsim.console import console
 from sbmlsim.sensitivity.analysis import (
-    SensitivitySimulation,
     AnalysisGroup,
     SensitivityAnalysis,
+    SensitivitySimulation,
 )
 from sbmlsim.sensitivity.classification import (
     sensitivity_classification,
@@ -54,7 +52,7 @@ from sbmlsim.sensitivity.classification import (
 )
 from sbmlsim.sensitivity.parameters import SensitivityParameter
 
-logger = get_logger(__name__)
+logger = logging.getLogger(__name__)
 
 
 class LocalSensitivityAnalysis(SensitivityAnalysis):
@@ -77,8 +75,8 @@ class LocalSensitivityAnalysis(SensitivityAnalysis):
         parameters: list[SensitivityParameter],
         groups: list[AnalysisGroup],
         results_path: Path,
-        seed: Optional[int] = None,
-        n_cores: Optional[int] = None,
+        seed: int | None = None,
+        n_cores: int | None = None,
         cache_results: bool = False,
         difference: float = 0.01,
         n_var: int = 3,
@@ -197,7 +195,7 @@ class LocalSensitivityAnalysis(SensitivityAnalysis):
 
     def calculate_sensitivity(
         self,
-        cache_filename: Optional[str] = None,
+        cache_filename: str | None = None,
         cache: bool = False,
     ) -> None:
         """Compute raw and normalized local sensitivities.
@@ -274,7 +272,7 @@ class LocalSensitivityAnalysis(SensitivityAnalysis):
                             # variable due to numerical fluctuations).
                             # This warning should be taken seriously and be investigated.
                             logger.error(
-                                f"Large delta difference: {max_diff*100:.1f}% for {delta}. "
+                                f"Large delta difference: {max_diff * 100:.1f}% for {delta}. "
                                 f"Parameter '{self.parameter_ids[kp]}' on output '{self.output_ids[ko]}'."
                             )
                     sensitivity_raw[kp, ko] = np.sum(delta) / self.n_var

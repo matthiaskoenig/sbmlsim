@@ -2,9 +2,8 @@ import numpy as np
 import pandas as pd
 import roadrunner
 
-
-from sbmlsim.comparison.simulate import SimulateSBML, Condition
-from pymetadata.console import console
+from sbmlsim.comparison.simulate import Condition, SimulateSBML
+from sbmlsim.console import console
 
 
 class SimulateRoadrunnerSBML(SimulateSBML):

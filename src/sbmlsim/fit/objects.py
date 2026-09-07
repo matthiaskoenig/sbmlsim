@@ -1,21 +1,22 @@
 """Definition of Objects used in FitProblems and optimization."""
 
 from __future__ import annotations
+
 import json
+import logging
 import math
+from collections.abc import Callable, Iterable
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Callable, Iterable, Optional, Union
+from typing import Any
 
 import numpy as np
 import pandas as pd
-from pymetadata import log
 
 from sbmlsim.data import Data
 from sbmlsim.serialization import to_json
 
-
-logger = log.get_logger(__name__)
+logger = logging.getLogger(__name__)
 
 
 class FitExperiment:
@@ -29,9 +30,9 @@ class FitExperiment:
         self,
         experiment: Callable,
         mappings: list[str] = None,
-        weights: Union[float, list[float]] = None,
+        weights: float | list[float] = None,
         use_mapping_weights: bool = False,
-        fit_parameters: dict[str, list["FitParameter"]] = None,
+        fit_parameters: dict[str, list[FitParameter]] = None,
         exclude: bool = False,
     ):
         """Initialize simulation experiment used in a fitting.
@@ -77,9 +78,8 @@ class FitExperiment:
         return self._weights
 
     @weights.setter
-    def weights(self, weights: Union[float, list[float]] = None) -> None:
+    def weights(self, weights: float | list[float] = None) -> None:
         """Set weights for mappings in fit experiment."""
-
         weights_processed = None
         if self.use_mapping_weights is True:
             mapping_weights = [None] * len(self.mappings)
@@ -96,7 +96,7 @@ class FitExperiment:
                     f"Either 'weights' can be set on a FitExperiment or the weight of "
                     f"the FitMapping can be used via the 'use_mapping_weights=True' "
                     f"flag.\n"
-                    f"Weights were provided: '{weights}' in {str(self)}"
+                    f"Weights were provided: '{weights}' in {self!s}"
                 )
         else:
             # weights processing
@@ -117,7 +117,7 @@ class FitExperiment:
         self._weights = weights_processed
 
     @staticmethod
-    def reduce(fit_experiments: Iterable["FitExperiment"]) -> list["FitExperiment"]:
+    def reduce(fit_experiments: Iterable[FitExperiment]) -> list[FitExperiment]:
         """Collect fit mappings of multiple FitExperiments if these can be combined."""
         red_experiments = {}
         for fit_exp in fit_experiments:
@@ -138,7 +138,7 @@ class FitExperiment:
         """Get representation."""
         return (
             f"{self.__class__.__name__}({self.experiment_class.__name__} "
-            f"{[f'{m} x {w}' for (m,w) in list(zip(self.mappings, self.weights))]})"
+            f"{[f'{m} x {w}' for (m, w) in list(zip(self.mappings, self.weights))]})"
         )
 
     def __str__(self) -> str:
@@ -158,8 +158,6 @@ class FitExperiment:
 class MappingMetaData:
     """Metadata for mapping."""
 
-    pass
-
 
 class FitMapping:
     """Mapping of reference data to observable data.
@@ -172,8 +170,8 @@ class FitMapping:
     def __init__(
         self,
         experiment: Any,  # SimulationExperiment (avoid circular import)
-        reference: "FitData",
-        observable: "FitData",
+        reference: FitData,
+        observable: FitData,
         weight: float = None,
         metadata: MappingMetaData = None,
     ):
@@ -198,13 +196,12 @@ class FitMapping:
         """Return defined weight or count of the reference."""
         if self._weight is not None:
             return self._weight
-        else:
-            try:
-                return self.reference.count
-            except AttributeError:
-                msg = f"Count data missing on FitMapping: '{self}'"
-                logger.error(msg)
-                raise AttributeError(msg)
+        try:
+            return self.reference.count
+        except AttributeError:
+            msg = f"Count data missing on FitMapping: '{self}'"
+            logger.error(msg)
+            raise AttributeError(msg)
 
     def __str__(self) -> str:
         """Get string."""
@@ -244,8 +241,7 @@ class FitParameter:
         self.unit = unit
         if unit is None:
             logger.warning(
-                f"No unit provided for FitParameter '{self.pid}', assuming "
-                f"model units."
+                f"No unit provided for FitParameter '{self.pid}', assuming model units."
             )
 
     def __eq__(self, other: object) -> bool:
@@ -271,14 +267,14 @@ class FitParameter:
             f"[{self.lower_bound} - {self.upper_bound}]>"
         )
 
-    def to_json(self, path: Path = None) -> Optional[str]:
+    def to_json(self, path: Path = None) -> str | None:
         """Serialize to JSON.
 
         Serializes to file if path is provided, otherwise returns JSON string.
         """
         return to_json(object=self, path=path)
 
-    def to_dict(self, path: Path = None) -> Optional[str]:
+    def to_dict(self, path: Path = None) -> str | None:
         """Serialize to JSON.
 
         Serializes to file if path is provided, otherwise returns JSON string.
@@ -292,10 +288,10 @@ class FitParameter:
         }
 
     @staticmethod
-    def from_json(json_info: Union[str, Path]) -> "FitParameter":
+    def from_json(json_info: str | Path) -> FitParameter:
         """Load from JSON."""
         if isinstance(json_info, Path):
-            with open(json_info, "r", encoding="utf-8") as f_json:
+            with open(json_info, encoding="utf-8") as f_json:
                 d = json.load(f_json)
         else:
             d = json.loads(json_info)
@@ -319,17 +315,16 @@ class FitData:
         experiment: Any,  # SimulationExperiment (avoid circular import)
         xid: str,
         yid: str,
-        xid_sd: Optional[str] = None,
-        xid_se: Optional[str] = None,
-        yid_sd: Optional[str] = None,
-        yid_se: Optional[str] = None,
-        count: Optional[Union[int, str]] = None,
-        dataset: Optional[str] = None,
-        task: Optional[str] = None,
-        function: Optional[str] = None,
+        xid_sd: str | None = None,
+        xid_se: str | None = None,
+        yid_sd: str | None = None,
+        yid_se: str | None = None,
+        count: int | str | None = None,
+        dataset: str | None = None,
+        task: str | None = None,
+        function: str | None = None,
     ):
         """Initialize FitData."""
-
         self.experiment = experiment
         self.dset_id = dataset
         self.task_id = task
@@ -338,24 +333,23 @@ class FitData:
         if count is not None:
             if dataset is None:
                 raise ValueError("'count' can only be set on FitData with dataset")
+            # FIXME: remove duplication with add_data in plotting
+            if isinstance(count, int):
+                pass
+            elif isinstance(count, str):
+                # resolve count data from dataset
+                count_data = Data(index=count, dataset=dataset, task=task)
+                counts = count_data.get_data(self.experiment)
+                counts_unique = np.unique(counts.magnitude)
+                if counts_unique.size > 1:
+                    logger.warning(f"count is not unique for dataset: '{counts}'")
+                count = int(counts[0].magnitude)
             else:
-                # FIXME: remove duplication with add_data in plotting
-                if isinstance(count, int):
-                    pass
-                elif isinstance(count, str):
-                    # resolve count data from dataset
-                    count_data = Data(index=count, dataset=dataset, task=task)
-                    counts = count_data.get_data(self.experiment)
-                    counts_unique = np.unique(counts.magnitude)
-                    if counts_unique.size > 1:
-                        logger.warning(f"count is not unique for dataset: '{counts}'")
-                    count = int(counts[0].magnitude)
-                else:
-                    raise ValueError(
-                        f"'count' must be integer or a column in a "
-                        f"dataset, but type '{type(count)}'."
-                    )
-                self.count = count
+                raise ValueError(
+                    f"'count' must be integer or a column in a "
+                    f"dataset, but type '{type(count)}'."
+                )
+            self.count = count
 
         # actual Data
         # FIXME: simplify
@@ -444,7 +438,7 @@ class FitData:
             raise ValueError("DataType could not be determined!")
         return dtype
 
-    def get_data(self) -> "FitDataInitialized":
+    def get_data(self) -> FitDataInitialized:
         """Return actual data.
 
         Numerical values are resolved using the executed simulation experiment.

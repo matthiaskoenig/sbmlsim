@@ -1,17 +1,15 @@
 """Module for encoding simulation results and processed data."""
 
-from typing import List, Optional
+import logging
 
 import numpy as np
 import pandas as pd
 import xarray as xr
-from pymetadata import log
 
 from sbmlsim.simulation import Dimension, ScanSim
 from sbmlsim.units import UnitsInformation
 
-
-logger = log.get_logger(__name__)
+logger = logging.getLogger(__name__)
 
 
 class XResult:
@@ -21,7 +19,7 @@ class XResult:
     dictionary lookups.
     """
 
-    def __init__(self, xdataset: xr.Dataset, uinfo: Optional[UnitsInformation] = None):
+    def __init__(self, xdataset: xr.Dataset, uinfo: UnitsInformation | None = None):
         self.xds = xdataset
         self.uinfo = uinfo
 
@@ -30,7 +28,7 @@ class XResult:
         try:
             return self.xds[key]
         except KeyError as err:
-            logger.error(f"Key '{key}' not in {self.xds}" f"\n{err}")
+            logger.error(f"Key '{key}' not in {self.xds}\n{err}")
             raise err
 
     def __getattr__(self, name):
@@ -38,9 +36,8 @@ class XResult:
         if name in {"xds", "scan", "uinfo"}:
             # local field lookup
             return getattr(self, name)
-        else:
-            # forward lookup to xds
-            return getattr(self.xds, name)
+        # forward lookup to xds
+        return getattr(self.xds, name)
 
     def __str__(self) -> str:
         """Get string."""
@@ -79,14 +76,14 @@ class XResult:
             dim=self._redop_dims(), skipna=True
         ).values * self.uinfo.ureg(self.uinfo[key])
 
-    def _redop_dims(self) -> List[str]:
+    def _redop_dims(self) -> list[str]:
         """Dimensions for reducing operations."""
         return [dim_id for dim_id in self.dims if dim_id != "_time"]
 
     @classmethod
     def from_dfs(
         cls,
-        dfs: List[pd.DataFrame],
+        dfs: list[pd.DataFrame],
         scan: ScanSim = None,
         uinfo: UnitsInformation = None,
     ) -> "XResult":
@@ -160,9 +157,8 @@ class XResult:
             for dim in xds.dims:
                 if dim == "_time":
                     continue
-                else:
-                    if xds.sizes[dim] != 1:
-                        is_tc = False
+                if xds.sizes[dim] != 1:
+                    is_tc = False
         else:
             return False
         return is_tc

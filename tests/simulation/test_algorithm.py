@@ -1,4 +1,5 @@
 """Test Algorithm and AlgorithmParameters."""
+
 import pytest
 
 from sbmlsim.simulation.algorithm import KISAO, Algorithm, AlgorithmParameter, KISAOType

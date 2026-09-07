@@ -2,8 +2,8 @@
 
 import itertools
 from abc import abstractmethod
+from collections.abc import Iterable
 from enum import Enum, auto
-from typing import Iterable, Tuple, Union
 
 import numpy as np
 
@@ -20,7 +20,7 @@ class Range(BaseObject):
 
     def __init__(self, sid: str, name: str = None):
         """Construct Range."""
-        super(Range, self).__init__(sid=sid, name=name)
+        super().__init__(sid=sid, name=name)
         self._values: np.ndarray
 
     def __repr__(self) -> str:
@@ -53,11 +53,11 @@ class VectorRange(Range):
     def __init__(
         self,
         sid: str,
-        values: Union[list, Tuple, np.ndarray],
+        values: list | tuple | np.ndarray,
         name: str = None,
     ):
         """Construct VectorRange."""
-        super(VectorRange, self).__init__(sid=sid, name=name)
+        super().__init__(sid=sid, name=name)
         if isinstance(values, (list, tuple)):
             values = np.array(values)
 
@@ -121,7 +121,7 @@ class UniformRange(Range):
         name: str = None,
     ):
         """Construct VectorRange."""
-        super(UniformRange, self).__init__(sid=sid, name=name)
+        super().__init__(sid=sid, name=name)
         self.start: float = start
         self.end: float = end
         self.steps: int = steps
@@ -163,7 +163,7 @@ class DataRange(Range):
 
     def __init__(self, sid: str, source_ref: str, name: str = None):
         """Construct DataRange."""
-        super(DataRange, self).__init__(sid=sid, name=name)
+        super().__init__(sid=sid, name=name)
         self.source_ref: str = source_ref
 
     def __repr__(self) -> str:
@@ -175,7 +175,6 @@ class DataRange(Range):
     @property
     def values(self) -> np.ndarray:
         """Resolve data from data generator."""
-
         # FIXME: implement; requires access to the resolved DataDescriptions of the experiment.
         # raise NotImplementedError
         return None
@@ -200,7 +199,7 @@ class FunctionalRange(Calculation, Range):
         name: str = None,
     ):
         """Construct DataRange."""
-        super(FunctionalRange, self).__init__(
+        super().__init__(
             sid=sid, name=name, variables=variables, parameters=parameters, math=math
         )
         self.range: str = range
@@ -214,7 +213,6 @@ class FunctionalRange(Calculation, Range):
     @property
     def values(self) -> np.ndarray:
         """Resolve data from data generator."""
-
         # FIXME: implement; requires access to all numerical values in the variables and the ranges.
         # raise NotImplementedError
         return None
@@ -262,7 +260,7 @@ class Dimension:
 
     def __repr__(self) -> str:
         """Get representation."""
-        return f"Dim({self.dimension}({len(self)}), " f"{list(self.changes.keys())})"
+        return f"Dim({self.dimension}({len(self)}), {list(self.changes.keys())})"
 
     def __len__(self) -> int:
         """Get length."""
@@ -276,7 +274,7 @@ class Dimension:
 
 
 if __name__ == "__main__":
-    from pymetadata.console import console
+    from sbmlsim.console import console
 
     console.rule("[bold red]Range examples")
     ranges = [

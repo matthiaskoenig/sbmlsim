@@ -1,4 +1,3 @@
-
 from pathlib import Path
 from typing import List
 
@@ -8,10 +7,7 @@ import pandas as pd
 
 
 output_dir: Path = Path(__file__).parent / "results"
-model_mids: List[str] = [
-    "icg_body_flat",
-    "icg_body_events_flat"
-]
+model_mids: List[str] = ["icg_body_flat", "icg_body_events_flat"]
 
 # Check if AMICI can simulate the model
 for mid in model_mids:
@@ -51,4 +47,3 @@ for mid in model_mids:
     s = r.simulate(0, 20, steps=5)
     df_roadrunner = pd.DataFrame(s, columns=s.colnames)
     print(df_roadrunner.head())
-

@@ -1,19 +1,17 @@
 """Template functions to run the example cases."""
 
 import importlib
+import logging
 import os
 import zipfile
 from enum import Enum
 from pathlib import Path
-from typing import Optional, Tuple, Union
 from xml.etree import ElementTree
 
 import libsedml
 from pymetadata import omex as pyomex
-from pymetadata import log
 
-
-logger = log.get_logger(__name__)
+logger = logging.getLogger(__name__)
 
 
 def check_sedml_doc(sed_doc: libsedml.SedDocument) -> libsedml.SedErrorLog:
@@ -67,27 +65,24 @@ class SEDMLReader:
     Execution must be performed where the master SED-ML is located.
     """
 
-    def __init__(self, source: Union[Path, str], working_dir: Path = None):
+    def __init__(self, source: Path | str, working_dir: Path = None):
         """Initialize SEDMLReader."""
-        self.source: Union[Path, str] = source
+        self.source: Path | str = source
         self.exec_dir: Path = os.getcwd()
         self.working_dir: Path = working_dir
-        self.input_type: Optional[SEDMLInputType] = None
-        self.error_log: Optional[libsedml.SedErrorLog] = None
-        self.sed_doc: Optional[libsedml.SedDocument] = None
+        self.input_type: SEDMLInputType | None = None
+        self.error_log: libsedml.SedErrorLog | None = None
+        self.sed_doc: libsedml.SedDocument | None = None
 
         # read document
         self.sed_doc, self.input_type = self.read_sedml()
 
         # check document
         if self.sed_doc:
-            self.error_log: Optional[libsedml.SedErrorLog] = check_sedml_doc(
-                self.sed_doc
-            )
+            self.error_log: libsedml.SedErrorLog | None = check_sedml_doc(self.sed_doc)
 
     def __repr__(self) -> None:
         """Get string representation."""
-
         source_str = (
             self.source
             if self.input_type is not SEDMLInputType.SEDML_STRING
@@ -111,7 +106,7 @@ class SEDMLReader:
         ]
         return "\n".join(info)
 
-    def read_sedml(self) -> Tuple[libsedml.SedDocument, SEDMLInputType]:
+    def read_sedml(self) -> tuple[libsedml.SedDocument, SEDMLInputType]:
         """Read SedMLDocument.
 
         Sets the instance variables as a result.
@@ -135,7 +130,7 @@ class SEDMLReader:
         else:
             file_path = Path(self.source)
             if not file_path.exists():
-                raise IOError(f"SED-ML file/archive does not exist: {file_path}")
+                raise OSError(f"SED-ML file/archive does not exist: {file_path}")
 
             _, file_suffix = file_path.stem, file_path.suffix
 
@@ -178,7 +173,7 @@ class SEDMLReader:
                 sed_doc = libsedml.readSedMLFromFile(str(file_path))
 
         if sed_doc is None:
-            raise IOError("SED-ML could not be read.")
+            raise OSError("SED-ML could not be read.")
 
         # FIXME: figure out the working dir, i.e. relative to the SED-ML files
         return sed_doc, input_type

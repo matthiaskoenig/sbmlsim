@@ -1,9 +1,8 @@
 """Reports."""
 
-from pymetadata import log
+import logging
 
-
-logger = log.get_logger(__name__)
+logger = logging.getLogger(__name__)
 
 
 class Report:

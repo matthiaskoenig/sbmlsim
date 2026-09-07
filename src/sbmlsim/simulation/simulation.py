@@ -1,17 +1,15 @@
 """Abstract base simulation."""
 
 import abc
+import logging
 from abc import ABC
-
-from pymetadata import log
 
 from sbmlsim.simulation.algorithm import Algorithm
 from sbmlsim.simulation.base import BaseObject
 from sbmlsim.simulation.range import Dimension
 from sbmlsim.units import UnitsInformation
 
-
-logger = log.get_logger(__name__)
+logger = logging.getLogger(__name__)
 
 
 class Simulation(BaseObject):
@@ -32,7 +30,7 @@ class Simulation(BaseObject):
         for the execution of the simulation. The algorithms are defined
         via the Algorithm class.
         """
-        super(Simulation, self).__init__(sid=sid, name=name)
+        super().__init__(sid=sid, name=name)
         self.algorithm: Algorithm = algorithm
 
     def __repr__(self) -> str:
@@ -77,7 +75,7 @@ class OneStep(Simulation):
 
     def __init__(self, sid: str, step: float, algorithm: Algorithm, name: str = None):
         """Construct OneStep."""
-        super(OneStep, self).__init__(sid=sid, name=name, algorithm=algorithm)
+        super().__init__(sid=sid, name=name, algorithm=algorithm)
         self.step: float = step
 
 
@@ -103,7 +101,7 @@ class UniformTimeCourse(Simulation):
         name: str = None,
     ):
         """Construct UniformTimeCourse."""
-        super(UniformTimeCourse, self).__init__(sid=sid, name=name, algorithm=algorithm)
+        super().__init__(sid=sid, name=name, algorithm=algorithm)
         self.start: float = start
         self.end: float = end
         self.steps: int = steps

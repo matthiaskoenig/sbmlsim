@@ -5,16 +5,16 @@ import os
 import time
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Optional, Any
+from typing import Any
 
 import dill
 import numpy as np
 import pandas as pd
 import roadrunner
 import xarray as xr
-from pymetadata.console import console
 from rich.progress import track
 
+from sbmlsim.console import console
 from sbmlsim.sensitivity.parameters import SensitivityParameter
 from sbmlsim.sensitivity.plots import heatmap
 
@@ -25,7 +25,7 @@ class SensitivityOutput:
 
     uid: str
     name: str
-    unit: Optional[str]
+    unit: str | None
 
 
 @dataclass
@@ -35,7 +35,7 @@ class AnalysisGroup:
     uid: str
     name: str
     changes: dict[str, float]
-    color: Optional[str]
+    color: str | None
 
 
 class SensitivitySimulation:
@@ -96,7 +96,6 @@ class SensitivitySimulation:
         self, r: roadrunner.RoadRunner, changes: dict[str, float]
     ) -> dict[str, float]:
         """Run a model simulation and return scalar results dictionary."""
-
         raise NotImplementedError
 
     @classmethod
@@ -118,7 +117,6 @@ class SensitivitySimulation:
 
     def plot(self) -> None:
         """Plot the model simulation."""
-
         raise NotImplementedError
 
 
@@ -131,8 +129,8 @@ class SensitivityAnalysis:
         parameters: list[SensitivityParameter],
         groups: list[AnalysisGroup],
         results_path: Path,
-        seed: Optional[int] = None,
-        n_cores: Optional[int] = None,
+        seed: int | None = None,
+        n_cores: int | None = None,
         cache_results: bool = False,
     ) -> None:
         """Create a sensitivity analysis for given parameter ids.
@@ -181,10 +179,10 @@ class SensitivityAnalysis:
         self.n_cores = n_cores
 
         # parameter samples for sensitivity; shape: (num_samples x num_parameters)
-        self.samples: dict[str, Optional[xr.DataArray]] = {}
+        self.samples: dict[str, xr.DataArray | None] = {}
 
         # outputs for given samples; shape: (num_samples x num_outputs)
-        self.results: dict[str, Optional[xr.DataArray]] = {}
+        self.results: dict[str, xr.DataArray | None] = {}
 
         # multiple sensitivities are stored
         # sensitivity matrix; shape: (num_parameters x num_outputs); could be multiple
@@ -242,7 +240,6 @@ class SensitivityAnalysis:
 
     def create_samples(self) -> None:
         """Create and set parameter samples."""
-
         raise NotImplementedError
 
     @property
@@ -256,7 +253,7 @@ class SensitivityAnalysis:
         return samples.shape[0]
 
     def simulate_samples(
-        self, cache_filename: Optional[str] = None, cache: bool = False
+        self, cache_filename: str | None = None, cache: bool = False
     ) -> None:
         """Simulate all samples in parallel.
 
@@ -332,10 +329,9 @@ class SensitivityAnalysis:
         self.write_cache(data=self.results, cache_filename=cache_filename, cache=cache)
 
     def calculate_sensitivity(
-        self, cache_filename: Optional[str] = None, cache: bool = False
+        self, cache_filename: str | None = None, cache: bool = False
     ):
         """Calculate the sensitivity matrices."""
-
         raise NotImplementedError
 
     def samples_table(self) -> pd.DataFrame:
@@ -356,8 +352,8 @@ class SensitivityAnalysis:
             items.append(item)
         return pd.DataFrame(items)
 
-    def read_cache(self, cache_filename: str, cache: bool) -> Optional[Any]:
-        cache_path: Optional[Path] = (
+    def read_cache(self, cache_filename: str, cache: bool) -> Any | None:
+        cache_path: Path | None = (
             self.results_path / cache_filename if cache_filename else None
         )
         if cache and not cache_path:
@@ -372,8 +368,8 @@ class SensitivityAnalysis:
 
         return None
 
-    def write_cache(self, data: Any, cache_filename: str, cache: bool) -> Optional[Any]:
-        cache_path: Optional[Path] = (
+    def write_cache(self, data: Any, cache_filename: str, cache: bool) -> Any | None:
+        cache_path: Path | None = (
             self.results_path / cache_filename if cache_filename else None
         )
         if cache_path:
@@ -383,7 +379,6 @@ class SensitivityAnalysis:
 
     def sensitivity_df(self, group_id: str, key: str) -> pd.DataFrame:
         """Convert sensitivity information to dataframes."""
-
         sensitivity = self.sensitivity[group_id][key]
         return pd.DataFrame(
             sensitivity.values,
@@ -399,11 +394,11 @@ class SensitivityAnalysis:
         self,
         group_id: str,
         sensitivity_key: str,
-        cutoff: Optional[float] = 0.1,
+        cutoff: float | None = 0.1,
         cluster_rows: bool = True,
-        title: Optional[str] = None,
+        title: str | None = None,
         cmap: str = "seismic",
-        fig_path: Optional[Path] = None,
+        fig_path: Path | None = None,
         **kwargs,
     ) -> None:
         df = self.sensitivity_df(group_id=group_id, key=sensitivity_key)

@@ -5,77 +5,118 @@ build-backend = "hatchling.build"
 [project]
 name = "sbmlsim"
 dynamic = ["version"]
-description = "sbmlsim are utilities for the simulation of SBML models."
+description = "sbmlsim are python utilities for the simulation of SBML models."
 readme = "README.md"
 requires-python = ">=3.13"
-authors = [{ name = "Matthias König", email = "konigmatt@googlemail.com" }]
-maintainers = [{ name = "Matthias König", email = "konigmatt@googlemail.com" }]
-classifiers = [
-    "Development Status :: 4 - Beta",
-    "Intended Audience :: Science/Research",
-    "License :: OSI Approved :: MIT License",
-    "Operating System :: OS Independent",
-    "Programming Language :: Python :: 3.13",
-    "Programming Language :: Python :: 3.14",
-    "Programming Language :: Python :: Implementation :: CPython",
-    "Topic :: Scientific/Engineering",
-    "Topic :: Scientific/Engineering :: Bio-Informatics",
+license = "MIT"
+license-files = ["LICENSE"]
+authors = [
+	{name="Matthias König", email="konigmatt@googlemail.com"},
 ]
-keywords = ["modeling", "standardization", "COMBINE", "SBML"]
+maintainers = [
+	{name="Matthias König", email="konigmatt@googlemail.com"}
+]
+classifiers = [
+	"Development Status :: 4 - Beta",
+	"Intended Audience :: Science/Research",
+	"Operating System :: OS Independent",
+	"Programming Language :: Python :: 3.13",
+	"Programming Language :: Python :: 3.14",
+	"Programming Language :: Python :: Implementation :: CPython",
+	"Topic :: Scientific/Engineering",
+	"Topic :: Scientific/Engineering :: Bio-Informatics",
+]
+keywords = [
+	"SBML",
+	"SED-ML",
+	"COMBINE",
+	"simulation",
+	"parameter fitting",
+	"sensitivity analysis",
+	"computational modeling",
+]
 dependencies = [
-    "sbmlutils>=0.9.6",
-    "pkdb-analysis>=0.3.1",
-    "pymetadata>=0.5.10",
-    # from sbmlutils (no version pin)
-    "numpy",
-    "libroadrunner>=2.9.3",
-    "python-libsbml",
-    "rich",
-    "pint",
-    "pandas",
-    "Jinja2",
-    "scipy",
-    "sympy",
-    "matplotlib",
-    "pydantic>=2.12.5",
-    # dependencies
-    "dill>=0.4.0",
-    "SAlib>=1.5.2",
-    "petab>=0.8.1",
-    # "tables>=3.10.2",
-    "statsmodels>=0.14.6",
-    "typst>=0.14.5",
-    "xarray>=2025.11.0",
-    "bottleneck>=1.4.2",
-    "psutil>=6.1.1",
-    "setproctitle>=1.3.4",
-    "plotly>=6.0.0",
-    "altair>=5.5.0",
-    "seaborn>=0.13.2",
-    "xmltodict>=0.14.2",
-    "pyDOE>=0.3.8",
-    "python-libsedml>=2.0.33",
-    "python-libnuml>=1.1.7",
+	# SBML, SED-ML, NuML and COMBINE archives
+	"sbmlutils>=0.10.1",
+	"pymetadata>=0.6.1",
+	"python-libsbml>=5.21.0",
+	"python-libsedml>=2.0.33",
+	"python-libnuml>=1.1.7",
+	# simulation
+	"libroadrunner>=2.9.0",
+	# data structures, units and numerics
+	"numpy>=2.3.5",
+	"pandas>=2.3.3",
+	"xarray>=2025.11.0",
+	"scipy>=1.16.3",
+	"sympy>=1.14.0",
+	"pint>=0.25.2",
+	"pydantic>=2.12.5",
+	"dill>=0.4.0",
+	"xmltodict>=1.0.2",
+	# parameter fitting and sensitivity analysis
+	"petab>=0.8.1",
+	"SALib>=1.5.2",
+	"pyDOE>=0.3.8",
+	# plots and reports
+	"matplotlib>=3.10.7",
+	"seaborn>=0.13.2",
+	"jinja2>=3.1.6",
+	"rich>=14.2.0",
 ]
 
 [project.optional-dependencies]
 dev = [
-    "bump-my-version>=1.2.4",
-    "ruff>=0.14.0",
-    "pre-commit>=4.0.1",
-    "mypy>=1.18.2",
-    "tox>=4.31.0",
-    "pytest>=8.4.2",
-    "pytest-cov>=7.0.0",
-    "quartodoc>=0.11.1",
+	"bump-my-version>=1.5.1",
+	"ruff>=0.16.6",
+	"pre-commit>=4.6.2",
+	"ty>=0.0.79",
+	"tox>=4.61.2",
+	"pytest>=9.1.1",
+	"pytest-cov>=7.1.0",
+	"zensical>=0.0.59",
+	"mkdocstrings-python>=2.0.8",
 ]
 
-[project_urls]
-Homepage = "https://github.com/matthiaskoenig/sbmlsim"
+[project.urls]
+Homepage = "https://matthiaskoenig.github.io/sbmlsim"
+Documentation = "https://matthiaskoenig.github.io/sbmlsim"
 Repository = "https://github.com/matthiaskoenig/sbmlsim"
-Documentation = "https://github.com/matthiaskoenig/sbmlsim"
 Issues = "https://github.com/matthiaskoenig/sbmlsim/issues"
+Changelog = "https://github.com/matthiaskoenig/sbmlsim/tree/develop/release-notes"
 Download = "https://pypi.org/project/sbmlsim"
 
 [tool.hatch.version]
 path = "./src/sbmlsim/__init__.py"
+
+[tool.hatch.build]
+# generated AMICI model code and compiled extensions of the simulator
+# comparison, they are only of use from a checkout of the repository
+exclude = [
+    "src/sbmlsim/comparison/amicitesting",
+    "src/sbmlsim/comparison/results",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/sbmlsim"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[tool.ty.environment]
+# the package lives in the src layout, the examples are a package at the root of
+# the repository; the checked python version is inferred from
+# `project.requires-python` (i.e. the oldest supported version)
+root = ["./src", "."]
+
+[tool.ty.src]
+include = ["src", "tests", "examples", "scripts"]
+# generated AMICI model code, not written by hand
+exclude = [
+    "src/sbmlsim/comparison/amicitesting",
+    "src/sbmlsim/comparison/results",
+]
+
+[tool.ty.terminal]
+# warnings are failures: keep the codebase free of any diagnostic
+error-on-warning = true

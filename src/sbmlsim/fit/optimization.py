@@ -1,19 +1,19 @@
 """Optimization of parameter fitting problem."""
 
+import logging
 import time
 from collections import defaultdict
 from copy import deepcopy
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Optional, Tuple, Union
+from typing import Any
 
 import numpy as np
 import pandas as pd
 import scipy
-from pymetadata import log
-from pymetadata.console import console
 from scipy import interpolate, optimize
 
+from sbmlsim.console import console
 from sbmlsim.experiment import ExperimentRunner
 from sbmlsim.fit.objects import FitExperiment, FitMapping, FitParameter
 from sbmlsim.fit.options import (
@@ -31,8 +31,7 @@ from sbmlsim.simulator import SimulatorSerial
 from sbmlsim.units import DimensionalityError
 from sbmlsim.utils import timeit
 
-
-logger = log.get_logger(__name__)
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -66,7 +65,7 @@ class OptimizationProblem(ObjectJSONEncoder):
         :param fit_experiments:
         :param fit_parameters:
         """
-        super(OptimizationProblem, self).__init__()
+        super().__init__()
         self.opid: str = opid
         self.fit_experiments = []
         for fit_exp in fit_experiments:
@@ -94,10 +93,10 @@ class OptimizationProblem(ObjectJSONEncoder):
         self.data_path = data_path
 
         # set in initialization
-        self.runner: Optional[ExperimentRunner] = None
-        self.residual: Optional[ResidualType] = None
-        self.weighting_curves: Optional[WeightingCurvesType] = None
-        self.weighting_points: Optional[WeightingPointsType] = None
+        self.runner: ExperimentRunner | None = None
+        self.residual: ResidualType | None = None
+        self.weighting_curves: WeightingCurvesType | None = None
+        self.weighting_points: WeightingPointsType | None = None
 
         self.experiment_keys: list[str] = []
         self.mapping_keys: list[str] = []
@@ -145,7 +144,7 @@ class OptimizationProblem(ObjectJSONEncoder):
             d[key] = self.__dict__[key]
         return d
 
-    def to_json(self, path: Optional[Path] = None) -> Union[str, Path]:
+    def to_json(self, path: Path | None = None) -> str | Path:
         """Store OptimizationResult as json.
 
         Uses the to_dict method.
@@ -179,7 +178,7 @@ class OptimizationProblem(ObjectJSONEncoder):
             "weights_points",
             "weights_curves",
         ]:
-            all_info.append(f"\t{key}: {str(getattr(self, key))}")
+            all_info.append(f"\t{key}: {getattr(self, key)!s}")
 
         info = "\n".join(all_info)
 
@@ -192,10 +191,10 @@ class OptimizationProblem(ObjectJSONEncoder):
 
     def initialize(
         self,
-        residual: Optional[ResidualType],
+        residual: ResidualType | None,
         loss_function: LossFunctionType,
         weighting_curves: list[WeightingCurvesType],
-        weighting_points: Optional[WeightingPointsType],
+        weighting_points: WeightingPointsType | None,
         variable_step_size: bool = True,
         relative_tolerance: float = 1e-6,
         absolute_tolerance: float = 1e-6,
@@ -275,8 +274,7 @@ class OptimizationProblem(ObjectJSONEncoder):
 
                 if mapping.observable.task_id is None:
                     raise ValueError(
-                        f"Only observables from tasks supported: "
-                        f"'{mapping.observable}'"
+                        f"Only observables from tasks supported: '{mapping.observable}'"
                     )
                 if mapping.reference.dset_id is None:
                     raise ValueError(
@@ -521,12 +519,12 @@ class OptimizationProblem(ObjectJSONEncoder):
 
     def optimize(
         self,
-        size: Optional[int] = 5,
+        size: int | None = 5,
         algorithm: OptimizationAlgorithmType = OptimizationAlgorithmType.LEAST_SQUARE,
         sampling: SamplingType = SamplingType.UNIFORM,
-        seed: Optional[int] = None,
+        seed: int | None = None,
         **kwargs,
-    ) -> Tuple[list[optimize.OptimizeResult], list]:
+    ) -> tuple[list[optimize.OptimizeResult], list]:
         """Run parameter optimization.
 
         To change the weighting or handling of residuals reinitialize the optimization
@@ -554,11 +552,11 @@ class OptimizationProblem(ObjectJSONEncoder):
             else:
                 x0 = None
 
-            logger.debug(f"[{k+1}/{size}] x0={x0}")
+            logger.debug(f"[{k + 1}/{size}] x0={x0}")
             fit, trajectory = self._optimize_single(
                 x0=x0, algorithm=algorithm, **kwargs
             )
-            logger.debug("\t{:8.4f} [s]".format(fit.duration))
+            logger.debug(f"\t{fit.duration:8.4f} [s]")
 
             fits.append(fit)
             trajectories.append(trajectory)
@@ -570,7 +568,7 @@ class OptimizationProblem(ObjectJSONEncoder):
         x0: np.ndarray = None,
         algorithm=OptimizationAlgorithmType.LEAST_SQUARE,
         **kwargs,
-    ) -> Tuple[scipy.optimize.OptimizeResult, list]:
+    ) -> tuple[scipy.optimize.OptimizeResult, list]:
         """Run single optimization with x0 start values.
 
         :param x0: parameter start vector (important for deterministic optimizers)
@@ -617,7 +615,7 @@ class OptimizationProblem(ObjectJSONEncoder):
             opt_result.x = np.power(10, opt_result.x)
             return opt_result, deepcopy(self._trajectory)
 
-        elif algorithm == OptimizationAlgorithmType.DIFFERENTIAL_EVOLUTION:
+        if algorithm == OptimizationAlgorithmType.DIFFERENTIAL_EVOLUTION:
             # scipy differential evolution
             # https://docs.scipy.org/doc/scipy/reference/generated/scipy.optimize.differential_evolution.html#scipy.optimize.differential_evolution
             ts = time.time()
@@ -642,8 +640,7 @@ class OptimizationProblem(ObjectJSONEncoder):
             opt_result.x = np.power(10, opt_result.x)
             return opt_result, deepcopy(self._trajectory)
 
-        else:
-            raise ValueError(f"optimizer is not supported: {algorithm}")
+        raise ValueError(f"optimizer is not supported: {algorithm}")
 
     def cost_least_square(self, xlog: np.ndarray) -> float:
         """Get least square costs for parameters."""
@@ -774,8 +771,7 @@ class OptimizationProblem(ObjectJSONEncoder):
 
         if complete_data:
             return residual_data
-        else:
-            res_all = np.concatenate(parts)
-            # store the local step
-            self._trajectory.append((deepcopy(x), 0.5 * np.sum(np.power(res_all, 2))))
-            return res_all
+        res_all = np.concatenate(parts)
+        # store the local step
+        self._trajectory.append((deepcopy(x), 0.5 * np.sum(np.power(res_all, 2))))
+        return res_all

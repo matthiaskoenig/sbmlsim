@@ -4,33 +4,32 @@ Used for model and data unit conversions.
 """
 
 from __future__ import annotations
+
+import logging
 import os
 import warnings
-from collections.abc import MutableMapping
+from collections.abc import Iterator, MutableMapping
 from pathlib import Path
-from typing import Iterator, Optional, Union
 
 import libsbml
 import numpy as np
-from pymetadata import log
-from pymetadata.console import console
 from sbmlutils.io import read_sbml
 
+from sbmlsim.console import console
 
 # Disable Pint's old fallback behavior (must come before importing Pint)
 os.environ["PINT_ARRAY_PROTOCOL_FALLBACK"] = "0"
 
 
-import pint  # noqa: E402
-from pint import Quantity, UnitRegistry  # noqa: E402
-from pint.errors import DimensionalityError, UndefinedUnitError  # noqa: E402
-
+import pint
+from pint import Quantity, UnitRegistry
+from pint.errors import DimensionalityError, UndefinedUnitError
 
 with warnings.catch_warnings():
     warnings.simplefilter("ignore")
     Quantity([])
 
-logger = log.get_logger(__name__)
+logger = logging.getLogger(__name__)
 UdictType = dict[str, str]
 
 
@@ -85,10 +84,9 @@ class UnitsInformation(MutableMapping):
 
     @staticmethod
     def from_sbml(
-        sbml: Union[str, Path], ureg: Optional[UnitRegistry] = None
+        sbml: str | Path, ureg: UnitRegistry | None = None
     ) -> UnitsInformation:
         """Get pint UnitsInformation for model."""
-
         doc: libsbml.SBMLDocument = read_sbml(sbml)
         return UnitsInformation.from_sbml_doc(doc, ureg=ureg)
 
@@ -131,7 +129,6 @@ class UnitsInformation(MutableMapping):
     @staticmethod
     def model_uid_dict(model: libsbml.Model, ureg: UnitRegistry) -> dict[str, str]:
         """Populate the model uid dict for lookup."""
-
         uid_dict: dict[str, str] = {}
 
         # add SBML definitions
@@ -184,10 +181,9 @@ class UnitsInformation(MutableMapping):
 
     @staticmethod
     def from_sbml_doc(
-        doc: libsbml.SBMLDocument, ureg: Optional[UnitRegistry] = None
+        doc: libsbml.SBMLDocument, ureg: UnitRegistry | None = None
     ) -> UnitsInformation:
         """Get pint UnitsInformation for model in document."""
-
         if ureg is None:
             ureg = UnitsInformation._default_ureg()
 
@@ -262,7 +258,7 @@ class UnitsInformation(MutableMapping):
                         continue
 
                     # find the correct unit definition
-                    uid: Optional[str] = None
+                    uid: str | None = None
                     udef_test: libsbml.UnitDefinition
                     for udef_test in model.getListOfUnitDefinitions():
                         if libsbml.UnitDefinition.areIdentical(udef_test, udef):
@@ -307,7 +303,7 @@ class UnitsInformation(MutableMapping):
 
     @staticmethod
     def normalize_changes(
-        changes: dict[str, Quantity], uinfo: "UnitsInformation"
+        changes: dict[str, Quantity], uinfo: UnitsInformation
     ) -> dict[str, Quantity]:
         """Normalize all changes to units in given units dictionary.
 
@@ -331,8 +327,7 @@ class UnitsInformation(MutableMapping):
                     raise err
                 except KeyError as err:
                     logger.error(
-                        f"KeyError: '{key}' does not exist in unit "
-                        f"dictionary of model."
+                        f"KeyError: '{key}' does not exist in unit dictionary of model."
                     )
                     raise err
             else:
@@ -343,9 +338,7 @@ class UnitsInformation(MutableMapping):
                     # convert to model units
                     item = Q_(item, uinfo[key])
                 except DimensionalityError as err:
-                    logger.error(
-                        f"DimensionalityError " f"'{key} = {item}'." f"\n{err}"
-                    )
+                    logger.error(f"DimensionalityError '{key} = {item}'.\n{err}")
 
             changes_normed[key] = item
 
@@ -420,12 +413,12 @@ class Units:
                 if not m_str and not e_str:
                     string = k_str
                 else:
-                    string = "({}{}{})".format(m_str, k_str, e_str)
+                    string = f"({m_str}{k_str}{e_str})"
             else:
                 if e_str == "":
-                    string = "({}10^{}*{})".format(m_str, s, k_str)
+                    string = f"({m_str}10^{s}*{k_str})"
                 else:
-                    string = "(({}10^{}*{})^{})".format(m_str, s, k_str, e_str)
+                    string = f"(({m_str}10^{s}*{k_str})^{e_str})"
 
             # collect the terms
             if e >= 0.0:

@@ -2,6 +2,7 @@
 
 Necessary to update the script with changing JWS webpage.
 """
+
 import os
 import shutil
 

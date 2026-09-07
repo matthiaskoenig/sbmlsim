@@ -1,5 +1,6 @@
 """Test scans."""
-from sbmlsim.examples import example_scan
+
+from examples import scan as example_scan
 
 
 def test_scan0d() -> None:

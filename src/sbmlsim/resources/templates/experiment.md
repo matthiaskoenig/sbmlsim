@@ -44,5 +44,5 @@
 [{{ code_path }}]({{ code_path }})
 
 ```python
-{{ code }}
+{{code}}
 ```

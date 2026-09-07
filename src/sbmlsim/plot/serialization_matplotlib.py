@@ -1,13 +1,14 @@
 """Serialization of Figure object to matplotlib."""
 
 from __future__ import annotations
-from typing import Any, Optional
+
+import logging
+from typing import Any
 
 import numpy as np
 from matplotlib import pyplot as plt
 from matplotlib.figure import Figure as FigureMPL
 from matplotlib.gridspec import GridSpec
-from pymetadata import log
 
 from sbmlsim.plot import Axis, Curve, Figure, SubPlot
 from sbmlsim.plot.plotting import (
@@ -20,8 +21,7 @@ from sbmlsim.plot.plotting import (
     YAxisPosition,
 )
 
-
-logger = log.get_logger(__name__)
+logger = logging.getLogger(__name__)
 
 
 def interp(x, xp, fp):
@@ -52,19 +52,17 @@ class MatplotlibFigureSerializer:
         """Get string representation of the scale."""
         if axis.scale == AxisScale.LINEAR:
             return "linear"
-        elif axis.scale == AxisScale.LOG10:
+        if axis.scale == AxisScale.LOG10:
             return "log"
-        else:
-            raise ValueError(f"Unsupported axis scale: '{axis.scale}'")
+        raise ValueError(f"Unsupported axis scale: '{axis.scale}'")
 
     @classmethod
     def to_figure(
         cls,
         experiment,  # "SimulationExperiment",
-        figure: Figure,  # noqa: F821
+        figure: Figure,
     ) -> FigureMPL:
         """Convert sbmlsim.Figure to matplotlib figure."""
-
         # create new figure
         fig: plt.Figure = plt.figure(
             figsize=(figure.width, figure.height),
@@ -102,7 +100,7 @@ class MatplotlibFigureSerializer:
                 gs[ridx : ridx + subplot.row_span, cidx : cidx + subplot.col_span]
             )
             # secondary axis
-            ax2: Optional[plt.Axes] = None
+            ax2: plt.Axes | None = None
             axes: list[plt.Axes] = [ax1]
             if yax_right:
                 for curve in plot.curves:

@@ -1,14 +1,14 @@
+import logging
 import warnings
 
 import libsedml
 import numpy as np
-from pymetadata import log
 from sbmlutils.converters.mathml import evaluableMathML
 
-logger = log.get_logger(__name__)
+logger = logging.getLogger(__name__)
 
 
-class TaskNode(object):
+class TaskNode:
     """Tree implementation of task tree."""
 
     def __init__(self, task: libsedml.SedAbstractTask, depth: int):
@@ -45,7 +45,7 @@ class TaskNode(object):
         return self.info()
 
 
-class Stack(object):
+class Stack:
     """Stack implementation for nodes."""
 
     def __init__(self):
@@ -70,7 +70,7 @@ class Stack(object):
         return "stack: " + str([item.info() for item in self.items])
 
 
-class TaskTree(object):
+class TaskTree:
     @staticmethod
     def from_sedml_task(
         sed_task: libsedml.SedDocument, root_task: libsedml.SedAbstractTask
@@ -85,7 +85,7 @@ class TaskTree(object):
             typeCode = node.task.getTypeCode()
             if typeCode == libsedml.SEDML_TASK:
                 return  # no children
-            elif typeCode == libsedml.SEDML_TASK_REPEATEDTASK:
+            if typeCode == libsedml.SEDML_TASK_REPEATEDTASK:
                 # add the ordered list of subtasks as children
                 subtasks = TaskTree.get_ordered_subtasks(node.task)
                 for st in subtasks:
@@ -98,7 +98,7 @@ class TaskTree(object):
             elif typeCode == libsedml.SEDML_TASK_PARAMETER_ESTIMATION:
                 logger.warning("Skipping parameter estimation task.")
             else:
-                raise IOError("Unsupported task type: {node.task_id.getElementName()}")
+                raise OSError("Unsupported task type: {node.task_id.getElementName()}")
 
         # create root
         root = TaskNode(root_task, depth=0)
@@ -126,7 +126,7 @@ class SEDMLCodeFactory:
     pass
 
 
-class Test(object):
+class Test:
     @staticmethod
     def simpleTaskToPython(doc, node: TaskNode):
         """Creates the simulation python code for a given taskNode.
@@ -143,8 +143,8 @@ class Test(object):
         """
         lines = []
         task = node.task
-        lines.append("# Task: <{}>".format(task.getId()))
-        lines.append("{} = [None]".format(task.getId()))
+        lines.append(f"# Task: <{task.getId()}>")
+        lines.append(f"{task.getId()} = [None]")
 
         mid = task.getModelReference()
         sid = task.getSimulationReference()
@@ -165,27 +165,23 @@ class Test(object):
             kisao=kisao, sim_type=simType
         ):
             warnings.warn(
-                "Algorithm {} unsupported for simulation {} type {} in task {}".format(
-                    kisao, simulation.getId(), simType, task.getId()
-                )
+                f"Algorithm {kisao} unsupported for simulation {simulation.getId()} type {simType} in task {task.getId()}"
             )
             lines.append(
-                "# Unsupported Algorithm {} for SimulationType {}".format(
-                    kisao, simulation.getElementName()
-                )
+                f"# Unsupported Algorithm {kisao} for SimulationType {simulation.getElementName()}"
             )
             return lines
 
         # set integrator/solver
         integratorName = SEDMLCodeFactory.integrator_from_kisao(kisao)
         if not integratorName:
-            warnings.warn("No integrator exists for {} in roadrunner".format(kisao))
+            warnings.warn(f"No integrator exists for {kisao} in roadrunner")
             return lines
 
         if simType is libsedml.SEDML_SIMULATION_STEADYSTATE:
-            lines.append("{}.setSteadyStateSolver('{}')".format(mid, integratorName))
+            lines.append(f"{mid}.setSteadyStateSolver('{integratorName}')")
         else:
-            lines.append("{}.setIntegrator('{}')".format(mid, integratorName))
+            lines.append(f"{mid}.setIntegrator('{integratorName}')")
 
         # use fixed step by default for stochastic sims
         if integratorName == "gillespie":
@@ -206,37 +202,29 @@ class Test(object):
             # only set supported algorithm paramters
             if pkey:
                 if pkey.dtype is str:
-                    value = "'{}'".format(pkey.value)
+                    value = f"'{pkey.value}'"
                 else:
                     value = pkey.value
 
-                if value == str("inf") or pkey.value == float("inf"):
+                if value == "inf" or pkey.value == float("inf"):
                     value = "float('inf')"
                 else:
                     pass
 
                 if simType is libsedml.SEDML_SIMULATION_STEADYSTATE:
                     lines.append(
-                        "{}.steadyStateSolver.setValue('{}', {})".format(
-                            mid, pkey.key, value
-                        )
+                        f"{mid}.steadyStateSolver.setValue('{pkey.key}', {value})"
                     )
                 else:
-                    lines.append(
-                        "{}.integrator.setValue('{}', {})".format(mid, pkey.key, value)
-                    )
+                    lines.append(f"{mid}.integrator.setValue('{pkey.key}', {value})")
 
         if simType is libsedml.SEDML_SIMULATION_STEADYSTATE:
             lines.append(
-                "if {model}.conservedMoietyAnalysis == False: {model}.conservedMoietyAnalysis = True".format(
-                    model=mid
-                )
+                f"if {mid}.conservedMoietyAnalysis == False: {mid}.conservedMoietyAnalysis = True"
             )
         else:
             lines.append(
-                "if {model}.conservedMoietyAnalysis == True: {model}.conservedMoietyAnalysis = False".format(
-                    model=mid
-                )
+                f"if {mid}.conservedMoietyAnalysis == True: {mid}.conservedMoietyAnalysis = False"
             )
 
         # get parents
@@ -267,9 +255,9 @@ class Test(object):
             for setValue in parent.task_id.getListOfTaskChanges():
                 variables = {}
                 # range variables
-                variables[rangeId] = "__value__{}".format(rangeId)
-                for key in helperRanges.keys():
-                    variables[key] = "__value__{}".format(key)
+                variables[rangeId] = f"__value__{rangeId}"
+                for key in helperRanges:
+                    variables[key] = f"__value__{key}"
                 # parameters
                 for par in setValue.getListOfParameters():
                     variables[par.getId()] = par.getValue()
@@ -279,14 +267,14 @@ class Test(object):
                     selection = SEDMLCodeFactory.selectionFromVariable(var, mid)
                     expr = selection.id
                     if selection.type == "concentration":
-                        expr = "init([{}])".format(selection.id)
+                        expr = f"init([{selection.id}])"
                     elif selection.type == "amount":
-                        expr = "init({})".format(selection.id)
+                        expr = f"init({selection.id})"
 
                     # create variable
-                    lines.append("__value__{} = {}['{}']".format(vid, mid, expr))
+                    lines.append(f"__value__{vid} = {mid}['{expr}']")
                     # variable for replacement
-                    variables[vid] = "__value__{}".format(vid)
+                    variables[vid] = f"__value__{vid}"
 
                 # value is calculated with the current state of model
                 lines.append(
@@ -298,13 +286,13 @@ class Test(object):
                 )
 
         # handle result variable
-        resultVariable = "{}[0]".format(task.getId())
+        resultVariable = f"{task.getId()}[0]"
 
         # -------------------------------------------------------------------------
         # <UNIFORM TIMECOURSE>
         # -------------------------------------------------------------------------
         if simType == libsedml.SEDML_SIMULATION_UNIFORMTIMECOURSE:
-            lines.append("{}.timeCourseSelections = {}".format(mid, list(selections)))
+            lines.append(f"{mid}.timeCourseSelections = {list(selections)}")
 
             initialTime = simulation.getInitialTime()
             outputStartTime = simulation.getOutputStartTime()
@@ -312,31 +300,25 @@ class Test(object):
             numberOfPoints = simulation.getNumberOfPoints()
 
             # reset before simulation (see https://github.com/sys-bio/tellurium/issues/193)
-            lines.append("{}.reset()".format(mid))
+            lines.append(f"{mid}.reset()")
 
             # throw some points away
             if abs(outputStartTime - initialTime) > 1e-6:
                 lines.append(
-                    "{}.simulate(start={}, end={}, points=2)".format(
-                        mid, initialTime, outputStartTime
-                    )
+                    f"{mid}.simulate(start={initialTime}, end={outputStartTime}, points=2)"
                 )
             # real simulation
             lines.append(
-                "{} = {}.simulate(start={}, end={}, steps={})".format(
-                    resultVariable, mid, outputStartTime, outputEndTime, numberOfPoints
-                )
+                f"{resultVariable} = {mid}.simulate(start={outputStartTime}, end={outputEndTime}, steps={numberOfPoints})"
             )
         # -------------------------------------------------------------------------
         # <ONESTEP>
         # -------------------------------------------------------------------------
         elif simType == libsedml.SEDML_SIMULATION_ONESTEP:
-            lines.append("{}.timeCourseSelections = {}".format(mid, list(selections)))
+            lines.append(f"{mid}.timeCourseSelections = {list(selections)}")
             step = simulation.getStep()
             lines.append(
-                "{} = {}.simulate(start={}, end={}, points=2)".format(
-                    resultVariable, mid, 0.0, step
-                )
+                f"{resultVariable} = {mid}.simulate(start={0.0}, end={step}, points=2)"
             )
 
         # -------------------------------------------------------------------------
@@ -348,11 +330,11 @@ class Test(object):
                     mid, "allow_presimulation", False
                 )
             )
-            lines.append("{}.steadyStateSelections = {}".format(mid, list(selections)))
+            lines.append(f"{mid}.steadyStateSelections = {list(selections)}")
             lines.append(
-                "{}.simulate()".format(mid)
+                f"{mid}.simulate()"
             )  # for stability of the steady state solver
-            lines.append("{} = {}.steadyStateNamedArray()".format(resultVariable, mid))
+            lines.append(f"{resultVariable} = {mid}.steadyStateNamedArray()")
             # no need to turn this off because it will be checked before the next simulation
             # lines.append("{}.conservedMoietyAnalysis = False".format(mid))
 
@@ -360,7 +342,7 @@ class Test(object):
         # <OTHER>
         # -------------------------------------------------------------------------
         else:
-            lines.append("# Unsupported simulation: {}".format(simType))
+            lines.append(f"# Unsupported simulation: {simType}")
 
         return lines
 
@@ -374,7 +356,7 @@ class Test(object):
         """
         # storage of results
         task = node.task_id
-        lines = ["", "{} = []".format(task.getId())]
+        lines = ["", f"{task.getId()} = []"]
 
         # <Range Definition>
         # master range
@@ -397,9 +379,7 @@ class Test(object):
         # <Range Iteration>
         # iterate master range
         lines.append(
-            "for __k__{}, __value__{} in enumerate(__range__{}):".format(
-                rangeId, rangeId, rangeId
-            )
+            f"for __k__{rangeId}, __value__{rangeId} in enumerate(__range__{rangeId}):"
         )
 
         # Everything from now on is done in every iteration of the range
@@ -416,18 +396,16 @@ class Test(object):
                     libsedml.SEDML_RANGE_VECTORRANGE,
                 ]:
                     forLines.append(
-                        "__value__{} = __range__{}[__k__{}]".format(
-                            r.getId(), r.getId(), rangeId
-                        )
+                        f"__value__{r.getId()} = __range__{r.getId()}[__k__{rangeId}]"
                     )
 
                 # <functional range>
                 if r.getTypeCode() == libsedml.SEDML_RANGE_FUNCTIONALRANGE:
                     variables = {}
                     # range variables
-                    variables[rangeId] = "__value__{}".format(rangeId)
-                    for key in helperRanges.keys():
-                        variables[key] = "__value__{}".format(key)
+                    variables[rangeId] = f"__value__{rangeId}"
+                    for key in helperRanges:
+                        variables[key] = f"__value__{key}"
                     # parameters
                     for par in r.getListOfParameters():
                         variables[par.getId()] = par.getValue()
@@ -437,13 +415,13 @@ class Test(object):
                         selection = SEDMLCodeFactory.selectionFromVariable(var, mid)
                         expr = selection.id
                         if selection.type == "concentration":
-                            expr = "[{}]".format(selection.id)
-                        lines.append("__value__{} = {}['{}']".format(vid, mid, expr))
-                        variables[vid] = "__value__{}".format(vid)
+                            expr = f"[{selection.id}]"
+                        lines.append(f"__value__{vid} = {mid}['{expr}']")
+                        variables[vid] = f"__value__{vid}"
 
                     # value is calculated with the current state of model
                     value = evaluableMathML(r.getMath(), variables=variables)
-                    forLines.append("__value__{} = {}".format(r.getId(), value))
+                    forLines.append(f"__value__{r.getId()} = {value}")
 
         # <resetModels>
         # models to reset via task tree below node
@@ -456,11 +434,11 @@ class Test(object):
         for mid in mids:
             if task.getResetModel():
                 # reset before every iteration
-                forLines.append("{}.reset()".format(mid))
+                forLines.append(f"{mid}.reset()")
             else:
                 # reset before first iteration
-                forLines.append("if __k__{} == 0:".format(rangeId))
-                forLines.append("    {}.reset()".format(mid))
+                forLines.append(f"if __k__{rangeId} == 0:")
+                forLines.append(f"    {mid}.reset()")
 
         # add lines
         lines.extend("    " + line for line in forLines)
@@ -483,18 +461,14 @@ class Test(object):
         rType = r.getType()
         if rType in ["Linear", "linear"]:
             lines.append(
-                "__range__{} = np.linspace(start={}, stop={}, num={})".format(
-                    rId, rStart, rEnd, rPoints
-                )
+                f"__range__{rId} = np.linspace(start={rStart}, stop={rEnd}, num={rPoints})"
             )
         elif rType in ["Log", "log"]:
             lines.append(
-                "__range__{} = np.logspace(start={}, stop={}, num={})".format(
-                    rId, rStart, rEnd, rPoints
-                )
+                f"__range__{rId} = np.logspace(start={rStart}, stop={rEnd}, num={rPoints})"
             )
         else:
-            warnings.warn("Unsupported range type in UniformRange: {}".format(rType))
+            warnings.warn(f"Unsupported range type in UniformRange: {rType}")
         return lines
 
     @staticmethod
@@ -503,5 +477,5 @@ class Test(object):
         __range = np.zeros(shape=[r.getNumValues()])
         for k, v in enumerate(r.getValues()):
             __range[k] = v
-        lines.append("__range__{} = {}".format(r.getId(), list(__range)))
+        lines.append(f"__range__{r.getId()} = {list(__range)}")
         return lines

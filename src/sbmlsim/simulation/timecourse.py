@@ -1,20 +1,19 @@
 """Definition of timecourses and timecourse simulations."""
 
 import json
+import logging
 from copy import deepcopy
 from pathlib import Path
-from typing import Any, Optional, Union
+from typing import Any
 
 import numpy as np
 from pint import Quantity
-from pymetadata import log
 
 from sbmlsim.serialization import ObjectJSONEncoder
 from sbmlsim.simulation import AbstractSim, Dimension
 from sbmlsim.units import UnitsInformation
 
-
-logger = log.get_logger(__name__)
+logger = logging.getLogger(__name__)
 
 
 class Timecourse(ObjectJSONEncoder):
@@ -125,8 +124,8 @@ class TimecourseSim(AbstractSim):
 
     def __init__(
         self,
-        timecourses: Union[list[Timecourse], Timecourse],
-        selections: Optional[list[str]] = None,
+        timecourses: list[Timecourse] | Timecourse,
+        selections: list[str] | None = None,
         reset: bool = True,
         time_offset: float = 0.0,
     ):
@@ -218,15 +217,14 @@ class TimecourseSim(AbstractSim):
         """Convert definition to JSON."""
         if path is None:
             return json.dumps(self, cls=ObjectJSONEncoder, indent=2)
-        else:
-            with open(path, "w", encoding="utf-8") as f_json:
-                json.dump(self, fp=f_json, cls=ObjectJSONEncoder, indent=2)
+        with open(path, "w", encoding="utf-8") as f_json:
+            json.dump(self, fp=f_json, cls=ObjectJSONEncoder, indent=2)
 
     @staticmethod
-    def from_json(json_info: Union[str, Path]) -> "TimecourseSim":
+    def from_json(json_info: str | Path) -> "TimecourseSim":
         """Load from JSON."""
         if isinstance(json_info, Path):
-            with open(json_info, "r", encoding="utf-8") as f_json:
+            with open(json_info, encoding="utf-8") as f_json:
                 d = json.load(f_json)
         else:
             d = json.loads(json_info)

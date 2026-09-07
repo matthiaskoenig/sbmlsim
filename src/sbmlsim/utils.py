@@ -1,20 +1,18 @@
 """Utility functions."""
+
 import functools
 import hashlib
 import inspect
+import logging
 import os
 import time
 import warnings
 
-from pymetadata import log
-
-
-logger = log.get_logger(__name__)
+logger = logging.getLogger(__name__)
 
 
 def md5_for_path(path):
     """Calculate MD5 of file content."""
-
     # Open,close, read file and calculate MD5 on its contents
     with open(path, "rb") as f_check:
         # read contents of the file
@@ -35,7 +33,7 @@ def deprecated(function):
     def new_func(*args, **kwargs):
         warnings.simplefilter("always", DeprecationWarning)  # turn off filter
         warnings.warn(
-            "Call to deprecated function {}.".format(function.__name__),
+            f"Call to deprecated function {function.__name__}.",
             category=DeprecationWarning,
             stacklevel=2,
         )

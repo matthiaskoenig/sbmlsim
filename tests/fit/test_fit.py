@@ -5,7 +5,7 @@ from typing import Any
 
 import pytest
 
-from sbmlsim.examples.experiments.midazolam.fitting_problems import op_mid1oh_iv
+from examples.midazolam.fitting_problems import op_mid1oh_iv
 from sbmlsim.fit.analysis import OptimizationAnalysis
 from sbmlsim.fit.options import (
     LossFunctionType,
@@ -16,7 +16,6 @@ from sbmlsim.fit.options import (
 )
 from sbmlsim.fit.result import OptimizationResult
 from sbmlsim.fit.runner import run_optimization
-
 
 fit_kwargs_testdata = []
 for residual_type in [

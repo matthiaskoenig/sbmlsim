@@ -1,19 +1,18 @@
 """Serial simulator."""
 
-from typing import Optional, Union
+import logging
 from pathlib import Path
-import roadrunner
-import pandas as pd
-from pint import Quantity
-from pymetadata import log
 
-from sbmlsim.model import AbstractModel, RoadrunnerSBMLModel, ModelChange
+import pandas as pd
+import roadrunner
+from pint import Quantity
+
+from sbmlsim.model import AbstractModel, ModelChange, RoadrunnerSBMLModel
 from sbmlsim.result import XResult
 from sbmlsim.simulation import ScanSim, Timecourse, TimecourseSim
 from sbmlsim.units import UnitsInformation
 
-
-logger = log.get_logger(__name__)
+logger = logging.getLogger(__name__)
 
 
 class SimulatorSerial:
@@ -26,7 +25,7 @@ class SimulatorSerial:
 
     def __init__(
         self,
-        model: Union[str | Path | RoadrunnerSBMLModel | AbstractModel] = None,
+        model: str | Path | RoadrunnerSBMLModel | AbstractModel = None,
         **kwargs,
     ):
         """Initialize serial simulator.
@@ -34,8 +33,8 @@ class SimulatorSerial:
         :param model: Path to model or model
         :param kwargs: integrator settings
         """
-        self.r: Optional[roadrunner.RoadRunner] = None
-        self.model: Optional[RoadrunnerSBMLModel] = None
+        self.r: roadrunner.RoadRunner | None = None
+        self.model: RoadrunnerSBMLModel | None = None
 
         # integrator settings
         self.integrator_settings = {
@@ -47,7 +46,7 @@ class SimulatorSerial:
         # set model
         self.set_model(model)
 
-    def set_model(self, model: Union[str | Path | RoadrunnerSBMLModel | AbstractModel]):
+    def set_model(self, model: str | Path | RoadrunnerSBMLModel | AbstractModel):
         """Set model for simulator and updates the integrator settings."""
         # logger.info("SimulatorSerial.set_model")
         self.model = None
@@ -94,7 +93,7 @@ class SimulatorSerial:
         """Run single timecourse."""
         if not isinstance(simulation, TimecourseSim):
             raise ValueError(
-                f"'run_timecourse' requires TimecourseSim, but " f"'{type(simulation)}'"
+                f"'run_timecourse' requires TimecourseSim, but '{type(simulation)}'"
             )
         scan = ScanSim(simulation=simulation)
         return self.run_scan(scan)

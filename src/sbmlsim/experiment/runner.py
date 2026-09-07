@@ -8,12 +8,10 @@ This includes
 - creating outputs
 """
 
+import logging
 from pathlib import Path
-from typing import Optional, Tuple, Type, Union
 
-from pymetadata import log
-from pymetadata.console import console
-
+from sbmlsim.console import console
 from sbmlsim.experiment import ExperimentResult, SimulationExperiment
 from sbmlsim.model import RoadrunnerSBMLModel
 from sbmlsim.report.experiment_report import ExperimentReport, ReportResults
@@ -21,18 +19,16 @@ from sbmlsim.simulator import SimulatorSerial
 from sbmlsim.units import UnitRegistry, UnitsInformation
 from sbmlsim.utils import timeit
 
+logger = logging.getLogger(__name__)
 
-logger = log.get_logger(__name__)
 
-
-class ExperimentRunner(object):
+class ExperimentRunner:
     """Class for running simulation experiments."""
 
     def __init__(
         self,
-        experiment_classes: Union[
-            Type[SimulationExperiment], list[Type[SimulationExperiment]]
-        ],
+        experiment_classes: type[SimulationExperiment]
+        | list[type[SimulationExperiment]],
         base_path: Path,
         data_path: Path,
         simulator: SimulatorSerial = None,
@@ -44,7 +40,6 @@ class ExperimentRunner(object):
         FIXME: document arguments for the solver.
 
         """
-
         # single UnitRegistry per runner
         if not ureg:
             ureg = UnitsInformation._default_ureg()
@@ -56,7 +51,7 @@ class ExperimentRunner(object):
         self.data_path = data_path
         self.experiments: dict[str, SimulationExperiment] = {}
         self.models = {}
-        self.simulator: Optional[SimulatorSerial] = None
+        self.simulator: SimulatorSerial | None = None
 
         self.initialize(experiment_classes, **kwargs)
         self.set_simulator(simulator)
@@ -75,11 +70,9 @@ class ExperimentRunner(object):
 
     def initialize(
         self,
-        experiment_classes: Union[
-            list[Type[SimulationExperiment]],
-            Tuple[Type[SimulationExperiment]],
-            set[Type[SimulationExperiment]],
-        ],
+        experiment_classes: list[type[SimulationExperiment]]
+        | tuple[type[SimulationExperiment]]
+        | set[type[SimulationExperiment]],
         **kwargs,
     ):
         """Initialize ExperimentRunner.
@@ -155,10 +148,10 @@ class ExperimentRunner(object):
 
 
 def run_experiments(
-    experiments: Union[Type[SimulationExperiment], list[Type[SimulationExperiment]]],
+    experiments: type[SimulationExperiment] | list[type[SimulationExperiment]],
     output_path: Path,
     base_path: Path = None,
-    data_path: Union[list[Path], Tuple[Path], Optional[Path]] = None,
+    data_path: list[Path] | tuple[Path] | Path | None = None,
 ) -> Path:
     """Run simulation experiments."""
     if not isinstance(experiments, (list, tuple)):

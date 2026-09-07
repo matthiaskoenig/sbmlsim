@@ -2,20 +2,18 @@
 
 import http.client as httplib
 import importlib
+import logging
 import os
 import tempfile
 from pathlib import Path
-from typing import Optional
 
 import libsbml
 import libsedml
 import pandas as pd
-from pymetadata import log
 
 from .numl import NumlParser
 
-
-logger = log.get_logger(__name__)
+logger = logging.getLogger(__name__)
 
 
 class DataDescriptionParser:
@@ -188,7 +186,7 @@ class DataDescriptionParser:
         logger.info("DataSources")
         logger.info("-" * 80)
         for key, value in data_sources.items():
-            logger.info("{} : {}; shape={}".format(key, type(value), value.shape))
+            logger.info(f"{key} : {type(value)}; shape={value.shape}")
         logger.info("-" * 80)
 
         # cleanup
@@ -201,7 +199,7 @@ class DataDescriptionParser:
         return data_sources
 
     @classmethod
-    def _determine_format(cls, source_path: Path, format: Optional[str] = None) -> str:
+    def _determine_format(cls, source_path: Path, format: str | None = None) -> str:
         """Determine format of file.
 
         :param source_path: path of file
@@ -235,9 +233,7 @@ class DataDescriptionParser:
         # check supported formats
         if format not in cls.SUPPORTED_FORMATS:
             raise NotImplementedError(
-                "Format '{}' not supported for DataDescription. Format must be in: {}".format(
-                    format, cls.SUPPORTED_FORMATS
-                )
+                f"Format '{format}' not supported for DataDescription. Format must be in: {cls.SUPPORTED_FORMATS}"
             )
 
         return format
