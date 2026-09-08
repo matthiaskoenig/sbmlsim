@@ -185,6 +185,8 @@ def run_fit(
     n_cores: int = 1,
     seed: int | None = None,
     study_ids: Sequence[str] | None = None,
+    timeout: float | None = None,
+    output_dir: Path | None = None,
     **kwargs: Any,
 ) -> dict[str, FitRun]:
     """Run the fit of a definition.
@@ -200,6 +202,10 @@ def run_fit(
         n_cores: number of workers.
         seed: seed of the optimizations.
         study_ids: experiments to fit, all experiments by default.
+        timeout: seconds a single optimization may run.
+        output_dir: directory of the results. The single runs are written into
+            `<output_dir>/<opid>/runs` while the fit runs, so an interrupted
+            fit leaves the runs which finished.
         kwargs: additional arguments of the optimizer, they replace the
             defaults of `ALGORITHM_KWARGS`.
 
@@ -233,6 +239,8 @@ def run_fit(
             n_cores=n_cores,
             seed=seed,
             algorithm=algorithm,
+            timeout=timeout,
+            runs_dir=(Path(output_dir) / problem.opid / "runs" if output_dir else None),
             **optimizer_kwargs,
         )
         runs[problem.opid] = FitRun(problem=problem, result=result)
@@ -343,6 +351,12 @@ def fit_cli(
         help="experiments to fit, all experiments of the problem by default",
     )
     parser.add_argument(
+        "--timeout",
+        type=float,
+        default=None,
+        help="seconds a single optimization may run, no limit by default",
+    )
+    parser.add_argument(
         "-o",
         "--output_dir",
         type=Path,
@@ -368,6 +382,7 @@ def fit_cli(
             "experiments": options.experiments or "all of the problem",
             "runs": f"{options.runs} on {options.cores} core(s)",
             "seed": options.seed,
+            "timeout": (f"{options.timeout} s per run" if options.timeout else "none"),
             "base path": definition.base_path,
             "data path": definition.data_path,
             "output": options.output_dir,
@@ -385,6 +400,8 @@ def fit_cli(
         n_cores=options.cores,
         seed=options.seed,
         study_ids=options.experiments,
+        timeout=options.timeout,
+        output_dir=options.output_dir,
     )
 
     # the fit only optimizes, the report is created from its parameters

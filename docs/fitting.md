@@ -136,7 +136,7 @@ op = OptimizationProblem(
 print(op)
 ```
 
-The problem is picklable, so it is distributed to worker processes; `initialize` then creates the runner, loads the models, resolves the data and calculates the weights. It takes the `FitSettings`, which decide how the residuals are computed:
+The problem is picklable, so it is distributed to worker processes; `initialize` then creates the runner, loads the models, resolves the data and calculates the weights, and groups the fit mappings which share a simulation. Several mappings read different observables of the same simulation, e.g. the plasma concentration and the amount in urine of one dosing, and such a group is simulated once per evaluation of the residuals with the selections of all of its mappings, which is where the time of a fit goes. It takes the `FitSettings`, which decide how the residuals are computed:
 
 ```python
 from sbmlsim.fit import FitSettings
@@ -181,6 +181,25 @@ opt_result = run_optimization(
     seed=1234,
     algorithm=OptimizationAlgorithmType.LEAST_SQUARE,
 )
+```
+
+A fit keeps what it has. A single optimization which fails, with an error of the integrator or any other error of the objective, is a result which carries its message and the other repeats are unaffected; `timeout` gives every repeat a budget in seconds and a repeat which runs out of it keeps the best parameters it reached. In a parallel fit a worker which dies loses only its own repeats. With `runs_dir` every repeat is written as JSON the moment it finishes, so a fit which is interrupted or crashes leaves the repeats which are done and `OptimizationResult.from_directory` reads them back:
+
+```py
+from pathlib import Path
+
+from sbmlsim.fit.result import OptimizationResult
+
+opt_result = run_optimization(
+    problem=op,
+    settings=settings,
+    size=10,
+    n_cores=4,
+    timeout=600,
+    runs_dir=Path("results") / "runs",
+)
+# the same result, from the files alone
+recovered = OptimizationResult.from_directory(Path("results") / "runs")
 ```
 
 `OptimizationAlgorithmType.LEAST_SQUARE` is the local least squares optimizer, `DIFFERENTIAL_EVOLUTION` the global one. The `OptimizationResult` holds the fits of all start points with their costs, the optimal parameters `xopt`, the trajectories of the optimizer and the settings the fit was run with; it is stored as JSON and TSV with `to_json` and `to_tsv`, and results of several runs are combined with `OptimizationResult.combine`.

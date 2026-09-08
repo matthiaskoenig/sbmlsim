@@ -142,6 +142,96 @@ class OptimizationResult(ObjectJSONEncoder):
             self.parameters, self.trajectories
         )
 
+    def run_result(self, k: int) -> "OptimizationResult":
+        """Get the result of a single optimization run.
+
+        The run is a result of its own, so it is stored while a fit runs and
+        collected again afterwards, see `write_run` and `from_directory`.
+
+        The runs are indexed in the order they ran, which pairs a fit with its
+        trajectory; `parameter_set` indexes them by increasing cost instead.
+
+        Args:
+            k: index of the run in `fits`, i.e., in the order they ran.
+
+        Returns:
+            An `OptimizationResult` with this run only.
+        """
+        return OptimizationResult(
+            parameters=self.parameters,
+            fits=[self.fits[k]],
+            trajectories=[self.trajectories[k]] if k < len(self.trajectories) else [[]],
+            sid=f"{self.sid}_{k}",
+            opid=self.opid,
+            settings=self.settings,
+        )
+
+    @staticmethod
+    def write_run(
+        directory: Path,
+        parameters: Iterable[FitParameter],
+        fit: OptimizeResult,
+        trajectory: list,
+        sid: str,
+        opid: str | None = None,
+        settings: FitSettings | None = None,
+    ) -> Path:
+        """Store a single optimization run as JSON.
+
+        The runs are stored while the fit runs, so a fit which is interrupted,
+        times out or crashes leaves the runs which finished.
+
+        Args:
+            directory: directory of the runs, created if it does not exist.
+            parameters: fit parameters of the problem.
+            fit: result of the single optimization.
+            trajectory: trajectory of the single optimization.
+            sid: id of the run, the name of its file.
+            opid: id of the optimization problem.
+            settings: settings of the fit.
+
+        Returns:
+            Path of the file the run was written to.
+        """
+        directory.mkdir(parents=True, exist_ok=True)
+        path = directory / f"{sid}.json"
+        OptimizationResult(
+            parameters=parameters,
+            fits=[fit],
+            trajectories=[trajectory],
+            sid=sid,
+            opid=opid,
+            settings=settings,
+        ).to_json(path=path)
+        return path
+
+    @staticmethod
+    def from_directory(directory: Path, sid: str | None = None) -> "OptimizationResult":
+        """Collect the optimization runs of a directory.
+
+        This is the counterpart of `write_run`: the runs a fit stored are read
+        back and combined, which recovers the results of a fit which did not
+        finish.
+
+        Args:
+            directory: directory with the JSON files of the runs.
+            sid: id of the combined result, the name of the directory by default.
+
+        Returns:
+            The combined result of all runs in the directory.
+
+        Raises:
+            ValueError: if the directory holds no run.
+        """
+        paths = sorted(directory.glob("*.json"))
+        results = [OptimizationResult.from_json(path) for path in paths]
+        if not results:
+            raise ValueError(f"No optimization run in '{directory}'.")
+
+        combined = OptimizationResult.combine(results)
+        combined.sid = sid if sid else directory.name
+        return combined
+
     def to_tsv(self, path: Path) -> None:
         """Store fit results as TSV."""
         self.df_fits.to_csv(path, sep="\t", index=False)
