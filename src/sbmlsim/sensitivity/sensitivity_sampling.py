@@ -294,7 +294,7 @@ class SamplingSensitivityAnalysis(SensitivityAnalysis):
                 bp = ax.boxplot(
                     data,
                     positions=range(self.num_groups),
-                    labels=labels,
+                    tick_labels=labels,
                     patch_artist=True,
                     showfliers=False,
                     medianprops={"color": "black"},

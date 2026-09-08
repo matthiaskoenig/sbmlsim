@@ -152,13 +152,14 @@ class OptimizationAnalysis:
         if mpl_parameters is None:
             mpl_parameters = {}
 
-        parameters = {
+        parameters: dict[str, Any] = {
             "axes.titlesize": 14,
             "axes.labelsize": 12,
             "axes.labelweight": "normal",
         }
         parameters.update(mpl_parameters)
-        plt.rcParams.update(parameters)
+        # the keys of RcParams are typed as literals since matplotlib 3.11
+        plt.rcParams.update(parameters)  # ty: ignore[no-matching-overload]
 
         # optimization traces
         self.plot_traces(
