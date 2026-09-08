@@ -57,7 +57,6 @@ dependencies = [
 	# parameter fitting and sensitivity analysis
 	"petab>=0.8.1",
 	"SALib>=1.5.2",
-	"pyDOE>=0.3.8",
 	# plots and reports
 	"matplotlib>=3.10.7",
 	"seaborn>=0.13.2",

@@ -440,7 +440,8 @@ class MatplotlibFigureSerializer:
                     if handles1:
                         if figure.legend_position == "inside":
                             ax1.legend(
-                                fontsize=Figure.legend_fontsize, loc=Figure.legend_loc
+                                fontsize=Figure.legend_fontsize,
+                                loc=Figure.legend_loc,  # ty: ignore[invalid-argument-type] -- str setting, matplotlib expects its Literal
                             )
                         elif figure.legend_position == "outside":
                             ax1.legend(

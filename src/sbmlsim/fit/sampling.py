@@ -6,7 +6,7 @@ from enum import Enum
 import numpy as np
 import pandas as pd
 from matplotlib import pyplot as plt
-from pyDOE import lhs
+from scipy.stats import qmc
 
 from sbmlsim.console import console
 
@@ -59,9 +59,9 @@ def create_samples(
 
     elif sampling in {SamplingType.UNIFORM_LHS, SamplingType.LOGUNIFORM_LHS}:
         # Latin-Hypercube sampling
-        # https://pythonhosted.org/pyDOE/randomized.html#latin-hypercube
-        # “maximin” or “m”: maximize the minimum distance between points, but place the point in a randomized location within its interval
-        x = lhs(n=len(parameters), samples=size)  # criterion="maximin"
+        # https://docs.scipy.org/doc/scipy/reference/generated/scipy.stats.qmc.LatinHypercube.html
+        sampler = qmc.LatinHypercube(d=len(parameters), seed=seed)
+        x = sampler.random(n=size)
     else:
         raise ValueError(f"Unsupported SamplingType: '{sampling}'")
 

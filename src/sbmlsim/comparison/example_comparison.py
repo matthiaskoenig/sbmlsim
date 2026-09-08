@@ -90,7 +90,7 @@ if __name__ == "__main__":
         )
         df = simulator.simulate_condition(
             condition=condition,
-            timepoints=timepoints,
+            timepoints=np.asarray(timepoints, dtype=float),
         )
         console.print(df.columns)
         console.print(df)
