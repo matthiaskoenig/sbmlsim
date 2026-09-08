@@ -10,14 +10,13 @@ from enum import Enum
 from pathlib import Path
 from typing import Any
 
-import jinja2
-
-from sbmlsim import RESOURCES_DIR, __version__
+from sbmlsim import __version__
 from sbmlsim.experiment.experiment import ExperimentResult, SimulationExperiment
 from sbmlsim.model import AbstractModel
+from sbmlsim.report.templates import TEMPLATE_DIR, template_environment
 
 logger = logging.getLogger(__name__)
-TEMPLATE_PATH = RESOURCES_DIR / "templates"
+TEMPLATE_PATH = TEMPLATE_DIR
 
 
 def _relative_path(path: Path, start: Path) -> Path:
@@ -185,12 +184,7 @@ class ExperimentReport:
         Raises:
             ValueError: If the report type is not supported.
         """
-        env = jinja2.Environment(
-            loader=jinja2.FileSystemLoader(str(self.template_path)),
-            extensions=[],
-            trim_blocks=True,
-            lstrip_blocks=True,
-        )
+        env = template_environment(self.template_path)
 
         def write_report(
             filename: str, context: dict[str, Any], template_str: str
@@ -223,7 +217,7 @@ class ExperimentReport:
                 )
 
         # index file
-        context = {
+        context: dict[str, Any] = {
             "version": __version__,
             "data": self.data_dict,
         }

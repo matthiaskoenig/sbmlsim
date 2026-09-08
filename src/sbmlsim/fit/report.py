@@ -21,7 +21,6 @@ from collections.abc import Sequence
 from pathlib import Path
 from typing import Any, ClassVar
 
-import jinja2
 import matplotlib
 import numpy as np
 import pandas as pd
@@ -29,7 +28,7 @@ from matplotlib.axes import Axes
 from matplotlib.figure import Figure
 from matplotlib.lines import Line2D
 
-from sbmlsim import RESOURCES_DIR, __version__
+from sbmlsim import __version__
 from sbmlsim.fit import display
 from sbmlsim.fit.metrics import FitMetrics
 from sbmlsim.fit.objects import MappingKind
@@ -38,11 +37,9 @@ from sbmlsim.fit.options import FitSettings
 from sbmlsim.fit.parameters import ParameterSet, ParameterSets
 from sbmlsim.fit.result import OptimizationResult, bound_warnings
 from sbmlsim.plot.serialization_matplotlib import plt
+from sbmlsim.report.templates import template_environment
 
 logger = logging.getLogger(__name__)
-
-#: directory of the jinja2 templates of the report
-TEMPLATE_DIR: Path = RESOURCES_DIR / "templates"
 
 #: colors of the parameter sets, in the order of the sets
 SET_COLORS: tuple[str, ...] = (
@@ -578,11 +575,7 @@ class FitReport:
         context = self.html_context(
             results_dir=path.parent, name=name if name else path.parent.name
         )
-        env = jinja2.Environment(
-            loader=jinja2.FileSystemLoader(str(TEMPLATE_DIR)),
-            autoescape=jinja2.select_autoescape(["html"]),
-        )
-        template = env.get_template("fit_report.html")
+        template = template_environment().get_template("fit_report.html")
         with open(path, "w", encoding="utf-8") as f_html:
             f_html.write(template.render(context))
 
