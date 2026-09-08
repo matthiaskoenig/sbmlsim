@@ -23,23 +23,6 @@ The documentation is available at [https://matthiaskoenig.github.io/sbmlsim](htt
 
 If you have any questions or issues please [open an issue](https://github.com/matthiaskoenig/sbmlsim/issues).
 
-## Installation
-
-`sbmlsim` requires python >= 3.13 and is installed from [pypi](https://pypi.org/project/sbmlsim/):
-
-```bash
-pip install sbmlsim
-```
-
-See [Installation](https://matthiaskoenig.github.io/sbmlsim/installation/) for uv, the development version and the dependencies.
-
-## How to cite
-[![DOI](https://zenodo.org/badge/55952847.svg)](https://zenodo.org/badge/latestdoi/55952847)
-
-If you use `sbmlsim` please cite the archived software on [Zenodo](https://zenodo.org/badge/latestdoi/55952847):
-
-> König, M. (2026). *sbmlsim: SBML simulation made easy* [Computer software]. Zenodo. https://doi.org/10.5281/zenodo.597149
-
 ## License
 - Source Code: [MIT](https://opensource.org/license/MIT)
 - Documentation: [CC BY-SA 4.0](http://creativecommons.org/licenses/by-sa/4.0/)
@@ -47,6 +30,6 @@ If you use `sbmlsim` please cite the archived software on [Zenodo](https://zenod
 ## Funding
 Matthias König is supported by the German Research Foundation (DFG) within the Research Unit Programme FOR 5151 "QuaLiPerF (Quantifying Liver Perfusion-Function Relationship in Complex Resection - A Systems Medicine Approach)" by grant number 436883643 and by grant number 465194077 (Priority Programme SPP 2311, Subproject SimLivA).
 
-Matthias König was supported by the Federal Ministry of Education and Research (BMBF, Germany) within the research network Systems Medicine of the Liver (**LiSyM**, grant number 031L0054). Matthias König has received funding from the EOSCsecretariat.eu which has received funding from the European Union's Horizon Programme call H2020-INFRAEOSC-05-2018-2019, grant Agreement number 831644.
+Matthias König was supported by the Federal Ministry of Education and Research (BMBF, Germany) within the research network Systems Medicine of the Liver (LiSyM, grant number 031L0054). Matthias König has received funding from the EOSCsecretariat.eu which has received funding from the European Union's Horizon Programme call H2020-INFRAEOSC-05-2018-2019, grant Agreement number 831644.
 
 © 2019-2026 Matthias König, [https://livermetabolism.com](https://livermetabolism.com)
