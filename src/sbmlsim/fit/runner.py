@@ -16,8 +16,9 @@ and reports, see `sbmlsim.fit.parameters`.
 import logging
 import multiprocessing
 import os
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from contextlib import contextmanager
+from pathlib import Path
 from queue import Empty, Queue
 from typing import Any
 
@@ -112,6 +113,8 @@ def run_optimization(
     n_cores: int | None = 1,
     serial: bool = False,
     show_progress: bool = True,
+    timeout: float | None = None,
+    runs_dir: Path | None = None,
     **kwargs: Any,
 ) -> OptimizationResult:
     """Run the optimization of the problem.
@@ -130,13 +133,21 @@ def run_optimization(
         n_cores: number of workers, `None` uses all available cores but one.
         serial: run the optimization in a serial fashion (debugging).
         show_progress: show the progress of the runs on the console.
+        timeout: seconds a single optimization may run, no limit if `None`. A
+            run which is out of time keeps the parameters it reached.
+        runs_dir: directory the single runs are written to while the fit runs,
+            so a fit which is interrupted or crashes leaves the runs which
+            finished; they are read back with
+            `OptimizationResult.from_directory`.
         kwargs: additional arguments for the optimizer, e.g. xtol.
 
     Returns:
-        OptimizationResult with the fits of all repeats.
+        OptimizationResult with the fits of all repeats. A repeat which failed
+        is part of the result and carries its message.
 
     Raises:
-        ValueError: for the removed parameters `fitting_type` and `weighting_local`.
+        ValueError: for the removed parameters `fitting_type` and
+            `weighting_local`, or if every worker of a parallel fit failed.
     """
     for deprecated, replacement in [
         ("fitting_type", "fitting_strategy"),
@@ -162,7 +173,9 @@ def run_optimization(
                 size=size,
                 algorithm=algorithm,
                 seed=seed,
-                on_run_finished=lambda: _advance(progress),
+                timeout=timeout,
+                runs_dir=runs_dir,
+                on_progress=lambda: _advance(progress),
                 **kwargs,
             )
     else:
@@ -184,6 +197,8 @@ def run_optimization(
             seed=seed,
             n_cores=n_cores,
             show_progress=show_progress,
+            timeout=timeout,
+            runs_dir=runs_dir,
             **kwargs,
         )
 
@@ -213,6 +228,7 @@ def _run_optimization_parallel(
     seed: int | None,
     n_cores: int,
     show_progress: bool,
+    runs_dir: Path | None = None,
     **kwargs: Any,
 ) -> OptimizationResult:
     """Run the optimizations in a pool of worker processes.
@@ -236,22 +252,49 @@ def _run_optimization_parallel(
                 "algorithm": algorithm,
                 "seed": seeds[k],
                 "queue": queue,
+                "worker_index": k,
+                "runs_dir": runs_dir,
                 **kwargs,
             }
             for k in range(n_cores)
         ]
 
+        opt_results: list[OptimizationResult] = []
+        failures: list[str] = []
         with (
             optimization_progress("optimizing", size, show_progress) as progress,
             multiprocessing.Pool(processes=n_cores) as pool,
         ):
-            async_result = pool.map_async(worker, args_list)
-            while not async_result.ready():
+            # one task per worker, so that a worker which dies does not take
+            # the results of the other workers with it
+            async_results = [pool.apply_async(worker, (args,)) for args in args_list]
+            while not all(result.ready() for result in async_results):
                 _advance(progress, _drain(queue))
-                async_result.wait(timeout=0.2)
+                async_results[0].wait(timeout=0.2)
             _advance(progress, _drain(queue))
-            opt_results: list[OptimizationResult] = async_result.get()
 
+            for k, async_result in enumerate(async_results):
+                try:
+                    opt_results.append(async_result.get())
+                except Exception as err:
+                    message = f"worker {k}: {type(err).__name__}: {err}"
+                    failures.append(message)
+                    logger.error("'%s': %s", problem.opid, message)
+
+    if failures:
+        logger.warning(
+            "'%s': %s of %s workers failed, the fit continues with the results of "
+            "the others.",
+            problem.opid,
+            len(failures),
+            n_cores,
+        )
+    if not opt_results:
+        stored = f" The runs which finished are in '{runs_dir}'." if runs_dir else ""
+        raise ValueError(
+            f"'{problem.opid}': every worker failed, there is no result.{stored} "
+            f"{failures}"
+        )
     return OptimizationResult.combine(opt_results)
 
 
@@ -276,13 +319,16 @@ def worker(kwargs: dict[str, Any]) -> OptimizationResult:
     logging.getLogger(PACKAGE_LOGGER).setLevel(logging.ERROR)
     logger.debug("worker <%s> running optimization ...", os.getpid())
     queue: Queue | None = kwargs.pop("queue", None)
+    worker_index: int = kwargs.pop("worker_index", 0)
 
-    def on_run_finished() -> None:
+    def on_progress() -> None:
         """Report a finished run to the runner."""
         if queue is not None:
             queue.put(1)
 
-    return _run_optimization_serial(on_run_finished=on_run_finished, **kwargs)
+    return _run_optimization_serial(
+        on_progress=on_progress, run_prefix=f"w{worker_index}", **kwargs
+    )
 
 
 def _run_optimization_serial(
@@ -291,7 +337,10 @@ def _run_optimization_serial(
     size: int = 5,
     algorithm: OptimizationAlgorithmType = OptimizationAlgorithmType.LEAST_SQUARE,
     seed: int | None = None,
-    on_run_finished: Any = None,
+    timeout: float | None = None,
+    runs_dir: Path | None = None,
+    on_progress: Callable[[], None] | None = None,
+    run_prefix: str = "run",
     **kwargs: Any,
 ) -> OptimizationResult:
     """Run the given optimization problem in a serial fashion.
@@ -309,10 +358,36 @@ def _run_optimization_serial(
     # initialize problem, which resolves the data and calculates the weights
     problem.initialize(settings)
 
+    def on_run_finished(k: int, fit: Any, trajectory: list) -> None:
+        """Store the finished run and report the progress."""
+        if runs_dir is not None:
+            try:
+                OptimizationResult.write_run(
+                    directory=Path(runs_dir),
+                    parameters=problem.parameters,
+                    fit=fit,
+                    trajectory=trajectory,
+                    sid=f"{problem.opid}_{run_prefix}_{k}",
+                    opid=problem.opid,
+                    settings=settings,
+                )
+            except Exception as err:
+                # storing a run must never end the fit
+                logger.error(
+                    "'%s': the run '%s' could not be stored: %s: %s",
+                    problem.opid,
+                    k,
+                    type(err).__name__,
+                    err,
+                )
+        if on_progress is not None:
+            on_progress()
+
     fits, trajectories = problem.optimize(
         size=size,
         seed=seed,
         algorithm=algorithm,
+        timeout=timeout,
         on_run_finished=on_run_finished,
         **kwargs,
     )

@@ -5,7 +5,6 @@ import time
 from collections import defaultdict
 from collections.abc import Callable, Sequence
 from copy import deepcopy
-from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
@@ -81,22 +80,52 @@ def apply_loss_function(
     return np.sign(residuals) * np.sqrt(rho)
 
 
-@dataclass
-class RuntimeErrorOptimizeResult:
-    """Result of an optimization which failed with a RuntimeError.
+class FitTimeout(Exception):
+    """A single optimization ran longer than its budget.
 
-    Carries the same attributes as the `scipy.optimize.OptimizeResult` of a
-    successful optimization, so that the results can be processed together.
+    The optimizers of scipy cannot be interrupted, so the objective raises this
+    once the budget is spent, which ends the optimization. The runs which
+    finished are kept, see `OptimizationProblem.optimize`.
     """
 
-    status: int = -1
-    success: bool = False
-    duration: float = -1.0
-    cost: float = np.inf
-    optimality: float = np.inf
-    x: np.ndarray | None = None
-    x0: np.ndarray | None = None
-    message: str = "RuntimeError in ODE integration."
+
+class RuntimeErrorOptimizeResult(scipy.optimize.OptimizeResult):
+    """Result of an optimization which did not finish.
+
+    An optimization fails with an error of the integrator, with a timeout or
+    with any other error of the objective. This *is* a
+    `scipy.optimize.OptimizeResult`, i.e., a dictionary with attribute access,
+    so that a failed run is stored, serialized and reported like a successful
+    one and a fit keeps the runs which worked.
+    """
+
+    def __init__(
+        self,
+        x: np.ndarray | None = None,
+        x0: np.ndarray | None = None,
+        cost: float = np.inf,
+        message: str = "RuntimeError in ODE integration.",
+        duration: float = -1.0,
+    ):
+        """Initialize the result of an optimization which did not finish.
+
+        Args:
+            x: parameters the optimization reached.
+            x0: parameters it started from.
+            cost: cost of `x`.
+            message: what went wrong.
+            duration: seconds the optimization ran.
+        """
+        super().__init__(
+            status=-1,
+            success=False,
+            duration=duration,
+            cost=cost,
+            optimality=np.inf,
+            x=x,
+            x0=x0,
+            message=message,
+        )
 
 
 class OptimizationProblem(ObjectJSONEncoder):
@@ -156,6 +185,8 @@ class OptimizationProblem(ObjectJSONEncoder):
         self.settings: FitSettings | None = None
 
         self._trajectory: list[tuple[np.ndarray, float]] = []
+        # deadline of the running optimization, set by `_optimize_single`
+        self._deadline: float | None = None
         self.xmodel: np.ndarray = np.empty(shape=(len(self.pids)))
         self._reset_mappings()
 
@@ -182,6 +213,8 @@ class OptimizationProblem(ObjectJSONEncoder):
         self.models: list[Any] = []
         self.simulations: list[Any] = []
         self.selections: list[Any] = []
+        # indices of the mappings which share a simulation, see `_group_mappings`
+        self.mapping_groups: list[list[int]] = []
 
     def indices(self, kind: MappingKind | None = None) -> list[int]:
         """Get the indices of the fit mappings of a kind.
@@ -632,6 +665,7 @@ class OptimizationProblem(ObjectJSONEncoder):
 
         # initial parameter values of the models
         self._store_model_parameters()
+        self._group_mappings()
 
         if not self.training_indices:
             raise ValueError(
@@ -671,6 +705,28 @@ class OptimizationProblem(ObjectJSONEncoder):
                     f"parameter space, which requires a positive 'start_value', but "
                     f"FitParameter '{p.pid}' has '{p.start_value}'."
                 )
+
+    def _group_mappings(self) -> None:
+        """Group the fit mappings which are simulated together.
+
+        Several fit mappings read different observables of the same simulation,
+        e.g. the plasma concentration and the amount in urine of one dosing.
+        The simulation of such a group runs once per evaluation of the
+        residuals with the selections of all its mappings, which is where the
+        time of a fit goes.
+        """
+        groups: dict[tuple[int, int], list[int]] = {}
+        for k in range(len(self.mapping_keys)):
+            key = (id(self.models[k]), id(self.simulations[k]))
+            groups.setdefault(key, []).append(k)
+        self.mapping_groups = list(groups.values())
+
+        logger.debug(
+            "%s: %s fit mappings in %s simulations",
+            self.opid,
+            len(self.mapping_keys),
+            len(self.mapping_groups),
+        )
 
     def _store_model_parameters(self) -> None:
         """Store the initial values of the fitted parameters in the models.
@@ -739,7 +795,8 @@ class OptimizationProblem(ObjectJSONEncoder):
         algorithm: OptimizationAlgorithmType = OptimizationAlgorithmType.LEAST_SQUARE,
         sampling: SamplingType = SamplingType.UNIFORM,
         seed: int | None = None,
-        on_run_finished: Callable[[], None] | None = None,
+        timeout: float | None = None,
+        on_run_finished: Callable[[int, Any, list], None] | None = None,
         **kwargs,
     ) -> tuple[list[scipy.optimize.OptimizeResult], list]:
         """Run parameter optimization.
@@ -752,12 +809,17 @@ class OptimizationProblem(ObjectJSONEncoder):
             algorithm: optimization algorithm.
             sampling: sampling of the start values of the local optimizer.
             seed: seed of the sampling.
-            on_run_finished: called after every finished optimization, used to
-                report the progress of a fit.
+            timeout: seconds a single optimization may run, no limit if `None`.
+                A run which is out of time keeps the parameters it reached.
+            on_run_finished: called with the index, the fit and the trajectory
+                of every finished optimization, i.e., to report the progress of
+                a fit and to store the runs while it runs.
             kwargs: additional arguments of the optimizer.
 
         Returns:
-            The fits and the trajectories of the optimizations.
+            The fits and the trajectories of the optimizations. A run which
+            failed is a `RuntimeErrorOptimizeResult` with its message, the
+            other runs are unaffected.
         """
         # create samples
         x_samples: pd.DataFrame
@@ -782,15 +844,32 @@ class OptimizationProblem(ObjectJSONEncoder):
                 x0 = None
 
             logger.debug("[%s/%s] x0=%s", k + 1, size, x0)
-            fit, trajectory = self._optimize_single(
-                x0=x0, algorithm=algorithm, **kwargs
-            )
+            try:
+                fit, trajectory = self._optimize_single(
+                    x0=x0, algorithm=algorithm, timeout=timeout, **kwargs
+                )
+            except Exception as err:
+                # one run must not lose the results of the other runs
+                logger.error(
+                    "%s: optimization %s/%s failed: %s: %s",
+                    self.opid,
+                    k + 1,
+                    size,
+                    type(err).__name__,
+                    err,
+                )
+                fit = RuntimeErrorOptimizeResult(
+                    x=np.asarray(x0, dtype=float) if x0 is not None else None,
+                    x0=np.asarray(x0, dtype=float) if x0 is not None else None,
+                    message=f"{type(err).__name__}: {err}",
+                )
+                trajectory = []
             logger.debug("	%s [s]", format(fit.duration, "8.4f"))
 
             fits.append(fit)
             trajectories.append(trajectory)
             if on_run_finished is not None:
-                on_run_finished()
+                on_run_finished(k, fit, trajectory)
         return fits, trajectories
 
     @timeit
@@ -798,14 +877,43 @@ class OptimizationProblem(ObjectJSONEncoder):
         self,
         x0: np.ndarray | None = None,
         algorithm: OptimizationAlgorithmType = OptimizationAlgorithmType.LEAST_SQUARE,
+        timeout: float | None = None,
         **kwargs,
     ) -> tuple[scipy.optimize.OptimizeResult, list]:
         """Run single optimization with x0 start values.
 
-        :param x0: parameter start vector (important for deterministic optimizers)
-        :param algorithm: optimization algorithm and method
-        :param kwargs:
-        :return:
+        Args:
+            x0: parameter start vector (important for deterministic optimizers).
+            algorithm: optimization algorithm and method.
+            timeout: seconds the optimization may run, no limit if `None`.
+            kwargs: additional arguments of the optimizer.
+
+        Returns:
+            The fit and the trajectory of the optimization.
+
+        Raises:
+            ValueError: if the algorithm is not supported or start values are
+                required and missing.
+        """
+        self._deadline = None if timeout is None else time.monotonic() + timeout
+        try:
+            return self._optimize_single_run(x0=x0, algorithm=algorithm, **kwargs)
+        finally:
+            # the deadline is the budget of this run, the residuals are
+            # evaluated again when the fit is reported
+            self._deadline = None
+
+    def _optimize_single_run(
+        self,
+        x0: np.ndarray | None = None,
+        algorithm: OptimizationAlgorithmType = OptimizationAlgorithmType.LEAST_SQUARE,
+        **kwargs,
+    ) -> tuple[scipy.optimize.OptimizeResult, list]:
+        """Run a single optimization, see `_optimize_single`.
+
+        Raises:
+            ValueError: if the algorithm is not supported or start values are
+                required and missing.
         """
         # FIXME: this should not be necessary, handle outside
         if x0 is None:
@@ -839,15 +947,15 @@ class OptimizationProblem(ObjectJSONEncoder):
                     opt_result = scipy.optimize.least_squares(
                         fun=self.residuals, x0=x0log, bounds=boundslog, **kwargs
                     )
-            except RuntimeError as err:
+            except (RuntimeError, FitTimeout) as err:
                 logger.error(
-                    "RuntimeError in ODE integration (optimize) for '%s = %s': \n%s",
+                    "%s in ODE integration (optimize) for '%s = %s': \n%s",
+                    type(err).__name__,
                     self.pids,
                     x0,
                     err,
                 )
-                opt_result = RuntimeErrorOptimizeResult()
-                opt_result.x = x0log
+                opt_result = self._interrupted_result(err, x0log)
             te = time.time()
             opt_result.x0 = x0  # store start value
             opt_result.duration = te - ts
@@ -866,23 +974,99 @@ class OptimizationProblem(ObjectJSONEncoder):
                 opt_result = scipy.optimize.differential_evolution(
                     func=self.cost_least_square, bounds=de_bounds_log, **kwargs
                 )
-            except RuntimeError as err:
+            except (RuntimeError, FitTimeout) as err:
                 logger.error(
-                    "RuntimeError in ODE integration (optimize) for '%s = %s': \n%s",
+                    "%s in ODE integration (optimize) for '%s = %s': \n%s",
+                    type(err).__name__,
                     self.pids,
                     x0,
                     err,
                 )
-                opt_result = RuntimeErrorOptimizeResult()
-                opt_result.x = x0log
+                opt_result = self._interrupted_result(err, x0log)
             te = time.time()
             opt_result.x0 = x0  # store start value
             opt_result.duration = te - ts
-            opt_result.cost = self.cost_least_square(np.asarray(opt_result.x))
+            if not isinstance(opt_result, RuntimeErrorOptimizeResult):
+                # differential evolution reports `fun`, the cost is evaluated.
+                # An interrupted run already carries the best cost of its
+                # trajectory, evaluating it again would hit the deadline once
+                # more
+                opt_result.cost = self.cost_least_square(np.asarray(opt_result.x))
             opt_result.x = np.power(10, np.asarray(opt_result.x))
             return opt_result, deepcopy(self._trajectory)
 
         raise ValueError(f"optimizer is not supported: {algorithm}")
+
+    def _simulate_groups(
+        self,
+        simulator: SimulatorSerial,
+        changes: dict[str, Quantity],
+        evaluated: set[int],
+        x: np.ndarray,
+    ) -> dict[int, pd.DataFrame | None]:
+        """Simulate the groups of fit mappings for the given parameters.
+
+        The mappings of a group share a simulation, so it runs once with the
+        selections of all of them; `_group_mappings` builds the groups.
+
+        Args:
+            simulator: simulator of the problem.
+            changes: parameters to set on the simulations.
+            evaluated: indices of the fit mappings which are evaluated.
+            x: parameter values, for the message of a failed integration.
+
+        Returns:
+            The result of the simulation of every evaluated mapping, `None` if
+            its integration failed.
+        """
+        results: dict[int, pd.DataFrame | None] = {}
+        for group in self.mapping_groups:
+            indices = [k for k in group if k in evaluated]
+            if not indices:
+                continue
+
+            k0 = indices[0]
+            simulation: TimecourseSim = self.simulations[k0]
+            simulation.timecourses[0].changes.update(changes)
+
+            simulator.set_model(model=self.models[k0])
+            simulator.set_timecourse_selections(
+                selections=sorted({s for k in indices for s in self.selections[k]})
+            )
+            simulation.normalize(uinfo=simulator.uinfo)
+
+            df: pd.DataFrame | None
+            try:
+                # FIXME: just simulate at the requested timepoints with step
+                df = simulator._timecourses([simulation])[0]
+            except RuntimeError as err:
+                logger.error(
+                    "RuntimeError in ODE integration ('%s = %s'): \n%s",
+                    self.pids,
+                    x,
+                    err,
+                )
+                df = None
+
+            for k in indices:
+                results[k] = df
+
+        return results
+
+    def _interrupted_result(
+        self, err: Exception, x0log: np.ndarray
+    ) -> RuntimeErrorOptimizeResult:
+        """Get the result of a run which did not finish.
+
+        The best parameters the optimizer reached are kept, so a run which ran
+        out of time still contributes what it found.
+        """
+        best = min(self._trajectory, key=lambda step: step[1], default=None)
+        return RuntimeErrorOptimizeResult(
+            x=np.log10(best[0]) if best is not None else x0log,
+            cost=best[1] if best is not None else np.inf,
+            message=f"{type(err).__name__}: {err}",
+        )
 
     def cost_least_square(self, xlog: np.ndarray) -> float:
         """Get least square costs for parameters."""
@@ -909,6 +1093,10 @@ class OptimizationProblem(ObjectJSONEncoder):
         Raises:
             ValueError: if no simulator is set or the residuals are not supported.
         """
+        if self._deadline is not None and time.monotonic() > self._deadline:
+            raise FitTimeout(
+                f"'{self.opid}': the optimization did not finish in its budget."
+            )
         x = np.power(10, xlog)
 
         # FIXME: handle parts better
@@ -922,32 +1110,29 @@ class OptimizationProblem(ObjectJSONEncoder):
             raise ValueError(f"No simulator set on OptimizationProblem '{self.opid}'.")
         Q_ = self.runner_initialized.Q_
 
+        # the parameters are the same for every mapping, the quantities are
+        # created once and not once per mapping
+        changes = {
+            self.pids[ix]: Q_(value, self.punits[ix]) for ix, value in enumerate(x)
+        }
+        evaluated = {
+            k
+            for k in range(len(self.mapping_keys))
+            # the optimization only uses the training data, the validation data
+            # is simulated for the evaluation of a fit
+            if complete_data or self.mapping_kinds[k] is MappingKind.TRAINING
+        }
+        results = self._simulate_groups(
+            simulator=simulator, changes=changes, evaluated=evaluated, x=x
+        )
+
         df: pd.DataFrame | None = None
         for k, mapping_key in enumerate(self.mapping_keys):
-            if not complete_data and self.mapping_kinds[k] is not MappingKind.TRAINING:
-                # the optimization only uses the training data, the validation
-                # data is simulated for the evaluation of a fit
+            if k not in evaluated:
                 continue
 
-            # update initial changes
-            changes = {
-                self.pids[ix]: Q_(value, self.punits[ix]) for ix, value in enumerate(x)
-            }
-            self.simulations[k].timecourses[0].changes.update(changes)
-
-            # set model in simulator
-            simulator.set_model(model=self.models[k])
-            simulator.set_timecourse_selections(selections=self.selections[k])
-
-            # FIXME: normalize simulations and parameters once outside of loop
-            simulation: TimecourseSim = self.simulations[k]
-            simulation.normalize(uinfo=simulator.uinfo)
-
-            # run simulation
-            try:
-                # FIXME: just simulate at the requested timepoints with step
-                df = simulator._timecourses([simulation])[0]
-
+            df = results[k]
+            if df is not None:
                 # interpolation of simulation results and requested time points
                 f = interpolate.interp1d(
                     x=df[self.xid_observable[k]],
@@ -970,15 +1155,8 @@ class OptimizationProblem(ObjectJSONEncoder):
 
                 # calculate absolute residuals (f(x_{i}) - y_{i})
                 res_abs = y_obsip - self.y_references[k]
-
-            except RuntimeError as err:
-                # error in integration (setting high residuals & cost)
-                logger.error(
-                    "RuntimeError in ODE integration ('%s = %s'): \n%s",
-                    self.pids,
-                    x,
-                    err,
-                )
+            else:
+                # the integration failed, setting high residuals & cost
                 res_abs = 5.0 * self.y_references[k]  # total error
 
             # with np.errstate(divide="ignore", invalid="ignore"):
