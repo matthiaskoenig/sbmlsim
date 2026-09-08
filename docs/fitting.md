@@ -279,11 +279,13 @@ FIT_DEFINITIONS = {"PKIV": definition}
 
 
 def main() -> None:
-    fit_cli(FIT_DEFINITIONS, prog="fit_hctz")
+    fit_cli(FIT_DEFINITIONS)
 
 
 print(FIT_DEFINITIONS)
 ```
+
+Every fit gets an id when it starts, `<problem>_<date>_<time>__<hash>`, e.g. `PK_20260908_144538__ea1ff`. It is the id of the optimization problem, of its result and of the directory of its report, so everything a fit produces carries the same key and sorts by time. The output of a fit is a sequence of sections, each with its own icon: the fit with its strategy, algorithm and paths, the parameters which are optimized with their bounds and units, the settings, the data with the number of fit mappings per experiment and kind, the optimization with its progress, and the report. `sbmlsim.fit.display` renders them and is used on its own as well.
 
 The fit problems of the HCTZ model are in `examples/hctz/fitting/`: `fit_experiments.py` builds the subsets of the data, `parameters.py` holds the fit parameters and `fitting.py` is the definitions plus the four lines above:
 

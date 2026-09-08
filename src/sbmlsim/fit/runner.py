@@ -32,11 +32,11 @@ from rich.progress import (
 )
 
 from sbmlsim.console import console
+from sbmlsim.fit import display
 from sbmlsim.fit.optimization import OptimizationProblem
 from sbmlsim.fit.options import FitSettings, OptimizationAlgorithmType
 from sbmlsim.fit.result import OptimizationResult
 from sbmlsim.log import PACKAGE_LOGGER
-from sbmlsim.utils import timeit
 
 logger = logging.getLogger(__name__)
 
@@ -103,7 +103,6 @@ def _advance(progress: Progress | None, advance: int = 1) -> None:
         progress.advance(progress.task_ids[0], advance=advance)
 
 
-@timeit
 def run_optimization(
     problem: OptimizationProblem,
     settings: FitSettings | None = None,
@@ -151,12 +150,12 @@ def run_optimization(
     if settings is None:
         settings = FitSettings()
 
-    console.rule(f"Optimization '{problem.opid}'", align="left", style="white")
+    display.section("Optimization", icon=display.ICON_OPTIMIZATION)
 
     opt_result: OptimizationResult
     if serial:
-        console.print(f"{'runs':<12}: {size}\n{'workers':<12}: 1 (serial)")
-        with optimization_progress(problem.opid, size, show_progress) as progress:
+        display.key_values({"runs": size, "workers": "1 (serial)"})
+        with optimization_progress("optimizing", size, show_progress) as progress:
             opt_result = _run_optimization_serial(
                 problem=problem,
                 settings=settings,
@@ -176,7 +175,7 @@ def run_optimization(
                 n_cores,
             )
             size = n_cores
-        console.print(f"{'runs':<12}: {size}\n{'workers':<12}: {n_cores}")
+        display.key_values({"runs": size, "workers": n_cores})
         opt_result = _run_optimization_parallel(
             problem=problem,
             settings=settings,
@@ -195,13 +194,15 @@ def run_optimization(
 def _print_summary(opt_result: OptimizationResult) -> None:
     """Print the outcome of the optimization on the console."""
     successful = sum(1 for fit in opt_result.fits if fit.success)
-    style = "success" if successful == opt_result.size else "warning"
-    console.print(
-        f"{'finished':<12}: {successful}/{opt_result.size} runs converged",
-        style=style,
-    )
+    style = "green" if successful == opt_result.size else "orange3"
+    info: dict[str, Any] = {
+        "converged": f"[{style}]{successful}/{opt_result.size} runs[/{style}]"
+    }
     if opt_result.size:
-        console.print(f"{'best cost':<12}: {opt_result.df_fits.cost.iloc[0]:.6g}")
+        info["best cost"] = f"{opt_result.df_fits.cost.iloc[0]:.6g}"
+        # the sum over the runs, which is more than the wall time in parallel
+        info["optimizer time"] = f"{opt_result.df_fits.duration.sum():.1f} s"
+    display.key_values(info)
 
 
 def _run_optimization_parallel(
@@ -241,7 +242,7 @@ def _run_optimization_parallel(
         ]
 
         with (
-            optimization_progress(problem.opid, size, show_progress) as progress,
+            optimization_progress("optimizing", size, show_progress) as progress,
             multiprocessing.Pool(processes=n_cores) as pool,
         ):
             async_result = pool.map_async(worker, args_list)
@@ -320,6 +321,7 @@ def _run_optimization_serial(
         parameters=problem.parameters,
         fits=fits,
         trajectories=trajectories,
+        sid=problem.opid,
         opid=problem.opid,
         settings=settings,
     )

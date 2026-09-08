@@ -26,7 +26,7 @@ from matplotlib.axes import Axes
 from matplotlib.figure import Figure
 from matplotlib.lines import Line2D
 
-from sbmlsim.console import console
+from sbmlsim.fit import display
 from sbmlsim.fit.metrics import FitMetrics
 from sbmlsim.fit.objects import MappingKind
 from sbmlsim.fit.optimization import OptimizationProblem
@@ -245,8 +245,17 @@ class FitReport:
         plots_dir = results_dir / "plots"
         plots_dir.mkdir(parents=True, exist_ok=True)
 
-        console.rule(f"Report '{name}'", align="left", style="white")
-        console.print(f"{'sets':<12}: {[pset.sid for pset in self.parameter_sets]}")
+        display.section("Report", icon=display.ICON_REPORT)
+        display.key_values(
+            {
+                "directory": name,
+                "parameter sets": ", ".join(pset.sid for pset in self.parameter_sets),
+                "mappings": ", ".join(
+                    f"{count} {kind.value}"
+                    for kind, count in self.problem.mapping_counts().items()
+                ),
+            }
+        )
 
         # the parameters are the input of a report, they are stored with it
         self.parameter_sets.to_json(path=results_dir / "parameters.json")
@@ -267,11 +276,7 @@ class FitReport:
         self.html_report(path=results_dir / "index.html")
 
         report_path = results_dir / "index.html"
-        console.print(
-            f"{'report':<12}: file://{report_path.resolve()}",
-            style="success",
-            soft_wrap=True,
-        )
+        display.link("report", report_path)
         if show_report:
             webbrowser.open(f"file://{report_path.resolve()!s}", new=2)
 
