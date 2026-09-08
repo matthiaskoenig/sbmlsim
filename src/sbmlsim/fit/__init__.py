@@ -11,6 +11,7 @@ https://petab.readthedocs.io/en/latest/index.html
 https://pyabc.readthedocs.io/en/latest/index.html
 """
 
+from .metrics import FitMetrics
 from .objects import (
     FitData,
     FitExperiment,
@@ -25,6 +26,7 @@ __all__ = [
     "FitData",
     "FitExperiment",
     "FitMapping",
+    "FitMetrics",
     "FitParameter",
     "FitSettings",
     "MappingMetaData",

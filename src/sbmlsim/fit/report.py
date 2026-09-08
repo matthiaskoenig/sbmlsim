@@ -27,6 +27,7 @@ from matplotlib.figure import Figure
 from matplotlib.lines import Line2D
 
 from sbmlsim.console import console
+from sbmlsim.fit.metrics import FitMetrics
 from sbmlsim.fit.optimization import OptimizationProblem
 from sbmlsim.fit.options import FitSettings
 from sbmlsim.fit.parameters import ParameterSet, ParameterSets
@@ -149,6 +150,41 @@ class FitReport:
         """Get the values of a set in the parameter order of the problem."""
         return pset.x(self.problem.pids)
 
+    def metrics(self, pset: ParameterSet) -> FitMetrics:
+        """Get the metrics of a parameter set on the problem.
+
+        Args:
+            pset: parameter set of the report.
+
+        Returns:
+            The metrics of the set, see `sbmlsim.fit.metrics`.
+        """
+        return FitMetrics(problem=self.problem, parameter_set=pset)
+
+    def metrics_df(self) -> pd.DataFrame:
+        """Get the metrics of every parameter set, one row per set."""
+        return pd.DataFrame(
+            [self.metrics(pset).summary() for pset in self.parameter_sets]
+        )
+
+    def metrics_mappings_df(self) -> pd.DataFrame:
+        """Get the metrics of every fit mapping and parameter set."""
+        frames = []
+        for pset in self.parameter_sets:
+            df = self.metrics(pset).mappings_df()
+            df.insert(0, "parameter_set", pset.sid)
+            frames.append(df)
+        return pd.concat(frames, ignore_index=True)
+
+    def datapoints_df(self) -> pd.DataFrame:
+        """Get the data points with their predictions for every parameter set."""
+        frames = []
+        for pset in self.parameter_sets:
+            df = self.metrics(pset).datapoints_df()
+            df.insert(0, "parameter_set", pset.sid)
+            frames.append(df)
+        return pd.concat(frames, ignore_index=True)
+
     def residual_data(self, pset: ParameterSet) -> dict[str, list[Any]]:
         """Get the complete residual data of the mappings for a parameter set.
 
@@ -196,6 +232,14 @@ class FitReport:
 
         # the parameters are the input of a report, they are stored with it
         self.parameter_sets.to_json(path=results_dir / "parameters.json")
+
+        # metrics of the parameter sets
+        for df, name in [
+            (self.metrics_df(), "metrics.tsv"),
+            (self.metrics_mappings_df(), "metrics_mappings.tsv"),
+            (self.datapoints_df(), "datapoints.tsv"),
+        ]:
+            df.to_csv(results_dir / name, sep="\t", index=False)
         if self.opt_result:
             self.opt_result.to_json(path=results_dir / "optimization_result.json")
             self.opt_result.to_tsv(path=results_dir / "optimization_result.tsv")
@@ -219,6 +263,7 @@ class FitReport:
         """Write the text report of the problem, the parameters and the runs."""
         info = [self.problem.report(path=None, print_output=False)]
         info.append(self.parameters_report())
+        info.extend(self.metrics(pset).report() for pset in self.parameter_sets)
         if self.opt_result:
             info.append(self.opt_result.report(path=None, print_output=False))
 
@@ -253,6 +298,8 @@ class FitReport:
             title = f"{title} [{self.opt_result.sid}]"
 
         parameters_html = self.parameter_sets.to_df().to_html(index=False)
+        metrics_html = self.metrics_df().to_html(index=False)
+        metrics_mappings_html = self.metrics_mappings_df().to_html(index=False)
 
         warnings_info: list[str] = []
         for pset in self.parameter_sets:
@@ -296,6 +343,12 @@ class FitReport:
         <h3>Parameters on their bounds</h3>
         {warnings_html}
 
+        <h2>Metrics</h2>
+        {metrics_html}
+
+        <h3>Metrics of the fit mappings</h3>
+        {metrics_mappings_html}
+
         <h2>Settings</h2>
         <pre>{self.settings}</pre>
 
@@ -303,6 +356,9 @@ class FitReport:
         <ul>
             <li><a target="_blank" href="report.txt">report.txt</a></li>
             <li><a target="_blank" href="parameters.json">parameters.json</a></li>
+            <li><a target="_blank" href="metrics.tsv">metrics.tsv</a></li>
+            <li><a target="_blank" href="metrics_mappings.tsv">metrics_mappings.tsv</a></li>
+            <li><a target="_blank" href="datapoints.tsv">datapoints.tsv</a></li>
         </ul>
         </p>
 
