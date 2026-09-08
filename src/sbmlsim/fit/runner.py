@@ -31,6 +31,7 @@ from rich.progress import (
     TextColumn,
     TimeElapsedColumn,
 )
+from scipy.optimize import OptimizeResult
 
 from sbmlsim.console import console
 from sbmlsim.fit import display
@@ -358,7 +359,7 @@ def _run_optimization_serial(
     # initialize problem, which resolves the data and calculates the weights
     problem.initialize(settings)
 
-    def on_run_finished(k: int, fit: Any, trajectory: list) -> None:
+    def on_run_finished(k: int, fit: OptimizeResult, trajectory: list[float]) -> None:
         """Store the finished run and report the progress."""
         if runs_dir is not None:
             try:

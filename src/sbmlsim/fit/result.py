@@ -88,7 +88,7 @@ class OptimizationResult(ObjectJSONEncoder):
         self,
         parameters: Iterable[FitParameter],
         fits: list[OptimizeResult],
-        trajectories: list,
+        trajectories: list[list[float]],
         sid: str | None = None,
         opid: str | None = None,
         settings: FitSettings | dict[str, Any] | None = None,
@@ -102,7 +102,7 @@ class OptimizationResult(ObjectJSONEncoder):
         Args:
             parameters: fit parameters of the optimization problem.
             fits: results of the single optimizations.
-            trajectories: trajectories of the single optimizations.
+            trajectories: cost of every step of the single optimizations.
             sid: identifier of the result, created from the time by default.
             opid: id of the optimization problem the result belongs to.
             settings: settings the fit was run with.
@@ -131,16 +131,14 @@ class OptimizationResult(ObjectJSONEncoder):
                     fit[key] = np.asarray(value, dtype=float)
             self.fits.append(fit)
 
-        self.trajectories = [
-            [(np.asarray(x, dtype=float), float(cost)) for x, cost in trajectory]
-            for trajectory in trajectories
+        # the cost of every step of a run, which is what the trace plot shows
+        self.trajectories: list[list[float]] = [
+            [float(cost) for cost in trajectory] for trajectory in trajectories
         ]
 
         # create data frame from results
         self.df_fits = OptimizationResult.process_fits(self.parameters, self.fits)
-        self.df_traces = OptimizationResult.process_traces(
-            self.parameters, self.trajectories
-        )
+        self.df_traces = OptimizationResult.process_traces(self.trajectories)
 
     def run_result(self, k: int) -> "OptimizationResult":
         """Get the result of a single optimization run.
@@ -171,7 +169,7 @@ class OptimizationResult(ObjectJSONEncoder):
         directory: Path,
         parameters: Iterable[FitParameter],
         fit: OptimizeResult,
-        trajectory: list,
+        trajectory: list[float],
         sid: str,
         opid: str | None = None,
         settings: FitSettings | None = None,
@@ -387,23 +385,26 @@ class OptimizationResult(ObjectJSONEncoder):
         return fit_pars
 
     @staticmethod
-    def process_traces(
-        parameters: list[FitParameter], trajectories: list
-    ) -> pd.DataFrame:
-        """Process the trajectories of the optimizations."""
-        results = []
-        pids = [p.pid for p in parameters]
-        for kt, trajectory in enumerate(trajectories):
-            for step in trajectory:
-                res = {
-                    "run": kt,
-                    "cost": step[1],
-                }
-                # add parameter columns
-                for k, pid in enumerate(pids):
-                    res[pid] = step[0][k]
-                results.append(res)
-        return pd.DataFrame(results)
+    def process_traces(trajectories: list[list[float]]) -> pd.DataFrame:
+        """Process the trajectories of the optimizations.
+
+        A trajectory is the cost of every step of a run, which is what the
+        trace plot of a report shows.
+
+        Args:
+            trajectories: cost of every step, per run.
+
+        Returns:
+            DataFrame with the columns `run`, `step` and `cost`.
+        """
+        return pd.DataFrame(
+            [
+                {"run": kt, "step": step, "cost": cost}
+                for kt, trajectory in enumerate(trajectories)
+                for step, cost in enumerate(trajectory)
+            ],
+            columns=pd.Index(["run", "step", "cost"]),
+        )
 
     @staticmethod
     def process_fits(

@@ -4,7 +4,6 @@ import logging
 import time
 from collections import defaultdict
 from collections.abc import Callable, Sequence
-from copy import deepcopy
 from pathlib import Path
 from typing import Any
 
@@ -78,6 +77,40 @@ def apply_loss_function(
         raise ValueError(f"LossFunctionType not supported: '{loss_function}'")
 
     return np.sign(residuals) * np.sqrt(rho)
+
+
+#: keys of an optimization result which are kept: the parameters and the cost,
+#: which the reports and the metrics are made from, plus the scalars which say
+#: how the run went. The optimizers also return the residuals `fun`, the
+#: jacobian `jac`, the gradient and the active mask of the last step, which are
+#: as large as the data and which nothing reads; they are dropped
+RESULT_KEYS: tuple[str, ...] = (
+    "x",
+    "x0",
+    "cost",
+    "success",
+    "status",
+    "message",
+    "duration",
+    "optimality",
+    "nfev",
+)
+
+
+def minimal_result(
+    opt_result: scipy.optimize.OptimizeResult,
+) -> scipy.optimize.OptimizeResult:
+    """Reduce the result of an optimization to what is reported.
+
+    Args:
+        opt_result: result of one of the optimizers of scipy.
+
+    Returns:
+        A result with the keys of `RESULT_KEYS` which are present.
+    """
+    return scipy.optimize.OptimizeResult(
+        {key: opt_result[key] for key in RESULT_KEYS if key in opt_result}
+    )
 
 
 class FitTimeout(Exception):
@@ -184,7 +217,11 @@ class OptimizationProblem(ObjectJSONEncoder):
         self.runner: ExperimentRunner | None = None
         self.settings: FitSettings | None = None
 
-        self._trajectory: list[tuple[np.ndarray, float]] = []
+        # cost of every step of the running optimization, for the trace plot
+        self._trajectory: list[float] = []
+        # best step of the running optimization, which a run that is
+        # interrupted keeps; the trajectory does not store the parameters
+        self._best: tuple[np.ndarray, float] | None = None
         # deadline of the running optimization, set by `_optimize_single`
         self._deadline: float | None = None
         self.xmodel: np.ndarray = np.empty(shape=(len(self.pids)))
@@ -796,9 +833,11 @@ class OptimizationProblem(ObjectJSONEncoder):
         sampling: SamplingType = SamplingType.UNIFORM,
         seed: int | None = None,
         timeout: float | None = None,
-        on_run_finished: Callable[[int, Any, list], None] | None = None,
+        on_run_finished: (
+            Callable[[int, scipy.optimize.OptimizeResult, list[float]], None] | None
+        ) = None,
         **kwargs,
-    ) -> tuple[list[scipy.optimize.OptimizeResult], list]:
+    ) -> tuple[list[scipy.optimize.OptimizeResult], list[list[float]]]:
         """Run parameter optimization.
 
         The problem must be initialized, i.e., the settings of the fit are the
@@ -835,8 +874,8 @@ class OptimizationProblem(ObjectJSONEncoder):
             # the global optimizer draws its own samples
             kwargs["rng"] = seed
 
-        fits = []
-        trajectories = []
+        fits: list[scipy.optimize.OptimizeResult] = []
+        trajectories: list[list[float]] = []
         for k in range(size):
             if algorithm == OptimizationAlgorithmType.LEAST_SQUARE:
                 x0 = x_samples.values[k, :]
@@ -896,6 +935,8 @@ class OptimizationProblem(ObjectJSONEncoder):
                 required and missing.
         """
         self._deadline = None if timeout is None else time.monotonic() + timeout
+        self._trajectory = []
+        self._best = None
         try:
             return self._optimize_single_run(x0=x0, algorithm=algorithm, **kwargs)
         finally:
@@ -927,7 +968,6 @@ class OptimizationProblem(ObjectJSONEncoder):
         # logarithmic parameters for optimizer
         x0log: np.ndarray = np.log10(x0)
 
-        self._trajectory = []
         if algorithm == OptimizationAlgorithmType.LEAST_SQUARE:
             # scipy least square optimizer
             # https://docs.scipy.org/doc/scipy/reference/generated/scipy.optimize.least_squares.html
@@ -960,7 +1000,7 @@ class OptimizationProblem(ObjectJSONEncoder):
             opt_result.x0 = x0  # store start value
             opt_result.duration = te - ts
             opt_result.x = np.power(10, np.asarray(opt_result.x))
-            return opt_result, deepcopy(self._trajectory)
+            return minimal_result(opt_result), list(self._trajectory)
 
         if algorithm == OptimizationAlgorithmType.DIFFERENTIAL_EVOLUTION:
             # scipy differential evolution
@@ -993,7 +1033,7 @@ class OptimizationProblem(ObjectJSONEncoder):
                 # more
                 opt_result.cost = self.cost_least_square(np.asarray(opt_result.x))
             opt_result.x = np.power(10, np.asarray(opt_result.x))
-            return opt_result, deepcopy(self._trajectory)
+            return minimal_result(opt_result), list(self._trajectory)
 
         raise ValueError(f"optimizer is not supported: {algorithm}")
 
@@ -1061,7 +1101,7 @@ class OptimizationProblem(ObjectJSONEncoder):
         The best parameters the optimizer reached are kept, so a run which ran
         out of time still contributes what it found.
         """
-        best = min(self._trajectory, key=lambda step: step[1], default=None)
+        best = self._best
         return RuntimeErrorOptimizeResult(
             x=np.log10(best[0]) if best is not None else x0log,
             cost=best[1] if best is not None else np.inf,
@@ -1214,6 +1254,13 @@ class OptimizationProblem(ObjectJSONEncoder):
         if complete_data:
             return residual_data
         res_all = np.concatenate(parts)
-        # store the local step
-        self._trajectory.append((deepcopy(x), 0.5 * np.sum(np.power(res_all, 2))))
+
+        # the cost of the step, the trace plot is the only thing which uses it
+        cost = float(0.5 * np.sum(np.power(res_all, 2)))
+        self._trajectory.append(cost)
+        if self._best is None or cost < self._best[1]:
+            # the parameters of the best step, kept for a run which is
+            # interrupted; storing them for every step is what a trajectory
+            # used to do and no report reads them
+            self._best = (x.copy(), cost)
         return res_all
