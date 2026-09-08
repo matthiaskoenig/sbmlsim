@@ -72,9 +72,18 @@ def key_values(items: Mapping[str, Any]) -> None:
 
 
 def link(key: str, path: Path | str) -> None:
-    """Print a file link, on a single line so that the terminal can open it."""
+    """Print a file link, on a single line so that the terminal can open it.
+
+    The path is a `file://` URI, i.e., it has forward slashes and a drive is
+    `file:///C:/...`; a windows path with backslashes is not a link a terminal
+    opens.
+
+    Args:
+        key: what the link points to, in front of it.
+        path: path of the file, relative paths are resolved.
+    """
     console.print(
-        f"[bold]{key:<{KEY_WIDTH}}[/bold] file://{Path(path).resolve()}",
+        f"[bold]{key:<{KEY_WIDTH}}[/bold] {Path(path).resolve().as_uri()}",
         soft_wrap=True,
     )
 

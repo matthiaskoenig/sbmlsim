@@ -1,6 +1,7 @@
 """Test the console output of a fit."""
 
 from io import StringIO
+from pathlib import Path
 
 import pandas as pd
 import pytest
@@ -113,8 +114,9 @@ def test_link_is_a_single_line(capsys: pytest.CaptureFixture[str]) -> None:
     out = capsys.readouterr().out.strip()
     assert len(out.splitlines()) == 1
     assert out.startswith("report")
-    assert "file://" in out
-    assert out.endswith("results/fit/index.html")
+    # a URI, so that it is a link on windows as well
+    assert out.endswith(Path("results/fit/index.html").resolve().as_uri())
+    assert out.split()[-1].startswith("file:///")
 
 
 def test_print_sections(capsys: pytest.CaptureFixture[str]) -> None:

@@ -70,7 +70,7 @@ def run_simulation_experiments(
         if f.parent == figures_dir:
             continue
         shutil.copy2(f, figures_dir / f.name)
-    console.print(f"Figures copied to: file://{figures_dir.resolve()}")
+    console.print(f"Figures copied to: {figures_dir.resolve().as_uri()}")
 
 
 if __name__ == "__main__":
