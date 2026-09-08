@@ -6,7 +6,6 @@ import pytest
 
 from examples.demo.demo import run_demo_experiments
 from examples.glucose.glucose import run_glucose_experiments
-from examples.midazolam.simulate import run_midazolam_experiments
 from examples.repressilator.repressilator import (
     run_repressilator_example,
 )
@@ -22,12 +21,6 @@ def test_demo_example(tmp_path: Path) -> None:
 def test_glucose_example(tmp_path: Path) -> None:
     """Test glucose simulation experiment."""
     run_glucose_experiments(tmp_path)
-
-
-@pytest.mark.skip(reason="no experiment support")
-def test_midazolam_example(tmp_path: Path) -> None:
-    """Test midazolam simulation experiment."""
-    run_midazolam_experiments(tmp_path)
 
 
 @pytest.mark.skip(reason="no experiment support")

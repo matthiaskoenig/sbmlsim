@@ -7,8 +7,8 @@ fails the test suite.
 The examples which need network access (`examples.covid.omex`), optional
 tools (`examples.petab`, `examples.julia`) or the simulation experiment
 pipeline which is being reworked (`examples.demo`, `examples.repressilator`,
-`examples.midazolam`, `examples.covid`, `examples.sedml.execute_omex`) are
-not run here, see `examples/README.md`.
+`examples.covid`, `examples.sedml.execute_omex`) are not run here, see
+`examples/README.md`.
 """
 
 import os
@@ -25,6 +25,7 @@ REPO_DIR = Path(__file__).parent.parent.parent
 SCRIPTS = [
     "examples.timecourse",
     "examples.scan",
+    "examples.fit_sampling",
     "examples.model_change",
     "examples.units",
     "examples.model_sensitivity",
@@ -33,6 +34,7 @@ SCRIPTS = [
     "examples.curve_types.experiment",
     "examples.initial_assignment.initial_assignment",
     "examples.glucose.glucose",
+    "examples.hctz.simulations",
     "examples.sedml.execute_sedml",
     "examples.sensitivity.sensitivity_example",
 ]

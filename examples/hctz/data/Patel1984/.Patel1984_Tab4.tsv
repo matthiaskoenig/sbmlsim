@@ -1,0 +1,37 @@
+study	individual	group	count	intervention	measurement_type	substance	tissue	method	label	time	time_unit	value	mean	mean_pm	sd	se	unit	meanraw	comments
+Patel1984	NA	all	12.0	HCTZ25_tab	cumulative amount	sodium	urine	potentiometry	increase_Naurine_HCTZ25_tab	12.0	hr	NA	186.0	NA	64.0	18.475208614068	mmol	102.0	net increase to baseline; adding baseline values from Williams1982 (~7mmol/hr Na and 20 mmol/hr Cl, 3.5 mmol/hr Po)
+Patel1984	NA	all	12.0	HCTZ25_tab	cumulative amount	potassium	urine	potentiometry	increase_Kurine_HCTZ25_tab	12.0	hr	NA	62.2	NA	17.9	5.16728490924715	mmol	20.2	NA
+Patel1984	NA	all	12.0	HCTZ25_tab	cumulative amount	chloride	urine	potentiometry	increase_Clurine_HCTZ25_tab	12.0	hr	NA	376.0	NA	71.0	20.4959345562317	mmol	136.0	NA
+Patel1984	NA	all	12.0	HCTZ50_tab	cumulative amount	sodium	urine	potentiometry	increase_Naurine_HCTZ50_tab	12.0	hr	NA	177.0	NA	62.0	17.8978583448784	mmol	93.0	NA
+Patel1984	NA	all	12.0	HCTZ50_tab	cumulative amount	potassium	urine	potentiometry	increase_Kurine_HCTZ50_tab	12.0	hr	NA	65.0	NA	12.5	3.60843918243516	mmol	23.0	NA
+Patel1984	NA	all	12.0	HCTZ50_tab	cumulative amount	chloride	urine	potentiometry	increase_Clurine_HCTZ50_tab	12.0	hr	NA	372.0	NA	66.0	19.0525588832577	mmol	132.0	NA
+Patel1984	NA	all	12.0	HCTZ100_tab	cumulative amount	sodium	urine	potentiometry	increase_Naurine_HCTZ100_tab	12.0	hr	NA	193.0	NA	76.0	21.9393102292058	mmol	109.0	NA
+Patel1984	NA	all	12.0	HCTZ100_tab	cumulative amount	potassium	urine	potentiometry	increase_Kurine_HCTZ100_tab	12.0	hr	NA	57.2	NA	20.3	5.8601052322747	mmol	15.2	NA
+Patel1984	NA	all	12.0	HCTZ100_tab	cumulative amount	chloride	urine	potentiometry	increase_Clurine_HCTZ100_tab	12.0	hr	NA	382.0	NA	85.0	24.5373864405591	mmol	142.0	NA
+Patel1984	NA	all	12.0	HCTZ25_sus	cumulative amount	sodium	urine	potentiometry	increase_Naurine_HCTZ25_sus	12.0	hr	NA	187.0	NA	57.0	16.4544826719043	mmol	103.0	NA
+Patel1984	NA	all	12.0	HCTZ25_sus	cumulative amount	potassium	urine	potentiometry	increase_Kurine_HCTZ25_sus	12.0	hr	NA	57.3	NA	21.3	6.14878036686952	mmol	15.3	NA
+Patel1984	NA	all	12.0	HCTZ25_sus	cumulative amount	chloride	urine	potentiometry	increase_Clurine_HCTZ25_sus	12.0	hr	NA	377.0	NA	61.0	17.6091832102836	mmol	137.0	NA
+Patel1984	NA	all	12.0	HCTZ50_sus	cumulative amount	sodium	urine	potentiometry	increase_Naurine_HCTZ50_sus	12.0	hr	NA	209.0	NA	58.0	16.7431578064992	mmol	125.0	NA
+Patel1984	NA	all	12.0	HCTZ50_sus	cumulative amount	potassium	urine	potentiometry	increase_Kurine_HCTZ50_sus	12.0	hr	NA	62.7	NA	19.3	5.57143009767989	mmol	20.7	NA
+Patel1984	NA	all	12.0	HCTZ50_sus	cumulative amount	chloride	urine	potentiometry	increase_Clurine_HCTZ50_sus	12.0	hr	NA	400.0	NA	67.0	19.3412340178525	mmol	160.0	NA
+Patel1984	NA	all	12.0	HCTZ100_sus	cumulative amount	sodium	urine	potentiometry	increase_Naurine_HCTZ100_sus	12.0	hr	NA	224.0	NA	95.0	27.4241377865072	mmol	140.0	NA
+Patel1984	NA	all	12.0	HCTZ100_sus	cumulative amount	potassium	urine	potentiometry	increase_Kurine_HCTZ100_sus	12.0	hr	NA	62.4	NA	16.6	4.79200723427389	mmol	20.4	NA
+Patel1984	NA	all	12.0	HCTZ100_sus	cumulative amount	chloride	urine	potentiometry	increase_Clurine_HCTZ100_sus	12.0	hr	NA	416.0	NA	106.0	30.5995642670502	mmol	176.0	NA
+Patel1984	NA	all	12.0	HCTZ25_tab	cumulative amount	sodium	urine	potentiometry	increase_Naurine_HCTZ25_tab	0.0	hr	NA	0.0	NA	NA	NA	mmol	0.0	NA
+Patel1984	NA	all	12.0	HCTZ25_tab	cumulative amount	potassium	urine	potentiometry	increase_Kurine_HCTZ25_tab	0.0	hr	NA	0.0	NA	NA	NA	mmol	0.0	NA
+Patel1984	NA	all	12.0	HCTZ25_tab	cumulative amount	chloride	urine	potentiometry	increase_Clurine_HCTZ25_tab	0.0	hr	NA	0.0	NA	NA	NA	mmol	0.0	NA
+Patel1984	NA	all	12.0	HCTZ50_tab	cumulative amount	sodium	urine	potentiometry	increase_Naurine_HCTZ50_tab	0.0	hr	NA	0.0	NA	NA	NA	mmol	0.0	NA
+Patel1984	NA	all	12.0	HCTZ50_tab	cumulative amount	potassium	urine	potentiometry	increase_Kurine_HCTZ50_tab	0.0	hr	NA	0.0	NA	NA	NA	mmol	0.0	NA
+Patel1984	NA	all	12.0	HCTZ50_tab	cumulative amount	chloride	urine	potentiometry	increase_Clurine_HCTZ50_tab	0.0	hr	NA	0.0	NA	NA	NA	mmol	0.0	NA
+Patel1984	NA	all	12.0	HCTZ100_tab	cumulative amount	sodium	urine	potentiometry	increase_Naurine_HCTZ100_tab	0.0	hr	NA	0.0	NA	NA	NA	mmol	0.0	NA
+Patel1984	NA	all	12.0	HCTZ100_tab	cumulative amount	potassium	urine	potentiometry	increase_Kurine_HCTZ100_tab	0.0	hr	NA	0.0	NA	NA	NA	mmol	0.0	NA
+Patel1984	NA	all	12.0	HCTZ100_tab	cumulative amount	chloride	urine	potentiometry	increase_Clurine_HCTZ100_tab	0.0	hr	NA	0.0	NA	NA	NA	mmol	0.0	NA
+Patel1984	NA	all	12.0	HCTZ25_sus	cumulative amount	sodium	urine	potentiometry	increase_Naurine_HCTZ25_sus	0.0	hr	NA	0.0	NA	NA	NA	mmol	0.0	NA
+Patel1984	NA	all	12.0	HCTZ25_sus	cumulative amount	potassium	urine	potentiometry	increase_Kurine_HCTZ25_sus	0.0	hr	NA	0.0	NA	NA	NA	mmol	0.0	NA
+Patel1984	NA	all	12.0	HCTZ25_sus	cumulative amount	chloride	urine	potentiometry	increase_Clurine_HCTZ25_sus	0.0	hr	NA	0.0	NA	NA	NA	mmol	0.0	NA
+Patel1984	NA	all	12.0	HCTZ50_sus	cumulative amount	sodium	urine	potentiometry	increase_Naurine_HCTZ50_sus	0.0	hr	NA	0.0	NA	NA	NA	mmol	0.0	NA
+Patel1984	NA	all	12.0	HCTZ50_sus	cumulative amount	potassium	urine	potentiometry	increase_Kurine_HCTZ50_sus	0.0	hr	NA	0.0	NA	NA	NA	mmol	0.0	NA
+Patel1984	NA	all	12.0	HCTZ50_sus	cumulative amount	chloride	urine	potentiometry	increase_Clurine_HCTZ50_sus	0.0	hr	NA	0.0	NA	NA	NA	mmol	0.0	NA
+Patel1984	NA	all	12.0	HCTZ100_sus	cumulative amount	sodium	urine	potentiometry	increase_Naurine_HCTZ100_sus	0.0	hr	NA	0.0	NA	NA	NA	mmol	0.0	NA
+Patel1984	NA	all	12.0	HCTZ100_sus	cumulative amount	potassium	urine	potentiometry	increase_Kurine_HCTZ100_sus	0.0	hr	NA	0.0	NA	NA	NA	mmol	0.0	NA
+Patel1984	NA	all	12.0	HCTZ100_sus	cumulative amount	chloride	urine	potentiometry	increase_Clurine_HCTZ100_sus	0.0	hr	NA	0.0	NA	NA	NA	mmol	0.0	NA

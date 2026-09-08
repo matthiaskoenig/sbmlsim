@@ -113,4 +113,4 @@ print(experiment.to_json()[:300])
 
 ## Where to look
 
-The [examples](https://github.com/matthiaskoenig/sbmlsim/tree/develop/examples) contain complete experiments: `examples/initial_assignment` for a model with changes and two simulations, `examples/curve_types` for the curve types of the plots, `examples/glucose` for an experiment with datasets and a dose response scan, and `examples/midazolam` for pharmacokinetics experiments with data from several studies and the parameter fitting problems built on them.
+The [examples](https://github.com/matthiaskoenig/sbmlsim/tree/develop/examples) contain complete experiments: `examples/initial_assignment` for a model with changes and two simulations, `examples/curve_types` for the curve types of the plots, `examples/glucose` for an experiment with datasets and a dose response scan, and `examples/hctz` for pharmacokinetics experiments with data from two studies and the parameter fitting problems built on them.

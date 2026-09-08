@@ -1,0 +1,36 @@
+study	individual	group	count	intervention	measurement_type	substance	tissue	method	label	time	time_unit	valuecpm	unitcpm	value	unit	mean	mean_pm	sd	se	comments
+Beermann1976	S4	NA	1.0	HCTZ5_po	concentration	C14-hydrochlorothiazide	erythrocyte	scintillation counting	ery_hctz5po_4	0.516300711162291	hr	36.8779506855458	cpm/ml	0.958366701807323	nmole/l	NA	NA	NA	NA	Carbon-14 has a maximum specific activity of 62.4 mCi/mmol (2.31 GBq/mmol),
+Beermann1976	S4	NA	1.0	HCTZ5_po	concentration	C14-hydrochlorothiazide	erythrocyte	scintillation counting	ery_hctz5po_4	0.703692752991706	hr	76.9950877021134	cpm/ml	2.00091184257051	nmole/l	NA	NA	NA	NA	NA
+Beermann1976	S4	NA	1.0	HCTZ5_po	concentration	C14-hydrochlorothiazide	erythrocyte	scintillation counting	ery_hctz5po_4	1.0	hr	152.291931840147	cpm/ml	3.95769053638636	nmole/l	NA	NA	NA	NA	NA
+Beermann1976	S4	NA	1.0	HCTZ5_po	concentration	C14-hydrochlorothiazide	erythrocyte	scintillation counting	ery_hctz5po_4	1.5	hr	229.835294933871	cpm/ml	5.97285069994467	nmole/l	NA	NA	NA	NA	NA
+Beermann1976	S4	NA	1.0	HCTZ5_po	concentration	C14-hydrochlorothiazide	erythrocyte	scintillation counting	ery_hctz5po_4	2.0	hr	249.650679449659	cpm/ml	6.48780352000153	nmole/l	NA	NA	NA	NA	NA
+Beermann1976	S4	NA	1.0	HCTZ5_po	concentration	C14-hydrochlorothiazide	erythrocyte	scintillation counting	ery_hctz5po_4	2.97961438508582	hr	318.553465842797	cpm/ml	8.27841647200616	nmole/l	NA	NA	NA	NA	NA
+Beermann1976	S4	NA	1.0	HCTZ5_po	concentration	C14-hydrochlorothiazide	erythrocyte	scintillation counting	ery_hctz5po_4	4.0	hr	294.026676774183	cpm/ml	7.64102590369498	nmole/l	NA	NA	NA	NA	NA
+Beermann1976	S4	NA	1.0	HCTZ5_po	concentration	C14-hydrochlorothiazide	erythrocyte	scintillation counting	ery_hctz5po_4	5.0	hr	253.345376544019	cpm/ml	6.58381955675725	nmole/l	NA	NA	NA	NA	NA
+Beermann1976	S4	NA	1.0	HCTZ5_po	concentration	C14-hydrochlorothiazide	erythrocyte	scintillation counting	ery_hctz5po_4	6.0	hr	243.187756646814	cpm/ml	6.31984814570722	nmole/l	NA	NA	NA	NA	NA
+Beermann1976	S4	NA	1.0	HCTZ5_po	concentration	C14-hydrochlorothiazide	erythrocyte	scintillation counting	ery_hctz5po_4	7.0	hr	187.175546190621	cpm/ml	4.86422937085813	nmole/l	NA	NA	NA	NA	NA
+Beermann1976	S4	NA	1.0	HCTZ5_po	concentration	C14-hydrochlorothiazide	erythrocyte	scintillation counting	ery_hctz5po_4	8.0	hr	168.551107369612	cpm/ml	4.38022628299408	nmole/l	NA	NA	NA	NA	NA
+Beermann1976	S4	NA	1.0	HCTZ5_po	concentration	C14-hydrochlorothiazide	erythrocyte	scintillation counting	ery_hctz5po_4	9.97927203124756	hr	121.495837213635	cpm/ml	3.15737622696557	nmole/l	NA	NA	NA	NA	NA
+Beermann1976	S4	NA	1.0	HCTZ5_po	concentration	C14-hydrochlorothiazide	plasma	scintillation counting	hctz5po_4	0.238387202191064	hr	40.303599279771	cpm/ml	1.04739083367388	nmole/l	NA	NA	NA	NA	NA
+Beermann1976	S4	NA	1.0	HCTZ5_po	concentration	C14-hydrochlorothiazide	plasma	scintillation counting	hctz5po_4	0.47703895052987	hr	92.8212819802732	cpm/ml	2.41219547765783	nmole/l	NA	NA	NA	NA	NA
+Beermann1976	S4	NA	1.0	HCTZ5_po	concentration	C14-hydrochlorothiazide	plasma	scintillation counting	hctz5po_4	0.718024929584039	hr	123.958370733375	cpm/ml	3.22137138080496	nmole/l	NA	NA	NA	NA	NA
+Beermann1976	S4	NA	1.0	HCTZ5_po	concentration	C14-hydrochlorothiazide	plasma	scintillation counting	hctz5po_4	1.01274489970588	hr	141.460662876961	cpm/ml	3.67621265272768	nmole/l	NA	NA	NA	NA	NA
+Beermann1976	S4	NA	1.0	HCTZ5_po	concentration	C14-hydrochlorothiazide	plasma	scintillation counting	hctz5po_4	1.50115933458863	hr	154.407392114553	cpm/ml	4.01266611524306	nmole/l	NA	NA	NA	NA	NA
+Beermann1976	S4	NA	1.0	HCTZ5_po	concentration	C14-hydrochlorothiazide	plasma	scintillation counting	hctz5po_4	2.02664135323135	hr	154.274664645282	cpm/ml	4.00921685668612	nmole/l	NA	NA	NA	NA	NA
+Beermann1976	S4	NA	1.0	HCTZ5_po	concentration	C14-hydrochlorothiazide	plasma	scintillation counting	hctz5po_4	3.0	hr	118.172593659869	cpm/ml	3.07101334874919	nmole/l	NA	NA	NA	NA	NA
+Beermann1976	S4	NA	1.0	HCTZ5_po	concentration	C14-hydrochlorothiazide	plasma	scintillation counting	hctz5po_4	3.96470643158369	hr	100.326601250949	cpm/ml	2.60724015724919	nmole/l	NA	NA	NA	NA	NA
+Beermann1976	S4	NA	1.0	HCTZ5_po	concentration	C14-hydrochlorothiazide	plasma	scintillation counting	hctz5po_4	4.95133907035371	hr	76.4617228877067	cpm/ml	1.98705101059529	nmole/l	NA	NA	NA	NA	NA
+Beermann1976	S4	NA	1.0	HCTZ5_po	concentration	C14-hydrochlorothiazide	plasma	scintillation counting	hctz5po_4	5.98997836946203	hr	64.9147534596306	cpm/ml	1.68697384250599	nmole/l	NA	NA	NA	NA	NA
+Beermann1976	S4	NA	1.0	HCTZ5_po	concentration	C14-hydrochlorothiazide	plasma	scintillation counting	hctz5po_4	6.96592023155568	hr	57.3251071021225	cpm/ml	1.48973771055412	nmole/l	NA	NA	NA	NA	NA
+Beermann1976	S4	NA	1.0	HCTZ5_po	concentration	C14-hydrochlorothiazide	plasma	scintillation counting	hctz5po_4	8.00754734597968	hr	50.6173789553707	cpm/ml	1.31542045102315	nmole/l	NA	NA	NA	NA	NA
+Beermann1976	S4	NA	1.0	HCTZ5_po	concentration	C14-hydrochlorothiazide	plasma	scintillation counting	hctz5po_4	10.0	hr	39.0889746608679	cpm/ml	1.01582574482505	nmole/l	NA	NA	NA	NA	NA
+Beermann1976	S4	NA	1.0	HCTZ5_po	excretion rate	C14-hydrochlorothiazide	urine	scintillation counting	excretion_hctz5po_4	0.470456419912544	hr	113519.974095018	cpm/min	2.95010327689756	µmole/min	NA	NA	NA	NA	NA
+Beermann1976	S4	NA	1.0	HCTZ5_po	excretion rate	C14-hydrochlorothiazide	urine	scintillation counting	excretion_hctz5po_4	1.46899363533091	hr	426634.090089429	cpm/min	11.0871645033635	µmole/min	NA	NA	NA	NA	NA
+Beermann1976	S4	NA	1.0	HCTZ5_po	excretion rate	C14-hydrochlorothiazide	urine	scintillation counting	excretion_hctz5po_4	2.49568167317657	hr	309551.636307328	cpm/min	8.04448119301788	µmole/min	NA	NA	NA	NA	NA
+Beermann1976	S4	NA	1.0	HCTZ5_po	excretion rate	C14-hydrochlorothiazide	urine	scintillation counting	excretion_hctz5po_4	3.46191313549431	hr	240604.844862471	cpm/min	6.25272465858812	µmole/min	NA	NA	NA	NA	NA
+Beermann1976	S4	NA	1.0	HCTZ5_po	excretion rate	C14-hydrochlorothiazide	urine	scintillation counting	excretion_hctz5po_4	4.44742534352095	hr	180691.014225796	cpm/min	4.6957124279053	µmole/min	NA	NA	NA	NA	NA
+Beermann1976	S4	NA	1.0	HCTZ5_po	excretion rate	C14-hydrochlorothiazide	urine	scintillation counting	excretion_hctz5po_4	5.44152752058013	hr	151915.871587732	cpm/min	3.94791766080385	µmole/min	NA	NA	NA	NA	NA
+Beermann1976	S4	NA	1.0	HCTZ5_po	excretion rate	C14-hydrochlorothiazide	urine	scintillation counting	excretion_hctz5po_4	6.43338883615256	hr	124016.125598603	cpm/min	3.22287228686598	µmole/min	NA	NA	NA	NA	NA
+Beermann1976	S4	NA	1.0	HCTZ5_po	excretion rate	C14-hydrochlorothiazide	urine	scintillation counting	excretion_hctz5po_4	7.41381242121971	hr	116161.654958485	cpm/min	3.01875402698766	µmole/min	NA	NA	NA	NA	NA
+Beermann1976	S4	NA	1.0	HCTZ5_po	excretion rate	C14-hydrochlorothiazide	urine	scintillation counting	excretion_hctz5po_4	8.42607491324442	hr	92981.0649685978	cpm/min	2.41634784221928	µmole/min	NA	NA	NA	NA	NA
+Beermann1976	S4	NA	1.0	HCTZ5_po	excretion rate	C14-hydrochlorothiazide	urine	scintillation counting	excretion_hctz5po_4	9.37862778357012	hr	80516.3015205413	cpm/min	2.09241947818455	µmole/min	NA	NA	NA	NA	NA
