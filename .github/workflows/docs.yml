@@ -2,18 +2,25 @@ name: documentation
 
 on:
   push:
+    # feature branches are built through their pull request
+    branches: [develop, main]
+  pull_request:
+    branches: [develop, main]
   workflow_dispatch:
 
 permissions:
   contents: read
 
 concurrency:
-  # never cancel a running deployment, it would leave the site half published
-  group: pages
+  # one run per branch or pull request, so that a deployment of `develop` is
+  # never overtaken by the next one, which would leave the site half published
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: false
 
 jobs:
-  build:
+  docs:
+    # the name the branch protection requires, see .github/rulesets/
+    name: docs
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
@@ -49,7 +56,7 @@ jobs:
           path: site
 
   deploy:
-    needs: build
+    needs: docs
     # only the default branch publishes to https://matthiaskoenig.github.io/sbmlsim
     if: github.ref == 'refs/heads/develop'
     runs-on: ubuntu-latest
