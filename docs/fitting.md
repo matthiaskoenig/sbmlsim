@@ -324,7 +324,12 @@ The `IdentifiabilityResult` carries a `ParameterProfile` per parameter with the 
 A report shows the analysis: `FitReport(..., identifiability=result)` adds the section **Identifiability** with the table, the overview and one figure per parameter, and writes `identifiability.json` and `identifiability.tsv`. `FitRun.identifiability()` computes the profiles of the best parameter set of a finished fit, so a global optimization followed by the identifiability of its result is
 
 ```py
-runs = run_fit(definition, algorithm=OptimizationAlgorithmType.DIFFERENTIAL_EVOLUTION, size=2, n_cores=4)
+runs = run_fit(
+    definition,
+    algorithm=OptimizationAlgorithmType.DIFFERENTIAL_EVOLUTION,
+    size=2,
+    n_cores=4,
+)
 run = runs[opid]
 identifiability = run.identifiability(n_cores=4)
 run.report(output_dir=Path("results"), identifiability=identifiability)
