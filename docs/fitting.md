@@ -11,7 +11,7 @@ from sbmlsim.fit import FitData, FitMapping
 
 # inside SimulationExperiment.fit_mappings()
 #   reference: the dataset column and its error, observable: the task variable
-mapping_code = '''
+mapping_code = """
 def fit_mappings(self) -> dict[str, FitMapping]:
     return {
         "fm_mid_iv": FitMapping(
@@ -23,7 +23,7 @@ def fit_mappings(self) -> dict[str, FitMapping]:
             metadata=None,
         ),
     }
-'''
+"""
 print(mapping_code)
 ```
 

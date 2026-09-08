@@ -115,7 +115,9 @@ from sbmlsim.sensitivity import (
 kwargs = dict(
     sensitivity_simulation=simulation, parameters=parameters, groups=groups, n_cores=4
 )
-sa_sampling = SamplingSensitivityAnalysis(results_path=Path("sampling"), N=1000, **kwargs)
+sa_sampling = SamplingSensitivityAnalysis(
+    results_path=Path("sampling"), N=1000, **kwargs
+)
 sa_sobol = SobolSensitivityAnalysis(results_path=Path("sobol"), N=4096, **kwargs)
 sa_fast = FASTSensitivityAnalysis(results_path=Path("fast"), N=1000, **kwargs)
 sa_morris = MorrisSensitivityAnalysis(

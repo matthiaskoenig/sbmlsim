@@ -14,9 +14,7 @@ from sbmlsim.combine.sedml.runner import execute_sedml
 # from the root of the repository, the paths have to be absolute
 sedml_path = Path("examples/sedml/l1v4/algorithm_parameters.sedml").resolve()
 output_path = Path("results").resolve() / "algorithm_parameters"
-execute_sedml(
-    path=sedml_path, working_dir=sedml_path.parent, output_path=output_path
-)
+execute_sedml(path=sedml_path, working_dir=sedml_path.parent, output_path=output_path)
 print(sorted(p.name for p in output_path.rglob("*") if p.is_file())[:5])
 ```
 
