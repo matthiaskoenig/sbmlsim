@@ -6,12 +6,13 @@ from typing import Any
 import numpy as np
 import pytest
 
-from sbmlsim.fit import FitSettings
+from sbmlsim.fit import FitSettings, runner
 from sbmlsim.fit.optimization import (
     FitTimeout,
     OptimizationProblem,
     RuntimeErrorOptimizeResult,
 )
+from sbmlsim.fit.options import OptimizationAlgorithmType
 from sbmlsim.fit.result import OptimizationResult
 from sbmlsim.fit.runner import run_optimization
 
@@ -215,3 +216,68 @@ def test_differential_evolution_without_convergence(
     )
     assert opt_result.size == 1
     assert np.isfinite(opt_result.df_fits.cost.iloc[0])
+
+
+def test_start_values_do_not_depend_on_the_workers(
+    op_hctz_pkiv: OptimizationProblem, fit_settings: FitSettings
+) -> None:
+    """The runner samples the start points, not the workers."""
+    op_hctz_pkiv.initialize(fit_settings)
+    starts = op_hctz_pkiv.start_values(size=6, seed=1234)
+    again = op_hctz_pkiv.start_values(size=6, seed=1234)
+
+    assert len(starts) == 6
+    for x0, x0_again in zip(starts, again, strict=True):
+        assert x0 is not None
+        assert x0_again is not None
+        assert np.allclose(x0, x0_again)
+    # and the start points of the runs differ from each other
+    assert len({tuple(np.asarray(x0)) for x0 in starts}) == 6
+
+
+def test_every_global_run_gets_its_own_seed() -> None:
+    """One seed for all runs of the global optimizer gives one result."""
+    seeds = OptimizationProblem.run_seeds(
+        size=4,
+        algorithm=OptimizationAlgorithmType.DIFFERENTIAL_EVOLUTION,
+        seed=1234,
+    )
+    assert len(seeds) == 4
+    assert len(set(seeds)) == 4
+
+    # the local optimizer differs in its start values and needs no seed
+    assert (
+        OptimizationProblem.run_seeds(
+            size=4, algorithm=OptimizationAlgorithmType.LEAST_SQUARE, seed=1234
+        )
+        == [None] * 4
+    )
+
+
+def test_a_run_of_a_worker_never_raises(
+    op_hctz_pkiv: OptimizationProblem, fit_settings: FitSettings
+) -> None:
+    """A repeat which fails is a result, so the pool keeps the other repeats."""
+    op = op_hctz_pkiv
+    op.initialize(fit_settings)
+
+    def boom(*args: Any, **kwargs: Any) -> Any:
+        raise ValueError("the run explodes")
+
+    op._optimize_single = boom
+    fit, trajectory = op.optimize_run(x0=np.asarray(op.x0, dtype=float), run=2)
+    assert fit.success is False
+    assert "the run explodes" in fit.message
+    assert trajectory == []
+
+
+def test_a_worker_without_a_problem_reports_it() -> None:
+    """A worker which could not initialize reports it for every repeat."""
+    runner._WORKER_PROBLEM = None
+    runner._WORKER_ERROR = "ValueError: no data"
+    run, fit, trajectory = runner._worker_run({"run": 3, "x0": None})
+
+    assert run == 3
+    assert fit.success is False
+    assert "no data" in fit.message
+    assert trajectory == []
