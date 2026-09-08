@@ -17,6 +17,8 @@ concurrency:
 
 jobs:
   ty:
+    # required by the branch protection, see .github/rulesets/develop.json
+    name: ty
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
