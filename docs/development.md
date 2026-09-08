@@ -59,9 +59,12 @@ To run the tests directly against the development environment use
 
 ```bash
 pytest                                          # the full suite
+pytest -n 0                                     # in one process, e.g. for --pdb
 pytest tests/simulation/test_simulation.py                  # a single module
 pytest tests/simulation/test_simulation.py::test_timecourse  # a single test
 ```
+
+The tests run in parallel, `addopts = "-n auto"` in `pyproject.toml` gives pytest-xdist one worker per core; `-n 0` on the command line runs everything in one process, which the debugger needs.
 
 The `conftest.py` at the root of the repository selects the non-interactive matplotlib backend for the session and puts the repository on `sys.path`, so that the tests can import the examples.
 

@@ -11,6 +11,14 @@ The results, figures and the HTML report are written into `results/fit` in the
 working directory.
 """
 
+import sys
+from pathlib import Path
+
+# run as a script (`python examples/hctz/fitting/fitting.py`, the "run file" of an
+# IDE) the repository is not on `sys.path`, so the `examples` package is not found
+if __package__ in (None, ""):
+    sys.path.insert(0, str(Path(__file__).resolve().parents[3]))
+
 from examples.hctz import DATA_PATH, HCTZ_PATH
 from examples.hctz.fitting.fit_experiments import f_fitexp_pk, f_fitexp_pkiv
 from examples.hctz.fitting.parameters import parameters_pk

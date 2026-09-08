@@ -50,17 +50,38 @@ def filtered_fit_experiments(
         Tuple of the fit experiments by experiment id and a DataFrame with the
         metadata of the accepted mappings.
     """
-    filters: list[MappingFilter] = (
-        list(metadata_filters)
-        if isinstance(metadata_filters, Iterable)
-        else [metadata_filters]
-    )
-
     # instantiate objects for filtering of fit mappings
     runner = ExperimentRunner(
         experiment_classes=experiment_classes,
         base_path=base_path,
         data_path=data_path,
+    )
+    return _filter_fit_experiments(runner, metadata_filters, kind)
+
+
+def _filter_fit_experiments(
+    runner: ExperimentRunner,
+    metadata_filters: MappingFilter | Iterable[MappingFilter],
+    kind: MappingKind,
+) -> tuple[dict[str, list[FitExperiment]], pd.DataFrame]:
+    """Select the fit mappings of initialized experiments, see `filtered_fit_experiments`.
+
+    Initializing the experiments loads their models and datasets, which is the
+    expensive part of the selection, so a runner is filtered several times.
+
+    Args:
+        runner: runner with the initialized simulation experiments.
+        metadata_filters: a single filter or an iterable of filters.
+        kind: what a fit does with the selected mappings.
+
+    Returns:
+        Tuple of the fit experiments by experiment id and a DataFrame with the
+        metadata of the accepted mappings.
+    """
+    filters: list[MappingFilter] = (
+        list(metadata_filters)
+        if isinstance(metadata_filters, Iterable)
+        else [metadata_filters]
     )
 
     fit_experiments: dict[str, list[FitExperiment]] = {}
@@ -229,16 +250,16 @@ def fit_experiments_by_kind(
     Returns:
         The fit experiments of all kinds by experiment id.
     """
+    # the experiments are initialized once and filtered for every kind
+    runner = ExperimentRunner(
+        experiment_classes=experiment_classes,
+        base_path=base_path,
+        data_path=data_path,
+    )
     experiments: list[dict[str, list[FitExperiment]]] = []
     frames: list[pd.DataFrame] = []
     for kind, filters in filters_by_kind.items():
-        fit_experiments, df = filtered_fit_experiments(
-            experiment_classes=experiment_classes,
-            metadata_filters=filters,
-            base_path=base_path,
-            data_path=data_path,
-            kind=kind,
-        )
+        fit_experiments, df = _filter_fit_experiments(runner, filters, kind)
         experiments.append(fit_experiments)
         frames.append(df)
 

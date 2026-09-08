@@ -14,7 +14,8 @@ uv sync --extra dev
 uv run pre-commit install
 
 # tests
-pytest                                             # all tests (about 1 min)
+pytest                                             # all tests, in parallel with pytest-xdist (under 1 min)
+pytest -n 0                                        # in one process, e.g. for --pdb
 pytest tests/simulation/test_simulation.py         # single file
 pytest tests/simulation/test_scan.py::test_scan1d  # single test
 pytest -rs                                         # list the skipped tests

@@ -12,6 +12,14 @@ several fits at once:
     python -m examples.hctz.fitting.report run1/parameters.json run2/parameters.json
 """
 
+import sys
+from pathlib import Path
+
+# run as a script (`python examples/hctz/fitting/report.py`, the "run file" of an
+# IDE) the repository is not on `sys.path`, so the `examples` package is not found
+if __package__ in (None, ""):
+    sys.path.insert(0, str(Path(__file__).resolve().parents[3]))
+
 from examples.hctz.fitting.fitting import FIT_DEFINITIONS
 from sbmlsim.fit.cli import report_cli
 
