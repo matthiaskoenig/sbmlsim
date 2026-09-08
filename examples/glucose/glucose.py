@@ -23,8 +23,8 @@ def run_glucose_experiments(output_path: Path) -> None:
     )
     results = runner.run_experiments(output_path=output_path, show_figures=False)
     report = ExperimentReport(results)
-    report.create_report(output_path=BASE_PATH / "results")
+    report.create_report(output_path=output_path)
 
 
 if __name__ == "__main__":
-    run_glucose_experiments(Path(__file__).parent / "results")
+    run_glucose_experiments(Path.cwd() / "results")

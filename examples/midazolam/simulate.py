@@ -37,13 +37,13 @@ def run_midazolam_experiments(output_path: Path) -> None:
 
 
 if __name__ == "__main__":
-    output_path = Path(__file__).parent / "results"
+    output_path = Path.cwd() / "results"
     # run_midazolam_experiments(output_path)
 
     exp_class: type[SimulationExperiment]
     for exp_class in [Kupferschmidt1995]:  # [Mandema1992, Kupferschmidt1995]:
         # serialize to SED-ML/OMEX archive
-        omex_path = Path(__file__).parent / "results" / f"{exp_class.__name__}.omex"
+        omex_path = output_path / f"{exp_class.__name__}.omex"
         serializer = SEDMLSerializer(
             exp_class=exp_class,
             working_dir=output_path / "omex",
