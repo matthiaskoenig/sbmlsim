@@ -860,56 +860,146 @@ class OptimizationProblem(ObjectJSONEncoder):
             failed is a `RuntimeErrorOptimizeResult` with its message, the
             other runs are unaffected.
         """
-        # create samples
-        x_samples: pd.DataFrame
-        if algorithm == OptimizationAlgorithmType.LEAST_SQUARE:
-            # initial value samples for local optimizer
-            x_samples = create_samples(
-                parameters=self.parameters,
-                size=size,
-                sampling=sampling,
-                seed=seed,
-            )
-        elif seed is not None:
-            # the global optimizer draws its own samples
-            kwargs["rng"] = seed
+        starts = self.start_values(
+            size=size, algorithm=algorithm, sampling=sampling, seed=seed
+        )
+        seeds = self.run_seeds(size=size, algorithm=algorithm, seed=seed)
 
         fits: list[scipy.optimize.OptimizeResult] = []
         trajectories: list[list[float]] = []
         for k in range(size):
-            if algorithm == OptimizationAlgorithmType.LEAST_SQUARE:
-                x0 = x_samples.values[k, :]
-            else:
-                x0 = None
-
-            logger.debug("[%s/%s] x0=%s", k + 1, size, x0)
-            try:
-                fit, trajectory = self._optimize_single(
-                    x0=x0, algorithm=algorithm, timeout=timeout, **kwargs
-                )
-            except Exception as err:
-                # one run must not lose the results of the other runs
-                logger.error(
-                    "%s: optimization %s/%s failed: %s: %s",
-                    self.opid,
-                    k + 1,
-                    size,
-                    type(err).__name__,
-                    err,
-                )
-                fit = RuntimeErrorOptimizeResult(
-                    x=np.asarray(x0, dtype=float) if x0 is not None else None,
-                    x0=np.asarray(x0, dtype=float) if x0 is not None else None,
-                    message=f"{type(err).__name__}: {err}",
-                )
-                trajectory = []
-            logger.debug("	%s [s]", format(fit.duration, "8.4f"))
-
+            fit, trajectory = self.optimize_run(
+                x0=starts[k],
+                algorithm=algorithm,
+                timeout=timeout,
+                run=k,
+                size=size,
+                run_seed=seeds[k],
+                **kwargs,
+            )
             fits.append(fit)
             trajectories.append(trajectory)
             if on_run_finished is not None:
                 on_run_finished(k, fit, trajectory)
         return fits, trajectories
+
+    def start_values(
+        self,
+        size: int,
+        algorithm: OptimizationAlgorithmType = OptimizationAlgorithmType.LEAST_SQUARE,
+        sampling: SamplingType = SamplingType.UNIFORM,
+        seed: int | None = None,
+    ) -> list[np.ndarray | None]:
+        """Create the start values of the optimization runs.
+
+        The start values are created for all runs at once, so that they only
+        depend on the seed and the number of runs and not on how the runs are
+        distributed over the workers of a parallel fit.
+
+        Args:
+            size: number of optimizations.
+            algorithm: optimization algorithm. The global optimizer draws its
+                own samples, its runs start from `None`.
+            sampling: sampling of the start values of the local optimizer.
+            seed: seed of the sampling.
+
+        Returns:
+            One start vector per run, `None` for the global optimizer.
+        """
+        if algorithm != OptimizationAlgorithmType.LEAST_SQUARE:
+            return [None] * size
+        x_samples: pd.DataFrame = create_samples(
+            parameters=self.parameters,
+            size=size,
+            sampling=sampling,
+            seed=seed,
+        )
+        return [x_samples.values[k, :] for k in range(size)]
+
+    @staticmethod
+    def run_seeds(
+        size: int,
+        algorithm: OptimizationAlgorithmType = OptimizationAlgorithmType.LEAST_SQUARE,
+        seed: int | None = None,
+    ) -> list[int | None]:
+        """Create the seed of every optimization run.
+
+        The global optimizer draws its own population, so every run needs its
+        own seed: with one seed for all runs they all return the same result.
+        The local optimizer is deterministic, its runs differ in the start
+        values and do not need a seed.
+
+        Args:
+            size: number of optimizations.
+            algorithm: optimization algorithm.
+            seed: seed of the fit, `None` for runs which are not reproducible.
+
+        Returns:
+            One seed per run, `None` if the runs do not need one.
+        """
+        if algorithm == OptimizationAlgorithmType.LEAST_SQUARE or seed is None:
+            return [None] * size
+        return [
+            int(s) for s in np.random.SeedSequence(seed).generate_state(max(size, 1))
+        ]
+
+    def optimize_run(
+        self,
+        x0: np.ndarray | None = None,
+        algorithm: OptimizationAlgorithmType = OptimizationAlgorithmType.LEAST_SQUARE,
+        timeout: float | None = None,
+        run: int = 0,
+        size: int = 1,
+        run_seed: int | None = None,
+        **kwargs: Any,
+    ) -> tuple[scipy.optimize.OptimizeResult, list[float]]:
+        """Run a single optimization, which never raises.
+
+        This is one repeat of a fit, i.e., what the serial runner loops over and
+        what a worker of a parallel fit executes. An optimization which fails is
+        a `RuntimeErrorOptimizeResult` with its message, so that the repeat is
+        stored and reported like a successful one and the other repeats are
+        unaffected.
+
+        Args:
+            x0: start values of the run, `None` for the global optimizer.
+            algorithm: optimization algorithm.
+            timeout: seconds the optimization may run, no limit if `None`.
+            run: index of the run, for the log messages.
+            size: number of runs, for the log messages.
+            run_seed: seed of the run, `None` if it does not need one.
+            kwargs: additional arguments of the optimizer.
+
+        Returns:
+            The fit and the cost of every step of the optimization.
+        """
+        if run_seed is not None:
+            kwargs["rng"] = run_seed
+        logger.debug("[%s/%s] x0=%s", run + 1, size, x0)
+        try:
+            fit, trajectory = self._optimize_single(
+                x0=x0, algorithm=algorithm, timeout=timeout, **kwargs
+            )
+        except Exception as err:
+            # one run must not lose the results of the other runs
+            logger.error(
+                "%s: optimization %s/%s failed: %s: %s",
+                self.opid,
+                run + 1,
+                size,
+                type(err).__name__,
+                err,
+            )
+            return (
+                RuntimeErrorOptimizeResult(
+                    x=np.asarray(x0, dtype=float) if x0 is not None else None,
+                    x0=np.asarray(x0, dtype=float) if x0 is not None else None,
+                    message=f"{type(err).__name__}: {err}",
+                ),
+                [],
+            )
+        logger.debug("	%s [s]", format(fit.duration, "8.4f"))
+        return fit, trajectory
 
     @timeit
     def _optimize_single(
