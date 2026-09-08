@@ -61,11 +61,7 @@ FIT_DEFINITIONS: dict[str, FitDefinition] = {
 
 def main() -> None:
     """Run a fit of the HCTZ model."""
-    fit_cli(
-        FIT_DEFINITIONS,
-        prog="fit_hctz",
-        description="Parameter fitting of the HCTZ model.",
-    )
+    fit_cli(FIT_DEFINITIONS)
 
 
 if __name__ == "__main__":

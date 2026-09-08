@@ -85,6 +85,7 @@ nav = [
       { "runner" = "api/fit.runner.md" },
       { "report" = "api/fit.report.md" },
       { "cli" = "api/fit.cli.md" },
+      { "display" = "api/fit.display.md" },
       { "metrics" = "api/fit.metrics.md" },
       { "sampling" = "api/fit.sampling.md" },
       { "helpers" = "api/fit.helpers.md" },

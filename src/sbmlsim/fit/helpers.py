@@ -7,8 +7,8 @@ from typing import Any
 
 import pandas as pd
 
-from sbmlsim.console import console
 from sbmlsim.experiment import ExperimentRunner, SimulationExperiment
+from sbmlsim.fit import display
 from sbmlsim.fit.objects import (
     FitExperiment,
     FitMapping,
@@ -135,8 +135,7 @@ def f_fitexp(
         kind=kind,
     )
     if print_info:
-        console.print(df.to_string())
-        console.print(mapping_kinds_info(df))
+        display.print_data(df)
 
     return fit_experiments
 
@@ -244,9 +243,7 @@ def fit_experiments_by_kind(
         frames.append(df)
 
     if print_info:
-        df_all = pd.concat(frames, ignore_index=True)
-        console.print(df_all.to_string())
-        console.print(mapping_kinds_info(df_all))
+        display.print_data(pd.concat(frames, ignore_index=True))
 
     return merge_fit_experiments(*experiments)
 

@@ -70,12 +70,14 @@ def test_run_fit_single(definition_hctz_pkiv: FitDefinition) -> None:
     experiments = definition_hctz_pkiv.experiments()
     runs = run_fit(
         definition=definition_hctz_pkiv,
+        opid="the_fit",
         strategy=OptimizationStrategy.SINGLE,
         size=1,
         n_cores=1,
         seed=1234,
     )
-    assert list(runs) == [e.experiment_class.__name__ for e in experiments]
+    # every experiment gets its own problem, they share the id of the fit
+    assert list(runs) == [f"{e.experiment_class.__name__}_the_fit" for e in experiments]
 
 
 def test_run_fit_report(tmp_path: Path, definition_hctz_pkiv: FitDefinition) -> None:
@@ -106,7 +108,10 @@ def test_fit_cli(tmp_path: Path) -> None:
             f"--output_dir={tmp_path}",
         ],
     )
-    assert list(runs) == ["PKIV"]
+    # the fit gets an id of its own, which names its problem and its result
+    opid = next(iter(runs))
+    assert opid.startswith("PKIV_")
+    assert runs[opid].result.sid == opid
     assert (tmp_path / "cli" / "index.html").exists()
     assert (tmp_path / "cli" / "parameters.json").exists()
 
@@ -161,3 +166,41 @@ def test_load_parameter_sets(tmp_path: Path, fit_settings: FitSettings) -> None:
     psets = load_parameter_sets(paths)
     assert len(psets) == 2
     assert [p.sid for p in psets] == ["fit", "run2_fit"]
+
+
+def test_fit_id_is_unique_and_sortable() -> None:
+    """The id of a fit carries its name, the time and a hash."""
+    from sbmlsim.fit.result import fit_id
+
+    first = fit_id("PK")
+    second = fit_id("PK")
+    assert first.startswith("PK_")
+    assert first != second
+    # <name>_<date>_<time>__<hash>
+    assert len(first.split("_")) == 5
+    assert fit_id().count("__") == 1
+
+
+def test_fit_id_is_used_everywhere(
+    tmp_path: Path, definition_hctz_pkiv: FitDefinition
+) -> None:
+    """The id created for a fit is the id of its problem, result and report."""
+    runs = run_fit(
+        definition=definition_hctz_pkiv, opid="the_fit", size=1, n_cores=1, seed=1234
+    )
+    run = runs["the_fit"]
+    assert run.problem.opid == "the_fit"
+    assert run.result.opid == "the_fit"
+    assert run.result.sid == "the_fit"
+    # the report is written into a directory named after the fit
+    assert run.report(output_dir=tmp_path).name == "the_fit"
+    # and the parameter sets of the result carry it
+    assert run.result.parameter_set().sid.startswith("the_fit")
+
+
+def test_run_fit_creates_an_id(definition_hctz_pkiv: FitDefinition) -> None:
+    """A fit without an id gets one."""
+    runs = run_fit(definition=definition_hctz_pkiv, size=1, n_cores=1, seed=1234)
+    opid = next(iter(runs))
+    assert "__" in opid
+    assert runs[opid].result.sid == opid

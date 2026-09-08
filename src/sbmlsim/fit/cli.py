@@ -35,7 +35,7 @@ from pathlib import Path
 from typing import Any
 
 from sbmlsim import log
-from sbmlsim.console import console
+from sbmlsim.fit import display
 from sbmlsim.fit.objects import FitExperiment, FitParameter
 from sbmlsim.fit.optimization import OptimizationProblem
 from sbmlsim.fit.options import (
@@ -45,7 +45,7 @@ from sbmlsim.fit.options import (
 )
 from sbmlsim.fit.parameters import ParameterSet, ParameterSets
 from sbmlsim.fit.report import FitReport
-from sbmlsim.fit.result import OptimizationResult
+from sbmlsim.fit.result import OptimizationResult, fit_id
 from sbmlsim.fit.runner import run_optimization
 from sbmlsim.fit.sampling import SamplingType
 
@@ -55,6 +55,12 @@ logger = logging.getLogger(__name__)
 ALGORITHMS: dict[str, OptimizationAlgorithmType] = {
     "LSQ": OptimizationAlgorithmType.LEAST_SQUARE,
     "DE": OptimizationAlgorithmType.DIFFERENTIAL_EVOLUTION,
+}
+
+#: what the strategies do, for the output of the tools
+STRATEGY_INFO: dict[OptimizationStrategy, str] = {
+    OptimizationStrategy.ALL: "one parameter set for all experiments",
+    OptimizationStrategy.SINGLE: "one parameter set per experiment",
 }
 
 #: default arguments of the optimizers
@@ -172,7 +178,7 @@ class FitRun:
 
 def run_fit(
     definition: FitDefinition,
-    opid: str = "all",
+    opid: str | None = None,
     strategy: OptimizationStrategy = OptimizationStrategy.ALL,
     algorithm: OptimizationAlgorithmType = OptimizationAlgorithmType.LEAST_SQUARE,
     size: int = 4,
@@ -185,7 +191,9 @@ def run_fit(
 
     Args:
         definition: definition of the fit problem.
-        opid: id of the optimization, the key of the result for `ALL`.
+        opid: id of the fit, `fit_id()` by default. It is the id of the
+            optimization problem, of its result and of the directory of its
+            report, so everything a fit produces carries the same key.
         strategy: fit all experiments together or every experiment on its own.
         algorithm: optimization algorithm.
         size: number of optimization runs per problem.
@@ -198,6 +206,8 @@ def run_fit(
     Returns:
         The finished fits by optimization id.
     """
+    if opid is None:
+        opid = fit_id()
     fit_experiments = definition.experiments(study_ids=study_ids)
     optimizer_kwargs = {**ALGORITHM_KWARGS.get(algorithm, {}), **kwargs}
 
@@ -205,7 +215,8 @@ def run_fit(
         # one problem per experiment, i.e., individual parameters
         problems = [
             definition.problem(
-                opid=fit_exp.experiment_class.__name__, fit_experiments=[fit_exp]
+                opid=f"{fit_exp.experiment_class.__name__}_{opid}",
+                fit_experiments=[fit_exp],
             )
             for fit_exp in fit_experiments
         ]
@@ -277,17 +288,17 @@ def _add_common_arguments(
 
 def fit_cli(
     definitions: dict[str, FitDefinition],
-    prog: str = "fit",
-    description: str = "Parameter fitting.",
     args: Sequence[str] | None = None,
+    prog: str | None = None,
+    description: str = "Parameter fitting.",
 ) -> dict[str, FitRun]:
     """Run a fit of one of the definitions from the command line and report it.
 
     Args:
         definitions: fit problems by name, the name is the `--subset` argument.
-        prog: name of the program in the help.
-        description: description of the program in the help.
         args: command line arguments, `sys.argv` by default.
+        prog: name of the program in the help, the script by default.
+        description: description of the program in the help.
 
     Returns:
         The finished fits by optimization id.
@@ -342,16 +353,34 @@ def fit_cli(
     log.enable_rich_logging()
 
     definition = _definition(definitions, options.subset)
-    console.rule(f":wrench: {prog} :wrench:", align="left", style="white")
-    for key in ["subset", "method", "strategy", "runs", "cores", "seed"]:
-        console.print(f"{key:<12}: {getattr(options, key)}")
-    console.print(f"{'parameters':<12}: {[p.pid for p in definition.parameters]}")
+    algorithm = ALGORITHMS[options.method]
+    # the id of the fit, created before it starts, so that the problem, its
+    # result and the directory of its report carry the same key
+    opid = fit_id(options.subset)
+
+    display.section("Fit", icon=display.ICON_FIT)
+    display.key_values(
+        {
+            "fit": opid,
+            "problem": options.subset,
+            "strategy": f"{options.strategy.value} ({STRATEGY_INFO[options.strategy]})",
+            "algorithm": f"{options.method} ({algorithm.name})",
+            "experiments": options.experiments or "all of the problem",
+            "runs": f"{options.runs} on {options.cores} core(s)",
+            "seed": options.seed,
+            "base path": definition.base_path,
+            "data path": definition.data_path,
+            "output": options.output_dir,
+        }
+    )
+    display.print_parameters(definition.parameters)
+    display.print_settings(definition.settings)
 
     runs = run_fit(
         definition=definition,
-        opid=options.subset,
+        opid=opid,
         strategy=options.strategy,
-        algorithm=ALGORITHMS[options.method],
+        algorithm=algorithm,
         size=options.runs,
         n_cores=options.cores,
         seed=options.seed,
@@ -367,9 +396,9 @@ def fit_cli(
 
 def report_cli(
     definitions: dict[str, FitDefinition],
-    prog: str = "report",
-    description: str = "Report of a fit for stored parameters.",
     args: Sequence[str] | None = None,
+    prog: str | None = None,
+    description: str = "Report of a fit for stored parameters.",
 ) -> Path:
     """Report stored parameters from the command line, without optimizing.
 
@@ -378,9 +407,9 @@ def report_cli(
 
     Args:
         definitions: fit problems by name, the name is the `--subset` argument.
-        prog: name of the program in the help.
-        description: description of the program in the help.
         args: command line arguments, `sys.argv` by default.
+        prog: name of the program in the help, the script by default.
+        description: description of the program in the help.
 
     Returns:
         Path of the directory the report was written to.
@@ -410,11 +439,18 @@ def report_cli(
     log.enable_rich_logging()
 
     definition = _definition(definitions, options.subset)
-    console.rule(f":bar_chart: {prog} :bar_chart:", align="left", style="white")
-
     parameter_sets = load_parameter_sets(options.parameters)
-    console.print(f"{'subset':<12}: {options.subset}")
-    console.print(f"{'sets':<12}: {[pset.sid for pset in parameter_sets]}")
+
+    display.section("Report", icon=display.ICON_REPORT)
+    display.key_values(
+        {
+            "problem": options.subset,
+            "parameters": ", ".join(str(p) for p in options.parameters),
+            "sets": ", ".join(pset.sid for pset in parameter_sets),
+            "output": options.output_dir,
+        }
+    )
+    display.print_settings(definition.settings)
 
     # only the definition of the problem is needed, no fit is run here
     report = FitReport(

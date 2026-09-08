@@ -18,11 +18,7 @@ from sbmlsim.fit.cli import report_cli
 
 def main() -> None:
     """Report the given parameter sets of the HCTZ model."""
-    report_cli(
-        FIT_DEFINITIONS,
-        prog="report_hctz",
-        description="Report of a HCTZ fit for stored parameters.",
-    )
+    report_cli(FIT_DEFINITIONS)
 
 
 if __name__ == "__main__":

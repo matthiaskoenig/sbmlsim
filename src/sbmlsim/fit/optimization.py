@@ -365,8 +365,6 @@ class OptimizationProblem(ObjectJSONEncoder):
         )
 
         # Collect information for simulations
-        mappings_without_errors: list[str] = []
-        outliers: list[str] = []
         for fit_experiment in self.fit_experiments:
             # get simulation experiment
             sid = fit_experiment.experiment_class.__name__
@@ -397,7 +395,6 @@ class OptimizationProblem(ObjectJSONEncoder):
 
                 if fit_experiment.kind is MappingKind.OUTLIER:
                     # outliers are used neither in the fit nor in the evaluation
-                    outliers.append(f"{sid}.{mapping_id}")
                     continue
 
                 if mapping.observable.task_id is None:
@@ -574,9 +571,9 @@ class OptimizationProblem(ObjectJSONEncoder):
                         weight_points = np.abs(y_ref / y_ref_err)
                         # weight_points = 1.0 / y_ref_err  # scale with error;
                     else:
-                        mappings_without_errors.append(f"{sid}.{mapping_id}")
                         # Weights must be comparable to datasets with data (1/CV)
-                        # Assuming an error with CV of 0.5 -> w=2
+                        # Assuming an error with CV of 0.5 -> w=2, the mappings
+                        # without errors are in the report of the problem
                         weight_points = 2 * np.ones_like(y_ref)
 
                 else:
@@ -636,37 +633,10 @@ class OptimizationProblem(ObjectJSONEncoder):
         # initial parameter values of the models
         self._store_model_parameters()
 
-        if outliers:
-            logger.info(
-                "'%s': %s fit mappings are outliers and are not used: %s",
-                self.opid,
-                len(outliers),
-                outliers,
-            )
         if not self.training_indices:
             raise ValueError(
                 f"'{self.opid}': no training data, at least one fit mapping must "
                 f"be '{MappingKind.TRAINING.value}'."
-            )
-
-        if mappings_without_errors:
-            # one message for all mappings, not one per mapping
-            shown = mappings_without_errors[:3]
-            more = len(mappings_without_errors) - len(shown)
-            logger.warning(
-                "'%s': %s of %s fit mappings have no errors in the reference data, "
-                "'%s' assumes a coefficient of variation of 0.5 for them: %s%s",
-                self.opid,
-                len(mappings_without_errors),
-                len(self.mapping_keys),
-                self.weighting_points.name,
-                ", ".join(shown),
-                f" and {more} more" if more else "",
-            )
-            logger.debug(
-                "'%s': fit mappings without errors: %s",
-                self.opid,
-                mappings_without_errors,
             )
 
         # set simulator instance with arguments

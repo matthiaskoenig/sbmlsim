@@ -20,6 +20,23 @@ from sbmlsim.serialization import ObjectJSONEncoder, from_json, to_json
 logger = logging.getLogger(__name__)
 
 
+def fit_id(name: str | None = None) -> str:
+    """Create the unique id of a fit from the time and a short hash.
+
+    The id is created when a fit starts and is the id of its optimization
+    problem, of its result and of the directory of its report, so that
+    everything a fit produces carries the same key and sorts by time.
+
+    Args:
+        name: name the id is prefixed with, e.g., the name of the problem.
+
+    Returns:
+        `<name>_<date>_<time>__<hash>`, e.g. `PK_20260908_144538__ea1ff`.
+    """
+    uid = f"{datetime.datetime.now():%Y%m%d_%H%M%S}__{uuid.uuid4().hex[:5]}"
+    return f"{name}_{uid}" if name else uid
+
+
 def bound_warnings(
     parameters: list[FitParameter], x: np.ndarray, rtol: float = 0.05
 ) -> list[str]:
@@ -95,11 +112,8 @@ class OptimizationResult(ObjectJSONEncoder):
         if isinstance(settings, dict):
             settings = FitSettings.from_dict(settings)
         self.settings: FitSettings | None = settings
-        if sid:
-            self.sid = sid
-        else:
-            uuid_str = str(uuid.uuid4())
-            self.sid = f"{datetime.datetime.now():%Y%m%d_%H%M%S}" + f"__{uuid_str[:5]}"
+        # the id of the fit, which the runner creates before the fit starts
+        self.sid = sid if sid else (opid if opid else fit_id())
         self.parameters: list[FitParameter] = []
         for p in parameters:
             if isinstance(p, dict):
