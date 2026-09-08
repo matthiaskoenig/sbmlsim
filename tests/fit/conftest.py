@@ -6,8 +6,9 @@ smallest subset: a single simulation experiment with four fit mappings.
 
 import pytest
 
-from examples.hctz.fitting.fitting import FitExperimentSubset, op_hctz
+from examples.hctz.fitting.fitting import FIT_DEFINITIONS
 from sbmlsim.fit import FitSettings
+from sbmlsim.fit.cli import FitDefinition
 from sbmlsim.fit.optimization import OptimizationProblem
 from sbmlsim.fit.options import (
     ResidualType,
@@ -19,7 +20,22 @@ from sbmlsim.fit.options import (
 @pytest.fixture
 def op_hctz_pkiv() -> OptimizationProblem:
     """Get the uninitialized optimization problem of the iv pharmacokinetics."""
-    return op_hctz(FitExperimentSubset.PKIV)
+    return FIT_DEFINITIONS["PKIV"].problem(opid="hctz_pkiv")
+
+
+@pytest.fixture
+def definition_hctz_pkiv() -> FitDefinition:
+    """Get the definition of the iv pharmacokinetics fit."""
+    return FIT_DEFINITIONS["PKIV"]
+
+
+@pytest.fixture
+def op_hctz_pk() -> OptimizationProblem:
+    """Get the problem of all pharmacokinetics data.
+
+    It has training, validation and outlier fit mappings.
+    """
+    return FIT_DEFINITIONS["PK"].problem(opid="hctz_pk")
 
 
 @pytest.fixture
