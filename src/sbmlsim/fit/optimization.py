@@ -34,6 +34,45 @@ from sbmlsim.utils import timeit
 logger = logging.getLogger(__name__)
 
 
+def apply_loss_function(
+    residuals: np.ndarray, loss_function: LossFunctionType
+) -> np.ndarray:
+    """Apply the loss function to the residuals.
+
+    The cost of the optimization is `0.5 * sum(rho(residuals**2))` with `rho` the
+    loss function. The optimizers minimize `0.5 * sum(f**2)`, so the residuals are
+    transformed to `sign(r) * sqrt(rho(r**2))`, which gives exactly this cost and
+    keeps the sign of the residual. The loss functions are the loss functions of
+    `scipy.optimize.least_squares`.
+
+    Args:
+        residuals: weighted residuals of a fit mapping.
+        loss_function: loss function to apply.
+
+    Returns:
+        Transformed residuals.
+
+    Raises:
+        ValueError: if the loss function is not supported.
+    """
+    if loss_function == LossFunctionType.LINEAR:
+        return residuals
+
+    # z = r^2 >= 0, so all loss functions are well defined
+    z = np.square(residuals)
+    rho: np.ndarray
+    if loss_function == LossFunctionType.SOFT_L1:
+        rho = 2.0 * (np.sqrt(1.0 + z) - 1.0)
+    elif loss_function == LossFunctionType.CAUCHY:
+        rho = np.log1p(z)
+    elif loss_function == LossFunctionType.ARCTAN:
+        rho = np.arctan(z)
+    else:
+        raise ValueError(f"LossFunctionType not supported: '{loss_function}'")
+
+    return np.sign(residuals) * np.sqrt(rho)
+
+
 @dataclass
 class RuntimeErrorOptimizeResult:
     """Result of an optimization which failed with a RuntimeError.
@@ -42,13 +81,14 @@ class RuntimeErrorOptimizeResult:
     successful optimization, so that the results can be processed together.
     """
 
-    status: str = "-1"
+    status: int = -1
     success: bool = False
     duration: float = -1.0
     cost: float = np.inf
     optimality: float = np.inf
     x: np.ndarray | None = None
     x0: np.ndarray | None = None
+    message: str = "RuntimeError in ODE integration."
 
 
 class OptimizationProblem(ObjectJSONEncoder):
@@ -79,13 +119,17 @@ class OptimizationProblem(ObjectJSONEncoder):
                 logger.warning("FitExperiment excluded: %s", fit_exp)
             else:
                 self.fit_experiments.append(fit_exp)
-        self.parameters = fit_parameters
-        if self.parameters is None or len(self.parameters) == 0:
-            logger.error(
-                "%s: parameters in optimization problem cannot be empty, but '%s'",
-                opid,
-                self.parameters,
+        if not fit_parameters:
+            raise ValueError(
+                f"'{opid}': an OptimizationProblem requires fit parameters, but "
+                f"'{fit_parameters}' were given."
             )
+        pids = [p.pid for p in fit_parameters]
+        if len(pids) > len(set(pids)):
+            raise ValueError(
+                f"'{opid}': duplicate fit parameters are not allowed: '{sorted(pids)}'."
+            )
+        self.parameters = fit_parameters
 
         # parameter information
         self.pids = [p.pid for p in self.parameters]
@@ -102,9 +146,20 @@ class OptimizationProblem(ObjectJSONEncoder):
         # set in initialization
         self.runner: ExperimentRunner | None = None
         self.residual: ResidualType | None = None
+        self.loss_function: LossFunctionType = LossFunctionType.LINEAR
         self.weighting_curves: list[WeightingCurvesType] = []
         self.weighting_points: WeightingPointsType | None = None
 
+        self._trajectory: list[tuple[np.ndarray, float]] = []
+        self.xmodel: np.ndarray = np.empty(shape=(len(self.pids)))
+        self._reset_mappings()
+
+    def _reset_mappings(self) -> None:
+        """Reset the data collected for the fit mappings.
+
+        The data of the mappings is collected in `initialize`, which can be called
+        more than once, e.g., to run an optimization and to analyze it afterwards.
+        """
         self.experiment_keys: list[str] = []
         self.mapping_keys: list[str] = []
         self.xid_observable: list[str] = []
@@ -113,14 +168,12 @@ class OptimizationProblem(ObjectJSONEncoder):
         self.y_references: list[Any] = []
         self.y_errors: list[Any] = []
         self.y_errors_type: list[str | None] = []
-        self.weights: list[
-            Any
-        ] = []  # total weights for points (data points and curve weights)
+        # total weights for points (data points and curve weights)
+        self.weights: list[Any] = []
         self.weights_points: list[Any] = []  # weights for data points based on errors
         self.weights_curves: list[Any] = []  # user defined weights per mapping/curve
 
         self.models: list[Any] = []
-        self.xmodel: np.ndarray = np.empty(shape=(len(self.pids)))
         self.simulations: list[Any] = []
         self.selections: list[Any] = []
 
@@ -198,10 +251,10 @@ class OptimizationProblem(ObjectJSONEncoder):
 
     def initialize(
         self,
-        residual: ResidualType | None,
+        residual: ResidualType,
         loss_function: LossFunctionType,
-        weighting_curves: list[WeightingCurvesType],
-        weighting_points: WeightingPointsType | None,
+        weighting_curves: list[WeightingCurvesType] | None,
+        weighting_points: WeightingPointsType,
         variable_step_size: bool = True,
         relative_tolerance: float = 1e-6,
         absolute_tolerance: float = 1e-6,
@@ -228,15 +281,13 @@ class OptimizationProblem(ObjectJSONEncoder):
                 f"but '{type(weighting_curves)}' given."
             )
 
-        if residual is None:
-            raise ValueError("'residual_type' is required.")
-        if weighting_points is None:
-            raise ValueError("'weighting_points' is required.")
-
         self.residual = residual
         self.loss_function = loss_function
         self.weighting_curves = weighting_curves
         self.weighting_points = weighting_points
+        self._validate_parameters()
+        # initialize can be called more than once, e.g. for the analysis of a fit
+        self._reset_mappings()
 
         # Create experiment runner (loads the experiments & all models)
         exp_classes: set[type[SimulationExperiment]] = {
@@ -263,10 +314,8 @@ class OptimizationProblem(ObjectJSONEncoder):
             #     if d.is_task():
             #         selections_set.add(d.selection)
 
-            # use all fit_mappings if None are provided
-            if fit_experiment.mappings is None:
-                fit_experiment.mappings = list(sim_experiment._fit_mappings.keys())
-                fit_experiment.weights = [1.0] * len(fit_experiment.mappings)
+            # a FitExperiment without mappings uses all mappings of the experiment
+            fit_experiment.resolve_mappings(sim_experiment._fit_mappings.keys())
 
             # collect information for single mapping
             for k, mapping_id in enumerate(fit_experiment.mappings):
@@ -417,14 +466,14 @@ class OptimizationProblem(ObjectJSONEncoder):
                 if y_ref_err is not None:
                     y_ref_err = y_ref_err[nonnan_mask]
 
-                # at this point all x_ref, y_ref and y_ref_err
+                # at this point all x_ref, y_ref and y_ref_err must be finite
                 for data_key, data in [
                     ("x_ref", x_ref),
                     ("y_ref", y_ref),
-                    ("y_ref_err", x_ref),
+                    ("y_ref_err", y_ref_err),
                 ]:
-                    if data_key == "y_ref_err" and data is None:
-                        # skip tests if no error data
+                    if data is None:
+                        # no error data on the mapping
                         continue
                     if np.any(~np.isfinite(data)):
                         raise ValueError(
@@ -467,7 +516,7 @@ class OptimizationProblem(ObjectJSONEncoder):
 
                 else:
                     raise ValueError(
-                        f"Unsupported WeightingPointsType: '{weighting_points}'"
+                        f"Unsupported WeightingPointsType: '{self.weighting_points}'"
                     )
 
                 # curve weight
@@ -488,20 +537,6 @@ class OptimizationProblem(ObjectJSONEncoder):
                 weight = weight_curve * weight_points
                 if np.any(weight < 0):
                     raise ValueError("Negative weights encountered.")
-
-                # --- STORE INITIAL PARAMETERS ---
-                # store initial model parameters
-                if model.r is None:
-                    raise ValueError(f"Model '{model}' is not loaded in roadrunner.")
-                for k, pid in enumerate(self.pids):
-                    pid_value = model.r[pid]
-                    if pid in model.changes:
-                        change = model.changes[pid]
-                        # model changes have units
-                        pid_value = (
-                            change.magnitude if isinstance(change, Quantity) else change
-                        )
-                    self.xmodel[k] = pid_value
 
                 selections: list[str] = list(selections_set)
 
@@ -524,14 +559,16 @@ class OptimizationProblem(ObjectJSONEncoder):
                 self.weights_points.append(weight_points)
                 self.weights_curves.append(weight_curve)
 
-                # debug info
-                if False:
-                    console.log(f"{fit_experiment}.{mapping_id}")
-                    console.log(f"weight: {weight}")
-                    console.log(f"weight_curve: {weight_curve}")
-                    console.log(f"weight_points: {weight_points}")
-                    console.log(f"y_ref: {y_ref}")
-                    console.log(f"y_ref_err: {y_ref_err}\n")
+                logger.debug(
+                    "%s.%s: weight_curve=%s, weight_points=%s",
+                    sid,
+                    mapping_id,
+                    weight_curve,
+                    weight_points,
+                )
+
+        # initial parameter values of the models
+        self._store_model_parameters()
 
         # set simulator instance with arguments
         simulator = SimulatorSerial(
@@ -540,6 +577,64 @@ class OptimizationProblem(ObjectJSONEncoder):
             variable_step_size=variable_step_size,
         )
         self.set_simulator(simulator)
+
+    def _validate_parameters(self) -> None:
+        """Check that the parameters can be optimized.
+
+        The optimization is performed in logarithmic parameter space, which
+        requires finite positive bounds and start values.
+
+        Raises:
+            ValueError: if a bound or a start value is not finite and positive.
+        """
+        for p in self.parameters:
+            for key in ["lower_bound", "upper_bound"]:
+                value = getattr(p, key)
+                if not np.isfinite(value) or value <= 0.0:
+                    raise ValueError(
+                        f"{self.opid}: the optimization is performed in logarithmic "
+                        f"parameter space, which requires a finite positive "
+                        f"'{key}', but FitParameter '{p.pid}' has '{value}'."
+                    )
+            if p.start_value is not None and p.start_value <= 0.0:
+                raise ValueError(
+                    f"{self.opid}: the optimization is performed in logarithmic "
+                    f"parameter space, which requires a positive 'start_value', but "
+                    f"FitParameter '{p.pid}' has '{p.start_value}'."
+                )
+
+    def _store_model_parameters(self) -> None:
+        """Store the initial values of the fitted parameters in the models.
+
+        The values are read from the first model, a model which starts from
+        different values is reported.
+
+        Raises:
+            ValueError: if a model is not loaded in roadrunner.
+        """
+        for k_model, model in enumerate(self.models):
+            if model.r is None:
+                raise ValueError(f"Model '{model}' is not loaded in roadrunner.")
+
+            for k, pid in enumerate(self.pids):
+                pid_value = model.r[pid]
+                if pid in model.changes:
+                    change = model.changes[pid]
+                    # model changes have units
+                    pid_value = (
+                        change.magnitude if isinstance(change, Quantity) else change
+                    )
+                if k_model == 0:
+                    self.xmodel[k] = pid_value
+                elif not np.isclose(self.xmodel[k], pid_value):
+                    logger.warning(
+                        "%s: models start from different values for '%s': "
+                        "'%s' != '%s'; the value of the first model is reported.",
+                        self.opid,
+                        pid,
+                        self.xmodel[k],
+                        pid_value,
+                    )
 
     def set_simulator(self, simulator: SimulatorSerial | None) -> None:
         """Set the simulator on the runner and the experiments."""
@@ -577,9 +672,9 @@ class OptimizationProblem(ObjectJSONEncoder):
                 sampling=sampling,
                 seed=seed,
             )
-        else:
-            if seed is not None:
-                np.random.seed(seed)
+        elif seed is not None:
+            # the global optimizer draws its own samples
+            kwargs["rng"] = seed
 
         fits = []
         trajectories = []
@@ -603,7 +698,7 @@ class OptimizationProblem(ObjectJSONEncoder):
     def _optimize_single(
         self,
         x0: np.ndarray | None = None,
-        algorithm=OptimizationAlgorithmType.LEAST_SQUARE,
+        algorithm: OptimizationAlgorithmType = OptimizationAlgorithmType.LEAST_SQUARE,
         **kwargs,
     ) -> tuple[scipy.optimize.OptimizeResult, list]:
         """Run single optimization with x0 start values.
@@ -615,6 +710,11 @@ class OptimizationProblem(ObjectJSONEncoder):
         """
         # FIXME: this should not be necessary, handle outside
         if x0 is None:
+            if any(value is None for value in self.x0):
+                raise ValueError(
+                    f"{self.opid}: an optimization without start values requires a "
+                    f"'start_value' on every FitParameter: '{self.parameters}'."
+                )
             x0 = np.array(self.x0, dtype=float)
 
         # logarithmic parameters for optimizer
@@ -687,19 +787,28 @@ class OptimizationProblem(ObjectJSONEncoder):
 
     def cost_least_square(self, xlog: np.ndarray) -> float:
         """Get least square costs for parameters."""
-        res_weighted = self.residuals(xlog)
-        return 0.5 * np.sum(np.power(res_weighted, 2))
+        res_weighted: np.ndarray = self.residuals(xlog)  # ty: ignore[invalid-assignment]
+        return float(0.5 * np.sum(np.square(res_weighted)))
 
-    def residuals(self, xlog: np.ndarray, complete_data=False):
+    def residuals(
+        self, xlog: np.ndarray, complete_data: bool = False
+    ) -> np.ndarray | dict[str, list[Any]]:
         """Calculate residuals for given parameter vector.
 
         Optimization is performed in logarithmic parameter space to
         account for xtol in largely varying parameters.
         see https://github.com/scipy/scipy/issues/7632
 
-        :param xlog: logarithmic parameter vector
-        :param complete_data: boolean flag to return additional information
-        :return: vector of weighted residuals
+        Args:
+            xlog: logarithmic parameter vector.
+            complete_data: return the simulations, residuals and costs of every
+                fit mapping instead of the vector of weighted residuals.
+
+        Returns:
+            Vector of weighted residuals, or the complete data of the mappings.
+
+        Raises:
+            ValueError: if no simulator is set or the residuals are not supported.
         """
         x = np.power(10, xlog)
 
@@ -714,6 +823,7 @@ class OptimizationProblem(ObjectJSONEncoder):
             raise ValueError(f"No simulator set on OptimizationProblem '{self.opid}'.")
         Q_ = self.runner_initialized.Q_
 
+        df: pd.DataFrame | None = None
         for k, mapping_key in enumerate(self.mapping_keys):
             # update initial changes
             changes = {
@@ -792,19 +902,19 @@ class OptimizationProblem(ObjectJSONEncoder):
             residuals_weighted = residuals * np.sqrt(self.weights[k])
 
             # apply loss function
-            if self.loss_function == LossFunctionType.LINEAR:
-                pass
-            elif self.loss_function == LossFunctionType.SOFT_L1:
-                residuals_weighted = 2 * (np.power(1 + residuals_weighted, 0.5) - 1)
-            elif self.loss_function == LossFunctionType.CAUCHY:
-                residuals_weighted = np.log(1 + residuals_weighted)
-            elif self.loss_function == LossFunctionType.ARCTAN:
-                residuals_weighted = np.arctan(residuals_weighted)
+            residuals_weighted = apply_loss_function(
+                residuals_weighted, self.loss_function
+            )
 
             parts.append(residuals_weighted)
 
             # for post_processing
             if complete_data:
+                if df is None:
+                    raise ValueError(
+                        f"'{mapping_key}': no simulation results, the complete data "
+                        f"of a failed simulation cannot be evaluated."
+                    )
                 residual_data["x_obs"].append(df[self.xid_observable[k]])
                 residual_data["y_obs"].append(df[self.yid_observable[k]])
                 residual_data["y_obsip"].append(y_obsip)

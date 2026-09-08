@@ -19,11 +19,15 @@ Since these are independent processes, they now have independent Global Interpre
 Locks (in CPython) so both can use up to 100% of a CPU on a multi-cpu box, as long as
 they dont contend for other lower-level (OS) resources. That's the "multiprocessing"
 part.
+
+The `OptimizationProblem` is pickled and sent to the workers, so it must be
+picklable: it is initialized in the worker, not before.
 """
 
 import logging
 import multiprocessing
 import os
+from typing import Any
 
 import numpy as np
 
@@ -40,7 +44,29 @@ from sbmlsim.fit.result import OptimizationResult
 from sbmlsim.utils import timeit
 
 logger = logging.getLogger(__name__)
-lock = multiprocessing.Lock()
+
+
+def resolve_n_cores(n_cores: int | None) -> int:
+    """Resolve the number of worker processes.
+
+    Args:
+        n_cores: requested number of workers, `None` uses all available cores
+            but one.
+
+    Returns:
+        Number of workers, at least one and at most the number of available cores.
+    """
+    cpu_count = os.process_cpu_count() or 1
+    if n_cores is None:
+        return max(1, cpu_count - 1)
+    if n_cores > cpu_count:
+        logger.error(
+            "More cores '%s' then cpus '%s' requested, reducing cores.",
+            n_cores,
+            cpu_count,
+        )
+        return max(1, cpu_count - 1)
+    return max(1, n_cores)
 
 
 @timeit
@@ -58,7 +84,7 @@ def run_optimization(
     absolute_tolerance: float = 1e-6,
     n_cores: int | None = 1,
     serial: bool = False,
-    **kwargs,
+    **kwargs: Any,
 ) -> OptimizationResult:
     """Run optimization in parallel.
 
@@ -69,91 +95,82 @@ def run_optimization(
     To get access to the optimization problem this has to be initialized with the
     arguments of the runner.
 
-    :param problem: uninitialized problem to optimize (pickable)
-    :param size: integer number of optimizations
-    :param algorithm: optimization algorithm to use
-    :param residual: handling of residuals
-    :param loss_function: loss function for handling outliers/residual transformation
-    :param weighting_curves: list of options for weighting curves (fit mappings)
-    :param weighting_points: weighting of points
-    :param seed: integer random seed (for sampling of parameters)
-    :param absolute_tolerance: absolute tolerance of simulator
-    :param relative_tolerance: relative tolerance of simulator
-    :param variable_step_size: use variable step size in solver
-    :param n_cores: number of workers
-    :param serial: boolean flag to execute optimization in serial fashion (debugging)
-    :param kwargs: additional arguments for optimizer, e.g. xtol
-    :return: OptimizationResult
+    Args:
+        problem: uninitialized problem to optimize (picklable).
+        size: number of optimizations.
+        algorithm: optimization algorithm to use.
+        residual: handling of residuals.
+        loss_function: loss function for handling outliers/residual transformation.
+        weighting_curves: list of options for weighting curves (fit mappings).
+        weighting_points: weighting of points.
+        seed: random seed (for sampling of the start values).
+        variable_step_size: use variable step size in the solver.
+        relative_tolerance: relative tolerance of the simulator.
+        absolute_tolerance: absolute tolerance of the simulator.
+        n_cores: number of workers, `None` uses all available cores but one.
+        serial: run the optimization in a serial fashion (debugging).
+        kwargs: additional arguments for the optimizer, e.g. xtol.
+
+    Returns:
+        OptimizationResult with the fits of all repeats.
+
+    Raises:
+        ValueError: for the removed parameters `fitting_type` and `weighting_local`.
     """
-    saved_args = locals()
-    if "fitting_type" in saved_args:
-        raise ValueError(
-            "Deprecated parameter 'fitting_type', use 'fitting_strategy' instead."
-        )
-    if "weighting_local" in saved_args:
-        raise ValueError(
-            "Deprecated parameter 'weighting_local', use 'weighting_points' instead."
-        )
+    for deprecated, replacement in [
+        ("fitting_type", "fitting_strategy"),
+        ("weighting_local", "weighting_points"),
+    ]:
+        if deprecated in kwargs:
+            raise ValueError(
+                f"Deprecated parameter '{deprecated}', use '{replacement}' instead."
+            )
 
     if weighting_curves is None:
         weighting_curves = []
 
-    # set number of cores
-    cpu_count = multiprocessing.cpu_count()
-    if n_cores is None:
-        n_cores = max(1, multiprocessing.cpu_count() - 1)
-    if n_cores > cpu_count:
-        n_cores = max(1, multiprocessing.cpu_count() - 1)
-        logger.error("More cores then cpus requested, reducing cores to '%s'", n_cores)
-
-    console.rule("Start optimization", align="left", style="white")
-    console.log(f"Running {n_cores} workers")
-    if size < n_cores:
-        logger.warning(
-            "Less simulations then cores: '%s < %s', increasing number of simulations to '%s'.",
-            size,
-            n_cores,
-            n_cores,
-        )
-        size = n_cores
+    problem_kwargs: dict[str, Any] = {
+        "problem": problem,
+        "algorithm": algorithm,
+        "residual": residual,
+        "loss_function": loss_function,
+        "weighting_curves": weighting_curves,
+        "weighting_points": weighting_points,
+        "variable_step_size": variable_step_size,
+        "relative_tolerance": relative_tolerance,
+        "absolute_tolerance": absolute_tolerance,
+        **kwargs,
+    }
 
     opt_result: OptimizationResult
     if serial:
-        # serial parameter fitting
-        saved_args.pop("n_cores")
-        saved_args.pop("serial")
-        kwargs = saved_args.pop("kwargs")
-        opt_result = _run_optimization_serial(**saved_args, **kwargs)
-
+        console.rule("Start optimization", align="left", style="white")
+        console.log("Running serial")
+        opt_result = _run_optimization_serial(size=size, seed=seed, **problem_kwargs)
     else:
-        # parallel parameter fitting
+        n_cores = resolve_n_cores(n_cores)
+        console.rule("Start optimization", align="left", style="white")
+        console.log(f"Running {n_cores} workers")
+        if size < n_cores:
+            logger.warning(
+                "Less simulations then cores: '%s < %s', increasing number of simulations to '%s'.",
+                size,
+                n_cores,
+                n_cores,
+            )
+            size = n_cores
+
+        # distribute the repeats over the workers
         sizes = [len(c) for c in np.array_split(range(size), n_cores)]
 
-        # setting arguments
-        if seed is not None:
-            # set seed before getting worker seeds
-            np.random.seed(seed)
+        # every worker needs its own seed to get different start values
+        seed_sequence = np.random.SeedSequence(seed)
+        seeds = [int(s) for s in seed_sequence.generate_state(n_cores)]
 
-        # we require seeds for the workers to get different results
-        seeds = list(np.random.randint(low=1, high=2000, size=n_cores))
-
-        args_list = []
-        for k in range(n_cores):
-            d = {
-                "problem": problem,
-                "size": sizes[k],
-                "algorithm": algorithm,
-                "residual": residual,
-                "loss_function": loss_function,
-                "weighting_curves": weighting_curves,
-                "weighting_points": weighting_points,
-                "absolute_tolerance": absolute_tolerance,
-                "relative_tolerance": relative_tolerance,
-                "variable_step_size": variable_step_size,
-                "seed": seeds[k],
-                **kwargs,
-            }
-            args_list.append(d)
+        args_list = [
+            {"size": sizes[k], "seed": seeds[k], **problem_kwargs}
+            for k in range(n_cores)
+        ]
 
         # worker pool
         with multiprocessing.Pool(processes=n_cores) as pool:
@@ -166,14 +183,9 @@ def run_optimization(
     return opt_result
 
 
-def worker(kwargs) -> OptimizationResult:
+def worker(kwargs: dict[str, Any]) -> OptimizationResult:
     """Worker for running optimization problem."""
-    lock.acquire()
-    try:
-        logger.info("worker <%s> running optimization ...", os.getpid())
-    finally:
-        lock.release()
-
+    logger.info("worker <%s> running optimization ...", os.getpid())
     return _run_optimization_serial(**kwargs)
 
 
@@ -189,27 +201,13 @@ def _run_optimization_serial(
     variable_step_size: bool = True,
     relative_tolerance: float = 1e-6,
     absolute_tolerance: float = 1e-6,
-    **kwargs,
+    **kwargs: Any,
 ) -> OptimizationResult:
     """Run the given optimization problem in a serial fashion.
 
     This function should not be called directly, but the 'run_optimization'
     should be used for executing simulations.
     See run_optimization for more detailed documentation.
-
-    :param problem: uninitialized problem to optimize (pickable)
-    :param size: integer number of optimizations
-    :param algorithm: optimization algorithm to use
-    :param residual: handling of residuals
-    :param loss_function: loss function for handling outliers/residual transformation
-    :param weighting_curves: list of options for weighting curves (fit mappings)
-    :param weighting_points: weighting of points
-    :param seed: integer random seed (for sampling of parameters)
-    :param absolute_tolerance: absolute tolerance of simulator
-    :param relative_tolerance: relative tolerance of simulator
-    :param variable_step_size: use variable step size in solver
-    :param kwargs: additional arguments for optimizer, e.g. xtol
-    :return: OptimizationResult
     """
     if weighting_curves is None:
         weighting_curves = []
