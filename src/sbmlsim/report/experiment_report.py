@@ -20,6 +20,17 @@ logger = logging.getLogger(__name__)
 TEMPLATE_PATH = RESOURCES_DIR / "templates"
 
 
+def _relative_path(path: Path, start: Path) -> Path:
+    """Path relative to start, the absolute path if there is none.
+
+    On Windows a path on another drive than `start` has no relative path.
+    """
+    try:
+        return Path(os.path.relpath(path, str(start)))
+    except ValueError:
+        return path.resolve()
+
+
 class ReportResults:
     """Results for a ExperimentReport."""
 
@@ -63,6 +74,8 @@ class ReportResults:
         """
         experiment: SimulationExperiment = exp_result.experiment
         abs_path = exp_result.output_path
+        if abs_path is None:
+            raise ValueError("ExperimentResult without output_path cannot be reported.")
         rel_path = Path(".")
         exp_id = experiment.sid
 
@@ -79,7 +92,7 @@ class ReportResults:
             else:
                 raise ValueError(f"Unsupported model type: '{type(model)}'")
 
-            models[model_key] = Path(os.path.relpath(model_path, str(abs_path)))
+            models[model_key] = _relative_path(model_path, abs_path)
 
         # code path
         code_path = sys.modules[experiment.__module__].__file__
@@ -87,7 +100,7 @@ class ReportResults:
             raise ValueError(f"No source file for experiment '{exp_id}'.")
         with open(code_path, encoding="utf-8") as f_code:
             code = f_code.read()
-        code_rel_path = Path(os.path.relpath(code_path, str(abs_path)))
+        code_rel_path = _relative_path(Path(code_path), abs_path)
 
         datasets = {
             key: rel_path / f"{exp_id}_{key}.tsv" for key in experiment._datasets
