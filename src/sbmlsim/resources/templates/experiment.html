@@ -1,109 +1,84 @@
-<!DOCTYPE html>
-<html>
-<head>
-    <meta http-equiv="content-type" content="text/html; charset=utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, minimal-ui">
-    <title>{{exp_id}}</title>
-    <link href="https://fonts.googleapis.com/css?family=Roboto:100,300,400,500,700,900" rel="stylesheet">
-    <link href="https://cdn.jsdelivr.net/npm/@mdi/font@4.x/css/materialdesignicons.min.css" rel="stylesheet">
-    <!--<link href="https://cdn.jsdelivr.net/npm/vuetify@2.x/dist/vuetify.min.css" rel="stylesheet">-->
-    <link rel="stylesheet" href="//cdnjs.cloudflare.com/ajax/libs/highlight.js/10.1.2/styles/default.min.css">
-</head>
+{% extends "report_base.html" %}
 
-<body>
-<div id="app">
-    <!-- Vue app-->
-    <v-app>
-        <v-content>
+{% block title %}{{ exp_id }} | sbmlsim experiment{% endblock %}
+{% block items %}figures{% endblock %}
+{% block heading %}{{ exp_id }}{% endblock %}
+{% block subtitle %}simulation experiment{% endblock %}
+{% block placeholder %}Search figures, models, datasets …{% endblock %}
 
-            <a href="../index.html">Experiments</a>
-            <h1>{{ exp_id }}</h1>
+{% block badges %}
+<span class="badge">models <b>{{ models | length }}</b></span>
+<span class="badge">datasets <b>{{ datasets | length }}</b></span>
+<span class="badge">figures <b>{{ figures | length }}</b></span>
+{% endblock %}
 
-            <h2>Models</h2>
-            <p>
-            <ul>
-                {% for model_id, model_path in models.items() %}
-                <li><strong>{{model_id}}</strong>: <a href="{{model_path}}">{{model_path}}</a></li>
-                {% endfor %}
-            </ul>
-            </p>
+{% block nav %}
+<a href="#overview">Overview</a>
+<a href="#figures">Figures</a>
+<a href="#code">Code</a>
+{% endblock %}
 
-            <h2>Datasets</h2>
-            <p>
-            <ul>
-                {% for dset_id, dset_path in datasets.items() %}
-                <li><strong>{{dset_id}}</strong>: <a href="{{dset_path}}">{{dset_path}}</a></li>
-                {% endfor %}
-            </ul>
-            </p>
+{% block footer %}
+<a href="../index.html">all experiments</a> · <a href="{{ code_path }}">{{ code_path }}</a>
+{% endblock %}
 
-            <h2>Figures</h2>
-            <p>
-            <ul>
-                {% for fig_id, fig_path in figures.items() %}
-                <li><strong>{{fig_id}}</strong>: <a href="{{fig_path}}.svg">{{fig_path}}.svg</a></li>
-                {% endfor %}
-            </ul>
-            </p>
+{% block content %}
 
-            {% for fig_id, fig_path in figures.items() %}
-            <h3>{{ fig_id }}</h3>
-            <p>
-            <table>
-                <tr>
-                    <td>
-                        <!--<v-img src="{{fig_path}}.svg" max-width="600" width="600"></v-img>-->
-                        <img src="{{fig_path}}.svg" width="600">
-                    </td>
-                    <!--
-                    <td>
-                        {% if meta %}
-                        {% for k, v in meta.items() %}
-                        {% if v %}
-                        <strong>{{ k }}</strong>: {{ v }}<br/>
-                        {% endif %}
-                        {% endfor %}
-                        {% endif %}
-                    </td>
-                    -->
-                </tr>
-            </table>
-            </p>
-            {% endfor %}
+<section id="overview">
+  <h2>Overview</h2>
 
-            <h2>Code</h2>
-            <p>
-                <a href="{{ code_path }}">{{ code_path }}</a>
-            <pre>
-<code class="python">{{ code }}</code>
-        </pre>
-            </p>
+  <h3>Models</h3>
+  <div class="card">
+    <table data-filter="row">
+      <thead><tr><th data-sort="text">model</th><th data-sort="text">source</th></tr></thead>
+      <tbody>
+      {% for model_id, model_path in models.items() %}
+      <tr><td class="mono">{{ model_id }}</td><td><a href="{{ model_path }}">{{ model_path }}</a></td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
 
-        </v-content>
-    </v-app>
-</div>
+  <h3>Datasets</h3>
+  <div class="card">
+    {% if datasets %}
+    <table data-filter="row">
+      <thead><tr><th data-sort="text">dataset</th><th data-sort="text">file</th></tr></thead>
+      <tbody>
+      {% for dset_id, dset_path in datasets.items() %}
+      <tr><td class="mono">{{ dset_id }}</td><td><a href="{{ dset_path }}">{{ dset_path }}</a></td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+    <p class="empty">The experiment has no datasets.</p>
+    {% endif %}
+  </div>
+</section>
 
+<section id="figures">
+  <h2>Figures ({{ figures | length }})</h2>
+  {% for fig_id, fig_path in figures.items() %}
+  <div class="card mapping" data-filter="card">
+    <header>
+      <span class="name mono">{{ fig_id }}</span>
+      <span class="exp"><a href="{{ fig_path }}.svg">{{ fig_path }}.svg</a></span>
+    </header>
+    <figure>
+      <img loading="lazy" src="{{ fig_path }}.svg" alt="{{ fig_id }}">
+    </figure>
+  </div>
+  {% endfor %}
+  <p class="empty hidden" data-empty>No figure matches the search.</p>
+  {% if not figures %}<p class="empty">The experiment has no figures.</p>{% endif %}
+</section>
 
-<!-- loading dependencies -->
-<script src="https://cdn.jsdelivr.net/npm/vue@2.6.11"></script>
-<script src="https://cdn.jsdelivr.net/npm/vuetify@2.2.6/dist/vuetify.js"></script>
-<link href="https://fonts.googleapis.com/css?family=Roboto:100,300,400,500,700,900" rel="stylesheet">
-<link href="https://cdn.jsdelivr.net/npm/@mdi/font@4.x/css/materialdesignicons.min.css" rel="stylesheet">
+<section id="code">
+  <h2>Code</h2>
+  <div class="card">
+    <p><a href="{{ code_path }}">{{ code_path }}</a></p>
+    <pre class="code"><code>{{ code }}</code></pre>
+  </div>
+</section>
 
-<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/10.1.2/highlight.min.js"></script>
-<script>hljs.initHighlightingOnLoad();</script>
-
-<script>
-    const app = new Vue({
-        el: '#app',
-        vuetify: new Vuetify(),
-        delimiters: ['${', '}'],
-        data() {
-            return {}
-        }
-    })
-</script>
-
-
-</body>
-</html>
+{% endblock %}
