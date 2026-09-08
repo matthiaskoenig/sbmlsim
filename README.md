@@ -23,6 +23,25 @@ The documentation is available at [https://matthiaskoenig.github.io/sbmlsim](htt
 
 If you have any questions or issues please [open an issue](https://github.com/matthiaskoenig/sbmlsim/issues).
 
+## How to cite
+[![DOI](https://zenodo.org/badge/55952847.svg)](https://zenodo.org/badge/latestdoi/55952847)
+
+If you use `sbmlsim` please cite the archived software on [Zenodo](https://zenodo.org/badge/latestdoi/55952847):
+
+> König, M. (2026). *sbmlsim: SBML simulation made easy* (Version 0.6.0) [Computer software]. Zenodo. https://zenodo.org/badge/latestdoi/55952847
+
+```bibtex
+@software{konig_sbmlsim,
+  author    = {König, Matthias},
+  title     = {sbmlsim: SBML simulation made easy},
+  year      = {2026},
+  month     = sep,
+  version   = {0.6.0},
+  publisher = {Zenodo},
+  url       = {https://zenodo.org/badge/latestdoi/55952847},
+}
+```
+
 ## License
 - Source Code: [MIT](https://opensource.org/license/MIT)
 - Documentation: [CC BY-SA 4.0](http://creativecommons.org/licenses/by-sa/4.0/)
