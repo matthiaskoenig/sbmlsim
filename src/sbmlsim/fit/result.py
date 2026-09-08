@@ -13,6 +13,8 @@ from scipy.optimize import OptimizeResult
 
 from sbmlsim.console import console
 from sbmlsim.fit.objects import FitParameter
+from sbmlsim.fit.options import FitSettings
+from sbmlsim.fit.parameters import ParameterSet, ParameterSets
 from sbmlsim.serialization import ObjectJSONEncoder, from_json, to_json
 
 logger = logging.getLogger(__name__)
@@ -71,19 +73,28 @@ class OptimizationResult(ObjectJSONEncoder):
         fits: list[OptimizeResult],
         trajectories: list,
         sid: str | None = None,
+        opid: str | None = None,
+        settings: FitSettings | dict[str, Any] | None = None,
     ):
         """Initialize optimization result.
 
         Provides access to the FitParameters, the individual fits, and
-        the trajectories of the fits.
+        the trajectories of the fits. The settings and the id of the problem
+        are stored with the result, a report of the fit needs them.
 
-        # FIXME: store for which problem
-
-        :param parameters:
-        :param fits:
-        :param trajectories:
+        Args:
+            parameters: fit parameters of the optimization problem.
+            fits: results of the single optimizations.
+            trajectories: trajectories of the single optimizations.
+            sid: identifier of the result, created from the time by default.
+            opid: id of the optimization problem the result belongs to.
+            settings: settings the fit was run with.
         """
         super().__init__()
+        self.opid = opid
+        if isinstance(settings, dict):
+            settings = FitSettings.from_dict(settings)
+        self.settings: FitSettings | None = settings
         if sid:
             self.sid = sid
         else:
@@ -123,9 +134,10 @@ class OptimizationResult(ObjectJSONEncoder):
 
     def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary."""
-        d = {}
-        for key in ["sid", "parameters", "fits", "trajectories"]:
+        d: dict[str, Any] = {}
+        for key in ["sid", "opid", "parameters", "fits", "trajectories"]:
             d[key] = self.__dict__[key]
+        d["settings"] = self.settings.to_dict() if self.settings else None
         return d
 
     def to_json(self, path: Path | None = None) -> str | Path:
@@ -148,6 +160,62 @@ class OptimizationResult(ObjectJSONEncoder):
     def __str__(self) -> str:
         """Get string representation."""
         return f"<OptimizationResult: n={self.size}>"
+
+    @property
+    def settings_stored(self) -> FitSettings:
+        """Settings the fit was run with.
+
+        Raises:
+            ValueError: if the result carries no settings, e.g., because it was
+                created by hand.
+        """
+        if self.settings is None:
+            raise ValueError(
+                f"OptimizationResult '{self.sid}' carries no FitSettings, they are "
+                f"required to report the fit."
+            )
+        return self.settings
+
+    def parameter_set(self, k: int = 0, sid: str | None = None) -> ParameterSet:
+        """Get the parameters of a single optimization run.
+
+        The runs are ordered by increasing cost, so `k=0` is the best fit.
+
+        Args:
+            k: index of the run in the results ordered by cost.
+            sid: identifier of the set, `<result id>_<k>` by default.
+
+        Returns:
+            The parameter set of the run.
+
+        Raises:
+            IndexError: if the result has no run `k`.
+        """
+        if k >= self.size:
+            raise IndexError(
+                f"OptimizationResult '{self.sid}' has '{self.size}' runs, no run '{k}'."
+            )
+        row = self.df_fits.iloc[k]
+        return ParameterSet.from_fit_parameters(
+            parameters=self.parameters,
+            x=row.x,
+            sid=sid if sid else f"{self.sid}_{k}",
+            cost=float(row.cost),
+            provenance=f"optimization '{self.opid}', run '{int(row.run)}'",
+        )
+
+    def parameter_sets(self, size: int = 1) -> ParameterSets:
+        """Get the parameters of the best optimization runs.
+
+        Args:
+            size: number of runs, ordered by increasing cost.
+
+        Returns:
+            The parameter sets of the best runs.
+        """
+        return ParameterSets(
+            [self.parameter_set(k=k) for k in range(min(size, self.size))]
+        )
 
     @staticmethod
     def combine(opt_results: list["OptimizationResult"]) -> "OptimizationResult":
@@ -176,7 +244,11 @@ class OptimizationResult(ObjectJSONEncoder):
             fits.extend(opt_res.fits)
             trajectories.extend(opt_res.trajectories)
         return OptimizationResult(
-            parameters=parameters, fits=fits, trajectories=trajectories
+            parameters=parameters,
+            fits=fits,
+            trajectories=trajectories,
+            opid=opt_results[0].opid,
+            settings=opt_results[0].settings,
         )
 
     @property

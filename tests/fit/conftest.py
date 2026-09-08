@@ -4,11 +4,10 @@ The HCTZ example is the reference fitting problem, `op_hctz_pkiv` is its
 smallest subset: a single simulation experiment with four fit mappings.
 """
 
-from typing import Any
-
 import pytest
 
 from examples.hctz.fitting.fitting import FitExperimentSubset, op_hctz
+from sbmlsim.fit import FitSettings
 from sbmlsim.fit.optimization import OptimizationProblem
 from sbmlsim.fit.options import (
     ResidualType,
@@ -24,12 +23,12 @@ def op_hctz_pkiv() -> OptimizationProblem:
 
 
 @pytest.fixture
-def fit_kwargs_default() -> dict[str, Any]:
+def fit_settings() -> FitSettings:
     """Get the default settings of an optimization."""
-    return {
-        "residual": ResidualType.NORMALIZED,
-        "weighting_curves": [WeightingCurvesType.POINTS],
-        "weighting_points": WeightingPointsType.ERROR_WEIGHTING,
-        "absolute_tolerance": 1e-6,
-        "relative_tolerance": 1e-6,
-    }
+    return FitSettings(
+        residual=ResidualType.NORMALIZED,
+        weighting_curves=(WeightingCurvesType.POINTS,),
+        weighting_points=WeightingPointsType.ERROR_WEIGHTING,
+        absolute_tolerance=1e-6,
+        relative_tolerance=1e-6,
+    )

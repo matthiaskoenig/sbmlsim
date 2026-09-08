@@ -14,15 +14,13 @@ import itertools
 import logging
 from enum import StrEnum
 from pathlib import Path
-from typing import Any
 
 from examples.hctz import DATA_PATH, HCTZ_PATH
 from examples.hctz.fitting.fit_experiments import f_fitexp_pk, f_fitexp_pkiv
 from examples.hctz.fitting.parameters import parameters_pk
 from sbmlsim import log
 from sbmlsim.console import console
-from sbmlsim.fit import FitExperiment, FitParameter
-from sbmlsim.fit.analysis import OptimizationAnalysis
+from sbmlsim.fit import FitExperiment, FitParameter, FitSettings
 from sbmlsim.fit.optimization import OptimizationProblem
 from sbmlsim.fit.options import (
     LossFunctionType,
@@ -31,28 +29,27 @@ from sbmlsim.fit.options import (
     WeightingCurvesType,
     WeightingPointsType,
 )
+from sbmlsim.fit.report import FitReport
 from sbmlsim.fit.result import OptimizationResult
 from sbmlsim.fit.runner import run_optimization
 from sbmlsim.fit.sampling import SamplingType
 
 logger = logging.getLogger(__name__)
 
-# the settings are shared by the optimization and its analysis
-fit_kwargs: dict[str, Any] = {
-    # optimization settings
-    "residual": ResidualType.NORMALIZED,
-    "loss_function": LossFunctionType.LINEAR,
-    "weighting_curves": [
+#: settings of the fit, stored with the result and read back by the report
+FIT_SETTINGS = FitSettings(
+    residual=ResidualType.NORMALIZED,
+    loss_function=LossFunctionType.LINEAR,
+    weighting_curves=(
         WeightingCurvesType.MAPPING,  # user defined weights
         WeightingCurvesType.POINTS,  # number of points
-    ],
+    ),
     # mappings without errors are weighted with CV=0.5
-    "weighting_points": WeightingPointsType.ERROR_WEIGHTING,
-    # additional integrator settings
-    "variable_step_size": True,
-    "relative_tolerance": 1e-6,
-    "absolute_tolerance": 1e-6,
-}
+    weighting_points=WeightingPointsType.ERROR_WEIGHTING,
+    variable_step_size=True,
+    relative_tolerance=1e-6,
+    absolute_tolerance=1e-6,
+)
 
 
 class OptimizationStrategy(StrEnum):
@@ -108,6 +105,7 @@ def fitlsq(
     """Local least square fitting."""
     opt_res = run_optimization(
         problem=op,
+        settings=FIT_SETTINGS,
         seed=seed,
         algorithm=OptimizationAlgorithmType.LEAST_SQUARE,
         # parameters for least square optimization
@@ -124,6 +122,7 @@ def fitde(
     """Global differential evolution fitting."""
     opt_res = run_optimization(
         problem=op,
+        settings=FIT_SETTINGS,
         seed=seed,
         algorithm=OptimizationAlgorithmType.DIFFERENTIAL_EVOLUTION,
         **kwargs,
@@ -151,7 +150,7 @@ def fit_hctz(
     ) -> tuple[OptimizationResult, OptimizationProblem]:
         """Run a single optimization problem."""
         f_fit = fitlsq if fit_method == FitMethod.LSQ else fitde
-        return f_fit(op, seed=seed, size=n_optimizations, n_cores=n_cores, **fit_kwargs)
+        return f_fit(op, seed=seed, size=n_optimizations, n_cores=n_cores)
 
     results: dict[str, tuple[OptimizationResult, OptimizationProblem]] = {}
     if optimization_strategy == OptimizationStrategy.SINGLE:
@@ -286,17 +285,16 @@ def main(args: list[str] | None = None) -> None:
         seed=options.seed,
     )
 
+    # the fit only optimizes, the report is created from its parameters
     for opt_result, op in results.values():
-        opt_analysis = OptimizationAnalysis(
+        report = FitReport.from_optimization_result(
+            problem=op,
             opt_result=opt_result,
-            op=op,
-            output_name=options.name,
-            output_dir=output_dir,
-            show_plots=False,
+            size=1,
+            with_model=True,
             show_titles=False,
-            **fit_kwargs,
         )
-        opt_analysis.run()
+        report.create(output_dir=output_dir, name=options.name)
 
 
 if __name__ == "__main__":

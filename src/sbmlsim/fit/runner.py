@@ -1,46 +1,41 @@
 """Module for running parameter optimizations.
 
-The optimization can run either run serial or in a parallel version.
-
-The parallel optimization uses multiprocessing, i.e. the parallel runner
-starts processes on the n_cores which run optimization problems.
-
-How multiprocessing works, in a nutshell:
-
-    Process() spawns (fork or similar on Unix-like systems) a copy of the
-    original program.
-    The copy communicates with the original to figure out that
-        (a) it's a copy and
-        (b) it should go off and invoke the target= function (see below).
-    At this point, the original and copy are now different and independent,
-    and can run simultaneously.
-
-Since these are independent processes, they now have independent Global Interpreter
-Locks (in CPython) so both can use up to 100% of a CPU on a multi-cpu box, as long as
-they dont contend for other lower-level (OS) resources. That's the "multiprocessing"
-part.
+The optimization runs either serial or in parallel. The parallel optimization
+uses multiprocessing, i.e., the runner starts one worker process per core and
+every worker runs a part of the repeats of the problem.
 
 The `OptimizationProblem` is pickled and sent to the workers, so it must be
-picklable: it is initialized in the worker, not before.
+picklable: it is initialized in the worker, not before. The workers report every
+finished run through a queue, which drives the progress display of the runner.
+
+The runner only optimizes. Its result carries the fitted parameters and the
+settings of the fit, and `sbmlsim.fit.report.FitReport` turns them into figures
+and reports, see `sbmlsim.fit.parameters`.
 """
 
 import logging
 import multiprocessing
 import os
+from collections.abc import Iterator
+from contextlib import contextmanager
+from queue import Empty, Queue
 from typing import Any
 
 import numpy as np
+from rich.progress import (
+    BarColumn,
+    MofNCompleteColumn,
+    Progress,
+    SpinnerColumn,
+    TextColumn,
+    TimeElapsedColumn,
+)
 
 from sbmlsim.console import console
 from sbmlsim.fit.optimization import OptimizationProblem
-from sbmlsim.fit.options import (
-    LossFunctionType,
-    OptimizationAlgorithmType,
-    ResidualType,
-    WeightingCurvesType,
-    WeightingPointsType,
-)
+from sbmlsim.fit.options import FitSettings, OptimizationAlgorithmType
 from sbmlsim.fit.result import OptimizationResult
+from sbmlsim.log import PACKAGE_LOGGER
 from sbmlsim.utils import timeit
 
 logger = logging.getLogger(__name__)
@@ -69,46 +64,73 @@ def resolve_n_cores(n_cores: int | None) -> int:
     return max(1, n_cores)
 
 
+@contextmanager
+def optimization_progress(
+    description: str, size: int, enabled: bool = True
+) -> Iterator[Progress | None]:
+    """Show the progress of the optimization runs on the console.
+
+    Args:
+        description: text in front of the progress bar.
+        size: total number of optimization runs.
+        enabled: show the progress, a plain context without display if `False`.
+
+    Yields:
+        The progress with a single task, or `None` if it is disabled.
+    """
+    if not enabled:
+        yield None
+        return
+
+    progress = Progress(
+        SpinnerColumn(),
+        TextColumn("[progress.description]{task.description}"),
+        BarColumn(),
+        MofNCompleteColumn(),
+        TextColumn("runs"),
+        TimeElapsedColumn(),
+        console=console,
+        transient=False,
+    )
+    with progress:
+        progress.add_task(description, total=size)
+        yield progress
+
+
+def _advance(progress: Progress | None, advance: int = 1) -> None:
+    """Advance the single task of the progress, if there is one."""
+    if progress is not None and progress.task_ids:
+        progress.advance(progress.task_ids[0], advance=advance)
+
+
 @timeit
 def run_optimization(
     problem: OptimizationProblem,
+    settings: FitSettings | None = None,
     size: int = 5,
     algorithm: OptimizationAlgorithmType = OptimizationAlgorithmType.LEAST_SQUARE,
-    residual: ResidualType = ResidualType.ABSOLUTE,
-    loss_function: LossFunctionType = LossFunctionType.LINEAR,
-    weighting_curves: list[WeightingCurvesType] | None = None,
-    weighting_points: WeightingPointsType = WeightingPointsType.NO_WEIGHTING,
     seed: int | None = None,
-    variable_step_size: bool = True,
-    relative_tolerance: float = 1e-6,
-    absolute_tolerance: float = 1e-6,
     n_cores: int | None = 1,
     serial: bool = False,
+    show_progress: bool = True,
     **kwargs: Any,
 ) -> OptimizationResult:
-    """Run optimization in parallel.
+    """Run the optimization of the problem.
 
-    The runner executes the given OptimizationProblem and returns
-    the OptimizationResults. The size defines the repeated optimizations
-    of the problem. Every repeat uses different initial values.
-
-    To get access to the optimization problem this has to be initialized with the
-    arguments of the runner.
+    The runner executes the given `OptimizationProblem` `size` times, every
+    repeat starting from its own sample of the parameters, and returns the
+    `OptimizationResult` with the fitted parameters and the settings of the fit.
 
     Args:
         problem: uninitialized problem to optimize (picklable).
+        settings: settings of the fit, the defaults of `FitSettings` are used
+            if none are given.
         size: number of optimizations.
         algorithm: optimization algorithm to use.
-        residual: handling of residuals.
-        loss_function: loss function for handling outliers/residual transformation.
-        weighting_curves: list of options for weighting curves (fit mappings).
-        weighting_points: weighting of points.
         seed: random seed (for sampling of the start values).
-        variable_step_size: use variable step size in the solver.
-        relative_tolerance: relative tolerance of the simulator.
-        absolute_tolerance: absolute tolerance of the simulator.
         n_cores: number of workers, `None` uses all available cores but one.
         serial: run the optimization in a serial fashion (debugging).
+        show_progress: show the progress of the runs on the console.
         kwargs: additional arguments for the optimizer, e.g. xtol.
 
     Returns:
@@ -126,92 +148,156 @@ def run_optimization(
                 f"Deprecated parameter '{deprecated}', use '{replacement}' instead."
             )
 
-    if weighting_curves is None:
-        weighting_curves = []
+    if settings is None:
+        settings = FitSettings()
 
-    problem_kwargs: dict[str, Any] = {
-        "problem": problem,
-        "algorithm": algorithm,
-        "residual": residual,
-        "loss_function": loss_function,
-        "weighting_curves": weighting_curves,
-        "weighting_points": weighting_points,
-        "variable_step_size": variable_step_size,
-        "relative_tolerance": relative_tolerance,
-        "absolute_tolerance": absolute_tolerance,
-        **kwargs,
-    }
+    console.rule(f"Optimization '{problem.opid}'", align="left", style="white")
 
     opt_result: OptimizationResult
     if serial:
-        console.rule("Start optimization", align="left", style="white")
-        console.log("Running serial")
-        opt_result = _run_optimization_serial(size=size, seed=seed, **problem_kwargs)
+        console.print(f"{'runs':<12}: {size}\n{'workers':<12}: 1 (serial)")
+        with optimization_progress(problem.opid, size, show_progress) as progress:
+            opt_result = _run_optimization_serial(
+                problem=problem,
+                settings=settings,
+                size=size,
+                algorithm=algorithm,
+                seed=seed,
+                on_run_finished=lambda: _advance(progress),
+                **kwargs,
+            )
     else:
         n_cores = resolve_n_cores(n_cores)
-        console.rule("Start optimization", align="left", style="white")
-        console.log(f"Running {n_cores} workers")
         if size < n_cores:
             logger.warning(
-                "Less simulations then cores: '%s < %s', increasing number of simulations to '%s'.",
+                "Less optimizations then cores '%s < %s', running '%s' optimizations.",
                 size,
                 n_cores,
                 n_cores,
             )
             size = n_cores
+        console.print(f"{'runs':<12}: {size}\n{'workers':<12}: {n_cores}")
+        opt_result = _run_optimization_parallel(
+            problem=problem,
+            settings=settings,
+            size=size,
+            algorithm=algorithm,
+            seed=seed,
+            n_cores=n_cores,
+            show_progress=show_progress,
+            **kwargs,
+        )
 
-        # distribute the repeats over the workers
-        sizes = [len(c) for c in np.array_split(range(size), n_cores)]
-
-        # every worker needs its own seed to get different start values
-        seed_sequence = np.random.SeedSequence(seed)
-        seeds = [int(s) for s in seed_sequence.generate_state(n_cores)]
-
-        args_list = [
-            {"size": sizes[k], "seed": seeds[k], **problem_kwargs}
-            for k in range(n_cores)
-        ]
-
-        # worker pool
-        with multiprocessing.Pool(processes=n_cores) as pool:
-            opt_results: list[OptimizationResult] = pool.map(worker, args_list)
-
-        # combine simulation results
-        opt_result = OptimizationResult.combine(opt_results)
-
-    console.rule("FINISHED OPTIMIZATION", align="left", style="white")
+    _print_summary(opt_result)
     return opt_result
 
 
+def _print_summary(opt_result: OptimizationResult) -> None:
+    """Print the outcome of the optimization on the console."""
+    successful = sum(1 for fit in opt_result.fits if fit.success)
+    style = "success" if successful == opt_result.size else "warning"
+    console.print(
+        f"{'finished':<12}: {successful}/{opt_result.size} runs converged",
+        style=style,
+    )
+    if opt_result.size:
+        console.print(f"{'best cost':<12}: {opt_result.df_fits.cost.iloc[0]:.6g}")
+
+
+def _run_optimization_parallel(
+    problem: OptimizationProblem,
+    settings: FitSettings,
+    size: int,
+    algorithm: OptimizationAlgorithmType,
+    seed: int | None,
+    n_cores: int,
+    show_progress: bool,
+    **kwargs: Any,
+) -> OptimizationResult:
+    """Run the optimizations in a pool of worker processes.
+
+    The runs are distributed over the workers, which report every finished run
+    through a managed queue so that the progress can be shown while they work.
+    """
+    # distribute the repeats over the workers
+    sizes = [len(c) for c in np.array_split(range(size), n_cores)]
+
+    # every worker needs its own seed to get different start values
+    seeds = [int(s) for s in np.random.SeedSequence(seed).generate_state(n_cores)]
+
+    with multiprocessing.Manager() as manager:
+        queue: Queue = manager.Queue()
+        args_list = [
+            {
+                "problem": problem,
+                "settings": settings,
+                "size": sizes[k],
+                "algorithm": algorithm,
+                "seed": seeds[k],
+                "queue": queue,
+                **kwargs,
+            }
+            for k in range(n_cores)
+        ]
+
+        with (
+            optimization_progress(problem.opid, size, show_progress) as progress,
+            multiprocessing.Pool(processes=n_cores) as pool,
+        ):
+            async_result = pool.map_async(worker, args_list)
+            while not async_result.ready():
+                _advance(progress, _drain(queue))
+                async_result.wait(timeout=0.2)
+            _advance(progress, _drain(queue))
+            opt_results: list[OptimizationResult] = async_result.get()
+
+    return OptimizationResult.combine(opt_results)
+
+
+def _drain(queue: Queue) -> int:
+    """Get the number of runs the workers finished since the last call."""
+    finished = 0
+    while True:
+        try:
+            queue.get_nowait()
+        except Empty:
+            return finished
+        finished += 1
+
+
 def worker(kwargs: dict[str, Any]) -> OptimizationResult:
-    """Worker for running optimization problem."""
-    logger.info("worker <%s> running optimization ...", os.getpid())
-    return _run_optimization_serial(**kwargs)
+    """Run a part of the optimizations in a worker process.
+
+    Every worker initializes the same problem and would report the same
+    messages about the data, once per core. Only errors of a worker are shown,
+    the runner reports the problem itself.
+    """
+    logging.getLogger(PACKAGE_LOGGER).setLevel(logging.ERROR)
+    logger.debug("worker <%s> running optimization ...", os.getpid())
+    queue: Queue | None = kwargs.pop("queue", None)
+
+    def on_run_finished() -> None:
+        """Report a finished run to the runner."""
+        if queue is not None:
+            queue.put(1)
+
+    return _run_optimization_serial(on_run_finished=on_run_finished, **kwargs)
 
 
 def _run_optimization_serial(
     problem: OptimizationProblem,
+    settings: FitSettings,
     size: int = 5,
     algorithm: OptimizationAlgorithmType = OptimizationAlgorithmType.LEAST_SQUARE,
-    residual: ResidualType = ResidualType.ABSOLUTE,
-    loss_function: LossFunctionType = LossFunctionType.LINEAR,
-    weighting_curves: list[WeightingCurvesType] | None = None,
-    weighting_points: WeightingPointsType = WeightingPointsType.NO_WEIGHTING,
     seed: int | None = None,
-    variable_step_size: bool = True,
-    relative_tolerance: float = 1e-6,
-    absolute_tolerance: float = 1e-6,
+    on_run_finished: Any = None,
     **kwargs: Any,
 ) -> OptimizationResult:
     """Run the given optimization problem in a serial fashion.
 
-    This function should not be called directly, but the 'run_optimization'
-    should be used for executing simulations.
-    See run_optimization for more detailed documentation.
+    This function should not be called directly, `run_optimization` executes the
+    optimizations. See `run_optimization` for the arguments.
     """
-    if weighting_curves is None:
-        weighting_curves = []
-
     if "n_cores" in kwargs:
         # remove parallel arguments
         logger.warning(
@@ -219,23 +305,21 @@ def _run_optimization_serial(
         )
         kwargs.pop("n_cores")
 
-    # initialize problem, which calculates errors
-    problem.initialize(
-        residual=residual,
-        loss_function=loss_function,
-        weighting_points=weighting_points,
-        weighting_curves=weighting_curves,
-        absolute_tolerance=absolute_tolerance,
-        relative_tolerance=relative_tolerance,
-        variable_step_size=variable_step_size,
-    )
+    # initialize problem, which resolves the data and calculates the weights
+    problem.initialize(settings)
 
-    # optimize
     fits, trajectories = problem.optimize(
-        size=size, seed=seed, algorithm=algorithm, **kwargs
+        size=size,
+        seed=seed,
+        algorithm=algorithm,
+        on_run_finished=on_run_finished,
+        **kwargs,
     )
 
-    # process results and plots
     return OptimizationResult(
-        parameters=problem.parameters, fits=fits, trajectories=trajectories
+        parameters=problem.parameters,
+        fits=fits,
+        trajectories=trajectories,
+        opid=problem.opid,
+        settings=settings,
     )
