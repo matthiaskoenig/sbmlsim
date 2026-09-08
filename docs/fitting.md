@@ -9,7 +9,7 @@ The example throughout this page is `examples/hctz/`, a whole body model of hydr
 A fit mapping pairs a reference, the experimental data, with an observable, the simulated variable. It is defined in the `fit_mappings()` of a `SimulationExperiment` with `FitData` objects, which are `Data` references (see [Data](data.md)) with their errors and counts:
 
 ```python
-mapping_code = '''
+mapping_code = """
 def fit_mappings(self) -> dict[str, FitMapping]:
     return {
         "fm_hctz5po_4": FitMapping(
@@ -30,7 +30,7 @@ def fit_mappings(self) -> dict[str, FitMapping]:
             ),
         ),
     }
-'''
+"""
 print(mapping_code)
 ```
 
@@ -99,59 +99,94 @@ op = OptimizationProblem(
 print(op)
 ```
 
-The problem is picklable, so it is distributed to worker processes; `initialize` then creates the runner, loads the models, resolves the data and calculates the weights. It can be called more than once, e.g., to run a fit and to analyse it afterwards. The options of the initialization define how the residuals are computed:
+The problem is picklable, so it is distributed to worker processes; `initialize` then creates the runner, loads the models, resolves the data and calculates the weights. It takes the `FitSettings`, which decide how the residuals are computed:
+
+```python
+from sbmlsim.fit import FitSettings
+from sbmlsim.fit.options import (
+    LossFunctionType,
+    ResidualType,
+    WeightingCurvesType,
+    WeightingPointsType,
+)
+
+settings = FitSettings(
+    residual=ResidualType.NORMALIZED,
+    loss_function=LossFunctionType.LINEAR,
+    weighting_curves=(WeightingCurvesType.POINTS,),
+    weighting_points=WeightingPointsType.ERROR_WEIGHTING,
+    relative_tolerance=1e-6,
+    absolute_tolerance=1e-6,
+)
+print(settings)
+```
 
 - `ResidualType`: `ABSOLUTE` residuals or `NORMALIZED` residuals, i.e., relative to the data,
 - `LossFunctionType`: `LINEAR`, `SOFT_L1`, `CAUCHY` or `ARCTAN` as in `scipy.optimize.least_squares`, applied to the squared residuals so that the cost is `0.5 * sum(rho(r**2))`,
 - `WeightingCurvesType`: weighting of the curves by their `MAPPING` weight and by the number of `POINTS`,
 - `WeightingPointsType`: `NO_WEIGHTING` or `ERROR_WEIGHTING` of the points by their errors.
 
+The same settings are needed to report a fit, so they are stored with its result. Initializing a problem again with the settings it already has does nothing, i.e., a fit and its report resolve the data once.
+
 ## Running the optimization
 
-`run_optimization` samples `size` start points within the bounds (see `sbmlsim.fit.sampling`), runs the optimizer from every start point, in parallel on `n_cores`, and returns an `OptimizationResult`:
+`run_optimization` samples `size` start points within the bounds (see `sbmlsim.fit.sampling`), runs the optimizer from every start point, in parallel on `n_cores`, and returns an `OptimizationResult`. The progress of the runs is shown on the console:
 
 ```py
-from sbmlsim.fit.options import (
-    OptimizationAlgorithmType,
-    ResidualType,
-    WeightingCurvesType,
-    WeightingPointsType,
-)
+from sbmlsim.fit.options import OptimizationAlgorithmType
 from sbmlsim.fit.runner import run_optimization
 
 opt_result = run_optimization(
     problem=op,
+    settings=settings,
     size=10,
     n_cores=4,
     seed=1234,
     algorithm=OptimizationAlgorithmType.LEAST_SQUARE,
-    residual=ResidualType.NORMALIZED,
-    weighting_curves=[WeightingCurvesType.POINTS],
-    weighting_points=WeightingPointsType.ERROR_WEIGHTING,
 )
 ```
 
-`OptimizationAlgorithmType.LEAST_SQUARE` is the local least squares optimizer, `DIFFERENTIAL_EVOLUTION` the global one. The `OptimizationResult` holds the fits of all start points with their costs, the optimal parameters `xopt`, and the trajectories of the optimizer; it is stored as JSON and TSV with `to_json` and `to_tsv`, and results of several runs are combined with `OptimizationResult.combine`.
+`OptimizationAlgorithmType.LEAST_SQUARE` is the local least squares optimizer, `DIFFERENTIAL_EVOLUTION` the global one. The `OptimizationResult` holds the fits of all start points with their costs, the optimal parameters `xopt`, the trajectories of the optimizer and the settings the fit was run with; it is stored as JSON and TSV with `to_json` and `to_tsv`, and results of several runs are combined with `OptimizationResult.combine`.
 
-## Analysing the fit
+## Parameter sets
 
-`OptimizationAnalysis` writes the report of a fit: the parameter table with the bounds, waterfall and trajectory plots of the optimizations, the predicted against the measured data points and, when the problem is passed, the fitted curves against the data with the residuals for every mapping. The report is an `index.html` in the output directory; `show_report=True` opens it in a browser and `show_plots=True` shows the figures.
+A fit produces parameter values, and these values are what a report is made from. `OptimizationResult.parameter_sets` returns the parameters of the best runs as `ParameterSets`, which are stored as JSON:
 
 ```py
 from pathlib import Path
 
-from sbmlsim.fit.analysis import OptimizationAnalysis
+parameter_sets = opt_result.parameter_sets(size=1)
+parameter_sets.to_json(path=Path("parameters.json"))
+print(parameter_sets.to_df())
+```
 
-analysis = OptimizationAnalysis(
-    opt_result=opt_result,
-    output_name="hctz_iv",
-    output_dir=Path("results"),
-    op=op,
-    residual=ResidualType.NORMALIZED,
-    weighting_curves=[WeightingCurvesType.POINTS],
-    weighting_points=WeightingPointsType.ERROR_WEIGHTING,
+A set carries the values, their units, the cost and where it comes from. `OptimizationProblem.parameter_set_model()` gives the values the models start from, which is the natural reference to compare a fit against.
+
+## Reporting the fit
+
+Reporting is separate from optimizing. A `FitReport` is created from the definition of the problem, the settings and one or more parameter sets; it does not need a fit to have been run in the same session:
+
+```py
+from sbmlsim.fit import ParameterSets
+from sbmlsim.fit.report import FitReport
+
+report = FitReport(
+    problem=op,
+    settings=settings,
+    parameter_sets=ParameterSets.from_json(Path("parameters.json")),
 )
-analysis.run()
+report.create(output_dir=Path("results"), name="hctz_iv")
+```
+
+The report writes `index.html`, `report.txt`, the `parameters.json` it was made from and the figures: the parameter table with the bounds, the predicted against the measured data points, the costs of the curves and the fitted curves against the data with the residuals for every mapping. `show_report=True` opens the HTML in a browser.
+
+Every parameter set becomes a column of the parameter table and a curve in the plots, so several sets are compared in a single report, e.g., two fits against each other. The first set is the reference the others are compared against.
+
+`FitReport.from_optimization_result` is the shortcut for the report of a fit. It reads the settings from the result, uses the initial values of the model as the reference set, and adds the plots which describe the runs rather than a parameter set, i.e., the optimization traces and the waterfall plot:
+
+```py
+report = FitReport.from_optimization_result(problem=op, opt_result=opt_result)
+report.create(output_dir=Path("results"), name="hctz_iv")
 ```
 
 The complete fit problems of the HCTZ model are in `examples/hctz/fitting/`, `fit_experiments.py` builds the subsets of the data and `fitting.py` runs them:
@@ -159,6 +194,13 @@ The complete fit problems of the HCTZ model are in `examples/hctz/fitting/`, `fi
 ```bash
 python -m examples.hctz.fitting.fitting --runs=10 --cores=4 --seed=1234 \
     --method=LSQ --strategy=ALL --subset=PK --name=PK_LSQ_ALL
+```
+
+`report.py` creates a report from the `parameters.json` of a finished fit, without optimizing again, and compares the parameters of several fits:
+
+```bash
+python -m examples.hctz.fitting.report results/fit/PK_LSQ_ALL/parameters.json
+python -m examples.hctz.fitting.report run1/parameters.json run2/parameters.json
 ```
 
 ## PEtab

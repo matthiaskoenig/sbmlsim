@@ -82,10 +82,11 @@ Parameter fitting, see [Parameter fitting](../fitting.md).
 | --- | --- |
 | [fit.objects](fit.objects.md) | `FitParameter`, `FitMapping`, `FitData` and `FitExperiment`, the objects of a fit problem |
 | [fit.optimization](fit.optimization.md) | `OptimizationProblem`, the residuals and cost of a fit problem |
-| [fit.options](fit.options.md) | options of the optimization, i.e., algorithms, residuals, weighting and loss functions |
-| [fit.result](fit.result.md) | `OptimizationResult`, the result of an optimization with its analysis |
+| [fit.options](fit.options.md) | `FitSettings` and the options of the optimization, i.e., algorithms, residuals, weighting and loss functions |
+| [fit.parameters](fit.parameters.md) | `ParameterSet` and `ParameterSets`, the fitted parameters a report is created from |
+| [fit.result](fit.result.md) | `OptimizationResult`, the result of an optimization |
 | [fit.runner](fit.runner.md) | running optimizations serially or in parallel |
-| [fit.analysis](fit.analysis.md) | plots and tables of optimization results |
+| [fit.report](fit.report.md) | `FitReport`, the figures and reports of one or more parameter sets |
 | [fit.sampling](fit.sampling.md) | sampling of initial parameter values |
 | [fit.rmse](fit.rmse.md) | statistics of fits |
 | [fit.helpers](fit.helpers.md) | helpers for fitting |

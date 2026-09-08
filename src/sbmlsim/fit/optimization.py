@@ -3,6 +3,7 @@
 import logging
 import time
 from collections import defaultdict
+from collections.abc import Callable, Sequence
 from copy import deepcopy
 from dataclasses import dataclass
 from pathlib import Path
@@ -17,12 +18,14 @@ from sbmlsim.console import console
 from sbmlsim.experiment import ExperimentRunner, SimulationExperiment
 from sbmlsim.fit.objects import FitExperiment, FitMapping, FitParameter
 from sbmlsim.fit.options import (
+    FitSettings,
     LossFunctionType,
     OptimizationAlgorithmType,
     ResidualType,
     WeightingCurvesType,
     WeightingPointsType,
 )
+from sbmlsim.fit.parameters import ParameterSet
 from sbmlsim.fit.sampling import SamplingType, create_samples
 from sbmlsim.model import RoadrunnerSBMLModel
 from sbmlsim.serialization import ObjectJSONEncoder, to_json
@@ -145,10 +148,7 @@ class OptimizationProblem(ObjectJSONEncoder):
 
         # set in initialization
         self.runner: ExperimentRunner | None = None
-        self.residual: ResidualType | None = None
-        self.loss_function: LossFunctionType = LossFunctionType.LINEAR
-        self.weighting_curves: list[WeightingCurvesType] = []
-        self.weighting_points: WeightingPointsType | None = None
+        self.settings: FitSettings | None = None
 
         self._trajectory: list[tuple[np.ndarray, float]] = []
         self.xmodel: np.ndarray = np.empty(shape=(len(self.pids)))
@@ -176,6 +176,44 @@ class OptimizationProblem(ObjectJSONEncoder):
         self.models: list[Any] = []
         self.simulations: list[Any] = []
         self.selections: list[Any] = []
+
+    @property
+    def is_initialized(self) -> bool:
+        """Check if the problem was initialized, i.e., the data is resolved."""
+        return self.runner is not None and bool(self.mapping_keys)
+
+    @property
+    def settings_initialized(self) -> FitSettings:
+        """Settings of the problem, set in `initialize`.
+
+        Raises:
+            ValueError: if the problem was not initialized.
+        """
+        if self.settings is None:
+            raise ValueError(
+                f"OptimizationProblem '{self.opid}' must be initialized first."
+            )
+        return self.settings
+
+    @property
+    def residual(self) -> ResidualType:
+        """Handling of the residuals, see `FitSettings`."""
+        return self.settings_initialized.residual
+
+    @property
+    def loss_function(self) -> LossFunctionType:
+        """Loss function of the fit, see `FitSettings`."""
+        return self.settings_initialized.loss_function
+
+    @property
+    def weighting_curves(self) -> Sequence[WeightingCurvesType]:
+        """Weighting of the curves, see `FitSettings`."""
+        return self.settings_initialized.weighting_curves
+
+    @property
+    def weighting_points(self) -> WeightingPointsType:
+        """Weighting of the data points, see `FitSettings`."""
+        return self.settings_initialized.weighting_points
 
     def __repr__(self) -> str:
         """Get representation."""
@@ -219,10 +257,7 @@ class OptimizationProblem(ObjectJSONEncoder):
         core_info = self.__str__()
         all_info = [
             core_info,
-            "Settings",
-            f"\tresidual_type: {self.residual}",
-            f"\tweighting_curves: {self.weighting_curves}",
-            f"\tweighting_points: {self.weighting_points}",
+            str(self.settings_initialized),
             "Data",
         ]
         for key in [
@@ -249,44 +284,34 @@ class OptimizationProblem(ObjectJSONEncoder):
                 f.write(info)
         return info
 
-    def initialize(
-        self,
-        residual: ResidualType,
-        loss_function: LossFunctionType,
-        weighting_curves: list[WeightingCurvesType] | None,
-        weighting_points: WeightingPointsType,
-        variable_step_size: bool = True,
-        relative_tolerance: float = 1e-6,
-        absolute_tolerance: float = 1e-6,
-    ) -> None:
-        """Initialize Optimization problem.
+    def initialize(self, settings: FitSettings, force: bool = False) -> None:
+        """Initialize the optimization problem for the given settings.
 
-        Performs precalculations, resolving data, calculating weights.
-        Creates and attaches simulator for the given problem.
+        Resolves the data of the fit mappings, converts it to the units of the
+        model, calculates the weights and attaches a simulator. The problem is
+        only initialized once for a given set of settings: a fit and the report
+        of the fit use the same problem, and resolving the data twice repeats
+        the work and every message about the data.
 
-        :param residual: handling of residuals
-        :param loss_function: loss function for residual transformation
-        :param weighting_curves: list of options for weighting curves (fit mappings)
-        :param weighting_points: weighting of points
-        :param absolute_tolerance: absolute tolerance of simulator
-        :param relative_tolerance: relative tolerance of simulator
-        :param variable_step_size: use variable step size in solver
+        Args:
+            settings: settings of the fit, they decide how the residuals and
+                the weights are calculated.
+            force: initialize again even if the settings did not change.
+
+        Raises:
+            TypeError: if the settings are not a `FitSettings`.
         """
-        if weighting_curves is None:
-            # no weighting by default
-            weighting_curves = []
-        if isinstance(weighting_curves, WeightingCurvesType):
+        if not isinstance(settings, FitSettings):
             raise TypeError(
-                f"weighting_curves must be a 'list[WeightingCurvesType]', "
-                f"but '{type(weighting_curves)}' given."
+                f"'settings' must be a 'FitSettings', but '{type(settings)}' given."
             )
+        if not force and self.is_initialized and self.settings == settings:
+            logger.debug("%s: already initialized, skipping", self.opid)
+            return
 
-        self.residual = residual
-        self.loss_function = loss_function
-        self.weighting_curves = weighting_curves
-        self.weighting_points = weighting_points
+        self.settings = settings
         self._validate_parameters()
-        # initialize can be called more than once, e.g. for the analysis of a fit
+        # initialize can be called more than once, e.g. for the report of a fit
         self._reset_mappings()
 
         # Create experiment runner (loads the experiments & all models)
@@ -301,7 +326,7 @@ class OptimizationProblem(ObjectJSONEncoder):
         )
 
         # Collect information for simulations
-        # fit_exp: Callable
+        mappings_without_errors: list[str] = []
         for fit_experiment in self.fit_experiments:
             # get simulation experiment
             sid = fit_experiment.experiment_class.__name__
@@ -504,12 +529,7 @@ class OptimizationProblem(ObjectJSONEncoder):
                         weight_points = np.abs(y_ref / y_ref_err)
                         # weight_points = 1.0 / y_ref_err  # scale with error;
                     else:
-                        logger.warning(
-                            "'%s.%s': Using '%s' with no errors in reference data.",
-                            sid,
-                            mapping_id,
-                            self.weighting_points,
-                        )
+                        mappings_without_errors.append(f"{sid}.{mapping_id}")
                         # Weights must be comparable to datasets with data (1/CV)
                         # Assuming an error with CV of 0.5 -> w=2
                         weight_points = 2 * np.ones_like(y_ref)
@@ -570,11 +590,31 @@ class OptimizationProblem(ObjectJSONEncoder):
         # initial parameter values of the models
         self._store_model_parameters()
 
+        if mappings_without_errors:
+            # one message for all mappings, not one per mapping
+            shown = mappings_without_errors[:3]
+            more = len(mappings_without_errors) - len(shown)
+            logger.warning(
+                "'%s': %s of %s fit mappings have no errors in the reference data, "
+                "'%s' assumes a coefficient of variation of 0.5 for them: %s%s",
+                self.opid,
+                len(mappings_without_errors),
+                len(self.mapping_keys),
+                self.weighting_points.name,
+                ", ".join(shown),
+                f" and {more} more" if more else "",
+            )
+            logger.debug(
+                "'%s': fit mappings without errors: %s",
+                self.opid,
+                mappings_without_errors,
+            )
+
         # set simulator instance with arguments
         simulator = SimulatorSerial(
-            absolute_tolerance=absolute_tolerance,
-            relative_tolerance=relative_tolerance,
-            variable_step_size=variable_step_size,
+            absolute_tolerance=settings.absolute_tolerance,
+            relative_tolerance=settings.relative_tolerance,
+            variable_step_size=settings.variable_step_size,
         )
         self.set_simulator(simulator)
 
@@ -636,6 +676,21 @@ class OptimizationProblem(ObjectJSONEncoder):
                         pid_value,
                     )
 
+    def parameter_set_model(self, sid: str = "model") -> ParameterSet:
+        """Get the initial values of the fitted parameters in the model.
+
+        The set is the reference a fitted set is compared against in a report.
+
+        Args:
+            sid: identifier of the set.
+
+        Returns:
+            Parameter set of the values the models start from.
+        """
+        return ParameterSet.from_model(
+            parameters=self.parameters, x=self.xmodel, sid=sid
+        )
+
     def set_simulator(self, simulator: SimulatorSerial | None) -> None:
         """Set the simulator on the runner and the experiments."""
         self.runner_initialized.set_simulator(simulator)
@@ -655,12 +710,25 @@ class OptimizationProblem(ObjectJSONEncoder):
         algorithm: OptimizationAlgorithmType = OptimizationAlgorithmType.LEAST_SQUARE,
         sampling: SamplingType = SamplingType.UNIFORM,
         seed: int | None = None,
+        on_run_finished: Callable[[], None] | None = None,
         **kwargs,
     ) -> tuple[list[scipy.optimize.OptimizeResult], list]:
         """Run parameter optimization.
 
-        To change the weighting or handling of residuals reinitialize the optimization
-        algorithm.
+        The problem must be initialized, i.e., the settings of the fit are the
+        settings it was initialized with.
+
+        Args:
+            size: number of optimizations, every one starts from its own sample.
+            algorithm: optimization algorithm.
+            sampling: sampling of the start values of the local optimizer.
+            seed: seed of the sampling.
+            on_run_finished: called after every finished optimization, used to
+                report the progress of a fit.
+            kwargs: additional arguments of the optimizer.
+
+        Returns:
+            The fits and the trajectories of the optimizations.
         """
         # create samples
         x_samples: pd.DataFrame
@@ -692,6 +760,8 @@ class OptimizationProblem(ObjectJSONEncoder):
 
             fits.append(fit)
             trajectories.append(trajectory)
+            if on_run_finished is not None:
+                on_run_finished()
         return fits, trajectories
 
     @timeit

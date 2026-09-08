@@ -6,7 +6,10 @@ data points.
 sum(Nk)( w{k}^2 * sum(NKi) (w{i,k}^2 * res{i,k}))
 """
 
+from collections.abc import Iterable, Sequence
+from dataclasses import dataclass, field
 from enum import Enum
+from typing import Any
 
 
 class OptimizationAlgorithmType(Enum):
@@ -145,3 +148,78 @@ class WeightingPointsType(Enum):
 
     NO_WEIGHTING = 1
     ERROR_WEIGHTING = 2
+
+
+@dataclass(frozen=True)
+class FitSettings:
+    """Settings of a parameter fit.
+
+    The settings decide how the residuals of an optimization problem are
+    calculated, so the same settings are needed to run a fit and to report it
+    afterwards. They are stored with the result of a fit and read back by the
+    report, see `sbmlsim.fit.report.FitReport`.
+
+    Attributes:
+        residual: handling of the residuals.
+        loss_function: loss function applied to the squared residuals.
+        weighting_curves: weighting of the curves (fit mappings).
+        weighting_points: weighting of the data points within a curve.
+        variable_step_size: use a variable step size in the solver.
+        relative_tolerance: relative tolerance of the simulator.
+        absolute_tolerance: absolute tolerance of the simulator.
+    """
+
+    residual: ResidualType = ResidualType.ABSOLUTE
+    loss_function: LossFunctionType = LossFunctionType.LINEAR
+    # any sequence is accepted, it is normalized to a tuple so that the
+    # settings are hashable and compare by value
+    weighting_curves: Sequence[WeightingCurvesType] = field(default_factory=tuple)
+    weighting_points: WeightingPointsType = WeightingPointsType.NO_WEIGHTING
+    variable_step_size: bool = True
+    relative_tolerance: float = 1e-6
+    absolute_tolerance: float = 1e-6
+
+    def __post_init__(self) -> None:
+        """Normalize the weighting of the curves to a tuple."""
+        if not isinstance(self.weighting_curves, tuple):
+            curves: Iterable[WeightingCurvesType] = self.weighting_curves
+            object.__setattr__(self, "weighting_curves", tuple(curves))
+
+    def to_dict(self) -> dict[str, Any]:
+        """Convert to a dictionary of JSON serializable values."""
+        return {
+            "residual": self.residual.name,
+            "loss_function": self.loss_function.name,
+            "weighting_curves": [w.name for w in self.weighting_curves],
+            "weighting_points": self.weighting_points.name,
+            "variable_step_size": self.variable_step_size,
+            "relative_tolerance": self.relative_tolerance,
+            "absolute_tolerance": self.absolute_tolerance,
+        }
+
+    @staticmethod
+    def from_dict(d: dict[str, Any]) -> "FitSettings":
+        """Create settings from a dictionary, i.e., from the stored JSON.
+
+        Args:
+            d: dictionary as created by `to_dict`.
+
+        Returns:
+            The settings.
+        """
+        curves: Sequence[str] = d.get("weighting_curves", [])
+        return FitSettings(
+            residual=ResidualType[d["residual"]],
+            loss_function=LossFunctionType[d["loss_function"]],
+            weighting_curves=tuple(WeightingCurvesType[w] for w in curves),
+            weighting_points=WeightingPointsType[d["weighting_points"]],
+            variable_step_size=d.get("variable_step_size", True),
+            relative_tolerance=d.get("relative_tolerance", 1e-6),
+            absolute_tolerance=d.get("absolute_tolerance", 1e-6),
+        )
+
+    def __str__(self) -> str:
+        """Get string representation."""
+        info = [f"{self.__class__.__name__}:"]
+        info.extend(f"\t{key}: {value}" for key, value in self.to_dict().items())
+        return "\n".join(info)
