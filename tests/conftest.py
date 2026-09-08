@@ -10,6 +10,16 @@ from sbmlsim.resources import DEMO_SBML, REPRESSILATOR_SBML
 data_dir = Path(__file__).parent / "data"
 
 
+@pytest.fixture(autouse=True)
+def _working_directory(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Run every test in a temporary working directory.
+
+    The examples write their figures and results into the working directory,
+    so a test which runs an example must not write into the repository.
+    """
+    monkeypatch.chdir(tmp_path)
+
+
 @pytest.fixture
 def repressilator_model_state() -> str:
     """Get repressilator roadrunner state."""
