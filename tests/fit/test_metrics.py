@@ -102,6 +102,7 @@ def test_metrics_datapoints(
     assert list(dp.columns) == [
         "experiment",
         "mapping",
+        "kind",
         "x",
         "DV",
         "PRED",
@@ -154,6 +155,7 @@ def test_metrics_mappings_and_summary(
     assert list(mappings.columns) == [
         "experiment",
         "mapping",
+        "kind",
         "n",
         "MSE",
         "RMSE",
@@ -166,6 +168,7 @@ def test_metrics_mappings_and_summary(
     summary = metrics.summary()
     assert set(summary) == {
         "parameter_set",
+        "kind",
         "n",
         "k",
         "cost",
@@ -175,6 +178,7 @@ def test_metrics_mappings_and_summary(
         "R2",
         "AIC",
     }
+    assert summary["kind"] == "all"
     assert summary["n"] == int(mappings.n.sum())
     assert summary["k"] == len(op_hctz_pkiv.parameters)
     assert summary["RMSE"] == pytest.approx(np.sqrt(summary["MSE"]))

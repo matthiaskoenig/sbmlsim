@@ -81,5 +81,4 @@ class HCTZMappingMetaData(MappingMetaData):
             "health": self.health.name,
             "fasting": self.fasting.name,
             "coadministration": self.coadministration.name,
-            "outlier": self.outlier,
         }

@@ -1,7 +1,10 @@
 """Parameter fit problems for HCTZ.
 
 The fit experiments are built from the fit mappings of the studies which pass a
-set of filters on the metadata of the mappings.
+set of filters on the metadata of the mappings. The metadata of a mapping
+describes its curve, what a fit does with the curve is decided here: every
+selection gets a `MappingKind`, i.e., it is the training data of the fit, the
+validation data it is evaluated on, or an outlier which is not used.
 """
 
 from examples.hctz import DATA_PATH, HCTZ_PATH
@@ -14,8 +17,15 @@ from examples.hctz.experiments.metadata import (
 from examples.hctz.experiments.studies import Beermann1976, Patel1984
 from sbmlsim.console import console
 from sbmlsim.experiment import SimulationExperiment
-from sbmlsim.fit import FitExperiment, FitMapping
-from sbmlsim.fit.helpers import MappingFilter, f_fitexp, filter_empty
+from sbmlsim.fit import FitExperiment, FitMapping, MappingKind
+from sbmlsim.fit.helpers import (
+    MappingFilter,
+    f_fitexp,
+    filter_empty,
+    filter_keys,
+    filter_not_keys,
+    fit_experiments_by_kind,
+)
 
 # observables of the pharmacokinetics
 PK_OBSERVABLES = {"Afeces_hctz", "Aurine_hctz", "Cve_hctz", "KI__HCTZEX"}
@@ -25,9 +35,23 @@ EXPERIMENT_CLASSES: list[type[SimulationExperiment]] = [
     Patel1984,
 ]
 
+#: mappings which are not used, the data is not usable
+OUTLIER_MAPPINGS: set[str] = {
+    "fm_hctz5po_4",
+    "fm_excretion_hctz5po_4",
+}
+
+#: mappings which are kept out of the fits, the fits are evaluated on them.
+#: The highest oral dose of Patel1984 checks how the parameters extrapolate.
+VALIDATION_MAPPINGS: set[str] = {
+    "fm_200_tab_urine",
+    "fm_200_sus_urine",
+}
+
 
 def fit_experiments(
     metadata_filters: MappingFilter | list[MappingFilter],
+    kind: MappingKind = MappingKind.TRAINING,
 ) -> dict[str, list[FitExperiment]]:
     """Get the fit experiments of the studies for the given filters."""
     return f_fitexp(
@@ -35,6 +59,37 @@ def fit_experiments(
         metadata_filters=metadata_filters,
         base_path=HCTZ_PATH,
         data_path=DATA_PATH,
+        kind=kind,
+    )
+
+
+def classified_fit_experiments(
+    metadata_filters: list[MappingFilter],
+) -> dict[str, list[FitExperiment]]:
+    """Split a selection of mappings into training, validation and outliers.
+
+    The outliers and the validation data are named in `OUTLIER_MAPPINGS` and
+    `VALIDATION_MAPPINGS`, everything else the filters accept is fitted.
+
+    Args:
+        metadata_filters: filters which select the data of the fit.
+
+    Returns:
+        The fit experiments of the three kinds by experiment id.
+    """
+    excluded = OUTLIER_MAPPINGS | VALIDATION_MAPPINGS
+    return fit_experiments_by_kind(
+        experiment_classes=EXPERIMENT_CLASSES,
+        base_path=HCTZ_PATH,
+        data_path=DATA_PATH,
+        filters_by_kind={
+            MappingKind.TRAINING: [*metadata_filters, filter_not_keys(excluded)],
+            MappingKind.VALIDATION: [
+                *metadata_filters,
+                filter_keys(VALIDATION_MAPPINGS),
+            ],
+            MappingKind.OUTLIER: [*metadata_filters, filter_keys(OUTLIER_MAPPINGS)],
+        },
     )
 
 
@@ -64,11 +119,7 @@ def filter_control(fit_mapping_key: str, fit_mapping: FitMapping) -> bool:
         return False
 
     # remove coadministration
-    if metadata.coadministration != Coadministration.NONE:
-        return False
-
-    # remove outliers
-    return not metadata.outlier
+    return metadata.coadministration == Coadministration.NONE
 
 
 def filter_iv(fit_mapping_key: str, fit_mapping: FitMapping) -> bool:
@@ -97,13 +148,13 @@ def f_fitexp_control() -> dict[str, list[FitExperiment]]:
 
 
 def f_fitexp_pk() -> dict[str, list[FitExperiment]]:
-    """HCTZ pharmacokinetics data."""
-    return fit_experiments([filter_control, filter_pk])
+    """HCTZ pharmacokinetics data, split into training, validation and outliers."""
+    return classified_fit_experiments([filter_control, filter_pk])
 
 
 def f_fitexp_pkiv() -> dict[str, list[FitExperiment]]:
     """HCTZ iv pharmacokinetics data."""
-    return fit_experiments([filter_control, filter_pk, filter_iv])
+    return classified_fit_experiments([filter_control, filter_pk, filter_iv])
 
 
 def f_fitexp_pd() -> dict[str, list[FitExperiment]]:

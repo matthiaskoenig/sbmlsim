@@ -17,6 +17,7 @@ from .objects import (
     FitExperiment,
     FitMapping,
     FitParameter,
+    MappingKind,
     MappingMetaData,
 )
 from .options import FitSettings
@@ -29,6 +30,7 @@ __all__ = [
     "FitMetrics",
     "FitParameter",
     "FitSettings",
+    "MappingKind",
     "MappingMetaData",
     "ParameterSet",
     "ParameterSets",

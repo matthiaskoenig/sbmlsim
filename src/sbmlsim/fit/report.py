@@ -28,6 +28,7 @@ from matplotlib.lines import Line2D
 
 from sbmlsim.console import console
 from sbmlsim.fit.metrics import FitMetrics
+from sbmlsim.fit.objects import MappingKind
 from sbmlsim.fit.optimization import OptimizationProblem
 from sbmlsim.fit.options import FitSettings
 from sbmlsim.fit.parameters import ParameterSet, ParameterSets
@@ -141,6 +142,18 @@ class FitReport:
         """First parameter set, the reference the others are compared against."""
         return self.parameter_sets[0]
 
+    def mapping_title(self, k: int) -> str:
+        """Get the title of the plots of a fit mapping.
+
+        Data which is not fitted is marked, so that it is visible in the
+        figures which curves the parameters were fitted on.
+        """
+        title = f"{self.problem.experiment_keys[k]} {self.problem.mapping_keys[k]}"
+        kind = self.problem.mapping_kinds[k]
+        if kind is not MappingKind.TRAINING:
+            title = f"{title} [{kind.value}]"
+        return title
+
     def color(self, pset: ParameterSet) -> str:
         """Get the color of a parameter set."""
         index = [p.sid for p in self.parameter_sets].index(pset.sid)
@@ -162,9 +175,14 @@ class FitReport:
         return FitMetrics(problem=self.problem, parameter_set=pset)
 
     def metrics_df(self) -> pd.DataFrame:
-        """Get the metrics of every parameter set, one row per set."""
-        return pd.DataFrame(
-            [self.metrics(pset).summary() for pset in self.parameter_sets]
+        """Get the metrics of every parameter set, per kind of fit mapping.
+
+        A fit is evaluated on its training and on its validation data, so every
+        parameter set has a row per kind.
+        """
+        return pd.concat(
+            [self.metrics(pset).summary_df() for pset in self.parameter_sets],
+            ignore_index=True,
         )
 
     def metrics_mappings_df(self) -> pd.DataFrame:
@@ -487,7 +505,7 @@ class FitReport:
 
             for ax in [ax1, ax2]:
                 if self.show_titles:
-                    ax.set_title(f"{sid} {mapping_id}")
+                    ax.set_title(self.mapping_title(k))
                 ax.set_ylabel(y_id)
                 ax.set_xlabel(x_id)
 
@@ -566,7 +584,7 @@ class FitReport:
 
             for ax in (ax1, ax2):
                 if self.show_titles:
-                    ax.set_title(f"{sid}.{mapping_id}")
+                    ax.set_title(self.mapping_title(k))
                 plt.setp(ax.get_xticklabels(), visible=False)
 
                 # reference data

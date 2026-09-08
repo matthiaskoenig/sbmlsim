@@ -7,6 +7,7 @@ import logging
 import math
 from collections.abc import Iterable
 from dataclasses import dataclass
+from enum import StrEnum
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -30,6 +31,37 @@ def _isclose(a: float | None, b: float | None) -> bool:
     return math.isclose(a, b)
 
 
+class MappingKind(StrEnum):
+    """How the data of the fit mappings of a `FitExperiment` is used.
+
+    `training` (default) : the mappings are fitted, i.e., their residuals enter
+    the cost of the optimization.
+
+    `validation` : the mappings are not fitted. They are simulated and
+    evaluated with the training data when a fit is reported, which shows how
+    the fitted parameters describe data they were not fitted on.
+
+    `outlier` : the mappings are not used at all, neither in the optimization
+    nor in the evaluation.
+
+    The kind is set on the `FitExperiment`, i.e., when the data of a fit is
+    selected, not on the fit mappings of a simulation experiment: a mapping
+    describes a curve, the kind describes what a fit does with it, and the same
+    curve is training data of one fit and validation data of another.
+    """
+
+    TRAINING = "training"
+    VALIDATION = "validation"
+    OUTLIER = "outlier"
+
+
+#: kinds which are simulated and evaluated, i.e., everything but the outliers
+EVALUATED_KINDS: tuple[MappingKind, ...] = (
+    MappingKind.TRAINING,
+    MappingKind.VALIDATION,
+)
+
+
 class FitExperiment:
     """A parameter fitting experiment.
 
@@ -45,6 +77,7 @@ class FitExperiment:
         use_mapping_weights: bool = False,
         fit_parameters: dict[str, list[FitParameter]] | None = None,
         exclude: bool = False,
+        kind: MappingKind = MappingKind.TRAINING,
     ):
         """Initialize simulation experiment used in a fitting.
 
@@ -61,6 +94,8 @@ class FitExperiment:
             fit_parameters: LOCAL parameters only changed in this simulation
                 experiment.
             exclude: flag to exclude the experiment from the fitting.
+            kind: what a fit does with these mappings, i.e., whether they are
+                fitted, only evaluated or not used at all.
 
         Raises:
             ValueError: for duplicate mappings or unsupported local fit parameters.
@@ -79,6 +114,7 @@ class FitExperiment:
         self.use_mapping_weights = use_mapping_weights
         self.weights = weights
         self.exclude: bool = exclude
+        self.kind: MappingKind = kind
 
         if fit_parameters:
             # TODO: implement
@@ -154,26 +190,31 @@ class FitExperiment:
     def reduce(fit_experiments: Iterable[FitExperiment]) -> list[FitExperiment]:
         """Combine the fit mappings of the FitExperiments of the same experiment.
 
-        The mappings and their weights are concatenated, the inputs are not modified.
+        Experiments are combined per simulation experiment and `MappingKind`,
+        so that the training and the validation data stay apart. The mappings
+        and their weights are concatenated, the inputs are not modified.
 
         Raises:
             ValueError: if experiments of the same class cannot be combined, i.e.,
                 they use different weighting or repeat a mapping.
         """
-        reduced: dict[str, FitExperiment] = {}
+        reduced: dict[tuple[str, MappingKind], FitExperiment] = {}
         for fit_exp in fit_experiments:
             sid = fit_exp.experiment_class.__name__
-            if sid not in reduced:
-                reduced[sid] = FitExperiment(
+            # the training and the validation data of an experiment stay apart
+            key = (sid, fit_exp.kind)
+            if key not in reduced:
+                reduced[key] = FitExperiment(
                     experiment=fit_exp.experiment_class,
                     mappings=list(fit_exp.mappings),
                     weights=list(fit_exp.weights),  # ty: ignore[invalid-argument-type]
                     use_mapping_weights=fit_exp.use_mapping_weights,
                     exclude=fit_exp.exclude,
+                    kind=fit_exp.kind,
                 )
                 continue
 
-            red_exp = reduced[sid]
+            red_exp = reduced[key]
             if red_exp.use_mapping_weights != fit_exp.use_mapping_weights:
                 raise ValueError(
                     f"FitExperiments of '{sid}' cannot be combined, they differ in "
@@ -206,6 +247,7 @@ class FitExperiment:
             f"mappings: {self.mappings}",
             f"weights: {self.weights}",
             f"use_mapping_weights: {self.use_mapping_weights}",
+            f"kind: {self.kind.value}",
             f"fit_parameters: {self.fit_parameters}",
         ]
         return "\n".join(info)
@@ -215,16 +257,14 @@ class FitExperiment:
 class MappingMetaData:
     """Metadata for mapping.
 
-    Applications derive their metadata from this class, e.g., the tissue, the
-    dosing or the group of a study; `outlier` marks a mapping which is excluded
-    from the fit.
+    Applications derive their metadata from this class to describe the curve,
+    e.g., the tissue, the route, the dosing or the health of the group of a
+    study. The metadata describes the data, not what a fit does with it: how a
+    curve is used is the `MappingKind` of the `FitExperiment` which selects it.
 
     The fields are keyword only, so that a subclass can add fields without a
-    default after `outlier`, which has one. A subclass must not redeclare
-    `outlier`, this would make it a positional field again.
+    default.
     """
-
-    outlier: bool = False
 
     def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary for serialization."""

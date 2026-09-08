@@ -190,7 +190,6 @@ class Patel1984(HCTZSimulationExperiment):
                     ),
                 )
 
-        # console.print(mappings)
         return mappings
 
     def figures(self) -> dict[str, Figure]:
