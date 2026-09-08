@@ -88,7 +88,7 @@ Parameter fitting, see [Parameter fitting](../fitting.md).
 | [fit.runner](fit.runner.md) | running optimizations serially or in parallel |
 | [fit.report](fit.report.md) | `FitReport`, the figures and reports of one or more parameter sets |
 | [fit.sampling](fit.sampling.md) | sampling of initial parameter values |
-| [fit.rmse](fit.rmse.md) | statistics of fits |
+| [fit.metrics](fit.metrics.md) | `FitMetrics` and the metrics of a fit: PRED, IPRED, residuals, MSE, RMSE, R² and AIC |
 | [fit.helpers](fit.helpers.md) | helpers for fitting |
 | [fit.petab_omex](fit.petab_omex.md) | COMBINE archives of PEtab problems |
 

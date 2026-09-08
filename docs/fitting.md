@@ -178,7 +178,7 @@ report = FitReport(
 report.create(output_dir=Path("results"), name="hctz_iv")
 ```
 
-The report writes `index.html`, `report.txt`, the `parameters.json` it was made from and the figures: the parameter table with the bounds, the predicted against the measured data points, the costs of the curves and the fitted curves against the data with the residuals for every mapping. `show_report=True` opens the HTML in a browser.
+The report writes `index.html`, `report.txt`, the `parameters.json` it was made from, the metrics as TSV and the figures: the parameter table with the bounds, the predicted against the measured data points, the costs of the curves and the fitted curves against the data with the residuals for every mapping. `show_report=True` opens the HTML in a browser.
 
 Every parameter set becomes a column of the parameter table and a curve in the plots, so several sets are compared in a single report, e.g., two fits against each other. The first set is the reference the others are compared against.
 
@@ -188,6 +188,25 @@ Every parameter set becomes a column of the parameter table and a curve in the p
 report = FitReport.from_optimization_result(problem=op, opt_result=opt_result)
 report.create(output_dir=Path("results"), name="hctz_iv")
 ```
+
+## Metrics
+
+`FitMetrics` calculates the metrics of a parameter set on an initialized problem, i.e., from the data of the fit mappings and the predictions of the model. The column names follow the convention of population pharmacokinetics: `DV` is the measured value, `PRED` the prediction of the population parameters, `IPRED` the prediction of the individual parameters, `RES` and `IRES` the residuals `DV - PRED` and `DV - IPRED`, and `IWRES` the residual weighted with the weights of the problem. A deterministic fit has a single parameter set, so `PRED` is `IPRED` unless a `population_parameter_set` is given:
+
+```py
+from sbmlsim.fit import FitMetrics
+
+metrics = FitMetrics(problem=op, parameter_set=parameter_sets[0])
+print(metrics.datapoints_df().head())
+print(metrics.mappings_df())
+print(metrics.summary())
+```
+
+`summary()` gives the metrics over all data points: the number of data points `n`, the number of fitted parameters `k`, the `cost`, `MSE`, `RMSE`, `RMSE_w`, `R2` and `AIC`; `mappings_df()` gives them per fit mapping. `MSE`, `RMSE`, `R2` and `AIC` are unweighted metrics of the data and the predictions, so they are dominated by the mappings with the largest values, while `cost` and `RMSE_w` use the weighting of the settings. A parameter set can therefore have a lower cost and a larger RMSE than another one, which is what the weighting is for.
+
+The functions of `sbmlsim.fit.metrics` are used on their own as well: `sse`, `mse`, `rmse`, `aic` and `r_squared` take arrays of residuals or of data and predictions. R² is not the square of a correlation for a non-linear model and is negative when a prediction is worse than the mean of the data.
+
+A report calculates the metrics for every one of its parameter sets and writes them as `metrics.tsv`, `metrics_mappings.tsv` and `datapoints.tsv`, so several sets are compared by their AIC, RMSE and R².
 
 The complete fit problems of the HCTZ model are in `examples/hctz/fitting/`, `fit_experiments.py` builds the subsets of the data and `fitting.py` runs them:
 
