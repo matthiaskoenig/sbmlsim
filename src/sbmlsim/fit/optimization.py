@@ -16,7 +16,12 @@ from scipy import interpolate
 
 from sbmlsim.console import console
 from sbmlsim.experiment import ExperimentRunner, SimulationExperiment
-from sbmlsim.fit.objects import FitExperiment, FitMapping, FitParameter
+from sbmlsim.fit.objects import (
+    FitExperiment,
+    FitMapping,
+    FitParameter,
+    MappingKind,
+)
 from sbmlsim.fit.options import (
     FitSettings,
     LossFunctionType,
@@ -162,6 +167,7 @@ class OptimizationProblem(ObjectJSONEncoder):
         """
         self.experiment_keys: list[str] = []
         self.mapping_keys: list[str] = []
+        self.mapping_kinds: list[MappingKind] = []
         self.xid_observable: list[str] = []
         self.yid_observable: list[str] = []
         self.x_references: list[Any] = []
@@ -176,6 +182,35 @@ class OptimizationProblem(ObjectJSONEncoder):
         self.models: list[Any] = []
         self.simulations: list[Any] = []
         self.selections: list[Any] = []
+
+    def indices(self, kind: MappingKind | None = None) -> list[int]:
+        """Get the indices of the fit mappings of a kind.
+
+        Args:
+            kind: kind of the mappings, all mappings if `None`.
+
+        Returns:
+            Indices into the resolved data of the mappings.
+        """
+        if kind is None:
+            return list(range(len(self.mapping_keys)))
+        return [k for k, mk in enumerate(self.mapping_kinds) if mk is kind]
+
+    @property
+    def training_indices(self) -> list[int]:
+        """Indices of the fit mappings which are fitted."""
+        return self.indices(MappingKind.TRAINING)
+
+    @property
+    def validation_indices(self) -> list[int]:
+        """Indices of the fit mappings which are only evaluated."""
+        return self.indices(MappingKind.VALIDATION)
+
+    def mapping_counts(self) -> dict[MappingKind, int]:
+        """Get the number of resolved fit mappings per kind."""
+        return {
+            kind: len(self.indices(kind)) for kind in MappingKind if self.indices(kind)
+        }
 
     @property
     def is_initialized(self) -> bool:
@@ -255,9 +290,13 @@ class OptimizationProblem(ObjectJSONEncoder):
         Can only be called after initialization.
         """
         core_info = self.__str__()
+        counts = ", ".join(
+            f"{count} {kind.value}" for kind, count in self.mapping_counts().items()
+        )
         all_info = [
             core_info,
             str(self.settings_initialized),
+            f"Mappings: {len(self.mapping_keys)} ({counts})",
             "Data",
         ]
         for key in [
@@ -327,6 +366,7 @@ class OptimizationProblem(ObjectJSONEncoder):
 
         # Collect information for simulations
         mappings_without_errors: list[str] = []
+        outliers: list[str] = []
         for fit_experiment in self.fit_experiments:
             # get simulation experiment
             sid = fit_experiment.experiment_class.__name__
@@ -354,6 +394,11 @@ class OptimizationProblem(ObjectJSONEncoder):
                     )
 
                 mapping: FitMapping = sim_experiment._fit_mappings[mapping_id]
+
+                if fit_experiment.kind is MappingKind.OUTLIER:
+                    # outliers are used neither in the fit nor in the evaluation
+                    outliers.append(f"{sid}.{mapping_id}")
+                    continue
 
                 if mapping.observable.task_id is None:
                     raise ValueError(
@@ -568,6 +613,7 @@ class OptimizationProblem(ObjectJSONEncoder):
                 # store information
                 self.experiment_keys.append(sid)
                 self.mapping_keys.append(mapping_id)
+                self.mapping_kinds.append(fit_experiment.kind)
                 self.xid_observable.append(obs_xid)
                 self.yid_observable.append(obs_yid)
                 self.x_references.append(x_ref)
@@ -589,6 +635,19 @@ class OptimizationProblem(ObjectJSONEncoder):
 
         # initial parameter values of the models
         self._store_model_parameters()
+
+        if outliers:
+            logger.info(
+                "'%s': %s fit mappings are outliers and are not used: %s",
+                self.opid,
+                len(outliers),
+                outliers,
+            )
+        if not self.training_indices:
+            raise ValueError(
+                f"'{self.opid}': no training data, at least one fit mapping must "
+                f"be '{MappingKind.TRAINING.value}'."
+            )
 
         if mappings_without_errors:
             # one message for all mappings, not one per mapping
@@ -895,6 +954,11 @@ class OptimizationProblem(ObjectJSONEncoder):
 
         df: pd.DataFrame | None = None
         for k, mapping_key in enumerate(self.mapping_keys):
+            if not complete_data and self.mapping_kinds[k] is not MappingKind.TRAINING:
+                # the optimization only uses the training data, the validation
+                # data is simulated for the evaluation of a fit
+                continue
+
             # update initial changes
             changes = {
                 self.pids[ix]: Q_(value, self.punits[ix]) for ix, value in enumerate(x)
@@ -976,7 +1040,9 @@ class OptimizationProblem(ObjectJSONEncoder):
                 residuals_weighted, self.loss_function
             )
 
-            parts.append(residuals_weighted)
+            if self.mapping_kinds[k] is MappingKind.TRAINING:
+                # only the training data enters the cost
+                parts.append(residuals_weighted)
 
             # for post_processing
             if complete_data:

@@ -34,7 +34,44 @@ def fit_mappings(self) -> dict[str, FitMapping]:
 print(mapping_code)
 ```
 
-The units of the reference and the observable are compared and the reference is converted to the units of the model. A `MappingMetaData` on a mapping carries application specific information such as the tissue or the dosing and an `outlier` flag which excludes the mapping from the fit. Its fields are keyword only, so that a subclass can add fields without a default; `examples/hctz/experiments/metadata.py` is such a subclass. `sbmlsim.fit.helpers` filters the mappings by their metadata and collects it into a table:
+The units of the reference and the observable are compared and the reference is converted to the units of the model. A `MappingMetaData` on a mapping describes its curve with application specific information such as the tissue, the route or the dosing. It describes the data, not what a fit does with the data. Its fields are keyword only, so that a subclass can add fields without a default; `examples/hctz/experiments/metadata.py` is such a subclass.
+
+## Training, validation and outlier data
+
+What a fit does with a curve is decided when the data of the fit is selected, not on the fit mapping: the same curve is training data of one fit and validation data of another. Every `FitExperiment` therefore carries a `MappingKind` for the mappings it selects:
+
+- `MappingKind.TRAINING` (the default): the mappings are fitted, i.e., their residuals enter the cost of the optimization,
+- `MappingKind.VALIDATION`: the mappings are not fitted. They are simulated and evaluated together with the training data when the fit is reported, which shows how the fitted parameters describe data they were not fitted on,
+- `MappingKind.OUTLIER`: the mappings are not used at all. An optimization problem skips its outliers, they stay in the overview of the data so that it is visible which curves were dropped.
+
+`fit_experiments_by_kind` selects and classifies the data in one step: every kind gets its own filters and the mappings of all kinds are listed in a single overview.
+
+```python
+from examples.hctz import DATA_PATH, HCTZ_PATH
+from examples.hctz.experiments.studies import Beermann1976
+from sbmlsim.fit import MappingKind
+from sbmlsim.fit.helpers import (
+    filter_empty,
+    filter_keys,
+    filter_not_keys,
+    fit_experiments_by_kind,
+)
+
+validation = {"fm_hctz_iv35_4_urine"}
+fit_experiments_kinds = fit_experiments_by_kind(
+    experiment_classes=[Beermann1976],
+    base_path=HCTZ_PATH,
+    data_path=DATA_PATH,
+    filters_by_kind={
+        MappingKind.TRAINING: [filter_empty, filter_not_keys(validation)],
+        MappingKind.VALIDATION: [filter_keys(validation)],
+    },
+)
+```
+
+The overview ends in a line such as `mappings : 32 (28 training, 2 validation, 2 outlier)`. On the problem, `mapping_counts()` reports how many mappings of each kind it has and `training_indices` and `validation_indices` are their positions in the resolved data.
+
+`sbmlsim.fit.helpers` filters the mappings by their metadata and collects it into a table:
 
 ```python
 from examples.hctz.fitting.fit_experiments import f_fitexp_pkiv
@@ -202,20 +239,60 @@ print(metrics.mappings_df())
 print(metrics.summary())
 ```
 
-`summary()` gives the metrics over all data points: the number of data points `n`, the number of fitted parameters `k`, the `cost`, `MSE`, `RMSE`, `RMSE_w`, `R2` and `AIC`; `mappings_df()` gives them per fit mapping. `MSE`, `RMSE`, `R2` and `AIC` are unweighted metrics of the data and the predictions, so they are dominated by the mappings with the largest values, while `cost` and `RMSE_w` use the weighting of the settings. A parameter set can therefore have a lower cost and a larger RMSE than another one, which is what the weighting is for.
+`summary()` gives the metrics over all data points: the number of data points `n`, the number of fitted parameters `k`, the `cost`, `MSE`, `RMSE`, `RMSE_w`, `R2` and `AIC`; `mappings_df()` gives them per fit mapping. `MSE`, `RMSE`, `R2` and `AIC` are unweighted metrics of the data and the predictions, so they are dominated by the mappings with the largest values, while `RMSE_w` uses the weighting of the settings. A parameter set can therefore have a larger RMSE and smaller weighted residuals than another one, which is what the weighting is for.
+
+A fit is evaluated on the data it was fitted on and on the data it was not, so `summary(kind=...)` restricts the metrics to a kind of mapping and `summary_df()` has a row for the training data, a row for the validation data and a row over all of them. The `cost` is the objective of the optimization, which is defined on the training data alone, so it is only reported there:
+
+```py
+metrics.summary_df()
+```
 
 The functions of `sbmlsim.fit.metrics` are used on their own as well: `sse`, `mse`, `rmse`, `aic` and `r_squared` take arrays of residuals or of data and predictions. R² is not the square of a correlation for a non-linear model and is negative when a prediction is worse than the mean of the data.
 
 A report calculates the metrics for every one of its parameter sets and writes them as `metrics.tsv`, `metrics_mappings.tsv` and `datapoints.tsv`, so several sets are compared by their AIC, RMSE and R².
 
-The complete fit problems of the HCTZ model are in `examples/hctz/fitting/`, `fit_experiments.py` builds the subsets of the data and `fitting.py` runs them:
+## Running a fit from the command line
 
-```bash
-python -m examples.hctz.fitting.fitting --runs=10 --cores=4 --seed=1234 \
-    --method=LSQ --strategy=ALL --subset=PK --name=PK_LSQ_ALL
+Creating the optimization problems, running the optimizations and reporting them is the same for every model, so it lives in `sbmlsim.fit.cli` and a model only defines its fits. A `FitDefinition` is what enters a fit: the fit experiments, the parameters which are adjusted, where the experiments and their data are, and the settings.
+
+```python
+from sbmlsim.fit.cli import FitDefinition
+
+definition = FitDefinition(
+    fit_experiments=f_fitexp_pkiv,  # called when the fit runs
+    parameters=fit_parameters,
+    base_path=HCTZ_PATH,
+    data_path=DATA_PATH,
+    settings=settings,
+)
+print(definition.problem(opid="hctz_iv"))
 ```
 
-`report.py` creates a report from the `parameters.json` of a finished fit, without optimizing again, and compares the parameters of several fits:
+`run_fit` builds the problems for a strategy and runs them: `OptimizationStrategy.ALL` fits all experiments together, i.e., one parameter set describes every experiment, `SINGLE` fits every experiment on its own, which gives the individual parameters of the metrics. It returns a `FitRun` per optimization, which carries the problem and the result and creates the report.
+
+`fit_cli` and `report_cli` are the command line tools around this. A model passes its definitions by name and gets the whole tool:
+
+```python
+from sbmlsim.fit.cli import fit_cli
+
+FIT_DEFINITIONS = {"PKIV": definition}
+
+
+def main() -> None:
+    fit_cli(FIT_DEFINITIONS, prog="fit_hctz")
+
+
+print(FIT_DEFINITIONS)
+```
+
+The fit problems of the HCTZ model are in `examples/hctz/fitting/`: `fit_experiments.py` builds the subsets of the data, `parameters.py` holds the fit parameters and `fitting.py` is the definitions plus the four lines above:
+
+```bash
+python -m examples.hctz.fitting.fitting --subset=PK --runs=10 --cores=4 \
+    --seed=1234 --method=LSQ --strategy=ALL --name=PK_LSQ_ALL
+```
+
+`report.py` is `report_cli` on the same definitions. It creates a report from the `parameters.json` of a finished fit without optimizing again, and compares the parameters of several fits:
 
 ```bash
 python -m examples.hctz.fitting.report results/fit/PK_LSQ_ALL/parameters.json

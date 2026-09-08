@@ -30,6 +30,7 @@ import numpy as np
 import pandas as pd
 from numpy.typing import ArrayLike
 
+from sbmlsim.fit.objects import EVALUATED_KINDS, MappingKind
 from sbmlsim.fit.parameters import ParameterSet
 
 if TYPE_CHECKING:
@@ -224,7 +225,8 @@ class FitMetrics:
 
         Returns:
             DataFrame with one row per data point and the columns `experiment`,
-            `mapping`, `x`, `DV`, `PRED`, `IPRED`, `RES`, `IRES` and `IWRES`.
+            `mapping`, `kind`, `x`, `DV`, `PRED`, `IPRED`, `RES`, `IRES` and
+            `IWRES`.
         """
         ipred_all = self._predictions(self.parameter_set)
         pred_all = (
@@ -245,6 +247,7 @@ class FitMetrics:
                     {
                         "experiment": self.problem.experiment_keys[k],
                         "mapping": mapping,
+                        "kind": self.problem.mapping_kinds[k].value,
                         "x": self.problem.x_references[k][ix],
                         "DV": dv[ix],
                         "PRED": pred[ix],
@@ -261,6 +264,7 @@ class FitMetrics:
                 [
                     "experiment",
                     "mapping",
+                    "kind",
                     "x",
                     "DV",
                     "PRED",
@@ -277,7 +281,7 @@ class FitMetrics:
 
         Returns:
             DataFrame with one row per fit mapping and the columns `experiment`,
-            `mapping`, `n`, `MSE`, `RMSE` and `R2`.
+            `mapping`, `kind`, `n`, `MSE`, `RMSE` and `R2`.
         """
         ipred_all = self._predictions(self.parameter_set)
 
@@ -291,6 +295,7 @@ class FitMetrics:
                 {
                     "experiment": self.problem.experiment_keys[k],
                     "mapping": mapping,
+                    "kind": self.problem.mapping_kinds[k].value,
                     "n": dv.size,
                     "MSE": mse_value,
                     "RMSE": rmse_from_mse(mse_value),
@@ -300,31 +305,56 @@ class FitMetrics:
 
         return pd.DataFrame(
             data,
-            columns=pd.Index(["experiment", "mapping", "n", "MSE", "RMSE", "R2"]),
+            columns=pd.Index(
+                ["experiment", "mapping", "kind", "n", "MSE", "RMSE", "R2"]
+            ),
         )
 
-    def summary(self) -> dict[str, Any]:
-        """Get the metrics over all data points of the problem.
+    def summary(self, kind: MappingKind | None = None) -> dict[str, Any]:
+        """Get the metrics over the data points of the problem.
 
         `MSE`, `RMSE`, `R2` and `AIC` are the unweighted metrics of the data and
         the predictions, i.e., they are dominated by the fit mappings with the
-        largest values. `cost` is the objective the optimization minimizes and
-        `RMSE_w` the root mean square of the weighted residuals, both of which
-        use the weighting of the settings; a parameter set can therefore have a
-        lower cost and a larger RMSE than another one.
+        largest values. `RMSE_w` is the root mean square of the weighted
+        residuals, so a parameter set can have a larger RMSE and smaller
+        weighted residuals than another one, which is what the weighting is for.
+
+        `cost` is the objective the optimization minimizes. It is defined on the
+        training data alone, so it is only reported for the training data and is
+        `nan` for the other kinds.
+
+        Args:
+            kind: only the data points of the fit mappings of this kind, all
+                data points if `None`.
 
         Returns:
-            Dictionary with the id of the parameter set, the number of data
-            points `n`, the number of parameters `k`, the `cost`, `MSE`,
-            `RMSE`, `RMSE_w`, `R2` and `AIC`.
+            Dictionary with the id of the parameter set, the `kind`, the number
+            of data points `n`, the number of parameters `k`, the `cost`,
+            `MSE`, `RMSE`, `RMSE_w`, `R2` and `AIC`.
+
+        Raises:
+            ValueError: if the problem has no data points of the kind.
         """
         dp = self.datapoints_df()
+        if kind is not None:
+            dp = dp[dp.kind == kind.value]
+        if len(dp) == 0:
+            raise ValueError(
+                f"'{self.problem.opid}' has no data points of kind '{kind}'."
+            )
+
+        # the cost is the objective of the optimization, which is defined on
+        # the training data
+        kinds = list(self.problem.mapping_counts())
+        is_training = kind is MappingKind.TRAINING or kinds == [MappingKind.TRAINING]
+
         mse_value = mse(dp.IRES)
         return {
             "parameter_set": self.parameter_set.sid,
+            "kind": kind.value if kind else "all",
             "n": len(dp),
             "k": self.n_parameters,
-            "cost": self.cost(),
+            "cost": self.cost() if is_training else float("nan"),
             "MSE": mse_value,
             "RMSE": rmse_from_mse(mse_value),
             "RMSE_w": rmse(dp.IWRES),
@@ -333,8 +363,22 @@ class FitMetrics:
         }
 
     def summary_df(self) -> pd.DataFrame:
-        """Get the metrics over all data points as a single row DataFrame."""
-        return pd.DataFrame([self.summary()])
+        """Get the metrics per kind of fit mapping and over all data points.
+
+        A fit is evaluated on its training and on its validation data, so there
+        is a row for every kind the problem has and, when it has more than one,
+        a row `all` over all data points.
+
+        Returns:
+            DataFrame with one row per kind, see `summary`.
+        """
+        kinds = [
+            kind for kind in self.problem.mapping_counts() if kind in EVALUATED_KINDS
+        ]
+        summaries = [self.summary(kind=kind) for kind in kinds]
+        if len(kinds) != 1:
+            summaries.append(self.summary())
+        return pd.DataFrame(summaries)
 
     def cost(self) -> float:
         """Get the cost of the parameter set, i.e., the objective of the fit."""
@@ -343,13 +387,12 @@ class FitMetrics:
         )
 
     def report(self) -> str:
-        """Get the metrics as text."""
-        summary = self.summary()
+        """Get the metrics as text, per kind of fit mapping and per mapping."""
         info = [
             "-" * 80,
             f"Metrics: {self.parameter_set.sid}",
             "-" * 80,
-            "\n".join(f"\t{key}: {value}" for key, value in summary.items()),
+            self.summary_df().to_string(index=False),
             "",
             self.mappings_df().to_string(index=False),
             "-" * 80,

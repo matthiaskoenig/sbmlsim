@@ -87,6 +87,7 @@ Parameter fitting, see [Parameter fitting](../fitting.md).
 | [fit.result](fit.result.md) | `OptimizationResult`, the result of an optimization |
 | [fit.runner](fit.runner.md) | running optimizations serially or in parallel |
 | [fit.report](fit.report.md) | `FitReport`, the figures and reports of one or more parameter sets |
+| [fit.cli](fit.cli.md) | `FitDefinition` and the general command line tools which run and report a fit |
 | [fit.sampling](fit.sampling.md) | sampling of initial parameter values |
 | [fit.metrics](fit.metrics.md) | `FitMetrics` and the metrics of a fit: PRED, IPRED, residuals, MSE, RMSE, R² and AIC |
 | [fit.helpers](fit.helpers.md) | helpers for fitting |

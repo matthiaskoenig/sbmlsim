@@ -7,7 +7,6 @@ import numpy as np
 import pandas as pd
 from scipy.stats import qmc
 
-# FIXME: make this independent of the fit parameters
 from sbmlsim.fit.objects import FitParameter
 
 logger = logging.getLogger(__name__)
@@ -63,8 +62,6 @@ def create_samples(
     Raises:
         ValueError: if the sampling type is unsupported or the bounds are invalid.
     """
-    # TODO: add option to get current model parameter values as start values
-    #  for local gradient descent
     if size < 1:
         raise ValueError(f"'size' must be a positive integer, but '{size}' given.")
     if not parameters:
@@ -76,7 +73,6 @@ def create_samples(
     x: np.ndarray
     if sampling.is_lhs:
         # Latin-Hypercube sampling
-        # https://docs.scipy.org/doc/scipy/reference/generated/scipy.stats.qmc.LatinHypercube.html
         sampler = qmc.LatinHypercube(d=len(parameters), rng=rng)
         x = sampler.random(n=size)
     elif sampling in {SamplingType.UNIFORM, SamplingType.LOGUNIFORM}:

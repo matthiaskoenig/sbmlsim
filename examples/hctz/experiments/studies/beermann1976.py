@@ -165,7 +165,6 @@ class Beermann1976(HCTZSimulationExperiment):
                 health=Health.HEALTHY,
                 fasting=Fasting.FASTED,
                 coadministration=Coadministration.NONE,
-                outlier=True,
             ),
         )
         # Issues with data, outliers
@@ -189,7 +188,6 @@ class Beermann1976(HCTZSimulationExperiment):
                 health=Health.HEALTHY,
                 fasting=Fasting.FASTED,
                 coadministration=Coadministration.NONE,
-                outlier=True,
             ),
         )
 
