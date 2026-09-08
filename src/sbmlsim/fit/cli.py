@@ -1,0 +1,429 @@
+"""Running fits and their reports from the command line.
+
+A fit problem is defined by the fit experiments which enter it and the
+parameters which are adjusted, see `FitDefinition`. Everything else — creating
+the optimization problems for a strategy, running the optimizations and
+reporting them — is the same for every problem and lives here, so that a model
+only has to define its fits:
+
+```python
+FIT_DEFINITIONS = {
+    "PK": FitDefinition(
+        fit_experiments=f_fitexp_pk,
+        parameters=parameters_pk,
+        base_path=MODEL_PATH,
+        data_path=DATA_PATH,
+    ),
+}
+
+if __name__ == "__main__":
+    fit_cli(FIT_DEFINITIONS, prog="fit_mymodel")
+```
+
+`fit_cli` runs a fit and reports it, `report_cli` reports parameters which were
+stored earlier without optimizing again.
+"""
+
+from __future__ import annotations
+
+import argparse
+import itertools
+import logging
+from collections.abc import Callable, Sequence
+from dataclasses import dataclass, field
+from pathlib import Path
+from typing import Any
+
+from sbmlsim import log
+from sbmlsim.console import console
+from sbmlsim.fit.objects import FitExperiment, FitParameter
+from sbmlsim.fit.optimization import OptimizationProblem
+from sbmlsim.fit.options import (
+    FitSettings,
+    OptimizationAlgorithmType,
+    OptimizationStrategy,
+)
+from sbmlsim.fit.parameters import ParameterSet, ParameterSets
+from sbmlsim.fit.report import FitReport
+from sbmlsim.fit.result import OptimizationResult
+from sbmlsim.fit.runner import run_optimization
+from sbmlsim.fit.sampling import SamplingType
+
+logger = logging.getLogger(__name__)
+
+#: short names of the optimization algorithms on the command line
+ALGORITHMS: dict[str, OptimizationAlgorithmType] = {
+    "LSQ": OptimizationAlgorithmType.LEAST_SQUARE,
+    "DE": OptimizationAlgorithmType.DIFFERENTIAL_EVOLUTION,
+}
+
+#: default arguments of the optimizers
+ALGORITHM_KWARGS: dict[OptimizationAlgorithmType, dict[str, Any]] = {
+    OptimizationAlgorithmType.LEAST_SQUARE: {
+        "sampling": SamplingType.LOGUNIFORM_LHS,
+        "diff_step": 0.05,
+    },
+    OptimizationAlgorithmType.DIFFERENTIAL_EVOLUTION: {},
+}
+
+
+@dataclass
+class FitDefinition:
+    """Definition of a fit problem.
+
+    This is what a model provides: which fit experiments enter the fit, which
+    parameters are adjusted and where the experiments and their data are.
+
+    Attributes:
+        fit_experiments: callable which creates the fit experiments by
+            experiment id, e.g., a function of `sbmlsim.fit.helpers`. It is
+            called when the fit runs, instantiating the experiments loads the
+            models and the data.
+        parameters: parameters which are adjusted in the fit.
+        base_path: base path of the simulation experiments.
+        data_path: path of the datasets of the simulation experiments.
+        settings: settings of the fit.
+    """
+
+    fit_experiments: Callable[[], dict[str, list[FitExperiment]]]
+    parameters: list[FitParameter]
+    base_path: Path
+    data_path: Path
+    settings: FitSettings = field(default_factory=FitSettings)
+
+    def experiments(
+        self, study_ids: Sequence[str] | None = None
+    ) -> list[FitExperiment]:
+        """Create the fit experiments of the definition.
+
+        Args:
+            study_ids: experiments to use, all experiments by default.
+
+        Returns:
+            The fit experiments.
+
+        Raises:
+            KeyError: if an experiment id is not part of the definition.
+        """
+        experiments_by_id = self.fit_experiments()
+        if study_ids:
+            missing = [sid for sid in study_ids if sid not in experiments_by_id]
+            if missing:
+                raise KeyError(
+                    f"Unknown experiments '{missing}', the definition has "
+                    f"'{sorted(experiments_by_id)}'."
+                )
+            selected = [experiments_by_id[sid] for sid in study_ids]
+        else:
+            selected = list(experiments_by_id.values())
+
+        # the experiments of the studies are lists of fit experiments
+        return list(itertools.chain(*selected))
+
+    def problem(
+        self, opid: str, fit_experiments: list[FitExperiment] | None = None
+    ) -> OptimizationProblem:
+        """Create the optimization problem of the definition.
+
+        Args:
+            opid: id of the optimization problem.
+            fit_experiments: experiments of the problem, all experiments of the
+                definition by default.
+
+        Returns:
+            The uninitialized optimization problem.
+        """
+        return OptimizationProblem(
+            opid=opid,
+            fit_experiments=(
+                self.experiments() if fit_experiments is None else fit_experiments
+            ),
+            fit_parameters=self.parameters,
+            base_path=self.base_path,
+            data_path=self.data_path,
+        )
+
+
+@dataclass
+class FitRun:
+    """A finished fit: the problem which was optimized and its result."""
+
+    problem: OptimizationProblem
+    result: OptimizationResult
+
+    def report(self, output_dir: Path, name: str | None = None, **kwargs: Any) -> Path:
+        """Create the report of the fit.
+
+        Args:
+            output_dir: base directory of the reports.
+            name: name of the report, the id of the problem by default.
+            kwargs: additional arguments of `FitReport.from_optimization_result`.
+
+        Returns:
+            Path of the directory the report was written to.
+        """
+        report = FitReport.from_optimization_result(
+            problem=self.problem, opt_result=self.result, **kwargs
+        )
+        return report.create(
+            output_dir=output_dir, name=name if name else self.problem.opid
+        )
+
+
+def run_fit(
+    definition: FitDefinition,
+    opid: str = "all",
+    strategy: OptimizationStrategy = OptimizationStrategy.ALL,
+    algorithm: OptimizationAlgorithmType = OptimizationAlgorithmType.LEAST_SQUARE,
+    size: int = 4,
+    n_cores: int = 1,
+    seed: int | None = None,
+    study_ids: Sequence[str] | None = None,
+    **kwargs: Any,
+) -> dict[str, FitRun]:
+    """Run the fit of a definition.
+
+    Args:
+        definition: definition of the fit problem.
+        opid: id of the optimization, the key of the result for `ALL`.
+        strategy: fit all experiments together or every experiment on its own.
+        algorithm: optimization algorithm.
+        size: number of optimization runs per problem.
+        n_cores: number of workers.
+        seed: seed of the optimizations.
+        study_ids: experiments to fit, all experiments by default.
+        kwargs: additional arguments of the optimizer, they replace the
+            defaults of `ALGORITHM_KWARGS`.
+
+    Returns:
+        The finished fits by optimization id.
+    """
+    fit_experiments = definition.experiments(study_ids=study_ids)
+    optimizer_kwargs = {**ALGORITHM_KWARGS.get(algorithm, {}), **kwargs}
+
+    if strategy == OptimizationStrategy.SINGLE:
+        # one problem per experiment, i.e., individual parameters
+        problems = [
+            definition.problem(
+                opid=fit_exp.experiment_class.__name__, fit_experiments=[fit_exp]
+            )
+            for fit_exp in fit_experiments
+        ]
+    else:
+        # one problem for all experiments
+        problems = [definition.problem(opid=opid, fit_experiments=fit_experiments)]
+
+    runs: dict[str, FitRun] = {}
+    for problem in problems:
+        result = run_optimization(
+            problem=problem,
+            settings=definition.settings,
+            size=size,
+            n_cores=n_cores,
+            seed=seed,
+            algorithm=algorithm,
+            **optimizer_kwargs,
+        )
+        runs[problem.opid] = FitRun(problem=problem, result=result)
+
+    return runs
+
+
+def load_parameter_sets(paths: Sequence[Path]) -> ParameterSets:
+    """Load the parameter sets of the given JSON files.
+
+    The sets of all files are combined, a set which occurs in more than one
+    file is prefixed with the name of its directory to keep the ids unique.
+
+    Args:
+        paths: JSON files written by `ParameterSets.to_json`.
+
+    Returns:
+        All parameter sets of the files.
+    """
+    sets: list[ParameterSet] = []
+    sids: set[str] = set()
+    for path in paths:
+        for pset in ParameterSets.from_json(path):
+            if pset.sid in sids:
+                pset.sid = f"{path.parent.name}_{pset.sid}"
+            sids.add(pset.sid)
+            sets.append(pset)
+
+    return ParameterSets(sets)
+
+
+def _definition(definitions: dict[str, FitDefinition], key: str) -> FitDefinition:
+    """Get the definition for a key."""
+    return definitions[key]
+
+
+def _add_common_arguments(
+    parser: argparse.ArgumentParser, definitions: dict[str, FitDefinition]
+) -> None:
+    """Add the arguments which the fit and the report share."""
+    keys = list(definitions)
+    parser.add_argument(
+        "-x",
+        "--subset",
+        choices=keys,
+        default=keys[0],
+        help="fit problem to run",
+    )
+    parser.add_argument(
+        "-n", "--name", default=None, help="name of the report, the fit id by default"
+    )
+
+
+def fit_cli(
+    definitions: dict[str, FitDefinition],
+    prog: str = "fit",
+    description: str = "Parameter fitting.",
+    args: Sequence[str] | None = None,
+) -> dict[str, FitRun]:
+    """Run a fit of one of the definitions from the command line and report it.
+
+    Args:
+        definitions: fit problems by name, the name is the `--subset` argument.
+        prog: name of the program in the help.
+        description: description of the program in the help.
+        args: command line arguments, `sys.argv` by default.
+
+    Returns:
+        The finished fits by optimization id.
+
+    Raises:
+        ValueError: if no definitions are given.
+    """
+    if not definitions:
+        raise ValueError("At least one FitDefinition is required.")
+
+    parser = argparse.ArgumentParser(prog=prog, description=description)
+    _add_common_arguments(parser, definitions)
+    parser.add_argument(
+        "-c", "--cores", type=int, default=1, help="number of cores for the fitting"
+    )
+    parser.add_argument(
+        "-r", "--runs", type=int, default=4, help="number of optimization runs"
+    )
+    parser.add_argument(
+        "-s", "--seed", type=int, default=1234, help="seed of the optimization"
+    )
+    parser.add_argument(
+        "-m",
+        "--method",
+        choices=list(ALGORITHMS),
+        default="LSQ",
+        help="optimization algorithm",
+    )
+    parser.add_argument(
+        "-t",
+        "--strategy",
+        type=OptimizationStrategy,
+        choices=list(OptimizationStrategy),
+        default=OptimizationStrategy.ALL,
+        help="fit the experiments together or every experiment on its own",
+    )
+    parser.add_argument(
+        "-e",
+        "--experiments",
+        nargs="+",
+        default=None,
+        help="experiments to fit, all experiments of the problem by default",
+    )
+    parser.add_argument(
+        "-o",
+        "--output_dir",
+        type=Path,
+        default=Path("results") / "fit",
+        help="directory for the results of the fit",
+    )
+    options = parser.parse_args(args)
+    log.enable_rich_logging()
+
+    definition = _definition(definitions, options.subset)
+    console.rule(f":wrench: {prog} :wrench:", align="left", style="white")
+    for key in ["subset", "method", "strategy", "runs", "cores", "seed"]:
+        console.print(f"{key:<12}: {getattr(options, key)}")
+    console.print(f"{'parameters':<12}: {[p.pid for p in definition.parameters]}")
+
+    runs = run_fit(
+        definition=definition,
+        opid=options.subset,
+        strategy=options.strategy,
+        algorithm=ALGORITHMS[options.method],
+        size=options.runs,
+        n_cores=options.cores,
+        seed=options.seed,
+        study_ids=options.experiments,
+    )
+
+    # the fit only optimizes, the report is created from its parameters
+    for run in runs.values():
+        run.report(output_dir=options.output_dir, name=options.name, show_titles=False)
+
+    return runs
+
+
+def report_cli(
+    definitions: dict[str, FitDefinition],
+    prog: str = "report",
+    description: str = "Report of a fit for stored parameters.",
+    args: Sequence[str] | None = None,
+) -> Path:
+    """Report stored parameters from the command line, without optimizing.
+
+    The parameters come from the `parameters.json` a fit wrote. Several files
+    are combined into a single report, which compares their parameter sets.
+
+    Args:
+        definitions: fit problems by name, the name is the `--subset` argument.
+        prog: name of the program in the help.
+        description: description of the program in the help.
+        args: command line arguments, `sys.argv` by default.
+
+    Returns:
+        Path of the directory the report was written to.
+
+    Raises:
+        ValueError: if no definitions are given.
+    """
+    if not definitions:
+        raise ValueError("At least one FitDefinition is required.")
+
+    parser = argparse.ArgumentParser(prog=prog, description=description)
+    parser.add_argument(
+        "parameters",
+        type=Path,
+        nargs="+",
+        help="JSON files with the parameter sets to report",
+    )
+    _add_common_arguments(parser, definitions)
+    parser.add_argument(
+        "-o",
+        "--output_dir",
+        type=Path,
+        default=Path("results") / "report",
+        help="directory for the report",
+    )
+    options = parser.parse_args(args)
+    log.enable_rich_logging()
+
+    definition = _definition(definitions, options.subset)
+    console.rule(f":bar_chart: {prog} :bar_chart:", align="left", style="white")
+
+    parameter_sets = load_parameter_sets(options.parameters)
+    console.print(f"{'subset':<12}: {options.subset}")
+    console.print(f"{'sets':<12}: {[pset.sid for pset in parameter_sets]}")
+
+    # only the definition of the problem is needed, no fit is run here
+    report = FitReport(
+        problem=definition.problem(opid=options.subset),
+        settings=definition.settings,
+        parameter_sets=parameter_sets,
+        show_titles=False,
+    )
+    return report.create(
+        output_dir=options.output_dir,
+        name=options.name if options.name else "report",
+    )

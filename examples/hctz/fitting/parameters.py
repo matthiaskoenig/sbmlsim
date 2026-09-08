@@ -1,4 +1,4 @@
-"""FitParameters for hydrochlorothiazide fitting."""
+"""Parameters to optimize."""
 
 from sbmlsim.fit import FitParameter
 

@@ -8,8 +8,22 @@ sum(Nk)( w{k}^2 * sum(NKi) (w{i,k}^2 * res{i,k}))
 
 from collections.abc import Iterable, Sequence
 from dataclasses import dataclass, field
-from enum import Enum
+from enum import Enum, StrEnum
 from typing import Any
+
+
+class OptimizationStrategy(StrEnum):
+    """Strategy for fitting a set of fit experiments.
+
+    `ALL` : fit all experiments together, i.e., one parameter set describes
+    every experiment.
+
+    `SINGLE` : fit every experiment on its own, i.e., one parameter set per
+    experiment. These are the individual parameters, see `sbmlsim.fit.metrics`.
+    """
+
+    ALL = "ALL"
+    SINGLE = "SINGLE"
 
 
 class OptimizationAlgorithmType(Enum):
