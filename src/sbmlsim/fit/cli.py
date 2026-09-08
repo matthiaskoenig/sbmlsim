@@ -36,6 +36,11 @@ from typing import Any
 
 from sbmlsim import log
 from sbmlsim.fit import display
+from sbmlsim.fit.identifiability import (
+    IdentifiabilityResult,
+    ProfileSettings,
+    profile_likelihood,
+)
 from sbmlsim.fit.objects import FitExperiment, FitParameter
 from sbmlsim.fit.optimization import OptimizationProblem
 from sbmlsim.fit.options import (
@@ -173,6 +178,31 @@ class FitRun:
         )
         return report.create(
             output_dir=output_dir, name=name if name else self.problem.opid
+        )
+
+    def identifiability(
+        self,
+        profile_settings: ProfileSettings | None = None,
+        n_cores: int = 1,
+        **kwargs: Any,
+    ) -> IdentifiabilityResult:
+        """Analyse the identifiability of the parameters of the best run.
+
+        Args:
+            profile_settings: settings of the profile likelihood.
+            n_cores: number of worker processes of the scans.
+            kwargs: additional arguments of `profile_likelihood`.
+
+        Returns:
+            The profiles of the parameters around the best parameter set.
+        """
+        return profile_likelihood(
+            problem=self.problem,
+            settings=self.result.settings_stored,
+            parameter_set=self.result.parameter_set(),
+            profile_settings=profile_settings,
+            n_cores=n_cores,
+            **kwargs,
         )
 
 
@@ -479,4 +509,148 @@ def report_cli(
     return report.create(
         output_dir=options.output_dir,
         name=options.name if options.name else "report",
+    )
+
+
+def identifiability_cli(
+    definitions: dict[str, FitDefinition],
+    args: Sequence[str] | None = None,
+    prog: str | None = None,
+    description: str = "Identifiability of stored parameters by profile likelihood.",
+) -> Path:
+    """Analyse the identifiability of stored parameters from the command line.
+
+    The parameters come from the `parameters.json` a fit wrote; the profiles
+    are computed around its first parameter set, and the report of the
+    parameters with the identifiability section is written.
+
+    Args:
+        definitions: fit problems by name, the name is the `--subset` argument.
+        args: command line arguments, `sys.argv` by default.
+        prog: name of the program in the help, the script by default.
+        description: description of the program in the help.
+
+    Returns:
+        Path of the directory the report was written to.
+
+    Raises:
+        ValueError: if no definitions are given.
+    """
+    if not definitions:
+        raise ValueError("At least one FitDefinition is required.")
+
+    defaults = ProfileSettings()
+    parser = argparse.ArgumentParser(prog=prog, description=description)
+    parser.add_argument(
+        "parameters",
+        type=Path,
+        help="JSON file with the parameter set to analyse, the first set is used",
+    )
+    _add_common_arguments(parser, definitions)
+    parser.add_argument(
+        "-c", "--cores", type=int, default=1, help="number of cores for the scans"
+    )
+    parser.add_argument(
+        "-p",
+        "--parameter",
+        action="append",
+        default=None,
+        help="parameter to profile, all parameters by default; repeatable",
+    )
+    parser.add_argument(
+        "-a",
+        "--alpha",
+        type=float,
+        default=defaults.alpha,
+        help="confidence level of the intervals",
+    )
+    parser.add_argument(
+        "--df",
+        type=int,
+        default=defaults.degrees_of_freedom,
+        help="degrees of freedom of the threshold, 1 for pointwise intervals",
+    )
+    parser.add_argument(
+        "--max-points",
+        type=int,
+        default=defaults.max_points,
+        help="largest number of points of a profile in one direction",
+    )
+    parser.add_argument(
+        "--initial-step",
+        type=float,
+        default=defaults.initial_step,
+        help="first step of a scan in decades of the parameter",
+    )
+    parser.add_argument(
+        "--min-step",
+        type=float,
+        default=defaults.min_step,
+        help="smallest step of a scan in decades",
+    )
+    parser.add_argument(
+        "--max-step",
+        type=float,
+        default=defaults.max_step,
+        help="largest step of a scan in decades",
+    )
+    parser.add_argument(
+        "--no-reoptimize",
+        action="store_true",
+        help="keep the other parameters at the optimum, i.e., scan the cost "
+        "instead of computing the profile likelihood",
+    )
+    parser.add_argument(
+        "-o",
+        "--output_dir",
+        type=Path,
+        default=Path("results") / "identifiability",
+        help="directory for the report",
+    )
+    options = parser.parse_args(args)
+    log.enable_rich_logging()
+
+    definition = _definition(definitions, options.subset)
+    parameter_sets = load_parameter_sets([options.parameters])
+    parameter_set = parameter_sets[0]
+    profile_settings = ProfileSettings(
+        alpha=options.alpha,
+        degrees_of_freedom=options.df,
+        initial_step=options.initial_step,
+        min_step=options.min_step,
+        max_step=options.max_step,
+        max_points=options.max_points,
+        reoptimize=not options.no_reoptimize,
+    )
+
+    display.section("Identifiability", icon=display.ICON_IDENTIFIABILITY)
+    display.key_values(
+        {
+            "problem": options.subset,
+            "parameters": str(options.parameters),
+            "set": parameter_set.sid,
+            "output": options.output_dir,
+        }
+    )
+    display.print_settings(definition.settings)
+
+    problem = definition.problem(opid=options.subset)
+    result = profile_likelihood(
+        problem=problem,
+        settings=definition.settings,
+        parameter_set=parameter_set,
+        profile_settings=profile_settings,
+        pids=options.parameter,
+        n_cores=options.cores,
+    )
+    report = FitReport(
+        problem=problem,
+        settings=definition.settings,
+        parameter_sets=ParameterSets([parameter_set]),
+        identifiability=result,
+        show_titles=False,
+    )
+    return report.create(
+        output_dir=options.output_dir,
+        name=options.name if options.name else "identifiability",
     )

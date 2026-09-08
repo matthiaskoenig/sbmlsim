@@ -71,7 +71,7 @@ def resolve_n_cores(n_cores: int | None) -> int:
 
 @contextmanager
 def optimization_progress(
-    description: str, size: int, enabled: bool = True
+    description: str, size: int, enabled: bool = True, unit: str = "runs"
 ) -> Iterator[Progress | None]:
     """Show the progress of the optimization runs on the console.
 
@@ -79,6 +79,7 @@ def optimization_progress(
         description: text in front of the progress bar.
         size: total number of optimization runs.
         enabled: show the progress, a plain context without display if `False`.
+        unit: what is counted, behind the count.
 
     Yields:
         The progress with a single task, or `None` if it is disabled.
@@ -92,7 +93,7 @@ def optimization_progress(
         TextColumn("[progress.description]{task.description}"),
         BarColumn(),
         MofNCompleteColumn(),
-        TextColumn("runs"),
+        TextColumn(unit),
         TimeElapsedColumn(),
         console=console,
         transient=False,
@@ -273,6 +274,23 @@ def _worker_alive() -> bool:
     return _WORKER_PROBLEM is not None
 
 
+def worker_problem() -> OptimizationProblem:
+    """Get the initialized problem of the worker process.
+
+    Returns:
+        The problem the worker was initialized with.
+
+    Raises:
+        RuntimeError: if the worker could not initialize the problem, with the
+            error of the initialization.
+    """
+    if _WORKER_PROBLEM is None:
+        raise RuntimeError(
+            f"the worker could not initialize the problem: {_WORKER_ERROR}"
+        )
+    return _WORKER_PROBLEM
+
+
 def _worker_run(task: dict[str, Any]) -> tuple[int, OptimizeResult, list[float]]:
     """Run a single optimization in a worker process.
 
@@ -389,7 +407,7 @@ def _run_optimization_parallel(
 
     with (
         optimization_progress("optimizing", size, show_progress) as progress,
-        _worker_pool(problem, settings, n_cores) as pool,
+        worker_pool(problem, settings, n_cores) as pool,
     ):
         # one task per repeat, so that a worker which dies loses one repeat
         async_results = [
@@ -485,10 +503,14 @@ def _store_run(
 
 
 @contextmanager
-def _worker_pool(
+def worker_pool(
     problem: OptimizationProblem, settings: FitSettings, n_cores: int
 ) -> Iterator[Pool]:
     """Create the pool of workers of a parallel fit.
+
+    Every worker initializes the problem once, see `_worker_initialize`, and
+    a task of the pool gets it from `worker_problem`. The profile likelihood of
+    `sbmlsim.fit.identifiability` runs its scans in the same pool.
 
     Raises:
         RuntimeError: if the workers cannot be started, which is what a script
