@@ -5,6 +5,7 @@ import logging
 import uuid
 from collections.abc import Iterable
 from pathlib import Path
+from typing import Any
 
 import numpy as np
 import pandas as pd
@@ -15,6 +16,50 @@ from sbmlsim.fit.objects import FitParameter
 from sbmlsim.serialization import ObjectJSONEncoder, from_json, to_json
 
 logger = logging.getLogger(__name__)
+
+
+def bound_warnings(
+    parameters: list[FitParameter], x: np.ndarray, rtol: float = 0.05
+) -> list[str]:
+    """Warn about optimal parameters which ended up on their bounds.
+
+    A parameter on its bound means that the optimum is outside of the box in
+    which the parameter was allowed to vary.
+
+    The distance to a bound is relative to the interval of the parameter. The
+    optimization runs in logarithmic parameter space, so the distance is measured
+    there as well whenever the bounds and the value are positive.
+
+    Args:
+        parameters: fitted parameters with their bounds.
+        x: optimal values of the parameters.
+        rtol: relative distance to a bound which is reported.
+
+    Returns:
+        Messages for the parameters which are within `rtol` of one of their bounds.
+    """
+    messages: list[str] = []
+    for k, p in enumerate(parameters):
+        lb, ub, value = p.lower_bound, p.upper_bound, x[k]
+        if not np.isfinite(lb) or not np.isfinite(ub):
+            # no relative distance exists on an infinite bound
+            continue
+
+        if lb > 0.0 and ub > 0.0 and value > 0.0:
+            # the optimization runs in logarithmic space, so does the distance
+            lb, ub, value = np.log10(lb), np.log10(ub), np.log10(value)
+
+        span = ub - lb
+        if span <= 0.0:
+            # the bounds are a single point
+            continue
+
+        for bound, name in [(lb, "lower"), (ub, "upper")]:
+            if abs(value - bound) / span < rtol:
+                messages.append(
+                    f"!Optimal parameter '{p.pid}' within {rtol:.0%} of {name} bound!"
+                )
+    return messages
 
 
 class OptimizationResult(ObjectJSONEncoder):
@@ -54,9 +99,17 @@ class OptimizationResult(ObjectJSONEncoder):
         for fit in fits:
             if isinstance(fit, dict):
                 fit = OptimizeResult(**fit)
+            # JSON has no arrays, the parameter vectors are lists after a round trip
+            for key in ["x", "x0"]:
+                value = fit.get(key)
+                if value is not None and not isinstance(value, np.ndarray):
+                    fit[key] = np.asarray(value, dtype=float)
             self.fits.append(fit)
 
-        self.trajectories = trajectories
+        self.trajectories = [
+            [(np.asarray(x, dtype=float), float(cost)) for x, cost in trajectory]
+            for trajectory in trajectories
+        ]
 
         # create data frame from results
         self.df_fits = OptimizationResult.process_fits(self.parameters, self.fits)
@@ -64,11 +117,11 @@ class OptimizationResult(ObjectJSONEncoder):
             self.parameters, self.trajectories
         )
 
-    def to_tsv(self, path: Path):
+    def to_tsv(self, path: Path) -> None:
         """Store fit results as TSV."""
         self.df_fits.to_csv(path, sep="\t", index=False)
 
-    def to_dict(self):
+    def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary."""
         d = {}
         for key in ["sid", "parameters", "fits", "trajectories"]:
@@ -98,8 +151,14 @@ class OptimizationResult(ObjectJSONEncoder):
 
     @staticmethod
     def combine(opt_results: list["OptimizationResult"]) -> "OptimizationResult":
-        """Combine results from multiple parameter fitting experiments."""
+        """Combine results from multiple parameter fitting experiments.
+
+        Raises:
+            ValueError: if no results are given.
+        """
         # FIXME: check that the parameters are fitting
+        if not opt_results:
+            raise ValueError("No OptimizationResults to combine.")
         parameters = opt_results[0].parameters
         pids = {p.pid for p in parameters}
 
@@ -136,7 +195,7 @@ class OptimizationResult(ObjectJSONEncoder):
         """Optimal parameters as Fit parameters."""
         return self._x_as_fit_parameters(x=self.xopt)
 
-    def _x_as_fit_parameters(self, x) -> list[FitParameter]:
+    def _x_as_fit_parameters(self, x: np.ndarray) -> list[FitParameter]:
         """Convert numerical parameter vector to fit parameters."""
         fit_pars = []
         for k, p in enumerate(self.parameters):
@@ -152,8 +211,10 @@ class OptimizationResult(ObjectJSONEncoder):
         return fit_pars
 
     @staticmethod
-    def process_traces(parameters: list[FitParameter], trajectories):
-        """Process the optimization results."""
+    def process_traces(
+        parameters: list[FitParameter], trajectories: list
+    ) -> pd.DataFrame:
+        """Process the trajectories of the optimizations."""
         results = []
         pids = [p.pid for p in parameters]
         for kt, trajectory in enumerate(trajectories):
@@ -169,8 +230,10 @@ class OptimizationResult(ObjectJSONEncoder):
         return pd.DataFrame(results)
 
     @staticmethod
-    def process_fits(parameters: list[FitParameter], fits: list[OptimizeResult]):
-        """Process the optimization results."""
+    def process_fits(
+        parameters: list[FitParameter], fits: list[OptimizeResult]
+    ) -> pd.DataFrame:
+        """Process the optimization results, sorted by increasing cost."""
         results = []
         pids = [p.pid for p in parameters]
         for kf, fit in enumerate(fits):
@@ -191,11 +254,7 @@ class OptimizationResult(ObjectJSONEncoder):
 
             results.append(res)
         df = pd.DataFrame(results)
-        df.sort_values(by=["cost"], inplace=True)
-        # reindex
-        df.index = range(len(df))
-
-        return df
+        return df.sort_values(by=["cost"]).reset_index(drop=True)
 
     def report(self, path: Path | None = None, print_output: bool = True) -> str:
         """Report of optimization."""
@@ -215,19 +274,14 @@ class OptimizationResult(ObjectJSONEncoder):
         pd.reset_option("display.expand_frame_repr")
 
         xopt = self.xopt
-        fitted_pars = {}
-        for k, p in enumerate(self.parameters):
-            opt_value = xopt[k]
-            if abs(opt_value - p.lower_bound) / p.lower_bound < 0.05:
-                msg = f"!Optimal parameter '{p.pid}' within 5% of lower bound!"
-                logger.error(msg)
-                info.append(f"\t>>> {msg} <<<")
+        for msg in bound_warnings(self.parameters, xopt):
+            logger.error(msg)
+            info.append(f"\t>>> {msg} <<<")
 
-            if abs(opt_value - p.upper_bound) / p.upper_bound < 0.05:
-                msg = f"!Optimal parameter '{p.pid}' within 5% of upper bound!"
-                logger.error(msg)
-                info.append(f"\t>>> {msg} <<<")
-            fitted_pars[p.pid] = (opt_value, p.unit, p.lower_bound, p.upper_bound)
+        fitted_pars = {
+            p.pid: (xopt[k], p.unit, p.lower_bound, p.upper_bound)
+            for k, p in enumerate(self.parameters)
+        }
 
         for key, value in fitted_pars.items():
             info.append(

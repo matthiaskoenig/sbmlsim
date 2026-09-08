@@ -5,11 +5,18 @@ https://petab.readthedocs.io/en/latest/index.html
 https://pyabc.readthedocs.io/en/latest/index.html
 """
 
-from .objects import FitData, FitExperiment, FitMapping, FitParameter
+from .objects import (
+    FitData,
+    FitExperiment,
+    FitMapping,
+    FitParameter,
+    MappingMetaData,
+)
 
 __all__ = [
     "FitData",
     "FitExperiment",
     "FitMapping",
     "FitParameter",
+    "MappingMetaData",
 ]

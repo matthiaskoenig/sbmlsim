@@ -1,54 +1,63 @@
-"""Calculation of statistics."""
+"""Statistics of fits.
 
-from typing import Any
+Metrics which summarize the quality of a fit from the mean squared error of the
+residuals, the number of data points and the number of fitted parameters.
+"""
 
 import numpy as np
-import pandas as pd
-
-from sbmlsim.console import console
 
 
-def rmse(mse: float):
-    """Root Mean Square Error."""
-    return np.sqrt(mse)
+def mse(residuals: np.ndarray) -> float:
+    """Mean Squared Error (MSE) of the residuals.
+
+    Args:
+        residuals: residuals of the fit, i.e., `f(x_i) - y_i`.
+
+    Returns:
+        Mean of the squared residuals.
+
+    Raises:
+        ValueError: if no residuals are given.
+    """
+    residuals = np.asarray(residuals, dtype=float)
+    if residuals.size == 0:
+        raise ValueError("MSE requires at least one residual.")
+    return float(np.mean(np.square(residuals)))
 
 
-def aic(mse: float, N: int, k: int):
+def rmse(mse: float) -> float:
+    """Root Mean Squared Error (RMSE).
+
+    Args:
+        mse: mean squared error of the fit.
+
+    Returns:
+        Square root of the mean squared error.
+    """
+    return float(np.sqrt(mse))
+
+
+def aic(mse: float, n: int, k: int) -> float:
     """Akaike Information Criterion (AIC).
 
-    N: datapoints
-    k: parameters
+    The AIC is calculated for a least squares fit with normally distributed
+    residuals, i.e., `AIC = n * ln(MSE) + 2 * k` up to an additive constant. Only
+    differences of the AIC between models fitted on the same data are meaningful.
+
+    Args:
+        mse: mean squared error of the fit.
+        n: number of data points.
+        k: number of fitted parameters.
+
+    Returns:
+        Akaike information criterion.
+
+    Raises:
+        ValueError: if the mean squared error or the number of data points is
+            not positive.
     """
-    return N * np.log(mse) + 2 * k
-
-
-if __name__ == "__main__":
-    items: list[dict[str, Any]] = [
-        {
-            "uid": "20250708_183921__4fba0",
-            "name": "LOSARTAN_LSQ_PK",
-            "N": 225,
-            "k": 12,
-            "MSE": 70.150056,
-        },
-        {
-            "uid": "20250711_231400__8d0b3",
-            "name": "LOSARTAN_LSQ_PD",
-            "N": 460,
-            "k": 4,
-            "MSE": 73.095901,
-        },
-    ]
-    for item in items:
-        item["RMSE"] = rmse(item["MSE"])
-        item["AIC"] = aic(mse=item["MSE"], N=item["N"], k=item["k"])
-
-    df = pd.DataFrame(items)
-    console.print(df)
-
-    console.rule()
-    tex = df.to_latex(None, index=False, float_format="{:.2f}".format)
-    tex = tex.replace(r"_", r"\_")
-    console.print(tex)
-
-    console.rule()
+    if mse <= 0.0:
+        raise ValueError(f"AIC requires a positive MSE, but '{mse}' given.")
+    if n <= 0:
+        raise ValueError(f"AIC requires a positive number of points, but '{n}' given.")
+    return float(n * np.log(mse) + 2 * k)

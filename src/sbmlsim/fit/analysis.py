@@ -8,7 +8,6 @@ from typing import Any, ClassVar
 import matplotlib
 import numpy as np
 import pandas as pd
-import seaborn as sns
 from matplotlib.axes import Axes
 from matplotlib.figure import Figure
 from matplotlib.lines import Line2D
@@ -20,7 +19,7 @@ from sbmlsim.fit.options import (
     WeightingCurvesType,
     WeightingPointsType,
 )
-from sbmlsim.fit.result import OptimizationResult
+from sbmlsim.fit.result import OptimizationResult, bound_warnings
 from sbmlsim.plot.serialization_matplotlib import plt
 from sbmlsim.utils import timeit
 
@@ -39,7 +38,8 @@ class OptimizationAnalysis:
         output_name: str,
         output_dir: Path,
         op: OptimizationProblem | None = None,
-        show_plots: bool = True,
+        show_plots: bool = False,
+        show_report: bool = False,
         show_titles: bool = True,
         residual: ResidualType | None = None,
         loss_function: LossFunctionType | None = None,
@@ -56,6 +56,7 @@ class OptimizationAnalysis:
         :param output_name: name of the optimization
         :param output_dir: base path for output
         :param show_plots: boolean flag to display plots, i.e., call plt.show()
+        :param show_report: boolean flag to open the HTML report in a web browser
         :param show_titles: boolean flag to add titles to the panels
         :param residual: handling of residuals
         :param loss_function: loss function for handling outliers/residual transformation
@@ -78,7 +79,10 @@ class OptimizationAnalysis:
 
         self.image_format = image_format
         self.show_plots = show_plots
+        self.show_report = show_report
         self.show_titles = show_titles
+        # residual data of the mappings, by parameter vector
+        self._res_data: dict[bytes, dict[str, list[Any]]] = {}
 
         if kwargs:
             for key, value in kwargs.items():
@@ -87,6 +91,11 @@ class OptimizationAnalysis:
                 )
 
         if op:
+            if residual is None or weighting_points is None:
+                raise ValueError(
+                    "'residual' and 'weighting_points' are required to initialize "
+                    "the OptimizationProblem of an OptimizationAnalysis."
+                )
             op.initialize(
                 residual=residual,
                 loss_function=loss_function
@@ -101,6 +110,19 @@ class OptimizationAnalysis:
 
         self._op: OptimizationProblem | None = op
 
+    def residual_data(self, x: np.ndarray) -> dict[str, list[Any]]:
+        """Get the complete residual data of the mappings for the parameters x.
+
+        Every evaluation simulates all fit mappings, so the results are cached for
+        the plots and tables which use the same parameter vector.
+        """
+        key = np.asarray(x, dtype=float).tobytes()
+        if key not in self._res_data:
+            self._res_data[key] = self.op.residuals(  # ty: ignore[invalid-assignment]
+                xlog=np.log10(x), complete_data=True
+            )
+        return self._res_data[key]
+
     @property
     def op(self) -> OptimizationProblem:
         """Optimization problem of the analysis, required for the fit plots."""
@@ -114,8 +136,7 @@ class OptimizationAnalysis:
         This creates all plots and reports.
         """
         plots_dir = self.results_dir / "plots"
-        for p in [plots_dir]:
-            p.mkdir()
+        plots_dir.mkdir(parents=True, exist_ok=True)
 
         # ----------------------
         # Create HTML report
@@ -202,39 +223,27 @@ class OptimizationAnalysis:
             self.plot_fit(output_dir=plots_dir, x=xopt)
             self.plot_fit_residual(output_dir=plots_dir, x=xopt)
 
-        # correlation plot
-        if self.optres.size > 1:
-            # FIXME: simplifiy correlation plot for speedup (create individual panels)
-            pass
-            # self.plot_correlation(path=plots_dir / "parameter_correlation")
-
         # restore parameters
         plt.rcParams.update(rc_params_copy)
 
-        logger.warning("-" * 80)
-        logger.warning("Analysis finished: file://%s", self.results_dir / "index.html")
-        logger.warning("-" * 80)
+        report_path = self.results_dir / "index.html"
+        logger.info("Analysis finished: file://%s", report_path)
+        if self.show_report:
+            webbrowser.open(f"file://{report_path!s}", new=2)
 
-        webbrowser.open(f"file://{self.results_dir / 'index.html'!s}", new=2)
-
-    def html_report(self, path: Path):
+    def html_report(self, path: Path) -> None:
         """Create HTML report of the fit."""
         title = f"{self.op.opid} [{self.sid}]"
 
-        parameter_info = []
         xopt = self.optres.xopt
-        fitted_pars = {}
-        for k, p in enumerate(self.optres.parameters):
-            opt_value = xopt[k]
-            if abs(opt_value - p.lower_bound) / p.lower_bound < 0.05:
-                msg = f"!Optimal parameter '{p.pid}' within 5% of lower bound!"
-                parameter_info.append(f"\t>>> {msg} <<<")
-
-            if abs(opt_value - p.upper_bound) / p.upper_bound < 0.05:
-                msg = f"!Optimal parameter '{p.pid}' within 5% of upper bound!"
-                parameter_info.append(f"\t>>> {msg} <<<")
-
-            fitted_pars[p.pid] = (opt_value, p.unit, p.lower_bound, p.upper_bound)
+        parameter_info = [
+            f"&gt;&gt;&gt; {msg} &lt;&lt;&lt;"
+            for msg in bound_warnings(self.optres.parameters, xopt)
+        ]
+        fitted_pars = {
+            p.pid: (xopt[k], p.unit, p.lower_bound, p.upper_bound)
+            for k, p in enumerate(self.optres.parameters)
+        }
 
         for key, value in fitted_pars.items():
             parameter_info.append(
@@ -261,29 +270,28 @@ class OptimizationAnalysis:
         <p>
         {parameters}
         </p>
-        <p>
         <ul>
             <li><a target="_blank" href="report.txt">report.txt</a></li>
             <li><a target="_blank" href="optimization_result.json">optimization_result.json</a></li>
             <li><a target="_blank" href="optimization_result.tsv">optimization_result.tsv</a></li>
-        </p>
+        </ul>
 
         <h2>Optimization Performance</h2>
         <p>
-        <img src="./plots/traces.svg">
-        <img src="./plots/waterfall.svg">
-        <p>
+        <img src="./plots/traces.{self.image_format}">
+        <img src="./plots/waterfall.{self.image_format}">
+        </p>
 
         <h2>Data point prediction</h2>
         <p>
-        <img src="./plots/datapoint_scatter.svg">
-        <img src="./plots/residual_scatter.svg">
-        <p>
+        <img src="./plots/datapoint_scatter.{self.image_format}">
+        <img src="./plots/residual_scatter.{self.image_format}">
+        </p>
 
         <p>
-        <img src="./plots/residual_boxplot.svg">
-        <img src="./plots/cost_bar.svg">
-        <p>
+        <img src="./plots/residual_boxplot.{self.image_format}">
+        <img src="./plots/cost_bar.{self.image_format}">
+        </p>
 
         <h2>Fits</h2>
         <p>
@@ -307,7 +315,7 @@ class OptimizationAnalysis:
 
         return fig, ax
 
-    def _save_mpl_figure(self, fig, path: Path) -> None:
+    def _save_mpl_figure(self, fig: Figure, path: Path) -> None:
         """Save matplotlib figure to path."""
         if self.show_plots:
             plt.show()
@@ -328,14 +336,13 @@ class OptimizationAnalysis:
         :return: None
         """
         # residual data and simulations of optimal parameters
-        res_data = self.op.residuals(xlog=np.log10(x), complete_data=True)
+        res_data = self.residual_data(x)
 
         for k, mapping_id in enumerate(self.op.mapping_keys):
             fig, [ax1, ax2] = plt.subplots(nrows=1, ncols=2, figsize=(10, 5))
 
             # global reference data
             sid = self.op.experiment_keys[k]
-            mapping_id = self.op.mapping_keys[k]
             x_ref = self.op.x_references[k]
             y_ref = self.op.y_references[k]
             y_ref_err = self.op.y_errors[k]
@@ -387,7 +394,7 @@ class OptimizationAnalysis:
                 ax.legend()
 
             ax2.set_yscale("log")
-            ax2.set_ylim(bottom=0.3 * np.nanmin(y_ref))
+            ax2.set_ylim(bottom=self._log_limits(y_ref, factor=1.0 / 0.3)[0])
 
             self._save_mpl_figure(
                 fig, path=output_dir / f"{sid}_{mapping_id}.{self.image_format}"
@@ -406,7 +413,7 @@ class OptimizationAnalysis:
         For better analysis log and linear results are depicted.
         :param x: parameters to evaluate
         """
-        res_data = self.op.residuals(xlog=np.log10(x), complete_data=True)
+        res_data = self.residual_data(x)
 
         for k, mapping_id in enumerate(self.op.mapping_keys):
             fig, ((ax1, ax2), (ax3, ax4)) = plt.subplots(
@@ -415,7 +422,6 @@ class OptimizationAnalysis:
 
             # global reference data
             sid = self.op.experiment_keys[k]
-            mapping_id = self.op.mapping_keys[k]
             # weights = self.op.weights_points[k]
             x_ref = self.op.x_references[k]
             y_ref = self.op.y_references[k]
@@ -505,7 +511,7 @@ class OptimizationAnalysis:
 
     def _cost_df(self, x: np.ndarray) -> pd.DataFrame:
         """Calculate cost dataframe for given parameter set."""
-        res_data = self.op.residuals(xlog=np.log10(x), complete_data=True)
+        res_data = self.residual_data(x)
         data = []
         for k, _ in enumerate(self.op.mapping_keys):
             data.append(
@@ -525,12 +531,12 @@ class OptimizationAnalysis:
 
     def _datapoints_df(self, x: np.ndarray) -> pd.DataFrame:
         """Calculate data point dataframe for given parameter set."""
-        res_data = self.op.residuals(xlog=np.log10(x), complete_data=True)
+        res_data = self.residual_data(x)
 
         data = []
         for k, _ in enumerate(self.op.mapping_keys):
             experiment = self.op.experiment_keys[k]
-            mapping = (self.op.mapping_keys[k],)
+            mapping = self.op.mapping_keys[k]
 
             x_ref = self.op.x_references[k]
             y_ref_err = self.op.y_errors[k]
@@ -568,6 +574,20 @@ class OptimizationAnalysis:
             ),
         )
 
+    @staticmethod
+    def _log_limits(*data: Any, factor: float = 10.0) -> tuple[float, float]:
+        """Get the limits of a logarithmic axis for the given data.
+
+        Data points which are zero or negative cannot be shown on a logarithmic
+        axis, only the positive values define the limits.
+        """
+        values = np.concatenate([np.asarray(d, dtype=float).ravel() for d in data])
+        positive = values[np.isfinite(values) & (values > 0.0)]
+        if positive.size == 0:
+            # no positive data, the limits are a decade around one
+            return 1.0 / factor, factor
+        return float(np.min(positive)) / factor, float(np.max(positive)) * factor
+
     kwargs_scatter: ClassVar[dict[str, Any]] = {
         "markersize": "10",
         "markeredgecolor": "black",
@@ -577,7 +597,7 @@ class OptimizationAnalysis:
     }
 
     @timeit
-    def plot_datapoint_scatter(self, x: np.ndarray, path: Path):
+    def plot_datapoint_scatter(self, x: np.ndarray, path: Path) -> None:
         """Plot cost scatter plot.
 
         Compares cost of model parameters to the given parameter set.
@@ -587,8 +607,7 @@ class OptimizationAnalysis:
 
         # FIXME: plot error bars
         # plot lines
-        min_dp = np.nanmin([np.nanmin(dp.y_ref), np.nanmin(dp.y_obs)]) * 0.1
-        max_dp = np.nanmax([np.nanmax(dp.y_ref), np.nanmax(dp.y_obs)]) * 10
+        min_dp, max_dp = self._log_limits(dp.y_ref, dp.y_obs)
 
         ax.fill_between(
             [min_dp, max_dp, max_dp, min_dp],
@@ -614,9 +633,15 @@ class OptimizationAnalysis:
             )
 
         # annotations
+        with np.errstate(divide="ignore", invalid="ignore"):
+            ratios = np.asarray(dp.y_ref.values, dtype=float) / np.asarray(
+                dp.y_obs.values, dtype=float
+            )
         for k in range(len(dp)):
             # plot labels for datapoints far away
-            ratio = dp.y_ref.values[k] / dp.y_obs.values[k]
+            ratio = ratios[k]
+            if not np.isfinite(ratio):
+                continue
             if ratio > 10 or ratio < 1 / 10:
                 ax.annotate(
                     dp.experiment.values[k],
@@ -639,7 +664,7 @@ class OptimizationAnalysis:
         self._save_mpl_figure(fig=fig, path=path)
 
     @timeit
-    def plot_residual_scatter(self, x: np.ndarray, path: Path):
+    def plot_residual_scatter(self, x: np.ndarray, path: Path) -> None:
         """Plot residual plot."""
         fig, ax = self._create_mpl_figure()
         dp: pd.DataFrame = self._datapoints_df(x=x)
@@ -755,7 +780,6 @@ class OptimizationAnalysis:
         costs_x: pd.DataFrame = self._cost_df(x=x)
 
         fig, ax = self._create_mpl_figure()
-        fig.subplots_adjust(left=0.5, bottom=0.1)
         if self.show_titles:
             ax.set_title("Residual contribution")
 
@@ -764,7 +788,7 @@ class OptimizationAnalysis:
             f"{costs_x.experiment[k]}|{costs_x.mapping[k]}" for k in range(len(costs_x))
         ]
 
-        res_data = self.op.residuals(xlog=np.log10(x), complete_data=True)
+        res_data = self.residual_data(x)
 
         box_data = []
         for k, _ in enumerate(self.op.mapping_keys):
@@ -781,13 +805,7 @@ class OptimizationAnalysis:
                 markersize=3,
             )
 
-        ax.boxplot(
-            # position,
-            box_data,
-            vert=False,
-            # color="black",
-            # alpha=0.8
-        )
+        ax.boxplot(box_data, orientation="horizontal")
 
         ax.set_yticks(position)
         ax.set_yticklabels(
@@ -804,7 +822,7 @@ class OptimizationAnalysis:
         self._save_mpl_figure(fig=fig, path=path)
 
     @timeit
-    def plot_cost_scatter(self, x: np.ndarray, path: Path):
+    def plot_cost_scatter(self, x: np.ndarray, path: Path) -> None:
         """Plot cost scatter plot.
 
         Compares cost of model parameters to the given parameter set.
@@ -888,7 +906,7 @@ class OptimizationAnalysis:
         self._save_mpl_figure(fig=fig, path=path)
 
     @timeit
-    def plot_waterfall(self, path: Path):
+    def plot_waterfall(self, path: Path) -> None:
         """Create waterfall plot for the fit results.
 
         Plots the optimization runs sorted by cost.
@@ -923,7 +941,7 @@ class OptimizationAnalysis:
         for run in range(self.optres.size):
             df_run = self.optres.df_traces[self.optres.df_traces.run == run]
             # plot final optimization cost of trace
-            if len(df_run.cost.values > 0):
+            if len(df_run) > 0:
                 ax.plot(
                     len(df_run) - 1,
                     df_run.cost.values[-1],
@@ -937,146 +955,3 @@ class OptimizationAnalysis:
         ax.set_yscale("log")
 
         self._save_mpl_figure(fig, path=path)
-
-    @timeit
-    def plot_correlation(
-        self,
-        path: Path,
-    ) -> None:
-        """Plot correlation of parameters for analysis."""
-        df = self.optres.df_fits
-        parameters = self.optres.parameters
-
-        pids = [p.pid for p in parameters]
-        npars = len(pids)
-        sns.set(style="ticks", color_codes=True)
-        fig, axes = plt.subplots(
-            nrows=npars, ncols=npars, figsize=(5 * npars, 5 * npars)
-        )
-        cost_normed = df.cost - df.cost.min()
-        cost_normed = 1 - cost_normed / cost_normed.max()
-
-        size = np.power(15 * cost_normed, 2)
-
-        bound_kwargs = {"color": "darkgrey", "linestyle": "--", "alpha": 1.0}
-
-        for kx, pidx in enumerate(pids):
-            for ky, pidy in enumerate(pids):
-                ax = axes if npars == 1 else axes[ky][kx]
-
-                # optimal values
-                if kx > ky:
-                    ax.set_xlabel(pidx)
-                    # ax.set_xlim(self.parameters[kx].lower_bound, self.parameters[kx].upper_bound)
-                    ax.axvline(x=parameters[kx].lower_bound, **bound_kwargs)
-                    ax.axvline(x=parameters[kx].upper_bound, **bound_kwargs)
-                    ax.set_ylabel(pidy)
-                    # ax.set_ylim(self.parameters[ky].lower_bound, self.parameters[ky].upper_bound)
-                    ax.axhline(y=parameters[ky].lower_bound, **bound_kwargs)
-                    ax.axhline(y=parameters[ky].upper_bound, **bound_kwargs)
-
-                    # start values
-                    xall = []
-                    yall = []
-                    xstart_all = []
-                    ystart_all = []
-                    for ks in range(len(size)):
-                        x = df.x[ks][kx]
-                        y = df.x[ks][ky]
-                        xall.append(x)
-                        yall.append(y)
-                        if "x0" in df.columns:
-                            xstart = df.x0[ks][kx]
-                            ystart = df.x0[ks][ky]
-                            xstart_all.append(xstart)
-                            ystart_all.append(ystart)
-
-                    # start point
-                    ax.plot(
-                        xstart_all,
-                        ystart_all,
-                        "^",
-                        color="black",
-                        markersize=2,
-                        alpha=0.5,
-                    )
-                    # optimal values
-                    (
-                        ax.scatter(
-                            df[pidx], df[pidy], c=df.cost, s=size, alpha=0.9, cmap="jet"
-                        ),
-                    )
-
-                    ax.plot(
-                        self.optres.xopt[kx],
-                        self.optres.xopt[ky],
-                        "s",
-                        color="darkgreen",
-                        markersize=30,
-                        alpha=0.7,
-                    )
-
-                if kx == ky:
-                    ax.set_xlabel(pidx)
-                    ax.axvline(x=parameters[kx].lower_bound, **bound_kwargs)
-                    ax.axvline(x=parameters[kx].upper_bound, **bound_kwargs)
-                    # ax.set_xlim(self.parameters[kx].lower_bound,
-                    #            self.parameters[kx].upper_bound)
-                    ax.set_ylabel("cost")
-                    ax.plot(
-                        df[pidx],
-                        df.cost,
-                        color="black",
-                        marker="s",
-                        linestyle="None",
-                        alpha=1.0,
-                    )
-
-                # traces (walk through cost function)
-                if kx < ky:
-                    ax.set_xlabel(pidy)
-                    ax.set_ylabel(pidx)
-                    ax.axvline(x=parameters[ky].lower_bound, **bound_kwargs)
-                    ax.axvline(x=parameters[ky].upper_bound, **bound_kwargs)
-                    ax.axhline(y=parameters[kx].lower_bound, **bound_kwargs)
-                    ax.axhline(y=parameters[kx].upper_bound, **bound_kwargs)
-
-                    # ax.plot([ystart, y], [xstart, x], "-", color="black", alpha=0.7)
-
-                    for run in range(self.optres.size):
-                        df_run = self.optres.df_traces[self.optres.df_traces.run == run]
-                        # ax.plot(df_run[pidy], df_run[pidx], '-', color="black", alpha=0.3)
-                        ax.scatter(
-                            df_run[pidy],
-                            df_run[pidx],
-                            c=df_run.cost,
-                            cmap="jet",
-                            marker="s",
-                            alpha=0.8,
-                        )
-
-                    # end point
-                    # ax.plot(yall, xall, "o", color="black", markersize=10, alpha=0.9)
-                    ax.plot(
-                        self.optres.xopt[ky],
-                        self.optres.xopt[kx],
-                        "s",
-                        color="darkgreen",
-                        markersize=30,
-                        alpha=0.7,
-                    )
-
-                ax.set_xscale("log")
-                if kx != ky:
-                    ax.set_yscale("log")
-                if kx == ky:
-                    ax.set_yscale("log")
-
-        # correct scatter limits
-        for kx, _pidx in enumerate(pids):
-            for ky, _pidy in enumerate(pids):
-                if kx < ky:
-                    axes[ky][kx].set_xlim(axes[kx][ky].get_xlim())
-                    axes[ky][kx].set_ylim(axes[kx][ky].get_ylim())
-
-        self._save_mpl_figure(fig=fig, path=path)

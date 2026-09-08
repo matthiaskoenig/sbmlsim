@@ -1,10 +1,10 @@
 """COMBINE archive for PEtab problems."""
 
+import logging
 from pathlib import Path
 
 import numpy as np
-import petab
-from petab import (
+from petab.v1 import (
     CONDITION_FILES,
     MEASUREMENT_FILES,
     OBSERVABLE_FILES,
@@ -13,82 +13,104 @@ from petab import (
     SBML_FILES,
     VISUALIZATION_FILES,
 )
+from petab.v1.yaml import load_yaml
 from pymetadata.omex import EntryFormat, ManifestEntry, Omex
 
+logger = logging.getLogger(__name__)
 
-def create_petab_omex(
-    omex_file: Path,
-    yaml_file: Path,
-) -> None:
-    """Create COMBINE archive for PETab."""
+TABLE_FIELDS = (
+    MEASUREMENT_FILES,
+    OBSERVABLE_FILES,
+    VISUALIZATION_FILES,
+    CONDITION_FILES,
+)
+
+
+def create_petab_omex(omex_file: Path, yaml_file: Path) -> None:
+    """Create a COMBINE archive for a PEtab problem.
+
+    The YAML file of the PEtab problem is the master entry of the archive, all
+    files it references are added relative to the directory of the YAML file.
+
+    Args:
+        omex_file: path of the COMBINE archive to write.
+        yaml_file: path of the PEtab YAML file, all other files are relative to it.
+
+    Raises:
+        FileNotFoundError: if the YAML file or a referenced file does not exist.
+    """
+    yaml_file = Path(yaml_file)
+    if not yaml_file.exists():
+        raise FileNotFoundError(f"PEtab YAML file does not exist: '{yaml_file}'")
+
     omex = Omex()
 
-    # get relative path from yaml file
+    # all locations are relative to the directory of the yaml file
     base_dir: Path = yaml_file.parent
-    yaml_config = petab.yaml.load_yaml(yaml_file)
+    yaml_config = load_yaml(yaml_file)
 
-    # "PEtab YAML file"
-    omex.add_entry(
-        entry_path=yaml_file,
-        entry=ManifestEntry(
-            location=f"./{yaml_file.relative_to(base_dir)}",
-            format=EntryFormat.YAML,
-            master=True,
-        ),
+    _add_entry(
+        omex,
+        base_dir=base_dir,
+        location=yaml_file.name,
+        entry_format=EntryFormat.YAML,
+        master=True,
     )
 
-    # Add parameter file(s) that describe a single parameter table.
-    # Works for a single file name, or a list of file names.
-    for parameter_subset_file in list(np.array(yaml_config[PARAMETER_FILE]).flat):
-        omex.add_entry(
-            entry_path=base_dir / parameter_subset_file,
-            entry=ManifestEntry(
-                location=parameter_subset_file,
-                format=EntryFormat.TSV,
-                master=True,
-            ),
+    # parameter table(s); a single file name or a list of file names
+    for parameter_file in np.array(yaml_config[PARAMETER_FILE]).flat:
+        _add_entry(
+            omex,
+            base_dir=base_dir,
+            location=str(parameter_file),
+            entry_format=EntryFormat.TSV,
         )
 
     for problem in yaml_config[PROBLEMS]:
-        for sbml_file in problem[SBML_FILES]:
-            omex.add_entry(
-                entry_path=base_dir / sbml_file,
-                entry=ManifestEntry(
-                    location=sbml_file,
-                    format=EntryFormat.SBML,
-                    master=True,
-                ),
+        for sbml_file in problem.get(SBML_FILES, []):
+            _add_entry(
+                omex,
+                base_dir=base_dir,
+                location=sbml_file,
+                entry_format=EntryFormat.SBML,
             )
 
-        for field in [
-            MEASUREMENT_FILES,
-            OBSERVABLE_FILES,
-            VISUALIZATION_FILES,
-            CONDITION_FILES,
-        ]:
-            if field not in problem:
-                continue
-
-            for file in problem[field]:
-                omex.add_entry(
-                    entry_path=base_dir / file,
-                    entry=ManifestEntry(
-                        location=file,
-                        format=EntryFormat.TSV,
-                        master=True,
-                    ),
+        for field in TABLE_FIELDS:
+            for table_file in problem.get(field, []):
+                _add_entry(
+                    omex,
+                    base_dir=base_dir,
+                    location=table_file,
+                    entry_format=EntryFormat.TSV,
                 )
 
-    omex.to_omex(omex_file)
+    omex.to_omex(Path(omex_file))
 
 
-if __name__ == "__main__":
-    from sbmlsim import RESOURCES_DIR
+def _add_entry(
+    omex: Omex,
+    base_dir: Path,
+    location: str,
+    entry_format: EntryFormat,
+    master: bool = False,
+) -> None:
+    """Add a single file of the PEtab problem to the archive.
 
-    data_dir = RESOURCES_DIR / "testdata" / "petab" / "icg_example1"
-    print(data_dir, data_dir.exists())
+    Raises:
+        FileNotFoundError: if the file does not exist.
+    """
+    entry_path = base_dir / location
+    if not entry_path.exists():
+        raise FileNotFoundError(
+            f"File of the PEtab problem does not exist: '{entry_path}'"
+        )
 
-    create_petab_omex(
-        omex_file=data_dir / "icg.omex",
-        yaml_file=data_dir / "icg.yaml",
+    logger.debug("Adding '%s' to the COMBINE archive", location)
+    omex.add_entry(
+        entry_path=entry_path,
+        entry=ManifestEntry(
+            location=f"./{Path(location).as_posix()}",
+            format=entry_format,
+            master=master,
+        ),
     )
