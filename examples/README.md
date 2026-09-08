@@ -18,6 +18,7 @@ An example writes what it creates into the current working directory: figures ar
 | --- | --- |
 | `examples/timecourse.py` | timecourse simulations of the repressilator: single, with parameter changes and concatenated timecourses |
 | `examples/scan.py` | parameter scans of dimension 0, 1 and 2, including a scan over a distribution of parameter values |
+| `examples/fit_sampling.py` | sampling of the start values of a parameter fit, uniform and logarithmic, with and without latin hypercube sampling |
 | `examples/model_change.py` | clamping species with `ModelChange`, manually on the roadrunner instance and in a `TimecourseSim` |
 | `examples/units.py` | units of a model and changes with pint quantities |
 | `examples/model_sensitivity.py` | sensitivity scans of all parameters, by relative differences and by sampling from distributions |
@@ -28,7 +29,7 @@ An example writes what it creates into the current working directory: figures ar
 | `examples/glucose/` | dose response experiment of the hepatic glucose model with data from PK-DB |
 | `examples/demo/` | the demo model with scans and sensitivity simulations as a simulation experiment |
 | `examples/repressilator/` | the repressilator as a simulation experiment, with post processing functions and scans |
-| `examples/midazolam/` | midazolam pharmacokinetics: simulation experiments against the data of Kupferschmidt 1995 and Mandema 1992, parameter fitting problems and their serialization to SED-ML |
+| `examples/hctz/` | hydrochlorothiazide pharmacokinetics: a whole body model, simulation experiments against the data of Beermann 1976 and Patel 1984 and the parameter fitting problems built on them (`examples/hctz/fitting/`) |
 | `examples/covid/` | COVID-19 models from BioModels as simulation experiments and COMBINE archives |
 | `examples/sedml/` | execution of SED-ML files (`execute_sedml.py`) and COMBINE archives (`execute_omex.py`), with the SED-ML L1V4 example files under `l1v4/` |
 | `examples/sensitivity/` | local and global sensitivity analysis (sampling, Sobol, FAST, Morris) of a simple chain model |
@@ -39,4 +40,6 @@ An example writes what it creates into the current working directory: figures ar
 
 `tests/examples/test_example_scripts.py` runs the examples which work offline and without optional dependencies as `python -m examples.<module>` in a temporary working directory, so an example which breaks fails the test suite.
 
-The simulation experiments with post processing functions and multi-dimensional scans in `examples/demo`, `examples/repressilator`, `examples/midazolam`, `examples/covid` and `examples/sedml/execute_omex.py` currently fail while the experiment pipeline is reworked, see the skipped tests in `tests/experiment/` and `tests/fit/`; they are not part of the example tests.
+The simulation experiments with post processing functions and multi-dimensional scans in `examples/demo`, `examples/repressilator`, `examples/covid` and `examples/sedml/execute_omex.py` currently fail while the experiment pipeline is reworked, see the skipped tests in `tests/experiment/`; they are not part of the example tests.
+
+`examples/hctz` is the reference problem of the parameter fitting: `python -m examples.hctz.simulations` runs the simulation experiments and `python -m examples.hctz.fitting.fitting` the fit. The tests in `tests/fit/` use it.

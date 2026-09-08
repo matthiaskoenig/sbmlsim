@@ -5,8 +5,8 @@ from typing import Any
 
 import pytest
 
-from examples.midazolam.fitting_problems import op_mid1oh_iv
 from sbmlsim.fit.analysis import OptimizationAnalysis
+from sbmlsim.fit.optimization import OptimizationProblem
 from sbmlsim.fit.options import (
     LossFunctionType,
     OptimizationAlgorithmType,
@@ -45,11 +45,12 @@ for residual_type in [
             )
 
 
-@pytest.mark.skip(reason="no fit support")
 @pytest.mark.parametrize("fit_kwargs", fit_kwargs_testdata)
-def test_fit_settings(fit_kwargs: dict[str, Any]) -> None:
+def test_fit_settings(
+    fit_kwargs: dict[str, Any], op_hctz_pkiv: OptimizationProblem
+) -> None:
     """Test various arguments to optimization problem."""
-    op = op_mid1oh_iv()
+    op = op_hctz_pkiv
     opt_result: OptimizationResult = run_optimization(
         problem=op,
         algorithm=OptimizationAlgorithmType.LEAST_SQUARE,
@@ -65,19 +66,13 @@ def test_fit_settings(fit_kwargs: dict[str, Any]) -> None:
     assert op.weighting_points == fit_kwargs["weighting_points"]
 
 
-fit_kwargs_default: dict[str, Any] = {
-    "residual": ResidualType.NORMALIZED,
-    "weighting_curves": [WeightingCurvesType.POINTS],
-    "weighting_points": WeightingPointsType.ERROR_WEIGHTING,
-    "absolute_tolerance": 1e-6,
-    "relative_tolerance": 1e-6,
-}
-
-
-@pytest.mark.skip(reason="no fit support")
-def test_optimization_analysis(tmp_path: Path) -> None:
+def test_optimization_analysis(
+    tmp_path: Path,
+    op_hctz_pkiv: OptimizationProblem,
+    fit_kwargs_default: dict[str, Any],
+) -> None:
     """Test optimization analysis."""
-    op = op_mid1oh_iv()
+    op = op_hctz_pkiv
     opt_result: OptimizationResult = run_optimization(
         problem=op,
         algorithm=OptimizationAlgorithmType.LEAST_SQUARE,
@@ -95,8 +90,43 @@ def test_optimization_analysis(tmp_path: Path) -> None:
     )
     op_analysis.run()
 
+    results_dir = tmp_path / opt_result.sid / "tests"
+    assert (results_dir / "index.html").exists()
+    assert (results_dir / "report.txt").exists()
+    assert (results_dir / "optimization_result.json").exists()
+    assert (results_dir / "optimization_result.tsv").exists()
+    assert list((results_dir / "plots").glob("*.svg"))
 
-@pytest.mark.skip(reason="no fit support")
+
+def test_optimization_analysis_rerun(
+    tmp_path: Path,
+    op_hctz_pkiv: OptimizationProblem,
+    fit_kwargs_default: dict[str, Any],
+) -> None:
+    """A problem which was already initialized keeps its mappings."""
+    op = op_hctz_pkiv
+    opt_result: OptimizationResult = run_optimization(
+        problem=op,
+        algorithm=OptimizationAlgorithmType.LEAST_SQUARE,
+        size=1,
+        n_cores=1,
+        serial=True,
+        **fit_kwargs_default,
+    )
+    n_mappings = len(op.mapping_keys)
+    assert n_mappings > 0
+
+    OptimizationAnalysis(
+        opt_result=opt_result,
+        output_dir=tmp_path,
+        output_name="tests",
+        op=op,
+        show_plots=False,
+        **fit_kwargs_default,
+    )
+    assert len(op.mapping_keys) == n_mappings
+
+
 @pytest.mark.parametrize(
     "loss_function",
     [
@@ -106,9 +136,13 @@ def test_optimization_analysis(tmp_path: Path) -> None:
         LossFunctionType.ARCTAN,
     ],
 )
-def test_loss_function(loss_function: LossFunctionType) -> None:
+def test_loss_function(
+    loss_function: LossFunctionType,
+    op_hctz_pkiv: OptimizationProblem,
+    fit_kwargs_default: dict[str, Any],
+) -> None:
     """Test the various loss functions."""
-    op = op_mid1oh_iv()
+    op = op_hctz_pkiv
     opt_result: OptimizationResult = run_optimization(
         problem=op,
         algorithm=OptimizationAlgorithmType.LEAST_SQUARE,
@@ -120,13 +154,17 @@ def test_loss_function(loss_function: LossFunctionType) -> None:
     )
     assert opt_result
     assert op.loss_function == loss_function
+    # the loss functions are finite on signed residuals
+    assert all(fit.cost >= 0.0 for fit in opt_result.fits)
+    assert opt_result.df_fits.cost.notna().all()
 
 
-@pytest.mark.skip(reason="no fit support")
-def test_fit_lsq_serial() -> None:
+def test_fit_lsq_serial(
+    op_hctz_pkiv: OptimizationProblem, fit_kwargs_default: dict[str, Any]
+) -> None:
     """Test serial least square fit."""
     opt_result: OptimizationResult = run_optimization(
-        problem=op_mid1oh_iv(),
+        problem=op_hctz_pkiv,
         algorithm=OptimizationAlgorithmType.LEAST_SQUARE,
         size=1,
         n_cores=1,
@@ -136,39 +174,28 @@ def test_fit_lsq_serial() -> None:
     assert opt_result is not None
 
 
-@pytest.mark.skip(reason="no fit support")
-def test_fit_de_serial() -> None:
+def test_fit_de_serial(
+    op_hctz_pkiv: OptimizationProblem, fit_kwargs_default: dict[str, Any]
+) -> None:
     """Test serial differential evolution fit."""
     opt_result: OptimizationResult = run_optimization(
-        problem=op_mid1oh_iv(),
+        problem=op_hctz_pkiv,
         algorithm=OptimizationAlgorithmType.DIFFERENTIAL_EVOLUTION,
         size=1,
         n_cores=1,
         serial=True,
+        maxiter=2,
         **fit_kwargs_default,
     )
     assert opt_result is not None
 
 
-@pytest.mark.skip(reason="no fit support")
-def test_fit_lsq_parallel() -> None:
+def test_fit_lsq_parallel(
+    op_hctz_pkiv: OptimizationProblem, fit_kwargs_default: dict[str, Any]
+) -> None:
     """Test parallel least square fit."""
     opt_result: OptimizationResult = run_optimization(
-        problem=op_mid1oh_iv(),
-        algorithm=OptimizationAlgorithmType.LEAST_SQUARE,
-        size=1,
-        n_cores=1,
-        serial=False,
-        **fit_kwargs_default,
-    )
-    assert opt_result is not None
-
-
-@pytest.mark.skip(reason="no fit support")
-def test_fit_de_parallel():
-    """Test parallel differential evolution fit."""
-    opt_result: OptimizationResult = run_optimization(
-        problem=op_mid1oh_iv(),
+        problem=op_hctz_pkiv,
         algorithm=OptimizationAlgorithmType.LEAST_SQUARE,
         size=1,
         n_cores=1,

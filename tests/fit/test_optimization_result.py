@@ -1,33 +1,24 @@
 """Test optimization results."""
 
 from pathlib import Path
+from typing import Any
 
-import pytest
+import numpy as np
 
-from examples.midazolam.fitting_problems import op_mid1oh_iv
-from sbmlsim.fit.analysis import OptimizationResult
-from sbmlsim.fit.options import (
-    OptimizationAlgorithmType,
-    ResidualType,
-    WeightingCurvesType,
-    WeightingPointsType,
-)
+from sbmlsim.fit.optimization import OptimizationProblem
+from sbmlsim.fit.options import OptimizationAlgorithmType
+from sbmlsim.fit.result import OptimizationResult
 from sbmlsim.fit.runner import run_optimization
 
-fit_kwargs_default = {
-    "residual": ResidualType.ABSOLUTE,
-    "weighting_curves": [WeightingCurvesType.POINTS],
-    "weighting_points": WeightingPointsType.ERROR_WEIGHTING,
-    "absolute_tolerance": 1e-6,
-    "relative_tolerance": 1e-6,
-}
 
-
-@pytest.mark.skip(reason="no fit support")
-def test_serialization(tmp_path: Path) -> None:
+def test_serialization(
+    tmp_path: Path,
+    op_hctz_pkiv: OptimizationProblem,
+    fit_kwargs_default: dict[str, Any],
+) -> None:
     """Test serialization of optimization result."""
     opt_res: OptimizationResult = run_optimization(
-        problem=op_mid1oh_iv(),
+        problem=op_hctz_pkiv,
         algorithm=OptimizationAlgorithmType.LEAST_SQUARE,
         size=1,
         n_cores=1,
@@ -42,14 +33,22 @@ def test_serialization(tmp_path: Path) -> None:
     assert opt_res.sid == opt_res2.sid
     assert [p.pid for p in opt_res.parameters] == [p.pid for p in opt_res2.parameters]
 
+    # the parameter vectors survive the round trip as arrays
+    assert isinstance(opt_res2.xopt, np.ndarray)
+    assert np.allclose(opt_res.xopt, opt_res2.xopt)
+    for fit in opt_res2.fits:
+        assert isinstance(fit.x, np.ndarray)
+        assert isinstance(fit.x0, np.ndarray)
 
-@pytest.mark.skip(reason="no fit support")
-def test_combine(tmp_path: Path) -> None:
+
+def test_combine(
+    op_hctz_pkiv: OptimizationProblem, fit_kwargs_default: dict[str, Any]
+) -> None:
     """Test combination of optimization result."""
     opt_results = []
     for seed in [1234, 4567]:
         opt_res: OptimizationResult = run_optimization(
-            problem=op_mid1oh_iv(),
+            problem=op_hctz_pkiv,
             algorithm=OptimizationAlgorithmType.LEAST_SQUARE,
             size=1,
             n_cores=1,

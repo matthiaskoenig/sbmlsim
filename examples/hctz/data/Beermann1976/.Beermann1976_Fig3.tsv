@@ -1,0 +1,18 @@
+study	individual	group	count	intervention	measurement_type	substance	tissue	method	label	time	time_unit	value	mean	mean_pm	sd	se	unit	comments
+Beermann1976	S6	NA	1	HCTZ75_po	concentration	hydrochlorothiazide	plasma	G-L C	hctz75_po_6	0.5	hr	75.3072751038652	NA	NA	NA	NA	ng/ml	plain unlabeled hctz
+Beermann1976	S6	NA	1	HCTZ75_po	concentration	hydrochlorothiazide	plasma	G-L C	hctz75_po_6	1.0	hr	232.049526274187	NA	NA	NA	NA	ng/ml	NA
+Beermann1976	S6	NA	1	HCTZ75_po	concentration	hydrochlorothiazide	plasma	G-L C	hctz75_po_6	1.5	hr	263.671965116893	NA	NA	NA	NA	ng/ml	NA
+Beermann1976	S6	NA	1	HCTZ75_po	concentration	hydrochlorothiazide	plasma	G-L C	hctz75_po_6	2.0	hr	308.225895660177	NA	NA	NA	NA	ng/ml	NA
+Beermann1976	S6	NA	1	HCTZ75_po	concentration	hydrochlorothiazide	plasma	G-L C	hctz75_po_6	3.0	hr	368.956368119218	NA	NA	NA	NA	ng/ml	NA
+Beermann1976	S6	NA	1	HCTZ75_po	concentration	hydrochlorothiazide	plasma	G-L C	hctz75_po_6	4.0	hr	415.328952446054	NA	NA	NA	NA	ng/ml	NA
+Beermann1976	S6	NA	1	HCTZ75_po	concentration	hydrochlorothiazide	plasma	G-L C	hctz75_po_6	5.0	hr	304.054399520271	NA	NA	NA	NA	ng/ml	NA
+Beermann1976	S6	NA	1	HCTZ75_po	concentration	hydrochlorothiazide	plasma	G-L C	hctz75_po_6	6.0	hr	236.702288371101	NA	NA	NA	NA	ng/ml	NA
+Beermann1976	S6	NA	1	HCTZ75_po	concentration	hydrochlorothiazide	plasma	G-L C	hctz75_po_6	7.0	hr	185.143590921808	NA	NA	NA	NA	ng/ml	NA
+Beermann1976	S6	NA	1	HCTZ75_po	concentration	hydrochlorothiazide	plasma	G-L C	hctz75_po_6	8.0	hr	138.78300862966	NA	NA	NA	NA	ng/ml	NA
+Beermann1976	S6	NA	1	HCTZ75_po	concentration	hydrochlorothiazide	plasma	G-L C	hctz75_po_6	9.0	hr	113.808448366533	NA	NA	NA	NA	ng/ml	NA
+Beermann1976	S6	NA	1	HCTZ75_po	concentration	hydrochlorothiazide	plasma	G-L C	hctz75_po_6	12.0	hr	51.4581855280609	NA	NA	NA	NA	ng/ml	NA
+Beermann1976	S6	NA	1	HCTZ75_po	concentration	hydrochlorothiazide	plasma	G-L C	hctz75_po_6	15.0	hr	46.8409835797095	NA	NA	NA	NA	ng/ml	NA
+Beermann1976	S6	NA	1	HCTZ75_po	concentration	hydrochlorothiazide	plasma	G-L C	hctz75_po_6	18.0	hr	48.2160765374385	NA	NA	NA	NA	ng/ml	NA
+Beermann1976	S6	NA	1	HCTZ75_po	concentration	hydrochlorothiazide	plasma	G-L C	hctz75_po_6	21.0	hr	38.9977355641063	NA	NA	NA	NA	ng/ml	NA
+Beermann1976	S6	NA	1	HCTZ75_po	concentration	hydrochlorothiazide	plasma	G-L C	hctz75_po_6	23.0	hr	34.8275491684181	NA	NA	NA	NA	ng/ml	NA
+Beermann1976	S6	NA	1	HCTZ75_po	concentration	hydrochlorothiazide	plasma	G-L C	hctz75_po_6	36.0	hr	15.1209175337924	NA	NA	NA	NA	ng/ml	NA

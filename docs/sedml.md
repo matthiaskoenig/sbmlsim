@@ -71,7 +71,7 @@ SEDMLSerializer(
 )
 ```
 
-`examples/covid/simulate.py` runs the COVID-19 experiments, serializes them to archives and executes the archives again, `examples/midazolam/simulate.py` does the same for the midazolam experiments.
+`examples/covid/simulate.py` runs the COVID-19 experiments, serializes them to archives and executes the archives again.
 
 ## COMBINE archives
 
