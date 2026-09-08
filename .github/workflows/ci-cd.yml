@@ -108,3 +108,20 @@ jobs:
         body_path: "release-notes/${{ github.ref_name }}.md"
         draft: false
         prerelease: false
+
+  sync-main:
+    # main tracks the latest published release, see docs/development.md
+    needs: release
+    if: startsWith(github.ref, 'refs/tags/')
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: write  # fast-forward main to the released commit
+    steps:
+    - uses: actions/checkout@v7
+      with:
+        # a shallow clone cannot be pushed to another branch
+        fetch-depth: 0
+    - name: Fast-forward main to the release
+      # no --force: the push fails loudly if it would not be a fast-forward
+      run: git push origin HEAD:main

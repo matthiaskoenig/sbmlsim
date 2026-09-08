@@ -36,6 +36,16 @@ ICON_SETTINGS = ":gear:"
 ICON_DATA = ":bar_chart:"
 ICON_OPTIMIZATION = ":rocket:"
 ICON_REPORT = ":clipboard:"
+ICON_IDENTIFIABILITY = ":mag:"
+
+#: color of every identifiability, see `sbmlsim.fit.identifiability`
+IDENTIFIABILITY_STYLES: dict[str, str] = {
+    "identifiable": "green",
+    "non_identifiable_lower": "orange3",
+    "non_identifiable_upper": "orange3",
+    "non_identifiable": "red",
+    "structural": "magenta",
+}
 
 #: color of every kind of data
 KIND_STYLES: dict[str, str] = {
@@ -227,3 +237,46 @@ def print_data(df: pd.DataFrame, detail: bool = True) -> None:
     if detail:
         console.line()
         console.print(data_table(df))
+
+
+def identifiability_table(df: pd.DataFrame) -> Table:
+    """Get the table of a profile likelihood analysis.
+
+    Args:
+        df: summary of an `IdentifiabilityResult`, one row per parameter.
+
+    Returns:
+        The table with the value, the confidence interval and the
+        classification of every parameter; an open side of an interval is
+        shown as the bound of the parameter with a `<` or `>`.
+    """
+    table = _table(
+        "parameter", "value", "ci lower", "ci upper", "unit", "identifiability"
+    )
+    for row in df.to_dict(orient="records"):
+        ci_lower = (
+            f"< {row['lower_bound']:.4g}"
+            if pd.isna(row["ci_lower"])
+            else _number(float(row["ci_lower"]))
+        )
+        ci_upper = (
+            f"> {row['upper_bound']:.4g}"
+            if pd.isna(row["ci_upper"])
+            else _number(float(row["ci_upper"]))
+        )
+        identifiability = str(row["identifiability"])
+        style = IDENTIFIABILITY_STYLES.get(identifiability)
+        table.add_row(
+            str(row["parameter"]),
+            _number(float(row["value"])),
+            ci_lower,
+            ci_upper,
+            str(row["unit"]) if row["unit"] else "[dim]model[/dim]",
+            f"[{style}]{identifiability}[/{style}]" if style else identifiability,
+        )
+    return table
+
+
+def print_identifiability(df: pd.DataFrame) -> None:
+    """Print the table of a profile likelihood analysis."""
+    console.print(identifiability_table(df))

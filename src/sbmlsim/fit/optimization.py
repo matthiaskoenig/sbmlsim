@@ -227,6 +227,24 @@ class OptimizationProblem(ObjectJSONEncoder):
         self.xmodel: np.ndarray = np.empty(shape=(len(self.pids)))
         self._reset_mappings()
 
+    def __getstate__(self) -> dict[str, Any]:
+        """Pickle the definition of the problem, not its resolved data.
+
+        An initialized problem holds the experiment runner with the models and
+        the unit registry, which cannot be pickled. The workers of a pool
+        initialize the problem themselves, so what they need is the
+        definition: a pickled problem is uninitialized, whether the original
+        was initialized or not.
+        """
+        fresh = OptimizationProblem(
+            opid=self.opid,
+            fit_experiments=self.fit_experiments,
+            fit_parameters=self.parameters,
+            base_path=self.base_path,
+            data_path=self.data_path,
+        )
+        return fresh.__dict__
+
     def _reset_mappings(self) -> None:
         """Reset the data collected for the fit mappings.
 

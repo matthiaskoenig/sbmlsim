@@ -37,6 +37,49 @@
 > *BMC Systems Biology.* 2011;5:198.
 > [doi:10.1186/1752-0509-5-198](https://doi.org/10.1186/1752-0509-5-198)
 
+## Parameter fitting
+
+**Profile likelihood.** The identifiability analysis of `sbmlsim.fit.identifiability`, see [Parameter fitting](fitting.md#identifiability): the profile likelihood, its threshold and the classification of the parameters.
+
+> Raue A, Kreutz C, Maiwald T, Bachmann J, Schilling M, Klingmüller U, Timmer J.
+> **Structural and practical identifiability analysis of partially observed dynamical models by exploiting the profile likelihood.**
+> *Bioinformatics.* 2009;25(15):1923-1929.
+> [doi:10.1093/bioinformatics/btp358](https://doi.org/10.1093/bioinformatics/btp358)
+
+> Kreutz C, Raue A, Kaschek D, Timmer J.
+> **Profile likelihood in systems biology.**
+> *The FEBS Journal.* 2013;280(11):2564-2571.
+> [doi:10.1111/febs.12276](https://doi.org/10.1111/febs.12276)
+
+> Wieland FG, Hauber AL, Rosenblatt M, Tönsing C, Timmer J.
+> **On structural and practical identifiability.**
+> *Current Opinion in Systems Biology.* 2021;25:60-69.
+> [doi:10.1016/j.coisb.2021.03.005](https://doi.org/10.1016/j.coisb.2021.03.005)
+
+**Coupled parameters and model reduction.** The paths of the other parameters along a profile, which the figures of a profile show.
+
+> Maiwald T, Hass H, Steiert B, Vanlier J, Engesser R, Raue A, Kipkeew F, Bock HH, Kaschek D, Kreutz C, Timmer J.
+> **Driving the model to its limit: profile likelihood based model reduction.**
+> *PLoS ONE.* 2016;11(9):e0162366.
+> [doi:10.1371/journal.pone.0162366](https://doi.org/10.1371/journal.pone.0162366)
+
+**Algorithms.** The adaptive steps along a profile, the confidence intervals from constrained optimization and the profile-wise workflow, which the implementation follows.
+
+> Schälte Y, Fröhlich F, Jost PJ, Vanhoefer J, Pathirana D, Stapor P, Lakrisenko P, Wang D, Raimúndez E, Merkt S, Schmiester L, Städter P, Grein S, Dudkin E, Doresic D, Weindl D, Hasenauer J.
+> **pyPESTO: a modular and scalable tool for parameter estimation for dynamic models.**
+> *Bioinformatics.* 2023;39(11):btad711.
+> [doi:10.1093/bioinformatics/btad711](https://doi.org/10.1093/bioinformatics/btad711)
+
+> Borisov I, Metelkin E.
+> **Confidence intervals by constrained optimization—An algorithm and software package for practical identifiability analysis in systems biology.**
+> *PLoS Computational Biology.* 2020;16(12):e1008495.
+> [doi:10.1371/journal.pcbi.1008495](https://doi.org/10.1371/journal.pcbi.1008495)
+
+> Simpson MJ, Maclaren OJ.
+> **Profile-wise analysis: a profile likelihood-based workflow for identifiability analysis, estimation, and prediction with mechanistic mathematical models.**
+> *PLoS Computational Biology.* 2023;19(9):e1011515.
+> [doi:10.1371/journal.pcbi.1011515](https://doi.org/10.1371/journal.pcbi.1011515)
+
 **COMBINE archive.** The container for models, simulation experiments and data.
 
 > Bergmann FT, Adams R, Moodie S, Cooper J, Glont M, Golebiewski M, Hucka M, Laibe C, Miller AK, Nickerson DP, Olivier BG, Rodriguez N, Sauro HM, Scharm M, Soiland-Reyes S, Waltemath D, Yvon F, Le Novère N.

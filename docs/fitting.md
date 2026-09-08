@@ -1,6 +1,6 @@
 # Parameter fitting
 
-Parameter fitting adjusts model parameters so that the simulations of experiments match the experimental data. In `sbmlsim` a fit is an `OptimizationProblem` built from `FitExperiment` objects, which name the simulation experiments and their fit mappings, and `FitParameter` objects with the bounds of the parameters. The problem is run with local or global optimizers of scipy and analysed with `OptimizationAnalysis`.
+Parameter fitting adjusts model parameters so that the simulations of experiments match the experimental data. In `sbmlsim` a fit is an `OptimizationProblem` built from `FitExperiment` objects, which name the simulation experiments and their fit mappings, and `FitParameter` objects with the bounds of the parameters. The problem is run with local or global optimizers of scipy, reported with `FitReport`, and the identifiability of the fitted parameters is analysed with the profile likelihood.
 
 The example throughout this page is `examples/hctz/`, a whole body model of hydrochlorothiazide with the simulation experiments of two studies and the fit problem built on them.
 
@@ -284,6 +284,65 @@ metrics.summary_df()
 The functions of `sbmlsim.fit.metrics` are used on their own as well: `sse`, `mse`, `rmse`, `aic` and `r_squared` take arrays of residuals or of data and predictions. R² is not the square of a correlation for a non-linear model and is negative when a prediction is worse than the mean of the data.
 
 A report calculates the metrics for every one of its parameter sets and writes them as `metrics.tsv`, `metrics_mappings.tsv` and `datapoints.tsv`, so several sets are compared by their AIC, RMSE and R².
+
+## Identifiability
+
+A fit gives the parameters which describe the data best, the profile likelihood says how well the data determines every one of them. `sbmlsim.fit.identifiability` implements the method of Raue et al. 2009: a parameter is fixed at values around the optimum, all other parameters are optimized again for every value, and the resulting profile, the best cost as a function of the parameter, is compared with a threshold. The cost of a fit is the cost of `scipy.optimize.least_squares`, `cost = 0.5 * Σ r²` with the weighted residuals `r`. With residuals which are standardized by the errors of the data, `2 * cost` is the negative log-likelihood up to a constant, and the threshold of the likelihood ratio test on the cost is
+
+```
+cost_threshold = cost_min + chi2.ppf(alpha, df) / 2
+```
+
+with the confidence level `alpha` and `df = 1` for the pointwise confidence intervals of single parameters, i.e., `1.92` above the minimal cost at 95%; `df` equal to the number of parameters gives simultaneous intervals. The values at which the profile crosses the threshold are the bounds of the confidence interval of the parameter. These intervals are invariant under a transformation of the parameters and may be asymmetric, which is where the intervals of the Fisher information matrix fail for non-linear models (Wieland et al. 2021). With another weighting of the residuals the threshold is a heuristic on the same scale.
+
+The shape of the profile classifies the parameter (`Identifiability`):
+
+- `IDENTIFIABLE`: the profile crosses the threshold on both sides of the optimum, the confidence interval is finite,
+- `NON_IDENTIFIABLE_LOWER`, `NON_IDENTIFIABLE_UPPER`, `NON_IDENTIFIABLE`: the profile has a minimum but stays below the threshold up to the lower bound, the upper bound or both bounds of the parameter, i.e., the parameter is practically non-identifiable, the data does not determine it towards small and/or large values,
+- `STRUCTURAL`: the profile is flat over the scanned range, the parameter is compensated by the other parameters and the data carries no information about it.
+
+The scans run in logarithmic parameter space with adaptive steps: a step which raises the cost by more than `max_cost_fraction` of the distance to the threshold is reduced and repeated, a step which raises it by little is enlarged, so the profile is resolved where it changes. The other parameters start from the previous point of the profile and their paths are stored, so a parameter which is coupled to the scanned one is seen in its path (Maiwald et al. 2016). A scan stops when the profile crosses the threshold, at the bound of the parameter or after `max_points`. A scan which finds a lower cost than the parameter set reports that the fit did not converge, and the threshold is taken relative to the lowest cost of all profiles.
+
+```py
+from sbmlsim.fit.identifiability import ProfileSettings, profile_likelihood
+
+result = profile_likelihood(
+    problem=op,
+    settings=settings,
+    parameter_set=parameter_sets[0],
+    profile_settings=ProfileSettings(alpha=0.95, max_points=30),
+    n_cores=4,
+)
+print(result.summary_df())
+result.to_json(Path("identifiability.json"))
+```
+
+`ProfileSettings` holds the confidence level, the degrees of freedom, the steps in decades of the parameter and `reoptimize`: without the re-optimization the other parameters stay at the optimum, which is a plain scan of the cost and a lower bound of the profile, fast and sufficient to find the non-identifiable parameters, but with intervals which are too narrow for coupled parameters. The scans are independent and run in the worker pool of the fit runner, two per parameter, so a parallel analysis needs the `if __name__ == "__main__":` guard like a parallel fit. `pids` restricts the analysis to some of the parameters.
+
+The `IdentifiabilityResult` carries a `ParameterProfile` per parameter with the values, the costs, the paths of all parameters and the confidence interval, `summary_df()` is the table of the parameters with their intervals and classification, `report()` the text and `to_json`/`from_json` the storage. `plot_profiles` draws the overview of all profiles, `plot_profile` the profile of one parameter with the paths of the other parameters along it.
+
+A report shows the analysis: `FitReport(..., identifiability=result)` adds the section **Identifiability** with the table, the overview and one figure per parameter, and writes `identifiability.json` and `identifiability.tsv`. `FitRun.identifiability()` computes the profiles of the best parameter set of a finished fit, so a global optimization followed by the identifiability of its result is
+
+```py
+runs = run_fit(
+    definition,
+    algorithm=OptimizationAlgorithmType.DIFFERENTIAL_EVOLUTION,
+    size=2,
+    n_cores=4,
+)
+run = runs[opid]
+identifiability = run.identifiability(n_cores=4)
+run.report(output_dir=Path("results"), identifiability=identifiability)
+```
+
+which is `examples/hctz/fitting/identifiability.py`. `identifiability_cli` is the command line tool for stored parameters, `examples/hctz/fitting/identifiability_report.py` on the HCTZ definitions:
+
+```bash
+python -m examples.hctz.fitting.identifiability --subset=PK --runs=2 --cores=4
+python -m examples.hctz.fitting.identifiability_report results/fit/PK/parameters.json --cores=4
+```
+
+The publications behind the method are listed under [References](references.md#parameter-fitting).
 
 ## Running a fit from the command line
 

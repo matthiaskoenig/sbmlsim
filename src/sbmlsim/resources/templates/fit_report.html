@@ -11,6 +11,7 @@
 {% block nav %}
     <a href="#overview">Overview</a>
     <a href="#results">Results</a>
+    {% if identifiability %}<a href="#identifiability">Identifiability</a>{% endif %}
     <a href="#mappings">Fit mappings</a>
 {% endblock %}
 
@@ -172,6 +173,74 @@
   </div>
   {% endif %}
 </section>
+
+{% if identifiability %}
+<section id="identifiability">
+  <style>
+    .tag.identifiable { background: var(--training); }
+    .tag.non_identifiable_lower, .tag.non_identifiable_upper { background: var(--outlier); }
+    .tag.non_identifiable { background: #c92a2a; }
+    .tag.structural { background: #862e9c; }
+    .card.wide { grid-column: 1 / -1; }
+  </style>
+  <h2>Identifiability</h2>
+  <p>Profile likelihood of the parameters: every parameter is fixed at values around the optimum and the other parameters are optimized again. A parameter is identifiable if its profile crosses the threshold of the confidence level on both sides of the optimum, i.e., its confidence interval is finite; practically non-identifiable if the profile stays below the threshold up to a bound of the parameter; structurally non-identifiable if the profile is flat. An open side of an interval is shown as the bound of the parameter.</p>
+  {% if identifiability.better_optimum %}
+  <p class="warn">A profile found a cost below the cost of the parameter set, the fit did not converge to the optimum. The threshold is relative to the lowest cost.</p>
+  {% endif %}
+  <div class="grid">
+    <div class="card">
+      <h3>Analysis</h3>
+      <dl class="kv">
+        {% for key, value in identifiability.info.items() %}<dt>{{ key }}</dt><dd class="mono">{{ value }}</dd>{% endfor %}
+      </dl>
+    </div>
+    <div class="card">
+      <h3>Parameters</h3>
+      <table data-filter="row">
+        <thead><tr>
+          <th data-sort="text">parameter</th><th class="num" data-sort="num">value</th>
+          <th class="num" data-sort="num">ci lower</th><th class="num" data-sort="num">ci upper</th>
+          <th data-sort="text">unit</th><th data-sort="text">identifiability</th>
+          <th class="num" data-sort="num">points</th>
+        </tr></thead>
+        <tbody>
+        {% for row in identifiability.rows %}
+        <tr>
+          <td class="mono">{{ row.pid }}</td><td class="num mono">{{ row.value }}</td>
+          <td class="num mono">{{ row.ci_lower }}</td><td class="num mono">{{ row.ci_upper }}</td>
+          <td>{{ row.unit }}</td>
+          <td><span class="tag identifiability {{ row.identifiability }}">{{ row.label }}</span>{% if not row.converged %} <span class="tag outlier">not converged</span>{% endif %}</td>
+          <td class="num mono">{{ row.n_points }}</td>
+        </tr>
+        {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+  {% if identifiability.plots %}
+  <div class="grid">
+    {% for plot in identifiability.plots %}
+    <div class="card wide"><figure>
+      <img loading="lazy" src="{{ plot.src }}" alt="{{ plot.caption }}">
+      <figcaption>{{ plot.caption }}</figcaption>
+    </figure></div>
+    {% endfor %}
+  </div>
+  {% endif %}
+  {% if identifiability.profile_plots %}
+  <h3>Profiles</h3>
+  <div class="grid">
+    {% for plot in identifiability.profile_plots %}
+    <div class="card"><figure>
+      <img loading="lazy" src="{{ plot.src }}" alt="{{ plot.caption }}">
+      <figcaption>{{ plot.caption }}</figcaption>
+    </figure></div>
+    {% endfor %}
+  </div>
+  {% endif %}
+</section>
+{% endif %}
 
 <section id="mappings">
   <h2>Fit mappings ({{ mappings | length }})</h2>

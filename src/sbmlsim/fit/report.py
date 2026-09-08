@@ -30,6 +30,7 @@ from matplotlib.lines import Line2D
 
 from sbmlsim import __version__
 from sbmlsim.fit import display
+from sbmlsim.fit.identifiability import IdentifiabilityResult, plot_all
 from sbmlsim.fit.metrics import FitMetrics
 from sbmlsim.fit.objects import MappingKind
 from sbmlsim.fit.optimization import OptimizationProblem
@@ -65,6 +66,7 @@ class FitReport:
         settings: FitSettings,
         parameter_sets: ParameterSets | list[ParameterSet] | ParameterSet,
         opt_result: OptimizationResult | None = None,
+        identifiability: IdentifiabilityResult | None = None,
         show_titles: bool = True,
         image_format: str = "svg",
     ) -> None:
@@ -81,6 +83,8 @@ class FitReport:
                 set is the reference the others are compared against.
             opt_result: result of an optimization, adds the traces, the
                 waterfall plot and the table of the runs.
+            identifiability: result of a profile likelihood analysis, adds
+                the identifiability section with the profiles.
             show_titles: add titles to the panels.
             image_format: format of the figures.
         """
@@ -88,6 +92,7 @@ class FitReport:
         self.settings = settings
         self.parameter_sets = ParameterSets.of(parameter_sets)
         self.opt_result = opt_result
+        self.identifiability = identifiability
         self.show_titles = show_titles
         self.image_format = image_format
 
@@ -274,6 +279,11 @@ class FitReport:
         if self.opt_result:
             self.opt_result.to_json(path=results_dir / "optimization_result.json")
             self.opt_result.to_tsv(path=results_dir / "optimization_result.tsv")
+        if self.identifiability:
+            self.identifiability.to_json(path=results_dir / "identifiability.json")
+            self.identifiability.summary_df().to_csv(
+                results_dir / "identifiability.tsv", sep="\t", index=False
+            )
 
         self._write_text_report(path=results_dir / "report.txt")
         self._create_figures(plots_dir=plots_dir, mpl_parameters=mpl_parameters)
@@ -293,6 +303,8 @@ class FitReport:
         info.extend(self.metrics(pset).report() for pset in self.parameter_sets)
         if self.opt_result:
             info.append(self.opt_result.report(path=None, print_output=False))
+        if self.identifiability:
+            info.append(self.identifiability.report())
 
         with open(path, "w", encoding="utf-8") as f_report:
             f_report.write("\n".join(info))
@@ -320,6 +332,11 @@ class FitReport:
 
     #: caption of every plot which describes the whole fit
     PLOT_CAPTIONS: ClassVar[dict[str, str]] = {
+        "profiles": (
+            "Profile likelihood of every parameter: the cost with the parameter "
+            "fixed and the other parameters optimized, the threshold of the "
+            "confidence level and the confidence interval"
+        ),
         "traces": "Cost of the optimizers over their steps",
         "waterfall": "Cost of the optimization runs, ordered",
         "datapoint_scatter": "Prediction against the measured data points",
@@ -447,6 +464,13 @@ class FitReport:
                     "label": "optimization_result.json",
                 }
             )
+        if self.identifiability:
+            files.append(
+                {"href": "identifiability.json", "label": "identifiability.json"}
+            )
+            files.append(
+                {"href": "identifiability.tsv", "label": "identifiability.tsv"}
+            )
 
         badges = [
             {"label": "mappings", "value": len(self.problem.mapping_keys)},
@@ -457,6 +481,16 @@ class FitReport:
             badges.append({"label": "cost", "value": f"{training.cost.min():.6g}"})
         if self.opt_result:
             badges.append({"label": "runs", "value": self.opt_result.size})
+        if self.identifiability:
+            badges.append(
+                {
+                    "label": "identifiable",
+                    "value": (
+                        f"{self.identifiability.n_identifiable}/"
+                        f"{len(self.identifiability.profiles)}"
+                    ),
+                }
+            )
 
         runs: list[list[str]] = []
         run_columns: list[str] = []
@@ -538,7 +572,61 @@ class FitReport:
             "mappings": mappings,
             "run_columns": run_columns,
             "runs": runs,
+            "identifiability": self._identifiability_context(plots_dir),
             "files": files,
+        }
+
+    def _identifiability_context(self, plots_dir: Path) -> dict[str, Any] | None:
+        """Collect what the identifiability section of the HTML report shows."""
+        result = self.identifiability
+        if result is None:
+            return None
+
+        def _bound(value: float | None, bound: float, sign: str) -> str:
+            """Format a bound of a confidence interval, open sides as a bound."""
+            return f"{sign} {bound:.4g}" if value is None else f"{value:.4g}"
+
+        rows = []
+        for pid, profile in result.profiles.items():
+            p = result.parameter(pid)
+            identifiability = profile.identifiability
+            rows.append(
+                {
+                    "pid": pid,
+                    "value": f"{profile.value_optimum:.5g}",
+                    "ci_lower": _bound(profile.ci_lower, p.lower_bound, "<"),
+                    "ci_upper": _bound(profile.ci_upper, p.upper_bound, ">"),
+                    "unit": p.unit or "model",
+                    "identifiability": identifiability.value if identifiability else "",
+                    "label": identifiability.label if identifiability else "",
+                    "n_points": len(profile),
+                    "converged": bool(np.all(profile.converged)),
+                }
+            )
+        info = {
+            "parameter set": result.parameter_set.sid,
+            "cost": f"{result.cost:.6g}",
+            "minimal cost": f"{result.cost_min:.6g}",
+            "confidence level": f"{result.settings.alpha:.0%}",
+            "degrees of freedom": str(result.settings.degrees_of_freedom),
+            "threshold": f"{result.threshold:.6g}",
+            "reoptimize": str(result.settings.reoptimize),
+            "duration": f"{result.duration:.1f} s",
+        }
+        plots = self._plots(plots_dir, ["profiles"])
+        profile_plots = self._plots(
+            plots_dir, [f"profile_{pid}" for pid in result.profiles]
+        )
+        for plot, pid in zip(profile_plots, result.profiles, strict=False):
+            plot["caption"] = (
+                f"Profile of '{pid}' and the paths of the other parameters along it"
+            )
+        return {
+            "info": info,
+            "rows": rows,
+            "plots": plots,
+            "profile_plots": profile_plots,
+            "better_optimum": result.better_optimum,
         }
 
     def fit_info(self) -> dict[str, str]:
@@ -623,6 +711,8 @@ class FitReport:
 
             self.plot_fit(output_dir=plots_dir)
             self.plot_fit_residual(output_dir=plots_dir)
+            if self.identifiability:
+                plot_all(self.identifiability, plots_dir, self.image_format)
         finally:
             # restore parameters
             plt.rcParams.update(rc_params_copy)
