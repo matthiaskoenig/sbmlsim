@@ -62,7 +62,8 @@ def run_experiments(
     report.create_report(output_path, report_type=ExperimentReport.ReportType.HTML)
 
     console.print(
-        f"Successfully executed simulation experiments: file://{output_path.resolve()}",
+        f"Successfully executed simulation experiments: "
+        f"{output_path.resolve().as_uri()}",
         style="success",
     )
     return output_path

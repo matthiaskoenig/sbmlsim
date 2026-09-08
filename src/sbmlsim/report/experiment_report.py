@@ -247,6 +247,5 @@ class ExperimentReport:
         report_path = write_report(
             filename=filename, context=context, template_str=f"index.{suffix}"
         )
-        report_path_str: str = str(report_path).replace("\\", "/")
-        logger.info("report created: file://%s", report_path_str)
+        logger.info("report created: %s", report_path.resolve().as_uri())
         return report_path

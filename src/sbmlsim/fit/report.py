@@ -282,7 +282,7 @@ class FitReport:
         report_path = results_dir / "index.html"
         display.link("report", report_path)
         if show_report:
-            webbrowser.open(f"file://{report_path.resolve()!s}", new=2)
+            webbrowser.open(report_path.resolve().as_uri(), new=2)
 
         return results_dir
 
