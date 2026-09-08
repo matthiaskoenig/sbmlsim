@@ -125,7 +125,8 @@ if __name__ == "__main__":
         SobolSensitivityAnalysis,
     )
 
-    sensitivity_path = Path(__file__).parent / "results"
+    sensitivity_path = Path.cwd() / "results" / "sensitivity"
+    sensitivity_path.mkdir(parents=True, exist_ok=True)
     df = SensitivityParameter.parameters_to_df(sensitivity_parameters)
     df.to_csv(sensitivity_path / "parameters.tsv", sep="\t", index=False)
     console.print(df)

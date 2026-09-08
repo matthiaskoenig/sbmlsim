@@ -166,4 +166,4 @@ def run_repressilator_example(output_path: Path) -> None:
 
 
 if __name__ == "__main__":
-    run_repressilator_example(output_path=Path(__file__).parent / "results")
+    run_repressilator_example(output_path=Path.cwd() / "results")
