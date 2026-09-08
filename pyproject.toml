@@ -39,29 +39,27 @@ dependencies = [
 	# SBML, SED-ML, NuML and COMBINE archives
 	"sbmlutils>=0.10.1",
 	"pymetadata>=0.6.1",
-	"python-libsbml>=5.21.0",
+	"python-libsbml>=5.21.1",
 	"python-libsedml>=2.0.33",
 	"python-libnuml>=1.1.7",
 	# simulation
-	"libroadrunner>=2.9.0",
+	"libroadrunner>=2.10.0",
 	# data structures, units and numerics
-	"numpy>=2.3.5",
-	"pandas>=2.3.3",
-	"xarray>=2025.11.0",
-	"scipy>=1.16.3",
+	"numpy>=2.5.3",
+	"pandas>=3.0.5",
+	"xarray>=2026.7.0",
+	"scipy>=1.18.1",
 	"sympy>=1.14.0",
-	"pint>=0.25.2",
-	"pydantic>=2.12.5",
-	"dill>=0.4.0",
-	"xmltodict>=1.0.2",
+	"pint>=0.25.3",
+	"pydantic>=2.13.5",
 	# parameter fitting and sensitivity analysis
-	"petab>=0.8.1",
+	"petab>=0.9.0",
 	"SALib>=1.5.2",
 	# plots and reports
-	"matplotlib>=3.10.7",
+	"matplotlib>=3.11.1",
 	"seaborn>=0.13.2",
 	"jinja2>=3.1.6",
-	"rich>=14.2.0",
+	"rich>=15.0.0",
 ]
 
 [project.optional-dependencies]
@@ -72,7 +70,6 @@ dev = [
 	"ty>=0.0.79",
 	"tox>=4.61.2",
 	"pytest>=9.1.1",
-	"pytest-cov>=7.1.0",
 	"zensical>=0.0.59",
 	"mkdocstrings-python>=2.0.8",
 ]

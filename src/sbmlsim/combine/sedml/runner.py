@@ -1,29 +1,12 @@
 """Module with helpers to execute SED-ML files and COMBINE archives."""
 
-import json
 import os
 from pathlib import Path
-
-import xmltodict
 
 from sbmlsim.combine.sedml.io import SEDMLReader
 from sbmlsim.combine.sedml.parser import SEDMLParser
 from sbmlsim.experiment import ExperimentRunner, SimulationExperiment
 from sbmlsim.simulator import SimulatorSerial
-
-
-def sedmltojson(sedml_path: Path) -> None:
-    """Convert SED-ML to JSON file."""
-    with open(sedml_path, encoding="utf-8") as f_sedml:
-        xml = f_sedml.read()
-
-    my_dict = xmltodict.parse(xml)
-    json_data = json.dumps(my_dict, indent=2)
-
-    json_path = sedml_path.parent / f"{sedml_path.name}.json"
-    with open(json_path, "w", encoding="utf-8") as f_json:
-        # print(json_data)
-        f_json.write(json_data)
 
 
 def execute_sedml(path: Path, working_dir: Path, output_path: Path) -> None:

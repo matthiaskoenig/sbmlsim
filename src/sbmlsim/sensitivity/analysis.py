@@ -2,12 +2,12 @@
 
 import multiprocessing
 import os
+import pickle
 import time
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-import dill
 import numpy as np
 import pandas as pd
 import roadrunner
@@ -396,7 +396,7 @@ class SensitivityAnalysis:
         # retrieve from cache
         if cache and cache_path is not None and cache_path.exists():
             with open(cache_path, "rb") as f:
-                data = dill.load(f)
+                data = pickle.load(f)
                 console.print(f"Simulated samples loaded from cache: '{cache_path}'")
                 return data
 
@@ -410,7 +410,7 @@ class SensitivityAnalysis:
         if cache_path:
             with open(cache_path, "wb") as f:
                 console.print(f"Simulated samples written to cache: '{cache_path}'")
-                dill.dump(data, f)
+                pickle.dump(data, f)
 
     def sensitivity_df(self, group_id: str, key: str) -> pd.DataFrame:
         """Convert sensitivity information to dataframes."""
