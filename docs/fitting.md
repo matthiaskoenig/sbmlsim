@@ -215,7 +215,9 @@ report = FitReport(
 report.create(output_dir=Path("results"), name="hctz_iv")
 ```
 
-The report writes `index.html`, `report.txt`, the `parameters.json` it was made from, the metrics as TSV and the figures: the parameter table with the bounds, the predicted against the measured data points, the costs of the curves and the fitted curves against the data with the residuals for every mapping. `show_report=True` opens the HTML in a browser.
+The report writes `index.html`, `report.txt`, the `parameters.json` it was made from, the metrics as TSV and the figures. `show_report=True` opens the HTML in a browser.
+
+`index.html` is an interactive page with three sections: **Overview** repeats what the console reports, i.e., the fit, the parameters with their bounds and units, the settings and the data per experiment and kind; **Results** has the metrics per parameter set and kind, the plots of the optimization runs and of the predictions, and the contribution of every fit mapping to the cost; **Fit mappings** is one card per mapping with its figures and its metrics. A search box filters the mappings and the tables, the chips filter by training, validation and outlier data, the tables sort by any column and a figure opens full size when it is clicked. The page carries its own style and script, so it works from a file and can be archived or sent as it is.
 
 Every parameter set becomes a column of the parameter table and a curve in the plots, so several sets are compared in a single report, e.g., two fits against each other. The first set is the reference the others are compared against.
 

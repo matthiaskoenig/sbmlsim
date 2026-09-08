@@ -4,6 +4,8 @@ The report is separate from the optimization: it is created from the definition
 of the problem, the settings and one or more parameter sets.
 """
 
+import re
+from html.parser import HTMLParser
 from pathlib import Path
 
 import pytest
@@ -158,3 +160,140 @@ def test_run_plots_require_a_result(
     )
     with pytest.raises(ValueError, match="OptimizationResult"):
         _ = report.opt_result_required
+
+
+def _html_of(results_dir: Path) -> str:
+    """Read the HTML report."""
+    return (results_dir / "index.html").read_text(encoding="utf-8")
+
+
+def test_html_report_sections(
+    tmp_path: Path, op_hctz_pkiv: OptimizationProblem, fit_settings: FitSettings
+) -> None:
+    """The report has the three sections and its search."""
+    opt_result = _fit(op_hctz_pkiv, fit_settings)
+    report = FitReport.from_optimization_result(
+        problem=op_hctz_pkiv, opt_result=opt_result
+    )
+    results_dir = report.create(output_dir=tmp_path, name="fit")
+    html = _html_of(results_dir)
+
+    for token in [
+        'id="overview"',
+        'id="results"',
+        'id="mappings"',
+        'id="search"',
+        'id="lightbox"',
+        'data-kind="training"',
+    ]:
+        assert token in html, token
+
+    # one card per fit mapping
+    assert html.count('class="card mapping"') == len(op_hctz_pkiv.mapping_keys)
+    # the tables can be sorted
+    assert "data-sort=" in html
+
+
+def test_html_report_is_offline(
+    tmp_path: Path, op_hctz_pkiv: OptimizationProblem, fit_settings: FitSettings
+) -> None:
+    """The report needs no network, it is read from a file and archived."""
+    opt_result = _fit(op_hctz_pkiv, fit_settings)
+    report = FitReport.from_optimization_result(
+        problem=op_hctz_pkiv, opt_result=opt_result
+    )
+    html = _html_of(report.create(output_dir=tmp_path, name="fit"))
+    assert "http://" not in html
+    assert "https://" not in html
+
+
+def test_html_report_references_exist(
+    tmp_path: Path, op_hctz_pkiv: OptimizationProblem, fit_settings: FitSettings
+) -> None:
+    """Every file the report links to was written."""
+    opt_result = _fit(op_hctz_pkiv, fit_settings)
+    report = FitReport.from_optimization_result(
+        problem=op_hctz_pkiv, opt_result=opt_result
+    )
+    results_dir = report.create(output_dir=tmp_path, name="fit")
+
+    references = re.findall(r'(?:src|href)="([^"#:]+)"', _html_of(results_dir))
+    assert references
+    missing = [ref for ref in references if not (results_dir / ref).exists()]
+    assert missing == []
+
+
+def test_html_report_without_optimization(
+    tmp_path: Path, op_hctz_pkiv: OptimizationProblem, fit_settings: FitSettings
+) -> None:
+    """A report of stored parameters has no plots of the runs."""
+    op_hctz_pkiv.initialize(fit_settings)
+    report = FitReport(
+        problem=op_hctz_pkiv,
+        settings=fit_settings,
+        parameter_sets=op_hctz_pkiv.parameter_set_model(),
+    )
+    html = _html_of(report.create(output_dir=tmp_path, name="model"))
+    assert "traces" not in html
+    assert "optimization_result.json" not in html
+    # the sections which do not depend on a fit are there
+    assert 'id="overview"' in html
+    assert 'id="mappings"' in html
+
+
+def test_html_context(
+    op_hctz_pkiv: OptimizationProblem, fit_settings: FitSettings
+) -> None:
+    """The context of the template carries the parts of the report."""
+    op_hctz_pkiv.initialize(fit_settings)
+    report = FitReport(
+        problem=op_hctz_pkiv,
+        settings=fit_settings,
+        parameter_sets=op_hctz_pkiv.parameter_set_model(),
+    )
+    context = report.html_context(results_dir=Path("nowhere"), name="the_fit")
+
+    assert context["fit_id"] == "the_fit"
+    assert context["kinds"] == ["training", "validation", "outlier"]
+    assert len(context["parameters"]) == len(op_hctz_pkiv.parameters)
+    assert len(context["mappings"]) == len(op_hctz_pkiv.mapping_keys)
+    assert context["settings"]["residual"] == fit_settings.residual.name
+    assert context["data_total"]["total"] == len(op_hctz_pkiv.mapping_keys)
+    # every mapping carries its kind and its metrics
+    for mapping in context["mappings"]:
+        assert mapping["kind"] in {"training", "validation", "outlier"}
+        assert set(mapping["metrics"]) == {"n", "RMSE", "R²"}
+
+
+def test_html_report_is_well_formed(
+    tmp_path: Path, op_hctz_pkiv: OptimizationProblem, fit_settings: FitSettings
+) -> None:
+    """The tags of the report are balanced."""
+    op_hctz_pkiv.initialize(fit_settings)
+    report = FitReport(
+        problem=op_hctz_pkiv,
+        settings=fit_settings,
+        parameter_sets=op_hctz_pkiv.parameter_set_model(),
+    )
+    html = _html_of(report.create(output_dir=tmp_path, name="model"))
+
+    void = {"img", "br", "hr", "meta", "link", "input", "source", "col"}
+    stack: list[str] = []
+    errors: list[str] = []
+
+    class Checker(HTMLParser):
+        def handle_starttag(self, tag: str, attrs: object) -> None:
+            if tag not in void:
+                stack.append(tag)
+
+        def handle_endtag(self, tag: str) -> None:
+            if tag in void:
+                return
+            if not stack or stack[-1] != tag:
+                errors.append(tag)
+            else:
+                stack.pop()
+
+    Checker(convert_charrefs=True).feed(html)
+    assert errors == []
+    assert stack == []
