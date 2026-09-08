@@ -14,11 +14,14 @@ the traces of the optimizers and the waterfall plot, are only created when the
 
 from __future__ import annotations
 
+import datetime
 import logging
 import webbrowser
+from collections.abc import Sequence
 from pathlib import Path
 from typing import Any, ClassVar
 
+import jinja2
 import matplotlib
 import numpy as np
 import pandas as pd
@@ -26,6 +29,7 @@ from matplotlib.axes import Axes
 from matplotlib.figure import Figure
 from matplotlib.lines import Line2D
 
+from sbmlsim import RESOURCES_DIR, __version__
 from sbmlsim.fit import display
 from sbmlsim.fit.metrics import FitMetrics
 from sbmlsim.fit.objects import MappingKind
@@ -36,6 +40,9 @@ from sbmlsim.fit.result import OptimizationResult, bound_warnings
 from sbmlsim.plot.serialization_matplotlib import plt
 
 logger = logging.getLogger(__name__)
+
+#: directory of the jinja2 templates of the report
+TEMPLATE_DIR: Path = RESOURCES_DIR / "templates"
 
 #: colors of the parameter sets, in the order of the sets
 SET_COLORS: tuple[str, ...] = (
@@ -314,102 +321,270 @@ class FitReport:
         info.append("-" * 80)
         return "\n".join(info)
 
-    def html_report(self, path: Path) -> None:
-        """Create the HTML report of the fit."""
-        title = f"{self.problem.opid}"
-        if self.opt_result:
-            title = f"{title} [{self.opt_result.sid}]"
+    #: caption of every plot which describes the whole fit
+    PLOT_CAPTIONS: ClassVar[dict[str, str]] = {
+        "traces": "Cost of the optimizers over their steps",
+        "waterfall": "Cost of the optimization runs, ordered",
+        "datapoint_scatter": "Prediction against the measured data points",
+        "residual_scatter": "Relative residuals over the data",
+        "cost_bar": "Cost and weight of every fit mapping",
+        "residual_boxplot": "Distribution of the squared weighted residuals",
+        "cost_scatter": "Cost of the parameter sets against the reference",
+    }
 
-        parameters_html = self.parameter_sets.to_df().to_html(index=False)
-        metrics_html = self.metrics_df().to_html(index=False)
-        metrics_mappings_html = self.metrics_mappings_df().to_html(index=False)
+    def _plots(self, plots_dir: Path, names: Sequence[str]) -> list[dict[str, str]]:
+        """Get the plots of the given names which were created."""
+        return [
+            {
+                "src": f"plots/{name}.{self.image_format}",
+                "caption": self.PLOT_CAPTIONS.get(name, name),
+            }
+            for name in names
+            if (plots_dir / f"{name}.{self.image_format}").exists()
+        ]
 
-        warnings_info: list[str] = []
-        for pset in self.parameter_sets:
-            for msg in bound_warnings(self.problem.parameters, self.x(pset)):
-                warnings_info.append(f"<li>{pset.sid}: {msg}</li>")
-        warnings_html = (
-            f"<ul>{''.join(warnings_info)}</ul>" if warnings_info else "<p>none</p>"
-        )
+    def html_context(self, results_dir: Path, name: str) -> dict[str, Any]:
+        """Collect everything the HTML report shows.
 
-        fit_images = "\n".join(
-            f'<p><img src="plots/{self.problem.experiment_keys[k]}_{mapping_id}'
-            f'.{self.image_format}"></p>'
-            for k, mapping_id in enumerate(self.problem.mapping_keys)
-        )
+        Args:
+            results_dir: directory of the report, the files are relative to it.
+            name: name of the report.
 
-        run_images = ""
-        runs_html = ""
-        if self.opt_result:
-            run_images = (
-                f"<h2>Optimization performance</h2>\n<p>\n"
-                f'<img src="./plots/traces.{self.image_format}">\n'
-                f'<img src="./plots/waterfall.{self.image_format}">\n</p>'
-            )
-            runs_html = (
-                f"<h2>Optimization runs</h2>\n{self.opt_result.df_fits.to_html()}"
-            )
-
-        cost_scatter = ""
-        if len(self.parameter_sets) > 1:
-            cost_scatter = f'<img src="./plots/cost_scatter.{self.image_format}">'
-
-        html = f"""
-        <html>
-
-        <body>
-        <h1>Parameter fitting: {title}</h1>
-
-        <h2>Parameters</h2>
-        {parameters_html}
-
-        <h3>Parameters on their bounds</h3>
-        {warnings_html}
-
-        <h2>Metrics</h2>
-        {metrics_html}
-
-        <h3>Metrics of the fit mappings</h3>
-        {metrics_mappings_html}
-
-        <h2>Settings</h2>
-        <pre>{self.settings}</pre>
-
-        <p>
-        <ul>
-            <li><a target="_blank" href="report.txt">report.txt</a></li>
-            <li><a target="_blank" href="parameters.json">parameters.json</a></li>
-            <li><a target="_blank" href="metrics.tsv">metrics.tsv</a></li>
-            <li><a target="_blank" href="metrics_mappings.tsv">metrics_mappings.tsv</a></li>
-            <li><a target="_blank" href="datapoints.tsv">datapoints.tsv</a></li>
-        </ul>
-        </p>
-
-        {run_images}
-
-        <h2>Data point prediction</h2>
-        <p>
-        <img src="./plots/datapoint_scatter.{self.image_format}">
-        <img src="./plots/residual_scatter.{self.image_format}">
-        </p>
-
-        <p>
-        <img src="./plots/residual_boxplot.{self.image_format}">
-        <img src="./plots/cost_bar.{self.image_format}">
-        {cost_scatter}
-        </p>
-
-        <h2>Fits</h2>
-        <p>
-        {fit_images}
-        </p>
-
-        {runs_html}
-        </body>
-        </html>
+        Returns:
+            The context of the `fit_report.html` template.
         """
-        with open(path, "w", encoding="utf-8") as f_out:
-            f_out.write(html)
+        plots_dir = results_dir / "plots"
+        counts = self.problem.mapping_counts()
+        kinds = [kind.value for kind in MappingKind]
+        metrics = self.metrics_df()
+        mapping_metrics = self.metrics_mappings_df()
+
+        # the parameters with one column per set
+        psets = list(self.parameter_sets)
+        parameters = [
+            {
+                "pid": p.pid,
+                # not `values`, jinja resolves that to `dict.values`
+                "set_values": [
+                    f"{pset.values.get(p.pid, float('nan')):.5g}" for pset in psets
+                ],
+                "lower": f"{p.lower_bound:.4g}",
+                "upper": f"{p.upper_bound:.4g}",
+                "unit": p.unit or "model",
+            }
+            for p in self.problem.parameters
+        ]
+        warnings: list[str] = []
+        for pset in psets:
+            warnings.extend(
+                f"{pset.sid}: {message}"
+                for message in bound_warnings(self.problem.parameters, self.x(pset))
+            )
+
+        # the data per experiment and kind
+        experiments: list[str] = []
+        for experiment in self.problem.experiment_keys:
+            if experiment not in experiments:
+                experiments.append(experiment)
+        data_summary = []
+        for experiment in experiments:
+            row_counts = [
+                sum(
+                    1
+                    for k, exp in enumerate(self.problem.experiment_keys)
+                    if exp == experiment and self.problem.mapping_kinds[k].value == kind
+                )
+                for kind in kinds
+            ]
+            data_summary.append(
+                {
+                    "experiment": experiment,
+                    "counts": row_counts,
+                    "total": sum(row_counts),
+                }
+            )
+        totals = [counts.get(MappingKind(kind), 0) for kind in kinds]
+
+        # one card per fit mapping, with the metrics of the last parameter set
+        mapping_rows: list[dict[str, Any]] = mapping_metrics.to_dict(orient="records")
+        metrics_by_mapping = {
+            (row["parameter_set"], row["mapping"]): row for row in mapping_rows
+        }
+        reference = psets[-1].sid
+        captions = ["Data and simulation", "Residuals and weighted residuals"]
+        mappings: list[dict[str, Any]] = []
+        for k, mapping_id in enumerate(self.problem.mapping_keys):
+            sid = self.problem.experiment_keys[k]
+            row = metrics_by_mapping.get((reference, mapping_id))
+            plots = self._plots(
+                plots_dir, [f"{sid}_{mapping_id}", f"fit_{sid}_{mapping_id}"]
+            )
+            for plot, caption in zip(plots, captions, strict=False):
+                plot["caption"] = caption
+            mappings.append(
+                {
+                    "experiment": sid,
+                    "mapping": mapping_id,
+                    "observable": self.problem.yid_observable[k],
+                    "kind": self.problem.mapping_kinds[k].value,
+                    "metrics": {
+                        "n": int(row["n"]) if row else "-",
+                        "RMSE": f"{row['RMSE']:.4g}" if row else "-",
+                        "R²": f"{row['R2']:.4g}" if row else "-",
+                    },
+                    "plots": plots,
+                }
+            )
+
+        files = [
+            {"href": "report.txt", "label": "report.txt"},
+            {"href": "parameters.json", "label": "parameters.json"},
+            {"href": "metrics.tsv", "label": "metrics.tsv"},
+            {"href": "metrics_mappings.tsv", "label": "metrics_mappings.tsv"},
+            {"href": "datapoints.tsv", "label": "datapoints.tsv"},
+        ]
+        if self.opt_result:
+            files.append(
+                {
+                    "href": "optimization_result.json",
+                    "label": "optimization_result.json",
+                }
+            )
+
+        badges = [
+            {"label": "mappings", "value": len(self.problem.mapping_keys)},
+            {"label": "parameters", "value": len(self.problem.parameters)},
+        ]
+        training = metrics[metrics.kind == MappingKind.TRAINING.value]
+        if len(training):
+            badges.append({"label": "cost", "value": f"{training.cost.min():.6g}"})
+        if self.opt_result:
+            badges.append({"label": "runs", "value": self.opt_result.size})
+
+        runs: list[list[str]] = []
+        run_columns: list[str] = []
+        if self.opt_result:
+            run_columns = ["run", "success", "duration", "cost"]
+            runs = [
+                [
+                    str(row["run"]),
+                    str(row["success"]),
+                    f"{row['duration']:.2f}",
+                    f"{row['cost']:.6g}",
+                ]
+                for row in self.opt_result.df_fits[run_columns].to_dict(
+                    orient="records"
+                )
+            ]
+
+        return {
+            "title": f"{name} | sbmlsim fit report",
+            "fit_id": name,
+            "opid": self.problem.opid,
+            "version": __version__,
+            "created": datetime.datetime.now().strftime("%Y-%m-%d %H:%M"),
+            "badges": badges,
+            "kinds": kinds,
+            "fit_info": self.fit_info(),
+            "parameters": parameters,
+            "parameter_set_ids": [pset.sid for pset in psets],
+            "bound_warnings": warnings,
+            "settings": {
+                key.replace("_", " "): value
+                for key, value in self.settings.to_dict().items()
+            },
+            "data_summary": data_summary,
+            "data_total": {"counts": totals, "total": sum(totals)},
+            "metrics_columns": list(metrics.columns),
+            "metrics": [
+                [
+                    f"{value:.6g}" if isinstance(value, float) else str(value)
+                    for value in row.values()
+                ]
+                for row in metrics.to_dict(orient="records")
+            ],
+            "mapping_metrics_columns": [
+                "parameter set",
+                "experiment",
+                "mapping",
+                "kind",
+                "n",
+                "MSE",
+                "RMSE",
+                "R2",
+            ],
+            "numeric_columns": ["n", "MSE", "RMSE", "R2"],
+            "mapping_metrics": [
+                {
+                    "parameter_set": row["parameter_set"],
+                    "experiment": row["experiment"],
+                    "mapping": row["mapping"],
+                    "kind": row["kind"],
+                    "n": int(row["n"]),
+                    "mse": f"{row['MSE']:.4g}",
+                    "rmse": f"{row['RMSE']:.4g}",
+                    "r2": f"{row['R2']:.4g}",
+                }
+                for row in mapping_rows
+            ],
+            "run_plots": self._plots(plots_dir, ["traces", "waterfall"]),
+            "result_plots": self._plots(
+                plots_dir,
+                [
+                    "datapoint_scatter",
+                    "residual_scatter",
+                    "cost_bar",
+                    "residual_boxplot",
+                    "cost_scatter",
+                ],
+            ),
+            "mappings": mappings,
+            "run_columns": run_columns,
+            "runs": runs,
+            "files": files,
+        }
+
+    def fit_info(self) -> dict[str, str]:
+        """Get the key facts of the fit, the same the console reports."""
+        info = {
+            "problem": self.problem.opid,
+            "parameter sets": ", ".join(pset.sid for pset in self.parameter_sets),
+            "fit mappings": ", ".join(
+                f"{count} {kind.value}"
+                for kind, count in self.problem.mapping_counts().items()
+            ),
+            "experiments": ", ".join(
+                fit_exp.experiment_class.__name__
+                for fit_exp in self.problem.fit_experiments
+            ),
+            "base path": str(self.problem.base_path),
+            "data path": str(self.problem.data_path),
+        }
+        if self.opt_result:
+            info["optimization"] = f"{self.opt_result.size} runs"
+        return info
+
+    def html_report(self, path: Path, name: str | None = None) -> None:
+        """Create the interactive HTML report of the fit.
+
+        The report is a single page with three sections: the overview of the
+        fit, its results and the single fit mappings. It is rendered from the
+        `fit_report.html` template and needs no network access.
+
+        Args:
+            path: file to write.
+            name: name of the report, the directory of `path` by default.
+        """
+        context = self.html_context(
+            results_dir=path.parent, name=name if name else path.parent.name
+        )
+        env = jinja2.Environment(
+            loader=jinja2.FileSystemLoader(str(TEMPLATE_DIR)),
+            autoescape=jinja2.select_autoescape(["html"]),
+        )
+        template = env.get_template("fit_report.html")
+        with open(path, "w", encoding="utf-8") as f_html:
+            f_html.write(template.render(context))
 
     # --------------------------------------------------------------------
     # figures
