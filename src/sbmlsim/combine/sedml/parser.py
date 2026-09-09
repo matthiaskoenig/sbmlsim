@@ -948,11 +948,11 @@ class SEDMLParser:
 
                 # Fit Experiments
                 print("*** FitExperiments & FitMappings ***")
-                fit_experiments: list[list[tuple[str, float, str]]] = []
-                sed_fit_experiment: libsedml.SedFitExperiment
-                for sed_fit_experiment in sed_petask.getListOfFitExperiments():
-                    pprint(sed_fit_experiment)
-                    fit_type = sed_fit_experiment.getType()
+                mapping_collections: list[list[tuple[str, float, str]]] = []
+                sed_mapping_collection: libsedml.SedFitExperiment
+                for sed_mapping_collection in sed_petask.getListOfFitExperiments():
+                    pprint(sed_mapping_collection)
+                    fit_type = sed_mapping_collection.getType()
                     if fit_type == libsedml.SEDML_EXPERIMENTTYPE_TIMECOURSE:
                         pass
                     elif fit_type == libsedml.SEDML_EXPERIMENTTYPE_STEADYSTATE:
@@ -966,13 +966,15 @@ class SEDMLParser:
                     # algorithm
                     # TODO: support algorithms
                     sed_algorithm: libsedml.SedAlgorithm = (  # noqa: F841
-                        sed_fit_experiment.getAlgorithm()
+                        sed_mapping_collection.getAlgorithm()
                     )
 
                     # fit_mappings
                     mappings: list[tuple[str, float, str]] = []
                     sed_fit_mapping: libsedml.SedFitMapping
-                    for sed_fit_mapping in sed_fit_experiment.getListOfFitMappings():
+                    for (
+                        sed_fit_mapping
+                    ) in sed_mapping_collection.getListOfFitMappings():
                         weight: float = sed_fit_mapping.getWeight()
                         # TODO: support for point weights
                         point_weight: str = sed_fit_mapping.getPointWeight()
@@ -983,10 +985,10 @@ class SEDMLParser:
                         mappings.append((sed_fit_mapping.getId(), weight, point_weight))
 
                     pprint(mappings)
-                    # TODO: create the SimulationExperiment and FitExperiment
-                    fit_experiments.append(mappings)
+                    # TODO: create the SimulationExperiment and FitMappingCollection
+                    mapping_collections.append(mappings)
 
-                # print(fit_experiments)
+                # print(mapping_collections)
 
                 # Fit Parameters
                 print("*** FitParameters ***")

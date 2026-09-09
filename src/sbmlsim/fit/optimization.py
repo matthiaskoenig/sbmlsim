@@ -15,8 +15,8 @@ from scipy import interpolate
 from sbmlsim.console import console
 from sbmlsim.experiment import ExperimentRunner, SimulationExperiment
 from sbmlsim.fit.objects import (
-    FitExperiment,
     FitMapping,
+    FitMappingCollection,
     FitParameter,
     MappingKind,
 )
@@ -167,7 +167,7 @@ class OptimizationProblem(ObjectJSONEncoder):
     def __init__(
         self,
         opid: str,
-        fit_experiments: list[FitExperiment],
+        mapping_collections: list[FitMappingCollection],
         fit_parameters: list[FitParameter],
         base_path: Path | None = None,
         data_path: Path | None = None,
@@ -178,17 +178,17 @@ class OptimizationProblem(ObjectJSONEncoder):
         So initialize must be run to create the non-pickable instances.
 
         :param opid: id for optimization problem
-        :param fit_experiments:
+        :param mapping_collections:
         :param fit_parameters:
         """
         super().__init__()
         self.opid: str = opid
-        self.fit_experiments = []
-        for fit_exp in fit_experiments:
-            if fit_exp.exclude:
-                logger.warning("FitExperiment excluded: %s", fit_exp)
+        self.mapping_collections = []
+        for collection in mapping_collections:
+            if collection.exclude:
+                logger.warning("FitMappingCollection excluded: %s", collection)
             else:
-                self.fit_experiments.append(fit_exp)
+                self.mapping_collections.append(collection)
         if not fit_parameters:
             raise ValueError(
                 f"'{opid}': an OptimizationProblem requires fit parameters, but "
@@ -238,7 +238,7 @@ class OptimizationProblem(ObjectJSONEncoder):
         """
         fresh = OptimizationProblem(
             opid=self.opid,
-            fit_experiments=self.fit_experiments,
+            mapping_collections=self.mapping_collections,
             fit_parameters=self.parameters,
             base_path=self.base_path,
             data_path=self.data_path,
@@ -254,6 +254,8 @@ class OptimizationProblem(ObjectJSONEncoder):
         self.experiment_keys: list[str] = []
         self.mapping_keys: list[str] = []
         self.mapping_kinds: list[MappingKind] = []
+        # the collection of `mapping_collections` every mapping comes from
+        self.collection_indices: list[int] = []
         self.xid_observable: list[str] = []
         self.yid_observable: list[str] = []
         self.x_references: list[Any] = []
@@ -353,7 +355,7 @@ class OptimizationProblem(ObjectJSONEncoder):
             "-" * 80,
             "Experiments",
         ]
-        info.extend([f"\t{e}" for e in self.fit_experiments])
+        info.extend([f"\t{e}" for e in self.mapping_collections])
         info.append("Parameters")
         info.extend([f"\t{p}" for p in self.parameters])
         return "\n".join(info)
@@ -361,7 +363,13 @@ class OptimizationProblem(ObjectJSONEncoder):
     def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary."""
         d = {}
-        for key in ["opid", "fit_experiments", "parameters", "base_path", "data_path"]:
+        for key in [
+            "opid",
+            "mapping_collections",
+            "parameters",
+            "base_path",
+            "data_path",
+        ]:
             d[key] = self.__dict__[key]
         return d
 
@@ -443,7 +451,7 @@ class OptimizationProblem(ObjectJSONEncoder):
 
         # Create experiment runner (loads the experiments & all models)
         exp_classes: set[type[SimulationExperiment]] = {
-            fit_exp.experiment_class for fit_exp in self.fit_experiments
+            collection.experiment_class for collection in self.mapping_collections
         }
 
         self.runner = ExperimentRunner(
@@ -453,9 +461,9 @@ class OptimizationProblem(ObjectJSONEncoder):
         )
 
         # Collect information for simulations
-        for fit_experiment in self.fit_experiments:
+        for collection_index, mapping_collection in enumerate(self.mapping_collections):
             # get simulation experiment
-            sid = fit_experiment.experiment_class.__name__
+            sid = mapping_collection.experiment_class.__name__
             sim_experiment = self.runner.experiments[sid]
 
             # FIXME: selections should be based on fit mappings; this will reduce
@@ -465,23 +473,23 @@ class OptimizationProblem(ObjectJSONEncoder):
             #     if d.is_task():
             #         selections_set.add(d.selection)
 
-            # a FitExperiment without mappings uses all mappings of the experiment
-            fit_experiment.resolve_mappings(sim_experiment._fit_mappings.keys())
+            # a FitMappingCollection without mappings uses all mappings of the experiment
+            mapping_collection.resolve_mappings(sim_experiment._fit_mappings.keys())
 
             # collect information for single mapping
-            for k, mapping_id in enumerate(fit_experiment.mappings):
+            for k, mapping_id in enumerate(mapping_collection.mappings):
                 # sanity checks
                 if mapping_id not in sim_experiment._fit_mappings:
                     raise ValueError(
                         f"Mapping key '{mapping_id}' not defined in "
                         f"SimulationExperiment\n"
                         f"{sim_experiment}\n"
-                        f"{fit_experiment}"
+                        f"{mapping_collection}"
                     )
 
                 mapping: FitMapping = sim_experiment._fit_mappings[mapping_id]
 
-                if fit_experiment.kind is MappingKind.OUTLIER:
+                if mapping_collection.kind is MappingKind.OUTLIER:
                     # outliers are used neither in the fit nor in the evaluation
                     continue
 
@@ -496,18 +504,18 @@ class OptimizationProblem(ObjectJSONEncoder):
                     )
 
                 # get weight for curve
-                if fit_experiment.use_mapping_weights:
+                if mapping_collection.use_mapping_weights:
                     # use provided mapping weights
                     weight_curve_user = mapping.weight
-                    fit_experiment.weights[k] = weight_curve_user
+                    mapping_collection.weights[k] = weight_curve_user
                     if weight_curve_user is None:
                         raise ValueError(
-                            f"If `use_mapping_weights` is set on a FitExperiment "
+                            f"If `use_mapping_weights` is set on a FitMappingCollection "
                             f"then all mappings must have a weight. But "
                             f"weight '{weight_curve_user}' in {mapping}."
                         )
                 else:
-                    weight_curve_user = fit_experiment.weights[k]
+                    weight_curve_user = mapping_collection.weights[k]
 
                 if weight_curve_user is not None and weight_curve_user < 0:
                     raise ValueError(
@@ -632,7 +640,7 @@ class OptimizationProblem(ObjectJSONEncoder):
                         continue
                     if np.any(~np.isfinite(data)):
                         raise ValueError(
-                            f"{fit_experiment}.{mapping_id}: NaN or INF in "
+                            f"{mapping_collection}.{mapping_id}: NaN or INF in "
                             f"'{data_key}': '{data}'"
                         )
 
@@ -698,7 +706,8 @@ class OptimizationProblem(ObjectJSONEncoder):
                 # store information
                 self.experiment_keys.append(sid)
                 self.mapping_keys.append(mapping_id)
-                self.mapping_kinds.append(fit_experiment.kind)
+                self.mapping_kinds.append(mapping_collection.kind)
+                self.collection_indices.append(collection_index)
                 self.xid_observable.append(obs_xid)
                 self.yid_observable.append(obs_yid)
                 self.x_references.append(x_ref)

@@ -334,8 +334,8 @@ def _pool_context(problem: OptimizationProblem) -> BaseContext:
     if ctx.get_start_method() != "forkserver":
         return ctx
     modules = {"sbmlsim.fit.optimization"}
-    for fit_experiment in problem.fit_experiments:
-        module = getattr(fit_experiment.experiment_class, "__module__", None)
+    for mapping_collection in problem.mapping_collections:
+        module = getattr(mapping_collection.experiment_class, "__module__", None)
         # the experiments of a script are re-imported, only importable modules
         if module and module != "__main__":
             modules.add(module)

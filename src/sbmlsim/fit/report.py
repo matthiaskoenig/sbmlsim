@@ -639,8 +639,8 @@ class FitReport:
                 for kind, count in self.problem.mapping_counts().items()
             ),
             "experiments": ", ".join(
-                fit_exp.experiment_class.__name__
-                for fit_exp in self.problem.fit_experiments
+                collection.experiment_class.__name__
+                for collection in self.problem.mapping_collections
             ),
             "base path": str(self.problem.base_path),
             "data path": str(self.problem.data_path),

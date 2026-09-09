@@ -9,7 +9,7 @@ only has to define its fits:
 ```python
 FIT_DEFINITIONS = {
     "PK": FitDefinition(
-        fit_experiments=f_fitexp_pk,
+        mapping_collections=f_collections_pk,
         parameters=parameters_pk,
         base_path=MODEL_PATH,
         data_path=DATA_PATH,
@@ -41,7 +41,7 @@ from sbmlsim.fit.identifiability import (
     ProfileSettings,
     profile_likelihood,
 )
-from sbmlsim.fit.objects import FitExperiment, FitParameter
+from sbmlsim.fit.objects import FitMappingCollection, FitParameter
 from sbmlsim.fit.optimization import OptimizationProblem
 from sbmlsim.fit.options import (
     FitSettings,
@@ -82,63 +82,63 @@ ALGORITHM_KWARGS: dict[OptimizationAlgorithmType, dict[str, Any]] = {
 class FitDefinition:
     """Definition of a fit problem.
 
-    This is what a model provides: which fit experiments enter the fit, which
-    parameters are adjusted and where the experiments and their data are.
+    This is what a model provides: which fit mapping collections enter the fit,
+    which parameters are adjusted and where the experiments and their data are.
 
     Attributes:
-        fit_experiments: callable which creates the fit experiments by
-            experiment id, e.g., a function of `sbmlsim.fit.helpers`. It is
-            called when the fit runs, instantiating the experiments loads the
-            models and the data.
+        mapping_collections: callable which creates the fit mapping collections
+            by study id, e.g., a function of `sbmlsim.fit.helpers`. It is called
+            when the fit runs, instantiating the experiments loads the models
+            and the data.
         parameters: parameters which are adjusted in the fit.
         base_path: base path of the simulation experiments.
         data_path: path of the datasets of the simulation experiments.
         settings: settings of the fit.
     """
 
-    fit_experiments: Callable[[], dict[str, list[FitExperiment]]]
+    mapping_collections: Callable[[], dict[str, list[FitMappingCollection]]]
     parameters: list[FitParameter]
     base_path: Path
     data_path: Path
     settings: FitSettings = field(default_factory=FitSettings)
 
-    def experiments(
+    def collections(
         self, study_ids: Sequence[str] | None = None
-    ) -> list[FitExperiment]:
-        """Create the fit experiments of the definition.
+    ) -> list[FitMappingCollection]:
+        """Create the fit mapping collections of the definition.
 
         Args:
-            study_ids: experiments to use, all experiments by default.
+            study_ids: studies to use, all studies by default.
 
         Returns:
-            The fit experiments.
+            The collections of the selected studies.
 
         Raises:
-            KeyError: if an experiment id is not part of the definition.
+            KeyError: if a study id is not part of the definition.
         """
-        experiments_by_id = self.fit_experiments()
+        collections_by_study = self.mapping_collections()
         if study_ids:
-            missing = [sid for sid in study_ids if sid not in experiments_by_id]
+            missing = [sid for sid in study_ids if sid not in collections_by_study]
             if missing:
                 raise KeyError(
-                    f"Unknown experiments '{missing}', the definition has "
-                    f"'{sorted(experiments_by_id)}'."
+                    f"Unknown studies '{missing}', the definition has "
+                    f"'{sorted(collections_by_study)}'."
                 )
-            selected = [experiments_by_id[sid] for sid in study_ids]
+            selected = [collections_by_study[sid] for sid in study_ids]
         else:
-            selected = list(experiments_by_id.values())
+            selected = list(collections_by_study.values())
 
-        # the experiments of the studies are lists of fit experiments
+        # every study contributes a list of collections
         return list(itertools.chain(*selected))
 
     def problem(
-        self, opid: str, fit_experiments: list[FitExperiment] | None = None
+        self, opid: str, mapping_collections: list[FitMappingCollection] | None = None
     ) -> OptimizationProblem:
         """Create the optimization problem of the definition.
 
         Args:
             opid: id of the optimization problem.
-            fit_experiments: experiments of the problem, all experiments of the
+            mapping_collections: experiments of the problem, all experiments of the
                 definition by default.
 
         Returns:
@@ -146,8 +146,10 @@ class FitDefinition:
         """
         return OptimizationProblem(
             opid=opid,
-            fit_experiments=(
-                self.experiments() if fit_experiments is None else fit_experiments
+            mapping_collections=(
+                self.collections()
+                if mapping_collections is None
+                else mapping_collections
             ),
             fit_parameters=self.parameters,
             base_path=self.base_path,
@@ -244,21 +246,23 @@ def run_fit(
     """
     if opid is None:
         opid = fit_id()
-    fit_experiments = definition.experiments(study_ids=study_ids)
+    mapping_collections = definition.collections(study_ids=study_ids)
     optimizer_kwargs = {**ALGORITHM_KWARGS.get(algorithm, {}), **kwargs}
 
     if strategy == OptimizationStrategy.SINGLE:
         # one problem per experiment, i.e., individual parameters
         problems = [
             definition.problem(
-                opid=f"{fit_exp.experiment_class.__name__}_{opid}",
-                fit_experiments=[fit_exp],
+                opid=f"{collection.experiment_class.__name__}_{opid}",
+                mapping_collections=[collection],
             )
-            for fit_exp in fit_experiments
+            for collection in mapping_collections
         ]
     else:
         # one problem for all experiments
-        problems = [definition.problem(opid=opid, fit_experiments=fit_experiments)]
+        problems = [
+            definition.problem(opid=opid, mapping_collections=mapping_collections)
+        ]
 
     runs: dict[str, FitRun] = {}
     for problem in problems:

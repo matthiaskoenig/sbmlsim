@@ -32,7 +32,7 @@ def _isclose(a: float | None, b: float | None) -> bool:
 
 
 class MappingKind(StrEnum):
-    """How the data of the fit mappings of a `FitExperiment` is used.
+    """How the data of the fit mappings of a `FitMappingCollection` is used.
 
     `training` (default) : the mappings are fitted, i.e., their residuals enter
     the cost of the optimization.
@@ -44,7 +44,7 @@ class MappingKind(StrEnum):
     `outlier` : the mappings are not used at all, neither in the optimization
     nor in the evaluation.
 
-    The kind is set on the `FitExperiment`, i.e., when the data of a fit is
+    The kind is set on the `FitMappingCollection`, i.e., when the data of a fit is
     selected, not on the fit mappings of a simulation experiment: a mapping
     describes a curve, the kind describes what a fit does with it, and the same
     curve is training data of one fit and validation data of another.
@@ -62,17 +62,21 @@ EVALUATED_KINDS: tuple[MappingKind, ...] = (
 )
 
 
-class FitExperiment:
-    """A parameter fitting experiment.
+class FitMappingCollection:
+    """The fit mappings of a simulation experiment which a fit uses together.
 
-    A parameter fitting experiment consists of multiple mapping (reference data to
-    observable). The individual mappings can be weighted differently in the fitting.
+    A collection selects mappings of one `SimulationExperiment`, says what a fit
+    does with them (`MappingKind`) and how they are weighted. It is the unit a
+    fit is defined in and the unit a PEtab problem is built from: the mappings
+    of a collection which share a simulation are one experiment of PEtab, see
+    `sbmlsim.fit.petab_v2`.
     """
 
     def __init__(
         self,
         experiment: type[SimulationExperiment],
         mappings: list[str] | None = None,
+        sid: str | None = None,
         weights: float | list[float] | None = None,
         use_mapping_weights: bool = False,
         fit_parameters: dict[str, list[FitParameter]] | None = None,
@@ -84,10 +88,13 @@ class FitExperiment:
         The weights must be updated according to the mappings.
 
         Args:
-            experiment: simulation experiment class of the fit experiment.
+            experiment: simulation experiment class the mappings belong to.
             mappings: mappings to use from the experiment. `None` or an empty list
                 uses all mappings of the experiment, they are resolved in
                 `OptimizationProblem.initialize`, see `resolve_mappings`.
+            sid: id of the collection, which names the experiments of a PEtab
+                problem. The name of the simulation experiment class and the
+                kind of its mappings by default, i.e. `Beermann1976_training`.
             weights: weight of the mappings, the larger the value the larger the
                 weight. A single value is used for all mappings.
             use_mapping_weights: use the weights of the mappings instead of `weights`.
@@ -101,6 +108,7 @@ class FitExperiment:
             ValueError: for duplicate mappings or unsupported local fit parameters.
         """
         self.experiment_class: type[SimulationExperiment] = experiment
+        self.sid: str = sid or f"{experiment.__name__}_{kind.value}"
         if mappings is None:
             mappings = []
 
@@ -119,7 +127,7 @@ class FitExperiment:
         if fit_parameters:
             # TODO: implement
             raise ValueError(
-                "Local parameters in FitExperiment not yet supported, see "
+                "Local parameters in FitMappingCollection not yet supported, see "
                 "https://github.com/matthiaskoenig/sbmlsim/issues/85"
             )
         self.fit_parameters: dict[str, list[FitParameter]] = {}
@@ -145,7 +153,7 @@ class FitExperiment:
             if weights_processed != mapping_weights:
                 raise ValueError(
                     f"{self.experiment_class.__name__}: either 'weights' are set on "
-                    f"a FitExperiment or the weights of the FitMappings are used via "
+                    f"a FitMappingCollection or the weights of the FitMappings are used via "
                     f"'use_mapping_weights=True', but both were given: '{weights}'."
                 )
         else:
@@ -171,7 +179,7 @@ class FitExperiment:
     def resolve_mappings(self, mapping_keys: Iterable[str]) -> None:
         """Use all mappings of the experiment if no mappings were selected.
 
-        A `FitExperiment` without mappings uses all fit mappings of its simulation
+        A `FitMappingCollection` without mappings uses all fit mappings of its simulation
         experiment. The keys are only known once the experiment is instantiated,
         so the mappings and their weights are resolved in the initialization of the
         `OptimizationProblem`.
@@ -187,8 +195,10 @@ class FitExperiment:
         self.weights = None
 
     @staticmethod
-    def reduce(fit_experiments: Iterable[FitExperiment]) -> list[FitExperiment]:
-        """Combine the fit mappings of the FitExperiments of the same experiment.
+    def reduce(
+        mapping_collections: Iterable[FitMappingCollection],
+    ) -> list[FitMappingCollection]:
+        """Combine the fit mappings of the FitMappingCollections of the same experiment.
 
         Experiments are combined per simulation experiment and `MappingKind`,
         so that the training and the validation data stay apart. The mappings
@@ -198,37 +208,37 @@ class FitExperiment:
             ValueError: if experiments of the same class cannot be combined, i.e.,
                 they use different weighting or repeat a mapping.
         """
-        reduced: dict[tuple[str, MappingKind], FitExperiment] = {}
-        for fit_exp in fit_experiments:
-            sid = fit_exp.experiment_class.__name__
+        reduced: dict[tuple[str, MappingKind], FitMappingCollection] = {}
+        for collection in mapping_collections:
+            sid = collection.experiment_class.__name__
             # the training and the validation data of an experiment stay apart
-            key = (sid, fit_exp.kind)
+            key = (sid, collection.kind)
             if key not in reduced:
-                reduced[key] = FitExperiment(
-                    experiment=fit_exp.experiment_class,
-                    mappings=list(fit_exp.mappings),
-                    weights=list(fit_exp.weights),  # ty: ignore[invalid-argument-type]
-                    use_mapping_weights=fit_exp.use_mapping_weights,
-                    exclude=fit_exp.exclude,
-                    kind=fit_exp.kind,
+                reduced[key] = FitMappingCollection(
+                    experiment=collection.experiment_class,
+                    mappings=list(collection.mappings),
+                    weights=list(collection.weights),  # ty: ignore[invalid-argument-type]
+                    use_mapping_weights=collection.use_mapping_weights,
+                    exclude=collection.exclude,
+                    kind=collection.kind,
                 )
                 continue
 
             red_exp = reduced[key]
-            if red_exp.use_mapping_weights != fit_exp.use_mapping_weights:
+            if red_exp.use_mapping_weights != collection.use_mapping_weights:
                 raise ValueError(
-                    f"FitExperiments of '{sid}' cannot be combined, they differ in "
+                    f"FitMappingCollections of '{sid}' cannot be combined, they differ in "
                     f"'use_mapping_weights'."
                 )
-            duplicates = set(red_exp.mappings) & set(fit_exp.mappings)
+            duplicates = set(red_exp.mappings) & set(collection.mappings)
             if duplicates:
                 raise ValueError(
-                    f"FitExperiments of '{sid}' cannot be combined, the mappings "
+                    f"FitMappingCollections of '{sid}' cannot be combined, the mappings "
                     f"'{sorted(duplicates)}' occur in both."
                 )
-            red_exp.mappings = red_exp.mappings + list(fit_exp.mappings)
-            red_exp._weights = red_exp._weights + list(fit_exp.weights)
-            red_exp.exclude = red_exp.exclude and fit_exp.exclude
+            red_exp.mappings = red_exp.mappings + list(collection.mappings)
+            red_exp._weights = red_exp._weights + list(collection.weights)
+            red_exp.exclude = red_exp.exclude and collection.exclude
 
         return list(reduced.values())
 
@@ -242,7 +252,7 @@ class FitExperiment:
     def __str__(self) -> str:
         """Get string."""
         info = [
-            "*** FitExperiment ***",
+            "*** FitMappingCollection ***",
             f"experiment: {self.experiment_class.__name__}",
             f"mappings: {self.mappings}",
             f"weights: {self.weights}",
@@ -260,7 +270,7 @@ class MappingMetaData:
     Applications derive their metadata from this class to describe the curve,
     e.g., the tissue, the route, the dosing or the health of the group of a
     study. The metadata describes the data, not what a fit does with it: how a
-    curve is used is the `MappingKind` of the `FitExperiment` which selects it.
+    curve is used is the `MappingKind` of the `FitMappingCollection` which selects it.
 
     The fields are keyword only, so that a subclass can add fields without a
     default.
@@ -290,7 +300,7 @@ class FitMapping:
         """Initialize FitMapping.
 
         To use the weight in the fit mapping the `use_mapping_weights` flag
-        must be set on the FitExperiment.
+        must be set on the FitMappingCollection.
 
         Args:
             experiment: simulation experiment of the mapping.

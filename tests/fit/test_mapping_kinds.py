@@ -3,7 +3,7 @@
 import numpy as np
 import pytest
 
-from sbmlsim.fit import FitExperiment, FitSettings, MappingKind
+from sbmlsim.fit import FitMappingCollection, FitSettings, MappingKind
 from sbmlsim.fit.cli import FitDefinition
 from sbmlsim.fit.helpers import mapping_kinds_info
 from sbmlsim.fit.metrics import FitMetrics
@@ -11,34 +11,34 @@ from sbmlsim.fit.objects import FitMapping
 from sbmlsim.fit.optimization import OptimizationProblem
 
 
-def test_fit_experiment_default_kind() -> None:
+def test_collection_default_kind() -> None:
     """The data of a fit experiment is training data by default."""
     from examples.hctz.experiments.studies import Beermann1976
 
-    fit_exp = FitExperiment(experiment=Beermann1976, mappings=["a"])
-    assert fit_exp.kind is MappingKind.TRAINING
+    collection = FitMappingCollection(experiment=Beermann1976, mappings=["a"])
+    assert collection.kind is MappingKind.TRAINING
 
 
-def test_fit_experiment_kind() -> None:
+def test_collection_kind() -> None:
     """The kind classifies the selected data of a fit experiment."""
     from examples.hctz.experiments.studies import Beermann1976
 
-    fit_exp = FitExperiment(
+    collection = FitMappingCollection(
         experiment=Beermann1976, mappings=["a"], kind=MappingKind.VALIDATION
     )
-    assert fit_exp.kind is MappingKind.VALIDATION
-    assert "validation" in str(fit_exp)
+    assert collection.kind is MappingKind.VALIDATION
+    assert "validation" in str(collection)
 
 
 def test_reduce_keeps_the_kinds_apart() -> None:
     """The training and the validation data of an experiment are not combined."""
     from examples.hctz.experiments.studies import Beermann1976
 
-    reduced = FitExperiment.reduce(
+    reduced = FitMappingCollection.reduce(
         [
-            FitExperiment(experiment=Beermann1976, mappings=["a"]),
-            FitExperiment(experiment=Beermann1976, mappings=["b"]),
-            FitExperiment(
+            FitMappingCollection(experiment=Beermann1976, mappings=["a"]),
+            FitMappingCollection(experiment=Beermann1976, mappings=["b"]),
+            FitMappingCollection(
                 experiment=Beermann1976,
                 mappings=["c"],
                 kind=MappingKind.VALIDATION,
@@ -102,16 +102,16 @@ def test_problem_without_training_data(
 ) -> None:
     """A problem needs at least one fit experiment which is fitted."""
     validation_only = [
-        FitExperiment(
-            experiment=fit_exp.experiment_class,
-            mappings=list(fit_exp.mappings),
+        FitMappingCollection(
+            experiment=collection.experiment_class,
+            mappings=list(collection.mappings),
             use_mapping_weights=True,
             kind=MappingKind.VALIDATION,
         )
-        for fit_exp in definition_hctz_pkiv.experiments()
+        for collection in definition_hctz_pkiv.collections()
     ]
     problem = definition_hctz_pkiv.problem(
-        opid="validation_only", fit_experiments=validation_only
+        opid="validation_only", mapping_collections=validation_only
     )
     with pytest.raises(ValueError, match="no training data"):
         problem.initialize(fit_settings)

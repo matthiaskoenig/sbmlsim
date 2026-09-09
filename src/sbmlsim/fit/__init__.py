@@ -15,8 +15,8 @@ https://pyabc.readthedocs.io/en/latest/index.html
 from .metrics import FitMetrics
 from .objects import (
     FitData,
-    FitExperiment,
     FitMapping,
+    FitMappingCollection,
     FitParameter,
     MappingKind,
     MappingMetaData,
@@ -26,8 +26,8 @@ from .parameters import ParameterSet, ParameterSets
 
 __all__ = [
     "FitData",
-    "FitExperiment",
     "FitMapping",
+    "FitMappingCollection",
     "FitMetrics",
     "FitParameter",
     "FitSettings",

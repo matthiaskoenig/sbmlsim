@@ -80,7 +80,7 @@ Parameter fitting, see [Parameter fitting](../fitting.md).
 
 | module | description |
 | --- | --- |
-| [fit.objects](fit.objects.md) | `FitParameter`, `FitMapping`, `FitData` and `FitExperiment`, the objects of a fit problem |
+| [fit.objects](fit.objects.md) | `FitParameter`, `FitMapping`, `FitData` and `FitMappingCollection`, the objects of a fit problem |
 | [fit.optimization](fit.optimization.md) | `OptimizationProblem`, the residuals and cost of a fit problem |
 | [fit.options](fit.options.md) | `FitSettings` and the options of the optimization, i.e., algorithms, residuals, weighting and loss functions |
 | [fit.parameters](fit.parameters.md) | `ParameterSet` and `ParameterSets`, the fitted parameters a report is created from |

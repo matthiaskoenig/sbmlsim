@@ -20,7 +20,10 @@ if __package__ in (None, ""):
     sys.path.insert(0, str(Path(__file__).resolve().parents[3]))
 
 from examples.hctz import DATA_PATH, HCTZ_PATH
-from examples.hctz.fitting.fit_experiments import f_fitexp_pk, f_fitexp_pkiv
+from examples.hctz.fitting.mapping_collections import (
+    f_collections_pk,
+    f_collections_pkiv,
+)
 from examples.hctz.fitting.parameters import parameters_pk
 from sbmlsim.fit import FitSettings
 from sbmlsim.fit.cli import FitDefinition, fit_cli
@@ -50,7 +53,7 @@ FIT_SETTINGS = FitSettings(
 FIT_DEFINITIONS: dict[str, FitDefinition] = {
     # all pharmacokinetics data
     "PK": FitDefinition(
-        fit_experiments=f_fitexp_pk,
+        mapping_collections=f_collections_pk,
         parameters=parameters_pk,
         base_path=HCTZ_PATH,
         data_path=DATA_PATH,
@@ -58,7 +61,7 @@ FIT_DEFINITIONS: dict[str, FitDefinition] = {
     ),
     # pharmacokinetics data of the iv studies
     "PKIV": FitDefinition(
-        fit_experiments=f_fitexp_pkiv,
+        mapping_collections=f_collections_pkiv,
         parameters=parameters_pk,
         base_path=HCTZ_PATH,
         data_path=DATA_PATH,

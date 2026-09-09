@@ -163,7 +163,7 @@ def data_summary_table(df: pd.DataFrame) -> Table:
     """Get the table of the fit mappings per experiment and kind.
 
     Args:
-        df: metadata table of `sbmlsim.fit.helpers.filtered_fit_experiments`.
+        df: metadata table of `sbmlsim.fit.helpers.filtered_mapping_collections`.
 
     Returns:
         One row per simulation experiment with the number of mappings of every
@@ -195,7 +195,7 @@ def data_table(df: pd.DataFrame) -> Table:
     """Get the table of the single fit mappings.
 
     Args:
-        df: metadata table of `sbmlsim.fit.helpers.filtered_fit_experiments`.
+        df: metadata table of `sbmlsim.fit.helpers.filtered_mapping_collections`.
 
     Returns:
         One row per fit mapping with its experiment, its observable and its
@@ -229,7 +229,7 @@ def print_data(df: pd.DataFrame, detail: bool = True) -> None:
     """Print the section of the data of a fit.
 
     Args:
-        df: metadata table of `sbmlsim.fit.helpers.filtered_fit_experiments`.
+        df: metadata table of `sbmlsim.fit.helpers.filtered_mapping_collections`.
         detail: list the single fit mappings, not only the counts.
     """
     section(f"Data ({len(df)} fit mappings)", icon=ICON_DATA)

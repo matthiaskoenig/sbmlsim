@@ -17,24 +17,29 @@ from sbmlsim.fit.optimization import OptimizationProblem
 from sbmlsim.fit.options import OptimizationStrategy
 
 
-def test_definition_experiments(definition_hctz_pkiv: FitDefinition) -> None:
-    """The definition creates the fit experiments of its problem."""
-    experiments = definition_hctz_pkiv.experiments()
-    assert experiments
-    assert all(e.mappings for e in experiments)
+def test_definition_collections(definition_hctz_pkiv: FitDefinition) -> None:
+    """The definition creates the fit mapping collections of its problem."""
+    collections = definition_hctz_pkiv.collections()
+    assert collections
+    assert all(collection.mappings for collection in collections)
+    # every collection has an id, which names the experiments of a PEtab problem
+    assert all(collection.sid for collection in collections)
 
 
-def test_definition_experiments_selected(definition_hctz_pkiv: FitDefinition) -> None:
-    """A subset of the experiments is selected by their ids."""
-    all_ids = list(definition_hctz_pkiv.fit_experiments())
-    experiments = definition_hctz_pkiv.experiments(study_ids=all_ids[:1])
-    assert len(experiments) == 1
+def test_definition_collections_selected(
+    definition_hctz_pkiv: FitDefinition,
+) -> None:
+    """A subset of the studies is selected by their ids."""
+    # the callable of the definition creates the collections by study id
+    study_ids = list(definition_hctz_pkiv.mapping_collections())
+    collections = definition_hctz_pkiv.collections(study_ids=study_ids[:1])
+    assert len(collections) == 1
 
 
-def test_definition_unknown_experiment(definition_hctz_pkiv: FitDefinition) -> None:
-    """An unknown experiment id is reported."""
-    with pytest.raises(KeyError, match="Unknown experiments"):
-        definition_hctz_pkiv.experiments(study_ids=["Nonexistent1999"])
+def test_definition_unknown_study(definition_hctz_pkiv: FitDefinition) -> None:
+    """An unknown study id is reported."""
+    with pytest.raises(KeyError, match="Unknown studies"):
+        definition_hctz_pkiv.collections(study_ids=["Nonexistent1999"])
 
 
 def test_definition_problem(definition_hctz_pkiv: FitDefinition) -> None:
@@ -67,7 +72,7 @@ def test_run_fit_all(definition_hctz_pkiv: FitDefinition) -> None:
 
 def test_run_fit_single(definition_hctz_pkiv: FitDefinition) -> None:
     """The `SINGLE` strategy fits every experiment on its own."""
-    experiments = definition_hctz_pkiv.experiments()
+    experiments = definition_hctz_pkiv.collections()
     runs = run_fit(
         definition=definition_hctz_pkiv,
         opid="the_fit",

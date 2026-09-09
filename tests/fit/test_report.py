@@ -70,7 +70,7 @@ def test_report_without_optimization(
     # a fresh problem, nothing was optimized on it
     problem = OptimizationProblem(
         opid=op_hctz_pkiv.opid,
-        fit_experiments=op_hctz_pkiv.fit_experiments,
+        mapping_collections=op_hctz_pkiv.mapping_collections,
         fit_parameters=op_hctz_pkiv.parameters,
         base_path=op_hctz_pkiv.base_path,
         data_path=op_hctz_pkiv.data_path,

@@ -1,6 +1,6 @@
 # Parameter fitting
 
-Parameter fitting adjusts model parameters so that the simulations of experiments match the experimental data. In `sbmlsim` a fit is an `OptimizationProblem` built from `FitExperiment` objects, which name the simulation experiments and their fit mappings, and `FitParameter` objects with the bounds of the parameters. The problem is run with local or global optimizers of scipy, reported with `FitReport`, and the identifiability of the fitted parameters is analysed with the profile likelihood.
+Parameter fitting adjusts model parameters so that the simulations of experiments match the experimental data. In `sbmlsim` a fit is an `OptimizationProblem` built from `FitMappingCollection` objects, which name the simulation experiments and their fit mappings, and `FitParameter` objects with the bounds of the parameters. The problem is run with local or global optimizers of scipy, reported with `FitReport`, and the identifiability of the fitted parameters is analysed with the profile likelihood.
 
 The example throughout this page is `examples/hctz/`, a whole body model of hydrochlorothiazide with the simulation experiments of two studies and the fit problem built on them.
 
@@ -38,13 +38,13 @@ The units of the reference and the observable are compared and the reference is 
 
 ## Training, validation and outlier data
 
-What a fit does with a curve is decided when the data of the fit is selected, not on the fit mapping: the same curve is training data of one fit and validation data of another. Every `FitExperiment` therefore carries a `MappingKind` for the mappings it selects:
+What a fit does with a curve is decided when the data of the fit is selected, not on the fit mapping: the same curve is training data of one fit and validation data of another. Every `FitMappingCollection` therefore carries a `MappingKind` for the mappings it selects:
 
 - `MappingKind.TRAINING` (the default): the mappings are fitted, i.e., their residuals enter the cost of the optimization,
 - `MappingKind.VALIDATION`: the mappings are not fitted. They are simulated and evaluated together with the training data when the fit is reported, which shows how the fitted parameters describe data they were not fitted on,
 - `MappingKind.OUTLIER`: the mappings are not used at all. An optimization problem skips its outliers, they stay in the overview of the data so that it is visible which curves were dropped.
 
-`fit_experiments_by_kind` selects and classifies the data in one step: every kind gets its own filters and the mappings of all kinds are listed in a single overview.
+`mapping_collections_by_kind` selects and classifies the data in one step: every kind gets its own filters and the mappings of all kinds are listed in a single overview.
 
 ```python
 from examples.hctz import DATA_PATH, HCTZ_PATH
@@ -54,11 +54,11 @@ from sbmlsim.fit.helpers import (
     filter_empty,
     filter_keys,
     filter_not_keys,
-    fit_experiments_by_kind,
+    mapping_collections_by_kind,
 )
 
 validation = {"fm_hctz_iv35_4_urine"}
-fit_experiments_kinds = fit_experiments_by_kind(
+mapping_collections_kinds = mapping_collections_by_kind(
     experiment_classes=[Beermann1976],
     base_path=HCTZ_PATH,
     data_path=DATA_PATH,
@@ -74,22 +74,22 @@ The overview ends in a line such as `mappings : 32 (28 training, 2 validation, 2
 `sbmlsim.fit.helpers` filters the mappings by their metadata and collects it into a table:
 
 ```python
-from examples.hctz.fitting.fit_experiments import f_fitexp_pkiv
+from examples.hctz.fitting.mapping_collections import f_collections_pkiv
 
-fit_experiments = f_fitexp_pkiv()
-print(fit_experiments)
+mapping_collections = f_collections_pkiv()
+print(mapping_collections)
 ```
 
 ## Fit parameters and experiments
 
-`FitParameter` names a parameter of the model with its start value, bounds and unit, `FitExperiment` names an experiment class and the mappings of it which enter the fit, with optional weights:
+`FitParameter` names a parameter of the model with its start value, bounds and unit, `FitMappingCollection` names a simulation experiment class and the mappings of it which enter the fit together, with optional weights:
 
 ```python
 from examples.hctz.experiments.studies import Beermann1976
-from sbmlsim.fit import FitExperiment, FitParameter
+from sbmlsim.fit import FitMappingCollection, FitParameter
 
-fit_experiments = [
-    FitExperiment(
+mapping_collections = [
+    FitMappingCollection(
         experiment=Beermann1976,
         mappings=["fm_hctz_iv1_5_urine", "fm_hctz_iv35_4_urine"],
     ),
@@ -110,17 +110,17 @@ fit_parameters = [
         unit="1/ml",
     ),
 ]
-print(fit_experiments[0])
+print(mapping_collections[0])
 print(FitParameter.parameters_to_df(fit_parameters))
 ```
 
-A `FitExperiment` without mappings uses all fit mappings of its experiment, they are resolved when the problem is initialized. `FitExperiment(use_mapping_weights=True)` weights the mappings by the weights of the `FitMapping` objects, e.g., the counts of the data, instead of the weights given here; setting both is an error.
+A `FitMappingCollection` without mappings uses all fit mappings of its experiment, they are resolved when the problem is initialized. `FitMappingCollection(use_mapping_weights=True)` weights the mappings by the weights of the `FitMapping` objects, e.g., the counts of the data, instead of the weights given here; setting both is an error.
 
 The optimization runs in logarithmic parameter space, so every parameter needs finite positive bounds and, if it is given, a positive start value.
 
 ## The optimization problem
 
-The `OptimizationProblem` collects the fit experiments and parameters with the `base_path` and `data_path` of the experiments:
+The `OptimizationProblem` collects the fit mapping collections and parameters with the `base_path` and `data_path` of the experiments:
 
 ```python
 from examples.hctz import DATA_PATH, HCTZ_PATH
@@ -128,7 +128,7 @@ from sbmlsim.fit.optimization import OptimizationProblem
 
 op = OptimizationProblem(
     opid="hctz_iv",
-    fit_experiments=fit_experiments,
+    mapping_collections=mapping_collections,
     fit_parameters=fit_parameters,
     base_path=HCTZ_PATH,
     data_path=DATA_PATH,
@@ -346,13 +346,13 @@ The publications behind the method are listed under [References](references.md#p
 
 ## Running a fit from the command line
 
-Creating the optimization problems, running the optimizations and reporting them is the same for every model, so it lives in `sbmlsim.fit.cli` and a model only defines its fits. A `FitDefinition` is what enters a fit: the fit experiments, the parameters which are adjusted, where the experiments and their data are, and the settings.
+Creating the optimization problems, running the optimizations and reporting them is the same for every model, so it lives in `sbmlsim.fit.cli` and a model only defines its fits. A `FitDefinition` is what enters a fit: the fit mapping collections, the parameters which are adjusted, where the experiments and their data are, and the settings.
 
 ```python
 from sbmlsim.fit.cli import FitDefinition
 
 definition = FitDefinition(
-    fit_experiments=f_fitexp_pkiv,  # called when the fit runs
+    mapping_collections=f_collections_pkiv,  # called when the fit runs
     parameters=fit_parameters,
     base_path=HCTZ_PATH,
     data_path=DATA_PATH,
@@ -380,7 +380,7 @@ print(FIT_DEFINITIONS)
 
 Every fit gets an id when it starts, `<problem>_<date>_<time>__<hash>`, e.g. `PK_20260908_144538__ea1ff`. It is the id of the optimization problem, of its result and of the directory of its report, so everything a fit produces carries the same key and sorts by time. The output of a fit is a sequence of sections, each with its own icon: the fit with its strategy, algorithm and paths, the parameters which are optimized with their bounds and units, the settings, the data with the number of fit mappings per experiment and kind, the optimization with its progress, and the report. `sbmlsim.fit.display` renders them and is used on its own as well.
 
-The fit problems of the HCTZ model are in `examples/hctz/fitting/`: `fit_experiments.py` builds the subsets of the data, `parameters.py` holds the fit parameters and `fitting.py` is the definitions plus the four lines above:
+The fit problems of the HCTZ model are in `examples/hctz/fitting/`: `mapping_collections.py` builds the subsets of the data, `parameters.py` holds the fit parameters and `fitting.py` is the definitions plus the four lines above:
 
 ```bash
 python -m examples.hctz.fitting.fitting --subset=PK --runs=10 --cores=4 \

@@ -17,14 +17,14 @@ from examples.hctz.experiments.metadata import (
 from examples.hctz.experiments.studies import Beermann1976, Patel1984
 from sbmlsim.console import console
 from sbmlsim.experiment import SimulationExperiment
-from sbmlsim.fit import FitExperiment, FitMapping, MappingKind
+from sbmlsim.fit import FitMapping, FitMappingCollection, MappingKind
 from sbmlsim.fit.helpers import (
     MappingFilter,
-    f_fitexp,
+    f_collection,
     filter_empty,
     filter_keys,
     filter_not_keys,
-    fit_experiments_by_kind,
+    mapping_collections_by_kind,
 )
 
 # observables of the pharmacokinetics
@@ -49,12 +49,12 @@ VALIDATION_MAPPINGS: set[str] = {
 }
 
 
-def fit_experiments(
+def mapping_collections(
     metadata_filters: MappingFilter | list[MappingFilter],
     kind: MappingKind = MappingKind.TRAINING,
-) -> dict[str, list[FitExperiment]]:
+) -> dict[str, list[FitMappingCollection]]:
     """Get the fit experiments of the studies for the given filters."""
-    return f_fitexp(
+    return f_collection(
         experiment_classes=EXPERIMENT_CLASSES,
         metadata_filters=metadata_filters,
         base_path=HCTZ_PATH,
@@ -63,9 +63,9 @@ def fit_experiments(
     )
 
 
-def classified_fit_experiments(
+def classified_mapping_collections(
     metadata_filters: list[MappingFilter],
-) -> dict[str, list[FitExperiment]]:
+) -> dict[str, list[FitMappingCollection]]:
     """Split a selection of mappings into training, validation and outliers.
 
     The outliers and the validation data are named in `OUTLIER_MAPPINGS` and
@@ -78,7 +78,7 @@ def classified_fit_experiments(
         The fit experiments of the three kinds by experiment id.
     """
     excluded = OUTLIER_MAPPINGS | VALIDATION_MAPPINGS
-    return fit_experiments_by_kind(
+    return mapping_collections_by_kind(
         experiment_classes=EXPERIMENT_CLASSES,
         base_path=HCTZ_PATH,
         data_path=DATA_PATH,
@@ -137,39 +137,39 @@ def filter_pd(fit_mapping_key: str, fit_mapping: FitMapping) -> bool:
     return _yid(fit_mapping) not in PK_OBSERVABLES
 
 
-def f_fitexp_all() -> dict[str, list[FitExperiment]]:
+def f_collections_all() -> dict[str, list[FitMappingCollection]]:
     """All data."""
-    return fit_experiments(filter_empty)
+    return mapping_collections(filter_empty)
 
 
-def f_fitexp_control() -> dict[str, list[FitExperiment]]:
+def f_collections_control() -> dict[str, list[FitMappingCollection]]:
     """Control data."""
-    return fit_experiments([filter_control])
+    return mapping_collections([filter_control])
 
 
-def f_fitexp_pk() -> dict[str, list[FitExperiment]]:
+def f_collections_pk() -> dict[str, list[FitMappingCollection]]:
     """HCTZ pharmacokinetics data, split into training, validation and outliers."""
-    return classified_fit_experiments([filter_control, filter_pk])
+    return classified_mapping_collections([filter_control, filter_pk])
 
 
-def f_fitexp_pkiv() -> dict[str, list[FitExperiment]]:
+def f_collections_pkiv() -> dict[str, list[FitMappingCollection]]:
     """HCTZ iv pharmacokinetics data."""
-    return classified_fit_experiments([filter_control, filter_pk, filter_iv])
+    return classified_mapping_collections([filter_control, filter_pk, filter_iv])
 
 
-def f_fitexp_pd() -> dict[str, list[FitExperiment]]:
+def f_collections_pd() -> dict[str, list[FitMappingCollection]]:
     """HCTZ pharmacodynamics data."""
-    return fit_experiments([filter_control, filter_pd])
+    return mapping_collections([filter_control, filter_pd])
 
 
 if __name__ == "__main__":
     for f in [
-        f_fitexp_all,
-        f_fitexp_control,
-        f_fitexp_pk,
-        f_fitexp_pkiv,
-        f_fitexp_pd,
+        f_collections_all,
+        f_collections_control,
+        f_collections_pk,
+        f_collections_pkiv,
+        f_collections_pd,
     ]:
         console.rule(title=f.__name__, align="left", style="white")
-        for sid, fitexps in f().items():
-            console.print(f"{sid}: {fitexps}")
+        for sid, collections in f().items():
+            console.print(f"{sid}: {collections}")
