@@ -32,6 +32,7 @@ An example writes what it creates into the current working directory: figures ar
 | `examples/hctz/` | hydrochlorothiazide pharmacokinetics: a whole body model, simulation experiments against the data of Beermann 1976 and Patel 1984 and the parameter fitting problems built on them (`examples/hctz/fitting/`) |
 | `examples/sensitivity/` | local and global sensitivity analysis (sampling, Sobol, FAST, Morris) of a simple chain model |
 | `examples/petab/` | PEtab parameter estimation problems of the [benchmark collection](https://github.com/Benchmarking-Initiative/Benchmark-Models-PEtab). `benchmark.py` converts `Perelson_Science1996` or `Boehm_JProteomeRes2014` to PEtab v2, fits it with sbmlsim, analyses the identifiability and reports it. The PEtab v2 layer on the HCTZ problem is `examples/hctz/fitting/petab_problem.py` |
+| `examples/comparison/` | comparison of simulation results between simulators. `diff_example.py` compares roadrunner with [JWS Online](https://jjj.bio.vu.nl) on the repressilator with `sbmlsim.comparison.diff`; `simulate_amici.py`, `simulate_copasi.py` and `example_comparison.py` run the same conditions with AMICI and COPASI (not installed with sbmlsim) |
 | `examples/julia/` | notes and an example on calling julia from python via juliacall (not installed with sbmlsim) |
 
 ## Tests

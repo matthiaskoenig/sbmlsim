@@ -1,1 +1,0 @@
-#define tcl_bil_ext tcl[0]

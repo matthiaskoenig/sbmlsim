@@ -150,7 +150,7 @@ uvx ty check
 
 The configuration lives in `[tool.ty]` in `pyproject.toml`. Warnings are treated as errors, so the codebase is kept free of diagnostics. Suppress an unavoidable diagnostic with a rule specific `# ty: ignore[rule-name]` rather than a blanket comment.
 
-libsbml, libsedml, libnuml and roadrunner have no type stubs and create their objects through a SWIG layer, so ty sees an untyped API. Annotate their objects (`doc: libsbml.SBMLDocument = ...`) and use the explicit getters (`getVariable()`) rather than the attributes the SWIG layer synthesizes (`variable`), which the type checker cannot see. The generated AMICI model code under `src/sbmlsim/comparison/` is excluded from ruff and ty, it is not written by hand.
+libsbml, libsedml and roadrunner have no type stubs and create their objects through a SWIG layer, so ty sees an untyped API. Annotate their objects (`doc: libsbml.SBMLDocument = ...`) and use the explicit getters (`getVariable()`) rather than the attributes the SWIG layer synthesizes (`variable`), which the type checker cannot see.
 
 ## Examples
 

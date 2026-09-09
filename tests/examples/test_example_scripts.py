@@ -4,9 +4,10 @@ Every example is run as a module in a temporary working directory, so the
 files it writes do not end up in the repository. An example which breaks
 fails the test suite.
 
-The examples which need optional tools (`examples.julia`) or the simulation
-experiment pipeline which is being reworked (`examples.demo`,
-`examples.repressilator`) are not run here, see `examples/README.md`.
+The examples which need optional tools (`examples.julia`, the AMICI and COPASI
+scripts of `examples.comparison`) or the simulation experiment pipeline which
+is being reworked (`examples.demo`, `examples.repressilator`) are not run
+here, see `examples/README.md`.
 """
 
 import os
@@ -36,6 +37,7 @@ SCRIPTS = [
     "examples.hctz.fitting.petab_problem",
     "examples.petab.benchmark",
     "examples.sensitivity.sensitivity_example",
+    "examples.comparison.diff_example",
 ]
 
 

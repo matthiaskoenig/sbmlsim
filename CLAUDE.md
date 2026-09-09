@@ -55,7 +55,7 @@ Documentation is [Zensical](https://zensical.org/): markdown sources in `docs/`,
 
 **`mathml.py` — formulas.** `formula_to_astnode` parses an L3 formula with libsedml and `evaluate` evaluates the abstract syntax tree on the arrays of its variables with sympy; this is what a `Data` of type `FUNCTION` (`data.py`) is computed with. SED-ML and COMBINE archive support (`combine/`) was removed in 0.7.0, a fit is exchanged as a PEtab problem instead.
 
-**`comparison/` — simulator comparison.** Scripts comparing roadrunner with AMICI and COPASI on PBPK models plus `diff.py` for the numerical comparison of results. `comparison/amicitesting/` and `comparison/results/` are generated AMICI model code and compiled extensions; they are excluded from the wheel (`[tool.hatch.build]`), from ruff and from ty.
+**`comparison/` — comparison of results.** `diff.py` holds `DataSetsComparison`, which matches the columns of the results of two simulators and reports the absolute and relative differences above the tolerances. The scripts which produce such results with AMICI and COPASI are `examples/comparison/`, they import the optional dependencies; `examples/comparison/diff_example.py` compares roadrunner with JWS Online.
 
 `console.py` (rich console, for scripts and examples) and `log.py` provide the shared output/logging. Modules get their logger from the standard library with `logging.getLogger(__name__)`. The package never configures logging: `log.enable_rich_logging()` is the opt-in for scripts. Library code logs, it does not print, and log calls use lazy `%s` formatting rather than f-strings (enforced by ruff `G`).
 
