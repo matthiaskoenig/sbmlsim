@@ -1,0 +1,15 @@
+study	individual	group	count	intervention	measurement_type	substance	tissue	method	label	time	time_unit	value	mean	mean_pm	sd	se	unit	comments
+Weir1998	NA	all	20.0	HCTZ25	cumulative amount	hydrochlorothiazide	urine	HPLC	amount_cumulative_hctz25	0.0	hr	NA	0.0	0.0	0.0	NA	mg	NA
+Weir1998	NA	all	20.0	HCTZ25	cumulative amount	hydrochlorothiazide	urine	HPLC	amount_cumulative_hctz25	4.0	hr	NA	8.95705521472393	5.15337423312884	3.8036809815950896	NA	mg	error bars not clearly reported as sd
+Weir1998	NA	all	20.0	HCTZ25	cumulative amount	hydrochlorothiazide	urine	HPLC	amount_cumulative_hctz25	8.0	hr	NA	13.0061349693252	8.77300613496933	4.23312883435587	NA	mg	error bars not clearly reported as sd
+Weir1998	NA	all	20.0	HCTZ25	cumulative amount	hydrochlorothiazide	urine	HPLC	amount_cumulative_hctz25	12.0	hr	NA	16.0736196319018	11.1042944785276	4.9693251533742	NA	mg	error bars not clearly reported as sd
+Weir1998	NA	all	20.0	HCTZ25	cumulative amount	hydrochlorothiazide	urine	HPLC	amount_cumulative_hctz25	24.0	hr	NA	19.6932515337423	13.9877300613497	5.705521472392599	NA	mg	error bars not clearly reported as sd
+Weir1998	NA	all	20.0	HCTZ25	cumulative amount	hydrochlorothiazide	urine	HPLC	amount_cumulative_hctz25	36.0	hr	NA	21.2883435582822	15.521472392638	5.766871165644201	NA	mg	error bars not clearly reported as sd
+Weir1998	NA	all	20.0	HCTZ25	cumulative amount	hydrochlorothiazide	urine	HPLC	amount_cumulative_hctz25	48.0	hr	NA	22.3312883435583	16.1963190184049	6.134969325153399	NA	mg	error bars not clearly reported as sd
+Weir1998	NA	all	20.0	HCTZ25,DIL60	cumulative amount	hydrochlorothiazide	urine	HPLC	amount_cumulative_hctz25_kombi	0.0	hr	NA	0.0	0.0	0.0	NA	mg	NA
+Weir1998	NA	all	20.0	HCTZ25,DIL60	cumulative amount	hydrochlorothiazide	urine	HPLC	amount_cumulative_hctz25_kombi	4.0	hr	NA	9.98701147548969	12.578707372224	2.5916958967343113	NA	mg	error bars not clearly reported as sd
+Weir1998	NA	all	20.0	HCTZ25,DIL60	cumulative amount	hydrochlorothiazide	urine	HPLC	amount_cumulative_hctz25_kombi	8.0	hr	NA	14.8367361433118	18.2541050690942	3.4173689257824016	NA	mg	error bars not clearly reported as sd
+Weir1998	NA	all	20.0	HCTZ25,DIL60	cumulative amount	hydrochlorothiazide	urine	HPLC	amount_cumulative_hctz25_kombi	12.0	hr	NA	17.5072890796368	21.0622701769272	3.5549810972904012	NA	mg	error bars not clearly reported as sd
+Weir1998	NA	all	20.0	HCTZ25,DIL60	cumulative amount	hydrochlorothiazide	urine	HPLC	amount_cumulative_hctz25_kombi	24.0	hr	NA	20.7259257716793	25.3818042410339	4.655878469354601	NA	mg	error bars not clearly reported as sd
+Weir1998	NA	all	20.0	HCTZ25,DIL60	cumulative amount	hydrochlorothiazide	urine	HPLC	amount_cumulative_hctz25_kombi	36.0	hr	NA	21.9255478290423	26.8795860033309	4.954038174288598	NA	mg	error bars not clearly reported as sd
+Weir1998	NA	all	20.0	HCTZ25,DIL60	cumulative amount	hydrochlorothiazide	urine	HPLC	amount_cumulative_hctz25_kombi	48.0	hr	NA	22.7816860688871	28.1715742069395	5.389888138052399	NA	mg	error bars not clearly reported as sd

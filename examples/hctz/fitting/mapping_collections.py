@@ -14,7 +14,7 @@ from examples.hctz.experiments.metadata import (
     HCTZMappingMetaData,
     Route,
 )
-from examples.hctz.experiments.studies import Beermann1976, Patel1984
+from examples.hctz.experiments.studies import Beermann1976, Patel1984, Weir1998
 from sbmlsim.console import console
 from sbmlsim.experiment import SimulationExperiment
 from sbmlsim.fit import FitMapping, FitMappingCollection, MappingKind
@@ -33,6 +33,7 @@ PK_OBSERVABLES = {"Afeces_hctz", "Aurine_hctz", "Cve_hctz", "KI__HCTZEX"}
 EXPERIMENT_CLASSES: list[type[SimulationExperiment]] = [
     Beermann1976,
     Patel1984,
+    Weir1998,
 ]
 
 #: mappings which are not used, the data is not usable
@@ -42,10 +43,17 @@ OUTLIER_MAPPINGS: set[str] = {
 }
 
 #: mappings which are kept out of the fits, the fits are evaluated on them.
-#: The highest oral dose of Patel1984 checks how the parameters extrapolate.
+#: The highest oral dose of Patel1984 checks how the parameters extrapolate,
+#: and Weir1998 checks the multiple dosing: the fits are made on single doses,
+#: so the accumulation over eleven doses every 12 hours is a prediction.
+#: The `_kombi` arms of Weir1998 are hydrochlorothiazide with diltiazem,
+#: which the filter of the coadministration removes before this.
 VALIDATION_MAPPINGS: set[str] = {
     "fm_200_tab_urine",
     "fm_200_sus_urine",
+    "fm_Fig2_hctz25",
+    "fm_Fig3_amount_cumulative_hctz25",
+    "fm_Tab4_excretion_hctz25",
 }
 
 

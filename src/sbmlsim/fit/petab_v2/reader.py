@@ -39,7 +39,7 @@ from sbmlsim.fit.petab_v2.symbols import selection_of_formula
 from sbmlsim.model import AbstractModel
 from sbmlsim.simulation.timecourse import Timecourse, TimecourseSim
 from sbmlsim.task import Task
-from sbmlsim.units import UnitRegistry
+from sbmlsim.units import UnitRegistry, UnitsInformation
 
 logger = logging.getLogger(__name__)
 
@@ -101,7 +101,9 @@ class PetabReader:
             if self.extension and self.extension.opid
             else (getattr(petab_problem.config, "id", None) or "PetabExperiment")
         )
-        self.ureg: UnitRegistry = UnitRegistry()
+        # the registry has to know the unit definitions of the models, a
+        # `mmole_per_min` of an SBML model is not a unit pint knows
+        self.ureg: UnitRegistry = self._model_registry()
 
         # measurements by observable, in the order of their time
         self._measurements: dict[str, list[petab_v2.Measurement]] = {}
@@ -154,25 +156,61 @@ class PetabReader:
 
     # --- THE PARTS OF THE SIMULATION EXPERIMENT ---
 
+    def _model_path(self, model: Any) -> Path:
+        """Get the file of a model of the problem.
+
+        Args:
+            model: model of the PEtab problem.
+
+        Returns:
+            The path of the file, resolved against the directory of the problem.
+
+        Raises:
+            ValueError: if the model is not a file.
+        """
+        location = getattr(model, "rel_path", None)
+        if location is None:
+            raise ValueError(
+                f"The model '{model.model_id}' of the PEtab problem has no "
+                f"file, only a model which is a file can be read."
+            )
+        path = Path(location)
+        return path if path.is_absolute() else self.base_path / path
+
+    def _model_registry(self) -> UnitRegistry:
+        """Get the unit registry of the models of the problem.
+
+        The data of a fit is converted into the units of the model, and a model
+        defines units of its own, e.g. the `mmole_per_min` of a reaction. A
+        registry which does not know them cannot parse the units the extension
+        carries, so the registry is the one of the models.
+
+        Returns:
+            A registry which knows the unit definitions of every model.
+        """
+        ureg: UnitRegistry | None = None
+        for model in self.petab_problem.models:
+            try:
+                ureg = UnitsInformation.from_sbml(self._model_path(model), ureg).ureg
+            except Exception as err:
+                logger.warning(
+                    "The units of the model '%s' could not be read: %s: %s",
+                    getattr(model, "model_id", "?"),
+                    type(err).__name__,
+                    err,
+                )
+        return ureg if ureg is not None else UnitRegistry()
+
     def models(self) -> dict[str, AbstractModel]:
         """Get the models of the experiment, one per model of the problem."""
-        models: dict[str, AbstractModel] = {}
-        for model in self.petab_problem.models:
-            location = getattr(model, "rel_path", None)
-            if location is None:
-                raise ValueError(
-                    f"The model '{model.model_id}' of the PEtab problem has no "
-                    f"file, only a model which is a file can be read."
-                )
-            path = Path(location)
-            if not path.is_absolute():
-                path = self.base_path / path
-            models[model.model_id] = AbstractModel(
-                source=str(path),
+        return {
+            model.model_id: AbstractModel(
+                source=str(self._model_path(model)),
                 sid=model.model_id,
                 language_type=AbstractModel.LanguageType.SBML,
             )
-        return models
+            for model in self.petab_problem.models
+        }
 
     def simulations(self) -> dict[str, TimecourseSim]:
         """Get the simulations, one per experiment of the problem.

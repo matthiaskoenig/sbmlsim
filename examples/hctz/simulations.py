@@ -9,7 +9,7 @@ directory:
 import shutil
 from pathlib import Path
 
-from examples.hctz.experiments.studies import Beermann1976, Patel1984
+from examples.hctz.experiments.studies import Beermann1976, Patel1984, Weir1998
 from examples.hctz.helpers import run_experiments
 from sbmlsim.console import console
 from sbmlsim.experiment import SimulationExperiment
@@ -19,6 +19,7 @@ EXPERIMENTS: dict[str, list[type[SimulationExperiment]]] = {
     "studies": [
         Beermann1976,
         Patel1984,
+        Weir1998,
     ],
 }
 EXPERIMENTS["all"] = EXPERIMENTS["studies"]
