@@ -29,6 +29,8 @@ uv.lock
 # output of the examples, they write into the working directory
 examples/**/results/
 examples/**/_results/
+# the examples write into the working directory
+/results/
 
 # editors, operating system
 .idea/

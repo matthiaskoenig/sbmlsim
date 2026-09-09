@@ -390,8 +390,8 @@ python -m examples.hctz.fitting.fitting --subset=PK --runs=10 --cores=4 \
 `report.py` is `report_cli` on the same definitions. It creates a report from the `parameters.json` of a finished fit without optimizing again, and compares the parameters of several fits:
 
 ```bash
-python -m examples.hctz.fitting.report results/fit/PK_LSQ_ALL/parameters.json
-python -m examples.hctz.fitting.report run1/parameters.json run2/parameters.json
+python -m examples.hctz.fitting.run_report results/fit/PK_LSQ_ALL/parameters.json
+python -m examples.hctz.fitting.run_report run1/parameters.json run2/parameters.json
 ```
 
 ## PEtab
