@@ -96,6 +96,7 @@ nav = [
       { "petab_v2.reader" = "api/fit.petab_v2.reader.md" },
       { "petab_v2.extension" = "api/fit.petab_v2.extension.md" },
       { "petab_v2.symbols" = "api/fit.petab_v2.symbols.md" },
+      { "petab_v2.observables" = "api/fit.petab_v2.observables.md" },
       { "petab_v2.gaps" = "api/fit.petab_v2.gaps.md" },
     ] },
     { "sbmlsim.sensitivity" = [

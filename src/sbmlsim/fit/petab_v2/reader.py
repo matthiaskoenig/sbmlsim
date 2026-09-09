@@ -35,6 +35,14 @@ from sbmlsim.fit.objects import (
 from sbmlsim.fit.optimization import OptimizationProblem
 from sbmlsim.fit.options import FitSettings
 from sbmlsim.fit.petab_v2.extension import SbmlsimExtension, extension_of
+from sbmlsim.fit.petab_v2.observables import (
+    MODEL_SUFFIX,
+    add_observables,
+    is_entity,
+)
+from sbmlsim.fit.petab_v2.observables import (
+    observable_id as petab_observable_id,
+)
 from sbmlsim.fit.petab_v2.symbols import selection_of_formula, split_selection
 from sbmlsim.model import AbstractModel
 from sbmlsim.simulation.timecourse import Timecourse, TimecourseSim
@@ -83,6 +91,7 @@ class PetabReader:
         petab_problem: PetabProblem,
         base_path: Path | None = None,
         name: str | None = None,
+        derived_dir: Path | None = None,
     ):
         """Initialize the reader.
 
@@ -92,6 +101,9 @@ class PetabReader:
                 directory of its YAML file by default.
             name: name of the simulation experiment class which is created, the
                 id of the problem by default.
+            derived_dir: directory the model which carries the observables of
+                the problem is written to, next to the model by default. It is
+                only written if an observable of the problem is a formula.
 
         Raises:
             ValueError: if the problem has no model or no measurements.
@@ -106,6 +118,12 @@ class PetabReader:
             raise ValueError("The PEtab problem has no model.")
         if not petab_problem.measurements:
             raise ValueError("The PEtab problem has no measurements.")
+
+        #: the model which carries the observables, by the file it came from
+        self._model_sources: dict[Path, Path] = {}
+        self.derived_dir: Path | None = (
+            Path(derived_dir) if derived_dir is not None else None
+        )
 
         self.name: str = name or (
             self.extension.opid
@@ -244,15 +262,76 @@ class PetabReader:
         return unit if unit else DEFAULT_VALUE_UNIT
 
     def models(self) -> dict[str, AbstractModel]:
-        """Get the models of the experiment, one per model of the problem."""
+        """Get the models of the experiment, one per model of the problem.
+
+        An observable which is a formula over the entities of the model is not
+        something roadrunner selects, so the model the fit simulates carries it
+        as an entity, see `sbmlsim.fit.petab_v2.observables`.
+        """
+        changes = self._nominal_changes()
         return {
             model.model_id: AbstractModel(
-                source=str(self._model_path(model)),
+                source=str(self._model_source(model)),
                 sid=model.model_id,
                 language_type=AbstractModel.LanguageType.SBML,
+                changes=dict(changes),
             )
             for model in self.petab_problem.models
         }
+
+    def _nominal_changes(self) -> dict[str, float]:
+        """Get the values of the parameters which are not estimated.
+
+        PEtab applies the nominal value of a parameter which is not estimated
+        to the model before it simulates (PEtab v2, initialization), i.e. the
+        parameter table overrides what the model says.
+
+        Returns:
+            The nominal value per parameter of the table which is an entity of
+            a model and is not estimated.
+        """
+        changes: dict[str, float] = {}
+        for parameter in self.petab_problem.parameters:
+            if parameter.estimate or parameter.nominal_value is None:
+                continue
+            if not isinstance(parameter.nominal_value, int | float):
+                # `array` values are not a change of the model
+                continue
+            if self._in_model(parameter.id):
+                changes[parameter.id] = float(parameter.nominal_value)
+        return changes
+
+    def _formula_observables(self) -> dict[str, str]:
+        """Get the observables which are a formula and not an entity."""
+        sbml_model = self._sbml_model()
+        return {
+            observable.id: str(observable.formula)
+            for observable in self.petab_problem.observables
+            if not is_entity(str(observable.formula), sbml_model)
+        }
+
+    def _model_source(self, model: Any) -> Path:
+        """Get the file of the model the fit simulates.
+
+        The model of the problem is used as it is when every observable is an
+        entity of it, otherwise a copy which carries the observables is written
+        once, see `derived_dir`.
+
+        Args:
+            model: model of the PEtab problem.
+
+        Returns:
+            The path of the model the fit simulates.
+        """
+        path = self._model_path(model)
+        formulas = self._formula_observables()
+        if not formulas:
+            return path
+        if path not in self._model_sources:
+            derived_dir = self.derived_dir or path.parent
+            derived = derived_dir / f"{path.stem}{MODEL_SUFFIX}{path.suffix}"
+            self._model_sources[path] = add_observables(path, formulas, derived)
+        return self._model_sources[path]
 
     @property
     def experiment_ids(self) -> list[str]:
@@ -550,9 +629,15 @@ class PetabReader:
         and the selections of roadrunner do not agree on the amount and the
         concentration of a species, see `sbmlsim.fit.petab_v2.symbols`.
         """
+        sbml_model = self._sbml_model()
         for observable in self.petab_problem.observables:
-            if observable.id == observable_id:
-                return selection_of_formula(str(observable.formula), self._sbml_model())
+            if observable.id != observable_id:
+                continue
+            formula = str(observable.formula)
+            if not is_entity(formula, sbml_model):
+                # the formula is an entity of the model the fit simulates
+                return petab_observable_id(observable_id)
+            return selection_of_formula(formula, sbml_model)
         raise ValueError(f"The problem has no observable '{observable_id}'.")
 
     def _in_model(self, sid: str) -> bool:

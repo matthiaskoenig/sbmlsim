@@ -8,6 +8,6 @@ problems:
   observable_files:
   - observables_Boehm_JProteomeRes2014.tsv
   sbml_files:
-  - boehm_JProteomeRes2014.xml
+  - model_Boehm_JProteomeRes2014.xml
   visualization_files:
   - visualizationSpecification_Boehm_JProteomeRes2014.tsv

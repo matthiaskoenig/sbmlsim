@@ -37,7 +37,7 @@ SCRIPTS = [
     "examples.glucose.glucose",
     "examples.hctz.simulations",
     "examples.hctz.fitting.petab_problem",
-    "examples.petab.benchmark_perelson",
+    "examples.petab.benchmark",
     "examples.sedml.execute_sedml",
     "examples.sensitivity.sensitivity_example",
 ]

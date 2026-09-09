@@ -8,7 +8,7 @@ from pymetadata.omex import Omex
 from sbmlsim.fit.petab_omex import create_petab_omex
 
 PETAB_DIR = Path(__file__).parent.parent.parent / "examples" / "petab"
-BOEHM_YAML = PETAB_DIR / "boehm_JProteomeRes2014" / "Boehm_JProteomeRes2014.yaml"
+BOEHM_YAML = PETAB_DIR / "Boehm_JProteomeRes2014" / "Boehm_JProteomeRes2014.yaml"
 
 
 def test_create_petab_omex_boehm(tmp_path: Path) -> None:
@@ -21,7 +21,7 @@ def test_create_petab_omex_boehm(tmp_path: Path) -> None:
     locations = [e.location for e in omex.manifest.entries]
     assert "./Boehm_JProteomeRes2014.yaml" in locations
     assert "./parameters_Boehm_JProteomeRes2014.tsv" in locations
-    assert "./boehm_JProteomeRes2014.xml" in locations
+    assert "./model_Boehm_JProteomeRes2014.xml" in locations
     assert "./measurementData_Boehm_JProteomeRes2014.tsv" in locations
 
 

@@ -1,21 +1,26 @@
 """Fit a problem of the PEtab benchmark collection with sbmlsim.
 
-The problem is `Perelson_Science1996` of the
-[benchmark collection](https://github.com/Benchmarking-Initiative/Benchmark-Models-PEtab),
-i.e. the viral dynamics of HIV-1 after the start of a protease inhibitor, see
-`examples/petab/Perelson_Science1996/README.md`. The collection is PEtab 1.0
-and `sbmlsim` reads PEtab 2.0, so the example converts the problem with
-`petab.v2.petab1to2` first: the files of the collection stay as they are and
-the conversion is part of the example.
+The problems are the ones of the
+[benchmark collection](https://github.com/Benchmarking-Initiative/Benchmark-Models-PEtab)
+which are vendored next to this module, see their `README.md`:
 
-The problem is then read into an `OptimizationProblem`, fitted, and the
-identifiability of the fitted parameters is analysed with the profile
-likelihood.
+- `Perelson_Science1996`, the viral dynamics of HIV-1 after the start of a
+  protease inhibitor. One observable, which is a species of the model.
+- `Boehm_JProteomeRes2014`, the dimerization of STAT5A and STAT5B. Three
+  observables, each a formula over several species, which the fit gets as
+  entities of the model, see `sbmlsim.fit.petab_v2.observables`.
 
-    python -m examples.petab.benchmark_perelson
-    python -m examples.petab.benchmark_perelson --runs=8 --no-identifiability
+The collection is PEtab 1.0 and `sbmlsim` reads PEtab 2.0, so the example
+converts a problem with `petab.v2.petab1to2` first: the files of the collection
+stay as they are and the conversion is part of the example. The problem is then
+read into an `OptimizationProblem`, fitted, analysed with the profile
+likelihood and reported.
 
-The converted problem and the results are written into `results/perelson` of
+    python -m examples.petab.benchmark
+    python -m examples.petab.benchmark --problem=Boehm_JProteomeRes2014
+    python -m examples.petab.benchmark --runs=8 --no-identifiability
+
+The converted problem and the results are written into `results/<problem>` of
 the working directory.
 """
 
@@ -44,11 +49,8 @@ from sbmlsim.fit.petab_v2.reader import from_petab
 from sbmlsim.fit.report import FitReport
 from sbmlsim.fit.runner import run_optimization
 
-#: the problem of the collection, PEtab 1.0
-PROBLEM_DIR = Path(__file__).parent / "Perelson_Science1996"
-
-#: name of its YAML file
-PROBLEM_YAML = "Perelson_Science1996.yaml"
+#: the problems of the collection which are vendored here, PEtab 1.0
+PROBLEMS: tuple[str, ...] = ("Perelson_Science1996", "Boehm_JProteomeRes2014")
 
 ICON_PETAB = ":package:"
 
@@ -57,10 +59,23 @@ def main() -> None:
     """Convert, read, fit and analyse the problem of the collection."""
     parser = argparse.ArgumentParser()
     parser.add_argument(
-        "--runs", type=int, default=4, help="number of optimization runs"
+        "--problem",
+        default=PROBLEMS[0],
+        choices=PROBLEMS,
+        help="problem of the collection to fit",
     )
     parser.add_argument(
-        "--cores", type=int, default=1, help="number of workers of the fit"
+        "--runs", type=int, default=4, help="number of optimization runs"
+    )
+    # the simulation experiment of a PEtab problem is created when the problem
+    # is read, and a class which is created cannot be pickled, so the workers
+    # of a parallel fit cannot be given the problem
+    parser.add_argument(
+        "--cores",
+        type=int,
+        default=1,
+        choices=[1],
+        help="workers of the fit, a PEtab problem is fitted in one process",
     )
     parser.add_argument("--seed", type=int, default=1234, help="seed of the fit")
     parser.add_argument(
@@ -71,24 +86,26 @@ def main() -> None:
     parser.add_argument(
         "--output-dir",
         type=Path,
-        default=Path("results") / "perelson",
+        default=None,
         help="directory of the converted problem and the results",
     )
     args = parser.parse_args()
 
-    output_dir = Path(args.output_dir)
+    problem_dir = Path(__file__).parent / args.problem
+    problem_yaml = f"{args.problem}.yaml"
+    output_dir = Path(args.output_dir or Path("results") / args.problem)
     output_dir.mkdir(parents=True, exist_ok=True)
 
     # --- CONVERT ---
     display.section("PEtab 1.0 -> 2.0", icon=ICON_PETAB)
     petab2_dir = output_dir / "petab_v2"
-    petab1to2(PROBLEM_DIR / PROBLEM_YAML, output_dir=petab2_dir)
-    yaml_file = petab2_dir / PROBLEM_YAML
-    display.key_values({"collection": PROBLEM_DIR.name})
+    petab1to2(problem_dir / problem_yaml, output_dir=petab2_dir)
+    yaml_file = petab2_dir / problem_yaml
+    display.key_values({"collection": args.problem})
     display.link("problem", yaml_file)
 
     # --- READ ---
-    problem, settings = from_petab(yaml_file, opid="Perelson_Science1996")
+    problem, settings = from_petab(yaml_file, opid=args.problem)
     # the problem measures a viral load over orders of magnitude, which the
     # relative residuals describe and the absolute ones do not. PEtab says
     # log-normal noise here, which `sbmlsim` does not have, see the gaps
@@ -147,14 +164,19 @@ def main() -> None:
             n_cores=args.cores,
             show_progress=False,
         )
-        display.key_values(
-            {
-                "identifiable": (
-                    f"{identifiability.n_identifiable}/"
-                    f"{len(identifiability.pids)} parameters"
-                )
-            }
-        )
+        info = {
+            "identifiable": (
+                f"{identifiability.n_identifiable}/"
+                f"{len(identifiability.pids)} parameters"
+            )
+        }
+        if identifiability.better_optimum:
+            # the scans found a lower cost than the parameter set, so the
+            # confidence intervals are not intervals around an optimum
+            info["converged"] = (
+                "[orange3]no, the scans found a lower cost than the fit[/orange3]"
+            )
+        display.key_values(info)
         identifiability.to_json(output_dir / "identifiability.json")
 
     # --- REPORT ---
