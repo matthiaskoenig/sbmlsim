@@ -412,11 +412,14 @@ class FitMetrics:
         }
 
     def summary_df(self) -> pd.DataFrame:
-        """Get the metrics per kind of fit mapping and over all data points.
+        """Get the metrics per kind of fit mapping.
 
-        A fit is evaluated on its training and on its validation data, so there
-        is a row for every kind the problem has and, when it has more than one,
-        a row `all` over all data points.
+        A fit is evaluated on its training data, on its validation data and on
+        the outliers it dropped, so there is a row for every kind the problem
+        has. There is no row over all data points: it pools the data a fit was
+        fitted on with the data it dropped, which is not a number to read.
+        `summary()` gives the metrics over all data points where they are
+        wanted.
 
         Returns:
             DataFrame with one row per kind, see `summary`.
@@ -424,10 +427,7 @@ class FitMetrics:
         kinds = [
             kind for kind in self.problem.mapping_counts() if kind in EVALUATED_KINDS
         ]
-        summaries = [self.summary(kind=kind) for kind in kinds]
-        if len(kinds) != 1:
-            summaries.append(self.summary())
-        return pd.DataFrame(summaries)
+        return pd.DataFrame([self.summary(kind=kind) for kind in kinds])
 
     def cost(self) -> float:
         """Get the cost of the parameter set, i.e., the objective of the fit."""

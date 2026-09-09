@@ -38,11 +38,12 @@ The units of the reference and the observable are compared and the reference is 
 
 ## Training, validation and outlier data
 
-What a fit does with a curve is decided when the data of the fit is selected, not on the fit mapping: the same curve is training data of one fit and validation data of another. Every `FitMappingCollection` therefore carries a `MappingKind` for the mappings it selects: `TRAINING` enters the cost, `VALIDATION` is evaluated but not fitted, and `OUTLIER` and `EXCLUDED` are not used at all. The two say different things: an outlier is a decision about the data, i.e. it is not usable, and an exclusion is a decision about the model, i.e. the model does not describe what was measured, e.g. an arm of a study with a coadministration the model has no interaction for.
+What a fit does with a curve is decided when the data of the fit is selected, not on the fit mapping: the same curve is training data of one fit and validation data of another. Every `FitMappingCollection` therefore carries a `MappingKind` for the mappings it selects: `TRAINING` enters the cost, `VALIDATION` and `OUTLIER` are evaluated but not fitted, and `EXCLUDED` is not used at all. Outlier and excluded say different things: an outlier is a decision about the data, i.e. it is not usable, and an exclusion is a decision about the model, i.e. the model does not describe what was measured, e.g. an arm of a study with a coadministration the model has no interaction for.
 
 - `MappingKind.TRAINING` (the default): the mappings are fitted, i.e., their residuals enter the cost of the optimization,
 - `MappingKind.VALIDATION`: the mappings are not fitted. They are simulated and evaluated together with the training data when the fit is reported, which shows how the fitted parameters describe data they were not fitted on,
-- `MappingKind.OUTLIER`: the mappings are not used at all. An optimization problem skips its outliers, they stay in the overview of the data so that it is visible which curves were dropped.
+- `MappingKind.OUTLIER`: the mappings are not fitted, because the data is not usable. They are resolved and evaluated like the validation data, so a report has their metrics and their figures and the decision to drop a curve can be checked against the model,
+- `MappingKind.EXCLUDED`: the mappings are not used at all. An optimization problem does not resolve them, so they have no metrics and are not part of a report; they stay in the overview of the data of a `FitDefinition` so that it is visible which curves were dropped and why.
 
 `mapping_collections_by_kind` selects and classifies the data in one step: every kind gets its own filters and the mappings of all kinds are listed in a single overview.
 
@@ -69,7 +70,7 @@ mapping_collections_kinds = mapping_collections_by_kind(
 )
 ```
 
-The overview ends in a line such as `mappings : 32 (28 training, 2 validation, 2 outlier)`. On the problem, `mapping_counts()` reports how many mappings of each kind it has and `training_indices` and `validation_indices` are their positions in the resolved data.
+The overview ends in a line such as `mappings : 32 (28 training, 2 validation, 2 outlier)`. On the problem, `mapping_counts()` reports how many mappings of each kind it has and `training_indices`, `validation_indices` and `outlier_indices` are their positions in the resolved data.
 
 `sbmlsim.fit.helpers` filters the mappings by their metadata and collects it into a table:
 
@@ -251,9 +252,16 @@ report.create(output_dir=Path("results"), name="hctz_iv")
 
 The report writes `index.html`, `report.txt`, the `parameters.json` it was made from, the metrics as TSV and the figures. `show_report=True` opens the HTML in a browser.
 
-`index.html` is an interactive page with three sections: **Overview** repeats what the console reports, i.e., the fit, the parameters with their bounds and units, the settings and the data per experiment and kind; **Results** has the metrics per parameter set and kind, the plots of the optimization runs and of the predictions, and the contribution of every fit mapping to the cost; **Fit mappings** is one card per mapping with its figures and its metrics. A search box filters the mappings and the tables, the chips filter by training, validation and outlier data, the tables sort by any column and a figure opens full size when it is clicked. The page carries its own style and script, so it works from a file and can be archived or sent as it is.
+`index.html` is an interactive page with three sections: **Overview** repeats what the console reports, i.e., the fit, the parameters with their bounds and units, the settings and the data per experiment and kind; **Results** has the metrics per parameter set and kind, the plots of the optimization runs, the goodness of fit and the Bland-Altman plot with a panel per kind of fit mapping, and the contribution of every fit mapping to the cost; **Fit mappings** is one card per mapping with its figures and its metrics. A search box filters the mappings and the tables, the chips filter by training, validation and outlier data, which are the kinds a fit evaluates and therefore the kinds a report shows, the tables sort by any column and a figure opens full size when it is clicked. The page carries its own style and script, so it works from a file and can be archived or sent as it is.
 
 Every parameter set becomes a column of the parameter table and a curve in the plots, so several sets are compared in a single report, e.g., two fits against each other. The first set is the reference the others are compared against.
+
+Two figures show the data points of the fit rather than the curves, each with one panel per kind of fit mapping, i.e. the training data, the validation data and the outliers. The points are colored by study, i.e. by the simulation experiment a fit mapping belongs to, and a study keeps its color in both figures:
+
+- **goodness of fit** (`goodness_of_fit`) plots the prediction against the measurement on logarithmic axes, with the identity line and a band of a factor of ten. The points scatter around the diagonal when the model describes the data, and a systematic deviation is a systematic error of the model.
+- **Bland-Altman** (`bland_altman`) plots the agreement of the two as a ratio, `log10(f(x)/y)` over the geometric mean of prediction and measurement, with the bias and the limits of agreement `bias ± 1.96 SD` of every parameter set, written as fold factors. The data of a fit spans orders of magnitude, so the agreement is multiplicative: a bias of `1.02x` is a fit which is unbiased and limits of `0.51-2.04x` say that a prediction is within a factor of two of the measurement. A trend over the mean is a model which describes the large or the small values better. A data point which is zero or negative has no ratio and is left out, which is why a panel can show fewer points than the metrics of its kind count.
+
+The panels next to each other are what the kinds are for: the training panel is how well the fit describes the data it was fitted on, the validation panel how it describes data it was not, and the outlier panel where the curves a fit dropped sit relative to the model. There is no panel over all data points, which would pool the data a fit was fitted on with the data it dropped. Several parameter sets in one report are told apart by their marker, since the color says which study a point comes from.
 
 `FitReport.from_optimization_result` is the shortcut for the report of a fit. It reads the settings from the result and adds the plots which describe the runs rather than a parameter set, i.e., the optimization traces and the waterfall plot. The report shows the fitted parameters alone; `with_model=True` reports the values the model started from as the reference set as well, so that the figures and the tables show what the fit changed:
 
@@ -282,7 +290,7 @@ print(metrics.summary())
 
 `summary()` gives the metrics over all data points: the number of data points `n`, the number of fitted parameters `k`, the `cost`, `MSE`, `RMSE`, `RMSE_w`, `R2`, `AIC` and `BIC`; `mappings_df()` gives them per fit mapping. `MSE`, `RMSE`, `R2`, `AIC` and `BIC` are unweighted metrics of the data and the predictions, so they are dominated by the mappings with the largest values, while `RMSE_w` uses the weighting of the settings. A parameter set can therefore have a larger RMSE and smaller weighted residuals than another one, which is what the weighting is for.
 
-A fit is evaluated on the data it was fitted on and on the data it was not, so `summary(kind=...)` restricts the metrics to a kind of mapping and `summary_df()` has a row for the training data, a row for the validation data and a row over all of them. The `cost` is the objective of the optimization, which is defined on the training data alone, so it is only reported there:
+A fit is evaluated on the data it was fitted on and on the data it was not, so `summary(kind=...)` restricts the metrics to a kind of mapping and `summary_df()` has one row per kind: the training data, the validation data and the outliers. The outliers are in there because a curve which a fit drops is a claim about the data which the metrics make checkable: an outlier with an R² as good as the training data is a curve which was dropped without reason. There is no row over all data points, which would pool the data a fit was fitted on with the data it dropped; `summary()` without a kind gives that number where it is wanted. The `cost` is the objective of the optimization, which is defined on the training data alone, so it is only reported there:
 
 ```py
 metrics.summary_df()

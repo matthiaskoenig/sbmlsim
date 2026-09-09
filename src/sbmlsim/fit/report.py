@@ -34,7 +34,7 @@ from sbmlsim.fit import display
 from sbmlsim.fit.fisher import FisherInformation
 from sbmlsim.fit.identifiability import IdentifiabilityResult, plot_all
 from sbmlsim.fit.metrics import FitMetrics
-from sbmlsim.fit.objects import MappingKind
+from sbmlsim.fit.objects import EVALUATED_KINDS, MappingKind
 from sbmlsim.fit.optimization import OptimizationProblem
 from sbmlsim.fit.options import FitSettings
 from sbmlsim.fit.parameters import ParameterSet, ParameterSets
@@ -43,6 +43,25 @@ from sbmlsim.plot.serialization_matplotlib import plt
 from sbmlsim.report.templates import template_environment
 
 logger = logging.getLogger(__name__)
+
+#: colors of the studies, i.e. of the simulation experiments of the problem, in
+#: the order they appear in it. The data points of the goodness of fit and the
+#: Bland-Altman plot carry them, so a study is the same color in every figure
+STUDY_COLORS: tuple[str, ...] = (
+    "tab:blue",
+    "tab:orange",
+    "tab:green",
+    "tab:red",
+    "tab:purple",
+    "tab:brown",
+    "tab:pink",
+    "tab:olive",
+    "tab:cyan",
+)
+
+#: markers of the parameter sets in the figures which color by study, so that
+#: the sets are told apart where the color is taken
+SET_MARKERS: tuple[str, ...] = ("o", "s", "^", "D", "v", "P")
 
 #: colors of the parameter sets, in the order of the sets. Black is the color
 #: of the reference data of a fit mapping, so no parameter set uses it
@@ -108,6 +127,9 @@ class FitReport:
 
         # residual data of the mappings, by parameter set
         self._res_data: dict[str, dict[str, list[Any]]] = {}
+
+        # data points with their kind and predictions, by parameter set
+        self._points: dict[str, pd.DataFrame] = {}
 
     @staticmethod
     def from_optimization_result(
@@ -177,6 +199,29 @@ class FitReport:
         index = [p.sid for p in self.parameter_sets].index(pset.sid)
         return SET_COLORS[index % len(SET_COLORS)]
 
+    def studies(self) -> list[str]:
+        """Get the studies of the problem, i.e. its simulation experiments.
+
+        In the order the fit mappings of the problem name them, so the color of
+        a study does not depend on which mappings a figure shows.
+        """
+        return list(dict.fromkeys(self.problem.experiment_keys))
+
+    def study_color(self, study: str) -> str:
+        """Get the color of a study, the same in every figure of the report."""
+        return STUDY_COLORS[self.studies().index(study) % len(STUDY_COLORS)]
+
+    def set_marker(self, pset: ParameterSet) -> str:
+        """Get the marker of a parameter set in the figures colored by study."""
+        index = [p.sid for p in self.parameter_sets].index(pset.sid)
+        return SET_MARKERS[index % len(SET_MARKERS)]
+
+    def _point_label(self, study: Any, pset: ParameterSet) -> str:
+        """Get the legend entry of the points of a study and a parameter set."""
+        if len(self.parameter_sets) == 1:
+            return str(study)
+        return f"{study} ({pset.sid})"
+
     def x(self, pset: ParameterSet) -> np.ndarray:
         """Get the values of a set in the parameter order of the problem."""
         return pset.x(self.problem.pids)
@@ -232,6 +277,37 @@ class FitReport:
                 xlog=self.problem.to_scale(self.x(pset)), complete_data=True
             )
         return self._res_data[pset.sid]
+
+    def points(self, pset: ParameterSet) -> pd.DataFrame:
+        """Get the data points of a parameter set with their kind.
+
+        The table of `FitMetrics.datapoints_df`, i.e. one row per data point
+        with the measurement `DV`, the prediction `IPRED` and the `kind` of the
+        fit mapping it belongs to. It is the source of the goodness of fit and
+        the Bland-Altman plots and is cached, a data point costs a simulation.
+        """
+        if pset.sid not in self._points:
+            self._points[pset.sid] = self.metrics(pset).datapoints_df()
+        return self._points[pset.sid]
+
+    def point_kinds(self) -> list[str]:
+        """Get the kinds of fit mapping the data points are shown in.
+
+        The kinds the problem has, in the order of `EVALUATED_KINDS`, i.e. the
+        training data, the validation data and the outliers. There is no panel
+        over all data points: it pools data a fit was fitted on with data it
+        dropped, which is not a number to read.
+        """
+        return [
+            kind.value
+            for kind in EVALUATED_KINDS
+            if kind in self.problem.mapping_counts()
+        ]
+
+    @staticmethod
+    def _of_kind(df: pd.DataFrame, kind: str) -> pd.DataFrame:
+        """Get the data points of one kind of fit mapping."""
+        return df[df.kind == kind]
 
     # --------------------------------------------------------------------
     # report
@@ -415,7 +491,14 @@ class FitReport:
         ),
         "traces": "Cost of the optimizers over their steps",
         "waterfall": "Cost of the optimization runs, ordered",
-        "datapoint_scatter": "Prediction against the measured data points",
+        "goodness_of_fit": (
+            "Prediction against the measured data points, over all data and "
+            "per kind of fit mapping"
+        ),
+        "bland_altman": (
+            "Agreement of prediction and measurement as a ratio, over all "
+            "data and per kind of fit mapping"
+        ),
         "residual_scatter": "Relative residuals over the data",
         "cost_bar": "Cost and weight of every fit mapping",
         "residual_boxplot": "Distribution of the squared weighted residuals",
@@ -442,11 +525,21 @@ class FitReport:
             "that the multistart converged; steps to the right are local "
             "minima."
         ),
-        "datapoint_scatter": (
-            "Prediction against measurement, one point per data point. The "
-            "points scatter around the diagonal when the model describes the "
-            "data; a systematic deviation from it is a systematic error of "
-            "the model."
+        "goodness_of_fit": (
+            "Prediction against measurement, one point per data point, with a "
+            "panel over all data and one per kind of fit mapping. The points "
+            "scatter around the diagonal when the model describes the data; a "
+            "systematic deviation from it is a systematic error of the model. "
+            "The validation panel shows how the fit describes data it was not "
+            "fitted on, the outlier panel the data the fit dropped."
+        ),
+        "bland_altman": (
+            "The ratio of prediction and measurement over the geometric mean "
+            "of the two, with the bias and the limits of agreement "
+            "`bias ± 1.96 SD` as fold factors. A bias away from 1 is a "
+            "systematic over- or underprediction, wide limits are a large "
+            "scatter, and a trend over the mean is a model which describes "
+            "the large or the small values better."
         ),
         "residual_scatter": (
             "The relative residuals over the data. They should scatter "
@@ -493,7 +586,9 @@ class FitReport:
         """
         plots_dir = results_dir / "plots"
         counts = self.problem.mapping_counts()
-        kinds = [kind.value for kind in MappingKind]
+        # the data the model does not describe is not resolved, so it has no
+        # rows, no metrics and no figures: it is not part of the report
+        kinds = [kind.value for kind in EVALUATED_KINDS]
         metrics = self.metrics_df()
         mapping_metrics = self.metrics_mappings_df()
 
@@ -692,7 +787,8 @@ class FitReport:
             "result_plots": self._plots(
                 plots_dir,
                 [
-                    "datapoint_scatter",
+                    "goodness_of_fit",
+                    "bland_altman",
                     "residual_scatter",
                     "cost_bar",
                     "residual_boxplot",
@@ -864,9 +960,10 @@ class FitReport:
                         path=plots_dir / f"waterfall.{self.image_format}"
                     )
 
-            self.plot_datapoint_scatter(
-                path=plots_dir / f"datapoint_scatter.{self.image_format}"
+            self.plot_goodness_of_fit(
+                path=plots_dir / f"goodness_of_fit.{self.image_format}"
             )
+            self.plot_bland_altman(path=plots_dir / f"bland_altman.{self.image_format}")
             self.plot_residual_scatter(
                 path=plots_dir / f"residual_scatter.{self.image_format}"
             )
@@ -918,6 +1015,28 @@ class FitReport:
         unique = dict(zip(labels, handles, strict=True))
         if unique:
             ax.legend(unique.values(), unique.keys())
+
+    @staticmethod
+    def _set_figure_legend(fig: Figure, axes: Sequence[Axes]) -> None:
+        """Add one legend for all panels of a figure, without duplicates.
+
+        A study is not in every panel, e.g. only one study has outliers, so the
+        entries are collected over the panels and shown once next to them.
+        """
+        handles: list[Any] = []
+        labels: list[str] = []
+        for ax in axes:
+            ax_handles, ax_labels = ax.get_legend_handles_labels()
+            handles.extend(ax_handles)
+            labels.extend(ax_labels)
+        unique = dict(zip(labels, handles, strict=True))
+        if unique:
+            fig.legend(
+                unique.values(),
+                unique.keys(),
+                loc="outside right upper",
+                fontsize="small",
+            )
 
     def plot_fit(self, output_dir: Path) -> None:
         """Plot the data and the simulation of every parameter set per mapping."""
@@ -1154,48 +1273,164 @@ class FitReport:
     # --------------------------------------------------------------------
     # comparison of the parameter sets
     # --------------------------------------------------------------------
-    def plot_datapoint_scatter(self, path: Path) -> None:
-        """Plot the predicted against the measured data points, per set."""
-        fig, ax = self._create_mpl_figure()
-        dps = {pset.sid: self._datapoints_df(pset) for pset in self.parameter_sets}
+    def _panels(self, height: float = 4.2) -> tuple[Figure, list[Axes], list[str]]:
+        """Create a figure with a panel per subset of the data points."""
+        kinds = self.point_kinds()
+        fig, axes = plt.subplots(
+            nrows=1,
+            ncols=len(kinds),
+            figsize=(height * len(kinds), height),
+            layout="constrained",
+            squeeze=False,
+        )
+        return fig, list(axes[0]), kinds
+
+    def plot_goodness_of_fit(self, path: Path) -> None:
+        """Plot the predicted against the measured data points, per subset.
+
+        One panel per kind of fit mapping, i.e. the training data, the
+        validation data and the outliers separately. The points scatter around
+        the identity line when the model describes the data, the shaded band is
+        a factor of ten in either direction.
+        """
+        points = {pset.sid: self.points(pset) for pset in self.parameter_sets}
+        fig, axes, kinds = self._panels()
 
         min_dp, max_dp = self._log_limits(
-            *[dp.y_ref for dp in dps.values()], *[dp.y_obs for dp in dps.values()]
+            *[dp.DV for dp in points.values()], *[dp.IPRED for dp in points.values()]
         )
 
-        ax.fill_between(
-            [min_dp, max_dp, max_dp, min_dp],
-            [min_dp / 10, max_dp / 10, max_dp * 10, min_dp * 10],
-            color="lightgray",
-        )
-        ax.plot([min_dp, max_dp], [min_dp, max_dp], color="black")
-        for bfactor in [1 / 10, 10]:
-            ax.plot(
-                [min_dp, max_dp],
-                [min_dp * bfactor, max_dp * bfactor],
-                "--",
-                color="black",
+        for ax, kind in zip(axes, kinds, strict=True):
+            ax.fill_between(
+                [min_dp, max_dp, max_dp, min_dp],
+                [min_dp / 10, max_dp / 10, max_dp * 10, min_dp * 10],
+                color="lightgray",
             )
+            ax.plot([min_dp, max_dp], [min_dp, max_dp], color="black")
+            for bfactor in [1 / 10, 10]:
+                ax.plot(
+                    [min_dp, max_dp],
+                    [min_dp * bfactor, max_dp * bfactor],
+                    "--",
+                    color="black",
+                )
 
-        for pset in self.parameter_sets:
-            dp = dps[pset.sid]
-            ax.plot(
-                dp.y_ref.values,
-                dp.y_obs.values,
-                label=pset.sid,
-                color=self.color(pset),
-                **self.kwargs_scatter,
-            )
+            for pset in self.parameter_sets:
+                dp = self._of_kind(points[pset.sid], kind)
+                kwargs: dict[str, Any] = {
+                    **self.kwargs_scatter,
+                    "marker": self.set_marker(pset),
+                }
+                for study, of_study in dp.groupby("experiment", sort=False):
+                    ax.plot(
+                        of_study.DV.values,
+                        of_study.IPRED.values,
+                        label=self._point_label(study, pset),
+                        color=self.study_color(str(study)),
+                        **kwargs,
+                    )
 
-        ax.set_xlabel("Experiment $y_{i,k}$", fontweight="bold")
-        ax.set_ylabel("Prediction $f(x_{i,k})$", fontweight="bold")
-        ax.set_xscale("log")
-        ax.set_yscale("log")
-        ax.set_xlim(min_dp, max_dp)
-        ax.grid()
-        self._set_legend(ax)
+            n_points = len(self._of_kind(points[self.reference_set.sid], kind))
+            ax.set_title(f"{kind} (n={n_points})")
+            ax.set_xlabel("Experiment $y_{i,k}$", fontweight="bold")
+            ax.set_xscale("log")
+            ax.set_yscale("log")
+            ax.set_xlim(min_dp, max_dp)
+            ax.set_ylim(min_dp, max_dp)
+            ax.grid()
+
+        axes[0].set_ylabel("Prediction $f(x_{i,k})$", fontweight="bold")
+        self._set_figure_legend(fig, axes)
         if self.show_titles:
-            ax.set_title("Data points")
+            fig.suptitle("Goodness of fit")
+        self._save_mpl_figure(fig=fig, path=path)
+
+    def plot_bland_altman(self, path: Path) -> None:
+        """Plot the agreement of prediction and measurement, per subset.
+
+        A Bland-Altman plot of the ratio: the difference of the logarithms,
+        `log10(f(x)/y)`, over the geometric mean of the two, with the bias and
+        the limits of agreement `bias ± 1.96 SD` of every parameter set. The
+        data of a fit spans orders of magnitude, so the agreement is
+        multiplicative and the limits are read as fold factors.
+
+        Data points which are zero or negative have no logarithm and are left
+        out, i.e. the plot shows the points a ratio is defined for.
+        """
+        points = {pset.sid: self.points(pset) for pset in self.parameter_sets}
+        fig, axes, kinds = self._panels()
+
+        for ax, kind in zip(axes, kinds, strict=True):
+            n_shown = 0
+            for ks, pset in enumerate(self.parameter_sets):
+                dp = self._of_kind(points[pset.sid], kind)
+                dv = np.asarray(dp.DV, dtype=float)
+                ipred = np.asarray(dp.IPRED, dtype=float)
+                # a ratio needs two positive values
+                mask = np.isfinite(dv) & np.isfinite(ipred) & (dv > 0) & (ipred > 0)
+                dv, ipred = dv[mask], ipred[mask]
+                n_shown = max(n_shown, dv.size)
+                if dv.size == 0:
+                    continue
+
+                difference = np.log10(ipred / dv)
+                mean = np.sqrt(dv * ipred)
+                studies = np.asarray(dp.experiment, dtype=object)[mask]
+                kwargs: dict[str, Any] = {
+                    **self.kwargs_scatter,
+                    "marker": self.set_marker(pset),
+                }
+                for study in dict.fromkeys(studies):
+                    of_study = studies == study
+                    ax.plot(
+                        mean[of_study],
+                        difference[of_study],
+                        label=self._point_label(study, pset),
+                        color=self.study_color(str(study)),
+                        **kwargs,
+                    )
+
+                # the bias and the limits of agreement of the set. The points
+                # carry the color of their study, so the lines are neutral and
+                # only take a color when several sets are compared
+                bias = float(np.mean(difference))
+                half = 1.96 * float(np.std(difference, ddof=1)) if dv.size > 1 else 0.0
+                color = "black" if len(self.parameter_sets) == 1 else self.color(pset)
+                ax.axhline(bias, color=color)
+                for limit in (bias - half, bias + half):
+                    ax.axhline(limit, linestyle="--", color=color, alpha=0.8)
+                # centered, so that it is not cut off at the edge of the panel,
+                # and stacked when several sets are compared
+                prefix = f"{pset.sid}: " if len(self.parameter_sets) > 1 else ""
+                ax.text(
+                    0.5,
+                    0.02 + ks * 0.06,
+                    f"{prefix}bias {10**bias:.2f}x, LoA "
+                    f"{10 ** (bias - half):.2f}-{10 ** (bias + half):.2f}x",
+                    transform=ax.transAxes,
+                    ha="center",
+                    va="bottom",
+                    fontsize="x-small",
+                    color=color,
+                    bbox={"facecolor": "white", "alpha": 0.7, "edgecolor": "none"},
+                )
+
+            ax.axhline(0.0, color="black", zorder=0)
+            # a data point which is zero or negative has no ratio, so a panel
+            # can show fewer points than the metrics of the kind count
+            n_points = len(self._of_kind(points[self.reference_set.sid], kind))
+            label = (
+                f"n={n_shown}" if n_shown == n_points else f"n={n_shown} of {n_points}"
+            )
+            ax.set_title(f"{kind} ({label})")
+            ax.set_xlabel("Geometric mean $\\sqrt{f(x_{i,k}) y_{i,k}}$")
+            ax.set_xscale("log")
+            ax.grid()
+
+        axes[0].set_ylabel("$\\log_{10}\\frac{f(x_{i,k})}{y_{i,k}}$", fontweight="bold")
+        self._set_figure_legend(fig, axes)
+        if self.show_titles:
+            fig.suptitle("Bland-Altman")
         self._save_mpl_figure(fig=fig, path=path)
 
     def plot_residual_scatter(self, path: Path) -> None:

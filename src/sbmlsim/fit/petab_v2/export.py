@@ -28,7 +28,7 @@ import petab.v2 as petab_v2
 from petab.models.sbml_model import SbmlModel  # ty: ignore[unresolved-import]
 from petab.v2 import Problem as PetabProblem
 
-from sbmlsim.fit.objects import MappingKind
+from sbmlsim.fit.objects import EVALUATED_KINDS, MappingKind
 from sbmlsim.fit.optimization import OptimizationProblem
 from sbmlsim.fit.options import FitSettings, WeightingCurvesType
 from sbmlsim.fit.petab_v2.extension import (
@@ -160,11 +160,12 @@ class PetabExporter:
             problem: problem to export, it is initialized if it is not.
             settings: settings of the fit, required if the problem is not
                 initialized.
-            kinds: kinds of fit mappings to write, the training and the
-                validation data by default. The outliers of a fit are not part
-                of it, and neither is the data the model does not describe:
-                a tool which reads the problem without the extension would fit
-                everything it finds.
+            kinds: kinds of fit mappings to write, everything the problem
+                resolved by default, i.e. the training data, the validation
+                data and the outliers, so that a round trip keeps the fit. The
+                data the model does not describe is not part of the problem.
+                Which of them a fit uses is in the extension: a tool which
+                reads the problem without it would fit everything it finds.
             required_extension: mark the `sbmlsim` extension as required, which
                 it is: the settings it carries are the objective of the fit, so
                 a tool which does not know it has to reject the problem instead
@@ -187,9 +188,7 @@ class PetabExporter:
         self.problem = problem
         self.required_extension = required_extension
         self.kinds: set[MappingKind] = (
-            kinds
-            if kinds is not None
-            else {MappingKind.TRAINING, MappingKind.VALIDATION}
+            kinds if kinds is not None else set(EVALUATED_KINDS)
         )
         self.gaps: list[Gap] = gaps_of_problem(problem)
 
@@ -592,8 +591,9 @@ def to_petab(
             exist.
         settings: settings of the fit, required if the problem is not
             initialized.
-        kinds: kinds of fit mappings to write, the training and the validation
-            data by default.
+        kinds: kinds of fit mappings to write, everything the problem resolved
+            by default, i.e. the training data, the validation data and the
+            outliers.
         required_extension: mark the `sbmlsim` extension as required, which it
             is: the settings it carries are the objective of the fit. `False`
             writes a problem other tools fit with the objective of PEtab.

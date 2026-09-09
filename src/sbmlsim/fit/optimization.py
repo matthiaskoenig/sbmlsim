@@ -298,6 +298,11 @@ class OptimizationProblem(ObjectJSONEncoder):
         """Indices of the fit mappings which are only evaluated."""
         return self.indices(MappingKind.VALIDATION)
 
+    @property
+    def outlier_indices(self) -> list[int]:
+        """Indices of the fit mappings whose data a fit dropped as unusable."""
+        return self.indices(MappingKind.OUTLIER)
+
     def mapping_counts(self) -> dict[MappingKind, int]:
         """Get the number of resolved fit mappings per kind."""
         return {
@@ -492,8 +497,10 @@ class OptimizationProblem(ObjectJSONEncoder):
                 mapping: FitMapping = sim_experiment._fit_mappings[mapping_id]
 
                 if mapping_collection.kind in UNUSED_KINDS:
-                    # the outliers and the data the model does not describe are
-                    # used neither in the fit nor in the evaluation
+                    # the data the model does not describe is not resolved, it
+                    # is neither fitted nor evaluated. An outlier is resolved:
+                    # it stays out of the cost, but it is simulated with the
+                    # validation data so that a report has its metrics
                     continue
 
                 if mapping.observable.task_id is None:

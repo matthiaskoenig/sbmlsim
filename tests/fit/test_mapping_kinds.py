@@ -70,7 +70,9 @@ def test_kinds_of_the_problem(
     counts = op.mapping_counts()
     assert counts[MappingKind.TRAINING] > 0
     assert counts[MappingKind.VALIDATION] > 0
-    # the data a fit does not use is not part of the problem at all
+    # the outliers are resolved as well, they are evaluated but not fitted
+    assert counts[MappingKind.OUTLIER] > 0
+    # the data the model does not describe is not part of the problem at all
     for kind in UNUSED_KINDS:
         assert kind not in counts
         assert all(mapping_kind is not kind for mapping_kind in op.mapping_kinds)
@@ -78,7 +80,10 @@ def test_kinds_of_the_problem(
     assert len(op.mapping_kinds) == len(op.mapping_keys)
     assert len(op.training_indices) == counts[MappingKind.TRAINING]
     assert len(op.validation_indices) == counts[MappingKind.VALIDATION]
-    assert set(op.indices()) == set(op.training_indices) | set(op.validation_indices)
+    assert len(op.outlier_indices) == counts[MappingKind.OUTLIER]
+    assert set(op.indices()) == (
+        set(op.training_indices) | set(op.validation_indices) | set(op.outlier_indices)
+    )
 
 
 def test_optimization_uses_only_training(
@@ -121,14 +126,16 @@ def test_problem_without_training_data(
 def test_metrics_per_kind(
     op_hctz_pk: OptimizationProblem, fit_settings: FitSettings
 ) -> None:
-    """The metrics are calculated for the training and the validation data."""
+    """The metrics cover the training, the validation and the outlier data."""
     op = op_hctz_pk
     op.initialize(fit_settings)
     metrics = FitMetrics(problem=op, parameter_set=op.parameter_set_model())
 
+    # one row per kind, the data a fit was fitted on is not pooled with the
+    # data it dropped
     df = metrics.summary_df()
-    assert list(df.kind) == ["training", "validation", "all"]
-    assert df.n.iloc[2] == df.n.iloc[0] + df.n.iloc[1]
+    assert list(df.kind) == ["training", "validation", "outlier"]
+    assert df.n.sum() == len(metrics.datapoints_df())
 
     # the cost is the objective of the optimization, i.e. the training data
     assert np.isfinite(df.cost.iloc[0])
@@ -136,8 +143,29 @@ def test_metrics_per_kind(
     assert np.isnan(df.cost.iloc[2])
 
     # the kind of every mapping and every data point is reported
-    assert set(metrics.mappings_df().kind) == {"training", "validation"}
-    assert set(metrics.datapoints_df().kind) == {"training", "validation"}
+    kinds = {"training", "validation", "outlier"}
+    assert set(metrics.mappings_df().kind) == kinds
+    assert set(metrics.datapoints_df().kind) == kinds
+
+
+def test_outliers_do_not_enter_the_cost(
+    op_hctz_pk: OptimizationProblem, fit_settings: FitSettings
+) -> None:
+    """An outlier is evaluated, it does not change the objective of the fit."""
+    op = op_hctz_pk
+    op.initialize(fit_settings)
+    xlog = np.log10(op.xmodel)
+
+    assert op.outlier_indices
+    # the residuals of the optimizer cover the training data alone
+    n_training = sum(len(op.y_references[k]) for k in op.training_indices)
+    assert len(op.residuals(xlog)) == n_training
+
+    # and the outliers are simulated for the evaluation
+    res_data = op.residuals(xlog, complete_data=True)
+    assert len(res_data["y_obsip"]) == len(op.mapping_keys)
+    for k in op.outlier_indices:
+        assert len(res_data["y_obsip"][k]) == len(op.y_references[k])
 
 
 def test_metrics_unknown_kind(
@@ -185,6 +213,8 @@ def test_excluded_is_not_an_outlier() -> None:
     reasons should say which is which.
     """
     assert MappingKind.OUTLIER is not MappingKind.EXCLUDED
-    assert set(UNUSED_KINDS) == {MappingKind.OUTLIER, MappingKind.EXCLUDED}
+    # both are dropped from the fit, only the outlier is still evaluated
+    assert set(UNUSED_KINDS) == {MappingKind.EXCLUDED}
+    assert MappingKind.OUTLIER in EVALUATED_KINDS
     assert not set(UNUSED_KINDS) & set(EVALUATED_KINDS)
     assert set(EVALUATED_KINDS) | set(UNUSED_KINDS) == set(MappingKind)

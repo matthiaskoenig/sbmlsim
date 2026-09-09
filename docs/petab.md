@@ -26,7 +26,7 @@ The problem is translated as follows:
 | the reference data of a mapping | the measurements of its observable, its error is the noise parameter |
 | a `FitParameter` | a parameter which is estimated, with its bounds and its start value |
 
-The training and the validation data are written, the outliers of a fit are not: a tool which reads the problem fits every measurement it finds.
+Everything the fit evaluates is written, i.e. the training data, the validation data and the outliers, so that a round trip keeps the fit; the kind of every mapping is in the extension. A tool which reads the problem without the extension fits every measurement it finds, which is why the extension is required. The data the model does not describe is `excluded` and is not part of the problem at all.
 
 `sbmlsim` names an observable and the target of a change with a selection of roadrunner, where `S1` is the amount of a species and `[S1]` its concentration, and PEtab has no selections: in the math of a model the identifier of a species is its amount if `hasOnlySubstanceUnits=true` and its concentration if it is `false`. `sbmlsim.fit.petab_v2.symbols` converts between the two rather than dropping the brackets, i.e. the concentration of an amount based species is the formula `S1 / compartment`. A condition assigns an identifier and not an expression, so a change which sets the concentration of an amount based species has no PEtab representation and the export raises.
 

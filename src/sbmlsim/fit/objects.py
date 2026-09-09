@@ -41,15 +41,17 @@ class MappingKind(StrEnum):
     evaluated with the training data when a fit is reported, which shows how
     the fitted parameters describe data they were not fitted on.
 
-    `outlier` : the mappings are not used at all, neither in the optimization
-    nor in the evaluation, because the data is not usable, e.g. a curve which
-    contradicts the rest of the data.
+    `outlier` : the mappings are not fitted, because the data is not usable,
+    e.g. a curve which contradicts the rest of the data. They are simulated and
+    evaluated like the validation data, so a report says how far the data a fit
+    dropped is from the model and the decision to drop it can be checked.
 
-    `excluded` : the mappings are not used at all either, but because the model
-    does not describe them, e.g. a study arm with a coadministration the model
-    has no interaction for. The data is fine, the model is not the one for it,
-    so it is not an outlier: an outlier is a decision about the data and an
-    exclusion is a decision about the model.
+    `excluded` : the mappings are not used at all, and for another reason than
+    an outlier: the model does not describe them, e.g. a study arm with a
+    coadministration the model has no interaction for. The data is fine, the
+    model is not the one for it, so it is not an outlier: an outlier is a
+    decision about the data and an exclusion is a decision about the model.
+    Excluded mappings are not resolved, so they have no metrics.
 
     The kind is set on the `FitMappingCollection`, i.e., when the data of a fit is
     selected, not on the fit mappings of a simulation experiment: a mapping
@@ -63,17 +65,17 @@ class MappingKind(StrEnum):
     EXCLUDED = "excluded"
 
 
-#: kinds which are simulated and evaluated
+#: kinds which are resolved, simulated and evaluated. Only the training data
+#: enters the cost, the validation data and the outliers are evaluated so that
+#: a report says how the fit describes the data it was not fitted on
 EVALUATED_KINDS: tuple[MappingKind, ...] = (
     MappingKind.TRAINING,
     MappingKind.VALIDATION,
+    MappingKind.OUTLIER,
 )
 
-#: kinds which a fit does not use at all, for different reasons
-UNUSED_KINDS: tuple[MappingKind, ...] = (
-    MappingKind.OUTLIER,
-    MappingKind.EXCLUDED,
-)
+#: kinds which a fit does not use at all, i.e. which are not even resolved
+UNUSED_KINDS: tuple[MappingKind, ...] = (MappingKind.EXCLUDED,)
 
 
 class FitMappingCollection:

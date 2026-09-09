@@ -203,13 +203,19 @@ def test_a_problem_for_other_tools(
     assert FitSettings.from_dict(extension.settings) == fit_settings
 
 
-def test_outliers_are_not_exported(
+def test_outliers_are_exported_with_their_kind(
     op_hctz_pk: OptimizationProblem, fit_settings: FitSettings
 ) -> None:
-    """A tool which reads the problem must not fit the outliers."""
+    """The outliers are written, the extension says that a fit drops them.
+
+    They are measurements like the validation data, so a round trip keeps
+    them; what a fit does with them is the kind in the extension, which is
+    why the extension is required.
+    """
     exporter = PetabExporter(op_hctz_pk, settings=fit_settings)
     kinds = {op_hctz_pk.mapping_kinds[k] for k in exporter.indices}
-    assert MappingKind.OUTLIER not in kinds
+    assert MappingKind.OUTLIER in kinds
+    assert MappingKind.EXCLUDED not in kinds
 
 
 def test_experiments_are_named_after_the_collections(petab_dir: Path) -> None:

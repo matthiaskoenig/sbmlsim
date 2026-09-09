@@ -85,10 +85,12 @@ GAPS: tuple[Gap, ...] = (
         sbmlsim="a fit mapping is training data, validation data, an outlier "
         "or excluded because the model does not describe it",
         petab="every measurement of a problem enters the objective",
-        detail="the training data is the PEtab problem, the kind of every mapping "
-        "goes to the extension. A tool which reads the problem without it fits "
-        "the validation data as well, which is why the outliers are not written "
-        "at all",
+        detail="everything a fit evaluates is written, i.e. the training data, "
+        "the validation data and the outliers, and the kind of every mapping "
+        "goes to the extension, so a round trip keeps the fit. A tool which "
+        "reads the problem without the extension fits the validation data and "
+        "the outliers as well, which is why the extension is required. The data "
+        "the model does not describe is not part of the problem at all",
     ),
     Gap(
         id="fit-settings",

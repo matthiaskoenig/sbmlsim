@@ -12,6 +12,7 @@ import pytest
 
 from sbmlsim.fit import FitSettings, MappingKind, ParameterSet, ParameterSets
 from sbmlsim.fit.fisher import fisher_information
+from sbmlsim.fit.objects import EVALUATED_KINDS
 from sbmlsim.fit.optimization import OptimizationProblem
 from sbmlsim.fit.report import FitReport
 from sbmlsim.fit.result import OptimizationResult
@@ -81,6 +82,69 @@ def test_report_from_optimization_result_with_model(
     results_dir = report.create(output_dir=tmp_path, name="fit_with_model")
     _assert_report_files(results_dir)
     assert (results_dir / "plots" / "cost_scatter.svg").exists()
+
+
+def test_the_subsets_of_the_data_points(
+    op_hctz_pk: OptimizationProblem, fit_settings: FitSettings
+) -> None:
+    """The panels are `all` and every kind the problem has, in that order."""
+    op_hctz_pk.initialize(fit_settings)
+    report = FitReport(
+        problem=op_hctz_pk,
+        settings=fit_settings,
+        parameter_sets=op_hctz_pk.parameter_set_model(),
+    )
+    # one panel per kind, there is no panel over all data points
+    assert report.point_kinds() == ["training", "validation", "outlier"]
+
+    points = report.points(report.reference_set)
+    assert set(points.kind) == {"training", "validation", "outlier"}
+    assert len(report._of_kind(points, "outlier")) > 0
+    assert sum(
+        len(report._of_kind(points, kind)) for kind in report.point_kinds()
+    ) == len(points)
+
+    # the studies are colored, every study has its own color
+    assert report.studies() == ["Beermann1976", "Patel1984", "Weir1998"]
+    colors = {study: report.study_color(study) for study in report.studies()}
+    assert len(set(colors.values())) == len(colors)
+    assert "black" not in set(colors.values())
+
+
+def test_the_subsets_of_a_problem_with_one_kind(
+    op_hctz_pkiv: OptimizationProblem, fit_settings: FitSettings
+) -> None:
+    """A problem with a single kind has one panel, not `all` and the kind."""
+    op_hctz_pkiv.initialize(fit_settings)
+    report = FitReport(
+        problem=op_hctz_pkiv,
+        settings=fit_settings,
+        parameter_sets=op_hctz_pkiv.parameter_set_model(),
+    )
+    assert report.point_kinds() == ["training"]
+
+
+def test_the_goodness_of_fit_and_altman_plots(
+    tmp_path: Path, op_hctz_pk: OptimizationProblem, fit_settings: FitSettings
+) -> None:
+    """Both figures are created and reported with a panel per subset."""
+    op_hctz_pk.initialize(fit_settings)
+    report = FitReport(
+        problem=op_hctz_pk,
+        settings=fit_settings,
+        parameter_sets=op_hctz_pk.parameter_set_model(),
+    )
+    results_dir = report.create(output_dir=tmp_path, name="subsets")
+
+    for name in ["goodness_of_fit", "bland_altman"]:
+        assert (results_dir / "plots" / f"{name}.svg").exists()
+
+    html = (results_dir / "index.html").read_text(encoding="utf-8")
+    assert "plots/goodness_of_fit.svg" in html
+    assert "plots/bland_altman.svg" in html
+    # the metrics of the report cover the outliers
+    metrics = (results_dir / "metrics.tsv").read_text(encoding="utf-8")
+    assert MappingKind.OUTLIER.value in metrics
 
 
 def test_report_without_optimization(
@@ -278,7 +342,9 @@ def test_html_context(
     context = report.html_context(results_dir=Path("nowhere"), name="the_fit")
 
     assert context["fit_id"] == "the_fit"
-    assert context["kinds"] == [kind.value for kind in MappingKind]
+    # the data the model does not describe is not part of the report
+    assert context["kinds"] == [kind.value for kind in EVALUATED_KINDS]
+    assert MappingKind.EXCLUDED.value not in context["kinds"]
     assert len(context["parameters"]) == len(op_hctz_pkiv.parameters)
     assert len(context["mappings"]) == len(op_hctz_pkiv.mapping_keys)
     assert context["settings"]["residual"] == fit_settings.residual.name
