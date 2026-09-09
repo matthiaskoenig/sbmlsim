@@ -80,17 +80,6 @@ GAPS: tuple[Gap, ...] = (
         "units, which is what PEtab assumes anyway",
     ),
     Gap(
-        id="parameter-scale",
-        kind=GapKind.EXTENSION,
-        sbmlsim="the optimization runs in log10 space, which requires finite "
-        "positive bounds",
-        petab="the `parameterScale` column of v1 is gone in v2, the estimation "
-        "is on the linear scale",
-        detail="the bounds and the start value are written linear. That the fit "
-        "searches in log10 space is a property of the optimizer of `sbmlsim` and "
-        "goes to the extension",
-    ),
-    Gap(
         id="mapping-kind",
         kind=GapKind.EXTENSION,
         sbmlsim="a fit mapping is training data, validation data, an outlier "
@@ -104,13 +93,17 @@ GAPS: tuple[Gap, ...] = (
     Gap(
         id="fit-settings",
         kind=GapKind.EXTENSION,
-        sbmlsim="`FitSettings`, i.e. the residual type, the loss function, the "
-        "weighting of curves and points and the tolerances of the integrator",
+        sbmlsim="`FitSettings`, i.e. the residual type, the parameter scale the "
+        "optimizer searches in, the loss function, the weighting of curves and "
+        "points and the tolerances of the integrator",
         petab="`noiseDistribution` per observable, the objective is the negative "
-        "log likelihood",
+        "log likelihood. The `parameterScale` column of v1 is gone in v2, which "
+        "says the scale is a property of the optimization and not of the problem",
         detail="the settings go to the extension, which is required because of "
         "them: a tool which reads the problem without the settings optimizes a "
-        "different objective on the same data",
+        "different objective on the same data. The bounds and the start values "
+        "are written on the linear scale, i.e. in the units of the model, which "
+        "is what they are in `sbmlsim` as well",
     ),
     Gap(
         id="weights",
@@ -249,12 +242,7 @@ def gaps_of_problem(problem: "OptimizationProblem") -> list[Gap]:
             f"mappings, call `initialize(settings)` first."
         )
 
-    hits: set[str] = {
-        "units",
-        "parameter-scale",
-        "fit-settings",
-        "output-times",
-    }
+    hits: set[str] = {"units", "fit-settings", "output-times"}
     if len(set(problem.experiment_keys)) > 1:
         hits.add("selections")
 

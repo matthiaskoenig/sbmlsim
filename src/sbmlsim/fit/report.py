@@ -220,7 +220,7 @@ class FitReport:
         """
         if pset.sid not in self._res_data:
             self._res_data[pset.sid] = self.problem.residuals(  # ty: ignore[invalid-assignment]
-                xlog=np.log10(self.x(pset)), complete_data=True
+                xlog=self.problem.to_scale(self.x(pset)), complete_data=True
             )
         return self._res_data[pset.sid]
 

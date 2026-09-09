@@ -216,7 +216,8 @@ class FitMetrics:
     def _predictions(self, pset: ParameterSet) -> list[np.ndarray]:
         """Get the prediction at the data points of every mapping."""
         res_data: dict[str, list[Any]] = self.problem.residuals(  # ty: ignore[invalid-assignment]
-            xlog=np.log10(pset.x(self.problem.pids)), complete_data=True
+            xlog=self.problem.to_scale(pset.x(self.problem.pids)),
+            complete_data=True,
         )
         return [np.asarray(y, dtype=float) for y in res_data["y_obsip"]]
 
@@ -383,7 +384,7 @@ class FitMetrics:
     def cost(self) -> float:
         """Get the cost of the parameter set, i.e., the objective of the fit."""
         return self.problem.cost_least_square(
-            np.log10(self.parameter_set.x(self.problem.pids))
+            self.problem.to_scale(self.parameter_set.x(self.problem.pids))
         )
 
     def report(self) -> str:

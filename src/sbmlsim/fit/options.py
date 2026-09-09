@@ -11,6 +11,8 @@ from dataclasses import dataclass, field
 from enum import Enum, StrEnum
 from typing import Any
 
+import numpy as np
+
 
 class OptimizationStrategy(StrEnum):
     """Strategy for fitting a set of fit experiments.
@@ -141,6 +143,63 @@ class WeightingCurvesType(Enum):
     POINTS = 2
 
 
+class ParameterScaleType(Enum):
+    """Space the optimizer searches the parameters in.
+
+    A parameter of a model is a positive quantity which often spans orders of
+    magnitude, e.g. a rate constant, and an optimizer which searches it on the
+    linear scale spends its steps on the largest of them. Searching the
+    logarithm makes the steps relative, which is what such a parameter needs.
+
+    The scale is a property of the optimization and not of the model or of the
+    data: PEtab v2 removed the `parameterScale` of its parameter table for that
+    reason, so it is part of the `FitSettings` here and is stored with them.
+
+    The bounds and the start value of a `FitParameter` are always on the linear
+    scale, i.e. in the units of the model, and so are the fitted parameters a
+    fit reports; only the search happens in the scaled space.
+    """
+
+    LINEAR = 1
+    LOG = 2
+    LOG10 = 3
+
+    @property
+    def is_log(self) -> bool:
+        """Check whether the optimizer searches a logarithm."""
+        return self in {ParameterScaleType.LOG, ParameterScaleType.LOG10}
+
+    def to_scale(self, x: Any) -> Any:
+        """Transform parameters from the model into the space of the optimizer.
+
+        Args:
+            x: parameters in the units of the model, positive for a logarithm.
+
+        Returns:
+            The parameters in the space the optimizer searches.
+        """
+        if self is ParameterScaleType.LOG10:
+            return np.log10(x)
+        if self is ParameterScaleType.LOG:
+            return np.log(x)
+        return np.asarray(x, dtype=float)
+
+    def from_scale(self, x: Any) -> Any:
+        """Transform parameters of the optimizer back into the model.
+
+        Args:
+            x: parameters in the space the optimizer searches.
+
+        Returns:
+            The parameters in the units of the model.
+        """
+        if self is ParameterScaleType.LOG10:
+            return np.power(10, np.asarray(x, dtype=float))
+        if self is ParameterScaleType.LOG:
+            return np.exp(np.asarray(x, dtype=float))
+        return np.asarray(x, dtype=float)
+
+
 class WeightingPointsType(Enum):
     """Weighting w_{i,k} of the data points i within a single fit mapping k.
 
@@ -175,6 +234,7 @@ class FitSettings:
 
     Attributes:
         residual: handling of the residuals.
+        parameter_scale: space the optimizer searches the parameters in.
         loss_function: loss function applied to the squared residuals.
         weighting_curves: weighting of the curves (fit mappings).
         weighting_points: weighting of the data points within a curve.
@@ -184,6 +244,7 @@ class FitSettings:
     """
 
     residual: ResidualType = ResidualType.ABSOLUTE
+    parameter_scale: ParameterScaleType = ParameterScaleType.LOG10
     loss_function: LossFunctionType = LossFunctionType.LINEAR
     # any sequence is accepted, it is normalized to a tuple so that the
     # settings are hashable and compare by value
@@ -203,6 +264,7 @@ class FitSettings:
         """Convert to a dictionary of JSON serializable values."""
         return {
             "residual": self.residual.name,
+            "parameter_scale": self.parameter_scale.name,
             "loss_function": self.loss_function.name,
             "weighting_curves": [w.name for w in self.weighting_curves],
             "weighting_points": self.weighting_points.name,
@@ -224,6 +286,9 @@ class FitSettings:
         curves: Sequence[str] = d.get("weighting_curves", [])
         return FitSettings(
             residual=ResidualType[d["residual"]],
+            parameter_scale=ParameterScaleType[
+                d.get("parameter_scale", ParameterScaleType.LOG10.name)
+            ],
             loss_function=LossFunctionType[d["loss_function"]],
             weighting_curves=tuple(WeightingCurvesType[w] for w in curves),
             weighting_points=WeightingPointsType[d["weighting_points"]],

@@ -400,8 +400,10 @@ class ParameterProfile:
     def crossing(self, threshold: float, direction: int) -> float | None:
         """Get the value at which the profile crosses the threshold.
 
-        The crossing is interpolated linearly in logarithmic parameter space
-        between the last point below and the first point above the threshold.
+        The crossing is interpolated between the last point below and the
+        first point above the threshold, in logarithmic space where the two
+        values are positive, i.e. where the scan ran on a logarithmic scale,
+        and linearly otherwise.
 
         Args:
             threshold: threshold on the cost.
@@ -419,12 +421,15 @@ class ParameterProfile:
         if k == 0:
             # the optimum itself is at the threshold
             return float(values[0])
-        log_a, log_b = np.log10(values[k - 1]), np.log10(values[k])
+        value_a, value_b = float(values[k - 1]), float(values[k])
         cost_a, cost_b = costs[k - 1], costs[k]
         if cost_b == cost_a:
             return float(values[k])
         fraction = (threshold - cost_a) / (cost_b - cost_a)
-        return float(10 ** (log_a + fraction * (log_b - log_a)))
+        if value_a > 0.0 and value_b > 0.0:
+            log_a, log_b = np.log10(value_a), np.log10(value_b)
+            return float(10 ** (log_a + fraction * (log_b - log_a)))
+        return float(value_a + fraction * (value_b - value_a))
 
     def rise(self, direction: int) -> float:
         """Get how far the profile rises above its minimum on one side.
@@ -739,11 +744,16 @@ class IdentifiabilityResult:
 ProfilePoint = tuple[np.ndarray, float, bool]
 
 
-def _log_bounds(problem: OptimizationProblem) -> tuple[np.ndarray, np.ndarray]:
-    """Get the bounds of the parameters in logarithmic space."""
+def _scaled_bounds(problem: OptimizationProblem) -> tuple[np.ndarray, np.ndarray]:
+    """Get the bounds of the parameters in the space of the optimizer.
+
+    The scans run in the space the fit searches, i.e. the
+    `parameter_scale` of its settings, so that a step of the scan is a step of
+    the optimizer.
+    """
     return (
-        np.log10([p.lower_bound for p in problem.parameters]),
-        np.log10([p.upper_bound for p in problem.parameters]),
+        problem.to_scale([p.lower_bound for p in problem.parameters]),
+        problem.to_scale([p.upper_bound for p in problem.parameters]),
     )
 
 
@@ -776,7 +786,7 @@ def _evaluate_point(
         if not settings.reoptimize or not np.any(free):
             return theta, problem.cost_least_square(theta), True
 
-        lower, upper = _log_bounds(problem)
+        lower, upper = _scaled_bounds(problem)
 
         def residuals(theta_free: np.ndarray) -> np.ndarray:
             """Residuals as a function of the free parameters."""
@@ -798,7 +808,7 @@ def _evaluate_point(
             "'%s': the scan of '%s' failed at '%s': %s",
             problem.opid,
             problem.pids[index],
-            10 ** theta[index],
+            problem.from_scale(theta)[index],
             err,
         )
         return theta, float("inf"), False
@@ -836,7 +846,7 @@ def _scan_direction(
     Returns:
         The points of the scan, from the optimum outward, without the optimum.
     """
-    lower, upper = _log_bounds(problem)
+    lower, upper = _scaled_bounds(problem)
     bound = upper[index] if direction > 0 else lower[index]
     threshold = settings.threshold(cost_optimum)
     max_rise = settings.max_cost_fraction * settings.delta / 2.0
@@ -969,13 +979,14 @@ def profile_likelihood(
         )
 
     x = parameter_set.x(problem.pids)
-    lower, upper = _log_bounds(problem)
-    if np.any(x <= 0.0):
+    lower, upper = _scaled_bounds(problem)
+    if problem.parameter_scale.is_log and np.any(x <= 0.0):
         raise ValueError(
             f"'{problem.opid}': the parameters must be positive, the scans run in "
-            f"logarithmic space, got '{dict(zip(problem.pids, x, strict=True))}'."
+            f"'{problem.parameter_scale.name}' space, got "
+            f"'{dict(zip(problem.pids, x, strict=True))}'."
         )
-    theta_optimum = np.log10(x)
+    theta_optimum = problem.to_scale(x)
     outside = [
         pid
         for pid, value, lb, ub in zip(

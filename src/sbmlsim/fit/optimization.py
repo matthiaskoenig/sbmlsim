@@ -25,6 +25,7 @@ from sbmlsim.fit.options import (
     FitSettings,
     LossFunctionType,
     OptimizationAlgorithmType,
+    ParameterScaleType,
     ResidualType,
     WeightingCurvesType,
     WeightingPointsType,
@@ -747,29 +748,50 @@ class OptimizationProblem(ObjectJSONEncoder):
         )
         self.set_simulator(simulator)
 
+    @property
+    def parameter_scale(self) -> ParameterScaleType:
+        """Get the space the optimizer searches the parameters in."""
+        return self.settings_initialized.parameter_scale
+
+    def to_scale(self, x: Any) -> np.ndarray:
+        """Transform parameters of the model into the space of the optimizer."""
+        return np.asarray(self.parameter_scale.to_scale(x), dtype=float)
+
+    def from_scale(self, x: Any) -> np.ndarray:
+        """Transform parameters of the optimizer into the units of the model."""
+        return np.asarray(self.parameter_scale.from_scale(x), dtype=float)
+
     def _validate_parameters(self) -> None:
         """Check that the parameters can be optimized.
 
-        The optimization is performed in logarithmic parameter space, which
-        requires finite positive bounds and start values.
+        An optimization on a logarithmic scale, which is the default, requires
+        finite positive bounds and start values; on the linear scale the bounds
+        only have to be finite.
 
         Raises:
-            ValueError: if a bound or a start value is not finite and positive.
+            ValueError: if a bound or a start value does not suit the scale.
         """
+        scale = self.parameter_scale
+        space = f"'{scale.name}' parameter space"
         for p in self.parameters:
             for key in ["lower_bound", "upper_bound"]:
                 value = getattr(p, key)
-                if not np.isfinite(value) or value <= 0.0:
+                if not np.isfinite(value):
                     raise ValueError(
-                        f"{self.opid}: the optimization is performed in logarithmic "
-                        f"parameter space, which requires a finite positive "
+                        f"{self.opid}: the optimization requires a finite "
                         f"'{key}', but FitParameter '{p.pid}' has '{value}'."
                     )
-            if p.start_value is not None and p.start_value <= 0.0:
+                if scale.is_log and value <= 0.0:
+                    raise ValueError(
+                        f"{self.opid}: the optimization is performed in {space}, "
+                        f"which requires a positive '{key}', but FitParameter "
+                        f"'{p.pid}' has '{value}'."
+                    )
+            if scale.is_log and p.start_value is not None and p.start_value <= 0.0:
                 raise ValueError(
-                    f"{self.opid}: the optimization is performed in logarithmic "
-                    f"parameter space, which requires a positive 'start_value', but "
-                    f"FitParameter '{p.pid}' has '{p.start_value}'."
+                    f"{self.opid}: the optimization is performed in {space}, "
+                    f"which requires a positive 'start_value', but FitParameter "
+                    f"'{p.pid}' has '{p.start_value}'."
                 )
 
     def _group_mappings(self) -> None:
@@ -1084,8 +1106,8 @@ class OptimizationProblem(ObjectJSONEncoder):
                 )
             x0 = np.array(self.x0, dtype=float)
 
-        # logarithmic parameters for optimizer
-        x0log: np.ndarray = np.log10(x0)
+        # the optimizer searches the scaled space, see `ParameterScaleType`
+        x0log: np.ndarray = self.to_scale(x0)
 
         if algorithm == OptimizationAlgorithmType.LEAST_SQUARE:
             # scipy least square optimizer
@@ -1093,8 +1115,8 @@ class OptimizationProblem(ObjectJSONEncoder):
             ts = time.time()
             try:
                 boundslog = [
-                    np.log10([p.lower_bound for p in self.parameters]),
-                    np.log10([p.upper_bound for p in self.parameters]),
+                    self.to_scale([p.lower_bound for p in self.parameters]),
+                    self.to_scale([p.upper_bound for p in self.parameters]),
                 ]
                 if "method" in kwargs and kwargs["method"] == "lm":
                     # no bounds supported on lm
@@ -1118,7 +1140,7 @@ class OptimizationProblem(ObjectJSONEncoder):
             te = time.time()
             opt_result.x0 = x0  # store start value
             opt_result.duration = te - ts
-            opt_result.x = np.power(10, np.asarray(opt_result.x))
+            opt_result.x = self.from_scale(opt_result.x)
             return minimal_result(opt_result), list(self._trajectory)
 
         if algorithm == OptimizationAlgorithmType.DIFFERENTIAL_EVOLUTION:
@@ -1127,7 +1149,7 @@ class OptimizationProblem(ObjectJSONEncoder):
             ts = time.time()
             try:
                 de_bounds_log = [
-                    (np.log10(p.lower_bound), np.log10(p.upper_bound))
+                    (self.to_scale(p.lower_bound), self.to_scale(p.upper_bound))
                     for k, p in enumerate(self.parameters)
                 ]
                 opt_result = scipy.optimize.differential_evolution(
@@ -1151,7 +1173,7 @@ class OptimizationProblem(ObjectJSONEncoder):
                 # trajectory, evaluating it again would hit the deadline once
                 # more
                 opt_result.cost = self.cost_least_square(np.asarray(opt_result.x))
-            opt_result.x = np.power(10, np.asarray(opt_result.x))
+            opt_result.x = self.from_scale(opt_result.x)
             return minimal_result(opt_result), list(self._trajectory)
 
         raise ValueError(f"optimizer is not supported: {algorithm}")
@@ -1222,7 +1244,7 @@ class OptimizationProblem(ObjectJSONEncoder):
         """
         best = self._best
         return RuntimeErrorOptimizeResult(
-            x=np.log10(best[0]) if best is not None else x0log,
+            x=self.to_scale(best[0]) if best is not None else x0log,
             cost=best[1] if best is not None else np.inf,
             message=f"{type(err).__name__}: {err}",
         )
@@ -1256,7 +1278,7 @@ class OptimizationProblem(ObjectJSONEncoder):
             raise FitTimeout(
                 f"'{self.opid}': the optimization did not finish in its budget."
             )
-        x = np.power(10, xlog)
+        x = self.from_scale(xlog)
 
         # FIXME: handle parts better
         parts = []
