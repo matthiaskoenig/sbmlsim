@@ -6,8 +6,8 @@ import pandas as pd
 import pytest
 import roadrunner
 
-from examples.interpolation import interpolation_example
-from sbmlsim.interpolation import interpolation as ip
+from examples.interpolation import interpolation as ip
+from examples.interpolation.interpolation_example import interpolation_example
 
 x = [0.0, 1.0, 2.0, 3.0, 4.0, 5.0]
 y = [0.0, 2.0, 1.0, 1.5, 2.5, 3.5]

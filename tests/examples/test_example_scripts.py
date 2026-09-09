@@ -28,7 +28,7 @@ SCRIPTS = [
     "examples.units",
     "examples.model_sensitivity",
     "examples.datagenerator",
-    "examples.interpolation",
+    "examples.interpolation.interpolation_example",
     "examples.curve_types.experiment",
     "examples.initial_assignment.initial_assignment",
     "examples.glucose.glucose",

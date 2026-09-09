@@ -110,9 +110,8 @@ Local and global sensitivity analysis, see [Sensitivity analysis](../sensitivity
 | [sensitivity.classification](sensitivity.classification.md) | classification of sensitivities and uncertainties |
 | [sensitivity.plots](sensitivity.plots.md) | plots of the sensitivity results |
 
-## sbmlsim.interpolation, sbmlsim.comparison
+## sbmlsim.comparison
 
 | module | description |
 | --- | --- |
-| [interpolation.interpolation](interpolation.interpolation.md) | interpolation of datasets as SBML models |
 | [comparison.diff](comparison.diff.md) | numerical comparison of simulation results from different simulators |

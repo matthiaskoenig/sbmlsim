@@ -23,7 +23,7 @@ An example writes what it creates into the current working directory: figures ar
 | `examples/units.py` | units of a model and changes with pint quantities |
 | `examples/model_sensitivity.py` | sensitivity scans of all parameters, by relative differences and by sampling from distributions |
 | `examples/datagenerator.py` | reducing scan results with a `DataGenerator` |
-| `examples/interpolation.py` | interpolation of data points as an SBML model |
+| `examples/interpolation/` | interpolation of data points as an SBML model (`interpolation.py` writes the model, `interpolation_example.py` simulates it) |
 | `examples/curve_types/` | a two reaction model (created with sbmlutils) and a simulation experiment showing the curve types of the plots |
 | `examples/initial_assignment/` | a simulation experiment on a model with initial assignments and changes of the assigned parameters |
 | `examples/glucose/` | dose response experiment of the hepatic glucose model with data from PK-DB |

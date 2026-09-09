@@ -1,4 +1,4 @@
-"""Exmpample demonstrating the interpolation of data."""
+"""Example demonstrating the interpolation of data as an SBML model."""
 
 import logging
 import tempfile
@@ -9,7 +9,7 @@ import roadrunner
 from matplotlib import pyplot as plt
 from matplotlib.pyplot import Axes
 
-from sbmlsim.interpolation import interpolation as ip
+from examples.interpolation import interpolation as ip
 
 logger = logging.getLogger(__name__)
 

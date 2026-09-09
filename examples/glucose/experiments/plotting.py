@@ -1,6 +1,9 @@
-"""Deprecated matplotlib functions.
+"""Plotting of the experimental data of the dose response experiment.
 
-These functions will be removed in future releases.
+`add_data` draws a dataset onto a matplotlib axes directly. This is the old
+way of plotting an experiment and only the dose response experiment still
+uses it; a simulation experiment describes its figures with `Figure`, `Plot`
+and `Curve` (`sbmlsim.plot.plotting`) and lets the backend render them.
 """
 
 import logging
@@ -9,7 +12,6 @@ import pandas as pd
 from matplotlib import pyplot as plt
 
 from sbmlsim.data import DataSet
-from sbmlsim.utils import deprecated
 
 logger = logging.getLogger(__name__)
 
@@ -17,7 +19,6 @@ kwargs_data = {"marker": "s", "linestyle": "--", "linewidth": 1, "capsize": 3}
 kwargs_sim = {"marker": None, "linestyle": "-", "linewidth": 2}
 
 
-@deprecated
 def add_data(
     ax: plt.Axes,
     data: DataSet,
@@ -34,9 +35,6 @@ def add_data(
     **kwargs,
 ):
     """Add experimental data to a matplotlib axes.
-
-    This is deprecated the plotting Figure, Plot, Curves, should be used
-    instead.
 
     :param ax:
     :param data:

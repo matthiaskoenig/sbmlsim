@@ -110,9 +110,6 @@ nav = [
       { "classification" = "api/sensitivity.classification.md" },
       { "plots" = "api/sensitivity.plots.md" },
     ] },
-    { "sbmlsim.interpolation" = [
-      { "interpolation" = "api/interpolation.interpolation.md" },
-    ] },
     { "sbmlsim.comparison" = [
       { "diff" = "api/comparison.diff.md" },
     ] },
