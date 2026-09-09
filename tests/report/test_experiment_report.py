@@ -11,8 +11,8 @@ from pathlib import Path
 
 import pytest
 
-from examples.hctz.experiments.studies import Beermann1976
-from examples.hctz.helpers import run_experiments
+from examples.hctz_fitting.experiments.studies import Beermann1976
+from examples.hctz_fitting.helpers import run_experiments
 
 VOID_TAGS = {"img", "br", "hr", "meta", "link", "input", "source", "col"}
 

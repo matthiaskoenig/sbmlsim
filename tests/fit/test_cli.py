@@ -116,7 +116,7 @@ def test_run_fit_report(tmp_path: Path, definition_hctz_pkiv: FitDefinition) -> 
 
 def test_fit_cli(tmp_path: Path) -> None:
     """The fit tool runs a fit of a definition and reports it."""
-    from examples.hctz.fitting.fitting import FIT_DEFINITIONS
+    from examples.hctz_fitting.fitting.fitting import FIT_DEFINITIONS
 
     runs = fit_cli(
         FIT_DEFINITIONS,
@@ -141,7 +141,7 @@ def test_fit_cli(tmp_path: Path) -> None:
 
 def test_report_cli(tmp_path: Path, definition_hctz_pkiv: FitDefinition) -> None:
     """The report tool reports stored parameters without optimizing."""
-    from examples.hctz.fitting.fitting import FIT_DEFINITIONS
+    from examples.hctz_fitting.fitting.fitting import FIT_DEFINITIONS
 
     runs = run_fit(
         definition=definition_hctz_pkiv, opid="pkiv", size=1, n_cores=1, seed=1234

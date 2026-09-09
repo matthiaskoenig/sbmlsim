@@ -6,7 +6,7 @@ import numpy as np
 import petab.v2 as petab_v2
 import pytest
 
-from examples.hctz.fitting.fitting import FIT_DEFINITIONS
+from examples.hctz_fitting.fitting.fitting import FIT_DEFINITIONS
 from sbmlsim.experiment import SimulationExperiment
 from sbmlsim.fit import FitSettings
 from sbmlsim.fit.objects import MappingKind

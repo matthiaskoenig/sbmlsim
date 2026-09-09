@@ -13,7 +13,7 @@ from sbmlsim.fit.optimization import OptimizationProblem
 
 def test_collection_default_kind() -> None:
     """The data of a fit experiment is training data by default."""
-    from examples.hctz.experiments.studies import Beermann1976
+    from examples.hctz_fitting.experiments.studies import Beermann1976
 
     collection = FitMappingCollection(experiment=Beermann1976, mappings=["a"])
     assert collection.kind is MappingKind.TRAINING
@@ -21,7 +21,7 @@ def test_collection_default_kind() -> None:
 
 def test_collection_kind() -> None:
     """The kind classifies the selected data of a fit experiment."""
-    from examples.hctz.experiments.studies import Beermann1976
+    from examples.hctz_fitting.experiments.studies import Beermann1976
 
     collection = FitMappingCollection(
         experiment=Beermann1976, mappings=["a"], kind=MappingKind.VALIDATION
@@ -32,7 +32,7 @@ def test_collection_kind() -> None:
 
 def test_reduce_keeps_the_kinds_apart() -> None:
     """The training and the validation data of an experiment are not combined."""
-    from examples.hctz.experiments.studies import Beermann1976
+    from examples.hctz_fitting.experiments.studies import Beermann1976
 
     reduced = FitMappingCollection.reduce(
         [

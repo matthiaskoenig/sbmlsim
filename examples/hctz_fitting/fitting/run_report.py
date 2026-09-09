@@ -6,21 +6,21 @@ the `parameters.json` a fit wrote, so a report is created again later or for
 several fits at once:
 
     # report the parameters of a finished fit
-    python -m examples.hctz.fitting.run_report results/fit/PK/parameters.json
+    python -m examples.hctz_fitting.fitting.run_report results/fit/PK/parameters.json
 
     # compare the parameters of two fits in one report
-    python -m examples.hctz.fitting.run_report run1/parameters.json run2/parameters.json
+    python -m examples.hctz_fitting.fitting.run_report run1/parameters.json run2/parameters.json
 """
 
 import sys
 from pathlib import Path
 
-# run as a script (`python examples/hctz/fitting/run_report.py`, the "run file" of an
+# run as a script (`python examples/hctz_fitting/fitting/run_report.py`, the "run file" of an
 # IDE) the repository is not on `sys.path`, so the `examples` package is not found
 if __package__ in (None, ""):
     sys.path.insert(0, str(Path(__file__).resolve().parents[3]))
 
-from examples.hctz.fitting.fitting import FIT_DEFINITIONS
+from examples.hctz_fitting.fitting.fitting import FIT_DEFINITIONS
 from sbmlsim.fit.cli import report_cli
 
 

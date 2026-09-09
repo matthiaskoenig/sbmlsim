@@ -6,7 +6,7 @@ from typing import ClassVar
 
 import pandas as pd
 
-from examples.hctz import MODEL_PATH
+from examples.hctz_fitting import MODEL_PATH
 from sbmlsim.data import load_pkdb_dataframe
 from sbmlsim.experiment import SimulationExperiment
 from sbmlsim.model import AbstractModel

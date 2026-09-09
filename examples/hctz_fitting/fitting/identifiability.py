@@ -6,11 +6,11 @@ runs differential evolution, the profiles are computed around its best
 parameter set, and one report carries the fit and the identifiability section
 with the profiles:
 
-    python -m examples.hctz.fitting.identifiability --subset=PK --runs=2 --cores=4
+    python -m examples.hctz_fitting.fitting.identifiability --subset=PK --runs=2 --cores=4
 
 The report is written into `results/identifiability` in the working directory.
 The profiles of stored parameters, without fitting again, are computed with
-`python -m examples.hctz.fitting.identifiability_report <parameters.json>`.
+`python -m examples.hctz_fitting.fitting.identifiability_report <parameters.json>`.
 """
 
 import argparse
@@ -18,13 +18,13 @@ import sys
 from collections.abc import Sequence
 from pathlib import Path
 
-# run as a script (`python examples/hctz/fitting/identifiability.py`, the "run
+# run as a script (`python examples/hctz_fitting/fitting/identifiability.py`, the "run
 # file" of an IDE) the repository is not on `sys.path`, so the `examples`
 # package is not found
 if __package__ in (None, ""):
     sys.path.insert(0, str(Path(__file__).resolve().parents[3]))
 
-from examples.hctz.fitting.fitting import FIT_DEFINITIONS
+from examples.hctz_fitting.fitting.fitting import FIT_DEFINITIONS
 from sbmlsim import log
 from sbmlsim.fit.cli import run_fit
 from sbmlsim.fit.identifiability import ProfileSettings

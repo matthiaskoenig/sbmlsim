@@ -12,8 +12,8 @@ from typing import ClassVar
 
 import pandas as pd
 
-from examples.hctz.experiments.base_experiment import HCTZSimulationExperiment
-from examples.hctz.experiments.metadata import (
+from examples.hctz_fitting.experiments.base_experiment import HCTZSimulationExperiment
+from examples.hctz_fitting.experiments.metadata import (
     ApplicationForm,
     Coadministration,
     Dosing,
@@ -23,7 +23,7 @@ from examples.hctz.experiments.metadata import (
     Route,
     Tissue,
 )
-from examples.hctz.helpers import run_experiments
+from examples.hctz_fitting.helpers import run_experiments
 from sbmlsim.data import DataSet
 from sbmlsim.fit import FitData, FitMapping
 from sbmlsim.plot import Axis, Figure

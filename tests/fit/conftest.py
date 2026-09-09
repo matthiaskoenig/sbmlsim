@@ -6,7 +6,7 @@ smallest subset: a single simulation experiment with four fit mappings.
 
 import pytest
 
-from examples.hctz.fitting.fitting import FIT_DEFINITIONS
+from examples.hctz_fitting.fitting.fitting import FIT_DEFINITIONS
 from sbmlsim.fit import FitSettings
 from sbmlsim.fit.cli import FitDefinition
 from sbmlsim.fit.optimization import OptimizationProblem

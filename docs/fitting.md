@@ -2,7 +2,7 @@
 
 Parameter fitting adjusts model parameters so that the simulations of experiments match the experimental data. In `sbmlsim` a fit is an `OptimizationProblem` built from `FitMappingCollection` objects, which name the simulation experiments and their fit mappings, and `FitParameter` objects with the bounds of the parameters. The problem is run with local or global optimizers of scipy, reported with `FitReport`, and the identifiability of the fitted parameters is analysed with the profile likelihood.
 
-The example throughout this page is `examples/hctz/`, a whole body model of hydrochlorothiazide with the simulation experiments of two studies and the fit problem built on them.
+The example throughout this page is `examples/hctz_fitting/`, a whole body model of hydrochlorothiazide with the simulation experiments of two studies and the fit problem built on them.
 
 ## Fit mappings
 
@@ -34,7 +34,7 @@ def fit_mappings(self) -> dict[str, FitMapping]:
 print(mapping_code)
 ```
 
-The units of the reference and the observable are compared and the reference is converted to the units of the model. A `MappingMetaData` on a mapping describes its curve with application specific information such as the tissue, the route or the dosing. It describes the data, not what a fit does with the data. Its fields are keyword only, so that a subclass can add fields without a default; `examples/hctz/experiments/metadata.py` is such a subclass.
+The units of the reference and the observable are compared and the reference is converted to the units of the model. A `MappingMetaData` on a mapping describes its curve with application specific information such as the tissue, the route or the dosing. It describes the data, not what a fit does with the data. Its fields are keyword only, so that a subclass can add fields without a default; `examples/hctz_fitting/experiments/metadata.py` is such a subclass.
 
 ## Training, validation and outlier data
 
@@ -47,8 +47,8 @@ What a fit does with a curve is decided when the data of the fit is selected, no
 `mapping_collections_by_kind` selects and classifies the data in one step: every kind gets its own filters and the mappings of all kinds are listed in a single overview.
 
 ```python
-from examples.hctz import DATA_PATH, HCTZ_PATH
-from examples.hctz.experiments.studies import Beermann1976
+from examples.hctz_fitting import DATA_PATH, HCTZ_PATH
+from examples.hctz_fitting.experiments.studies import Beermann1976
 from sbmlsim.fit import MappingKind
 from sbmlsim.fit.helpers import (
     filter_empty,
@@ -74,7 +74,7 @@ The overview ends in a line such as `mappings : 32 (28 training, 2 validation, 2
 `sbmlsim.fit.helpers` filters the mappings by their metadata and collects it into a table:
 
 ```python
-from examples.hctz.fitting.mapping_collections import f_collections_pkiv
+from examples.hctz_fitting.fitting.mapping_collections import f_collections_pkiv
 
 mapping_collections = f_collections_pkiv()
 print(mapping_collections)
@@ -85,7 +85,7 @@ print(mapping_collections)
 `FitParameter` names a parameter of the model with its start value, bounds and unit, `FitMappingCollection` names a simulation experiment class and the mappings of it which enter the fit together, with optional weights:
 
 ```python
-from examples.hctz.experiments.studies import Beermann1976
+from examples.hctz_fitting.experiments.studies import Beermann1976
 from sbmlsim.fit import FitMappingCollection, FitParameter
 
 mapping_collections = [
@@ -125,7 +125,7 @@ The scale is a property of the optimization and not of the model or of the data,
 The `OptimizationProblem` collects the fit mapping collections and parameters with the `base_path` and `data_path` of the experiments:
 
 ```python
-from examples.hctz import DATA_PATH, HCTZ_PATH
+from examples.hctz_fitting import DATA_PATH, HCTZ_PATH
 from sbmlsim.fit.optimization import OptimizationProblem
 
 op = OptimizationProblem(
@@ -371,11 +371,11 @@ identifiability = run.identifiability(n_cores=4)
 run.report(output_dir=Path("results"), identifiability=identifiability)
 ```
 
-which is `examples/hctz/fitting/identifiability.py`. `identifiability_cli` is the command line tool for stored parameters, `examples/hctz/fitting/identifiability_report.py` on the HCTZ definitions:
+which is `examples/hctz_fitting/fitting/identifiability.py`. `identifiability_cli` is the command line tool for stored parameters, `examples/hctz_fitting/fitting/identifiability_report.py` on the HCTZ definitions:
 
 ```bash
-python -m examples.hctz.fitting.identifiability --subset=PK --runs=2 --cores=4
-python -m examples.hctz.fitting.identifiability_report results/fit/PK/parameters.json --cores=4
+python -m examples.hctz_fitting.fitting.identifiability --subset=PK --runs=2 --cores=4
+python -m examples.hctz_fitting.fitting.identifiability_report results/fit/PK/parameters.json --cores=4
 ```
 
 ### Fisher information
@@ -442,18 +442,18 @@ print(FIT_DEFINITIONS)
 
 Every fit gets an id when it starts, `<problem>_<date>_<time>__<hash>`, e.g. `PK_20260908_144538__ea1ff`. It is the id of the optimization problem, of its result and of the directory of its report, so everything a fit produces carries the same key and sorts by time. The output of a fit is a sequence of sections, each with its own icon: the fit with its strategy, algorithm and paths, the parameters which are optimized with their bounds and units, the settings, the data with the number of fit mappings per experiment and kind, the optimization with its progress, and the report. `sbmlsim.fit.display` renders them and is used on its own as well.
 
-The fit problems of the HCTZ model are in `examples/hctz/fitting/`: `mapping_collections.py` builds the subsets of the data, `parameters.py` holds the fit parameters and `fitting.py` is the definitions plus the four lines above:
+The fit problems of the HCTZ model are in `examples/hctz_fitting/fitting/`: `mapping_collections.py` builds the subsets of the data, `parameters.py` holds the fit parameters and `fitting.py` is the definitions plus the four lines above:
 
 ```bash
-python -m examples.hctz.fitting.fitting --subset=PK --runs=10 --cores=4 \
+python -m examples.hctz_fitting.fitting.fitting --subset=PK --runs=10 --cores=4 \
     --seed=1234 --method=LSQ --strategy=ALL --name=PK_LSQ_ALL
 ```
 
 `report.py` is `report_cli` on the same definitions. It creates a report from the `parameters.json` of a finished fit without optimizing again, and compares the parameters of several fits:
 
 ```bash
-python -m examples.hctz.fitting.run_report results/fit/PK_LSQ_ALL/parameters.json
-python -m examples.hctz.fitting.run_report run1/parameters.json run2/parameters.json
+python -m examples.hctz_fitting.fitting.run_report results/fit/PK_LSQ_ALL/parameters.json
+python -m examples.hctz_fitting.fitting.run_report run1/parameters.json run2/parameters.json
 ```
 
 ## PEtab

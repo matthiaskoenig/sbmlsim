@@ -5,8 +5,8 @@ written as a PEtab v2 problem, validated with `petab` itself and read back into
 an optimization problem, and what the tables of PEtab cannot express is
 reported before anything is written.
 
-    python -m examples.hctz.fitting.petab_problem
-    python -m examples.hctz.fitting.petab_problem --subset=PKIV --portable
+    python -m examples.hctz_fitting.fitting.petab_problem
+    python -m examples.hctz_fitting.fitting.petab_problem --subset=PKIV --portable
 
 The problem is written into `results/petab/<subset>` of the working directory.
 
@@ -19,7 +19,7 @@ import argparse
 import sys
 from pathlib import Path
 
-# run as a script (`python examples/hctz/fitting/petab_problem.py`, the "run file" of an
+# run as a script (`python examples/hctz_fitting/fitting/petab_problem.py`, the "run file" of an
 # IDE) the repository is not on `sys.path`, so the `examples` package is not found
 if __package__ in (None, ""):
     sys.path.insert(0, str(Path(__file__).resolve().parents[3]))
@@ -29,7 +29,7 @@ import petab.v2 as petab_v2
 from rich import box
 from rich.table import Table
 
-from examples.hctz.fitting.fitting import FIT_DEFINITIONS
+from examples.hctz_fitting.fitting.fitting import FIT_DEFINITIONS
 from sbmlsim.console import console
 from sbmlsim.fit import display
 from sbmlsim.fit.petab_v2 import gaps_of_problem, gaps_table, to_petab

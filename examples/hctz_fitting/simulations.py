@@ -3,14 +3,14 @@
 The experiments write their figures and reports into `results/` in the working
 directory:
 
-    python -m examples.hctz.simulations
+    python -m examples.hctz_fitting.simulations
 """
 
 import shutil
 from pathlib import Path
 
-from examples.hctz.experiments.studies import Beermann1976, Patel1984, Weir1998
-from examples.hctz.helpers import run_experiments
+from examples.hctz_fitting.experiments.studies import Beermann1976, Patel1984, Weir1998
+from examples.hctz_fitting.helpers import run_experiments
 from sbmlsim.console import console
 from sbmlsim.experiment import SimulationExperiment
 from sbmlsim.plot import Figure

@@ -2,7 +2,7 @@
 
 from pathlib import Path
 
-from examples.hctz import DATA_PATH, HCTZ_PATH, MODEL_PATH
+from examples.hctz_fitting import DATA_PATH, HCTZ_PATH, MODEL_PATH
 from sbmlsim import log
 from sbmlsim.console import console
 from sbmlsim.experiment import ExperimentRunner, SimulationExperiment

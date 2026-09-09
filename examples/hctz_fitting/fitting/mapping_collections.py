@@ -7,14 +7,14 @@ selection gets a `MappingKind`, i.e., it is the training data of the fit, the
 validation data it is evaluated on, or an outlier which is not used.
 """
 
-from examples.hctz import DATA_PATH, HCTZ_PATH
-from examples.hctz.experiments.metadata import (
+from examples.hctz_fitting import DATA_PATH, HCTZ_PATH
+from examples.hctz_fitting.experiments.metadata import (
     Coadministration,
     Fasting,
     HCTZMappingMetaData,
     Route,
 )
-from examples.hctz.experiments.studies import Beermann1976, Patel1984, Weir1998
+from examples.hctz_fitting.experiments.studies import Beermann1976, Patel1984, Weir1998
 from sbmlsim.console import console
 from sbmlsim.experiment import SimulationExperiment
 from sbmlsim.fit import FitMapping, FitMappingCollection, MappingKind

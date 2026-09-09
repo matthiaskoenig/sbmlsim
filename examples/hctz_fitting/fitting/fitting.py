@@ -4,7 +4,7 @@ The fit problems of the HCTZ model: which fit mapping collections enter a fit
 and which parameters are adjusted. Everything else is the general fit runner of
 `sbmlsim.fit.cli`.
 
-    python -m examples.hctz.fitting.fitting --subset=PK --runs=4 --cores=2 \
+    python -m examples.hctz_fitting.fitting.fitting --subset=PK --runs=4 --cores=2 \
         --seed=1234 --method=LSQ --strategy=ALL --name=PK_LSQ_ALL
 
 The results, figures and the HTML report are written into `results/fit` in the
@@ -14,17 +14,17 @@ working directory.
 import sys
 from pathlib import Path
 
-# run as a script (`python examples/hctz/fitting/fitting.py`, the "run file" of an
+# run as a script (`python examples/hctz_fitting/fitting/fitting.py`, the "run file" of an
 # IDE) the repository is not on `sys.path`, so the `examples` package is not found
 if __package__ in (None, ""):
     sys.path.insert(0, str(Path(__file__).resolve().parents[3]))
 
-from examples.hctz import DATA_PATH, HCTZ_PATH
-from examples.hctz.fitting.mapping_collections import (
+from examples.hctz_fitting import DATA_PATH, HCTZ_PATH
+from examples.hctz_fitting.fitting.mapping_collections import (
     f_collections_pk,
     f_collections_pkiv,
 )
-from examples.hctz.fitting.parameters import parameters_pk
+from examples.hctz_fitting.fitting.parameters import parameters_pk
 from sbmlsim.fit import FitSettings
 from sbmlsim.fit.cli import FitDefinition, fit_cli
 from sbmlsim.fit.options import (
