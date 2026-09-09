@@ -170,6 +170,39 @@ def test_extension_carries_the_fit(
         assert info["kind"] in {kind.value for kind in MappingKind}
 
 
+def test_the_extension_is_required(petab_dir: Path) -> None:
+    """The settings of the extension are the objective, so it is required.
+
+    PEtab asks an extension which changes the mathematical interpretation of a
+    problem to be `required`, i.e. a tool which does not know it rejects the
+    problem rather than fitting the same data with another objective.
+    """
+    problem = petab_v2.Problem.from_yaml(petab_dir / "problem.yaml")
+    extension = extension_of(problem.config)
+    assert extension is not None
+    assert extension.required is True
+
+
+def test_a_problem_for_other_tools(
+    tmp_path: Path,
+    op_hctz_pk: OptimizationProblem,
+    fit_settings: FitSettings,
+) -> None:
+    """A problem which other tools should fit is written as not required."""
+    to_petab(
+        op_hctz_pk,
+        tmp_path,
+        settings=fit_settings,
+        required_extension=False,
+    )
+    problem = petab_v2.Problem.from_yaml(tmp_path / "problem.yaml")
+    extension = extension_of(problem.config)
+    assert extension is not None
+    assert extension.required is False
+    # and it is still the fit, i.e. the settings are there to read
+    assert FitSettings.from_dict(extension.settings) == fit_settings
+
+
 def test_outliers_are_not_exported(
     op_hctz_pk: OptimizationProblem, fit_settings: FitSettings
 ) -> None:

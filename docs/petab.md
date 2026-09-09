@@ -54,7 +54,9 @@ An experiment of PEtab is a simulation with its conditions and the observables w
 
 PEtab describes a problem as tables and `sbmlsim` describes more than that, i.e. the units of everything, what a fit does with a subset of the data and how the residuals are weighted. What the tables do not hold goes into the `sbmlsim` extension of the problem, a block in its YAML which other tools ignore, so a problem which is written and read again is the fit it started from.
 
-PEtab says that an extension which changes the mathematical interpretation of a problem must be `required`, and that a tool must reject a problem which requires an extension it does not know. The extension is on that line: the tables alone are a valid PEtab problem of the same data, but the settings it carries are the objective `sbmlsim` optimizes, so a tool which ignores them fits the same data differently. It is therefore not required by default, which keeps the problem portable, and `to_petab(..., required_extension=True)` is the strict reading, where a tool which does not know `sbmlsim` has to reject the problem instead.
+PEtab says that an extension which changes the mathematical interpretation of a problem must be `required`, and that a tool must reject a problem which requires an extension it does not know. The settings the extension carries are the objective `sbmlsim` optimizes, so it is required: a tool which does not know `sbmlsim` says so instead of fitting the same data with another objective without telling anyone.
+
+A problem which is meant to be fitted by other tools is written with `to_petab(..., required_extension=False)`. They then read the tables and optimize the objective PEtab defines, which is a different fit of the same data.
 
 `sbmlsim.fit.petab_v2.gaps` is the catalogue of the differences and `gaps_of_problem` reports the ones a problem runs into, before it is written:
 

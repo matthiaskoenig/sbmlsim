@@ -34,9 +34,10 @@ class GapKind(StrEnum):
 
     EXTENSION = "extension"
     """PEtab has no place for it, the `sbmlsim` extension of the problem
-    carries it. The problem is a valid PEtab problem for other tools, which
-    read it without the information, and the round trip through `sbmlsim` is
-    exact."""
+    carries it, so the round trip through `sbmlsim` is exact. The extension is
+    required, i.e. a tool which does not know it rejects the problem rather
+    than reading it without the information; `required_extension=False` writes
+    a problem for other tools."""
 
     LOSSY = "lossy"
     """The information is transformed and the round trip is not exact, i.e.,
@@ -95,8 +96,9 @@ GAPS: tuple[Gap, ...] = (
         sbmlsim="a fit mapping is training, validation or outlier data",
         petab="every measurement of a problem enters the objective",
         detail="the training data is the PEtab problem, the kind of every mapping "
-        "goes to the extension. Without it a tool fits the validation data as "
-        "well, which is why the outliers are not written at all",
+        "goes to the extension. A tool which reads the problem without it fits "
+        "the validation data as well, which is why the outliers are not written "
+        "at all",
     ),
     Gap(
         id="fit-settings",
@@ -105,8 +107,9 @@ GAPS: tuple[Gap, ...] = (
         "weighting of curves and points and the tolerances of the integrator",
         petab="`noiseDistribution` per observable, the objective is the negative "
         "log likelihood",
-        detail="the settings go to the extension. A tool which reads the problem "
-        "without it optimizes a different objective on the same data",
+        detail="the settings go to the extension, which is required because of "
+        "them: a tool which reads the problem without the settings optimizes a "
+        "different objective on the same data",
     ),
     Gap(
         id="weights",

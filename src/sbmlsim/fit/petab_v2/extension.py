@@ -6,9 +6,12 @@ extension holds what the tables of PEtab do not express, see
 `sbmlsim.fit.petab_v2.gaps`: the units, the settings of the fit, what a fit
 does with a mapping and the structure of the timecourses.
 
-A PEtab problem with this extension is a valid PEtab problem, i.e., other tools
-read the model, the measurements and the parameters as usual, and a round trip
-through `sbmlsim` keeps the fit it started from.
+The extension is `required`, because the settings it carries are the objective
+of the fit: a tool which does not know it has to reject the problem rather than
+fit the same data with another objective without saying so. A round trip
+through `sbmlsim` keeps the fit it started from, and
+`to_petab(..., required_extension=False)` writes a problem which other tools
+read and fit with the objective PEtab defines.
 """
 
 from typing import Any
@@ -29,22 +32,21 @@ class SbmlsimExtension(ExtensionConfig):
     PEtab says that an extension which changes the mathematical interpretation
     of a problem must be `required`, and that a tool must reject a problem
     which requires an extension it does not know but may ignore one which is
-    not required (PEtab v2, extensions). This extension is on the line: the
-    tables alone are a valid PEtab problem of the same data, but its settings,
+    not required (PEtab v2, extensions). The settings this extension carries,
     i.e. the residual, the loss function and the weighting, are the objective
-    `sbmlsim` optimizes, so a tool which ignores them fits the same data with a
-    different objective.
+    `sbmlsim` optimizes, so a problem which is read without them is fitted with
+    a different objective on the same data. It is therefore `required`, and a
+    tool which does not know `sbmlsim` has to say so instead of fitting the
+    problem differently without telling anyone.
 
-    `required` is therefore a choice of the export and defaults to `False`,
-    which keeps the problem portable: another tool fits it with the objective
-    PEtab defines, which is a different fit of the same data. `required=True`
-    is the strict reading of the specification, where a tool which does not
-    know `sbmlsim` must reject the problem instead of fitting it differently.
+    `to_petab(..., required_extension=False)` writes it as not required, which
+    is what a problem meant for other tools wants: they read the tables and
+    optimize the objective PEtab defines.
 
     Attributes:
         version: version of the extension.
-        required: whether the problem needs it to be interpreted, always
-            `False`, the tables alone are a valid problem.
+        required: whether a tool needs the extension to interpret the problem,
+            `True` because the settings it carries are the objective of the fit.
         opid: id of the optimization problem.
         settings: the `FitSettings` of the fit as a dictionary.
         parameters: unit and start value per fit parameter.
@@ -62,7 +64,7 @@ class SbmlsimExtension(ExtensionConfig):
     """
 
     version: str = EXTENSION_VERSION
-    required: bool = False
+    required: bool = True
 
     opid: str | None = None
     settings: dict[str, Any] = Field(default_factory=dict)

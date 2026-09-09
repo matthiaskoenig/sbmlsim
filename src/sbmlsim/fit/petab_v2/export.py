@@ -152,7 +152,7 @@ class PetabExporter:
         problem: OptimizationProblem,
         settings: FitSettings | None = None,
         kinds: set[MappingKind] | None = None,
-        required_extension: bool = False,
+        required_extension: bool = True,
     ):
         """Initialize the export of a problem.
 
@@ -164,9 +164,11 @@ class PetabExporter:
                 validation data by default. The outliers of a fit are not part
                 of it, a tool which reads the problem without the extension
                 would fit everything it finds.
-            required_extension: mark the `sbmlsim` extension as required, so a
-                tool which does not know it must reject the problem rather than
-                fit the same data with the objective of PEtab, see
+            required_extension: mark the `sbmlsim` extension as required, which
+                it is: the settings it carries are the objective of the fit, so
+                a tool which does not know it has to reject the problem instead
+                of fitting the same data differently. `False` writes a problem
+                which other tools fit with the objective PEtab defines, see
                 `sbmlsim.fit.petab_v2.extension.SbmlsimExtension`.
 
         Raises:
@@ -579,7 +581,7 @@ def to_petab(
     output_dir: Path,
     settings: FitSettings | None = None,
     kinds: set[MappingKind] | None = None,
-    required_extension: bool = False,
+    required_extension: bool = True,
 ) -> Path:
     """Write an optimization problem as a PEtab v2 problem.
 
@@ -591,8 +593,9 @@ def to_petab(
             initialized.
         kinds: kinds of fit mappings to write, the training and the validation
             data by default.
-        required_extension: mark the `sbmlsim` extension as required, so a tool
-            which does not know it must reject the problem.
+        required_extension: mark the `sbmlsim` extension as required, which it
+            is: the settings it carries are the objective of the fit. `False`
+            writes a problem other tools fit with the objective of PEtab.
 
     Returns:
         Path of the YAML file of the problem.
