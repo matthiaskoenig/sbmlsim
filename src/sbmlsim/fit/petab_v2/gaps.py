@@ -93,7 +93,8 @@ GAPS: tuple[Gap, ...] = (
     Gap(
         id="mapping-kind",
         kind=GapKind.EXTENSION,
-        sbmlsim="a fit mapping is training, validation or outlier data",
+        sbmlsim="a fit mapping is training data, validation data, an outlier "
+        "or excluded because the model does not describe it",
         petab="every measurement of a problem enters the objective",
         detail="the training data is the PEtab problem, the kind of every mapping "
         "goes to the extension. A tool which reads the problem without it fits "

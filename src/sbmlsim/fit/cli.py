@@ -41,7 +41,7 @@ from sbmlsim.fit.identifiability import (
     ProfileSettings,
     profile_likelihood,
 )
-from sbmlsim.fit.objects import FitMappingCollection, FitParameter
+from sbmlsim.fit.objects import FitMappingCollection, FitParameter, MappingKind
 from sbmlsim.fit.optimization import OptimizationProblem
 from sbmlsim.fit.options import (
     FitSettings,
@@ -256,7 +256,11 @@ def run_fit(
                 opid=f"{collection.experiment_class.__name__}_{opid}",
                 mapping_collections=[collection],
             )
+            # a collection which a fit does not fit is not a problem of its
+            # own: the validation data is evaluated with the training data and
+            # the outliers and the excluded data are not used at all
             for collection in mapping_collections
+            if collection.kind is MappingKind.TRAINING
         ]
     else:
         # one problem for all experiments

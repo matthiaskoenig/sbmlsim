@@ -38,7 +38,7 @@ The units of the reference and the observable are compared and the reference is 
 
 ## Training, validation and outlier data
 
-What a fit does with a curve is decided when the data of the fit is selected, not on the fit mapping: the same curve is training data of one fit and validation data of another. Every `FitMappingCollection` therefore carries a `MappingKind` for the mappings it selects:
+What a fit does with a curve is decided when the data of the fit is selected, not on the fit mapping: the same curve is training data of one fit and validation data of another. Every `FitMappingCollection` therefore carries a `MappingKind` for the mappings it selects: `TRAINING` enters the cost, `VALIDATION` is evaluated but not fitted, and `OUTLIER` and `EXCLUDED` are not used at all. The two say different things: an outlier is a decision about the data, i.e. it is not usable, and an exclusion is a decision about the model, i.e. the model does not describe what was measured, e.g. an arm of a study with a coadministration the model has no interaction for.
 
 - `MappingKind.TRAINING` (the default): the mappings are fitted, i.e., their residuals enter the cost of the optimization,
 - `MappingKind.VALIDATION`: the mappings are not fitted. They are simulated and evaluated together with the training data when the fit is reported, which shows how the fitted parameters describe data they were not fitted on,

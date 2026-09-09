@@ -162,8 +162,9 @@ class PetabExporter:
                 initialized.
             kinds: kinds of fit mappings to write, the training and the
                 validation data by default. The outliers of a fit are not part
-                of it, a tool which reads the problem without the extension
-                would fit everything it finds.
+                of it, and neither is the data the model does not describe:
+                a tool which reads the problem without the extension would fit
+                everything it finds.
             required_extension: mark the `sbmlsim` extension as required, which
                 it is: the settings it carries are the objective of the fit, so
                 a tool which does not know it has to reject the problem instead

@@ -7,7 +7,7 @@ from sbmlsim.fit import FitMappingCollection, FitSettings, MappingKind
 from sbmlsim.fit.cli import FitDefinition
 from sbmlsim.fit.helpers import mapping_kinds_info
 from sbmlsim.fit.metrics import FitMetrics
-from sbmlsim.fit.objects import FitMapping
+from sbmlsim.fit.objects import EVALUATED_KINDS, UNUSED_KINDS, FitMapping
 from sbmlsim.fit.optimization import OptimizationProblem
 
 
@@ -70,9 +70,10 @@ def test_kinds_of_the_problem(
     counts = op.mapping_counts()
     assert counts[MappingKind.TRAINING] > 0
     assert counts[MappingKind.VALIDATION] > 0
-    # the outliers are not part of the problem at all
-    assert MappingKind.OUTLIER not in counts
-    assert all(kind is not MappingKind.OUTLIER for kind in op.mapping_kinds)
+    # the data a fit does not use is not part of the problem at all
+    for kind in UNUSED_KINDS:
+        assert kind not in counts
+        assert all(mapping_kind is not kind for mapping_kind in op.mapping_kinds)
 
     assert len(op.mapping_kinds) == len(op.mapping_keys)
     assert len(op.training_indices) == counts[MappingKind.TRAINING]
@@ -173,3 +174,17 @@ def test_mapping_kinds_info() -> None:
 
     # a table without the kind reports the number of mappings
     assert "2" in mapping_kinds_info(pd.DataFrame({"fm_key": ["a", "b"]}))
+
+
+def test_excluded_is_not_an_outlier() -> None:
+    """The two kinds a fit does not use say different things.
+
+    An outlier is a decision about the data, i.e. the data is not usable. An
+    exclusion is a decision about the model, i.e. the model does not describe
+    what was measured. Both are unused, and a fit which drops data for the two
+    reasons should say which is which.
+    """
+    assert MappingKind.OUTLIER is not MappingKind.EXCLUDED
+    assert set(UNUSED_KINDS) == {MappingKind.OUTLIER, MappingKind.EXCLUDED}
+    assert not set(UNUSED_KINDS) & set(EVALUATED_KINDS)
+    assert set(EVALUATED_KINDS) | set(UNUSED_KINDS) == set(MappingKind)

@@ -13,6 +13,7 @@ from sbmlsim.fit.cli import (
     report_cli,
     run_fit,
 )
+from sbmlsim.fit.objects import MappingKind
 from sbmlsim.fit.optimization import OptimizationProblem
 from sbmlsim.fit.options import OptimizationStrategy
 
@@ -71,8 +72,22 @@ def test_run_fit_all(definition_hctz_pkiv: FitDefinition) -> None:
 
 
 def test_run_fit_single(definition_hctz_pkiv: FitDefinition) -> None:
-    """The `SINGLE` strategy fits every experiment on its own."""
-    experiments = definition_hctz_pkiv.collections()
+    """The `SINGLE` strategy fits every collection of training data on its own.
+
+    A collection which is not fitted is not a problem of its own: the
+    validation data is evaluated with the training data of a fit, and the
+    outliers and the excluded data are not used at all.
+    """
+    collections = definition_hctz_pkiv.collections()
+    training = [
+        collection
+        for collection in collections
+        if collection.kind is MappingKind.TRAINING
+    ]
+    assert len(training) < len(collections), (
+        "the fixture should have a collection which is not fitted"
+    )
+
     runs = run_fit(
         definition=definition_hctz_pkiv,
         opid="the_fit",
@@ -81,8 +96,11 @@ def test_run_fit_single(definition_hctz_pkiv: FitDefinition) -> None:
         n_cores=1,
         seed=1234,
     )
-    # every experiment gets its own problem, they share the id of the fit
-    assert list(runs) == [f"{e.experiment_class.__name__}_the_fit" for e in experiments]
+    # every collection of training data gets its own problem, they share the
+    # id of the fit
+    assert list(runs) == [
+        f"{collection.experiment_class.__name__}_the_fit" for collection in training
+    ]
 
 
 def test_run_fit_report(tmp_path: Path, definition_hctz_pkiv: FitDefinition) -> None:

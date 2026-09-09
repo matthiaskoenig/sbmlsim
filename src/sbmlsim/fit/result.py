@@ -422,9 +422,10 @@ class OptimizationResult(ObjectJSONEncoder):
                 "cost": fit.cost,
                 # 'optimality': fit.optimality,
             }
-            # add parameter columns
+            # add parameter columns; a run which failed before it started
+            # has no parameters
             for k, pid in enumerate(pids):
-                res[pid] = fit.x[k]
+                res[pid] = np.nan if fit.x is None else fit.x[k]
             res["message"] = fit.message if hasattr(fit, "message") else None
             res["x"] = fit.x
             res["x0"] = fit.x0

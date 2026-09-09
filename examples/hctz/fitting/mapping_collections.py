@@ -46,14 +46,22 @@ OUTLIER_MAPPINGS: set[str] = {
 #: The highest oral dose of Patel1984 checks how the parameters extrapolate,
 #: and Weir1998 checks the multiple dosing: the fits are made on single doses,
 #: so the accumulation over eleven doses every 12 hours is a prediction.
-#: The `_kombi` arms of Weir1998 are hydrochlorothiazide with diltiazem,
-#: which the filter of the coadministration removes before this.
 VALIDATION_MAPPINGS: set[str] = {
     "fm_200_tab_urine",
     "fm_200_sus_urine",
     "fm_Fig2_hctz25",
     "fm_Fig3_amount_cumulative_hctz25",
     "fm_Tab4_excretion_hctz25",
+}
+
+#: mappings the model does not describe, i.e. the `_kombi` arms of Weir1998,
+#: which are hydrochlorothiazide with diltiazem and the model has no
+#: interaction for it. The data is fine, the model is not the one for it, so
+#: these are not outliers.
+EXCLUDED_MAPPINGS: set[str] = {
+    "fm_Fig2_hctz25_kombi",
+    "fm_Fig3_amount_cumulative_hctz25_kombi",
+    "fm_Tab4_excretion_hctz25_kombi",
 }
 
 
@@ -76,8 +84,9 @@ def classified_mapping_collections(
 ) -> dict[str, list[FitMappingCollection]]:
     """Split a selection of mappings into training, validation and outliers.
 
-    The outliers and the validation data are named in `OUTLIER_MAPPINGS` and
-    `VALIDATION_MAPPINGS`, everything else the filters accept is fitted.
+    The outliers, the validation data and the data the model does not
+    describe are named in `OUTLIER_MAPPINGS`, `VALIDATION_MAPPINGS` and
+    `EXCLUDED_MAPPINGS`, everything else the filters accept is fitted.
 
     Args:
         metadata_filters: filters which select the data of the fit.
@@ -85,18 +94,22 @@ def classified_mapping_collections(
     Returns:
         The fit experiments of the three kinds by experiment id.
     """
-    excluded = OUTLIER_MAPPINGS | VALIDATION_MAPPINGS
+    not_fitted = OUTLIER_MAPPINGS | VALIDATION_MAPPINGS | EXCLUDED_MAPPINGS
     return mapping_collections_by_kind(
         experiment_classes=EXPERIMENT_CLASSES,
         base_path=HCTZ_PATH,
         data_path=DATA_PATH,
         filters_by_kind={
-            MappingKind.TRAINING: [*metadata_filters, filter_not_keys(excluded)],
+            MappingKind.TRAINING: [*metadata_filters, filter_not_keys(not_fitted)],
             MappingKind.VALIDATION: [
                 *metadata_filters,
                 filter_keys(VALIDATION_MAPPINGS),
             ],
             MappingKind.OUTLIER: [*metadata_filters, filter_keys(OUTLIER_MAPPINGS)],
+            # the excluded data is named and not filtered by its metadata: the
+            # filters of a fit remove the coadministration, which is what makes
+            # this data data the model does not describe
+            MappingKind.EXCLUDED: filter_keys(EXCLUDED_MAPPINGS),
         },
     )
 

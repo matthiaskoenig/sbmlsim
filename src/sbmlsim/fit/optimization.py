@@ -15,6 +15,7 @@ from scipy import interpolate
 from sbmlsim.console import console
 from sbmlsim.experiment import ExperimentRunner, SimulationExperiment
 from sbmlsim.fit.objects import (
+    UNUSED_KINDS,
     FitMapping,
     FitMappingCollection,
     FitParameter,
@@ -489,8 +490,9 @@ class OptimizationProblem(ObjectJSONEncoder):
 
                 mapping: FitMapping = sim_experiment._fit_mappings[mapping_id]
 
-                if mapping_collection.kind is MappingKind.OUTLIER:
-                    # outliers are used neither in the fit nor in the evaluation
+                if mapping_collection.kind in UNUSED_KINDS:
+                    # the outliers and the data the model does not describe are
+                    # used neither in the fit nor in the evaluation
                     continue
 
                 if mapping.observable.task_id is None:

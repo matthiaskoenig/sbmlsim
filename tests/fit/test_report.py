@@ -10,7 +10,7 @@ from pathlib import Path
 
 import pytest
 
-from sbmlsim.fit import FitSettings, ParameterSet, ParameterSets
+from sbmlsim.fit import FitSettings, MappingKind, ParameterSet, ParameterSets
 from sbmlsim.fit.optimization import OptimizationProblem
 from sbmlsim.fit.report import FitReport
 from sbmlsim.fit.result import OptimizationResult
@@ -254,14 +254,14 @@ def test_html_context(
     context = report.html_context(results_dir=Path("nowhere"), name="the_fit")
 
     assert context["fit_id"] == "the_fit"
-    assert context["kinds"] == ["training", "validation", "outlier"]
+    assert context["kinds"] == [kind.value for kind in MappingKind]
     assert len(context["parameters"]) == len(op_hctz_pkiv.parameters)
     assert len(context["mappings"]) == len(op_hctz_pkiv.mapping_keys)
     assert context["settings"]["residual"] == fit_settings.residual.name
     assert context["data_total"]["total"] == len(op_hctz_pkiv.mapping_keys)
     # every mapping carries its kind and its metrics
     for mapping in context["mappings"]:
-        assert mapping["kind"] in {"training", "validation", "outlier"}
+        assert mapping["kind"] in {kind.value for kind in MappingKind}
         assert set(mapping["metrics"]) == {"n", "RMSE", "R²"}
 
 

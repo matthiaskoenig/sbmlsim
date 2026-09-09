@@ -52,6 +52,7 @@ KIND_STYLES: dict[str, str] = {
     MappingKind.TRAINING.value: "green",
     MappingKind.VALIDATION.value: "blue",
     MappingKind.OUTLIER.value: "orange3",
+    MappingKind.EXCLUDED.value: "grey54",
 }
 
 

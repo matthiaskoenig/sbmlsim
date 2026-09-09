@@ -42,7 +42,14 @@ class MappingKind(StrEnum):
     the fitted parameters describe data they were not fitted on.
 
     `outlier` : the mappings are not used at all, neither in the optimization
-    nor in the evaluation.
+    nor in the evaluation, because the data is not usable, e.g. a curve which
+    contradicts the rest of the data.
+
+    `excluded` : the mappings are not used at all either, but because the model
+    does not describe them, e.g. a study arm with a coadministration the model
+    has no interaction for. The data is fine, the model is not the one for it,
+    so it is not an outlier: an outlier is a decision about the data and an
+    exclusion is a decision about the model.
 
     The kind is set on the `FitMappingCollection`, i.e., when the data of a fit is
     selected, not on the fit mappings of a simulation experiment: a mapping
@@ -53,12 +60,19 @@ class MappingKind(StrEnum):
     TRAINING = "training"
     VALIDATION = "validation"
     OUTLIER = "outlier"
+    EXCLUDED = "excluded"
 
 
-#: kinds which are simulated and evaluated, i.e., everything but the outliers
+#: kinds which are simulated and evaluated
 EVALUATED_KINDS: tuple[MappingKind, ...] = (
     MappingKind.TRAINING,
     MappingKind.VALIDATION,
+)
+
+#: kinds which a fit does not use at all, for different reasons
+UNUSED_KINDS: tuple[MappingKind, ...] = (
+    MappingKind.OUTLIER,
+    MappingKind.EXCLUDED,
 )
 
 
