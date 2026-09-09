@@ -43,11 +43,11 @@ from sbmlsim.units import UnitRegistry, UnitsInformation
 
 logger = logging.getLogger(__name__)
 
-#: unit of the time of a measurement if the problem does not say, i.e. if it
-#: does not carry the `sbmlsim` extension
+#: unit of the time of a measurement if neither the `sbmlsim` extension nor
+#: the model says what it is
 DEFAULT_TIME_UNIT = "dimensionless"
 
-#: unit of a measurement if the problem does not say
+#: unit of a measurement if neither the extension nor the model says
 DEFAULT_VALUE_UNIT = "dimensionless"
 
 #: steps of a timecourse which is built from the times of the measurements
@@ -219,22 +219,29 @@ class PetabReader:
                 )
         return uinfo
 
-    def _unit_of(self, sid: str, default: str) -> str:
+    def _unit_of(self, sid: str, default: str | None) -> str | None:
         """Get the unit of an entity of the model.
+
+        PEtab has no units: its measurements are in the units of the model and
+        so are its parameters, so the model is what says what a number means.
 
         Args:
             sid: identifier of the entity, `time` for the time of the model.
             default: unit if the models do not say.
 
         Returns:
-            The unit of the entity in the models.
+            The unit of the entity in the models, `default` if it has none. A
+            model which declares an entity as dimensionless says so with an
+            empty unit, which is `dimensionless` here so that it reads as a
+            unit and not as a missing one.
         """
         if self.uinfo is None:
             return default
         try:
-            return str(self.uinfo[sid])
+            unit = str(self.uinfo[sid])
         except (KeyError, TypeError):
             return default
+        return unit if unit else DEFAULT_VALUE_UNIT
 
     def models(self) -> dict[str, AbstractModel]:
         """Get the models of the experiment, one per model of the problem."""
@@ -640,7 +647,9 @@ class PetabReader:
                     upper_bound=(
                         float(parameter.ub) if parameter.ub is not None else np.inf
                     ),
-                    unit=info.get("unit"),
+                    # PEtab has no units, a parameter is in the unit the
+                    # model gives it
+                    unit=info.get("unit") or self._unit_of(parameter.id, None),
                 )
             )
         return parameters

@@ -33,10 +33,15 @@ from petab.v2.petab1to2 import petab1to2
 
 from sbmlsim.console import console
 from sbmlsim.fit import display
-from sbmlsim.fit.identifiability import ProfileSettings, profile_likelihood
+from sbmlsim.fit.identifiability import (
+    IdentifiabilityResult,
+    ProfileSettings,
+    profile_likelihood,
+)
 from sbmlsim.fit.options import OptimizationAlgorithmType, ResidualType
 from sbmlsim.fit.petab_v2 import gaps_of_problem, gaps_table
 from sbmlsim.fit.petab_v2.reader import from_petab
+from sbmlsim.fit.report import FitReport
 from sbmlsim.fit.runner import run_optimization
 
 #: the problem of the collection, PEtab 1.0
@@ -131,24 +136,37 @@ def main() -> None:
     )
 
     # --- IDENTIFIABILITY ---
-    if args.no_identifiability:
-        return
-    # the profile likelihood reports the scans and the identifiability itself
-    result = profile_likelihood(
+    identifiability: IdentifiabilityResult | None = None
+    if not args.no_identifiability:
+        # the profile likelihood reports the scans and the identifiability
+        identifiability = profile_likelihood(
+            problem=problem,
+            settings=settings,
+            parameter_set=parameter_set,
+            profile_settings=ProfileSettings(),
+            n_cores=args.cores,
+            show_progress=False,
+        )
+        display.key_values(
+            {
+                "identifiable": (
+                    f"{identifiability.n_identifiable}/"
+                    f"{len(identifiability.pids)} parameters"
+                )
+            }
+        )
+        identifiability.to_json(output_dir / "identifiability.json")
+
+    # --- REPORT ---
+    # `create` reports its own section with the link to the HTML report
+    report = FitReport(
         problem=problem,
         settings=settings,
-        parameter_set=parameter_set,
-        profile_settings=ProfileSettings(),
-        n_cores=args.cores,
-        show_progress=False,
+        parameter_sets=[parameter_set, problem.parameter_set_model()],
+        opt_result=opt_result,
+        identifiability=identifiability,
     )
-    display.key_values(
-        {
-            "identifiable": f"{result.n_identifiable}/{len(result.pids)} parameters",
-            "profiles": str(output_dir),
-        }
-    )
-    result.to_json(output_dir / "identifiability.json")
+    report.create(output_dir, name="report")
 
 
 if __name__ == "__main__":
