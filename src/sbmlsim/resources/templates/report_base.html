@@ -113,6 +113,30 @@ tr.total td { font-weight: 650; border-top: 2px solid var(--line); }
 .tag.excluded { background: var(--excluded); }
 .warn { color: var(--outlier); }
 
+/* what a value means, on the header of a column or next to a figure */
+.hint {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 14px; height: 14px; margin-left: 4px; border-radius: 50%;
+  border: 1px solid var(--line); color: var(--fg-soft);
+  font-size: 10px; font-weight: 700; line-height: 1; cursor: help;
+  position: relative; vertical-align: middle; user-select: none;
+}
+.hint:hover, .hint:focus { border-color: var(--accent); color: var(--accent); }
+.hint::after {
+  content: attr(data-tip);
+  position: absolute; bottom: calc(100% + 8px); left: 50%;
+  transform: translateX(-50%);
+  width: max-content; max-width: 320px; padding: 8px 10px;
+  border-radius: 6px; border: 1px solid var(--line);
+  background: var(--bg); color: var(--fg); box-shadow: 0 4px 16px rgb(0 0 0 / 18%);
+  font-size: 12px; font-weight: 400; line-height: 1.45; text-align: left;
+  white-space: normal; opacity: 0; visibility: hidden; transition: opacity .12s;
+  z-index: 20; pointer-events: none;
+}
+.hint:hover::after, .hint:focus::after { opacity: 1; visibility: visible; }
+/* a tooltip of the last columns would leave the page */
+td:last-child .hint::after, th:last-child .hint::after { left: auto; right: 0; transform: none; }
+
 figure { margin: 0; }
 figure img {
   width: 100%; height: auto; background: #fff; border: 1px solid var(--line);

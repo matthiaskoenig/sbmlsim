@@ -38,6 +38,7 @@ from petab.v2.petab1to2 import petab1to2
 
 from sbmlsim.console import console
 from sbmlsim.fit import display
+from sbmlsim.fit.fisher import fisher_information
 from sbmlsim.fit.identifiability import (
     IdentifiabilityResult,
     ProfileSettings,
@@ -179,6 +180,19 @@ def main() -> None:
         display.key_values(info)
         identifiability.to_json(output_dir / "identifiability.json")
 
+    # --- FISHER INFORMATION ---
+    # the local analysis, from one jacobian instead of a scan per parameter
+    fisher = fisher_information(
+        problem=problem, settings=settings, parameter_set=parameter_set
+    )
+    display.section("Fisher information", icon=display.ICON_IDENTIFIABILITY)
+    display.key_values(
+        {
+            "rank": f"{fisher.rank} of {fisher.k}",
+            "condition number": f"{fisher.condition_number:.4g}",
+        }
+    )
+
     # --- REPORT ---
     # `create` reports its own section with the link to the HTML report
     report = FitReport(
@@ -187,6 +201,7 @@ def main() -> None:
         parameter_sets=[parameter_set, problem.parameter_set_model()],
         opt_result=opt_result,
         identifiability=identifiability,
+        fisher=fisher,
     )
     report.create(output_dir, name="report")
 

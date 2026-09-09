@@ -15,6 +15,7 @@ the traces of the optimizers and the waterfall plot, are only created when the
 from __future__ import annotations
 
 import datetime
+import json
 import logging
 import webbrowser
 from collections.abc import Sequence
@@ -30,6 +31,7 @@ from matplotlib.lines import Line2D
 
 from sbmlsim import __version__
 from sbmlsim.fit import display
+from sbmlsim.fit.fisher import FisherInformation
 from sbmlsim.fit.identifiability import IdentifiabilityResult, plot_all
 from sbmlsim.fit.metrics import FitMetrics
 from sbmlsim.fit.objects import MappingKind
@@ -67,6 +69,7 @@ class FitReport:
         parameter_sets: ParameterSets | list[ParameterSet] | ParameterSet,
         opt_result: OptimizationResult | None = None,
         identifiability: IdentifiabilityResult | None = None,
+        fisher: FisherInformation | None = None,
         show_titles: bool = True,
         image_format: str = "svg",
     ) -> None:
@@ -85,6 +88,9 @@ class FitReport:
                 waterfall plot and the table of the runs.
             identifiability: result of a profile likelihood analysis, adds
                 the identifiability section with the profiles.
+            fisher: Fisher information of the parameters, adds its table of
+                errors and intervals and the correlation of the parameters to
+                the identifiability section.
             show_titles: add titles to the panels.
             image_format: format of the figures.
         """
@@ -93,6 +99,7 @@ class FitReport:
         self.parameter_sets = ParameterSets.of(parameter_sets)
         self.opt_result = opt_result
         self.identifiability = identifiability
+        self.fisher = fisher
         self.show_titles = show_titles
         self.image_format = image_format
 
@@ -279,6 +286,12 @@ class FitReport:
         if self.opt_result:
             self.opt_result.to_json(path=results_dir / "optimization_result.json")
             self.opt_result.to_tsv(path=results_dir / "optimization_result.tsv")
+        if self.fisher:
+            fisher_json = results_dir / "fisher.json"
+            fisher_json.write_text(json.dumps(self.fisher.to_dict(), indent=2))
+            self.fisher.summary_df.to_csv(
+                results_dir / "fisher.tsv", sep="\t", index=False
+            )
         if self.identifiability:
             self.identifiability.to_json(path=results_dir / "identifiability.json")
             self.identifiability.summary_df().to_csv(
@@ -331,6 +344,67 @@ class FitReport:
         return "\n".join(info)
 
     #: caption of every plot which describes the whole fit
+    #: what a value of the report means, shown as a tooltip on its column.
+    #: The keys are the column names of the tables of the report
+    HINTS: ClassVar[dict[str, str]] = {
+        "n": "Number of data points which enter the value.",
+        "k": "Number of parameters the fit adjusts.",
+        "cost": (
+            "The objective the optimization minimizes, 0.5 * sum of the squared "
+            "weighted residuals. It is defined on the training data, so it is "
+            "not reported for the validation data."
+        ),
+        "MSE": (
+            "Mean squared error of the data and the prediction, unweighted, so "
+            "the fit mappings with the largest values dominate it."
+        ),
+        "RMSE": (
+            "Root mean squared error, the square root of the MSE, in the unit "
+            "of the data."
+        ),
+        "RMSE_w": (
+            "Root mean square of the weighted residuals, i.e. the RMSE the "
+            "weighting of the fit sees. A parameter set can have a larger RMSE "
+            "and smaller weighted residuals than another one."
+        ),
+        "R2": (
+            "Coefficient of determination, 1 - SSE/SST. The prediction of a "
+            "non-linear model is not a linear regression, so this is not the "
+            "square of a correlation and is negative when the prediction is "
+            "worse than the mean of the data."
+        ),
+        "AIC": (
+            "Akaike information criterion, n*ln(MSE) + 2*k, up to a constant. "
+            "Only differences between models fitted on the same data are "
+            "meaningful; the smaller one is preferred."
+        ),
+        "BIC": (
+            "Bayesian information criterion, n*ln(MSE) + k*ln(n), up to the "
+            "same constant as the AIC. It charges a parameter more than the "
+            "AIC from eight data points on, so it prefers the smaller model."
+        ),
+        "value": "Value of the parameter in the units of the model.",
+        "se": (
+            "Standard error of the parameter, the square root of the diagonal "
+            "of the covariance, in the space the optimizer searches."
+        ),
+        "cv": (
+            "The standard error relative to the value, in percent, in the "
+            "space the optimizer searches."
+        ),
+        "ci_lower": "Lower bound of the confidence interval.",
+        "ci_upper": "Upper bound of the confidence interval.",
+        "identifiability": (
+            "What the profile says: identifiable if it crosses the threshold "
+            "on both sides, non_identifiable if it stays below it up to a "
+            "bound of the parameter, structural if it is flat."
+        ),
+        "weight": "Weight of the fit mapping in the cost.",
+        "start": "Value the optimization starts from.",
+        "lower": "Lower bound of the parameter in the optimization.",
+        "upper": "Upper bound of the parameter in the optimization.",
+    }
+
     PLOT_CAPTIONS: ClassVar[dict[str, str]] = {
         "profiles": (
             "Profile likelihood of every parameter: the cost with the parameter "
@@ -346,12 +420,60 @@ class FitReport:
         "cost_scatter": "Cost of the parameter sets against the reference",
     }
 
+    #: what a figure of the report shows and what to look for in it
+    PLOT_HINTS: ClassVar[dict[str, str]] = {
+        "profiles": (
+            "One profile per parameter. A profile which crosses the dashed "
+            "threshold on both sides gives a finite confidence interval; one "
+            "which stays below it up to a bound is practically "
+            "non-identifiable; a flat profile is structurally "
+            "non-identifiable, the parameter is compensated by the others."
+        ),
+        "traces": (
+            "The cost of every optimization run over its steps. Runs which "
+            "end at the same cost found the same optimum; a run which stops "
+            "much higher is stuck in a local minimum."
+        ),
+        "waterfall": (
+            "The final cost of the runs, ordered. A flat plateau at the left "
+            "is the global optimum found repeatedly, which is the evidence "
+            "that the multistart converged; steps to the right are local "
+            "minima."
+        ),
+        "datapoint_scatter": (
+            "Prediction against measurement, one point per data point. The "
+            "points scatter around the diagonal when the model describes the "
+            "data; a systematic deviation from it is a systematic error of "
+            "the model."
+        ),
+        "residual_scatter": (
+            "The relative residuals over the data. They should scatter "
+            "around zero without a trend; a trend over the value is a model "
+            "which fits the large or the small values better."
+        ),
+        "cost_bar": (
+            "How much every fit mapping contributes to the cost, with its "
+            "weight. A mapping which dominates the cost dominates the fit."
+        ),
+        "residual_boxplot": (
+            "The distribution of the squared weighted residuals per mapping. "
+            "A mapping whose box sits far above the others is the one the "
+            "model describes worst."
+        ),
+        "cost_scatter": (
+            "The cost of every parameter set against the reference set, per "
+            "fit mapping. Points below the diagonal are mappings the set "
+            "describes better than the reference."
+        ),
+    }
+
     def _plots(self, plots_dir: Path, names: Sequence[str]) -> list[dict[str, str]]:
         """Get the plots of the given names which were created."""
         return [
             {
                 "src": f"plots/{name}.{self.image_format}",
                 "caption": self.PLOT_CAPTIONS.get(name, name),
+                "hint": self.PLOT_HINTS.get(name, ""),
             }
             for name in names
             if (plots_dir / f"{name}.{self.image_format}").exists()
@@ -464,6 +586,8 @@ class FitReport:
                     "label": "optimization_result.json",
                 }
             )
+        if self.fisher:
+            files.append({"href": "fisher.tsv", "label": "fisher.tsv"})
         if self.identifiability:
             files.append(
                 {"href": "identifiability.json", "label": "identifiability.json"}
@@ -526,7 +650,11 @@ class FitReport:
             },
             "data_summary": data_summary,
             "data_total": {"counts": totals, "total": sum(totals)},
-            "metrics_columns": list(metrics.columns),
+            "hints": dict(self.HINTS),
+            "metrics_columns": [
+                {"name": column, "hint": self.HINTS.get(column)}
+                for column in metrics.columns
+            ],
             "metrics": [
                 [
                     f"{value:.6g}" if isinstance(value, float) else str(value)
@@ -573,7 +701,47 @@ class FitReport:
             "run_columns": run_columns,
             "runs": runs,
             "identifiability": self._identifiability_context(plots_dir),
+            "fisher": self._fisher_context(),
             "files": files,
+        }
+
+    def _fisher_context(self) -> dict[str, Any] | None:
+        """Collect what the Fisher information of the report shows."""
+        fim = self.fisher
+        if fim is None:
+            return None
+
+        df = fim.summary_df
+        eigenvalues = fim.eigenvalues
+        info: dict[str, Any] = {
+            "parameter set": fim.sid,
+            "parameter scale": fim.scale.name,
+            "data points": str(fim.n),
+            "rank": f"{fim.rank} of {fim.k}",
+            "condition number": f"{fim.condition_number:.4g}",
+            "confidence level": f"{fim.alpha:.0%}",
+        }
+        correlation = fim.correlation
+        return {
+            "info": info,
+            "identifiable": fim.is_identifiable,
+            "columns": [
+                {"name": column, "hint": self.HINTS.get(column)}
+                for column in df.columns
+            ],
+            "rows": [
+                [
+                    value if isinstance(value, str) else f"{value:.5g}"
+                    for value in row.values()
+                ]
+                for row in df.to_dict(orient="records")
+            ],
+            "eigenvalues": [f"{value:.4g}" for value in eigenvalues],
+            "pids": list(fim.pids),
+            "correlation": [
+                [f"{correlation.iloc[i, j]:.3f}" for j in range(fim.k)]
+                for i in range(fim.k)
+            ],
         }
 
     def _identifiability_context(self, plots_dir: Path) -> dict[str, Any] | None:

@@ -36,6 +36,7 @@ from typing import Any
 
 from sbmlsim import log
 from sbmlsim.fit import display
+from sbmlsim.fit.fisher import FisherInformation, fisher_information
 from sbmlsim.fit.identifiability import (
     IdentifiabilityResult,
     ProfileSettings,
@@ -180,6 +181,26 @@ class FitRun:
         )
         return report.create(
             output_dir=output_dir, name=name if name else self.problem.opid
+        )
+
+    def fisher(self, **kwargs: Any) -> FisherInformation:
+        """Get the Fisher information of the parameters of the best run.
+
+        The local analysis next to `identifiability`, from one jacobian
+        instead of a scan per parameter.
+
+        Args:
+            kwargs: additional arguments of `fisher_information`.
+
+        Returns:
+            The information with the errors and the correlations of the
+            parameters.
+        """
+        return fisher_information(
+            problem=self.problem,
+            settings=self.result.settings_stored,
+            parameter_set=self.result.parameter_set(),
+            **kwargs,
         )
 
     def identifiability(

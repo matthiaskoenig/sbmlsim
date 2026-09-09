@@ -11,6 +11,7 @@ from pathlib import Path
 import pytest
 
 from sbmlsim.fit import FitSettings, MappingKind, ParameterSet, ParameterSets
+from sbmlsim.fit.fisher import fisher_information
 from sbmlsim.fit.optimization import OptimizationProblem
 from sbmlsim.fit.report import FitReport
 from sbmlsim.fit.result import OptimizationResult
@@ -297,3 +298,53 @@ def test_html_report_is_well_formed(
     Checker(convert_charrefs=True).feed(html)
     assert errors == []
     assert stack == []
+
+
+def test_the_report_explains_its_values(
+    tmp_path: Path, op_hctz_pkiv: OptimizationProblem, fit_settings: FitSettings
+) -> None:
+    """Every value of the report says what it means, as a tooltip."""
+    op_hctz_pkiv.initialize(fit_settings)
+    parameter_set = op_hctz_pkiv.parameter_set_model()
+    report = FitReport(
+        problem=op_hctz_pkiv, settings=fit_settings, parameter_sets=[parameter_set]
+    )
+    report.create(tmp_path, name="hints")
+    html = (tmp_path / "hints" / "index.html").read_text()
+
+    # the metrics of the summary, i.e. what the tables of the report show
+    for column in ["MSE", "RMSE", "R2", "AIC", "BIC"]:
+        assert f'{column}<span class="hint"' in html, column
+    # and the figures say what to look for in them
+    assert html.count('class="hint"') > 5
+    assert "Bayesian information criterion" in html
+
+
+def test_the_report_of_the_fisher_information(
+    tmp_path: Path, op_hctz_pkiv: OptimizationProblem, fit_settings: FitSettings
+) -> None:
+    """The Fisher information is a section with its table and correlations."""
+    op_hctz_pkiv.initialize(fit_settings)
+    parameter_set = op_hctz_pkiv.parameter_set_model()
+    fisher = fisher_information(op_hctz_pkiv, fit_settings, parameter_set)
+    report = FitReport(
+        problem=op_hctz_pkiv,
+        settings=fit_settings,
+        parameter_sets=[parameter_set],
+        fisher=fisher,
+    )
+    results_dir = report.create(tmp_path, name="fisher")
+
+    # the information is stored next to the report
+    assert (results_dir / "fisher.json").exists()
+    assert (results_dir / "fisher.tsv").exists()
+
+    html = (results_dir / "index.html").read_text()
+    assert "Fisher information" in html
+    assert "Correlation" in html
+    for pid in op_hctz_pkiv.pids:
+        assert pid in html
+    # the intravenous data does not determine every parameter, and the report
+    # says so instead of showing errors which cannot be read
+    assert not fisher.is_identifiable
+    assert "does not have full rank" in html

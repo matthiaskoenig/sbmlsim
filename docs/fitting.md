@@ -357,7 +357,7 @@ result.to_json(Path("identifiability.json"))
 
 The `IdentifiabilityResult` carries a `ParameterProfile` per parameter with the values, the costs, the paths of all parameters and the confidence interval, `summary_df()` is the table of the parameters with their intervals and classification, `report()` the text and `to_json`/`from_json` the storage. `plot_profiles` draws the overview of all profiles, `plot_profile` the profile of one parameter with the paths of the other parameters along it.
 
-A report shows the analysis: `FitReport(..., identifiability=result)` adds the section **Identifiability** with the table, the overview and one figure per parameter, and writes `identifiability.json` and `identifiability.tsv`. `FitRun.identifiability()` computes the profiles of the best parameter set of a finished fit, so a global optimization followed by the identifiability of its result is
+A report shows the analysis: `FitReport(..., identifiability=result)` adds the section **Identifiability** with the table, the overview and one figure per parameter, and writes `identifiability.json` and `identifiability.tsv`. `FitReport(..., fisher=fim)` adds the Fisher information to the same section, i.e. its table of errors and intervals, the eigenvalues and the correlation of the parameters, and writes `fisher.json` and `fisher.tsv`; a report of an information which is rank deficient says that its errors cannot be read. Every metric and every figure of a report carries a `?` which explains what the value is and what to look for in the figure. `FitRun.identifiability()` computes the profiles of the best parameter set of a finished fit, so a global optimization followed by the identifiability of its result is
 
 ```py
 runs = run_fit(
