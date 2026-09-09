@@ -76,6 +76,17 @@ A gap is of one of three kinds:
 
 The round trip of the HCTZ example keeps the settings, the parameters with their units, the mappings with their kinds and the reference data of every mapping, and its cost agrees to `7e-6`, which is the `selections` gap above.
 
+## The example
+
+`examples/hctz/fitting/petab.py` runs the layer on the reference problem, i.e. it reports the gaps of the fit, writes it, validates the problem with `petab`, lists which collection every experiment came from and reads the fit back:
+
+```bash
+python -m examples.hctz.fitting.petab
+python -m examples.hctz.fitting.petab --subset=PKIV --portable
+```
+
+The `PKIV` problem is one simulation experiment, so it comes back exactly (a relative difference of `5e-16` in the cost); `PK` is two, which is the `selections` gap and a difference of `7e-6`.
+
 ## COMBINE archives
 
 `sbmlsim.fit.petab_omex.create_petab_omex` packages a PEtab problem as a COMBINE archive, with the YAML as its master entry.

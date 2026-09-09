@@ -35,6 +35,7 @@ SCRIPTS = [
     "examples.initial_assignment.initial_assignment",
     "examples.glucose.glucose",
     "examples.hctz.simulations",
+    "examples.hctz.fitting.petab",
     "examples.sedml.execute_sedml",
     "examples.sensitivity.sensitivity_example",
 ]

@@ -1,7 +1,7 @@
 """HCTZ parameter fitting.
 
-The fit problems of the HCTZ model: which fit experiments enter a fit and which
-parameters are adjusted. Everything else is the general fit runner of
+The fit problems of the HCTZ model: which fit mapping collections enter a fit
+and which parameters are adjusted. Everything else is the general fit runner of
 `sbmlsim.fit.cli`.
 
     python -m examples.hctz.fitting.fitting --subset=PK --runs=4 --cores=2 \
