@@ -112,4 +112,4 @@ print(x.units, x.magnitude[:3])
 
 ## Data generators
 
-A `DataGenerator` (see `sbmlsim.combine.datagenerator`) post-processes results, e.g., `DataGeneratorIndexingFunction` reduces a scan result to a single time point, which turns a scan over doses into a dose response, see `examples/datagenerator.py`.
+A `DataGenerator` (see `sbmlsim.result.datagenerator`) post-processes results, e.g., `DataGeneratorIndexingFunction` reduces a scan result to a single time point, which turns a scan over doses into a dose response, see `examples/datagenerator.py`.

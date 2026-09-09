@@ -1,7 +1,7 @@
 """Read a PEtab v2 problem into an `sbmlsim` optimization problem.
 
 The tables of a PEtab problem are translated into a `SimulationExperiment`, in
-the same way `sbmlsim.combine.sedml.parser` builds an experiment from a SED-ML
+the same way a SED-ML parser builds an experiment from a SED-ML
 document: the models of the problem are the models of the experiment, its
 experiments are the timecourse simulations, its observables are the fit
 mappings and the measurements of an observable are its dataset.

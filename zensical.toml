@@ -1,7 +1,7 @@
 [project]
 site_name = "sbmlsim"
 site_url = "https://matthiaskoenig.github.io/sbmlsim/"
-site_description = "SBML simulation made easy: simulation experiments, parameter scans, parameter fitting, sensitivity analysis and SED-ML for SBML models"
+site_description = "SBML simulation made easy: simulation experiments, parameter scans, parameter fitting and sensitivity analysis for SBML models"
 site_author = "Matthias König"
 
 copyright = 'Copyright &copy; 2019-2026 <a href="https://livermetabolism.com">Matthias König</a>'
@@ -24,13 +24,13 @@ nav = [
     { "Parameter fitting" = "fitting.md" },
     { "Sensitivity analysis" = "sensitivity.md" },
     { "PEtab" = "petab.md" },
-    { "SED-ML and COMBINE archives" = "sedml.md" },
   ] },
   { "References" = "references.md" },
   { "API reference" = [
     { "Overview" = "api/index.md" },
     { "sbmlsim" = [
       { "data" = "api/data.md" },
+      { "mathml" = "api/mathml.md" },
       { "units" = "api/units.md" },
       { "serialization" = "api/serialization.md" },
       { "utils" = "api/utils.md" },
@@ -50,7 +50,6 @@ nav = [
       { "range" = "api/simulation.range.md" },
       { "change" = "api/simulation.change.md" },
       { "algorithm" = "api/simulation.algorithm.md" },
-      { "kisaos" = "api/simulation.kisaos.md" },
       { "calculation" = "api/simulation.calculation.md" },
       { "base" = "api/simulation.base.md" },
       { "simulation" = "api/simulation.simulation.md" },
@@ -110,17 +109,6 @@ nav = [
       { "sensitivity_fast" = "api/sensitivity.sensitivity_fast.md" },
       { "classification" = "api/sensitivity.classification.md" },
       { "plots" = "api/sensitivity.plots.md" },
-    ] },
-    { "sbmlsim.combine" = [
-      { "sedml.parser" = "api/combine.sedml.parser.md" },
-      { "sedml.runner" = "api/combine.sedml.runner.md" },
-      { "sedml.task" = "api/combine.sedml.task.md" },
-      { "sedml.data" = "api/combine.sedml.data.md" },
-      { "sedml.numl" = "api/combine.sedml.numl.md" },
-      { "sedml.report" = "api/combine.sedml.report.md" },
-      { "sedml.io" = "api/combine.sedml.io.md" },
-      { "datagenerator" = "api/combine.datagenerator.md" },
-      { "mathml" = "api/combine.mathml.md" },
     ] },
     { "sbmlsim.interpolation" = [
       { "interpolation" = "api/interpolation.interpolation.md" },

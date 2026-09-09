@@ -5,11 +5,11 @@ Example simulation experiment.
 from pathlib import Path
 
 from examples.curve_types.model import create
-from sbmlsim.combine.sedml.report import Report
 from sbmlsim.data import Data
 from sbmlsim.experiment import ExperimentRunner, SimulationExperiment
 from sbmlsim.model import AbstractModel
 from sbmlsim.plot import Figure, Plot
+from sbmlsim.result.report import Report
 from sbmlsim.simulation import AbstractSim, Timecourse, TimecourseSim
 from sbmlsim.simulator.simulation_serial import SimulatorSerial
 from sbmlsim.task import Task

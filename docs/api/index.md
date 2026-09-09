@@ -4,11 +4,12 @@ The API reference is generated from the docstrings of the package.
 
 ## sbmlsim
 
-The top level modules: data, units and the shared output.
+The top level modules: data, formulas, units and the shared output.
 
 | module | description |
 | --- | --- |
 | [data](data.md) | `Data` objects referencing simulation results and datasets, the input of plots and calculations |
+| [mathml](mathml.md) | evaluation of the formulas of `Data` functions |
 | [units](units.md) | unit registry of a model and unit conversions with pint |
 | [serialization](serialization.md) | JSON serialization of experiments |
 | [utils](utils.md) | timing and other helpers |
@@ -38,9 +39,8 @@ Definition of simulations, see [Timecourse simulations](../simulation.md) and [P
 | [simulation.range](simulation.range.md) | ranges of values for scans |
 | [simulation.change](simulation.change.md) | changes applied to a model before a simulation |
 | [simulation.algorithm](simulation.algorithm.md) | `Algorithm` and `AlgorithmParameter`, the KISAO description of an integrator |
-| [simulation.kisaos](simulation.kisaos.md) | the KISAO terms of the supported algorithms and parameters |
 | [simulation.calculation](simulation.calculation.md) | calculations on simulation results |
-| [simulation.base](simulation.base.md) | base classes shared by the simulation objects and SED-ML |
+| [simulation.base](simulation.base.md) | base classes shared by the simulation objects |
 | [simulation.simulation](simulation.simulation.md) | `AbstractSim`, the base of all simulations |
 
 ## sbmlsim.simulator, sbmlsim.task
@@ -109,22 +109,6 @@ Local and global sensitivity analysis, see [Sensitivity analysis](../sensitivity
 | [sensitivity.sensitivity_fast](sensitivity.sensitivity_fast.md) | Fourier amplitude sensitivity test (FAST) |
 | [sensitivity.classification](sensitivity.classification.md) | classification of sensitivities and uncertainties |
 | [sensitivity.plots](sensitivity.plots.md) | plots of the sensitivity results |
-
-## sbmlsim.combine
-
-SED-ML, NuML and COMBINE archives, see [SED-ML and COMBINE archives](../sedml.md).
-
-| module | description |
-| --- | --- |
-| [combine.sedml.parser](combine.sedml.parser.md) | `SEDMLParser`, a SED-ML document into a simulation experiment |
-| [combine.sedml.runner](combine.sedml.runner.md) | executing SED-ML files and COMBINE archives |
-| [combine.sedml.task](combine.sedml.task.md) | tasks and repeated tasks of SED-ML |
-| [combine.sedml.data](combine.sedml.data.md) | data descriptions, i.e., NuML, CSV and TSV data |
-| [combine.sedml.numl](combine.sedml.numl.md) | parser for NuML data |
-| [combine.sedml.report](combine.sedml.report.md) | SED-ML reports |
-| [combine.sedml.io](combine.sedml.io.md) | reading and writing SED-ML documents |
-| [combine.datagenerator](combine.datagenerator.md) | data generators of SED-ML |
-| [combine.mathml](combine.mathml.md) | evaluation of MathML expressions |
 
 ## sbmlsim.interpolation, sbmlsim.comparison
 

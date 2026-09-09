@@ -47,7 +47,7 @@ To work on the repository itself, with the test and documentation tooling, see [
 | --- | --- |
 | [libroadrunner](https://libroadrunner.org) | simulation of the SBML models |
 | [sbmlutils](https://github.com/matthiaskoenig/sbmlutils), [python-libsbml](https://sbml.org/software/libsbml/) | reading, validating and changing SBML models |
-| [pymetadata](https://github.com/matthiaskoenig/pymetadata), [python-libsedml](https://github.com/fbergmann/libSEDML), [python-libnuml](https://github.com/NuML/NuML) | COMBINE archives, SED-ML and NuML |
+| [pymetadata](https://github.com/matthiaskoenig/pymetadata), [python-libsedml](https://github.com/fbergmann/libSEDML) | COMBINE archives and the parsing of formulas |
 | [numpy](https://numpy.org), [pandas](https://pandas.pydata.org), [xarray](https://xarray.dev), [scipy](https://scipy.org), [sympy](https://www.sympy.org) | numerics, data and results |
 | [pint](https://pint.readthedocs.io) | units and unit conversions |
 | [petab](https://petab.readthedocs.io), [SALib](https://salib.readthedocs.io) | parameter fitting problems and global sensitivity analysis |

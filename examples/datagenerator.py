@@ -3,9 +3,9 @@
 import numpy as np
 from matplotlib import pyplot as plt
 
-from sbmlsim.combine.datagenerator import DataGeneratorIndexingFunction
 from sbmlsim.resources import MIDAZOLAM_SBML
 from sbmlsim.result import XResult
+from sbmlsim.result.datagenerator import DataGeneratorIndexingFunction
 from sbmlsim.simulation import Dimension, ScanSim, Timecourse, TimecourseSim
 from sbmlsim.simulator.simulation_serial import SimulatorSerial
 

@@ -8,7 +8,7 @@ from pathlib import Path
 
 import pandas as pd
 
-from sbmlsim.combine import mathml
+from sbmlsim import mathml
 from sbmlsim.result import XResult
 from sbmlsim.units import DimensionalityError, Quantity, UnitRegistry, UnitsInformation
 

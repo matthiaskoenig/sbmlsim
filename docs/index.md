@@ -11,7 +11,7 @@ SBML is the exchange format for computational models in systems biology ([Keatin
 
 `sbmlsim` is the layer above the simulator which describes these experiments. A `Timecourse` is a period of a simulation with its changes, a `TimecourseSim` concatenates them, a `ScanSim` runs a simulation over the dimensions of parameter changes, and a `SimulationExperiment` collects models, datasets, simulations, tasks, data and figures into one python object which is executed and reported by an `ExperimentRunner`. Results are `XResult` objects, labeled N-dimensional arrays with units, so the mean over a scan dimension or the conversion to the units of a dataset is one call.
 
-Around this core the package collects the tasks which come with simulation experiments: fitting parameters to data, analysing the sensitivity of a model to its parameters, and executing experiments described in SED-ML from COMBINE archives.
+Around this core the package collects the tasks which come with simulation experiments: fitting parameters to data, exchanging a fit as a PEtab problem, and analysing the sensitivity of a model to its parameters.
 
 ## Features
 
@@ -24,7 +24,6 @@ Around this core the package collects the tasks which come with simulation exper
 - **[Plots and reports](plotting.md)** — figures described independent of the backend and rendered with matplotlib, HTML and markdown reports of experiments.
 - **[Parameter fitting](fitting.md)** — `FitParameter`, `FitMapping` and `OptimizationProblem` with local and global optimizers, analysis of the results and PEtab archives.
 - **[Sensitivity analysis](sensitivity.md)** — local sensitivities by finite differences and the global Morris, Sobol and FAST methods of [SALib](https://salib.readthedocs.io), with classification and plots.
-- **[SED-ML and COMBINE archives](sedml.md)** — execution of simulation experiments in the Simulation Experiment Description Markup Language, from files and COMBINE archives.
 
 The standards and methods behind the package are cited in [References](references.md).
 

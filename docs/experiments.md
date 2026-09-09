@@ -105,7 +105,7 @@ print(report_path)
 
 ## Serialization
 
-Every experiment is serialized to JSON when it is run, `<ExperimentId>.json` below the output path, with the models, simulations, tasks, data and figures. The serialization is the basis of the [SED-ML export](sedml.md) of an experiment:
+Every experiment is serialized to JSON when it is run, `<ExperimentId>.json` below the output path, with the models, simulations, tasks, data and figures:
 
 ```python
 print(experiment.to_json()[:300])

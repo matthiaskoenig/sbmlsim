@@ -25,7 +25,7 @@
 > *Molecular Systems Biology.* 2020;16(8):e9110.
 > [doi:10.15252/msb.20199110](https://doi.org/10.15252/msb.20199110)
 
-**SED-ML.** The description of simulation experiments which `sbmlsim.combine.sedml` reads and executes, see [SED-ML and COMBINE archives](sedml.md).
+**SED-ML.** The description of simulation experiments. `sbmlsim` no longer reads or writes SED-ML; a fit is exchanged as a PEtab problem instead, see [PEtab](petab.md).
 
 > Smith LP, Bergmann FT, Garny A, Helikar T, Karr J, Nickerson D, Sauro H, Waltemath D, König M.
 > **The simulation experiment description markup language (SED-ML): language specification for level 1 version 4.**
@@ -123,7 +123,7 @@
 > *BMC Bioinformatics.* 2014;15:369.
 > [doi:10.1186/s12859-014-0369-z](https://doi.org/10.1186/s12859-014-0369-z)
 
-**KISAO.** The ontology of simulation algorithms and their parameters, see `sbmlsim.simulation.kisaos`.
+**KISAO.** The ontology of simulation algorithms and their parameters, see `sbmlsim.simulation.algorithm`.
 
 > Courtot M, Juty N, Knüpfer C, Waltemath D, Zhukova A, Dräger A, Dumontier M, Finney A, Golebiewski M, Hastings J, Hoops S, Keating S, Kell DB, Kerrien S, Lawson J, Lister A, Lu J, Machne R, Mendes P, Pocock M, Rodriguez N, Villeger A, Wilkinson DJ, Wimalaratne S, Laibe C, Hucka M, Le Novère N.
 > **Controlled vocabularies and semantics in systems biology.**
