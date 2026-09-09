@@ -87,6 +87,25 @@ python -m examples.hctz.fitting.petab_problem --subset=PKIV --portable
 
 The `PKIV` problem is one simulation experiment, so it comes back exactly (a relative difference of `5e-16` in the cost); `PK` is two, which is the `selections` gap and a difference of `7e-6`.
 
+## A problem of the benchmark collection
+
+`examples/petab/benchmark_perelson.py` fits a problem which `sbmlsim` did not write: `Perelson_Science1996` of the [PEtab benchmark collection](https://github.com/Benchmarking-Initiative/Benchmark-Models-PEtab), i.e. the viral dynamics of HIV-1 after the start of a protease inhibitor. The collection is PEtab 1.0, so the example converts it with the converter of the library first:
+
+```py
+from petab.v2.petab1to2 import petab1to2
+
+petab1to2(problem_dir / "Perelson_Science1996.yaml", output_dir=petab2_dir)
+```
+
+```bash
+python -m examples.petab.benchmark_perelson
+python -m examples.petab.benchmark_perelson --runs=8 --no-identifiability
+```
+
+The example reads the converted problem, reports what PEtab cannot express about it, fits it and analyses the identifiability of the fitted parameters: the clearance rate `c` of the virions is identifiable, the loss rate `delta` of the infected cells is not identifiable towards zero.
+
+Two things of the collection do not survive the conversion, and the example shows both. The parameter table of v1 has a `parameterScale`, which v2 removed and which is `FitSettings.parameter_scale` here, and the observable of the problem has a `log10-normal` noise distribution which the converter maps to `log-normal`; `sbmlsim` has no log noise, so the example fits the relative residuals (`ResidualType.NORMALIZED`) which describe a viral load over orders of magnitude in the same spirit. The problem also estimates the standard deviation `sd_task0_model0_perelson1_V` of its observable, which is not an entity of the model: `sbmlsim` fits the parameters of a model and weights the data, so it is not fitted and the reader says so.
+
 ## COMBINE archives
 
 `sbmlsim.fit.petab_omex.create_petab_omex` packages a PEtab problem as a COMBINE archive, with the YAML as its master entry.

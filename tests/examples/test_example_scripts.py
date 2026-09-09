@@ -5,7 +5,8 @@ files it writes do not end up in the repository. An example which breaks
 fails the test suite.
 
 The examples which need network access (`examples.covid.omex`), optional
-tools (`examples.petab`, `examples.julia`) or the simulation experiment
+tools (`examples.petab.petab_example_01`, `examples.julia`) or the simulation
+experiment
 pipeline which is being reworked (`examples.demo`, `examples.repressilator`,
 `examples.covid`, `examples.sedml.execute_omex`) are not run here, see
 `examples/README.md`.
@@ -36,6 +37,7 @@ SCRIPTS = [
     "examples.glucose.glucose",
     "examples.hctz.simulations",
     "examples.hctz.fitting.petab_problem",
+    "examples.petab.benchmark_perelson",
     "examples.sedml.execute_sedml",
     "examples.sensitivity.sensitivity_example",
 ]

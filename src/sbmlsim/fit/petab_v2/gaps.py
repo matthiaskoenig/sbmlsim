@@ -179,6 +179,19 @@ GAPS: tuple[Gap, ...] = (
         "as the numbers it produces",
     ),
     Gap(
+        id="noise-parameters",
+        kind=GapKind.LOSSY,
+        sbmlsim="a fit estimates the parameters of a model and weights the data "
+        "of a curve, i.e. the spread of the data is data and not a parameter",
+        petab="the parameters of the noise and of the observables are estimated "
+        "with the parameters of the model, e.g. a `sd_<observable>` which the "
+        "objective fits",
+        detail="a parameter of a problem which is not an entity of a model is "
+        "not fitted and the reader says which; the data of its observable is "
+        "weighted by `FitSettings.weighting_points` instead. A fit of such a "
+        "problem is therefore not the fit PEtab describes",
+    ),
+    Gap(
         id="x-observable",
         kind=GapKind.UNSUPPORTED,
         sbmlsim="the x of a fit mapping is any observable of the task",

@@ -33,7 +33,7 @@ An example writes what it creates into the current working directory: figures ar
 | `examples/covid/` | COVID-19 models from BioModels as simulation experiments and COMBINE archives |
 | `examples/sedml/` | execution of SED-ML files (`execute_sedml.py`) and COMBINE archives (`execute_omex.py`), with the SED-ML L1V4 example files under `l1v4/` |
 | `examples/sensitivity/` | local and global sensitivity analysis (sampling, Sobol, FAST, Morris) of a simple chain model |
-| `examples/petab/` | PEtab v1 parameter estimation problems, with pypesto and AMICI (both not installed with sbmlsim). The PEtab v2 layer of `sbmlsim` is `examples/hctz/fitting/petab_problem.py` |
+| `examples/petab/` | PEtab parameter estimation problems. `benchmark_perelson.py` converts `Perelson_Science1996` of the benchmark collection to PEtab v2 and fits it with sbmlsim, `petab_example_01.py` and `petab_example_02.py` need pypesto and AMICI (neither is installed with sbmlsim). The PEtab v2 layer on the HCTZ problem is `examples/hctz/fitting/petab_problem.py` |
 | `examples/julia/` | notes and an example on calling julia from python via juliacall (not installed with sbmlsim) |
 
 ## Tests

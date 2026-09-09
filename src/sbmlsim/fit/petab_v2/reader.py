@@ -35,7 +35,7 @@ from sbmlsim.fit.objects import (
 from sbmlsim.fit.optimization import OptimizationProblem
 from sbmlsim.fit.options import FitSettings
 from sbmlsim.fit.petab_v2.extension import SbmlsimExtension, extension_of
-from sbmlsim.fit.petab_v2.symbols import selection_of_formula
+from sbmlsim.fit.petab_v2.symbols import selection_of_formula, split_selection
 from sbmlsim.model import AbstractModel
 from sbmlsim.simulation.timecourse import Timecourse, TimecourseSim
 from sbmlsim.task import Task
@@ -52,6 +52,17 @@ DEFAULT_VALUE_UNIT = "dimensionless"
 
 #: steps of a timecourse which is built from the times of the measurements
 DEFAULT_STEPS = 100
+
+#: relative margin the simulation runs past the last measurement. The output
+#: grid of a timecourse is a `linspace` which does not hit its end exactly, so
+#: a measurement at the end of the simulation would be outside of the result
+#: the residuals interpolate on
+END_MARGIN = 1e-9
+
+#: id of the experiment of the measurements which name none. PEtab reads an
+#: empty `experimentId` as "use the model as is", i.e. a simulation from the
+#: initial time of the model without conditions
+DEFAULT_EXPERIMENT = "model"
 
 #: prefix of the dataset of an observable. The keys of the datasets, the
 #: simulations, the tasks and the fit mappings of a simulation experiment share
@@ -101,9 +112,14 @@ class PetabReader:
             if self.extension and self.extension.opid
             else (getattr(petab_problem.config, "id", None) or "PetabExperiment")
         )
-        # the registry has to know the unit definitions of the models, a
-        # `mmole_per_min` of an SBML model is not a unit pint knows
-        self.ureg: UnitRegistry = self._model_registry()
+        # the units of the models: the registry has to know their definitions,
+        # a `mmole_per_min` of an SBML model is not a unit pint knows, and a
+        # problem without the `sbmlsim` extension has the units of the model,
+        # which is what PEtab says its measurements are in
+        self.uinfo: UnitsInformation | None = self._model_units()
+        self.ureg: UnitRegistry = (
+            self.uinfo.ureg if self.uinfo is not None else UnitRegistry()
+        )
 
         # measurements by observable, in the order of their time
         self._measurements: dict[str, list[petab_v2.Measurement]] = {}
@@ -177,21 +193,23 @@ class PetabReader:
         path = Path(location)
         return path if path.is_absolute() else self.base_path / path
 
-    def _model_registry(self) -> UnitRegistry:
-        """Get the unit registry of the models of the problem.
+    def _model_units(self) -> UnitsInformation | None:
+        """Get the units of the models of the problem.
 
         The data of a fit is converted into the units of the model, and a model
-        defines units of its own, e.g. the `mmole_per_min` of a reaction. A
-        registry which does not know them cannot parse the units the extension
-        carries, so the registry is the one of the models.
+        defines units of its own, e.g. the `mmole_per_min` of a reaction, so
+        the registry has to be the one of the models. The units themselves are
+        what a problem without the `sbmlsim` extension says its data is in:
+        PEtab measures in the units of the model.
 
         Returns:
-            A registry which knows the unit definitions of every model.
+            The units of the models, `None` if none of them could be read.
         """
-        ureg: UnitRegistry | None = None
+        uinfo: UnitsInformation | None = None
         for model in self.petab_problem.models:
             try:
-                ureg = UnitsInformation.from_sbml(self._model_path(model), ureg).ureg
+                ureg = uinfo.ureg if uinfo is not None else None
+                uinfo = UnitsInformation.from_sbml(self._model_path(model), ureg)
             except Exception as err:
                 logger.warning(
                     "The units of the model '%s' could not be read: %s: %s",
@@ -199,7 +217,24 @@ class PetabReader:
                     type(err).__name__,
                     err,
                 )
-        return ureg if ureg is not None else UnitRegistry()
+        return uinfo
+
+    def _unit_of(self, sid: str, default: str) -> str:
+        """Get the unit of an entity of the model.
+
+        Args:
+            sid: identifier of the entity, `time` for the time of the model.
+            default: unit if the models do not say.
+
+        Returns:
+            The unit of the entity in the models.
+        """
+        if self.uinfo is None:
+            return default
+        try:
+            return str(self.uinfo[sid])
+        except (KeyError, TypeError):
+            return default
 
     def models(self) -> dict[str, AbstractModel]:
         """Get the models of the experiment, one per model of the problem."""
@@ -212,6 +247,19 @@ class PetabReader:
             for model in self.petab_problem.models
         }
 
+    @property
+    def experiment_ids(self) -> list[str]:
+        """Get the experiments which are simulated.
+
+        A measurement which names no experiment is "use the model as is", i.e.
+        `DEFAULT_EXPERIMENT`, which a problem of one condition does not have to
+        declare (PEtab v2, measurement table).
+        """
+        ids = [experiment.id for experiment in self.petab_problem.experiments]
+        if any(not m.experiment_id for m in self.petab_problem.measurements):
+            ids.append(DEFAULT_EXPERIMENT)
+        return ids
+
     def simulations(self) -> dict[str, TimecourseSim]:
         """Get the simulations, one per experiment of the problem.
 
@@ -220,13 +268,29 @@ class PetabReader:
         was written. Without it a timecourse is built from the periods of the
         experiment and the times of the measurements it holds.
         """
+        experiments = {
+            experiment.id: experiment for experiment in self.petab_problem.experiments
+        }
         simulations: dict[str, TimecourseSim] = {}
-        for experiment in self.petab_problem.experiments:
-            info = self._experiment_info(experiment.id)
+        for experiment_id in self.experiment_ids:
+            info = self._experiment_info(experiment_id)
             if info.get("timecourses"):
-                simulations[experiment.id] = self._simulation_of_extension(info)
+                simulations[experiment_id] = self._simulation_of_extension(info)
+            elif experiment_id in experiments:
+                simulations[experiment_id] = self._simulation_of_periods(
+                    experiments[experiment_id]
+                )
             else:
-                simulations[experiment.id] = self._simulation_of_periods(experiment)
+                # the model as it is, simulated over the measurements
+                simulations[experiment_id] = TimecourseSim(
+                    [
+                        Timecourse(
+                            start=0.0,
+                            end=self._simulation_end(None),
+                            steps=DEFAULT_STEPS,
+                        )
+                    ]
+                )
         return simulations
 
     def _simulation_of_extension(self, info: dict[str, Any]) -> TimecourseSim:
@@ -262,7 +326,7 @@ class PetabReader:
         A period at `time=-inf` is the pre-equilibration of the experiment,
         which becomes a timecourse whose result is discarded.
         """
-        end = self._last_measurement_time(experiment.id)
+        end = self._simulation_end(experiment.id)
         conditions = {
             condition.id: condition for condition in self.petab_problem.conditions
         }
@@ -312,12 +376,33 @@ class PetabReader:
             timecourses, time_offset=float(finite[0]) if finite else 0.0
         )
 
-    def _last_measurement_time(self, experiment_id: str) -> float:
-        """Get the last time a measurement of an experiment was taken."""
+    def _simulation_end(self, experiment_id: str | None) -> float:
+        """Get the time the simulation of an experiment runs to.
+
+        The simulation has to cover the measurements, so it ends just past the
+        last of them, see `END_MARGIN`.
+
+        Args:
+            experiment_id: id of the experiment, `None` for the measurements
+                which name no experiment.
+
+        Returns:
+            The end of the simulation.
+        """
+        end = self._last_measurement_time(experiment_id)
+        return end * (1.0 + END_MARGIN) if end > 0.0 else end
+
+    def _last_measurement_time(self, experiment_id: str | None) -> float:
+        """Get the last time a measurement of an experiment was taken.
+
+        Args:
+            experiment_id: id of the experiment, `None` for the measurements
+                which name no experiment.
+        """
         times = [
             measurement.time
             for measurement in self.petab_problem.measurements
-            if measurement.experiment_id == experiment_id
+            if (measurement.experiment_id or None) == experiment_id
             and np.isfinite(measurement.time)
         ]
         return float(max(times)) if times else 0.0
@@ -335,13 +420,13 @@ class PetabReader:
     def tasks(self) -> dict[str, Task]:
         """Get the tasks, one per experiment of the problem."""
         model_ids = [model.model_id for model in self.petab_problem.models]
-        tasks: dict[str, Task] = {}
-        for experiment in self.petab_problem.experiments:
-            model_id = self._model_of_experiment(experiment.id, model_ids)
-            tasks[f"task_{experiment.id}"] = Task(
-                model=model_id, simulation=experiment.id
+        return {
+            f"task_{experiment_id}": Task(
+                model=self._model_of_experiment(experiment_id, model_ids),
+                simulation=experiment_id,
             )
-        return tasks
+            for experiment_id in self.experiment_ids
+        }
 
     def _model_of_experiment(self, experiment_id: str, model_ids: list[str]) -> str:
         """Get the model an experiment is simulated with.
@@ -377,8 +462,13 @@ class PetabReader:
         datasets: dict[str, DataSet] = {}
         for observable_id, measurements in self._measurements.items():
             info = self._observable_info(observable_id)
-            time_unit = info.get("x_unit") or DEFAULT_TIME_UNIT
-            value_unit = info.get("y_unit") or DEFAULT_VALUE_UNIT
+            # without the extension the data is in the units of the model,
+            # which is what PEtab measures in
+            yid = info.get("yid_observable") or self._selection_of(observable_id)
+            time_unit = info.get("x_unit") or self._unit_of("time", DEFAULT_TIME_UNIT)
+            value_unit = info.get("y_unit") or self._unit_of(
+                split_selection(yid)[0], DEFAULT_VALUE_UNIT
+            )
 
             data: dict[str, Any] = {
                 "time": [measurement.time for measurement in measurements],
@@ -414,7 +504,7 @@ class PetabReader:
         mappings: dict[str, FitMapping] = {}
         for observable_id, measurements in self._measurements.items():
             info = self._observable_info(observable_id)
-            experiment_id = measurements[0].experiment_id
+            experiment_id = measurements[0].experiment_id or DEFAULT_EXPERIMENT
             task_id = f"task_{experiment_id}"
 
             observable_yid = info.get("yid_observable") or self._selection_of(
@@ -457,6 +547,10 @@ class PetabReader:
             if observable.id == observable_id:
                 return selection_of_formula(str(observable.formula), self._sbml_model())
         raise ValueError(f"The problem has no observable '{observable_id}'.")
+
+    def _in_model(self, sid: str) -> bool:
+        """Check whether an identifier is an entity of one of the models."""
+        return any(model.has_entity_with_id(sid) for model in self.petab_problem.models)
 
     def _sbml_model(self) -> Any:
         """Get the `libsbml.Model` of the problem, `None` if it has several."""
@@ -515,6 +609,18 @@ class PetabReader:
         for parameter in self.petab_problem.parameters:
             if not parameter.estimate:
                 continue
+            if not self._in_model(parameter.id):
+                # a parameter of the noise or of an observable, which PEtab
+                # estimates with the parameters of the model. The objective of
+                # `sbmlsim` has no such parameter, it weights the data instead
+                logger.warning(
+                    "The parameter '%s' is estimated by the problem but is not "
+                    "an entity of a model, i.e. it is a parameter of the noise "
+                    "or of an observable. `sbmlsim` fits the parameters of a "
+                    "model and weights the data, so it is not fitted.",
+                    parameter.id,
+                )
+                continue
             info = (
                 self.extension.parameters.get(parameter.id, {})
                 if self.extension
@@ -559,7 +665,7 @@ class PetabReader:
         """
         by_experiment: dict[str, list[str]] = {}
         for observable_id, measurements in self._measurements.items():
-            experiment_id = measurements[0].experiment_id or "model"
+            experiment_id = measurements[0].experiment_id or DEFAULT_EXPERIMENT
             by_experiment.setdefault(experiment_id, []).append(observable_id)
 
         collections: list[FitMappingCollection] = []
