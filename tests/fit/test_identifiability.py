@@ -29,6 +29,14 @@ SCAN_SETTINGS = ProfileSettings(
     reoptimize=False, initial_step=0.5, min_step=0.1, max_step=2.0, max_points=6
 )
 
+#: tolerance the cost of a scan is compared with between processes. A worker
+#: integrates on a fresh roadrunner instance while the serial scans reuse one,
+#: so a cost differs by about the relative tolerance of the integrator, `1e-6`
+#: in `fit_settings`; this is that with headroom. It still separates the scans:
+#: a scan which took another path differs by the threshold of the test, i.e.
+#: `1.92` in the cost, not by a millionth of it
+COST_RTOL = 1e-3
+
 
 def _profile(
     values: list[float], costs: list[float], index_optimum: int
@@ -309,7 +317,11 @@ def test_profile_with_reoptimization(
 def test_parallel_equals_serial(
     op_hctz_pkiv: OptimizationProblem, fit_settings: FitSettings
 ) -> None:
-    """The scans of the workers give the result of the serial scans."""
+    """The scans of the workers give the result of the serial scans.
+
+    The scans take the same path, i.e. the same parameter values, and their
+    costs agree up to the integrator, see `COST_RTOL`.
+    """
     serial = _result_of_scan(op_hctz_pkiv, fit_settings)
     parallel = profile_likelihood(
         problem=op_hctz_pkiv,
@@ -320,8 +332,15 @@ def test_parallel_equals_serial(
         show_progress=False,
     )
     for pid in op_hctz_pkiv.pids:
-        assert np.allclose(serial.profiles[pid].values, parallel.profiles[pid].values)
-        assert np.allclose(serial.profiles[pid].costs, parallel.profiles[pid].costs)
+        values, other = serial.profiles[pid].values, parallel.profiles[pid].values
+        # the same number of points, i.e. the adaptive steps did the same
+        assert values.shape == other.shape, pid
+        assert np.allclose(values, other)
+        assert np.allclose(
+            serial.profiles[pid].costs,
+            parallel.profiles[pid].costs,
+            rtol=COST_RTOL,
+        )
 
 
 def test_result_json_round_trip(
