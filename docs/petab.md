@@ -78,11 +78,11 @@ The round trip of the HCTZ example keeps the settings, the parameters with their
 
 ## The example
 
-`examples/hctz/fitting/petab.py` runs the layer on the reference problem, i.e. it reports the gaps of the fit, writes it, validates the problem with `petab`, lists which collection every experiment came from and reads the fit back:
+`examples/hctz/fitting/petab_problem.py` runs the layer on the reference problem, i.e. it reports the gaps of the fit, writes it, validates the problem with `petab`, lists which collection every experiment came from and reads the fit back:
 
 ```bash
-python -m examples.hctz.fitting.petab
-python -m examples.hctz.fitting.petab --subset=PKIV --portable
+python -m examples.hctz.fitting.petab_problem
+python -m examples.hctz.fitting.petab_problem --subset=PKIV --portable
 ```
 
 The `PKIV` problem is one simulation experiment, so it comes back exactly (a relative difference of `5e-16` in the cost); `PK` is two, which is the `selections` gap and a difference of `7e-6`.

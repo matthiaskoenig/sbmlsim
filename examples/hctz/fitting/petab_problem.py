@@ -5,17 +5,21 @@ written as a PEtab v2 problem, validated with `petab` itself and read back into
 an optimization problem, and what the tables of PEtab cannot express is
 reported before anything is written.
 
-    python -m examples.hctz.fitting.petab
-    python -m examples.hctz.fitting.petab --subset=PKIV --portable
+    python -m examples.hctz.fitting.petab_problem
+    python -m examples.hctz.fitting.petab_problem --subset=PKIV --portable
 
 The problem is written into `results/petab/<subset>` of the working directory.
+
+The module is not called `petab.py`: run as a script its directory is the first
+entry of `sys.path`, so `import petab` would find this file instead of the
+library and fail with "'petab' is not a package".
 """
 
 import argparse
 import sys
 from pathlib import Path
 
-# run as a script (`python examples/hctz/fitting/petab.py`, the "run file" of an
+# run as a script (`python examples/hctz/fitting/petab_problem.py`, the "run file" of an
 # IDE) the repository is not on `sys.path`, so the `examples` package is not found
 if __package__ in (None, ""):
     sys.path.insert(0, str(Path(__file__).resolve().parents[3]))
