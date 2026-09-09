@@ -262,7 +262,7 @@ class SamplingSensitivityAnalysis(SensitivityAnalysis):
         nrows, ncols = self._figshape(n=n)
         label_fontsize = 13
 
-        _f, axes = plt.subplots(
+        f, axes = plt.subplots(
             figsize=(4 * ncols, 4 * nrows),
             nrows=int(nrows),
             ncols=int(ncols),
@@ -367,7 +367,7 @@ class SamplingSensitivityAnalysis(SensitivityAnalysis):
             dpi=300,
             bbox_inches="tight",
         )
-        plt.show()
+        plt.close(f)
 
     def plot(self, **kwargs):
         """Boxplots for the Sampling sensitivity."""

@@ -382,7 +382,7 @@ class SimulationExperiment:
         self,
         simulator,
         output_path: Path | None = None,
-        show_figures: bool = True,
+        show_figures: bool = False,
         save_results: bool = False,
         figure_formats: list[str] | None = None,
         reduced_selections: bool = True,

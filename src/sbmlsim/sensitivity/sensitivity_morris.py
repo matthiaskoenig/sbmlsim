@@ -334,4 +334,4 @@ def _plot_morris_indices(
                         ax.set_ylim(top=0.1)
 
             plt.savefig(f_path, dpi=300, bbox_inches="tight")
-            plt.show()
+            plt.close(f)

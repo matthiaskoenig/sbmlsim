@@ -146,10 +146,3 @@ if __name__ == "__main__":
     ax.plot(time, da.max(dim="dim1"), color="black", linewidth=2.0)
     fig.savefig("scan1d_distribution.png", bbox_inches="tight")
     plt.close(fig)
-
-    """
-    # scan2d
-    xres = run_scan2d()
-    xres[column].plot()
-    plt.show()
-    """

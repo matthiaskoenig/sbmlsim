@@ -6,7 +6,6 @@ import inspect
 import logging
 import os
 import time
-import warnings
 
 logger = logging.getLogger(__name__)
 
@@ -19,28 +18,6 @@ def md5_for_path(path):
         data = f_check.read()
         # pipe contents of the file through
         return hashlib.md5(data).hexdigest()
-
-
-def deprecated(function):
-    """Get decorator for deprecation.
-
-    This is a decorator which can be used to mark functions
-    as deprecated. It will result in a warning being emitted
-    when the function is used.
-    """
-
-    @functools.wraps(function)
-    def new_func(*args, **kwargs):
-        warnings.simplefilter("always", DeprecationWarning)  # turn off filter
-        warnings.warn(
-            f"Call to deprecated function {function.__name__}.",
-            category=DeprecationWarning,
-            stacklevel=2,
-        )
-        warnings.simplefilter("default", DeprecationWarning)  # reset filter
-        return function(*args, **kwargs)
-
-    return new_func
 
 
 def timeit(function):

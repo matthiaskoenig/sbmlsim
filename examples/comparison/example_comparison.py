@@ -112,6 +112,6 @@ if __name__ == "__main__":
     # comparison
     console.rule(style="white")
     comparison = DataSetsComparison(dfs_dict=dfs)
-    comparison.report()
-
-    plt.show()
+    fig = comparison.report()
+    fig.savefig("comparison.png", dpi=150, bbox_inches="tight")
+    plt.close(fig)

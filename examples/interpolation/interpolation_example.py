@@ -22,7 +22,7 @@ def interpolation_example() -> None:
     data1 = pd.DataFrame({"x": x, "y": y, "z": z})
 
     ax1: Axes
-    _f, ax1 = plt.subplots(nrows=1, ncols=1)
+    f, ax1 = plt.subplots(nrows=1, ncols=1)
     ax1.set_xlabel("time [AU]")
     ax1.set_ylabel("data [AU]")
     ax1.set_title("Interpolation Example")
@@ -52,7 +52,8 @@ def interpolation_example() -> None:
             )
 
     ax1.legend()
-    plt.show()
+    f.savefig("interpolation.png", bbox_inches="tight")
+    plt.close(f)
 
 
 if __name__ == "__main__":
