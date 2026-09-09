@@ -368,10 +368,15 @@ runs = run_fit(
 )
 run = runs[opid]
 identifiability = run.identifiability(n_cores=4)
-run.report(output_dir=Path("results"), identifiability=identifiability)
+fisher = run.fisher()
+run.report(
+    output_dir=Path("results"),
+    identifiability=identifiability,
+    fisher=fisher,
+)
 ```
 
-which is `examples/hctz_fitting/fitting/identifiability.py`. `identifiability_cli` is the command line tool for stored parameters, `examples/hctz_fitting/fitting/identifiability_report.py` on the HCTZ definitions:
+which is `examples/hctz_fitting/fitting/identifiability.py`. `identifiability_cli` is the command line tool for stored parameters, `examples/hctz_fitting/fitting/identifiability_report.py` on the HCTZ definitions; it computes both analyses, `--no-fisher` reports the profiles alone:
 
 ```bash
 python -m examples.hctz_fitting.fitting.identifiability --subset=PK --runs=2 --cores=4

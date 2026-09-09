@@ -1,11 +1,12 @@
-"""Identifiability of stored HCTZ parameters by profile likelihood.
+"""Identifiability of stored HCTZ parameters: profiles and Fisher information.
 
-The profiles are computed around the parameters a fit wrote, so the analysis
-runs without fitting again:
+The profiles and the Fisher information are computed around the parameters a
+fit wrote, so the analysis runs without fitting again:
 
     python -m examples.hctz_fitting.fitting.identifiability_report results/fit/PK/parameters.json
 
-The report with the profiles is written into `results/identifiability`.
+The report with both analyses is written into `results/identifiability`;
+`--no-fisher` reports the profiles alone.
 """
 
 import sys

@@ -434,6 +434,42 @@ def test_identifiability_cli(
     assert set(result.profiles) == set(problem.pids)
     assert not result.settings.reoptimize
 
+    # the Fisher information comes with the profiles
+    assert (results_dir / "fisher.json").exists()
+    assert (results_dir / "fisher.tsv").exists()
+    html = (results_dir / "index.html").read_text(encoding="utf-8")
+    assert "Fisher information" in html
+
+
+def test_identifiability_cli_without_fisher(
+    tmp_path: Path, definition_hctz_pkiv: FitDefinition
+) -> None:
+    """`--no-fisher` reports the profiles alone."""
+    problem = definition_hctz_pkiv.problem(opid="PKIV")
+    problem.initialize(definition_hctz_pkiv.settings)
+    parameters_path = tmp_path / "parameters.json"
+    ParameterSets([problem.parameter_set_model()]).to_json(path=parameters_path)
+
+    results_dir = identifiability_cli(
+        {"PKIV": definition_hctz_pkiv},
+        args=[
+            str(parameters_path),
+            "--subset=PKIV",
+            "--name=identifiability",
+            "--no-reoptimize",
+            "--no-fisher",
+            "--max-points=3",
+            "--initial-step=1.0",
+            "--min-step=0.5",
+            "--max-step=2.0",
+            f"--output_dir={tmp_path}",
+        ],
+    )
+    assert (results_dir / "identifiability.json").exists()
+    assert not (results_dir / "fisher.json").exists()
+    html = (results_dir / "index.html").read_text(encoding="utf-8")
+    assert "Fisher information" not in html
+
 
 def test_parameter_set_of_result() -> None:
     """A result is created by hand from profiles."""

@@ -91,8 +91,21 @@ Parameter fitting, see [Parameter fitting](../fitting.md).
 | [fit.display](fit.display.md) | the sections of the console output of a fit: the problem, the parameters, the settings and the data |
 | [fit.sampling](fit.sampling.md) | sampling of initial parameter values |
 | [fit.metrics](fit.metrics.md) | `FitMetrics` and the metrics of a fit: PRED, IPRED, residuals, MSE, RMSE, R² and AIC |
+| [fit.identifiability](fit.identifiability.md) | `profile_likelihood`, the confidence intervals and the classification of the parameters from the profiles |
+| [fit.fisher](fit.fisher.md) | `fisher_information`, the standard errors, correlations and constrained directions from one jacobian |
 | [fit.helpers](fit.helpers.md) | helpers for fitting |
 | [fit.petab_omex](fit.petab_omex.md) | COMBINE archives of PEtab problems |
+
+PEtab v2, see [PEtab](../petab.md).
+
+| module | description |
+| --- | --- |
+| [fit.petab_v2.export](fit.petab_v2.export.md) | writing an `OptimizationProblem` as a PEtab v2 problem |
+| [fit.petab_v2.reader](fit.petab_v2.reader.md) | reading a PEtab v2 problem back into a fit problem |
+| [fit.petab_v2.extension](fit.petab_v2.extension.md) | the `sbmlsim` block of the problem, i.e., what PEtab does not express |
+| [fit.petab_v2.observables](fit.petab_v2.observables.md) | the model a fit simulates when an observable is a formula |
+| [fit.petab_v2.symbols](fit.petab_v2.symbols.md) | the identifiers and symbols shared by the PEtab layer |
+| [fit.petab_v2.gaps](fit.petab_v2.gaps.md) | the catalogue of the differences between a fit and its PEtab problem |
 
 ## sbmlsim.sensitivity
 

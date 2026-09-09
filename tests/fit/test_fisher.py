@@ -1,5 +1,7 @@
 """Tests of the Fisher information of a fit."""
 
+import logging
+
 import numpy as np
 import pytest
 
@@ -92,6 +94,28 @@ def test_a_parameter_the_data_cannot_determine(
     # a direction which the data does not constrain has no curvature
     assert fim.eigenvalues[-1] < fim.eigenvalues[0] * fim.rank_tolerance
     assert fim.condition_number > 1e8
+
+
+def test_the_rank_deficiency_is_logged_once(
+    caplog: pytest.LogCaptureFixture,
+    op_hctz_pkiv: OptimizationProblem,
+    fit_settings: FitSettings,
+) -> None:
+    """A report reads the covariance several times and warns about it once."""
+    problem = op_hctz_pkiv
+    problem.initialize(fit_settings)
+    fim = fisher_information(problem, fit_settings, problem.parameter_set_model())
+    assert not fim.is_identifiable
+
+    with caplog.at_level(logging.WARNING, logger="sbmlsim.fit.fisher"):
+        # every reader of the covariance, i.e. what a report evaluates
+        assert fim.standard_errors is not None
+        assert fim.correlation is not None
+        assert fim.confidence_intervals() is not None
+        assert fim.summary_df is not None
+
+    warnings = [r for r in caplog.records if "rank" in r.getMessage()]
+    assert len(warnings) == 1
 
 
 def test_the_errors_and_the_intervals(

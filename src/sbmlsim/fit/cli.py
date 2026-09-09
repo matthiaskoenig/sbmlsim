@@ -550,8 +550,9 @@ def identifiability_cli(
     """Analyse the identifiability of stored parameters from the command line.
 
     The parameters come from the `parameters.json` a fit wrote; the profiles
-    are computed around its first parameter set, and the report of the
-    parameters with the identifiability section is written.
+    and the Fisher information are computed around its first parameter set,
+    and the report of the parameters with the identifiability section is
+    written. `--no-fisher` reports the profiles alone.
 
     Args:
         definitions: fit problems by name, the name is the `--subset` argument.
@@ -630,6 +631,11 @@ def identifiability_cli(
         "instead of computing the profile likelihood",
     )
     parser.add_argument(
+        "--no-fisher",
+        action="store_true",
+        help="skip the Fisher information, i.e., report the profiles alone",
+    )
+    parser.add_argument(
         "-o",
         "--output_dir",
         type=Path,
@@ -672,11 +678,31 @@ def identifiability_cli(
         pids=options.parameter,
         n_cores=options.cores,
     )
+
+    # the local analysis next to the profiles, one jacobian instead of a scan
+    # per parameter, so it is cheap enough to come with them
+    fisher: FisherInformation | None = None
+    if not options.no_fisher:
+        fisher = fisher_information(
+            problem=problem,
+            settings=definition.settings,
+            parameter_set=parameter_set,
+            alpha=options.alpha,
+        )
+        display.section("Fisher information", icon=display.ICON_IDENTIFIABILITY)
+        display.key_values(
+            {
+                "rank": f"{fisher.rank} of {fisher.k}",
+                "condition number": f"{fisher.condition_number:.4g}",
+            }
+        )
+
     report = FitReport(
         problem=problem,
         settings=definition.settings,
         parameter_sets=ParameterSets([parameter_set]),
         identifiability=result,
+        fisher=fisher,
         show_titles=False,
     )
     return report.create(

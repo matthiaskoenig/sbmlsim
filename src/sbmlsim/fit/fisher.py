@@ -75,6 +75,11 @@ class FisherInformation:
     rank_tolerance: float = DEFAULT_RANK_TOLERANCE
     units: list[str | None] = field(default_factory=list)
 
+    #: the covariance is read by the errors, the correlations and the table, so
+    #: the warning of a rank deficient information is logged for the first of
+    #: them and not once per reader
+    _warned: bool = field(default=False, init=False, repr=False, compare=False)
+
     @property
     def k(self) -> int:
         """Get the number of parameters."""
@@ -136,9 +141,10 @@ class FisherInformation:
         deficient, i.e. for a problem which is locally not identifiable. The
         covariance of such a problem is not a covariance, its entries of the
         unconstrained directions are arbitrary; `is_identifiable` says whether
-        it can be read.
+        it can be read. The warning about it is logged once per information.
         """
-        if not self.is_identifiable:
+        if not self.is_identifiable and not self._warned:
+            self._warned = True
             logger.warning(
                 "'%s': the Fisher information has rank %s of %s, the covariance "
                 "of the unconstrained directions is not meaningful.",

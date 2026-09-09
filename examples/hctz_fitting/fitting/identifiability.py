@@ -1,10 +1,11 @@
-"""Identifiability of the HCTZ parameters: global optimization and profiles.
+"""Identifiability of the HCTZ parameters: global optimization and analysis.
 
 A global optimization finds the best parameters of the model, the profile
-likelihood then says how well the data determines every one of them. The fit
-runs differential evolution, the profiles are computed around its best
-parameter set, and one report carries the fit and the identifiability section
-with the profiles:
+likelihood then says how well the data determines every one of them and the
+Fisher information gives the local answer next to it. The fit runs differential
+evolution, both analyses are computed around its best parameter set, and one
+report carries the fit and the identifiability section with the profiles and
+the Fisher information:
 
     python -m examples.hctz_fitting.fitting.identifiability --subset=PK --runs=2 --cores=4
 
@@ -96,11 +97,16 @@ def main(args: Sequence[str] | None = None) -> Path:
         n_cores=options.cores,
     )
 
-    # 3. one report with the fit and the identifiability section
+    # 3. Fisher information of the same parameter set: the local analysis from
+    #    one jacobian, next to the profiles
+    fisher = run.fisher()
+
+    # 4. one report with the fit and the identifiability section
     return run.report(
         output_dir=options.output_dir,
         name=f"{options.subset}_DE",
         identifiability=identifiability,
+        fisher=fisher,
         show_titles=False,
     )
 
