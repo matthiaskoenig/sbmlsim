@@ -44,9 +44,9 @@ from sbmlsim.report.templates import template_environment
 
 logger = logging.getLogger(__name__)
 
-#: colors of the parameter sets, in the order of the sets
+#: colors of the parameter sets, in the order of the sets. Black is the color
+#: of the reference data of a fit mapping, so no parameter set uses it
 SET_COLORS: tuple[str, ...] = (
-    "black",
     "tab:blue",
     "tab:orange",
     "tab:green",
@@ -114,7 +114,7 @@ class FitReport:
         problem: OptimizationProblem,
         opt_result: OptimizationResult,
         size: int = 1,
-        with_model: bool = True,
+        with_model: bool = False,
         **kwargs: Any,
     ) -> FitReport:
         """Create the report of an optimization.
@@ -124,7 +124,9 @@ class FitReport:
             opt_result: result of the optimization, it carries the settings.
             size: number of fitted parameter sets to report, the best first.
             with_model: report the initial values of the model as the reference
-                set, so that the plots compare the fit against them.
+                set as well, so that the figures and the tables compare the fit
+                against the model it started from. The report shows the fitted
+                parameters alone by default.
             kwargs: additional arguments of `FitReport`.
 
         Returns:

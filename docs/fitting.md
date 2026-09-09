@@ -255,11 +255,16 @@ The report writes `index.html`, `report.txt`, the `parameters.json` it was made 
 
 Every parameter set becomes a column of the parameter table and a curve in the plots, so several sets are compared in a single report, e.g., two fits against each other. The first set is the reference the others are compared against.
 
-`FitReport.from_optimization_result` is the shortcut for the report of a fit. It reads the settings from the result, uses the initial values of the model as the reference set, and adds the plots which describe the runs rather than a parameter set, i.e., the optimization traces and the waterfall plot:
+`FitReport.from_optimization_result` is the shortcut for the report of a fit. It reads the settings from the result and adds the plots which describe the runs rather than a parameter set, i.e., the optimization traces and the waterfall plot. The report shows the fitted parameters alone; `with_model=True` reports the values the model started from as the reference set as well, so that the figures and the tables show what the fit changed:
 
 ```py
 report = FitReport.from_optimization_result(problem=op, opt_result=opt_result)
 report.create(output_dir=Path("results"), name="hctz_iv")
+
+# the fit against the model it started from
+report = FitReport.from_optimization_result(
+    problem=op, opt_result=opt_result, with_model=True
+)
 ```
 
 ## Metrics

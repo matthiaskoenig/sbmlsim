@@ -43,21 +43,44 @@ def _assert_report_files(results_dir: Path) -> None:
 def test_report_from_optimization_result(
     tmp_path: Path, op_hctz_pkiv: OptimizationProblem, fit_settings: FitSettings
 ) -> None:
-    """The report of a fit compares the fit against the model values."""
+    """The report of a fit shows the fitted parameters alone."""
     opt_result = _fit(op_hctz_pkiv, fit_settings)
     report = FitReport.from_optimization_result(
         problem=op_hctz_pkiv, opt_result=opt_result
     )
 
-    # the model values are the reference, the fit is the second set
-    assert len(report.parameter_sets) == 2
-    assert report.reference_set.sid == "model"
+    # the values the model started from are not reported
+    assert len(report.parameter_sets) == 1
+    assert report.reference_set.sid != "model"
 
     results_dir = report.create(output_dir=tmp_path, name="fit")
     _assert_report_files(results_dir)
     # the plots of the runs need the result of an optimization
     assert (results_dir / "plots" / "traces.svg").exists()
     assert (results_dir / "optimization_result.json").exists()
+
+    # a single set is not compared against another one
+    assert not (results_dir / "plots" / "cost_scatter.svg").exists()
+
+
+def test_report_from_optimization_result_with_model(
+    tmp_path: Path, op_hctz_pkiv: OptimizationProblem, fit_settings: FitSettings
+) -> None:
+    """`with_model` compares the fit against the values the model started from."""
+    opt_result = _fit(op_hctz_pkiv, fit_settings)
+    report = FitReport.from_optimization_result(
+        problem=op_hctz_pkiv, opt_result=opt_result, with_model=True
+    )
+
+    # the model values are the reference, the fit is the second set
+    assert len(report.parameter_sets) == 2
+    assert report.reference_set.sid == "model"
+    # no parameter set is black, which is the color of the reference data
+    assert "black" not in {report.color(pset) for pset in report.parameter_sets}
+
+    results_dir = report.create(output_dir=tmp_path, name="fit_with_model")
+    _assert_report_files(results_dir)
+    assert (results_dir / "plots" / "cost_scatter.svg").exists()
 
 
 def test_report_without_optimization(

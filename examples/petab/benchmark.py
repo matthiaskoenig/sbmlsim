@@ -198,7 +198,7 @@ def main() -> None:
     report = FitReport(
         problem=problem,
         settings=settings,
-        parameter_sets=[parameter_set, problem.parameter_set_model()],
+        parameter_sets=[parameter_set],
         opt_result=opt_result,
         identifiability=identifiability,
         fisher=fisher,
