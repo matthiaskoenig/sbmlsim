@@ -63,6 +63,16 @@ STUDY_COLORS: tuple[str, ...] = (
 #: the sets are told apart where the color is taken
 SET_MARKERS: tuple[str, ...] = ("o", "s", "^", "D", "v", "P")
 
+#: styles of the agreement band. The goodness of fit and the Bland-Altman plot
+#: draw the same band, once as lines parallel to the identity and once as
+#: horizontal lines, so the two figures are read the same way
+IDENTITY_STYLE: dict[str, Any] = {"linestyle": "-", "linewidth": 1.5}
+BIAS_STYLE: dict[str, Any] = {"linestyle": "-.", "linewidth": 1.2}
+LIMITS_STYLE: dict[str, Any] = {"linestyle": "--", "linewidth": 1.2}
+
+#: opacity of the filled area between the limits of agreement
+BAND_ALPHA: float = 0.12
+
 #: colors of the parameter sets, in the order of the sets. Black is the color
 #: of the reference data of a fit mapping, so no parameter set uses it
 SET_COLORS: tuple[str, ...] = (
@@ -492,14 +502,13 @@ class FitReport:
         "traces": "Cost of the optimizers over their steps",
         "waterfall": "Cost of the optimization runs, ordered",
         "goodness_of_fit": (
-            "Prediction against the measured data points, over all data and "
-            "per kind of fit mapping"
+            "Prediction against the measured data points, per kind of fit "
+            "mapping, with the agreement of the training data"
         ),
         "bland_altman": (
-            "Agreement of prediction and measurement as a ratio, over all "
-            "data and per kind of fit mapping"
+            "Agreement of prediction and measurement as a ratio, per kind of "
+            "fit mapping, with the agreement of the training data"
         ),
-        "residual_scatter": "Relative residuals over the data",
         "cost_bar": "Cost and weight of every fit mapping",
         "residual_boxplot": "Distribution of the squared weighted residuals",
         "cost_scatter": "Cost of the parameter sets against the reference",
@@ -527,24 +536,23 @@ class FitReport:
         ),
         "goodness_of_fit": (
             "Prediction against measurement, one point per data point, with a "
-            "panel over all data and one per kind of fit mapping. The points "
-            "scatter around the diagonal when the model describes the data; a "
-            "systematic deviation from it is a systematic error of the model. "
+            "panel per kind of fit mapping. The points scatter around the "
+            "diagonal when the model describes the data; a systematic "
+            "deviation from it is a systematic error of the model. The band is "
+            "the agreement of the training data, i.e. the same band the "
+            "Bland-Altman plot draws, here as lines parallel to the diagonal. "
             "The validation panel shows how the fit describes data it was not "
             "fitted on, the outlier panel the data the fit dropped."
         ),
         "bland_altman": (
             "The ratio of prediction and measurement over the geometric mean "
-            "of the two, with the bias and the limits of agreement "
-            "`bias ± 1.96 SD` as fold factors. A bias away from 1 is a "
-            "systematic over- or underprediction, wide limits are a large "
-            "scatter, and a trend over the mean is a model which describes "
-            "the large or the small values better."
-        ),
-        "residual_scatter": (
-            "The relative residuals over the data. They should scatter "
-            "around zero without a trend; a trend over the value is a model "
-            "which fits the large or the small values better."
+            "of the two, i.e. the goodness of fit with the diagonal turned "
+            "into the horizontal. The band is the same, the bias and the "
+            "limits of agreement `bias ± 1.96 SD` of the training data as "
+            "fold factors. A bias away from 1 is a systematic over- or "
+            "underprediction, wide limits are a large scatter, and a trend "
+            "over the mean is a model which describes the large or the small "
+            "values better."
         ),
         "cost_bar": (
             "How much every fit mapping contributes to the cost, with its "
@@ -789,7 +797,6 @@ class FitReport:
                 [
                     "goodness_of_fit",
                     "bland_altman",
-                    "residual_scatter",
                     "cost_bar",
                     "residual_boxplot",
                     "cost_scatter",
@@ -964,9 +971,6 @@ class FitReport:
                 path=plots_dir / f"goodness_of_fit.{self.image_format}"
             )
             self.plot_bland_altman(path=plots_dir / f"bland_altman.{self.image_format}")
-            self.plot_residual_scatter(
-                path=plots_dir / f"residual_scatter.{self.image_format}"
-            )
             self.plot_cost_bar(path=plots_dir / f"cost_bar.{self.image_format}")
             self.plot_residual_boxplot(
                 path=plots_dir / f"residual_boxplot.{self.image_format}"
@@ -1285,13 +1289,36 @@ class FitReport:
         )
         return fig, list(axes[0]), kinds
 
+    def _band_color(self, pset: ParameterSet) -> str:
+        """Get the color of the agreement band of a parameter set.
+
+        The points carry the color of their study, so the band is neutral and
+        only takes a color when several sets are compared.
+        """
+        return "black" if len(self.parameter_sets) == 1 else self.color(pset)
+
+    def _band_labels(self, pset: ParameterSet) -> tuple[str, str, str]:
+        """Get the legend entries of the identity, the bias and the limits."""
+        bias, half = self.agreement(pset)
+        prefix = f"{pset.sid} " if len(self.parameter_sets) > 1 else ""
+        return (
+            "prediction = measurement",
+            f"{prefix}bias {10**bias:.2f}x",
+            f"{prefix}LoA {10 ** (bias - half):.2f}-{10 ** (bias + half):.2f}x",
+        )
+
     def plot_goodness_of_fit(self, path: Path) -> None:
-        """Plot the predicted against the measured data points, per subset.
+        """Plot the predicted against the measured data points, per kind.
 
         One panel per kind of fit mapping, i.e. the training data, the
         validation data and the outliers separately. The points scatter around
-        the identity line when the model describes the data, the shaded band is
-        a factor of ten in either direction.
+        the identity line when the model describes the data.
+
+        The band is the agreement of `agreement`, i.e. the bias and the limits
+        `bias ± 1.96 SD` of the training data, which on logarithmic axes are
+        lines parallel to the identity: a point inside the band is a prediction
+        the fit agrees to. It is the same band the Bland-Altman plot draws, in
+        the same styles, so the two figures are read the same way.
         """
         points = {pset.sid: self.points(pset) for pset in self.parameter_sets}
         fig, axes, kinds = self._panels()
@@ -1299,21 +1326,46 @@ class FitReport:
         min_dp, max_dp = self._log_limits(
             *[dp.DV for dp in points.values()], *[dp.IPRED for dp in points.values()]
         )
+        edge = np.array([min_dp, max_dp])
 
         for ax, kind in zip(axes, kinds, strict=True):
-            ax.fill_between(
-                [min_dp, max_dp, max_dp, min_dp],
-                [min_dp / 10, max_dp / 10, max_dp * 10, min_dp * 10],
-                color="lightgray",
-            )
-            ax.plot([min_dp, max_dp], [min_dp, max_dp], color="black")
-            for bfactor in [1 / 10, 10]:
-                ax.plot(
-                    [min_dp, max_dp],
-                    [min_dp * bfactor, max_dp * bfactor],
-                    "--",
-                    color="black",
+            # the band, labelled on the last panel so that the legend lists the
+            # studies first and the band, which is the same everywhere, last
+            is_last = ax is axes[-1]
+            for pset in self.parameter_sets:
+                bias, half = self.agreement(pset)
+                color = self._band_color(pset)
+                _identity, bias_label, limits_label = self._band_labels(pset)
+                ax.fill_between(
+                    edge,
+                    edge * 10 ** (bias - half),
+                    edge * 10 ** (bias + half),
+                    color=color,
+                    alpha=BAND_ALPHA,
+                    zorder=0,
                 )
+                ax.plot(
+                    edge,
+                    edge * 10**bias,
+                    color=color,
+                    label=bias_label if is_last else None,
+                    **BIAS_STYLE,
+                )
+                for limit in (bias - half, bias + half):
+                    ax.plot(
+                        edge,
+                        edge * 10**limit,
+                        color=color,
+                        label=limits_label if is_last else None,
+                        **LIMITS_STYLE,
+                    )
+            ax.plot(
+                edge,
+                edge,
+                color="black",
+                label=self._band_labels(self.reference_set)[0] if is_last else None,
+                **IDENTITY_STYLE,
+            )
 
             for pset in self.parameter_sets:
                 dp = self._of_kind(points[pset.sid], kind)
@@ -1419,7 +1471,8 @@ class FitReport:
         `agreement`, i.e. of the training data, and they are the same in every
         panel, so the validation data and the outliers are read against what
         the fit agrees to. Every panel shows the limits even when its points
-        are further out.
+        are further out. It is the same band the goodness of fit draws, in the
+        same styles: the identity there is no difference here.
 
         Data points which are zero or negative have no logarithm and are left
         out, i.e. the plot shows the points a ratio is defined for.
@@ -1455,33 +1508,42 @@ class FitReport:
             # the agreement of the training data, the same lines in every
             # panel. The points carry the color of their study, so the lines
             # are neutral and only take a color when several sets are compared
-            # only the last panel labels them, so that the legend lists the
-            # studies first and the lines, which are the same everywhere, last
+            # the same band as the goodness of fit, here as horizontal lines.
+            # Only the last panel labels it, so that the legend lists the
+            # studies first and the band, which is the same everywhere, last
             is_last = ax is axes[-1]
             for pset in self.parameter_sets:
                 bias, half = agreement[pset.sid]
-                color = "black" if len(self.parameter_sets) == 1 else self.color(pset)
-                prefix = f"{pset.sid} " if len(self.parameter_sets) > 1 else ""
+                color = self._band_color(pset)
+                _identity, bias_label, limits_label = self._band_labels(pset)
+                ax.axhspan(
+                    bias - half,
+                    bias + half,
+                    color=color,
+                    alpha=BAND_ALPHA,
+                    zorder=0,
+                )
                 ax.axhline(
                     bias,
                     color=color,
-                    label=f"{prefix}bias {10**bias:.2f}x" if is_last else None,
+                    label=bias_label if is_last else None,
+                    **BIAS_STYLE,
                 )
                 for limit in (bias - half, bias + half):
                     ax.axhline(
                         limit,
-                        linestyle="--",
                         color=color,
-                        alpha=0.8,
-                        label=(
-                            f"{prefix}LoA {10 ** (bias - half):.2f}"
-                            f"-{10 ** (bias + half):.2f}x"
-                            if is_last
-                            else None
-                        ),
+                        label=limits_label if is_last else None,
+                        **LIMITS_STYLE,
                     )
 
-            ax.axhline(0.0, color="black", zorder=0)
+            # the identity of the goodness of fit is no difference here
+            ax.axhline(
+                0.0,
+                color="black",
+                label=self._band_labels(self.reference_set)[0] if is_last else None,
+                **IDENTITY_STYLE,
+            )
             # a data point which is zero or negative has no ratio, so a panel
             # can show fewer points than the metrics of the kind count
             n_points = len(self._of_kind(points[self.reference_set.sid], kind))
@@ -1498,35 +1560,6 @@ class FitReport:
         self._set_figure_legend(fig, axes)
         if self.show_titles:
             fig.suptitle("Bland-Altman")
-        self._save_mpl_figure(fig=fig, path=path)
-
-    def plot_residual_scatter(self, path: Path) -> None:
-        """Plot the relative residuals against the data, per set."""
-        fig, ax = self._create_mpl_figure()
-
-        for pset in self.parameter_sets:
-            dp = self._datapoints_df(pset)
-            with np.errstate(divide="ignore", invalid="ignore"):
-                ydata = dp.residual.values / dp.y_ref.values
-            ax.plot(
-                dp.y_ref.values,
-                ydata,
-                label=pset.sid,
-                color=self.color(pset),
-                **self.kwargs_scatter,
-            )
-
-        ax.axhline(y=0.0, linestyle="--", color="black")
-        ax.axhspan(-0.5, 0.5, color="lightgray", zorder=0)
-        ax.set_xlabel("Experiment $y_{i,k}$", fontweight="bold")
-        ax.set_ylabel(
-            "Relative residual $\\frac{f(x_{i,k})-y_{i,k}}{y_{i,k}}$", fontweight="bold"
-        )
-        ax.set_xscale("log")
-        ax.grid()
-        self._set_legend(ax)
-        if self.show_titles:
-            ax.set_title("Residuals")
         self._save_mpl_figure(fig=fig, path=path)
 
     def plot_cost_bar(self, path: Path) -> None:

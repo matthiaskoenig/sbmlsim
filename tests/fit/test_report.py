@@ -155,6 +155,33 @@ def test_the_limits_of_agreement_are_the_training_data(
     assert 1.96 * float(np.std(all_difference, ddof=1)) > half
 
 
+def test_both_figures_draw_the_same_band(
+    op_hctz_pk: OptimizationProblem, fit_settings: FitSettings
+) -> None:
+    """The goodness of fit and the Bland-Altman plot show one agreement.
+
+    The band is a horizontal line in the one figure and a line parallel to
+    the diagonal in the other, which on logarithmic axes is the same thing,
+    so both are drawn from `agreement` and carry the same legend entries.
+    """
+    op_hctz_pk.initialize(fit_settings)
+    report = FitReport(
+        problem=op_hctz_pk,
+        settings=fit_settings,
+        parameter_sets=op_hctz_pk.parameter_set_model(),
+    )
+    pset = report.reference_set
+    identity, bias_label, limits_label = report._band_labels(pset)
+    assert identity == "prediction = measurement"
+    assert bias_label.startswith("bias ")
+    assert limits_label.startswith("LoA ")
+
+    # the labels carry the numbers of `agreement`, so both figures state them
+    bias, half = report.agreement(pset)
+    assert f"{10**bias:.2f}x" in bias_label
+    assert f"{10 ** (bias - half):.2f}-{10 ** (bias + half):.2f}x" in limits_label
+
+
 def test_the_goodness_of_fit_and_altman_plots(
     tmp_path: Path, op_hctz_pk: OptimizationProblem, fit_settings: FitSettings
 ) -> None:
@@ -169,10 +196,14 @@ def test_the_goodness_of_fit_and_altman_plots(
 
     for name in ["goodness_of_fit", "bland_altman"]:
         assert (results_dir / "plots" / f"{name}.svg").exists()
+    # the relative residuals are gone, the Bland-Altman plot is the same
+    # information with a reference to read it against
+    assert not (results_dir / "plots" / "residual_scatter.svg").exists()
 
     html = (results_dir / "index.html").read_text(encoding="utf-8")
     assert "plots/goodness_of_fit.svg" in html
     assert "plots/bland_altman.svg" in html
+    assert "residual_scatter" not in html
     # the metrics of the report cover the outliers
     metrics = (results_dir / "metrics.tsv").read_text(encoding="utf-8")
     assert MappingKind.OUTLIER.value in metrics
