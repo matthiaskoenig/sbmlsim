@@ -8,7 +8,7 @@ from pathlib import Path
 
 import pandas as pd
 
-from sbmlsim.combine import mathml
+from sbmlsim import mathml
 from sbmlsim.result import XResult
 from sbmlsim.units import DimensionalityError, Quantity, UnitRegistry, UnitsInformation
 
@@ -512,7 +512,6 @@ class DataSet(pd.DataFrame):
             )
 
 
-# @deprecated
 def load_pkdb_dataframe(
     sid, data_path: Path | list[Path], sep="\t", comment="#", **kwargs
 ) -> pd.DataFrame:
@@ -557,7 +556,6 @@ def load_pkdb_dataframe(
     return df.dropna(how="all")  # drop all NA rows
 
 
-# @deprecated
 def load_pkdb_dataframes_by_substance(
     sid, data_path, **kwargs
 ) -> dict[str, pd.DataFrame]:

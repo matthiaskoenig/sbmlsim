@@ -13,28 +13,34 @@ from sbmlsim.fit.cli import (
     report_cli,
     run_fit,
 )
+from sbmlsim.fit.objects import MappingKind
 from sbmlsim.fit.optimization import OptimizationProblem
 from sbmlsim.fit.options import OptimizationStrategy
 
 
-def test_definition_experiments(definition_hctz_pkiv: FitDefinition) -> None:
-    """The definition creates the fit experiments of its problem."""
-    experiments = definition_hctz_pkiv.experiments()
-    assert experiments
-    assert all(e.mappings for e in experiments)
+def test_definition_collections(definition_hctz_pkiv: FitDefinition) -> None:
+    """The definition creates the fit mapping collections of its problem."""
+    collections = definition_hctz_pkiv.collections()
+    assert collections
+    assert all(collection.mappings for collection in collections)
+    # every collection has an id, which names the experiments of a PEtab problem
+    assert all(collection.sid for collection in collections)
 
 
-def test_definition_experiments_selected(definition_hctz_pkiv: FitDefinition) -> None:
-    """A subset of the experiments is selected by their ids."""
-    all_ids = list(definition_hctz_pkiv.fit_experiments())
-    experiments = definition_hctz_pkiv.experiments(study_ids=all_ids[:1])
-    assert len(experiments) == 1
+def test_definition_collections_selected(
+    definition_hctz_pkiv: FitDefinition,
+) -> None:
+    """A subset of the studies is selected by their ids."""
+    # the callable of the definition creates the collections by study id
+    study_ids = list(definition_hctz_pkiv.mapping_collections())
+    collections = definition_hctz_pkiv.collections(study_ids=study_ids[:1])
+    assert len(collections) == 1
 
 
-def test_definition_unknown_experiment(definition_hctz_pkiv: FitDefinition) -> None:
-    """An unknown experiment id is reported."""
-    with pytest.raises(KeyError, match="Unknown experiments"):
-        definition_hctz_pkiv.experiments(study_ids=["Nonexistent1999"])
+def test_definition_unknown_study(definition_hctz_pkiv: FitDefinition) -> None:
+    """An unknown study id is reported."""
+    with pytest.raises(KeyError, match="Unknown studies"):
+        definition_hctz_pkiv.collections(study_ids=["Nonexistent1999"])
 
 
 def test_definition_problem(definition_hctz_pkiv: FitDefinition) -> None:
@@ -66,8 +72,22 @@ def test_run_fit_all(definition_hctz_pkiv: FitDefinition) -> None:
 
 
 def test_run_fit_single(definition_hctz_pkiv: FitDefinition) -> None:
-    """The `SINGLE` strategy fits every experiment on its own."""
-    experiments = definition_hctz_pkiv.experiments()
+    """The `SINGLE` strategy fits every collection of training data on its own.
+
+    A collection which is not fitted is not a problem of its own: the
+    validation data is evaluated with the training data of a fit, and the
+    outliers and the excluded data are not used at all.
+    """
+    collections = definition_hctz_pkiv.collections()
+    training = [
+        collection
+        for collection in collections
+        if collection.kind is MappingKind.TRAINING
+    ]
+    assert len(training) < len(collections), (
+        "the fixture should have a collection which is not fitted"
+    )
+
     runs = run_fit(
         definition=definition_hctz_pkiv,
         opid="the_fit",
@@ -76,8 +96,11 @@ def test_run_fit_single(definition_hctz_pkiv: FitDefinition) -> None:
         n_cores=1,
         seed=1234,
     )
-    # every experiment gets its own problem, they share the id of the fit
-    assert list(runs) == [f"{e.experiment_class.__name__}_the_fit" for e in experiments]
+    # every collection of training data gets its own problem, they share the
+    # id of the fit
+    assert list(runs) == [
+        f"{collection.experiment_class.__name__}_the_fit" for collection in training
+    ]
 
 
 def test_run_fit_report(tmp_path: Path, definition_hctz_pkiv: FitDefinition) -> None:
@@ -93,7 +116,7 @@ def test_run_fit_report(tmp_path: Path, definition_hctz_pkiv: FitDefinition) -> 
 
 def test_fit_cli(tmp_path: Path) -> None:
     """The fit tool runs a fit of a definition and reports it."""
-    from examples.hctz.fitting.fitting import FIT_DEFINITIONS
+    from examples.hctz_fitting.fitting.fitting import FIT_DEFINITIONS
 
     runs = fit_cli(
         FIT_DEFINITIONS,
@@ -118,7 +141,7 @@ def test_fit_cli(tmp_path: Path) -> None:
 
 def test_report_cli(tmp_path: Path, definition_hctz_pkiv: FitDefinition) -> None:
     """The report tool reports stored parameters without optimizing."""
-    from examples.hctz.fitting.fitting import FIT_DEFINITIONS
+    from examples.hctz_fitting.fitting.fitting import FIT_DEFINITIONS
 
     runs = run_fit(
         definition=definition_hctz_pkiv, opid="pkiv", size=1, n_cores=1, seed=1234

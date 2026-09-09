@@ -5,13 +5,6 @@ indent-width = 4
 # oldest supported version, see `project.requires-python`
 target-version = "py313"
 
-# generated AMICI model code of the simulator comparison, not written by hand
-exclude = [
-    "src/sbmlsim/comparison/amicitesting",
-    "src/sbmlsim/comparison/results",
-]
-
-
 [lint]
 # Pyflakes (`F`) and a subset of pycodestyle (`E`), plus:
 #   W    pycodestyle warnings

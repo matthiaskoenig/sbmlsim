@@ -4,11 +4,12 @@ The API reference is generated from the docstrings of the package.
 
 ## sbmlsim
 
-The top level modules: data, units and the shared output.
+The top level modules: data, formulas, units and the shared output.
 
 | module | description |
 | --- | --- |
 | [data](data.md) | `Data` objects referencing simulation results and datasets, the input of plots and calculations |
+| [mathml](mathml.md) | evaluation of the formulas of `Data` functions |
 | [units](units.md) | unit registry of a model and unit conversions with pint |
 | [serialization](serialization.md) | JSON serialization of experiments |
 | [utils](utils.md) | timing and other helpers |
@@ -38,9 +39,8 @@ Definition of simulations, see [Timecourse simulations](../simulation.md) and [P
 | [simulation.range](simulation.range.md) | ranges of values for scans |
 | [simulation.change](simulation.change.md) | changes applied to a model before a simulation |
 | [simulation.algorithm](simulation.algorithm.md) | `Algorithm` and `AlgorithmParameter`, the KISAO description of an integrator |
-| [simulation.kisaos](simulation.kisaos.md) | the KISAO terms of the supported algorithms and parameters |
 | [simulation.calculation](simulation.calculation.md) | calculations on simulation results |
-| [simulation.base](simulation.base.md) | base classes shared by the simulation objects and SED-ML |
+| [simulation.base](simulation.base.md) | base classes shared by the simulation objects |
 | [simulation.simulation](simulation.simulation.md) | `AbstractSim`, the base of all simulations |
 
 ## sbmlsim.simulator, sbmlsim.task
@@ -80,7 +80,7 @@ Parameter fitting, see [Parameter fitting](../fitting.md).
 
 | module | description |
 | --- | --- |
-| [fit.objects](fit.objects.md) | `FitParameter`, `FitMapping`, `FitData` and `FitExperiment`, the objects of a fit problem |
+| [fit.objects](fit.objects.md) | `FitParameter`, `FitMapping`, `FitData` and `FitMappingCollection`, the objects of a fit problem |
 | [fit.optimization](fit.optimization.md) | `OptimizationProblem`, the residuals and cost of a fit problem |
 | [fit.options](fit.options.md) | `FitSettings` and the options of the optimization, i.e., algorithms, residuals, weighting and loss functions |
 | [fit.parameters](fit.parameters.md) | `ParameterSet` and `ParameterSets`, the fitted parameters a report is created from |
@@ -91,8 +91,21 @@ Parameter fitting, see [Parameter fitting](../fitting.md).
 | [fit.display](fit.display.md) | the sections of the console output of a fit: the problem, the parameters, the settings and the data |
 | [fit.sampling](fit.sampling.md) | sampling of initial parameter values |
 | [fit.metrics](fit.metrics.md) | `FitMetrics` and the metrics of a fit: PRED, IPRED, residuals, MSE, RMSE, R² and AIC |
+| [fit.identifiability](fit.identifiability.md) | `profile_likelihood`, the confidence intervals and the classification of the parameters from the profiles |
+| [fit.fisher](fit.fisher.md) | `fisher_information`, the standard errors, correlations and constrained directions from one jacobian |
 | [fit.helpers](fit.helpers.md) | helpers for fitting |
 | [fit.petab_omex](fit.petab_omex.md) | COMBINE archives of PEtab problems |
+
+PEtab v2, see [PEtab](../petab.md).
+
+| module | description |
+| --- | --- |
+| [fit.petab_v2.export](fit.petab_v2.export.md) | writing an `OptimizationProblem` as a PEtab v2 problem |
+| [fit.petab_v2.reader](fit.petab_v2.reader.md) | reading a PEtab v2 problem back into a fit problem |
+| [fit.petab_v2.extension](fit.petab_v2.extension.md) | the `sbmlsim` block of the problem, i.e., what PEtab does not express |
+| [fit.petab_v2.observables](fit.petab_v2.observables.md) | the model a fit simulates when an observable is a formula |
+| [fit.petab_v2.symbols](fit.petab_v2.symbols.md) | the identifiers and symbols shared by the PEtab layer |
+| [fit.petab_v2.gaps](fit.petab_v2.gaps.md) | the catalogue of the differences between a fit and its PEtab problem |
 
 ## sbmlsim.sensitivity
 
@@ -110,25 +123,8 @@ Local and global sensitivity analysis, see [Sensitivity analysis](../sensitivity
 | [sensitivity.classification](sensitivity.classification.md) | classification of sensitivities and uncertainties |
 | [sensitivity.plots](sensitivity.plots.md) | plots of the sensitivity results |
 
-## sbmlsim.combine
-
-SED-ML, NuML and COMBINE archives, see [SED-ML and COMBINE archives](../sedml.md).
+## sbmlsim.comparison
 
 | module | description |
 | --- | --- |
-| [combine.sedml.parser](combine.sedml.parser.md) | `SEDMLParser`, a SED-ML document into a simulation experiment |
-| [combine.sedml.runner](combine.sedml.runner.md) | executing SED-ML files and COMBINE archives |
-| [combine.sedml.task](combine.sedml.task.md) | tasks and repeated tasks of SED-ML |
-| [combine.sedml.data](combine.sedml.data.md) | data descriptions, i.e., NuML, CSV and TSV data |
-| [combine.sedml.numl](combine.sedml.numl.md) | parser for NuML data |
-| [combine.sedml.report](combine.sedml.report.md) | SED-ML reports |
-| [combine.sedml.io](combine.sedml.io.md) | reading and writing SED-ML documents |
-| [combine.datagenerator](combine.datagenerator.md) | data generators of SED-ML |
-| [combine.mathml](combine.mathml.md) | evaluation of MathML expressions |
-
-## sbmlsim.interpolation, sbmlsim.comparison
-
-| module | description |
-| --- | --- |
-| [interpolation.interpolation](interpolation.interpolation.md) | interpolation of datasets as SBML models |
 | [comparison.diff](comparison.diff.md) | numerical comparison of simulation results from different simulators |

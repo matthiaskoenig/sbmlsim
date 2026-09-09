@@ -28,20 +28,17 @@ classifiers = [
 ]
 keywords = [
 	"SBML",
-	"SED-ML",
-	"COMBINE",
 	"simulation",
 	"parameter fitting",
 	"sensitivity analysis",
 	"computational modeling",
 ]
 dependencies = [
-	# SBML, SED-ML, NuML and COMBINE archives
+	# SBML, COMBINE archives and formula parsing
 	"sbmlutils>=0.10.1",
 	"pymetadata>=0.6.1",
 	"python-libsbml>=5.21.1",
 	"python-libsedml>=2.0.33",
-	"python-libnuml>=1.1.7",
 	# simulation
 	"libroadrunner>=2.10.0",
 	# data structures, units and numerics
@@ -86,14 +83,6 @@ Download = "https://pypi.org/project/sbmlsim"
 [tool.hatch.version]
 path = "./src/sbmlsim/__init__.py"
 
-[tool.hatch.build]
-# generated AMICI model code and compiled extensions of the simulator
-# comparison, they are only of use from a checkout of the repository
-exclude = [
-    "src/sbmlsim/comparison/amicitesting",
-    "src/sbmlsim/comparison/results",
-]
-
 [tool.hatch.build.targets.wheel]
 packages = ["src/sbmlsim"]
 
@@ -110,11 +99,6 @@ root = ["./src", "."]
 
 [tool.ty.src]
 include = ["src", "tests", "examples", "scripts"]
-# generated AMICI model code, not written by hand
-exclude = [
-    "src/sbmlsim/comparison/amicitesting",
-    "src/sbmlsim/comparison/results",
-]
 
 [tool.ty.terminal]
 # warnings are failures: keep the codebase free of any diagnostic

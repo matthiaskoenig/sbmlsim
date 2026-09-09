@@ -177,7 +177,14 @@ def test_metrics_mappings_and_summary(
         "RMSE_w",
         "R2",
         "AIC",
+        "BIC",
     }
+    # the information criteria are over all data points and not per mapping,
+    # a criterion of a subset with the parameters of the whole fit says nothing
+    assert "AIC" not in mappings.columns
+    assert "BIC" not in mappings.columns
+    # the BIC charges `ln(n)` per parameter, the AIC `2`
+    assert summary["BIC"] > summary["AIC"]
     assert summary["kind"] == "all"
     assert summary["n"] == int(mappings.n.sum())
     assert summary["k"] == len(op_hctz_pkiv.parameters)

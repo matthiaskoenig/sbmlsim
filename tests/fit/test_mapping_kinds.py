@@ -3,42 +3,42 @@
 import numpy as np
 import pytest
 
-from sbmlsim.fit import FitExperiment, FitSettings, MappingKind
+from sbmlsim.fit import FitMappingCollection, FitSettings, MappingKind
 from sbmlsim.fit.cli import FitDefinition
 from sbmlsim.fit.helpers import mapping_kinds_info
 from sbmlsim.fit.metrics import FitMetrics
-from sbmlsim.fit.objects import FitMapping
+from sbmlsim.fit.objects import EVALUATED_KINDS, UNUSED_KINDS, FitMapping
 from sbmlsim.fit.optimization import OptimizationProblem
 
 
-def test_fit_experiment_default_kind() -> None:
+def test_collection_default_kind() -> None:
     """The data of a fit experiment is training data by default."""
-    from examples.hctz.experiments.studies import Beermann1976
+    from examples.hctz_fitting.experiments.studies import Beermann1976
 
-    fit_exp = FitExperiment(experiment=Beermann1976, mappings=["a"])
-    assert fit_exp.kind is MappingKind.TRAINING
+    collection = FitMappingCollection(experiment=Beermann1976, mappings=["a"])
+    assert collection.kind is MappingKind.TRAINING
 
 
-def test_fit_experiment_kind() -> None:
+def test_collection_kind() -> None:
     """The kind classifies the selected data of a fit experiment."""
-    from examples.hctz.experiments.studies import Beermann1976
+    from examples.hctz_fitting.experiments.studies import Beermann1976
 
-    fit_exp = FitExperiment(
+    collection = FitMappingCollection(
         experiment=Beermann1976, mappings=["a"], kind=MappingKind.VALIDATION
     )
-    assert fit_exp.kind is MappingKind.VALIDATION
-    assert "validation" in str(fit_exp)
+    assert collection.kind is MappingKind.VALIDATION
+    assert "validation" in str(collection)
 
 
 def test_reduce_keeps_the_kinds_apart() -> None:
     """The training and the validation data of an experiment are not combined."""
-    from examples.hctz.experiments.studies import Beermann1976
+    from examples.hctz_fitting.experiments.studies import Beermann1976
 
-    reduced = FitExperiment.reduce(
+    reduced = FitMappingCollection.reduce(
         [
-            FitExperiment(experiment=Beermann1976, mappings=["a"]),
-            FitExperiment(experiment=Beermann1976, mappings=["b"]),
-            FitExperiment(
+            FitMappingCollection(experiment=Beermann1976, mappings=["a"]),
+            FitMappingCollection(experiment=Beermann1976, mappings=["b"]),
+            FitMappingCollection(
                 experiment=Beermann1976,
                 mappings=["c"],
                 kind=MappingKind.VALIDATION,
@@ -70,14 +70,20 @@ def test_kinds_of_the_problem(
     counts = op.mapping_counts()
     assert counts[MappingKind.TRAINING] > 0
     assert counts[MappingKind.VALIDATION] > 0
-    # the outliers are not part of the problem at all
-    assert MappingKind.OUTLIER not in counts
-    assert all(kind is not MappingKind.OUTLIER for kind in op.mapping_kinds)
+    # the outliers are resolved as well, they are evaluated but not fitted
+    assert counts[MappingKind.OUTLIER] > 0
+    # the data the model does not describe is not part of the problem at all
+    for kind in UNUSED_KINDS:
+        assert kind not in counts
+        assert all(mapping_kind is not kind for mapping_kind in op.mapping_kinds)
 
     assert len(op.mapping_kinds) == len(op.mapping_keys)
     assert len(op.training_indices) == counts[MappingKind.TRAINING]
     assert len(op.validation_indices) == counts[MappingKind.VALIDATION]
-    assert set(op.indices()) == set(op.training_indices) | set(op.validation_indices)
+    assert len(op.outlier_indices) == counts[MappingKind.OUTLIER]
+    assert set(op.indices()) == (
+        set(op.training_indices) | set(op.validation_indices) | set(op.outlier_indices)
+    )
 
 
 def test_optimization_uses_only_training(
@@ -102,16 +108,16 @@ def test_problem_without_training_data(
 ) -> None:
     """A problem needs at least one fit experiment which is fitted."""
     validation_only = [
-        FitExperiment(
-            experiment=fit_exp.experiment_class,
-            mappings=list(fit_exp.mappings),
+        FitMappingCollection(
+            experiment=collection.experiment_class,
+            mappings=list(collection.mappings),
             use_mapping_weights=True,
             kind=MappingKind.VALIDATION,
         )
-        for fit_exp in definition_hctz_pkiv.experiments()
+        for collection in definition_hctz_pkiv.collections()
     ]
     problem = definition_hctz_pkiv.problem(
-        opid="validation_only", fit_experiments=validation_only
+        opid="validation_only", mapping_collections=validation_only
     )
     with pytest.raises(ValueError, match="no training data"):
         problem.initialize(fit_settings)
@@ -120,14 +126,16 @@ def test_problem_without_training_data(
 def test_metrics_per_kind(
     op_hctz_pk: OptimizationProblem, fit_settings: FitSettings
 ) -> None:
-    """The metrics are calculated for the training and the validation data."""
+    """The metrics cover the training, the validation and the outlier data."""
     op = op_hctz_pk
     op.initialize(fit_settings)
     metrics = FitMetrics(problem=op, parameter_set=op.parameter_set_model())
 
+    # one row per kind, the data a fit was fitted on is not pooled with the
+    # data it dropped
     df = metrics.summary_df()
-    assert list(df.kind) == ["training", "validation", "all"]
-    assert df.n.iloc[2] == df.n.iloc[0] + df.n.iloc[1]
+    assert list(df.kind) == ["training", "validation", "outlier"]
+    assert df.n.sum() == len(metrics.datapoints_df())
 
     # the cost is the objective of the optimization, i.e. the training data
     assert np.isfinite(df.cost.iloc[0])
@@ -135,8 +143,29 @@ def test_metrics_per_kind(
     assert np.isnan(df.cost.iloc[2])
 
     # the kind of every mapping and every data point is reported
-    assert set(metrics.mappings_df().kind) == {"training", "validation"}
-    assert set(metrics.datapoints_df().kind) == {"training", "validation"}
+    kinds = {"training", "validation", "outlier"}
+    assert set(metrics.mappings_df().kind) == kinds
+    assert set(metrics.datapoints_df().kind) == kinds
+
+
+def test_outliers_do_not_enter_the_cost(
+    op_hctz_pk: OptimizationProblem, fit_settings: FitSettings
+) -> None:
+    """An outlier is evaluated, it does not change the objective of the fit."""
+    op = op_hctz_pk
+    op.initialize(fit_settings)
+    xlog = np.log10(op.xmodel)
+
+    assert op.outlier_indices
+    # the residuals of the optimizer cover the training data alone
+    n_training = sum(len(op.y_references[k]) for k in op.training_indices)
+    assert len(op.residuals(xlog)) == n_training
+
+    # and the outliers are simulated for the evaluation
+    res_data = op.residuals(xlog, complete_data=True)
+    assert len(res_data["y_obsip"]) == len(op.mapping_keys)
+    for k in op.outlier_indices:
+        assert len(res_data["y_obsip"][k]) == len(op.y_references[k])
 
 
 def test_metrics_unknown_kind(
@@ -173,3 +202,19 @@ def test_mapping_kinds_info() -> None:
 
     # a table without the kind reports the number of mappings
     assert "2" in mapping_kinds_info(pd.DataFrame({"fm_key": ["a", "b"]}))
+
+
+def test_excluded_is_not_an_outlier() -> None:
+    """The two kinds a fit does not use say different things.
+
+    An outlier is a decision about the data, i.e. the data is not usable. An
+    exclusion is a decision about the model, i.e. the model does not describe
+    what was measured. Both are unused, and a fit which drops data for the two
+    reasons should say which is which.
+    """
+    assert MappingKind.OUTLIER is not MappingKind.EXCLUDED
+    # both are dropped from the fit, only the outlier is still evaluated
+    assert set(UNUSED_KINDS) == {MappingKind.EXCLUDED}
+    assert MappingKind.OUTLIER in EVALUATED_KINDS
+    assert not set(UNUSED_KINDS) & set(EVALUATED_KINDS)
+    assert set(EVALUATED_KINDS) | set(UNUSED_KINDS) == set(MappingKind)

@@ -4,8 +4,6 @@ Example simulation experiment.
 
 from pathlib import Path
 
-# from sbmlsim.combine.sedml.parser import SEDMLSerializer
-# from sbmlsim.combine.sedml.runner import execute_sedml
 from sbmlsim.data import Data
 from sbmlsim.experiment import SimulationExperiment
 from sbmlsim.experiment.runner import run_experiments
@@ -147,22 +145,6 @@ def run_repressilator_example(output_path: Path) -> None:
         experiments=RepressilatorExperiment,
         output_path=output_path / "sbmlsim",
     )
-
-    # # serialize to SED-ML/OMEX archive
-    # omex_path = Path(__file__).parent / "results" / "repressilator.omex"
-    # serializer = SEDMLSerializer(
-    #     exp_class=RepressilatorExperiment,
-    #     working_dir=output_path / "omex",
-    #     sedml_filename="repressilator_sedml.xml",
-    #     omex_path=omex_path,
-    # )
-    #
-    # # execute OMEX archive
-    # execute_sedml(
-    #     path=omex_path,
-    #     working_dir=output_path / "sbmlsim_omex",
-    #     output_path=output_path / "sbmlsim_omex",
-    # )
 
 
 if __name__ == "__main__":

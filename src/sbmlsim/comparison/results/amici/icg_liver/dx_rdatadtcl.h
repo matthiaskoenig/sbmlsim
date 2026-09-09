@@ -1,1 +1,0 @@
-#define dbil_ext_dtcl_bil_ext dx_rdatadtcl[0]

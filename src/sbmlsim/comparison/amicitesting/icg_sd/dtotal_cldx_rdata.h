@@ -1,1 +1,0 @@
-#define dtotal_cl0_dLI__bil_ext dtotal_cldx_rdata[0]

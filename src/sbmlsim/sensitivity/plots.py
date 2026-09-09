@@ -6,6 +6,7 @@ import numpy as np
 import pandas as pd
 import seaborn as sns
 from matplotlib import pyplot as plt
+from matplotlib.figure import Figure
 
 
 def heatmap(
@@ -22,8 +23,13 @@ def heatmap(
     vmin: float = -2.0,
     vmax: float = 2.0,
     fig_path: Path | None = None,
-):
-    """Creates heatmap of model sensitivity."""
+) -> Figure:
+    """Creates heatmap of model sensitivity.
+
+    The figure is saved to `fig_path` if one is given and is returned. It is
+    closed, i.e., it is not held by pyplot and no window is opened; a caller
+    which wants to display it does so itself.
+    """
 
     def calculate_mask(df, cutoff: float | None = 0.01) -> pd.DataFrame:
         """Calculates a boolean mask DataFrame for the heatmap based on cutoff.
@@ -107,7 +113,8 @@ def heatmap(
 
     if fig_path:
         plt.savefig(fig_path, dpi=300, bbox_inches="tight")
-    plt.show()
+    plt.close(cg.figure)
+    return cg.figure
 
 
 def plot_S1_ST_indices(
@@ -156,13 +163,13 @@ def S1_ST_barplot(  # noqa: D103 -- documented below the signature
     title: str | None = None,
     ymax: float = 1.1,
     ymin: float = -0.1,
-):
+) -> Figure:
     # width
     figsize = (15, 3)
     label_fontsize = 15
 
     categories: list[str] = list(parameter_labels.values())
-    _f, ax = plt.subplots(figsize=figsize)
+    f, ax = plt.subplots(figsize=figsize)
 
     ax.bar(
         categories,
@@ -198,4 +205,5 @@ def S1_ST_barplot(  # noqa: D103 -- documented below the signature
 
     if fig_path:
         plt.savefig(fig_path, dpi=300, bbox_inches="tight")
-    plt.show()
+    plt.close(f)
+    return f

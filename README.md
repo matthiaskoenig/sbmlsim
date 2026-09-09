@@ -17,7 +17,6 @@ Features include
 - **simulation experiments** — models, datasets, simulations, tasks and figures of an experiment as one reproducible python object, with HTML and markdown reports
 - **parameter fitting** — optimization problems from experimental data with local and global optimizers, and PEtab archives
 - **sensitivity analysis** — local sensitivities and the global Morris, Sobol and FAST methods
-- **SED-ML and COMBINE archives** — execution of simulation experiments described in SED-ML
 
 The documentation is available at [https://matthiaskoenig.github.io/sbmlsim](https://matthiaskoenig.github.io/sbmlsim).
 

@@ -15,8 +15,9 @@ from scipy import interpolate
 from sbmlsim.console import console
 from sbmlsim.experiment import ExperimentRunner, SimulationExperiment
 from sbmlsim.fit.objects import (
-    FitExperiment,
+    UNUSED_KINDS,
     FitMapping,
+    FitMappingCollection,
     FitParameter,
     MappingKind,
 )
@@ -24,6 +25,7 @@ from sbmlsim.fit.options import (
     FitSettings,
     LossFunctionType,
     OptimizationAlgorithmType,
+    ParameterScaleType,
     ResidualType,
     WeightingCurvesType,
     WeightingPointsType,
@@ -167,7 +169,7 @@ class OptimizationProblem(ObjectJSONEncoder):
     def __init__(
         self,
         opid: str,
-        fit_experiments: list[FitExperiment],
+        mapping_collections: list[FitMappingCollection],
         fit_parameters: list[FitParameter],
         base_path: Path | None = None,
         data_path: Path | None = None,
@@ -178,17 +180,17 @@ class OptimizationProblem(ObjectJSONEncoder):
         So initialize must be run to create the non-pickable instances.
 
         :param opid: id for optimization problem
-        :param fit_experiments:
+        :param mapping_collections:
         :param fit_parameters:
         """
         super().__init__()
         self.opid: str = opid
-        self.fit_experiments = []
-        for fit_exp in fit_experiments:
-            if fit_exp.exclude:
-                logger.warning("FitExperiment excluded: %s", fit_exp)
+        self.mapping_collections = []
+        for collection in mapping_collections:
+            if collection.exclude:
+                logger.warning("FitMappingCollection excluded: %s", collection)
             else:
-                self.fit_experiments.append(fit_exp)
+                self.mapping_collections.append(collection)
         if not fit_parameters:
             raise ValueError(
                 f"'{opid}': an OptimizationProblem requires fit parameters, but "
@@ -238,7 +240,7 @@ class OptimizationProblem(ObjectJSONEncoder):
         """
         fresh = OptimizationProblem(
             opid=self.opid,
-            fit_experiments=self.fit_experiments,
+            mapping_collections=self.mapping_collections,
             fit_parameters=self.parameters,
             base_path=self.base_path,
             data_path=self.data_path,
@@ -254,6 +256,8 @@ class OptimizationProblem(ObjectJSONEncoder):
         self.experiment_keys: list[str] = []
         self.mapping_keys: list[str] = []
         self.mapping_kinds: list[MappingKind] = []
+        # the collection of `mapping_collections` every mapping comes from
+        self.collection_indices: list[int] = []
         self.xid_observable: list[str] = []
         self.yid_observable: list[str] = []
         self.x_references: list[Any] = []
@@ -293,6 +297,11 @@ class OptimizationProblem(ObjectJSONEncoder):
     def validation_indices(self) -> list[int]:
         """Indices of the fit mappings which are only evaluated."""
         return self.indices(MappingKind.VALIDATION)
+
+    @property
+    def outlier_indices(self) -> list[int]:
+        """Indices of the fit mappings whose data a fit dropped as unusable."""
+        return self.indices(MappingKind.OUTLIER)
 
     def mapping_counts(self) -> dict[MappingKind, int]:
         """Get the number of resolved fit mappings per kind."""
@@ -353,7 +362,7 @@ class OptimizationProblem(ObjectJSONEncoder):
             "-" * 80,
             "Experiments",
         ]
-        info.extend([f"\t{e}" for e in self.fit_experiments])
+        info.extend([f"\t{e}" for e in self.mapping_collections])
         info.append("Parameters")
         info.extend([f"\t{p}" for p in self.parameters])
         return "\n".join(info)
@@ -361,7 +370,13 @@ class OptimizationProblem(ObjectJSONEncoder):
     def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary."""
         d = {}
-        for key in ["opid", "fit_experiments", "parameters", "base_path", "data_path"]:
+        for key in [
+            "opid",
+            "mapping_collections",
+            "parameters",
+            "base_path",
+            "data_path",
+        ]:
             d[key] = self.__dict__[key]
         return d
 
@@ -443,7 +458,7 @@ class OptimizationProblem(ObjectJSONEncoder):
 
         # Create experiment runner (loads the experiments & all models)
         exp_classes: set[type[SimulationExperiment]] = {
-            fit_exp.experiment_class for fit_exp in self.fit_experiments
+            collection.experiment_class for collection in self.mapping_collections
         }
 
         self.runner = ExperimentRunner(
@@ -453,9 +468,9 @@ class OptimizationProblem(ObjectJSONEncoder):
         )
 
         # Collect information for simulations
-        for fit_experiment in self.fit_experiments:
+        for collection_index, mapping_collection in enumerate(self.mapping_collections):
             # get simulation experiment
-            sid = fit_experiment.experiment_class.__name__
+            sid = mapping_collection.experiment_class.__name__
             sim_experiment = self.runner.experiments[sid]
 
             # FIXME: selections should be based on fit mappings; this will reduce
@@ -465,24 +480,27 @@ class OptimizationProblem(ObjectJSONEncoder):
             #     if d.is_task():
             #         selections_set.add(d.selection)
 
-            # a FitExperiment without mappings uses all mappings of the experiment
-            fit_experiment.resolve_mappings(sim_experiment._fit_mappings.keys())
+            # a FitMappingCollection without mappings uses all mappings of the experiment
+            mapping_collection.resolve_mappings(sim_experiment._fit_mappings.keys())
 
             # collect information for single mapping
-            for k, mapping_id in enumerate(fit_experiment.mappings):
+            for k, mapping_id in enumerate(mapping_collection.mappings):
                 # sanity checks
                 if mapping_id not in sim_experiment._fit_mappings:
                     raise ValueError(
                         f"Mapping key '{mapping_id}' not defined in "
                         f"SimulationExperiment\n"
                         f"{sim_experiment}\n"
-                        f"{fit_experiment}"
+                        f"{mapping_collection}"
                     )
 
                 mapping: FitMapping = sim_experiment._fit_mappings[mapping_id]
 
-                if fit_experiment.kind is MappingKind.OUTLIER:
-                    # outliers are used neither in the fit nor in the evaluation
+                if mapping_collection.kind in UNUSED_KINDS:
+                    # the data the model does not describe is not resolved, it
+                    # is neither fitted nor evaluated. An outlier is resolved:
+                    # it stays out of the cost, but it is simulated with the
+                    # validation data so that a report has its metrics
                     continue
 
                 if mapping.observable.task_id is None:
@@ -496,18 +514,18 @@ class OptimizationProblem(ObjectJSONEncoder):
                     )
 
                 # get weight for curve
-                if fit_experiment.use_mapping_weights:
+                if mapping_collection.use_mapping_weights:
                     # use provided mapping weights
                     weight_curve_user = mapping.weight
-                    fit_experiment.weights[k] = weight_curve_user
+                    mapping_collection.weights[k] = weight_curve_user
                     if weight_curve_user is None:
                         raise ValueError(
-                            f"If `use_mapping_weights` is set on a FitExperiment "
+                            f"If `use_mapping_weights` is set on a FitMappingCollection "
                             f"then all mappings must have a weight. But "
                             f"weight '{weight_curve_user}' in {mapping}."
                         )
                 else:
-                    weight_curve_user = fit_experiment.weights[k]
+                    weight_curve_user = mapping_collection.weights[k]
 
                 if weight_curve_user is not None and weight_curve_user < 0:
                     raise ValueError(
@@ -632,7 +650,7 @@ class OptimizationProblem(ObjectJSONEncoder):
                         continue
                     if np.any(~np.isfinite(data)):
                         raise ValueError(
-                            f"{fit_experiment}.{mapping_id}: NaN or INF in "
+                            f"{mapping_collection}.{mapping_id}: NaN or INF in "
                             f"'{data_key}': '{data}'"
                         )
 
@@ -698,7 +716,8 @@ class OptimizationProblem(ObjectJSONEncoder):
                 # store information
                 self.experiment_keys.append(sid)
                 self.mapping_keys.append(mapping_id)
-                self.mapping_kinds.append(fit_experiment.kind)
+                self.mapping_kinds.append(mapping_collection.kind)
+                self.collection_indices.append(collection_index)
                 self.xid_observable.append(obs_xid)
                 self.yid_observable.append(obs_yid)
                 self.x_references.append(x_ref)
@@ -736,29 +755,50 @@ class OptimizationProblem(ObjectJSONEncoder):
         )
         self.set_simulator(simulator)
 
+    @property
+    def parameter_scale(self) -> ParameterScaleType:
+        """Get the space the optimizer searches the parameters in."""
+        return self.settings_initialized.parameter_scale
+
+    def to_scale(self, x: Any) -> np.ndarray:
+        """Transform parameters of the model into the space of the optimizer."""
+        return np.asarray(self.parameter_scale.to_scale(x), dtype=float)
+
+    def from_scale(self, x: Any) -> np.ndarray:
+        """Transform parameters of the optimizer into the units of the model."""
+        return np.asarray(self.parameter_scale.from_scale(x), dtype=float)
+
     def _validate_parameters(self) -> None:
         """Check that the parameters can be optimized.
 
-        The optimization is performed in logarithmic parameter space, which
-        requires finite positive bounds and start values.
+        An optimization on a logarithmic scale, which is the default, requires
+        finite positive bounds and start values; on the linear scale the bounds
+        only have to be finite.
 
         Raises:
-            ValueError: if a bound or a start value is not finite and positive.
+            ValueError: if a bound or a start value does not suit the scale.
         """
+        scale = self.parameter_scale
+        space = f"'{scale.name}' parameter space"
         for p in self.parameters:
             for key in ["lower_bound", "upper_bound"]:
                 value = getattr(p, key)
-                if not np.isfinite(value) or value <= 0.0:
+                if not np.isfinite(value):
                     raise ValueError(
-                        f"{self.opid}: the optimization is performed in logarithmic "
-                        f"parameter space, which requires a finite positive "
+                        f"{self.opid}: the optimization requires a finite "
                         f"'{key}', but FitParameter '{p.pid}' has '{value}'."
                     )
-            if p.start_value is not None and p.start_value <= 0.0:
+                if scale.is_log and value <= 0.0:
+                    raise ValueError(
+                        f"{self.opid}: the optimization is performed in {space}, "
+                        f"which requires a positive '{key}', but FitParameter "
+                        f"'{p.pid}' has '{value}'."
+                    )
+            if scale.is_log and p.start_value is not None and p.start_value <= 0.0:
                 raise ValueError(
-                    f"{self.opid}: the optimization is performed in logarithmic "
-                    f"parameter space, which requires a positive 'start_value', but "
-                    f"FitParameter '{p.pid}' has '{p.start_value}'."
+                    f"{self.opid}: the optimization is performed in {space}, "
+                    f"which requires a positive 'start_value', but FitParameter "
+                    f"'{p.pid}' has '{p.start_value}'."
                 )
 
     def _group_mappings(self) -> None:
@@ -1073,8 +1113,8 @@ class OptimizationProblem(ObjectJSONEncoder):
                 )
             x0 = np.array(self.x0, dtype=float)
 
-        # logarithmic parameters for optimizer
-        x0log: np.ndarray = np.log10(x0)
+        # the optimizer searches the scaled space, see `ParameterScaleType`
+        x0log: np.ndarray = self.to_scale(x0)
 
         if algorithm == OptimizationAlgorithmType.LEAST_SQUARE:
             # scipy least square optimizer
@@ -1082,8 +1122,8 @@ class OptimizationProblem(ObjectJSONEncoder):
             ts = time.time()
             try:
                 boundslog = [
-                    np.log10([p.lower_bound for p in self.parameters]),
-                    np.log10([p.upper_bound for p in self.parameters]),
+                    self.to_scale([p.lower_bound for p in self.parameters]),
+                    self.to_scale([p.upper_bound for p in self.parameters]),
                 ]
                 if "method" in kwargs and kwargs["method"] == "lm":
                     # no bounds supported on lm
@@ -1107,7 +1147,7 @@ class OptimizationProblem(ObjectJSONEncoder):
             te = time.time()
             opt_result.x0 = x0  # store start value
             opt_result.duration = te - ts
-            opt_result.x = np.power(10, np.asarray(opt_result.x))
+            opt_result.x = self.from_scale(opt_result.x)
             return minimal_result(opt_result), list(self._trajectory)
 
         if algorithm == OptimizationAlgorithmType.DIFFERENTIAL_EVOLUTION:
@@ -1116,7 +1156,7 @@ class OptimizationProblem(ObjectJSONEncoder):
             ts = time.time()
             try:
                 de_bounds_log = [
-                    (np.log10(p.lower_bound), np.log10(p.upper_bound))
+                    (self.to_scale(p.lower_bound), self.to_scale(p.upper_bound))
                     for k, p in enumerate(self.parameters)
                 ]
                 opt_result = scipy.optimize.differential_evolution(
@@ -1140,7 +1180,7 @@ class OptimizationProblem(ObjectJSONEncoder):
                 # trajectory, evaluating it again would hit the deadline once
                 # more
                 opt_result.cost = self.cost_least_square(np.asarray(opt_result.x))
-            opt_result.x = np.power(10, np.asarray(opt_result.x))
+            opt_result.x = self.from_scale(opt_result.x)
             return minimal_result(opt_result), list(self._trajectory)
 
         raise ValueError(f"optimizer is not supported: {algorithm}")
@@ -1211,7 +1251,7 @@ class OptimizationProblem(ObjectJSONEncoder):
         """
         best = self._best
         return RuntimeErrorOptimizeResult(
-            x=np.log10(best[0]) if best is not None else x0log,
+            x=self.to_scale(best[0]) if best is not None else x0log,
             cost=best[1] if best is not None else np.inf,
             message=f"{type(err).__name__}: {err}",
         )
@@ -1245,7 +1285,7 @@ class OptimizationProblem(ObjectJSONEncoder):
             raise FitTimeout(
                 f"'{self.opid}': the optimization did not finish in its budget."
             )
-        x = np.power(10, xlog)
+        x = self.from_scale(xlog)
 
         # FIXME: handle parts better
         parts = []

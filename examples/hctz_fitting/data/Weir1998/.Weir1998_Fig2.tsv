@@ -1,0 +1,27 @@
+study	individual	group	count	intervention	measurement_type	substance	tissue	method	label	time	time_unit	value	mean	mean_pm	sd	se	unit	comments
+Weir1998	NA	all	20.0	HCTZ25	concentration	hydrochlorothiazide	plasma	HPLC	hctz25	0.0	hr	NA	52.7705819169773	32.7257218676944	20.044860049282896	NA	ng/ml	error bars not clearly reported as sd
+Weir1998	NA	all	20.0	HCTZ25	concentration	hydrochlorothiazide	plasma	HPLC	hctz25	0.5	hr	NA	83.3765084981361	42.7844822139382	40.59202628419791	NA	ng/ml	error bars not clearly reported as sd
+Weir1998	NA	all	20.0	HCTZ25	concentration	hydrochlorothiazide	plasma	HPLC	hctz25	1.0	hr	NA	166.771971946673	90.6994376698047	76.07253427686831	NA	ng/ml	error bars not clearly reported as sd
+Weir1998	NA	all	20.0	HCTZ25	concentration	hydrochlorothiazide	plasma	HPLC	hctz25	1.5	hr	NA	190.895305490617	129.38017312188	61.515132368737	NA	ng/ml	error bars not clearly reported as sd
+Weir1998	NA	all	20.0	HCTZ25	concentration	hydrochlorothiazide	plasma	HPLC	hctz25	2.0	hr	NA	189.018765400897	134.943451064636	54.07531433626099	NA	ng/ml	error bars not clearly reported as sd
+Weir1998	NA	all	20.0	HCTZ25	concentration	hydrochlorothiazide	plasma	HPLC	hctz25	3.0	hr	NA	165.606242496998	115.381942250584	50.22430024641399	NA	ng/ml	error bars not clearly reported as sd
+Weir1998	NA	all	20.0	HCTZ25	concentration	hydrochlorothiazide	plasma	HPLC	hctz25	4.0	hr	NA	119.495166487647	84.5327604726101	34.962406015036905	NA	ng/ml	error bars not clearly reported as sd
+Weir1998	NA	all	20.0	HCTZ25	concentration	hydrochlorothiazide	plasma	HPLC	hctz25	6.0	hr	NA	86.3240032855247	62.235420483983	24.088582801541698	NA	ng/ml	error bars not clearly reported as sd
+Weir1998	NA	all	20.0	HCTZ25	concentration	hydrochlorothiazide	plasma	HPLC	hctz25	8.0	hr	NA	66.6866746698679	43.703797308397	22.982877361470898	NA	ng/ml	error bars not clearly reported as sd
+Weir1998	NA	all	20.0	HCTZ25	concentration	hydrochlorothiazide	plasma	HPLC	hctz25	10.0	hr	NA	55.4495482403487	34.2515953749921	21.197952865356598	NA	ng/ml	error bars not clearly reported as sd
+Weir1998	NA	all	20.0	HCTZ25	concentration	hydrochlorothiazide	plasma	HPLC	hctz25	12.0	hr	NA	55.6675301699627	33.3228028053326	22.344727364630103	NA	ng/ml	error bars not clearly reported as sd
+Weir1998	NA	all	20.0	HCTZ25	concentration	hydrochlorothiazide	plasma	HPLC	hctz25	18.0	hr	NA	32.3276679092689	18.1177734251595	14.209894484109398	NA	ng/ml	error bars not clearly reported as sd
+Weir1998	NA	all	20.0	HCTZ25	concentration	hydrochlorothiazide	plasma	HPLC	hctz25	24.0	hr	NA	23.3556580526947	12.0743034055727	11.281354647122	NA	ng/ml	error bars not clearly reported as sd
+Weir1998	NA	all	20.0	HCTZ25,DIL60	concentration	hydrochlorothiazide	plasma	HPLC	hctz25_kombi	0.0	hr	NA	52.254322484855	71.213752613892	18.959430129036996	NA	ng/ml	error bars not clearly reported as sd
+Weir1998	NA	all	20.0	HCTZ25,DIL60	concentration	hydrochlorothiazide	plasma	HPLC	hctz25_kombi	0.5	hr	NA	101.260618493604	158.370404791993	57.109786298389	NA	ng/ml	error bars not clearly reported as sd
+Weir1998	NA	all	20.0	HCTZ25,DIL60	concentration	hydrochlorothiazide	plasma	HPLC	hctz25_kombi	1.0	hr	NA	169.687919710304	249.22504122724	79.53712151693603	NA	ng/ml	error bars not clearly reported as sd
+Weir1998	NA	all	20.0	HCTZ25,DIL60	concentration	hydrochlorothiazide	plasma	HPLC	hctz25_kombi	1.5	hr	NA	200.196927366386	268.635845880959	68.43891851457298	NA	ng/ml	error bars not clearly reported as sd
+Weir1998	NA	all	20.0	HCTZ25,DIL60	concentration	hydrochlorothiazide	plasma	HPLC	hctz25_kombi	2.0	hr	NA	201.109026923796	255.675475034143	54.56644811034701	NA	ng/ml	error bars not clearly reported as sd
+Weir1998	NA	all	20.0	HCTZ25,DIL60	concentration	hydrochlorothiazide	plasma	HPLC	hctz25_kombi	3.0	hr	NA	177.502960994214	220.971206102198	43.46824510798402	NA	ng/ml	error bars not clearly reported as sd
+Weir1998	NA	all	20.0	HCTZ25,DIL60	concentration	hydrochlorothiazide	plasma	HPLC	hctz25_kombi	4.0	hr	NA	128.462096440573	164.068831073155	35.606734632582004	NA	ng/ml	error bars not clearly reported as sd
+Weir1998	NA	all	20.0	HCTZ25,DIL60	concentration	hydrochlorothiazide	plasma	HPLC	hctz25_kombi	6.0	hr	NA	87.721932891687	112.924385558282	25.202452666594994	NA	ng/ml	error bars not clearly reported as sd
+Weir1998	NA	all	20.0	HCTZ25,DIL60	concentration	hydrochlorothiazide	plasma	HPLC	hctz25_kombi	8.0	hr	NA	66.8677498144065	89.7577935067805	22.890043692374007	NA	ng/ml	error bars not clearly reported as sd
+Weir1998	NA	all	20.0	HCTZ25,DIL60	concentration	hydrochlorothiazide	plasma	HPLC	hctz25_kombi	10.0	hr	NA	57.3412822096666	76.9940666776228	19.652784467956195	NA	ng/ml	error bars not clearly reported as sd
+Weir1998	NA	all	20.0	HCTZ25,DIL60	concentration	hydrochlorothiazide	plasma	HPLC	hctz25_kombi	12.0	hr	NA	54.5213956624976	77.4114393548716	22.890043692374	NA	ng/ml	error bars not clearly reported as sd
+Weir1998	NA	all	20.0	HCTZ25,DIL60	concentration	hydrochlorothiazide	plasma	HPLC	hctz25_kombi	18.0	hr	NA	29.6416771977943	46.2886983526104	16.647021154816102	NA	ng/ml	error bars not clearly reported as sd
+Weir1998	NA	all	20.0	HCTZ25,DIL60	concentration	hydrochlorothiazide	plasma	HPLC	hctz25_kombi	24.0	hr	NA	22.5667427930251	33.433733232839	10.866990439813904	NA	ng/ml	error bars not clearly reported as sd

@@ -105,7 +105,7 @@ print(report_path)
 
 ## Serialization
 
-Every experiment is serialized to JSON when it is run, `<ExperimentId>.json` below the output path, with the models, simulations, tasks, data and figures. The serialization is the basis of the [SED-ML export](sedml.md) of an experiment:
+Every experiment is serialized to JSON when it is run, `<ExperimentId>.json` below the output path, with the models, simulations, tasks, data and figures:
 
 ```python
 print(experiment.to_json()[:300])
@@ -113,4 +113,4 @@ print(experiment.to_json()[:300])
 
 ## Where to look
 
-The [examples](https://github.com/matthiaskoenig/sbmlsim/tree/develop/examples) contain complete experiments: `examples/initial_assignment` for a model with changes and two simulations, `examples/curve_types` for the curve types of the plots, `examples/glucose` for an experiment with datasets and a dose response scan, and `examples/hctz` for pharmacokinetics experiments with data from two studies and the parameter fitting problems built on them.
+The [examples](https://github.com/matthiaskoenig/sbmlsim/tree/develop/examples) contain complete experiments: `examples/initial_assignment` for a model with changes and two simulations, `examples/curve_types` for the curve types of the plots, `examples/glucose` for an experiment with datasets and a dose response scan, and `examples/hctz_fitting` for pharmacokinetics experiments with data from two studies and the parameter fitting problems built on them.

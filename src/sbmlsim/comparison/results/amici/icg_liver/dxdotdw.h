@@ -1,6 +1,0 @@
-#define ddicg_extdt_dflux_ICGIM dxdotdw[0]
-#define ddicgdt_dflux_ICGIM dxdotdw[1]
-#define ddicgdt_dflux_ICGLI2CA dxdotdw[2]
-#define ddicg_bidt_dflux_ICGLI2CA dxdotdw[3]
-#define ddicg_bidt_dflux_ICGLI2BI dxdotdw[4]
-#define ddicg_fecesdt_dflux_ICGLI2BI dxdotdw[5]

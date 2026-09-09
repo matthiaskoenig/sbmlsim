@@ -85,7 +85,8 @@ def run_demo_example():
         ax.set_xlabel(f"time [{xunit}]")
         ax.set_ylabel(f"concentration [{yunit}]")
 
-    plt.show()
+    fig.savefig("units.png", bbox_inches="tight")
+    plt.close(fig)
 
 
 if __name__ == "__main__":

@@ -25,7 +25,7 @@
 > *Molecular Systems Biology.* 2020;16(8):e9110.
 > [doi:10.15252/msb.20199110](https://doi.org/10.15252/msb.20199110)
 
-**SED-ML.** The description of simulation experiments which `sbmlsim.combine.sedml` reads and executes, see [SED-ML and COMBINE archives](sedml.md).
+**SED-ML.** The description of simulation experiments. `sbmlsim` no longer reads or writes SED-ML; a fit is exchanged as a PEtab problem instead, see [PEtab](petab.md).
 
 > Smith LP, Bergmann FT, Garny A, Helikar T, Karr J, Nickerson D, Sauro H, Waltemath D, König M.
 > **The simulation experiment description markup language (SED-ML): language specification for level 1 version 4.**
@@ -38,6 +38,42 @@
 > [doi:10.1186/1752-0509-5-198](https://doi.org/10.1186/1752-0509-5-198)
 
 ## Parameter fitting
+
+**Identifiability.** What it means for the data to determine a parameter, and the difference between the structural identifiability of a model and the practical identifiability of a model and its data, see [Parameter fitting](fitting.md#identifiability).
+
+> Bellman R, Åström KJ.
+> **On structural identifiability.**
+> *Mathematical Biosciences.* 1970;7(3-4):329-339.
+> [doi:10.1016/0025-5564(70)90132-X](https://doi.org/10.1016/0025-5564(70)90132-X)
+
+> Raue A, Karlsson J, Saccomani MP, Jirstrand M, Timmer J.
+> **Comparison of approaches for parameter identifiability analysis of biological systems.**
+> *Bioinformatics.* 2014;30(10):1440-1448.
+> [doi:10.1093/bioinformatics/btu006](https://doi.org/10.1093/bioinformatics/btu006)
+
+**Structural identifiability.** Whether the observables of a model determine its parameters at all, which is a property of the model and not of the data. `sbmlsim` does not analyse it; these are the methods and the tools which do.
+
+> Chis O-T, Banga JR, Balsa-Canto E.
+> **Structural identifiability of systems biology models: a critical comparison of methods.**
+> *PLoS ONE.* 2011;6(11):e27755.
+> [doi:10.1371/journal.pone.0027755](https://doi.org/10.1371/journal.pone.0027755)
+
+> Villaverde AF, Barreiro A, Papachristodoulou A.
+> **Structural identifiability of dynamic systems biology models.**
+> *PLoS Computational Biology.* 2016;12(10):e1005153.
+> [doi:10.1371/journal.pcbi.1005153](https://doi.org/10.1371/journal.pcbi.1005153)
+
+**Sloppiness and the Fisher information.** The eigenvalues of the Fisher information of `sbmlsim.fit.fisher`, which are spread over orders of magnitude in most models of systems biology, see [Parameter fitting](fitting.md#fisher-information).
+
+> Gutenkunst RN, Waterfall JJ, Casey FP, Brown KS, Myers CR, Sethna JP.
+> **Universally sloppy parameter sensitivities in systems biology models.**
+> *PLoS Computational Biology.* 2007;3(10):e189.
+> [doi:10.1371/journal.pcbi.0030189](https://doi.org/10.1371/journal.pcbi.0030189)
+
+> Transtrum MK, Machta BB, Brown KS, Daniels BC, Myers CR, Sethna JP.
+> **Perspective: Sloppiness and emergent theories in physics, biology, and beyond.**
+> *The Journal of Chemical Physics.* 2015;143(1):010901.
+> [doi:10.1063/1.4923066](https://doi.org/10.1063/1.4923066)
 
 **Profile likelihood.** The identifiability analysis of `sbmlsim.fit.identifiability`, see [Parameter fitting](fitting.md#identifiability): the profile likelihood, its threshold and the classification of the parameters.
 
@@ -87,7 +123,7 @@
 > *BMC Bioinformatics.* 2014;15:369.
 > [doi:10.1186/s12859-014-0369-z](https://doi.org/10.1186/s12859-014-0369-z)
 
-**KISAO.** The ontology of simulation algorithms and their parameters, see `sbmlsim.simulation.kisaos`.
+**KISAO.** The ontology of simulation algorithms and their parameters, see `sbmlsim.simulation.algorithm`.
 
 > Courtot M, Juty N, Knüpfer C, Waltemath D, Zhukova A, Dräger A, Dumontier M, Finney A, Golebiewski M, Hastings J, Hoops S, Keating S, Kell DB, Kerrien S, Lawson J, Lister A, Lu J, Machne R, Mendes P, Pocock M, Rodriguez N, Villeger A, Wilkinson DJ, Wimalaratne S, Laibe C, Hucka M, Le Novère N.
 > **Controlled vocabularies and semantics in systems biology.**

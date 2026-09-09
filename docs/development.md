@@ -119,7 +119,7 @@ The tests run in parallel, `addopts = "-n auto"` in `pyproject.toml` gives pytes
 
 The `conftest.py` at the root of the repository selects the non-interactive matplotlib backend for the session and puts the repository on `sys.path`, so that the tests can import the examples.
 
-Some tests are skipped on purpose: the parameter fitting and the simulation experiment examples are marked with `pytest.mark.skip` while those parts of the package are reworked, and `tests/experiment/test_covid_examples.py` waits for relative paths in SED-ML. The skips are listed with `pytest -rs`.
+Some tests are skipped on purpose: the simulation experiment examples are marked with `pytest.mark.skip` while that part of the package is reworked. The skips are listed with `pytest -rs`.
 
 `tests/examples/test_example_scripts.py` runs the examples as `python -m examples.<module>` in a temporary working directory, so a broken example fails the test suite.
 
@@ -150,7 +150,7 @@ uvx ty check
 
 The configuration lives in `[tool.ty]` in `pyproject.toml`. Warnings are treated as errors, so the codebase is kept free of diagnostics. Suppress an unavoidable diagnostic with a rule specific `# ty: ignore[rule-name]` rather than a blanket comment.
 
-libsbml, libsedml, libnuml and roadrunner have no type stubs and create their objects through a SWIG layer, so ty sees an untyped API. Annotate their objects (`doc: libsbml.SBMLDocument = ...`) and use the explicit getters (`getVariable()`) rather than the attributes the SWIG layer synthesizes (`variable`), which the type checker cannot see. The generated AMICI model code under `src/sbmlsim/comparison/` is excluded from ruff and ty, it is not written by hand.
+libsbml, libsedml and roadrunner have no type stubs and create their objects through a SWIG layer, so ty sees an untyped API. Annotate their objects (`doc: libsbml.SBMLDocument = ...`) and use the explicit getters (`getVariable()`) rather than the attributes the SWIG layer synthesizes (`variable`), which the type checker cannot see.
 
 ## Examples
 

@@ -1,7 +1,7 @@
 [project]
 site_name = "sbmlsim"
 site_url = "https://matthiaskoenig.github.io/sbmlsim/"
-site_description = "SBML simulation made easy: simulation experiments, parameter scans, parameter fitting, sensitivity analysis and SED-ML for SBML models"
+site_description = "SBML simulation made easy: simulation experiments, parameter scans, parameter fitting and sensitivity analysis for SBML models"
 site_author = "Matthias König"
 
 copyright = 'Copyright &copy; 2019-2026 <a href="https://livermetabolism.com">Matthias König</a>'
@@ -23,13 +23,14 @@ nav = [
     { "Plots and reports" = "plotting.md" },
     { "Parameter fitting" = "fitting.md" },
     { "Sensitivity analysis" = "sensitivity.md" },
-    { "SED-ML and COMBINE archives" = "sedml.md" },
+    { "PEtab" = "petab.md" },
   ] },
   { "References" = "references.md" },
   { "API reference" = [
     { "Overview" = "api/index.md" },
     { "sbmlsim" = [
       { "data" = "api/data.md" },
+      { "mathml" = "api/mathml.md" },
       { "units" = "api/units.md" },
       { "serialization" = "api/serialization.md" },
       { "utils" = "api/utils.md" },
@@ -49,7 +50,6 @@ nav = [
       { "range" = "api/simulation.range.md" },
       { "change" = "api/simulation.change.md" },
       { "algorithm" = "api/simulation.algorithm.md" },
-      { "kisaos" = "api/simulation.kisaos.md" },
       { "calculation" = "api/simulation.calculation.md" },
       { "base" = "api/simulation.base.md" },
       { "simulation" = "api/simulation.simulation.md" },
@@ -87,10 +87,17 @@ nav = [
       { "cli" = "api/fit.cli.md" },
       { "display" = "api/fit.display.md" },
       { "metrics" = "api/fit.metrics.md" },
+      { "fisher" = "api/fit.fisher.md" },
       { "identifiability" = "api/fit.identifiability.md" },
       { "sampling" = "api/fit.sampling.md" },
       { "helpers" = "api/fit.helpers.md" },
       { "petab_omex" = "api/fit.petab_omex.md" },
+      { "petab_v2.export" = "api/fit.petab_v2.export.md" },
+      { "petab_v2.reader" = "api/fit.petab_v2.reader.md" },
+      { "petab_v2.extension" = "api/fit.petab_v2.extension.md" },
+      { "petab_v2.symbols" = "api/fit.petab_v2.symbols.md" },
+      { "petab_v2.observables" = "api/fit.petab_v2.observables.md" },
+      { "petab_v2.gaps" = "api/fit.petab_v2.gaps.md" },
     ] },
     { "sbmlsim.sensitivity" = [
       { "analysis" = "api/sensitivity.analysis.md" },
@@ -102,20 +109,6 @@ nav = [
       { "sensitivity_fast" = "api/sensitivity.sensitivity_fast.md" },
       { "classification" = "api/sensitivity.classification.md" },
       { "plots" = "api/sensitivity.plots.md" },
-    ] },
-    { "sbmlsim.combine" = [
-      { "sedml.parser" = "api/combine.sedml.parser.md" },
-      { "sedml.runner" = "api/combine.sedml.runner.md" },
-      { "sedml.task" = "api/combine.sedml.task.md" },
-      { "sedml.data" = "api/combine.sedml.data.md" },
-      { "sedml.numl" = "api/combine.sedml.numl.md" },
-      { "sedml.report" = "api/combine.sedml.report.md" },
-      { "sedml.io" = "api/combine.sedml.io.md" },
-      { "datagenerator" = "api/combine.datagenerator.md" },
-      { "mathml" = "api/combine.mathml.md" },
-    ] },
-    { "sbmlsim.interpolation" = [
-      { "interpolation" = "api/interpolation.interpolation.md" },
     ] },
     { "sbmlsim.comparison" = [
       { "diff" = "api/comparison.diff.md" },

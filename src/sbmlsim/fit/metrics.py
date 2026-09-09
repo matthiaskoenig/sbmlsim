@@ -144,6 +144,51 @@ def aic_from_mse(mse: float, n: int, k: int) -> float:
     return float(n * np.log(mse) + 2 * k)
 
 
+def bic(residuals: ArrayLike, k: int) -> float:
+    """Bayesian Information Criterion (BIC) of the residuals.
+
+    Args:
+        residuals: residuals of the fit.
+        k: number of fitted parameters.
+
+    Returns:
+        Bayesian information criterion.
+    """
+    res = _as_array(residuals)
+    return bic_from_mse(mse=mse(res), n=res.size, k=k)
+
+
+def bic_from_mse(mse: float, n: int, k: int) -> float:
+    """Bayesian Information Criterion (BIC) from the mean squared error.
+
+    The BIC is calculated for a least squares fit with normally distributed
+    residuals, i.e., `BIC = n * ln(MSE) + k * ln(n)` up to the same additive
+    constant as the AIC, so only differences between models fitted on the same
+    data are meaningful.
+
+    The BIC penalizes a parameter with `ln(n)` where the AIC penalizes it with
+    `2`, i.e. it prefers the smaller model as soon as there are more than seven
+    data points and increasingly so with more of them.
+
+    Args:
+        mse: mean squared error of the fit.
+        n: number of data points.
+        k: number of fitted parameters.
+
+    Returns:
+        Bayesian information criterion.
+
+    Raises:
+        ValueError: if the mean squared error or the number of data points is
+            not positive.
+    """
+    if mse <= 0.0:
+        raise ValueError(f"BIC requires a positive MSE, but '{mse}' given.")
+    if n <= 0:
+        raise ValueError(f"BIC requires a positive number of points, but '{n}' given.")
+    return float(n * np.log(mse) + k * np.log(n))
+
+
 def r_squared(y_observed: ArrayLike, y_predicted: ArrayLike) -> float:
     """Coefficient of determination (R²) of a prediction.
 
@@ -216,7 +261,8 @@ class FitMetrics:
     def _predictions(self, pset: ParameterSet) -> list[np.ndarray]:
         """Get the prediction at the data points of every mapping."""
         res_data: dict[str, list[Any]] = self.problem.residuals(  # ty: ignore[invalid-assignment]
-            xlog=np.log10(pset.x(self.problem.pids)), complete_data=True
+            xlog=self.problem.to_scale(pset.x(self.problem.pids)),
+            complete_data=True,
         )
         return [np.asarray(y, dtype=float) for y in res_data["y_obsip"]]
 
@@ -313,9 +359,11 @@ class FitMetrics:
     def summary(self, kind: MappingKind | None = None) -> dict[str, Any]:
         """Get the metrics over the data points of the problem.
 
-        `MSE`, `RMSE`, `R2` and `AIC` are the unweighted metrics of the data and
-        the predictions, i.e., they are dominated by the fit mappings with the
-        largest values. `RMSE_w` is the root mean square of the weighted
+        `MSE`, `RMSE`, `R2`, `AIC` and `BIC` are the unweighted metrics of the
+        data and the predictions, i.e., they are dominated by the fit mappings
+        with the largest values. The two information criteria differ in how
+        they penalize a parameter, `2` against `ln(n)`, so the BIC prefers the
+        smaller model of two which describe the data equally well. `RMSE_w` is the root mean square of the weighted
         residuals, so a parameter set can have a larger RMSE and smaller
         weighted residuals than another one, which is what the weighting is for.
 
@@ -330,7 +378,7 @@ class FitMetrics:
         Returns:
             Dictionary with the id of the parameter set, the `kind`, the number
             of data points `n`, the number of parameters `k`, the `cost`,
-            `MSE`, `RMSE`, `RMSE_w`, `R2` and `AIC`.
+            `MSE`, `RMSE`, `RMSE_w`, `R2`, `AIC` and `BIC`.
 
         Raises:
             ValueError: if the problem has no data points of the kind.
@@ -360,14 +408,18 @@ class FitMetrics:
             "RMSE_w": rmse(dp.IWRES),
             "R2": r_squared(dp.DV, dp.IPRED),
             "AIC": aic_from_mse(mse=mse_value, n=len(dp), k=self.n_parameters),
+            "BIC": bic_from_mse(mse=mse_value, n=len(dp), k=self.n_parameters),
         }
 
     def summary_df(self) -> pd.DataFrame:
-        """Get the metrics per kind of fit mapping and over all data points.
+        """Get the metrics per kind of fit mapping.
 
-        A fit is evaluated on its training and on its validation data, so there
-        is a row for every kind the problem has and, when it has more than one,
-        a row `all` over all data points.
+        A fit is evaluated on its training data, on its validation data and on
+        the outliers it dropped, so there is a row for every kind the problem
+        has. There is no row over all data points: it pools the data a fit was
+        fitted on with the data it dropped, which is not a number to read.
+        `summary()` gives the metrics over all data points where they are
+        wanted.
 
         Returns:
             DataFrame with one row per kind, see `summary`.
@@ -375,15 +427,12 @@ class FitMetrics:
         kinds = [
             kind for kind in self.problem.mapping_counts() if kind in EVALUATED_KINDS
         ]
-        summaries = [self.summary(kind=kind) for kind in kinds]
-        if len(kinds) != 1:
-            summaries.append(self.summary())
-        return pd.DataFrame(summaries)
+        return pd.DataFrame([self.summary(kind=kind) for kind in kinds])
 
     def cost(self) -> float:
         """Get the cost of the parameter set, i.e., the objective of the fit."""
         return self.problem.cost_least_square(
-            np.log10(self.parameter_set.x(self.problem.pids))
+            self.problem.to_scale(self.parameter_set.x(self.problem.pids))
         )
 
     def report(self) -> str:

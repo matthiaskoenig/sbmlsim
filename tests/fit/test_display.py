@@ -7,7 +7,7 @@ import pandas as pd
 import pytest
 from rich.console import Console
 
-from sbmlsim.fit import FitParameter, FitSettings, display
+from sbmlsim.fit import FitParameter, FitSettings, MappingKind, display
 from sbmlsim.fit.options import (
     LossFunctionType,
     ResidualType,
@@ -71,16 +71,27 @@ def test_data_summary_table() -> None:
     text = render(display.data_summary_table(DATA))
     lines = [line for line in text.splitlines() if line.strip()]
 
+    # every kind is a column, so a new one does not need a new test
     header = next(line for line in lines if "experiment" in line)
-    for kind in ["training", "validation", "outlier"]:
-        assert kind in header
+    for kind in MappingKind:
+        assert kind.value in header
 
+    counts = {"training": 2, "validation": 0, "outlier": 1}
     row_a = next(line for line in lines if line.strip().startswith("A"))
-    # A: 2 training, 0 validation, 1 outlier, 3 mappings
-    assert row_a.split() == ["A", "2", "0", "1", "3"]
+    # A: 2 training, 1 outlier, 3 mappings, and 0 of every other kind
+    assert row_a.split() == [
+        "A",
+        *[str(counts.get(kind.value, 0)) for kind in MappingKind],
+        "3",
+    ]
 
+    totals = {"training": 2, "validation": 1, "outlier": 1}
     total = next(line for line in lines if "total" in line)
-    assert total.split() == ["total", "2", "1", "1", "4"]
+    assert total.split() == [
+        "total",
+        *[str(totals.get(kind.value, 0)) for kind in MappingKind],
+        "4",
+    ]
 
 
 def test_data_summary_table_without_kind() -> None:

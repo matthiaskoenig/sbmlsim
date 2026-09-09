@@ -19,6 +19,7 @@
   --bg: #ffffff; --bg-soft: #f6f7f9; --bg-card: #ffffff;
   --fg: #1b1f24; --fg-soft: #5b6472; --line: #e3e6ea;
   --accent: #3b5bdb; --training: #2f9e44; --validation: #1c7ed6; --outlier: #e8590c;
+  --excluded: #868e96;
   --radius: 10px; --shadow: 0 1px 2px rgba(16,24,40,.06), 0 1px 3px rgba(16,24,40,.1);
 }
 @media (prefers-color-scheme: dark) {
@@ -26,6 +27,7 @@
     --bg: #14171c; --bg-soft: #1a1e24; --bg-card: #1a1e24;
     --fg: #e6e9ee; --fg-soft: #9aa4b2; --line: #2a3038;
     --accent: #748ffc; --training: #51cf66; --validation: #4dabf7; --outlier: #ff922b;
+    --excluded: #adb5bd;
     --shadow: none;
   }
 }
@@ -71,6 +73,7 @@ nav.sections a.active { color: var(--fg); border-bottom-color: var(--accent); }
 .chip[data-kind="training"][aria-pressed="true"] { background: var(--training); }
 .chip[data-kind="validation"][aria-pressed="true"] { background: var(--validation); }
 .chip[data-kind="outlier"][aria-pressed="true"] { background: var(--outlier); }
+.chip[data-kind="excluded"][aria-pressed="true"] { background: var(--excluded); }
 #hits { color: var(--fg-soft); font-size: 12.5px; margin-left: auto; }
 
 main { padding: 24px; max-width: 1400px; margin: 0 auto; }
@@ -107,7 +110,32 @@ tr.total td { font-weight: 650; border-top: 2px solid var(--line); }
 .tag.training { background: var(--training); }
 .tag.validation { background: var(--validation); }
 .tag.outlier { background: var(--outlier); }
+.tag.excluded { background: var(--excluded); }
 .warn { color: var(--outlier); }
+
+/* what a value means, on the header of a column or next to a figure */
+.hint {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 14px; height: 14px; margin-left: 4px; border-radius: 50%;
+  border: 1px solid var(--line); color: var(--fg-soft);
+  font-size: 10px; font-weight: 700; line-height: 1; cursor: help;
+  position: relative; vertical-align: middle; user-select: none;
+}
+.hint:hover, .hint:focus { border-color: var(--accent); color: var(--accent); }
+.hint::after {
+  content: attr(data-tip);
+  position: absolute; bottom: calc(100% + 8px); left: 50%;
+  transform: translateX(-50%);
+  width: max-content; max-width: 320px; padding: 8px 10px;
+  border-radius: 6px; border: 1px solid var(--line);
+  background: var(--bg); color: var(--fg); box-shadow: 0 4px 16px rgb(0 0 0 / 18%);
+  font-size: 12px; font-weight: 400; line-height: 1.45; text-align: left;
+  white-space: normal; opacity: 0; visibility: hidden; transition: opacity .12s;
+  z-index: 20; pointer-events: none;
+}
+.hint:hover::after, .hint:focus::after { opacity: 1; visibility: visible; }
+/* a tooltip of the last columns would leave the page */
+td:last-child .hint::after, th:last-child .hint::after { left: auto; right: 0; transform: none; }
 
 figure { margin: 0; }
 figure img {

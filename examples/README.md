@@ -23,23 +23,22 @@ An example writes what it creates into the current working directory: figures ar
 | `examples/units.py` | units of a model and changes with pint quantities |
 | `examples/model_sensitivity.py` | sensitivity scans of all parameters, by relative differences and by sampling from distributions |
 | `examples/datagenerator.py` | reducing scan results with a `DataGenerator` |
-| `examples/interpolation.py` | interpolation of data points as an SBML model |
+| `examples/interpolation/` | interpolation of data points as an SBML model (`interpolation.py` writes the model, `interpolation_example.py` simulates it) |
 | `examples/curve_types/` | a two reaction model (created with sbmlutils) and a simulation experiment showing the curve types of the plots |
 | `examples/initial_assignment/` | a simulation experiment on a model with initial assignments and changes of the assigned parameters |
 | `examples/glucose/` | dose response experiment of the hepatic glucose model with data from PK-DB |
 | `examples/demo/` | the demo model with scans and sensitivity simulations as a simulation experiment |
 | `examples/repressilator/` | the repressilator as a simulation experiment, with post processing functions and scans |
-| `examples/hctz/` | hydrochlorothiazide pharmacokinetics: a whole body model, simulation experiments against the data of Beermann 1976 and Patel 1984 and the parameter fitting problems built on them (`examples/hctz/fitting/`) |
-| `examples/covid/` | COVID-19 models from BioModels as simulation experiments and COMBINE archives |
-| `examples/sedml/` | execution of SED-ML files (`execute_sedml.py`) and COMBINE archives (`execute_omex.py`), with the SED-ML L1V4 example files under `l1v4/` |
+| `examples/hctz_fitting/` | hydrochlorothiazide pharmacokinetics: a whole body model, simulation experiments against the data of Beermann 1976 and Patel 1984 and the parameter fitting problems built on them (`examples/hctz_fitting/fitting/`) |
 | `examples/sensitivity/` | local and global sensitivity analysis (sampling, Sobol, FAST, Morris) of a simple chain model |
-| `examples/petab/` | PEtab parameter estimation problems, with pypesto and AMICI (both not installed with sbmlsim) |
+| `examples/petab/` | PEtab parameter estimation problems of the [benchmark collection](https://github.com/Benchmarking-Initiative/Benchmark-Models-PEtab). `benchmark.py` converts `Perelson_Science1996` or `Boehm_JProteomeRes2014` to PEtab v2, fits it with sbmlsim, analyses the identifiability and reports it. The PEtab v2 layer on the HCTZ problem is `examples/hctz_fitting/fitting/petab_problem.py` |
+| `examples/comparison/` | comparison of simulation results between simulators. `diff_example.py` compares roadrunner with [JWS Online](https://jjj.bio.vu.nl) on the repressilator with `sbmlsim.comparison.diff`; `simulate_amici.py`, `simulate_copasi.py` and `example_comparison.py` run the same conditions with AMICI and COPASI (not installed with sbmlsim) |
 | `examples/julia/` | notes and an example on calling julia from python via juliacall (not installed with sbmlsim) |
 
 ## Tests
 
 `tests/examples/test_example_scripts.py` runs the examples which work offline and without optional dependencies as `python -m examples.<module>` in a temporary working directory, so an example which breaks fails the test suite.
 
-The simulation experiments with post processing functions and multi-dimensional scans in `examples/demo`, `examples/repressilator`, `examples/covid` and `examples/sedml/execute_omex.py` currently fail while the experiment pipeline is reworked, see the skipped tests in `tests/experiment/`; they are not part of the example tests.
+The simulation experiments with post processing functions and multi-dimensional scans in `examples/demo` and `examples/repressilator` currently fail while the experiment pipeline is reworked, see the skipped tests in `tests/experiment/`; they are not part of the example tests.
 
-`examples/hctz` is the reference problem of the parameter fitting: `python -m examples.hctz.simulations` runs the simulation experiments, `python -m examples.hctz.fitting.fitting` the fit, and `python -m examples.hctz.fitting.report <parameters.json>` creates the report of a finished fit again, or of several fits at once, without optimizing. `python -m examples.hctz.fitting.identifiability` runs a global optimization followed by the profile likelihood of the best parameter set, and `python -m examples.hctz.fitting.identifiability_report <parameters.json>` computes the profiles of stored parameters. Both are the general tools of `sbmlsim.fit.cli` on the `FitDefinition` objects of `examples/hctz/fitting/fitting.py`, which is all the example has to provide. The tests in `tests/fit/` use it.
+`examples/hctz_fitting` is the reference problem of the parameter fitting: `python -m examples.hctz_fitting.simulations` runs the simulation experiments, `python -m examples.hctz_fitting.fitting.fitting` the fit, and `python -m examples.hctz_fitting.fitting.run_report <parameters.json>` creates the report of a finished fit again, or of several fits at once, without optimizing. `python -m examples.hctz_fitting.fitting.identifiability` runs a global optimization followed by the profile likelihood of the best parameter set, and `python -m examples.hctz_fitting.fitting.identifiability_report <parameters.json>` computes the profiles of stored parameters. `python -m examples.hctz_fitting.fitting.petab_problem` writes the fit as a PEtab v2 problem, validates it with `petab` and reads it back, and reports what PEtab cannot express about the fit. These are the general tools of `sbmlsim.fit.cli` and `sbmlsim.fit.petab_v2` on the `FitDefinition` objects of `examples/hctz_fitting/fitting/fitting.py`, which is all the example has to provide. The tests in `tests/fit/` use it.

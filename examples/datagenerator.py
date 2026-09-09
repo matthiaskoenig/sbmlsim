@@ -3,9 +3,9 @@
 import numpy as np
 from matplotlib import pyplot as plt
 
-from sbmlsim.combine.datagenerator import DataGeneratorIndexingFunction
 from sbmlsim.resources import MIDAZOLAM_SBML
 from sbmlsim.result import XResult
+from sbmlsim.result.datagenerator import DataGeneratorIndexingFunction
 from sbmlsim.simulation import Dimension, ScanSim, Timecourse, TimecourseSim
 from sbmlsim.simulator.simulation_serial import SimulatorSerial
 
@@ -61,8 +61,12 @@ def datagenerator_example() -> None:
     print("y", y)
     print("ystd", ystd)
 
-    plt.errorbar(x=x, y=y, yerr=ystd, marker="o", linestyle="", color="black")
-    plt.show()
+    fig, ax = plt.subplots()
+    ax.errorbar(x=x, y=y, yerr=ystd, marker="o", linestyle="", color="black")
+    ax.set_xlabel("dose [mg]")
+    ax.set_ylabel("concentration [mM]")
+    fig.savefig("datagenerator.png", bbox_inches="tight")
+    plt.close(fig)
 
 
 if __name__ == "__main__":

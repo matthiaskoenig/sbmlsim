@@ -1,8 +1,8 @@
 # Parameter fitting
 
-Parameter fitting adjusts model parameters so that the simulations of experiments match the experimental data. In `sbmlsim` a fit is an `OptimizationProblem` built from `FitExperiment` objects, which name the simulation experiments and their fit mappings, and `FitParameter` objects with the bounds of the parameters. The problem is run with local or global optimizers of scipy, reported with `FitReport`, and the identifiability of the fitted parameters is analysed with the profile likelihood.
+Parameter fitting adjusts model parameters so that the simulations of experiments match the experimental data. In `sbmlsim` a fit is an `OptimizationProblem` built from `FitMappingCollection` objects, which name the simulation experiments and their fit mappings, and `FitParameter` objects with the bounds of the parameters. The problem is run with local or global optimizers of scipy, reported with `FitReport`, and the identifiability of the fitted parameters is analysed with the profile likelihood.
 
-The example throughout this page is `examples/hctz/`, a whole body model of hydrochlorothiazide with the simulation experiments of two studies and the fit problem built on them.
+The example throughout this page is `examples/hctz_fitting/`, a whole body model of hydrochlorothiazide with the simulation experiments of two studies and the fit problem built on them.
 
 ## Fit mappings
 
@@ -34,31 +34,32 @@ def fit_mappings(self) -> dict[str, FitMapping]:
 print(mapping_code)
 ```
 
-The units of the reference and the observable are compared and the reference is converted to the units of the model. A `MappingMetaData` on a mapping describes its curve with application specific information such as the tissue, the route or the dosing. It describes the data, not what a fit does with the data. Its fields are keyword only, so that a subclass can add fields without a default; `examples/hctz/experiments/metadata.py` is such a subclass.
+The units of the reference and the observable are compared and the reference is converted to the units of the model. A `MappingMetaData` on a mapping describes its curve with application specific information such as the tissue, the route or the dosing. It describes the data, not what a fit does with the data. Its fields are keyword only, so that a subclass can add fields without a default; `examples/hctz_fitting/experiments/metadata.py` is such a subclass.
 
 ## Training, validation and outlier data
 
-What a fit does with a curve is decided when the data of the fit is selected, not on the fit mapping: the same curve is training data of one fit and validation data of another. Every `FitExperiment` therefore carries a `MappingKind` for the mappings it selects:
+What a fit does with a curve is decided when the data of the fit is selected, not on the fit mapping: the same curve is training data of one fit and validation data of another. Every `FitMappingCollection` therefore carries a `MappingKind` for the mappings it selects: `TRAINING` enters the cost, `VALIDATION` and `OUTLIER` are evaluated but not fitted, and `EXCLUDED` is not used at all. Outlier and excluded say different things: an outlier is a decision about the data, i.e. it is not usable, and an exclusion is a decision about the model, i.e. the model does not describe what was measured, e.g. an arm of a study with a coadministration the model has no interaction for.
 
 - `MappingKind.TRAINING` (the default): the mappings are fitted, i.e., their residuals enter the cost of the optimization,
 - `MappingKind.VALIDATION`: the mappings are not fitted. They are simulated and evaluated together with the training data when the fit is reported, which shows how the fitted parameters describe data they were not fitted on,
-- `MappingKind.OUTLIER`: the mappings are not used at all. An optimization problem skips its outliers, they stay in the overview of the data so that it is visible which curves were dropped.
+- `MappingKind.OUTLIER`: the mappings are not fitted, because the data is not usable. They are resolved and evaluated like the validation data, so a report has their metrics and their figures and the decision to drop a curve can be checked against the model,
+- `MappingKind.EXCLUDED`: the mappings are not used at all. An optimization problem does not resolve them, so they have no metrics and are not part of a report; they stay in the overview of the data of a `FitDefinition` so that it is visible which curves were dropped and why.
 
-`fit_experiments_by_kind` selects and classifies the data in one step: every kind gets its own filters and the mappings of all kinds are listed in a single overview.
+`mapping_collections_by_kind` selects and classifies the data in one step: every kind gets its own filters and the mappings of all kinds are listed in a single overview.
 
 ```python
-from examples.hctz import DATA_PATH, HCTZ_PATH
-from examples.hctz.experiments.studies import Beermann1976
+from examples.hctz_fitting import DATA_PATH, HCTZ_PATH
+from examples.hctz_fitting.experiments.studies import Beermann1976
 from sbmlsim.fit import MappingKind
 from sbmlsim.fit.helpers import (
     filter_empty,
     filter_keys,
     filter_not_keys,
-    fit_experiments_by_kind,
+    mapping_collections_by_kind,
 )
 
 validation = {"fm_hctz_iv35_4_urine"}
-fit_experiments_kinds = fit_experiments_by_kind(
+mapping_collections_kinds = mapping_collections_by_kind(
     experiment_classes=[Beermann1976],
     base_path=HCTZ_PATH,
     data_path=DATA_PATH,
@@ -69,27 +70,27 @@ fit_experiments_kinds = fit_experiments_by_kind(
 )
 ```
 
-The overview ends in a line such as `mappings : 32 (28 training, 2 validation, 2 outlier)`. On the problem, `mapping_counts()` reports how many mappings of each kind it has and `training_indices` and `validation_indices` are their positions in the resolved data.
+The overview ends in a line such as `mappings : 32 (28 training, 2 validation, 2 outlier)`. On the problem, `mapping_counts()` reports how many mappings of each kind it has and `training_indices`, `validation_indices` and `outlier_indices` are their positions in the resolved data.
 
 `sbmlsim.fit.helpers` filters the mappings by their metadata and collects it into a table:
 
 ```python
-from examples.hctz.fitting.fit_experiments import f_fitexp_pkiv
+from examples.hctz_fitting.fitting.mapping_collections import f_collections_pkiv
 
-fit_experiments = f_fitexp_pkiv()
-print(fit_experiments)
+mapping_collections = f_collections_pkiv()
+print(mapping_collections)
 ```
 
 ## Fit parameters and experiments
 
-`FitParameter` names a parameter of the model with its start value, bounds and unit, `FitExperiment` names an experiment class and the mappings of it which enter the fit, with optional weights:
+`FitParameter` names a parameter of the model with its start value, bounds and unit, `FitMappingCollection` names a simulation experiment class and the mappings of it which enter the fit together, with optional weights:
 
 ```python
-from examples.hctz.experiments.studies import Beermann1976
-from sbmlsim.fit import FitExperiment, FitParameter
+from examples.hctz_fitting.experiments.studies import Beermann1976
+from sbmlsim.fit import FitMappingCollection, FitParameter
 
-fit_experiments = [
-    FitExperiment(
+mapping_collections = [
+    FitMappingCollection(
         experiment=Beermann1976,
         mappings=["fm_hctz_iv1_5_urine", "fm_hctz_iv35_4_urine"],
     ),
@@ -110,25 +111,27 @@ fit_parameters = [
         unit="1/ml",
     ),
 ]
-print(fit_experiments[0])
+print(mapping_collections[0])
 print(FitParameter.parameters_to_df(fit_parameters))
 ```
 
-A `FitExperiment` without mappings uses all fit mappings of its experiment, they are resolved when the problem is initialized. `FitExperiment(use_mapping_weights=True)` weights the mappings by the weights of the `FitMapping` objects, e.g., the counts of the data, instead of the weights given here; setting both is an error.
+A `FitMappingCollection` without mappings uses all fit mappings of its experiment, they are resolved when the problem is initialized. `FitMappingCollection(use_mapping_weights=True)` weights the mappings by the weights of the `FitMapping` objects, e.g., the counts of the data, instead of the weights given here; setting both is an error.
 
-The optimization runs in logarithmic parameter space, so every parameter needs finite positive bounds and, if it is given, a positive start value.
+`FitSettings.parameter_scale` is the space the optimizer searches the parameters in: `LOG10` by default, because a rate constant spans orders of magnitude and an optimizer on the linear scale spends its steps on the largest parameters, and `LOG` or `LINEAR` if a problem wants them. The bounds, the start values and the fitted parameters are always on the linear scale, i.e. in the units of the model, only the search happens in the scaled space. A logarithm needs finite positive bounds and a positive start value, the linear scale only needs finite bounds.
+
+The scale is a property of the optimization and not of the model or of the data, which is why it is part of the settings; PEtab v2 removed the `parameterScale` of its parameter table for the same reason.
 
 ## The optimization problem
 
-The `OptimizationProblem` collects the fit experiments and parameters with the `base_path` and `data_path` of the experiments:
+The `OptimizationProblem` collects the fit mapping collections and parameters with the `base_path` and `data_path` of the experiments:
 
 ```python
-from examples.hctz import DATA_PATH, HCTZ_PATH
+from examples.hctz_fitting import DATA_PATH, HCTZ_PATH
 from sbmlsim.fit.optimization import OptimizationProblem
 
 op = OptimizationProblem(
     opid="hctz_iv",
-    fit_experiments=fit_experiments,
+    mapping_collections=mapping_collections,
     fit_parameters=fit_parameters,
     base_path=HCTZ_PATH,
     data_path=DATA_PATH,
@@ -249,15 +252,31 @@ report.create(output_dir=Path("results"), name="hctz_iv")
 
 The report writes `index.html`, `report.txt`, the `parameters.json` it was made from, the metrics as TSV and the figures. `show_report=True` opens the HTML in a browser.
 
-`index.html` is an interactive page with three sections: **Overview** repeats what the console reports, i.e., the fit, the parameters with their bounds and units, the settings and the data per experiment and kind; **Results** has the metrics per parameter set and kind, the plots of the optimization runs and of the predictions, and the contribution of every fit mapping to the cost; **Fit mappings** is one card per mapping with its figures and its metrics. A search box filters the mappings and the tables, the chips filter by training, validation and outlier data, the tables sort by any column and a figure opens full size when it is clicked. The page carries its own style and script, so it works from a file and can be archived or sent as it is.
+`index.html` is an interactive page with three sections: **Overview** repeats what the console reports, i.e., the fit, the parameters with their bounds and units, the settings and the data per experiment and kind; **Results** has the metrics per parameter set and kind, the plots of the optimization runs, the goodness of fit and the Bland-Altman plot with a panel per kind of fit mapping, and the contribution of every fit mapping to the cost; **Fit mappings** is one card per mapping with its figures and its metrics. A search box filters the mappings and the tables, the chips filter by training, validation and outlier data, which are the kinds a fit evaluates and therefore the kinds a report shows, the tables sort by any column and a figure opens full size when it is clicked. The page carries its own style and script, so it works from a file and can be archived or sent as it is.
 
 Every parameter set becomes a column of the parameter table and a curve in the plots, so several sets are compared in a single report, e.g., two fits against each other. The first set is the reference the others are compared against.
 
-`FitReport.from_optimization_result` is the shortcut for the report of a fit. It reads the settings from the result, uses the initial values of the model as the reference set, and adds the plots which describe the runs rather than a parameter set, i.e., the optimization traces and the waterfall plot:
+Two figures show the data points of the fit rather than the curves, each with one panel per kind of fit mapping, i.e. the training data, the validation data and the outliers. The points are colored by study, i.e. by the simulation experiment a fit mapping belongs to, and a study keeps its color in both figures:
+
+- **goodness of fit** (`goodness_of_fit`) plots the prediction against the measurement on logarithmic axes, with the identity line `prediction = measurement`. The points scatter around it when the model describes the data, and a systematic deviation from it is a systematic error of the model.
+- **Bland-Altman** (`bland_altman`) plots the agreement of the two as a ratio, `log10(f(x)/y)` over the geometric mean of prediction and measurement, with the bias and the limits of agreement `bias ± 1.96 SD` written as fold factors. The data of a fit spans orders of magnitude, so the agreement is multiplicative: a bias of `1.02x` is a fit which is unbiased and limits of `0.51-2.04x` say that a prediction is within a factor of two of the measurement. A trend over the mean is a model which describes the large or the small values better. A data point which is zero or negative has no ratio and is left out, which is why a panel can show fewer points than the metrics of its kind count.
+
+  `FitReport.agreement` calculates the bias and the limits on the **training data** alone and both figures draw the same lines in every panel, so the validation data and the outliers are read against what the fit agrees to. Per panel they would give every subset its own reference and the panels could not be compared, and over all data points the outliers, which are far away by definition, would widen them. A panel whose points stay inside the limits still shows them.
+
+  The band is the same in the two figures and drawn in the same styles, so they are read the same way: a solid line for `prediction = measurement`, a dash-dotted line for the bias, dashed lines for the limits and the area between them filled. A ratio is a horizontal line in the Bland-Altman plot and a line parallel to the diagonal in the goodness of fit, which on logarithmic axes is the same thing, so a point inside the band is a prediction the fit agrees to in either figure.
+
+The panels next to each other are what the kinds are for: the training panel is how well the fit describes the data it was fitted on, the validation panel how it describes data it was not, and the outlier panel where the curves a fit dropped sit relative to the model. There is no panel over all data points, which would pool the data a fit was fitted on with the data it dropped. Several parameter sets in one report are told apart by their marker, since the color says which study a point comes from.
+
+`FitReport.from_optimization_result` is the shortcut for the report of a fit. It reads the settings from the result and adds the plots which describe the runs rather than a parameter set, i.e., the optimization traces and the waterfall plot. The report shows the fitted parameters alone; `with_model=True` reports the values the model started from as the reference set as well, so that the figures and the tables show what the fit changed:
 
 ```py
 report = FitReport.from_optimization_result(problem=op, opt_result=opt_result)
 report.create(output_dir=Path("results"), name="hctz_iv")
+
+# the fit against the model it started from
+report = FitReport.from_optimization_result(
+    problem=op, opt_result=opt_result, with_model=True
+)
 ```
 
 ## Metrics
@@ -273,19 +292,53 @@ print(metrics.mappings_df())
 print(metrics.summary())
 ```
 
-`summary()` gives the metrics over all data points: the number of data points `n`, the number of fitted parameters `k`, the `cost`, `MSE`, `RMSE`, `RMSE_w`, `R2` and `AIC`; `mappings_df()` gives them per fit mapping. `MSE`, `RMSE`, `R2` and `AIC` are unweighted metrics of the data and the predictions, so they are dominated by the mappings with the largest values, while `RMSE_w` uses the weighting of the settings. A parameter set can therefore have a larger RMSE and smaller weighted residuals than another one, which is what the weighting is for.
+`summary()` gives the metrics over all data points: the number of data points `n`, the number of fitted parameters `k`, the `cost`, `MSE`, `RMSE`, `RMSE_w`, `R2`, `AIC` and `BIC`; `mappings_df()` gives them per fit mapping. `MSE`, `RMSE`, `R2`, `AIC` and `BIC` are unweighted metrics of the data and the predictions, so they are dominated by the mappings with the largest values, while `RMSE_w` uses the weighting of the settings. A parameter set can therefore have a larger RMSE and smaller weighted residuals than another one, which is what the weighting is for.
 
-A fit is evaluated on the data it was fitted on and on the data it was not, so `summary(kind=...)` restricts the metrics to a kind of mapping and `summary_df()` has a row for the training data, a row for the validation data and a row over all of them. The `cost` is the objective of the optimization, which is defined on the training data alone, so it is only reported there:
+A fit is evaluated on the data it was fitted on and on the data it was not, so `summary(kind=...)` restricts the metrics to a kind of mapping and `summary_df()` has one row per kind: the training data, the validation data and the outliers. The outliers are in there because a curve which a fit drops is a claim about the data which the metrics make checkable: an outlier with an R² as good as the training data is a curve which was dropped without reason. There is no row over all data points, which would pool the data a fit was fitted on with the data it dropped; `summary()` without a kind gives that number where it is wanted. The `cost` is the objective of the optimization, which is defined on the training data alone, so it is only reported there:
 
 ```py
 metrics.summary_df()
 ```
 
-The functions of `sbmlsim.fit.metrics` are used on their own as well: `sse`, `mse`, `rmse`, `aic` and `r_squared` take arrays of residuals or of data and predictions. R² is not the square of a correlation for a non-linear model and is negative when a prediction is worse than the mean of the data.
+Both information criteria are calculated for a least squares fit with normally distributed residuals, i.e. `n * ln(MSE)` plus a penalty per parameter, up to the same additive constant: only differences between models fitted on the same data are meaningful. They differ in the penalty, `2 * k` for the AIC and `k * ln(n)` for the BIC, so the BIC charges a parameter more as soon as there are more than seven data points and increasingly so with more of them. A model which the AIC prefers and the BIC does not is a model whose extra parameter buys a little fit on a lot of data.
+
+The functions of `sbmlsim.fit.metrics` are used on their own as well: `sse`, `mse`, `rmse`, `aic`, `bic` and `r_squared` take arrays of residuals or of data and predictions. R² is not the square of a correlation for a non-linear model and is negative when a prediction is worse than the mean of the data.
 
 A report calculates the metrics for every one of its parameter sets and writes them as `metrics.tsv`, `metrics_mappings.tsv` and `datapoints.tsv`, so several sets are compared by their AIC, RMSE and R².
 
 ## Identifiability
+
+A fit always returns numbers. Whether the data determines those numbers is a separate question, and it is the one that decides whether a parameter may be interpreted, compared between conditions or extrapolated from. A parameter which the data does not determine takes whatever value the optimizer happened to stop at.
+
+### What identifiability means
+
+A parameter is **identifiable** when the data could not have been produced by a different value of it. Two things can go wrong, and they are usually distinguished (Raue et al. 2014, Wieland et al. 2021):
+
+- **Structural non-identifiability** is a property of the model and its observables, not of the data. The parameter enters the observables only in combination with others, so no amount of data of that kind determines it: only a product, a ratio or a sum is determined. A model with a concentration `k * S` observed alone can never separate `k` from `S`. This is decided on the equations, with differential algebra or Lie derivatives (Bellman & Åström 1970, Chiş et al. 2011, Villaverde et al. 2016); `sbmlsim` does not analyse it, but a structural non-identifiability shows up in the analyses below as a perfectly flat direction.
+- **Practical non-identifiability** is a property of the model *and the data at hand*. The parameter is determined in principle, but the data is too sparse, too noisy or measured in the wrong place to pin it down, so its confidence interval extends to infinity in one or both directions. More or better data fixes this; a different model is needed for the structural case.
+
+Between the two extremes, most models of systems biology are **sloppy**: a few combinations of parameters are determined well and many are determined poorly, with the sensitivity spread over orders of magnitude (Gutenkunst et al. 2007, Transtrum et al. 2015). A sloppy model still predicts well along the directions the data constrains, which is why a poorly determined parameter is not by itself a reason to distrust a model — it is a reason not to interpret that parameter.
+
+### The two analyses
+
+`sbmlsim` implements the two analyses which work on a fitted model and its data:
+
+| | [Profile likelihood](#profile-likelihood) | [Fisher information](#fisher-information) |
+| --- | --- | --- |
+| what it looks at | the cost along the parameter, re-optimizing the others | the curvature of the cost at the optimum |
+| cost | a re-optimization per point, hundreds of simulations | one jacobian, `2k` simulations |
+| intervals | asymmetric, invariant under a transformation of the parameters | symmetric in the scaled space, exact only for a quadratic cost |
+| finds | structural and practical non-identifiability | structural non-identifiability, sloppiness, correlations |
+
+The Fisher information is the cheap local answer and the profile likelihood the expensive exact one. They agree where the cost is a quadratic around the optimum and disagree where it is not, which is the normal case for a non-linear model: the profile is then the one to trust (Raue et al. 2009, Wieland et al. 2021).
+
+Neither is a substitute for the other question worth asking, which is whether the *prediction* is determined even when the parameters are not (Simpson & Maclaren 2023).
+
+### What to do about it
+
+A parameter which comes back non-identifiable leaves four options: measure something else, fix the parameter to a literature value, reduce the model so that the parameter and the ones it is coupled to become one, or report it as undetermined and refrain from interpreting it. The paths of the other parameters along a profile say which parameters are coupled to it and therefore which reduction is the right one (Maiwald et al. 2016).
+
+### Profile likelihood
 
 A fit gives the parameters which describe the data best, the profile likelihood says how well the data determines every one of them. `sbmlsim.fit.identifiability` implements the method of Raue et al. 2009: a parameter is fixed at values around the optimum, all other parameters are optimized again for every value, and the resulting profile, the best cost as a function of the parameter, is compared with a threshold. The cost of a fit is the cost of `scipy.optimize.least_squares`, `cost = 0.5 * Σ r²` with the weighted residuals `r`. With residuals which are standardized by the errors of the data, `2 * cost` is the negative log-likelihood up to a constant, and the threshold of the likelihood ratio test on the cost is
 
@@ -293,7 +346,7 @@ A fit gives the parameters which describe the data best, the profile likelihood 
 cost_threshold = cost_min + chi2.ppf(alpha, df) / 2
 ```
 
-with the confidence level `alpha` and `df = 1` for the pointwise confidence intervals of single parameters, i.e., `1.92` above the minimal cost at 95%; `df` equal to the number of parameters gives simultaneous intervals. The values at which the profile crosses the threshold are the bounds of the confidence interval of the parameter. These intervals are invariant under a transformation of the parameters and may be asymmetric, which is where the intervals of the Fisher information matrix fail for non-linear models (Wieland et al. 2021). With another weighting of the residuals the threshold is a heuristic on the same scale.
+with the confidence level `alpha` and `df = 1` for the pointwise confidence intervals of single parameters, i.e., `1.92` above the minimal cost at 95%; `df` equal to the number of parameters gives simultaneous intervals. The values at which the profile crosses the threshold are the bounds of the confidence interval of the parameter. These intervals are invariant under a transformation of the parameters and may be asymmetric, which is where the intervals of the [Fisher information](#fisher-information) fail for non-linear models (Wieland et al. 2021). With another weighting of the residuals the threshold is a heuristic on the same scale.
 
 The shape of the profile classifies the parameter (`Identifiability`):
 
@@ -301,7 +354,7 @@ The shape of the profile classifies the parameter (`Identifiability`):
 - `NON_IDENTIFIABLE_LOWER`, `NON_IDENTIFIABLE_UPPER`, `NON_IDENTIFIABLE`: the profile has a minimum but stays below the threshold up to the lower bound, the upper bound or both bounds of the parameter, i.e., the parameter is practically non-identifiable, the data does not determine it towards small and/or large values,
 - `STRUCTURAL`: the profile is flat over the scanned range, the parameter is compensated by the other parameters and the data carries no information about it.
 
-The scans run in logarithmic parameter space with adaptive steps: a step which raises the cost by more than `max_cost_fraction` of the distance to the threshold is reduced and repeated, a step which raises it by little is enlarged, so the profile is resolved where it changes. The other parameters start from the previous point of the profile and their paths are stored, so a parameter which is coupled to the scanned one is seen in its path (Maiwald et al. 2016). A scan stops when the profile crosses the threshold, at the bound of the parameter or after `max_points`. A scan which finds a lower cost than the parameter set reports that the fit did not converge, and the threshold is taken relative to the lowest cost of all profiles.
+The scans run in the space the fit searches, i.e. the `parameter_scale` of its settings, with adaptive steps: a step which raises the cost by more than `max_cost_fraction` of the distance to the threshold is reduced and repeated, a step which raises it by little is enlarged, so the profile is resolved where it changes. The other parameters start from the previous point of the profile and their paths are stored, so a parameter which is coupled to the scanned one is seen in its path (Maiwald et al. 2016). A scan stops when the profile crosses the threshold, at the bound of the parameter or after `max_points`. A scan which finds a lower cost than the parameter set reports that the fit did not converge, and the threshold is taken relative to the lowest cost of all profiles.
 
 ```py
 from sbmlsim.fit.identifiability import ProfileSettings, profile_likelihood
@@ -321,7 +374,7 @@ result.to_json(Path("identifiability.json"))
 
 The `IdentifiabilityResult` carries a `ParameterProfile` per parameter with the values, the costs, the paths of all parameters and the confidence interval, `summary_df()` is the table of the parameters with their intervals and classification, `report()` the text and `to_json`/`from_json` the storage. `plot_profiles` draws the overview of all profiles, `plot_profile` the profile of one parameter with the paths of the other parameters along it.
 
-A report shows the analysis: `FitReport(..., identifiability=result)` adds the section **Identifiability** with the table, the overview and one figure per parameter, and writes `identifiability.json` and `identifiability.tsv`. `FitRun.identifiability()` computes the profiles of the best parameter set of a finished fit, so a global optimization followed by the identifiability of its result is
+A report shows the analysis: `FitReport(..., identifiability=result)` adds the section **Identifiability** with the table, the overview and one figure per parameter, and writes `identifiability.json` and `identifiability.tsv`. `FitReport(..., fisher=fim)` adds the Fisher information to the same section, i.e. its table of errors and intervals, the eigenvalues and the correlation of the parameters, and writes `fisher.json` and `fisher.tsv`; a report of an information which is rank deficient says that its errors cannot be read. Every metric and every figure of a report carries a `?` which explains what the value is and what to look for in the figure. `FitRun.identifiability()` computes the profiles of the best parameter set of a finished fit, so a global optimization followed by the identifiability of its result is
 
 ```py
 runs = run_fit(
@@ -332,27 +385,58 @@ runs = run_fit(
 )
 run = runs[opid]
 identifiability = run.identifiability(n_cores=4)
-run.report(output_dir=Path("results"), identifiability=identifiability)
+fisher = run.fisher()
+run.report(
+    output_dir=Path("results"),
+    identifiability=identifiability,
+    fisher=fisher,
+)
 ```
 
-which is `examples/hctz/fitting/identifiability.py`. `identifiability_cli` is the command line tool for stored parameters, `examples/hctz/fitting/identifiability_report.py` on the HCTZ definitions:
+which is `examples/hctz_fitting/fitting/identifiability.py`. `identifiability_cli` is the command line tool for stored parameters, `examples/hctz_fitting/fitting/identifiability_report.py` on the HCTZ definitions; it computes both analyses, `--no-fisher` reports the profiles alone:
 
 ```bash
-python -m examples.hctz.fitting.identifiability --subset=PK --runs=2 --cores=4
-python -m examples.hctz.fitting.identifiability_report results/fit/PK/parameters.json --cores=4
+python -m examples.hctz_fitting.fitting.identifiability --subset=PK --runs=2 --cores=4
+python -m examples.hctz_fitting.fitting.identifiability_report results/fit/PK/parameters.json --cores=4
 ```
 
-The publications behind the method are listed under [References](references.md#parameter-fitting).
+### Fisher information
+
+The profile likelihood follows the cost and costs a re-optimization per point. The Fisher information is the local alternative: the curvature of the cost at the optimum, from one jacobian. For a fit which minimizes `cost = 0.5 * Σ r²` with the weighted residuals `r`, the Gauss-Newton approximation of the Hessian is the Fisher information matrix, and its inverse, scaled by the variance of the residuals, is the covariance of the parameters:
+
+```
+FIM = J' J,   cov = σ² (J' J)⁻¹,   σ² = 2 cost / (n - k)
+```
+
+with the jacobian `J = ∂r/∂θ` in the space the optimizer searches, see `FitSettings.parameter_scale`:
+
+```py
+from sbmlsim.fit.fisher import fisher_information
+
+fim = fisher_information(problem=op, settings=settings, parameter_set=parameter_sets[0])
+print(fim.summary_df)
+print(fim.correlation)
+```
+
+`summary_df` is the table of the parameters with their standard error, the coefficient of variation and the confidence interval `θ ± t · SE`, computed in the scaled space and transformed back, so on a logarithmic scale the interval is not symmetric around the value. `correlation` is the correlation of the parameters: a pair at `±1` is a pair the data only determines together, i.e. the fit trades one against the other.
+
+The eigenvalues say what the data constrains. A direction with a small eigenvalue is a combination of parameters the data does not determine, `rank` counts the ones it does, and `is_identifiable` is whether that is all of them. `condition_number`, the ratio of the largest to the smallest eigenvalue, is how sloppy the problem is.
+
+A parameter which no data informs is exactly zero in the jacobian and gives a zero eigenvalue, i.e. the analysis finds a structural non-identifiability without scanning: the intravenous problem of the HCTZ example determines the renal excretion and carries no information about the absorption of an oral dose, so its Fisher information has rank 1 of 3.
+
+The two analyses answer different questions and disagree where the cost is not a quadratic. The Fisher information is a local statement about the optimum, the profile likelihood follows the cost until it rises by the threshold, so the profile is the one to trust for a non-linear model and the Fisher information is the one to compute when a profile is too expensive. A parameter which the Fisher information calls determined and the profile calls non-identifiable has a cost which is curved at the optimum and flat away from it, which is what the profile is for; in the `Perelson_Science1996` example of the benchmark collection the loss rate of the infected cells is such a parameter.
+
+The publications behind the methods are listed under [References](references.md#parameter-fitting).
 
 ## Running a fit from the command line
 
-Creating the optimization problems, running the optimizations and reporting them is the same for every model, so it lives in `sbmlsim.fit.cli` and a model only defines its fits. A `FitDefinition` is what enters a fit: the fit experiments, the parameters which are adjusted, where the experiments and their data are, and the settings.
+Creating the optimization problems, running the optimizations and reporting them is the same for every model, so it lives in `sbmlsim.fit.cli` and a model only defines its fits. A `FitDefinition` is what enters a fit: the fit mapping collections, the parameters which are adjusted, where the experiments and their data are, and the settings.
 
 ```python
 from sbmlsim.fit.cli import FitDefinition
 
 definition = FitDefinition(
-    fit_experiments=f_fitexp_pkiv,  # called when the fit runs
+    mapping_collections=f_collections_pkiv,  # called when the fit runs
     parameters=fit_parameters,
     base_path=HCTZ_PATH,
     data_path=DATA_PATH,
@@ -380,18 +464,18 @@ print(FIT_DEFINITIONS)
 
 Every fit gets an id when it starts, `<problem>_<date>_<time>__<hash>`, e.g. `PK_20260908_144538__ea1ff`. It is the id of the optimization problem, of its result and of the directory of its report, so everything a fit produces carries the same key and sorts by time. The output of a fit is a sequence of sections, each with its own icon: the fit with its strategy, algorithm and paths, the parameters which are optimized with their bounds and units, the settings, the data with the number of fit mappings per experiment and kind, the optimization with its progress, and the report. `sbmlsim.fit.display` renders them and is used on its own as well.
 
-The fit problems of the HCTZ model are in `examples/hctz/fitting/`: `fit_experiments.py` builds the subsets of the data, `parameters.py` holds the fit parameters and `fitting.py` is the definitions plus the four lines above:
+The fit problems of the HCTZ model are in `examples/hctz_fitting/fitting/`: `mapping_collections.py` builds the subsets of the data, `parameters.py` holds the fit parameters and `fitting.py` is the definitions plus the four lines above:
 
 ```bash
-python -m examples.hctz.fitting.fitting --subset=PK --runs=10 --cores=4 \
+python -m examples.hctz_fitting.fitting.fitting --subset=PK --runs=10 --cores=4 \
     --seed=1234 --method=LSQ --strategy=ALL --name=PK_LSQ_ALL
 ```
 
 `report.py` is `report_cli` on the same definitions. It creates a report from the `parameters.json` of a finished fit without optimizing again, and compares the parameters of several fits:
 
 ```bash
-python -m examples.hctz.fitting.report results/fit/PK_LSQ_ALL/parameters.json
-python -m examples.hctz.fitting.report run1/parameters.json run2/parameters.json
+python -m examples.hctz_fitting.fitting.run_report results/fit/PK_LSQ_ALL/parameters.json
+python -m examples.hctz_fitting.fitting.run_report run1/parameters.json run2/parameters.json
 ```
 
 ## PEtab
