@@ -214,9 +214,15 @@ class PetabReader:
     def _simulation_of_periods(self, experiment: petab_v2.Experiment) -> TimecourseSim:
         """Build a simulation from the periods of a PEtab experiment.
 
+        The time of a period is the time of the simulation the condition
+        becomes active at, so a period lasts until the next one starts and the
+        last one until the last measurement of the experiment was taken. The
+        first of them is where the simulation starts, which is the
+        `time_offset` of the `TimecourseSim`: a multiple dosing experiment
+        whose data is reported from the last dose starts at a negative time.
+
         A period at `time=-inf` is the pre-equilibration of the experiment,
-        which becomes a timecourse whose result is discarded. The end of the
-        last period is the last time a measurement of the experiment was taken.
+        which becomes a timecourse whose result is discarded.
         """
         end = self._last_measurement_time(experiment.id)
         conditions = {
@@ -260,7 +266,13 @@ class PetabReader:
                     changes=changes,
                 )
             )
-        return TimecourseSim(timecourses)
+
+        # the simulation starts where the first period which is not the
+        # pre-equilibration starts
+        finite = [period.time for period in periods if not np.isinf(period.time)]
+        return TimecourseSim(
+            timecourses, time_offset=float(finite[0]) if finite else 0.0
+        )
 
     def _last_measurement_time(self, experiment_id: str) -> float:
         """Get the last time a measurement of an experiment was taken."""
