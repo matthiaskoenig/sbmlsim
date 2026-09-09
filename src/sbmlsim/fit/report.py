@@ -18,7 +18,7 @@ import datetime
 import json
 import logging
 import webbrowser
-from collections.abc import Sequence
+from collections.abc import Iterable, Sequence
 from pathlib import Path
 from typing import Any, ClassVar
 
@@ -1345,36 +1345,98 @@ class FitReport:
             fig.suptitle("Goodness of fit")
         self._save_mpl_figure(fig=fig, path=path)
 
+    @staticmethod
+    def _log_ratio(df: pd.DataFrame) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+        """Get the ratio of prediction and measurement of the data points.
+
+        Args:
+            df: data points, see `points`.
+
+        Returns:
+            The geometric mean of measurement and prediction, the difference of
+            their logarithms and the mask of the points a ratio is defined for,
+            i.e. the points where both values are positive.
+        """
+        dv = np.asarray(df.DV, dtype=float)
+        ipred = np.asarray(df.IPRED, dtype=float)
+        mask = np.isfinite(dv) & np.isfinite(ipred) & (dv > 0) & (ipred > 0)
+        dv, ipred = dv[mask], ipred[mask]
+        return np.sqrt(dv * ipred), np.log10(ipred / dv), mask
+
+    @staticmethod
+    def _include_limits(ax: Axes, agreement: Iterable[tuple[float, float]]) -> None:
+        """Widen the y axis of a panel so that the limits of agreement fit.
+
+        The limits are those of the training data and are drawn in every panel,
+        so a panel whose own points stay well inside them must not crop them.
+        """
+        bounds = [bias + sign * half for bias, half in agreement for sign in (-1, 1)]
+        if not bounds:
+            return
+        low, high = ax.get_ylim()
+        margin = 0.05 * max(high - low, max(bounds) - min(bounds), 1e-6)
+        ax.set_ylim(
+            min(low, min(bounds) - margin),
+            max(high, max(bounds) + margin),
+        )
+
+    def agreement(self, pset: ParameterSet) -> tuple[float, float]:
+        """Get the bias and the half width of the limits of agreement.
+
+        They are calculated on the training data alone, i.e. on the data the
+        parameters were fitted on, and the Bland-Altman plot draws them in
+        every panel: the limits are what the fit agrees to, and the validation
+        data and the outliers are read against them. Calculating them per panel
+        would give every subset its own reference and the panels could not be
+        compared; pooling all data points would let the outliers, which are
+        dropped exactly because they are far away, widen the limits.
+
+        Args:
+            pset: parameter set of the report.
+
+        Returns:
+            The bias `mean(log10(f(x)/y))` and `1.96 * SD` of it, both in
+            decades. `10**bias` and `10**(bias ± half)` are the fold factors.
+        """
+        df = self.points(pset)
+        training = df[df.kind == MappingKind.TRAINING.value]
+        # a report of a problem without training data falls back to everything
+        _mean, difference, _mask = self._log_ratio(training if len(training) else df)
+        if difference.size == 0:
+            return 0.0, 0.0
+        half = 1.96 * float(np.std(difference, ddof=1)) if difference.size > 1 else 0.0
+        return float(np.mean(difference)), half
+
     def plot_bland_altman(self, path: Path) -> None:
-        """Plot the agreement of prediction and measurement, per subset.
+        """Plot the agreement of prediction and measurement, per kind.
 
         A Bland-Altman plot of the ratio: the difference of the logarithms,
-        `log10(f(x)/y)`, over the geometric mean of the two, with the bias and
-        the limits of agreement `bias ± 1.96 SD` of every parameter set. The
-        data of a fit spans orders of magnitude, so the agreement is
-        multiplicative and the limits are read as fold factors.
+        `log10(f(x)/y)`, over the geometric mean of the two. The data of a fit
+        spans orders of magnitude, so the agreement is multiplicative and the
+        limits are read as fold factors.
+
+        The bias and the limits of agreement `bias ± 1.96 SD` are those of
+        `agreement`, i.e. of the training data, and they are the same in every
+        panel, so the validation data and the outliers are read against what
+        the fit agrees to. Every panel shows the limits even when its points
+        are further out.
 
         Data points which are zero or negative have no logarithm and are left
         out, i.e. the plot shows the points a ratio is defined for.
         """
         points = {pset.sid: self.points(pset) for pset in self.parameter_sets}
+        agreement = {pset.sid: self.agreement(pset) for pset in self.parameter_sets}
         fig, axes, kinds = self._panels()
 
         for ax, kind in zip(axes, kinds, strict=True):
             n_shown = 0
-            for ks, pset in enumerate(self.parameter_sets):
+            for pset in self.parameter_sets:
                 dp = self._of_kind(points[pset.sid], kind)
-                dv = np.asarray(dp.DV, dtype=float)
-                ipred = np.asarray(dp.IPRED, dtype=float)
-                # a ratio needs two positive values
-                mask = np.isfinite(dv) & np.isfinite(ipred) & (dv > 0) & (ipred > 0)
-                dv, ipred = dv[mask], ipred[mask]
-                n_shown = max(n_shown, dv.size)
-                if dv.size == 0:
+                mean, difference, mask = self._log_ratio(dp)
+                n_shown = max(n_shown, difference.size)
+                if difference.size == 0:
                     continue
 
-                difference = np.log10(ipred / dv)
-                mean = np.sqrt(dv * ipred)
                 studies = np.asarray(dp.experiment, dtype=object)[mask]
                 kwargs: dict[str, Any] = {
                     **self.kwargs_scatter,
@@ -1390,30 +1452,34 @@ class FitReport:
                         **kwargs,
                     )
 
-                # the bias and the limits of agreement of the set. The points
-                # carry the color of their study, so the lines are neutral and
-                # only take a color when several sets are compared
-                bias = float(np.mean(difference))
-                half = 1.96 * float(np.std(difference, ddof=1)) if dv.size > 1 else 0.0
+            # the agreement of the training data, the same lines in every
+            # panel. The points carry the color of their study, so the lines
+            # are neutral and only take a color when several sets are compared
+            # only the last panel labels them, so that the legend lists the
+            # studies first and the lines, which are the same everywhere, last
+            is_last = ax is axes[-1]
+            for pset in self.parameter_sets:
+                bias, half = agreement[pset.sid]
                 color = "black" if len(self.parameter_sets) == 1 else self.color(pset)
-                ax.axhline(bias, color=color)
-                for limit in (bias - half, bias + half):
-                    ax.axhline(limit, linestyle="--", color=color, alpha=0.8)
-                # centered, so that it is not cut off at the edge of the panel,
-                # and stacked when several sets are compared
-                prefix = f"{pset.sid}: " if len(self.parameter_sets) > 1 else ""
-                ax.text(
-                    0.5,
-                    0.02 + ks * 0.06,
-                    f"{prefix}bias {10**bias:.2f}x, LoA "
-                    f"{10 ** (bias - half):.2f}-{10 ** (bias + half):.2f}x",
-                    transform=ax.transAxes,
-                    ha="center",
-                    va="bottom",
-                    fontsize="x-small",
+                prefix = f"{pset.sid} " if len(self.parameter_sets) > 1 else ""
+                ax.axhline(
+                    bias,
                     color=color,
-                    bbox={"facecolor": "white", "alpha": 0.7, "edgecolor": "none"},
+                    label=f"{prefix}bias {10**bias:.2f}x" if is_last else None,
                 )
+                for limit in (bias - half, bias + half):
+                    ax.axhline(
+                        limit,
+                        linestyle="--",
+                        color=color,
+                        alpha=0.8,
+                        label=(
+                            f"{prefix}LoA {10 ** (bias - half):.2f}"
+                            f"-{10 ** (bias + half):.2f}x"
+                            if is_last
+                            else None
+                        ),
+                    )
 
             ax.axhline(0.0, color="black", zorder=0)
             # a data point which is zero or negative has no ratio, so a panel
@@ -1426,6 +1492,7 @@ class FitReport:
             ax.set_xlabel("Geometric mean $\\sqrt{f(x_{i,k}) y_{i,k}}$")
             ax.set_xscale("log")
             ax.grid()
+            self._include_limits(ax, agreement.values())
 
         axes[0].set_ylabel("$\\log_{10}\\frac{f(x_{i,k})}{y_{i,k}}$", fontweight="bold")
         self._set_figure_legend(fig, axes)

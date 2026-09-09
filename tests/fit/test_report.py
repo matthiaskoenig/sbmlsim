@@ -8,6 +8,7 @@ import re
 from html.parser import HTMLParser
 from pathlib import Path
 
+import numpy as np
 import pytest
 
 from sbmlsim.fit import FitSettings, MappingKind, ParameterSet, ParameterSets
@@ -122,6 +123,36 @@ def test_the_subsets_of_a_problem_with_one_kind(
         parameter_sets=op_hctz_pkiv.parameter_set_model(),
     )
     assert report.point_kinds() == ["training"]
+
+
+def test_the_limits_of_agreement_are_the_training_data(
+    op_hctz_pk: OptimizationProblem, fit_settings: FitSettings
+) -> None:
+    """The Bland-Altman limits come from the training data, not from a panel.
+
+    They are drawn in every panel, so they must not be the agreement of the
+    panel: the outliers are far away by definition and would widen them.
+    """
+    op_hctz_pk.initialize(fit_settings)
+    report = FitReport(
+        problem=op_hctz_pk,
+        settings=fit_settings,
+        parameter_sets=op_hctz_pk.parameter_set_model(),
+    )
+    pset = report.reference_set
+    bias, half = report.agreement(pset)
+    assert half > 0.0
+
+    # the same numbers as the training data of the report
+    points = report.points(pset)
+    training = report._of_kind(points, MappingKind.TRAINING.value)
+    _mean, difference, _mask = report._log_ratio(training)
+    assert bias == pytest.approx(float(np.mean(difference)))
+    assert half == pytest.approx(1.96 * float(np.std(difference, ddof=1)))
+
+    # and not the agreement of all data points, which the outliers widen
+    _mean, all_difference, _mask = report._log_ratio(points)
+    assert 1.96 * float(np.std(all_difference, ddof=1)) > half
 
 
 def test_the_goodness_of_fit_and_altman_plots(
