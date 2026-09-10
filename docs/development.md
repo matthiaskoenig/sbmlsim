@@ -42,7 +42,7 @@ The protection is implemented with [repository rulesets](https://docs.github.com
 | ruleset                 | applies to | rules                                                                                                                                       |
 | ----------------------- | ---------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
 | `develop.json`          | `develop`  | pull request required, the four checks above, resolved conversations, linear history, no force push, no deletion. **No bypass, for anybody.** |
-| `main.json`             | `main`     | linear history, no force push, no deletion, no bypass. The fast-forward of the release workflow needs none, only a force push or a merge commit would be rejected |
+| `main.json`             | `main`     | no force push, no deletion, no bypass. The fast-forward of the release workflow needs none, only a force push would be rejected. `main` mirrors `develop`, whose history carries merge commits from before merge commits were disabled, so `main` cannot require a linear history |
 | `tags.json`             | all tags   | a tag cannot be deleted or moved, so a release tag keeps pointing at what was released                                                       |
 
 Changing a policy means changing the json and applying it:
