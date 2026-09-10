@@ -38,10 +38,10 @@ def test_bic_requires_a_positive_mse() -> None:
 
 
 def test_the_jacobian_has_a_column_per_parameter(
-    op_hctz_pkiv: OptimizationProblem, fit_settings: FitSettings
+    op_hctz_iv: OptimizationProblem, fit_settings: FitSettings
 ) -> None:
     """The jacobian of the residuals is one column per parameter."""
-    problem = op_hctz_pkiv
+    problem = op_hctz_iv
     problem.initialize(fit_settings)
     x = problem.to_scale(np.asarray(problem.x0, dtype=float))
 
@@ -59,10 +59,10 @@ def test_the_jacobian_has_a_column_per_parameter(
 
 
 def test_the_fisher_information_of_the_example(
-    op_hctz_pkiv: OptimizationProblem, fit_settings: FitSettings
+    op_hctz_pk: OptimizationProblem, fit_settings: FitSettings
 ) -> None:
     """The information of the parameters the model starts from."""
-    problem = op_hctz_pkiv
+    problem = op_hctz_pk
     problem.initialize(fit_settings)
     fim = fisher_information(problem, fit_settings, problem.parameter_set_model())
 
@@ -77,7 +77,7 @@ def test_the_fisher_information_of_the_example(
 
 
 def test_a_parameter_the_data_cannot_determine(
-    op_hctz_pkiv: OptimizationProblem, fit_settings: FitSettings
+    op_hctz_iv: OptimizationProblem, fit_settings: FitSettings
 ) -> None:
     """The information is rank deficient when the data misses a parameter.
 
@@ -85,7 +85,7 @@ def test_a_parameter_the_data_cannot_determine(
     says nothing about the absorption of an oral dose, so the fit of these
     three parameters on this data is not identifiable.
     """
-    problem = op_hctz_pkiv
+    problem = op_hctz_iv
     problem.initialize(fit_settings)
     fim = fisher_information(problem, fit_settings, problem.parameter_set_model())
 
@@ -98,11 +98,11 @@ def test_a_parameter_the_data_cannot_determine(
 
 def test_the_rank_deficiency_is_logged_once(
     caplog: pytest.LogCaptureFixture,
-    op_hctz_pkiv: OptimizationProblem,
+    op_hctz_iv: OptimizationProblem,
     fit_settings: FitSettings,
 ) -> None:
     """A report reads the covariance several times and warns about it once."""
-    problem = op_hctz_pkiv
+    problem = op_hctz_iv
     problem.initialize(fit_settings)
     fim = fisher_information(problem, fit_settings, problem.parameter_set_model())
     assert not fim.is_identifiable
@@ -146,10 +146,10 @@ def test_the_errors_and_the_intervals(
 
 
 def test_the_information_is_json_serializable(
-    op_hctz_pkiv: OptimizationProblem, fit_settings: FitSettings
+    op_hctz_pk: OptimizationProblem, fit_settings: FitSettings
 ) -> None:
     """The matrix is stored with the parameters it belongs to."""
-    problem = op_hctz_pkiv
+    problem = op_hctz_pk
     problem.initialize(fit_settings)
     fim = fisher_information(problem, fit_settings, problem.parameter_set_model())
 

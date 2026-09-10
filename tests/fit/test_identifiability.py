@@ -203,12 +203,12 @@ def _result_of_scan(
 
 
 def test_scan_of_reference_problem(
-    op_hctz_pkiv: OptimizationProblem, fit_settings: FitSettings
+    op_hctz_iv: OptimizationProblem, fit_settings: FitSettings
 ) -> None:
     """The scans profile every parameter and classify it."""
-    result = _result_of_scan(op_hctz_pkiv, fit_settings)
+    result = _result_of_scan(op_hctz_iv, fit_settings)
 
-    assert set(result.profiles) == set(op_hctz_pkiv.pids)
+    assert set(result.profiles) == set(op_hctz_iv.pids)
     assert result.threshold == pytest.approx(result.cost_min + 1.9207, abs=1e-3)
     for pid, profile in result.profiles.items():
         assert profile.pid == pid
@@ -216,12 +216,12 @@ def test_scan_of_reference_problem(
         # the optimum is a point of the profile
         assert profile.value_optimum == pytest.approx(result.parameter_set.values[pid])
         assert profile.cost_optimum == pytest.approx(result.cost)
-        assert profile.paths.shape == (len(profile), len(op_hctz_pkiv.pids))
+        assert profile.paths.shape == (len(profile), len(op_hctz_iv.pids))
         # the scan stops at a bound, at the threshold or after max_points
         assert len(profile) <= 2 * SCAN_SETTINGS.max_points + 1
         # without re-optimization the other parameters stay at the optimum
-        others = [k for k, p in enumerate(op_hctz_pkiv.pids) if p != pid]
-        x_others = result.parameter_set.x(op_hctz_pkiv.pids)[others]
+        others = [k for k, p in enumerate(op_hctz_iv.pids) if p != pid]
+        x_others = result.parameter_set.x(op_hctz_iv.pids)[others]
         assert np.allclose(profile.paths[:, others], x_others)
 
     # the absorption parameters are not observed by iv data, their profiles
@@ -230,39 +230,39 @@ def test_scan_of_reference_problem(
     assert result.n_identifiable <= len(result.profiles)
 
     df = result.summary_df()
-    assert list(df.parameter) == op_hctz_pkiv.pids
+    assert list(df.parameter) == op_hctz_iv.pids
     assert {"ci_lower", "ci_upper", "identifiability"} <= set(df.columns)
     assert "Identifiability" in result.report()
 
 
 def test_scan_subset_of_parameters(
-    op_hctz_pkiv: OptimizationProblem, fit_settings: FitSettings
+    op_hctz_pk: OptimizationProblem, fit_settings: FitSettings
 ) -> None:
     """Only the given parameters are profiled."""
-    op_hctz_pkiv.initialize(fit_settings)
+    op_hctz_pk.initialize(fit_settings)
     result = profile_likelihood(
-        problem=op_hctz_pkiv,
+        problem=op_hctz_pk,
         settings=fit_settings,
-        parameter_set=op_hctz_pkiv.parameter_set_model(),
+        parameter_set=op_hctz_pk.parameter_set_model(),
         profile_settings=SCAN_SETTINGS,
         pids=["KI__HCTZEX_k"],
         serial=True,
         show_progress=False,
     )
     assert list(result.profiles) == ["KI__HCTZEX_k"]
-    assert result.pids == op_hctz_pkiv.pids
+    assert result.pids == op_hctz_pk.pids
 
 
 def test_unknown_parameter(
-    op_hctz_pkiv: OptimizationProblem, fit_settings: FitSettings
+    op_hctz_pk: OptimizationProblem, fit_settings: FitSettings
 ) -> None:
     """A parameter which is not a parameter of the problem is reported."""
-    op_hctz_pkiv.initialize(fit_settings)
+    op_hctz_pk.initialize(fit_settings)
     with pytest.raises(KeyError, match="not parameters of the problem"):
         profile_likelihood(
-            problem=op_hctz_pkiv,
+            problem=op_hctz_pk,
             settings=fit_settings,
-            parameter_set=op_hctz_pkiv.parameter_set_model(),
+            parameter_set=op_hctz_pk.parameter_set_model(),
             pids=["unknown"],
             serial=True,
             show_progress=False,
@@ -270,15 +270,15 @@ def test_unknown_parameter(
 
 
 def test_parameter_set_outside_bounds(
-    op_hctz_pkiv: OptimizationProblem, fit_settings: FitSettings
+    op_hctz_pk: OptimizationProblem, fit_settings: FitSettings
 ) -> None:
     """A parameter set outside of the bounds of the problem is reported."""
-    op_hctz_pkiv.initialize(fit_settings)
-    pset = op_hctz_pkiv.parameter_set_model()
+    op_hctz_pk.initialize(fit_settings)
+    pset = op_hctz_pk.parameter_set_model()
     pset.values["Ka_dis_hctz"] = 1000.0
     with pytest.raises(ValueError, match="outside of the bounds"):
         profile_likelihood(
-            problem=op_hctz_pkiv,
+            problem=op_hctz_pk,
             settings=fit_settings,
             parameter_set=pset,
             serial=True,
@@ -287,14 +287,14 @@ def test_parameter_set_outside_bounds(
 
 
 def test_profile_with_reoptimization(
-    op_hctz_pkiv: OptimizationProblem, fit_settings: FitSettings
+    op_hctz_pk: OptimizationProblem, fit_settings: FitSettings
 ) -> None:
     """The other parameters are optimized at every point of the profile."""
-    op_hctz_pkiv.initialize(fit_settings)
+    op_hctz_pk.initialize(fit_settings)
     result = profile_likelihood(
-        problem=op_hctz_pkiv,
+        problem=op_hctz_pk,
         settings=fit_settings,
-        parameter_set=op_hctz_pkiv.parameter_set_model(),
+        parameter_set=op_hctz_pk.parameter_set_model(),
         profile_settings=ProfileSettings(
             initial_step=0.5,
             min_step=0.1,
@@ -315,23 +315,23 @@ def test_profile_with_reoptimization(
 
 
 def test_parallel_equals_serial(
-    op_hctz_pkiv: OptimizationProblem, fit_settings: FitSettings
+    op_hctz_pk: OptimizationProblem, fit_settings: FitSettings
 ) -> None:
     """The scans of the workers give the result of the serial scans.
 
     The scans take the same path, i.e. the same parameter values, and their
     costs agree up to the integrator, see `COST_RTOL`.
     """
-    serial = _result_of_scan(op_hctz_pkiv, fit_settings)
+    serial = _result_of_scan(op_hctz_pk, fit_settings)
     parallel = profile_likelihood(
-        problem=op_hctz_pkiv,
+        problem=op_hctz_pk,
         settings=fit_settings,
-        parameter_set=op_hctz_pkiv.parameter_set_model(),
+        parameter_set=op_hctz_pk.parameter_set_model(),
         profile_settings=SCAN_SETTINGS,
         n_cores=2,
         show_progress=False,
     )
-    for pid in op_hctz_pkiv.pids:
+    for pid in op_hctz_pk.pids:
         values, other = serial.profiles[pid].values, parallel.profiles[pid].values
         # the same number of points, i.e. the adaptive steps did the same
         assert values.shape == other.shape, pid
@@ -344,10 +344,10 @@ def test_parallel_equals_serial(
 
 
 def test_result_json_round_trip(
-    tmp_path: Path, op_hctz_pkiv: OptimizationProblem, fit_settings: FitSettings
+    tmp_path: Path, op_hctz_pk: OptimizationProblem, fit_settings: FitSettings
 ) -> None:
     """The result survives the round trip through JSON."""
-    result = _result_of_scan(op_hctz_pkiv, fit_settings)
+    result = _result_of_scan(op_hctz_pk, fit_settings)
     path = result.to_json(tmp_path / "identifiability.json")
     loaded = IdentifiabilityResult.from_json(path)
 
@@ -370,10 +370,10 @@ def test_result_json_round_trip(
 
 
 def test_plots(
-    tmp_path: Path, op_hctz_pkiv: OptimizationProblem, fit_settings: FitSettings
+    tmp_path: Path, op_hctz_pk: OptimizationProblem, fit_settings: FitSettings
 ) -> None:
     """The overview and the profile of a parameter are written."""
-    result = _result_of_scan(op_hctz_pkiv, fit_settings)
+    result = _result_of_scan(op_hctz_pk, fit_settings)
     plot_profiles(result, path=tmp_path / "profiles.svg")
     plot_profile(result, pid="KI__HCTZEX_k", path=tmp_path / "profile.svg")
     assert (tmp_path / "profiles.svg").exists()
@@ -384,12 +384,12 @@ def test_plots(
 # report and command line
 # ---------------------------------------------------------------------------
 def test_report_with_identifiability(
-    tmp_path: Path, op_hctz_pkiv: OptimizationProblem, fit_settings: FitSettings
+    tmp_path: Path, op_hctz_pk: OptimizationProblem, fit_settings: FitSettings
 ) -> None:
     """A report with an analysis has the identifiability section and files."""
-    result = _result_of_scan(op_hctz_pkiv, fit_settings)
+    result = _result_of_scan(op_hctz_pk, fit_settings)
     report = FitReport(
-        problem=op_hctz_pkiv,
+        problem=op_hctz_pk,
         settings=fit_settings,
         parameter_sets=ParameterSets([result.parameter_set]),
         identifiability=result,
@@ -399,7 +399,7 @@ def test_report_with_identifiability(
     assert (results_dir / "identifiability.json").exists()
     assert (results_dir / "identifiability.tsv").exists()
     assert (results_dir / "plots" / "profiles.svg").exists()
-    for pid in op_hctz_pkiv.pids:
+    for pid in op_hctz_pk.pids:
         assert (results_dir / "plots" / f"profile_{pid}.svg").exists()
     html = (results_dir / "index.html").read_text(encoding="utf-8")
     assert 'id="identifiability"' in html
@@ -408,14 +408,14 @@ def test_report_with_identifiability(
 
 
 def test_report_without_identifiability(
-    tmp_path: Path, op_hctz_pkiv: OptimizationProblem, fit_settings: FitSettings
+    tmp_path: Path, op_hctz_pk: OptimizationProblem, fit_settings: FitSettings
 ) -> None:
     """A report without an analysis has no identifiability section."""
-    op_hctz_pkiv.initialize(fit_settings)
+    op_hctz_pk.initialize(fit_settings)
     report = FitReport(
-        problem=op_hctz_pkiv,
+        problem=op_hctz_pk,
         settings=fit_settings,
-        parameter_sets=op_hctz_pkiv.parameter_set_model(),
+        parameter_sets=op_hctz_pk.parameter_set_model(),
     )
     results_dir = report.create(output_dir=tmp_path, name="report")
     assert not (results_dir / "identifiability.json").exists()
@@ -423,20 +423,18 @@ def test_report_without_identifiability(
     assert 'id="identifiability"' not in html
 
 
-def test_identifiability_cli(
-    tmp_path: Path, definition_hctz_pkiv: FitDefinition
-) -> None:
+def test_identifiability_cli(tmp_path: Path, definition_hctz_pk: FitDefinition) -> None:
     """The command line tool profiles stored parameters and reports them."""
-    problem = definition_hctz_pkiv.problem(opid="PKIV")
-    problem.initialize(definition_hctz_pkiv.settings)
+    problem = definition_hctz_pk.problem(opid="PK")
+    problem.initialize(definition_hctz_pk.settings)
     parameters_path = tmp_path / "parameters.json"
     ParameterSets([problem.parameter_set_model()]).to_json(path=parameters_path)
 
     results_dir = identifiability_cli(
-        {"PKIV": definition_hctz_pkiv},
+        {"PK": definition_hctz_pk},
         args=[
             str(parameters_path),
-            "--subset=PKIV",
+            "--subset=PK",
             "--name=identifiability",
             "--no-reoptimize",
             "--max-points=3",
@@ -461,19 +459,19 @@ def test_identifiability_cli(
 
 
 def test_identifiability_cli_without_fisher(
-    tmp_path: Path, definition_hctz_pkiv: FitDefinition
+    tmp_path: Path, definition_hctz_pk: FitDefinition
 ) -> None:
     """`--no-fisher` reports the profiles alone."""
-    problem = definition_hctz_pkiv.problem(opid="PKIV")
-    problem.initialize(definition_hctz_pkiv.settings)
+    problem = definition_hctz_pk.problem(opid="PK")
+    problem.initialize(definition_hctz_pk.settings)
     parameters_path = tmp_path / "parameters.json"
     ParameterSets([problem.parameter_set_model()]).to_json(path=parameters_path)
 
     results_dir = identifiability_cli(
-        {"PKIV": definition_hctz_pkiv},
+        {"PK": definition_hctz_pk},
         args=[
             str(parameters_path),
-            "--subset=PKIV",
+            "--subset=PK",
             "--name=identifiability",
             "--no-reoptimize",
             "--no-fisher",

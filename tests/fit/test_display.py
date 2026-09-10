@@ -108,6 +108,43 @@ def test_data_table() -> None:
         assert token in text
 
 
+def test_data_table_metadata() -> None:
+    """The fields of the metadata are columns, a missing value is a dash."""
+    df = DATA.copy()
+    df["route"] = ["IV", "PO", None, "PO"]
+    text = render(display.data_table(df))
+    assert "route" in text
+    assert "IV" in text
+    assert "-" in text.splitlines()[4]
+
+
+def test_data_table_wide(capsys: pytest.CaptureFixture[str]) -> None:
+    """A table with many metadata columns is not truncated."""
+    df = DATA.copy()
+    for i in range(12):
+        df[f"metadata_field_{i}"] = f"value_of_field_{i}"
+    display.print_data(df)
+    out = capsys.readouterr().out
+    assert "…" not in out
+    assert "value_of_field_11" in out
+
+
+def test_data_table_excluded_row_is_grey() -> None:
+    """The complete row of an excluded mapping is grey."""
+    df = DATA.copy()
+    df.loc[3, "kind"] = MappingKind.EXCLUDED.value
+    buffer = StringIO()
+    Console(file=buffer, width=120, force_terminal=True, color_system="standard").print(
+        display.data_table(df)
+    )
+    lines = buffer.getvalue().splitlines()
+    grey = next(line for line in lines if "fm4" in line)
+    other = next(line for line in lines if "fm1" in line)
+    # the row style is applied to the first cell, the experiment
+    assert "\x1b" in grey.split("fm4")[0]
+    assert "\x1b" not in other.split("fm1")[0].strip()
+
+
 def test_key_values_and_sections(capsys: pytest.CaptureFixture[str]) -> None:
     """The sections and the key/value blocks are printed."""
     display.section("Fit problem")

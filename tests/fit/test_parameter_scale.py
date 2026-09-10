@@ -58,11 +58,11 @@ def test_the_scale_is_stored_with_the_settings() -> None:
 
 
 def test_the_problem_transforms_with_its_scale(
-    op_hctz_pkiv: OptimizationProblem, fit_settings: FitSettings
+    op_hctz_pk: OptimizationProblem, fit_settings: FitSettings
 ) -> None:
     """The problem searches the space its settings name."""
     for scale in ParameterScaleType:
-        problem = op_hctz_pkiv
+        problem = op_hctz_pk
         problem.initialize(replace(fit_settings, parameter_scale=scale))
         assert problem.parameter_scale is scale
 
@@ -71,7 +71,7 @@ def test_the_problem_transforms_with_its_scale(
 
 
 def test_the_cost_does_not_depend_on_the_scale(
-    op_hctz_pkiv: OptimizationProblem, fit_settings: FitSettings
+    op_hctz_iv: OptimizationProblem, fit_settings: FitSettings
 ) -> None:
     """The same parameters have the same cost in every space.
 
@@ -79,7 +79,7 @@ def test_the_cost_does_not_depend_on_the_scale(
     """
     costs = []
     for scale in ParameterScaleType:
-        problem = op_hctz_pkiv
+        problem = op_hctz_iv
         problem.initialize(replace(fit_settings, parameter_scale=scale))
         x = np.asarray(problem.x0, dtype=float)
         costs.append(problem.cost_least_square(problem.to_scale(x)))
@@ -89,7 +89,7 @@ def test_the_cost_does_not_depend_on_the_scale(
 
 
 def test_a_logarithm_needs_positive_bounds(
-    op_hctz_pkiv: OptimizationProblem, fit_settings: FitSettings
+    op_hctz_pk: OptimizationProblem, fit_settings: FitSettings
 ) -> None:
     """The bounds have to suit the space the optimizer searches.
 
@@ -97,7 +97,7 @@ def test_a_logarithm_needs_positive_bounds(
     problem says so instead of optimizing NaN. On the linear scale the same
     bounds are fine.
     """
-    problem = op_hctz_pkiv
+    problem = op_hctz_pk
     # the definition of the example shares its `FitParameter` objects between
     # the problems, so the test works on copies of them
     problem.parameters = [deepcopy(p) for p in problem.parameters]
@@ -117,10 +117,10 @@ def test_a_logarithm_needs_positive_bounds(
 
 
 def test_an_infinite_bound_is_never_allowed(
-    op_hctz_pkiv: OptimizationProblem, fit_settings: FitSettings
+    op_hctz_pk: OptimizationProblem, fit_settings: FitSettings
 ) -> None:
     """An optimizer cannot search an interval which has no end."""
-    problem = op_hctz_pkiv
+    problem = op_hctz_pk
     problem.parameters = [deepcopy(p) for p in problem.parameters]
     problem.parameters[0].upper_bound = np.inf
 

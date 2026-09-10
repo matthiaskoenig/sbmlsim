@@ -73,6 +73,18 @@ LIMITS_STYLE: dict[str, Any] = {"linestyle": "--", "linewidth": 1.2}
 #: opacity of the filled area between the limits of agreement
 BAND_ALPHA: float = 0.12
 
+#: the figures which cover a full row of the report, i.e. the goodness of fit
+#: and the Bland-Altman plot with their panel per kind and their metrics
+WIDE_PLOTS: frozenset[str] = frozenset({"goodness_of_fit", "bland_altman"})
+
+#: style of the box with the key metrics of a panel
+METRICS_BOX: dict[str, Any] = {
+    "boxstyle": "round,pad=0.4",
+    "facecolor": "white",
+    "edgecolor": "0.6",
+    "alpha": 0.9,
+}
+
 #: colors of the parameter sets, in the order of the sets. Black is the color
 #: of the reference data of a fit mapping, so no parameter set uses it
 SET_COLORS: tuple[str, ...] = (
@@ -450,10 +462,18 @@ class FitReport:
             "Root mean squared error, the square root of the MSE, in the unit "
             "of the data."
         ),
+        "NRMSE": (
+            "Root mean square of the residuals normalized by the mean of their "
+            "fit mapping, so every curve counts the same whatever its "
+            "magnitude; the RMSE of the small curves is small even when they "
+            "are missed by a factor."
+        ),
         "RMSE_w": (
-            "Root mean square of the weighted residuals, i.e. the RMSE the "
-            "weighting of the fit sees. A parameter set can have a larger RMSE "
-            "and smaller weighted residuals than another one."
+            "Root mean square of the residuals of the cost, i.e. the residuals "
+            "of the residual type, weighted and with the loss function "
+            "applied; the cost of the training data is 0.5 * n * RMSE_w². A "
+            "parameter set can have a larger RMSE and smaller weighted "
+            "residuals than another one."
         ),
         "R2": (
             "Coefficient of determination, 1 - SSE/SST. The prediction of a "
@@ -503,11 +523,13 @@ class FitReport:
         "waterfall": "Cost of the optimization runs, ordered",
         "goodness_of_fit": (
             "Prediction against the measured data points, per kind of fit "
-            "mapping, with the agreement of the training data"
+            "mapping, with the agreement of the training data and the metrics "
+            "of the panel"
         ),
         "bland_altman": (
             "Agreement of prediction and measurement as a ratio, per kind of "
-            "fit mapping, with the agreement of the training data"
+            "fit mapping, with the agreement of the training data and the "
+            "agreement of the panel"
         ),
         "cost_bar": "Cost and weight of every fit mapping",
         "residual_boxplot": "Distribution of the squared weighted residuals",
@@ -542,7 +564,9 @@ class FitReport:
             "the agreement of the training data, i.e. the same band the "
             "Bland-Altman plot draws, here as lines parallel to the diagonal. "
             "The validation panel shows how the fit describes data it was not "
-            "fitted on, the outlier panel the data the fit dropped."
+            "fitted on, the outlier panel the data the fit dropped. The box "
+            "of a panel carries its R², its normalized RMSE and the RMSE of "
+            "the residuals of the cost."
         ),
         "bland_altman": (
             "The ratio of prediction and measurement over the geometric mean "
@@ -552,7 +576,9 @@ class FitReport:
             "fold factors. A bias away from 1 is a systematic over- or "
             "underprediction, wide limits are a large scatter, and a trend "
             "over the mean is a model which describes the large or the small "
-            "values better."
+            "values better. The box of a panel carries the bias and the SD of "
+            "its own points as fold factors and the share of them inside the "
+            "limits of agreement of the training data."
         ),
         "cost_bar": (
             "How much every fit mapping contributes to the cost, with its "
@@ -570,13 +596,17 @@ class FitReport:
         ),
     }
 
-    def _plots(self, plots_dir: Path, names: Sequence[str]) -> list[dict[str, str]]:
-        """Get the plots of the given names which were created."""
+    def _plots(self, plots_dir: Path, names: Sequence[str]) -> list[dict[str, Any]]:
+        """Get the plots of the given names which were created.
+
+        A plot of `WIDE_PLOTS` is `wide`, i.e. it covers a full row.
+        """
         return [
             {
                 "src": f"plots/{name}.{self.image_format}",
                 "caption": self.PLOT_CAPTIONS.get(name, name),
                 "hint": self.PLOT_HINTS.get(name, ""),
+                "wide": name in WIDE_PLOTS,
             }
             for name in names
             if (plots_dir / f"{name}.{self.image_format}").exists()
@@ -775,9 +805,11 @@ class FitReport:
                 "n",
                 "MSE",
                 "RMSE",
+                "NRMSE",
+                "RMSE_w",
                 "R2",
             ],
-            "numeric_columns": ["n", "MSE", "RMSE", "R2"],
+            "numeric_columns": ["n", "MSE", "RMSE", "NRMSE", "RMSE_w", "R2"],
             "mapping_metrics": [
                 {
                     "parameter_set": row["parameter_set"],
@@ -787,6 +819,8 @@ class FitReport:
                     "n": int(row["n"]),
                     "mse": f"{row['MSE']:.4g}",
                     "rmse": f"{row['RMSE']:.4g}",
+                    "nrmse": f"{row['NRMSE']:.4g}",
+                    "rmse_w": f"{row['RMSE_w']:.4g}",
                     "r2": f"{row['R2']:.4g}",
                 }
                 for row in mapping_rows
@@ -1277,8 +1311,12 @@ class FitReport:
     # --------------------------------------------------------------------
     # comparison of the parameter sets
     # --------------------------------------------------------------------
-    def _panels(self, height: float = 4.2) -> tuple[Figure, list[Axes], list[str]]:
-        """Create a figure with a panel per subset of the data points."""
+    def _panels(self, height: float = 5.5) -> tuple[Figure, list[Axes], list[str]]:
+        """Create a figure with a panel per subset of the data points.
+
+        The figure covers a full row of the report, so the panels are large
+        enough for the points, the band and the box with the metrics.
+        """
         kinds = self.point_kinds()
         fig, axes = plt.subplots(
             nrows=1,
@@ -1305,6 +1343,68 @@ class FitReport:
             "prediction = measurement",
             f"{prefix}bias {10**bias:.2f}x",
             f"{prefix}LoA {10 ** (bias - half):.2f}-{10 ** (bias + half):.2f}x",
+        )
+
+    def panel_metrics(self, kind: str, plot: str) -> str:
+        """Get the key metrics of a panel, one line per parameter set.
+
+        The goodness of fit shows how well the predictions describe the data
+        of the kind: `R²`, the scale free `NRMSE` and the `RMSE_w` of the cost
+        of `FitMetrics.summary`; the absolute RMSE is not shown, the data
+        spans orders of magnitude and it only reads the largest curves. The
+        Bland-Altman plot shows the agreement of the
+        points of the panel itself: the bias and the SD of `log10(f(x)/y)` as
+        fold factors and the share of the points inside the limits of
+        agreement of the training data, i.e. inside the band of `agreement`.
+
+        Args:
+            kind: kind of fit mapping of the panel.
+            plot: `goodness_of_fit` or `bland_altman`.
+
+        Returns:
+            The text of the box, the lines are prefixed with the id of the set
+            when several sets are compared.
+        """
+        lines: list[str] = []
+        for pset in self.parameter_sets:
+            prefix = f"{pset.sid}: " if len(self.parameter_sets) > 1 else ""
+            if plot == "goodness_of_fit":
+                summary = self.metrics(pset).summary(kind=MappingKind(kind))
+                lines.append(
+                    f"{prefix}R² = {summary['R2']:.3f}, "
+                    f"NRMSE = {summary['NRMSE']:.3g}, "
+                    f"RMSE$_w$ = {summary['RMSE_w']:.3g}"
+                )
+            elif plot == "bland_altman":
+                dp = self._of_kind(self.points(pset), kind)
+                _mean, difference, _mask = self._log_ratio(dp)
+                if difference.size == 0:
+                    lines.append(f"{prefix}no ratio")
+                    continue
+                bias_training, half = self.agreement(pset)
+                inside = np.mean(np.abs(difference - bias_training) <= half + 1e-12)
+                bias = float(np.mean(difference))
+                sd = float(np.std(difference, ddof=1)) if difference.size > 1 else 0.0
+                lines.append(
+                    f"{prefix}bias = {10**bias:.2f}x, SD = {10**sd:.2f}x, "
+                    f"in LoA = {inside:.0%}"
+                )
+            else:
+                raise ValueError(f"Unknown plot '{plot}'.")
+        return "\n".join(lines)
+
+    def _add_metrics_box(self, ax: Axes, kind: str, plot: str) -> None:
+        """Draw the box with the key metrics into the corner of a panel."""
+        ax.text(
+            0.03,
+            0.97,
+            self.panel_metrics(kind, plot),
+            transform=ax.transAxes,
+            ha="left",
+            va="top",
+            fontsize="small",
+            bbox=METRICS_BOX,
+            zorder=10,
         )
 
     def plot_goodness_of_fit(self, path: Path) -> None:
@@ -1390,6 +1490,7 @@ class FitReport:
             ax.set_xlim(min_dp, max_dp)
             ax.set_ylim(min_dp, max_dp)
             ax.grid()
+            self._add_metrics_box(ax, kind, "goodness_of_fit")
 
         axes[0].set_ylabel("Prediction $f(x_{i,k})$", fontweight="bold")
         self._set_figure_legend(fig, axes)
@@ -1555,6 +1656,7 @@ class FitReport:
             ax.set_xscale("log")
             ax.grid()
             self._include_limits(ax, agreement.values())
+            self._add_metrics_box(ax, kind, "bland_altman")
 
         axes[0].set_ylabel("$\\log_{10}\\frac{f(x_{i,k})}{y_{i,k}}$", fontweight="bold")
         self._set_figure_legend(fig, axes)

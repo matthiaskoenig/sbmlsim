@@ -6,7 +6,7 @@ an optimization problem, and what the tables of PEtab cannot express is
 reported before anything is written.
 
     python -m examples.hctz_fitting.fitting.petab_problem
-    python -m examples.hctz_fitting.fitting.petab_problem --subset=PKIV --portable
+    python -m examples.hctz_fitting.fitting.petab_problem --subset=PK --portable
 
 The problem is written into `results/petab/<subset>` of the working directory.
 

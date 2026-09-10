@@ -3,7 +3,7 @@
 import numpy as np
 import pytest
 
-from sbmlsim.fit import FitMetrics, FitSettings, ParameterSet
+from sbmlsim.fit import FitMetrics, FitSettings, MappingKind, ParameterSet
 from sbmlsim.fit.metrics import (
     aic,
     aic_from_mse,
@@ -81,21 +81,21 @@ def test_r_squared_length_mismatch() -> None:
 
 
 def test_metrics_require_initialized_problem(
-    op_hctz_pkiv: OptimizationProblem,
+    op_hctz_pk: OptimizationProblem,
 ) -> None:
     """The metrics need the resolved data of an initialized problem."""
-    pset = ParameterSet(sid="s", values=dict.fromkeys(op_hctz_pkiv.pids, 1.0))
+    pset = ParameterSet(sid="s", values=dict.fromkeys(op_hctz_pk.pids, 1.0))
     with pytest.raises(ValueError, match="not initialized"):
-        FitMetrics(problem=op_hctz_pkiv, parameter_set=pset)
+        FitMetrics(problem=op_hctz_pk, parameter_set=pset)
 
 
 def test_metrics_datapoints(
-    op_hctz_pkiv: OptimizationProblem, fit_settings: FitSettings
+    op_hctz_pk: OptimizationProblem, fit_settings: FitSettings
 ) -> None:
     """The data points carry the data and the predictions."""
-    op_hctz_pkiv.initialize(fit_settings)
+    op_hctz_pk.initialize(fit_settings)
     metrics = FitMetrics(
-        problem=op_hctz_pkiv, parameter_set=op_hctz_pkiv.parameter_set_model()
+        problem=op_hctz_pk, parameter_set=op_hctz_pk.parameter_set_model()
     )
     dp = metrics.datapoints_df()
 
@@ -109,9 +109,10 @@ def test_metrics_datapoints(
         "IPRED",
         "RES",
         "IRES",
+        "NRES",
         "IWRES",
     ]
-    assert len(dp) == sum(len(y) for y in op_hctz_pkiv.y_references)
+    assert len(dp) == sum(len(y) for y in op_hctz_pk.y_references)
 
     # without individual parameters PRED is IPRED
     assert np.allclose(dp.PRED, dp.IPRED)
@@ -121,18 +122,18 @@ def test_metrics_datapoints(
 
 
 def test_metrics_population_and_individual(
-    op_hctz_pkiv: OptimizationProblem, fit_settings: FitSettings
+    op_hctz_pk: OptimizationProblem, fit_settings: FitSettings
 ) -> None:
     """PRED and IPRED differ when a population parameter set is given."""
-    op_hctz_pkiv.initialize(fit_settings)
-    model_set = op_hctz_pkiv.parameter_set_model()
+    op_hctz_pk.initialize(fit_settings)
+    model_set = op_hctz_pk.parameter_set_model()
     other_set = ParameterSet(
         sid="individual",
         values={pid: value * 1.5 for pid, value in model_set.values.items()},
     )
 
     metrics = FitMetrics(
-        problem=op_hctz_pkiv,
+        problem=op_hctz_pk,
         parameter_set=other_set,
         population_parameter_set=model_set,
     )
@@ -143,12 +144,12 @@ def test_metrics_population_and_individual(
 
 
 def test_metrics_mappings_and_summary(
-    op_hctz_pkiv: OptimizationProblem, fit_settings: FitSettings
+    op_hctz_iv: OptimizationProblem, fit_settings: FitSettings
 ) -> None:
     """The metrics are reported per mapping and over all data points."""
-    op_hctz_pkiv.initialize(fit_settings)
+    op_hctz_iv.initialize(fit_settings)
     metrics = FitMetrics(
-        problem=op_hctz_pkiv, parameter_set=op_hctz_pkiv.parameter_set_model()
+        problem=op_hctz_iv, parameter_set=op_hctz_iv.parameter_set_model()
     )
 
     mappings = metrics.mappings_df()
@@ -159,9 +160,11 @@ def test_metrics_mappings_and_summary(
         "n",
         "MSE",
         "RMSE",
+        "NRMSE",
+        "RMSE_w",
         "R2",
     ]
-    assert len(mappings) == len(op_hctz_pkiv.mapping_keys)
+    assert len(mappings) == len(op_hctz_iv.mapping_keys)
     assert (mappings.n > 0).all()
     assert np.allclose(mappings.RMSE, np.sqrt(mappings.MSE))
 
@@ -174,6 +177,7 @@ def test_metrics_mappings_and_summary(
         "cost",
         "MSE",
         "RMSE",
+        "NRMSE",
         "RMSE_w",
         "R2",
         "AIC",
@@ -187,7 +191,7 @@ def test_metrics_mappings_and_summary(
     assert summary["BIC"] > summary["AIC"]
     assert summary["kind"] == "all"
     assert summary["n"] == int(mappings.n.sum())
-    assert summary["k"] == len(op_hctz_pkiv.parameters)
+    assert summary["k"] == len(op_hctz_iv.parameters)
     assert summary["RMSE"] == pytest.approx(np.sqrt(summary["MSE"]))
     assert summary["AIC"] == pytest.approx(
         aic_from_mse(mse=summary["MSE"], n=summary["n"], k=summary["k"])
@@ -195,6 +199,35 @@ def test_metrics_mappings_and_summary(
 
     # the cost is the objective of the optimization
     assert summary["cost"] == pytest.approx(
-        op_hctz_pkiv.cost_least_square(np.log10(op_hctz_pkiv.xmodel))
+        op_hctz_iv.cost_least_square(np.log10(op_hctz_iv.xmodel))
     )
     assert metrics.report()
+
+
+def test_normalized_and_weighted_residuals(
+    op_hctz_pk: OptimizationProblem, fit_settings: FitSettings
+) -> None:
+    """NRES is scale free and IWRES is the residual of the cost."""
+    op_hctz_pk.initialize(fit_settings)
+    metrics = FitMetrics(
+        problem=op_hctz_pk, parameter_set=op_hctz_pk.parameter_set_model()
+    )
+    dp = metrics.datapoints_df()
+
+    # the normalized residual is the residual over the mean of its curve
+    for _mapping, of_mapping in dp.groupby("mapping"):
+        assert np.allclose(of_mapping.NRES, of_mapping.IRES / of_mapping.DV.mean())
+
+    # the weighted residuals are what the cost sums, on the training data
+    training = dp[dp.kind == MappingKind.TRAINING.value]
+    cost = 0.5 * float(np.sum(np.square(training.IWRES)))
+    assert cost == pytest.approx(metrics.cost())
+    summary = metrics.summary(kind=MappingKind.TRAINING)
+    assert summary["cost"] == pytest.approx(0.5 * summary["n"] * summary["RMSE_w"] ** 2)
+    assert summary["NRMSE"] == pytest.approx(rmse(training.NRES))
+
+    # the outliers are curves of small values missed by a factor: their absolute
+    # RMSE is below the one of the training data, their NRMSE is far above
+    outliers = metrics.summary(kind=MappingKind.OUTLIER)
+    assert outliers["RMSE"] < summary["RMSE"]
+    assert outliers["NRMSE"] > 5 * summary["NRMSE"]

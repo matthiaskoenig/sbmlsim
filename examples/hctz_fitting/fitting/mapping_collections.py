@@ -1,31 +1,34 @@
 """Parameter fit problems for HCTZ.
 
-The fit experiments are built from the fit mappings of the studies which pass a
-set of filters on the metadata of the mappings. The metadata of a mapping
-describes its curve, what a fit does with the curve is decided here: every
-selection gets a `MappingKind`, i.e., it is the training data of the fit, the
-validation data it is evaluated on, or an outlier which is not used.
+The data of a fit is selected from the fit mappings of the studies in three
+steps, see `sbmlsim.fit.helpers`: the filters on the metadata of the mappings
+select the training data of the fit and exclude the rest, the outliers are
+named once for all mappings and are the training data which is not usable, and
+the validation data is the part of the training data a fit is evaluated on but
+not fitted to. The metadata of a mapping describes its curve, what a fit does
+with the curve is decided here.
 """
+
+import sys
+from pathlib import Path
+
+# run as a script (`python examples/hctz_fitting/fitting/mapping_collections.py`,
+# the "run file" of an IDE) the repository is not on `sys.path`, so the
+# `examples` package is not found
+if __package__ in (None, ""):
+    sys.path.insert(0, str(Path(__file__).resolve().parents[3]))
 
 from examples.hctz_fitting import DATA_PATH, HCTZ_PATH
 from examples.hctz_fitting.experiments.metadata import (
     Coadministration,
-    Fasting,
     HCTZMappingMetaData,
     Route,
 )
 from examples.hctz_fitting.experiments.studies import Beermann1976, Patel1984, Weir1998
 from sbmlsim.console import console
 from sbmlsim.experiment import SimulationExperiment
-from sbmlsim.fit import FitMapping, FitMappingCollection, MappingKind
-from sbmlsim.fit.helpers import (
-    MappingFilter,
-    f_collection,
-    filter_empty,
-    filter_keys,
-    filter_not_keys,
-    mapping_collections_by_kind,
-)
+from sbmlsim.fit import FitMapping, FitMappingCollection
+from sbmlsim.fit.helpers import MappingFilter, select_mapping_collections
 
 # observables of the pharmacokinetics
 PK_OBSERVABLES = {"Afeces_hctz", "Aurine_hctz", "Cve_hctz", "KI__HCTZEX"}
@@ -36,13 +39,15 @@ EXPERIMENT_CLASSES: list[type[SimulationExperiment]] = [
     Weir1998,
 ]
 
-#: mappings which are not used, the data is not usable
+#: outliers: the data is not usable. Tagged once for all mappings, an outlier
+#: is not fitted in any fit whose filters select it, but simulated and
+#: evaluated so that the decision can be checked against the model
 OUTLIER_MAPPINGS: set[str] = {
     "fm_hctz5po_4",
     "fm_excretion_hctz5po_4",
 }
 
-#: mappings which are kept out of the fits, the fits are evaluated on them.
+#: validation data: kept out of the fits, the fits are evaluated on it.
 #: The highest oral dose of Patel1984 checks how the parameters extrapolate,
 #: and Weir1998 checks the multiple dosing: the fits are made on single doses,
 #: so the accumulation over eleven doses every 12 hours is a prediction.
@@ -54,63 +59,33 @@ VALIDATION_MAPPINGS: set[str] = {
     "fm_Tab4_excretion_hctz25",
 }
 
-#: mappings the model does not describe, i.e. the `_kombi` arms of Weir1998,
-#: which are hydrochlorothiazide with diltiazem and the model has no
-#: interaction for it. The data is fine, the model is not the one for it, so
-#: these are not outliers.
-EXCLUDED_MAPPINGS: set[str] = {
-    "fm_Fig2_hctz25_kombi",
-    "fm_Fig3_amount_cumulative_hctz25_kombi",
-    "fm_Tab4_excretion_hctz25_kombi",
-}
-
 
 def mapping_collections(
-    metadata_filters: MappingFilter | list[MappingFilter],
-    kind: MappingKind = MappingKind.TRAINING,
+    filters: MappingFilter | list[MappingFilter],
+    validation: set[str] | MappingFilter = VALIDATION_MAPPINGS,
 ) -> dict[str, list[FitMappingCollection]]:
-    """Get the fit experiments of the studies for the given filters."""
-    return f_collection(
-        experiment_classes=EXPERIMENT_CLASSES,
-        metadata_filters=metadata_filters,
-        base_path=HCTZ_PATH,
-        data_path=DATA_PATH,
-        kind=kind,
-    )
+    """Select the data of a fit from the fit mappings of the studies.
 
-
-def classified_mapping_collections(
-    metadata_filters: list[MappingFilter],
-) -> dict[str, list[FitMappingCollection]]:
-    """Split a selection of mappings into training, validation and outliers.
-
-    The outliers, the validation data and the data the model does not
-    describe are named in `OUTLIER_MAPPINGS`, `VALIDATION_MAPPINGS` and
-    `EXCLUDED_MAPPINGS`, everything else the filters accept is fitted.
+    The filters select the training data, the mappings which fail them are
+    excluded, e.g. the `_kombi` arms of Weir1998, which are hydrochlorothiazide
+    with diltiazem and the model has no interaction for it. The outliers are
+    `OUTLIER_MAPPINGS`, and the validation data is `VALIDATION_MAPPINGS` by
+    default.
 
     Args:
-        metadata_filters: filters which select the data of the fit.
+        filters: filters of the training data.
+        validation: keys or filter of the validation data.
 
     Returns:
-        The fit experiments of the three kinds by experiment id.
+        The fit mapping collections of all kinds by experiment id.
     """
-    not_fitted = OUTLIER_MAPPINGS | VALIDATION_MAPPINGS | EXCLUDED_MAPPINGS
-    return mapping_collections_by_kind(
+    return select_mapping_collections(
         experiment_classes=EXPERIMENT_CLASSES,
         base_path=HCTZ_PATH,
         data_path=DATA_PATH,
-        filters_by_kind={
-            MappingKind.TRAINING: [*metadata_filters, filter_not_keys(not_fitted)],
-            MappingKind.VALIDATION: [
-                *metadata_filters,
-                filter_keys(VALIDATION_MAPPINGS),
-            ],
-            MappingKind.OUTLIER: [*metadata_filters, filter_keys(OUTLIER_MAPPINGS)],
-            # the excluded data is named and not filtered by its metadata: the
-            # filters of a fit remove the coadministration, which is what makes
-            # this data data the model does not describe
-            MappingKind.EXCLUDED: filter_keys(EXCLUDED_MAPPINGS),
-        },
+        filters=filters,
+        outliers=OUTLIER_MAPPINGS,
+        validation=validation,
     )
 
 
@@ -127,25 +102,14 @@ def _yid(fit_mapping: FitMapping) -> str:
     return "__".join(fit_mapping.observable.y.sid.split("__")[1:])
 
 
-def filter_control(fit_mapping_key: str, fit_mapping: FitMapping) -> bool:
-    """Return control experiments/mappings."""
-    metadata = _metadata(fit_mapping)
-
-    # only PO and IV (no SL, MU, RE)
-    if metadata.route not in {Route.PO, Route.IV}:
-        return False
-
-    # remove not fasted
-    if metadata.fasting not in {Fasting.NR, Fasting.FASTED}:
-        return False
-
-    # remove coadministration
-    return metadata.coadministration == Coadministration.NONE
+def filter_coadministration(fit_mapping_key: str, fit_mapping: FitMapping) -> bool:
+    """Only data without coadministration."""
+    return _metadata(fit_mapping).coadministration == Coadministration.NONE
 
 
-def filter_iv(fit_mapping_key: str, fit_mapping: FitMapping) -> bool:
-    """Only IV application data."""
-    return _metadata(fit_mapping).route == Route.IV
+def filter_iv_po(fit_mapping_key: str, fit_mapping: FitMapping) -> bool:
+    """Only iv and po data."""
+    return _metadata(fit_mapping).route in {Route.IV, Route.PO}
 
 
 def filter_pk(fit_mapping_key: str, fit_mapping: FitMapping) -> bool:
@@ -160,37 +124,24 @@ def filter_pd(fit_mapping_key: str, fit_mapping: FitMapping) -> bool:
 
 def f_collections_all() -> dict[str, list[FitMappingCollection]]:
     """All data."""
-    return mapping_collections(filter_empty)
-
-
-def f_collections_control() -> dict[str, list[FitMappingCollection]]:
-    """Control data."""
-    return mapping_collections([filter_control])
+    return mapping_collections([])
 
 
 def f_collections_pk() -> dict[str, list[FitMappingCollection]]:
-    """HCTZ pharmacokinetics data, split into training, validation and outliers."""
-    return classified_mapping_collections([filter_control, filter_pk])
-
-
-def f_collections_pkiv() -> dict[str, list[FitMappingCollection]]:
-    """HCTZ iv pharmacokinetics data."""
-    return classified_mapping_collections([filter_control, filter_pk, filter_iv])
+    """HCTZ pharmacokinetics data."""
+    return mapping_collections([filter_coadministration, filter_iv_po, filter_pk])
 
 
 def f_collections_pd() -> dict[str, list[FitMappingCollection]]:
     """HCTZ pharmacodynamics data."""
-    return mapping_collections([filter_control, filter_pd])
+    return mapping_collections([filter_coadministration, filter_iv_po, filter_pd])
 
 
 if __name__ == "__main__":
     for f in [
         f_collections_all,
-        f_collections_control,
         f_collections_pk,
-        f_collections_pkiv,
         f_collections_pd,
     ]:
         console.rule(title=f.__name__, align="left", style="white")
-        for sid, collections in f().items():
-            console.print(f"{sid}: {collections}")
+        f()

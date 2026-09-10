@@ -22,7 +22,6 @@ if __package__ in (None, ""):
 from examples.hctz_fitting import DATA_PATH, HCTZ_PATH
 from examples.hctz_fitting.fitting.mapping_collections import (
     f_collections_pk,
-    f_collections_pkiv,
 )
 from examples.hctz_fitting.fitting.parameters import parameters_pk
 from sbmlsim.fit import FitSettings
@@ -54,14 +53,6 @@ FIT_DEFINITIONS: dict[str, FitDefinition] = {
     # all pharmacokinetics data
     "PK": FitDefinition(
         mapping_collections=f_collections_pk,
-        parameters=parameters_pk,
-        base_path=HCTZ_PATH,
-        data_path=DATA_PATH,
-        settings=FIT_SETTINGS,
-    ),
-    # pharmacokinetics data of the iv studies
-    "PKIV": FitDefinition(
-        mapping_collections=f_collections_pkiv,
         parameters=parameters_pk,
         base_path=HCTZ_PATH,
         data_path=DATA_PATH,

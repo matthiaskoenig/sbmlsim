@@ -14,7 +14,19 @@ The names of the columns follow the convention of population pharmacokinetics:
             the fit mapping. Without individual parameters IPRED is PRED
     RES     DV - PRED
     IRES    DV - IPRED
-    IWRES   IRES weighted with the weights of the optimization problem
+    NRES    IRES / mean(DV) of the fit mapping, the normalized residual, so the
+            residuals of curves of different magnitude are comparable
+    IWRES   the residual of the cost of the optimization problem, i.e., IRES
+            as the `ResidualType` of the settings defines it, weighted and
+            with the loss function applied. The cost of the training data is
+            `0.5 * sum(IWRES**2)`
+
+The data of a fit spans orders of magnitude, so the absolute metrics `MSE`,
+`RMSE` and `R2` are dominated by the curves with the largest values and a
+curve of small values is missed by a factor of 20 at an absolute error which is
+still tiny. `NRMSE`, the root mean square of `NRES`, is the scale free metric
+which reads the same for every curve, and `RMSE_w` is the root mean square of
+`IWRES`, i.e., what the fit minimizes.
 
 Note the sign: the residuals of `OptimizationProblem.residuals` are
 `prediction - data`, the residuals here are `data - prediction`.
@@ -258,12 +270,16 @@ class FitMetrics:
         """Number of fitted parameters, the `k` of the AIC."""
         return len(self.problem.parameters)
 
-    def _predictions(self, pset: ParameterSet) -> list[np.ndarray]:
-        """Get the prediction at the data points of every mapping."""
-        res_data: dict[str, list[Any]] = self.problem.residuals(  # ty: ignore[invalid-assignment]
+    def _residual_data(self, pset: ParameterSet) -> dict[str, list[Any]]:
+        """Get the complete residual data of every mapping for a parameter set."""
+        return self.problem.residuals(  # ty: ignore[invalid-return-type]
             xlog=self.problem.to_scale(pset.x(self.problem.pids)),
             complete_data=True,
         )
+
+    def _predictions(self, pset: ParameterSet) -> list[np.ndarray]:
+        """Get the prediction at the data points of every mapping."""
+        res_data = self._residual_data(pset)
         return [np.asarray(y, dtype=float) for y in res_data["y_obsip"]]
 
     def datapoints_df(self) -> pd.DataFrame:
@@ -271,10 +287,11 @@ class FitMetrics:
 
         Returns:
             DataFrame with one row per data point and the columns `experiment`,
-            `mapping`, `kind`, `x`, `DV`, `PRED`, `IPRED`, `RES`, `IRES` and
-            `IWRES`.
+            `mapping`, `kind`, `x`, `DV`, `PRED`, `IPRED`, `RES`, `IRES`,
+            `NRES` and `IWRES`, see the module.
         """
-        ipred_all = self._predictions(self.parameter_set)
+        res_data = self._residual_data(self.parameter_set)
+        ipred_all = [np.asarray(y, dtype=float) for y in res_data["y_obsip"]]
         pred_all = (
             self._predictions(self.population_parameter_set)
             if self.population_parameter_set is not None
@@ -286,9 +303,11 @@ class FitMetrics:
             dv = np.asarray(self.problem.y_references[k], dtype=float)
             pred = pred_all[k]
             ipred = ipred_all[k]
-            # the weights of the problem, they define the cost
-            weights = np.sqrt(np.asarray(self.problem.weights[k], dtype=float))
+            # the residual of the cost, with the sign of `data - prediction`
+            iwres = -np.asarray(res_data["residuals_weighted"][k], dtype=float)
+            dv_mean = float(np.mean(dv))
             for ix in range(dv.size):
+                ires = dv[ix] - ipred[ix]
                 data.append(
                     {
                         "experiment": self.problem.experiment_keys[k],
@@ -299,8 +318,9 @@ class FitMetrics:
                         "PRED": pred[ix],
                         "IPRED": ipred[ix],
                         "RES": dv[ix] - pred[ix],
-                        "IRES": dv[ix] - ipred[ix],
-                        "IWRES": (dv[ix] - ipred[ix]) * weights[ix],
+                        "IRES": ires,
+                        "NRES": ires / dv_mean if dv_mean else float("nan"),
+                        "IWRES": iwres[ix],
                     }
                 )
 
@@ -317,6 +337,7 @@ class FitMetrics:
                     "IPRED",
                     "RES",
                     "IRES",
+                    "NRES",
                     "IWRES",
                 ]
             ),
@@ -327,32 +348,42 @@ class FitMetrics:
 
         Returns:
             DataFrame with one row per fit mapping and the columns `experiment`,
-            `mapping`, `kind`, `n`, `MSE`, `RMSE` and `R2`.
+            `mapping`, `kind`, `n`, `MSE`, `RMSE`, `NRMSE`, `RMSE_w` and `R2`.
         """
-        ipred_all = self._predictions(self.parameter_set)
+        dp = self.datapoints_df()
 
         data: list[dict[str, Any]] = []
         for k, mapping in enumerate(self.problem.mapping_keys):
-            dv = np.asarray(self.problem.y_references[k], dtype=float)
-            ipred = ipred_all[k]
-            ires = dv - ipred
-            mse_value = mse(ires)
+            of_mapping = dp[dp.mapping == mapping]
+            mse_value = mse(of_mapping.IRES)
             data.append(
                 {
                     "experiment": self.problem.experiment_keys[k],
                     "mapping": mapping,
                     "kind": self.problem.mapping_kinds[k].value,
-                    "n": dv.size,
+                    "n": len(of_mapping),
                     "MSE": mse_value,
                     "RMSE": rmse_from_mse(mse_value),
-                    "R2": r_squared(dv, ipred),
+                    "NRMSE": rmse(of_mapping.NRES),
+                    "RMSE_w": rmse(of_mapping.IWRES),
+                    "R2": r_squared(of_mapping.DV, of_mapping.IPRED),
                 }
             )
 
         return pd.DataFrame(
             data,
             columns=pd.Index(
-                ["experiment", "mapping", "kind", "n", "MSE", "RMSE", "R2"]
+                [
+                    "experiment",
+                    "mapping",
+                    "kind",
+                    "n",
+                    "MSE",
+                    "RMSE",
+                    "NRMSE",
+                    "RMSE_w",
+                    "R2",
+                ]
             ),
         )
 
@@ -363,9 +394,12 @@ class FitMetrics:
         data and the predictions, i.e., they are dominated by the fit mappings
         with the largest values. The two information criteria differ in how
         they penalize a parameter, `2` against `ln(n)`, so the BIC prefers the
-        smaller model of two which describe the data equally well. `RMSE_w` is the root mean square of the weighted
-        residuals, so a parameter set can have a larger RMSE and smaller
-        weighted residuals than another one, which is what the weighting is for.
+        smaller model of two which describe the data equally well. `NRMSE` is
+        the root mean square of the residuals normalized by the mean of their
+        curve, so every curve counts the same whatever its magnitude, and
+        `RMSE_w` is the root mean square of the residuals of the cost, so a
+        parameter set can have a larger RMSE and smaller weighted residuals
+        than another one, which is what the weighting is for.
 
         `cost` is the objective the optimization minimizes. It is defined on the
         training data alone, so it is only reported for the training data and is
@@ -378,7 +412,7 @@ class FitMetrics:
         Returns:
             Dictionary with the id of the parameter set, the `kind`, the number
             of data points `n`, the number of parameters `k`, the `cost`,
-            `MSE`, `RMSE`, `RMSE_w`, `R2`, `AIC` and `BIC`.
+            `MSE`, `RMSE`, `NRMSE`, `RMSE_w`, `R2`, `AIC` and `BIC`.
 
         Raises:
             ValueError: if the problem has no data points of the kind.
@@ -405,6 +439,7 @@ class FitMetrics:
             "cost": self.cost() if is_training else float("nan"),
             "MSE": mse_value,
             "RMSE": rmse_from_mse(mse_value),
+            "NRMSE": rmse(dp.NRES),
             "RMSE_w": rmse(dp.IWRES),
             "R2": r_squared(dp.DV, dp.IPRED),
             "AIC": aic_from_mse(mse=mse_value, n=len(dp), k=self.n_parameters),

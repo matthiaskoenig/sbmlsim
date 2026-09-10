@@ -38,46 +38,47 @@ The units of the reference and the observable are compared and the reference is 
 
 ## Training, validation and outlier data
 
-What a fit does with a curve is decided when the data of the fit is selected, not on the fit mapping: the same curve is training data of one fit and validation data of another. Every `FitMappingCollection` therefore carries a `MappingKind` for the mappings it selects: `TRAINING` enters the cost, `VALIDATION` and `OUTLIER` are evaluated but not fitted, and `EXCLUDED` is not used at all. Outlier and excluded say different things: an outlier is a decision about the data, i.e. it is not usable, and an exclusion is a decision about the model, i.e. the model does not describe what was measured, e.g. an arm of a study with a coadministration the model has no interaction for.
+What a fit does with a curve is decided when the data of the fit is selected, not on the fit mapping: the same curve is training data of one fit and validation data of another. Every `FitMappingCollection` therefore carries a `MappingKind` for the mappings it selects: `TRAINING` enters the cost, `VALIDATION` and `OUTLIER` are evaluated but not fitted, and `EXCLUDED` is not used at all. Outlier and excluded say different things: an outlier is a decision about the data, i.e. it is not usable, and an exclusion is a decision about the fit, i.e. the data is not what the fit is about or the model does not describe what was measured, e.g. an arm of a study with a coadministration the model has no interaction for.
 
 - `MappingKind.TRAINING` (the default): the mappings are fitted, i.e., their residuals enter the cost of the optimization,
 - `MappingKind.VALIDATION`: the mappings are not fitted. They are simulated and evaluated together with the training data when the fit is reported, which shows how the fitted parameters describe data they were not fitted on,
 - `MappingKind.OUTLIER`: the mappings are not fitted, because the data is not usable. They are resolved and evaluated like the validation data, so a report has their metrics and their figures and the decision to drop a curve can be checked against the model,
-- `MappingKind.EXCLUDED`: the mappings are not used at all. An optimization problem does not resolve them, so they have no metrics and are not part of a report; they stay in the overview of the data of a `FitDefinition` so that it is visible which curves were dropped and why.
+- `MappingKind.EXCLUDED`: the mappings are not used at all. An optimization problem does not resolve them, so they have no metrics and are not part of a report; they stay in the overview of the data of a `FitDefinition` so that it is visible which curves were dropped.
 
-`mapping_collections_by_kind` selects and classifies the data in one step: every kind gets its own filters and the mappings of all kinds are listed in a single overview.
+`sbmlsim.fit.helpers` selects the data of a fit from the complete list of fit mappings of its simulation experiments. `FitMappings` instantiates the experiments once, which loads the models and the datasets, and `FitMappings.select` sets the kind of every mapping in three ordered steps:
+
+1. **The filters select the training data.** A filter is a callable of the key of a fit mapping and the `FitMapping`, e.g. a test on its `MappingMetaData`. A mapping which passes every filter is training data, a mapping which fails one is `EXCLUDED`. No filters select every mapping.
+2. **The outliers are named by their keys.** An outlier is training data whose values are not usable, so it is tagged once for the complete list of mappings and not per fit: it is an `OUTLIER` in every fit whose filters select it. An outlier the filters exclude stays excluded.
+3. **Part of the training data is the validation data.** It is selected from what is left, by the keys of the mappings or by a filter, and is `VALIDATION`. Everything else is `TRAINING`.
+
+The steps are ordered, so a mapping which hits several has one kind: excluded beats outlier, outlier beats validation and validation beats training. The result is a `MappingSelection` with the kind of every mapping, the overview table `df` and the `collections` a `FitDefinition` is defined with, one `FitMappingCollection` per experiment and kind; `select_mapping_collections` does all of it in one call.
 
 ```python
 from examples.hctz_fitting import DATA_PATH, HCTZ_PATH
-from examples.hctz_fitting.experiments.studies import Beermann1976
-from sbmlsim.fit import MappingKind
-from sbmlsim.fit.helpers import (
-    filter_empty,
-    filter_keys,
-    filter_not_keys,
-    mapping_collections_by_kind,
-)
+from examples.hctz_fitting.experiments.studies import Beermann1976, Patel1984
+from sbmlsim.fit.helpers import FitMappings
 
-validation = {"fm_hctz_iv35_4_urine"}
-mapping_collections_kinds = mapping_collections_by_kind(
-    experiment_classes=[Beermann1976],
+fit_mappings = FitMappings(
+    experiment_classes=[Beermann1976, Patel1984],
     base_path=HCTZ_PATH,
     data_path=DATA_PATH,
-    filters_by_kind={
-        MappingKind.TRAINING: [filter_empty, filter_not_keys(validation)],
-        MappingKind.VALIDATION: [filter_keys(validation)],
-    },
 )
+selection = fit_mappings.select(
+    filters=[lambda key, fm: "urine" in key],  # the training data
+    outliers={"fm_hctz_iv1_5_urine"},  # not usable, tagged once for all fits
+    validation={"fm_200_tab_urine", "fm_200_sus_urine"},  # evaluated, not fitted
+)
+mapping_collections = selection.collections
 ```
 
 The overview ends in a line such as `mappings : 32 (28 training, 2 validation, 2 outlier)`. On the problem, `mapping_counts()` reports how many mappings of each kind it has and `training_indices`, `validation_indices` and `outlier_indices` are their positions in the resolved data.
 
-`sbmlsim.fit.helpers` filters the mappings by their metadata and collects it into a table:
+`examples/hctz_fitting/fitting/mapping_collections.py` is the selection of the reference problem: the outliers and the validation data are named once, and every fit problem is a list of filters on the metadata of the mappings.
 
 ```python
-from examples.hctz_fitting.fitting.mapping_collections import f_collections_pkiv
+from examples.hctz_fitting.fitting.mapping_collections import f_collections_pk
 
-mapping_collections = f_collections_pkiv()
+mapping_collections = f_collections_pk()
 print(mapping_collections)
 ```
 
@@ -170,7 +171,7 @@ The same settings are needed to report a fit, so they are stored with its result
 
 ## Running the optimization
 
-`run_optimization` samples `size` start points within the bounds (see `sbmlsim.fit.sampling`), runs the optimizer from every start point, in parallel on `n_cores`, and returns an `OptimizationResult`. The progress of the runs is shown on the console:
+`run_optimization` samples `size` start points within the bounds (see `sbmlsim.fit.sampling`), runs the optimizer from every start point, in parallel on `n_cores`, and returns an `OptimizationResult`. The progress of the runs is shown on the console, with the runs which are done, the elapsed time and an estimate of the total runtime, e.g. `~ 0:12:30 total`; the estimate is the time per batch of `n_cores` runs times the number of batches, so it is there as soon as the first run is done and settles as more runs come back:
 
 ```py
 from sbmlsim.fit.options import OptimizationAlgorithmType
@@ -281,7 +282,7 @@ report = FitReport.from_optimization_result(
 
 ## Metrics
 
-`FitMetrics` calculates the metrics of a parameter set on an initialized problem, i.e., from the data of the fit mappings and the predictions of the model. The column names follow the convention of population pharmacokinetics: `DV` is the measured value, `PRED` the prediction of the population parameters, `IPRED` the prediction of the individual parameters, `RES` and `IRES` the residuals `DV - PRED` and `DV - IPRED`, and `IWRES` the residual weighted with the weights of the problem. A deterministic fit has a single parameter set, so `PRED` is `IPRED` unless a `population_parameter_set` is given:
+`FitMetrics` calculates the metrics of a parameter set on an initialized problem, i.e., from the data of the fit mappings and the predictions of the model. The column names follow the convention of population pharmacokinetics: `DV` is the measured value, `PRED` the prediction of the population parameters, `IPRED` the prediction of the individual parameters, `RES` and `IRES` the residuals `DV - PRED` and `DV - IPRED`, `NRES` the residual normalized by the mean of its curve, `IRES / mean(DV)`, and `IWRES` the residual of the cost, i.e., the residual of the residual type of the settings, weighted and with the loss function applied. A deterministic fit has a single parameter set, so `PRED` is `IPRED` unless a `population_parameter_set` is given:
 
 ```py
 from sbmlsim.fit import FitMetrics
@@ -292,7 +293,7 @@ print(metrics.mappings_df())
 print(metrics.summary())
 ```
 
-`summary()` gives the metrics over all data points: the number of data points `n`, the number of fitted parameters `k`, the `cost`, `MSE`, `RMSE`, `RMSE_w`, `R2`, `AIC` and `BIC`; `mappings_df()` gives them per fit mapping. `MSE`, `RMSE`, `R2`, `AIC` and `BIC` are unweighted metrics of the data and the predictions, so they are dominated by the mappings with the largest values, while `RMSE_w` uses the weighting of the settings. A parameter set can therefore have a larger RMSE and smaller weighted residuals than another one, which is what the weighting is for.
+`summary()` gives the metrics over all data points: the number of data points `n`, the number of fitted parameters `k`, the `cost`, `MSE`, `RMSE`, `NRMSE`, `RMSE_w`, `R2`, `AIC` and `BIC`; `mappings_df()` gives them per fit mapping. `MSE`, `RMSE`, `R2`, `AIC` and `BIC` are unweighted metrics of the data and the predictions, so they are dominated by the mappings with the largest values: the data of a fit spans orders of magnitude, and a curve of small values which is missed by a factor of 20 still has a tiny absolute error. `NRMSE` is the root mean square of `NRES`, so every curve counts the same whatever its magnitude, and `RMSE_w` is the root mean square of `IWRES`, i.e., what the fit minimizes; the cost of the training data is `0.5 * n * RMSE_w²`. A parameter set can therefore have a larger RMSE and smaller weighted residuals than another one, which is what the weighting is for. The boxes of the goodness of fit show `R²`, `NRMSE` and `RMSE_w` per kind, not the absolute RMSE.
 
 A fit is evaluated on the data it was fitted on and on the data it was not, so `summary(kind=...)` restricts the metrics to a kind of mapping and `summary_df()` has one row per kind: the training data, the validation data and the outliers. The outliers are in there because a curve which a fit drops is a claim about the data which the metrics make checkable: an outlier with an R² as good as the training data is a curve which was dropped without reason. There is no row over all data points, which would pool the data a fit was fitted on with the data it dropped; `summary()` without a kind gives that number where it is wanted. The `cost` is the objective of the optimization, which is defined on the training data alone, so it is only reported there:
 
@@ -436,13 +437,13 @@ Creating the optimization problems, running the optimizations and reporting them
 from sbmlsim.fit.cli import FitDefinition
 
 definition = FitDefinition(
-    mapping_collections=f_collections_pkiv,  # called when the fit runs
+    mapping_collections=f_collections_pk,  # called when the fit runs
     parameters=fit_parameters,
     base_path=HCTZ_PATH,
     data_path=DATA_PATH,
     settings=settings,
 )
-print(definition.problem(opid="hctz_iv"))
+print(definition.problem(opid="hctz_pk"))
 ```
 
 `run_fit` builds the problems for a strategy and runs them: `OptimizationStrategy.ALL` fits all experiments together, i.e., one parameter set describes every experiment, `SINGLE` fits every experiment on its own, which gives the individual parameters of the metrics. It returns a `FitRun` per optimization, which carries the problem and the result and creates the report.
@@ -452,7 +453,7 @@ print(definition.problem(opid="hctz_iv"))
 ```python
 from sbmlsim.fit.cli import fit_cli
 
-FIT_DEFINITIONS = {"PKIV": definition}
+FIT_DEFINITIONS = {"PK": definition}
 
 
 def main() -> None:
