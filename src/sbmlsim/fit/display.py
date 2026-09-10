@@ -20,6 +20,7 @@ from typing import Any
 
 import pandas as pd
 from rich import box
+from rich.measure import Measurement
 from rich.table import Table
 
 from sbmlsim.console import console
@@ -52,7 +53,7 @@ KIND_STYLES: dict[str, str] = {
     MappingKind.TRAINING.value: "green",
     MappingKind.VALIDATION.value: "blue",
     MappingKind.OUTLIER.value: "orange3",
-    MappingKind.EXCLUDED.value: "grey54",
+    MappingKind.EXCLUDED.value: "grey35",
 }
 
 
@@ -164,7 +165,7 @@ def data_summary_table(df: pd.DataFrame) -> Table:
     """Get the table of the fit mappings per experiment and kind.
 
     Args:
-        df: metadata table of `sbmlsim.fit.helpers.filtered_mapping_collections`.
+        df: metadata table of `sbmlsim.fit.helpers.MappingSelection`.
 
     Returns:
         One row per simulation experiment with the number of mappings of every
@@ -192,25 +193,44 @@ def data_summary_table(df: pd.DataFrame) -> Table:
     return table
 
 
+#: the columns of the data table every selection has, the rest is the metadata
+DATA_COLUMNS = ["experiment", "fm_key", "yid", "kind"]
+
+
 def data_table(df: pd.DataFrame) -> Table:
     """Get the table of the single fit mappings.
 
     Args:
-        df: metadata table of `sbmlsim.fit.helpers.filtered_mapping_collections`.
+        df: metadata table of `sbmlsim.fit.helpers.MappingSelection`.
 
     Returns:
-        One row per fit mapping with its experiment, its observable and its
-        kind. The remaining metadata describes the curve and is in the report.
+        One row per fit mapping with its experiment, its observable, its kind
+        and the fields of its metadata, which describe the curve.
     """
-    table = _table("experiment", "mapping", "observable", "kind")
+    metadata_columns = [c for c in df.columns if c not in DATA_COLUMNS]
+    table = _table("experiment", "mapping", "observable", "kind", *metadata_columns)
+    for column in table.columns:
+        column.no_wrap = True
     for _, row in df.iterrows():
+        kind = str(row.get("kind", ""))
+        # the excluded data is no part of the fit, the complete row is grey
+        excluded = kind == MappingKind.EXCLUDED.value
         table.add_row(
             str(row.get("experiment", "")),
             str(row.get("fm_key", "")),
             str(row.get("yid", "")),
-            _kind(str(row.get("kind", ""))),
+            _kind(kind),
+            *(_cell(row[c]) for c in metadata_columns),
+            style=KIND_STYLES[MappingKind.EXCLUDED.value] if excluded else None,
         )
     return table
+
+
+def _cell(value: Any) -> str:
+    """Format a metadata value of the data table."""
+    if value is None or (isinstance(value, float) and pd.isna(value)):
+        return "[dim]-[/dim]"
+    return str(value)
 
 
 def print_parameters(parameters: Iterable[FitParameter]) -> None:
@@ -230,14 +250,35 @@ def print_data(df: pd.DataFrame, detail: bool = True) -> None:
     """Print the section of the data of a fit.
 
     Args:
-        df: metadata table of `sbmlsim.fit.helpers.filtered_mapping_collections`.
+        df: metadata table of `sbmlsim.fit.helpers.MappingSelection`.
         detail: list the single fit mappings, not only the counts.
     """
     section(f"Data ({len(df)} fit mappings)", icon=ICON_DATA)
     console.print(data_summary_table(df))
     if detail:
         console.line()
-        console.print(data_table(df))
+        print_wide(data_table(df))
+
+
+def print_wide(table: Table) -> None:
+    """Print a table at its full width, the columns are not truncated.
+
+    A table with many columns, e.g. the data table with its metadata, is wider
+    than the console; the console would shorten the cells to `…`, so the table
+    is printed at the width it needs and the terminal wraps the lines.
+    """
+    width = Measurement.get(console, console.options.update_width(10_000), table)
+    if width.maximum <= console.width:
+        console.print(table)
+        return
+    # `console.print(width=...)` is capped at the width of the console, so the
+    # console is widened for the table and restored afterwards
+    console_width = console._width
+    console.width = width.maximum
+    try:
+        console.print(table, crop=False)
+    finally:
+        console._width = console_width
 
 
 def identifiability_table(df: pd.DataFrame) -> Table:

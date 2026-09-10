@@ -207,6 +207,64 @@ def test_the_goodness_of_fit_and_altman_plots(
     # the metrics of the report cover the outliers
     metrics = (results_dir / "metrics.tsv").read_text(encoding="utf-8")
     assert MappingKind.OUTLIER.value in metrics
+    # both figures cover a full row of the report, the other plots do not
+    context = report.html_context(results_dir, name="subsets")
+    wide = {plot["src"]: plot["wide"] for plot in context["result_plots"]}
+    assert wide["plots/goodness_of_fit.svg"]
+    assert wide["plots/bland_altman.svg"]
+    assert not wide["plots/cost_bar.svg"]
+    assert 'class="card wide"' in html
+
+
+def test_the_key_metrics_of_the_panels(
+    op_hctz_pk: OptimizationProblem, fit_settings: FitSettings
+) -> None:
+    """Every panel carries the key metrics of its points."""
+    op_hctz_pk.initialize(fit_settings)
+    pset = op_hctz_pk.parameter_set_model()
+    report = FitReport(problem=op_hctz_pk, settings=fit_settings, parameter_sets=pset)
+
+    kind = MappingKind.TRAINING.value
+    summary = report.metrics(pset).summary(kind=MappingKind.TRAINING)
+    gof = report.panel_metrics(kind, "goodness_of_fit")
+    assert f"R² = {summary['R2']:.3f}" in gof
+    assert f"NRMSE = {summary['NRMSE']:.3g}" in gof
+    # a single set has no prefix
+    assert not gof.startswith(pset.sid)
+
+    # the agreement of the training panel is the band, so its bias is the bias
+    # of the band and its points are inside the limits
+    bias, _half = report.agreement(pset)
+    altman = report.panel_metrics(kind, "bland_altman")
+    assert f"bias = {10**bias:.2f}x" in altman
+    assert "in LoA = " in altman
+    inside = int(altman.split("in LoA = ")[1].rstrip("%"))
+    assert inside >= 90
+
+    with pytest.raises(ValueError, match="Unknown plot"):
+        report.panel_metrics(kind, "other")
+
+
+def test_the_key_metrics_of_several_sets(
+    op_hctz_pk: OptimizationProblem, fit_settings: FitSettings
+) -> None:
+    """With several sets the box has a line per set, prefixed with its id."""
+    op_hctz_pk.initialize(fit_settings)
+    model = op_hctz_pk.parameter_set_model()
+    other = ParameterSet(
+        sid="other",
+        values={pid: value * 1.5 for pid, value in model.values.items()},
+    )
+    report = FitReport(
+        problem=op_hctz_pk,
+        settings=fit_settings,
+        parameter_sets=ParameterSets([model, other]),
+    )
+    text = report.panel_metrics(MappingKind.TRAINING.value, "goodness_of_fit")
+    lines = text.splitlines()
+    assert len(lines) == 2
+    assert lines[0].startswith(f"{model.sid}: ")
+    assert lines[1].startswith("other: ")
 
 
 def test_report_without_optimization(

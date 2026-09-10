@@ -34,7 +34,9 @@ def test_definition_collections_selected(
     # the callable of the definition creates the collections by study id
     study_ids = list(definition_hctz_pkiv.mapping_collections())
     collections = definition_hctz_pkiv.collections(study_ids=study_ids[:1])
-    assert len(collections) == 1
+    # a study has one collection per kind of its data
+    assert collections
+    assert {c.experiment_class.__name__ for c in collections} == {study_ids[0]}
 
 
 def test_definition_unknown_study(definition_hctz_pkiv: FitDefinition) -> None:

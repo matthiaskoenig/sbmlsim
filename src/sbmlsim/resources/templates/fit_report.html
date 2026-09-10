@@ -129,7 +129,7 @@
   <h3>Predictions and costs</h3>
   <div class="grid">
     {% for plot in result_plots %}
-    <div class="card"><figure>
+    <div class="card{% if plot.wide %} wide{% endif %}"><figure>
       <img loading="lazy" src="{{ plot.src }}" alt="{{ plot.caption }}">
       <figcaption>{{ plot.caption }}{% if plot.hint %}<span class="hint" tabindex="0" data-tip="{{ plot.hint }}">?</span>{% endif %}</figcaption>
     </figure></div>
@@ -152,6 +152,7 @@
         <td><span class="tag {{ row.kind }}">{{ row.kind }}</span></td>
         <td class="num">{{ row.n }}</td>
         <td class="num mono">{{ row.mse }}</td><td class="num mono">{{ row.rmse }}</td>
+        <td class="num mono">{{ row.nrmse }}</td><td class="num mono">{{ row.rmse_w }}</td>
         <td class="num mono">{{ row.r2 }}</td>
       </tr>
       {% endfor %}
@@ -227,7 +228,6 @@
     .tag.non_identifiable_lower, .tag.non_identifiable_upper { background: var(--outlier); }
     .tag.non_identifiable { background: #c92a2a; }
     .tag.structural { background: #862e9c; }
-    .card.wide { grid-column: 1 / -1; }
   </style>
   <h2>Identifiability</h2>
   <p>Profile likelihood of the parameters: every parameter is fixed at values around the optimum and the other parameters are optimized again. A parameter is identifiable if its profile crosses the threshold of the confidence level on both sides of the optimum, i.e., its confidence interval is finite; practically non-identifiable if the profile stays below the threshold up to a bound of the parameter; structurally non-identifiable if the profile is flat. An open side of an interval is shown as the bound of the parameter.</p>

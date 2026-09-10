@@ -1,7 +1,36 @@
-"""Helper functions for fitting."""
+"""Selection of the data of a fit.
+
+A fit selects its data from the fit mappings of its simulation experiments.
+`FitMappings` is the complete list of these mappings, i.e., every curve which
+is mapped to a simulation, and `FitMappings.select` decides what a fit does
+with every one of them in three steps, each setting a `MappingKind`:
+
+1. **The filters select the training data.** A mapping which passes every
+   filter is training data of the fit. A mapping which fails a filter is
+   `EXCLUDED`: the fit does not use it at all, e.g. the data of a route the fit
+   is not about or an arm with a coadministration the model does not describe.
+2. **The outliers are named by their keys.** An outlier is training data whose
+   values are not usable, e.g. a curve which contradicts the rest of the data,
+   so it is tagged once for the complete list of mappings and not per fit. It
+   is `OUTLIER` in every fit whose filters select it: it is not fitted, but
+   simulated and evaluated so that a report shows where it sits relative to the
+   model. An outlier the filters exclude stays excluded.
+3. **Part of the training data is the validation data.** The validation data
+   is selected from what is left by its keys or by a filter, it is `VALIDATION`:
+   not fitted, but simulated and evaluated so that a report shows how the fit
+   describes data it was not fitted on. Everything else is `TRAINING` and enters
+   the cost.
+
+The three steps are ordered, so a mapping which hits several has one kind:
+excluded beats outlier, outlier beats validation and validation beats training.
+The kind belongs to the selection of the data, not to the fit mappings of a
+simulation experiment: the `MappingMetaData` of a mapping describes its curve,
+and the same curve is training data of one fit and validation data of another.
+"""
 
 import logging
 from collections.abc import Callable, Iterable
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
@@ -18,154 +47,261 @@ from sbmlsim.fit.objects import (
 
 logger = logging.getLogger(__name__)
 
+#: filter of fit mappings, called with the key of a fit mapping and the mapping
 MappingFilter = Callable[[str, FitMapping], bool]
 
 
-def filtered_mapping_collections(
-    experiment_classes: list[type[SimulationExperiment]],
-    metadata_filters: MappingFilter | Iterable[MappingFilter],
-    base_path: Path,
-    data_path: Path,
-    kind: MappingKind = MappingKind.TRAINING,
-) -> tuple[dict[str, list[FitMappingCollection]], pd.DataFrame]:
-    """Create fit experiments from the fit mappings which pass all filters.
+def _filters(filters: MappingFilter | Iterable[MappingFilter]) -> list[MappingFilter]:
+    """Get a single filter or an iterable of filters as a list."""
+    if isinstance(filters, Iterable):
+        return list(filters)
+    return [filters]
 
-    Every filter is called with the key of a fit mapping and the `FitMapping`; a
-    mapping is used if all filters accept it. The fit experiments use the weights
-    of the mappings (`use_mapping_weights=True`).
 
-    The `kind` classifies the selected data: the training data of a fit, the
-    validation data it is evaluated on, or the outliers which are not used. The
-    selection and its classification happen here, the fit mappings of the
-    simulation experiments only describe the curves.
+@dataclass
+class MappingSelection:
+    """The kind of every fit mapping, i.e., what a fit does with the data.
 
-    Args:
-        experiment_classes: simulation experiment classes to filter.
-        metadata_filters: a single filter or an iterable of filters.
-        base_path: base path of the simulation experiments.
-        data_path: path of the datasets of the simulation experiments.
-        kind: what a fit does with the selected mappings.
+    A selection is created by `FitMappings.select`. It is the result of the
+    three steps of the selection for every fit mapping of every experiment.
 
-    Returns:
-        Tuple of the fit experiments by experiment id and a DataFrame with the
-        metadata of the accepted mappings.
+    Attributes:
+        kinds: the `MappingKind` of every fit mapping by experiment id and key.
+        collections: the `FitMappingCollection` per experiment and kind, in the
+            order of `MappingKind`, which is what a `FitDefinition` is defined
+            with. Every fit mapping is in exactly one collection.
+        df: one row per fit mapping with `experiment`, `fm_key`, `yid` (the
+            observable), `kind` and the fields of its `MappingMetaData`; the
+            overview `display.print_data` prints.
     """
-    # instantiate objects for filtering of fit mappings
-    runner = ExperimentRunner(
-        experiment_classes=experiment_classes,
-        base_path=base_path,
-        data_path=data_path,
-    )
-    return _filter_mapping_collections(runner, metadata_filters, kind)
+
+    kinds: dict[str, dict[str, MappingKind]]
+    collections: dict[str, list[FitMappingCollection]] = field(repr=False)
+    df: pd.DataFrame = field(repr=False)
+
+    def kind(self, experiment_id: str, key: str) -> MappingKind:
+        """Get the kind of a fit mapping.
+
+        Args:
+            experiment_id: id of the simulation experiment.
+            key: key of the fit mapping.
+        """
+        return self.kinds[experiment_id][key]
+
+    def kinds_of(self, experiment_id: str) -> dict[str, MappingKind]:
+        """Get the kinds of the fit mappings of an experiment.
+
+        Args:
+            experiment_id: id of the simulation experiment.
+        """
+        return self.kinds[experiment_id]
+
+    def print(self, detail: bool = True) -> None:
+        """Print the overview of the selected data.
+
+        Args:
+            detail: list the single fit mappings, not only the counts.
+        """
+        display.print_data(self.df, detail=detail)
 
 
-def _filter_mapping_collections(
-    runner: ExperimentRunner,
-    metadata_filters: MappingFilter | Iterable[MappingFilter],
-    kind: MappingKind,
-) -> tuple[dict[str, list[FitMappingCollection]], pd.DataFrame]:
-    """Select the fit mappings of initialized experiments, see `filtered_mapping_collections`.
+class FitMappings:
+    """The fit mappings of simulation experiments, i.e., the data a fit selects from.
 
-    Initializing the experiments loads their models and datasets, which is the
-    expensive part of the selection, so a runner is filtered several times.
+    The experiments are instantiated once, which loads their models and their
+    datasets and is the expensive part, and are selected from several times,
+    once per fit problem.
 
-    Args:
-        runner: runner with the initialized simulation experiments.
-        metadata_filters: a single filter or an iterable of filters.
-        kind: what a fit does with the selected mappings.
-
-    Returns:
-        Tuple of the fit experiments by experiment id and a DataFrame with the
-        metadata of the accepted mappings.
+    Attributes:
+        runner: runner with the instantiated simulation experiments.
+        keys: the keys of the fit mappings of every experiment by experiment id.
     """
-    filters: list[MappingFilter] = (
-        list(metadata_filters)
-        if isinstance(metadata_filters, Iterable)
-        else [metadata_filters]
-    )
 
-    mapping_collections: dict[str, list[FitMappingCollection]] = {}
-    all_info: list[dict[str, Any]] = []
+    def __init__(
+        self,
+        experiment_classes: Iterable[type[SimulationExperiment]],
+        base_path: Path,
+        data_path: Path,
+    ):
+        """Instantiate the simulation experiments.
 
-    for experiment_name, experiment in runner.experiments.items():
-        experiment_class = type(experiment)
+        Args:
+            experiment_classes: simulation experiment classes with fit mappings.
+            base_path: base path of the simulation experiments.
+            data_path: path of the datasets of the simulation experiments.
+        """
+        self.runner = ExperimentRunner(
+            experiment_classes=list(experiment_classes),
+            base_path=base_path,
+            data_path=data_path,
+        )
+        self.keys: dict[str, list[str]] = {
+            experiment_id: list(experiment._fit_mappings)
+            for experiment_id, experiment in self.runner.experiments.items()
+        }
 
-        # filter mappings by metadata
-        mappings: list[str] = []
-        for fm_key, fit_mapping in experiment._fit_mappings.items():
-            if not all(f(fm_key, fit_mapping) for f in filters):
-                continue
+    @property
+    def experiments(self) -> dict[str, SimulationExperiment]:
+        """The instantiated simulation experiments by id."""
+        return self.runner.experiments
 
-            mappings.append(fm_key)
+    def _check_keys(self, keys: Iterable[str], what: str) -> set[str]:
+        """Check that the keys are fit mappings of some experiment.
 
-            # collect information
-            metadata: MappingMetaData | None = fit_mapping.metadata
-            if metadata is None:
-                continue
-            try:
-                yid = "__".join(fit_mapping.observable.y.sid.split("__")[1:])
-                all_info.append(
-                    {
-                        "experiment": experiment_name,
-                        "fm_key": fm_key,
-                        "yid": yid,
-                        "kind": kind.value,
-                        **metadata.to_dict(),
-                    }
-                )
-            except Exception as err:
-                logger.error(
-                    "Error in metadata for experiment '%s', fm_key='%s'",
-                    experiment_name,
-                    fm_key,
-                )
-                raise err
+        Raises:
+            ValueError: for a key which is no fit mapping of any experiment.
+        """
+        selected = set(keys)
+        known = {key for keys in self.keys.values() for key in keys}
+        unknown = sorted(selected - known)
+        if unknown:
+            raise ValueError(
+                f"The {what} '{unknown}' are no fit mappings of the experiments "
+                f"'{sorted(self.keys)}'."
+            )
+        return selected
 
-        if mappings:
-            # add fit experiment from filtered mappings
-            mapping_collections[experiment_name] = [
+    def select(
+        self,
+        filters: MappingFilter | Iterable[MappingFilter] = (),
+        outliers: Iterable[str] = (),
+        validation: Iterable[str] | MappingFilter = (),
+        print_info: bool = True,
+    ) -> MappingSelection:
+        """Select the data of a fit, see the module for the three steps.
+
+        Args:
+            filters: filters of the training data. A mapping which passes every
+                filter is training data, a mapping which fails one is excluded.
+                No filters select every mapping.
+            outliers: keys of the outliers, i.e., of the training data which is
+                not usable and not fitted. An outlier is a decision about the
+                data, so it is named for the complete list of mappings, not per
+                fit; an outlier the filters exclude stays excluded.
+            validation: the validation data, i.e., the training data which is
+                not fitted but evaluated, as the keys of the mappings or as a
+                filter of the training data which is left after the outliers.
+            print_info: print the overview of the selected data.
+
+        Returns:
+            The selection with the kind of every fit mapping and the collections
+            a fit is defined with.
+
+        Raises:
+            ValueError: for an outlier or validation key which is no fit mapping
+                of any experiment.
+        """
+        training_filters = _filters(filters)
+        outlier_keys = self._check_keys(outliers, "outliers")
+        validation_filters: list[MappingFilter]
+        if isinstance(validation, Iterable):
+            validation_keys = self._check_keys(validation, "validation mappings")
+            validation_filters = [lambda key, fm: key in validation_keys]
+        else:
+            validation_filters = [validation]
+
+        kinds: dict[str, dict[str, MappingKind]] = {}
+        collections: dict[str, list[FitMappingCollection]] = {}
+        rows: list[dict[str, Any]] = []
+
+        for experiment_id, experiment in self.runner.experiments.items():
+            experiment_kinds: dict[str, MappingKind] = {}
+            for key, fit_mapping in experiment._fit_mappings.items():
+                # 1. the filters select the training data
+                if not all(f(key, fit_mapping) for f in training_filters):
+                    kind = MappingKind.EXCLUDED
+                # 2. the outliers are part of the training data
+                elif key in outlier_keys:
+                    kind = MappingKind.OUTLIER
+                # 3. the validation data is selected from the rest
+                elif all(f(key, fit_mapping) for f in validation_filters):
+                    kind = MappingKind.VALIDATION
+                else:
+                    kind = MappingKind.TRAINING
+                experiment_kinds[key] = kind
+                rows.append(_row(experiment_id, key, fit_mapping, kind))
+
+            kinds[experiment_id] = experiment_kinds
+            collections[experiment_id] = [
                 FitMappingCollection(
-                    experiment=experiment_class,
-                    mappings=mappings,
+                    experiment=type(experiment),
+                    mappings=[key for key, k in experiment_kinds.items() if k is kind],
                     weights=None,
                     use_mapping_weights=True,
                     kind=kind,
                 )
+                for kind in MappingKind
+                if kind in experiment_kinds.values()
             ]
 
-    return mapping_collections, pd.DataFrame(all_info)
+        selection = MappingSelection(
+            kinds=kinds, collections=collections, df=pd.DataFrame(rows)
+        )
+        if print_info:
+            selection.print()
+        return selection
 
 
-def f_collection(
-    experiment_classes: list[type[SimulationExperiment]],
-    metadata_filters: MappingFilter | Iterable[MappingFilter],
+def _row(
+    experiment_id: str, key: str, fit_mapping: FitMapping, kind: MappingKind
+) -> dict[str, Any]:
+    """Get the row of a fit mapping for the overview of the data."""
+    row: dict[str, Any] = {
+        "experiment": experiment_id,
+        "fm_key": key,
+        "yid": "__".join(fit_mapping.observable.y.sid.split("__")[1:]),
+        "kind": kind.value,
+    }
+    metadata: MappingMetaData | None = fit_mapping.metadata
+    if metadata is not None:
+        row.update(metadata.to_dict())
+    return row
+
+
+def select_mapping_collections(
+    experiment_classes: Iterable[type[SimulationExperiment]],
     base_path: Path,
     data_path: Path,
+    filters: MappingFilter | Iterable[MappingFilter] = (),
+    outliers: Iterable[str] = (),
+    validation: Iterable[str] | MappingFilter = (),
     print_info: bool = True,
-    kind: MappingKind = MappingKind.TRAINING,
 ) -> dict[str, list[FitMappingCollection]]:
-    """Get the filtered fit experiments and print the metadata of the mappings.
+    """Select the data of a fit in one call, see `FitMappings.select`.
 
-    See `filtered_mapping_collections`, this only drops the metadata DataFrame.
+    This instantiates the experiments and selects from them once, which is
+    what the `mapping_collections` of a `FitDefinition` does.
+
+    Args:
+        experiment_classes: simulation experiment classes with fit mappings.
+        base_path: base path of the simulation experiments.
+        data_path: path of the datasets of the simulation experiments.
+        filters: filters of the training data.
+        outliers: keys of the outliers.
+        validation: keys or filter of the validation data.
+        print_info: print the overview of the selected data.
+
+    Returns:
+        The fit mapping collections of all kinds by experiment id.
     """
-    mapping_collections, df = filtered_mapping_collections(
-        experiment_classes,
-        metadata_filters=metadata_filters,
+    fit_mappings = FitMappings(
+        experiment_classes=experiment_classes,
         base_path=base_path,
         data_path=data_path,
-        kind=kind,
     )
-    if print_info:
-        display.print_data(df)
-
-    return mapping_collections
+    return fit_mappings.select(
+        filters=filters,
+        outliers=outliers,
+        validation=validation,
+        print_info=print_info,
+    ).collections
 
 
 def mapping_kinds_info(df: pd.DataFrame) -> str:
     """Summarize how the fit mappings of a metadata table are used.
 
     Args:
-        df: metadata table of `filtered_mapping_collections`.
+        df: metadata table of a `MappingSelection`.
 
     Returns:
         One line with the number of mappings per `MappingKind`.
@@ -180,111 +316,3 @@ def mapping_kinds_info(df: pd.DataFrame) -> str:
         if kind.value in counts
     ]
     return f"{'mappings':<12}: {len(df)} ({', '.join(parts)})"
-
-
-def filter_empty(fit_mapping_key: str, fit_mapping: FitMapping) -> bool:
-    """Accept all fit mappings."""
-    return True
-
-
-def filter_keys(keys: Iterable[str]) -> MappingFilter:
-    """Create a filter which accepts the fit mappings with the given keys.
-
-    This selects the data of a fit by name, e.g., the curves which are kept out
-    of the fit as validation data or dropped as outliers.
-
-    Args:
-        keys: keys of the fit mappings to accept.
-
-    Returns:
-        Filter for `filtered_mapping_collections`.
-    """
-    selected = set(keys)
-
-    def f_filter(fit_mapping_key: str, fit_mapping: FitMapping) -> bool:
-        return fit_mapping_key in selected
-
-    return f_filter
-
-
-def filter_not_keys(keys: Iterable[str]) -> MappingFilter:
-    """Create a filter which rejects the fit mappings with the given keys.
-
-    This is the complement of `filter_keys`, i.e., the data which stays in the
-    fit.
-
-    Args:
-        keys: keys of the fit mappings to reject.
-
-    Returns:
-        Filter for `filtered_mapping_collections`.
-    """
-    excluded = set(keys)
-
-    def f_filter(fit_mapping_key: str, fit_mapping: FitMapping) -> bool:
-        return fit_mapping_key not in excluded
-
-    return f_filter
-
-
-def mapping_collections_by_kind(
-    experiment_classes: list[type[SimulationExperiment]],
-    base_path: Path,
-    data_path: Path,
-    filters_by_kind: dict[MappingKind, MappingFilter | Iterable[MappingFilter]],
-    print_info: bool = True,
-) -> dict[str, list[FitMappingCollection]]:
-    """Select the data of a fit and classify it in one step.
-
-    Every kind gets its own filters, so the data of a fit is split into the
-    training data, the validation data it is evaluated on and the outliers
-    which are not used. One overview of all selected mappings is printed.
-
-    Args:
-        experiment_classes: simulation experiment classes to filter.
-        base_path: base path of the simulation experiments.
-        data_path: path of the datasets of the simulation experiments.
-        filters_by_kind: filters of every kind, see `filtered_mapping_collections`.
-        print_info: print the overview of the selected data.
-
-    Returns:
-        The fit experiments of all kinds by experiment id.
-    """
-    # the experiments are initialized once and filtered for every kind
-    runner = ExperimentRunner(
-        experiment_classes=experiment_classes,
-        base_path=base_path,
-        data_path=data_path,
-    )
-    experiments: list[dict[str, list[FitMappingCollection]]] = []
-    frames: list[pd.DataFrame] = []
-    for kind, filters in filters_by_kind.items():
-        mapping_collections, df = _filter_mapping_collections(runner, filters, kind)
-        experiments.append(mapping_collections)
-        frames.append(df)
-
-    if print_info:
-        display.print_data(pd.concat(frames, ignore_index=True))
-
-    return merge_mapping_collections(*experiments)
-
-
-def merge_mapping_collections(
-    *mapping_collections: dict[str, list[FitMappingCollection]],
-) -> dict[str, list[FitMappingCollection]]:
-    """Combine the fit experiments of several selections.
-
-    A fit is built from the selections of its kinds, e.g., its training data
-    and its validation data, which are combined here.
-
-    Args:
-        mapping_collections: fit experiments by experiment id.
-
-    Returns:
-        The fit experiments of all selections by experiment id.
-    """
-    merged: dict[str, list[FitMappingCollection]] = {}
-    for experiments in mapping_collections:
-        for sid, exps in experiments.items():
-            merged.setdefault(sid, []).extend(exps)
-    return merged

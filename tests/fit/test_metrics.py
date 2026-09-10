@@ -3,7 +3,7 @@
 import numpy as np
 import pytest
 
-from sbmlsim.fit import FitMetrics, FitSettings, ParameterSet
+from sbmlsim.fit import FitMetrics, FitSettings, MappingKind, ParameterSet
 from sbmlsim.fit.metrics import (
     aic,
     aic_from_mse,
@@ -109,6 +109,7 @@ def test_metrics_datapoints(
         "IPRED",
         "RES",
         "IRES",
+        "NRES",
         "IWRES",
     ]
     assert len(dp) == sum(len(y) for y in op_hctz_pkiv.y_references)
@@ -159,6 +160,8 @@ def test_metrics_mappings_and_summary(
         "n",
         "MSE",
         "RMSE",
+        "NRMSE",
+        "RMSE_w",
         "R2",
     ]
     assert len(mappings) == len(op_hctz_pkiv.mapping_keys)
@@ -174,6 +177,7 @@ def test_metrics_mappings_and_summary(
         "cost",
         "MSE",
         "RMSE",
+        "NRMSE",
         "RMSE_w",
         "R2",
         "AIC",
@@ -198,3 +202,32 @@ def test_metrics_mappings_and_summary(
         op_hctz_pkiv.cost_least_square(np.log10(op_hctz_pkiv.xmodel))
     )
     assert metrics.report()
+
+
+def test_normalized_and_weighted_residuals(
+    op_hctz_pk: OptimizationProblem, fit_settings: FitSettings
+) -> None:
+    """NRES is scale free and IWRES is the residual of the cost."""
+    op_hctz_pk.initialize(fit_settings)
+    metrics = FitMetrics(
+        problem=op_hctz_pk, parameter_set=op_hctz_pk.parameter_set_model()
+    )
+    dp = metrics.datapoints_df()
+
+    # the normalized residual is the residual over the mean of its curve
+    for _mapping, of_mapping in dp.groupby("mapping"):
+        assert np.allclose(of_mapping.NRES, of_mapping.IRES / of_mapping.DV.mean())
+
+    # the weighted residuals are what the cost sums, on the training data
+    training = dp[dp.kind == MappingKind.TRAINING.value]
+    cost = 0.5 * float(np.sum(np.square(training.IWRES)))
+    assert cost == pytest.approx(metrics.cost())
+    summary = metrics.summary(kind=MappingKind.TRAINING)
+    assert summary["cost"] == pytest.approx(0.5 * summary["n"] * summary["RMSE_w"] ** 2)
+    assert summary["NRMSE"] == pytest.approx(rmse(training.NRES))
+
+    # the outliers are curves of small values missed by a factor: their absolute
+    # RMSE is below the one of the training data, their NRMSE is far above
+    outliers = metrics.summary(kind=MappingKind.OUTLIER)
+    assert outliers["RMSE"] < summary["RMSE"]
+    assert outliers["NRMSE"] > 5 * summary["NRMSE"]
