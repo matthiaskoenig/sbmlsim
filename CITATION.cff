@@ -10,7 +10,7 @@ authors:
     affiliation: "Humboldt-University Berlin, Faculty of Life Science, Institute for Biology, Biology, Berlin; University Lübeck; University Hospital Schleswig-Holstein, Campus Lübeck, First Department of Medicine, Germany"
 version: "0.6.1"
 date-released: "2026-02-01"
-doi: "10.5281/zenodo.597149"
+doi: "10.5281/zenodo.3597770"
 license: MIT
 repository-code: "https://github.com/matthiaskoenig/sbmlsim"
 url: "https://matthiaskoenig.github.io/sbmlsim"

@@ -1,7 +1,7 @@
 ![](images/favicon/sbmlsim-100x100-300dpi.png)
 
 # sbmlsim: SBML simulation made easy
-[![GitHub Actions CI/CD Status](https://github.com/matthiaskoenig/sbmlsim/actions/workflows/ci-cd.yml/badge.svg)](https://github.com/matthiaskoenig/sbmlsim/actions/workflows/ci-cd.yml) [![Documentation](https://img.shields.io/badge/docs-sbmlsim-3f51b5.svg)](https://matthiaskoenig.github.io/sbmlsim) [![Version](https://img.shields.io/pypi/v/sbmlsim.svg)](https://pypi.org/project/sbmlsim/) [![Python Versions](https://img.shields.io/pypi/pyversions/sbmlsim.svg)](https://pypi.org/project/sbmlsim/) [![MIT License](https://img.shields.io/pypi/l/sbmlsim.svg)](https://opensource.org/licenses/MIT) [![DOI](https://zenodo.org/badge/55952847.svg)](https://zenodo.org/badge/latestdoi/55952847)
+[![GitHub Actions CI/CD Status](https://github.com/matthiaskoenig/sbmlsim/actions/workflows/ci-cd.yml/badge.svg)](https://github.com/matthiaskoenig/sbmlsim/actions/workflows/ci-cd.yml) [![Documentation](https://img.shields.io/badge/docs-sbmlsim-3f51b5.svg)](https://matthiaskoenig.github.io/sbmlsim) [![Version](https://img.shields.io/pypi/v/sbmlsim.svg)](https://pypi.org/project/sbmlsim/) [![Python Versions](https://img.shields.io/pypi/pyversions/sbmlsim.svg)](https://pypi.org/project/sbmlsim/) [![MIT License](https://img.shields.io/pypi/l/sbmlsim.svg)](https://opensource.org/licenses/MIT) [![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.3597770.svg)](https://doi.org/10.5281/zenodo.3597770)
 
 `sbmlsim` is a collection of python utilities for the simulation of models in the [Systems Biology Markup Language](https://sbml.org) (SBML), built on [libroadrunner](https://libroadrunner.org). The source code is available from [https://github.com/matthiaskoenig/sbmlsim](https://github.com/matthiaskoenig/sbmlsim).
 
@@ -51,11 +51,11 @@ Continue with [Installation](installation.md) and the [timecourse simulation gui
 
 ## How to cite
 
-[![DOI](https://zenodo.org/badge/55952847.svg)](https://zenodo.org/badge/latestdoi/55952847)
+[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.3597770.svg)](https://doi.org/10.5281/zenodo.3597770)
 
-If you use `sbmlsim` please cite the archived software on [Zenodo](https://zenodo.org/badge/latestdoi/55952847):
+If you use `sbmlsim` please cite the archived software on [Zenodo](https://doi.org/10.5281/zenodo.3597770):
 
-> König, M. (2026). *sbmlsim: SBML simulation made easy* [Computer software]. Zenodo. https://doi.org/10.5281/zenodo.597149
+> König, M. (2026). *sbmlsim: SBML simulation made easy* (Version 0.6.0) [Computer software]. Zenodo. https://doi.org/10.5281/zenodo.22653603
 
 ## License
 
