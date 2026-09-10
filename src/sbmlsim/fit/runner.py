@@ -14,6 +14,7 @@ settings of the fit, and `sbmlsim.fit.report.FitReport` turns them into figures
 and reports, see `sbmlsim.fit.parameters`.
 """
 
+import datetime
 import logging
 import multiprocessing
 import os
@@ -29,10 +30,13 @@ from rich.progress import (
     BarColumn,
     MofNCompleteColumn,
     Progress,
+    ProgressColumn,
     SpinnerColumn,
+    Task,
     TextColumn,
     TimeElapsedColumn,
 )
+from rich.text import Text
 from scipy.optimize import OptimizeResult
 
 from sbmlsim.console import console
@@ -69,17 +73,82 @@ def resolve_n_cores(n_cores: int | None) -> int:
     return max(1, n_cores)
 
 
+def estimate_total_time(
+    elapsed: float, completed: float, total: float, workers: int = 1
+) -> float | None:
+    """Estimate the total runtime from the runs which are done.
+
+    The runs are handed to the workers in batches of `workers`, so the time of
+    a batch is what the elapsed time measures: the estimate is the time per
+    batch times the number of batches. With a single worker this is the mean
+    time per run times the number of runs. The rate of the progress bar is
+    not used, it is measured over a window of seconds and a run takes minutes.
+
+    Args:
+        elapsed: seconds since the start.
+        completed: runs which are done.
+        total: runs in total.
+        workers: runs which are processed at once.
+
+    Returns:
+        The estimated total runtime in seconds, `None` before the first run
+        is done.
+    """
+    if completed <= 0 or total <= 0 or elapsed <= 0:
+        return None
+    workers = max(int(workers), 1)
+    batches_done = -(-completed // workers)
+    batches_total = -(-total // workers)
+    return elapsed / batches_done * batches_total
+
+
+class TotalTimeColumn(ProgressColumn):
+    """The estimated total runtime, `~ H:MM:SS` behind the elapsed time.
+
+    The estimate is `estimate_total_time` with the `workers` field of the
+    task, so it is corrected for the runs a pool processes at once.
+    """
+
+    def render(self, task: Task) -> Text:
+        """Render the estimate of a task."""
+        elapsed = task.elapsed
+        estimate = (
+            None
+            if elapsed is None or task.total is None
+            else estimate_total_time(
+                elapsed=elapsed,
+                completed=task.completed,
+                total=task.total,
+                workers=int(task.fields.get("workers", 1)),
+            )
+        )
+        if estimate is None:
+            return Text("~ -:--:-- total", style="progress.remaining")
+        return Text(
+            f"~ {datetime.timedelta(seconds=round(estimate))} total",
+            style="progress.remaining",
+        )
+
+
 @contextmanager
 def optimization_progress(
-    description: str, size: int, enabled: bool = True, unit: str = "runs"
+    description: str,
+    size: int,
+    enabled: bool = True,
+    unit: str = "runs",
+    workers: int = 1,
 ) -> Iterator[Progress | None]:
     """Show the progress of the optimization runs on the console.
+
+    The bar shows the count, the elapsed time and the estimated total runtime,
+    see `TotalTimeColumn`.
 
     Args:
         description: text in front of the progress bar.
         size: total number of optimization runs.
         enabled: show the progress, a plain context without display if `False`.
         unit: what is counted, behind the count.
+        workers: runs which are processed at once, for the estimate.
 
     Yields:
         The progress with a single task, or `None` if it is disabled.
@@ -95,11 +164,12 @@ def optimization_progress(
         MofNCompleteColumn(),
         TextColumn(unit),
         TimeElapsedColumn(),
+        TotalTimeColumn(),
         console=console,
         transient=False,
     )
     with progress:
-        progress.add_task(description, total=size)
+        progress.add_task(description, total=size, workers=workers)
         yield progress
 
 
@@ -406,7 +476,9 @@ def _run_optimization_parallel(
         _advance(progress)
 
     with (
-        optimization_progress("optimizing", size, show_progress) as progress,
+        optimization_progress(
+            "optimizing", size, show_progress, workers=n_cores
+        ) as progress,
         worker_pool(problem, settings, n_cores) as pool,
     ):
         # one task per repeat, so that a worker which dies loses one repeat

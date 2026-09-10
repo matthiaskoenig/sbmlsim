@@ -104,7 +104,7 @@ def test_optimization_uses_only_training(
 
 
 def test_problem_without_training_data(
-    definition_hctz_pkiv: FitDefinition, fit_settings: FitSettings
+    definition_hctz_pk: FitDefinition, fit_settings: FitSettings
 ) -> None:
     """A problem needs at least one fit experiment which is fitted."""
     validation_only = [
@@ -114,9 +114,9 @@ def test_problem_without_training_data(
             use_mapping_weights=True,
             kind=MappingKind.VALIDATION,
         )
-        for collection in definition_hctz_pkiv.collections()
+        for collection in definition_hctz_pk.collections()
     ]
-    problem = definition_hctz_pkiv.problem(
+    problem = definition_hctz_pk.problem(
         opid="validation_only", mapping_collections=validation_only
     )
     with pytest.raises(ValueError, match="no training data"):
@@ -169,10 +169,10 @@ def test_outliers_do_not_enter_the_cost(
 
 
 def test_metrics_unknown_kind(
-    op_hctz_pkiv: OptimizationProblem, fit_settings: FitSettings
+    op_hctz_iv: OptimizationProblem, fit_settings: FitSettings
 ) -> None:
     """A kind without data points is reported."""
-    op = op_hctz_pkiv
+    op = op_hctz_iv
     op.initialize(fit_settings)
     metrics = FitMetrics(problem=op, parameter_set=op.parameter_set_model())
     with pytest.raises(ValueError, match="no data points of kind"):
@@ -180,10 +180,10 @@ def test_metrics_unknown_kind(
 
 
 def test_metrics_only_training(
-    op_hctz_pkiv: OptimizationProblem, fit_settings: FitSettings
+    op_hctz_iv: OptimizationProblem, fit_settings: FitSettings
 ) -> None:
     """A problem with only training data has a single summary row."""
-    op = op_hctz_pkiv
+    op = op_hctz_iv
     op.initialize(fit_settings)
     metrics = FitMetrics(problem=op, parameter_set=op.parameter_set_model())
 

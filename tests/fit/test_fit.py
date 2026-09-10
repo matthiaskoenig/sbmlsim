@@ -42,9 +42,9 @@ settings_testdata: list[FitSettings] = [
 
 
 @pytest.mark.parametrize("settings", settings_testdata)
-def test_fit_settings(settings: FitSettings, op_hctz_pkiv: OptimizationProblem) -> None:
+def test_fit_settings(settings: FitSettings, op_hctz_pk: OptimizationProblem) -> None:
     """Test various settings of the optimization problem."""
-    op = op_hctz_pkiv
+    op = op_hctz_pk
     opt_result: OptimizationResult = run_optimization(
         problem=op,
         settings=settings,
@@ -81,17 +81,17 @@ def test_settings_normalize_weighting_curves() -> None:
     assert settings == FitSettings(weighting_curves=(WeightingCurvesType.POINTS,))
 
 
-def test_initialize_requires_settings(op_hctz_pkiv: OptimizationProblem) -> None:
+def test_initialize_requires_settings(op_hctz_pk: OptimizationProblem) -> None:
     """The problem is initialized with `FitSettings`."""
     with pytest.raises(TypeError, match="FitSettings"):
-        op_hctz_pkiv.initialize(settings={"residual": "ABSOLUTE"})  # ty: ignore[invalid-argument-type]
+        op_hctz_pk.initialize(settings={"residual": "ABSOLUTE"})  # ty: ignore[invalid-argument-type]
 
 
 def test_initialize_is_idempotent(
-    op_hctz_pkiv: OptimizationProblem, fit_settings: FitSettings
+    op_hctz_pk: OptimizationProblem, fit_settings: FitSettings
 ) -> None:
     """Initializing again with the same settings does not repeat the work."""
-    op = op_hctz_pkiv
+    op = op_hctz_pk
     op.initialize(fit_settings)
     n_mappings = len(op.mapping_keys)
     assert n_mappings > 0
@@ -104,10 +104,10 @@ def test_initialize_is_idempotent(
 
 
 def test_initialize_new_settings(
-    op_hctz_pkiv: OptimizationProblem, fit_settings: FitSettings
+    op_hctz_pk: OptimizationProblem, fit_settings: FitSettings
 ) -> None:
     """Initializing with other settings resolves the mappings again."""
-    op = op_hctz_pkiv
+    op = op_hctz_pk
     op.initialize(fit_settings)
     n_mappings = len(op.mapping_keys)
 
@@ -131,11 +131,11 @@ def test_initialize_new_settings(
 )
 def test_loss_function(
     loss_function: LossFunctionType,
-    op_hctz_pkiv: OptimizationProblem,
+    op_hctz_pk: OptimizationProblem,
     fit_settings: FitSettings,
 ) -> None:
     """Test the various loss functions."""
-    op = op_hctz_pkiv
+    op = op_hctz_pk
     settings = FitSettings(
         residual=fit_settings.residual,
         loss_function=loss_function,
@@ -158,11 +158,11 @@ def test_loss_function(
 
 
 def test_fit_lsq_serial(
-    op_hctz_pkiv: OptimizationProblem, fit_settings: FitSettings
+    op_hctz_pk: OptimizationProblem, fit_settings: FitSettings
 ) -> None:
     """Test serial least square fit."""
     opt_result: OptimizationResult = run_optimization(
-        problem=op_hctz_pkiv,
+        problem=op_hctz_pk,
         settings=fit_settings,
         algorithm=OptimizationAlgorithmType.LEAST_SQUARE,
         size=1,
@@ -173,11 +173,11 @@ def test_fit_lsq_serial(
 
 
 def test_fit_de_serial(
-    op_hctz_pkiv: OptimizationProblem, fit_settings: FitSettings
+    op_hctz_pk: OptimizationProblem, fit_settings: FitSettings
 ) -> None:
     """Test serial differential evolution fit."""
     opt_result: OptimizationResult = run_optimization(
-        problem=op_hctz_pkiv,
+        problem=op_hctz_pk,
         settings=fit_settings,
         algorithm=OptimizationAlgorithmType.DIFFERENTIAL_EVOLUTION,
         size=1,
@@ -191,12 +191,12 @@ def test_fit_de_serial(
 @pytest.mark.parametrize("show_progress", [True, False])
 def test_fit_lsq_parallel(
     show_progress: bool,
-    op_hctz_pkiv: OptimizationProblem,
+    op_hctz_pk: OptimizationProblem,
     fit_settings: FitSettings,
 ) -> None:
     """Test parallel least square fit, with and without the progress display."""
     opt_result: OptimizationResult = run_optimization(
-        problem=op_hctz_pkiv,
+        problem=op_hctz_pk,
         settings=fit_settings,
         algorithm=OptimizationAlgorithmType.LEAST_SQUARE,
         size=2,
@@ -209,11 +209,51 @@ def test_fit_lsq_parallel(
 
 
 def test_deprecated_arguments(
-    op_hctz_pkiv: OptimizationProblem, fit_settings: FitSettings
+    op_hctz_pk: OptimizationProblem, fit_settings: FitSettings
 ) -> None:
     """The removed arguments are reported."""
     kwargs: dict[str, Any] = {"weighting_local": WeightingPointsType.NO_WEIGHTING}
     with pytest.raises(ValueError, match="weighting_local"):
         run_optimization(
-            problem=op_hctz_pkiv, settings=fit_settings, serial=True, **kwargs
+            problem=op_hctz_pk, settings=fit_settings, serial=True, **kwargs
         )
+
+
+def test_estimate_total_time() -> None:
+    """The estimate is the time per batch times the number of batches."""
+    from sbmlsim.fit.runner import estimate_total_time
+
+    # nothing done yet, no estimate
+    assert estimate_total_time(elapsed=10.0, completed=0, total=8) is None
+    assert estimate_total_time(elapsed=0.0, completed=1, total=8) is None
+    # a single worker: the mean time per run times the runs
+    assert estimate_total_time(elapsed=20.0, completed=2, total=8) == 80.0
+    # four workers process four runs at once, so the first run which is done
+    # is the first batch and the estimate is not four times too large
+    assert estimate_total_time(elapsed=10.0, completed=1, total=8, workers=4) == 20.0
+    assert estimate_total_time(elapsed=10.0, completed=4, total=8, workers=4) == 20.0
+    assert estimate_total_time(elapsed=22.0, completed=5, total=8, workers=4) == 22.0
+    # the estimate is the elapsed time once everything is done
+    assert estimate_total_time(elapsed=42.0, completed=8, total=8, workers=4) == 42.0
+
+
+def test_total_time_column() -> None:
+    """The progress shows the estimated total runtime."""
+    from rich.progress import Progress
+
+    from sbmlsim.fit.runner import TotalTimeColumn
+
+    clock = [0.0]
+    progress = Progress(TotalTimeColumn(), get_time=lambda: clock[0])
+    task_id = progress.add_task("optimizing", total=4, workers=2)
+    task = progress.tasks[0]
+    column = TotalTimeColumn()
+
+    assert str(column.render(task)) == "~ -:--:-- total"
+    clock[0] = 90.0
+    progress.update(task_id, completed=1)
+    # one of two batches done after 90 seconds
+    assert str(column.render(task)) == "~ 0:03:00 total"
+    clock[0] = 200.0
+    progress.update(task_id, completed=4)
+    assert str(column.render(task)) == "~ 0:03:20 total"

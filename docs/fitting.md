@@ -76,9 +76,9 @@ The overview ends in a line such as `mappings : 32 (28 training, 2 validation, 2
 `examples/hctz_fitting/fitting/mapping_collections.py` is the selection of the reference problem: the outliers and the validation data are named once, and every fit problem is a list of filters on the metadata of the mappings.
 
 ```python
-from examples.hctz_fitting.fitting.mapping_collections import f_collections_pkiv
+from examples.hctz_fitting.fitting.mapping_collections import f_collections_pk
 
-mapping_collections = f_collections_pkiv()
+mapping_collections = f_collections_pk()
 print(mapping_collections)
 ```
 
@@ -171,7 +171,7 @@ The same settings are needed to report a fit, so they are stored with its result
 
 ## Running the optimization
 
-`run_optimization` samples `size` start points within the bounds (see `sbmlsim.fit.sampling`), runs the optimizer from every start point, in parallel on `n_cores`, and returns an `OptimizationResult`. The progress of the runs is shown on the console:
+`run_optimization` samples `size` start points within the bounds (see `sbmlsim.fit.sampling`), runs the optimizer from every start point, in parallel on `n_cores`, and returns an `OptimizationResult`. The progress of the runs is shown on the console, with the runs which are done, the elapsed time and an estimate of the total runtime, e.g. `~ 0:12:30 total`; the estimate is the time per batch of `n_cores` runs times the number of batches, so it is there as soon as the first run is done and settles as more runs come back:
 
 ```py
 from sbmlsim.fit.options import OptimizationAlgorithmType
@@ -437,13 +437,13 @@ Creating the optimization problems, running the optimizations and reporting them
 from sbmlsim.fit.cli import FitDefinition
 
 definition = FitDefinition(
-    mapping_collections=f_collections_pkiv,  # called when the fit runs
+    mapping_collections=f_collections_pk,  # called when the fit runs
     parameters=fit_parameters,
     base_path=HCTZ_PATH,
     data_path=DATA_PATH,
     settings=settings,
 )
-print(definition.problem(opid="hctz_iv"))
+print(definition.problem(opid="hctz_pk"))
 ```
 
 `run_fit` builds the problems for a strategy and runs them: `OptimizationStrategy.ALL` fits all experiments together, i.e., one parameter set describes every experiment, `SINGLE` fits every experiment on its own, which gives the individual parameters of the metrics. It returns a `FitRun` per optimization, which carries the problem and the result and creates the report.
@@ -453,7 +453,7 @@ print(definition.problem(opid="hctz_iv"))
 ```python
 from sbmlsim.fit.cli import fit_cli
 
-FIT_DEFINITIONS = {"PKIV": definition}
+FIT_DEFINITIONS = {"PK": definition}
 
 
 def main() -> None:

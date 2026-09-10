@@ -1041,7 +1041,11 @@ def profile_likelihood(
         task["index"]: {} for task in tasks
     }
     with runner.optimization_progress(
-        "profiling", len(tasks), show_progress, unit="scans"
+        "profiling",
+        len(tasks),
+        show_progress,
+        unit="scans",
+        workers=n_cores if parallel else 1,
     ) as progress:
         if parallel:
             with runner.worker_pool(problem, settings, n_cores) as pool:

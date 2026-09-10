@@ -13,12 +13,12 @@ from sbmlsim.fit.runner import run_optimization
 
 def test_serialization(
     tmp_path: Path,
-    op_hctz_pkiv: OptimizationProblem,
+    op_hctz_pk: OptimizationProblem,
     fit_settings: FitSettings,
 ) -> None:
     """Test serialization of optimization result."""
     opt_res: OptimizationResult = run_optimization(
-        problem=op_hctz_pkiv,
+        problem=op_hctz_pk,
         settings=fit_settings,
         algorithm=OptimizationAlgorithmType.LEAST_SQUARE,
         size=1,
@@ -35,7 +35,7 @@ def test_serialization(
 
     # the settings of the fit survive the round trip
     assert opt_res2.settings == fit_settings
-    assert opt_res2.opid == op_hctz_pkiv.opid
+    assert opt_res2.opid == op_hctz_pk.opid
 
     # the parameter vectors survive the round trip as arrays
     assert isinstance(opt_res2.xopt, np.ndarray)
@@ -46,11 +46,11 @@ def test_serialization(
 
 
 def test_parameter_sets(
-    op_hctz_pkiv: OptimizationProblem, fit_settings: FitSettings
+    op_hctz_pk: OptimizationProblem, fit_settings: FitSettings
 ) -> None:
     """The result provides the fitted parameters as parameter sets."""
     opt_res: OptimizationResult = run_optimization(
-        problem=op_hctz_pkiv,
+        problem=op_hctz_pk,
         settings=fit_settings,
         size=2,
         n_cores=1,
@@ -61,7 +61,7 @@ def test_parameter_sets(
     pset = opt_res.parameter_set()
     assert set(pset.values) == {p.pid for p in opt_res.parameters}
     assert pset.cost == opt_res.df_fits.cost.iloc[0]
-    assert np.allclose(pset.x(op_hctz_pkiv.pids), opt_res.xopt)
+    assert np.allclose(pset.x(op_hctz_pk.pids), opt_res.xopt)
 
     psets = opt_res.parameter_sets(size=2)
     assert len(psets) == 2
@@ -71,12 +71,12 @@ def test_parameter_sets(
     assert costs == sorted(costs)  # ty: ignore[invalid-argument-type]
 
 
-def test_combine(op_hctz_pkiv: OptimizationProblem, fit_settings: FitSettings) -> None:
+def test_combine(op_hctz_pk: OptimizationProblem, fit_settings: FitSettings) -> None:
     """Test combination of optimization result."""
     opt_results = []
     for seed in [1234, 4567]:
         opt_res: OptimizationResult = run_optimization(
-            problem=op_hctz_pkiv,
+            problem=op_hctz_pk,
             settings=fit_settings,
             algorithm=OptimizationAlgorithmType.LEAST_SQUARE,
             size=1,

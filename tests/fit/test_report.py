@@ -12,6 +12,7 @@ import numpy as np
 import pytest
 
 from sbmlsim.fit import FitSettings, MappingKind, ParameterSet, ParameterSets
+from sbmlsim.fit.cli import FitDefinition
 from sbmlsim.fit.fisher import fisher_information
 from sbmlsim.fit.objects import EVALUATED_KINDS
 from sbmlsim.fit.optimization import OptimizationProblem
@@ -43,12 +44,12 @@ def _assert_report_files(results_dir: Path) -> None:
 
 
 def test_report_from_optimization_result(
-    tmp_path: Path, op_hctz_pkiv: OptimizationProblem, fit_settings: FitSettings
+    tmp_path: Path, op_hctz_iv: OptimizationProblem, fit_settings: FitSettings
 ) -> None:
     """The report of a fit shows the fitted parameters alone."""
-    opt_result = _fit(op_hctz_pkiv, fit_settings)
+    opt_result = _fit(op_hctz_iv, fit_settings)
     report = FitReport.from_optimization_result(
-        problem=op_hctz_pkiv, opt_result=opt_result
+        problem=op_hctz_iv, opt_result=opt_result
     )
 
     # the values the model started from are not reported
@@ -66,12 +67,12 @@ def test_report_from_optimization_result(
 
 
 def test_report_from_optimization_result_with_model(
-    tmp_path: Path, op_hctz_pkiv: OptimizationProblem, fit_settings: FitSettings
+    tmp_path: Path, op_hctz_iv: OptimizationProblem, fit_settings: FitSettings
 ) -> None:
     """`with_model` compares the fit against the values the model started from."""
-    opt_result = _fit(op_hctz_pkiv, fit_settings)
+    opt_result = _fit(op_hctz_iv, fit_settings)
     report = FitReport.from_optimization_result(
-        problem=op_hctz_pkiv, opt_result=opt_result, with_model=True
+        problem=op_hctz_iv, opt_result=opt_result, with_model=True
     )
 
     # the model values are the reference, the fit is the second set
@@ -113,14 +114,20 @@ def test_the_subsets_of_the_data_points(
 
 
 def test_the_subsets_of_a_problem_with_one_kind(
-    op_hctz_pkiv: OptimizationProblem, fit_settings: FitSettings
+    definition_hctz_pk: FitDefinition, fit_settings: FitSettings
 ) -> None:
     """A problem with a single kind has one panel, not `all` and the kind."""
-    op_hctz_pkiv.initialize(fit_settings)
+    training = [
+        collection
+        for collection in definition_hctz_pk.collections()
+        if collection.kind is MappingKind.TRAINING
+    ]
+    problem = definition_hctz_pk.problem(opid="training", mapping_collections=training)
+    problem.initialize(fit_settings)
     report = FitReport(
-        problem=op_hctz_pkiv,
+        problem=problem,
         settings=fit_settings,
-        parameter_sets=op_hctz_pkiv.parameter_set_model(),
+        parameter_sets=problem.parameter_set_model(),
     )
     assert report.point_kinds() == ["training"]
 
@@ -268,20 +275,20 @@ def test_the_key_metrics_of_several_sets(
 
 
 def test_report_without_optimization(
-    tmp_path: Path, op_hctz_pkiv: OptimizationProblem, fit_settings: FitSettings
+    tmp_path: Path, op_hctz_iv: OptimizationProblem, fit_settings: FitSettings
 ) -> None:
     """A report is created from stored parameters, without running a fit."""
-    opt_result = _fit(op_hctz_pkiv, fit_settings)
+    opt_result = _fit(op_hctz_iv, fit_settings)
     parameters_path = tmp_path / "parameters.json"
     opt_result.parameter_sets(size=1).to_json(path=parameters_path)
 
     # a fresh problem, nothing was optimized on it
     problem = OptimizationProblem(
-        opid=op_hctz_pkiv.opid,
-        mapping_collections=op_hctz_pkiv.mapping_collections,
-        fit_parameters=op_hctz_pkiv.parameters,
-        base_path=op_hctz_pkiv.base_path,
-        data_path=op_hctz_pkiv.data_path,
+        opid=op_hctz_iv.opid,
+        mapping_collections=op_hctz_iv.mapping_collections,
+        fit_parameters=op_hctz_iv.parameters,
+        base_path=op_hctz_iv.base_path,
+        data_path=op_hctz_iv.data_path,
     )
     report = FitReport(
         problem=problem,
@@ -297,17 +304,17 @@ def test_report_without_optimization(
 
 
 def test_report_multiple_parameter_sets(
-    tmp_path: Path, op_hctz_pkiv: OptimizationProblem, fit_settings: FitSettings
+    tmp_path: Path, op_hctz_iv: OptimizationProblem, fit_settings: FitSettings
 ) -> None:
     """Several parameter sets are compared in a single report."""
-    opt_result = _fit(op_hctz_pkiv, fit_settings, size=2)
+    opt_result = _fit(op_hctz_iv, fit_settings, size=2)
     sets = ParameterSets(
         [
-            op_hctz_pkiv.parameter_set_model(),
+            op_hctz_iv.parameter_set_model(),
             *opt_result.parameter_sets(size=2),
         ]
     )
-    report = FitReport(problem=op_hctz_pkiv, settings=fit_settings, parameter_sets=sets)
+    report = FitReport(problem=op_hctz_iv, settings=fit_settings, parameter_sets=sets)
     assert len(report.parameter_sets) == 3
 
     results_dir = report.create(output_dir=tmp_path, name="compare")
@@ -321,14 +328,14 @@ def test_report_multiple_parameter_sets(
 
 
 def test_report_single_set(
-    tmp_path: Path, op_hctz_pkiv: OptimizationProblem, fit_settings: FitSettings
+    tmp_path: Path, op_hctz_pk: OptimizationProblem, fit_settings: FitSettings
 ) -> None:
     """A report of a single set has nothing to compare it against."""
-    op_hctz_pkiv.initialize(fit_settings)
+    op_hctz_pk.initialize(fit_settings)
     report = FitReport(
-        problem=op_hctz_pkiv,
+        problem=op_hctz_pk,
         settings=fit_settings,
-        parameter_sets=op_hctz_pkiv.parameter_set_model(),
+        parameter_sets=op_hctz_pk.parameter_set_model(),
     )
     results_dir = report.create(output_dir=tmp_path, name="model")
     _assert_report_files(results_dir)
@@ -336,19 +343,19 @@ def test_report_single_set(
 
 
 def test_report_requires_a_set(
-    op_hctz_pkiv: OptimizationProblem, fit_settings: FitSettings
+    op_hctz_pk: OptimizationProblem, fit_settings: FitSettings
 ) -> None:
     """A report without a parameter set is an error."""
     with pytest.raises(ValueError, match="At least one"):
-        FitReport(problem=op_hctz_pkiv, settings=fit_settings, parameter_sets=[])
+        FitReport(problem=op_hctz_pk, settings=fit_settings, parameter_sets=[])
 
 
 def test_report_parameter_set_of_other_problem(
-    op_hctz_pkiv: OptimizationProblem, fit_settings: FitSettings
+    op_hctz_pk: OptimizationProblem, fit_settings: FitSettings
 ) -> None:
     """A set which does not cover the parameters of the problem is reported."""
     report = FitReport(
-        problem=op_hctz_pkiv,
+        problem=op_hctz_pk,
         settings=fit_settings,
         parameter_sets=ParameterSet(sid="other", values={"unknown": 1.0}),
     )
@@ -357,14 +364,14 @@ def test_report_parameter_set_of_other_problem(
 
 
 def test_run_plots_require_a_result(
-    op_hctz_pkiv: OptimizationProblem, fit_settings: FitSettings
+    op_hctz_pk: OptimizationProblem, fit_settings: FitSettings
 ) -> None:
     """The traces and the waterfall plot need an optimization result."""
-    op_hctz_pkiv.initialize(fit_settings)
+    op_hctz_pk.initialize(fit_settings)
     report = FitReport(
-        problem=op_hctz_pkiv,
+        problem=op_hctz_pk,
         settings=fit_settings,
-        parameter_sets=op_hctz_pkiv.parameter_set_model(),
+        parameter_sets=op_hctz_pk.parameter_set_model(),
     )
     with pytest.raises(ValueError, match="OptimizationResult"):
         _ = report.opt_result_required
@@ -376,12 +383,12 @@ def _html_of(results_dir: Path) -> str:
 
 
 def test_html_report_sections(
-    tmp_path: Path, op_hctz_pkiv: OptimizationProblem, fit_settings: FitSettings
+    tmp_path: Path, op_hctz_iv: OptimizationProblem, fit_settings: FitSettings
 ) -> None:
     """The report has the three sections and its search."""
-    opt_result = _fit(op_hctz_pkiv, fit_settings)
+    opt_result = _fit(op_hctz_iv, fit_settings)
     report = FitReport.from_optimization_result(
-        problem=op_hctz_pkiv, opt_result=opt_result
+        problem=op_hctz_iv, opt_result=opt_result
     )
     results_dir = report.create(output_dir=tmp_path, name="fit")
     html = _html_of(results_dir)
@@ -397,18 +404,18 @@ def test_html_report_sections(
         assert token in html, token
 
     # one card per fit mapping
-    assert html.count('class="card mapping"') == len(op_hctz_pkiv.mapping_keys)
+    assert html.count('class="card mapping"') == len(op_hctz_iv.mapping_keys)
     # the tables can be sorted
     assert "data-sort=" in html
 
 
 def test_html_report_is_offline(
-    tmp_path: Path, op_hctz_pkiv: OptimizationProblem, fit_settings: FitSettings
+    tmp_path: Path, op_hctz_iv: OptimizationProblem, fit_settings: FitSettings
 ) -> None:
     """The report needs no network, it is read from a file and archived."""
-    opt_result = _fit(op_hctz_pkiv, fit_settings)
+    opt_result = _fit(op_hctz_iv, fit_settings)
     report = FitReport.from_optimization_result(
-        problem=op_hctz_pkiv, opt_result=opt_result
+        problem=op_hctz_iv, opt_result=opt_result
     )
     html = _html_of(report.create(output_dir=tmp_path, name="fit"))
     assert "http://" not in html
@@ -416,12 +423,12 @@ def test_html_report_is_offline(
 
 
 def test_html_report_references_exist(
-    tmp_path: Path, op_hctz_pkiv: OptimizationProblem, fit_settings: FitSettings
+    tmp_path: Path, op_hctz_iv: OptimizationProblem, fit_settings: FitSettings
 ) -> None:
     """Every file the report links to was written."""
-    opt_result = _fit(op_hctz_pkiv, fit_settings)
+    opt_result = _fit(op_hctz_iv, fit_settings)
     report = FitReport.from_optimization_result(
-        problem=op_hctz_pkiv, opt_result=opt_result
+        problem=op_hctz_iv, opt_result=opt_result
     )
     results_dir = report.create(output_dir=tmp_path, name="fit")
 
@@ -432,14 +439,14 @@ def test_html_report_references_exist(
 
 
 def test_html_report_without_optimization(
-    tmp_path: Path, op_hctz_pkiv: OptimizationProblem, fit_settings: FitSettings
+    tmp_path: Path, op_hctz_pk: OptimizationProblem, fit_settings: FitSettings
 ) -> None:
     """A report of stored parameters has no plots of the runs."""
-    op_hctz_pkiv.initialize(fit_settings)
+    op_hctz_pk.initialize(fit_settings)
     report = FitReport(
-        problem=op_hctz_pkiv,
+        problem=op_hctz_pk,
         settings=fit_settings,
-        parameter_sets=op_hctz_pkiv.parameter_set_model(),
+        parameter_sets=op_hctz_pk.parameter_set_model(),
     )
     html = _html_of(report.create(output_dir=tmp_path, name="model"))
     assert "traces" not in html
@@ -450,14 +457,14 @@ def test_html_report_without_optimization(
 
 
 def test_html_context(
-    op_hctz_pkiv: OptimizationProblem, fit_settings: FitSettings
+    op_hctz_pk: OptimizationProblem, fit_settings: FitSettings
 ) -> None:
     """The context of the template carries the parts of the report."""
-    op_hctz_pkiv.initialize(fit_settings)
+    op_hctz_pk.initialize(fit_settings)
     report = FitReport(
-        problem=op_hctz_pkiv,
+        problem=op_hctz_pk,
         settings=fit_settings,
-        parameter_sets=op_hctz_pkiv.parameter_set_model(),
+        parameter_sets=op_hctz_pk.parameter_set_model(),
     )
     context = report.html_context(results_dir=Path("nowhere"), name="the_fit")
 
@@ -465,10 +472,10 @@ def test_html_context(
     # the data the model does not describe is not part of the report
     assert context["kinds"] == [kind.value for kind in EVALUATED_KINDS]
     assert MappingKind.EXCLUDED.value not in context["kinds"]
-    assert len(context["parameters"]) == len(op_hctz_pkiv.parameters)
-    assert len(context["mappings"]) == len(op_hctz_pkiv.mapping_keys)
+    assert len(context["parameters"]) == len(op_hctz_pk.parameters)
+    assert len(context["mappings"]) == len(op_hctz_pk.mapping_keys)
     assert context["settings"]["residual"] == fit_settings.residual.name
-    assert context["data_total"]["total"] == len(op_hctz_pkiv.mapping_keys)
+    assert context["data_total"]["total"] == len(op_hctz_pk.mapping_keys)
     # every mapping carries its kind and its metrics
     for mapping in context["mappings"]:
         assert mapping["kind"] in {kind.value for kind in MappingKind}
@@ -476,14 +483,14 @@ def test_html_context(
 
 
 def test_html_report_is_well_formed(
-    tmp_path: Path, op_hctz_pkiv: OptimizationProblem, fit_settings: FitSettings
+    tmp_path: Path, op_hctz_pk: OptimizationProblem, fit_settings: FitSettings
 ) -> None:
     """The tags of the report are balanced."""
-    op_hctz_pkiv.initialize(fit_settings)
+    op_hctz_pk.initialize(fit_settings)
     report = FitReport(
-        problem=op_hctz_pkiv,
+        problem=op_hctz_pk,
         settings=fit_settings,
-        parameter_sets=op_hctz_pkiv.parameter_set_model(),
+        parameter_sets=op_hctz_pk.parameter_set_model(),
     )
     html = _html_of(report.create(output_dir=tmp_path, name="model"))
 
@@ -510,13 +517,13 @@ def test_html_report_is_well_formed(
 
 
 def test_the_report_explains_its_values(
-    tmp_path: Path, op_hctz_pkiv: OptimizationProblem, fit_settings: FitSettings
+    tmp_path: Path, op_hctz_pk: OptimizationProblem, fit_settings: FitSettings
 ) -> None:
     """Every value of the report says what it means, as a tooltip."""
-    op_hctz_pkiv.initialize(fit_settings)
-    parameter_set = op_hctz_pkiv.parameter_set_model()
+    op_hctz_pk.initialize(fit_settings)
+    parameter_set = op_hctz_pk.parameter_set_model()
     report = FitReport(
-        problem=op_hctz_pkiv, settings=fit_settings, parameter_sets=[parameter_set]
+        problem=op_hctz_pk, settings=fit_settings, parameter_sets=[parameter_set]
     )
     report.create(tmp_path, name="hints")
     html = (tmp_path / "hints" / "index.html").read_text()
@@ -530,14 +537,14 @@ def test_the_report_explains_its_values(
 
 
 def test_the_report_of_the_fisher_information(
-    tmp_path: Path, op_hctz_pkiv: OptimizationProblem, fit_settings: FitSettings
+    tmp_path: Path, op_hctz_iv: OptimizationProblem, fit_settings: FitSettings
 ) -> None:
     """The Fisher information is a section with its table and correlations."""
-    op_hctz_pkiv.initialize(fit_settings)
-    parameter_set = op_hctz_pkiv.parameter_set_model()
-    fisher = fisher_information(op_hctz_pkiv, fit_settings, parameter_set)
+    op_hctz_iv.initialize(fit_settings)
+    parameter_set = op_hctz_iv.parameter_set_model()
+    fisher = fisher_information(op_hctz_iv, fit_settings, parameter_set)
     report = FitReport(
-        problem=op_hctz_pkiv,
+        problem=op_hctz_iv,
         settings=fit_settings,
         parameter_sets=[parameter_set],
         fisher=fisher,
@@ -551,7 +558,7 @@ def test_the_report_of_the_fisher_information(
     html = (results_dir / "index.html").read_text()
     assert "Fisher information" in html
     assert "Correlation" in html
-    for pid in op_hctz_pkiv.pids:
+    for pid in op_hctz_iv.pids:
         assert pid in html
     # the intravenous data does not determine every parameter, and the report
     # says so instead of showing errors which cannot be read

@@ -82,10 +82,10 @@ The round trip of the HCTZ example keeps the settings, the parameters with their
 
 ```bash
 python -m examples.hctz_fitting.fitting.petab_problem
-python -m examples.hctz_fitting.fitting.petab_problem --subset=PKIV --portable
+python -m examples.hctz_fitting.fitting.petab_problem --subset=PK --portable
 ```
 
-The `PKIV` problem is one simulation experiment, so it comes back exactly (a relative difference of `5e-16` in the cost); `PK` is two, which is the `selections` gap and a difference of `7e-6`.
+The `PK` problem is several simulation experiments, which is the `selections` gap, so its cost comes back with a relative difference of the order of `1e-5`; a problem of a single experiment comes back exactly.
 
 ## A problem of the benchmark collection
 

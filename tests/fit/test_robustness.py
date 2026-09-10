@@ -32,12 +32,12 @@ def test_failed_result_is_an_optimize_result() -> None:
 
 
 def test_a_failing_run_keeps_the_other_runs(
-    op_hctz_pkiv: OptimizationProblem,
+    op_hctz_pk: OptimizationProblem,
     fit_settings: FitSettings,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """One optimization which raises does not lose the others."""
-    op = op_hctz_pkiv
+    op = op_hctz_pk
     op.initialize(fit_settings)
     original = op._optimize_single
     calls = {"n": 0}
@@ -61,11 +61,11 @@ def test_a_failing_run_keeps_the_other_runs(
 
 
 def test_timeout_keeps_what_a_run_reached(
-    op_hctz_pkiv: OptimizationProblem, fit_settings: FitSettings
+    op_hctz_pk: OptimizationProblem, fit_settings: FitSettings
 ) -> None:
     """A run which is out of time contributes the best point it found."""
     opt_result = run_optimization(
-        problem=op_hctz_pkiv,
+        problem=op_hctz_pk,
         settings=fit_settings,
         size=2,
         n_cores=1,
@@ -84,11 +84,11 @@ def test_timeout_keeps_what_a_run_reached(
 
 
 def test_timeout_does_not_outlive_the_run(
-    op_hctz_pkiv: OptimizationProblem, fit_settings: FitSettings
+    op_hctz_pk: OptimizationProblem, fit_settings: FitSettings
 ) -> None:
     """The deadline of a run is over when it is, the report evaluates again."""
     run_optimization(
-        problem=op_hctz_pkiv,
+        problem=op_hctz_pk,
         settings=fit_settings,
         size=1,
         n_cores=1,
@@ -98,16 +98,16 @@ def test_timeout_does_not_outlive_the_run(
         show_progress=False,
     )
     # the residuals are evaluated for the report, this must not time out
-    residuals = op_hctz_pkiv.residuals(np.log10(op_hctz_pkiv.xmodel))
+    residuals = op_hctz_pk.residuals(np.log10(op_hctz_pk.xmodel))
     assert isinstance(residuals, np.ndarray)
     assert np.all(np.isfinite(residuals))
 
 
 def test_fit_timeout_is_raised_by_the_objective(
-    op_hctz_pkiv: OptimizationProblem, fit_settings: FitSettings
+    op_hctz_pk: OptimizationProblem, fit_settings: FitSettings
 ) -> None:
     """The objective is what ends a run which is out of its budget."""
-    op = op_hctz_pkiv
+    op = op_hctz_pk
     op.initialize(fit_settings)
     op._deadline = 0.0
     with pytest.raises(FitTimeout):
@@ -116,12 +116,12 @@ def test_fit_timeout_is_raised_by_the_objective(
 
 
 def test_runs_are_stored_while_the_fit_runs(
-    tmp_path: Path, op_hctz_pkiv: OptimizationProblem, fit_settings: FitSettings
+    tmp_path: Path, op_hctz_pk: OptimizationProblem, fit_settings: FitSettings
 ) -> None:
     """Every run is a file, so an interrupted fit leaves what it finished."""
     runs_dir = tmp_path / "runs"
     opt_result = run_optimization(
-        problem=op_hctz_pkiv,
+        problem=op_hctz_pk,
         settings=fit_settings,
         size=2,
         n_cores=1,
@@ -148,12 +148,10 @@ def test_from_directory_without_runs(tmp_path: Path) -> None:
         OptimizationResult.from_directory(tmp_path / "empty")
 
 
-def test_run_result(
-    op_hctz_pkiv: OptimizationProblem, fit_settings: FitSettings
-) -> None:
+def test_run_result(op_hctz_pk: OptimizationProblem, fit_settings: FitSettings) -> None:
     """A single run of a result is a result of its own."""
     opt_result = run_optimization(
-        problem=op_hctz_pkiv,
+        problem=op_hctz_pk,
         settings=fit_settings,
         size=2,
         n_cores=1,
@@ -194,7 +192,7 @@ def test_mappings_are_grouped_by_simulation(
 
 
 def test_differential_evolution_without_convergence(
-    op_hctz_pkiv: OptimizationProblem, fit_settings: FitSettings
+    op_hctz_pk: OptimizationProblem, fit_settings: FitSettings
 ) -> None:
     """A global fit which does not converge still reports its cost.
 
@@ -204,7 +202,7 @@ def test_differential_evolution_without_convergence(
     from sbmlsim.fit.options import OptimizationAlgorithmType
 
     opt_result = run_optimization(
-        problem=op_hctz_pkiv,
+        problem=op_hctz_pk,
         settings=fit_settings,
         algorithm=OptimizationAlgorithmType.DIFFERENTIAL_EVOLUTION,
         size=1,
@@ -219,12 +217,12 @@ def test_differential_evolution_without_convergence(
 
 
 def test_start_values_do_not_depend_on_the_workers(
-    op_hctz_pkiv: OptimizationProblem, fit_settings: FitSettings
+    op_hctz_pk: OptimizationProblem, fit_settings: FitSettings
 ) -> None:
     """The runner samples the start points, not the workers."""
-    op_hctz_pkiv.initialize(fit_settings)
-    starts = op_hctz_pkiv.start_values(size=6, seed=1234)
-    again = op_hctz_pkiv.start_values(size=6, seed=1234)
+    op_hctz_pk.initialize(fit_settings)
+    starts = op_hctz_pk.start_values(size=6, seed=1234)
+    again = op_hctz_pk.start_values(size=6, seed=1234)
 
     assert len(starts) == 6
     for x0, x0_again in zip(starts, again, strict=True):
@@ -255,10 +253,10 @@ def test_every_global_run_gets_its_own_seed() -> None:
 
 
 def test_a_run_of_a_worker_never_raises(
-    op_hctz_pkiv: OptimizationProblem, fit_settings: FitSettings
+    op_hctz_pk: OptimizationProblem, fit_settings: FitSettings
 ) -> None:
     """A repeat which fails is a result, so the pool keeps the other repeats."""
-    op = op_hctz_pkiv
+    op = op_hctz_pk
     op.initialize(fit_settings)
 
     def boom(*args: Any, **kwargs: Any) -> Any:
