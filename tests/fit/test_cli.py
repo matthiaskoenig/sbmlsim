@@ -231,3 +231,37 @@ def test_run_fit_creates_an_id(definition_hctz_pk: FitDefinition) -> None:
     opid = next(iter(runs))
     assert "__" in opid
     assert runs[opid].result.sid == opid
+
+
+def test_the_route_parameters_of_the_example_are_versioned() -> None:
+    """The example shows one entity estimated per route."""
+    from examples.hctz_fitting.fitting.parameters import PARAMETERS_BY_ROUTE
+
+    versioned = [p for p in PARAMETERS_BY_ROUTE if p.is_versioned]
+    assert len(versioned) == 2
+    assert {p.target_id for p in versioned} == {"Ka_dis_hctz"}
+    assert {p.pid for p in versioned} == {"Ka_dis_hctz_po", "Ka_dis_hctz_iv"}
+
+
+def test_a_versioned_fit_is_not_worse_than_the_shared_one(
+    definition_hctz_pk: FitDefinition, fit_settings: FitSettings
+) -> None:
+    """Estimating one entity per route can only lower the cost.
+
+    Two versions are a superset of one shared value, so the optimum of the
+    versioned problem is at most the optimum of the shared one. Both are run
+    from the values of the model, so this compares like with like.
+    """
+    from examples.hctz_fitting.fitting.parameters import PARAMETERS, PARAMETERS_BY_ROUTE
+
+    def _cost(parameters: list) -> float:
+        problem = definition_hctz_pk.problem(opid="cost")
+        problem.parameters = parameters
+        problem.pids = [p.pid for p in parameters]
+        problem.punits = [p.unit for p in parameters]
+        problem.initialize(fit_settings)
+        return problem.cost_least_square(problem.to_scale(problem.xmodel))
+
+    # at the values of the model the two are the same fit, which is the check
+    # that the versions were bound and nothing else moved
+    assert _cost(PARAMETERS_BY_ROUTE) == pytest.approx(_cost(PARAMETERS), rel=1e-6)
