@@ -24,6 +24,7 @@ nav = [
     { "Parameter fitting" = "fitting.md" },
     { "Sensitivity analysis" = "sensitivity.md" },
     { "PEtab" = "petab.md" },
+    { "SBML Test Suite" = "testsuite.md" },
   ] },
   { "References" = "references.md" },
   { "API reference" = [
@@ -109,6 +110,12 @@ nav = [
       { "sensitivity_fast" = "api/sensitivity.sensitivity_fast.md" },
       { "classification" = "api/sensitivity.classification.md" },
       { "plots" = "api/sensitivity.plots.md" },
+    ] },
+    { "sbmlsim.testsuite" = [
+      { "cases" = "api/testsuite.cases.md" },
+      { "runner" = "api/testsuite.runner.md" },
+      { "comparison" = "api/testsuite.comparison.md" },
+      { "report" = "api/testsuite.report.md" },
     ] },
     { "sbmlsim.comparison" = [
       { "diff" = "api/comparison.diff.md" },

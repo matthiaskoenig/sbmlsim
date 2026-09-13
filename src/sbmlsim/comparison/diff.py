@@ -6,6 +6,7 @@ Used to benchmark the simulation results.
 
 import logging
 from pathlib import Path
+from typing import Any
 
 import numpy as np
 import pandas as pd
@@ -16,6 +17,40 @@ from sbmlsim.console import console
 from sbmlsim.utils import timeit
 
 logger = logging.getLogger(__name__)
+
+
+def within_tolerance(
+    expected: Any,
+    observed: Any,
+    abs_tol: float,
+    rel_tol: float,
+) -> Any:
+    """Check which values agree within an absolute and a relative tolerance.
+
+    The criterion of the SBML Test Suite, see
+    [the README of the semantic cases](https://github.com/sbmlteam/sbml-test-suite/blob/master/cases/semantic/README.md):
+    an observed value `u` agrees with the expected value `c` if
+
+        |c - u| <= abs_tol + rel_tol * |c|
+
+    The tolerance is relative to the expected value, not to the difference of
+    the two, so a value which is expected to be zero is only allowed to differ
+    by the absolute tolerance.
+
+    Args:
+        expected: the correct values, an array or a DataFrame.
+        observed: the values which are checked, of the same shape.
+        abs_tol: absolute tolerance.
+        rel_tol: relative tolerance.
+
+    Returns:
+        Booleans of the shape of the input, `True` where the values agree.
+    """
+    # a comparison with an undefined value is not within the tolerance, and
+    # subtracting infinities is how that shows up rather than an error
+    with np.errstate(invalid="ignore"):
+        difference = np.abs(expected - observed)
+        return difference <= (abs_tol + rel_tol * np.abs(expected))
 
 
 def get_files_by_extension(base_path: Path, extension: str = ".json") -> dict[str, str]:
@@ -237,7 +272,9 @@ class DataSetsComparison:
         diff_tol = (c - u).abs() - (self.tol_abs + self.tol_rel * c.abs())
 
         # boolean matrix: True if different, False if identical
-        diff_tol_bool = diff_tol > 0
+        diff_tol_bool = ~within_tolerance(
+            expected=c, observed=u, abs_tol=self.tol_abs, rel_tol=self.tol_rel
+        )
 
         return diff, diff_abs, diff_rel, diff_tol, diff_tol_bool
 
