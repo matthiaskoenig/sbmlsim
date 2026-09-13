@@ -14,6 +14,7 @@ from scipy import interpolate
 
 from sbmlsim.console import console
 from sbmlsim.experiment import ExperimentRunner, SimulationExperiment
+from sbmlsim.fit.helpers import _filters
 from sbmlsim.fit.objects import (
     UNUSED_KINDS,
     FitMapping,
@@ -30,6 +31,7 @@ from sbmlsim.fit.options import (
     WeightingCurvesType,
     WeightingPointsType,
 )
+from sbmlsim.fit.parameter_mapping import ParameterMapping
 from sbmlsim.fit.parameters import ParameterSet
 from sbmlsim.fit.sampling import SamplingType, create_samples
 from sbmlsim.model import RoadrunnerSBMLModel
@@ -274,6 +276,9 @@ class OptimizationProblem(ObjectJSONEncoder):
         self.selections: list[Any] = []
         # indices of the mappings which share a simulation, see `_group_mappings`
         self.mapping_groups: list[list[int]] = []
+        #: which parameter writes which entity in which simulation, resolved
+        #: by `initialize`, see `sbmlsim.fit.parameter_mapping`
+        self.parameter_mapping: ParameterMapping | None = None
 
     def indices(self, kind: MappingKind | None = None) -> list[int]:
         """Get the indices of the fit mappings of a kind.
@@ -466,6 +471,11 @@ class OptimizationProblem(ObjectJSONEncoder):
             base_path=self.base_path,
             data_path=self.data_path,
         )
+
+        # the fit mappings every versioned parameter selects, by the index of
+        # the parameter. The filters need the `FitMapping`, which the problem
+        # does not keep, so they are evaluated while it is in scope
+        selected_mappings: dict[int, set[int]] = {}
 
         # Collect information for simulations
         for collection_index, mapping_collection in enumerate(self.mapping_collections):
@@ -716,6 +726,16 @@ class OptimizationProblem(ObjectJSONEncoder):
                 # store information
                 self.experiment_keys.append(sid)
                 self.mapping_keys.append(mapping_id)
+
+                k_mapping = len(self.mapping_keys) - 1
+                for k_parameter, parameter in enumerate(self.parameters):
+                    if not parameter.is_versioned:
+                        continue
+                    if all(
+                        f(mapping_id, mapping) for f in _filters(parameter.mappings)
+                    ):
+                        selected_mappings.setdefault(k_parameter, set()).add(k_mapping)
+
                 self.mapping_kinds.append(mapping_collection.kind)
                 self.collection_indices.append(collection_index)
                 self.xid_observable.append(obs_xid)
@@ -740,6 +760,17 @@ class OptimizationProblem(ObjectJSONEncoder):
         # initial parameter values of the models
         self._store_model_parameters()
         self._group_mappings()
+
+        self.parameter_mapping = ParameterMapping(
+            parameters=self.parameters,
+            mapping_indices=selected_mappings,
+            groups=self.mapping_groups,
+            mapping_keys=self.mapping_keys,
+            group_names=[
+                f"{self.experiment_keys[group[0]]}|{self.mapping_keys[group[0]]}"
+                for group in self.mapping_groups
+            ],
+        )
 
         if not self.training_indices:
             raise ValueError(
@@ -836,10 +867,11 @@ class OptimizationProblem(ObjectJSONEncoder):
             if model.r is None:
                 raise ValueError(f"Model '{model}' is not loaded in roadrunner.")
 
-            for k, pid in enumerate(self.pids):
-                pid_value = model.r[pid]
-                if pid in model.changes:
-                    change = model.changes[pid]
+            for k, parameter in enumerate(self.parameters):
+                target = parameter.target_id
+                pid_value = model.r[target]
+                if target in model.changes:
+                    change = model.changes[target]
                     # model changes have units
                     pid_value = (
                         change.magnitude if isinstance(change, Quantity) else change
@@ -851,7 +883,7 @@ class OptimizationProblem(ObjectJSONEncoder):
                         "%s: models start from different values for '%s': "
                         "'%s' != '%s'; the value of the first model is reported.",
                         self.opid,
-                        pid,
+                        parameter.pid,
                         self.xmodel[k],
                         pid_value,
                     )
@@ -883,6 +915,20 @@ class OptimizationProblem(ObjectJSONEncoder):
                 f"OptimizationProblem '{self.opid}' must be initialized first."
             )
         return self.runner
+
+    @property
+    def parameter_mapping_initialized(self) -> ParameterMapping:
+        """Binding of the parameters to the simulations, created in `initialize`.
+
+        Raises:
+            ValueError: if the problem was not initialized.
+        """
+        if self.parameter_mapping is None:
+            raise ValueError(
+                f"No parameter mapping on OptimizationProblem '{self.opid}', "
+                f"it is not initialized."
+            )
+        return self.parameter_mapping
 
     def optimize(
         self,

@@ -42,6 +42,26 @@ def _is_iv(fit_mapping_key: str, fit_mapping: FitMapping) -> bool:
     return isinstance(metadata, HCTZMappingMetaData) and metadata.route is Route.IV
 
 
+def is_oral(fit_mapping_key: str, fit_mapping: FitMapping) -> bool:
+    """Select the oral mappings of the HCTZ problem.
+
+    A module level function, not a lambda, because a selector is pickled with
+    the `FitParameter` that carries it and the workers of a parallel fit
+    unpickle the parameters.
+    """
+    metadata = fit_mapping.metadata
+    return isinstance(metadata, HCTZMappingMetaData) and metadata.route is Route.PO
+
+
+def is_intravenous(fit_mapping_key: str, fit_mapping: FitMapping) -> bool:
+    """Select the intravenous mappings of the HCTZ problem.
+
+    A module level function, not a lambda, for the same reason as `is_oral`.
+    """
+    metadata = fit_mapping.metadata
+    return isinstance(metadata, HCTZMappingMetaData) and metadata.route is Route.IV
+
+
 def _collections_iv() -> dict[str, list[FitMappingCollection]]:
     """Select the iv data of Beermann1976, the rest is excluded."""
     return select_mapping_collections(

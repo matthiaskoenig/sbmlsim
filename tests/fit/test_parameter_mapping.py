@@ -1,8 +1,15 @@
 """Tests of the binding of the parameters to the simulations."""
 
+import dataclasses
+import pickle
+
 import pytest
 
+from conftest import is_oral  # ty: ignore[unresolved-import]
+from sbmlsim.fit import FitSettings
+from sbmlsim.fit.cli import FitDefinition
 from sbmlsim.fit.objects import FitParameter
+from sbmlsim.fit.optimization import OptimizationProblem
 from sbmlsim.fit.parameter_mapping import ParameterMapping
 
 
@@ -130,3 +137,78 @@ def test_the_coverage_names_the_groups_a_version_does_not_reach() -> None:
     assert row.n_covered == 1
     assert row.n_groups == 2
     assert row.uncovered_groups == ["iv"]
+
+
+def test_the_problem_resolves_its_selectors(
+    definition_hctz_pk: FitDefinition, fit_settings: FitSettings
+) -> None:
+    """A versioned problem knows which simulation gets which parameter."""
+    # `definition_hctz_pk` is the shared `FIT_DEFINITIONS["PK"]`, so a copy is
+    # built here rather than mutating it in place, which would leak the
+    # custom parameters into the other tests that use the same definition
+    definition = dataclasses.replace(definition_hctz_pk)
+    definition.parameters = [
+        FitParameter(
+            "Ka_po",
+            0.35,
+            0.01,
+            10.0,
+            "1/hr",
+            target="Ka_dis_hctz",
+            mappings=is_oral,
+        ),
+    ]
+    problem = definition.problem(opid="versions")
+    problem.initialize(fit_settings)
+
+    mapping = problem.parameter_mapping
+    assert mapping is not None
+    assert mapping.is_versioned
+    (row,) = mapping.coverage()
+    assert row.pid == "Ka_po"
+    assert row.target == "Ka_dis_hctz"
+    # some simulations are oral and some are not
+    assert 0 < row.n_covered < row.n_groups
+    assert row.uncovered_groups
+
+
+def test_an_unversioned_problem_binds_every_parameter_everywhere(
+    op_hctz_pk: OptimizationProblem, fit_settings: FitSettings
+) -> None:
+    """Nothing changes for a problem which has no versions."""
+    op_hctz_pk.initialize(fit_settings)
+    mapping = op_hctz_pk.parameter_mapping
+
+    assert mapping is not None
+    assert not mapping.is_versioned
+    for group in range(len(op_hctz_pk.mapping_groups)):
+        assert set(mapping.indices_for(group)) == set(op_hctz_pk.pids)
+
+
+def test_a_versioned_problem_is_picklable(
+    definition_hctz_pk: FitDefinition, fit_settings: FitSettings
+) -> None:
+    """The workers of a parallel fit unpickle the definition of a problem.
+
+    A selector is a callable, so it must be a module level function; a lambda
+    would make a parallel fit fail when the workers start.
+    """
+    # see `test_the_problem_resolves_its_selectors` for why this is a copy
+    definition = dataclasses.replace(definition_hctz_pk)
+    definition.parameters = [
+        FitParameter(
+            "Ka_po",
+            0.35,
+            0.01,
+            10.0,
+            "1/hr",
+            target="Ka_dis_hctz",
+            mappings=is_oral,
+        ),
+    ]
+    problem = definition.problem(opid="versions")
+    problem.initialize(fit_settings)
+
+    restored = pickle.loads(pickle.dumps(problem))
+    assert restored.parameters[0].target_id == "Ka_dis_hctz"
+    assert restored.parameters[0].mappings is is_oral
