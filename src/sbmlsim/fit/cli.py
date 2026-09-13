@@ -454,7 +454,10 @@ def fit_cli(
             "output": options.output_dir,
         }
     )
-    display.print_parameters(definition.parameters)
+    # the parameters are printed per problem, with their coverage, once
+    # `run_fit` initializes each one in `run_optimization` -- printing them
+    # again here from `definition.parameters` alone would only repeat the
+    # same block without the coverage, once per problem for `SINGLE`
     display.print_settings(definition.settings)
 
     runs = run_fit(
