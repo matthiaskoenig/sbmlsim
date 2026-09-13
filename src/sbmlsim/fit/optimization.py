@@ -228,6 +228,7 @@ class OptimizationProblem(ObjectJSONEncoder):
         self._best: tuple[np.ndarray, float] | None = None
         # deadline of the running optimization, set by `_optimize_single`
         self._deadline: float | None = None
+        self.xmodel: np.ndarray = np.empty(shape=(len(self.pids)))
         self._reset_mappings()
 
     def __getstate__(self) -> dict[str, Any]:
@@ -253,11 +254,7 @@ class OptimizationProblem(ObjectJSONEncoder):
 
         The data of the mappings is collected in `initialize`, which can be called
         more than once, e.g., to run an optimization and to analyze it afterwards.
-        Sized by the current `pids`, so a problem whose `parameters` were swapped
-        before a fresh `initialize()` gets an `xmodel` of the right length rather
-        than the one of its construction.
         """
-        self.xmodel: np.ndarray = np.empty(shape=(len(self.pids)))
         self.experiment_keys: list[str] = []
         self.mapping_keys: list[str] = []
         self.mapping_kinds: list[MappingKind] = []

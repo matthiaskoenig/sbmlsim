@@ -1,5 +1,6 @@
 """Test the general fit runner and its command line tools."""
 
+import dataclasses
 from pathlib import Path
 
 import pytest
@@ -255,10 +256,12 @@ def test_a_versioned_fit_is_not_worse_than_the_shared_one(
     from examples.hctz_fitting.fitting.parameters import PARAMETERS, PARAMETERS_BY_ROUTE
 
     def _cost(parameters: list) -> float:
-        problem = definition_hctz_pk.problem(opid="cost")
-        problem.parameters = parameters
-        problem.pids = [p.pid for p in parameters]
-        problem.punits = [p.unit for p in parameters]
+        # a fresh problem per parameter list, not a patched one: `__init__` is
+        # what derives `pids`, `punits`, `bounds`, `x0` and `xmodel` from the
+        # parameters consistently, and patching them on a built problem leaves
+        # some of that stale
+        definition = dataclasses.replace(definition_hctz_pk, parameters=parameters)
+        problem = definition.problem(opid="cost")
         problem.initialize(fit_settings)
         return problem.cost_least_square(problem.to_scale(problem.xmodel))
 
