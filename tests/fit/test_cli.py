@@ -110,7 +110,7 @@ def test_run_fit_report(tmp_path: Path, definition_hctz_pk: FitDefinition) -> No
     runs = run_fit(
         definition=definition_hctz_pk, opid="pk", size=1, n_cores=1, seed=1234
     )
-    results_dir = runs["pk"].report(output_dir=tmp_path)
+    results_dir = runs["pk"].report(output_dir=tmp_path, mapping_figures=False)
     assert (results_dir / "index.html").exists()
     assert (results_dir / "parameters.json").exists()
     assert (results_dir / "metrics.tsv").exists()
@@ -123,6 +123,7 @@ def test_fit_cli(tmp_path: Path) -> None:
     runs = fit_cli(
         FIT_DEFINITIONS,
         args=[
+            "--no-mapping-figures",
             "--subset=PK",
             "--runs=1",
             "--cores=1",
@@ -154,6 +155,7 @@ def test_report_cli(tmp_path: Path, definition_hctz_pk: FitDefinition) -> None:
     results_dir = report_cli(
         FIT_DEFINITIONS,
         args=[
+            "--no-mapping-figures",
             str(parameters_path),
             "--subset=PK",
             "--name=stored",
@@ -218,7 +220,7 @@ def test_fit_id_is_used_everywhere(
     assert run.result.opid == "the_fit"
     assert run.result.sid == "the_fit"
     # the report is written into a directory named after the fit
-    assert run.report(output_dir=tmp_path).name == "the_fit"
+    assert run.report(mapping_figures=False, output_dir=tmp_path).name == "the_fit"
     # and the parameter sets of the result carry it
     assert run.result.parameter_set().sid.startswith("the_fit")
 

@@ -49,7 +49,9 @@ def test_report_from_optimization_result(
     """The report of a fit shows the fitted parameters alone."""
     opt_result = _fit(op_hctz_iv, fit_settings)
     report = FitReport.from_optimization_result(
-        problem=op_hctz_iv, opt_result=opt_result
+        problem=op_hctz_iv,
+        opt_result=opt_result,
+        mapping_figures=False,
     )
 
     # the values the model started from are not reported
@@ -72,7 +74,10 @@ def test_report_from_optimization_result_with_model(
     """`with_model` compares the fit against the values the model started from."""
     opt_result = _fit(op_hctz_iv, fit_settings)
     report = FitReport.from_optimization_result(
-        problem=op_hctz_iv, opt_result=opt_result, with_model=True
+        problem=op_hctz_iv,
+        opt_result=opt_result,
+        with_model=True,
+        mapping_figures=False,
     )
 
     # the model values are the reference, the fit is the second set
@@ -95,6 +100,7 @@ def test_the_subsets_of_the_data_points(
         problem=op_hctz_pk,
         settings=fit_settings,
         parameter_sets=op_hctz_pk.parameter_set_model(),
+        mapping_figures=False,
     )
     # one panel per kind, there is no panel over all data points
     assert report.point_kinds() == ["training", "validation", "outlier"]
@@ -128,6 +134,7 @@ def test_the_subsets_of_a_problem_with_one_kind(
         problem=problem,
         settings=fit_settings,
         parameter_sets=problem.parameter_set_model(),
+        mapping_figures=False,
     )
     assert report.point_kinds() == ["training"]
 
@@ -145,6 +152,7 @@ def test_the_limits_of_agreement_are_the_training_data(
         problem=op_hctz_pk,
         settings=fit_settings,
         parameter_sets=op_hctz_pk.parameter_set_model(),
+        mapping_figures=False,
     )
     pset = report.reference_set
     bias, half = report.agreement(pset)
@@ -176,6 +184,7 @@ def test_both_figures_draw_the_same_band(
         problem=op_hctz_pk,
         settings=fit_settings,
         parameter_sets=op_hctz_pk.parameter_set_model(),
+        mapping_figures=False,
     )
     pset = report.reference_set
     identity, bias_label, limits_label = report._band_labels(pset)
@@ -198,6 +207,7 @@ def test_the_goodness_of_fit_and_altman_plots(
         problem=op_hctz_pk,
         settings=fit_settings,
         parameter_sets=op_hctz_pk.parameter_set_model(),
+        mapping_figures=False,
     )
     results_dir = report.create(output_dir=tmp_path, name="subsets")
 
@@ -229,7 +239,12 @@ def test_the_key_metrics_of_the_panels(
     """Every panel carries the key metrics of its points."""
     op_hctz_pk.initialize(fit_settings)
     pset = op_hctz_pk.parameter_set_model()
-    report = FitReport(problem=op_hctz_pk, settings=fit_settings, parameter_sets=pset)
+    report = FitReport(
+        problem=op_hctz_pk,
+        settings=fit_settings,
+        parameter_sets=pset,
+        mapping_figures=False,
+    )
 
     kind = MappingKind.TRAINING.value
     summary = report.metrics(pset).summary(kind=MappingKind.TRAINING)
@@ -266,12 +281,68 @@ def test_the_key_metrics_of_several_sets(
         problem=op_hctz_pk,
         settings=fit_settings,
         parameter_sets=ParameterSets([model, other]),
+        mapping_figures=False,
     )
     text = report.panel_metrics(MappingKind.TRAINING.value, "goodness_of_fit")
     lines = text.splitlines()
     assert len(lines) == 2
     assert lines[0].startswith(f"{model.sid}: ")
     assert lines[1].startswith("other: ")
+
+
+def test_the_figures_of_every_mapping(
+    tmp_path: Path, op_hctz_iv: OptimizationProblem, fit_settings: FitSettings
+) -> None:
+    """A report draws the two figures of every fit mapping by default.
+
+    They are almost the whole cost of a report, so the tests which only read
+    its tables create it with `mapping_figures=False`; this is the test that
+    the default still draws them and that the cards carry them.
+    """
+    op_hctz_iv.initialize(fit_settings)
+    report = FitReport(
+        problem=op_hctz_iv,
+        settings=fit_settings,
+        parameter_sets=op_hctz_iv.parameter_set_model(),
+    )
+    results_dir = report.create(output_dir=tmp_path, name="figures")
+
+    plots = results_dir / "plots"
+    for k, mapping_id in enumerate(op_hctz_iv.mapping_keys):
+        sid = op_hctz_iv.experiment_keys[k]
+        assert (plots / f"{sid}_{mapping_id}.svg").exists()
+        assert (plots / f"fit_{sid}_{mapping_id}.svg").exists()
+
+    html = (results_dir / "index.html").read_text(encoding="utf-8")
+    assert "Data and simulation" in html
+
+
+def test_a_report_without_the_figures_of_the_mappings(
+    tmp_path: Path, op_hctz_iv: OptimizationProblem, fit_settings: FitSettings
+) -> None:
+    """`mapping_figures=False` keeps the tables and drops the mapping figures."""
+    op_hctz_iv.initialize(fit_settings)
+    report = FitReport(
+        problem=op_hctz_iv,
+        settings=fit_settings,
+        parameter_sets=op_hctz_iv.parameter_set_model(),
+        mapping_figures=False,
+    )
+    results_dir = report.create(output_dir=tmp_path, name="tables")
+    plots = results_dir / "plots"
+
+    for k, mapping_id in enumerate(op_hctz_iv.mapping_keys):
+        sid = op_hctz_iv.experiment_keys[k]
+        assert not (plots / f"{sid}_{mapping_id}.svg").exists()
+        assert not (plots / f"fit_{sid}_{mapping_id}.svg").exists()
+
+    # the overview figures and everything which is read as a table stay
+    assert (plots / "goodness_of_fit.svg").exists()
+    assert (plots / "bland_altman.svg").exists()
+    _assert_report_files(results_dir)
+    html = (results_dir / "index.html").read_text(encoding="utf-8")
+    for mapping_id in op_hctz_iv.mapping_keys:
+        assert mapping_id in html
 
 
 def test_report_without_optimization(
@@ -294,6 +365,7 @@ def test_report_without_optimization(
         problem=problem,
         settings=fit_settings,
         parameter_sets=ParameterSets.from_json(parameters_path),
+        mapping_figures=False,
     )
 
     results_dir = report.create(output_dir=tmp_path, name="report")
@@ -314,7 +386,12 @@ def test_report_multiple_parameter_sets(
             *opt_result.parameter_sets(size=2),
         ]
     )
-    report = FitReport(problem=op_hctz_iv, settings=fit_settings, parameter_sets=sets)
+    report = FitReport(
+        problem=op_hctz_iv,
+        settings=fit_settings,
+        parameter_sets=sets,
+        mapping_figures=False,
+    )
     assert len(report.parameter_sets) == 3
 
     results_dir = report.create(output_dir=tmp_path, name="compare")
@@ -336,6 +413,7 @@ def test_report_single_set(
         problem=op_hctz_pk,
         settings=fit_settings,
         parameter_sets=op_hctz_pk.parameter_set_model(),
+        mapping_figures=False,
     )
     results_dir = report.create(output_dir=tmp_path, name="model")
     _assert_report_files(results_dir)
@@ -347,7 +425,12 @@ def test_report_requires_a_set(
 ) -> None:
     """A report without a parameter set is an error."""
     with pytest.raises(ValueError, match="At least one"):
-        FitReport(problem=op_hctz_pk, settings=fit_settings, parameter_sets=[])
+        FitReport(
+            problem=op_hctz_pk,
+            settings=fit_settings,
+            parameter_sets=[],
+            mapping_figures=False,
+        )
 
 
 def test_report_parameter_set_of_other_problem(
@@ -358,6 +441,7 @@ def test_report_parameter_set_of_other_problem(
         problem=op_hctz_pk,
         settings=fit_settings,
         parameter_sets=ParameterSet(sid="other", values={"unknown": 1.0}),
+        mapping_figures=False,
     )
     with pytest.raises(KeyError, match="does not contain"):
         report.residual_data(report.reference_set)
@@ -372,6 +456,7 @@ def test_run_plots_require_a_result(
         problem=op_hctz_pk,
         settings=fit_settings,
         parameter_sets=op_hctz_pk.parameter_set_model(),
+        mapping_figures=False,
     )
     with pytest.raises(ValueError, match="OptimizationResult"):
         _ = report.opt_result_required
@@ -388,7 +473,9 @@ def test_html_report_sections(
     """The report has the three sections and its search."""
     opt_result = _fit(op_hctz_iv, fit_settings)
     report = FitReport.from_optimization_result(
-        problem=op_hctz_iv, opt_result=opt_result
+        problem=op_hctz_iv,
+        opt_result=opt_result,
+        mapping_figures=False,
     )
     results_dir = report.create(output_dir=tmp_path, name="fit")
     html = _html_of(results_dir)
@@ -415,7 +502,9 @@ def test_html_report_is_offline(
     """The report needs no network, it is read from a file and archived."""
     opt_result = _fit(op_hctz_iv, fit_settings)
     report = FitReport.from_optimization_result(
-        problem=op_hctz_iv, opt_result=opt_result
+        problem=op_hctz_iv,
+        opt_result=opt_result,
+        mapping_figures=False,
     )
     html = _html_of(report.create(output_dir=tmp_path, name="fit"))
     assert "http://" not in html
@@ -428,7 +517,9 @@ def test_html_report_references_exist(
     """Every file the report links to was written."""
     opt_result = _fit(op_hctz_iv, fit_settings)
     report = FitReport.from_optimization_result(
-        problem=op_hctz_iv, opt_result=opt_result
+        problem=op_hctz_iv,
+        opt_result=opt_result,
+        mapping_figures=False,
     )
     results_dir = report.create(output_dir=tmp_path, name="fit")
 
@@ -447,6 +538,7 @@ def test_html_report_without_optimization(
         problem=op_hctz_pk,
         settings=fit_settings,
         parameter_sets=op_hctz_pk.parameter_set_model(),
+        mapping_figures=False,
     )
     html = _html_of(report.create(output_dir=tmp_path, name="model"))
     assert "traces" not in html
@@ -465,6 +557,7 @@ def test_html_context(
         problem=op_hctz_pk,
         settings=fit_settings,
         parameter_sets=op_hctz_pk.parameter_set_model(),
+        mapping_figures=False,
     )
     context = report.html_context(results_dir=Path("nowhere"), name="the_fit")
 
@@ -491,6 +584,7 @@ def test_html_report_is_well_formed(
         problem=op_hctz_pk,
         settings=fit_settings,
         parameter_sets=op_hctz_pk.parameter_set_model(),
+        mapping_figures=False,
     )
     html = _html_of(report.create(output_dir=tmp_path, name="model"))
 
@@ -523,7 +617,10 @@ def test_the_report_explains_its_values(
     op_hctz_pk.initialize(fit_settings)
     parameter_set = op_hctz_pk.parameter_set_model()
     report = FitReport(
-        problem=op_hctz_pk, settings=fit_settings, parameter_sets=[parameter_set]
+        problem=op_hctz_pk,
+        settings=fit_settings,
+        parameter_sets=[parameter_set],
+        mapping_figures=False,
     )
     report.create(tmp_path, name="hints")
     html = (tmp_path / "hints" / "index.html").read_text()
@@ -548,6 +645,7 @@ def test_the_report_of_the_fisher_information(
         settings=fit_settings,
         parameter_sets=[parameter_set],
         fisher=fisher,
+        mapping_figures=False,
     )
     results_dir = report.create(tmp_path, name="fisher")
 

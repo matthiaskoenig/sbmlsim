@@ -351,6 +351,13 @@ def _add_common_arguments(
     parser.add_argument(
         "-n", "--name", default=None, help="name of the report, the fit id by default"
     )
+    parser.add_argument(
+        "--no-mapping-figures",
+        action="store_true",
+        help="leave the two figures of every fit mapping out of the report. "
+        "They are almost the whole cost of it, so a report which is read for "
+        "its tables and its overview figures is created much faster",
+    )
 
 
 def fit_cli(
@@ -465,7 +472,12 @@ def fit_cli(
 
     # the fit only optimizes, the report is created from its parameters
     for run in runs.values():
-        run.report(output_dir=options.output_dir, name=options.name, show_titles=False)
+        run.report(
+            output_dir=options.output_dir,
+            name=options.name,
+            show_titles=False,
+            mapping_figures=not options.no_mapping_figures,
+        )
 
     return runs
 
@@ -534,6 +546,7 @@ def report_cli(
         settings=definition.settings,
         parameter_sets=parameter_sets,
         show_titles=False,
+        mapping_figures=not options.no_mapping_figures,
     )
     return report.create(
         output_dir=options.output_dir,
@@ -704,6 +717,7 @@ def identifiability_cli(
         identifiability=result,
         fisher=fisher,
         show_titles=False,
+        mapping_figures=not options.no_mapping_figures,
     )
     return report.create(
         output_dir=options.output_dir,
