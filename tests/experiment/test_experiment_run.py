@@ -1,5 +1,7 @@
 """Tests of running a simulation experiment."""
 
+import logging
+import sys
 from pathlib import Path
 from typing import Any
 
@@ -12,6 +14,7 @@ from sbmlsim.experiment.runner import model_key
 from sbmlsim.fit import FitData, FitMapping
 from sbmlsim.model import AbstractModel
 from sbmlsim.model.model_roadrunner import RoadrunnerSBMLModel
+from sbmlsim.plot import Axis, Curve, Figure, Plot, SubPlot
 from sbmlsim.resources import REPRESSILATOR_SBML
 from sbmlsim.simulation import Timecourse, TimecourseSim
 from sbmlsim.simulator.simulation_serial import SimulatorSerial
@@ -195,3 +198,97 @@ def test_the_figures_are_created_for_the_output(tmp_path: Path) -> None:
     experiment.run(runner.simulator, output_path=tmp_path)
 
     assert (tmp_path / f"{experiment.sid}.json").exists()
+
+
+# ---------------------------------------------------------------------------
+# the format decides the backend
+# ---------------------------------------------------------------------------
+class FigureExperiment(FitMappingExperiment):
+    """An experiment with one figure of the figure model."""
+
+    def figures(self) -> dict:
+        plot = Plot(
+            sid="p",
+            xaxis=Axis("time", unit="second"),
+            yaxis=Axis("X", unit="dimensionless"),
+        )
+        plot.curves.append(
+            Curve(
+                x=Data(index="time", task="task"),
+                y=Data(index="[X]", task="task"),
+                name="X",
+            )
+        )
+        return {
+            "fig": Figure(
+                experiment=self,
+                sid="fig",
+                num_rows=1,
+                num_cols=1,
+                subplots=[SubPlot(plot=plot, row=1, col=1)],
+            )
+        }
+
+
+def _run_with(tmp_path: Path, formats: list[str]) -> Path:
+    """Run the figure experiment with the given output formats."""
+    runner = _runner(FigureExperiment)
+    experiment = runner.experiments["FigureExperiment"]
+    experiment.run(runner.simulator, output_path=tmp_path, figure_formats=formats)
+    return tmp_path
+
+
+def test_a_static_format_is_drawn_by_matplotlib(tmp_path: Path) -> None:
+    """`svg` writes an image and no interactive page."""
+    out = _run_with(tmp_path, ["svg"])
+    assert (out / "FigureExperiment_fig.svg").exists()
+    assert not (out / "FigureExperiment_fig.html").exists()
+    assert not (out / "plotly.min.js").exists()
+
+
+def test_the_interactive_format_is_drawn_by_plotly(tmp_path: Path) -> None:
+    """`html` writes an interactive page and no image.
+
+    The javascript is written next to the page, so the report needs no
+    network, and matplotlib is not asked for a figure at all.
+    """
+    pytest.importorskip("plotly")
+    runner = _runner(FigureExperiment)
+    experiment = runner.experiments["FigureExperiment"]
+    experiment.run(runner.simulator, output_path=tmp_path, figure_formats=["html"])
+
+    page = tmp_path / "FigureExperiment_fig.html"
+    assert page.exists()
+    assert (tmp_path / "plotly.min.js").exists()
+    assert not (tmp_path / "FigureExperiment_fig.svg").exists()
+    # matplotlib was not used, so nothing was rendered and closed
+    assert experiment._mpl_figures == {}
+
+    html = page.read_text(encoding="utf-8")
+    assert "plotly-graph-div" in html
+    # the page loads its javascript from next to it and not from the network
+    assert 'src="plotly.min.js"' in html
+    assert "https://" not in html.split("<script")[1][:400]
+
+
+def test_both_formats_are_written(tmp_path: Path) -> None:
+    """An experiment asks for the image and the page in one run."""
+    pytest.importorskip("plotly")
+    out = _run_with(tmp_path, ["svg", "html"])
+    assert (out / "FigureExperiment_fig.svg").exists()
+    assert (out / "FigureExperiment_fig.html").exists()
+
+
+def test_the_interactive_figures_need_plotly(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    """Without plotly the run says so and writes no page, it does not raise."""
+    monkeypatch.setitem(sys.modules, "sbmlsim.plot.serialization_plotly", None)
+    runner = _runner(FigureExperiment)
+    experiment = runner.experiments["FigureExperiment"]
+
+    with caplog.at_level(logging.ERROR):
+        experiment.run(runner.simulator, output_path=tmp_path, figure_formats=["html"])
+
+    assert not (tmp_path / "FigureExperiment_fig.html").exists()
+    assert any("plotly" in record.getMessage() for record in caplog.records)

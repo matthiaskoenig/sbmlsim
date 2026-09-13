@@ -29,6 +29,14 @@ from sbmlsim.utils import timeit
 
 logger = logging.getLogger(__name__)
 
+#: format of the static images, which matplotlib draws
+STATIC_FORMAT = "svg"
+
+#: format of the interactive figures, which plotly draws. It is a value of
+#: `figure_formats`, so an experiment asks for the pages the way it asks for
+#: an image: `figure_formats=["svg", "html"]`
+INTERACTIVE_FORMAT = "html"
+
 
 class SimulationExperiment:
     """Generic simulation experiment.
@@ -412,21 +420,30 @@ class SimulationExperiment:
             if save_results:
                 self.save_results(output_path)
 
+        # the format decides which backend draws a figure: matplotlib draws
+        # the static images, plotly the interactive pages
+        formats = figure_formats if figure_formats is not None else [STATIC_FORMAT]
+        static_formats = [f for f in formats if f != INTERACTIVE_FORMAT]
+        interactive = INTERACTIVE_FORMAT in formats
+
         # create figures, but only when something looks at them: rendering
         # every figure is most of the time a run takes, and a run without an
         # output path which does not show them would close them again
         self._mpl_figures = {}
-        if show_figures or output_path:
+        if show_figures or (output_path and static_formats):
             self._mpl_figures = self.create_mpl_figures()
             if show_figures:
                 self.show_mpl_figures(mpl_figures=self._mpl_figures)
-            if output_path:
+            if output_path and static_formats:
                 self.save_mpl_figures(
                     output_path,
                     mpl_figures=self._mpl_figures,
-                    figure_formats=figure_formats,
+                    figure_formats=static_formats,
                 )
             self.close_mpl_figures(mpl_figures=self._mpl_figures)
+
+        if output_path and interactive:
+            self.save_interactive_figures(output_path)
 
         # only perform serialization after data evaluation (to access units)
         if output_path:
@@ -653,6 +670,37 @@ class SimulationExperiment:
                 paths[fig_format].append(fig_path)
 
         return paths
+
+    def save_interactive_figures(self, results_path: Path) -> dict[str, Path]:
+        """Write the figures as interactive pages.
+
+        The pages are drawn by plotly, see
+        `sbmlsim.plot.serialization_plotly`: matplotlib draws the static
+        images a publication needs and plotly the pages a reader zooms and
+        hovers over. Both read the same `Figure`, so the two cannot disagree
+        about what they show.
+
+        plotly is not a dependency of `sbmlsim`; a run which asks for the
+        interactive figures without it says so and writes none.
+
+        Args:
+            results_path: directory of the pages.
+
+        Returns:
+            The path of the page of every figure, empty without plotly.
+        """
+        try:
+            from sbmlsim.plot.serialization_plotly import figures_to_html
+        except ImportError:
+            logger.error(
+                "The interactive figures of '%s' need plotly, which is not "
+                "installed: `pip install plotly`. No interactive figure was "
+                "written.",
+                self.sid,
+            )
+            return {}
+
+        return figures_to_html(self, results_path)
 
     @classmethod
     def close_mpl_figures(cls, mpl_figures: dict[str, FigureMPL]):

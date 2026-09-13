@@ -80,7 +80,19 @@ Colors are `ColorType` objects, created from matplotlib color names or hex strin
 
 ## Rendering
 
-The `ExperimentRunner` renders the figures of every experiment with matplotlib and writes them to the output path in the `figure_formats` (`svg` by default). `MatplotlibFigureSerializer.to_figure` renders a single figure from a run experiment; `Figure.fig_dpi`, `Figure.axes_labelsize` and the other class attributes of `Figure` are the global matplotlib settings of the rendering.
+A `Figure` says what is drawn and not how, so it is rendered by more than one backend. The format asks for one: `figure_formats=["svg", "png"]` are static images drawn by matplotlib, `figure_formats=["html"]` are interactive pages drawn by plotly, and a run asks for both at once. The default is `["svg"]`.
+
+| | matplotlib | plotly |
+| --- | --- | --- |
+| formats | `svg`, `png`, `pdf`, … | `html` |
+| per figure | 117 ms | 23 ms |
+| for | the images of a publication | the pages a reader zooms, pans and hovers over |
+
+The split follows the measurements. plotly is five times faster because it never rasterises: a page carries its data and the browser draws it, so writing it is 3 ms and the rest is resolving the data, which both backends do. The other direction does not hold — plotly writes PNG and SVG through a headless browser, which is 301 ms per figure at best and needs a Chrome on the machine, so the static images stay with matplotlib. Both read the same `Figure`, so the image and the page cannot disagree about what they show.
+
+`MatplotlibFigureSerializer.to_figure` renders a single figure from a run experiment; `Figure.fig_dpi`, `Figure.axes_labelsize` and the other class attributes of `Figure` are the global matplotlib settings of the rendering. `PlotlyFigureSerializer.to_figure` is its counterpart, and `SimulationExperiment.save_interactive_figures` writes the pages with the javascript of plotly next to them, so a report loads nothing from the network.
+
+plotly is not a dependency of `sbmlsim`, it is in the `dev` extra: a run which asks for `html` without it reports that and writes no page. A figure of `figures_mpl()` is a matplotlib figure already and has no interactive version.
 
 ## Reports
 
