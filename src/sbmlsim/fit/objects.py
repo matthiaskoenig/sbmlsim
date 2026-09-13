@@ -371,15 +371,29 @@ class FitParameter:
         lower_bound: float = -np.inf,
         upper_bound: float = np.inf,
         unit: str | None = None,
+        target: str | None = None,
+        mappings: Any = None,
     ):
         """Initialize FitParameter.
 
         Args:
-            pid: id of the parameter in the model.
+            pid: id of the estimated parameter. It is the name in the parameter
+                vector, in the parameter sets and in the profiles; it is the id
+                of the entity of the model unless `target` says otherwise.
             start_value: initial value for the fitting.
             lower_bound: lower bound for the fitting.
             upper_bound: upper bound for the fitting.
             unit: unit of the parameter, the model unit is assumed if not given.
+            target: entity of the model the value is written to. `None` means
+                the parameter is the entity, i.e. `target_id` is `pid`. Several
+                parameters write one target when each of them selects a part of
+                the data, see `mappings`.
+            mappings: `MappingFilter` or an iterable of them which select the
+                fit mappings the parameter applies to; a mapping passes when it
+                passes every filter. `None` applies the parameter everywhere.
+                A selector is a callable and is not serialized: it must be a
+                module level function, because the workers of a parallel fit
+                unpickle the parameters.
 
         Raises:
             ValueError: if the bounds or the start value are inconsistent.
@@ -400,11 +414,23 @@ class FitParameter:
         self.lower_bound = lower_bound
         self.upper_bound = upper_bound
         self.unit = unit
+        self.target = target
+        self.mappings = mappings
         if unit is None:
             logger.warning(
                 "No unit provided for FitParameter '%s', assuming model units.",
                 self.pid,
             )
+
+    @property
+    def target_id(self) -> str:
+        """Get the entity of the model the value is written to."""
+        return self.target if self.target is not None else self.pid
+
+    @property
+    def is_versioned(self) -> bool:
+        """Check whether the parameter applies to a part of the data only."""
+        return self.mappings is not None
 
     def __eq__(self, other: object) -> bool:
         """Check for equality.
@@ -420,6 +446,7 @@ class FitParameter:
             and _isclose(self.lower_bound, other.lower_bound)
             and _isclose(self.upper_bound, other.upper_bound)
             and self.unit == other.unit
+            and self.target_id == other.target_id
         )
 
     def __hash__(self) -> int:
@@ -448,6 +475,7 @@ class FitParameter:
             "lower_bound": self.lower_bound,
             "upper_bound": self.upper_bound,
             "unit": self.unit,
+            "target": self.target,
         }
 
     @staticmethod
