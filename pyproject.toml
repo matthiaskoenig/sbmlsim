@@ -70,6 +70,8 @@ dev = [
 	"zensical>=0.0.59",
 	"mkdocstrings-python>=2.0.8",
 	"pytest-xdist>=3.8",
+	# the prototype of the plotly figures, see sbmlsim.plot.serialization_plotly
+	"plotly>=6.0",
 ]
 
 [project.urls]
