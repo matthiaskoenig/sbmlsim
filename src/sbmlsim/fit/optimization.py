@@ -771,6 +771,7 @@ class OptimizationProblem(ObjectJSONEncoder):
                 for group in self.mapping_groups
             ],
         )
+        self._check_shared_simulation_bindings()
 
         if not self.training_indices:
             raise ValueError(
@@ -853,6 +854,59 @@ class OptimizationProblem(ObjectJSONEncoder):
             len(self.mapping_keys),
             len(self.mapping_groups),
         )
+
+    def _check_shared_simulation_bindings(self) -> None:
+        """Refuse two groups which share a simulation object but not its changes.
+
+        `_group_mappings` keys a group on `(id(model), id(simulation))`, not
+        on the simulation object alone: two fit mappings which name the same
+        `simulation_id` with a different `model_id` end up in two distinct
+        groups that nonetheless hold *the same* `TimecourseSim` object, because
+        the fit path takes `sim_experiment._simulations[task.simulation_id]`
+        directly, with no `deepcopy` (unlike the experiment path).
+        `_simulate_groups` mutates that object's `changes` in place, and
+        `dict.update` never removes a key, so a target one group's binding
+        writes and the other's does not would be silently inherited by
+        whichever group is simulated second. This shape is refused here
+        rather than resolved by clearing unbound targets before every
+        simulation, because it is pathological and a clear error at
+        `initialize` beats a silently wrong number.
+
+        Raises:
+            ValueError: if two groups share a simulation object and
+                `ParameterMapping` binds a target of theirs differently.
+        """
+        mapping = self.parameter_mapping_initialized
+        groups_by_simulation: dict[int, list[int]] = {}
+        for k_group, group in enumerate(self.mapping_groups):
+            groups_by_simulation.setdefault(id(self.simulations[group[0]]), []).append(
+                k_group
+            )
+
+        for group_indices in groups_by_simulation.values():
+            if len(group_indices) < 2:
+                continue
+            k_first = group_indices[0]
+            bindings_first = mapping.indices_for(k_first)
+            for k_other in group_indices[1:]:
+                bindings_other = mapping.indices_for(k_other)
+                if bindings_first == bindings_other:
+                    continue
+                targets = sorted(
+                    target
+                    for target in set(bindings_first) | set(bindings_other)
+                    if bindings_first.get(target) != bindings_other.get(target)
+                )
+                raise ValueError(
+                    f"'{self.opid}': the simulations '{mapping.group_names[k_first]}' "
+                    f"and '{mapping.group_names[k_other]}' share one `TimecourseSim` "
+                    f"object (same simulation_id, different model_id) but disagree "
+                    f"on {targets}. The fit does not copy that shared object, so a "
+                    f"change written for one of them would leak into the other. "
+                    f"Give these fit mappings distinct simulation ids, or make the "
+                    f"versioned parameters that reach {targets} bind identically "
+                    f"for both."
+                )
 
     def _store_model_parameters(self) -> None:
         """Store the initial values of the fitted parameters in the models.

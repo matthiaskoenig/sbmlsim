@@ -215,13 +215,15 @@ def test_a_versioned_problem_is_picklable(
     assert restored.parameters[0].mappings is is_oral
 
 
-def test_an_unversioned_fit_is_unchanged(
+def test_an_unversioned_fit_is_deterministic(
     op_hctz_pk: OptimizationProblem, fit_settings: FitSettings
 ) -> None:
-    """The cost of a problem without versions is what it was.
+    """Calling the cost twice for the same parameters gives the same number.
 
-    This is the regression test of the whole feature: the resolution must not
-    move a single digit of an ordinary fit.
+    This does not pin an absolute value -- `test_an_unversioned_fit_cost_is_pinned`
+    does that -- it only guards that resolving the parameter mapping on every
+    call to `residuals` did not introduce nondeterminism (e.g. through
+    dict/set ordering).
     """
     op_hctz_pk.initialize(fit_settings)
     x = op_hctz_pk.to_scale(op_hctz_pk.xmodel)
@@ -233,6 +235,29 @@ def test_an_unversioned_fit_is_unchanged(
     assert len(op_hctz_pk.residuals(x)) == sum(
         len(op_hctz_pk.y_references[k]) for k in op_hctz_pk.training_indices
     )
+
+
+def test_an_unversioned_fit_cost_is_pinned(
+    op_hctz_pk: OptimizationProblem, fit_settings: FitSettings
+) -> None:
+    """The cost of the HCTZ PK problem at the model values is what it was.
+
+    This is the regression test of the whole feature: an unversioned problem
+    must resolve to exactly the same changes it always did, so its cost must
+    not move by a single digit. The literal is a pin, not a derived fact: it
+    was obtained by running this exact computation against the code on
+    `develop` before Task 5 touched `residuals`/`_simulate_groups`. To
+    regenerate it (only after a deliberate, reviewed change to the model,
+    the data, or the fit settings), run:
+
+        op = FIT_DEFINITIONS["PK"].problem(opid="hctz_pk")
+        op.initialize(fit_settings)
+        op.cost_least_square(op.to_scale(op.xmodel))
+    """
+    op_hctz_pk.initialize(fit_settings)
+    x = op_hctz_pk.to_scale(op_hctz_pk.xmodel)
+
+    assert op_hctz_pk.cost_least_square(x) == pytest.approx(23.96168054253333)
 
 
 def _versioned_definition(definition: FitDefinition) -> FitDefinition:
@@ -270,23 +295,62 @@ def _versioned_definition(definition: FitDefinition) -> FitDefinition:
 def test_the_versions_reach_their_own_simulations(
     definition_hctz_pk: FitDefinition, fit_settings: FitSettings
 ) -> None:
-    """Two versions of one entity give two different simulations."""
+    """Two versions of one entity give two different simulations.
+
+    `Ka_dis_hctz` is the dissolution rate of the oral tablet: the
+    intravenous route bypasses dissolution, so its simulations do not depend
+    on it. Swapping the two version values must move every oral prediction
+    well beyond solver noise and leave every intravenous one at the level of
+    solver noise -- a numeric fact that fails if `_simulate_groups` bound
+    both versions into one shared dict (the "reach every mapping" and
+    "bindings differ" checks in an earlier version of this test did not: they
+    would not have failed even if no simulated value ever changed).
+    """
     problem = _versioned_definition(definition_hctz_pk).problem(opid="versions")
     problem.initialize(fit_settings)
 
-    # the two versions with clearly different values
-    x = problem.to_scale(np.array([0.1, 5.0]))
-    res_data = problem.residuals(x, complete_data=True)
-
-    # every mapping was simulated and the simulations are not all the same
-    assert len(res_data["y_obs"]) == len(problem.mapping_keys)
     mapping = problem.parameter_mapping
     assert mapping is not None
-    bound = {
-        tuple(sorted(mapping.indices_for(g).items()))
-        for g in range(len(problem.mapping_groups))
+    group_of_mapping = {
+        k: k_group
+        for k_group, group in enumerate(problem.mapping_groups)
+        for k in group
     }
-    assert len(bound) > 1, "the two versions must not resolve to the same binding"
+    # Ka_po is pids[0], Ka_iv is pids[1]; group the fit mappings by which of
+    # the two versions ParameterMapping actually bound them to
+    oral = [
+        k
+        for k in range(len(problem.mapping_keys))
+        if mapping.indices_for(group_of_mapping[k]).get("Ka_dis_hctz") == 0
+    ]
+    intravenous = [
+        k
+        for k in range(len(problem.mapping_keys))
+        if mapping.indices_for(group_of_mapping[k]).get("Ka_dis_hctz") == 1
+    ]
+    assert oral and intravenous
+
+    # the two versions with clearly different values, then swapped
+    x_a = problem.to_scale(np.array([0.1, 5.0]))
+    x_b = problem.to_scale(np.array([5.0, 0.1]))
+    res_a = problem.residuals(x_a, complete_data=True)
+    res_b = problem.residuals(x_b, complete_data=True)
+
+    # every mapping was simulated
+    assert len(res_a["y_obs"]) == len(problem.mapping_keys)
+
+    def _relative_change(k: int) -> float:
+        """Get the largest relative change of one mapping's interpolated curve."""
+        a = np.asarray(res_a["y_obsip"][k])
+        b = np.asarray(res_b["y_obsip"][k])
+        scale = np.max(np.abs(a)) or 1.0
+        return float(np.max(np.abs(a - b)) / scale)
+
+    # swapping the versions must move the oral curves well beyond solver noise
+    assert max(_relative_change(k) for k in oral) > 0.1
+    # and must leave the intravenous curves at the level of solver noise,
+    # since they do not depend on Ka_dis_hctz at all
+    assert max(_relative_change(k) for k in intravenous) < 1e-3
 
 
 def test_a_version_counts_as_a_parameter_everywhere(
@@ -319,3 +383,38 @@ def test_a_version_counts_as_a_parameter_everywhere(
         show_progress=False,
     )
     assert set(result.profiles) == {"Ka_po", "Ka_iv"}
+
+
+def test_two_groups_sharing_a_simulation_object_must_bind_alike() -> None:
+    """A `TimecourseSim` shared by two groups must not carry disagreeing changes.
+
+    `_group_mappings` keys a group on `(id(model), id(simulation))`, not on
+    the simulation object alone: `Task` allows one `simulation_id` to be
+    combined with several `model_id`s to "execute the same simulation with
+    different model variants" (`sbmlsim.task.task.Task`), which puts the same
+    `TimecourseSim` object into two distinct groups. The fit path takes
+    `sim_experiment._simulations[task.simulation_id]` directly, with no
+    `deepcopy` (unlike the experiment path), so `_simulate_groups` mutating
+    that object's `changes` in place would leak a change bound in one group
+    into the other, silently, because `dict.update` never removes a key.
+    `_check_shared_simulation_bindings` refuses this at `initialize` instead.
+    """
+    problem = OptimizationProblem.__new__(OptimizationProblem)
+    problem.opid = "shared-simulation"
+
+    parameters = [
+        _parameter("Ka_a", target="Ka", versioned=True),
+        _parameter("Ka_b", target="Ka", versioned=True),
+    ]
+    shared_simulation = object()
+    # two model variants share one TimecourseSim object: mapping 0 (its own
+    # group) is bound by Ka_a and mapping 1 (a different group, same object)
+    # by Ka_b -- the pathological shape `_group_mappings` allows
+    problem.simulations = [shared_simulation, shared_simulation, object()]
+    problem.mapping_groups = [[0], [1], [2]]
+    problem.parameter_mapping = ParameterMapping(
+        parameters, {0: {0}, 1: {1}}, problem.mapping_groups, KEYS
+    )
+
+    with pytest.raises(ValueError, match="share one"):
+        problem._check_shared_simulation_bindings()
