@@ -55,8 +55,13 @@ def test_a_versioned_parameter_writes_another_entity() -> None:
         return key.endswith("tablet")
 
     p = FitParameter(
-        "Ka_dis_tablet", 0.35, 0.01, 10.0, "1/hr",
-        target="Ka_dis_hctz", mappings=only_tablets,
+        "Ka_dis_tablet",
+        0.35,
+        0.01,
+        10.0,
+        "1/hr",
+        target="Ka_dis_hctz",
+        mappings=only_tablets,
     )
     assert p.pid == "Ka_dis_tablet"
     assert p.target_id == "Ka_dis_hctz"
@@ -144,15 +149,16 @@ Keep the existing bound checks unchanged, and after `self.unit = unit` add:
 Add the two properties after `__init__`:
 
 ```python
-    @property
-    def target_id(self) -> str:
-        """Get the entity of the model the value is written to."""
-        return self.target if self.target is not None else self.pid
+@property
+def target_id(self) -> str:
+    """Get the entity of the model the value is written to."""
+    return self.target if self.target is not None else self.pid
 
-    @property
-    def is_versioned(self) -> bool:
-        """Check whether the parameter applies to a part of the data only."""
-        return self.mappings is not None
+
+@property
+def is_versioned(self) -> bool:
+    """Check whether the parameter applies to a part of the data only."""
+    return self.mappings is not None
 ```
 
 Extend `__eq__` with `and self.target_id == other.target_id` and `to_dict` with `"target": self.target,`.
@@ -294,15 +300,22 @@ from sbmlsim.fit.objects import FitParameter
 from sbmlsim.fit.parameter_mapping import ParameterMapping
 
 
-def _parameter(pid: str, target: str | None = None, versioned: bool = False) -> FitParameter:
+def _parameter(
+    pid: str, target: str | None = None, versioned: bool = False
+) -> FitParameter:
     """Build a parameter, versioned when it selects a part of the data."""
 
     def _select(key: str, mapping: object) -> bool:
         return True
 
     return FitParameter(
-        pid, 1.0, 0.1, 10.0, "1/hr",
-        target=target, mappings=_select if versioned else None,
+        pid,
+        1.0,
+        0.1,
+        10.0,
+        "1/hr",
+        target=target,
+        mappings=_select if versioned else None,
     )
 
 
@@ -375,8 +388,12 @@ def test_a_selector_must_not_split_a_simulation() -> None:
 
 def test_the_versions_of_a_target_agree_on_the_unit() -> None:
     """The unit is how the value reaches the model, so it is one unit."""
-    a = FitParameter("Ka_a", 1.0, 0.1, 10.0, "1/hr", target="Ka", mappings=lambda k, m: True)
-    b = FitParameter("Ka_b", 1.0, 0.1, 10.0, "1/min", target="Ka", mappings=lambda k, m: True)
+    a = FitParameter(
+        "Ka_a", 1.0, 0.1, 10.0, "1/hr", target="Ka", mappings=lambda k, m: True
+    )
+    b = FitParameter(
+        "Ka_b", 1.0, 0.1, 10.0, "1/min", target="Ka", mappings=lambda k, m: True
+    )
     with pytest.raises(ValueError, match="unit"):
         ParameterMapping([a, b], {0: {0, 1}, 1: {2}}, GROUPS, KEYS)
 
@@ -640,8 +657,7 @@ class ParameterMapping:
             The quantity by entity of the model.
         """
         return {
-            target: quantities[index]
-            for target, index in self._by_group[group].items()
+            target: quantities[index] for target, index in self._by_group[group].items()
         }
 
     def coverage(self) -> list[CoverageRow]:
@@ -732,8 +748,9 @@ def test_the_problem_resolves_its_selectors(
     """A versioned problem knows which simulation gets which parameter."""
     problem = definition_hctz_pk.problem(opid="versions")
     problem.parameters = [
-        FitParameter("Ka_po", 0.35, 0.01, 10.0, "1/hr",
-                     target="Ka_dis_hctz", mappings=_is_tablet),
+        FitParameter(
+            "Ka_po", 0.35, 0.01, 10.0, "1/hr", target="Ka_dis_hctz", mappings=_is_tablet
+        ),
     ]
     problem.pids = ["Ka_po"]
     problem.punits = ["1/hr"]
@@ -773,8 +790,9 @@ def test_a_versioned_problem_is_picklable(
     """
     problem = definition_hctz_pk.problem(opid="versions")
     problem.parameters = [
-        FitParameter("Ka_po", 0.35, 0.01, 10.0, "1/hr",
-                     target="Ka_dis_hctz", mappings=_is_tablet),
+        FitParameter(
+            "Ka_po", 0.35, 0.01, 10.0, "1/hr", target="Ka_dis_hctz", mappings=_is_tablet
+        ),
     ]
     problem.initialize(fit_settings)
 
@@ -842,15 +860,13 @@ After `self._group_mappings()` (line 804 is the method, the call is in `initiali
 In `_validate_parameters` and `_store_model_parameters`, replace every `model.r[pid]` lookup and every use of `self.pids[k]` as a model entity with the target. In `_store_model_parameters` the loop becomes:
 
 ```python
-            for k, parameter in enumerate(self.parameters):
-                target = parameter.target_id
-                pid_value = model.r[target]
-                if target in model.changes:
-                    change = model.changes[target]
-                    # model changes have units
-                    pid_value = (
-                        change.magnitude if isinstance(change, Quantity) else change
-                    )
+for k, parameter in enumerate(self.parameters):
+    target = parameter.target_id
+    pid_value = model.r[target]
+    if target in model.changes:
+        change = model.changes[target]
+        # model changes have units
+        pid_value = change.magnitude if isinstance(change, Quantity) else change
 ```
 
 keeping the rest of the body, including the warning about models which start from different values, unchanged.
@@ -919,10 +935,12 @@ def test_the_versions_reach_their_own_simulations(
     """Two versions of one entity give two different simulations."""
     problem = definition_hctz_pk.problem(opid="versions")
     problem.parameters = [
-        FitParameter("Ka_po", 0.35, 0.01, 10.0, "1/hr",
-                     target="Ka_dis_hctz", mappings=_is_tablet),
-        FitParameter("Ka_iv", 0.35, 0.01, 10.0, "1/hr",
-                     target="Ka_dis_hctz", mappings=_is_iv),
+        FitParameter(
+            "Ka_po", 0.35, 0.01, 10.0, "1/hr", target="Ka_dis_hctz", mappings=_is_tablet
+        ),
+        FitParameter(
+            "Ka_iv", 0.35, 0.01, 10.0, "1/hr", target="Ka_dis_hctz", mappings=_is_iv
+        ),
     ]
     problem.pids = ["Ka_po", "Ka_iv"]
     problem.punits = ["1/hr", "1/hr"]
@@ -936,7 +954,10 @@ def test_the_versions_reach_their_own_simulations(
     assert len(res_data["y_obs"]) == len(problem.mapping_keys)
     mapping = problem.parameter_mapping
     assert mapping is not None
-    bound = {tuple(sorted(mapping.indices_for(g).items())) for g in range(len(problem.mapping_groups))}
+    bound = {
+        tuple(sorted(mapping.indices_for(g).items()))
+        for g in range(len(problem.mapping_groups))
+    }
     assert len(bound) > 1, "the two versions must not resolve to the same binding"
 ```
 
@@ -950,11 +971,9 @@ Expected: the second FAILs, because every group still receives both parameters u
 In `residuals`, replace the construction of `changes` (line 1300):
 
 ```python
-        # the parameters are the same for every mapping, the quantities are
-        # created once and not once per mapping
-        quantities = [
-            Q_(value, self.punits[ix]) for ix, value in enumerate(x)
-        ]
+# the parameters are the same for every mapping, the quantities are
+# created once and not once per mapping
+quantities = [Q_(value, self.punits[ix]) for ix, value in enumerate(x)]
 ```
 
 and pass them on:
@@ -1011,10 +1030,12 @@ def test_a_version_counts_as_a_parameter_everywhere(
 
     problem = definition_hctz_pk.problem(opid="versions")
     problem.parameters = [
-        FitParameter("Ka_po", 0.35, 0.01, 10.0, "1/hr",
-                     target="Ka_dis_hctz", mappings=_is_tablet),
-        FitParameter("Ka_iv", 0.35, 0.01, 10.0, "1/hr",
-                     target="Ka_dis_hctz", mappings=_is_iv),
+        FitParameter(
+            "Ka_po", 0.35, 0.01, 10.0, "1/hr", target="Ka_dis_hctz", mappings=_is_tablet
+        ),
+        FitParameter(
+            "Ka_iv", 0.35, 0.01, 10.0, "1/hr", target="Ka_dis_hctz", mappings=_is_iv
+        ),
     ]
     problem.pids = ["Ka_po", "Ka_iv"]
     problem.punits = ["1/hr", "1/hr"]
@@ -1082,7 +1103,11 @@ def test_the_parameter_table_shows_a_target_only_when_there_is_one() -> None:
 
     plain = parameters_table([FitParameter("Ka", 1.0, 0.1, 10.0, "1/hr")])
     assert [c.header for c in plain.columns] == [
-        "parameter", "start", "lower", "upper", "unit"
+        "parameter",
+        "start",
+        "lower",
+        "upper",
+        "unit",
     ]
 
     versioned = parameters_table(
@@ -1097,7 +1122,11 @@ def test_the_coverage_table_names_the_uncovered_simulations() -> None:
     from sbmlsim.fit.parameter_mapping import CoverageRow
 
     table = coverage_table(
-        [CoverageRow("Ka_po", "Ka", 6, 9, ["Beermann1976|iv1_5", "Beermann1976|iv35_4"])]
+        [
+            CoverageRow(
+                "Ka_po", "Ka", 6, 9, ["Beermann1976|iv1_5", "Beermann1976|iv35_4"]
+            )
+        ]
     )
     assert table.row_count == 1
 ```
@@ -1262,8 +1291,9 @@ def test_a_versioned_parameter_is_written_as_a_condition(
     from tests.fit.test_parameter_mapping import _is_tablet
 
     op_hctz_pk.parameters = [
-        FitParameter("Ka_po", 0.35, 0.01, 10.0, "1/hr",
-                     target="Ka_dis_hctz", mappings=_is_tablet),
+        FitParameter(
+            "Ka_po", 0.35, 0.01, 10.0, "1/hr", target="Ka_dis_hctz", mappings=_is_tablet
+        ),
     ]
     op_hctz_pk.pids = ["Ka_po"]
     op_hctz_pk.punits = ["1/hr"]
@@ -1320,7 +1350,7 @@ In the `k == 0` period, write a condition when `tc.changes` or `version_changes`
 In `_add_parameters`, the nominal value of a version is the value of its target in the model rather than its start value, so that a tool which does not estimate it still simulates the model as it is:
 
 ```python
-                    nominal_value=parameter.start_value,
+nominal_value = (parameter.start_value,)
 ```
 
 stays as it is when `parameter.target_id == parameter.pid`; for a version use `self.problem.xmodel[index]`, which `_store_model_parameters` filled from `model.r[target]` in Task 4.
@@ -1374,8 +1404,9 @@ def test_the_round_trip_keeps_a_versioned_parameter(
     from tests.fit.test_parameter_mapping import _is_tablet
 
     op_hctz_pk.parameters = [
-        FitParameter("Ka_po", 0.35, 0.01, 10.0, "1/hr",
-                     target="Ka_dis_hctz", mappings=_is_tablet),
+        FitParameter(
+            "Ka_po", 0.35, 0.01, 10.0, "1/hr", target="Ka_dis_hctz", mappings=_is_tablet
+        ),
     ]
     op_hctz_pk.pids = ["Ka_po"]
     op_hctz_pk.punits = ["1/hr"]
@@ -1548,12 +1579,22 @@ def is_intravenous(fit_mapping_key: str, fit_mapping: FitMapping) -> bool:
 #: a module level function: the workers of a parallel fit unpickle it
 PARAMETERS_BY_ROUTE: list[FitParameter] = [
     FitParameter(
-        pid="Ka_dis_hctz_po", start_value=0.35, lower_bound=0.01, upper_bound=10.0,
-        unit="1/hr", target="Ka_dis_hctz", mappings=is_oral,
+        pid="Ka_dis_hctz_po",
+        start_value=0.35,
+        lower_bound=0.01,
+        upper_bound=10.0,
+        unit="1/hr",
+        target="Ka_dis_hctz",
+        mappings=is_oral,
     ),
     FitParameter(
-        pid="Ka_dis_hctz_iv", start_value=0.35, lower_bound=0.01, upper_bound=10.0,
-        unit="1/hr", target="Ka_dis_hctz", mappings=is_intravenous,
+        pid="Ka_dis_hctz_iv",
+        start_value=0.35,
+        lower_bound=0.01,
+        upper_bound=10.0,
+        unit="1/hr",
+        target="Ka_dis_hctz",
+        mappings=is_intravenous,
     ),
     *[p for p in PARAMETERS if p.pid != "Ka_dis_hctz"],
 ]

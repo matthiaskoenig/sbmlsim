@@ -32,11 +32,25 @@ Both default so that every existing definition means what it means today.
 - `mappings: MappingFilter | Iterable[MappingFilter] | None = None`, where it applies. `None` means everywhere, again the current behaviour. Several filters are combined with and, as `helpers._filters` already does.
 
 ```python
-FitParameter("Ka_dis_hctz", 0.35, 0.01, 10.0, "1/hr")                        # unchanged
-FitParameter("Ka_dis_tablet", 0.35, 0.01, 10.0, "1/hr",
-             target="Ka_dis_hctz", mappings=filter_tablet)
-FitParameter("Ka_dis_solution", 0.35, 0.01, 10.0, "1/hr",
-             target="Ka_dis_hctz", mappings=filter_solution)
+FitParameter("Ka_dis_hctz", 0.35, 0.01, 10.0, "1/hr")  # unchanged
+FitParameter(
+    "Ka_dis_tablet",
+    0.35,
+    0.01,
+    10.0,
+    "1/hr",
+    target="Ka_dis_hctz",
+    mappings=filter_tablet,
+)
+FitParameter(
+    "Ka_dis_solution",
+    0.35,
+    0.01,
+    10.0,
+    "1/hr",
+    target="Ka_dis_hctz",
+    mappings=filter_solution,
+)
 ```
 
 `pid` stays the name of the estimated quantity: it is what appears in the parameter vector, in `ParameterSets`, in the parameter table and in the profiles. `target` is where the value is written. The two were the same string until now, which is why this is additive.
