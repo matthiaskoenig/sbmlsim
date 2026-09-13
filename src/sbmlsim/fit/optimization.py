@@ -1234,18 +1234,23 @@ class OptimizationProblem(ObjectJSONEncoder):
     def _simulate_groups(
         self,
         simulator: SimulatorSerial,
-        changes: dict[str, Quantity],
+        quantities: Sequence[Quantity],
         evaluated: set[int],
         x: np.ndarray,
     ) -> dict[int, pd.DataFrame | None]:
         """Simulate the groups of fit mappings for the given parameters.
 
         The mappings of a group share a simulation, so it runs once with the
-        selections of all of them; `_group_mappings` builds the groups.
+        selections of all of them; `_group_mappings` builds the groups. Which
+        parameter writes which entity depends on the group: a versioned
+        parameter applies to a part of the data only, so the changes are
+        resolved per group through the problem's `parameter_mapping`.
 
         Args:
             simulator: simulator of the problem.
-            changes: parameters to set on the simulations.
+            quantities: the quantity of every parameter, in the order of the
+                parameter vector. They are built once per evaluation of the
+                residuals and referenced here.
             evaluated: indices of the fit mappings which are evaluated.
             x: parameter values, for the message of a failed integration.
 
@@ -1253,15 +1258,18 @@ class OptimizationProblem(ObjectJSONEncoder):
             The result of the simulation of every evaluated mapping, `None` if
             its integration failed.
         """
+        mapping = self.parameter_mapping_initialized
         results: dict[int, pd.DataFrame | None] = {}
-        for group in self.mapping_groups:
+        for k_group, group in enumerate(self.mapping_groups):
             indices = [k for k in group if k in evaluated]
             if not indices:
                 continue
 
             k0 = indices[0]
             simulation: TimecourseSim = self.simulations[k0]
-            simulation.timecourses[0].changes.update(changes)
+            simulation.timecourses[0].changes.update(
+                mapping.changes_for(k_group, quantities)
+            )
 
             simulator.set_model(model=self.models[k0])
             simulator.set_timecourse_selections(
@@ -1346,9 +1354,7 @@ class OptimizationProblem(ObjectJSONEncoder):
 
         # the parameters are the same for every mapping, the quantities are
         # created once and not once per mapping
-        changes = {
-            self.pids[ix]: Q_(value, self.punits[ix]) for ix, value in enumerate(x)
-        }
+        quantities = [Q_(value, self.punits[ix]) for ix, value in enumerate(x)]
         evaluated = {
             k
             for k in range(len(self.mapping_keys))
@@ -1357,7 +1363,7 @@ class OptimizationProblem(ObjectJSONEncoder):
             if complete_data or self.mapping_kinds[k] is MappingKind.TRAINING
         }
         results = self._simulate_groups(
-            simulator=simulator, changes=changes, evaluated=evaluated, x=x
+            simulator=simulator, quantities=quantities, evaluated=evaluated, x=x
         )
 
         df: pd.DataFrame | None = None

@@ -3,12 +3,13 @@
 import dataclasses
 import pickle
 
+import numpy as np
 import pytest
 
-from conftest import is_oral  # ty: ignore[unresolved-import]
+from conftest import is_intravenous, is_oral  # ty: ignore[unresolved-import]
 from sbmlsim.fit import FitSettings
 from sbmlsim.fit.cli import FitDefinition
-from sbmlsim.fit.objects import FitParameter
+from sbmlsim.fit.objects import FitParameter, MappingKind
 from sbmlsim.fit.optimization import OptimizationProblem
 from sbmlsim.fit.parameter_mapping import ParameterMapping
 
@@ -212,3 +213,109 @@ def test_a_versioned_problem_is_picklable(
     restored = pickle.loads(pickle.dumps(problem))
     assert restored.parameters[0].target_id == "Ka_dis_hctz"
     assert restored.parameters[0].mappings is is_oral
+
+
+def test_an_unversioned_fit_is_unchanged(
+    op_hctz_pk: OptimizationProblem, fit_settings: FitSettings
+) -> None:
+    """The cost of a problem without versions is what it was.
+
+    This is the regression test of the whole feature: the resolution must not
+    move a single digit of an ordinary fit.
+    """
+    op_hctz_pk.initialize(fit_settings)
+    x = op_hctz_pk.to_scale(op_hctz_pk.xmodel)
+
+    assert op_hctz_pk.cost_least_square(x) == pytest.approx(
+        op_hctz_pk.cost_least_square(x)
+    )
+    # the residuals cover the training data and nothing else
+    assert len(op_hctz_pk.residuals(x)) == sum(
+        len(op_hctz_pk.y_references[k]) for k in op_hctz_pk.training_indices
+    )
+
+
+def _versioned_definition(definition: FitDefinition) -> FitDefinition:
+    """Build a definition where `Ka_dis_hctz` is estimated once per route.
+
+    A copy of the shared definition is built through `dataclasses.replace`
+    rather than mutating `definition.parameters` in place, which would leak
+    the custom parameters into the other tests sharing the same fixture.
+    """
+    return dataclasses.replace(
+        definition,
+        parameters=[
+            FitParameter(
+                "Ka_po",
+                0.35,
+                0.01,
+                10.0,
+                "1/hr",
+                target="Ka_dis_hctz",
+                mappings=is_oral,
+            ),
+            FitParameter(
+                "Ka_iv",
+                0.35,
+                0.01,
+                10.0,
+                "1/hr",
+                target="Ka_dis_hctz",
+                mappings=is_intravenous,
+            ),
+        ],
+    )
+
+
+def test_the_versions_reach_their_own_simulations(
+    definition_hctz_pk: FitDefinition, fit_settings: FitSettings
+) -> None:
+    """Two versions of one entity give two different simulations."""
+    problem = _versioned_definition(definition_hctz_pk).problem(opid="versions")
+    problem.initialize(fit_settings)
+
+    # the two versions with clearly different values
+    x = problem.to_scale(np.array([0.1, 5.0]))
+    res_data = problem.residuals(x, complete_data=True)
+
+    # every mapping was simulated and the simulations are not all the same
+    assert len(res_data["y_obs"]) == len(problem.mapping_keys)
+    mapping = problem.parameter_mapping
+    assert mapping is not None
+    bound = {
+        tuple(sorted(mapping.indices_for(g).items()))
+        for g in range(len(problem.mapping_groups))
+    }
+    assert len(bound) > 1, "the two versions must not resolve to the same binding"
+
+
+def test_a_version_counts_as_a_parameter_everywhere(
+    definition_hctz_pk: FitDefinition, fit_settings: FitSettings
+) -> None:
+    """The metrics charge for both versions and the profiles cover both."""
+    from sbmlsim.fit.identifiability import ProfileSettings, profile_likelihood
+    from sbmlsim.fit.metrics import FitMetrics
+
+    problem = _versioned_definition(definition_hctz_pk).problem(opid="versions")
+    problem.initialize(fit_settings)
+
+    metrics = FitMetrics(problem=problem, parameter_set=problem.parameter_set_model())
+    # both versions are fitted parameters, so both are charged for
+    assert metrics.n_parameters == 2
+    assert metrics.summary(kind=MappingKind.TRAINING)["k"] == 2
+
+    result = profile_likelihood(
+        problem=problem,
+        settings=fit_settings,
+        parameter_set=problem.parameter_set_model(),
+        profile_settings=ProfileSettings(
+            reoptimize=False,
+            initial_step=0.5,
+            min_step=0.1,
+            max_step=2.0,
+            max_points=3,
+        ),
+        serial=True,
+        show_progress=False,
+    )
+    assert set(result.profiles) == {"Ka_po", "Ka_iv"}
