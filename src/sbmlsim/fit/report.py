@@ -644,6 +644,7 @@ class FitReport:
         parameters = [
             {
                 "pid": p.pid,
+                "target": p.target_id,
                 # not `values`, jinja resolves that to `dict.values`
                 "set_values": [
                     f"{pset.values.get(p.pid, float('nan')):.5g}" for pset in psets
@@ -786,6 +787,9 @@ class FitReport:
             "kinds": kinds,
             "fit_info": self.fit_info(),
             "parameters": parameters,
+            "versioned_parameters": any(
+                p.target_id != p.pid for p in self.problem.parameters
+            ),
             "parameter_set_ids": [pset.sid for pset in psets],
             "bound_warnings": warnings,
             "settings": {

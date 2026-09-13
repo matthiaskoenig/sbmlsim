@@ -4,6 +4,7 @@ The report is separate from the optimization: it is created from the definition
 of the problem, the settings and one or more parameter sets.
 """
 
+import dataclasses
 import re
 from html.parser import HTMLParser
 from pathlib import Path
@@ -14,7 +15,7 @@ import pytest
 from sbmlsim.fit import FitSettings, MappingKind, ParameterSet, ParameterSets
 from sbmlsim.fit.cli import FitDefinition
 from sbmlsim.fit.fisher import fisher_information
-from sbmlsim.fit.objects import EVALUATED_KINDS
+from sbmlsim.fit.objects import EVALUATED_KINDS, FitParameter
 from sbmlsim.fit.optimization import OptimizationProblem
 from sbmlsim.fit.report import FitReport
 from sbmlsim.fit.result import OptimizationResult
@@ -89,6 +90,50 @@ def test_report_from_optimization_result_with_model(
     results_dir = report.create(output_dir=tmp_path, name="fit_with_model")
     _assert_report_files(results_dir)
     assert (results_dir / "plots" / "cost_scatter.svg").exists()
+
+
+def test_the_report_shows_the_target_of_a_versioned_parameter(
+    tmp_path: Path, definition_hctz_iv: FitDefinition, fit_settings: FitSettings
+) -> None:
+    """A versioned fit says which entity a parameter writes.
+
+    `definition_hctz_iv.parameters[0].pid` is already `Ka_dis_hctz` (see
+    `examples/hctz_fitting/fitting/parameters.py`), so renaming the parameter
+    while pointing its `target` at that same entity is what actually produces
+    a `target_id != pid` row; setting `.target` alone would be a no-op.
+    """
+    definition = dataclasses.replace(
+        definition_hctz_iv,
+        parameters=[
+            FitParameter("Ka_po", 1.0, 1e-4, 10.0, "1/hr", target="Ka_dis_hctz"),
+        ],
+    )
+    problem = definition.problem(opid="hctz_iv_versioned")
+    problem.initialize(fit_settings)
+    report = FitReport(
+        problem=problem,
+        settings=fit_settings,
+        parameter_sets=problem.parameter_set_model(),
+        mapping_figures=False,
+    )
+    html = (report.create(tmp_path, name="versioned") / "index.html").read_text()
+    assert ">target</th>" in html
+    assert "Ka_dis_hctz" in html
+
+
+def test_the_report_of_an_ordinary_fit_has_no_target_column(
+    tmp_path: Path, op_hctz_iv: OptimizationProblem, fit_settings: FitSettings
+) -> None:
+    """A fit whose parameters are not versioned gets no target column."""
+    op_hctz_iv.initialize(fit_settings)
+    report = FitReport(
+        problem=op_hctz_iv,
+        settings=fit_settings,
+        parameter_sets=op_hctz_iv.parameter_set_model(),
+        mapping_figures=False,
+    )
+    html = (report.create(tmp_path, name="ordinary") / "index.html").read_text()
+    assert ">target</th>" not in html
 
 
 def test_the_subsets_of_the_data_points(

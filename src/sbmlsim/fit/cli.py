@@ -528,6 +528,11 @@ def report_cli(
 
     definition = _definition(definitions, options.subset)
     parameter_sets = load_parameter_sets(options.parameters)
+    # built and initialized here, not left to `FitReport`, so the parameters
+    # and their coverage are shown before the report is created; `FitReport`
+    # initializing the same problem with the same settings is a no-op
+    problem = definition.problem(opid=options.subset)
+    problem.initialize(definition.settings)
 
     display.section("Report", icon=display.ICON_REPORT)
     display.key_values(
@@ -538,11 +543,19 @@ def report_cli(
             "output": options.output_dir,
         }
     )
+    display.print_parameters(
+        problem.parameters,
+        coverage=(
+            problem.parameter_mapping.coverage()
+            if problem.parameter_mapping is not None
+            else None
+        ),
+    )
     display.print_settings(definition.settings)
 
-    # only the definition of the problem is needed, no fit is run here
+    # no fit is run here, the parameter sets come from the given files
     report = FitReport(
-        problem=definition.problem(opid=options.subset),
+        problem=problem,
         settings=definition.settings,
         parameter_sets=parameter_sets,
         show_titles=False,
@@ -671,6 +684,13 @@ def identifiability_cli(
         reoptimize=not options.no_reoptimize,
     )
 
+    # built and initialized here, not left to `profile_likelihood`, so the
+    # parameters and their coverage are shown before the scans start;
+    # `profile_likelihood` initializing the same problem with the same
+    # settings again is a no-op
+    problem = definition.problem(opid=options.subset)
+    problem.initialize(definition.settings)
+
     display.section("Identifiability", icon=display.ICON_IDENTIFIABILITY)
     display.key_values(
         {
@@ -680,9 +700,16 @@ def identifiability_cli(
             "output": options.output_dir,
         }
     )
+    display.print_parameters(
+        problem.parameters,
+        coverage=(
+            problem.parameter_mapping.coverage()
+            if problem.parameter_mapping is not None
+            else None
+        ),
+    )
     display.print_settings(definition.settings)
 
-    problem = definition.problem(opid=options.subset)
     result = profile_likelihood(
         problem=problem,
         settings=definition.settings,

@@ -14,7 +14,7 @@ an interactive session produce the same output.
 
 from __future__ import annotations
 
-from collections.abc import Iterable, Mapping
+from collections.abc import Iterable, Mapping, Sequence
 from pathlib import Path
 from typing import Any
 
@@ -26,6 +26,7 @@ from rich.table import Table
 from sbmlsim.console import console
 from sbmlsim.fit.objects import FitParameter, MappingKind
 from sbmlsim.fit.options import FitSettings
+from sbmlsim.fit.parameter_mapping import CoverageRow
 
 #: width of the keys of a key/value block
 KEY_WIDTH = 18
@@ -121,15 +122,60 @@ def _number(value: float | None) -> str:
 
 
 def parameters_table(parameters: Iterable[FitParameter]) -> Table:
-    """Get the table of the parameters which are optimized."""
-    table = _table("parameter", "start", "lower", "upper", "unit")
+    """Get the table of the parameters which are optimized.
+
+    The target is shown only when some parameter writes an entity of another
+    name, so an ordinary fit does not get a column which repeats its ids.
+    """
+    parameters = list(parameters)
+    versioned = any(p.target_id != p.pid for p in parameters)
+    columns = ["parameter"]
+    if versioned:
+        columns.append("target")
+    columns.extend(["start", "lower", "upper", "unit"])
+    table = _table(*columns)
     for p in parameters:
+        row = [p.pid]
+        if versioned:
+            row.append(p.target_id)
+        row.extend(
+            [
+                _number(p.start_value),
+                _number(p.lower_bound),
+                _number(p.upper_bound),
+                p.unit or "[dim]model[/dim]",
+            ]
+        )
+        table.add_row(*row)
+    return table
+
+
+def coverage_table(rows: Sequence[CoverageRow]) -> Table:
+    """Get the table of the simulations every parameter applies to.
+
+    A simulation no version of a target reaches keeps the value of the model,
+    which is right where the parameter has no meaning, e.g. an absorption rate
+    on intravenous data; the table makes it a fact which is read and not one
+    which is discovered later. A parameter whose selector matches nothing
+    covers no simulation at all: it stays in the parameter vector without
+    ever changing the model, which is a silent trap for a mistyped filter, so
+    such a row is styled in bold red rather than as an ordinary line.
+    """
+    table = _table("parameter", "target", "simulations", "not covered")
+    for row in rows:
+        uncovered = ", ".join(row.uncovered_groups)
+        no_coverage = row.n_covered == 0
+        style = "bold red" if no_coverage else None
         table.add_row(
-            p.pid,
-            _number(p.start_value),
-            _number(p.lower_bound),
-            _number(p.upper_bound),
-            p.unit or "[dim]model[/dim]",
+            row.pid,
+            row.target,
+            f"{row.n_covered} of {row.n_groups}",
+            (
+                f"[bold red]{uncovered}[/bold red]"
+                if no_coverage
+                else (f"[dim]{uncovered}[/dim]" if uncovered else "-")
+            ),
+            style=style,
         )
     return table
 
@@ -233,11 +279,25 @@ def _cell(value: Any) -> str:
     return str(value)
 
 
-def print_parameters(parameters: Iterable[FitParameter]) -> None:
-    """Print the section of the parameters which are optimized."""
+def print_parameters(
+    parameters: Iterable[FitParameter],
+    coverage: Sequence[CoverageRow] | None = None,
+) -> None:
+    """Print the section of the parameters which are optimized.
+
+    Args:
+        parameters: parameters of the fit.
+        coverage: what every parameter reaches, from
+            `sbmlsim.fit.parameter_mapping.ParameterMapping.coverage`. The
+            coverage table is only printed when some parameter does not reach
+            every simulation, so an ordinary fit is not given an all-`-`
+            table.
+    """
     parameters = list(parameters)
     section(f"Parameters ({len(parameters)})", icon=ICON_PARAMETERS)
     console.print(parameters_table(parameters))
+    if coverage and any(row.uncovered_groups for row in coverage):
+        console.print(coverage_table(coverage))
 
 
 def print_settings(settings: FitSettings) -> None:

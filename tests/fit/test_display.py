@@ -200,6 +200,65 @@ def test_section_icon(capsys: pytest.CaptureFixture[str]) -> None:
     assert "No icon" in capsys.readouterr().out
 
 
+def test_the_parameter_table_shows_a_target_only_when_there_is_one() -> None:
+    """An ordinary fit is not given a column of repeated names."""
+    from sbmlsim.fit.display import parameters_table
+    from sbmlsim.fit.objects import FitParameter
+
+    plain = parameters_table([FitParameter("Ka", 1.0, 0.1, 10.0, "1/hr")])
+    assert [c.header for c in plain.columns] == [
+        "parameter",
+        "start",
+        "lower",
+        "upper",
+        "unit",
+    ]
+
+    versioned = parameters_table(
+        [FitParameter("Ka_po", 1.0, 0.1, 10.0, "1/hr", target="Ka")]
+    )
+    assert "target" in [c.header for c in versioned.columns]
+
+
+def test_the_coverage_table_names_the_uncovered_simulations() -> None:
+    """The table says which simulations keep the value of the model."""
+    from sbmlsim.fit.display import coverage_table
+    from sbmlsim.fit.parameter_mapping import CoverageRow
+
+    table = coverage_table(
+        [
+            CoverageRow(
+                "Ka_po", "Ka", 6, 9, ["Beermann1976|iv1_5", "Beermann1976|iv35_4"]
+            )
+        ]
+    )
+    assert table.row_count == 1
+
+
+def test_print_parameters_shows_the_coverage_of_an_uncovered_parameter(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """The coverage table is printed only when some simulation is uncovered."""
+    from sbmlsim.fit.parameter_mapping import CoverageRow
+
+    coverage = [CoverageRow("Ka_po", "Ka", 6, 9, ["Beermann1976|iv1_5"])]
+    display.print_parameters(PARAMETERS, coverage=coverage)
+    out = capsys.readouterr().out
+    assert "Beermann1976|iv1_5" in out
+
+
+def test_print_parameters_hides_the_coverage_table_when_everything_is_covered(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """A fit whose parameters reach every simulation gets no coverage table."""
+    from sbmlsim.fit.parameter_mapping import CoverageRow
+
+    coverage = [CoverageRow("Ka", "Ka", 2, 2, [])]
+    display.print_parameters(PARAMETERS, coverage=coverage)
+    out = capsys.readouterr().out
+    assert "not covered" not in out
+
+
 def test_icons_are_distinct() -> None:
     """Every section has its own icon."""
     icons = [

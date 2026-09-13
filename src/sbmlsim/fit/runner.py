@@ -199,7 +199,9 @@ def run_optimization(
     `OptimizationResult` with the fitted parameters and the settings of the fit.
 
     Args:
-        problem: uninitialized problem to optimize (picklable).
+        problem: problem to optimize (picklable); it does not have to be
+            initialized, `run_optimization` initializes it to show the
+            parameters and their coverage before the runs start.
         settings: settings of the fit, the defaults of `FitSettings` are used
             if none are given.
         size: number of optimizations.
@@ -237,6 +239,20 @@ def run_optimization(
         settings = FitSettings()
 
     display.section("Optimization", icon=display.ICON_OPTIMIZATION)
+    # initialized here rather than left to the serial/parallel helpers, so
+    # that the parameters and their coverage are shown, and a versioned
+    # parameter which covers no simulation is warned about, before the
+    # workers of a parallel fit start; `initialize` is a no-op when the
+    # helpers initialize the same problem with the same settings again
+    problem.initialize(settings)
+    display.print_parameters(
+        problem.parameters,
+        coverage=(
+            problem.parameter_mapping.coverage()
+            if problem.parameter_mapping is not None
+            else None
+        ),
+    )
 
     opt_result: OptimizationResult
     if serial:

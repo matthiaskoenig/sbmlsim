@@ -93,6 +93,25 @@ class ParameterMapping:
             for index in targets.values():
                 self._covered.setdefault(index, set()).add(k)
 
+        self._warn_about_uncovered_versions()
+
+    def _warn_about_uncovered_versions(self) -> None:
+        """Warn about a versioned parameter whose selector covers nothing.
+
+        Such a parameter stays in the parameter vector and never changes the
+        model, which makes the objective flat in it: a silent trap for a
+        selector which was mistyped or a filter which is too strict.
+        """
+        for index, parameter in enumerate(self.parameters):
+            if parameter.is_versioned and not self._covered.get(index):
+                logger.warning(
+                    "'%s' (writing '%s') covers no simulation: its selector "
+                    "matched no fit mapping, so the parameter never changes "
+                    "the model and the objective is flat in it.",
+                    parameter.pid,
+                    parameter.target_id,
+                )
+
     def _check_units(self) -> None:
         """Check that the versions of a target are given in one unit.
 

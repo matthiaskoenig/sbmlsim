@@ -140,6 +140,36 @@ def test_the_coverage_names_the_groups_a_version_does_not_reach() -> None:
     assert row.uncovered_groups == ["iv"]
 
 
+def test_a_selector_matching_nothing_warns(caplog: pytest.LogCaptureFixture) -> None:
+    """A versioned parameter which covers no simulation is a silent trap.
+
+    It stays in the parameter vector and never changes the model, so the
+    objective is flat in it -- a warning naming the parameter and its target
+    is the only sign a user gets, short of reading the coverage table.
+    """
+    parameters = [_parameter("Ka_a", target="Ka", versioned=True)]
+    with caplog.at_level("WARNING", logger="sbmlsim.fit.parameter_mapping"):
+        mapping = ParameterMapping(parameters, {}, GROUPS, KEYS)
+
+    (row,) = mapping.coverage()
+    assert row.n_covered == 0
+    assert any(
+        "Ka_a" in record.getMessage() and "Ka" in record.getMessage()
+        for record in caplog.records
+    )
+
+
+def test_a_selector_matching_something_does_not_warn(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """A version which covers at least one simulation is not a trap."""
+    parameters = [_parameter("Ka_a", target="Ka", versioned=True)]
+    with caplog.at_level("WARNING", logger="sbmlsim.fit.parameter_mapping"):
+        ParameterMapping(parameters, {0: {0}}, GROUPS, KEYS)
+
+    assert not caplog.records
+
+
 def test_the_problem_resolves_its_selectors(
     definition_hctz_pk: FitDefinition, fit_settings: FitSettings
 ) -> None:
