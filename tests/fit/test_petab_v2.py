@@ -7,7 +7,7 @@ import numpy as np
 import petab.v2 as petab_v2
 import pytest
 
-from conftest import is_oral  # ty: ignore[unresolved-import]
+from conftest import is_intravenous, is_oral  # ty: ignore[unresolved-import]
 from examples.hctz_fitting.fitting.fitting import FIT_DEFINITIONS
 from sbmlsim.experiment import SimulationExperiment
 from sbmlsim.fit import FitSettings
@@ -363,3 +363,61 @@ def test_a_versioned_parameter_is_written_as_a_condition(
     issues = petab_problem.validate()
     errors = [issue for issue in issues if "sbmlsim" not in str(issue)]
     assert not errors, f"validation failed: {errors}"
+
+
+def test_the_round_trip_keeps_a_versioned_parameter(
+    tmp_path: Path,
+    definition_hctz_pk: FitDefinition,
+    fit_settings: FitSettings,
+) -> None:
+    """A version survives being written and read, as a set of ids.
+
+    A selector is a callable and cannot be written to a TSV, so PEtab stores
+    the resolution. The parameter which comes back selects the same mappings
+    by their id, which is the same fit.
+
+    `is_intravenous` selects only training data of one route, none of it
+    shares a simulation with an outlier: an experiment whose mappings are used
+    with different kinds is written as one PEtab experiment per kind (see
+    `PetabExporter._add_experiments`), so a selector reaching across such a
+    split would count more covered simulations after the round trip than
+    before, which is the unrelated "mapping-kind" gap and not a versioning
+    concern.
+    """
+    definition = dataclasses.replace(
+        definition_hctz_pk,
+        parameters=[
+            FitParameter(
+                "Ka_iv",
+                0.35,
+                0.01,
+                10.0,
+                "1/hr",
+                target="Ka_dis_hctz",
+                mappings=is_intravenous,
+            ),
+        ],
+    )
+    problem = definition.problem(opid="hctz_pk_versioned_rt")
+    problem.initialize(fit_settings)
+    to_petab(problem, tmp_path, settings=fit_settings)
+
+    read_problem, settings = from_petab(tmp_path / "problem.yaml", opid="read")
+    read_problem.initialize(settings)
+
+    (parameter,) = read_problem.parameters
+    assert parameter.pid == "Ka_iv"
+    assert parameter.target_id == "Ka_dis_hctz"
+    assert parameter.is_versioned
+
+    # the same simulations are covered as before
+    before = problem.parameter_mapping_initialized.coverage()[0]
+    after = read_problem.parameter_mapping_initialized.coverage()[0]
+    assert after.n_covered == before.n_covered
+
+    # and it is the same fit: the cost of the model values agrees
+    x_before = problem.to_scale(problem.xmodel)
+    x_after = read_problem.to_scale(read_problem.xmodel)
+    assert read_problem.cost_least_square(x_after) == pytest.approx(
+        problem.cost_least_square(x_before), rel=1e-4
+    )
