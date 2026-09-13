@@ -35,13 +35,19 @@ def is_oral(fit_mapping_key: str, fit_mapping: FitMapping) -> bool:
     return _metadata(fit_mapping).route == Route.PO
 
 
-def is_intravenous(fit_mapping_key: str, fit_mapping: FitMapping) -> bool:
-    """Select the intravenous data."""
-    return _metadata(fit_mapping).route == Route.IV
-
-
-#: the parameters with the dissolution estimated per route. A selector must be
-#: a module level function: the workers of a parallel fit unpickle it
+#: the dissolution estimated for the oral data only. A selector must be a
+#: module level function: the workers of a parallel fit unpickle it.
+#:
+#: There is no intravenous version: `Ka_dis_hctz` is the dissolution rate of
+#: the oral dose, and an intravenous dose has nothing to dissolve, so it has
+#: no effect on the intravenous curves at all
+#: (`tests/fit/test_parameter_mapping.py::test_the_versions_reach_their_own_simulations`
+#: measures this directly). Versioning it for the intravenous data too, as an
+#: earlier revision of this example did, would add a second parameter no
+#: curve constrains -- an objective flat in it. Leaving the intravenous
+#: mappings unversioned instead keeps them on the model's shared value, which
+#: is the correct value for them, and is exactly what
+#: `problem.parameter_mapping.coverage()` reports as uncovered.
 PARAMETERS_BY_ROUTE: list[FitParameter] = [
     FitParameter(
         pid="Ka_dis_hctz_po",
@@ -51,15 +57,6 @@ PARAMETERS_BY_ROUTE: list[FitParameter] = [
         unit="1/hr",
         target="Ka_dis_hctz",
         mappings=is_oral,
-    ),
-    FitParameter(
-        pid="Ka_dis_hctz_iv",
-        start_value=0.35,
-        lower_bound=0.01,
-        upper_bound=10.0,
-        unit="1/hr",
-        target="Ka_dis_hctz",
-        mappings=is_intravenous,
     ),
     *[p for p in PARAMETERS if p.pid != "Ka_dis_hctz"],
 ]

@@ -235,13 +235,35 @@ def test_run_fit_creates_an_id(definition_hctz_pk: FitDefinition) -> None:
 
 
 def test_the_route_parameters_of_the_example_are_versioned() -> None:
-    """The example shows one entity estimated per route."""
+    """The example shows one entity estimated for the oral data only."""
     from examples.hctz_fitting.fitting.parameters import PARAMETERS_BY_ROUTE
 
     versioned = [p for p in PARAMETERS_BY_ROUTE if p.is_versioned]
-    assert len(versioned) == 2
+    assert len(versioned) == 1
     assert {p.target_id for p in versioned} == {"Ka_dis_hctz"}
-    assert {p.pid for p in versioned} == {"Ka_dis_hctz_po", "Ka_dis_hctz_iv"}
+    assert {p.pid for p in versioned} == {"Ka_dis_hctz_po"}
+
+
+def test_the_route_parameters_of_the_example_leave_iv_uncovered(
+    definition_hctz_pk: FitDefinition, fit_settings: FitSettings
+) -> None:
+    """The coverage table the feature exists to produce is not empty.
+
+    `Ka_dis_hctz_po` only applies to the oral data, so the intravenous
+    simulations must show up as a coverage gap rather than as a second,
+    unconstrained version of the parameter.
+    """
+    from examples.hctz_fitting.fitting.parameters import PARAMETERS_BY_ROUTE
+
+    definition = dataclasses.replace(definition_hctz_pk, parameters=PARAMETERS_BY_ROUTE)
+    problem = definition.problem(opid="route_coverage")
+    problem.initialize(fit_settings)
+
+    mapping = problem.parameter_mapping
+    assert mapping is not None
+    (row,) = [row for row in mapping.coverage() if row.pid == "Ka_dis_hctz_po"]
+    assert 0 < row.n_covered < row.n_groups
+    assert row.uncovered_groups
 
 
 def test_a_versioned_fit_is_not_worse_than_the_shared_one(

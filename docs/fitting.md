@@ -124,7 +124,7 @@ The scale is a property of the optimization and not of the model or of the data,
 
 ### One parameter per subset of the data
 
-A `FitParameter` can be estimated once for one part of the data and once for another, e.g. a dissolution rate which differs between oral and intravenous dosing: `target` says which entity of the model the value is written to (`pid` by default) and `mappings` is a filter, or an iterable of filters, which selects the fit mappings the parameter applies to; several parameters share one `target` when each of them covers a different part of the data, and `FitParameter.is_versioned`/`target_id` are the two accessors a fit, a report and the PEtab layer read instead of `mappings`/`target` directly.
+A `FitParameter` can be estimated for one part of the data only, leaving the model's own value for the rest, e.g. a dissolution rate estimated from the oral data and left untouched for the intravenous data, which does not depend on it: `target` says which entity of the model the value is written to (`pid` by default) and `mappings` is a filter, or an iterable of filters, which selects the fit mappings the parameter applies to; several parameters share one `target` when each of them covers a different part of the data, and `FitParameter.is_versioned`/`target_id` are the two accessors a fit, a report and the PEtab layer read instead of `mappings`/`target` directly.
 
 ```python
 from examples.hctz_fitting.experiments.metadata import Route
@@ -137,13 +137,14 @@ def is_oral(fit_mapping_key: str, fit_mapping: FitMapping) -> bool:
     return _metadata(fit_mapping).route == Route.PO
 
 
-def is_intravenous(fit_mapping_key: str, fit_mapping: FitMapping) -> bool:
-    """Select the intravenous data."""
-    return _metadata(fit_mapping).route == Route.IV
-
-
-#: the parameters with the dissolution estimated per route. A selector must be
-#: a module level function: the workers of a parallel fit unpickle it
+#: the dissolution estimated for the oral data only. A selector must be a
+#: module level function: the workers of a parallel fit unpickle it. There is
+#: no intravenous version: an intravenous dose has nothing to dissolve, so
+#: `Ka_dis_hctz` has no effect on the intravenous curves at all, and versioning
+#: it there too would add a parameter no curve constrains. Leaving the
+#: intravenous mappings unversioned keeps them on the model's shared value,
+#: which is the correct value for them and exactly what
+#: `problem.parameter_mapping.coverage()` reports as uncovered below.
 PARAMETERS_BY_ROUTE = [
     FitParameter(
         pid="Ka_dis_hctz_po",
@@ -154,20 +155,11 @@ PARAMETERS_BY_ROUTE = [
         target="Ka_dis_hctz",
         mappings=is_oral,
     ),
-    FitParameter(
-        pid="Ka_dis_hctz_iv",
-        start_value=0.35,
-        lower_bound=0.01,
-        upper_bound=10.0,
-        unit="1/hr",
-        target="Ka_dis_hctz",
-        mappings=is_intravenous,
-    ),
     # ... the rest of the parameters, unversioned
 ]
 ```
 
-A selector must be a module level function, not a lambda and not a closure: `OptimizationProblem.__getstate__` reduces a problem to its uninitialized definition for the workers of a parallel fit, and the fit parameters, selectors included, travel with it; a lambda does not pickle and a parallel fit fails when the workers start, not when the fit is defined, which is why `examples/hctz_fitting/fitting/parameters.py` (`PARAMETERS_BY_ROUTE`) defines `is_oral` and `is_intravenous` next to the parameters rather than inline.
+A selector must be a module level function, not a lambda and not a closure: `OptimizationProblem.__getstate__` reduces a problem to its uninitialized definition for the workers of a parallel fit, and the fit parameters, selectors included, travel with it; a lambda does not pickle and a parallel fit fails when the workers start, not when the fit is defined, which is why `examples/hctz_fitting/fitting/parameters.py` (`PARAMETERS_BY_ROUTE`) defines `is_oral` next to the parameters rather than inline.
 
 `sbmlsim.fit.parameter_mapping.ParameterMapping` resolves every selector to the simulation groups of the initialized problem and validates the binding: two parameters must not write one target in one simulation, a selector must not split a simulation, i.e. select some but not all of the fit mappings which share a simulation, and the versions of a target must agree on their unit, since the unit is how the value reaches the model. A version whose selector matches no fit mapping only warns, because it is usually a mistyped filter rather than an intended gap, and the parameter would otherwise sit in the parameter vector without ever changing the model.
 
