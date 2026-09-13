@@ -417,6 +417,7 @@ class PetabReader:
         conditions = {
             condition.id: condition for condition in self.petab_problem.conditions
         }
+        estimated = self._estimated_parameter_ids()
 
         timecourses: list[Timecourse] = []
         periods = sorted(experiment.periods, key=lambda p: p.time)
@@ -430,13 +431,28 @@ class PetabReader:
                         f"'{condition_id}', which the problem does not define."
                     )
                 for change in condition.changes:
-                    if not _is_number(change.target_value):
-                        # the value is the id of an estimated parameter, i.e.
-                        # a versioned parameter's binding rather than a number:
-                        # `ParameterMapping.changes_for` sets the target at
-                        # the start of every simulation of the group it covers
+                    if _is_number(change.target_value):
+                        changes[change.target_id] = _to_float(change.target_value)
                         continue
-                    changes[change.target_id] = _to_float(change.target_value)
+                    if str(change.target_value) in estimated:
+                        # the value is the id of an estimated parameter, i.e.
+                        # a versioned parameter's binding rather than a
+                        # number: `ParameterMapping.changes_for` sets the
+                        # target at the start of every simulation of the
+                        # group it covers, see `_versions`. Run outside an
+                        # `OptimizationProblem`, e.g. the generated
+                        # `SimulationExperiment` on its own, nothing sets it
+                        # and the target keeps the model's own value, because
+                        # only the fit resolves a version
+                        continue
+                    raise ValueError(
+                        f"The condition '{condition.id}' of the experiment "
+                        f"'{experiment.id}' assigns '{change.target_id}' the "
+                        f"value '{change.target_value}', which is neither a "
+                        f"number nor the id of an estimated parameter. Such a "
+                        f"condition has no representation in `sbmlsim`, see "
+                        f"the 'condition-target' gap."
+                    )
 
             if np.isinf(period.time):
                 # pre-equilibration, the duration is not part of the problem
@@ -724,6 +740,18 @@ class PetabReader:
             if (measurements[0].experiment_id or DEFAULT_EXPERIMENT) in experiments
         }
 
+    def _estimated_parameter_ids(self) -> set[str]:
+        """Get the ids of the parameters the PEtab problem estimates.
+
+        This is what tells a versioned parameter's binding, whose target
+        value is such an id, apart from a value the layer does not support,
+        see `_simulation_of_periods` and `_versions`.
+
+        Returns:
+            The ids of the parameters of the problem with `estimate=True`.
+        """
+        return {p.id for p in self.petab_problem.parameters if p.estimate}
+
     def _versions(self) -> dict[str, tuple[str, set[str]]]:
         """Get the versioned parameters of the problem, from its conditions.
 
@@ -738,14 +766,30 @@ class PetabReader:
             the entity of the model it writes and the ids of the fit mappings
             of the experiments which use a condition assigning it.
         """
-        estimated = {p.id for p in self.petab_problem.parameters if p.estimate}
+        estimated = self._estimated_parameter_ids()
         versions: dict[str, tuple[str, set[str]]] = {}
         for condition in self.petab_problem.conditions:
             for change in condition.changes:
                 value = str(change.target_value)
-                if value in estimated:
-                    _, keys = versions.setdefault(value, (change.target_id, set()))
-                    keys.update(self._mapping_keys_of_condition(condition.id))
+                if value not in estimated:
+                    continue
+                target, keys = versions.setdefault(value, (change.target_id, set()))
+                if change.target_id != target:
+                    # one entity is estimated by one parameter; a foreign
+                    # problem which assigns an estimated parameter to two
+                    # different entities keeps the first and is not what
+                    # `sbmlsim` writes, so it is worth a warning
+                    logger.warning(
+                        "The estimated parameter '%s' is assigned to '%s' by "
+                        "the condition '%s' and to '%s' elsewhere; only the "
+                        "first target is kept.",
+                        value,
+                        change.target_id,
+                        condition.id,
+                        target,
+                    )
+                    continue
+                keys.update(self._mapping_keys_of_condition(condition.id))
         return versions
 
     def fit_parameters(self) -> list[FitParameter]:
@@ -928,7 +972,11 @@ def _to_float(value: Any) -> float:
 
 
 def _is_number(value: Any) -> bool:
-    """Check whether a noise parameter is a number and not a parameter id."""
+    """Check whether a value of PEtab is a finite number and not an id.
+
+    Used for a noise parameter of a measurement and for the target value of a
+    condition change, both of which are a number or the id of a parameter.
+    """
     try:
         return np.isfinite(float(value))
     except (TypeError, ValueError):

@@ -110,8 +110,15 @@ def test_gaps_of_problem(
     ids = {gap.id for gap in gaps}
 
     # the HCTZ problem has units, settings and an output grid, and it is fitted
-    # on training data with validation data
-    assert {"units", "fit-settings", "output-times", "mapping-kind"} <= ids
+    # on training data with validation data; Beermann1976's PO single dose
+    # also shares one simulation between training and outlier mappings
+    assert {
+        "units",
+        "fit-settings",
+        "output-times",
+        "mapping-kind",
+        "experiment-split",
+    } <= ids
     # and it does not use what PEtab cannot express at all
     assert not [gap for gap in gaps if gap.kind == GapKind.UNSUPPORTED]
     assert gaps_table(gaps).row_count == len(gaps)
@@ -377,12 +384,15 @@ def test_the_round_trip_keeps_a_versioned_parameter(
     by their id, which is the same fit.
 
     `is_intravenous` selects only training data of one route, none of it
-    shares a simulation with an outlier: an experiment whose mappings are used
-    with different kinds is written as one PEtab experiment per kind (see
-    `PetabExporter._add_experiments`), so a selector reaching across such a
-    split would count more covered simulations after the round trip than
-    before, which is the unrelated "mapping-kind" gap and not a versioning
-    concern.
+    shares a simulation with an outlier: a simulation whose mappings are of
+    several kinds is written as one PEtab experiment per kind, because
+    `select_mapping_collections` gives an experiment one `FitMappingCollection`
+    per kind it holds and `PetabExporter._add_experiments` writes one PEtab
+    experiment per collection (see the `experiment-split` gap). A selector
+    reaching across such a split would count more covered simulation groups
+    after the round trip than before, which is that unrelated gap and not a
+    versioning concern; the binding itself is unaffected by the split, since
+    every experiment it produces carries the same version.
     """
     definition = dataclasses.replace(
         definition_hctz_pk,
@@ -421,3 +431,31 @@ def test_the_round_trip_keeps_a_versioned_parameter(
     assert read_problem.cost_least_square(x_after) == pytest.approx(
         problem.cost_least_square(x_before), rel=1e-4
     )
+
+
+def test_a_condition_of_an_unsupported_value_raises(petab_dir: Path) -> None:
+    """A condition value which is neither a number nor an estimated id raises.
+
+    `_is_number` alone is too wide a net for "is a versioned parameter's
+    binding": it is also `False` for a fixed parameter's id, for an
+    expression such as `2*k1` and for `nan`/`inf`. None of those are a version
+    `_versions` would recognise either, so the target would silently keep its
+    model value with no versioned parameter to explain why. The reader raises
+    instead, the same way it already raises for a period which names a
+    condition the problem does not define.
+
+    The `sbmlsim` extension keeps the exact timecourses it was written with,
+    which is what `simulations()` uses when it is there, so the tables are not
+    read at all; the extension is dropped here to fall back on them, the path
+    a foreign PEtab problem takes.
+    """
+    petab_problem = petab_v2.Problem.from_yaml(petab_dir / "problem.yaml")
+    petab_problem.config.extensions = {}
+    condition = next(c for c in petab_problem.conditions if c.changes)
+    change = condition.changes[0]
+    change.target_value = "not_a_number_and_not_an_estimated_parameter"  # ty: ignore[invalid-assignment]
+
+    reader = PetabReader(petab_problem, base_path=petab_dir)
+    assert reader.extension is None
+    with pytest.raises(ValueError, match=condition.id):
+        reader.simulations()
