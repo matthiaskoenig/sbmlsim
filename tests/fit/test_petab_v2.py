@@ -372,6 +372,40 @@ def test_a_versioned_parameter_is_written_as_a_condition(
     assert not errors, f"validation failed: {errors}"
 
 
+def test_a_selector_without_its_own_target_is_refused(
+    tmp_path: Path,
+    definition_hctz_pk: FitDefinition,
+    fit_settings: FitSettings,
+) -> None:
+    """A version which writes its own id would export as a global parameter.
+
+    `FitParameter(target=None, mappings=is_oral)` is legal and `ParameterMapping`
+    honours it: the entity is estimated from the oral data and the model's own
+    value stands for the rest. But PEtab has no id for "this entity" distinct
+    from the entity itself, so the condition the export would write is
+    indistinguishable from an ordinary parameter -- the exporter must refuse
+    it rather than silently estimate everywhere.
+    """
+    definition = dataclasses.replace(
+        definition_hctz_pk,
+        parameters=[
+            FitParameter(
+                "Ka_dis_hctz",
+                0.35,
+                0.01,
+                10.0,
+                "1/hr",
+                mappings=is_oral,
+            ),
+        ],
+    )
+    problem = definition.problem(opid="hctz_pk_unnamed_version")
+    problem.initialize(fit_settings)
+
+    with pytest.raises(ValueError, match="Ka_dis_hctz"):
+        to_petab(problem, tmp_path, settings=fit_settings)
+
+
 def test_the_round_trip_keeps_a_versioned_parameter(
     tmp_path: Path,
     definition_hctz_pk: FitDefinition,

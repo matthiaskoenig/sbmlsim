@@ -37,6 +37,7 @@ from sbmlsim.fit.metrics import FitMetrics
 from sbmlsim.fit.objects import EVALUATED_KINDS, MappingKind
 from sbmlsim.fit.optimization import OptimizationProblem
 from sbmlsim.fit.options import FitSettings
+from sbmlsim.fit.parameter_mapping import has_renamed_targets
 from sbmlsim.fit.parameters import ParameterSet, ParameterSets
 from sbmlsim.fit.result import OptimizationResult, bound_warnings
 from sbmlsim.plot.serialization_matplotlib import plt
@@ -787,9 +788,7 @@ class FitReport:
             "kinds": kinds,
             "fit_info": self.fit_info(),
             "parameters": parameters,
-            "versioned_parameters": any(
-                p.target_id != p.pid for p in self.problem.parameters
-            ),
+            "versioned_parameters": has_renamed_targets(self.problem.parameters),
             "parameter_set_ids": [pset.sid for pset in psets],
             "bound_warnings": warnings,
             "settings": {

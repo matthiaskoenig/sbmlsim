@@ -11,7 +11,7 @@ from sbmlsim.fit import FitSettings
 from sbmlsim.fit.cli import FitDefinition
 from sbmlsim.fit.objects import FitParameter, MappingKind
 from sbmlsim.fit.optimization import OptimizationProblem
-from sbmlsim.fit.parameter_mapping import ParameterMapping
+from sbmlsim.fit.parameter_mapping import ParameterMapping, has_renamed_targets
 
 
 def _parameter(
@@ -45,7 +45,7 @@ def test_a_parameter_without_a_selector_covers_every_group() -> None:
 
     assert mapping.indices_for(0) == {"Ka": 0}
     assert mapping.indices_for(1) == {"Ka": 0}
-    assert not mapping.is_versioned
+    assert not has_renamed_targets(mapping.parameters)
 
 
 def test_a_version_covers_the_groups_of_its_mappings() -> None:
@@ -58,7 +58,7 @@ def test_a_version_covers_the_groups_of_its_mappings() -> None:
 
     assert mapping.indices_for(0) == {"Ka": 0}
     assert mapping.indices_for(1) == {"Ka": 1}
-    assert mapping.is_versioned
+    assert has_renamed_targets(mapping.parameters)
 
 
 def test_a_group_no_version_covers_gets_no_change() -> None:
@@ -194,7 +194,7 @@ def test_the_problem_resolves_its_selectors(
 
     mapping = problem.parameter_mapping
     assert mapping is not None
-    assert mapping.is_versioned
+    assert has_renamed_targets(mapping.parameters)
     (row,) = mapping.coverage()
     assert row.pid == "Ka_po"
     assert row.target == "Ka_dis_hctz"
@@ -211,7 +211,7 @@ def test_an_unversioned_problem_binds_every_parameter_everywhere(
     mapping = op_hctz_pk.parameter_mapping
 
     assert mapping is not None
-    assert not mapping.is_versioned
+    assert not has_renamed_targets(mapping.parameters)
     for group in range(len(op_hctz_pk.mapping_groups)):
         assert set(mapping.indices_for(group)) == set(op_hctz_pk.pids)
 

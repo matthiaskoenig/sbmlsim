@@ -26,7 +26,7 @@ from rich.table import Table
 from sbmlsim.console import console
 from sbmlsim.fit.objects import FitParameter, MappingKind
 from sbmlsim.fit.options import FitSettings
-from sbmlsim.fit.parameter_mapping import CoverageRow
+from sbmlsim.fit.parameter_mapping import CoverageRow, has_renamed_targets
 
 #: width of the keys of a key/value block
 KEY_WIDTH = 18
@@ -128,7 +128,7 @@ def parameters_table(parameters: Iterable[FitParameter]) -> Table:
     name, so an ordinary fit does not get a column which repeats its ids.
     """
     parameters = list(parameters)
-    versioned = any(p.target_id != p.pid for p in parameters)
+    versioned = has_renamed_targets(parameters)
     columns = ["parameter"]
     if versioned:
         columns.append("target")

@@ -24,6 +24,28 @@ from sbmlsim.fit.objects import FitParameter
 logger = logging.getLogger(__name__)
 
 
+def has_renamed_targets(parameters: Sequence[FitParameter]) -> bool:
+    """Check whether any parameter writes an entity of another name.
+
+    This is not `FitParameter.is_versioned`, which asks whether a parameter
+    carries a selector: a parameter can be versioned and still write its own
+    id (several versions all named after the target with a selector each), or
+    write a different id without a selector (a plain rename). What a fit's
+    display, its report and the PEtab export need instead is this question,
+    i.e. whether a target column is worth showing at all -- one parameter
+    answers it with a one-element list, a whole parameter vector with all of
+    them.
+
+    Args:
+        parameters: the parameters to check, e.g. an `OptimizationProblem`'s
+            or a single `[parameter]`.
+
+    Returns:
+        `True` if some parameter's `target_id` differs from its `pid`.
+    """
+    return any(p.target_id != p.pid for p in parameters)
+
+
 @dataclass(frozen=True)
 class CoverageRow:
     """What one parameter of a fit reaches.
@@ -211,11 +233,6 @@ class ParameterMapping:
             f"version of its target: a target is estimated once for all of "
             f"the data or once per subset of it."
         )
-
-    @property
-    def is_versioned(self) -> bool:
-        """Check whether any parameter writes an entity of another name."""
-        return any(p.target_id != p.pid for p in self.parameters)
 
     def indices_for(self, group: int) -> dict[str, int]:
         """Get the parameter which writes every target of a simulation.

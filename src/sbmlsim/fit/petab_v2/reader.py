@@ -450,8 +450,7 @@ class PetabReader:
                         f"'{experiment.id}' assigns '{change.target_id}' the "
                         f"value '{change.target_value}', which is neither a "
                         f"number nor the id of an estimated parameter. Such a "
-                        f"condition has no representation in `sbmlsim`, see "
-                        f"the 'condition-target' gap."
+                        f"condition has no representation in `sbmlsim`."
                     )
 
             if np.isinf(period.time):

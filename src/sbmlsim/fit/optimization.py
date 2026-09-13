@@ -761,6 +761,12 @@ class OptimizationProblem(ObjectJSONEncoder):
         self._store_model_parameters()
         self._group_mappings()
 
+        if not self.training_indices:
+            raise ValueError(
+                f"'{self.opid}': no training data, at least one fit mapping must "
+                f"be '{MappingKind.TRAINING.value}'."
+            )
+
         self.parameter_mapping = ParameterMapping(
             parameters=self.parameters,
             mapping_indices=selected_mappings,
@@ -772,12 +778,6 @@ class OptimizationProblem(ObjectJSONEncoder):
             ],
         )
         self._check_shared_simulation_bindings()
-
-        if not self.training_indices:
-            raise ValueError(
-                f"'{self.opid}': no training data, at least one fit mapping must "
-                f"be '{MappingKind.TRAINING.value}'."
-            )
 
         # set simulator instance with arguments
         simulator = SimulatorSerial(

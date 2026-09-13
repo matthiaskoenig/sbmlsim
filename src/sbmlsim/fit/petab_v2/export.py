@@ -31,6 +31,7 @@ from petab.v2 import Problem as PetabProblem
 from sbmlsim.fit.objects import EVALUATED_KINDS, MappingKind
 from sbmlsim.fit.optimization import OptimizationProblem
 from sbmlsim.fit.options import FitSettings, WeightingCurvesType
+from sbmlsim.fit.parameter_mapping import has_renamed_targets
 from sbmlsim.fit.petab_v2.extension import (
     EXTENSION_ID,
     SbmlsimExtension,
@@ -230,7 +231,8 @@ class PetabExporter:
         Raises:
             ValueError: for a gap which has no representation in PEtab v2, i.e.
                 a structural model change, an observable which is a python
-                function or a mapping over something else than time.
+                function or a mapping over something else than time; or for a
+                selector without its own id, see `_check_unnamed_versions`.
         """
         unsupported = [gap for gap in self.gaps if gap.kind == GapKind.UNSUPPORTED]
         if unsupported:
@@ -238,6 +240,38 @@ class PetabExporter:
             raise ValueError(
                 f"'{self.problem.opid}': the problem uses features which PEtab v2 "
                 f"cannot express:\n{details}"
+            )
+        self._check_unnamed_versions()
+
+    def _check_unnamed_versions(self) -> None:
+        """Refuse a selector whose parameter writes its own id.
+
+        `FitParameter(target=None, mappings=...)` is legal and estimates the
+        entity from part of the data while leaving the model's value where
+        the selector does not match: `ParameterMapping` honours it, but PEtab
+        has no id for "this entity" distinct from the entity itself, so a
+        condition cannot say "assign this estimated parameter" without
+        naming a version that is not the target. Writing nothing for such a
+        parameter would estimate it everywhere instead, silently, which is
+        why this is refused rather than degraded.
+
+        Raises:
+            ValueError: if a versioned parameter writes its own id.
+        """
+        unnamed = [
+            p
+            for p in self.problem.parameters
+            if p.is_versioned and p.target_id == p.pid
+        ]
+        if unnamed:
+            details = "\n".join(f"  - {p.pid}" for p in unnamed)
+            raise ValueError(
+                f"'{self.problem.opid}': the following parameters have a "
+                f"selector (`mappings`) but no `target` of their own, so "
+                f"PEtab has no id to write the condition with -- it would "
+                f"estimate the entity everywhere instead of only where the "
+                f"selector matches. Give the version its own `pid` and set "
+                f"`target` to the entity it writes:\n{details}"
             )
 
     def to_problem(self) -> PetabProblem:
@@ -392,7 +426,7 @@ class PetabExporter:
         if mapping is not None:
             for target, index in sorted(mapping.indices_for(group_index).items()):
                 parameter = self.problem.parameters[index]
-                if parameter.target_id != parameter.pid:
+                if has_renamed_targets([parameter]):
                     version_changes.append(
                         petab_v2.Change(
                             target_id=condition_target(target, sbml_model),
@@ -495,9 +529,9 @@ class PetabExporter:
         """
         for index, parameter in enumerate(self.problem.parameters):
             nominal_value = (
-                parameter.start_value
-                if parameter.target_id == parameter.pid
-                else float(self.problem.xmodel[index])
+                float(self.problem.xmodel[index])
+                if has_renamed_targets([parameter])
+                else parameter.start_value
             )
             _table(petab_problem, "parameter_tables").parameters.append(
                 petab_v2.Parameter(
