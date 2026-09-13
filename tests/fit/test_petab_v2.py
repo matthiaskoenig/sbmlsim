@@ -1,15 +1,18 @@
 """Tests of the PEtab v2 layer."""
 
+import dataclasses
 from pathlib import Path
 
 import numpy as np
 import petab.v2 as petab_v2
 import pytest
 
+from conftest import is_oral  # ty: ignore[unresolved-import]
 from examples.hctz_fitting.fitting.fitting import FIT_DEFINITIONS
 from sbmlsim.experiment import SimulationExperiment
 from sbmlsim.fit import FitSettings
-from sbmlsim.fit.objects import MappingKind
+from sbmlsim.fit.cli import FitDefinition
+from sbmlsim.fit.objects import FitParameter, MappingKind
 from sbmlsim.fit.optimization import OptimizationProblem
 from sbmlsim.fit.options import (
     ResidualType,
@@ -320,3 +323,43 @@ def test_round_trip_keeps_the_data(
             rtol=1e-10,
         )
         assert problem.weights_curves[i] == pytest.approx(original.weights_curves[k])
+
+
+def test_a_versioned_parameter_is_written_as_a_condition(
+    tmp_path: Path,
+    definition_hctz_pk: FitDefinition,
+    fit_settings: FitSettings,
+) -> None:
+    """PEtab says `Ka_dis_hctz = Ka_po` in the experiments of the version."""
+    definition = dataclasses.replace(
+        definition_hctz_pk,
+        parameters=[
+            FitParameter(
+                "Ka_po",
+                0.35,
+                0.01,
+                10.0,
+                "1/hr",
+                target="Ka_dis_hctz",
+                mappings=is_oral,
+            ),
+        ],
+    )
+    problem = definition.problem(opid="hctz_pk_versioned")
+    to_petab(problem, tmp_path, settings=fit_settings)
+
+    petab_problem = petab_v2.Problem.from_yaml(tmp_path / "problem.yaml")
+    assert [p.id for p in petab_problem.parameters] == ["Ka_po"]
+
+    changes = [
+        change
+        for condition in petab_problem.conditions
+        for change in condition.changes
+        if change.target_id == "Ka_dis_hctz"
+    ]
+    assert changes, "no condition writes the target of the version"
+    assert all(str(change.target_value) == "Ka_po" for change in changes)
+
+    issues = petab_problem.validate()
+    errors = [issue for issue in issues if "sbmlsim" not in str(issue)]
+    assert not errors, f"validation failed: {errors}"

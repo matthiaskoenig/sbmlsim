@@ -214,6 +214,16 @@ class PetabExporter:
         self.experiment_ids: dict[int, str] = {}
         self.observable_ids: dict[int, str] = {}
 
+        #: index into `problem.mapping_groups` of the simulation group a fit
+        #: mapping belongs to, i.e. the group `ParameterMapping.indices_for`
+        #: resolves for it. `_group_mappings` already partitions every fit
+        #: mapping this way; this is that partition read backwards, not a
+        #: second derivation of it, so an experiment finds its group by a
+        #: lookup rather than by recomputing the `(model, simulation)` key.
+        self.group_indices: dict[int, int] = {
+            k: g for g, group in enumerate(problem.mapping_groups) for k in group
+        }
+
     def check(self) -> None:
         """Check that the problem can be written.
 
@@ -329,6 +339,7 @@ class PetabExporter:
                     petab_problem,
                     experiment_id=experiment_id,
                     simulation=simulation,
+                    group_index=self.group_indices[k0],
                     sbml_model=self.sbml_models.get(
                         self.model_ids[id(problem.models[k0])]
                     ),
@@ -345,6 +356,7 @@ class PetabExporter:
         petab_problem: PetabProblem,
         experiment_id: str,
         simulation: TimecourseSim,
+        group_index: int,
         sbml_model: Any = None,
     ) -> list[petab_v2.ExperimentPeriod]:
         """Get the periods of an experiment and add their conditions.
@@ -353,7 +365,41 @@ class PetabExporter:
         experiment, i.e. a period at `time=-inf`; its duration is lost. The
         time of every other period is the time the timecourse starts at in the
         simulation, i.e. the sum of the durations before it.
+
+        Args:
+            petab_problem: problem which is built.
+            experiment_id: id of the experiment the periods belong to.
+            simulation: simulation whose timecourses become the periods.
+            group_index: index into `problem.mapping_groups` of the simulation
+                group this experiment was built from, i.e. `self.group_indices`
+                of the fit mapping the experiment groups around. It is what
+                `ParameterMapping.indices_for` resolves the binding for.
+            sbml_model: `libsbml.Model` of the problem, for the math of the
+                selections.
+
+        Returns:
+            The periods of the experiment, with their conditions added to the
+            problem.
         """
+        # a versioned parameter is written as a condition: PEtab assigns the
+        # entity of the model the value of the estimated parameter, which is
+        # how one entity is estimated separately for parts of the data. The
+        # binding of a target to the parameter which writes it in this
+        # simulation group is `ParameterMapping`'s, read here rather than
+        # rederived from the parameters' selectors.
+        mapping = self.problem.parameter_mapping
+        version_changes: list[petab_v2.Change] = []
+        if mapping is not None:
+            for target, index in sorted(mapping.indices_for(group_index).items()):
+                parameter = self.problem.parameters[index]
+                if parameter.target_id != parameter.pid:
+                    version_changes.append(
+                        petab_v2.Change(
+                            target_id=condition_target(target, sbml_model),
+                            target_value=parameter.pid,
+                        )
+                    )
+
         periods: list[petab_v2.ExperimentPeriod] = []
         offset: float = simulation.time_offset
         for k, tc in enumerate(simulation.timecourses):
@@ -364,7 +410,8 @@ class PetabExporter:
                     f"is not the pre-equilibration of a PEtab experiment."
                 )
             condition_ids: list[str] = []
-            if tc.changes:
+            tc_version_changes = version_changes if k == 0 else []
+            if tc.changes or tc_version_changes:
                 condition_id = petab_id(experiment_id, f"tc{k}")
                 _table(petab_problem, "condition_tables").conditions.append(
                     petab_v2.Condition(
@@ -375,7 +422,8 @@ class PetabExporter:
                                 target_value=_magnitude(value),
                             )
                             for target, value in tc.changes.items()
-                        ],
+                        ]
+                        + tc_version_changes,
                     )
                 )
                 condition_ids.append(condition_id)
@@ -437,14 +485,26 @@ class PetabExporter:
     # --- PARAMETERS ---
 
     def _add_parameters(self, petab_problem: PetabProblem) -> None:
-        """Add the parameters which are estimated."""
-        for parameter in self.problem.parameters:
+        """Add the parameters which are estimated.
+
+        The nominal value of a plain parameter is its start value. The
+        nominal value of a version is the value its target has in the model
+        rather than the version's own start value, so that a tool which does
+        not estimate it still simulates the model as it is today, i.e. with
+        no version applied.
+        """
+        for index, parameter in enumerate(self.problem.parameters):
+            nominal_value = (
+                parameter.start_value
+                if parameter.target_id == parameter.pid
+                else float(self.problem.xmodel[index])
+            )
             _table(petab_problem, "parameter_tables").parameters.append(
                 petab_v2.Parameter(
                     id=parameter.pid,
                     lb=parameter.lower_bound,
                     ub=parameter.upper_bound,
-                    nominal_value=parameter.start_value,
+                    nominal_value=nominal_value,
                     estimate=True,
                 )
             )
