@@ -189,3 +189,23 @@ def test_mapping_kinds_info(fit_mappings: FitMappings) -> None:
     info = mapping_kinds_info(selection.df)
     assert info.startswith("mappings")
     assert "1 outlier" in info
+
+
+def test_filter_keys_selects_the_named_mappings() -> None:
+    """The filter of a set of ids passes exactly those ids."""
+    from sbmlsim.fit.helpers import filter_keys
+
+    selected = filter_keys({"fm_a", "fm_b"})
+    assert selected("fm_a", None)  # ty: ignore[invalid-argument-type]
+    assert selected("fm_b", None)  # ty: ignore[invalid-argument-type]
+    assert not selected("fm_c", None)  # ty: ignore[invalid-argument-type]
+
+
+def test_filter_keys_takes_a_copy_of_the_ids() -> None:
+    """The filter does not change when the set it was built from changes."""
+    from sbmlsim.fit.helpers import filter_keys
+
+    keys = {"fm_a"}
+    selected = filter_keys(keys)
+    keys.add("fm_b")
+    assert not selected("fm_b", None)  # ty: ignore[invalid-argument-type]

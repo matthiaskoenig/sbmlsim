@@ -58,6 +58,28 @@ def _filters(filters: MappingFilter | Iterable[MappingFilter]) -> list[MappingFi
     return [filters]
 
 
+def filter_keys(keys: Iterable[str]) -> MappingFilter:
+    """Get a filter which selects the fit mappings of the given ids.
+
+    A selector written by hand says what it means, e.g. "the tablets"; this
+    one says which mappings it resolved to and is what a problem read from
+    PEtab uses, because a condition stores the resolution and not the rule.
+
+    Args:
+        keys: ids of the fit mappings to select.
+
+    Returns:
+        A filter which passes exactly those mappings.
+    """
+    selected = frozenset(keys)
+
+    def _filter(fit_mapping_key: str, fit_mapping: FitMapping) -> bool:
+        """Select a mapping by its id."""
+        return fit_mapping_key in selected
+
+    return _filter
+
+
 @dataclass
 class MappingSelection:
     """The kind of every fit mapping, i.e., what a fit does with the data.
