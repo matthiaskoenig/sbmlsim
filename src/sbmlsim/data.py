@@ -263,7 +263,11 @@ class Data:
                 variables[par_key] = par_value
 
             x = mathml.evaluate(astnode=astnode, variables=variables)
-            self.unit = str(x.units)  # FIXME: check if this is correct
+            if not isinstance(x, Quantity):
+                # a formula of plain numbers evaluates to a number, e.g. a
+                # function of parameters alone; it is dimensionless
+                x = experiment.Q_(x, "dimensionless")
+            self.unit = str(x.units)
 
         # convert units to requested units
         if to_units is not None:

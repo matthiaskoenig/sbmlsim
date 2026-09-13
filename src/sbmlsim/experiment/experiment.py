@@ -4,13 +4,14 @@ import json
 import logging
 import re
 from collections import defaultdict
-from collections.abc import Iterable
+from collections.abc import Iterable, Iterator
 from copy import deepcopy
 from dataclasses import dataclass
 from pathlib import Path
 
 from sbmlsim.data import Data, DataSet
 from sbmlsim.fit import FitMapping
+from sbmlsim.fit.objects import FitDataInitialized
 from sbmlsim.model import AbstractModel, RoadrunnerSBMLModel
 from sbmlsim.plot import Figure
 from sbmlsim.plot.serialization_matplotlib import (
@@ -411,17 +412,21 @@ class SimulationExperiment:
             if save_results:
                 self.save_results(output_path)
 
-        # create figures
-        self._mpl_figures = self.create_mpl_figures()
-        if show_figures:
-            self.show_mpl_figures(mpl_figures=self._mpl_figures)
-        if output_path:
-            self.save_mpl_figures(
-                output_path,
-                mpl_figures=self._mpl_figures,
-                figure_formats=figure_formats,
-            )
-        self.close_mpl_figures(mpl_figures=self._mpl_figures)
+        # create figures, but only when something looks at them: rendering
+        # every figure is most of the time a run takes, and a run without an
+        # output path which does not show them would close them again
+        self._mpl_figures = {}
+        if show_figures or output_path:
+            self._mpl_figures = self.create_mpl_figures()
+            if show_figures:
+                self.show_mpl_figures(mpl_figures=self._mpl_figures)
+            if output_path:
+                self.save_mpl_figures(
+                    output_path,
+                    mpl_figures=self._mpl_figures,
+                    figure_formats=figure_formats,
+                )
+            self.close_mpl_figures(mpl_figures=self._mpl_figures)
 
         # only perform serialization after data evaluation (to access units)
         if output_path:
@@ -453,15 +458,7 @@ class SimulationExperiment:
             simulator.set_model(model=model)
             if reduced_selections:
                 # set selections based on data
-                selections = {"time"}
-                d: Data
-                for d in self._data.values():
-                    if d.is_task() and d.task_id is not None:
-                        # check if selection is for current model
-                        task = self._tasks[d.task_id]
-                        if task.model_id == model_id:
-                            selections.add(d.selection)
-                selections = sorted(selections)
+                selections = sorted(self._selections_of_model(model_id))
                 simulator.set_timecourse_selections(selections=selections)
             else:
                 # use the complete selection
@@ -491,6 +488,48 @@ class SimulationExperiment:
                     self._results[task_key] = simulator.run_scan(sim)
                 else:
                     raise ValueError(f"Unsupported simulation type: {type(sim)}")
+
+    def _task_data(self) -> Iterator[Data]:
+        """Iterate the data of the experiment which comes from a task.
+
+        The data of `data()` and the data every fit mapping reads, i.e.
+        everything a run has to simulate. A `FitData` builds its `Data` when
+        it is resolved and does not register it, so a fit mapping is asked for
+        its data here rather than looked up in `self._data`.
+
+        Yields:
+            Every `Data` of the experiment which reads a task.
+        """
+        for d in self._data.values():
+            if d.is_task():
+                yield d
+
+        for mapping in self._fit_mappings.values():
+            for fit_data in (mapping.reference, mapping.observable):
+                for key in FitDataInitialized.KEYS:
+                    d = getattr(fit_data, key, None)
+                    if isinstance(d, Data) and d.is_task():
+                        yield d
+
+    def _selections_of_model(self, model_id: str) -> set[str]:
+        """Get the selections a model has to be simulated with.
+
+        Args:
+            model_id: the model the tasks are run on.
+
+        Returns:
+            `time` and the selection of every data of the experiment which
+            reads a task of the model.
+        """
+        selections = {"time"}
+        for d in self._task_data():
+            if d.task_id is None:
+                continue
+            task = self._tasks.get(d.task_id)
+            # the data of another model is selected when that model runs
+            if task is not None and task.model_id == model_id:
+                selections.add(d.selection)
+        return selections
 
     def evaluate_fit_mappings(self):
         """Evaluate fit mappings."""
