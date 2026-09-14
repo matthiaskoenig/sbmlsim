@@ -582,13 +582,16 @@ class Axis(BasePlotObject):
     ):
         """Axis object.
 
-        Label and unit form together the axis label.
-        To set the label directly use the name attribute.
+        The label and the unit form the axis label together, i.e. `name` is
+        `"<label> [<unit>]"`, and it follows both of them: setting `label` or
+        `unit` on an axis updates it. `name` is the complete axis label and
+        overrides them; setting it to `None` hands the axis back to its label
+        and its unit.
 
         Args:
             label: label part of axis label
             unit: unit part of axis label
-            name: complete axis label (overwrites label and unit)
+            name: complete axis label, overrides label and unit
             scale: Scale of the axis, i.e. "linear" or "log" axis.
             min: lower axis bound
             max: upper axis bound
@@ -598,22 +601,10 @@ class Axis(BasePlotObject):
             ticks_visible: show/hide axis ticks
             style: style of the axis
         """
-        super().__init__(sid=None, name=None)
-        if label and name:
-            ValueError("Either set label or name on Axis.")
-        # if unit is None:
-        #     unit = "?"
-        if not name:
-            if not label and not unit:
-                name = ""
-            elif unit != "dimensionless":
-                name = f"{label} [{unit}]"
-            else:
-                name = f"{label} [-]"
-
-        self.label: str | None = label
-        self.name: str = name
-        self.unit: str | None = unit
+        self._label: str | None = label
+        self._unit: str | None = unit
+        # sets `name`, i.e. the override, which is `None` for a derived label
+        super().__init__(sid=None, name=name)
         self.scale = scale
         self.min: float | None = min
         self.max: float | None = max
@@ -638,16 +629,81 @@ class Axis(BasePlotObject):
         """Copy axis object."""
         return Axis(
             label=self.label,
-            name=self.name,
+            # the override and not `name`, so that a derived label stays derived
+            name=self._name,
             unit=self.unit,
             scale=self.scale,
             min=self.min,
             max=self.max,
+            reverse=self.reverse,
             grid=self.grid,
             label_visible=self.label_visible,
             ticks_visible=self.ticks_visible,
             style=copy.copy(self.style),
         )
+
+    @property
+    def label(self) -> str | None:
+        """Get the label part of the axis label."""
+        return self._label
+
+    @label.setter
+    def label(self, label: str | None) -> None:
+        """Set the label part of the axis label.
+
+        Args:
+            label: label part, which `name` follows unless it is overridden.
+        """
+        self._label = label
+
+    @property
+    def unit(self) -> str | None:
+        """Get the unit part of the axis label."""
+        return self._unit
+
+    @unit.setter
+    def unit(self, unit: str | None) -> None:
+        """Set the unit part of the axis label.
+
+        Args:
+            unit: unit part, which `name` follows unless it is overridden.
+        """
+        self._unit = unit
+
+    @property
+    def name(self) -> str:
+        """Get the complete axis label, which is what a figure renders.
+
+        The override if one was set, the label and the unit otherwise, so that
+        a change of either of them is reflected.
+        """
+        if self._name is not None:
+            return self._name
+        return self._derived_name()
+
+    @name.setter
+    def name(self, name: str | None) -> None:
+        """Set the complete axis label, overriding the label and the unit.
+
+        Args:
+            name: complete axis label; `None` restores the derived one.
+        """
+        self._name: str | None = name
+
+    def _derived_name(self) -> str:
+        """Get the axis label which the label and the unit form.
+
+        A unit of `dimensionless` is written as `-`, and a part which is not
+        given is left out rather than written as `None`.
+        """
+        if not self._label and not self._unit:
+            return ""
+        if not self._unit:
+            return f"{self._label}"
+        unit = "-" if self._unit == "dimensionless" else self._unit
+        if not self._label:
+            return f"[{unit}]"
+        return f"{self._label} [{unit}]"
 
     @property
     def scale(self) -> AxisScale:

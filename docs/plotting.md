@@ -1,6 +1,6 @@
 # Plots and reports
 
-Figures of a simulation experiment are described independent of the plotting backend: a `Figure` holds `Plot` panels, a plot has axes and `Curve` objects, and a curve references `Data` with a `Style`. The description is serialized with the experiment and exported to SED-ML; matplotlib renders it.
+Figures of a simulation experiment are described independent of the plotting backend: a `Figure` holds `Plot` panels, a plot has axes and `Curve` objects, and a curve references `Data` with a `Style`. The description is serialized with the experiment, and the format chooses what renders it: matplotlib draws the static images, plotly the interactive pages.
 
 ## Figures and plots
 
@@ -21,7 +21,7 @@ plots[1].set_xaxis("[X]", unit="dimensionless")
 print(fig, len(plots))
 ```
 
-An `Axis` has a label and a unit, which together form the axis label, a `scale` (`linear` or `log`), `min`, `max`, `grid` and visibility flags. The data plotted on an axis are converted to its unit, see [Units](units.md).
+An `Axis` has a label and a unit, which together form the axis label `name`, a `scale` (`linear` or `log`), `min`, `max`, `grid` and visibility flags. `name` follows both parts, i.e. `axis.unit = "week"` updates the label a figure renders; setting `name` overrides them and setting it to `None` hands the axis back to its label and its unit. The data plotted on an axis are converted to its unit, see [Units](units.md).
 
 ## Curves
 
@@ -76,7 +76,7 @@ plots[0].curve(
 print(style)
 ```
 
-Colors are `ColorType` objects, created from matplotlib color names or hex strings, which are serialized to the `#RRGGBBAA` colors of SED-ML.
+Colors are `ColorType` objects, created from matplotlib color names or hex strings and normalized to `#RRGGBBAA`.
 
 ## Rendering
 
