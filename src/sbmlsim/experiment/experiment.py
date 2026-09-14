@@ -4,13 +4,14 @@ import json
 import logging
 import re
 from collections import defaultdict
-from collections.abc import Iterable
+from collections.abc import Iterable, Iterator
 from copy import deepcopy
 from dataclasses import dataclass
 from pathlib import Path
 
 from sbmlsim.data import Data, DataSet
 from sbmlsim.fit import FitMapping
+from sbmlsim.fit.objects import FitDataInitialized
 from sbmlsim.model import AbstractModel, RoadrunnerSBMLModel
 from sbmlsim.plot import Figure
 from sbmlsim.plot.serialization_matplotlib import (
@@ -27,6 +28,14 @@ from sbmlsim.units import UnitRegistry, UnitsInformation
 from sbmlsim.utils import timeit
 
 logger = logging.getLogger(__name__)
+
+#: format of the static images, which matplotlib draws
+STATIC_FORMAT = "svg"
+
+#: format of the interactive figures, which plotly draws. It is a value of
+#: `figure_formats`, so an experiment asks for the pages the way it asks for
+#: an image: `figure_formats=["svg", "html"]`
+INTERACTIVE_FORMAT = "html"
 
 
 class SimulationExperiment:
@@ -411,17 +420,30 @@ class SimulationExperiment:
             if save_results:
                 self.save_results(output_path)
 
-        # create figures
-        self._mpl_figures = self.create_mpl_figures()
-        if show_figures:
-            self.show_mpl_figures(mpl_figures=self._mpl_figures)
-        if output_path:
-            self.save_mpl_figures(
-                output_path,
-                mpl_figures=self._mpl_figures,
-                figure_formats=figure_formats,
-            )
-        self.close_mpl_figures(mpl_figures=self._mpl_figures)
+        # the format decides which backend draws a figure: matplotlib draws
+        # the static images, plotly the interactive pages
+        formats = figure_formats if figure_formats is not None else [STATIC_FORMAT]
+        static_formats = [f for f in formats if f != INTERACTIVE_FORMAT]
+        interactive = INTERACTIVE_FORMAT in formats
+
+        # create figures, but only when something looks at them: rendering
+        # every figure is most of the time a run takes, and a run without an
+        # output path which does not show them would close them again
+        self._mpl_figures = {}
+        if show_figures or (output_path and static_formats):
+            self._mpl_figures = self.create_mpl_figures()
+            if show_figures:
+                self.show_mpl_figures(mpl_figures=self._mpl_figures)
+            if output_path and static_formats:
+                self.save_mpl_figures(
+                    output_path,
+                    mpl_figures=self._mpl_figures,
+                    figure_formats=static_formats,
+                )
+            self.close_mpl_figures(mpl_figures=self._mpl_figures)
+
+        if output_path and interactive:
+            self.save_interactive_figures(output_path)
 
         # only perform serialization after data evaluation (to access units)
         if output_path:
@@ -453,15 +475,7 @@ class SimulationExperiment:
             simulator.set_model(model=model)
             if reduced_selections:
                 # set selections based on data
-                selections = {"time"}
-                d: Data
-                for d in self._data.values():
-                    if d.is_task() and d.task_id is not None:
-                        # check if selection is for current model
-                        task = self._tasks[d.task_id]
-                        if task.model_id == model_id:
-                            selections.add(d.selection)
-                selections = sorted(selections)
+                selections = sorted(self._selections_of_model(model_id))
                 simulator.set_timecourse_selections(selections=selections)
             else:
                 # use the complete selection
@@ -491,6 +505,48 @@ class SimulationExperiment:
                     self._results[task_key] = simulator.run_scan(sim)
                 else:
                     raise ValueError(f"Unsupported simulation type: {type(sim)}")
+
+    def _task_data(self) -> Iterator[Data]:
+        """Iterate the data of the experiment which comes from a task.
+
+        The data of `data()` and the data every fit mapping reads, i.e.
+        everything a run has to simulate. A `FitData` builds its `Data` when
+        it is resolved and does not register it, so a fit mapping is asked for
+        its data here rather than looked up in `self._data`.
+
+        Yields:
+            Every `Data` of the experiment which reads a task.
+        """
+        for d in self._data.values():
+            if d.is_task():
+                yield d
+
+        for mapping in self._fit_mappings.values():
+            for fit_data in (mapping.reference, mapping.observable):
+                for key in FitDataInitialized.KEYS:
+                    d = getattr(fit_data, key, None)
+                    if isinstance(d, Data) and d.is_task():
+                        yield d
+
+    def _selections_of_model(self, model_id: str) -> set[str]:
+        """Get the selections a model has to be simulated with.
+
+        Args:
+            model_id: the model the tasks are run on.
+
+        Returns:
+            `time` and the selection of every data of the experiment which
+            reads a task of the model.
+        """
+        selections = {"time"}
+        for d in self._task_data():
+            if d.task_id is None:
+                continue
+            task = self._tasks.get(d.task_id)
+            # the data of another model is selected when that model runs
+            if task is not None and task.model_id == model_id:
+                selections.add(d.selection)
+        return selections
 
     def evaluate_fit_mappings(self):
         """Evaluate fit mappings."""
@@ -614,6 +670,37 @@ class SimulationExperiment:
                 paths[fig_format].append(fig_path)
 
         return paths
+
+    def save_interactive_figures(self, results_path: Path) -> dict[str, Path]:
+        """Write the figures as interactive pages.
+
+        The pages are drawn by plotly, see
+        `sbmlsim.plot.serialization_plotly`: matplotlib draws the static
+        images a publication needs and plotly the pages a reader zooms and
+        hovers over. Both read the same `Figure`, so the two cannot disagree
+        about what they show.
+
+        plotly is not a dependency of `sbmlsim`; a run which asks for the
+        interactive figures without it says so and writes none.
+
+        Args:
+            results_path: directory of the pages.
+
+        Returns:
+            The path of the page of every figure, empty without plotly.
+        """
+        try:
+            from sbmlsim.plot.serialization_plotly import figures_to_html
+        except ImportError:
+            logger.error(
+                "The interactive figures of '%s' need plotly, which is not "
+                "installed: `pip install plotly`. No interactive figure was "
+                "written.",
+                self.sid,
+            )
+            return {}
+
+        return figures_to_html(self, results_path)
 
     @classmethod
     def close_mpl_figures(cls, mpl_figures: dict[str, FigureMPL]):

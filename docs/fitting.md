@@ -122,6 +122,51 @@ A `FitMappingCollection` without mappings uses all fit mappings of its experimen
 
 The scale is a property of the optimization and not of the model or of the data, which is why it is part of the settings; PEtab v2 removed the `parameterScale` of its parameter table for the same reason.
 
+### One parameter per subset of the data
+
+A `FitParameter` can be estimated for one part of the data only, leaving the model's own value for the rest, e.g. a dissolution rate estimated from the oral data and left untouched for the intravenous data, which does not depend on it: `target` says which entity of the model the value is written to (`pid` by default) and `mappings` is a filter, or an iterable of filters, which selects the fit mappings the parameter applies to; several parameters share one `target` when each of them covers a different part of the data, and `FitParameter.is_versioned`/`target_id` are the two accessors a fit, a report and the PEtab layer read instead of `mappings`/`target` directly.
+
+```python
+from examples.hctz_fitting.experiments.metadata import Route
+from examples.hctz_fitting.fitting.mapping_collections import _metadata
+from sbmlsim.fit import FitMapping, FitParameter
+
+
+def is_oral(fit_mapping_key: str, fit_mapping: FitMapping) -> bool:
+    """Select the oral data, which is where a dissolution rate applies."""
+    return _metadata(fit_mapping).route == Route.PO
+
+
+#: the dissolution estimated for the oral data only. A selector must be a
+#: module level function: the workers of a parallel fit unpickle it. There is
+#: no intravenous version: an intravenous dose has nothing to dissolve, so
+#: `Ka_dis_hctz` has no effect on the intravenous curves at all, and versioning
+#: it there too would add a parameter no curve constrains. Leaving the
+#: intravenous mappings unversioned keeps them on the model's shared value,
+#: which is the correct value for them and exactly what
+#: `problem.parameter_mapping.coverage()` reports as uncovered below.
+PARAMETERS_BY_ROUTE = [
+    FitParameter(
+        pid="Ka_dis_hctz_po",
+        start_value=0.35,
+        lower_bound=0.01,
+        upper_bound=10.0,
+        unit="1/hr",
+        target="Ka_dis_hctz",
+        mappings=is_oral,
+    ),
+    # ... the rest of the parameters, unversioned
+]
+```
+
+A selector must be a module level function, not a lambda and not a closure: `OptimizationProblem.__getstate__` reduces a problem to its uninitialized definition for the workers of a parallel fit, and the fit parameters, selectors included, travel with it; a lambda does not pickle and a parallel fit fails when the workers start, not when the fit is defined, which is why `examples/hctz_fitting/fitting/parameters.py` (`PARAMETERS_BY_ROUTE`) defines `is_oral` next to the parameters rather than inline.
+
+`sbmlsim.fit.parameter_mapping.ParameterMapping` resolves every selector to the simulation groups of the initialized problem and validates the binding: two parameters must not write one target in one simulation, a selector must not split a simulation, i.e. select some but not all of the fit mappings which share a simulation, and the versions of a target must agree on their unit, since the unit is how the value reaches the model. A version whose selector matches no fit mapping only warns, because it is usually a mistyped filter rather than an intended gap, and the parameter would otherwise sit in the parameter vector without ever changing the model.
+
+`problem.parameter_mapping.coverage()` reports what every parameter reaches, and the console and the HTML report of a fit show it as a table once a parameter is versioned: the parameter, the target, how many of the problem's simulations it covers, and the simulations it does not reach. An uncovered simulation keeps the value the model has for the target rather than being an error, e.g. an oral dissolution rate does nothing on the intravenous data, and the coverage table makes that a fact which is read rather than one which is discovered later.
+
+The PEtab v2 export writes a version as a condition: the condition assigns the target the value of the estimated parameter, and every experiment the version covers references it on period 0. The selector itself is a python callable and does not round trip; PEtab stores the resolution, so a problem which is read back selects the same fit mappings by their id (`sbmlsim.fit.helpers.filter_keys`) rather than by the original rule. The fit, its cost and its parameters are the same, i.e. the round trip is exact in effect and not in source form. An experiment whose fit mappings span several `MappingKind`s is written as one PEtab experiment per kind, so a problem read back can report a higher coverage count than the fit which was written even though the binding and the simulations themselves are unchanged; this is the `experiment-split` gap of `sbmlsim.fit.petab_v2.gaps`.
+
 ## The optimization problem
 
 The `OptimizationProblem` collects the fit mapping collections and parameters with the `base_path` and `data_path` of the experiments:
@@ -252,6 +297,8 @@ report.create(output_dir=Path("results"), name="hctz_iv")
 ```
 
 The report writes `index.html`, `report.txt`, the `parameters.json` it was made from, the metrics as TSV and the figures. `show_report=True` opens the HTML in a browser.
+
+Two figures are drawn per fit mapping, the data with the simulation and the residuals, and they are almost the whole cost of a report: for a problem with 35 mappings they are 70 of the 76 figures and 88% of the time. `mapping_figures=False` leaves them out, which is what a report read for its tables and its overview figures wants; the cards of the mappings then carry their metrics alone. The command line tools take `--no-mapping-figures` for the same reason.
 
 `index.html` is an interactive page with three sections: **Overview** repeats what the console reports, i.e., the fit, the parameters with their bounds and units, the settings and the data per experiment and kind; **Results** has the metrics per parameter set and kind, the plots of the optimization runs, the goodness of fit and the Bland-Altman plot with a panel per kind of fit mapping, and the contribution of every fit mapping to the cost; **Fit mappings** is one card per mapping with its figures and its metrics. A search box filters the mappings and the tables, the chips filter by training, validation and outlier data, which are the kinds a fit evaluates and therefore the kinds a report shows, the tables sort by any column and a figure opens full size when it is clicked. The page carries its own style and script, so it works from a file and can be archived or sent as it is.
 

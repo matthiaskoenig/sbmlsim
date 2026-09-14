@@ -380,6 +380,7 @@ class OptimizationResult(ObjectJSONEncoder):
                     lower_bound=p.lower_bound,
                     upper_bound=p.upper_bound,
                     unit=p.unit,
+                    target=p.target,
                 )
             )
         return fit_pars

@@ -14,6 +14,7 @@ from scipy import interpolate
 
 from sbmlsim.console import console
 from sbmlsim.experiment import ExperimentRunner, SimulationExperiment
+from sbmlsim.fit.helpers import _filters
 from sbmlsim.fit.objects import (
     UNUSED_KINDS,
     FitMapping,
@@ -30,6 +31,7 @@ from sbmlsim.fit.options import (
     WeightingCurvesType,
     WeightingPointsType,
 )
+from sbmlsim.fit.parameter_mapping import ParameterMapping
 from sbmlsim.fit.parameters import ParameterSet
 from sbmlsim.fit.sampling import SamplingType, create_samples
 from sbmlsim.model import RoadrunnerSBMLModel
@@ -274,6 +276,9 @@ class OptimizationProblem(ObjectJSONEncoder):
         self.selections: list[Any] = []
         # indices of the mappings which share a simulation, see `_group_mappings`
         self.mapping_groups: list[list[int]] = []
+        #: which parameter writes which entity in which simulation, resolved
+        #: by `initialize`, see `sbmlsim.fit.parameter_mapping`
+        self.parameter_mapping: ParameterMapping | None = None
 
     def indices(self, kind: MappingKind | None = None) -> list[int]:
         """Get the indices of the fit mappings of a kind.
@@ -466,6 +471,11 @@ class OptimizationProblem(ObjectJSONEncoder):
             base_path=self.base_path,
             data_path=self.data_path,
         )
+
+        # the fit mappings every versioned parameter selects, by the index of
+        # the parameter. The filters need the `FitMapping`, which the problem
+        # does not keep, so they are evaluated while it is in scope
+        selected_mappings: dict[int, set[int]] = {}
 
         # Collect information for simulations
         for collection_index, mapping_collection in enumerate(self.mapping_collections):
@@ -716,6 +726,16 @@ class OptimizationProblem(ObjectJSONEncoder):
                 # store information
                 self.experiment_keys.append(sid)
                 self.mapping_keys.append(mapping_id)
+
+                k_mapping = len(self.mapping_keys) - 1
+                for k_parameter, parameter in enumerate(self.parameters):
+                    if not parameter.is_versioned:
+                        continue
+                    if all(
+                        f(mapping_id, mapping) for f in _filters(parameter.mappings)
+                    ):
+                        selected_mappings.setdefault(k_parameter, set()).add(k_mapping)
+
                 self.mapping_kinds.append(mapping_collection.kind)
                 self.collection_indices.append(collection_index)
                 self.xid_observable.append(obs_xid)
@@ -746,6 +766,18 @@ class OptimizationProblem(ObjectJSONEncoder):
                 f"'{self.opid}': no training data, at least one fit mapping must "
                 f"be '{MappingKind.TRAINING.value}'."
             )
+
+        self.parameter_mapping = ParameterMapping(
+            parameters=self.parameters,
+            mapping_indices=selected_mappings,
+            groups=self.mapping_groups,
+            mapping_keys=self.mapping_keys,
+            group_names=[
+                f"{self.experiment_keys[group[0]]}|{self.mapping_keys[group[0]]}"
+                for group in self.mapping_groups
+            ],
+        )
+        self._check_shared_simulation_bindings()
 
         # set simulator instance with arguments
         simulator = SimulatorSerial(
@@ -823,6 +855,59 @@ class OptimizationProblem(ObjectJSONEncoder):
             len(self.mapping_groups),
         )
 
+    def _check_shared_simulation_bindings(self) -> None:
+        """Refuse two groups which share a simulation object but not its changes.
+
+        `_group_mappings` keys a group on `(id(model), id(simulation))`, not
+        on the simulation object alone: two fit mappings which name the same
+        `simulation_id` with a different `model_id` end up in two distinct
+        groups that nonetheless hold *the same* `TimecourseSim` object, because
+        the fit path takes `sim_experiment._simulations[task.simulation_id]`
+        directly, with no `deepcopy` (unlike the experiment path).
+        `_simulate_groups` mutates that object's `changes` in place, and
+        `dict.update` never removes a key, so a target one group's binding
+        writes and the other's does not would be silently inherited by
+        whichever group is simulated second. This shape is refused here
+        rather than resolved by clearing unbound targets before every
+        simulation, because it is pathological and a clear error at
+        `initialize` beats a silently wrong number.
+
+        Raises:
+            ValueError: if two groups share a simulation object and
+                `ParameterMapping` binds a target of theirs differently.
+        """
+        mapping = self.parameter_mapping_initialized
+        groups_by_simulation: dict[int, list[int]] = {}
+        for k_group, group in enumerate(self.mapping_groups):
+            groups_by_simulation.setdefault(id(self.simulations[group[0]]), []).append(
+                k_group
+            )
+
+        for group_indices in groups_by_simulation.values():
+            if len(group_indices) < 2:
+                continue
+            k_first = group_indices[0]
+            bindings_first = mapping.indices_for(k_first)
+            for k_other in group_indices[1:]:
+                bindings_other = mapping.indices_for(k_other)
+                if bindings_first == bindings_other:
+                    continue
+                targets = sorted(
+                    target
+                    for target in set(bindings_first) | set(bindings_other)
+                    if bindings_first.get(target) != bindings_other.get(target)
+                )
+                raise ValueError(
+                    f"'{self.opid}': the simulations '{mapping.group_names[k_first]}' "
+                    f"and '{mapping.group_names[k_other]}' share one `TimecourseSim` "
+                    f"object (same simulation_id, different model_id) but disagree "
+                    f"on {targets}. The fit does not copy that shared object, so a "
+                    f"change written for one of them would leak into the other. "
+                    f"Give these fit mappings distinct simulation ids, or make the "
+                    f"versioned parameters that reach {targets} bind identically "
+                    f"for both."
+                )
+
     def _store_model_parameters(self) -> None:
         """Store the initial values of the fitted parameters in the models.
 
@@ -836,10 +921,11 @@ class OptimizationProblem(ObjectJSONEncoder):
             if model.r is None:
                 raise ValueError(f"Model '{model}' is not loaded in roadrunner.")
 
-            for k, pid in enumerate(self.pids):
-                pid_value = model.r[pid]
-                if pid in model.changes:
-                    change = model.changes[pid]
+            for k, parameter in enumerate(self.parameters):
+                target = parameter.target_id
+                pid_value = model.r[target]
+                if target in model.changes:
+                    change = model.changes[target]
                     # model changes have units
                     pid_value = (
                         change.magnitude if isinstance(change, Quantity) else change
@@ -851,7 +937,7 @@ class OptimizationProblem(ObjectJSONEncoder):
                         "%s: models start from different values for '%s': "
                         "'%s' != '%s'; the value of the first model is reported.",
                         self.opid,
-                        pid,
+                        parameter.pid,
                         self.xmodel[k],
                         pid_value,
                     )
@@ -883,6 +969,20 @@ class OptimizationProblem(ObjectJSONEncoder):
                 f"OptimizationProblem '{self.opid}' must be initialized first."
             )
         return self.runner
+
+    @property
+    def parameter_mapping_initialized(self) -> ParameterMapping:
+        """Binding of the parameters to the simulations, created in `initialize`.
+
+        Raises:
+            ValueError: if the problem was not initialized.
+        """
+        if self.parameter_mapping is None:
+            raise ValueError(
+                f"No parameter mapping on OptimizationProblem '{self.opid}', "
+                f"it is not initialized."
+            )
+        return self.parameter_mapping
 
     def optimize(
         self,
@@ -1188,18 +1288,23 @@ class OptimizationProblem(ObjectJSONEncoder):
     def _simulate_groups(
         self,
         simulator: SimulatorSerial,
-        changes: dict[str, Quantity],
+        quantities: Sequence[Quantity],
         evaluated: set[int],
         x: np.ndarray,
     ) -> dict[int, pd.DataFrame | None]:
         """Simulate the groups of fit mappings for the given parameters.
 
         The mappings of a group share a simulation, so it runs once with the
-        selections of all of them; `_group_mappings` builds the groups.
+        selections of all of them; `_group_mappings` builds the groups. Which
+        parameter writes which entity depends on the group: a versioned
+        parameter applies to a part of the data only, so the changes are
+        resolved per group through the problem's `parameter_mapping`.
 
         Args:
             simulator: simulator of the problem.
-            changes: parameters to set on the simulations.
+            quantities: the quantity of every parameter, in the order of the
+                parameter vector. They are built once per evaluation of the
+                residuals and referenced here.
             evaluated: indices of the fit mappings which are evaluated.
             x: parameter values, for the message of a failed integration.
 
@@ -1207,15 +1312,18 @@ class OptimizationProblem(ObjectJSONEncoder):
             The result of the simulation of every evaluated mapping, `None` if
             its integration failed.
         """
+        mapping = self.parameter_mapping_initialized
         results: dict[int, pd.DataFrame | None] = {}
-        for group in self.mapping_groups:
+        for k_group, group in enumerate(self.mapping_groups):
             indices = [k for k in group if k in evaluated]
             if not indices:
                 continue
 
             k0 = indices[0]
             simulation: TimecourseSim = self.simulations[k0]
-            simulation.timecourses[0].changes.update(changes)
+            simulation.timecourses[0].changes.update(
+                mapping.changes_for(k_group, quantities)
+            )
 
             simulator.set_model(model=self.models[k0])
             simulator.set_timecourse_selections(
@@ -1300,9 +1408,7 @@ class OptimizationProblem(ObjectJSONEncoder):
 
         # the parameters are the same for every mapping, the quantities are
         # created once and not once per mapping
-        changes = {
-            self.pids[ix]: Q_(value, self.punits[ix]) for ix, value in enumerate(x)
-        }
+        quantities = [Q_(value, self.punits[ix]) for ix, value in enumerate(x)]
         evaluated = {
             k
             for k in range(len(self.mapping_keys))
@@ -1311,7 +1417,7 @@ class OptimizationProblem(ObjectJSONEncoder):
             if complete_data or self.mapping_kinds[k] is MappingKind.TRAINING
         }
         results = self._simulate_groups(
-            simulator=simulator, changes=changes, evaluated=evaluated, x=x
+            simulator=simulator, quantities=quantities, evaluated=evaluated, x=x
         )
 
         df: pd.DataFrame | None = None

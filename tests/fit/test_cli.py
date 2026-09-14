@@ -1,5 +1,6 @@
 """Test the general fit runner and its command line tools."""
 
+import dataclasses
 from pathlib import Path
 
 import pytest
@@ -110,7 +111,7 @@ def test_run_fit_report(tmp_path: Path, definition_hctz_pk: FitDefinition) -> No
     runs = run_fit(
         definition=definition_hctz_pk, opid="pk", size=1, n_cores=1, seed=1234
     )
-    results_dir = runs["pk"].report(output_dir=tmp_path)
+    results_dir = runs["pk"].report(output_dir=tmp_path, mapping_figures=False)
     assert (results_dir / "index.html").exists()
     assert (results_dir / "parameters.json").exists()
     assert (results_dir / "metrics.tsv").exists()
@@ -123,6 +124,7 @@ def test_fit_cli(tmp_path: Path) -> None:
     runs = fit_cli(
         FIT_DEFINITIONS,
         args=[
+            "--no-mapping-figures",
             "--subset=PK",
             "--runs=1",
             "--cores=1",
@@ -154,6 +156,7 @@ def test_report_cli(tmp_path: Path, definition_hctz_pk: FitDefinition) -> None:
     results_dir = report_cli(
         FIT_DEFINITIONS,
         args=[
+            "--no-mapping-figures",
             str(parameters_path),
             "--subset=PK",
             "--name=stored",
@@ -218,7 +221,7 @@ def test_fit_id_is_used_everywhere(
     assert run.result.opid == "the_fit"
     assert run.result.sid == "the_fit"
     # the report is written into a directory named after the fit
-    assert run.report(output_dir=tmp_path).name == "the_fit"
+    assert run.report(mapping_figures=False, output_dir=tmp_path).name == "the_fit"
     # and the parameter sets of the result carry it
     assert run.result.parameter_set().sid.startswith("the_fit")
 
@@ -229,3 +232,61 @@ def test_run_fit_creates_an_id(definition_hctz_pk: FitDefinition) -> None:
     opid = next(iter(runs))
     assert "__" in opid
     assert runs[opid].result.sid == opid
+
+
+def test_the_route_parameters_of_the_example_are_versioned() -> None:
+    """The example shows one entity estimated for the oral data only."""
+    from examples.hctz_fitting.fitting.parameters import PARAMETERS_BY_ROUTE
+
+    versioned = [p for p in PARAMETERS_BY_ROUTE if p.is_versioned]
+    assert len(versioned) == 1
+    assert {p.target_id for p in versioned} == {"Ka_dis_hctz"}
+    assert {p.pid for p in versioned} == {"Ka_dis_hctz_po"}
+
+
+def test_the_route_parameters_of_the_example_leave_iv_uncovered(
+    definition_hctz_pk: FitDefinition, fit_settings: FitSettings
+) -> None:
+    """The coverage table the feature exists to produce is not empty.
+
+    `Ka_dis_hctz_po` only applies to the oral data, so the intravenous
+    simulations must show up as a coverage gap rather than as a second,
+    unconstrained version of the parameter.
+    """
+    from examples.hctz_fitting.fitting.parameters import PARAMETERS_BY_ROUTE
+
+    definition = dataclasses.replace(definition_hctz_pk, parameters=PARAMETERS_BY_ROUTE)
+    problem = definition.problem(opid="route_coverage")
+    problem.initialize(fit_settings)
+
+    mapping = problem.parameter_mapping
+    assert mapping is not None
+    (row,) = [row for row in mapping.coverage() if row.pid == "Ka_dis_hctz_po"]
+    assert 0 < row.n_covered < row.n_groups
+    assert row.uncovered_groups
+
+
+def test_a_versioned_fit_is_not_worse_than_the_shared_one(
+    definition_hctz_pk: FitDefinition, fit_settings: FitSettings
+) -> None:
+    """Estimating one entity per route can only lower the cost.
+
+    Two versions are a superset of one shared value, so the optimum of the
+    versioned problem is at most the optimum of the shared one. Both are run
+    from the values of the model, so this compares like with like.
+    """
+    from examples.hctz_fitting.fitting.parameters import PARAMETERS, PARAMETERS_BY_ROUTE
+
+    def _cost(parameters: list) -> float:
+        # a fresh problem per parameter list, not a patched one: `__init__` is
+        # what derives `pids`, `punits`, `bounds`, `x0` and `xmodel` from the
+        # parameters consistently, and patching them on a built problem leaves
+        # some of that stale
+        definition = dataclasses.replace(definition_hctz_pk, parameters=parameters)
+        problem = definition.problem(opid="cost")
+        problem.initialize(fit_settings)
+        return problem.cost_least_square(problem.to_scale(problem.xmodel))
+
+    # at the values of the model the two are the same fit, which is the check
+    # that the versions were bound and nothing else moved
+    assert _cost(PARAMETERS_BY_ROUTE) == pytest.approx(_cost(PARAMETERS), rel=1e-6)

@@ -37,6 +37,7 @@ from sbmlsim.fit.metrics import FitMetrics
 from sbmlsim.fit.objects import EVALUATED_KINDS, MappingKind
 from sbmlsim.fit.optimization import OptimizationProblem
 from sbmlsim.fit.options import FitSettings
+from sbmlsim.fit.parameter_mapping import has_renamed_targets
 from sbmlsim.fit.parameters import ParameterSet, ParameterSets
 from sbmlsim.fit.result import OptimizationResult, bound_warnings
 from sbmlsim.plot.serialization_matplotlib import plt
@@ -113,6 +114,7 @@ class FitReport:
         fisher: FisherInformation | None = None,
         show_titles: bool = True,
         image_format: str = "svg",
+        mapping_figures: bool = True,
     ) -> None:
         """Construct the report.
 
@@ -134,6 +136,13 @@ class FitReport:
                 the identifiability section.
             show_titles: add titles to the panels.
             image_format: format of the figures.
+            mapping_figures: draw the two figures of every fit mapping, i.e.
+                the data with the simulation and the residuals. They are one
+                figure per mapping and per kind of panel and are almost the
+                whole cost of a report, e.g. 70 of the 76 figures and 88% of
+                the time for a problem with 35 mappings. A report which is
+                only read for its tables and its overview figures is created
+                without them, and its mapping cards carry their metrics alone.
         """
         self.problem = problem
         self.settings = settings
@@ -143,6 +152,7 @@ class FitReport:
         self.fisher = fisher
         self.show_titles = show_titles
         self.image_format = image_format
+        self.mapping_figures = mapping_figures
 
         # resolves the data, a no-op if the problem is already initialized
         problem.initialize(settings)
@@ -635,6 +645,7 @@ class FitReport:
         parameters = [
             {
                 "pid": p.pid,
+                "target": p.target_id,
                 # not `values`, jinja resolves that to `dict.values`
                 "set_values": [
                     f"{pset.values.get(p.pid, float('nan')):.5g}" for pset in psets
@@ -777,6 +788,7 @@ class FitReport:
             "kinds": kinds,
             "fit_info": self.fit_info(),
             "parameters": parameters,
+            "versioned_parameters": has_renamed_targets(self.problem.parameters),
             "parameter_set_ids": [pset.sid for pset in psets],
             "bound_warnings": warnings,
             "settings": {
@@ -1014,8 +1026,9 @@ class FitReport:
                     path=plots_dir / f"cost_scatter.{self.image_format}"
                 )
 
-            self.plot_fit(output_dir=plots_dir)
-            self.plot_fit_residual(output_dir=plots_dir)
+            if self.mapping_figures:
+                self.plot_fit(output_dir=plots_dir)
+                self.plot_fit_residual(output_dir=plots_dir)
             if self.identifiability:
                 plot_all(self.identifiability, plots_dir, self.image_format)
         finally:

@@ -50,6 +50,13 @@ jobs:
       - name: Generate the agent facing files
         # llms.txt, llms-full.txt and the markdown of every page
         run: uv run python scripts/llms_txt.py
+      - name: Run the SBML Test Suite and write its report
+        # the interactive report is generated into the site and not committed,
+        # so the published one always describes the code it was built from.
+        # Only a build which can be published pays the three minutes: a pull
+        # request builds the site to check that it builds, it does not deploy
+        if: github.event_name != 'pull_request'
+        run: uv run python scripts/testsuite.py report --output site/testsuite/report
       - name: Upload the site
         uses: actions/upload-pages-artifact@v5
         with:

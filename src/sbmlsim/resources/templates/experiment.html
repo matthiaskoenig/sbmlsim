@@ -22,6 +22,13 @@
 <a href="../index.html">all experiments</a> · <a href="{{ code_path }}">{{ code_path }}</a>
 {% endblock %}
 
+{% block head %}
+<style>
+  /* an interactive figure is a page of its own, shown in place of the image */
+  figure iframe { width: 100%; height: 520px; border: 1px solid var(--line); border-radius: 8px; background: var(--bg-card); }
+</style>
+{% endblock %}
+
 {% block content %}
 
 <section id="overview">
@@ -58,14 +65,21 @@
 
 <section id="figures">
   <h2>Figures ({{ figures | length }})</h2>
-  {% for fig_id, fig_path in figures.items() %}
+  {% for fig_id, fig in figures.items() %}
   <div class="card mapping" data-filter="card">
     <header>
       <span class="name mono">{{ fig_id }}</span>
-      <span class="exp"><a href="{{ fig_path }}.svg">{{ fig_path }}.svg</a></span>
+      <span class="exp">
+        {% if fig.static %}<a href="{{ fig.path }}.svg">{{ fig.path }}.svg</a>{% endif %}
+        {% if fig.interactive %}<a href="{{ fig.path }}.html">interactive</a>{% endif %}
+      </span>
     </header>
     <figure>
-      <img loading="lazy" src="{{ fig_path }}.svg" alt="{{ fig_id }}">
+      {% if fig.static %}
+      <img loading="lazy" src="{{ fig.path }}.svg" alt="{{ fig_id }}">
+      {% elif fig.interactive %}
+      <iframe src="{{ fig.path }}.html" title="{{ fig_id }}" loading="lazy"></iframe>
+      {% endif %}
     </figure>
   </div>
   {% endfor %}

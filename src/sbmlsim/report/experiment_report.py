@@ -105,8 +105,19 @@ class ReportResults:
             key: rel_path / f"{exp_id}_{key}.tsv" for key in experiment._datasets
         }
 
-        # parse meta data for figures (mapping based on figure keys)
-        figures = {key: rel_path / f"{exp_id}_{key}" for key in experiment._mpl_figures}
+        # the figures of the experiment and the custom matplotlib ones. The
+        # keys come from the figures and not from the rendered matplotlib
+        # objects, so a run which only wrote the interactive pages is reported
+        keys = list(dict.fromkeys([*experiment._figures, *experiment._mpl_figures]))
+        figures = {}
+        for key in keys:
+            stem = f"{exp_id}_{key}"
+            figures[key] = {
+                "path": str(rel_path / stem),
+                # which of the two backends wrote something for this figure
+                "static": (abs_path / f"{stem}.svg").exists(),
+                "interactive": (abs_path / f"{stem}.html").exists(),
+            }
 
         self.data[exp_id] = {
             "exp_id": exp_id,

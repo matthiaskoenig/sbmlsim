@@ -23,7 +23,7 @@ from examples.hctz_fitting import DATA_PATH, HCTZ_PATH
 from examples.hctz_fitting.fitting.mapping_collections import (
     f_collections_pk,
 )
-from examples.hctz_fitting.fitting.parameters import parameters_pk
+from examples.hctz_fitting.fitting.parameters import PARAMETERS
 from sbmlsim.fit import FitSettings
 from sbmlsim.fit.cli import FitDefinition, fit_cli
 from sbmlsim.fit.options import (
@@ -53,7 +53,7 @@ FIT_DEFINITIONS: dict[str, FitDefinition] = {
     # all pharmacokinetics data
     "PK": FitDefinition(
         mapping_collections=f_collections_pk,
-        parameters=parameters_pk,
+        parameters=PARAMETERS,
         base_path=HCTZ_PATH,
         data_path=DATA_PATH,
         settings=FIT_SETTINGS,

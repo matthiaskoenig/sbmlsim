@@ -1,0 +1,97 @@
+name: sbml test suite
+
+on:
+  schedule:
+    # Mondays, early: a new release of the suite is rare and never urgent
+    - cron: "17 5 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}
+  cancel-in-progress: false
+
+jobs:
+  pin:
+    # `SUITE_VERSION` pins the release the tests and the documentation run
+    # against, so that a new release upstream cannot turn a green build red on
+    # its own. This job notices a newer release and opens the pull request
+    # which adopts it, which is where the failures of new cases are seen.
+    name: bump the pinned release
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: write       # push the branch
+      pull-requests: write  # open the pull request
+    steps:
+      - uses: actions/checkout@v7
+      - name: Install the python dev files
+        # the extension of libroadrunner links against libpython, which the
+        # standalone interpreters do not put on the library search path
+        run: |
+          sudo add-apt-repository -y ppa:deadsnakes/ppa
+          sudo apt-get update
+          sudo apt-get install -y python3.14-dev
+      - name: Install uv and set the python version
+        uses: astral-sh/setup-uv@v10.0.1
+        with:
+          python-version: "3.14"
+          enable-cache: true
+      - name: Install dependencies
+        run: uv sync --extra dev
+      - name: Compare the pinned release with the newest one
+        id: versions
+        run: |
+          PINNED=$(uv run python -c "from sbmlsim.testsuite.cases import SUITE_VERSION; print(SUITE_VERSION)")
+          LATEST=$(uv run python -c "from sbmlsim.testsuite import SemanticSuite; print(SemanticSuite.latest_version())")
+          echo "pinned=$PINNED" >> "$GITHUB_OUTPUT"
+          echo "latest=$LATEST" >> "$GITHUB_OUTPUT"
+          echo "The pinned release is '$PINNED', the newest is '$LATEST'"
+      - name: Adopt the newest release
+        if: steps.versions.outputs.pinned != steps.versions.outputs.latest
+        env:
+          LATEST: ${{ steps.versions.outputs.latest }}
+        run: |
+          python - <<'PY'
+          import os, pathlib, re
+          latest = os.environ["LATEST"]
+          path = pathlib.Path("src/sbmlsim/testsuite/cases.py")
+          text = path.read_text()
+          path.write_text(
+              re.sub(r'SUITE_VERSION = "[^"]+"', f'SUITE_VERSION = "{latest}"', text, count=1)
+          )
+          PY
+          # the baseline records the outcome of every case, so it is recorded
+          # again for the release which is adopted
+          uv run python scripts/testsuite.py baseline
+      - name: Open the pull request
+        if: steps.versions.outputs.pinned != steps.versions.outputs.latest
+        uses: peter-evans/create-pull-request@v7
+        with:
+          branch: testsuite/bump-${{ steps.versions.outputs.latest }}
+          base: develop
+          title: "Run against the SBML Test Suite ${{ steps.versions.outputs.latest }}"
+          commit-message: |
+            Run against the SBML Test Suite ${{ steps.versions.outputs.latest }}
+
+            The pinned release goes from ${{ steps.versions.outputs.pinned }} to
+            ${{ steps.versions.outputs.latest }} and the baseline is recorded
+            again, so the diff of the baseline is what the new release changes.
+          body: |
+            The SBML Test Suite released
+            [${{ steps.versions.outputs.latest }}](https://github.com/sbmlteam/sbml-test-suite/releases/tag/${{ steps.versions.outputs.latest }}),
+            the pinned release was `${{ steps.versions.outputs.pinned }}`.
+
+            `SUITE_VERSION` is bumped and `tests/data/testsuite_baseline.json`
+            is recorded again, so **the diff of the baseline is what the new
+            release changes**: cases which are new and do not pass appear as
+            expected failures, and a case which changed its outcome shows up
+            as a changed line.
+
+            Review the baseline diff before merging. A case which regressed is
+            a bug, a case which is new and fails may be SBML which is not
+            supported.
+          labels: dependencies
+          delete-branch: true
