@@ -254,11 +254,27 @@ class Style(BasePlotObject):
     base_style attribute.
     """
 
+    #: the attributes a derived style takes over, i.e. the fields of `Line`,
+    #: `Marker` and `Fill`; they were the camel case names of SED-ML, which no
+    #: attribute of those dataclasses ever had, so nothing was inherited
+    LINE_KEYS: ClassVar[tuple[str, ...]] = ("type", "color", "thickness")
+    MARKER_KEYS: ClassVar[tuple[str, ...]] = (
+        "type",
+        "size",
+        "fill",
+        "line_color",
+        "line_thickness",
+    )
+    FILL_KEYS: ClassVar[tuple[str, ...]] = ("color", "second_color")
+
     MPL2SEDML_LINESTYLE_MAPPING: ClassVar[dict[str, LineType]] = {
         "": LineType.NONE,
+        " ": LineType.NONE,
+        "none": LineType.NONE,
+        "None": LineType.NONE,
         "-": LineType.SOLID,
         "solid": LineType.SOLID,
-        ".": LineType.DOT,
+        ":": LineType.DOT,
         "dotted": LineType.DOT,
         "--": LineType.DASH,
         "dashed": LineType.DASH,
@@ -267,9 +283,13 @@ class Style(BasePlotObject):
         "dashdotdotted": LineType.DASHDOTDOT,
     }
     SEDML2MPL_LINESTYLE_MAPPING: ClassVar[dict[LineType, MplLineStyle]] = {
-        v: k for (k, v) in MPL2SEDML_LINESTYLE_MAPPING.items()
+        LineType.NONE: "",
+        LineType.SOLID: "solid",
+        LineType.DOT: "dotted",
+        LineType.DASH: "dashed",
+        LineType.DASHDOT: "dashdot",
+        LineType.DASHDOTDOT: (0, (3, 5, 1, 5, 1, 5)),
     }
-    SEDML2MPL_LINESTYLE_MAPPING[LineType.DASHDOTDOT] = (0, (3, 5, 1, 5, 1, 5))
 
     MPL2SEDML_MARKER_MAPPING: ClassVar[dict[str, MarkerType]] = {
         "": MarkerType.NONE,
@@ -285,9 +305,27 @@ class Style(BasePlotObject):
         ">": MarkerType.TRIANGLERIGHT,
         "_": MarkerType.HDASH,
         "|": MarkerType.VDASH,
+        # the fills and the spellings matplotlib accepts for the same shape
+        "none": MarkerType.NONE,
+        "None": MarkerType.NONE,
+        "d": MarkerType.DIAMOND,
+        "X": MarkerType.XCROSS,
+        "P": MarkerType.PLUS,
     }
     SEDML2MPL_MARKER_MAPPING: ClassVar[dict[MarkerType, str]] = {
-        v: k for (k, v) in MPL2SEDML_MARKER_MAPPING.items()
+        MarkerType.NONE: "",
+        MarkerType.SQUARE: "s",
+        MarkerType.CIRCLE: "o",
+        MarkerType.DIAMOND: "D",
+        MarkerType.XCROSS: "x",
+        MarkerType.PLUS: "+",
+        MarkerType.STAR: "*",
+        MarkerType.TRIANGLEUP: "^",
+        MarkerType.TRIANGLEDOWN: "v",
+        MarkerType.TRIANGLELEFT: "<",
+        MarkerType.TRIANGLERIGHT: ">",
+        MarkerType.HDASH: "_",
+        MarkerType.VDASH: "|",
     }
 
     def __init__(
@@ -334,39 +372,46 @@ class Style(BasePlotObject):
         if not self.base_style:
             return self
 
-        # get base_style information
-        logger.warning("Resolving base_style: %s", self.base_style)
-        style = self.base_style.resolve_style()
+        # a copy of the base, so that resolving a derived style does not write
+        # into the style it derives from, which every other style sharing that
+        # base would see
+        style = deepcopy(self.base_style.resolve_style())
 
         # overwrite information
         if self.line:
             if not style.line:
                 style.line = deepcopy(self.line)
             else:
-                for key in ["style", "color", "thickness"]:
-                    if hasattr(self.line, key) and getattr(self.line, key):
-                        logger.debug("line: %s = %s", key, getattr(self.line, key))
-                        setattr(style.line, key, getattr(self.line, key))
+                Style._override(self.line, style.line, Style.LINE_KEYS)
 
         if self.marker:
             if not style.marker:
                 style.marker = deepcopy(self.marker)
             else:
-                for key in ["style", "size", "fill", "lineColor", "lineThickness"]:
-                    if hasattr(self.marker, key) and getattr(self.marker, key):
-                        logger.debug("marker: %s = %s", key, getattr(self.marker, key))
-                        setattr(style.marker, key, getattr(self.marker, key))
+                Style._override(self.marker, style.marker, Style.MARKER_KEYS)
 
         if self.fill:
             if not style.fill:
                 style.fill = deepcopy(self.fill)
             else:
-                for key in ["color", "secondColor"]:
-                    if hasattr(self.fill, key) and getattr(self.fill, key):
-                        logger.debug("fill: %s = %s", key, getattr(self.fill, key))
-                        setattr(style.fill, key, getattr(self.fill, key))
+                Style._override(self.fill, style.fill, Style.FILL_KEYS)
 
         return style
+
+    @staticmethod
+    def _override(source: Any, target: Any, keys: tuple[str, ...]) -> None:
+        """Copy the attributes which are set from the source to the target.
+
+        Args:
+            source: object of the deriving style.
+            target: object of the resolved base style, changed in place.
+            keys: attributes to take over when they are set on the source.
+        """
+        for key in keys:
+            value = getattr(source, key)
+            if value:
+                logger.debug("%s: %s = %s", type(source).__name__, key, value)
+                setattr(target, key, value)
 
     def __repr__(self) -> str:
         """Get string presentation."""
@@ -380,6 +425,7 @@ class Style(BasePlotObject):
         return Style(
             sid=self.sid,
             name=self.name,
+            base_style=self.base_style,
             line=self.line,
             marker=self.marker,
             fill=self.fill,
@@ -502,6 +548,32 @@ class Style(BasePlotObject):
         return kwargs
 
     @staticmethod
+    def _lookup(mapping: dict[str, Any], value: Any, kind: str) -> Any:
+        """Translate a matplotlib style value into the type of the figure model.
+
+        Args:
+            mapping: the matplotlib value to type mapping of the kind.
+            value: the matplotlib value, e.g. `":"` or `"o"`.
+            kind: what is looked up, for the message.
+
+        Returns:
+            The type of the figure model.
+
+        Raises:
+            ValueError: If the figure model has no type for the value. The
+                message names what is supported, a `KeyError` of the raw value
+                says nothing about what to write instead.
+        """
+        if value is None:
+            value = ""
+        if value in mapping:
+            return mapping[value]
+        raise ValueError(
+            f"Unsupported {kind} '{value}', the figure model describes "
+            f"{kind}s as one of: {sorted(k for k in mapping if k)}"
+        )
+
+    @staticmethod
     def from_mpl_kwargs(**kwargs: Any) -> Style:
         """Create style from matplotlib arguments.
 
@@ -530,11 +602,15 @@ class Style(BasePlotObject):
             )
 
         # Line
-        linestyle = Style.MPL2SEDML_LINESTYLE_MAPPING[kwargs.get("linestyle", "-")]
+        linestyle = Style._lookup(
+            Style.MPL2SEDML_LINESTYLE_MAPPING, kwargs.get("linestyle", "-"), "linestyle"
+        )
         line = Line(color=color, type=linestyle, thickness=kwargs.get("linewidth", 1.0))
 
         # Marker
-        marker_symbol = Style.MPL2SEDML_MARKER_MAPPING[kwargs.get("marker", "")]
+        marker_symbol = Style._lookup(
+            Style.MPL2SEDML_MARKER_MAPPING, kwargs.get("marker", ""), "marker"
+        )
         marker = Marker(
             type=marker_symbol,
             size=kwargs.get("markersize"),
@@ -1050,6 +1126,10 @@ class Plot(BasePlotObject):
             raise ValueError(f"'xaxis' must be of type Axis but: '{type(xaxis)}'")
         if yaxis and not isinstance(yaxis, Axis):
             raise ValueError(f"'yaxis' must be of type Axis but: '{type(yaxis)}'")
+        if yaxis_right and not isinstance(yaxis_right, Axis):
+            raise ValueError(
+                f"'yaxis_right' must be of type Axis but: '{type(yaxis_right)}'"
+            )
 
         if facecolor is None:
             facecolor = ColorType.parse_color("white")
@@ -1096,6 +1176,7 @@ class Plot(BasePlotObject):
             name=self.name,
             xaxis=copy.copy(self.xaxis),
             yaxis=copy.copy(self.yaxis),
+            yaxis_right=copy.copy(self.yaxis_right),
             curves=self.curves,
             areas=self.areas,
             legend=self.legend,
@@ -1603,6 +1684,10 @@ class Figure(BasePlotObject):
         if subplots is None:
             subplots = []
         self.subplots: list[SubPlot] = subplots
+        for subplot in self.subplots:
+            # a plot resolves its data through its figure, see `Plot.experiment`;
+            # `add_subplot` does this for the plots which are added later
+            subplot.plot.figure = self
         self.num_rows: int = num_rows
         self.num_cols: int = num_cols
         self._height: float
@@ -1742,13 +1827,13 @@ class Figure(BasePlotObject):
             raise ValueError(f"col must be <= num_cols, but '{col} > {self.num_cols}'")
         if row + row_span - 1 > self.num_rows:
             raise ValueError(
-                f"row + row_span must be <= num_rows, but "
-                f"'{row + row_span} > {self.num_rows}'"
+                f"row + row_span - 1 must be <= num_rows, but "
+                f"'{row + row_span - 1} > {self.num_rows}'"
             )
         if col + col_span - 1 > self.num_cols:
             raise ValueError(
                 f"col + col_span - 1 must be <= num_cols, but "
-                f"'{col + col_span} > {self.num_cols}'"
+                f"'{col + col_span - 1} > {self.num_cols}'"
             )
 
         if self.height and not plot.height:
@@ -1756,6 +1841,8 @@ class Figure(BasePlotObject):
         if self.width and not plot.width:
             plot.width = self.width / self.num_cols * col_span
 
+        # the plot resolves its data through the figure, see `Plot.experiment`
+        plot.figure = self
         self.subplots.append(
             SubPlot(plot=plot, row=row, col=col, row_span=row_span, col_span=col_span)
         )
@@ -1781,9 +1868,9 @@ class Figure(BasePlotObject):
         ridx = 1
         cidx = 1
         for plot in new_plots:
-            self.subplots.append(
-                SubPlot(plot=plot, row=ridx, col=cidx, row_span=1, col_span=1)
-            )
+            # via `add_subplot`, which associates the plot with the figure and
+            # gives it the size of its panel
+            self.add_subplot(plot=plot, row=ridx, col=cidx)
 
             # increase indices for next plot
             if cidx == self.num_cols:
@@ -1791,12 +1878,10 @@ class Figure(BasePlotObject):
                 ridx += 1
             else:
                 cidx += 1
-            # set the figure for the plot
-            plot.figure = self
 
     @staticmethod
     def from_plots(
-        sid: str, plots: list[Plot], experiment: SimulationExperiment
+        sid: str, plots: list[Plot], experiment: SimulationExperiment | None = None
     ) -> Figure:
         """Create figure object from list of plots.
 

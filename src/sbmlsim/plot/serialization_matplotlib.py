@@ -324,22 +324,26 @@ class MatplotlibFigureSerializer:
                 if axis_type not in ["x", "y"]:
                     raise ValueError
 
-                # handle the reverse flag
-                if sax.reverse:
-                    ax_min, ax_max = sax.max, sax.min
-                else:
-                    ax_min, ax_max = sax.min, sax.max
-
                 if sax.min is not None:
                     if axis_type == "x":
-                        ax.set_xlim(xmin=ax_min)
+                        ax.set_xlim(left=sax.min)
                     elif axis_type == "y":
-                        ax.set_ylim(ymin=ax_min)
+                        ax.set_ylim(bottom=sax.min)
                 if sax.max is not None:
                     if axis_type == "x":
-                        ax.set_xlim(xmax=ax_max)
+                        ax.set_xlim(right=sax.max)
                     elif axis_type == "y":
-                        ax.set_ylim(ymax=ax_max)
+                        ax.set_ylim(top=sax.max)
+
+                # the bounds are the bounds of the data, `reverse` is the
+                # direction they are drawn in, so it is applied to whatever the
+                # limits ended up being: swapping `min` and `max` above did
+                # nothing unless both of them were set
+                if sax.reverse:
+                    if axis_type == "x":
+                        ax.invert_xaxis()
+                    elif axis_type == "y":
+                        ax.invert_yaxis()
 
                 if axis_type == "x":
                     ax.set_xscale(cls._get_scale(sax))
@@ -411,15 +415,17 @@ class MatplotlibFigureSerializer:
                 ax.tick_params(axis="x", labelsize=Figure.xtick_labelsize)
                 ax.tick_params(axis="y", labelsize=Figure.ytick_labelsize)
 
-            # hide none-existing axes
+            # hide none-existing axes; the horizontal spines belong to the x
+            # axis and the vertical ones to the y axis, and they are hidden on
+            # `ax1` and not on whatever `ax` was left over from the loop above
             if plot.xaxis is None:
-                ax.spines["right"].set_visible(False)
-                ax.spines["left"].set_visible(False)
+                ax1.spines["bottom"].set_visible(False)
+                ax1.spines["top"].set_visible(False)
                 ax1.xaxis.set_visible(False)
 
             if plot.yaxis is None:
-                ax.spines["top"].set_visible(False)
-                ax.spines["bottom"].set_visible(False)
+                ax1.spines["left"].set_visible(False)
+                ax1.spines["right"].set_visible(False)
                 ax1.yaxis.set_visible(False)
 
             xgrid = xax.grid if xax else None
