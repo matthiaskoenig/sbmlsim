@@ -188,3 +188,91 @@ def test_a_variable_which_was_not_simulated_is_reported(tmp_path: Path) -> None:
     assert not comparison.valid
     assert comparison.missing == ["S2"]
     assert "not simulated" in comparison.summary
+
+
+# ---------------------------------------------------------------------------
+# a model whose parameters are named like the time column, see #212
+# ---------------------------------------------------------------------------
+#: the settings of case 01820, whose model has the parameters `time`, `Time`
+#: and `TIME`; its results are headed `Time,time,Time,TIME`, i.e. the time and
+#: then the three parameters
+TIME_SETTINGS = """start: 0
+duration: 10
+steps: 2
+variables: time, Time, TIME
+absolute: 0.0001
+relative: 0.0001
+amount:
+concentration:
+"""
+
+
+def _time_case(path: Path) -> Path:
+    """Write a case whose variables are named like the time column."""
+    directory = _case(path, cid="01820", settings=TIME_SETTINGS)
+    (directory / "01820-results.csv").write_text(
+        "Time,time,Time,TIME\n0,0,1,2\n5,5,6,7\n10,10,11,12\n"
+    )
+    return directory
+
+
+def test_a_variable_named_like_the_time_column_is_its_own_column(
+    tmp_path: Path,
+) -> None:
+    """The columns are named by position and not by the header of the results.
+
+    Case 01820 has the parameters `time`, `Time` and `TIME` and a header of
+    `Time,time,Time,TIME`. Renaming every column which spells `time` gave four
+    columns of that name, and `read_csv` alone mangles the duplicate into
+    `Time.1`, so neither says which column is the simulation time.
+    """
+    case = SemanticCase.from_directory(_time_case(tmp_path))
+    assert case is not None
+
+    expected = case.expected()
+    assert list(expected.columns) == ["time", "time", "Time", "TIME"]
+    # the first column is the time of the simulation, the rest are the values
+    assert list(expected.iloc[-1]) == [10, 10, 11, 12]
+
+
+def test_a_case_whose_variables_shadow_the_time_is_compared_by_position(
+    tmp_path: Path,
+) -> None:
+    """Comparing such a case by name compared it against every column at once.
+
+    `expected["time"]` is a frame of four columns there, so the comparison saw
+    44 expected points against 11 simulated ones and reported the variable as
+    not simulated.
+    """
+    case = SemanticCase.from_directory(_time_case(tmp_path))
+    assert case is not None
+    # what roadrunner answers for the selections of the case: the model time
+    # first, then the three parameters
+    observed = pd.DataFrame(
+        [[0.0, 0.0, 1.0, 2.0], [5.0, 5.0, 6.0, 7.0], [10.0, 10.0, 11.0, 12.0]],
+        columns=["time", "time", "Time", "TIME"],
+    )
+
+    comparison = compare_case(case, observed)
+    assert comparison.valid
+    assert comparison.n_violations == 0
+    assert comparison.n_points == 9
+
+
+def test_the_selections_of_such_a_case_name_the_time_first(tmp_path: Path) -> None:
+    """roadrunner reads the first `time` as the time and a later one as the id."""
+    case = SemanticCase.from_directory(_time_case(tmp_path))
+    assert case is not None
+    assert case.selections == ["time", "time", "Time", "TIME"]
+
+
+def test_results_which_do_not_carry_one_column_per_variable_are_refused(
+    tmp_path: Path,
+) -> None:
+    """Naming the columns by position needs the results to have that shape."""
+    directory = _time_case(tmp_path)
+    (directory / "01820-results.csv").write_text("Time,time\n0,0\n")
+    case = SemanticCase.from_directory(directory)
+    assert case is not None
+    with pytest.raises(ValueError, match="not the time and one column per variable"):
+        case.expected()

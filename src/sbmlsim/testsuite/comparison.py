@@ -62,26 +62,29 @@ class CaseComparison:
 def compare_case(case: SemanticCase, observed: pd.DataFrame) -> CaseComparison:
     """Compare the simulation of a case with its expected results.
 
-    The expected results name the variables of the case, the simulation names
-    them by their selection, i.e. a concentration is `[S1]`; the columns are
-    matched on the variables of the case.
+    Both tables are the time followed by one column per variable of the case,
+    in the order of the case: that is how the results of the suite are written
+    and how roadrunner answers `selections`. The columns are therefore matched
+    by position and not by name, which a case cannot be trusted on, since its
+    model may carry a parameter named `time` and two variables may differ in
+    case alone; cases 01820 and 01821 have the parameters `time`, `Time` and
+    `TIME` and used to compare a variable against every column at once.
 
     Args:
         case: the case which was simulated.
-        observed: results of the simulation, with a `time` column.
+        observed: results of the simulation, the time in the first column.
 
     Returns:
         The comparison, `valid` if every point is within the tolerances.
     """
     expected = case.expected()
 
-    missing = [
-        variable
-        for variable, selection in zip(case.variables, case.selections[1:], strict=True)
-        if selection not in observed.columns and variable not in observed.columns
-    ]
-    if missing:
-        return CaseComparison(cid=case.cid, valid=False, missing=missing)
+    if len(observed.columns) < len(case.variables) + 1:
+        return CaseComparison(
+            cid=case.cid,
+            valid=False,
+            missing=list(case.variables[len(observed.columns) - 1 :]),
+        )
 
     n_points = 0
     n_violations = 0
@@ -91,14 +94,10 @@ def compare_case(case: SemanticCase, observed: pd.DataFrame) -> CaseComparison:
     worst_time = float("nan")
     worst_excess = -np.inf
 
-    times = np.asarray(expected["time"], dtype=float)
-    for variable, selection in zip(case.variables, case.selections[1:], strict=True):
-        if variable not in expected.columns:
-            # the results do not carry the variable, there is nothing to compare
-            continue
-        column = selection if selection in observed.columns else variable
-        c = np.asarray(expected[variable], dtype=float)
-        u = np.asarray(observed[column], dtype=float)[: c.size]
+    times = np.asarray(expected.iloc[:, 0], dtype=float)
+    for index, variable in enumerate(case.variables):
+        c = np.asarray(expected.iloc[:, index + 1], dtype=float)
+        u = np.asarray(observed.iloc[:, index + 1], dtype=float)[: c.size]
         if u.size != c.size:
             return CaseComparison(
                 cid=case.cid, valid=False, missing=[f"{variable} (point count)"]
