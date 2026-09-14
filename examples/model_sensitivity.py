@@ -2,7 +2,8 @@
 Example shows basic model simulations and plotting.
 """
 
-from sbmlsim.plot.serialization_matplotlib import plt
+from matplotlib import pyplot as plt
+
 from sbmlsim.resources import REPRESSILATOR_SBML
 from sbmlsim.result import XResult
 from sbmlsim.simulation import Timecourse, TimecourseSim

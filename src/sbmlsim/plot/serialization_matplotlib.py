@@ -6,7 +6,7 @@ import logging
 from typing import Any
 
 import numpy as np
-from matplotlib import pyplot as plt
+from matplotlib.axes import Axes as AxesMPL
 from matplotlib.figure import Figure as FigureMPL
 
 from sbmlsim.plot import Axis, Curve, Figure, SubPlot
@@ -42,8 +42,14 @@ class MatplotlibFigureSerializer:
         figure: Figure,
     ) -> FigureMPL:
         """Convert sbmlsim.Figure to matplotlib figure."""
-        # create new figure
-        fig: plt.Figure = plt.figure(
+        # the figure is created directly and not through `pyplot`, which keeps
+        # every figure it creates in a global registry until someone closes it:
+        # a library which renders many figures leaks them, and matplotlib warns
+        # about it from the twentieth one on. Nothing here needs the state
+        # machine, `savefig` works on the figure itself, and
+        # `SimulationExperiment.show_mpl_figures` attaches a manager when a
+        # figure is actually shown
+        fig: FigureMPL = FigureMPL(
             figsize=(figure.width, figure.height),
             dpi=Figure.fig_dpi,
             facecolor=Figure.fig_facecolor,
@@ -71,12 +77,12 @@ class MatplotlibFigureSerializer:
                 raise ValueError(f"SubPlot requires row and col: {subplot}")
             ridx = subplot.row - 1
             cidx = subplot.col - 1
-            ax1: plt.Axes = fig.add_subplot(
+            ax1: AxesMPL = fig.add_subplot(
                 gs[ridx : ridx + subplot.row_span, cidx : cidx + subplot.col_span]
             )
             # secondary axis
-            ax2: plt.Axes | None = None
-            axes: list[plt.Axes] = [ax1]
+            ax2: AxesMPL | None = None
+            axes: list[AxesMPL] = [ax1]
             if yax_right:
                 for curve in plot.curves:
                     if (
@@ -116,7 +122,7 @@ class MatplotlibFigureSerializer:
                 [*plot.curves, *plot.areas],
                 key=lambda x: x.order if x.order is not None else 0,
             )
-            ax: plt.Axes
+            ax: AxesMPL
             for abstract_curve in abstract_curves:
                 if (
                     abstract_curve.yaxis_position
@@ -296,7 +302,7 @@ class MatplotlibFigureSerializer:
             if plot.name and plot.title_visible:
                 ax1.set_title(plot.name)
 
-            def apply_axis_settings(sax: Axis, ax: plt.Axes, axis_type: str):
+            def apply_axis_settings(sax: Axis, ax: AxesMPL, axis_type: str):
                 """Apply settings to all axis."""
                 if axis_type not in ["x", "y"]:
                     raise ValueError

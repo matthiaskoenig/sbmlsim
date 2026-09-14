@@ -9,6 +9,8 @@ from copy import deepcopy
 from dataclasses import dataclass
 from pathlib import Path
 
+from matplotlib import pyplot as plt
+
 from sbmlsim.data import Data, DataSet
 from sbmlsim.fit import FitMapping
 from sbmlsim.fit.objects import FitDataInitialized
@@ -17,7 +19,6 @@ from sbmlsim.plot import Figure
 from sbmlsim.plot.serialization_matplotlib import (
     FigureMPL,
     MatplotlibFigureSerializer,
-    plt,
 )
 from sbmlsim.result import XResult
 from sbmlsim.serialization import ObjectJSONEncoder
@@ -644,10 +645,22 @@ class SimulationExperiment:
 
     @timeit
     def show_mpl_figures(self, mpl_figures: dict[str, FigureMPL]) -> None:
-        """Show matplotlib figures."""
+        """Show matplotlib figures.
+
+        The figures of the serializer are created without `pyplot`, so that
+        rendering does not fill its global registry; a figure it does not
+        manage cannot show itself. Showing is the one place which needs the
+        state machine, so a figure gets a manager here and only here.
+
+        Args:
+            mpl_figures: the figures to show.
+        """
         for _, fig_mpl in mpl_figures.items():
-            # see https://stackoverflow.com/questions/23141452/difference-between-plt-draw-and-plt-show-in-matplotlib/23141491#23141491
-            # fig_mpl.draw(renderer=)
+            if fig_mpl.canvas.manager is None:
+                manager = plt.figure().canvas.manager
+                if manager is not None:
+                    manager.canvas.figure = fig_mpl
+                    fig_mpl.set_canvas(manager.canvas)
             fig_mpl.show()
 
     @timeit
@@ -703,8 +716,17 @@ class SimulationExperiment:
         return figures_to_html(self, results_path)
 
     @classmethod
-    def close_mpl_figures(cls, mpl_figures: dict[str, FigureMPL]):
-        """Close matplotlib figures."""
+    def close_mpl_figures(cls, mpl_figures: dict[str, FigureMPL]) -> None:
+        """Close matplotlib figures.
+
+        A figure of the serializer is not in the registry of `pyplot` and is
+        released when nothing refers to it any more, for which this is a no-op.
+        A figure of `figures_mpl()` may well come from `pyplot`, and that one
+        is closed here.
+
+        Args:
+            mpl_figures: the figures to close.
+        """
         for _, fig_mpl in mpl_figures.items():
             plt.close(fig_mpl)
 

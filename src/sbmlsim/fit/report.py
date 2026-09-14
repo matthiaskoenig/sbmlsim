@@ -25,6 +25,7 @@ from typing import Any, ClassVar
 import matplotlib
 import numpy as np
 import pandas as pd
+from matplotlib import pyplot as plt
 from matplotlib.axes import Axes
 from matplotlib.figure import Figure
 from matplotlib.lines import Line2D
@@ -40,7 +41,6 @@ from sbmlsim.fit.options import FitSettings
 from sbmlsim.fit.parameter_mapping import has_renamed_targets
 from sbmlsim.fit.parameters import ParameterSet, ParameterSets
 from sbmlsim.fit.result import OptimizationResult, bound_warnings
-from sbmlsim.plot.serialization_matplotlib import plt
 from sbmlsim.report.templates import template_environment
 
 logger = logging.getLogger(__name__)

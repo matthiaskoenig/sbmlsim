@@ -105,6 +105,7 @@ from typing import Any
 import numpy as np
 import pandas as pd
 import scipy.optimize
+from matplotlib import pyplot as plt
 from matplotlib.axes import Axes
 from scipy.stats import chi2
 
@@ -113,7 +114,6 @@ from sbmlsim.fit.objects import FitParameter
 from sbmlsim.fit.optimization import FitTimeout, OptimizationProblem
 from sbmlsim.fit.options import FitSettings
 from sbmlsim.fit.parameters import ParameterSet
-from sbmlsim.plot.serialization_matplotlib import plt
 
 logger = logging.getLogger(__name__)
 

@@ -249,3 +249,55 @@ def test_a_curve_with_error_data_is_drawn_with_its_error_bars() -> None:
     """And one which has error data still goes through `errorbar`."""
     axes = _render_curve(with_error=True)
     assert len(axes.containers) == 1
+
+
+# ---------------------------------------------------------------------------
+# the figures are not held by the global registry of pyplot
+# ---------------------------------------------------------------------------
+def test_rendering_does_not_fill_the_pyplot_registry() -> None:
+    """A figure of the serializer is not managed by `pyplot`.
+
+    `plt.figure()` keeps every figure it creates until someone closes it, so
+    rendering many of them leaks; matplotlib warns from the twentieth on. The
+    figure is created directly, which nothing here needed the state machine
+    for.
+    """
+    before = set(plt.get_fignums())
+    figures = []
+    for index in range(25):
+        plot = Plot(
+            sid=f"p{index}", xaxis=Axis("x", unit="s"), yaxis=Axis("y", unit="mM")
+        )
+        figures.append(
+            MatplotlibFigureSerializer.to_figure(
+                experiment=None,
+                figure=Figure(
+                    experiment=None,
+                    sid=f"f{index}",
+                    num_rows=1,
+                    num_cols=1,
+                    subplots=[SubPlot(plot=plot, row=1, col=1)],
+                ),
+            )
+        )
+
+    assert set(plt.get_fignums()) == before
+    assert all(figure.canvas.manager is None for figure in figures)
+
+
+def test_a_rendered_figure_can_still_be_saved(tmp_path: Path) -> None:
+    """`savefig` is what a run does with a figure and needs no manager."""
+    plot = Plot(sid="p", xaxis=Axis("x", unit="s"), yaxis=Axis("y", unit="mM"))
+    figure = MatplotlibFigureSerializer.to_figure(
+        experiment=None,
+        figure=Figure(
+            experiment=None,
+            sid="f",
+            num_rows=1,
+            num_cols=1,
+            subplots=[SubPlot(plot=plot, row=1, col=1)],
+        ),
+    )
+    path = tmp_path / "figure.svg"
+    figure.savefig(path, bbox_inches="tight")
+    assert path.stat().st_size > 0
