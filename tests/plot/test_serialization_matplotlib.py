@@ -9,6 +9,7 @@ from matplotlib.axes import Axes
 
 from sbmlsim.plot.plotting import (
     Axis,
+    ColorType,
     Figure,
     Plot,
     SubPlot,
@@ -99,3 +100,17 @@ def test_an_axis_which_is_not_reversed_keeps_its_direction() -> None:
         yaxis=Axis("y", unit="mM"),
     )
     assert _axes_of(plot).get_xlim() == (0.0, 10.0)
+
+
+# ---------------------------------------------------------------------------
+# settings of the plot which were not rendered
+# ---------------------------------------------------------------------------
+def test_the_panel_has_the_facecolor_of_its_plot() -> None:
+    """`Plot.facecolor` was stored and never read by a serializer."""
+    plot = Plot(
+        sid="p",
+        xaxis=Axis("x", unit="s"),
+        yaxis=Axis("y", unit="mM"),
+        facecolor=ColorType.parse_color("red"),
+    )
+    assert _axes_of(plot).get_facecolor() == (1.0, 0.0, 0.0, 1.0)

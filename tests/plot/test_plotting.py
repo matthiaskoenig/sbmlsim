@@ -258,3 +258,23 @@ def test_a_right_y_axis_of_the_wrong_type_is_refused() -> None:
     """`xaxis` and `yaxis` were checked and `yaxis_right` was not."""
     with pytest.raises(ValueError, match="yaxis_right"):
         Plot(sid="p", yaxis_right="not an axis")  # ty: ignore[invalid-argument-type]
+
+
+# ---------------------------------------------------------------------------
+# settings which never reached matplotlib
+# ---------------------------------------------------------------------------
+def test_the_error_bars_of_points_get_their_caps() -> None:
+    """`capsize` was defaulted on the curve and dropped before matplotlib.
+
+    `_add_default_style_kwargs` set it, `from_mpl_kwargs` does not read it and
+    the error keywords were merged from an empty dictionary, so no error bar
+    ever had a cap. The style carries it.
+    """
+    style = Style.from_mpl_kwargs(linestyle="-", linewidth=2.0)
+    assert style.to_mpl_points_kwargs()["capsize"] == Style.ERROR_CAPSIZE
+
+
+def test_the_error_bars_of_bars_get_their_caps() -> None:
+    """`bar` takes the error keywords in `error_kw`, `errorbar` directly."""
+    style = Style.from_mpl_kwargs(linestyle="-", linewidth=2.0)
+    assert style.to_mpl_bar_kwargs()["error_kw"]["capsize"] == Style.ERROR_CAPSIZE

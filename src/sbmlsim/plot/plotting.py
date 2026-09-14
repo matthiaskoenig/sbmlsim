@@ -465,18 +465,19 @@ class Style(BasePlotObject):
 
         return kwargs
 
+    #: length of the caps of an error bar, in points
+    ERROR_CAPSIZE: ClassVar[float] = 3.0
+
     def _mpl_error_kwargs(self) -> dict[str, Any]:
         """Define keywords for error bars.
+
+        `errorbar` takes them directly and `bar` takes them in `error_kw`, so
+        the two callers unpack this differently.
 
         Returns:
             Keyword arguments for error bars.
         """
-        return {
-            "error_kw": {
-                # 'ecolor': "black",
-                # 'elinewidth': 2.0,
-            }
-        }
+        return {"capsize": Style.ERROR_CAPSIZE}
 
     def to_mpl_points_kwargs(self) -> dict[str, Any]:
         """Convert to matplotlib point curve keyword arguments.
@@ -488,10 +489,9 @@ class Style(BasePlotObject):
         for key in ["fill.color", "fill.second_color"]:
             if key in points_kwargs:
                 points_kwargs.pop(key)
-        error_kwargs = self._mpl_error_kwargs()
         return {
             **points_kwargs,
-            **error_kwargs["error_kw"],
+            **self._mpl_error_kwargs(),
         }
 
     def to_mpl_bar_kwargs(self) -> dict[str, Any]:
@@ -520,7 +520,7 @@ class Style(BasePlotObject):
 
         return {
             **bar_kwargs,
-            **self._mpl_error_kwargs(),
+            "error_kw": self._mpl_error_kwargs(),
         }
 
     def to_mpl_area_kwargs(self) -> dict[str, Any]:
@@ -908,7 +908,11 @@ class Curve(AbstractCurve):
 
         # parse additional arguments and create style
         if style:
-            logger.warning("'style' is set, 'kwargs' style arguments are ignored.")
+            if kwargs:
+                logger.warning(
+                    "'style' is set, the style arguments %s are ignored.",
+                    sorted(kwargs),
+                )
         else:
             kwargs = Curve._add_default_style_kwargs(kwargs, y.dtype)
             style = Style.from_mpl_kwargs(**kwargs)
@@ -965,8 +969,6 @@ class Curve(AbstractCurve):
             if "marker" not in d:
                 d["marker"] = "s"
 
-        if "capsize" not in d:
-            d["capsize"] = 3
         return d
 
     def to_dict(self) -> dict[str, Any]:
@@ -1637,10 +1639,10 @@ class Figure(BasePlotObject):
 
     fig_dpi: int = 72
     fig_facecolor: str = "white"
-    fig_subplots_wspace: float = 0.3  # vertical spacing of subplots (fraction of axes)
-    fig_subplots_hspace: float = (
-        0.3  # horizontal spacing of subplots (fraction of axes)
-    )
+    #: horizontal spacing between the panels, as a fraction of the panel width
+    fig_subplots_wspace: float = 0.3
+    #: vertical spacing between the panels, as a fraction of the panel height
+    fig_subplots_hspace: float = 0.3
     panel_width: float = 7.0
     panel_height: float = 5.0
     fig_titlesize: int = 25
@@ -1654,7 +1656,6 @@ class Figure(BasePlotObject):
     legend_fontsize: int = 13
     legend_position: str = "inside"  # "outside"
     legend_loc: str = "best"
-    _area_interpolation_points: int = 300
 
     def __init__(
         self,

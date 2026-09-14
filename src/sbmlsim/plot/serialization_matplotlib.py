@@ -24,26 +24,6 @@ from sbmlsim.plot.plotting import (
 logger = logging.getLogger(__name__)
 
 
-def interp(x, xp, fp):
-    """Interpolation for speedup of plots.
-
-    :param x:
-    :param xp:
-    :param fp:
-    :return:
-    """
-    y = np.interp(x=x, xp=xp, fp=fp)
-    # better spline interpolation, but NaN issues with zero values
-    # tck, fp, ier, msg = interpolate.splrep(xp, fp, full_output=True)
-    # if ier > 0:
-    #     logger.error(f"Spline fitting failed: '{msg}'")
-    #
-    # y = interpolate.splev(x, tck, der=0)
-    if not np.all(np.isfinite(y)):
-        logger.error("NaN or Inf values in interpolation: %s -> %s", fp, y)
-    return y
-
-
 class MatplotlibFigureSerializer:
     """Serializer for figures to matplotlib."""
 
@@ -116,24 +96,21 @@ class MatplotlibFigureSerializer:
                 else:
                     logger.error("Position right defined by no yAxis right.")
 
-            # units
-            if xax is None:
+            # `xax` and `yax` fall back to an empty `Axis` above, so a plot
+            # which names neither is drawn without units rather than refused;
+            # the spines of an axis which is not there are hidden further down
+            if plot.xaxis is None:
                 logger.warning("No xaxis in plot: %s", subplot)
-                ax1.spines["bottom"].set_color(Figure.fig_facecolor)
-                ax1.spines["top"].set_color(Figure.fig_facecolor)
-            if yax is None:
+            if plot.yaxis is None:
                 logger.warning("No yaxis in plot: %s", subplot)
-                ax1.spines["right"].set_color(Figure.fig_facecolor)
-                ax1.spines["left"].set_color(Figure.fig_facecolor)
-            if ((not xax) or (not yax)) and len(plot.curves) > 0:
-                raise ValueError(
-                    f"xaxis and yaxis are required for plotting curves, but "
-                    f"'xaxis={xax}' and 'yaxis={yax}'."
-                )
 
-            xunit = xax.unit if xax else None
-            yunit_left = yax.unit if yax else None
+            xunit = xax.unit
+            yunit_left = yax.unit
             yunit_right = yax_right.unit if yax_right else None
+
+            # the plot decides the colour of its panel
+            if plot.facecolor:
+                ax1.set_facecolor(plot.facecolor.color)
 
             # memory for stacked bars
             barstack_x = None
@@ -392,10 +369,8 @@ class MatplotlibFigureSerializer:
                             for axis in directions:
                                 ax.spines[axis].set_color(Figure.fig_facecolor)
 
-            if xax:
-                apply_axis_settings(xax, ax1, axis_type="x")
-            if yax:
-                apply_axis_settings(yax, ax1, axis_type="y")
+            apply_axis_settings(xax, ax1, axis_type="x")
+            apply_axis_settings(yax, ax1, axis_type="y")
             if yax_right and ax2 is not None:
                 apply_axis_settings(yax_right, ax2, axis_type="y")
 
@@ -428,8 +403,8 @@ class MatplotlibFigureSerializer:
                 ax1.spines["right"].set_visible(False)
                 ax1.yaxis.set_visible(False)
 
-            xgrid = xax.grid if xax else None
-            ygrid = yax.grid if yax else None
+            xgrid = xax.grid
+            ygrid = yax.grid
 
             if xgrid and ygrid:
                 ax1.grid(True, axis="both")
