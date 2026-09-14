@@ -1,15 +1,18 @@
 """Tests of the PEtab v2 layer."""
 
+import dataclasses
 from pathlib import Path
 
 import numpy as np
 import petab.v2 as petab_v2
 import pytest
 
+from conftest import is_intravenous, is_oral  # ty: ignore[unresolved-import]
 from examples.hctz_fitting.fitting.fitting import FIT_DEFINITIONS
 from sbmlsim.experiment import SimulationExperiment
 from sbmlsim.fit import FitSettings
-from sbmlsim.fit.objects import MappingKind
+from sbmlsim.fit.cli import FitDefinition
+from sbmlsim.fit.objects import FitParameter, MappingKind
 from sbmlsim.fit.optimization import OptimizationProblem
 from sbmlsim.fit.options import (
     ResidualType,
@@ -107,8 +110,15 @@ def test_gaps_of_problem(
     ids = {gap.id for gap in gaps}
 
     # the HCTZ problem has units, settings and an output grid, and it is fitted
-    # on training data with validation data
-    assert {"units", "fit-settings", "output-times", "mapping-kind"} <= ids
+    # on training data with validation data; Beermann1976's PO single dose
+    # also shares one simulation between training and outlier mappings
+    assert {
+        "units",
+        "fit-settings",
+        "output-times",
+        "mapping-kind",
+        "experiment-split",
+    } <= ids
     # and it does not use what PEtab cannot express at all
     assert not [gap for gap in gaps if gap.kind == GapKind.UNSUPPORTED]
     assert gaps_table(gaps).row_count == len(gaps)
@@ -320,3 +330,166 @@ def test_round_trip_keeps_the_data(
             rtol=1e-10,
         )
         assert problem.weights_curves[i] == pytest.approx(original.weights_curves[k])
+
+
+def test_a_versioned_parameter_is_written_as_a_condition(
+    tmp_path: Path,
+    definition_hctz_pk: FitDefinition,
+    fit_settings: FitSettings,
+) -> None:
+    """PEtab says `Ka_dis_hctz = Ka_po` in the experiments of the version."""
+    definition = dataclasses.replace(
+        definition_hctz_pk,
+        parameters=[
+            FitParameter(
+                "Ka_po",
+                0.35,
+                0.01,
+                10.0,
+                "1/hr",
+                target="Ka_dis_hctz",
+                mappings=is_oral,
+            ),
+        ],
+    )
+    problem = definition.problem(opid="hctz_pk_versioned")
+    to_petab(problem, tmp_path, settings=fit_settings)
+
+    petab_problem = petab_v2.Problem.from_yaml(tmp_path / "problem.yaml")
+    assert [p.id for p in petab_problem.parameters] == ["Ka_po"]
+
+    changes = [
+        change
+        for condition in petab_problem.conditions
+        for change in condition.changes
+        if change.target_id == "Ka_dis_hctz"
+    ]
+    assert changes, "no condition writes the target of the version"
+    assert all(str(change.target_value) == "Ka_po" for change in changes)
+
+    issues = petab_problem.validate()
+    errors = [issue for issue in issues if "sbmlsim" not in str(issue)]
+    assert not errors, f"validation failed: {errors}"
+
+
+def test_a_selector_without_its_own_target_is_refused(
+    tmp_path: Path,
+    definition_hctz_pk: FitDefinition,
+    fit_settings: FitSettings,
+) -> None:
+    """A version which writes its own id would export as a global parameter.
+
+    `FitParameter(target=None, mappings=is_oral)` is legal and `ParameterMapping`
+    honours it: the entity is estimated from the oral data and the model's own
+    value stands for the rest. But PEtab has no id for "this entity" distinct
+    from the entity itself, so the condition the export would write is
+    indistinguishable from an ordinary parameter -- the exporter must refuse
+    it rather than silently estimate everywhere.
+    """
+    definition = dataclasses.replace(
+        definition_hctz_pk,
+        parameters=[
+            FitParameter(
+                "Ka_dis_hctz",
+                0.35,
+                0.01,
+                10.0,
+                "1/hr",
+                mappings=is_oral,
+            ),
+        ],
+    )
+    problem = definition.problem(opid="hctz_pk_unnamed_version")
+    problem.initialize(fit_settings)
+
+    with pytest.raises(ValueError, match="Ka_dis_hctz"):
+        to_petab(problem, tmp_path, settings=fit_settings)
+
+
+def test_the_round_trip_keeps_a_versioned_parameter(
+    tmp_path: Path,
+    definition_hctz_pk: FitDefinition,
+    fit_settings: FitSettings,
+) -> None:
+    """A version survives being written and read, as a set of ids.
+
+    A selector is a callable and cannot be written to a TSV, so PEtab stores
+    the resolution. The parameter which comes back selects the same mappings
+    by their id, which is the same fit.
+
+    `is_intravenous` selects only training data of one route, none of it
+    shares a simulation with an outlier: a simulation whose mappings are of
+    several kinds is written as one PEtab experiment per kind, because
+    `select_mapping_collections` gives an experiment one `FitMappingCollection`
+    per kind it holds and `PetabExporter._add_experiments` writes one PEtab
+    experiment per collection (see the `experiment-split` gap). A selector
+    reaching across such a split would count more covered simulation groups
+    after the round trip than before, which is that unrelated gap and not a
+    versioning concern; the binding itself is unaffected by the split, since
+    every experiment it produces carries the same version.
+    """
+    definition = dataclasses.replace(
+        definition_hctz_pk,
+        parameters=[
+            FitParameter(
+                "Ka_iv",
+                0.35,
+                0.01,
+                10.0,
+                "1/hr",
+                target="Ka_dis_hctz",
+                mappings=is_intravenous,
+            ),
+        ],
+    )
+    problem = definition.problem(opid="hctz_pk_versioned_rt")
+    problem.initialize(fit_settings)
+    to_petab(problem, tmp_path, settings=fit_settings)
+
+    read_problem, settings = from_petab(tmp_path / "problem.yaml", opid="read")
+    read_problem.initialize(settings)
+
+    (parameter,) = read_problem.parameters
+    assert parameter.pid == "Ka_iv"
+    assert parameter.target_id == "Ka_dis_hctz"
+    assert parameter.is_versioned
+
+    # the same simulations are covered as before
+    before = problem.parameter_mapping_initialized.coverage()[0]
+    after = read_problem.parameter_mapping_initialized.coverage()[0]
+    assert after.n_covered == before.n_covered
+
+    # and it is the same fit: the cost of the model values agrees
+    x_before = problem.to_scale(problem.xmodel)
+    x_after = read_problem.to_scale(read_problem.xmodel)
+    assert read_problem.cost_least_square(x_after) == pytest.approx(
+        problem.cost_least_square(x_before), rel=1e-4
+    )
+
+
+def test_a_condition_of_an_unsupported_value_raises(petab_dir: Path) -> None:
+    """A condition value which is neither a number nor an estimated id raises.
+
+    `_is_number` alone is too wide a net for "is a versioned parameter's
+    binding": it is also `False` for a fixed parameter's id, for an
+    expression such as `2*k1` and for `nan`/`inf`. None of those are a version
+    `_versions` would recognise either, so the target would silently keep its
+    model value with no versioned parameter to explain why. The reader raises
+    instead, the same way it already raises for a period which names a
+    condition the problem does not define.
+
+    The `sbmlsim` extension keeps the exact timecourses it was written with,
+    which is what `simulations()` uses when it is there, so the tables are not
+    read at all; the extension is dropped here to fall back on them, the path
+    a foreign PEtab problem takes.
+    """
+    petab_problem = petab_v2.Problem.from_yaml(petab_dir / "problem.yaml")
+    petab_problem.config.extensions = {}
+    condition = next(c for c in petab_problem.conditions if c.changes)
+    change = condition.changes[0]
+    change.target_value = "not_a_number_and_not_an_estimated_parameter"  # ty: ignore[invalid-assignment]
+
+    reader = PetabReader(petab_problem, base_path=petab_dir)
+    assert reader.extension is None
+    with pytest.raises(ValueError, match=condition.id):
+        reader.simulations()

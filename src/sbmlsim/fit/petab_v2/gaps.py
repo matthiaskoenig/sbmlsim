@@ -21,6 +21,7 @@ from typing import TYPE_CHECKING, Any
 
 from rich.table import Table
 
+from sbmlsim.fit.objects import EVALUATED_KINDS, MappingKind
 from sbmlsim.fit.options import ResidualType, WeightingCurvesType, WeightingPointsType
 
 if TYPE_CHECKING:
@@ -230,10 +231,55 @@ GAPS: tuple[Gap, ...] = (
         petab="-",
         detail="the metadata goes to the extension",
     ),
+    Gap(
+        id="experiment-split",
+        kind=GapKind.LOSSY,
+        sbmlsim="one simulation whose fit mappings are training, validation "
+        "and outlier data at once, e.g. an outlier curve simulated together "
+        "with the curve which is fitted",
+        petab="a `FitMappingCollection` is one kind, and "
+        "`select_mapping_collections` gives an experiment one collection per "
+        "kind it holds",
+        detail="a simulation whose mappings span more than one kind is "
+        "written as several PEtab experiments, one per kind, which all carry "
+        "the same conditions, so the binding of a versioned parameter is "
+        "unaffected: every one of them gets the same version. A problem "
+        "which is read back therefore has more simulation groups than the "
+        "fit which was written, so a coverage count or a group count read "
+        "off it is higher than before, even though the simulations "
+        "themselves and their result are the same",
+    ),
 )
 
 #: the gaps by their id
 GAPS_BY_ID: dict[str, Gap] = {gap.id: gap for gap in GAPS}
+
+
+def _has_a_simulation_of_several_kinds(problem: "OptimizationProblem") -> bool:
+    """Check whether an exported simulation mixes the kinds of its mappings.
+
+    `PetabExporter` writes one PEtab experiment per collection, and
+    `helpers.select_mapping_collections` gives an experiment one collection
+    per kind it holds; a simulation whose mappings are of several kinds is
+    therefore written as several PEtab experiments which share one
+    simulation, see the `experiment-split` gap.
+
+    Args:
+        problem: the initialized problem which is exported.
+
+    Returns:
+        `True` if a simulation of an exported mapping is shared by mappings
+        of more than one of the kinds `sbmlsim.fit.objects.EVALUATED_KINDS`
+        writes, `False` otherwise.
+    """
+    groups: dict[tuple[int, int], set[MappingKind]] = {}
+    for k, kind in enumerate(problem.mapping_kinds):
+        if kind not in EVALUATED_KINDS:
+            # not written by the exporter, see `PetabExporter.indices`
+            continue
+        key = (id(problem.models[k]), id(problem.simulations[k]))
+        groups.setdefault(key, set()).add(kind)
+    return any(len(kinds) > 1 for kinds in groups.values())
 
 
 def gaps_of_problem(problem: "OptimizationProblem") -> list[Gap]:
@@ -263,6 +309,8 @@ def gaps_of_problem(problem: "OptimizationProblem") -> list[Gap]:
 
     if len(set(problem.mapping_kinds)) > 1:
         hits.add("mapping-kind")
+    if _has_a_simulation_of_several_kinds(problem):
+        hits.add("experiment-split")
     if problem.residual in {
         ResidualType.ABSOLUTE_TO_BASELINE,
         ResidualType.NORMALIZED_TO_BASELINE,

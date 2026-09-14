@@ -24,6 +24,38 @@ from sbmlsim.utils import timeit
 logger = logging.getLogger(__name__)
 
 
+#: the model of an experiment, i.e. what decides whether two experiments can
+#: share one loaded roadrunner instance
+ModelKey = tuple[str, str, tuple[tuple[str, str], ...]]
+
+
+def model_key(abstract_model: AbstractModel) -> ModelKey:
+    """Get the key a loaded model is cached under.
+
+    Two experiments share a loaded model when they name the same source, the
+    same language and the same changes; the changes are part of it because
+    they are applied to the roadrunner instance when it is created. The key is
+    the description of the model and not the object: an experiment builds its
+    own `AbstractModel`, which has no equality of its own, so caching on the
+    object would never find anything and every experiment would load and
+    compile the model again.
+
+    Args:
+        abstract_model: the model of an experiment.
+
+    Returns:
+        The key, hashable and equal for two descriptions of the same model.
+    """
+    changes = tuple(
+        sorted((key, str(value)) for key, value in abstract_model.changes.items())
+    )
+    return (
+        str(abstract_model.source.source),
+        str(abstract_model.language_type),
+        changes,
+    )
+
+
 class ExperimentRunner:
     """Class for running simulation experiments."""
 
@@ -52,7 +84,7 @@ class ExperimentRunner:
         self.base_path = base_path
         self.data_path = data_path
         self.experiments: dict[str, SimulationExperiment] = {}
-        self.models: dict[AbstractModel | Path, RoadrunnerSBMLModel] = {}
+        self.models: dict[ModelKey, RoadrunnerSBMLModel] = {}
         self.simulator: SimulatorSerial | None = None
 
         classes: list[type[SimulationExperiment]] = (
@@ -109,17 +141,18 @@ class ExperimentRunner:
             # resolve models for experiment
             _models = {}
             for model_id, source in experiment.models().items():
-                if source not in self.models:
+                abstract_model = (
+                    source
+                    if isinstance(source, AbstractModel)
+                    else AbstractModel(source=source)
+                )
+                key = model_key(abstract_model)
+                if key not in self.models:
                     # not cached yet, cache the model for lookup
-                    abstract_model = (
-                        source
-                        if isinstance(source, AbstractModel)
-                        else AbstractModel(source=source)
-                    )
-                    self.models[source] = RoadrunnerSBMLModel.from_abstract_model(
+                    self.models[key] = RoadrunnerSBMLModel.from_abstract_model(
                         abstract_model=abstract_model, ureg=self.ureg
                     )
-                _models[model_id] = self.models[source]
+                _models[model_id] = self.models[key]
 
             # set resolved models in experiment
             experiment._models = _models

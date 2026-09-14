@@ -1,0 +1,156 @@
+{% extends "report_base.html" %}
+
+{% block title %}SBML Test Suite {{ suite_version }} — sbmlsim{% endblock %}
+{% block items %}cases{% endblock %}
+{% block heading %}SBML Test Suite{% endblock %}
+{% block subtitle %}semantic cases, release {{ suite_version }}{% endblock %}
+{% block placeholder %}Search cases, components, tests …{% endblock %}
+
+{% block head %}
+<style>
+  /* the kinds of this report are the outcomes of a case */
+  :root {
+    --pass: #2f9e44; --tolerance: #e8590c; --not_read: #868e96;
+    --simulation_error: #e03131; --missing_variable: #1c7ed6;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --pass: #51cf66; --tolerance: #ff922b; --not_read: #adb5bd;
+      --simulation_error: #ff6b6b; --missing_variable: #4dabf7;
+    }
+  }
+  {% for status in statuses %}
+  .chip[data-kind="{{ status }}"][aria-pressed="true"] { background: var(--{{ status }}); }
+  .tag.{{ status }} { background: var(--{{ status }}); }
+  {% endfor %}
+  .bar { display: inline-block; height: 8px; border-radius: 4px; background: var(--pass); vertical-align: middle; }
+  .bar-bg { display: inline-block; width: 90px; height: 8px; border-radius: 4px; background: var(--line); vertical-align: middle; margin-right: 6px; }
+</style>
+{% endblock %}
+
+{% block badges %}{% for badge in badges %}<span class="badge">{{ badge.label }} <b>{{ badge.value }}</b></span>{% endfor %}{% endblock %}
+
+{% block nav %}
+    <a href="#overview">Overview</a>
+    <a href="#components">Components</a>
+    <a href="#tests">Tests</a>
+    <a href="#cases">Cases</a>
+{% endblock %}
+
+{% block chips %}
+    {% for status in statuses %}
+    <button class="chip" data-kind="{{ status }}" aria-pressed="true">{{ status }}</button>
+    {% endfor %}
+{% endblock %}
+
+{% block footer %}{% for file in files %}<a href="{{ file.href }}">{{ file.label }}</a>{% if not loop.last %} · {% endif %}{% endfor %}{% endblock %}
+
+{% block content %}
+<section id="overview">
+  <h2>Overview</h2>
+  <p>Every semantic case of the SBML Test Suite which is a timecourse simulation, run with sbmlsim and compared with the expected results within the tolerances of the case, <code>|c - u| &lt;= abs_tol + rel_tol · |c|</code>. A case is run once, in the newest SBML encoding it provides.</p>
+
+  <h3>Outcomes</h3>
+  <div class="card">
+    <table data-filter="row">
+      <thead><tr>
+        <th data-sort="text">outcome</th><th class="num" data-sort="num">cases</th>
+        <th class="num" data-sort="num">share</th><th data-sort="text">what it means</th>
+      </tr></thead>
+      <tbody>
+      {% for row in outcomes %}
+      <tr>
+        <td><span class="tag {{ row.status }}">{{ row.status }}</span></td>
+        <td class="num">{{ row.n }}</td>
+        <td class="num mono">{{ row.share }}</td>
+        <td>{{ row.description }}</td>
+      </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  <h3>Environment</h3>
+  <div class="card">
+    <dl class="kv">
+      {% for key, value in environment.items() %}
+      <dt>{{ key }}</dt><dd class="mono">{{ value }}</dd>
+      {% endfor %}
+    </dl>
+  </div>
+</section>
+
+<section id="components">
+  <h2>Components</h2>
+  <p>The SBML components a case uses, from its <code>componentTags</code>. A component with failing cases is a part of SBML the simulation does not fully support; a case carries several components, so the counts overlap.</p>
+  <div class="card">
+    <table data-filter="row">
+      <thead><tr>
+        <th data-sort="text">component</th><th class="num" data-sort="num">cases</th>
+        <th class="num" data-sort="num">passed</th><th class="num" data-sort="num">failed</th>
+        <th class="num" data-sort="num">pass rate</th>
+      </tr></thead>
+      <tbody>
+      {% for row in components %}
+      <tr>
+        <td class="mono">{{ row.tag }}</td>
+        <td class="num">{{ row.n }}</td><td class="num">{{ row.passed }}</td>
+        <td class="num">{{ row.failed }}</td>
+        <td class="num mono"><span class="bar-bg"><span class="bar" style="width: {{ row.percent }}%"></span></span>{{ row.rate }}</td>
+      </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<section id="tests">
+  <h2>Tests</h2>
+  <p>What a case tests, from its <code>testTags</code>.</p>
+  <div class="card">
+    <table data-filter="row">
+      <thead><tr>
+        <th data-sort="text">test</th><th class="num" data-sort="num">cases</th>
+        <th class="num" data-sort="num">passed</th><th class="num" data-sort="num">failed</th>
+        <th class="num" data-sort="num">pass rate</th>
+      </tr></thead>
+      <tbody>
+      {% for row in tests %}
+      <tr>
+        <td class="mono">{{ row.tag }}</td>
+        <td class="num">{{ row.n }}</td><td class="num">{{ row.passed }}</td>
+        <td class="num">{{ row.failed }}</td>
+        <td class="num mono"><span class="bar-bg"><span class="bar" style="width: {{ row.percent }}%"></span></span>{{ row.rate }}</td>
+      </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<section id="cases">
+  <h2>Cases ({{ cases | length }})</h2>
+  <p>The chips filter by outcome, the search box by case, component or test.</p>
+  <div class="card">
+    <table data-filter="row">
+      <thead><tr>
+        <th data-sort="text">case</th><th data-sort="text">outcome</th>
+        <th data-sort="text">encoding</th><th data-sort="text">components</th>
+        <th data-sort="text">tests</th><th data-sort="text">message</th>
+      </tr></thead>
+      <tbody>
+      {% for case in cases %}
+      <tr data-kind="{{ case.status }}">
+        <td class="mono">{{ case.cid }}</td>
+        <td><span class="tag {{ case.status }}">{{ case.status }}</span></td>
+        <td class="mono">{{ case.encoding }}</td>
+        <td>{{ case.components }}</td>
+        <td>{{ case.tests }}</td>
+        <td class="mono">{{ case.message }}</td>
+      </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+{% endblock %}

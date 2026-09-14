@@ -70,6 +70,8 @@ dev = [
 	"zensical>=0.0.59",
 	"mkdocstrings-python>=2.0.8",
 	"pytest-xdist>=3.8",
+	# the prototype of the plotly figures, see sbmlsim.plot.serialization_plotly
+	"plotly>=6.0",
 ]
 
 [project.urls]
@@ -88,8 +90,14 @@ packages = ["src/sbmlsim"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-# the tests run in parallel (pytest-xdist), `pytest -n 0` runs them in one process
-addopts = "-n auto"
+# the tests run in parallel (pytest-xdist), `pytest -n 0` runs them in one process.
+# The semantic cases of the SBML Test Suite are not part of a normal run, they
+# are the conformance of libroadrunner and not of a change: `pytest -m testsuite`
+# runs them, and a release does
+addopts = "-n auto -m 'not testsuite'"
+markers = [
+    "testsuite: a semantic case of the SBML Test Suite, run before a release",
+]
 
 [tool.ty.environment]
 # the package lives in the src layout, the examples are a package at the root of

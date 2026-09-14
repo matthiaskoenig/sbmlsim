@@ -41,6 +41,7 @@
     <table data-filter="row">
       <thead><tr>
         <th data-sort="text">parameter</th>
+        {% if versioned_parameters %}<th data-sort="text">target</th>{% endif %}
         {% for pset in parameter_set_ids %}<th class="num" data-sort="num">{{ pset }}</th>{% endfor %}
         <th class="num" data-sort="num">lower</th><th class="num" data-sort="num">upper</th>
         <th data-sort="text">unit</th>
@@ -49,6 +50,7 @@
       {% for row in parameters %}
       <tr>
         <td class="mono">{{ row.pid }}</td>
+        {% if versioned_parameters %}<td class="mono">{{ row.target }}</td>{% endif %}
         {% for value in row.set_values %}<td class="num mono">{{ value }}</td>{% endfor %}
         <td class="num mono">{{ row.lower }}</td><td class="num mono">{{ row.upper }}</td>
         <td>{{ row.unit }}</td>

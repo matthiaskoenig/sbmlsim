@@ -393,6 +393,7 @@ def test_report_with_identifiability(
         settings=fit_settings,
         parameter_sets=ParameterSets([result.parameter_set]),
         identifiability=result,
+        mapping_figures=False,
     )
     results_dir = report.create(output_dir=tmp_path, name="report")
 
@@ -416,6 +417,7 @@ def test_report_without_identifiability(
         problem=op_hctz_pk,
         settings=fit_settings,
         parameter_sets=op_hctz_pk.parameter_set_model(),
+        mapping_figures=False,
     )
     results_dir = report.create(output_dir=tmp_path, name="report")
     assert not (results_dir / "identifiability.json").exists()
@@ -433,6 +435,7 @@ def test_identifiability_cli(tmp_path: Path, definition_hctz_pk: FitDefinition) 
     results_dir = identifiability_cli(
         {"PK": definition_hctz_pk},
         args=[
+            "--no-mapping-figures",
             str(parameters_path),
             "--subset=PK",
             "--name=identifiability",
@@ -470,6 +473,7 @@ def test_identifiability_cli_without_fisher(
     results_dir = identifiability_cli(
         {"PK": definition_hctz_pk},
         args=[
+            "--no-mapping-figures",
             str(parameters_path),
             "--subset=PK",
             "--name=identifiability",

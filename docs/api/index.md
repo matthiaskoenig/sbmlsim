@@ -123,6 +123,17 @@ Local and global sensitivity analysis, see [Sensitivity analysis](../sensitivity
 | [sensitivity.classification](sensitivity.classification.md) | classification of sensitivities and uncertainties |
 | [sensitivity.plots](sensitivity.plots.md) | plots of the sensitivity results |
 
+## sbmlsim.testsuite
+
+The semantic cases of the SBML Test Suite, see [SBML Test Suite](../testsuite.md).
+
+| module | description |
+| --- | --- |
+| [testsuite.cases](testsuite.cases.md) | `SemanticCase` and `SemanticSuite`, the cases of a release on disk and its download |
+| [testsuite.runner](testsuite.runner.md) | `run_case`, simulating a case, and `CaseStatus`, the outcomes a case can have |
+| [testsuite.comparison](testsuite.comparison.md) | comparing the results of a case within its tolerances |
+| [testsuite.report](testsuite.report.md) | `TestSuiteReport`, the interactive report of a run |
+
 ## sbmlsim.comparison
 
 | module | description |

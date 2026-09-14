@@ -351,6 +351,13 @@ def _add_common_arguments(
     parser.add_argument(
         "-n", "--name", default=None, help="name of the report, the fit id by default"
     )
+    parser.add_argument(
+        "--no-mapping-figures",
+        action="store_true",
+        help="leave the two figures of every fit mapping out of the report. "
+        "They are almost the whole cost of it, so a report which is read for "
+        "its tables and its overview figures is created much faster",
+    )
 
 
 def fit_cli(
@@ -447,7 +454,10 @@ def fit_cli(
             "output": options.output_dir,
         }
     )
-    display.print_parameters(definition.parameters)
+    # the parameters are printed per problem, with their coverage, once
+    # `run_fit` initializes each one in `run_optimization` -- printing them
+    # again here from `definition.parameters` alone would only repeat the
+    # same block without the coverage, once per problem for `SINGLE`
     display.print_settings(definition.settings)
 
     runs = run_fit(
@@ -465,7 +475,12 @@ def fit_cli(
 
     # the fit only optimizes, the report is created from its parameters
     for run in runs.values():
-        run.report(output_dir=options.output_dir, name=options.name, show_titles=False)
+        run.report(
+            output_dir=options.output_dir,
+            name=options.name,
+            show_titles=False,
+            mapping_figures=not options.no_mapping_figures,
+        )
 
     return runs
 
@@ -516,6 +531,11 @@ def report_cli(
 
     definition = _definition(definitions, options.subset)
     parameter_sets = load_parameter_sets(options.parameters)
+    # built and initialized here, not left to `FitReport`, so the parameters
+    # and their coverage are shown before the report is created; `FitReport`
+    # initializing the same problem with the same settings is a no-op
+    problem = definition.problem(opid=options.subset)
+    problem.initialize(definition.settings)
 
     display.section("Report", icon=display.ICON_REPORT)
     display.key_values(
@@ -526,14 +546,23 @@ def report_cli(
             "output": options.output_dir,
         }
     )
+    display.print_parameters(
+        problem.parameters,
+        coverage=(
+            problem.parameter_mapping.coverage()
+            if problem.parameter_mapping is not None
+            else None
+        ),
+    )
     display.print_settings(definition.settings)
 
-    # only the definition of the problem is needed, no fit is run here
+    # no fit is run here, the parameter sets come from the given files
     report = FitReport(
-        problem=definition.problem(opid=options.subset),
+        problem=problem,
         settings=definition.settings,
         parameter_sets=parameter_sets,
         show_titles=False,
+        mapping_figures=not options.no_mapping_figures,
     )
     return report.create(
         output_dir=options.output_dir,
@@ -658,6 +687,13 @@ def identifiability_cli(
         reoptimize=not options.no_reoptimize,
     )
 
+    # built and initialized here, not left to `profile_likelihood`, so the
+    # parameters and their coverage are shown before the scans start;
+    # `profile_likelihood` initializing the same problem with the same
+    # settings again is a no-op
+    problem = definition.problem(opid=options.subset)
+    problem.initialize(definition.settings)
+
     display.section("Identifiability", icon=display.ICON_IDENTIFIABILITY)
     display.key_values(
         {
@@ -667,9 +703,16 @@ def identifiability_cli(
             "output": options.output_dir,
         }
     )
+    display.print_parameters(
+        problem.parameters,
+        coverage=(
+            problem.parameter_mapping.coverage()
+            if problem.parameter_mapping is not None
+            else None
+        ),
+    )
     display.print_settings(definition.settings)
 
-    problem = definition.problem(opid=options.subset)
     result = profile_likelihood(
         problem=problem,
         settings=definition.settings,
@@ -704,6 +747,7 @@ def identifiability_cli(
         identifiability=result,
         fisher=fisher,
         show_titles=False,
+        mapping_figures=not options.no_mapping_figures,
     )
     return report.create(
         output_dir=options.output_dir,

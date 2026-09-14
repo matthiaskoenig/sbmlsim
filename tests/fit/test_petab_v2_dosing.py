@@ -59,9 +59,14 @@ def _periods_of(simulation: TimecourseSim) -> tuple[petab_v2.Problem, list]:
     """Get the PEtab periods and conditions of a simulation."""
     problem = petab_v2.Problem()
     exporter = PetabExporter.__new__(PetabExporter)
-    # the period logic only reads the id of the problem, for its messages
-    exporter.problem = SimpleNamespace(opid="dosing")  # ty: ignore[invalid-assignment]
-    periods = exporter._periods(problem, experiment_id="dosing", simulation=simulation)
+    # the period logic only reads the id and the parameter mapping of the
+    # problem, and `group_index` is unused when there is no mapping
+    exporter.problem = SimpleNamespace(  # ty: ignore[invalid-assignment]
+        opid="dosing", parameter_mapping=None
+    )
+    periods = exporter._periods(
+        problem, experiment_id="dosing", simulation=simulation, group_index=0
+    )
     return problem, periods
 
 
