@@ -37,3 +37,6 @@ examples/**/_results/
 .vscode/
 *~
 .DS_Store
+
+# personal notes next to the sources, never part of the library
+/src/roadmap.md
