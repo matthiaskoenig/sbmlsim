@@ -9,7 +9,7 @@ the command line around `sbmlsim.testsuite`:
 uv run python scripts/testsuite.py download
 
 # run the cases and write the interactive report
-uv run python scripts/testsuite.py report --output site/testsuite
+uv run python scripts/testsuite.py report --output site/testsuite/report
 
 # refresh the expected outcomes after a change which fixes or breaks cases
 uv run python scripts/testsuite.py baseline
@@ -191,7 +191,7 @@ def main(argv: list[str] | None = None) -> int:
         "-o",
         "--output",
         type=Path,
-        default=Path("site") / "testsuite",
+        default=Path("site") / "testsuite" / "report",
         help="directory of the report or of the submission archive",
     )
     options = parser.parse_args(argv)

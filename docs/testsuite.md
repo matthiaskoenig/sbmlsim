@@ -2,7 +2,7 @@
 
 The [SBML Test Suite](https://github.com/sbmlteam/sbml-test-suite) is the conformance suite of SBML. Every semantic case is a model, a settings file which says how to simulate it and a CSV with the results a correct simulator produces, and the tags of a case say which parts of SBML it exercises. Running it answers what `sbmlsim`, i.e. libroadrunner, supports, and the results are what a submission to the SBML Test Suite Database is made of.
 
-[**The report of the current run**](testsuite/index.html) is generated with the documentation, so it describes the code of the `develop` branch.
+[**The report of the current run**](testsuite/report/index.html) is generated with the documentation, so it describes the code of the `develop` branch.
 
 ## What is run
 
@@ -29,7 +29,7 @@ A case which does not pass does so in one of four ways, and the report separates
 uv run python scripts/testsuite.py download
 
 # run the cases and write the interactive report
-uv run python scripts/testsuite.py report --output site/testsuite
+uv run python scripts/testsuite.py report --output site/testsuite/report
 
 # the archive which is submitted to the SBML Test Suite Database
 uv run python scripts/testsuite.py submission --output dist
