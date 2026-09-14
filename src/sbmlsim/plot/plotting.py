@@ -254,11 +254,27 @@ class Style(BasePlotObject):
     base_style attribute.
     """
 
+    #: the attributes a derived style takes over, i.e. the fields of `Line`,
+    #: `Marker` and `Fill`; they were the camel case names of SED-ML, which no
+    #: attribute of those dataclasses ever had, so nothing was inherited
+    LINE_KEYS: ClassVar[tuple[str, ...]] = ("type", "color", "thickness")
+    MARKER_KEYS: ClassVar[tuple[str, ...]] = (
+        "type",
+        "size",
+        "fill",
+        "line_color",
+        "line_thickness",
+    )
+    FILL_KEYS: ClassVar[tuple[str, ...]] = ("color", "second_color")
+
     MPL2SEDML_LINESTYLE_MAPPING: ClassVar[dict[str, LineType]] = {
         "": LineType.NONE,
+        " ": LineType.NONE,
+        "none": LineType.NONE,
+        "None": LineType.NONE,
         "-": LineType.SOLID,
         "solid": LineType.SOLID,
-        ".": LineType.DOT,
+        ":": LineType.DOT,
         "dotted": LineType.DOT,
         "--": LineType.DASH,
         "dashed": LineType.DASH,
@@ -267,9 +283,13 @@ class Style(BasePlotObject):
         "dashdotdotted": LineType.DASHDOTDOT,
     }
     SEDML2MPL_LINESTYLE_MAPPING: ClassVar[dict[LineType, MplLineStyle]] = {
-        v: k for (k, v) in MPL2SEDML_LINESTYLE_MAPPING.items()
+        LineType.NONE: "",
+        LineType.SOLID: "solid",
+        LineType.DOT: "dotted",
+        LineType.DASH: "dashed",
+        LineType.DASHDOT: "dashdot",
+        LineType.DASHDOTDOT: (0, (3, 5, 1, 5, 1, 5)),
     }
-    SEDML2MPL_LINESTYLE_MAPPING[LineType.DASHDOTDOT] = (0, (3, 5, 1, 5, 1, 5))
 
     MPL2SEDML_MARKER_MAPPING: ClassVar[dict[str, MarkerType]] = {
         "": MarkerType.NONE,
@@ -285,9 +305,27 @@ class Style(BasePlotObject):
         ">": MarkerType.TRIANGLERIGHT,
         "_": MarkerType.HDASH,
         "|": MarkerType.VDASH,
+        # the fills and the spellings matplotlib accepts for the same shape
+        "none": MarkerType.NONE,
+        "None": MarkerType.NONE,
+        "d": MarkerType.DIAMOND,
+        "X": MarkerType.XCROSS,
+        "P": MarkerType.PLUS,
     }
     SEDML2MPL_MARKER_MAPPING: ClassVar[dict[MarkerType, str]] = {
-        v: k for (k, v) in MPL2SEDML_MARKER_MAPPING.items()
+        MarkerType.NONE: "",
+        MarkerType.SQUARE: "s",
+        MarkerType.CIRCLE: "o",
+        MarkerType.DIAMOND: "D",
+        MarkerType.XCROSS: "x",
+        MarkerType.PLUS: "+",
+        MarkerType.STAR: "*",
+        MarkerType.TRIANGLEUP: "^",
+        MarkerType.TRIANGLEDOWN: "v",
+        MarkerType.TRIANGLELEFT: "<",
+        MarkerType.TRIANGLERIGHT: ">",
+        MarkerType.HDASH: "_",
+        MarkerType.VDASH: "|",
     }
 
     def __init__(
@@ -334,39 +372,46 @@ class Style(BasePlotObject):
         if not self.base_style:
             return self
 
-        # get base_style information
-        logger.warning("Resolving base_style: %s", self.base_style)
-        style = self.base_style.resolve_style()
+        # a copy of the base, so that resolving a derived style does not write
+        # into the style it derives from, which every other style sharing that
+        # base would see
+        style = deepcopy(self.base_style.resolve_style())
 
         # overwrite information
         if self.line:
             if not style.line:
                 style.line = deepcopy(self.line)
             else:
-                for key in ["style", "color", "thickness"]:
-                    if hasattr(self.line, key) and getattr(self.line, key):
-                        logger.debug("line: %s = %s", key, getattr(self.line, key))
-                        setattr(style.line, key, getattr(self.line, key))
+                Style._override(self.line, style.line, Style.LINE_KEYS)
 
         if self.marker:
             if not style.marker:
                 style.marker = deepcopy(self.marker)
             else:
-                for key in ["style", "size", "fill", "lineColor", "lineThickness"]:
-                    if hasattr(self.marker, key) and getattr(self.marker, key):
-                        logger.debug("marker: %s = %s", key, getattr(self.marker, key))
-                        setattr(style.marker, key, getattr(self.marker, key))
+                Style._override(self.marker, style.marker, Style.MARKER_KEYS)
 
         if self.fill:
             if not style.fill:
                 style.fill = deepcopy(self.fill)
             else:
-                for key in ["color", "secondColor"]:
-                    if hasattr(self.fill, key) and getattr(self.fill, key):
-                        logger.debug("fill: %s = %s", key, getattr(self.fill, key))
-                        setattr(style.fill, key, getattr(self.fill, key))
+                Style._override(self.fill, style.fill, Style.FILL_KEYS)
 
         return style
+
+    @staticmethod
+    def _override(source: Any, target: Any, keys: tuple[str, ...]) -> None:
+        """Copy the attributes which are set from the source to the target.
+
+        Args:
+            source: object of the deriving style.
+            target: object of the resolved base style, changed in place.
+            keys: attributes to take over when they are set on the source.
+        """
+        for key in keys:
+            value = getattr(source, key)
+            if value:
+                logger.debug("%s: %s = %s", type(source).__name__, key, value)
+                setattr(target, key, value)
 
     def __repr__(self) -> str:
         """Get string presentation."""
@@ -380,6 +425,7 @@ class Style(BasePlotObject):
         return Style(
             sid=self.sid,
             name=self.name,
+            base_style=self.base_style,
             line=self.line,
             marker=self.marker,
             fill=self.fill,
@@ -419,18 +465,19 @@ class Style(BasePlotObject):
 
         return kwargs
 
+    #: length of the caps of an error bar, in points
+    ERROR_CAPSIZE: ClassVar[float] = 3.0
+
     def _mpl_error_kwargs(self) -> dict[str, Any]:
         """Define keywords for error bars.
+
+        `errorbar` takes them directly and `bar` takes them in `error_kw`, so
+        the two callers unpack this differently.
 
         Returns:
             Keyword arguments for error bars.
         """
-        return {
-            "error_kw": {
-                # 'ecolor': "black",
-                # 'elinewidth': 2.0,
-            }
-        }
+        return {"capsize": Style.ERROR_CAPSIZE}
 
     def to_mpl_points_kwargs(self) -> dict[str, Any]:
         """Convert to matplotlib point curve keyword arguments.
@@ -442,10 +489,9 @@ class Style(BasePlotObject):
         for key in ["fill.color", "fill.second_color"]:
             if key in points_kwargs:
                 points_kwargs.pop(key)
-        error_kwargs = self._mpl_error_kwargs()
         return {
             **points_kwargs,
-            **error_kwargs["error_kw"],
+            **self._mpl_error_kwargs(),
         }
 
     def to_mpl_bar_kwargs(self) -> dict[str, Any]:
@@ -474,7 +520,7 @@ class Style(BasePlotObject):
 
         return {
             **bar_kwargs,
-            **self._mpl_error_kwargs(),
+            "error_kw": self._mpl_error_kwargs(),
         }
 
     def to_mpl_area_kwargs(self) -> dict[str, Any]:
@@ -500,6 +546,32 @@ class Style(BasePlotObject):
             #    kwargs["second.color"] = self.fill.second_color
 
         return kwargs
+
+    @staticmethod
+    def _lookup(mapping: dict[str, Any], value: Any, kind: str) -> Any:
+        """Translate a matplotlib style value into the type of the figure model.
+
+        Args:
+            mapping: the matplotlib value to type mapping of the kind.
+            value: the matplotlib value, e.g. `":"` or `"o"`.
+            kind: what is looked up, for the message.
+
+        Returns:
+            The type of the figure model.
+
+        Raises:
+            ValueError: If the figure model has no type for the value. The
+                message names what is supported, a `KeyError` of the raw value
+                says nothing about what to write instead.
+        """
+        if value is None:
+            value = ""
+        if value in mapping:
+            return mapping[value]
+        raise ValueError(
+            f"Unsupported {kind} '{value}', the figure model describes "
+            f"{kind}s as one of: {sorted(k for k in mapping if k)}"
+        )
 
     @staticmethod
     def from_mpl_kwargs(**kwargs: Any) -> Style:
@@ -530,11 +602,15 @@ class Style(BasePlotObject):
             )
 
         # Line
-        linestyle = Style.MPL2SEDML_LINESTYLE_MAPPING[kwargs.get("linestyle", "-")]
+        linestyle = Style._lookup(
+            Style.MPL2SEDML_LINESTYLE_MAPPING, kwargs.get("linestyle", "-"), "linestyle"
+        )
         line = Line(color=color, type=linestyle, thickness=kwargs.get("linewidth", 1.0))
 
         # Marker
-        marker_symbol = Style.MPL2SEDML_MARKER_MAPPING[kwargs.get("marker", "")]
+        marker_symbol = Style._lookup(
+            Style.MPL2SEDML_MARKER_MAPPING, kwargs.get("marker", ""), "marker"
+        )
         marker = Marker(
             type=marker_symbol,
             size=kwargs.get("markersize"),
@@ -582,13 +658,16 @@ class Axis(BasePlotObject):
     ):
         """Axis object.
 
-        Label and unit form together the axis label.
-        To set the label directly use the name attribute.
+        The label and the unit form the axis label together, i.e. `name` is
+        `"<label> [<unit>]"`, and it follows both of them: setting `label` or
+        `unit` on an axis updates it. `name` is the complete axis label and
+        overrides them; setting it to `None` hands the axis back to its label
+        and its unit.
 
         Args:
             label: label part of axis label
             unit: unit part of axis label
-            name: complete axis label (overwrites label and unit)
+            name: complete axis label, overrides label and unit
             scale: Scale of the axis, i.e. "linear" or "log" axis.
             min: lower axis bound
             max: upper axis bound
@@ -598,22 +677,10 @@ class Axis(BasePlotObject):
             ticks_visible: show/hide axis ticks
             style: style of the axis
         """
-        super().__init__(sid=None, name=None)
-        if label and name:
-            ValueError("Either set label or name on Axis.")
-        # if unit is None:
-        #     unit = "?"
-        if not name:
-            if not label and not unit:
-                name = ""
-            elif unit != "dimensionless":
-                name = f"{label} [{unit}]"
-            else:
-                name = f"{label} [-]"
-
-        self.label: str | None = label
-        self.name: str = name
-        self.unit: str | None = unit
+        self._label: str | None = label
+        self._unit: str | None = unit
+        # sets `name`, i.e. the override, which is `None` for a derived label
+        super().__init__(sid=None, name=name)
         self.scale = scale
         self.min: float | None = min
         self.max: float | None = max
@@ -638,16 +705,81 @@ class Axis(BasePlotObject):
         """Copy axis object."""
         return Axis(
             label=self.label,
-            name=self.name,
+            # the override and not `name`, so that a derived label stays derived
+            name=self._name,
             unit=self.unit,
             scale=self.scale,
             min=self.min,
             max=self.max,
+            reverse=self.reverse,
             grid=self.grid,
             label_visible=self.label_visible,
             ticks_visible=self.ticks_visible,
             style=copy.copy(self.style),
         )
+
+    @property
+    def label(self) -> str | None:
+        """Get the label part of the axis label."""
+        return self._label
+
+    @label.setter
+    def label(self, label: str | None) -> None:
+        """Set the label part of the axis label.
+
+        Args:
+            label: label part, which `name` follows unless it is overridden.
+        """
+        self._label = label
+
+    @property
+    def unit(self) -> str | None:
+        """Get the unit part of the axis label."""
+        return self._unit
+
+    @unit.setter
+    def unit(self, unit: str | None) -> None:
+        """Set the unit part of the axis label.
+
+        Args:
+            unit: unit part, which `name` follows unless it is overridden.
+        """
+        self._unit = unit
+
+    @property
+    def name(self) -> str:
+        """Get the complete axis label, which is what a figure renders.
+
+        The override if one was set, the label and the unit otherwise, so that
+        a change of either of them is reflected.
+        """
+        if self._name is not None:
+            return self._name
+        return self._derived_name()
+
+    @name.setter
+    def name(self, name: str | None) -> None:
+        """Set the complete axis label, overriding the label and the unit.
+
+        Args:
+            name: complete axis label; `None` restores the derived one.
+        """
+        self._name: str | None = name
+
+    def _derived_name(self) -> str:
+        """Get the axis label which the label and the unit form.
+
+        A unit of `dimensionless` is written as `-`, and a part which is not
+        given is left out rather than written as `None`.
+        """
+        if not self._label and not self._unit:
+            return ""
+        if not self._unit:
+            return f"{self._label}"
+        unit = "-" if self._unit == "dimensionless" else self._unit
+        if not self._label:
+            return f"[{unit}]"
+        return f"{self._label} [{unit}]"
 
     @property
     def scale(self) -> AxisScale:
@@ -776,7 +908,11 @@ class Curve(AbstractCurve):
 
         # parse additional arguments and create style
         if style:
-            logger.warning("'style' is set, 'kwargs' style arguments are ignored.")
+            if kwargs:
+                logger.warning(
+                    "'style' is set, the style arguments %s are ignored.",
+                    sorted(kwargs),
+                )
         else:
             kwargs = Curve._add_default_style_kwargs(kwargs, y.dtype)
             style = Style.from_mpl_kwargs(**kwargs)
@@ -833,8 +969,6 @@ class Curve(AbstractCurve):
             if "marker" not in d:
                 d["marker"] = "s"
 
-        if "capsize" not in d:
-            d["capsize"] = 3
         return d
 
     def to_dict(self) -> dict[str, Any]:
@@ -994,6 +1128,10 @@ class Plot(BasePlotObject):
             raise ValueError(f"'xaxis' must be of type Axis but: '{type(xaxis)}'")
         if yaxis and not isinstance(yaxis, Axis):
             raise ValueError(f"'yaxis' must be of type Axis but: '{type(yaxis)}'")
+        if yaxis_right and not isinstance(yaxis_right, Axis):
+            raise ValueError(
+                f"'yaxis_right' must be of type Axis but: '{type(yaxis_right)}'"
+            )
 
         if facecolor is None:
             facecolor = ColorType.parse_color("white")
@@ -1040,6 +1178,7 @@ class Plot(BasePlotObject):
             name=self.name,
             xaxis=copy.copy(self.xaxis),
             yaxis=copy.copy(self.yaxis),
+            yaxis_right=copy.copy(self.yaxis_right),
             curves=self.curves,
             areas=self.areas,
             legend=self.legend,
@@ -1500,10 +1639,10 @@ class Figure(BasePlotObject):
 
     fig_dpi: int = 72
     fig_facecolor: str = "white"
-    fig_subplots_wspace: float = 0.3  # vertical spacing of subplots (fraction of axes)
-    fig_subplots_hspace: float = (
-        0.3  # horizontal spacing of subplots (fraction of axes)
-    )
+    #: horizontal spacing between the panels, as a fraction of the panel width
+    fig_subplots_wspace: float = 0.3
+    #: vertical spacing between the panels, as a fraction of the panel height
+    fig_subplots_hspace: float = 0.3
     panel_width: float = 7.0
     panel_height: float = 5.0
     fig_titlesize: int = 25
@@ -1517,7 +1656,6 @@ class Figure(BasePlotObject):
     legend_fontsize: int = 13
     legend_position: str = "inside"  # "outside"
     legend_loc: str = "best"
-    _area_interpolation_points: int = 300
 
     def __init__(
         self,
@@ -1547,6 +1685,10 @@ class Figure(BasePlotObject):
         if subplots is None:
             subplots = []
         self.subplots: list[SubPlot] = subplots
+        for subplot in self.subplots:
+            # a plot resolves its data through its figure, see `Plot.experiment`;
+            # `add_subplot` does this for the plots which are added later
+            subplot.plot.figure = self
         self.num_rows: int = num_rows
         self.num_cols: int = num_cols
         self._height: float
@@ -1686,13 +1828,13 @@ class Figure(BasePlotObject):
             raise ValueError(f"col must be <= num_cols, but '{col} > {self.num_cols}'")
         if row + row_span - 1 > self.num_rows:
             raise ValueError(
-                f"row + row_span must be <= num_rows, but "
-                f"'{row + row_span} > {self.num_rows}'"
+                f"row + row_span - 1 must be <= num_rows, but "
+                f"'{row + row_span - 1} > {self.num_rows}'"
             )
         if col + col_span - 1 > self.num_cols:
             raise ValueError(
                 f"col + col_span - 1 must be <= num_cols, but "
-                f"'{col + col_span} > {self.num_cols}'"
+                f"'{col + col_span - 1} > {self.num_cols}'"
             )
 
         if self.height and not plot.height:
@@ -1700,6 +1842,8 @@ class Figure(BasePlotObject):
         if self.width and not plot.width:
             plot.width = self.width / self.num_cols * col_span
 
+        # the plot resolves its data through the figure, see `Plot.experiment`
+        plot.figure = self
         self.subplots.append(
             SubPlot(plot=plot, row=row, col=col, row_span=row_span, col_span=col_span)
         )
@@ -1725,9 +1869,9 @@ class Figure(BasePlotObject):
         ridx = 1
         cidx = 1
         for plot in new_plots:
-            self.subplots.append(
-                SubPlot(plot=plot, row=ridx, col=cidx, row_span=1, col_span=1)
-            )
+            # via `add_subplot`, which associates the plot with the figure and
+            # gives it the size of its panel
+            self.add_subplot(plot=plot, row=ridx, col=cidx)
 
             # increase indices for next plot
             if cidx == self.num_cols:
@@ -1735,12 +1879,10 @@ class Figure(BasePlotObject):
                 ridx += 1
             else:
                 cidx += 1
-            # set the figure for the plot
-            plot.figure = self
 
     @staticmethod
     def from_plots(
-        sid: str, plots: list[Plot], experiment: SimulationExperiment
+        sid: str, plots: list[Plot], experiment: SimulationExperiment | None = None
     ) -> Figure:
         """Create figure object from list of plots.
 

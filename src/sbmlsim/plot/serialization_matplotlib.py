@@ -6,9 +6,8 @@ import logging
 from typing import Any
 
 import numpy as np
-from matplotlib import pyplot as plt
+from matplotlib.axes import Axes as AxesMPL
 from matplotlib.figure import Figure as FigureMPL
-from matplotlib.gridspec import GridSpec
 
 from sbmlsim.plot import Axis, Curve, Figure, SubPlot
 from sbmlsim.plot.plotting import (
@@ -22,26 +21,6 @@ from sbmlsim.plot.plotting import (
 )
 
 logger = logging.getLogger(__name__)
-
-
-def interp(x, xp, fp):
-    """Interpolation for speedup of plots.
-
-    :param x:
-    :param xp:
-    :param fp:
-    :return:
-    """
-    y = np.interp(x=x, xp=xp, fp=fp)
-    # better spline interpolation, but NaN issues with zero values
-    # tck, fp, ier, msg = interpolate.splrep(xp, fp, full_output=True)
-    # if ier > 0:
-    #     logger.error(f"Spline fitting failed: '{msg}'")
-    #
-    # y = interpolate.splev(x, tck, der=0)
-    if not np.all(np.isfinite(y)):
-        logger.error("NaN or Inf values in interpolation: %s -> %s", fp, y)
-    return y
 
 
 class MatplotlibFigureSerializer:
@@ -63,8 +42,14 @@ class MatplotlibFigureSerializer:
         figure: Figure,
     ) -> FigureMPL:
         """Convert sbmlsim.Figure to matplotlib figure."""
-        # create new figure
-        fig: plt.Figure = plt.figure(
+        # the figure is created directly and not through `pyplot`, which keeps
+        # every figure it creates in a global registry until someone closes it:
+        # a library which renders many figures leaks them, and matplotlib warns
+        # about it from the twentieth one on. Nothing here needs the state
+        # machine, `savefig` works on the figure itself, and
+        # `SimulationExperiment.show_mpl_figures` attaches a manager when a
+        # figure is actually shown
+        fig: FigureMPL = FigureMPL(
             figsize=(figure.width, figure.height),
             dpi=Figure.fig_dpi,
             facecolor=Figure.fig_facecolor,
@@ -77,15 +62,9 @@ class MatplotlibFigureSerializer:
                 fontweight=Figure.fig_titleweight,
             )
 
-        # create grid for figure
-        gs = GridSpec(
-            nrows=figure.num_rows,
-            ncols=figure.num_cols,
-            figure=fig,
-            # done via subplots adjust below
-            # hspace=figure.fig_subplots_hspace,
-            # wspace=figure.fig_subplots_wspace,
-        )
+        # create grid for figure; the spacing is applied with `subplots_adjust`
+        # at the end, over the whole figure
+        gs = fig.add_gridspec(nrows=figure.num_rows, ncols=figure.num_cols)
 
         subplot: SubPlot
         for subplot in figure.subplots:
@@ -98,12 +77,12 @@ class MatplotlibFigureSerializer:
                 raise ValueError(f"SubPlot requires row and col: {subplot}")
             ridx = subplot.row - 1
             cidx = subplot.col - 1
-            ax1: plt.Axes = fig.add_subplot(
+            ax1: AxesMPL = fig.add_subplot(
                 gs[ridx : ridx + subplot.row_span, cidx : cidx + subplot.col_span]
             )
             # secondary axis
-            ax2: plt.Axes | None = None
-            axes: list[plt.Axes] = [ax1]
+            ax2: AxesMPL | None = None
+            axes: list[AxesMPL] = [ax1]
             if yax_right:
                 for curve in plot.curves:
                     if (
@@ -116,24 +95,21 @@ class MatplotlibFigureSerializer:
                 else:
                     logger.error("Position right defined by no yAxis right.")
 
-            # units
-            if xax is None:
+            # `xax` and `yax` fall back to an empty `Axis` above, so a plot
+            # which names neither is drawn without units rather than refused;
+            # the spines of an axis which is not there are hidden further down
+            if plot.xaxis is None:
                 logger.warning("No xaxis in plot: %s", subplot)
-                ax1.spines["bottom"].set_color(Figure.fig_facecolor)
-                ax1.spines["top"].set_color(Figure.fig_facecolor)
-            if yax is None:
+            if plot.yaxis is None:
                 logger.warning("No yaxis in plot: %s", subplot)
-                ax1.spines["right"].set_color(Figure.fig_facecolor)
-                ax1.spines["left"].set_color(Figure.fig_facecolor)
-            if ((not xax) or (not yax)) and len(plot.curves) > 0:
-                raise ValueError(
-                    f"xaxis and yaxis are required for plotting curves, but "
-                    f"'xaxis={xax}' and 'yaxis={yax}'."
-                )
 
-            xunit = xax.unit if xax else None
-            yunit_left = yax.unit if yax else None
+            xunit = xax.unit
+            yunit_left = yax.unit
             yunit_right = yax_right.unit if yax_right else None
+
+            # the plot decides the colour of its panel
+            if plot.facecolor:
+                ax1.set_facecolor(plot.facecolor.color)
 
             # memory for stacked bars
             barstack_x = None
@@ -146,7 +122,7 @@ class MatplotlibFigureSerializer:
                 [*plot.curves, *plot.areas],
                 key=lambda x: x.order if x.order is not None else 0,
             )
-            ax: plt.Axes
+            ax: AxesMPL
             for abstract_curve in abstract_curves:
                 if (
                     abstract_curve.yaxis_position
@@ -178,7 +154,7 @@ class MatplotlibFigureSerializer:
                             experiment=experiment, to_units=yunit
                         )
 
-                    label = curve.name if curve.name else "__nolabel__"
+                    label = curve.name if curve.name else "_nolegend_"
 
                     # FIXME: necessary to get the individual curves out of the data cube
                     # TODO: iterate over all repeats in the data
@@ -228,14 +204,21 @@ class MatplotlibFigureSerializer:
                             kwargs = style.to_mpl_bar_kwargs()
 
                     if curve.type == CurveType.POINTS:
-                        ax.errorbar(
-                            x=x_data,
-                            y=y_data,
-                            xerr=xerr_data,
-                            yerr=yerr_data,
-                            label=label,
-                            **kwargs,
-                        )
+                        if xerr_data is None and yerr_data is None:
+                            # `errorbar` builds the containers of the bars
+                            # whether or not there are any, and is twice the
+                            # cost of `plot` for the same line
+                            kwargs.pop("capsize", None)
+                            ax.plot(x_data, y_data, label=label, **kwargs)
+                        else:
+                            ax.errorbar(
+                                x=x_data,
+                                y=y_data,
+                                xerr=xerr_data,
+                                yerr=yerr_data,
+                                label=label,
+                                **kwargs,
+                            )
 
                     elif curve.type == CurveType.BAR:
                         ax.bar(
@@ -305,7 +288,7 @@ class MatplotlibFigureSerializer:
                     yfrom_data = yfrom.magnitude[:, 0] if yfrom is not None else None
                     yto_data = yto.magnitude[:, 0] if yto is not None else None
 
-                    label = area.name if area.name else "__nolabel__"
+                    label = area.name if area.name else "_nolegend_"
                     kwargs: dict[str, Any] = {}
                     if area.style:
                         style: Style = area.style.resolve_style()
@@ -319,27 +302,31 @@ class MatplotlibFigureSerializer:
             if plot.name and plot.title_visible:
                 ax1.set_title(plot.name)
 
-            def apply_axis_settings(sax: Axis, ax: plt.Axes, axis_type: str):
+            def apply_axis_settings(sax: Axis, ax: AxesMPL, axis_type: str):
                 """Apply settings to all axis."""
                 if axis_type not in ["x", "y"]:
                     raise ValueError
 
-                # handle the reverse flag
-                if sax.reverse:
-                    ax_min, ax_max = sax.max, sax.min
-                else:
-                    ax_min, ax_max = sax.min, sax.max
-
                 if sax.min is not None:
                     if axis_type == "x":
-                        ax.set_xlim(xmin=ax_min)
+                        ax.set_xlim(left=sax.min)
                     elif axis_type == "y":
-                        ax.set_ylim(ymin=ax_min)
+                        ax.set_ylim(bottom=sax.min)
                 if sax.max is not None:
                     if axis_type == "x":
-                        ax.set_xlim(xmax=ax_max)
+                        ax.set_xlim(right=sax.max)
                     elif axis_type == "y":
-                        ax.set_ylim(ymax=ax_max)
+                        ax.set_ylim(top=sax.max)
+
+                # the bounds are the bounds of the data, `reverse` is the
+                # direction they are drawn in, so it is applied to whatever the
+                # limits ended up being: swapping `min` and `max` above did
+                # nothing unless both of them were set
+                if sax.reverse:
+                    if axis_type == "x":
+                        ax.invert_xaxis()
+                    elif axis_type == "y":
+                        ax.invert_yaxis()
 
                 if axis_type == "x":
                     ax.set_xscale(cls._get_scale(sax))
@@ -353,10 +340,13 @@ class MatplotlibFigureSerializer:
                         ax.set_ylabel(sax.name)
 
                 if not sax.ticks_visible:
+                    # `set_xticklabels([])` needs a fixed locator to be correct
+                    # and leaves the tick marks drawn; `tick_params` is what
+                    # hides the labels of whatever the locator produces
                     if axis_type == "x":
-                        ax.set_xticklabels([])  # hide ticks
+                        ax.tick_params(axis="x", labelbottom=False)
                     elif axis_type == "y":
-                        ax.set_yticklabels([])  # hide ticks
+                        ax.tick_params(axis="y", labelleft=False)
 
                 # style
                 # https://matplotlib.org/stable/api/spines_api.html
@@ -374,24 +364,24 @@ class MatplotlibFigureSerializer:
                             for axis in directions:
                                 ax.tick_params(width=linewidth)
                                 if np.isclose(linewidth, 0.0):
-                                    ax.spines[axis].set_color(Figure.fig_facecolor)
+                                    ax.spines[axis].set_visible(False)
                                 else:
                                     ax.spines[axis].set_linewidth(linewidth)
-                                    ax.tick_params(width=linewidth)
 
                         if style.line.color:
                             color = style.line.color
                             for axis in directions:
                                 ax.spines[axis].set_color(str(color))
 
+                        # a spine which is not drawn is hidden, painting it in
+                        # the colour of the figure only works while the panel
+                        # has that colour, see `Plot.facecolor`
                         if style.line.type == LineType.NONE:
                             for axis in directions:
-                                ax.spines[axis].set_color(Figure.fig_facecolor)
+                                ax.spines[axis].set_visible(False)
 
-            if xax:
-                apply_axis_settings(xax, ax1, axis_type="x")
-            if yax:
-                apply_axis_settings(yax, ax1, axis_type="y")
+            apply_axis_settings(xax, ax1, axis_type="x")
+            apply_axis_settings(yax, ax1, axis_type="y")
             if yax_right and ax2 is not None:
                 apply_axis_settings(yax_right, ax2, axis_type="y")
 
@@ -411,19 +401,21 @@ class MatplotlibFigureSerializer:
                 ax.tick_params(axis="x", labelsize=Figure.xtick_labelsize)
                 ax.tick_params(axis="y", labelsize=Figure.ytick_labelsize)
 
-            # hide none-existing axes
+            # hide none-existing axes; the horizontal spines belong to the x
+            # axis and the vertical ones to the y axis, and they are hidden on
+            # `ax1` and not on whatever `ax` was left over from the loop above
             if plot.xaxis is None:
-                ax.spines["right"].set_visible(False)
-                ax.spines["left"].set_visible(False)
+                ax1.spines["bottom"].set_visible(False)
+                ax1.spines["top"].set_visible(False)
                 ax1.xaxis.set_visible(False)
 
             if plot.yaxis is None:
-                ax.spines["top"].set_visible(False)
-                ax.spines["bottom"].set_visible(False)
+                ax1.spines["left"].set_visible(False)
+                ax1.spines["right"].set_visible(False)
                 ax1.yaxis.set_visible(False)
 
-            xgrid = xax.grid if xax else None
-            ygrid = yax.grid if yax else None
+            xgrid = xax.grid
+            ygrid = yax.grid
 
             if xgrid and ygrid:
                 ax1.grid(True, axis="both")
@@ -435,21 +427,36 @@ class MatplotlibFigureSerializer:
                 ax1.grid(False)
 
             if plot.legend:
-                if len(axes) == 1:
+                outside = figure.legend_position == "outside"
+                if ax2 is None:
                     handles1, _ = ax1.get_legend_handles_labels()
                     if handles1:
-                        if figure.legend_position == "inside":
-                            ax1.legend(
-                                fontsize=Figure.legend_fontsize,
-                                loc=Figure.legend_loc,  # ty: ignore[invalid-argument-type] -- str setting, matplotlib expects its Literal
-                            )
-                        elif figure.legend_position == "outside":
+                        if outside:
                             ax1.legend(
                                 fontsize=Figure.legend_fontsize,
                                 loc="upper left",
                                 bbox_to_anchor=(1.04, 1),
                             )
-                elif len(axes) == 2 and ax2 is not None:
+                        else:
+                            ax1.legend(
+                                fontsize=Figure.legend_fontsize,
+                                loc=Figure.legend_loc,  # ty: ignore[invalid-argument-type] -- str setting, matplotlib expects its Literal
+                            )
+                elif outside:
+                    # two legends outside would sit on top of each other, so
+                    # the curves of both axes go into one; `legend_position`
+                    # was honoured for a single axis only
+                    handles1, labels1 = ax1.get_legend_handles_labels()
+                    handles2, labels2 = ax2.get_legend_handles_labels()
+                    if handles1 or handles2:
+                        ax1.legend(
+                            handles1 + handles2,
+                            labels1 + labels2,
+                            fontsize=Figure.legend_fontsize,
+                            loc="upper left",
+                            bbox_to_anchor=(1.04, 1),
+                        )
+                else:
                     handles1, _ = ax1.get_legend_handles_labels()
                     if handles1:
                         ax1.legend(fontsize=Figure.legend_fontsize, loc="upper left")

@@ -5,9 +5,9 @@ For instance clamping species to given formulas.
 """
 
 import pandas as pd
+from matplotlib import pyplot as plt
 
 from sbmlsim.model import ModelChange, RoadrunnerSBMLModel
-from sbmlsim.plot.serialization_matplotlib import plt
 from sbmlsim.resources import REPRESSILATOR_SBML
 from sbmlsim.result import XResult
 from sbmlsim.simulation import Timecourse, TimecourseSim
