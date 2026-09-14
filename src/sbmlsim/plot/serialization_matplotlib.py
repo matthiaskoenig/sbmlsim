@@ -8,7 +8,6 @@ from typing import Any
 import numpy as np
 from matplotlib import pyplot as plt
 from matplotlib.figure import Figure as FigureMPL
-from matplotlib.gridspec import GridSpec
 
 from sbmlsim.plot import Axis, Curve, Figure, SubPlot
 from sbmlsim.plot.plotting import (
@@ -57,15 +56,9 @@ class MatplotlibFigureSerializer:
                 fontweight=Figure.fig_titleweight,
             )
 
-        # create grid for figure
-        gs = GridSpec(
-            nrows=figure.num_rows,
-            ncols=figure.num_cols,
-            figure=fig,
-            # done via subplots adjust below
-            # hspace=figure.fig_subplots_hspace,
-            # wspace=figure.fig_subplots_wspace,
-        )
+        # create grid for figure; the spacing is applied with `subplots_adjust`
+        # at the end, over the whole figure
+        gs = fig.add_gridspec(nrows=figure.num_rows, ncols=figure.num_cols)
 
         subplot: SubPlot
         for subplot in figure.subplots:
@@ -155,7 +148,7 @@ class MatplotlibFigureSerializer:
                             experiment=experiment, to_units=yunit
                         )
 
-                    label = curve.name if curve.name else "__nolabel__"
+                    label = curve.name if curve.name else "_nolegend_"
 
                     # FIXME: necessary to get the individual curves out of the data cube
                     # TODO: iterate over all repeats in the data
@@ -205,14 +198,21 @@ class MatplotlibFigureSerializer:
                             kwargs = style.to_mpl_bar_kwargs()
 
                     if curve.type == CurveType.POINTS:
-                        ax.errorbar(
-                            x=x_data,
-                            y=y_data,
-                            xerr=xerr_data,
-                            yerr=yerr_data,
-                            label=label,
-                            **kwargs,
-                        )
+                        if xerr_data is None and yerr_data is None:
+                            # `errorbar` builds the containers of the bars
+                            # whether or not there are any, and is twice the
+                            # cost of `plot` for the same line
+                            kwargs.pop("capsize", None)
+                            ax.plot(x_data, y_data, label=label, **kwargs)
+                        else:
+                            ax.errorbar(
+                                x=x_data,
+                                y=y_data,
+                                xerr=xerr_data,
+                                yerr=yerr_data,
+                                label=label,
+                                **kwargs,
+                            )
 
                     elif curve.type == CurveType.BAR:
                         ax.bar(
@@ -282,7 +282,7 @@ class MatplotlibFigureSerializer:
                     yfrom_data = yfrom.magnitude[:, 0] if yfrom is not None else None
                     yto_data = yto.magnitude[:, 0] if yto is not None else None
 
-                    label = area.name if area.name else "__nolabel__"
+                    label = area.name if area.name else "_nolegend_"
                     kwargs: dict[str, Any] = {}
                     if area.style:
                         style: Style = area.style.resolve_style()
@@ -334,10 +334,13 @@ class MatplotlibFigureSerializer:
                         ax.set_ylabel(sax.name)
 
                 if not sax.ticks_visible:
+                    # `set_xticklabels([])` needs a fixed locator to be correct
+                    # and leaves the tick marks drawn; `tick_params` is what
+                    # hides the labels of whatever the locator produces
                     if axis_type == "x":
-                        ax.set_xticklabels([])  # hide ticks
+                        ax.tick_params(axis="x", labelbottom=False)
                     elif axis_type == "y":
-                        ax.set_yticklabels([])  # hide ticks
+                        ax.tick_params(axis="y", labelleft=False)
 
                 # style
                 # https://matplotlib.org/stable/api/spines_api.html
@@ -355,19 +358,21 @@ class MatplotlibFigureSerializer:
                             for axis in directions:
                                 ax.tick_params(width=linewidth)
                                 if np.isclose(linewidth, 0.0):
-                                    ax.spines[axis].set_color(Figure.fig_facecolor)
+                                    ax.spines[axis].set_visible(False)
                                 else:
                                     ax.spines[axis].set_linewidth(linewidth)
-                                    ax.tick_params(width=linewidth)
 
                         if style.line.color:
                             color = style.line.color
                             for axis in directions:
                                 ax.spines[axis].set_color(str(color))
 
+                        # a spine which is not drawn is hidden, painting it in
+                        # the colour of the figure only works while the panel
+                        # has that colour, see `Plot.facecolor`
                         if style.line.type == LineType.NONE:
                             for axis in directions:
-                                ax.spines[axis].set_color(Figure.fig_facecolor)
+                                ax.spines[axis].set_visible(False)
 
             apply_axis_settings(xax, ax1, axis_type="x")
             apply_axis_settings(yax, ax1, axis_type="y")
@@ -416,21 +421,36 @@ class MatplotlibFigureSerializer:
                 ax1.grid(False)
 
             if plot.legend:
-                if len(axes) == 1:
+                outside = figure.legend_position == "outside"
+                if ax2 is None:
                     handles1, _ = ax1.get_legend_handles_labels()
                     if handles1:
-                        if figure.legend_position == "inside":
-                            ax1.legend(
-                                fontsize=Figure.legend_fontsize,
-                                loc=Figure.legend_loc,  # ty: ignore[invalid-argument-type] -- str setting, matplotlib expects its Literal
-                            )
-                        elif figure.legend_position == "outside":
+                        if outside:
                             ax1.legend(
                                 fontsize=Figure.legend_fontsize,
                                 loc="upper left",
                                 bbox_to_anchor=(1.04, 1),
                             )
-                elif len(axes) == 2 and ax2 is not None:
+                        else:
+                            ax1.legend(
+                                fontsize=Figure.legend_fontsize,
+                                loc=Figure.legend_loc,  # ty: ignore[invalid-argument-type] -- str setting, matplotlib expects its Literal
+                            )
+                elif outside:
+                    # two legends outside would sit on top of each other, so
+                    # the curves of both axes go into one; `legend_position`
+                    # was honoured for a single axis only
+                    handles1, labels1 = ax1.get_legend_handles_labels()
+                    handles2, labels2 = ax2.get_legend_handles_labels()
+                    if handles1 or handles2:
+                        ax1.legend(
+                            handles1 + handles2,
+                            labels1 + labels2,
+                            fontsize=Figure.legend_fontsize,
+                            loc="upper left",
+                            bbox_to_anchor=(1.04, 1),
+                        )
+                else:
                     handles1, _ = ax1.get_legend_handles_labels()
                     if handles1:
                         ax1.legend(fontsize=Figure.legend_fontsize, loc="upper left")
