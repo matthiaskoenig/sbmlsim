@@ -241,17 +241,30 @@ class SemanticCase:
     def expected(self) -> pd.DataFrame:
         """Read the results a correct simulator produces.
 
-        The time column is `time` in most cases and `Time` in others, so it is
-        renamed; the columns of the variables are named as the settings name
-        them.
+        The first column of the results is the time and the ones after it are
+        the variables of the settings, in their order; the columns are named
+        from that rather than from the header. The header spells the time
+        `time` in most cases and `Time` in others, and a model may carry a
+        parameter of either name: case 01820 has the parameters `time`, `Time`
+        and `TIME` and a header of `Time,time,Time,TIME`, which neither a case
+        insensitive rename nor `read_csv` alone can tell apart.
 
         Returns:
             The expected results with a `time` column and one column per
             variable of the case.
+
+        Raises:
+            ValueError: If the results do not carry one column per variable.
         """
         df = pd.read_csv(self.path / f"{self.cid}-results.csv")
-        time_columns = {c: "time" for c in df.columns if c.strip().lower() == "time"}
-        return df.rename(columns=time_columns)
+        if len(df.columns) != len(self.variables) + 1:
+            raise ValueError(
+                f"Case '{self.cid}' compares {len(self.variables)} variables "
+                f"and its results have {len(df.columns)} columns, which is "
+                f"not the time and one column per variable"
+            )
+        df.columns = ["time", *self.variables]
+        return df
 
 
 @dataclass(frozen=True)
