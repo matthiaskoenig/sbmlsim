@@ -37,7 +37,7 @@ dependencies = [
 	# SBML, COMBINE archives and formula parsing
 	"sbmlutils>=0.10.1",
 	"pymetadata>=0.6.1",
-	"python-libsbml>=5.21.1",
+	"python-libsbml>=5.21.2",
 	"python-libsedml>=2.0.33",
 	# simulation
 	"libroadrunner>=2.10.0",
