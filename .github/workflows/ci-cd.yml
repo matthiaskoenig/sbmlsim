@@ -50,7 +50,7 @@ jobs:
       shell: bash
     - name: Install uv and set the python version
       # astral-sh/setup-uv publishes no floating major tag beyond v7
-      uses: astral-sh/setup-uv@v10.1.0
+      uses: astral-sh/setup-uv@v10.2.0
       with:
         python-version: ${{ matrix.python-version }}
         enable-cache: true
@@ -97,7 +97,7 @@ jobs:
         sudo apt-get update
         sudo apt-get install -y python3.14-dev
     - name: Install uv and set the python version
-      uses: astral-sh/setup-uv@v10.1.0
+      uses: astral-sh/setup-uv@v10.2.0
       with:
         python-version: "3.14"
         enable-cache: true
@@ -129,7 +129,7 @@ jobs:
         sudo apt-get update
         sudo apt-get install -y python3.14-dev
     - name: Install uv
-      uses: astral-sh/setup-uv@v10.1.0
+      uses: astral-sh/setup-uv@v10.2.0
       with:
         python-version: "3.14"
         enable-cache: true
