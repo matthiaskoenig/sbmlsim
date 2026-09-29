@@ -247,3 +247,80 @@ def test_the_sciml_extension_is_reported_and_not_a_missing_module(
     )
     with pytest.raises(ValueError, match=r"requires the extensions.*sciml"):
         from_petab(petab_iv / "problem.yaml")
+
+
+def test_round_trip_keeps_the_noise_models(petab_iv: Path, tmp_path: Path) -> None:
+    """A problem which is read and written again has the noise it had."""
+    first, second, third = _observable_ids(petab_iv)[:3]
+    _set_noise(petab_iv, first, noiseFormula=SIGMA.pid, noiseDistribution="laplace")
+    _set_noise(petab_iv, second, noiseFormula="0.1 + 2 * sd", noisePlaceholders="sd")
+    _set_noise(petab_iv, third, noiseFormula=f"0.01 + 0.1 * {third}")
+    _add_sigma(petab_iv)
+
+    def edit(df: pd.DataFrame) -> None:
+        rows = df.index[df["observableId"] == second]
+        df.loc[rows, "noiseParameters"] = ["0.25", SIGMA.pid][: len(rows)]
+
+    _edit(petab_iv / "measurements.tsv", edit)
+
+    problem, settings = from_petab(petab_iv / "problem.yaml", opid="noise")
+    problem.initialize(settings)
+    llh = log_likelihood(problem)
+
+    yaml_file = to_petab(problem, tmp_path / "again", settings=settings)
+    again, settings_again = from_petab(yaml_file, opid="noise")
+    again.initialize(settings_again)
+
+    assert len(again.noise_models) == len(problem.noise_models)
+    for k, noise in enumerate(problem.noise_models):
+        assert noise is not None
+        written = again.noise_models[k]
+        assert written is not None
+        assert written.distribution is noise.distribution
+        assert written.placeholders == noise.placeholders
+        assert written.placeholder_values == noise.placeholder_values
+        assert written.parameters == noise.parameters
+        if noise.observable is None:
+            assert written.formula == noise.formula
+        else:
+            # the observable is written under the id of its fit mapping
+            assert written.observable == again.mapping_keys[k]
+            assert written.observable in written.formula
+
+    # the parameter of the noise is written once, as it was read
+    parameters = pd.read_csv(yaml_file.parent / "parameters.tsv", sep="\t")
+    sigma = parameters[parameters["parameterId"] == SIGMA.pid]
+    assert len(sigma) == 1
+    assert sigma["nominalValue"].iloc[0] == SIGMA.value
+    assert bool(sigma["estimate"].iloc[0]) is True
+    assert sigma["lowerBound"].iloc[0] == SIGMA.lower_bound
+
+    assert log_likelihood(again) == pytest.approx(llh, rel=1e-6)
+
+
+def test_round_trip_keeps_the_default_noise(
+    op_hctz_pk: OptimizationProblem, fit_settings: FitSettings, tmp_path: Path
+) -> None:
+    """A problem without noise models has the same log-likelihood when read."""
+    op_hctz_pk.initialize(fit_settings)
+    yaml_file = to_petab(op_hctz_pk, tmp_path, settings=fit_settings)
+
+    problem, settings = from_petab(yaml_file)
+    problem.initialize(settings)
+    assert all(noise is not None for noise in problem.noise_models)
+    # up to the selections of the tasks, see the `selections` gap
+    assert log_likelihood(problem) == pytest.approx(
+        log_likelihood(op_hctz_pk), rel=1e-4
+    )
+
+
+def test_export_requires_a_value_per_measurement(
+    op_hctz_iv: OptimizationProblem, fit_settings: FitSettings, tmp_path: Path
+) -> None:
+    """A noise model which does not cover the data is not written."""
+    op_hctz_iv.initialize(fit_settings)
+    op_hctz_iv.noise_models[0] = NoiseModel(
+        formula="sd", placeholders=("sd",), placeholder_values=((0.5,),)
+    )
+    with pytest.raises(ValueError, match="placeholders"):
+        to_petab(op_hctz_iv, tmp_path, settings=fit_settings)

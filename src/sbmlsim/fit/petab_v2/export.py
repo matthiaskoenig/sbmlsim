@@ -16,6 +16,7 @@ see `sbmlsim.fit.petab_v2.extension`, and what is lost is reported by
 `sbmlsim.fit.petab_v2.gaps`.
 """
 
+import dataclasses
 import logging
 import re
 import shutil
@@ -25,10 +26,12 @@ from typing import Any
 
 import numpy as np
 import petab.v2 as petab_v2
+import sympy as sp
 from petab.models.sbml_model import SbmlModel  # ty: ignore[unresolved-import]
 from petab.v2 import Problem as PetabProblem
+from petab.v2.math import petab_math_str, sympify_petab
 
-from sbmlsim.fit.objects import EVALUATED_KINDS, MappingKind
+from sbmlsim.fit.objects import EVALUATED_KINDS, MappingKind, NoiseModel
 from sbmlsim.fit.optimization import OptimizationProblem
 from sbmlsim.fit.options import FitSettings, WeightingCurvesType
 from sbmlsim.fit.parameter_mapping import has_renamed_targets
@@ -37,6 +40,10 @@ from sbmlsim.fit.petab_v2.extension import (
     SbmlsimExtension,
 )
 from sbmlsim.fit.petab_v2.gaps import Gap, GapKind, gaps_dict, gaps_of_problem
+from sbmlsim.fit.petab_v2.likelihood import (
+    NOISE_PLACEHOLDER as NOISE_PLACEHOLDER,
+)
+from sbmlsim.fit.petab_v2.likelihood import noise_model_of
 from sbmlsim.fit.petab_v2.symbols import condition_target, observable_formula
 from sbmlsim.simulation.timecourse import Timecourse, TimecourseSim
 from sbmlsim.units import Quantity
@@ -48,12 +55,6 @@ _ID_FORBIDDEN = re.compile(r"[^0-9a-zA-Z_]")
 
 #: name of the YAML file of the problem
 YAML_FILE = "problem.yaml"
-
-#: the placeholder of the noise of a measurement, i.e. the standard deviation
-#: of its data. PEtab v2 declares the placeholders of an observable in
-#: `noisePlaceholders`; the `noiseParameter${n}_${observableId}` names of v1
-#: are gone
-NOISE_PLACEHOLDER = "sd"
 
 #: the file of every table of the problem, `to_files` skips a table without one
 TABLE_FILES: dict[str, str] = {
@@ -480,21 +481,19 @@ class PetabExporter:
             )
             self.observable_ids[k] = observable_id
 
-            errors = problem.y_errors[k]
-            # the noise of a measurement is its standard deviation, which the
-            # noise parameter of the measurement fills in. PEtab v2 declares the
-            # placeholders of an observable, the `noiseParameter${n}_${id}`
-            # names of v1 are gone
-            placeholders = [NOISE_PLACEHOLDER] if errors is not None else []
-            noise_formula = NOISE_PLACEHOLDER if errors is not None else "1.0"
+            # the noise model of the mapping, which is the one it was read
+            # with or the standard deviation of its data: the noise parameter
+            # of a measurement fills in the placeholder the observable declares
+            noise = self._noise_model(k, observable_id)
             sbml_model = self.sbml_models.get(self.model_ids[id(problem.models[k])])
             _table(petab_problem, "observable_tables").observables.append(
                 petab_v2.Observable(
                     id=observable_id,
                     name=f"{problem.experiment_keys[k]}.{problem.mapping_keys[k]}",
                     formula=observable_formula(problem.yid_observable[k], sbml_model),
-                    noise_formula=noise_formula,
-                    noise_placeholders=placeholders,
+                    noise_formula=noise.formula,
+                    noise_distribution=noise.distribution.value,
+                    noise_placeholders=list(noise.placeholders),
                 )
             )
 
@@ -510,11 +509,48 @@ class PetabExporter:
                         time=float(times[i]),
                         measurement=float(values[i]),
                         observable_parameters=[],
-                        noise_parameters=[float(errors[i])]
-                        if errors is not None
+                        noise_parameters=list(noise.placeholder_values[i])
+                        if noise.placeholders
                         else [],
                     )
                 )
+
+    def _noise_model(self, k: int, observable_id: str) -> NoiseModel:
+        """Get the noise model a fit mapping is written with.
+
+        Args:
+            k: index of the fit mapping.
+            observable_id: id of the observable the mapping is written as. The
+                symbol of the noise formula which stands for the simulation is
+                the id of the observable, so it is renamed to this id.
+
+        Returns:
+            The noise model of the mapping, see
+            `sbmlsim.fit.petab_v2.likelihood.noise_model_of`.
+
+        Raises:
+            ValueError: if the noise model does not have the values of its
+                placeholders for every measurement which is written.
+        """
+        problem = self.problem
+        noise = noise_model_of(problem, k)
+        size = len(problem.y_references[k])
+        if noise.placeholders and len(noise.placeholder_values) != size:
+            raise ValueError(
+                f"'{problem.opid}': the noise model of the fit mapping "
+                f"'{problem.mapping_keys[k]}' has '{len(noise.placeholder_values)}' "
+                f"values of its placeholders '{list(noise.placeholders)}' for "
+                f"'{size}' measurements."
+            )
+        if noise.observable is None or noise.observable == observable_id:
+            return noise
+        expression = sympify_petab(noise.formula).subs(
+            sp.Symbol(noise.observable, real=True),
+            sp.Symbol(observable_id, real=True),
+        )
+        return dataclasses.replace(
+            noise, formula=petab_math_str(expression), observable=observable_id
+        )
 
     # --- PARAMETERS ---
 
@@ -542,6 +578,44 @@ class PetabExporter:
                     estimate=True,
                 )
             )
+        self._add_noise_parameters(petab_problem)
+
+    def _add_noise_parameters(self, petab_problem: PetabProblem) -> None:
+        """Add the parameters of the noise models, every one of them once.
+
+        A parameter of a noise formula is a row of the parameter table, with
+        the nominal value the log-likelihood uses. It is written as estimated
+        if the problem it was read from estimates it, which `sbmlsim` does not
+        do, see the `noise-parameters` gap.
+
+        Raises:
+            ValueError: if two noise models give one parameter two values.
+        """
+        written: dict[str, float] = {}
+        for k in self.indices:
+            for parameter in noise_model_of(self.problem, k).parameters:
+                if parameter.pid in self.problem.pids:
+                    # a parameter of the fit, which is written already
+                    continue
+                if parameter.pid in written:
+                    if written[parameter.pid] != parameter.value:
+                        raise ValueError(
+                            f"'{self.problem.opid}': the parameter "
+                            f"'{parameter.pid}' of the noise has the values "
+                            f"'{written[parameter.pid]}' and '{parameter.value}' "
+                            f"in the noise models of two fit mappings."
+                        )
+                    continue
+                written[parameter.pid] = parameter.value
+                _table(petab_problem, "parameter_tables").parameters.append(
+                    petab_v2.Parameter(
+                        id=parameter.pid,
+                        lb=parameter.lower_bound,
+                        ub=parameter.upper_bound,
+                        nominal_value=parameter.value,
+                        estimate=parameter.estimate,
+                    )
+                )
 
     # --- EXTENSION ---
 
