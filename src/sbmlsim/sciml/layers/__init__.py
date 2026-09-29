@@ -17,6 +17,7 @@ from sbmlsim.sciml.layers import (
     convolution,
     core,
     functions,
+    normalization,
     pooling,
 )
 from sbmlsim.sciml.layers.registry import (
@@ -36,5 +37,6 @@ __all__ = [
     "convolution",
     "core",
     "functions",
+    "normalization",
     "pooling",
 ]
