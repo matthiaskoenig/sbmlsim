@@ -1383,6 +1383,31 @@ class OptimizationProblem(ObjectJSONEncoder):
             )
             raise
 
+    def _simulator_and_quantities(
+        self, x: np.ndarray
+    ) -> tuple[SimulatorSerial, Sequence[Quantity]]:
+        """Get the simulator and the parameters as quantities.
+
+        The parameters are the same for every mapping, the quantities are
+        created once and not once per mapping.
+
+        Args:
+            x: values of the parameters in the units of the model.
+
+        Returns:
+            The simulator of the problem and the quantity of every parameter.
+
+        Raises:
+            ValueError: if the problem is not initialized or if no simulator
+                is set.
+        """
+        simulator: SimulatorSerial | None = self.runner_initialized.simulator
+        if simulator is None:
+            raise ValueError(f"No simulator set on OptimizationProblem '{self.opid}'.")
+        Q_ = self.runner_initialized.Q_
+        quantities = [Q_(value, self.punits[ix]) for ix, value in enumerate(x)]
+        return simulator, quantities
+
     def predictions(
         self, x: np.ndarray, indices: Sequence[int] | None = None
     ) -> dict[int, np.ndarray]:
@@ -1403,17 +1428,28 @@ class OptimizationProblem(ObjectJSONEncoder):
             index of the mapping.
 
         Raises:
-            ValueError: if no simulator is set or if the integration of a
-                simulation failed.
+            ValueError: if the problem is not initialized, if no simulator is
+                set, if `x` does not have a value for every parameter, if an
+                index is not the index of a fit mapping or if the integration
+                of a simulation failed.
         """
-        simulator: SimulatorSerial | None = self.runner_initialized.simulator
-        if simulator is None:
-            raise ValueError(f"No simulator set on OptimizationProblem '{self.opid}'.")
-        Q_ = self.runner_initialized.Q_
-
         values = np.asarray(x, dtype=float)
-        quantities = [Q_(value, self.punits[ix]) for ix, value in enumerate(values)]
+        if values.shape != (len(self.pids),):
+            raise ValueError(
+                f"'{self.opid}': the predictions require one value per "
+                f"parameter, but '{values.size}' values are given for the "
+                f"'{len(self.pids)}' parameters '{self.pids}'."
+            )
+        simulator, quantities = self._simulator_and_quantities(values)
         evaluated = set(self.training_indices if indices is None else indices)
+        valid = set(self.indices())
+        invalid = sorted(set(evaluated) - valid)
+        if invalid:
+            raise ValueError(
+                f"'{self.opid}': the indices {', '.join(f"'{k}'" for k in invalid)} "
+                f"are not indices of fit mappings, which are '0' to "
+                f"'{len(valid) - 1}'."
+            )
         results = self._simulate_groups(
             simulator=simulator, quantities=quantities, evaluated=evaluated, x=values
         )
@@ -1482,14 +1518,7 @@ class OptimizationProblem(ObjectJSONEncoder):
             residual_data = defaultdict(list)
 
         # simulate all mappings for all experiments
-        simulator: SimulatorSerial | None = self.runner_initialized.simulator
-        if simulator is None:
-            raise ValueError(f"No simulator set on OptimizationProblem '{self.opid}'.")
-        Q_ = self.runner_initialized.Q_
-
-        # the parameters are the same for every mapping, the quantities are
-        # created once and not once per mapping
-        quantities = [Q_(value, self.punits[ix]) for ix, value in enumerate(x)]
+        simulator, quantities = self._simulator_and_quantities(x)
         evaluated = {
             k
             for k in range(len(self.mapping_keys))

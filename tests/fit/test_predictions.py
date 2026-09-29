@@ -120,7 +120,33 @@ def test_predictions_of_selected_mappings(
     x = np.asarray(op_hctz_pk.x0, dtype=float)
     indices = op_hctz_pk.validation_indices
     assert indices
-    assert sorted(op_hctz_pk.predictions(x, indices=indices)) == indices
+    predictions = op_hctz_pk.predictions(x, indices=indices)
+    assert sorted(predictions) == indices
+    for k, prediction in predictions.items():
+        assert prediction.shape == np.shape(op_hctz_pk.y_references[k])
+        assert np.all(np.isfinite(prediction))
+
+
+def test_predictions_require_a_value_per_parameter(
+    op_hctz_pk: OptimizationProblem, fit_settings: FitSettings
+) -> None:
+    """A vector of the wrong length is named and not an `IndexError`."""
+    op_hctz_pk.initialize(fit_settings)
+    x = np.asarray(op_hctz_pk.x0, dtype=float)
+    with pytest.raises(ValueError, match=r"'2' values.*'3' parameters"):
+        op_hctz_pk.predictions(x[:-1])
+
+
+def test_predictions_require_valid_indices(
+    op_hctz_pk: OptimizationProblem, fit_settings: FitSettings
+) -> None:
+    """An index which is not a fit mapping is named and not a `KeyError`."""
+    op_hctz_pk.initialize(fit_settings)
+    x = np.asarray(op_hctz_pk.x0, dtype=float)
+    with pytest.raises(ValueError, match="'999'"):
+        op_hctz_pk.predictions(x, indices=[999])
+    with pytest.raises(ValueError, match="'-1'"):
+        op_hctz_pk.predictions(x, indices=[-1])
 
 
 def test_predictions_are_not_shifted_to_the_baseline(
