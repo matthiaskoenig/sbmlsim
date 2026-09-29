@@ -70,12 +70,14 @@ A problem may hold several networks and mix the patterns.
 @dataclass
 class Network:
     sid: str
-    model: NNModel                                  # petab_sciml
-    parameters: dict[str, dict[str, np.ndarray]]    # layer id -> array name -> values
+    model: NNModel  # petab_sciml
+    parameters: dict[str, dict[str, np.ndarray]]  # layer id -> array name -> values
 
     @classmethod
     def from_files(cls, yaml_path: Path, array_path: Path | None = None) -> Network: ...
-    def forward(self, *inputs: np.ndarray, parameters: NetworkParameters | None = None) -> tuple[np.ndarray, ...]: ...
+    def forward(
+        self, *inputs: np.ndarray, parameters: NetworkParameters | None = None
+    ) -> tuple[np.ndarray, ...]: ...
     def parameter_ids(self) -> dict[str, tuple[str, str, tuple[int, ...]]]: ...
     def with_values(self, values: Mapping[str, float]) -> NetworkParameters: ...
 ```
@@ -120,19 +122,23 @@ class NetworkPattern(StrEnum):
     RHS = "rhs"
     OBSERVABLE = "observable"
 
+
 @dataclass
 class NetworkInput:
-    formula: str | None = None                      # "prey", "alpha * prey", "0.5"
-    arrays: dict[str, np.ndarray] | None = None     # condition id -> array, "0" for all
+    formula: str | None = None  # "prey", "alpha * prey", "0.5"
+    arrays: dict[str, np.ndarray] | None = None  # condition id -> array, "0" for all
+
 
 @dataclass
 class Hybridization:
     network: Network
     pattern: NetworkPattern
-    model: str                                      # id of the model in the experiment
-    inputs: dict[str, NetworkInput]                 # "<net>__input<k>__<index>" or "<net>__input<k>" for an array
-    outputs: dict[str, str]                         # "<net>__output<k>__<index>" -> target
-    frozen: set[str]                                # ids of the elements which are not estimated
+    model: str  # id of the model in the experiment
+    inputs: dict[
+        str, NetworkInput
+    ]  # "<net>__input<k>__<index>" or "<net>__input<k>" for an array
+    outputs: dict[str, str]  # "<net>__output<k>__<index>" -> target
+    frozen: set[str]  # ids of the elements which are not estimated
 ```
 
 The target of an output is an entity of the model for `RHS` and `PRE_INITIALIZATION`. For `OBSERVABLE` it is the symbol the observable formula uses, which the compiler adds to the model as a parameter.
