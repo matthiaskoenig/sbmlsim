@@ -28,12 +28,21 @@ def flatten_array(x: np.ndarray, start_dim: int = 0, end_dim: int = -1) -> np.nd
         The array with the axes `start_dim` to `end_dim` as one axis.
 
     Raises:
-        ValueError: if `start_dim` is behind `end_dim`.
+        ValueError: if an axis is out of range or `start_dim` is behind
+            `end_dim`.
     """
+    # PyTorch treats an array without axes as one with a single axis
+    ndim = max(x.ndim, 1)
+    for dim in (start_dim, end_dim):
+        if not -ndim <= dim < ndim:
+            raise ValueError(
+                f"flatten: dimension '{dim}' is out of range for an array of "
+                f"shape {x.shape}, expected the range [{-ndim}, {ndim - 1}]"
+            )
     if x.ndim == 0:
         return x.reshape(1)
-    start = start_dim % x.ndim
-    end = end_dim % x.ndim
+    start = start_dim % ndim
+    end = end_dim % ndim
     if start > end:
         raise ValueError(
             f"flatten: start_dim '{start_dim}' is behind end_dim '{end_dim}'"

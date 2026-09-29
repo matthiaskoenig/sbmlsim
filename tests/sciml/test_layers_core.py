@@ -91,3 +91,52 @@ def test_a_scalar_is_flattened_to_one_element(
     model = layer_model("Flatten", {"start_dim": 0, "end_dim": -1})
     (y,) = forward(model, {}, np.array(2.0))
     assert y.shape == (1,)
+
+
+@pytest.mark.parametrize(
+    ("args", "shape"),
+    [
+        ({"start_dim": 3, "end_dim": -1}, (2, 3, 4)),
+        ({"start_dim": 0, "end_dim": 3}, (2, 3, 4)),
+        ({"start_dim": -4, "end_dim": -1}, (2, 3, 4)),
+        ({}, (3,)),
+        ({"start_dim": 1, "end_dim": -1}, ()),
+        ({"start_dim": 0, "end_dim": 1}, ()),
+    ],
+)
+def test_flatten_with_an_axis_out_of_range(
+    layer_model: Callable[..., NNModel],
+    forward: Callable[..., tuple[np.ndarray, ...]],
+    args: dict,
+    shape: tuple[int, ...],
+) -> None:
+    """An axis which the input does not have is an error, as in PyTorch.
+
+    The default `start_dim=1` on an input without the batch axis is the case
+    which matters: it must not flatten from the axis 0 silently.
+    """
+    model = layer_model("Flatten", args)
+    with pytest.raises(ValueError, match=r"node 'layer1'.*out of range"):
+        forward(model, {}, np.zeros(shape))
+
+
+@pytest.mark.parametrize(
+    ("args", "shape", "expected"),
+    [
+        ({"start_dim": 0, "end_dim": 0}, (), (1,)),
+        ({"start_dim": -1, "end_dim": -1}, (), (1,)),
+        ({"start_dim": 0, "end_dim": -1}, (3,), (3,)),
+        ({"start_dim": -1, "end_dim": -1}, (3,), (3,)),
+    ],
+)
+def test_flatten_with_the_axes_of_torch_at_the_limit(
+    layer_model: Callable[..., NNModel],
+    forward: Callable[..., tuple[np.ndarray, ...]],
+    args: dict,
+    shape: tuple[int, ...],
+    expected: tuple[int, ...],
+) -> None:
+    """The axes at the limit of the range are valid, also for a scalar."""
+    model = layer_model("Flatten", args)
+    (y,) = forward(model, {}, np.zeros(shape))
+    assert y.shape == expected

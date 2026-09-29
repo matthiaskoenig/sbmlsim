@@ -53,6 +53,23 @@ def _resolve(value: Any, state: Mapping[str, np.ndarray]) -> Any:
     return value
 
 
+def _effective_kwargs(kwargs: Mapping[str, Any]) -> dict[str, Any]:
+    """Drop the keyword arguments of a node which do not change a value.
+
+    Args:
+        kwargs: the keyword arguments of the node.
+
+    Returns:
+        The keyword arguments without `inplace`, `_stacklevel` and a `dtype`
+        of `None`.
+    """
+    return {
+        key: value
+        for key, value in kwargs.items()
+        if key not in IGNORED_KWARGS and not (key == "dtype" and value is None)
+    }
+
+
 def _call_function(
     network: str, node: Node, backend: Backend, args: list[Any], kwargs: dict[str, Any]
 ) -> np.ndarray:
@@ -85,11 +102,7 @@ def _call_function(
             node.target,
             f"the function is not available in the backend '{backend.kind}'",
         )
-    kwargs = {
-        key: value
-        for key, value in kwargs.items()
-        if key not in IGNORED_KWARGS and not (key == "dtype" and value is None)
-    }
+    kwargs = _effective_kwargs(kwargs)
     try:
         inspect.signature(function_type.function).bind(backend, *args, **kwargs)
     except TypeError as err:
@@ -155,7 +168,9 @@ def evaluate(
 
         try:
             if node.op == CALL_MODULE:
-                value = _call_module(network, node, layers, parameters, backend, args)
+                value = _call_module(
+                    network, node, layers, parameters, backend, args, kwargs
+                )
             elif node.op in (CALL_FUNCTION, CALL_METHOD):
                 value = _call_function(network, node, backend, args, kwargs)
             else:
@@ -177,6 +192,7 @@ def _call_module(
     parameters: Mapping[str, Mapping[str, np.ndarray]],
     backend: Backend,
     args: list[Any],
+    kwargs: Mapping[str, Any],
 ) -> np.ndarray:
     """Evaluate a `call_module` node, i.e. a layer.
 
@@ -187,13 +203,15 @@ def _call_module(
         parameters: the arrays of the layers.
         backend: the backend.
         args: the resolved positional arguments, i.e. the inputs of the layer.
+        kwargs: the keyword arguments of the node, which a layer does not
+            take.
 
     Returns:
         The value of the node.
 
     Raises:
-        UnsupportedLayerError: if the layer type is not implemented or not
-            available in the backend.
+        UnsupportedLayerError: if the layer type is not implemented, not
+            available in the backend or the node has a keyword argument.
         ValueError: if the network has no layer of the id.
     """
     if node.target not in layers:
@@ -210,6 +228,13 @@ def _call_module(
             node.name,
             layer.layer_type,
             f"the layer is not available in the backend '{backend.kind}'",
+        )
+    if unknown := _effective_kwargs(kwargs):
+        raise UnsupportedLayerError(
+            network,
+            node.name,
+            layer.layer_type,
+            f"the layer does not take the keyword arguments {sorted(unknown)}",
         )
     arrays = {
         name: backend.asarray(array)

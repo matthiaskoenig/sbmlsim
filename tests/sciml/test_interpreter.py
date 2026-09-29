@@ -215,6 +215,34 @@ def test_a_node_which_the_backend_does_not_support(
         evaluate(layer_model, ARRAYS, [np.zeros(2)], ExpressionBackend())
 
 
+def test_a_keyword_argument_of_a_layer_is_not_dropped() -> None:
+    """A `call_module` node with a keyword argument the layer does not have."""
+    model = _model(
+        X,
+        _node("layer1", "call_module", "layer1", ["x"], foo=1),
+        _node("output", "output", "output", ["layer1"]),
+    )
+    with pytest.raises(UnsupportedLayerError, match=r"'net1'.*'layer1'.*'foo'") as e:
+        evaluate(model, ARRAYS, [np.zeros(2)], NumpyBackend())
+    assert (e.value.network, e.value.node, e.value.target) == (
+        "net1",
+        "layer1",
+        "Linear",
+    )
+
+
+def test_the_ignored_keyword_arguments_of_a_layer() -> None:
+    """`inplace` and a `dtype` of `None` change no value, as for a function."""
+    model = _model(
+        X,
+        _node("layer1", "call_module", "layer1", ["x"], inplace=False, dtype=None),
+        _node("output", "output", "output", ["layer1"]),
+    )
+    x = np.array([0.5, -0.25])
+    (y,) = evaluate(model, ARRAYS, [x], NumpyBackend())
+    np.testing.assert_allclose(y, WEIGHT @ x + BIAS)
+
+
 def test_a_function_is_registered_under_every_name(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
