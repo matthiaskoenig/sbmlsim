@@ -60,7 +60,14 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+# neural networks of hybrid problems (PEtab SciML), see sbmlsim.sciml
+sciml = [
+	"petab-sciml>=0.0.3",
+]
 dev = [
+	"sbmlsim[sciml]",
+	# the reference of the forward pass in the tests, never imported by the package
+	"torch>=2.14.0",
 	"bump-my-version>=1.5.1",
 	"ruff>=0.16.6",
 	"pre-commit>=4.6.2",
@@ -94,9 +101,10 @@ testpaths = ["tests"]
 # The semantic cases of the SBML Test Suite are not part of a normal run, they
 # are the conformance of libroadrunner and not of a change: `pytest -m testsuite`
 # runs them, and a release does
-addopts = "-n auto -m 'not testsuite'"
+addopts = "-n auto -m 'not testsuite and not sciml_testsuite'"
 markers = [
     "testsuite: a semantic case of the SBML Test Suite, run before a release",
+    "sciml_testsuite: a case of the PEtab SciML test suite, run before a release",
 ]
 
 [tool.ty.environment]
@@ -111,3 +119,15 @@ include = ["src", "tests", "examples", "scripts"]
 [tool.ty.terminal]
 # warnings are failures: keep the codebase free of any diagnostic
 error-on-warning = true
+
+[tool.uv.sources]
+# the CPU build of torch: the default build for linux brings 2 GB of CUDA
+# libraries, which the comparison of a forward pass does not need
+torch = [
+    { index = "pytorch-cpu", marker = "sys_platform == 'linux'" },
+]
+
+[[tool.uv.index]]
+name = "pytorch-cpu"
+url = "https://download.pytorch.org/whl/cpu"
+explicit = true
