@@ -288,3 +288,175 @@ def test_an_unknown_padding_mode(
     model = layer_model("Conv2d", {**CONV2D, "padding_mode": "mirror"})
     with pytest.raises(ValueError, match=r"node 'layer1'.*'mirror'"):
         forward(model, ARRAYS, np.ones((1, 1, 5, 5)))
+
+
+@pytest.mark.parametrize("layer_type", ["Conv2d", "ConvTranspose2d"])
+@pytest.mark.parametrize("channels", [1, 3])
+def test_the_channels_of_the_input(
+    layer_model: Callable[..., NNModel],
+    forward: Callable[..., tuple[np.ndarray, ...]],
+    layer_type: str,
+    channels: int,
+) -> None:
+    """An input with other channels than `in_channels` is an error."""
+    args = {"in_channels": 2, "out_channels": 1, "kernel_size": 3}
+    specs = LAYERS[layer_type].arrays(args)
+    arrays = {"layer1": {k: np.zeros(v.shape) for k, v in specs.items()}}
+    with pytest.raises(ValueError, match=rf"node 'layer1'.*2 channels.*got {channels}"):
+        forward(layer_model(layer_type, args), arrays, np.ones((1, channels, 5, 5)))
+    forward(layer_model(layer_type, args), arrays, np.ones((1, 2, 5, 5)))
+
+
+@pytest.mark.parametrize("layer_type", ["Conv1d", "Conv3d", "ConvTranspose2d"])
+@pytest.mark.parametrize(
+    ("in_channels", "out_channels", "groups", "match"),
+    [
+        (5, 4, 2, "in_channels"),
+        (4, 3, 2, "out_channels"),
+        (4, 4, 0, "positive"),
+    ],
+)
+def test_the_channels_must_be_divisible_by_groups(
+    layer_type: str, in_channels: int, out_channels: int, groups: int, match: str
+) -> None:
+    """The channels are split into groups, torch refuses the layer otherwise."""
+    args = {
+        "in_channels": in_channels,
+        "out_channels": out_channels,
+        "kernel_size": 2,
+        "groups": groups,
+    }
+    with pytest.raises(ValueError, match=match):
+        LAYERS[layer_type].arrays(args)
+
+
+def test_the_limit_of_the_groups(compare_layer: Callable[..., None]) -> None:
+    """One group per channel is the limit which torch accepts."""
+    args = {"in_channels": 4, "out_channels": 4, "kernel_size": 2, "groups": 4}
+    compare_layer("Conv1d", args, (4, 6))
+    compare_layer("ConvTranspose1d", args, (4, 6))
+
+
+@pytest.mark.parametrize(
+    "padding_mode",
+    ["zeros", "reflect", "replicate", "circular"],
+)
+@pytest.mark.parametrize("padding", [-1, [0, -1]])
+def test_a_negative_padding_of_a_convolution(
+    layer_model: Callable[..., NNModel],
+    forward: Callable[..., tuple[np.ndarray, ...]],
+    padding: Any,
+    padding_mode: str,
+) -> None:
+    """A convolution does not crop its input."""
+    args = {**CONV2D, "padding": padding, "padding_mode": padding_mode}
+    with pytest.raises(ValueError, match=r"node 'layer1'.*negative padding"):
+        forward(layer_model("Conv2d", args), ARRAYS, np.ones((1, 1, 5, 5)))
+
+
+@pytest.mark.parametrize(
+    "args",
+    [{"padding": -1}, {"output_padding": -1}, {"padding": [0, -1]}],
+)
+def test_a_negative_padding_of_a_transposed_convolution(
+    layer_model: Callable[..., NNModel],
+    forward: Callable[..., tuple[np.ndarray, ...]],
+    args: dict[str, Any],
+) -> None:
+    """Torch rejects a negative padding and a negative output padding."""
+    model = layer_model("ConvTranspose2d", {**CONV2D, **args})
+    with pytest.raises(ValueError, match=r"node 'layer1'.*negative"):
+        forward(model, ARRAYS, np.ones((1, 1, 5, 5)))
+
+
+@pytest.mark.parametrize(
+    ("stride", "dilation", "output_padding"),
+    [(2, 1, 2), (2, 2, 2), (1, 1, 1), (3, 2, 3), ([2, 3], [1, 1], [1, 3])],
+)
+def test_the_output_padding_is_smaller_than_stride_or_dilation(
+    layer_model: Callable[..., NNModel],
+    forward: Callable[..., tuple[np.ndarray, ...]],
+    stride: Any,
+    dilation: Any,
+    output_padding: Any,
+) -> None:
+    """The output padding must be smaller than the stride or the dilation."""
+    args = {
+        **CONV2D,
+        "stride": stride,
+        "dilation": dilation,
+        "output_padding": output_padding,
+    }
+    with pytest.raises(ValueError, match=r"node 'layer1'.*output_padding"):
+        forward(layer_model("ConvTranspose2d", args), ARRAYS, np.ones((1, 1, 5, 5)))
+
+
+@pytest.mark.parametrize(
+    ("stride", "dilation", "output_padding"),
+    [(2, 1, 1), (1, 2, 1), (3, 2, 2), (2, 3, 2), ([2, 3], [1, 2], [1, 2])],
+)
+def test_the_limit_of_the_output_padding(
+    compare_layer: Callable[..., None],
+    stride: Any,
+    dilation: Any,
+    output_padding: Any,
+) -> None:
+    """The largest output padding which torch accepts."""
+    args = {
+        **CONV2D,
+        "stride": stride,
+        "dilation": dilation,
+        "output_padding": output_padding,
+    }
+    compare_layer("ConvTranspose2d", args, (1, 4, 4))
+
+
+@pytest.mark.parametrize(
+    ("padding_mode", "padding", "size"),
+    [
+        ("reflect", 4, 4),
+        ("reflect", 5, 4),
+        ("reflect", [1, 4], 4),
+        ("circular", 5, 4),
+        ("circular", [1, 5], 4),
+    ],
+)
+def test_a_padding_larger_than_the_input(
+    layer_model: Callable[..., NNModel],
+    forward: Callable[..., tuple[np.ndarray, ...]],
+    padding_mode: str,
+    padding: Any,
+    size: int,
+) -> None:
+    """Reflect and circular padding wrap at most once, as in torch."""
+    args = {**CONV2D, "padding": padding, "padding_mode": padding_mode}
+    with pytest.raises(ValueError, match=rf"node 'layer1'.*{padding_mode}.*padding"):
+        forward(layer_model("Conv2d", args), ARRAYS, np.ones((1, 1, size, size)))
+
+
+@pytest.mark.parametrize(
+    ("padding_mode", "padding"),
+    [("reflect", 3), ("reflect", [3, 1]), ("circular", 4), ("replicate", 9)],
+)
+def test_the_limit_of_the_padding(
+    compare_layer: Callable[..., None], padding_mode: str, padding: Any
+) -> None:
+    """The largest padding which torch accepts."""
+    args = {**CONV2D, "padding": padding, "padding_mode": padding_mode}
+    compare_layer("Conv2d", args, (1, 4, 4))
+
+
+@pytest.mark.parametrize(
+    ("layer_type", "padding"),
+    [("Conv2d", "full"), ("ConvTranspose2d", "same"), ("ConvTranspose2d", "valid")],
+)
+def test_an_unknown_padding(
+    layer_model: Callable[..., NNModel],
+    forward: Callable[..., tuple[np.ndarray, ...]],
+    layer_type: str,
+    padding: str,
+) -> None:
+    """A padding string which the layer does not have is an error which names it."""
+    model = layer_model(layer_type, {**CONV2D, "padding": padding})
+    with pytest.raises(ValueError, match=rf"node 'layer1'.*padding.*'{padding}'"):
+        forward(model, ARRAYS, np.ones((1, 1, 5, 5)))

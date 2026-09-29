@@ -26,32 +26,130 @@ PADDING_MODES: dict[str, str] = {
 }
 
 
+def check_groups(args: Mapping[str, Any]) -> int:
+    """Get the number of groups of a layer and check the channels against it.
+
+    Args:
+        args: the arguments of the layer.
+
+    Returns:
+        The number of groups.
+
+    Raises:
+        ValueError: if the groups are not positive or the input or the output
+            channels are not divisible by them.
+    """
+    groups = args.get("groups", 1)
+    if groups < 1:
+        raise ValueError(f"groups must be a positive integer, got {groups}")
+    for name in ("in_channels", "out_channels"):
+        if args[name] % groups != 0:
+            raise ValueError(
+                f"{name} ({args[name]}) must be divisible by groups ({groups})"
+            )
+    return groups
+
+
+def layer_arrays(
+    n: int, args: Mapping[str, Any], transposed: bool
+) -> dict[str, ArraySpec]:
+    """Get the arrays of a convolution with `n` spatial dimensions.
+
+    Args:
+        n: the number of spatial dimensions.
+        args: the arguments of the layer.
+        transposed: whether the layer is a transposed convolution, whose weight
+            has the input channels first.
+
+    Returns:
+        The `weight` and, unless `bias` is `False`, the `bias`.
+    """
+    groups = check_groups(args)
+    c_in, c_out = args["in_channels"], args["out_channels"]
+    channels = (c_in, c_out // groups) if transposed else (c_out, c_in // groups)
+    arrays = {"weight": ArraySpec((*channels, *as_tuple(args["kernel_size"], n)))}
+    if args.get("bias", True):
+        arrays["bias"] = ArraySpec((c_out,))
+    return arrays
+
+
 def conv_arrays(n: int, args: Mapping[str, Any]) -> dict[str, ArraySpec]:
     """Get the arrays of a convolution layer with `n` spatial dimensions."""
-    kernel_size = as_tuple(args["kernel_size"], n)
-    groups = args.get("groups", 1)
-    arrays = {
-        "weight": ArraySpec(
-            (args["out_channels"], args["in_channels"] // groups, *kernel_size)
-        )
-    }
-    if args.get("bias", True):
-        arrays["bias"] = ArraySpec((args["out_channels"],))
-    return arrays
+    return layer_arrays(n, args, transposed=False)
 
 
 def conv_transpose_arrays(n: int, args: Mapping[str, Any]) -> dict[str, ArraySpec]:
     """Get the arrays of a transposed convolution with `n` spatial dimensions."""
-    kernel_size = as_tuple(args["kernel_size"], n)
-    groups = args.get("groups", 1)
-    arrays = {
-        "weight": ArraySpec(
-            (args["in_channels"], args["out_channels"] // groups, *kernel_size)
+    return layer_arrays(n, args, transposed=True)
+
+
+def check_channels(x: np.ndarray, args: Mapping[str, Any], name: str) -> None:
+    """Check the channels of a batched input against the layer.
+
+    Args:
+        x: input of shape `(N, C_in, *spatial)`.
+        args: the arguments of the layer.
+        name: the name of the layer, for the message of the error.
+
+    Raises:
+        ValueError: if the input does not have `in_channels` channels.
+    """
+    if x.shape[1] != args["in_channels"]:
+        raise ValueError(
+            f"{name}: expected the input {x.shape} to have {args['in_channels']} "
+            f"channels, but got {x.shape[1]}"
         )
-    }
-    if args.get("bias", True):
-        arrays["bias"] = ArraySpec((args["out_channels"],))
-    return arrays
+
+
+def check_padding(padding: Sequence[int], name: str) -> None:
+    """Check that a padding is not negative.
+
+    Args:
+        padding: the padding per spatial axis.
+        name: the name of the argument, for the message of the error.
+
+    Raises:
+        ValueError: if a padding is negative.
+    """
+    if any(p < 0 for p in padding):
+        raise ValueError(f"negative {name} is not supported, got {list(padding)}")
+
+
+def check_padding_mode(
+    shape: Sequence[int],
+    before: Sequence[int],
+    after: Sequence[int],
+    padding_mode: str,
+) -> None:
+    """Check that the padding of a mode fits the input, as PyTorch does.
+
+    Args:
+        shape: the spatial shape of the input.
+        before: padding in front of every spatial axis.
+        after: padding behind every spatial axis.
+        padding_mode: the `padding_mode` of the layer.
+
+    Raises:
+        ValueError: if a `reflect` padding is not smaller than the input or a
+            `circular` padding is larger than the input, which would reflect
+            or wrap more than once.
+    """
+    if padding_mode not in ("reflect", "circular"):
+        return
+    limit = 1 if padding_mode == "reflect" else 0
+    for size, b, a in zip(shape, before, after, strict=True):
+        if max(b, a) > size - limit:
+            raise ValueError(
+                f"Conv: the {padding_mode} padding {max(b, a)} must be "
+                f"{'smaller than' if limit else 'at most'} the input size {size}"
+            )
+
+
+def add_bias(y: np.ndarray, arrays: Mapping[str, np.ndarray]) -> np.ndarray:
+    """Add the bias of a layer per output channel, if it has one."""
+    if "bias" not in arrays:
+        return y
+    return y + arrays["bias"].reshape((1, -1) + (1,) * (y.ndim - 2))
 
 
 def correlate(
@@ -118,11 +216,16 @@ def conv(
         // stride + 1`.
 
     Raises:
-        ValueError: if the padding mode is not known or `same` is combined
-            with a stride.
+        ValueError: if the input does not have `in_channels` channels, the
+            channels are not divisible by the groups, the padding is negative
+            or not known, `same` is combined with a stride, the padding mode is
+            not known or a `reflect` or `circular` padding does not fit the
+            input.
     """
     weight = arrays["weight"]
     x, unbatched = add_batch(x, n, "Conv")
+    check_channels(x, args, "Conv")
+    groups = check_groups(args)
     stride = as_tuple(args.get("stride", 1), n)
     dilation = as_tuple(args.get("dilation", 1), n)
     padding = args.get("padding", 0)
@@ -134,16 +237,22 @@ def conv(
         total = [d * (k - 1) for k, d in zip(weight.shape[2:], dilation, strict=True)]
         before = tuple(t // 2 for t in total)
         after = tuple(t - t // 2 for t in total)
+    elif isinstance(padding, str):
+        raise ValueError(
+            f"Conv: padding '{padding}' is not known, use an integer, one per "
+            "axis, 'valid' or 'same'"
+        )
     else:
         before = after = as_tuple(padding, n)
+        check_padding(before, "padding")
     padding_mode = args.get("padding_mode", "zeros")
     if padding_mode not in PADDING_MODES:
         raise ValueError(f"Conv: padding_mode '{padding_mode}' is not known")
+    check_padding_mode(x.shape[2:], before, after, padding_mode)
     x = pad_spatial(x, before, after, mode=PADDING_MODES[padding_mode])
 
-    y = correlate(x, weight, stride, dilation, args.get("groups", 1))
-    if "bias" in arrays:
-        y = y + arrays["bias"].reshape((1, -1) + (1,) * n)
+    y = correlate(x, weight, stride, dilation, groups)
+    y = add_bias(y, arrays)
     return y[0] if unbatched else y
 
 
@@ -174,17 +283,35 @@ def conv_transpose(
         (kernel_size - 1) + output_padding + 1`.
 
     Raises:
-        ValueError: if the padding mode is not `zeros`.
+        ValueError: if the input does not have `in_channels` channels, the
+            channels are not divisible by the groups, the padding mode is not
+            `zeros`, the padding is a string or negative, the output padding is
+            negative or not smaller than either the stride or the dilation.
     """
     weight = arrays["weight"]
     x, unbatched = add_batch(x, n, "ConvTranspose")
+    check_channels(x, args, "ConvTranspose")
+    groups = check_groups(args)
     if args.get("padding_mode", "zeros") != "zeros":
         raise ValueError("ConvTranspose: only the padding_mode 'zeros' exists")
     stride = as_tuple(args.get("stride", 1), n)
     dilation = as_tuple(args.get("dilation", 1), n)
+    if isinstance(args.get("padding", 0), str):
+        raise ValueError(
+            f"ConvTranspose: padding '{args['padding']}' is not known, use an "
+            "integer or one per axis"
+        )
     padding = as_tuple(args.get("padding", 0), n)
     output_padding = as_tuple(args.get("output_padding", 0), n)
-    groups = args.get("groups", 1)
+    check_padding(padding, "padding")
+    check_padding(output_padding, "output_padding")
+    if any(
+        o >= max(s, d) for o, s, d in zip(output_padding, stride, dilation, strict=True)
+    ):
+        raise ValueError(
+            f"ConvTranspose: output_padding {list(output_padding)} must be smaller "
+            f"than either stride {list(stride)} or dilation {list(dilation)}"
+        )
 
     # the input with `stride - 1` zeros between its elements
     shape = (
@@ -210,6 +337,5 @@ def conv_transpose(
     kernel = np.concatenate(kernels, axis=0)
 
     y = correlate(spread, kernel, (1,) * n, dilation, groups)
-    if "bias" in arrays:
-        y = y + arrays["bias"].reshape((1, -1) + (1,) * n)
+    y = add_bias(y, arrays)
     return y[0] if unbatched else y
