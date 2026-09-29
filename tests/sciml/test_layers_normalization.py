@@ -192,3 +192,112 @@ def test_a_constant_input_is_normalized_to_zero(
     model = layer_model("InstanceNorm1d", {"num_features": 2})
     (y,) = forward(model, {}, np.full((1, 2, 5), 3.0))
     np.testing.assert_array_equal(y, np.zeros((1, 2, 5)))
+
+
+def test_stored_statistics_accept_a_single_value_per_channel(
+    compare_layer: Callable[..., None],
+) -> None:
+    """Stored statistics need no more than one value per channel, as in PyTorch."""
+    compare_layer("BatchNorm1d", {"num_features": 3}, (1, 3))
+    compare_layer("BatchNorm2d", {"num_features": 3}, (1, 3, 1, 1))
+    compare_layer(
+        "InstanceNorm1d", {"num_features": 3, "track_running_stats": True}, (2, 3, 1)
+    )
+    compare_layer(
+        "InstanceNorm1d", {"num_features": 3, "track_running_stats": True}, (3, 1)
+    )
+
+
+@pytest.mark.parametrize(
+    ("layer_type", "args", "shape"),
+    [
+        ("BatchNorm1d", {"num_features": 3}, (4, 1, 5)),
+        ("BatchNorm1d", {"num_features": 3}, (4, 5, 5)),
+        ("BatchNorm1d", {"num_features": 3, "affine": False}, (4, 1, 5)),
+        ("BatchNorm2d", {"num_features": 3, "affine": True}, (4, 1, 5, 5)),
+        ("InstanceNorm1d", {"num_features": 3, "affine": True}, (4, 1, 6)),
+        ("InstanceNorm1d", {"num_features": 3}, (4, 5, 6)),
+        ("InstanceNorm2d", {"num_features": 3}, (1, 5, 5)),
+    ],
+)
+def test_a_wrong_number_of_channels_is_rejected(
+    layer_model: Callable[..., NNModel],
+    forward: Callable[..., tuple[np.ndarray, ...]],
+    rng: np.random.Generator,
+    layer_type: str,
+    args: dict[str, Any],
+    shape: tuple[int, ...],
+) -> None:
+    """The channels of the input are `num_features`, whatever the arrays are."""
+    arrays = {
+        "weight": np.ones(3),
+        "bias": np.zeros(3),
+        "running_mean": np.zeros(3),
+        "running_var": np.ones(3),
+    }
+    for stored in (arrays, {"weight": arrays["weight"], "bias": arrays["bias"]}, {}):
+        parameters = {
+            "layer1": {k: v for k, v in stored.items() if k in _spec(layer_type, args)}
+        }
+        with pytest.raises(ValueError, match=r"node 'layer1'.*num_features 3"):
+            forward(layer_model(layer_type, args), parameters, rng.normal(size=shape))
+
+
+def _spec(layer_type: str, args: dict[str, Any]) -> list[str]:
+    """Get the names of the arrays of a layer."""
+    return list(LAYERS[layer_type].arrays(args))
+
+
+@pytest.mark.parametrize(
+    ("layer_type", "args", "shape"),
+    [
+        ("BatchNorm1d", {"num_features": 3, "track_running_stats": False}, (1, 3)),
+        ("BatchNorm1d", {"num_features": 3}, (1, 3, 1)),
+        ("BatchNorm2d", {"num_features": 3}, (1, 3, 1, 1)),
+        ("InstanceNorm1d", {"num_features": 3}, (2, 3, 1)),
+        ("InstanceNorm1d", {"num_features": 3}, (3, 1)),
+        ("InstanceNorm2d", {"num_features": 3}, (3, 1, 1)),
+    ],
+)
+def test_statistics_of_a_single_value_are_rejected(
+    layer_model: Callable[..., NNModel],
+    forward: Callable[..., tuple[np.ndarray, ...]],
+    rng: np.random.Generator,
+    layer_type: str,
+    args: dict[str, Any],
+    shape: tuple[int, ...],
+) -> None:
+    """Without stored statistics the input needs more than one value per channel."""
+    parameters = (
+        {"layer1": {"weight": np.ones(3), "bias": np.zeros(3)}}
+        if layer_type.startswith("Batch")
+        else {}
+    )
+    with pytest.raises(ValueError, match=r"node 'layer1'.*more than one value"):
+        forward(layer_model(layer_type, args), parameters, rng.normal(size=shape))
+
+
+@pytest.mark.parametrize("missing", ["running_mean", "running_var"])
+def test_a_single_running_statistic_is_rejected(
+    layer_model: Callable[..., NNModel],
+    forward: Callable[..., tuple[np.ndarray, ...]],
+    rng: np.random.Generator,
+    missing: str,
+) -> None:
+    """The running statistics are both stored or both not."""
+    stored = {"running_mean": np.zeros(3), "running_var": np.ones(3)}
+    del stored[missing]
+    model = layer_model("BatchNorm1d", {"num_features": 3, "affine": False})
+    with pytest.raises(
+        ValueError, match=r"node 'layer1'.*running_mean and running_var"
+    ):
+        forward(model, {"layer1": stored}, rng.normal(size=(4, 3, 5)))
+
+
+def test_the_axes_of_a_batch_norm_1d_are_named(
+    layer_model: Callable[..., NNModel], forward: Callable[..., tuple[np.ndarray, ...]]
+) -> None:
+    """`BatchNorm1d` takes 2 or 3 axes, and the message says so."""
+    model = layer_model("BatchNorm1d", {"num_features": 3, "affine": False})
+    with pytest.raises(ValueError, match=r"node 'layer1'.*2 or 3 axes"):
+        forward(model, {}, np.ones(3))

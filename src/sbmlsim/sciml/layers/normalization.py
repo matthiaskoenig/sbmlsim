@@ -54,34 +54,58 @@ def instance_norm_arrays(n: int, args: Mapping[str, Any]) -> dict[str, ArraySpec
 
 
 def normalize(
+    name: str,
     x: np.ndarray,
+    args: Mapping[str, Any],
     arrays: Mapping[str, np.ndarray],
-    eps: float,
     axes: tuple[int, ...],
     channel_axis: int,
 ) -> np.ndarray:
     """Normalize an input per channel.
 
     Args:
+        name: the name of the layer type, for the messages.
         x: the input.
+        args: the arguments of the layer, `num_features` and `eps`.
         arrays: the arrays of the layer, all of them of shape `(C,)`.
-        eps: the value added to the variance.
         axes: the axes the statistics are calculated over when the layer
             stores none.
         channel_axis: the axis of the channels.
 
     Returns:
         The normalized input.
+
+    Raises:
+        ValueError: if the input has not `num_features` channels, if only one
+            of the running statistics is stored, or if the statistics are
+            calculated from a single value per channel.
     """
+    if x.shape[channel_axis] != args["num_features"]:
+        raise ValueError(
+            f"{name}: the input has {x.shape[channel_axis]} channels on axis "
+            f"{channel_axis}, expected num_features {args['num_features']}"
+        )
     shape = [1] * x.ndim
     shape[channel_axis] = -1
-    if "running_mean" in arrays and "running_var" in arrays:
+    stored = [key for key in ("running_mean", "running_var") if key in arrays]
+    if len(stored) == 1:
+        raise ValueError(
+            f"{name}: the arrays hold {stored[0]} but not the other running "
+            "statistic, running_mean and running_var are stored together"
+        )
+    if stored:
         mean = arrays["running_mean"].reshape(shape)
         var = arrays["running_var"].reshape(shape)
     else:
+        size = int(np.prod([x.shape[axis] for axis in axes]))
+        if size == 1:
+            raise ValueError(
+                f"{name}: without stored statistics the input needs more than "
+                f"one value per channel, got input of shape {x.shape}"
+            )
         mean = x.mean(axis=axes, keepdims=True)
         var = x.var(axis=axes, keepdims=True)
-    y = (x - mean) / np.sqrt(var + eps)
+    y = (x - mean) / np.sqrt(var + args.get("eps", 1e-5))
     if "weight" in arrays:
         y = y * arrays["weight"].reshape(shape)
     if "bias" in arrays:
@@ -117,11 +141,15 @@ def batch_norm(
     """
     if x.ndim != n + 2 and not (n == 1 and x.ndim == 2):
         raise ValueError(
-            f"BatchNorm{n}d: the input has {x.ndim} axes, expected {n + 2} "
-            f"(N, C and {n} spatial axes)"
+            f"BatchNorm{n}d: the input has {x.ndim} axes, expected "
+            + (
+                "2 or 3 axes (N, C and at most 1 spatial axis)"
+                if n == 1
+                else f"{n + 2} axes (N, C and {n} spatial axes)"
+            )
         )
     axes = (0, *range(2, x.ndim))
-    return normalize(x, arrays, args.get("eps", 1e-5), axes, channel_axis=1)
+    return normalize(f"BatchNorm{n}d", x, args, arrays, axes, channel_axis=1)
 
 
 @layer_nd("InstanceNorm{n}d", arrays=instance_norm_arrays, backends=NUMPY_ONLY)
@@ -157,7 +185,7 @@ def instance_norm(
         )
     axes = tuple(range(x.ndim - n, x.ndim))
     return normalize(
-        x, arrays, args.get("eps", 1e-5), axes, channel_axis=x.ndim - n - 1
+        f"InstanceNorm{n}d", x, args, arrays, axes, channel_axis=x.ndim - n - 1
     )
 
 
