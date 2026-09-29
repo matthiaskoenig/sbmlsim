@@ -20,6 +20,9 @@ from .objects import (
     FitParameter,
     MappingKind,
     MappingMetaData,
+    NoiseDistribution,
+    NoiseModel,
+    NoiseParameter,
 )
 from .options import FitSettings
 from .parameters import ParameterSet, ParameterSets
@@ -33,6 +36,9 @@ __all__ = [
     "FitSettings",
     "MappingKind",
     "MappingMetaData",
+    "NoiseDistribution",
+    "NoiseModel",
+    "NoiseParameter",
     "ParameterSet",
     "ParameterSets",
 ]
