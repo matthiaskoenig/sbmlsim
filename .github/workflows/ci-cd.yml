@@ -104,6 +104,9 @@ jobs:
     - name: Run the semantic cases against the pinned release
       # against the pinned release, which is the one the baseline records
       run: uvx --with tox-uv tox -e testsuite
+    - name: Run the cases of the PEtab SciML test suite against the pinned commit
+      # against the pinned commit, which is the one the baseline records
+      run: uvx --with tox-uv tox -e sciml
 
   release:
     needs: [tests, testsuite]

@@ -1,0 +1,11 @@
+{
+  "suite_commit": "0622bbfc5e12eb9b482659eabd1756ca0e87dfc8",
+  "n_cases": 57,
+  "n_passed": 56,
+  "expected_failures": {
+    "ml_model_import/020": {
+      "status": "tolerance",
+      "reason": "AlphaDropout: the reference values are the mean of 40000 forward passes in training mode, which for AlphaDropout is not the input. sbmlsim evaluates dropout in evaluation mode, where it is the identity (gap sciml-training-mode)"
+    }
+  }
+}
