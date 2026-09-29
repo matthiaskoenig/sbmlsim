@@ -239,9 +239,11 @@ def noise_values(
 def default_noise_model(errors: ArrayLike | None) -> NoiseModel:
     """Get the noise model of a fit mapping which does not define one.
 
-    The noise is normal with the standard deviation of the reference data,
-    through the placeholder `NOISE_PLACEHOLDER`, and with `DEFAULT_SIGMA` for
-    data without errors. This is what the export writes for such a mapping, so
+    The noise is normal and its standard deviation is the error of the
+    reference data as the problem resolves it (the SD, the SE without one, the
+    largest error of the curve for a point without one), through the
+    placeholder `NOISE_PLACEHOLDER`, and `DEFAULT_SIGMA` for data without
+    errors. This is what the export writes for such a mapping, so
     the log-likelihood of a problem and of its PEtab problem agree.
 
     Args:
