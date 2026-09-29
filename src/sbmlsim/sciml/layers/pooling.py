@@ -70,11 +70,27 @@ def pool_arguments(
     Returns:
         `kernel_size`, `stride` (the kernel size when it is not given) and
         `padding` (default `0`), each per spatial axis.
+
+    Raises:
+        ValueError: if the kernel size or the stride is below 1, or if the
+            padding is negative or larger than half of the kernel size, which
+            PyTorch refuses as well. The limit is the kernel size and not its
+            extent with the dilation.
     """
     kernel_size = as_tuple(args["kernel_size"], n)
-    stride = args.get("stride")
+    stride_arg = args.get("stride")
+    stride = kernel_size if stride_arg is None else as_tuple(stride_arg, n)
     padding = as_tuple(args.get("padding", 0), n)
-    return kernel_size, kernel_size if stride is None else as_tuple(stride, n), padding
+    if any(k < 1 for k in kernel_size):
+        raise ValueError(f"kernel_size must be at least 1, got {kernel_size}")
+    if any(s < 1 for s in stride):
+        raise ValueError(f"stride must be at least 1, got {stride}")
+    if any(p < 0 or p > k // 2 for p, k in zip(padding, kernel_size, strict=True)):
+        raise ValueError(
+            f"padding must be between 0 and half of kernel_size, got "
+            f"padding={padding} and kernel_size={kernel_size}"
+        )
+    return kernel_size, stride, padding
 
 
 def average(
@@ -119,6 +135,10 @@ def average(
     count = pooled_windows(
         counted, kernel_size, stride, padding, ones, ceil_mode, value=0.0
     ).sum(axis=kernel_axes)
+    # the drop rule of the ceil mode depends on the size of the array, which the
+    # padding with ones changes: the first windows are the same, keep those of
+    # the original geometry
+    count = count[(slice(None), slice(None), *(slice(0, m) for m in total.shape[2:]))]
     return total / count
 
 
@@ -191,7 +211,17 @@ def avg_pool(
         The output of shape `(N, C, *output)` or `(C, *output)` with `output =
         (spatial + 2 * padding - kernel_size) // stride + 1`, rounded up in
         `ceil_mode`.
+
+    Raises:
+        ValueError: if `divisor_override` is given for `AvgPool1d`, which has no
+            such argument, or if it is zero.
     """
+    divisor_override = args.get("divisor_override")
+    if divisor_override is not None:
+        if n == 1:
+            raise ValueError("divisor_override is not an argument of AvgPool1d")
+        if divisor_override == 0:
+            raise ValueError("divisor_override must not be zero")
     x, unbatched = add_batch(x, n, "AvgPool")
     kernel_size, stride, padding = pool_arguments(args, n)
     y = average(
@@ -201,7 +231,7 @@ def avg_pool(
         padding,
         args.get("ceil_mode", False),
         args.get("count_include_pad", True),
-        args.get("divisor_override"),
+        divisor_override,
     )
     return y[0] if unbatched else y
 
@@ -232,16 +262,37 @@ def lp_pool(
         The output `(sum(x ** norm_type)) ** (1 / norm_type)` over every
         window, of shape `(N, C, *output)` or `(C, *output)` with `output =
         (spatial - kernel_size) // stride + 1`, rounded up in `ceil_mode`.
+
+    Raises:
+        ValueError: if `norm_type` is zero.
     """
     x, unbatched = add_batch(x, n, "LPPool")
     kernel_size, stride, _ = pool_arguments(args, n)
     norm_type = float(args["norm_type"])
+    ceil_mode = args.get("ceil_mode", False)
+    if norm_type == 0:
+        raise ValueError("norm_type must be a non-zero value, got 0")
+    if np.isinf(norm_type):
+        # the limit of the p-norm: the largest (or, for -inf, the smallest)
+        # absolute value of a window, as PyTorch calculates it
+        sign = 1.0 if norm_type > 0 else -1.0
+        view = pooled_windows(
+            sign * np.abs(x),
+            kernel_size,
+            stride,
+            (0,) * n,
+            (1,) * n,
+            ceil_mode,
+            value=-np.inf,
+        )
+        y = sign * view.max(axis=tuple(range(2 + n, 2 + 2 * n)))
+        return y[0] if unbatched else y
     mean = average(
         x**norm_type,
         kernel_size,
         stride,
         (0,) * n,
-        args.get("ceil_mode", False),
+        ceil_mode,
         count_include_pad=True,
         divisor_override=None,
     )
@@ -273,8 +324,16 @@ def adaptive(
 
     Returns:
         The output of shape `(N, C, *output_size)` or `(C, *output_size)`.
+
+    Raises:
+        ValueError: if `output_size` does not have one entry per spatial axis,
+            or if an entry is below 1 (an empty output is not supported).
     """
     sizes = list(output) if isinstance(output, (list, tuple)) else [output] * n
+    if len(sizes) != n:
+        raise ValueError(f"output_size must have {n} entries, got {sizes}")
+    if any(size is not None and size < 1 for size in sizes):
+        raise ValueError(f"output_size must be at least 1, got {sizes}")
     x, unbatched = add_batch(x, n, name)
     for k, n_out in enumerate(sizes):
         axis = 2 + k

@@ -98,6 +98,32 @@ POOL_CASES: list[tuple[str, dict[str, Any], tuple[int, ...]]] = [
         {"kernel_size": 2, "stride": [1, 2, 3], "padding": 1},
         (2, 2, 5, 6, 7),
     ),
+    # the drop rule of the ceil mode with a padding which counts
+    (
+        "AvgPool1d",
+        {"kernel_size": 2, "stride": 2, "padding": 1, "ceil_mode": True},
+        (2, 3, 5),
+    ),
+    (
+        "AvgPool1d",
+        {"kernel_size": 2, "stride": 2, "padding": 1, "ceil_mode": True},
+        (2, 3, 1),
+    ),
+    (
+        "AvgPool2d",
+        {"kernel_size": 2, "stride": 2, "padding": 1, "ceil_mode": True},
+        (1, 1, 5, 5),
+    ),
+    (
+        "AvgPool2d",
+        {"kernel_size": 2, "stride": 2, "padding": 1, "ceil_mode": True},
+        (2, 3, 1, 1),
+    ),
+    (
+        "AvgPool3d",
+        {"kernel_size": 2, "stride": 2, "padding": 1, "ceil_mode": True},
+        (2, 2, 5, 3, 3),
+    ),
     (
         "AdaptiveMaxPool3d",
         {"output_size": [3, 2, 1], "return_indices": False},
@@ -110,6 +136,12 @@ POOL_CASES: list[tuple[str, dict[str, Any], tuple[int, ...]]] = [
     ("AdaptiveAvgPool1d", {"output_size": 4}, (2, 3, 11)),
     ("AdaptiveAvgPool2d", {"output_size": [3, None]}, (2, 3, 10, 7)),
     ("AdaptiveAvgPool2d", {"output_size": 5}, (3, 10, 7)),
+    # the padding at the limit of half the kernel size, the limit ignores the dilation
+    ("MaxPool1d", {"kernel_size": 2, "padding": 1}, (2, 3, 5)),
+    ("MaxPool1d", {"kernel_size": 3, "padding": 1, "dilation": 2}, (2, 3, 5)),
+    ("AvgPool1d", {"kernel_size": 3, "padding": 1}, (2, 3, 5)),
+    ("AvgPool2d", {"kernel_size": [3, 2], "padding": [1, 1]}, (2, 3, 5, 5)),
+    ("MaxPool3d", {"kernel_size": 2, "padding": 1}, (1, 2, 4, 4, 4)),
     # more outputs than inputs, the windows overlap
     ("AdaptiveAvgPool1d", {"output_size": 7}, (2, 3, 4)),
 ]
@@ -121,6 +153,24 @@ LP_POOL_CASES: list[tuple[str, dict[str, Any], tuple[int, ...]]] = [
         (2, 7, 6, 5),
     ),
     ("LPPool1d", {"norm_type": 1, "kernel_size": 3, "stride": 2}, (2, 3, 11)),
+    ("LPPool1d", {"norm_type": -2, "kernel_size": 3}, (2, 3, 11)),
+    ("LPPool1d", {"norm_type": float("inf"), "kernel_size": 2}, (2, 3, 11)),
+    ("LPPool1d", {"norm_type": -float("inf"), "kernel_size": 2}, (2, 3, 11)),
+    (
+        "LPPool1d",
+        {"norm_type": float("inf"), "kernel_size": 3, "ceil_mode": True},
+        (2, 3, 11),
+    ),
+    (
+        "LPPool2d",
+        {"norm_type": float("inf"), "kernel_size": [2, 3], "stride": [1, 2]},
+        (2, 3, 6, 8),
+    ),
+    (
+        "LPPool3d",
+        {"norm_type": -float("inf"), "kernel_size": 2, "stride": 1},
+        (1, 2, 4, 4, 4),
+    ),
     ("LPPool1d", {"norm_type": 3, "kernel_size": 3, "ceil_mode": True}, (2, 3, 11)),
     ("LPPool2d", {"norm_type": 2, "kernel_size": [3, 2], "stride": [2, 1]}, (3, 9, 8)),
     (
@@ -193,3 +243,99 @@ def test_a_window_larger_than_the_input(
     """An input which is smaller than the kernel is an error, not an empty array."""
     with pytest.raises(ValueError, match=r"node 'layer1'.*larger than the input"):
         forward(layer_model("MaxPool2d", {"kernel_size": 3}), {}, np.ones((1, 2, 5)))
+
+
+@pytest.mark.parametrize("n", [1, 2, 3])
+@pytest.mark.parametrize("layer_type", ["MaxPool", "AvgPool"])
+def test_a_padding_above_half_the_kernel_is_an_error(
+    layer_model: Callable[..., NNModel],
+    forward: Callable[..., tuple[np.ndarray, ...]],
+    layer_type: str,
+    n: int,
+) -> None:
+    """PyTorch refuses a padding of more than half the kernel size."""
+    args = {"kernel_size": 2, "padding": [1] * (n - 1) + [2]}
+    with pytest.raises(ValueError, match=r"node 'layer1'.*padding.*kernel_size"):
+        forward(layer_model(f"{layer_type}{n}d", args), {}, np.ones((1, *(6,) * n)))
+
+
+def test_a_padding_without_a_kernel_is_an_error(
+    layer_model: Callable[..., NNModel], forward: Callable[..., tuple[np.ndarray, ...]]
+) -> None:
+    """A kernel of the size 1 has no padding, the padding is never a NaN."""
+    args = {"kernel_size": 1, "padding": 1, "count_include_pad": False}
+    with pytest.raises(ValueError, match=r"node 'layer1'.*padding"):
+        forward(layer_model("AvgPool1d", args), {}, np.ones((1, 5)))
+
+
+@pytest.mark.parametrize("layer_type", ["MaxPool1d", "AvgPool1d", "LPPool1d"])
+@pytest.mark.parametrize("name", ["kernel_size", "stride"])
+def test_a_kernel_and_a_stride_are_positive(
+    layer_model: Callable[..., NNModel],
+    forward: Callable[..., tuple[np.ndarray, ...]],
+    layer_type: str,
+    name: str,
+) -> None:
+    """PyTorch refuses a kernel size and a stride below 1."""
+    args = {"norm_type": 2, "kernel_size": 2, name: 0}
+    with pytest.raises(ValueError, match=rf"node 'layer1'.*{name}"):
+        forward(layer_model(layer_type, args), {}, np.ones((1, 5)))
+
+
+def test_a_divisor_of_zero_is_an_error(
+    layer_model: Callable[..., NNModel], forward: Callable[..., tuple[np.ndarray, ...]]
+) -> None:
+    """`divisor_override` of zero is refused by PyTorch."""
+    args = {"kernel_size": 2, "divisor_override": 0}
+    with pytest.raises(ValueError, match=r"node 'layer1'.*divisor_override"):
+        forward(layer_model("AvgPool2d", args), {}, np.ones((1, 4, 4)))
+
+
+def test_avg_pool1d_has_no_divisor_override(
+    layer_model: Callable[..., NNModel], forward: Callable[..., tuple[np.ndarray, ...]]
+) -> None:
+    """`AvgPool1d` of PyTorch has no `divisor_override`."""
+    args = {"kernel_size": 2, "divisor_override": 2}
+    with pytest.raises(ValueError, match=r"node 'layer1'.*divisor_override"):
+        forward(layer_model("AvgPool1d", args), {}, np.ones((1, 4)))
+
+
+def test_a_norm_type_of_zero_is_an_error(
+    layer_model: Callable[..., NNModel], forward: Callable[..., tuple[np.ndarray, ...]]
+) -> None:
+    """PyTorch refuses `norm_type` 0."""
+    args = {"norm_type": 0, "kernel_size": 2}
+    with pytest.raises(ValueError, match=r"node 'layer1'.*norm_type"):
+        forward(layer_model("LPPool1d", args), {}, np.ones((1, 4)))
+
+
+@pytest.mark.parametrize("layer_type", ["AdaptiveMaxPool2d", "AdaptiveAvgPool2d"])
+@pytest.mark.parametrize("output_size", [[3], [2, 2, 2]])
+def test_the_output_size_has_one_entry_per_axis(
+    layer_model: Callable[..., NNModel],
+    forward: Callable[..., tuple[np.ndarray, ...]],
+    layer_type: str,
+    output_size: list[int],
+) -> None:
+    """PyTorch refuses an `output_size` of a length other than the dimensions."""
+    with pytest.raises(ValueError, match=r"node 'layer1'.*output_size"):
+        forward(
+            layer_model(layer_type, {"output_size": output_size}),
+            {},
+            np.ones((1, 4, 4)),
+        )
+
+
+@pytest.mark.parametrize("layer_type", ["AdaptiveMaxPool1d", "AdaptiveAvgPool1d"])
+@pytest.mark.parametrize("output_size", [0, -1])
+def test_the_output_size_is_positive(
+    layer_model: Callable[..., NNModel],
+    forward: Callable[..., tuple[np.ndarray, ...]],
+    layer_type: str,
+    output_size: int,
+) -> None:
+    """An empty output is not supported, a negative size is refused by PyTorch."""
+    with pytest.raises(ValueError, match=r"node 'layer1'.*output_size"):
+        forward(
+            layer_model(layer_type, {"output_size": output_size}), {}, np.ones((1, 5))
+        )
