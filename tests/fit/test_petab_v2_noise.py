@@ -359,6 +359,20 @@ def test_export_requires_a_value_per_measurement(
         to_petab(op_hctz_iv, tmp_path, settings=fit_settings)
 
 
+def test_export_requires_one_parameter_of_the_noise(
+    op_hctz_iv: OptimizationProblem, fit_settings: FitSettings, tmp_path: Path
+) -> None:
+    """Two noise models which do not agree on a parameter are not written."""
+    op_hctz_iv.initialize(fit_settings)
+    fixed = NoiseParameter(pid=SIGMA.pid, value=SIGMA.value)
+    op_hctz_iv.noise_models[0] = NoiseModel(formula=SIGMA.pid, parameters=(SIGMA,))
+    op_hctz_iv.noise_models[1] = NoiseModel(formula=SIGMA.pid, parameters=(fixed,))
+    with pytest.raises(ValueError, match=SIGMA.pid) as excinfo:
+        to_petab(op_hctz_iv, tmp_path, settings=fit_settings)
+    assert "estimate=True" in str(excinfo.value)
+    assert "estimate=False" in str(excinfo.value)
+
+
 # --- THE GAPS ---
 
 

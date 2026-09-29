@@ -237,6 +237,43 @@ def test_a_noise_model_requires_a_value_per_placeholder() -> None:
         )
 
 
+def test_a_noise_model_coerces_its_fields() -> None:
+    """The distribution is the enum and the sequences are tuples."""
+    noise = NoiseModel(
+        formula="sd",
+        distribution="log-normal",  # ty: ignore[invalid-argument-type]
+        placeholders=["sd"],  # ty: ignore[invalid-argument-type]
+        placeholder_values=[[0.5], [0.25]],  # ty: ignore[invalid-argument-type]
+        parameters=[NoiseParameter(pid="sigma_a", value=1.0)],  # ty: ignore[invalid-argument-type]
+    )
+    assert noise.distribution is NoiseDistribution.LOG_NORMAL
+    assert noise.placeholders == ("sd",)
+    assert noise.placeholder_values == ((0.5,), (0.25,))
+    assert noise.parameters == (NoiseParameter(pid="sigma_a", value=1.0),)
+    # a frozen dataclass of tuples compares and hashes
+    assert noise == NoiseModel(
+        formula="sd",
+        distribution=NoiseDistribution.LOG_NORMAL,
+        placeholders=("sd",),
+        placeholder_values=((0.5,), (0.25,)),
+        parameters=(NoiseParameter(pid="sigma_a", value=1.0),),
+    )
+    assert hash(noise)
+
+
+@pytest.mark.parametrize("formula", ["", "  "])
+def test_a_noise_model_requires_a_formula(formula: str) -> None:
+    """An empty noise formula is an error."""
+    with pytest.raises(ValueError, match="formula"):
+        NoiseModel(formula=formula)
+
+
+def test_a_noise_model_requires_a_distribution_of_petab() -> None:
+    """A distribution which PEtab does not define is named."""
+    with pytest.raises(ValueError, match="'gauss' is not one of PEtab"):
+        NoiseModel(formula="0.1", distribution="gauss")  # ty: ignore[invalid-argument-type]
+
+
 def test_default_noise_model() -> None:
     """Without a noise model the noise is the standard deviation of the data."""
     noise = default_noise_model(np.array([0.5, 0.25]))

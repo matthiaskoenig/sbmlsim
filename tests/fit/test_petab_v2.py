@@ -27,8 +27,9 @@ from sbmlsim.fit.petab_v2 import (
     gaps_table,
     to_petab,
 )
-from sbmlsim.fit.petab_v2.export import NOISE_PLACEHOLDER, petab_id
+from sbmlsim.fit.petab_v2.export import petab_id
 from sbmlsim.fit.petab_v2.extension import EXTENSION_ID, extension_of
+from sbmlsim.fit.petab_v2.likelihood import NOISE_PLACEHOLDER
 from sbmlsim.fit.petab_v2.reader import PetabReader, from_petab
 
 

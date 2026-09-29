@@ -31,7 +31,12 @@ from petab.models.sbml_model import SbmlModel  # ty: ignore[unresolved-import]
 from petab.v2 import Problem as PetabProblem
 from petab.v2.math import petab_math_str, sympify_petab
 
-from sbmlsim.fit.objects import EVALUATED_KINDS, MappingKind, NoiseModel
+from sbmlsim.fit.objects import (
+    EVALUATED_KINDS,
+    MappingKind,
+    NoiseModel,
+    NoiseParameter,
+)
 from sbmlsim.fit.optimization import OptimizationProblem
 from sbmlsim.fit.options import FitSettings, WeightingCurvesType
 from sbmlsim.fit.parameter_mapping import has_renamed_targets
@@ -40,9 +45,6 @@ from sbmlsim.fit.petab_v2.extension import (
     SbmlsimExtension,
 )
 from sbmlsim.fit.petab_v2.gaps import Gap, GapKind, gaps_dict, gaps_of_problem
-from sbmlsim.fit.petab_v2.likelihood import (
-    NOISE_PLACEHOLDER as NOISE_PLACEHOLDER,
-)
 from sbmlsim.fit.petab_v2.likelihood import noise_model_of
 from sbmlsim.fit.petab_v2.symbols import condition_target, observable_formula
 from sbmlsim.simulation.timecourse import Timecourse, TimecourseSim
@@ -589,24 +591,25 @@ class PetabExporter:
         do, see the `noise-parameters` gap.
 
         Raises:
-            ValueError: if two noise models give one parameter two values.
+            ValueError: if two noise models do not agree on a parameter, i.e.
+                on its value, its bounds or whether it is estimated.
         """
-        written: dict[str, float] = {}
+        written: dict[str, NoiseParameter] = {}
         for k in self.indices:
             for parameter in noise_model_of(self.problem, k).parameters:
                 if parameter.pid in self.problem.pids:
                     # a parameter of the fit, which is written already
                     continue
                 if parameter.pid in written:
-                    if written[parameter.pid] != parameter.value:
+                    if written[parameter.pid] != parameter:
                         raise ValueError(
                             f"'{self.problem.opid}': the parameter "
-                            f"'{parameter.pid}' of the noise has the values "
-                            f"'{written[parameter.pid]}' and '{parameter.value}' "
-                            f"in the noise models of two fit mappings."
+                            f"'{parameter.pid}' of the noise is "
+                            f"'{written[parameter.pid]}' and '{parameter}' in "
+                            f"the noise models of two fit mappings."
                         )
                     continue
-                written[parameter.pid] = parameter.value
+                written[parameter.pid] = parameter
                 _table(petab_problem, "parameter_tables").parameters.append(
                     petab_v2.Parameter(
                         id=parameter.pid,

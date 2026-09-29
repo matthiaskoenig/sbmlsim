@@ -153,12 +153,36 @@ class NoiseModel:
     observable: str | None = None
 
     def __post_init__(self) -> None:
-        """Check that every measurement has a value for every placeholder.
+        """Coerce the fields and check them.
+
+        The distribution is coerced to the enum and the sequences to tuples,
+        so a noise model which is given a string and lists compares, hashes
+        and is written like any other.
 
         Raises:
-            ValueError: if a measurement has more or fewer values than the
-                noise model has placeholders.
+            ValueError: if the formula is empty, if the distribution is not
+                one of PEtab, or if a measurement has more or fewer values
+                than the noise model has placeholders.
         """
+        if not str(self.formula).strip():
+            raise ValueError("The noise formula of a noise model must not be empty.")
+        try:
+            distribution = NoiseDistribution(self.distribution)
+        except ValueError as err:
+            raise ValueError(
+                f"The noise distribution '{self.distribution}' is not one of "
+                f"PEtab, which are "
+                f"'{', '.join(d.value for d in NoiseDistribution)}'."
+            ) from err
+        object.__setattr__(self, "distribution", distribution)
+        object.__setattr__(self, "placeholders", tuple(self.placeholders))
+        object.__setattr__(
+            self,
+            "placeholder_values",
+            tuple(tuple(values) for values in self.placeholder_values),
+        )
+        object.__setattr__(self, "parameters", tuple(self.parameters))
+
         for k, values in enumerate(self.placeholder_values):
             if len(values) != len(self.placeholders):
                 raise ValueError(
