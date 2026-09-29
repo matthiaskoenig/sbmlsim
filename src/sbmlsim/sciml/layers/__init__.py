@@ -13,7 +13,10 @@ with the backends it supports. Importing this package registers all of them.
 | `normalization` | `BatchNorm1-3d`, `InstanceNorm1-3d`, `LayerNorm` | numpy |
 """
 
-from sbmlsim.sciml.layers import core
+from sbmlsim.sciml.layers import (
+    core,
+    functions,
+)
 from sbmlsim.sciml.layers.registry import (
     FUNCTIONS,
     LAYERS,
@@ -29,4 +32,5 @@ __all__ = [
     "FunctionType",
     "LayerType",
     "core",
+    "functions",
 ]
