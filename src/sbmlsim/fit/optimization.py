@@ -999,7 +999,7 @@ class OptimizationProblem(ObjectJSONEncoder):
         on_run_finished: (
             Callable[[int, scipy.optimize.OptimizeResult, list[float]], None] | None
         ) = None,
-        **kwargs,
+        **kwargs: Any,
     ) -> tuple[list[scipy.optimize.OptimizeResult], list[list[float]]]:
         """Run parameter optimization.
 
@@ -1016,7 +1016,7 @@ class OptimizationProblem(ObjectJSONEncoder):
             on_run_finished: called with the index, the fit and the trajectory
                 of every finished optimization, i.e., to report the progress of
                 a fit and to store the runs while it runs.
-            kwargs: additional arguments of the optimizer.
+            **kwargs: additional arguments of the optimizer.
 
         Returns:
             The fits and the trajectories of the optimizations. A run which
@@ -1131,7 +1131,7 @@ class OptimizationProblem(ObjectJSONEncoder):
             run: index of the run, for the log messages.
             size: number of runs, for the log messages.
             run_seed: seed of the run, `None` if it does not need one.
-            kwargs: additional arguments of the optimizer.
+            **kwargs: additional arguments of the optimizer.
 
         Returns:
             The fit and the cost of every step of the optimization.
@@ -1170,7 +1170,7 @@ class OptimizationProblem(ObjectJSONEncoder):
         x0: np.ndarray | None = None,
         algorithm: OptimizationAlgorithmType = OptimizationAlgorithmType.LEAST_SQUARE,
         timeout: float | None = None,
-        **kwargs,
+        **kwargs: Any,
     ) -> tuple[scipy.optimize.OptimizeResult, list]:
         """Run single optimization with x0 start values.
 
@@ -1178,7 +1178,7 @@ class OptimizationProblem(ObjectJSONEncoder):
             x0: parameter start vector (important for deterministic optimizers).
             algorithm: optimization algorithm and method.
             timeout: seconds the optimization may run, no limit if `None`.
-            kwargs: additional arguments of the optimizer.
+            **kwargs: additional arguments of the optimizer.
 
         Returns:
             The fit and the trajectory of the optimization.
@@ -1201,7 +1201,7 @@ class OptimizationProblem(ObjectJSONEncoder):
         self,
         x0: np.ndarray | None = None,
         algorithm: OptimizationAlgorithmType = OptimizationAlgorithmType.LEAST_SQUARE,
-        **kwargs,
+        **kwargs: Any,
     ) -> tuple[scipy.optimize.OptimizeResult, list]:
         """Run a single optimization, see `_optimize_single`.
 

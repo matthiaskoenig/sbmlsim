@@ -30,7 +30,7 @@ References:
 """
 
 from pathlib import Path
-from typing import ClassVar
+from typing import Any, ClassVar
 
 import numpy as np
 import SALib
@@ -74,7 +74,7 @@ class FASTSensitivityAnalysis(SensitivityAnalysis):
         seed: int | None = None,
         n_cores: int | None = None,
         cache_results: bool = False,
-        **kwargs,
+        **kwargs: Any,
     ):
         """Initialize a FAST sensitivity analysis.
 
