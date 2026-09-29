@@ -110,6 +110,18 @@ def test_log_density_requires_positive_values_for_a_log_distribution() -> None:
     assert np.isfinite(log_density([-1.0], [0.0], 0.5)).all()
 
 
+@pytest.mark.parametrize("value", [np.nan, np.inf, -np.inf])
+@pytest.mark.parametrize("distribution", list(NoiseDistribution))
+def test_log_density_requires_finite_values(
+    value: float, distribution: NoiseDistribution
+) -> None:
+    """A value which is not finite is an error and not a `nan` or `-inf`."""
+    with pytest.raises(ValueError, match=r"finite.*measurement"):
+        log_density([1.0, value], [1.0, 1.0], 0.5, distribution)
+    with pytest.raises(ValueError, match=r"finite.*simulation"):
+        log_density([1.0, 1.0], [value, 1.0], 0.5, distribution)
+
+
 def test_log_density_requires_one_shape() -> None:
     """Every measurement has a simulation."""
     with pytest.raises(ValueError, match="shape"):
@@ -175,6 +187,13 @@ def test_noise_values_of_the_observable() -> None:
     noise = NoiseModel(formula="0.1 * obs_a + 0.01", observable="obs_a")
     sigma = noise_values(noise, size=2, simulation=[1.0, 2.0])
     assert sigma == pytest.approx([0.11, 0.21])
+
+
+def test_noise_values_of_the_observable_require_the_simulation() -> None:
+    """A noise formula of the observable is not evaluated without it."""
+    noise = NoiseModel(formula="0.1 * obs_a", observable="obs_a")
+    with pytest.raises(ValueError, match="requires the simulation"):
+        noise_values(noise, size=2)
 
 
 def test_noise_values_of_a_placeholder_named_like_a_parameter() -> None:
@@ -434,8 +453,77 @@ def test_gradient_of_a_failed_simulation_raises(
         raise RuntimeError("CVODE failed")
 
     monkeypatch.setattr(simulator, "_timecourses", fail)
-    with pytest.raises(ValueError, match="failed"):
+    with pytest.raises(ValueError, match="failed") as excinfo:
         gradient(op_unit_noise)
+    # the first mapping which is simulated, at the values of every parameter
+    k = op_unit_noise.training_indices[0]
+    assert op_unit_noise.mapping_keys[k] in str(excinfo.value)
+    assert all(pid in str(excinfo.value) for pid in op_unit_noise.pids)
+
+
+def _record_predictions(
+    problem: OptimizationProblem, monkeypatch: pytest.MonkeyPatch
+) -> list[np.ndarray]:
+    """Record the parameters every simulation of the problem is run at."""
+    evaluated: list[np.ndarray] = []
+    predictions = problem.predictions
+
+    def record(
+        x: np.ndarray, indices: list[int] | None = None
+    ) -> dict[int, np.ndarray]:
+        evaluated.append(np.asarray(x, dtype=float).copy())
+        return predictions(x, indices=indices)
+
+    monkeypatch.setattr(problem, "predictions", record)
+    return evaluated
+
+
+def test_gradient_stays_inside_the_bounds(
+    op_unit_noise: OptimizationProblem, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A parameter smaller than the step is not simulated below its bound.
+
+    `KI__HCTZEX_k` has the lower bound `1e-10`, the step `1e-6` of the
+    central difference would take it to a negative value.
+    """
+    problem = op_unit_noise
+    pid = "KI__HCTZEX_k"
+    k = problem.pids.index(pid)
+    parameter = problem.parameters[k]
+    assert parameter.lower_bound == 1e-10
+    nominal = nominal_parameters(problem)
+    small = ParameterSet(sid="small", values={**nominal.values, pid: 1e-8})
+
+    evaluated = _record_predictions(problem, monkeypatch)
+    grad = gradient(problem, small)
+    assert np.all(np.isfinite(grad.to_numpy()))
+    assert all(
+        p.lower_bound <= x[j] <= p.upper_bound
+        for x in evaluated
+        for j, p in enumerate(problem.parameters)
+    )
+    # the central difference with the step shrunk to the distance to the bound
+    assert min(x[k] for x in evaluated) == pytest.approx(parameter.lower_bound)
+
+
+def test_gradient_at_a_bound_is_one_sided(
+    op_unit_noise: OptimizationProblem, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A parameter at its lower bound of zero has the forward difference."""
+    problem = op_unit_noise
+    pid = "KI__HCTZEX_k"
+    k = problem.pids.index(pid)
+    monkeypatch.setattr(problem.parameters[k], "lower_bound", 0.0)
+    nominal = nominal_parameters(problem)
+    at_bound = ParameterSet(sid="bound", values={**nominal.values, pid: 0.0})
+
+    evaluated = _record_predictions(problem, monkeypatch)
+    grad = gradient(problem, at_bound)
+    assert min(x[k] for x in evaluated) == 0.0
+    assert all(x[k] >= 0.0 for x in evaluated)
+    # the derivative is the one next to the bound
+    near = ParameterSet(sid="near", values={**nominal.values, pid: 1e-8})
+    assert grad[pid] == pytest.approx(gradient(problem, near)[pid], rel=1e-2)
 
 
 def test_log_likelihood_requires_the_parameters_of_the_fit(
@@ -466,3 +554,15 @@ def test_gradient_requires_a_positive_step(
     """A step of zero divides by zero."""
     with pytest.raises(ValueError, match="step"):
         gradient(op_unit_noise, step=0.0)
+
+
+def test_gradient_requires_the_parameters_inside_their_bounds(
+    op_unit_noise: OptimizationProblem,
+) -> None:
+    """A parameter outside its bounds has no difference inside them."""
+    problem = op_unit_noise
+    pid = "KI__HCTZEX_k"
+    nominal = nominal_parameters(problem)
+    outside = ParameterSet(sid="outside", values={**nominal.values, pid: 0.0})
+    with pytest.raises(ValueError, match=rf"{pid}.*bounds"):
+        gradient(problem, outside)

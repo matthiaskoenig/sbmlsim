@@ -79,8 +79,9 @@ def log_density(
 
     Raises:
         ValueError: if the arrays do not have one shape, if a scale is not a
-            positive finite number, or if a measurement or a simulation of a
-            logarithmic distribution is not positive.
+            positive finite number, if a measurement or a simulation is not
+            finite, or if a measurement or a simulation of a logarithmic
+            distribution is not positive.
     """
     m = np.asarray(measurement, dtype=float)
     y = np.asarray(simulation, dtype=float)
@@ -103,6 +104,13 @@ def log_density(
             f"The scale of the noise must be a positive finite number, but is "
             f"'{s[~np.isfinite(s) | (s <= 0.0)]}'."
         )
+    for name, values in (("measurement", m), ("simulation", y)):
+        if np.any(~np.isfinite(values)):
+            raise ValueError(
+                f"The log density requires finite values, but "
+                f"'{int(np.sum(~np.isfinite(values)))}' of the '{name}' values "
+                f"are not: '{values[~np.isfinite(values)]}'."
+            )
 
     distribution = NoiseDistribution(distribution)
     if distribution.is_log:
@@ -182,7 +190,8 @@ def noise_values(
 
     Raises:
         ValueError: if the noise model has placeholders and not one value of
-            them per measurement, if a symbol has no value, or if a scale is
+            them per measurement, if the formula holds the observable and no
+            simulation is given, if a symbol has no value, or if a scale is
             not a positive finite number.
     """
     context = f"noise formula '{noise.formula}'"
@@ -190,7 +199,12 @@ def noise_values(
     parameters.update(values or {})
 
     variables: dict[str, Any] = dict(parameters)
-    if noise.observable is not None and simulation is not None:
+    if noise.observable is not None:
+        if simulation is None:
+            raise ValueError(
+                f"{context}: the formula holds the observable "
+                f"'{noise.observable}', so it requires the simulation."
+            )
         variables[noise.observable] = np.asarray(simulation, dtype=float)
     if noise.placeholders:
         if len(noise.placeholder_values) != size:
@@ -377,7 +391,10 @@ def gradient(
 
     The differences are taken on the linear scale, i.e. in the units of the
     model, with the step `step * max(|x|, 1)` for a parameter of the value
-    `x`. A difference divides the error of a simulation by the step, so the
+    `x`. The model is not simulated outside the bounds of a parameter: a step
+    which would leave them is shrunk to the distance to the nearer bound, and
+    a parameter at a bound has the one sided difference into the bounds. A
+    difference divides the error of a simulation by the step, so the
     problem is initialized with `FitSettings` of tight tolerances and
     `variable_step_size=False`: with a variable step size the data is
     interpolated on the steps of the integrator, which differ between two
@@ -395,7 +412,8 @@ def gradient(
         indexed by the ids of the parameters.
 
     Raises:
-        ValueError: if the step is not positive, or if the log-likelihood
+        ValueError: if the step is not positive, if a parameter is outside
+            its bounds or its bounds are equal, or if the log-likelihood
             cannot be calculated, see `log_likelihood`.
     """
     if not step > 0.0:
@@ -420,9 +438,35 @@ def gradient(
         )
 
     derivatives: dict[str, float] = {}
-    for k, pid in enumerate(problem.pids):
-        h = step * max(abs(float(x[k])), 1.0)
-        plus = log_likelihood(problem, shifted(pid, float(x[k]) + h))
-        minus = log_likelihood(problem, shifted(pid, float(x[k]) - h))
-        derivatives[pid] = (plus - minus) / (2.0 * h)
+    for k, parameter in enumerate(problem.parameters):
+        pid = parameter.pid
+        value = float(x[k])
+        h = step * max(abs(value), 1.0)
+        lower_bound = float(parameter.lower_bound)
+        upper_bound = float(parameter.upper_bound)
+        below = value - lower_bound
+        above = upper_bound - value
+        if not (below >= 0.0 and above >= 0.0) or (below == 0.0 and above == 0.0):
+            raise ValueError(
+                f"'{problem.opid}': the gradient requires the parameter '{pid}' "
+                f"inside its bounds [{lower_bound} - {upper_bound}] with room "
+                f"for a difference, but it has the value '{value}'."
+            )
+        if below > 0.0 and above > 0.0:
+            # central, with the step shrunk to the distance to the nearer bound
+            h = min(h, below, above)
+            lower, upper = value - h, value + h
+        elif below == 0.0:
+            # at the lower bound, forward
+            h = min(h, above)
+            lower, upper = value, value + h
+        else:
+            # at the upper bound, backward
+            h = min(h, below)
+            lower, upper = value - h, value
+        # `value - h` rounds, the bound is where the step ends
+        lower, upper = max(lower, lower_bound), min(upper, upper_bound)
+        plus = log_likelihood(problem, shifted(pid, upper))
+        minus = log_likelihood(problem, shifted(pid, lower))
+        derivatives[pid] = (plus - minus) / (upper - lower)
     return pd.Series(derivatives, name="gradient", dtype=float)
