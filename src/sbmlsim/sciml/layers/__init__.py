@@ -14,6 +14,7 @@ with the backends it supports. Importing this package registers all of them.
 """
 
 from sbmlsim.sciml.layers import (
+    convolution,
     core,
     functions,
 )
@@ -31,6 +32,7 @@ __all__ = [
     "ArraySpec",
     "FunctionType",
     "LayerType",
+    "convolution",
     "core",
     "functions",
 ]
