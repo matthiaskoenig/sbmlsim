@@ -402,6 +402,7 @@ class FitMapping:
         observable: FitData,
         weight: float | None = None,
         metadata: MappingMetaData | None = None,
+        noise: NoiseModel | None = None,
     ):
         """Initialize FitMapping.
 
@@ -415,12 +416,17 @@ class FitMapping:
             weight: weight of the fit mapping, the count of the reference data
                 is used if no weight is given.
             metadata: metadata of the mapping.
+            noise: noise model of the measurements, which the log-likelihood
+                of the problem uses. Without one the noise is normal with the
+                standard deviation of the reference data, see
+                `sbmlsim.fit.petab_v2.likelihood.default_noise_model`.
         """
         self.experiment = experiment
         self.reference = reference
         self.observable = observable
         self._weight = weight
         self.metadata = metadata
+        self.noise = noise
 
     @property
     def weight(self) -> float:

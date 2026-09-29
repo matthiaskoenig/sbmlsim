@@ -21,6 +21,7 @@ from sbmlsim.fit.objects import (
     FitMappingCollection,
     FitParameter,
     MappingKind,
+    NoiseModel,
 )
 from sbmlsim.fit.options import (
     FitSettings,
@@ -266,6 +267,9 @@ class OptimizationProblem(ObjectJSONEncoder):
         self.y_references: list[Any] = []
         self.y_errors: list[Any] = []
         self.y_errors_type: list[str | None] = []
+        #: the noise model of every mapping, `None` for a mapping without one,
+        #: see `sbmlsim.fit.petab_v2.likelihood`
+        self.noise_models: list[NoiseModel | None] = []
         # total weights for points (data points and curve weights)
         self.weights: list[Any] = []
         self.weights_points: list[Any] = []  # weights for data points based on errors
@@ -744,6 +748,7 @@ class OptimizationProblem(ObjectJSONEncoder):
                 self.y_references.append(y_ref)
                 self.y_errors.append(y_ref_err)
                 self.y_errors_type.append(y_ref_err_type)
+                self.noise_models.append(mapping.noise)
                 # weights
                 self.weights.append(weight)
                 self.weights_points.append(weight_points)
@@ -1349,6 +1354,82 @@ class OptimizationProblem(ObjectJSONEncoder):
 
         return results
 
+    def _interpolate(self, k: int, df: pd.DataFrame) -> np.ndarray:
+        """Get the simulation of a fit mapping at its reference data.
+
+        Args:
+            k: index of the fit mapping.
+            df: result of the simulation of the mapping.
+
+        Returns:
+            The observable, interpolated at the x values of the reference data.
+
+        Raises:
+            ValueError: if the reference data is outside of the simulation.
+        """
+        f = interpolate.interp1d(
+            x=df[self.xid_observable[k]],
+            y=df[self.yid_observable[k]],
+            copy=False,
+            assume_sorted=True,
+        )
+        try:
+            return np.asarray(f(self.x_references[k]), dtype=float)
+        except ValueError:
+            logger.error(
+                "Interpolation error in the fit mapping '%s.%s'.",
+                self.experiment_keys[k],
+                self.mapping_keys[k],
+            )
+            raise
+
+    def predictions(
+        self, x: np.ndarray, indices: Sequence[int] | None = None
+    ) -> dict[int, np.ndarray]:
+        """Get the simulation of fit mappings at their reference data.
+
+        The predictions are the values of the observable as they are
+        simulated, i.e. the baseline of a curve is not subtracted, whatever
+        the residual of the settings is.
+
+        Args:
+            x: values of the parameters in the units of the model, i.e. on the
+                linear scale, in the order of the parameters of the problem.
+            indices: indices of the fit mappings, the training data by
+                default.
+
+        Returns:
+            The prediction at the reference data of every mapping, by the
+            index of the mapping.
+
+        Raises:
+            ValueError: if no simulator is set or if the integration of a
+                simulation failed.
+        """
+        simulator: SimulatorSerial | None = self.runner_initialized.simulator
+        if simulator is None:
+            raise ValueError(f"No simulator set on OptimizationProblem '{self.opid}'.")
+        Q_ = self.runner_initialized.Q_
+
+        values = np.asarray(x, dtype=float)
+        quantities = [Q_(value, self.punits[ix]) for ix, value in enumerate(values)]
+        evaluated = set(self.training_indices if indices is None else indices)
+        results = self._simulate_groups(
+            simulator=simulator, quantities=quantities, evaluated=evaluated, x=values
+        )
+
+        predictions: dict[int, np.ndarray] = {}
+        for k in sorted(evaluated):
+            df = results[k]
+            if df is None:
+                raise ValueError(
+                    f"'{self.opid}': the simulation of the fit mapping "
+                    f"'{self.experiment_keys[k]}.{self.mapping_keys[k]}' failed "
+                    f"for the parameters '{dict(zip(self.pids, values, strict=True))}'."
+                )
+            predictions[k] = self._interpolate(k, df)
+        return predictions
+
     def _interrupted_result(
         self, err: Exception, x0log: np.ndarray
     ) -> RuntimeErrorOptimizeResult:
@@ -1427,18 +1508,7 @@ class OptimizationProblem(ObjectJSONEncoder):
 
             df = results[k]
             if df is not None:
-                # interpolation of simulation results and requested time points
-                f = interpolate.interp1d(
-                    x=df[self.xid_observable[k]],
-                    y=df[self.yid_observable[k]],
-                    copy=False,
-                    assume_sorted=True,
-                )
-                try:
-                    y_obsip = f(self.x_references[k])
-                except ValueError as err:
-                    console.print(f"Interpolation error in mapping key: {mapping_key}")
-                    raise err
+                y_obsip = self._interpolate(k, df)
 
                 if self.residual in {
                     ResidualType.ABSOLUTE_TO_BASELINE,
