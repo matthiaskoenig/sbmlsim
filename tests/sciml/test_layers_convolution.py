@@ -337,21 +337,38 @@ def test_the_limit_of_the_groups(compare_layer: Callable[..., None]) -> None:
     compare_layer("ConvTranspose1d", args, (4, 6))
 
 
-@pytest.mark.parametrize(
-    "padding_mode",
-    ["zeros", "reflect", "replicate", "circular"],
-)
-@pytest.mark.parametrize("padding", [-1, [0, -1]])
+@pytest.mark.parametrize("padding", [-1, [0, -1], [-1, 1]])
 def test_a_negative_padding_of_a_convolution(
     layer_model: Callable[..., NNModel],
     forward: Callable[..., tuple[np.ndarray, ...]],
     padding: Any,
-    padding_mode: str,
 ) -> None:
-    """A convolution does not crop its input."""
-    args = {**CONV2D, "padding": padding, "padding_mode": padding_mode}
+    """The padding mode `zeros` does not crop its input, as in torch."""
+    args = {**CONV2D, "padding": padding}
     with pytest.raises(ValueError, match=r"node 'layer1'.*negative padding"):
         forward(layer_model("Conv2d", args), ARRAYS, np.ones((1, 1, 5, 5)))
+
+
+@pytest.mark.parametrize("padding_mode", ["reflect", "replicate", "circular"])
+@pytest.mark.parametrize("padding", [-1, [0, -1], [-1, 1], [1, -2]])
+def test_a_negative_padding_crops_in_the_other_modes(
+    compare_layer: Callable[..., None], padding_mode: str, padding: Any
+) -> None:
+    """The modes other than `zeros` crop a negative padding, as in torch."""
+    args = {**CONV2D, "padding": padding, "padding_mode": padding_mode}
+    compare_layer("Conv2d", args, (1, 6, 7))
+
+
+@pytest.mark.parametrize("padding_mode", ["reflect", "replicate", "circular"])
+def test_a_negative_padding_which_empties_the_input(
+    layer_model: Callable[..., NNModel],
+    forward: Callable[..., tuple[np.ndarray, ...]],
+    padding_mode: str,
+) -> None:
+    """A cropped input which is smaller than the kernel is an error."""
+    args = {**CONV2D, "padding": -3, "padding_mode": padding_mode}
+    with pytest.raises(ValueError, match=r"node 'layer1'.*larger than the input"):
+        forward(layer_model("Conv2d", args), ARRAYS, np.ones((1, 1, 6, 6)))
 
 
 @pytest.mark.parametrize(

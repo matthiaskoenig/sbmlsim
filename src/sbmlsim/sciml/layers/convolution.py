@@ -217,10 +217,10 @@ def conv(
 
     Raises:
         ValueError: if the input does not have `in_channels` channels, the
-            channels are not divisible by the groups, the padding is negative
-            or not known, `same` is combined with a stride, the padding mode is
-            not known or a `reflect` or `circular` padding does not fit the
-            input.
+            channels are not divisible by the groups, the padding is not known
+            or, with the padding mode `zeros`, negative (the other modes crop),
+            `same` is combined with a stride, the padding mode is not known or
+            a `reflect` or `circular` padding does not fit the input.
     """
     weight = arrays["weight"]
     x, unbatched = add_batch(x, n, "Conv")
@@ -244,10 +244,12 @@ def conv(
         )
     else:
         before = after = as_tuple(padding, n)
-        check_padding(before, "padding")
     padding_mode = args.get("padding_mode", "zeros")
     if padding_mode not in PADDING_MODES:
         raise ValueError(f"Conv: padding_mode '{padding_mode}' is not known")
+    if padding_mode == "zeros":
+        # the other modes crop a negative padding, as the transposed path does
+        check_padding(before, "padding")
     check_padding_mode(x.shape[2:], before, after, padding_mode)
     x = pad_spatial(x, before, after, mode=PADDING_MODES[padding_mode])
 
