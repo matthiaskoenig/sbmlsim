@@ -14,6 +14,7 @@ through `sbmlsim` keeps the fit it started from, and
 read and fit with the objective PEtab defines.
 """
 
+from collections.abc import Collection, Mapping
 from typing import Any
 
 from petab.v2.extensions import ExtensionConfig
@@ -21,6 +22,10 @@ from pydantic import Field
 
 #: id of the extension, the key of the block in the YAML of the problem
 EXTENSION_ID = "sbmlsim"
+
+#: the extensions the reader interprets. A problem which requires another one
+#: is rejected, see `check_extensions`
+KNOWN_EXTENSIONS: frozenset[str] = frozenset({EXTENSION_ID})
 
 #: version of the extension, raised when the block changes
 EXTENSION_VERSION = "0.1.0"
@@ -97,3 +102,53 @@ def extension_of(config: Any) -> SbmlsimExtension | None:
     # the generic `ExtensionConfig` of a problem which was read from the YAML
     data = extension.model_dump() if hasattr(extension, "model_dump") else extension
     return SbmlsimExtension(**data)
+
+
+def check_extensions(
+    extensions: Mapping[str, Any] | None,
+    known: Collection[str] = KNOWN_EXTENSIONS,
+) -> list[str]:
+    """Check the extensions of a problem against the ones the reader knows.
+
+    PEtab says that a tool must reject a problem which requires an extension
+    it does not know and may ignore an extension which is not required (PEtab
+    v2, extensions). A block without `required` is read as required, which is
+    the safe reading of a block that does not say.
+
+    Args:
+        extensions: the blocks of the problem by the id of the extension, as
+            the dictionaries of the YAML or as the `ExtensionConfig` objects
+            of a problem which was read, `None` for a problem without
+            extensions.
+        known: ids of the extensions the reader interprets.
+
+    Returns:
+        The ids of the extensions which are to be ignored, i.e. the ones
+        which are not known and not required, in the order of the problem.
+        The reader logs them.
+
+    Raises:
+        ValueError: if the problem requires an extension which is not known.
+    """
+    required: list[str] = []
+    ignored: list[str] = []
+    for extension_id, block in (extensions or {}).items():
+        if extension_id in known:
+            continue
+        if isinstance(block, Mapping):
+            is_required = block.get("required", True)
+        else:
+            is_required = getattr(block, "required", True)
+        if is_required:
+            required.append(extension_id)
+        else:
+            ignored.append(extension_id)
+
+    if required:
+        raise ValueError(
+            f"The PEtab problem requires the extensions '{required}', which "
+            f"`sbmlsim` does not know (it knows '{sorted(known)}'). A required "
+            f"extension changes the mathematical interpretation of a problem, "
+            f"so the problem cannot be read without it."
+        )
+    return ignored
