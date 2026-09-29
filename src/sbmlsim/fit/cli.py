@@ -1,9 +1,9 @@
 """Running fits and their reports from the command line.
 
 A fit problem is defined by the fit experiments which enter it and the
-parameters which are adjusted, see `FitDefinition`. Everything else — creating
-the optimization problems for a strategy, running the optimizations and
-reporting them — is the same for every problem and lives here, so that a model
+parameters which are adjusted, see `FitDefinition`. Everything else, i.e.
+creating the optimization problems for a strategy, running the optimizations
+and reporting them, is the same for every problem and lives here, so that a model
 only has to define its fits:
 
 ```python

@@ -15,15 +15,15 @@ Around this core the package collects the tasks which come with simulation exper
 
 ## Features
 
-- **[Models](models.md)** — SBML models are loaded into roadrunner with their units, parameter changes and selections; species can be clamped and model sources can be files, URNs or URLs.
-- **[Timecourse simulations](simulation.md)** — `Timecourse` and `TimecourseSim`, concatenated periods with changes of parameters and initial conditions, for dosing protocols and perturbations.
-- **[Parameter scans](scans.md)** — `ScanSim` runs a simulation over the dimensions of parameter changes, the result is an N-dimensional `XResult`.
-- **[Units](units.md)** — the units of the model are read from the SBML and all changes and results carry [pint](https://pint.readthedocs.io) quantities, so values are converted instead of assumed.
-- **[Simulation experiments](experiments.md)** — `SimulationExperiment` and `ExperimentRunner`, the reproducible description of an experiment with models, datasets, simulations, tasks, data and figures.
-- **[Data](data.md)** — `Data` references simulation results and experimental datasets, with functions computed from them.
-- **[Plots and reports](plotting.md)** — figures described independent of the backend and rendered with matplotlib, HTML and markdown reports of experiments.
-- **[Parameter fitting](fitting.md)** — `FitParameter`, `FitMapping` and `OptimizationProblem` with local and global optimizers, analysis of the results and PEtab archives.
-- **[Sensitivity analysis](sensitivity.md)** — local sensitivities by finite differences and the global Morris, Sobol and FAST methods of [SALib](https://salib.readthedocs.io), with classification and plots.
+- **[Models](models.md)** - SBML models are loaded into roadrunner with their units, parameter changes and selections; species can be clamped and model sources can be files, URNs or URLs.
+- **[Timecourse simulations](simulation.md)** - `Timecourse` and `TimecourseSim`, concatenated periods with changes of parameters and initial conditions, for dosing protocols and perturbations.
+- **[Parameter scans](scans.md)** - `ScanSim` runs a simulation over the dimensions of parameter changes, the result is an N-dimensional `XResult`.
+- **[Units](units.md)** - the units of the model are read from the SBML and all changes and results carry [pint](https://pint.readthedocs.io) quantities, so values are converted instead of assumed.
+- **[Simulation experiments](experiments.md)** - `SimulationExperiment` and `ExperimentRunner`, the reproducible description of an experiment with models, datasets, simulations, tasks, data and figures.
+- **[Data](data.md)** - `Data` references simulation results and experimental datasets, with functions computed from them.
+- **[Plots and reports](plotting.md)** - figures described independent of the backend and rendered with matplotlib, HTML and markdown reports of experiments.
+- **[Parameter fitting](fitting.md)** - `FitParameter`, `FitMapping` and `OptimizationProblem` with local and global optimizers, analysis of the results and PEtab archives.
+- **[Sensitivity analysis](sensitivity.md)** - local sensitivities by finite differences and the global Morris, Sobol and FAST methods of [SALib](https://salib.readthedocs.io), with classification and plots.
 
 The standards and methods behind the package are cited in [References](references.md).
 
@@ -64,6 +64,6 @@ If you use `sbmlsim` please cite the archived software on [Zenodo](https://doi.o
 
 ## Funding
 
-Matthias König is supported by the German Research Foundation (DFG) within the Research Unit Programme FOR 5151 "QuaLiPerF (Quantifying Liver Perfusion-Function Relationship in Complex Resection — A Systems Medicine Approach)" by grant number 436883643 and by grant number 465194077 (Priority Programme SPP 2311, Subproject SimLivA).
+Matthias König is supported by the German Research Foundation (DFG) within the Research Unit Programme FOR 5151 "QuaLiPerF (Quantifying Liver Perfusion-Function Relationship in Complex Resection - A Systems Medicine Approach)" by grant number 436883643 and by grant number 465194077 (Priority Programme SPP 2311, Subproject SimLivA).
 
 Matthias König was supported by the Federal Ministry of Education and Research (BMBF, Germany) within the research network Systems Medicine of the Liver (**LiSyM**, grant number 031L0054). Matthias König has received funding from the EOSCsecretariat.eu which has received funding from the European Union's Horizon Programme call H2020-INFRAEOSC-05-2018-2019, grant Agreement number 831644.
