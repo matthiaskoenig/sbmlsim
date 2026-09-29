@@ -1,5 +1,6 @@
 """Tests of the noise model and the extensions of a PEtab v2 problem."""
 
+import dataclasses
 import logging
 from collections.abc import Callable
 from pathlib import Path
@@ -152,17 +153,39 @@ def test_a_fit_parameter_is_not_a_parameter_of_the_noise(petab_iv: Path) -> None
     assert noise.parameters == ()
 
 
+def test_a_fit_parameter_without_a_nominal_value_is_not_reported(
+    petab_iv: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    """The value of a parameter of the fit is the one of the parameter set."""
+    observable_id = _observable_ids(petab_iv)[0]
+    _set_noise(petab_iv, observable_id, noiseFormula="0.1 + KI__HCTZEX_k")
+
+    def edit(df: pd.DataFrame) -> None:
+        df.loc[df["parameterId"] == "KI__HCTZEX_k", "nominalValue"] = ""
+
+    _edit(petab_iv / "parameters.tsv", edit)
+
+    reader = PetabReader.from_yaml(petab_iv / "problem.yaml")
+    with caplog.at_level(logging.WARNING, logger="sbmlsim.fit.petab_v2.reader"):
+        noise = reader.noise_model(observable_id)
+    assert noise.parameters == ()
+    assert "KI__HCTZEX_k" not in caplog.text
+
+
 def test_reader_reports_a_symbol_without_a_value(
     petab_iv: Path, caplog: pytest.LogCaptureFixture
 ) -> None:
-    """A noise formula over an entity of the model is read and reported."""
+    """A noise formula over an entity of the model is read and reported once."""
     observable_id = _observable_ids(petab_iv)[0]
     _set_noise(petab_iv, observable_id, noiseFormula="0.1 * Vurine")
 
-    problem, settings = from_petab(petab_iv / "problem.yaml")
-    with caplog.at_level(logging.WARNING):
+    with caplog.at_level(logging.WARNING, logger="sbmlsim.fit.petab_v2.reader"):
+        problem, settings = from_petab(petab_iv / "problem.yaml")
         problem.initialize(settings)
-    assert "Vurine" in caplog.text
+        # the mappings are resolved again for other settings
+        problem.initialize(dataclasses.replace(settings, absolute_tolerance=1e-12))
+    messages = [r.getMessage() for r in caplog.records if "Vurine" in r.getMessage()]
+    assert len(messages) == 1
     # the fit does not need the noise, the log-likelihood does
     with pytest.raises(ValueError, match="Vurine"):
         log_likelihood(problem)
@@ -197,8 +220,17 @@ def test_check_extensions() -> None:
         }
     ) == ["tool_a", "tool_b"]
 
-    with pytest.raises(ValueError, match="tool_a"):
-        check_extensions({"tool_a": {"version": "1.0.0", "required": True}})
+    with pytest.raises(ValueError, match="tool_a") as excinfo:
+        check_extensions(
+            {
+                "tool_a": {"version": "1.0.0", "required": True},
+                "tool_b": {"version": "1.0.0", "required": True},
+            }
+        )
+    # the ids are listed, not the representation of a list
+    assert "'tool_a, tool_b'" in str(excinfo.value)
+    assert f"'{EXTENSION_ID}'" in str(excinfo.value)
+    assert "[" not in str(excinfo.value)
     # an extension which the caller knows is not foreign
     assert check_extensions({"tool_a": {"required": True}}, known={"tool_a"}) == []
 

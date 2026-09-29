@@ -168,6 +168,17 @@ class PetabReader:
         for measurements in self._measurements.values():
             measurements.sort(key=lambda m: m.time)
 
+        #: the observables and the parameters of the problem by their id
+        self._observables: dict[str, petab_v2.Observable] = {
+            observable.id: observable for observable in petab_problem.observables
+        }
+        self._parameters: dict[str, petab_v2.Parameter] = {
+            parameter.id: parameter for parameter in petab_problem.parameters
+        }
+        #: the noise models by the id of their observable, read once: the
+        #: mappings are resolved again by every `initialize`
+        self._noise_models: dict[str, NoiseModel] = {}
+
     @staticmethod
     def from_yaml(yaml_file: Path, name: str | None = None) -> "PetabReader":
         """Read the problem of a PEtab YAML file.
@@ -673,6 +684,25 @@ class PetabReader:
     def noise_model(self, observable_id: str) -> NoiseModel:
         """Get the noise model of an observable of the problem.
 
+        The noise model is read once, see `_read_noise_model`.
+
+        Args:
+            observable_id: id of the observable.
+
+        Returns:
+            The noise model of the fit mapping of the observable.
+
+        Raises:
+            ValueError: if the problem has no observable of the id, or if a
+                measurement does not have a value for every placeholder.
+        """
+        if observable_id not in self._noise_models:
+            self._noise_models[observable_id] = self._read_noise_model(observable_id)
+        return self._noise_models[observable_id]
+
+    def _read_noise_model(self, observable_id: str) -> NoiseModel:
+        """Read the noise model of an observable of the problem.
+
         The noise formula and the distribution of the observable are kept as
         they are, with the noise parameters of its measurements as the values
         of the placeholders. The parameters of the parameter table which the
@@ -690,12 +720,9 @@ class PetabReader:
             ValueError: if the problem has no observable of the id, or if a
                 measurement does not have a value for every placeholder.
         """
-        observables = {
-            observable.id: observable for observable in self.petab_problem.observables
-        }
-        if observable_id not in observables:
+        if observable_id not in self._observables:
             raise ValueError(f"The problem has no observable '{observable_id}'.")
-        observable = observables[observable_id]
+        observable = self._observables[observable_id]
 
         placeholders = tuple(str(p) for p in observable.noise_placeholders)
         expressions: list[Any] = [observable.noise_formula]
@@ -715,12 +742,15 @@ class PetabReader:
             }
             - set(placeholders)
         )
-        table = {parameter.id: parameter for parameter in self.petab_problem.parameters}
         parameters: list[NoiseParameter] = []
         for symbol in symbols:
             if symbol == observable_id:
                 continue
-            parameter = table.get(symbol)
+            parameter = self._parameters.get(symbol)
+            if parameter is not None and self._is_fit_parameter(parameter):
+                # the value is the one of the parameter set, a nominal value
+                # is not needed
+                continue
             if parameter is None or not _is_number(parameter.nominal_value):
                 logger.warning(
                     "The noise formula '%s' of the observable '%s' uses '%s', "
@@ -731,9 +761,6 @@ class PetabReader:
                     observable_id,
                     symbol,
                 )
-                continue
-            if self._is_fit_parameter(parameter):
-                # the value is the one of the parameter set
                 continue
             parameters.append(
                 NoiseParameter(

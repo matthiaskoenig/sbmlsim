@@ -146,9 +146,9 @@ def check_extensions(
 
     if required:
         raise ValueError(
-            f"The PEtab problem requires the extensions '{required}', which "
-            f"`sbmlsim` does not know (it knows '{sorted(known)}'). A required "
-            f"extension changes the mathematical interpretation of a problem, "
-            f"so the problem cannot be read without it."
+            f"The PEtab problem requires the extensions '{', '.join(required)}', "
+            f"which `sbmlsim` does not know (it knows '{', '.join(sorted(known))}'). "
+            f"A required extension changes the mathematical interpretation of a "
+            f"problem, so the problem cannot be read without it."
         )
     return ignored
