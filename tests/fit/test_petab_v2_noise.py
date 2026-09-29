@@ -12,12 +12,13 @@ from petab.v1.yaml import load_yaml, write_yaml
 from sbmlsim.fit import FitSettings
 from sbmlsim.fit.objects import NoiseDistribution, NoiseModel, NoiseParameter
 from sbmlsim.fit.optimization import OptimizationProblem
-from sbmlsim.fit.petab_v2 import to_petab
+from sbmlsim.fit.petab_v2 import GapKind, gaps_of_problem, to_petab
 from sbmlsim.fit.petab_v2.extension import (
     EXTENSION_ID,
     KNOWN_EXTENSIONS,
     check_extensions,
 )
+from sbmlsim.fit.petab_v2.gaps import GAPS_BY_ID
 from sbmlsim.fit.petab_v2.likelihood import log_likelihood
 from sbmlsim.fit.petab_v2.reader import PetabReader, from_petab
 
@@ -324,3 +325,29 @@ def test_export_requires_a_value_per_measurement(
     )
     with pytest.raises(ValueError, match="placeholders"):
         to_petab(op_hctz_iv, tmp_path, settings=fit_settings)
+
+
+# --- THE GAPS ---
+
+
+def test_gaps_of_the_noise(petab_iv: Path) -> None:
+    """A problem with a noise model runs into the gaps of the noise."""
+    observable_id = _observable_ids(petab_iv)[0]
+    _set_noise(petab_iv, observable_id, noiseFormula=SIGMA.pid)
+    _add_sigma(petab_iv)
+
+    problem, settings = from_petab(petab_iv / "problem.yaml")
+    problem.initialize(settings)
+    ids = {gap.id for gap in gaps_of_problem(problem)}
+    assert {"noise-model", "noise-parameters"} <= ids
+
+
+def test_a_problem_without_noise_has_no_gap_of_it(
+    op_hctz_iv: OptimizationProblem, fit_settings: FitSettings
+) -> None:
+    """The gaps of the noise are the ones of a problem which has a noise."""
+    op_hctz_iv.initialize(fit_settings)
+    ids = {gap.id for gap in gaps_of_problem(op_hctz_iv)}
+    assert not {"noise-model", "noise-parameters", "foreign-extension"} & ids
+    assert GAPS_BY_ID["noise-model"].kind is GapKind.LOSSY
+    assert GAPS_BY_ID["foreign-extension"].kind is GapKind.UNSUPPORTED
