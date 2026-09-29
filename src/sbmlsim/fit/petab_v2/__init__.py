@@ -25,6 +25,7 @@ from sbmlsim.fit.petab_v2.gaps import (
     gaps_of_problem,
     gaps_table,
 )
+from sbmlsim.fit.petab_v2.likelihood import gradient, log_likelihood
 from sbmlsim.fit.petab_v2.reader import PetabReader, from_petab
 
 __all__ = [
@@ -39,5 +40,7 @@ __all__ = [
     "from_petab",
     "gaps_of_problem",
     "gaps_table",
+    "gradient",
+    "log_likelihood",
     "to_petab",
 ]

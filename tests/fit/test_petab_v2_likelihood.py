@@ -1,16 +1,26 @@
 """Tests of the log-likelihood of a problem."""
 
+import logging
 from pathlib import Path
 
 import numpy as np
 import pandas as pd
 import pytest
 
+from sbmlsim.fit import FitSettings
+from sbmlsim.fit.cli import FitDefinition
+from sbmlsim.fit.fisher import jacobian
 from sbmlsim.fit.objects import NoiseDistribution, NoiseModel, NoiseParameter
+from sbmlsim.fit.optimization import OptimizationProblem
+from sbmlsim.fit.options import ParameterScaleType, ResidualType
+from sbmlsim.fit.parameters import ParameterSet
 from sbmlsim.fit.petab_v2.likelihood import (
     default_noise_model,
+    gradient,
     log_density,
+    log_likelihood,
     noise_values,
+    nominal_parameters,
 )
 
 #: simulations and measurements of the case `sciml_problem_import/001` of the
@@ -215,3 +225,244 @@ def test_default_noise_model() -> None:
     assert noise_values(noise, size=2).tolist() == [0.5, 0.25]
     # and the scale is one for data without errors
     assert noise_values(default_noise_model(None), size=2).tolist() == [1.0, 1.0]
+
+
+# --- THE LOG-LIKELIHOOD OF A PROBLEM ---
+
+
+@pytest.fixture
+def settings_likelihood() -> FitSettings:
+    """Get settings with which the cost is the sum of squares of the data.
+
+    The integrator is tighter than in a fit and its output grid is fixed: a
+    finite difference of the log-likelihood divides the error of a simulation
+    by the step, and with a variable step size two simulations of a problem
+    differ by `1e-6`, see `sbmlsim.fit.petab_v2.likelihood.gradient`.
+    """
+    return FitSettings(
+        residual=ResidualType.ABSOLUTE,
+        parameter_scale=ParameterScaleType.LINEAR,
+        variable_step_size=False,
+        absolute_tolerance=1e-12,
+        relative_tolerance=1e-10,
+    )
+
+
+@pytest.fixture
+def op_unit_noise(
+    op_hctz_pk: OptimizationProblem, settings_likelihood: FitSettings
+) -> OptimizationProblem:
+    """Get the initialized problem with a normal noise of scale one."""
+    op_hctz_pk.initialize(settings_likelihood)
+    op_hctz_pk.noise_models = [
+        NoiseModel(formula="1.0") for _ in op_hctz_pk.mapping_keys
+    ]
+    return op_hctz_pk
+
+
+def test_the_hctz_problem_has_a_log_likelihood(
+    op_hctz_pk: OptimizationProblem, definition_hctz_pk: FitDefinition
+) -> None:
+    """The reference problem has a log-likelihood, with the settings of its fit."""
+    op_hctz_pk.initialize(definition_hctz_pk.settings)
+    assert all(noise is None for noise in op_hctz_pk.noise_models)
+
+    llh = log_likelihood(op_hctz_pk)
+    assert np.isfinite(llh)
+    assert llh < 0.0
+
+
+def test_log_likelihood_of_the_nominal_parameters_by_default(
+    op_hctz_pk: OptimizationProblem, settings_likelihood: FitSettings
+) -> None:
+    """The nominal values are the start values of the parameters."""
+    op_hctz_pk.initialize(settings_likelihood)
+    nominal = nominal_parameters(op_hctz_pk)
+    assert nominal.sid == "nominal"
+    assert nominal.values == {p.pid: p.start_value for p in op_hctz_pk.parameters}
+
+    llh = log_likelihood(op_hctz_pk)
+    assert llh == pytest.approx(log_likelihood(op_hctz_pk, nominal), rel=1e-8)
+    # and other parameters are another likelihood
+    other = ParameterSet(
+        sid="other", values={pid: 2.0 * v for pid, v in nominal.values.items()}
+    )
+    assert log_likelihood(op_hctz_pk, other) != pytest.approx(llh, rel=1e-3)
+
+
+def test_log_likelihood_is_the_sum_over_the_training_data(
+    op_hctz_pk: OptimizationProblem, settings_likelihood: FitSettings
+) -> None:
+    """The validation data and the outliers do not enter."""
+    op_hctz_pk.initialize(settings_likelihood)
+    assert op_hctz_pk.validation_indices
+    nominal = nominal_parameters(op_hctz_pk)
+    predictions = op_hctz_pk.predictions(nominal.x(op_hctz_pk.pids))
+    assert sorted(predictions) == op_hctz_pk.training_indices
+
+    expected = 0.0
+    for k in op_hctz_pk.training_indices:
+        errors = op_hctz_pk.y_errors[k]
+        sigma = errors if errors is not None else 1.0
+        expected += float(
+            np.sum(log_density(op_hctz_pk.y_references[k], predictions[k], sigma))
+        )
+    assert log_likelihood(op_hctz_pk) == pytest.approx(expected, rel=1e-8)
+
+
+def test_log_likelihood_of_a_unit_noise_is_the_cost(
+    op_unit_noise: OptimizationProblem,
+) -> None:
+    """With a normal noise of scale one the cost is the log-likelihood.
+
+    `llh = -n/2 log(2 pi) - 0.5 sum((y - m)^2)`, and the second term is the
+    cost of a fit of the absolute residuals without weights.
+    """
+    problem = op_unit_noise
+    nominal = nominal_parameters(problem)
+    x = nominal.x(problem.pids)
+    n = sum(len(problem.y_references[k]) for k in problem.training_indices)
+
+    cost = problem.cost_least_square(problem.to_scale(x))
+    assert log_likelihood(problem, nominal) == pytest.approx(
+        -0.5 * n * np.log(2.0 * np.pi) - cost, rel=1e-8
+    )
+
+
+def test_gradient_of_a_unit_noise_is_the_gradient_of_the_cost(
+    op_unit_noise: OptimizationProblem,
+) -> None:
+    """The gradient is `-J' r` of the residuals of the fit."""
+    problem = op_unit_noise
+    nominal = nominal_parameters(problem)
+    x = nominal.x(problem.pids)
+
+    residuals = np.asarray(problem.residuals(problem.to_scale(x)), dtype=float)
+    expected = -jacobian(problem, problem.to_scale(x)).T @ residuals
+
+    grad = gradient(problem, nominal)
+    assert list(grad.index) == problem.pids
+    # a difference of two log-likelihoods has the rounding error of their
+    # size, which is not relative to a small derivative
+    scale = float(np.max(np.abs(expected)))
+    assert grad.to_numpy() == pytest.approx(expected, rel=1e-4, abs=1e-6 * scale)
+    assert np.all(grad.to_numpy() != 0.0)
+
+
+def test_log_likelihood_uses_the_noise_model_of_a_mapping(
+    op_unit_noise: OptimizationProblem,
+) -> None:
+    """A parameter of the noise is evaluated at the value of the set."""
+    problem = op_unit_noise
+    nominal = nominal_parameters(problem)
+    n = sum(len(problem.y_references[k]) for k in problem.training_indices)
+    unit = log_likelihood(problem, nominal)
+
+    problem.noise_models = [
+        NoiseModel(
+            formula="sigma_a",
+            parameters=(NoiseParameter(pid="sigma_a", value=1.0, estimate=True),),
+        )
+        for _ in problem.mapping_keys
+    ]
+    assert log_likelihood(problem, nominal) == pytest.approx(unit, rel=1e-8)
+
+    # llh(s) = -n log(s) - n/2 log(2 pi) - cost / s^2
+    cost = -unit - 0.5 * n * np.log(2.0 * np.pi)
+    wide = ParameterSet(sid="wide", values={**nominal.values, "sigma_a": 2.0})
+    assert log_likelihood(problem, wide) == pytest.approx(
+        -n * np.log(2.0) - 0.5 * n * np.log(2.0 * np.pi) - cost / 4.0, rel=1e-8
+    )
+    # the gradient is the one of the parameters of the fit
+    assert list(gradient(problem, wide).index) == problem.pids
+
+
+def test_log_likelihood_requires_an_initialized_problem(
+    op_hctz_iv: OptimizationProblem,
+) -> None:
+    """The data of the problem has to be resolved."""
+    with pytest.raises(ValueError, match="initialize"):
+        log_likelihood(op_hctz_iv)
+
+
+def test_log_likelihood_requires_the_measurements(
+    op_hctz_iv: OptimizationProblem,
+) -> None:
+    """Data which is shifted to its baseline is not what the noise describes."""
+    op_hctz_iv.initialize(FitSettings(residual=ResidualType.ABSOLUTE_TO_BASELINE))
+    with pytest.raises(ValueError, match="baseline"):
+        log_likelihood(op_hctz_iv)
+
+
+def test_log_likelihood_names_the_mapping_of_an_error(
+    op_unit_noise: OptimizationProblem,
+) -> None:
+    """An error of a noise model says which mapping it belongs to."""
+    problem = op_unit_noise
+    k = problem.training_indices[0]
+    problem.noise_models[k] = NoiseModel(formula="k_unknown")
+    with pytest.raises(ValueError, match=problem.mapping_keys[k]):
+        log_likelihood(problem)
+
+
+def test_log_likelihood_of_a_log_distribution_requires_positive_data(
+    op_unit_noise: OptimizationProblem,
+) -> None:
+    """The amount in the urine is zero at the first measurement."""
+    problem = op_unit_noise
+    k = next(
+        k
+        for k in problem.training_indices
+        if np.any(np.asarray(problem.y_references[k]) <= 0.0)
+    )
+    problem.noise_models[k] = NoiseModel(
+        formula="0.5", distribution=NoiseDistribution.LOG_NORMAL
+    )
+    with pytest.raises(ValueError, match="positive") as excinfo:
+        log_likelihood(problem)
+    assert problem.mapping_keys[k] in str(excinfo.value)
+
+
+def test_gradient_of_a_failed_simulation_raises(
+    op_unit_noise: OptimizationProblem, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A step which the model cannot simulate is an error and not a `nan`."""
+    simulator = op_unit_noise.runner_initialized.simulator
+    assert simulator is not None
+
+    def fail(*args: object, **kwargs: object) -> None:
+        raise RuntimeError("CVODE failed")
+
+    monkeypatch.setattr(simulator, "_timecourses", fail)
+    with pytest.raises(ValueError, match="failed"):
+        gradient(op_unit_noise)
+
+
+def test_log_likelihood_requires_the_parameters_of_the_fit(
+    op_unit_noise: OptimizationProblem,
+) -> None:
+    """A parameter set which lacks a parameter is an error."""
+    with pytest.raises(KeyError, match="does not contain"):
+        log_likelihood(op_unit_noise, ParameterSet(sid="empty", values={}))
+
+
+def test_gradient_warns_about_a_variable_step_size(
+    op_hctz_iv: OptimizationProblem,
+    fit_settings: FitSettings,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """The differences of simulations on a variable grid are noise."""
+    assert fit_settings.variable_step_size
+    op_hctz_iv.initialize(fit_settings)
+    with caplog.at_level(logging.WARNING, logger="sbmlsim.fit.petab_v2.likelihood"):
+        grad = gradient(op_hctz_iv)
+    assert "variable_step_size" in caplog.text
+    assert np.all(np.isfinite(grad.to_numpy()))
+
+
+def test_gradient_requires_a_positive_step(
+    op_unit_noise: OptimizationProblem,
+) -> None:
+    """A step of zero divides by zero."""
+    with pytest.raises(ValueError, match="step"):
+        gradient(op_unit_noise, step=0.0)
