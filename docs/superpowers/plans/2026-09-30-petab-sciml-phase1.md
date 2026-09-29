@@ -5904,7 +5904,6 @@ from sbmlsim.testsuite import cache
 #: the environment variable which points at the cases when they are not in
 #: the cache
 SUITE_PATH_VARIABLE = "SBMLSIM_TEST_SUITE_PATH"
-
 ```
 
 In `SemanticSuite.cache_path` replace the body behind the docstring
