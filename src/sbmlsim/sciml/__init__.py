@@ -25,11 +25,14 @@ except ModuleNotFoundError as err:
 
 from sbmlsim.sciml.backend import Backend, BackendKind, NumpyBackend
 from sbmlsim.sciml.errors import NetworkImportError, UnsupportedLayerError
+from sbmlsim.sciml.network import Network, NetworkParameters
 
 __all__ = [
     "Backend",
     "BackendKind",
+    "Network",
     "NetworkImportError",
+    "NetworkParameters",
     "NumpyBackend",
     "UnsupportedLayerError",
 ]
