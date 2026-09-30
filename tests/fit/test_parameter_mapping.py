@@ -285,14 +285,13 @@ def test_an_unversioned_fit_cost_is_pinned(
         op.initialize(fit_settings)
         op.cost_least_square(op.to_scale(op.xmodel))
 
-    The tolerance is `rel=1e-4`, not pytest's default `1e-6`: this exact
-    problem is on record for needing headroom of that order across
-    platforms, see `COST_RTOL` in `tests/fit/test_identifiability.py` -- a
-    cost differs from the integrator by about its own relative tolerance
-    (`1e-6` in `fit_settings`), and that differs between linux, macOS and
-    windows. `1e-4` still separates a systematic mis-binding, which moves
-    this cost by orders of magnitude, from integrator noise, and is a hundred
-    times the difference of the integrator.
+    The tolerance is `rel=1e-4`, not pytest's default `1e-6`: a cost differs
+    from the integrator by about its own relative tolerance (`1e-6` in
+    `fit_settings`), and that differs between linux, macOS and windows; the
+    pin of 0.7.0 was `rel=1e-3` for that reason and the tighter pin was
+    measured on linux only. `1e-4` still separates a systematic mis-binding,
+    which moves this cost by orders of magnitude, from integrator noise, and
+    is a hundred times the relative tolerance of the integrator.
     """
     op_hctz_pk.initialize(fit_settings)
     x = op_hctz_pk.to_scale(op_hctz_pk.xmodel)
