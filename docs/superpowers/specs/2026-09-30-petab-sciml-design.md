@@ -320,3 +320,24 @@ Decisions which were taken while the phases 1 and 2 were implemented. Where they
 | gaps of phase 2 | `noise-model` and `foreign-extension` |
 | foreign extensions | the raw YAML is checked before `petab` reads the files of the problem |
 | torch in the environments | the `dev` extra and the tox environments install the CPU build of `torch` |
+
+## Amendments after phase 3
+
+Decisions which were taken while phase 3 was implemented, measured on the test suite and in the reviews. Where they differ from the text above, they are the design.
+
+| | |
+| --- | --- |
+| inputs of a network | one formula per input for every pattern, also for a network in the right hand side or in an observable (the cases 036 to 039 have array inputs there); a formula may differ per condition (`NetworkInput.formulas`), `Hybridization.constants` holds the values a formula names which are neither entities of the model nor fit parameters |
+| a network before the simulation | an input which a condition of a later period sets is refused, the network is evaluated once per simulation; a problem with a pre-equilibration period whose main period sets the inputs is refused as well |
+| target of a network in the right hand side | a parameter of the model; a species, a compartment, a target with a rule or an event, and a target two networks set are refused |
+| elements of a network | every element which is not frozen is a fit parameter; a hybridization whose non frozen element has no value raises; the network carries its nominal values (`nominal_parameters` and `dataclasses.replace`), `network_fit_parameters` has no `values` argument; the elements of a layer which the forward pass does not call are left out and logged |
+| a compiled network | the compiled model is checked against the frozen elements of the hybridization at every evaluation; `softmax` is compiled as `1 / sum_j exp(x_j - x_i)` and needs no maximum; `log_softmax` keeps its maximum, written once per node, and loads slowly for more than a few units, before L3V2 in particular; the ids of units, inputs and outputs are `unit_id`, `input_id`, `output_id` next to `element_id`, exported by `sbmlsim.sciml` |
+| `targets()` of a hybridization | the targets as written (`[S]` or `S`), the fit compares by entity |
+| the fit | derived changes are resolved in `fit/derived.py` (protocol `DerivedChanges`); `initialize` refuses a hook target which the first timecourse changes, two groups which share a simulation object and derive differently, a symbol nobody provides, a fit parameter which writes what a hook sets, a constant of a hook which the fit estimates; `FitParameter.scale` per parameter; a parameter on the linear scale may have infinite bounds, its start value is its nominal value and it is not sampled, differential evolution refuses it once before the runs; a linear parameter is sampled uniformly |
+| gradient | `gradient(problem, parameters, step, order=2|4)`, central three or five point stencils, one sided stencils of the same order next to a bound, a fall back to a lower order is logged once per call; the comparison with the test suite uses `order=4`, `variable_step_size=False` and integrator tolerances `1e-12` (the three point stencil misses `tol_grad` on six cases) |
+| formulas | `mathml.formula_expression`, `formula_symbols`, `evaluate_formula`, `expression_to_astnode`, `expression_to_formula` with libsbml and `sbmlmath>=0.4.1,<0.5`; `log` of a formula is the decadic logarithm of SBML, the PEtab math of an observable is translated before it enters the model |
+| reader | one fit mapping per observable and experiment (`<observable>_<experiment>` when an observable is measured in several experiments); a SciML problem is read from the configuration and the tables without `torch`; `check_extensions` knows `sciml` when the extra is installed; the reader reads `scale` of the `sbmlsim` block and the `parameterScale` column of a SciML problem into `FitParameter.scale` |
+| gaps | `sciml-model-format`, `sciml-layer-sbml` (also a compilation error of the compiler), `sciml-training-mode`, `sciml-priors` (the cases 032 to 034), `sciml-parameter-scale` |
+| test suite | `sciml_problem_import` compares the log-likelihood, the simulations and the gradient with the tolerances of `solutions.yaml`, the gradient of the suite is the gradient of the log-likelihood; 36 of the 39 cases pass, the baseline holds 032 to 034; a staging directory of a killed fetch is removed by the next fetch or load through a lock |
+| simulation core | the absolute tolerance of the integrator is scaled by the smallest finite positive initial volume of the compartments (before: the volumes of the current state, which made the first evaluation of every fit integrate at `1e-18`) |
+| output index of PEtab | leading axes of length one of an output are dropped in the indices of PEtab (`outputs[0][0]` of a `(1, 1)` output) |
