@@ -633,13 +633,14 @@ def test_the_difference_next_to_a_bound_keeps_its_step() -> None:
     forward = stencil(0.01, 0.1, 0.0, 2.0)
     assert [p for p, _ in forward] == pytest.approx([0.01, 0.11, 0.21])
     assert _derivative(forward, lambda x: x**2) == pytest.approx(0.02)
-    backward = stencil(1.99, 0.1, 0.0, 2.0, order=4)
+    backward = stencil(1.99, 0.1, 0.0, 2.0)
     assert [p for p, _ in backward] == pytest.approx([1.99, 1.89, 1.79])
     assert _derivative(backward, lambda x: x**2) == pytest.approx(3.98)
-    # at the bound
+    # at the bounds
     assert [p for p, _ in stencil(0.0, 0.1, 0.0, 2.0)] == pytest.approx([0.0, 0.1, 0.2])
-    # room for the central difference of three points, not of five
-    assert len(stencil(0.15, 0.1, 0.0, 2.0, order=4)) == 2
+    at_upper = stencil(2.0, 0.1, 0.0, 2.0)
+    assert [p for p, _ in at_upper] == pytest.approx([2.0, 1.9, 1.8])
+    assert _derivative(at_upper, lambda x: x**2) == pytest.approx(4.0)
 
 
 def test_the_difference_of_bounds_closer_than_the_steps() -> None:
@@ -678,5 +679,127 @@ def test_the_gradient_of_the_fourth_order(op_unit_noise: OptimizationProblem) ->
     fourth = gradient(problem, order=4)
     assert list(fourth.index) == problem.pids
     np.testing.assert_allclose(fourth.to_numpy(), second.to_numpy(), rtol=1e-3)
-    with pytest.raises(ValueError, match=r"order of the gradient is one of \(2, 4\)"):
+    with pytest.raises(ValueError, match=r"order of the difference is one of \(2, 4\)"):
         gradient(problem, order=3)
+
+
+def _points(*args: Any, **kwargs: Any) -> list[float]:
+    return [p for p, _ in stencil(*args, **kwargs)]
+
+
+def test_the_stencil_never_leaves_the_bounds() -> None:
+    """A point one ulp outside a bound is not simulated."""
+    # `value - h` is one ulp below the lower bound
+    lower = -0.04584310855955209
+    points = _points(0.03633893549909927, 0.08218204405865137, lower, 41.0576)
+    assert min(points) >= lower
+    # a small positive lower bound, the value within two ulp of `lower + h`
+    rng = np.random.default_rng(1)
+    for _ in range(2000):
+        lower = float(rng.choice([1e-12, 1e-10, 1e-8]))
+        h = float(rng.uniform(0.1, 1.0)) * lower * 10.0
+        value = float(lower + h + rng.integers(-2, 3) * np.spacing(lower + h))
+        if value < lower:
+            continue
+        for order in (2, 4):
+            points = _points(value, h, lower, 100.0, order=order)
+            assert min(points) >= lower
+            assert max(points) <= 100.0
+
+
+@pytest.mark.parametrize("degree", [1, 2, 3, 4])
+def test_the_one_sided_five_point_difference(degree: int) -> None:
+    """The one sided five point differences are exact up to the degree 4."""
+    x0 = 0.7
+
+    def f(x: float) -> float:
+        return x**degree
+
+    exact = degree * x0 ** (degree - 1)
+    forward = stencil(x0, 0.1, x0, 5.0, order=4)
+    backward = stencil(x0, 0.1, 0.0, x0, order=4)
+    assert _points(x0, 0.1, x0, 5.0, order=4) == pytest.approx(
+        [x0 + k * 0.1 for k in range(5)]
+    )
+    assert _points(x0, 0.1, 0.0, x0, order=4) == pytest.approx(
+        [x0 - k * 0.1 for k in range(5)]
+    )
+    assert _derivative(forward, f) == pytest.approx(exact)
+    assert _derivative(backward, f) == pytest.approx(exact)
+
+
+@pytest.mark.parametrize(
+    ("value", "lower", "upper", "order", "count"),
+    [
+        # the central difference of three points
+        (1.0, 0.0, 2.0, 2, 2),
+        # the forward and backward differences of three points
+        (0.0, 0.0, 2.0, 2, 3),
+        (2.0, 0.0, 2.0, 2, 3),
+        # the central difference of five points
+        (1.0, 0.0, 2.0, 4, 4),
+        # the one sided differences of five points next to a bound
+        (0.0, 0.0, 2.0, 4, 5),
+        (0.05, 0.0, 2.0, 4, 5),
+        (0.15, 0.0, 2.0, 4, 5),
+        (1.95, 0.0, 2.0, 4, 5),
+        # the room `2 h` below is enough for the central difference
+        (0.3, 0.0, 2.0, 4, 4),
+        (0.5, 0.0, 2.0, 4, 4),
+    ],
+)
+def test_the_stencil_of_a_position(
+    value: float, lower: float, upper: float, order: int, count: int
+) -> None:
+    """The order 4 keeps its order next to a bound."""
+    points = _points(value, 0.1, lower, upper, order=order)
+    assert len(points) == count
+    assert all(lower <= p <= upper for p in points)
+
+
+@pytest.mark.parametrize(
+    ("value", "lower", "upper", "order", "power"),
+    [
+        (1.0, 0.0, 2.0, 2, 2),
+        (0.0, 0.0, 2.0, 2, 2),
+        (2.0, 0.0, 2.0, 2, 2),
+        (1.0, 0.0, 2.0, 4, 4),
+        (0.0, 0.0, 2.0, 4, 4),
+        (2.0, 0.0, 2.0, 4, 4),
+    ],
+)
+def test_the_truncation_order_of_a_stencil(
+    value: float, lower: float, upper: float, order: int, power: int
+) -> None:
+    """The error of a difference falls with the power of the step."""
+
+    def error(h: float) -> float:
+        points = stencil(value, h, lower, upper, order=order)
+        return abs(_derivative(points, np.exp) - np.exp(value))
+
+    assert error(0.04) / error(0.02) == pytest.approx(2.0**power, rel=0.15)
+
+
+def test_the_order_4_falls_back_with_a_warning(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """Less than `4 h` of room on both sides gives the difference of three points."""
+    with caplog.at_level(logging.WARNING, logger="sbmlsim.fit.petab_v2.likelihood"):
+        points = stencil(0.12, 0.1, 0.0, 0.26, order=4, name="p1")
+    assert len(points) == 2
+    assert "'p1'" in caplog.text
+    assert "three points" in caplog.text
+    caplog.clear()
+    with caplog.at_level(logging.WARNING, logger="sbmlsim.fit.petab_v2.likelihood"):
+        stencil(1.0, 0.1, 0.0, 2.0, order=4, name="p1")
+        stencil(1.0, 0.1, 0.0, 2.0, order=2, name="p1")
+    assert not caplog.text
+
+
+def test_the_secant_warns(caplog: pytest.LogCaptureFixture) -> None:
+    """The secant has a step different from the step of the difference."""
+    with caplog.at_level(logging.WARNING, logger="sbmlsim.fit.petab_v2.likelihood"):
+        points = stencil(0.5, 1.0, 0.0, 1.0, name="p1")
+    assert [p for p, _ in points] == [0.0, 1.0]
+    assert "'p1'" in caplog.text
+    assert "secant" in caplog.text

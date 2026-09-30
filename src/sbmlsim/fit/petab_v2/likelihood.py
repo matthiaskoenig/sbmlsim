@@ -389,25 +389,38 @@ GRADIENT_ORDERS: tuple[int, ...] = (2, 4)
 
 
 def stencil(
-    value: float, h: float, lower_bound: float, upper_bound: float, order: int = 2
+    value: float,
+    h: float,
+    lower_bound: float,
+    upper_bound: float,
+    order: int = 2,
+    name: str = "?",
 ) -> list[tuple[float, float]]:
     """Get the points and the weights of the difference of a derivative.
 
     The derivative is the sum of the weights times the values of the function
-    at the points. The points stay inside the bounds and keep the step:
+    at the points. The points stay inside the bounds and keep the step. The
+    first difference which has all its points inside the bounds is taken:
 
-    | room | difference | error |
-    | --- | --- | --- |
-    | `2 h` on both sides, `order=4` | central, five points | `h^4` |
-    | `h` on both sides | central, three points | `h^2` |
-    | `2 h` above | forward, three points | `h^2` |
-    | `2 h` below | backward, three points | `h^2` |
-    | less | between the bounds | the distance of the bounds |
+    | order | difference | points | error |
+    | --- | --- | --- | --- |
+    | 4 | central | `x -2h ... x +2h`, four | `h^4` |
+    | 4 | forward | `x ... x +4h`, five | `h^4` |
+    | 4 | backward | `x -4h ... x`, five | `h^4` |
+    | 2 or 4 | central | `x -h`, `x +h` | `h^2` |
+    | 2 or 4 | forward | `x ... x +2h`, three | `h^2` |
+    | 2 or 4 | backward | `x -2h ... x`, three | `h^2` |
+    | any | secant of the bounds | the bounds | the distance of the bounds |
 
     A step which is shrunk to the distance to a bound, which is what a
     central difference next to a bound needs, divides the error of the
     function by a vanishing step, so the difference is one sided with the
-    full step instead.
+    full step instead. The points are tested, not the distances to the
+    bounds: a point which is one ulp outside a bound is not simulated.
+
+    The fall back to a lower order and the secant are logged as a warning,
+    the derivative of a network next to a bound is then less exact than the
+    order says.
 
     Args:
         value: the value of the parameter.
@@ -415,6 +428,7 @@ def stencil(
         lower_bound: lower bound of the parameter.
         upper_bound: upper bound of the parameter.
         order: order of the central difference, `2` or `4`.
+        name: id of the parameter in the warnings.
 
     Returns:
         The points with their weights.
@@ -438,30 +452,73 @@ def stencil(
             f"[{lower_bound} - {upper_bound}] with room for a step, but it is "
             f"'{value}'"
         )
-    if order == 4 and below >= 2.0 * h and above >= 2.0 * h:
-        return [
-            (value - 2.0 * h, 1.0 / (12.0 * h)),
-            (value - h, -8.0 / (12.0 * h)),
-            (value + h, 8.0 / (12.0 * h)),
-            (value + 2.0 * h, -1.0 / (12.0 * h)),
-        ]
-    if below >= h and above >= h:
-        return [(value - h, -0.5 / h), (value + h, 0.5 / h)]
-    if above >= 2.0 * h:
-        return [
+
+    def inside(*points: float) -> bool:
+        """Test that the points are inside the bounds."""
+        return all(lower_bound <= point <= upper_bound for point in points)
+
+    if order == 4:
+        if inside(value - 2.0 * h, value + 2.0 * h):
+            return [
+                (value - 2.0 * h, 1.0 / (12.0 * h)),
+                (value - h, -8.0 / (12.0 * h)),
+                (value + h, 8.0 / (12.0 * h)),
+                (value + 2.0 * h, -1.0 / (12.0 * h)),
+            ]
+        if inside(value + 4.0 * h):
+            return [
+                (value, -25.0 / (12.0 * h)),
+                (value + h, 48.0 / (12.0 * h)),
+                (value + 2.0 * h, -36.0 / (12.0 * h)),
+                (value + 3.0 * h, 16.0 / (12.0 * h)),
+                (value + 4.0 * h, -3.0 / (12.0 * h)),
+            ]
+        if inside(value - 4.0 * h):
+            return [
+                (value, 25.0 / (12.0 * h)),
+                (value - h, -48.0 / (12.0 * h)),
+                (value - 2.0 * h, 36.0 / (12.0 * h)),
+                (value - 3.0 * h, -16.0 / (12.0 * h)),
+                (value - 4.0 * h, 3.0 / (12.0 * h)),
+            ]
+    if inside(value - h, value + h):
+        points = [(value - h, -0.5 / h), (value + h, 0.5 / h)]
+    elif inside(value + 2.0 * h):
+        points = [
             (value, -1.5 / h),
             (value + h, 2.0 / h),
             (value + 2.0 * h, -0.5 / h),
         ]
-    if below >= 2.0 * h:
-        return [
+    elif inside(value - 2.0 * h):
+        points = [
             (value, 1.5 / h),
             (value - h, -2.0 / h),
             (value - 2.0 * h, 0.5 / h),
         ]
-    # the bounds are closer than the steps of a difference
-    distance = upper_bound - lower_bound
-    return [(lower_bound, -1.0 / distance), (upper_bound, 1.0 / distance)]
+    else:
+        # the bounds are closer than the steps of a difference
+        distance = upper_bound - lower_bound
+        logger.warning(
+            "The bounds [%s - %s] of the parameter '%s' are closer than the step '%s' of the "
+            "difference, the derivative is the secant of the bounds.",
+            lower_bound,
+            upper_bound,
+            name,
+            h,
+        )
+        return [(lower_bound, -1.0 / distance), (upper_bound, 1.0 / distance)]
+    if order == 4:
+        logger.warning(
+            "The bounds [%s - %s] of the parameter '%s' leave less than '%s' of room around "
+            "'%s' for the difference of five points, the derivative is the "
+            "difference of three points.",
+            lower_bound,
+            upper_bound,
+            name,
+            4.0 * h,
+            value,
+        )
+    return points
 
 
 def gradient(
@@ -515,10 +572,6 @@ def gradient(
     """
     if not step > 0.0:
         raise ValueError(f"The step of the gradient must be positive, not '{step}'.")
-    if order not in GRADIENT_ORDERS:
-        raise ValueError(
-            f"The order of the gradient is one of {GRADIENT_ORDERS}, not '{order}'."
-        )
     _check_problem(problem)
     if problem.settings_initialized.variable_step_size:
         logger.warning(
@@ -551,6 +604,7 @@ def gradient(
                 lower_bound=float(parameter.lower_bound),
                 upper_bound=float(parameter.upper_bound),
                 order=order,
+                name=pid,
             )
         except ValueError as err:
             raise ValueError(
