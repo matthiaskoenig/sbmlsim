@@ -55,7 +55,7 @@ A problem may hold several networks and mix the patterns.
 
 ## Dependencies
 
-- A new extra `sciml = ["petab-sciml>=0.0.3"]`. It brings `h5py`, `mkstd` and `ruamel.yaml`. It is part of the `dev` extra.
+- A new extra `sciml` with every package `sbmlsim.sciml` imports directly: `petab-sciml>=0.0.3`, `h5py` and `pyyaml`. `petab-sciml` brings `mkstd` and `ruamel.yaml`. The extra is part of the `dev` extra.
 - `torch` is only in the `dev` extra. The tests compare the forward pass of `sbmlsim` against `NNModel.to_pytorch_module()`. The package never imports it.
 - `sbmlmath` becomes a declared dependency. It is installed today as a dependency of a dependency.
 - `sbmlsim.sciml` imports `petab_sciml` at the top of its modules. `sbmlsim/sciml/__init__.py` catches the `ModuleNotFoundError` and raises an `ImportError` which names the extra: `pip install sbmlsim[sciml]`. The reader does the same before it hands a problem with a `sciml` block to `petab`. No other module of the package imports `sbmlsim.sciml` at import time.
@@ -99,7 +99,7 @@ Every element of an array has one id, which is a valid SBML `SId`, the name of t
 
 The index is the PyTorch index of the element with `_` between the axes. The double underscore separates the parts, because the ids of networks, layers and nodes contain single underscores. An id of the model which collides with one of these ids is an error of the compilation.
 
-### `backend.py` and `layers.py`
+### `backend.py`, `interpreter.py` and the package `layers`
 
 The forward pass of the NN YAML is a list of nodes (`placeholder`, `call_module`, `call_method`, `call_function`, `output`). One interpreter walks the list and one implementation per layer and per function exists. Both are written against a backend, which provides the elementwise functions and the array type:
 
@@ -108,7 +108,7 @@ The forward pass of the NN YAML is a list of nodes (`placeholder`, `call_module`
 
 Both use the numpy array operations (`@`, `reshape`, `sum`), which work on `object` arrays as well. They differ only in the elementwise functions (`np.tanh` and `sympy.tanh`) and in the functions with a condition (`relu` is `np.maximum` and a `Piecewise`). A layer is therefore implemented once and the compiled model cannot describe a different network than the forward pass.
 
-Every layer declares the backends it supports. `Linear`, `Bilinear`, `Flatten`, the elementwise activations, `softmax` and `log_softmax` and the tensor operations of `petab_sciml.constants` support both. The convolution, the transposed convolution, the pooling, the normalization and the dropout layers support numpy only. Dropout is the identity and the normalization layers use their stored statistics.
+Every layer declares the backends it supports. `Linear`, `Bilinear`, `Flatten`, the elementwise activations, `softmax` and `log_softmax` and the tensor operations of `petab_sciml.constants` support both. The convolution, the transposed convolution, the pooling, the normalization and the dropout layers support numpy only. Dropout is the identity. `BatchNorm` and `InstanceNorm` use the stored statistics when the arrays of the network hold them, and the statistics of the input otherwise, which is how the reference values of the test suite are built; its array files hold no running statistics.
 
 A layer or a function without an implementation raises `UnsupportedLayerError` with the network, the node and the type.
 
@@ -168,7 +168,7 @@ Errors are `NetworkCompilationError`. The message names the network, the node an
 def network_fit_parameters(network: Network, estimate: Mapping[str, bool], bounds: Mapping[str, tuple[float, float]], values: Mapping[str, float] | None = None) -> list[FitParameter]
 ```
 
-`estimate`, `bounds` and `values` are given for the network (`net1`), for a layer (`net1.layer1`) or for an array (`net1.layer1.weight`). The more specific entry wins. A value replaces the nominal values of all elements the entry covers, which is how a problem sets a layer to `0.0` while the other layers keep the values of the array file (the `initialization` cases). The function returns one `FitParameter` per estimated element with the nominal value as start value, the linear scale and no unit, and the hybridization keeps the other elements as `frozen`.
+`estimate`, `bounds` and `values` are given for the network (`net1`), for a layer (`net1.layer1`) or for an array (`net1.layer1.weight`). The more specific entry wins. A value replaces the nominal values of all elements the entry covers, which is how a problem sets a layer to `0.0` while the other layers keep the values of the array file (the `initialization` cases). The function returns one `FitParameter` per estimated element with the nominal value as start value, the linear scale and the unit `dimensionless`, and the hybridization keeps the other elements as `frozen`.
 
 ## The fit
 
@@ -282,7 +282,7 @@ Phase 4 writes `examples/sciml/` with the Lotka-Volterra problem of case 001 and
 
 | risk | handling |
 | --- | --- |
-| the finite difference gradient does not reach `tol_grad` | the comparison runs with tight tolerances of the integrator. A case which still fails is listed in the baseline with the reason and the design of analytic sensitivities is a follow-up |
+| the finite difference gradient does not reach `tol_grad` | the comparison runs with tight tolerances of the integrator and a fixed grid (`variable_step_size=False`), because two simulations on a variable grid differ by up to `3e-6`. A case which still fails is listed in the baseline with the reason and the design of analytic sensitivities is a follow-up |
 | `petab_sciml` is at 0.0.3 and its API moves | only `network.py`, the reader and the exporter import it. The extra pins the lower bound and the tests of the test suite show a break |
 | the model with a compiled network is large | the size grows with the number of units. The networks of the test suite have 5 units per layer. The time of the simulation against the size of the network is measured in phase 3 and documented |
 | a species or parameter of the model named like an id of a network | the compiler raises and names the id |
@@ -296,3 +296,27 @@ Phase 4 writes `examples/sciml/` with the Lotka-Volterra problem of case 001 and
 - The training mode of dropout and the normalization layers.
 - Networks in the formats `pytorch`, `equinox` and `lux.jl`.
 - Convolution, pooling and normalization layers in the right hand side or in an observable.
+
+## Amendments after the phases 1 and 2
+
+Decisions which were taken while the phases 1 and 2 were implemented. Where they differ from the text above, they are the design.
+
+| | |
+| --- | --- |
+| modules of `sbmlsim.sciml` | the layers are the package `layers` (`registry`, `core`, `functions`, `windows`, `convolution`, `pooling`, `normalization`), the interpreter of the forward pass is `interpreter.py`, the errors are `errors.py` with one base class |
+| exports of `sbmlsim.sciml` | `Network`, `NetworkParameters`, `nominal_parameters`, `network_fit_parameters` and the errors. The backends are imported from `sbmlsim.sciml.backend` |
+| what a layer rejects | an input or an argument which PyTorch rejects raises, it never gives a result. The layers equal PyTorch in the configurations it accepts |
+| channels of a normalization | a channel count which differs from `num_features` raises, also where PyTorch accepts it |
+| validation of a network | a `Network` is validated when it is created and derives its array specifications and element ids once. Every defined layer needs an implementation, also a layer the forward pass does not call |
+| `num_batches_tracked` | an array of `BatchNorm` and `InstanceNorm` which is accepted and ignored, because a `state_dict` of PyTorch carries it |
+| array layout | arrays which are not in the PyTorch layout (`pytorch_format` false) are read with reversed axes |
+| tolerances of `ml_model_import` | `1e-3`, and `1e-2` for the cases with dropout. `solutions.yaml` of these cases has no tolerance, the values are the ones of the checks of the suite |
+| baseline of phase 1 | `ml_model_import/020` (`AlphaDropout`): the reference values are means of passes in training mode |
+| reading a SciML problem | `petab.v2.Problem.from_yaml` of `petab` 0.9.0 needs `torch` for a problem with networks. `sbmlsim` reads such a problem from the configuration and the tables without `torch` |
+| noise model | `NoiseModel`, `NoiseDistribution` and `NoiseParameter` are in `fit/objects.py`, a `FitMapping` carries its noise model and `problem.noise_models` collects them. `OptimizationProblem.predictions` gives the simulations at the measurement points |
+| noise formula | the id of the observable is a symbol of a noise formula and stands for the simulation, as in `petab` |
+| default noise | an observable without a noise model has a normal noise with the errors of its data as standard deviation: the standard deviations, or the standard errors when the data has none |
+| gradient | the step stays inside the bounds of the parameter. `gradient` warns on a variable grid and raises for a parameter outside its bounds |
+| gaps of phase 2 | `noise-model` and `foreign-extension` |
+| foreign extensions | the raw YAML is checked before `petab` reads the files of the problem |
+| torch in the environments | the `dev` extra and the tox environments install the CPU build of `torch` |
