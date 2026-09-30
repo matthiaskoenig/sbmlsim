@@ -7,6 +7,7 @@ every later one; the round trip of the cases of the test suite compares
 against a second read and is exact, see `tests/sciml/test_testsuite.py`.
 """
 
+import logging
 from pathlib import Path
 from typing import Any, ClassVar
 
@@ -17,6 +18,7 @@ import pytest
 import yaml
 
 from sbmlsim.fit import FitMappingCollection, FitParameter
+from sbmlsim.fit.objects import EXTERNAL_PREFIX
 from sbmlsim.fit.optimization import OptimizationProblem
 from sbmlsim.fit.options import ParameterScaleType
 from sbmlsim.fit.petab_v2 import to_petab
@@ -31,6 +33,8 @@ from sbmlsim.sciml import (
     compiled_path,
     network_fit_parameters,
 )
+from sbmlsim.sciml.hybridization import ALL_CONDITIONS
+from sbmlsim.sciml.testsuite import SciMLSuite
 from tests.fit.hooks import Scaling, factor_parameter
 from tests.sciml.experiment import LotkaVolterra
 from tests.sciml.hybrid import MODEL_PATH, feed_forward, two_inputs
@@ -48,7 +52,11 @@ def _read(
 
 
 def _tables(petab_dir: Path) -> dict[str, Any]:
-    """Read the tables of an exported problem without `petab`, which needs torch."""
+    """Read the tables of an exported problem with pandas.
+
+    `petab.v2.Problem.from_yaml` reads the networks of the problem through
+    torch, which the tests of the tables do not need.
+    """
     tables = {
         name: pd.read_csv(
             petab_dir / f"{name}.tsv", sep="\t", dtype=str, keep_default_na=False
@@ -57,6 +65,20 @@ def _tables(petab_dir: Path) -> dict[str, Any]:
     }
     tables["config"] = yaml.safe_load((petab_dir / "problem.yaml").read_text())
     return tables
+
+
+def _validate(yaml_file: Path) -> None:
+    """Validate an exported problem with `petab`, which reads the networks with torch."""
+    pytest.importorskip("torch")
+    issues = petab_v2.Problem.from_yaml(yaml_file).validate()
+    assert not issues.has_errors(), str(issues)
+
+
+def _condition_targets(petab_dir: Path) -> set[str]:
+    path = petab_dir / "conditions.tsv"
+    if not path.is_file():
+        return set()
+    return set(pd.read_csv(path, sep="\t", dtype=str)["targetId"])
 
 
 def _tuple(p: FitParameter) -> tuple:
@@ -106,6 +128,12 @@ def assert_round_trip(
         assert restored.weights_curves[i] == problem.weights_curves[k]
         np.testing.assert_allclose(observed[i], expected[k], rtol=1e-7)
     assert log_likelihood(restored) == pytest.approx(log_likelihood(problem), rel=1e-8)
+
+    # no condition sets an element or a parameter which is no entity of the model
+    targets = _condition_targets(tmp_path / "petab")
+    assert not any(target.startswith(EXTERNAL_PREFIX) for target in targets)
+    assert not targets & {p.pid for p in problem.parameters if p.is_external}
+    _validate(yaml_file)
     return restored
 
 
@@ -132,6 +160,12 @@ def test_a_network_before_the_simulation(tmp_path: Path) -> None:
     assert set(tables["config"]["extensions"]["sbmlsim"]["parameters"]) == {
         "alpha",
         "beta",
+    }
+    # the mapping keys `prey_e1` and `prey_e2` become one observable, which
+    # would shadow the species `prey`
+    assert set(tables["observables"]["observableId"]) == {
+        "observable__prey",
+        "observable__predator",
     }
 
 
@@ -299,32 +333,151 @@ def test_the_arrays_of_a_compiled_network(tmp_path: Path) -> None:
     assert_round_trip(problem, tmp_path)
 
 
-def test_an_observable_which_shadows_an_entity(tmp_path: Path) -> None:
-    """The mapping keys `prey_e1` and `prey_e2` become one observable, not `prey`."""
-    network = feed_forward()
-    elements = network_fit_parameters(
-        network, estimate={"net1": True}, bounds={}, external=True
-    )
-    assert_round_trip(_problem([_before(network)], elements), tmp_path)
-    observables = _tables(tmp_path / "petab")["observables"]
-    assert set(observables["observableId"]) == {
-        "observable__prey",
-        "observable__predator",
-    }
+# --- THE INPUTS ---
 
 
-def test_the_exported_problem_is_valid_petab(tmp_path: Path) -> None:
-    """`petab` reads the networks of a problem through torch, the dev extra has it."""
-    pytest.importorskip("torch")
-    network = feed_forward()
-    elements = network_fit_parameters(
-        network, estimate={"net1": True}, bounds={}, external=True
+def _inputs(
+    network_sid: str = "net1", **inputs: NetworkInput
+) -> dict[str, NetworkInput]:
+    return {f"{network_sid}__{key}": value for key, value in inputs.items()}
+
+
+def _external(pid: str) -> FitParameter:
+    """Get an estimated parameter which is no entity of the model."""
+    return FitParameter(
+        pid,
+        1.0,
+        0.0,
+        10.0,
+        unit="dimensionless",
+        target=f"{EXTERNAL_PREFIX}{pid}",
+        scale=ParameterScaleType.LINEAR,
     )
-    problem = _problem([_before(network)], elements)
+
+
+def _elements(network: Any) -> list[FitParameter]:
+    return network_fit_parameters(
+        network, estimate={network.sid: True}, bounds={}, external=True
+    )
+
+
+def test_an_estimated_parameter_which_is_an_input(tmp_path: Path) -> None:
+    """The parameter is the `petabEntityId` of the input, as in case 006."""
+    network = feed_forward()
+    hybridization = _before(
+        network,
+        inputs=_inputs(
+            input0__0=NetworkInput(formula="alpha"),
+            input0__1=NetworkInput(formula="kin"),
+        ),
+        constants={},
+    )
+    assert_round_trip(
+        _problem([hybridization], [_external("kin"), *_elements(network)]), tmp_path
+    )
+    mapping = _tables(tmp_path / "petab")["mapping"].set_index("modelEntityId")
+    assert mapping.loc["net1.inputs[0][1]", "petabEntityId"] == "kin"
+
+
+def test_a_constant_in_a_formula(tmp_path: Path) -> None:
+    network = feed_forward()
+    hybridization = _before(
+        network,
+        inputs=_inputs(
+            input0__0=NetworkInput(formula="alpha"),
+            input0__1=NetworkInput(formula="2 * k"),
+        ),
+    )
+    assert_round_trip(_problem([hybridization], _elements(network)), tmp_path)
+
+
+def test_a_constant_of_two_inputs(tmp_path: Path) -> None:
+    network = feed_forward()
+    hybridization = _before(
+        network,
+        inputs=_inputs(
+            input0__0=NetworkInput(formula="k"),
+            input0__1=NetworkInput(formula="k"),
+        ),
+    )
+    assert_round_trip(_problem([hybridization], _elements(network)), tmp_path)
+
+
+def test_an_input_per_condition_which_is_an_estimated_parameter(
+    tmp_path: Path,
+) -> None:
+    """A change `input = beta` is the input, not a version of `beta`."""
+    network = feed_forward()
+    hybridization = _before(
+        network,
+        inputs=_inputs(
+            input0__0=NetworkInput(formulas={"e1": "beta", "e2": "alpha"}),
+            input0__1=NetworkInput(formula="k"),
+        ),
+    )
+    assert_round_trip(_problem([hybridization], _elements(network)), tmp_path)
+
+
+def test_an_input_with_a_formula_for_the_other_conditions(tmp_path: Path) -> None:
+    network = feed_forward()
+    hybridization = _before(
+        network,
+        inputs=_inputs(
+            input0__0=NetworkInput(
+                formulas={ALL_CONDITIONS: "alpha + 1", "e1": "2 * beta"}
+            ),
+            input0__1=NetworkInput(formulas={ALL_CONDITIONS: "k", "e2": "2 * k"}),
+        ),
+    )
+    assert_round_trip(_problem([hybridization], _elements(network)), tmp_path)
+
+
+def test_the_arrays_of_a_simulation_the_problem_does_not_have(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    """A filter of the data can leave out a simulation which an input names."""
+    network = two_inputs()
+    hybridization = Hybridization(
+        network=network,
+        pattern=PRE,
+        model="lv",
+        inputs=_inputs(
+            "net6",
+            input0__0=NetworkInput(formula="alpha"),
+            input1=NetworkInput(
+                arrays={"e1": [1.0, 2.0, 3.0], "e2": [3.0, 2.0, 1.0], "e9": [0, 0, 0]}
+            ),
+        ),
+        outputs={"net6__output0__0": "gamma"},
+    )
+    problem = _problem([hybridization], _elements(network))
     problem.initialize(SETTINGS)
-    yaml_file = to_petab(problem, tmp_path / "petab")
-    issues = petab_v2.Problem.from_yaml(yaml_file).validate()
-    assert not issues.has_errors(), str(issues)
+    with caplog.at_level(logging.INFO, logger="sbmlsim.fit.petab_v2.sciml_export"):
+        yaml_file = to_petab(problem, tmp_path / "petab")
+    assert "'net6__input1' of the network 'net6'" in caplog.text
+    assert "['e9']" in caplog.text
+    _validate(yaml_file)
+    _, restored = _read(yaml_file, tmp_path / "derived")
+    (restored_hybridization,) = restored.hybridizations
+    assert isinstance(restored_hybridization, Hybridization)
+    arrays = restored_hybridization.inputs["net6__input1"].arrays
+    assert arrays is not None
+    assert set(arrays) == {"e1", "e2"}
+    assert log_likelihood(restored) == pytest.approx(log_likelihood(problem), rel=1e-8)
+
+
+@pytest.mark.sciml_testsuite
+def test_the_case_006_is_valid_petab(tmp_path: Path) -> None:
+    """The estimated input of case 006 is a parameter of the parameter table."""
+    suite = SciMLSuite.cached()
+    if suite is None:
+        pytest.skip("the PEtab SciML test suite is not downloaded")
+    case = next(c for c in suite.problem_import_cases() if c.cid == "006")
+    reader = PetabReader.from_yaml(case.problem_path)
+    reader.derived_dir = tmp_path / "derived"
+    problem = reader.to_optimization_problem(opid="case_006")
+    problem.initialize(case.settings())
+    _validate(to_petab(problem, tmp_path / "petab"))
 
 
 # --- WHAT IS REFUSED ---

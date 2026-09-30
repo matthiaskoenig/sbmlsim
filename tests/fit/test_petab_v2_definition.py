@@ -15,7 +15,6 @@ import yaml
 
 from examples.hctz_fitting.fitting.fitting import FIT_DEFINITIONS
 from sbmlsim.fit import FitSettings
-from sbmlsim.fit.cli import FitDefinition
 from sbmlsim.fit.objects import FitParameter
 from sbmlsim.fit.optimization import OptimizationProblem
 from sbmlsim.fit.options import ParameterScaleType
@@ -27,7 +26,6 @@ from sbmlsim.fit.petab_v2.extension import (
 )
 from sbmlsim.fit.petab_v2.likelihood import log_likelihood
 from sbmlsim.fit.petab_v2.reader import DEFAULT_EXPERIMENT, PetabReader, from_petab
-from tests.fit.hooks import Scaling, factor_parameter
 from tests.fit.test_petab_v2_reader import write_problem
 
 
@@ -294,16 +292,3 @@ def test_the_scale_of_a_parameter_survives_the_round_trip(
     assert all(
         scale is None for pid, scale in scales.items() if pid != parameters[0].pid
     )
-
-
-def test_a_problem_with_a_hook_which_is_no_network_is_refused(
-    definition_hctz_iv: FitDefinition, fit_settings: FitSettings
-) -> None:
-    """A hook which is no network has no representation in PEtab SciML."""
-    definition = dataclasses.replace(
-        definition_hctz_iv, parameters=[factor_parameter()], hybridizations=[Scaling()]
-    )
-    problem = definition.problem(opid="external")
-    problem.initialize(fit_settings)
-    with pytest.raises(ValueError, match="is not a `Hybridization`"):
-        PetabExporter(problem)

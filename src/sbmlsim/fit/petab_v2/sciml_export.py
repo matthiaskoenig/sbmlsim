@@ -11,12 +11,25 @@ network with its arrays and the arrays of its inputs.
 | `Network` | the NN YAML and the arrays of the array file |
 | `Hybridization.pattern` | `pre_initialization` of the network, and the observables |
 | an input which is a formula | a row of the hybridization table |
-| an input with a formula per condition | a change of the condition of the experiment |
+| an input which is a parameter of its own | the parameter is the `petabEntityId` of the input |
+| an input with a formula per condition | a change of the condition of every experiment |
+| the formula of the other conditions | a change of the conditions without a formula of their own, and the block `sbmlsim` |
 | an input which is arrays | `array` in the hybridization table, the arrays in the array file by condition |
 | an output of `RHS` or `PRE_INITIALIZATION` | a row of the hybridization table which assigns the target |
 | an output of `OBSERVABLE` | the symbol of the observable formula, mapped to the output |
 | `frozen` and the bounds of the elements | the most general rows of the parameter table |
 | `constants` | rows of the parameter table which are not estimated |
+
+The linter of `petab` counts a parameter of the parameter table which the
+model does not have, i.e. a constant of a hybridization or an estimated
+parameter which is no entity of the model, as used where the mapping table
+names it or a condition uses it, not where the hybridization table uses it.
+An input whose formula is such a parameter, which no other formula uses, is
+therefore the parameter (its `petabEntityId`), and an input whose formula
+uses such a parameter otherwise is a change of the condition of every
+experiment. The formula of an input for the conditions without a formula of
+their own is written into the conditions of those experiments and into the
+block `sbmlsim`, from which the reader gives the input back as it was.
 
 The module imports `sbmlsim.sciml` and with it `petab_sciml`, which is the
 extra `sciml`. `sbmlsim.fit.petab_v2.export` imports it only for a problem
@@ -47,11 +60,13 @@ from petab_sciml.constants import ALL_CONDITION_IDS, ARRAY
 
 from sbmlsim.fit.objects import FitParameter
 from sbmlsim.fit.options import ParameterScaleType
+from sbmlsim.fit.petab_v2.export import period_condition_id
 from sbmlsim.fit.petab_v2.sciml import YAML_FORMAT
-from sbmlsim.mathml import formula_expression
+from sbmlsim.mathml import formula_expression, formula_symbols
 from sbmlsim.sciml.hybridization import (
     ALL_CONDITIONS,
     Hybridization,
+    NetworkInput,
     NetworkPattern,
     entity_of,
 )
@@ -198,9 +213,14 @@ class SciMLExporter:
             rows of the parameter table and no part of the `sbmlsim` block.
         constants: the constants of the hybridizations which are rows of
             the parameter table, id -> value.
-        constant_inputs: id of an input whose formula is a constant which
-            feeds only this input -> the constant, which is the
-            `petabEntityId` of the input.
+        input_ids: id of an input -> its `petabEntityId`, which is the
+            parameter of an input whose formula is a parameter of its own
+            and the id of the input otherwise.
+        input_formulas: id of an input which is written as changes of the
+            conditions -> id of the simulation -> the formula.
+        fallbacks: id of an input -> its formula for the simulations
+            without a formula of their own, in the math of PEtab, which
+            the conditions repeat and the block `sbmlsim` carries.
         hybridization_rows: the rows of the hybridization table.
     """
 
@@ -226,8 +246,9 @@ class SciMLExporter:
                 the model, if two hybridizations of a network differ in the
                 network, the model or the inputs, if an element which is a
                 fit parameter differs from the network, if the elements of an
-                array are not described by one row, or if two hybridizations
-                give a constant different values.
+                array are not described by one row, if two hybridizations
+                give a constant different values, or if an input has no
+                formula for a simulation of the problem.
         """
         self.problem = problem
         self.simulation_ids = {key: list(ids) for key, ids in simulation_ids.items()}
@@ -304,27 +325,115 @@ class SciMLExporter:
                             f"hybridizations."
                         )
                     self.constants[key] = value
-        # an input whose formula is a constant which feeds only this input is
-        # written the way PEtab SciML writes such an input: the constant is
-        # the `petabEntityId` of the input and a row of the parameter table,
-        # without a row of the hybridization table. A parameter which only a
-        # hybridization row names is extraneous to the linter of `petab`
-        formulas = Counter(
-            network_input.formula
-            for exported in self.networks.values()
-            for network_input in exported.hybridizations[0].inputs.values()
-            if network_input.formula in self.constants
-        )
-        self.constant_inputs: dict[str, str] = {
-            key: network_input.formula
-            for exported in self.networks.values()
-            for key, network_input in exported.hybridizations[0].inputs.items()
-            if network_input.formula is not None
-            and formulas.get(network_input.formula) == 1
-        }
+        self.input_ids: dict[str, str] = {}
+        self.input_formulas: dict[str, dict[str, str]] = {}
+        self.fallbacks: dict[str, str] = {}
+        #: the inputs which are rows of the hybridization table
+        self._row_inputs: set[str] = set()
+        self._place_inputs(parameters)
         # built once: the arrays of the inputs go into the array files while
         # the rows are built
         self.hybridization_rows: list[HybridizationRow] = self._hybridization_rows()
+
+    # --- THE INPUTS ---
+
+    def _inputs(self) -> list[tuple[str, str, NetworkInput]]:
+        """Get the inputs of all networks as network, id and input."""
+        return [
+            (sid, key, network_input)
+            for sid, exported in self.networks.items()
+            for key, network_input in exported.hybridizations[0].inputs.items()
+        ]
+
+    def _place_inputs(self, parameters: Mapping[str, FitParameter]) -> None:
+        """Decide where every input of a formula is written, see the module.
+
+        Args:
+            parameters: the fit parameters of the problem by their id.
+
+        Raises:
+            ValueError: if an input has no formula for a simulation of the
+                problem.
+        """
+        simulations = list(self.simulation_ids)
+        # the parameters of the parameter table which the model does not
+        # have, and how many formulas of inputs use each of them
+        own = {
+            key
+            for exported in self.networks.values()
+            for h in exported.hybridizations
+            for key in h.constants
+        } | {
+            p.pid
+            for p in parameters.values()
+            if p.is_external and p.pid not in self.element_ids
+        }
+        uses: Counter[str] = Counter(
+            symbol
+            for _, _, network_input in self._inputs()
+            for formula in network_input.all_formulas()
+            for symbol in formula_symbols(formula) & own
+        )
+        for sid, key, network_input in self._inputs():
+            if network_input.arrays is not None:
+                self._drop_unknown(sid, key, network_input.arrays, "arrays")
+                continue
+            if network_input.formula is not None:
+                formulas: dict[str, str] = {}
+                fallback: str | None = network_input.formula
+            else:
+                formulas = dict(network_input.formulas or {})
+                fallback = formulas.pop(ALL_CONDITIONS, None)
+                self._drop_unknown(sid, key, formulas, "formulas")
+            if not formulas and fallback is not None:
+                if fallback in own and uses[fallback] == 1:
+                    # the parameter of the input, as PEtab SciML writes it
+                    self.input_ids[key] = fallback
+                    continue
+                if not formula_symbols(fallback) & own:
+                    self._row_inputs.add(key)
+                    continue
+            by_simulation: dict[str, str] = {}
+            for simulation in simulations:
+                formula = formulas.get(simulation, fallback)
+                if formula is None:
+                    raise ValueError(
+                        f"'{self.problem.opid}': the input '{key}' of the network "
+                        f"'{sid}' has no formula for the simulation "
+                        f"'{simulation}', it has formulas for {sorted(formulas)}."
+                    )
+                by_simulation[simulation] = formula
+            self.input_formulas[key] = by_simulation
+            if fallback is not None:
+                self.fallbacks[key] = petab_math(fallback)
+
+    def _drop_unknown(
+        self, sid: str, key: str, values: Mapping[str, Any], what: str
+    ) -> None:
+        """Log the simulations of an input which the problem does not have.
+
+        A selection of the data can leave out a simulation which an input
+        names; the problem has no experiment for it, so its values are not
+        written.
+
+        Args:
+            sid: id of the network.
+            key: id of the input.
+            values: id of the simulation -> the formula or the array.
+            what: what the values are, for the message.
+        """
+        unknown = sorted(set(values) - set(self.simulation_ids) - {ALL_CONDITIONS})
+        if unknown:
+            logger.warning(
+                "'%s': the input '%s' of the network '%s' has %s for the "
+                "simulations %s, which the problem does not have; they are not "
+                "written.",
+                self.problem.opid,
+                key,
+                sid,
+                what,
+                unknown,
+            )
 
     # --- THE PARAMETER ROWS ---
 
@@ -440,7 +549,7 @@ class SciMLExporter:
             a simulation none of whose fit mappings is written.
         """
         return [
-            f"{experiment_id}__tc0"
+            period_condition_id(experiment_id, 0)
             for experiment_id in self.simulation_ids.get(simulation, [])
         ]
 
@@ -451,28 +560,14 @@ class SciMLExporter:
             simulation: id of the simulation.
 
         Returns:
-            One change per input which has a formula for the condition of the
-            simulation, i.e. per input which differs between the conditions.
-
-        Raises:
-            ValueError: if such an input has no formula for the simulation.
+            One change per input which is written as changes of the
+            conditions, see `_place_inputs`.
         """
-        changes: list[petab_v2.Change] = []
-        for exported in self.networks.values():
-            for key, network_input in exported.hybridizations[0].inputs.items():
-                if network_input.formulas is None:
-                    continue
-                formula = network_input.formula_of(simulation)
-                if formula is None:
-                    raise ValueError(
-                        f"'{self.problem.opid}': the input '{key}' has no formula "
-                        f"for the simulation '{simulation}', it has formulas for "
-                        f"{sorted(network_input.formulas)}."
-                    )
-                changes.append(
-                    petab_v2.Change(target_id=key, target_value=petab_math(formula))
-                )
-        return changes
+        return [
+            petab_v2.Change(target_id=key, target_value=petab_math(formula))
+            for key, by_simulation in self.input_formulas.items()
+            if (formula := by_simulation.get(simulation)) is not None
+        ]
 
     def needs_condition(self, simulation: str) -> bool:
         """Check whether the first period of an experiment needs a condition.
@@ -509,7 +604,7 @@ class SciMLExporter:
                 indices = "" if index is None else "".join(f"[{i}]" for i in index)
                 rows.append(
                     petab_v2.Mapping(
-                        petab_id=self.constant_inputs.get(key, key),
+                        petab_id=self.input_ids.get(key, key),
                         model_id=f"{sid}.inputs[{k}]{indices}",
                     )
                 )
@@ -532,8 +627,9 @@ class SciMLExporter:
         """Get the rows of the hybridization table.
 
         Returns:
-            A row per input which is a formula for every condition
-            (`targetValue` is the math) or arrays (`targetValue` is `array`,
+            A row per input which is a formula for every condition and not
+            written otherwise, see `_place_inputs` (`targetValue` is the
+            math), per input of arrays (`targetValue` is `array`,
             the arrays go into the array file of the network keyed by the
             conditions), and a row per output of a network before the
             simulation or in the right hand side, which assigns the output
@@ -543,9 +639,7 @@ class SciMLExporter:
         for exported in self.networks.values():
             hybridization = exported.hybridizations[0]
             for key, network_input in hybridization.inputs.items():
-                if key in self.constant_inputs:
-                    continue
-                if network_input.formula is not None:
+                if key in self._row_inputs and network_input.formula is not None:
                     rows.append(
                         HybridizationRow(
                             target_id=key,
@@ -557,6 +651,8 @@ class SciMLExporter:
                     exported.arrays.inputs[key] = {
                         condition_id: np.asarray(array, dtype=float)
                         for condition, array in network_input.arrays.items()
+                        if condition == ALL_CONDITIONS
+                        or condition in self.simulation_ids
                         for condition_id in (
                             [ALL_CONDITION_IDS]
                             if condition == ALL_CONDITIONS

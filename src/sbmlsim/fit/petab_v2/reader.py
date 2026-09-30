@@ -314,6 +314,7 @@ class PetabReader:
             base_path=self.base_path,
             simulations=self._start_conditions(),
             later_periods=self._later_periods(),
+            fallbacks=self.extension.inputs if self.extension is not None else None,
         )
 
     def _later_periods(self) -> dict[str, list[tuple[float, list[str]]]]:
@@ -1169,7 +1170,8 @@ class PetabReader:
         model is a version: the entity is estimated separately for the
         experiments which carry the condition. A change whose value is a
         number stays a change of the timecourse and is not a version, see
-        `_simulation_of_periods`.
+        `_simulation_of_periods`, and a change of the input of a network is
+        the input, which its hybridization holds.
 
         Returns:
             For every estimated parameter which is the value of such a change,
@@ -1182,6 +1184,9 @@ class PetabReader:
             for change in condition.changes:
                 value = str(change.target_value)
                 if value not in estimated:
+                    continue
+                if self.sciml is not None and change.target_id in self.sciml.input_ids:
+                    # the input of a network, which its hybridization holds
                     continue
                 target, keys = versions.setdefault(value, (change.target_id, set()))
                 if change.target_id != target:

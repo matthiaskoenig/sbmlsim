@@ -77,6 +77,10 @@ class SbmlsimExtension(ExtensionConfig):
             of the collection, the simulation experiment class its mappings
             come from and what the fit does with them.
         models: the settings of the integrator per model.
+        inputs: the formula of an input of a network for the simulations
+            without a formula of their own, in the math of PEtab, by the id
+            of the input. The conditions of these experiments repeat it, see
+            `sbmlsim.fit.petab_v2.sciml_export`.
         gaps: what this export lost, see `sbmlsim.fit.petab_v2.gaps`.
     """
 
@@ -90,6 +94,7 @@ class SbmlsimExtension(ExtensionConfig):
     experiments: dict[str, dict[str, Any]] = Field(default_factory=dict)
     collections: dict[str, dict[str, Any]] = Field(default_factory=dict)
     models: dict[str, dict[str, Any]] = Field(default_factory=dict)
+    inputs: dict[str, str] = Field(default_factory=dict)
     gaps: list[dict[str, Any]] = Field(default_factory=list)
 
 

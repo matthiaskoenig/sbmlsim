@@ -37,6 +37,7 @@ import numpy as np
 import sympy
 from petab.v2 import Problem as PetabProblem
 from petab.v2.extensions.sciml import HybridizationTable, SciMLConfig
+from petab.v2.math import sympify_petab
 from petab_sciml.constants import ALL_CONDITION_IDS, ARRAY
 
 from sbmlsim.fit.objects import EXTERNAL_PREFIX, FitParameter
@@ -224,6 +225,7 @@ class SciMLReader:
         base_path: Path,
         simulations: Mapping[str, list[str]],
         later_periods: Mapping[str, list[tuple[float, list[str]]]] | None = None,
+        fallbacks: Mapping[str, str] | None = None,
     ) -> None:
         """Read the networks, the hybridization tables and the array files.
 
@@ -238,6 +240,10 @@ class SciMLReader:
             later_periods: id of the simulation of every experiment -> the
                 time and the ids of the conditions of every period after the
                 first, which must not set an input of a network.
+            fallbacks: id of an input -> its formula for the simulations
+                without a formula of their own, in the math of PEtab, which
+                the conditions repeat: the block `sbmlsim` of a problem which
+                `sbmlsim` wrote, see `sbmlsim.fit.petab_v2.sciml_export`.
 
         Raises:
             SciMLProblemError: if the problem has not one model, if a network
@@ -254,6 +260,10 @@ class SciMLReader:
         self.config = config
         self.base_path = Path(base_path)
         self.simulations = {key: list(ids) for key, ids in simulations.items()}
+        self.fallbacks: dict[str, str] = {
+            key: expression_to_formula(sympify_petab(formula))
+            for key, formula in (fallbacks or {}).items()
+        }
         if len(petab_problem.models) != 1:
             raise SciMLProblemError(
                 f"A problem with networks has one model, but the problem has "
@@ -613,7 +623,19 @@ class SciMLReader:
         }
         if by_condition:
             formulas = self._conditions(by_condition, f"the input '{petab_id}'")
-            if petab_id in self._parameters:
+            fallback = self.fallbacks.get(petab_id)
+            if fallback is not None:
+                # the formula of the simulations without their own, which the
+                # conditions repeat
+                formulas = {
+                    simulation: formula
+                    for simulation, formula in formulas.items()
+                    if formula != fallback
+                }
+                if not formulas:
+                    return NetworkInput(formula=fallback)
+                formulas[ALL_CONDITIONS] = fallback
+            elif petab_id in self._parameters:
                 formulas.setdefault(ALL_CONDITIONS, petab_id)
             if not formulas:
                 raise SciMLProblemError(

@@ -143,6 +143,20 @@ def petab_id(*parts: str) -> str:
     return sid
 
 
+def period_condition_id(experiment_id: str, k: int) -> str:
+    """Get the id of the condition of a period of an experiment.
+
+    Args:
+        experiment_id: id of the experiment.
+        k: index of the period, i.e. of the timecourse of the simulation.
+
+    Returns:
+        The id, e.g. `e1__tc0`, which the arrays of the inputs of the
+        networks are keyed by for the first period.
+    """
+    return petab_id(experiment_id, f"tc{k}")
+
+
 def _magnitude(value: Any) -> float:
     """Get the number of a change, which is a quantity in model units."""
     if isinstance(value, Quantity):
@@ -593,7 +607,7 @@ class PetabExporter:
             if k == 0:
                 tc_changes += version_changes + input_changes
             if tc_changes or (k == 0 and needs_condition):
-                condition_id = petab_id(experiment_id, f"tc{k}")
+                condition_id = period_condition_id(experiment_id, k)
                 if tc_changes:
                     _table(petab_problem, "condition_tables").conditions.append(
                         petab_v2.Condition(id=condition_id, changes=tc_changes)
@@ -1027,6 +1041,7 @@ class PetabExporter:
             experiments=experiments,
             collections=collections,
             models=models,
+            inputs=dict(self.sciml.fallbacks) if self.sciml is not None else {},
             gaps=gaps_dict(self.gaps),
         )
         if petab_problem.config is None:
