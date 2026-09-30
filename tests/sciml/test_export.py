@@ -40,6 +40,7 @@ from sbmlsim.sciml import (
 from sbmlsim.sciml.hybridization import ALL_CONDITIONS
 from sbmlsim.sciml.testsuite import SciMLSuite
 from sbmlsim.simulation import AbstractSim, Timecourse, TimecourseSim
+from sbmlsim.units import Quantity
 from tests.fit.hooks import Scaling, factor_parameter
 from tests.sciml.experiment import SIMULATIONS, LotkaVolterra
 from tests.sciml.hybrid import MODEL_PATH, feed_forward, two_inputs
@@ -624,6 +625,13 @@ def test_a_parameter_of_the_model_before_the_simulation(
     rows = _tables(tmp_path / "petab")["parameters"].set_index("parameterId")
     assert rows.loc["delta", "estimate"] == "false"
     assert float(rows.loc["delta", "nominalValue"]) == 1.8
+
+    # a model whose units cannot be read gets the dimensionless quantity
+    reader = PetabReader.from_yaml(tmp_path / "petab" / "problem.yaml")
+    reader.uinfo = None
+    change = reader._nominal_changes()["delta"]
+    assert isinstance(change, Quantity)
+    assert (change.magnitude, str(change.units)) == (1.8, "dimensionless")
 
 
 def test_the_arrays_of_a_simulation_the_problem_does_not_have(

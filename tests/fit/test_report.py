@@ -139,6 +139,29 @@ def test_the_report_of_an_ordinary_fit_has_no_target_column(
     assert "  </div>\n\n  <h3>Settings</h3>" in html
 
 
+def test_a_metric_which_is_not_defined_is_a_dash(
+    tmp_path: Path, op_hctz_pk: OptimizationProblem, fit_settings: FitSettings
+) -> None:
+    """The cost of the validation data is not defined, it is `-` and not `nan`."""
+    op_hctz_pk.initialize(fit_settings)
+    report = FitReport(
+        problem=op_hctz_pk,
+        settings=fit_settings,
+        parameter_sets=op_hctz_pk.parameter_set_model(),
+        mapping_figures=False,
+    )
+    context = report.html_context(tmp_path, "report")
+    names = [column["name"] for column in context["metrics_columns"]]
+    rows = {row[names.index("kind")]: row for row in context["metrics"]}
+    assert rows["validation"][names.index("cost")] == "-"
+    assert rows["training"][names.index("cost")] != "-"
+    cells = [cell for row in context["metrics"] for cell in row]
+    cells += [
+        value for row in context["mapping_metrics"] for value in map(str, row.values())
+    ]
+    assert "nan" not in cells
+
+
 def test_the_subsets_of_the_data_points(
     op_hctz_pk: OptimizationProblem, fit_settings: FitSettings
 ) -> None:
@@ -710,3 +733,8 @@ def test_the_report_of_the_fisher_information(
     # says so instead of showing errors which cannot be read
     assert not fisher.is_identifiable
     assert "does not have full rank" in html
+    # the columns of text are left aligned, the numbers right aligned
+    section = html[html.index('id="identifiability"') :]
+    assert '<th data-sort="text">unit' in section
+    assert '<th class="num" data-sort="num">se' in section
+    assert "<td>dimensionless</td>" in section or "<td>1/" in section

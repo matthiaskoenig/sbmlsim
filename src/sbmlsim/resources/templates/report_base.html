@@ -110,7 +110,8 @@ td.num, th.num { text-align: right; padding-right: 18px; font-variant-numeric: t
 tbody tr:hover { background: var(--bg-soft); }
 tr.total td { font-weight: 650; border-top: 2px solid var(--line); }
 
-.kv { display: grid; grid-template-columns: max-content 1fr; gap: 4px 20px; font-size: 13.5px; }
+.kv { display: grid; grid-template-columns: max-content 1fr; gap: 4px 20px; font-size: 13.5px;
+      margin: 0; }
 .kv dt { color: var(--fg-soft); }
 .kv dd { margin: 0; word-break: break-word; }
 
@@ -144,6 +145,22 @@ tr.total td { font-weight: 650; border-top: 2px solid var(--line); }
 .hint:hover::after, .hint:focus::after { opacity: 1; visibility: visible; }
 /* a tooltip of the last columns would leave the page */
 td:last-child .hint::after, th:last-child .hint::after { left: auto; right: 0; transform: none; }
+/* on a phone a wide table scrolls inside its card and not the page; the
+   tooltips of its header open downwards, into the table, not above the card */
+@media (max-width: 700px) {
+  .card { overflow-x: auto; }
+  th .hint::after { bottom: auto; top: calc(100% + 8px); }
+  /* the header of a phone is not sticky, it would cover half of the screen,
+     and its rows wrap; the gutter is 16px */
+  header.top { position: static; padding: 12px 16px 0; }
+  main { padding: 16px; }
+  footer { padding: 8px 16px 24px; }
+  section { scroll-margin-top: 16px; }
+  nav.sections { overflow-x: auto; }
+  nav.sections a { padding: 8px 10px; white-space: nowrap; }
+  .search { flex-wrap: wrap; }
+  .search input { flex-basis: 100%; max-width: none; }
+}
 
 figure { margin: 0; }
 figure img {

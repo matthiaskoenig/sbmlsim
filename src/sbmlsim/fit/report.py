@@ -883,11 +883,10 @@ class FitReport:
                 {"name": column, "hint": self.HINTS.get(column)}
                 for column in metrics.columns
             ],
+            # a metric which is not defined, e.g. the cost of the validation
+            # data, is `-`
             "metrics": [
-                [
-                    f"{value:.6g}" if isinstance(value, float) else str(value)
-                    for value in row.values()
-                ]
+                [_cell(value, ".6g") for value in row.values()]
                 for row in metrics.to_dict(orient="records")
             ],
             "mapping_metrics_columns": [
@@ -910,11 +909,11 @@ class FitReport:
                     "mapping": row["mapping"],
                     "kind": row["kind"],
                     "n": int(row["n"]),
-                    "mse": f"{row['MSE']:.4g}",
-                    "rmse": f"{row['RMSE']:.4g}",
-                    "nrmse": f"{row['NRMSE']:.4g}",
-                    "rmse_w": f"{row['RMSE_w']:.4g}",
-                    "r2": f"{row['R2']:.4g}",
+                    "mse": _cell(row["MSE"], ".4g"),
+                    "rmse": _cell(row["RMSE"], ".4g"),
+                    "nrmse": _cell(row["NRMSE"], ".4g"),
+                    "rmse_w": _cell(row["RMSE_w"], ".4g"),
+                    "r2": _cell(row["R2"], ".4g"),
                 }
                 for row in mapping_rows
             ],
@@ -1093,7 +1092,12 @@ class FitReport:
             "info": info,
             "identifiable": fim.is_identifiable,
             "columns": [
-                {"name": column, "hint": self.HINTS.get(column)}
+                {
+                    "name": column,
+                    "hint": self.HINTS.get(column),
+                    # the columns of text are left aligned
+                    "numeric": column not in {"parameter", "scale", "unit"},
+                }
                 for column in df.columns
             ],
             "rows": rows,

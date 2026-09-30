@@ -1,5 +1,6 @@
 """Test the profile likelihood analysis of the parameters of a fit."""
 
+import re
 from pathlib import Path
 
 import matplotlib.pyplot as plt
@@ -10,6 +11,7 @@ from scipy.stats import chi2
 
 from sbmlsim.fit import FitSettings, ParameterSet, ParameterSets
 from sbmlsim.fit.cli import FitDefinition, identifiability_cli
+from sbmlsim.fit.fisher import fisher_information
 from sbmlsim.fit.identifiability import (
     Identifiability,
     IdentifiabilityResult,
@@ -489,6 +491,7 @@ def test_report_with_identifiability(
         settings=fit_settings,
         parameter_sets=ParameterSets([result.parameter_set]),
         identifiability=result,
+        fisher=fisher_information(op_hctz_pk, fit_settings, result.parameter_set),
         mapping_figures=False,
     )
     results_dir = report.create(output_dir=tmp_path, name="report")
@@ -501,6 +504,23 @@ def test_report_with_identifiability(
     html = (results_dir / "index.html").read_text(encoding="utf-8")
     assert 'id="identifiability"' in html
     assert "structurally non-identifiable" in html
+    # the cards of the analysis and of the table of seven columns take the
+    # width of the page, a narrow card is too small for the table
+    section = html[html.index('id="identifiability"') :]
+    cards = re.findall(
+        r'<div class="(card[^"]*)">\s*<h3>(Analysis|Parameters)</h3>', section
+    )
+    assert [name for _, name in cards] == ["Analysis", "Parameters"] * 2
+    assert {css for css, _ in cards} == {"card wide"}
+    # the Fisher information and the profiles are one section with one heading
+    assert html.count("<section") == html.count("</section>")
+    assert html.count("<h2>Identifiability</h2>") == 1
+    heading = section.index("<h2>Identifiability</h2>")
+    assert heading < section.index("<h3>Fisher information</h3>")
+    assert section.index("<h3>Fisher information</h3>") < section.index(
+        "<h3>Profile likelihood</h3>"
+    )
+    assert section.index("<h3>Profile likelihood</h3>") < section.index("</section>")
     assert "Identifiability" in (results_dir / "report.txt").read_text(encoding="utf-8")
 
 

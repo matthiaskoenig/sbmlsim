@@ -89,6 +89,10 @@ def test_neural_ode_example(tmp_path: Path) -> None:
     # the first best cost of the console is the one of that fit
     start = value(r"(?m)^start\s+cost NUMBER")
     fit = value(r"best cost\s+NUMBER")
+    # the cost of the start is printed before the fit
+    start_line = re.search(r"(?m)^start\s+cost", output)
+    assert start_line is not None
+    assert start_line.start() < output.index("best cost")
     assert 0.0 < fit <= start
 
     # the multistart runs in the two workers

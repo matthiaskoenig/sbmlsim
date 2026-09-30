@@ -176,6 +176,14 @@ def main() -> None:
     compile_model()
 
     # --- FIT FROM THE NETWORK ---
+    # the fit shows its cost, the cost of the values it starts from is not
+    problem = FIT_DEFINITION.problem(opid="neural_ode")
+    problem.initialize(FIT_SETTINGS)
+    start_cost = problem.cost_least_square(
+        problem.to_scale(nominal_parameters(problem).x(problem.pids))
+    )
+    display.section("Network", icon=display.ICON_FIT)
+    display.key_values({"start": f"cost {start_cost:.4g} of the network"})
     start = fit(
         "neural_ode_start",
         size=1,
@@ -184,12 +192,6 @@ def main() -> None:
         seed=options.seed,
         max_nfev=options.max_nfev,
     )
-    problem = start.problem
-    start_cost = problem.cost_least_square(
-        problem.to_scale(nominal_parameters(problem).x(problem.pids))
-    )
-    # the fit shows its cost, the cost of the values it started from is not
-    display.key_values({"start": f"cost {start_cost:.4g} of the network"})
 
     # --- MULTISTART, IN PARALLEL ---
     multistart = fit(

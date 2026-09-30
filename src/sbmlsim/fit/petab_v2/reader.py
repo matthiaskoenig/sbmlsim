@@ -475,7 +475,7 @@ class PetabReader:
             for model in self.petab_problem.models
         }
 
-    def _nominal_changes(self) -> dict[str, Quantity | float]:
+    def _nominal_changes(self) -> dict[str, Quantity]:
         """Get the values of the parameters which are not estimated.
 
         PEtab applies the nominal value of a parameter which is not estimated
@@ -486,9 +486,10 @@ class PetabReader:
         Returns:
             The nominal value per parameter of the table which is an entity of
             a model and is not estimated, as a quantity in the unit of the
-            model, a number if the models have no units.
+            model, dimensionless if the units of the models could not be
+            read.
         """
-        changes: dict[str, Quantity | float] = {}
+        changes: dict[str, Quantity] = {}
         for parameter in self.petab_problem.parameters:
             if parameter.estimate or parameter.nominal_value is None:
                 continue
@@ -496,10 +497,9 @@ class PetabReader:
                 # `array` values are not a change of the model
                 continue
             if self._in_model(parameter.id):
-                value = float(parameter.nominal_value)
-                unit = self._unit_of(parameter.id, None)
-                changes[parameter.id] = (
-                    self.ureg.Quantity(value, unit) if unit else value
+                changes[parameter.id] = self.ureg.Quantity(
+                    float(parameter.nominal_value),
+                    self._unit_of(parameter.id, DEFAULT_VALUE_UNIT),
                 )
         return changes
 
