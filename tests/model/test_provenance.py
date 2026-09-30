@@ -1,5 +1,6 @@
 """Tests of the record of a derivation of a model."""
 
+from collections.abc import Callable
 from pathlib import Path
 
 import libsbml
@@ -126,8 +127,8 @@ def test_strip_of_observables_on_a_compiled_model(tmp_path: Path) -> None:
     assert derivation.source == "lotka_volterra.xml"
     assert "observable_total" in derivation.created
     document, _ = strip_derivation(derived)
-    assert (
-        document.getModel().getNumParameters() == _read(MODEL_PATH).getNumParameters()
+    assert libsbml.writeSBMLToString(document) == libsbml.writeSBMLToString(
+        libsbml.readSBMLFromFile(str(MODEL_PATH))
     )
 
 
@@ -143,3 +144,181 @@ def test_strip_names_a_created_parameter_which_is_missing(tmp_path: Path) -> Non
     libsbml.writeSBMLToFile(document, str(path))
     with pytest.raises(ValueError, match="has no parameter 'missing'"):
         strip_derivation(path)
+
+
+def _compiled(tmp_path: Path) -> Path:
+    return compile_network(
+        MODEL_PATH, [_rhs(feed_forward())], tmp_path / "lv_sciml.xml"
+    )
+
+
+def _edited(tmp_path: Path, edit: Callable[[libsbml.Model], None]) -> Path:
+    """Edit a compiled model by hand and write it."""
+    path = _compiled(tmp_path)
+    document = libsbml.readSBMLFromFile(str(path))
+    edit(document.getModel())
+    libsbml.writeSBMLToFile(document, str(path))
+    return path
+
+
+def _new_rule(model: libsbml.Model) -> None:
+    parameter = model.createParameter()
+    parameter.setId("x")
+    parameter.setConstant(False)
+    rule = model.createAssignmentRule()
+    rule.setVariable("x")
+    rule.setMath(libsbml.parseL3Formula("net1__output0__0 * 2"))
+
+
+def _new_kinetic_law(model: libsbml.Model) -> None:
+    law = model.getReaction("v1").getKineticLaw()
+    law.setMath(libsbml.parseL3Formula("alpha * prey + net1__layer1__bias__0"))
+
+
+def _new_event(model: libsbml.Model) -> None:
+    event = model.createEvent()
+    event.setUseValuesFromTriggerTime(True)
+    trigger = event.createTrigger()
+    trigger.setInitialValue(False)
+    trigger.setPersistent(True)
+    trigger.setMath(libsbml.parseL3Formula("time > 5"))
+    assignment = event.createEventAssignment()
+    assignment.setVariable("alpha")
+    assignment.setMath(libsbml.parseL3Formula("net1__output0__0"))
+
+
+def _new_initial_assignment(model: libsbml.Model) -> None:
+    assignment = model.createInitialAssignment()
+    assignment.setSymbol("beta")
+    assignment.setMath(libsbml.parseL3Formula("net1__layer1__bias__1"))
+
+
+@pytest.mark.parametrize(
+    ("edit", "element", "created"),
+    [
+        (_new_rule, "assignmentRule 'x'", "net1__output0__0"),
+        (_new_kinetic_law, "kineticLaw of the reaction 'v1'", "net1__layer1__bias__0"),
+        (_new_event, "eventAssignment of 'alpha'", "net1__output0__0"),
+        (
+            _new_initial_assignment,
+            "initialAssignment of 'beta'",
+            "net1__layer1__bias__1",
+        ),
+    ],
+)
+def test_strip_refuses_a_hand_edit_which_refers_to_a_created_parameter(
+    tmp_path: Path, edit: Callable[[libsbml.Model], None], element: str, created: str
+) -> None:
+    path = _edited(tmp_path, edit)
+    with pytest.raises(ValueError) as error:
+        strip_derivation(path)
+    message = str(error.value)
+    assert path.name in message
+    assert element in message
+    assert f"'{created}'" in message
+
+
+def _constant_rule(model: libsbml.Model) -> None:
+    model.getRuleByVariable("gamma").setMath(libsbml.parseL3Formula("0.5"))
+
+
+def _foreign_rule(model: libsbml.Model) -> None:
+    model.getRuleByVariable("gamma").setMath(libsbml.parseL3Formula("alpha"))
+
+
+def _removed_rule(model: libsbml.Model) -> None:
+    model.removeRuleByVariable("gamma")
+
+
+@pytest.mark.parametrize(
+    ("edit", "problem"),
+    [
+        (_constant_rule, "does not refer to an output"),
+        (_foreign_rule, "refers to 'alpha'"),
+        (_removed_rule, "has no rule"),
+    ],
+)
+def test_strip_refuses_a_target_whose_rule_is_not_the_one_of_the_network(
+    tmp_path: Path, edit: Callable[[libsbml.Model], None], problem: str
+) -> None:
+    path = _edited(tmp_path, edit)
+    with pytest.raises(ValueError) as error:
+        strip_derivation(path)
+    message = str(error.value)
+    assert path.name in message
+    assert "'gamma'" in message
+    assert problem in message
+
+
+@pytest.mark.parametrize("name", ["a&b.xml", 'q"b.xml', "a<b>'c.xml"])
+def test_a_source_with_xml_characters_in_its_name(tmp_path: Path, name: str) -> None:
+    source = tmp_path / name
+    source.write_bytes(MODEL_PATH.read_bytes())
+    compiled = compile_network(source, [_rhs(feed_forward())], tmp_path / "c.xml")
+    derivation = derivation_of(_read(compiled))
+    assert derivation is not None
+    assert derivation.source == name
+    document, derivation = strip_derivation(compiled)
+    assert derivation.source == name
+    assert libsbml.writeSBMLToString(document) == libsbml.writeSBMLToString(
+        libsbml.readSBMLFromFile(str(source))
+    )
+    observables = add_observables(source, {"total": "prey"}, tmp_path / "o.xml")
+    derivation = derivation_of(_read(observables))
+    assert derivation is not None
+    assert derivation.source == name
+
+
+def test_a_derivation_is_hashable_and_immutable() -> None:
+    derivation = Derivation("lv.xml", ("a",), {"gamma": True})
+    assert hash(derivation) == hash(Derivation("lv.xml", ("a",), {"gamma": True}))
+    with pytest.raises(TypeError):
+        derivation.targets["beta"] = False  # ty: ignore[invalid-assignment]
+
+
+def test_strip_restores_a_target_which_was_not_constant(tmp_path: Path) -> None:
+    document = libsbml.readSBMLFromFile(str(MODEL_PATH))
+    document.getModel().getParameter("gamma").setConstant(False)
+    source = tmp_path / "lv_variable.xml"
+    libsbml.writeSBMLToFile(document, str(source))
+    compiled = compile_network(source, [_rhs(feed_forward())], tmp_path / "c.xml")
+    derivation = derivation_of(_read(compiled))
+    assert derivation is not None
+    assert derivation.targets == {"gamma": False}
+    stripped, _ = strip_derivation(compiled)
+    assert stripped.getModel().getParameter("gamma").getConstant() is False
+    assert libsbml.writeSBMLToString(stripped) == libsbml.writeSBMLToString(
+        libsbml.readSBMLFromFile(str(source))
+    )
+
+
+def test_strip_names_a_target_which_is_missing(tmp_path: Path) -> None:
+    document = libsbml.readSBMLFromFile(str(MODEL_PATH))
+    record_derivation(document.getModel(), Path("lv.xml"), [], {"missing": True})
+    path = tmp_path / "derived.xml"
+    libsbml.writeSBMLToFile(document, str(path))
+    with pytest.raises(ValueError, match="has no parameter 'missing'"):
+        strip_derivation(path)
+
+
+def _annotated(model: libsbml.Model, record: str) -> None:
+    node = libsbml.XMLNode.convertStringToXMLNode(f"<annotation>{record}</annotation>")
+    assert model.setAnnotation(node) == 0
+
+
+def test_a_record_without_a_source_is_refused() -> None:
+    model = libsbml.readSBMLFromFile(str(MODEL_PATH)).getModel()
+    _annotated(model, f'<derived xmlns="{NAMESPACE}"><created>a</created></derived>')
+    with pytest.raises(ValueError, match="without the source"):
+        derivation_of(model)
+
+
+def test_a_record_with_a_bad_constant_is_refused() -> None:
+    model = libsbml.readSBMLFromFile(str(MODEL_PATH)).getModel()
+    _annotated(
+        model,
+        f'<derived xmlns="{NAMESPACE}" source="lv.xml">'
+        '<target id="gamma" constant="yes"/></derived>',
+    )
+    with pytest.raises(ValueError, match="target 'gamma' and constant 'yes'"):
+        derivation_of(model)

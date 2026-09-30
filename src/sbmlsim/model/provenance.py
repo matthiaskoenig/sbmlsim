@@ -27,9 +27,12 @@ the RDF annotation of a model of the wild does not always have one.
 from __future__ import annotations
 
 import logging
-from collections.abc import Iterable, Mapping
+from collections.abc import Iterable, Iterator, Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
+from types import MappingProxyType
+from typing import Any
+from xml.sax.saxutils import escape, quoteattr
 
 import libsbml
 
@@ -51,27 +54,30 @@ class Derivation:
         created: ids of the parameters which were added, in the order they
             were added; a rule of such a parameter was added with it.
         targets: id of a parameter of the source which got a rule -> whether
-            it was constant before.
+            it was constant before; a read only view, which the hash leaves
+            out.
     """
 
     source: str
     created: tuple[str, ...] = ()
-    targets: Mapping[str, bool] = field(default_factory=dict)
+    targets: Mapping[str, bool] = field(default_factory=dict, hash=False)
 
     def __post_init__(self) -> None:
         """Freeze the attributes."""
         object.__setattr__(self, "created", tuple(self.created))
-        object.__setattr__(self, "targets", dict(self.targets))
+        object.__setattr__(self, "targets", MappingProxyType(dict(self.targets)))
 
     def xml(self) -> str:
         """Get the record as the element of the annotation."""
         targets = "".join(
-            f'<target id="{sid}" constant="{"true" if constant else "false"}"/>'
+            f"<target id={quoteattr(sid)} "
+            f'constant="{"true" if constant else "false"}"/>'
             for sid, constant in self.targets.items()
         )
         return (
-            f'<{ELEMENT} xmlns="{NAMESPACE}" source="{self.source}">'
-            f"<created>{' '.join(self.created)}</created>{targets}</{ELEMENT}>"
+            f'<{ELEMENT} xmlns="{NAMESPACE}" source={quoteattr(self.source)}>'
+            f"<created>{escape(' '.join(self.created))}</created>{targets}"
+            f"</{ELEMENT}>"
         )
 
 
@@ -183,7 +189,12 @@ def record_derivation(
             },
         )
         _remove_record(model)
-    node = libsbml.XMLNode.convertStringToXMLNode(derivation.xml())
+    if model.isSetAnnotation():
+        node = libsbml.XMLNode.convertStringToXMLNode(derivation.xml())
+    else:
+        node = libsbml.XMLNode.convertStringToXMLNode(
+            f"<annotation>{derivation.xml()}</annotation>"
+        )
     if node is None:
         raise ValueError(
             f"The record of the derivation of '{source}' is not XML: {derivation.xml()}"
@@ -191,11 +202,7 @@ def record_derivation(
     if model.isSetAnnotation():
         success = model.getAnnotation().addChild(node)
     else:
-        success = model.setAnnotation(
-            libsbml.XMLNode.convertStringToXMLNode(
-                f"<annotation>{derivation.xml()}</annotation>"
-            )
-        )
+        success = model.setAnnotation(node)
     if success != libsbml.LIBSBML_OPERATION_SUCCESS:
         raise ValueError(
             f"The record of the derivation of '{source}' cannot be written into "
@@ -203,6 +210,120 @@ def record_derivation(
             f"{libsbml.OperationReturnValue_toString(success)}"
         )
     return derivation
+
+
+def _symbols_of(math: libsbml.ASTNode | None) -> set[str]:
+    """Get the names in a math expression, i.e. its `ci` elements."""
+    if math is None:
+        return set()
+    names: set[str] = set()
+    stack: list[libsbml.ASTNode] = [math]
+    while stack:
+        node = stack.pop()
+        if node.isName():
+            names.add(node.getName())
+        stack.extend(node.getChild(k) for k in range(node.getNumChildren()))
+    return names
+
+
+def _check_target_rule(
+    model: libsbml.Model, sid: str, created: set[str], name: str
+) -> None:
+    """Check that the rule of a target is the one the derivation wrote.
+
+    The rule of a target sets it to an output of a network, i.e. to a
+    parameter the derivation created. Any other rule was written by hand,
+    and removing it would drop it without notice.
+
+    Args:
+        model: the derived model.
+        sid: id of the target.
+        created: ids of the parameters the derivation created.
+        name: the file of the model, for the messages.
+
+    Raises:
+        ValueError: if the target has no rule, or its rule does not refer to
+            an output of a network only.
+    """
+    rule: libsbml.Rule | None = model.getRuleByVariable(sid)
+    if rule is None:
+        raise ValueError(
+            f"The model '{name}' has no rule for the target '{sid}', which its "
+            f"derivation set"
+        )
+    symbols = _symbols_of(rule.getMath())
+    if not symbols:
+        raise ValueError(
+            f"The rule of the target '{sid}' of the model '{name}' does not refer "
+            f"to an output of a network, it was changed after the derivation"
+        )
+    for symbol in sorted(symbols - created):
+        raise ValueError(
+            f"The rule of the target '{sid}' of the model '{name}' refers to "
+            f"'{symbol}', which its derivation did not create, it was changed "
+            f"after the derivation"
+        )
+
+
+def _math_elements(model: libsbml.Model) -> Iterator[tuple[str, Any]]:
+    """Iterate the elements of a model which have math or refer to a variable.
+
+    Yields:
+        The description of the element for a message and the element.
+    """
+    for rule in model.getListOfRules():
+        yield f"{rule.getElementName()} '{rule.getVariable()}'", rule
+    for assignment in model.getListOfInitialAssignments():
+        yield f"initialAssignment of '{assignment.getSymbol()}'", assignment
+    for constraint in model.getListOfConstraints():
+        yield "constraint", constraint
+    for function in model.getListOfFunctionDefinitions():
+        yield f"functionDefinition '{function.getId()}'", function
+    for reaction in model.getListOfReactions():
+        if reaction.isSetKineticLaw():
+            yield (
+                f"kineticLaw of the reaction '{reaction.getId()}'",
+                reaction.getKineticLaw(),
+            )
+    for k, event in enumerate(model.getListOfEvents()):
+        label = event.getId() or f"#{k + 1}"
+        for part in ("Trigger", "Delay", "Priority"):
+            if getattr(event, f"isSet{part}")():
+                yield (
+                    f"{part.lower()} of the event '{label}'",
+                    getattr(event, f"get{part}")(),
+                )
+        for assignment in event.getListOfEventAssignments():
+            yield (
+                f"eventAssignment of '{assignment.getVariable()}' of the event "
+                f"'{label}'",
+                assignment,
+            )
+
+
+def _check_references(model: libsbml.Model, removed: set[str], name: str) -> None:
+    """Check that nothing in the model refers to a removed parameter.
+
+    Args:
+        model: the model, after the removal.
+        removed: ids of the parameters which were removed.
+        name: the file of the model, for the messages.
+
+    Raises:
+        ValueError: if a rule, kinetic law, initial assignment, event,
+            constraint or function refers to a removed parameter, which
+            happens if the model was changed by hand after the derivation.
+    """
+    for what, element in _math_elements(model):
+        names = _symbols_of(element.getMath())
+        for getter in ("getVariable", "getSymbol"):
+            if hasattr(element, getter):
+                names.add(getattr(element, getter)())
+        for sid in sorted(names & removed):
+            raise ValueError(
+                f"The {what} of the model '{name}' refers to '{sid}', which its "
+                f"derivation created, it was changed after the derivation"
+            )
 
 
 def strip_derivation(sbml_path: Path) -> tuple[libsbml.SBMLDocument, Derivation]:
@@ -217,8 +338,11 @@ def strip_derivation(sbml_path: Path) -> tuple[libsbml.SBMLDocument, Derivation]
         the record.
 
     Raises:
-        ValueError: if the model cannot be read, is not derived, or a created
-            parameter or a target is not in it.
+        ValueError: if the model cannot be read, is not derived, a created
+            parameter or a target is not in it, the rule of a target is not
+            the one of the network, or the model refers to a created
+            parameter outside of the parts the derivation wrote, i.e. it was
+            changed by hand after the derivation.
     """
     document: libsbml.SBMLDocument = libsbml.readSBMLFromFile(str(sbml_path))
     model: libsbml.Model | None = document.getModel()
@@ -228,21 +352,26 @@ def strip_derivation(sbml_path: Path) -> tuple[libsbml.SBMLDocument, Derivation]
     if derivation is None:
         raise ValueError(f"The model '{sbml_path}' is not derived from a model")
     for sid in derivation.created:
-        model.removeRuleByVariable(sid)
-        if model.removeParameter(sid) is None:
+        if model.getParameter(sid) is None:
             raise ValueError(
                 f"The model '{sbml_path}' has no parameter '{sid}', which its "
                 f"derivation created"
             )
-    for sid, constant in derivation.targets.items():
-        model.removeRuleByVariable(sid)
-        parameter: libsbml.Parameter | None = model.getParameter(sid)
-        if parameter is None:
+    created = set(derivation.created)
+    for sid in derivation.targets:
+        if model.getParameter(sid) is None:
             raise ValueError(
                 f"The model '{sbml_path}' has no parameter '{sid}', which its "
                 f"derivation set"
             )
-        parameter.setConstant(constant)
+        _check_target_rule(model, sid, created, Path(sbml_path).name)
+    for sid in derivation.created:
+        model.removeRuleByVariable(sid)
+        model.removeParameter(sid)
+    for sid, constant in derivation.targets.items():
+        model.removeRuleByVariable(sid)
+        model.getParameter(sid).setConstant(constant)
+    _check_references(model, created, Path(sbml_path).name)
     _remove_record(model)
     logger.info(
         "The model '%s' is the model '%s' without %d parameters",

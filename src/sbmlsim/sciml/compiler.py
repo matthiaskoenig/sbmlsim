@@ -286,9 +286,15 @@ class _Model:
         Raises:
             NetworkCompilationError: if the model is not valid SBML.
         """
-        record_derivation(
-            self.model, self.source_path, list(self.created), self.rule_targets
-        )
+        try:
+            record_derivation(
+                self.model, self.source_path, list(self.created), self.rule_targets
+            )
+        except ValueError as err:
+            raise NetworkCompilationError(
+                f"The model '{self.name}' with the networks cannot record its "
+                f"derivation: {err}"
+            ) from err
         errors = self.errors()
         if errors:
             raise NetworkCompilationError(
