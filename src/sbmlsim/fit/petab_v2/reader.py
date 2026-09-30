@@ -15,6 +15,7 @@ is the case for a problem of another tool.
 """
 
 import logging
+from collections.abc import Mapping
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -63,6 +64,8 @@ from sbmlsim.task import Task
 from sbmlsim.units import UnitRegistry, UnitsInformation
 
 if TYPE_CHECKING:
+    from petab.v2.extensions.sciml import SciMLConfig
+
     from sbmlsim.fit.petab_v2.sciml import SciMLReader
 
 logger = logging.getLogger(__name__)
@@ -115,7 +118,7 @@ class PetabReader:
         base_path: Path | None = None,
         name: str | None = None,
         derived_dir: Path | None = None,
-        sciml: Any | None = None,
+        sciml: "SciMLConfig | Mapping[str, Any] | None" = None,
     ):
         """Initialize the reader.
 
@@ -263,11 +266,13 @@ class PetabReader:
         extensions = dict(config.get("extensions") or {})
         check_extensions(extensions)
         sciml = extensions.pop(SCIML_EXTENSION_ID, None)
-        if sciml is None or SCIML_EXTENSION_ID not in known_extensions():
+        if sciml is None:
             petab_problem = PetabProblem.from_yaml(yaml_file)
             return PetabReader(petab_problem, base_path=yaml_file.parent, name=name)
         # `petab` reads the networks of a problem through PyTorch, which is
-        # no dependency: it reads the tables, `SciMLReader` the networks
+        # no dependency, and needs `petab_sciml` for the block, which is the
+        # extra: it reads the tables, `SciMLReader` the networks, and a block
+        # which is not required is ignored without the extra
         petab_problem = PetabProblem.from_yaml(
             {**config, "extensions": extensions}, base_path=yaml_file.parent
         )
@@ -305,7 +310,23 @@ class PetabReader:
             config=config,
             base_path=self.base_path,
             simulations=self._start_conditions(),
+            later_periods=self._later_periods(),
         )
+
+    def _later_periods(self) -> dict[str, list[tuple[float, list[str]]]]:
+        """Get the periods after the first of every experiment.
+
+        Returns:
+            id of the experiment -> the time and the ids of the conditions of
+            every period after the first, in the order of their time.
+        """
+        return {
+            experiment.id: [
+                (float(period.time), list(period.condition_ids))
+                for period in sorted(experiment.periods, key=lambda p: p.time)[1:]
+            ]
+            for experiment in self.petab_problem.experiments
+        }
 
     def _start_conditions(self) -> dict[str, list[str]]:
         """Get the conditions every simulation starts with.

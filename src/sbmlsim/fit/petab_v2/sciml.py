@@ -40,7 +40,9 @@ from petab_sciml.constants import ALL_CONDITION_IDS, ARRAY
 
 from sbmlsim.fit.objects import EXTERNAL_PREFIX, FitParameter
 from sbmlsim.fit.options import ParameterScaleType
+from sbmlsim.fit.petab_v2.extension import SCIML_EXTENSION_ID
 from sbmlsim.mathml import expression_to_formula, formula_symbols
+from sbmlsim.sciml.backend import BackendKind
 from sbmlsim.sciml.hybridization import (
     ALL_CONDITIONS,
     Hybridization,
@@ -49,6 +51,8 @@ from sbmlsim.sciml.hybridization import (
     input_shapes,
     output_shapes,
 )
+from sbmlsim.sciml.interpreter import CALL_FUNCTION, CALL_METHOD, CALL_MODULE
+from sbmlsim.sciml.layers import FUNCTIONS, LAYERS
 from sbmlsim.sciml.network import (
     Network,
     input_id,
@@ -189,7 +193,7 @@ def read_sciml_config(extensions: Mapping[str, Any] | None) -> SciMLConfig | Non
     Raises:
         SciMLProblemError: if the block is not a block of the extension.
     """
-    block = (extensions or {}).get("sciml")
+    block = (extensions or {}).get(SCIML_EXTENSION_ID)
     if block is None:
         return None
     if isinstance(block, SciMLConfig):
@@ -198,7 +202,7 @@ def read_sciml_config(extensions: Mapping[str, Any] | None) -> SciMLConfig | Non
         return SciMLConfig(**dict(block))
     except (TypeError, ValueError) as err:
         raise SciMLProblemError(
-            f"The block 'sciml' of the problem is not valid: {err}"
+            f"The block '{SCIML_EXTENSION_ID}' of the problem is not valid: {err}"
         ) from err
 
 
@@ -218,6 +222,7 @@ class SciMLReader:
         config: SciMLConfig,
         base_path: Path,
         simulations: Mapping[str, list[str]],
+        later_periods: Mapping[str, list[tuple[float, list[str]]]] | None = None,
     ) -> None:
         """Read the networks, the hybridization tables and the array files.
 
@@ -227,14 +232,21 @@ class SciMLReader:
             config: the block of the extension.
             base_path: directory the files of the problem are relative to.
             simulations: id of the simulation of every experiment -> the ids
-                of the conditions the simulation starts with.
+                of the conditions the simulation starts with, which set the
+                inputs of the networks.
+            later_periods: id of the simulation of every experiment -> the
+                time and the ids of the conditions of every period after the
+                first, which must not set an input of a network.
 
         Raises:
             SciMLProblemError: if the problem has not one model, if a network
                 is not in the format `YAML`, if a row of the mapping table
                 names a network the problem does not have, if a row of the
-                hybridization table cannot be read, or if a parameter of a
-                network has a prior.
+                hybridization table cannot be read or assigns something else
+                than an input of a network or an output of a network to an
+                entity of the model, if a period after the first of an
+                experiment sets an input of a network, if an input has no
+                value, or if a parameter of a network has a prior.
             NetworkImportError: if a network or its arrays cannot be read.
         """
         self.petab_problem = petab_problem
@@ -278,6 +290,10 @@ class SciMLReader:
                         f"The hybridization table assigns '{row.target_id}' no value"
                     )
                 self._hybridization[row.target_id] = row.target_value
+        #: the target of every output the hybridization table assigns, by the
+        #: `petabEntityId` of the output
+        self._targets: dict[str, str] = self._output_targets()
+        self._check_later_periods(later_periods or {})
 
         self.networks: dict[str, Network] = {
             sid: self._network(sid) for sid in (config.neural_networks or {})
@@ -290,6 +306,115 @@ class SciMLReader:
             }
             for sid in self.networks
         }
+        #: the hybridizations, built once, see `hybridizations`
+        self._hybridizations: list[Hybridization] | None = None
+
+    def _output_targets(self) -> dict[str, str]:
+        """Check the rows of the hybridization table and get the targets.
+
+        A row assigns a value to an input of a network, or an output of a
+        network to an entity of the model.
+
+        Returns:
+            The `petabEntityId` of every output the table assigns -> the
+            `targetId` of its row.
+
+        Raises:
+            SciMLProblemError: if a row assigns a value to an output or to
+                the parameters of a network, an output of a network to an
+                input of a network, or one output to two targets, or if a row
+                is neither of the two forms.
+        """
+        targets: dict[str, str] = {}
+        for target, value in self._hybridization.items():
+            entity = self.entities.get(target)
+            output = self.entities.get(str(value))
+            is_output = output is not None and output.kind == "outputs"
+            if entity is not None and entity.kind != "inputs":
+                raise SciMLProblemError(
+                    f"The hybridization table assigns '{target}' the value "
+                    f"'{_text(value)}', but '{target}' is the {entity.kind} of the "
+                    f"network '{entity.network}'. A row assigns a value to an "
+                    f"input of a network or an output of a network to an entity "
+                    f"of the model"
+                )
+            if entity is not None and is_output:
+                raise SciMLProblemError(
+                    f"The hybridization table assigns the output '{_text(value)}' to the "
+                    f"input '{target}': the input of a network is not the output "
+                    f"of a network"
+                )
+            if entity is not None:
+                continue
+            if output is None or not is_output:
+                raise SciMLProblemError(
+                    f"The hybridization table assigns '{target}' the value "
+                    f"'{_text(value)}'. A row assigns a value to an input of a network "
+                    f"or an output of a network to an entity of the model"
+                )
+            if output.petab_id in targets:
+                raise SciMLProblemError(
+                    f"Network '{output.network}': the hybridization table assigns "
+                    f"the output '{output.petab_id}' to '{targets[output.petab_id]}' "
+                    f"and to '{target}'"
+                )
+            targets[output.petab_id] = target
+        return targets
+
+    def _check_later_periods(
+        self, later_periods: Mapping[str, list[tuple[float, list[str]]]]
+    ) -> None:
+        """Check that only the first period of an experiment sets the inputs.
+
+        A network before the simulation is evaluated once per simulation
+        and a network in the model has one formula per input, so the inputs
+        of a network are the ones of the first period of an experiment.
+
+        Args:
+            later_periods: id of the simulation -> the time and the ids of the
+                conditions of every period after the first.
+
+        Raises:
+            SciMLProblemError: if a condition of such a period sets an input
+                of a network or selects the arrays of an input.
+        """
+        changes = {
+            condition.id: sorted(
+                {
+                    change.target_id
+                    for change in condition.changes
+                    if change.target_id in self.input_ids
+                }
+            )
+            for condition in self.petab_problem.conditions
+        }
+        for simulation, periods in later_periods.items():
+            for time, condition_ids in periods:
+                for condition_id in condition_ids:
+                    inputs = changes.get(condition_id, [])
+                    arrays = sorted(
+                        {
+                            petab_id
+                            for data in self._arrays
+                            for petab_id, by_condition in data.inputs.items()
+                            if condition_id in by_condition
+                        }
+                    )
+                    what = (
+                        f"sets {inputs}"
+                        if inputs
+                        else f"selects the arrays of {arrays}"
+                    )
+                    if inputs or arrays:
+                        raise SciMLProblemError(
+                            f"The experiment '{simulation}': the condition "
+                            f"'{condition_id}' of its period at the time {time} "
+                            f"{what}, which are inputs of networks. The inputs of "
+                            f"a network are the ones of the first period of an "
+                            f"experiment: a network before the simulation is "
+                            f"evaluated once per simulation, a network in the "
+                            f"model has one formula per input"
+                        )
 
     # --- THE NETWORKS ---
 
@@ -434,15 +559,20 @@ class SciMLReader:
                     f"Network '{entity.network}': the input '{petab_id}' is an "
                     f"array, and {len(arrays)} array files have values for it"
                 )
-            return NetworkInput(
-                arrays=self._conditions(
-                    {
-                        condition: np.asarray(array, dtype=float)
-                        for condition, array in arrays[0].items()
-                    },
-                    f"the input '{petab_id}'",
-                )
+            by_array = self._conditions(
+                {
+                    condition: np.asarray(array, dtype=float)
+                    for condition, array in arrays[0].items()
+                },
+                f"the input '{petab_id}'",
             )
+            if not by_array:
+                raise SciMLProblemError(
+                    f"Network '{entity.network}': the input '{petab_id}' has "
+                    f"arrays for the conditions {sorted(arrays[0])}, but no "
+                    f"experiment starts with one of them"
+                )
+            return NetworkInput(arrays=by_array)
         if value is not None:
             return NetworkInput(formula=expression_to_formula(value))
 
@@ -456,6 +586,13 @@ class SciMLReader:
             formulas = self._conditions(by_condition, f"the input '{petab_id}'")
             if petab_id in self._parameters:
                 formulas.setdefault(ALL_CONDITIONS, petab_id)
+            if not formulas:
+                raise SciMLProblemError(
+                    f"Network '{entity.network}': the input '{petab_id}' is set "
+                    f"by the conditions {sorted(by_condition)}, but no experiment "
+                    f"starts with one of them and it is not a parameter of the "
+                    f"parameter table"
+                )
             return NetworkInput(formulas=formulas)
         if petab_id in self._parameters:
             return NetworkInput(formula=petab_id)
@@ -510,49 +647,54 @@ class SciMLReader:
         an entity of the model is `RHS`, and a network with outputs of both
         kinds has two hybridizations.
 
+        The hybridizations are built once, so the model the networks are
+        compiled into and the problem are built from the same objects.
+
         Returns:
             The hybridizations, in the order of the networks of the problem.
 
         Raises:
-            SciMLProblemError: if an input has no value, if an output is
-                assigned to two targets or to a target and an observable, or
-                if a network has no output which is used.
+            SciMLProblemError: if an output of the mapping table is not an
+                element of the outputs of its network, if an output is
+                assigned to a target and used by an observable, if a network
+                has no output which is used, or if a network in the model has
+                a layer without MathML of SBML (gap `sciml-layer-sbml`).
             NetworkHybridizationError: if the inputs and outputs do not fit
                 a network.
         """
+        if self._hybridizations is None:
+            self._hybridizations = self._build_hybridizations()
+        return list(self._hybridizations)
+
+    def _build_hybridizations(self) -> list[Hybridization]:
+        """Build the hybridizations of the networks, see `hybridizations`."""
         observed = {
             str(symbol)
             for observable in self.petab_problem.observables
             for symbol in observable.formula.free_symbols
         }
-        targets: dict[str, str] = {}
-        for target, value in self._hybridization.items():
-            output = self.entities.get(str(value))
-            if output is None or output.kind != "outputs":
-                continue
-            if output.petab_id in targets:
-                raise SciMLProblemError(
-                    f"Network '{output.network}': the hybridization table assigns "
-                    f"the output '{output.petab_id}' to '{targets[output.petab_id]}' "
-                    f"and to '{target}'"
-                )
-            targets[output.petab_id] = target
-        for target, value in self._hybridization.items():
-            if target in self.entities or str(value) in targets:
-                continue
-            raise SciMLProblemError(
-                f"The hybridization table assigns '{target}' the value '{value}'. "
-                f"A row assigns a value to an input of a network or an output of "
-                f"a network to an entity of the model"
-            )
-
+        targets = self._targets
         hybridizations: list[Hybridization] = []
         for sid, network in self.networks.items():
             inputs = self.inputs[sid]
             outputs: dict[NetworkPattern, dict[str, str]] = {}
             shapes = output_shapes(network, input_shapes(network, inputs))
             for entity in self._entities(sid, "outputs"):
-                key = output_id(sid, entity.k or 0, _index(entity, shapes))
+                index = _index(entity, shapes)
+                k = entity.k or 0
+                if k >= len(shapes) or not (
+                    len(index) == len(shapes[k])
+                    and all(0 <= i < n for i, n in zip(index, shapes[k], strict=True))
+                ):
+                    model_id = f"{sid}.outputs[{k}]" + "".join(
+                        f"[{i}]" for i in entity.index or ()
+                    )
+                    raise SciMLProblemError(
+                        f"Network '{sid}': the mapping of '{entity.petab_id}' to "
+                        f"'{model_id}' is not an element of the outputs of the "
+                        f"shapes {shapes}"
+                    )
+                key = output_id(sid, k, index)
                 if entity.petab_id in targets:
                     pattern = (
                         NetworkPattern.PRE_INITIALIZATION
@@ -584,6 +726,16 @@ class SciMLReader:
                     f"Network '{sid}': no output of the network is used, neither "
                     f"by the hybridization table nor by an observable"
                 )
+            if any(pattern.is_compiled for pattern in outputs):
+                nodes = _nodes_without_expressions(network)
+                if nodes:
+                    raise SciMLProblemError(
+                        f"Network '{sid}': the network is compiled into the "
+                        f"model, but the {', '.join(nodes)} have no MathML of "
+                        f"SBML. Such a network runs before the simulation, i.e. "
+                        f"with 'pre_initialization: true'",
+                        gap="sciml-layer-sbml",
+                    )
             frozen = set(network.parameter_ids()) - {
                 p.pid for p in self.network_parameters(sid)
             }
@@ -715,6 +867,40 @@ def _symbols(inputs: Mapping[str, NetworkInput]) -> set[str]:
     }
 
 
+def _text(value: Any) -> str:
+    """Get a value of the hybridization table as it is written in a message."""
+    if isinstance(value, sympy.Number):
+        return str(float(value))
+    return str(value)
+
+
+def _nodes_without_expressions(network: Network) -> list[str]:
+    """Get the nodes of the forward pass which are not evaluated on expressions.
+
+    Args:
+        network: the network.
+
+    Returns:
+        The nodes with their layer or function, e.g. `node 'layer1' (Conv2d)`,
+        which have no implementation of the backend `SYMPY` and so no MathML
+        of SBML.
+    """
+    layers = {layer.layer_id: layer.layer_type for layer in network.model.layers}
+    nodes: list[str] = []
+    for node in network.model.forward:
+        if node.op == CALL_MODULE:
+            name = layers[node.target]
+            supported = LAYERS.get(name)
+        elif node.op in (CALL_FUNCTION, CALL_METHOD):
+            name = node.target
+            supported = FUNCTIONS.get(name)
+        else:
+            continue
+        if supported is not None and BackendKind.SYMPY not in supported.backends:
+            nodes.append(f"node '{node.name}' ({name})")
+    return nodes
+
+
 def _index(entity: NetworkEntity, shapes: list[tuple[int, ...]]) -> tuple[int, ...]:
     """Get the index of an output of PEtab SciML in the output of the network.
 
@@ -730,7 +916,7 @@ def _index(entity: NetworkEntity, shapes: list[tuple[int, ...]]) -> tuple[int, .
     Returns:
         The index with a zero for every leading axis of the length one which
         it does not name. An index which does not fit is returned as it is,
-        the hybridization names it.
+        `hybridizations` names it.
     """
     index = entity.index or ()
     k = entity.k or 0

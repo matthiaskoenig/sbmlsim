@@ -2,6 +2,7 @@
 
 import dataclasses
 import logging
+import sys
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any
@@ -301,6 +302,23 @@ def test_the_missing_extra_is_named_and_not_a_missing_module(
     _add_extension(petab_iv, "tool_a", {"version": "1.0.0", "required": True})
     with pytest.raises(ImportError, match=r"pip install sbmlsim\[sciml\]"):
         from_petab(petab_iv / "problem.yaml")
+
+
+def test_an_extension_of_the_networks_which_is_not_required_is_ignored(
+    petab_iv: Path, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    """Without the extra the tables are read and the networks are not."""
+    _add_extension(petab_iv, SCIML_EXTENSION_ID, {**SCIML_BLOCK, "required": False})
+    monkeypatch.setattr(extension, "sciml_installed", lambda: False)
+    # `petab` imports `petab_sciml` for a block of the extension it reads
+    monkeypatch.setitem(sys.modules, "petab_sciml", None)
+    with caplog.at_level(logging.WARNING, logger="sbmlsim.fit.petab_v2.reader"):
+        reader = PetabReader.from_yaml(petab_iv / "problem.yaml")
+    assert reader.sciml is None
+    assert any(SCIML_EXTENSION_ID in r.getMessage() for r in caplog.records)
+    problem = reader.to_optimization_problem()
+    problem.initialize(reader.settings)
+    assert len(problem.mapping_keys) == 4
 
 
 def test_a_problem_with_the_extension_and_without_networks_is_read(

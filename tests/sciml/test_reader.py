@@ -28,7 +28,7 @@ from sbmlsim.sciml import (
 )
 from sbmlsim.sciml.hybridization import ALL_CONDITIONS
 from tests.sciml.hybrid import convolution, feed_forward, two_inputs
-from tests.sciml.petab import write_problem
+from tests.sciml.petab import write_problem, write_table
 
 PRE = NetworkPattern.PRE_INITIALIZATION
 RHS = NetworkPattern.RHS
@@ -458,6 +458,110 @@ def test_an_array_of_a_network_in_the_right_hand_side(tmp_path: Path) -> None:
     ]
 
 
+def _periods(path: Path, rows: list[tuple[str, float, str]]) -> None:
+    """Replace the experiments of a problem by periods, id, time and condition."""
+    write_table(
+        path.parent / "experiments.tsv",
+        [
+            {"experimentId": sid, "time": time, "conditionId": condition}
+            for sid, time, condition in rows
+        ],
+    )
+
+
+@pytest.mark.parametrize(
+    ("conditions", "message"),
+    [
+        (
+            # the input changes in the second period
+            [
+                ("cond1", "net1_input1", "10.0"),
+                ("cond1", "net1_input2", "20.0"),
+                ("cond2", "net1_input1", "3.0"),
+            ],
+            r"experiment 'e1'.*condition 'cond2'.*period at the time 5\.0 sets "
+            r"\['net1_input1'\]",
+        ),
+        (
+            # only the second period sets the input
+            [("cond1", "delta", "1.8"), ("cond2", "net1_input1", "3.0")],
+            r"experiment 'e1'.*condition 'cond2'.*sets \['net1_input1'\]",
+        ),
+    ],
+)
+def test_an_input_of_a_later_period(
+    tmp_path: Path, conditions: list[tuple[str, str, str]], message: str
+) -> None:
+    """A network before the simulation is evaluated once per simulation."""
+    path = write_problem(
+        tmp_path,
+        networks=[feed_forward()],
+        pre_initialization={"net1": True},
+        mapping=[*INPUTS, *OUTPUT],
+        hybridization=[("gamma", "net1_output1")],
+        parameters=[
+            {"parameterId": "net1_input2", "nominalValue": 2.0, "estimate": False}
+        ],
+        conditions=conditions,
+        experiments={"e1": "cond1"},
+    )
+    _periods(path, [("e1", 0.0, "cond1"), ("e1", 5.0, "cond2")])
+    with pytest.raises(SciMLProblemError, match=message):
+        _read(path)
+
+
+def test_an_array_of_a_later_period(tmp_path: Path) -> None:
+    """The array of an input is selected by the first period."""
+    network = convolution()
+    arrays = {"cond1": np.ones((1, 4, 4)), "cond2": 2.0 * np.ones((1, 4, 4))}
+    path = write_problem(
+        tmp_path,
+        networks=[network],
+        pre_initialization={"net3": True},
+        mapping=[("input0", "net3.inputs[0]"), ("net3_output1", "net3.outputs[0][0]")],
+        hybridization=[("input0", "array"), ("gamma", "net3_output1")],
+        inputs={"input0": arrays},
+        experiments={"e1": "cond1"},
+    )
+    _periods(path, [("e1", 0.0, "cond1"), ("e1", 5.0, "cond2")])
+    with pytest.raises(
+        SciMLProblemError,
+        match=r"experiment 'e1'.*condition 'cond2'.*arrays of \['input0'\]",
+    ):
+        _read(path)
+
+
+def test_an_input_of_a_condition_which_starts_no_experiment(tmp_path: Path) -> None:
+    """An input which only a condition sets that no experiment uses has no value."""
+    path = write_problem(
+        tmp_path,
+        networks=[feed_forward()],
+        pre_initialization={"net1": True},
+        mapping=[*INPUTS, *OUTPUT],
+        hybridization=[("gamma", "net1_output1")],
+        parameters=[
+            {"parameterId": "net1_input2", "nominalValue": 2.0, "estimate": False}
+        ],
+        conditions=[("cond9", "net1_input1", "3.0")],
+    )
+    with pytest.raises(
+        SciMLProblemError,
+        match=r"input 'net1_input1'.*\['cond9'\].*no experiment starts with",
+    ):
+        _read(path)
+
+
+def test_the_hybridizations_are_read_once(tmp_path: Path) -> None:
+    """The compiled model and the problem are built from the same objects."""
+    reader = _read(_problem(tmp_path))
+    assert reader.sciml is not None
+    (first,) = reader.sciml.hybridizations()
+    (second,) = reader.sciml.hybridizations()
+    assert first is second
+    problem = reader.to_optimization_problem()
+    assert problem.hybridizations[0] is first
+
+
 # --- WHAT IS NOT READ ---
 
 
@@ -564,6 +668,40 @@ def test_a_prior_of_a_network(tmp_path: Path) -> None:
             },
             r"inputs of the shapes \[\(1,\)\] do not fit",
         ),
+        (
+            {"hybridization": [*SPECIES, ("gamma", "net1_output1"), ("net1_ps", "1")]},
+            r"assigns 'net1_ps' the value '1\.0', but 'net1_ps' is the parameters "
+            r"of the network 'net1'",
+        ),
+        (
+            {
+                "hybridization": [
+                    *SPECIES,
+                    ("gamma", "net1_output1"),
+                    ("net1_output1", "1"),
+                ]
+            },
+            r"assigns 'net1_output1' the value '1\.0', but 'net1_output1' is the "
+            r"outputs of the network 'net1'",
+        ),
+        (
+            {
+                "hybridization": [
+                    ("net1_input1", "net1_output1"),
+                    ("net1_input2", "predator"),
+                ]
+            },
+            "assigns the output 'net1_output1' to the input 'net1_input1'",
+        ),
+        (
+            {"mapping": [*INPUTS, *OUTPUT, ("net1_output9", "net1.outputs[0][7]")]},
+            r"'net1_output9' to 'net1\.outputs\[0\]\[7\]' is not an element of "
+            r"the outputs of the shapes \[\(1,\)\]",
+        ),
+        (
+            {"mapping": [*INPUTS, *OUTPUT, ("net1_output9", "net1.outputs[2][0]")]},
+            r"'net1_output9' to 'net1\.outputs\[2\]\[0\]' is not an element",
+        ),
     ],
 )
 def test_a_problem_which_cannot_be_read(
@@ -586,8 +724,12 @@ def test_a_convolution_in_the_right_hand_side(tmp_path: Path) -> None:
         hybridization=[("input0", "array"), ("gamma", "net3_output1")],
         inputs={"input0": {ALL_CONDITION_IDS: np.ones((1, 4, 4))}},
     )
-    with pytest.raises(NetworkHybridizationError, match="not evaluated on expressions"):
+    with pytest.raises(
+        SciMLProblemError,
+        match=r"Network 'net3'.*node 'layer1' \(Conv2d\).*sciml-layer-sbml",
+    ) as excinfo:
         _read(path).to_optimization_problem()
+    assert excinfo.value.gap == "sciml-layer-sbml"
 
 
 def test_from_petab(tmp_path: Path) -> None:
