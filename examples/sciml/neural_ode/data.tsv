@@ -15,6 +15,14 @@ prey	3.25	2.1880
 prey	3.50	2.9850
 prey	3.75	4.0763
 prey	4.00	5.4634
+prey	4.25	7.2890
+prey	4.50	8.8286
+prey	4.75	7.4912
+prey	5.00	3.1124
+prey	5.25	0.9323
+prey	5.50	0.3824
+prey	5.75	0.2708
+prey	6.00	0.2390
 predator	0.25	3.1335
 predator	0.50	2.1297
 predator	0.75	1.3859
@@ -31,3 +39,11 @@ predator	3.25	0.0013
 predator	3.50	0.0757
 predator	3.75	0.0276
 predator	4.00	0.2094
+predator	4.25	0.3324
+predator	4.50	1.0046
+predator	4.75	3.6090
+predator	5.00	6.7709
+predator	5.25	6.1479
+predator	5.50	4.4544
+predator	5.75	3.1069
+predator	6.00	1.9548
