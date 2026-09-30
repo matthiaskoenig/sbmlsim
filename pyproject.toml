@@ -47,6 +47,8 @@ dependencies = [
 	"xarray>=2026.7.0",
 	"scipy>=1.18.1",
 	"sympy>=1.14.0",
+	# the formulas of a model and of a network as sympy expressions
+	"sbmlmath>=0.4.1",
 	"pint>=0.25.3",
 	"pydantic>=2.13.5",
 	# parameter fitting and sensitivity analysis
