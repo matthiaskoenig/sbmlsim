@@ -16,7 +16,6 @@ import json
 from pathlib import Path
 
 import pytest
-from petab import v2 as petab_v2
 
 from sbmlsim.sciml.testsuite import (
     INITIALIZATION,
@@ -50,6 +49,9 @@ def _case_ids(group: str) -> list[str]:
 MODEL_IMPORT_IDS = _case_ids(MODEL_IMPORT)
 INITIALIZATION_IDS = _case_ids(INITIALIZATION)
 PROBLEM_IMPORT_IDS = _case_ids(PROBLEM_IMPORT)
+
+#: the cases with priors, which state a log-posterior and are not round tripped
+PRIORS = {"032", "033", "034"}
 
 
 @pytest.fixture(scope="session")
@@ -111,14 +113,12 @@ def test_problem_import(cid: str, suite: SciMLSuite, baseline: dict) -> None:
 @pytest.mark.parametrize("cid", PROBLEM_IMPORT_IDS)
 def test_problem_round_trip(cid: str, suite: SciMLSuite, tmp_path: Path) -> None:
     """A case which is read is written as PEtab SciML and read back exactly."""
+    pytest.importorskip("torch")
     case = ProblemImportCase.from_directory(suite.path / PROBLEM_IMPORT / cid)
+    assert (case.llh is None) == (cid in PRIORS), f"case {cid} states {case.llh}"
     if case.llh is None:
         pytest.skip("the case states a log-posterior and is not read (sciml-priors)")
     assert case.round_trip(tmp_path) == []
-    # the export is valid PEtab SciML, `petab` reads its networks with torch
-    pytest.importorskip("torch")
-    issues = petab_v2.Problem.from_yaml(tmp_path / "petab" / "problem.yaml").validate()
-    assert not issues.has_errors(), str(issues)
 
 
 def test_the_baseline_matches_the_suite(suite: SciMLSuite, baseline: dict) -> None:

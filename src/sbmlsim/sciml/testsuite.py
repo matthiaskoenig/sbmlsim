@@ -25,6 +25,7 @@ import tempfile
 from collections.abc import Iterator
 from dataclasses import dataclass, field, replace
 from enum import StrEnum
+from importlib.util import find_spec
 from pathlib import Path
 from typing import Any
 
@@ -32,8 +33,10 @@ import h5py
 import numpy as np
 import pandas as pd
 import yaml
+from petab import v2 as petab_v2
 from petab.v2.core import MappingTable, ParameterTable, ProblemConfig
 from petab.v2.extensions.sciml import SciMLConfig
+from petab.v2.lint import ValidationIssueSeverity
 from petab_sciml.constants import ARRAY
 
 from sbmlsim.fit.objects import FitParameter
@@ -638,6 +641,27 @@ class InitializationCase:
         return _worst(INITIALIZATION, self.cid, outcomes)
 
 
+def nothing_to_compare(problem: OptimizationProblem) -> list[str]:
+    """Name what a problem lacks for a round trip to compare anything.
+
+    Args:
+        problem: the problem read from a case.
+
+    Returns:
+        One line for each of the parameters, fit mappings and hybridizations
+        which the problem does not have.
+    """
+    return [
+        f"the case has no {what}"
+        for what, items in (
+            ("parameters", problem.parameters),
+            ("fit mappings", problem.mapping_keys),
+            ("hybridizations", problem.hybridizations),
+        )
+        if not items
+    ]
+
+
 @dataclass(frozen=True)
 class ProblemImportCase:
     """A case of the group `sciml_problem_import`.
@@ -972,8 +996,11 @@ class ProblemImportCase:
             which is read back, one line each: the parameters (id, start
             value, bounds, unit, scale, target), the hybridizations, the
             data, the kinds and the weights of the fit mappings, the
-            predictions and the log-likelihood. Empty when the round trip
-            is exact.
+            predictions and the log-likelihood. What `petab` finds wrong
+            with the export is listed too, or that it was not validated
+            because torch is missing. A case without parameters, fit
+            mappings or hybridizations is a difference, it compares nothing.
+            Empty when the round trip is exact.
         """
         settings = self.settings()
 
@@ -989,6 +1016,20 @@ class ProblemImportCase:
         _, original = read(self.problem_path, directory / "second")
         reader, restored = read(yaml_file, directory / "restored")
 
+        differences: list[str] = nothing_to_compare(original)
+        if differences:
+            return differences
+        if find_spec("torch") is None:
+            # `petab` reads the networks of the SciML block with torch
+            differences.append("the export was not validated, torch is missing")
+        else:
+            issues = petab_v2.Problem.from_yaml(yaml_file).validate()
+            differences.extend(
+                f"the export is not valid: {issue.message} [{issue.task}]"
+                for issue in issues
+                if issue.level >= ValidationIssueSeverity.ERROR
+            )
+
         def parameter(p: FitParameter) -> tuple[Any, ...]:
             return (
                 p.pid,
@@ -1001,13 +1042,18 @@ class ProblemImportCase:
                 p.is_versioned,
             )
 
-        differences: list[str] = []
-        expected = [parameter(p) for p in original.parameters]
-        observed = [parameter(p) for p in restored.parameters]
-        if expected != observed:
+        expected = {p.pid: parameter(p) for p in original.parameters}
+        observed = {p.pid: parameter(p) for p in restored.parameters}
+        if expected.keys() != observed.keys():
             differences.append(
-                f"the parameters differ: {sorted(set(expected) ^ set(observed))}"
+                f"the parameters differ: {sorted(expected.keys() ^ observed.keys())}"
             )
+            return differences
+        changed = [pid for pid in expected if expected[pid] != observed[pid]]
+        if changed:
+            differences.append(f"the parameters differ: {changed}")
+        elif list(expected) != list(observed):
+            differences.append("the order of the parameters differs")
         if len(original.hybridizations) != len(restored.hybridizations):
             differences.append("the number of hybridizations differs")
         pairs = zip(original.hybridizations, restored.hybridizations, strict=False)

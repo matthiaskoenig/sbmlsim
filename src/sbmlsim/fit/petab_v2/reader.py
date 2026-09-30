@@ -1234,6 +1234,14 @@ class PetabReader:
             if not parameter.estimate or parameter.id in handled:
                 continue
             target, keys = versions.get(parameter.id, (None, set()))
+            if parameter.prior_distribution is not None:
+                # the objective of `sbmlsim` has no priors, see the gap
+                logger.warning(
+                    "The parameter '%s' has the prior '%s', which the objective "
+                    "of `sbmlsim` does not use (gap 'priors', issue #190).",
+                    parameter.id,
+                    parameter.prior_distribution,
+                )
             if target is None and not self._in_model(parameter.id):
                 # a parameter of the noise or of an observable, which PEtab
                 # estimates with the parameters of the model. The objective of
@@ -1246,14 +1254,6 @@ class PetabReader:
                     parameter.id,
                 )
                 continue
-            if parameter.prior_distribution is not None:
-                # the objective of `sbmlsim` has no priors, see the gap
-                logger.warning(
-                    "The parameter '%s' has the prior '%s', which the objective "
-                    "of `sbmlsim` does not use (gap 'priors', issue #190).",
-                    parameter.id,
-                    parameter.prior_distribution,
-                )
             info = (
                 self.extension.parameters.get(parameter.id, {})
                 if self.extension

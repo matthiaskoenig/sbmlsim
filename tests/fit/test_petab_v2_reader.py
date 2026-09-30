@@ -311,12 +311,22 @@ def test_a_prior_of_a_parameter_is_dropped_with_a_warning(
     tmp_path: Path, caplog: pytest.LogCaptureFixture
 ) -> None:
     path = write_problem(tmp_path / "problem", {"prey_o": "prey"}, {"e1": None})
-    parameters = pd.read_csv(tmp_path / "problem" / "parameters.tsv", sep="\t")
-    parameters["priorDistribution"] = ["normal", ""]
-    parameters["priorParameters"] = ["1.0;0.5", ""]
-    parameters.to_csv(tmp_path / "problem" / "parameters.tsv", sep="\t", index=False)
+    table = tmp_path / "problem" / "parameters.tsv"
+    parameters = pd.read_csv(table, sep="\t")
+    # sigma is estimated but is no entity of the model, i.e. it is dropped
+    sigma = parameters.iloc[[0]].copy()
+    sigma["parameterId"] = "sigma"
+    parameters = pd.concat([parameters, sigma], ignore_index=True)
+    parameters["priorDistribution"] = ["normal", "", "normal"]
+    parameters["priorParameters"] = ["1.0;0.5", "", "1.0;0.5"]
+    parameters.to_csv(table, sep="\t", index=False)
     with caplog.at_level(logging.WARNING, logger="sbmlsim.fit.petab_v2.reader"):
         fit_parameters = PetabReader.from_yaml(path).fit_parameters()
     assert [p.pid for p in fit_parameters] == ["alpha", "beta"]
-    assert "The parameter 'alpha' has the prior" in caplog.text
-    assert "gap 'priors'" in caplog.text
+    priors = [
+        r.getMessage() for r in caplog.records if "gap 'priors'" in r.getMessage()
+    ]
+    assert len(priors) == 2
+    assert any("The parameter 'alpha' has the prior" in m for m in priors)
+    assert any("The parameter 'sigma' has the prior" in m for m in priors)
+    assert not any("'beta'" in m for m in priors)

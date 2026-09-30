@@ -3,6 +3,7 @@
 The cases are written by the tests, nothing is downloaded.
 """
 
+import types
 import zipfile
 from dataclasses import replace
 from pathlib import Path
@@ -14,6 +15,7 @@ import pytest
 import yaml
 from petab_sciml import Input, Layer, NNModel, NNModelStandard, Node
 
+from sbmlsim.fit.optimization import OptimizationProblem
 from sbmlsim.fit.petab_v2.likelihood import (
     gradient,
     log_likelihood,
@@ -22,6 +24,7 @@ from sbmlsim.fit.petab_v2.likelihood import (
     nominal_parameters as nominal_parameter_set,
 )
 from sbmlsim.fit.petab_v2.reader import DEFAULT_EXPERIMENT, PetabReader
+from sbmlsim.sciml import testsuite as sbmlsim_testsuite
 from sbmlsim.sciml.testsuite import (
     GRADIENT_ORDER,
     GRADIENT_STEP,
@@ -32,6 +35,7 @@ from sbmlsim.sciml.testsuite import (
     ProblemImportCase,
     SciMLSuite,
     compare_arrays,
+    nothing_to_compare,
     parameter_key,
 )
 from sbmlsim.testsuite import cache
@@ -809,3 +813,62 @@ def test_a_problem_import_case_which_cannot_be_read(tmp_path: Path) -> None:
     assert result.status is CaseStatus.ERROR
     assert "net1.yaml" in result.message
     assert "does not exist" in result.message
+
+
+def test_the_round_trip_of_a_case_is_exact(tmp_path: Path) -> None:
+    """A case which is written as PEtab SciML and read back has no difference."""
+    pytest.importorskip("torch")
+    case = _problem_import_case(tmp_path / "case")
+    assert case.round_trip(tmp_path / "trip") == []
+
+
+def test_the_round_trip_says_when_it_did_not_validate(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A round trip without torch cannot validate and does not hide it."""
+    case = _problem_import_case(tmp_path / "case")
+    monkeypatch.setattr("sbmlsim.sciml.testsuite.find_spec", lambda name: None)
+    assert case.round_trip(tmp_path / "trip") == [
+        "the export was not validated, torch is missing"
+    ]
+
+
+def test_the_round_trip_names_the_parameters_which_differ(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A parameter which the export estimates as well is named, not a KeyError."""
+    case = _problem_import_case(tmp_path / "case", frozen_layer=True)
+    monkeypatch.setattr("sbmlsim.sciml.testsuite.find_spec", lambda name: None)
+    to_petab = sbmlsim_testsuite.to_petab
+
+    def estimate_the_frozen_layer(
+        problem: OptimizationProblem, directory: Path
+    ) -> Path:
+        yaml_file = to_petab(problem, directory)
+        table = pd.read_csv(directory / "parameters.tsv", sep="\t", dtype=str)
+        assert (table["estimate"] == "false").sum() == 1
+        frozen = table["estimate"] == "false"
+        table.loc[frozen, ["estimate", "lowerBound", "upperBound"]] = [
+            "true",
+            "-inf",
+            "inf",
+        ]
+        table.to_csv(directory / "parameters.tsv", sep="\t", index=False)
+        return yaml_file
+
+    monkeypatch.setattr(sbmlsim_testsuite, "to_petab", estimate_the_frozen_layer)
+    differences = case.round_trip(tmp_path / "trip")
+    assert any(d.startswith("the parameters differ: ") for d in differences)
+    assert "net1__layer1__bias__0" in " ".join(differences)
+
+
+def test_a_round_trip_of_nothing_is_a_difference() -> None:
+    """A problem without parameters, fit mappings or hybridizations compares nothing."""
+    empty = types.SimpleNamespace(parameters=[], mapping_keys=[], hybridizations=[])
+    assert nothing_to_compare(empty) == [  # ty: ignore[invalid-argument-type]
+        "the case has no parameters",
+        "the case has no fit mappings",
+        "the case has no hybridizations",
+    ]
+    full = types.SimpleNamespace(parameters=[1], mapping_keys=[1], hybridizations=[1])
+    assert nothing_to_compare(full) == []  # ty: ignore[invalid-argument-type]
