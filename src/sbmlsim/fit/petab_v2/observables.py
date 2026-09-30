@@ -21,6 +21,8 @@ from typing import Any
 
 import libsbml
 
+from sbmlsim.model.provenance import record_derivation
+
 logger = logging.getLogger(__name__)
 
 #: prefix of the parameter of an observable which is a formula
@@ -46,6 +48,9 @@ def add_observables(
     sbml_path: Path, formulas: dict[str, str], output_path: Path
 ) -> Path:
     """Write a copy of a model which has the observables of a problem.
+
+    The model records the parameters it got (`sbmlsim.model.provenance`), so
+    that an export writes the model of the problem and the formulas.
 
     Args:
         sbml_path: path of the model of the PEtab problem.
@@ -86,6 +91,7 @@ def add_observables(
         rule.setVariable(sid)
         rule.setMath(math)
 
+    record_derivation(model, sbml_path, [observable_id(pid) for pid in formulas], {})
     document.checkConsistency()
     errors = [
         document.getError(k)

@@ -44,6 +44,7 @@ import sympy
 from petab_sciml import Node
 
 from sbmlsim.mathml import TIME, expression_to_astnode, formula_symbols
+from sbmlsim.model.provenance import record_derivation
 from sbmlsim.sciml.backend import SympyBackend
 from sbmlsim.sciml.errors import NetworkCompilationError, NetworkHybridizationError
 from sbmlsim.sciml.hybridization import (
@@ -108,6 +109,9 @@ class _Model:
         document: the SBML document.
         model: its model.
         name: the name of the file of the model, for the messages.
+        source_path: the file of the model without the networks.
+        rule_targets: id of every target of the source which got a rule ->
+            whether it was constant before.
         created: id of every parameter which was added -> what it is.
         constants: id -> value of the constants of the hybridizations which
             were added, which the networks of the model share.
@@ -130,7 +134,9 @@ class _Model:
         except NetworkHybridizationError as err:
             raise NetworkCompilationError(str(err)) from err
         self.name = Path(sbml_path).name
+        self.source_path = Path(sbml_path)
         self.created: dict[str, str] = {}
+        self.rule_targets: dict[str, bool] = {}
         self.constants: dict[str, float] = {}
         self.targets: dict[str, tuple[str, str]] = {}
         level: int = self.document.getLevel()
@@ -280,6 +286,9 @@ class _Model:
         Raises:
             NetworkCompilationError: if the model is not valid SBML.
         """
+        record_derivation(
+            self.model, self.source_path, list(self.created), self.rule_targets
+        )
         errors = self.errors()
         if errors:
             raise NetworkCompilationError(
@@ -408,6 +417,7 @@ def _check_target(model: _Model, network: str, key: str, target: str) -> None:
             f"{prefix} has an initial assignment in the model '{model.name}', "
             f"which the assignment rule of the network replaces"
         )
+    model.rule_targets[target] = bool(parameter.getConstant())
     parameter.setConstant(False)
 
 

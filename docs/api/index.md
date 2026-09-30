@@ -26,6 +26,7 @@ Models and model changes, see [Models](../models.md).
 | [model.model_roadrunner](model.model_roadrunner.md) | `RoadrunnerSBMLModel`, the roadrunner instance of an SBML model with its units and parameter changes |
 | [model.model_change](model.model_change.md) | `ModelChange`, clamping species and other structural changes |
 | [model.model_resources](model.model_resources.md) | resolving model sources, i.e., files, URNs and URLs |
+| [model.provenance](model.provenance.md) | the record of what was added to a derived model, i.e. the compiled networks and the formula observables, and its inverse |
 
 ## sbmlsim.simulation
 
