@@ -1246,6 +1246,14 @@ class PetabReader:
                     parameter.id,
                 )
                 continue
+            if parameter.prior_distribution is not None:
+                # the objective of `sbmlsim` has no priors, see the gap
+                logger.warning(
+                    "The parameter '%s' has the prior '%s', which the objective "
+                    "of `sbmlsim` does not use (gap 'priors', issue #190).",
+                    parameter.id,
+                    parameter.prior_distribution,
+                )
             info = (
                 self.extension.parameters.get(parameter.id, {})
                 if self.extension

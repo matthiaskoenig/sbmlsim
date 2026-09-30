@@ -36,7 +36,10 @@ from petab.v2.core import MappingTable, ParameterTable, ProblemConfig
 from petab.v2.extensions.sciml import SciMLConfig
 from petab_sciml.constants import ARRAY
 
+from sbmlsim.fit.objects import FitParameter
+from sbmlsim.fit.optimization import OptimizationProblem
 from sbmlsim.fit.options import FitSettings, ParameterScaleType
+from sbmlsim.fit.petab_v2.export import to_petab
 from sbmlsim.fit.petab_v2.likelihood import (
     gradient,
     log_likelihood,
@@ -951,6 +954,112 @@ class ProblemImportCase:
             )
         )
         return outcomes
+
+    def round_trip(self, directory: Path) -> list[str]:
+        """Write the problem of the case as PEtab SciML and read it back.
+
+        The problem is read twice from the case and once from its export:
+        the first model roadrunner loads in a process differs by about
+        `1e-9` from every later one, so the export is compared with the
+        second read, bit for bit.
+
+        Args:
+            directory: the directory the export and the derived models are
+                written to.
+
+        Returns:
+            What differs between the problem of the case and the problem
+            which is read back, one line each: the parameters (id, start
+            value, bounds, unit, scale, target), the hybridizations, the
+            data, the kinds and the weights of the fit mappings, the
+            predictions and the log-likelihood. Empty when the round trip
+            is exact.
+        """
+        settings = self.settings()
+
+        def read(path: Path, derived: Path) -> tuple[PetabReader, OptimizationProblem]:
+            reader = PetabReader.from_yaml(path)
+            reader.derived_dir = derived
+            problem = reader.to_optimization_problem(opid=f"case_{self.cid}")
+            problem.initialize(settings)
+            return reader, problem
+
+        _, first = read(self.problem_path, directory / "first")
+        yaml_file = to_petab(first, directory / "petab")
+        _, original = read(self.problem_path, directory / "second")
+        reader, restored = read(yaml_file, directory / "restored")
+
+        def parameter(p: FitParameter) -> tuple[Any, ...]:
+            return (
+                p.pid,
+                p.start_value,
+                p.lower_bound,
+                p.upper_bound,
+                p.unit,
+                p.scale,
+                p.target,
+                p.is_versioned,
+            )
+
+        differences: list[str] = []
+        expected = [parameter(p) for p in original.parameters]
+        observed = [parameter(p) for p in restored.parameters]
+        if expected != observed:
+            differences.append(
+                f"the parameters differ: {sorted(set(expected) ^ set(observed))}"
+            )
+        if len(original.hybridizations) != len(restored.hybridizations):
+            differences.append("the number of hybridizations differs")
+        pairs = zip(original.hybridizations, restored.hybridizations, strict=False)
+        for k, (h1, h2) in enumerate(pairs):
+            for name in (
+                "network",
+                "pattern",
+                "model",
+                "inputs",
+                "outputs",
+                "frozen",
+                "constants",
+            ):
+                if getattr(h1, name, None) != getattr(h2, name, None):
+                    differences.append(
+                        f"the hybridization {k} ({type(h1).__name__}): {name}"
+                    )
+        if len(original.mapping_keys) != len(restored.mapping_keys):
+            differences.append("the number of fit mappings differs")
+            return differences
+
+        keys = {
+            (original.experiment_keys[k], original.mapping_keys[k]): k
+            for k in range(len(original.mapping_keys))
+        }
+        x = np.asarray(original.x0, dtype=float)
+        values = dict(zip(original.pids, x, strict=True))
+        predictions = original.predictions(x)
+        restored_predictions = restored.predictions(
+            np.asarray([values[pid] for pid in restored.pids], dtype=float)
+        )
+        for i, key in enumerate(restored.mapping_keys):
+            info = reader.observable_info(key)
+            k = keys.get((info.get("experiment"), info.get("mapping")))
+            if k is None:
+                differences.append(f"the fit mapping '{key}' is not one of the case")
+                continue
+            if not np.array_equal(restored.x_references[i], original.x_references[k]):
+                differences.append(f"the times of '{key}'")
+            if not np.array_equal(restored.y_references[i], original.y_references[k]):
+                differences.append(f"the data of '{key}'")
+            if restored.mapping_kinds[i] != original.mapping_kinds[k]:
+                differences.append(f"the kind of '{key}'")
+            if restored.weights_curves[i] != original.weights_curves[k]:
+                differences.append(f"the weight of '{key}'")
+            if not np.array_equal(restored_predictions[i], predictions[k]):
+                worst = np.max(np.abs(restored_predictions[i] - predictions[k]))
+                differences.append(f"the predictions of '{key}' differ by {worst:.2e}")
+        llh, restored_llh = log_likelihood(original), log_likelihood(restored)
+        if llh != restored_llh:
+            differences.append(f"the log-likelihood: {llh} and {restored_llh}")
+        return differences
 
 
 @dataclass(frozen=True)

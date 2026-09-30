@@ -4,6 +4,7 @@ The problem is the model of Lotka and Volterra of `tests/data/models` with
 tables which are written here, so that a test controls every row.
 """
 
+import logging
 from collections.abc import Callable, Mapping, Sequence
 from pathlib import Path
 from typing import Any
@@ -304,3 +305,18 @@ def test_the_model_source(tmp_path: Path) -> None:
     assert source == tmp_path / "derived" / "lv_observables.xml"
     assert source.exists()
     assert reader.model_source("lv") == source
+
+
+def test_a_prior_of_a_parameter_is_dropped_with_a_warning(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    path = write_problem(tmp_path / "problem", {"prey_o": "prey"}, {"e1": None})
+    parameters = pd.read_csv(tmp_path / "problem" / "parameters.tsv", sep="\t")
+    parameters["priorDistribution"] = ["normal", ""]
+    parameters["priorParameters"] = ["1.0;0.5", ""]
+    parameters.to_csv(tmp_path / "problem" / "parameters.tsv", sep="\t", index=False)
+    with caplog.at_level(logging.WARNING, logger="sbmlsim.fit.petab_v2.reader"):
+        fit_parameters = PetabReader.from_yaml(path).fit_parameters()
+    assert [p.pid for p in fit_parameters] == ["alpha", "beta"]
+    assert "The parameter 'alpha' has the prior" in caplog.text
+    assert "gap 'priors'" in caplog.text

@@ -326,7 +326,7 @@ GUARD_MESSAGE = (
     "A parallel fit starts worker processes which import the script again, so "
     "the fit must run behind a guard:\n\n"
     '    if __name__ == "__main__":\n        main()\n\n'
-    "Use 'serial=True' or 'n_cores=1' to fit without worker processes."
+    "Use 'serial=True' to fit without worker processes."
 )
 
 

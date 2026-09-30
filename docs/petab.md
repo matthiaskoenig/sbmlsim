@@ -154,6 +154,7 @@ The cost of a compiled network is the cost of its rules: a `Linear`-`tanh`-`Line
 
 The cases `sciml_problem_import` of the [PEtab SciML test suite](https://github.com/PEtab-dev/petab_sciml_testsuite) compare the log-likelihood, the simulations at the measurements and the gradient (five points) with the reference values: `tox r -e sciml` downloads the suite and runs them, and `tests/data/sciml_baseline.json` lists the cases which do not pass with their reason. What `sbmlsim` does not express is in the catalogue of the gaps:
 
+- `priors`: a prior on a parameter of the model is dropped with a warning which names the parameter, the objective of `sbmlsim` has none (issue #190)
 - `sciml-priors`: the cases with priors on the parameters of a network state a log-posterior, which the log-likelihood is not, and wait for issue #190
 - `sciml-model-format`: a network in the format `pytorch`, `equinox` or `lux.jl`, which is not read
 - `sciml-layer-sbml`: a layer without MathML in the right hand side or in an observable

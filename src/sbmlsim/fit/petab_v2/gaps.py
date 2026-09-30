@@ -278,6 +278,18 @@ GAPS: tuple[Gap, ...] = (
         "which the log-likelihood is not",
     ),
     Gap(
+        id="priors",
+        kind=GapKind.LOSSY,
+        sbmlsim="the objective of a fit is a weighted least squares, without "
+        "priors on the parameters (issue #190)",
+        petab="`priorDistribution` and `priorParameters` of a parameter of "
+        "the parameter table",
+        detail="the reader drops the prior of a parameter of the model with a "
+        "warning which names the parameter, the fit and the log-likelihood do "
+        "not use it. A prior on the parameters of a network is the gap "
+        "`sciml-priors`, which raises",
+    ),
+    Gap(
         id="sciml-parameter-scale",
         kind=GapKind.EXTENSION,
         sbmlsim="`FitParameter.scale`, the space the optimizer searches one "
