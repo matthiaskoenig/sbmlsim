@@ -4,17 +4,17 @@ A hybrid problem combines a mechanistic model in SBML with neural networks,
 which is what [PEtab SciML](https://github.com/PEtab-dev/petab_sciml)
 describes. This package is the native half of the support: `Network` is the
 architecture and the arrays of one network and `Network.forward` evaluates it
-with numpy; `nominal_parameters` and `network_fit_parameters` give the arrays
-and the fit parameters a problem describes; `input_id`, `output_id`,
-`element_id` and `unit_id` build the ids of the inputs, the outputs, the
-elements of the arrays and the units of a network in a model. A
-`Hybridization` says where a network sits in a problem: before the
+with numpy; `nominal_parameters` sets the arrays a problem describes;
+`input_id`, `output_id`, `element_id` and `unit_id` build the ids of the
+inputs, the outputs, the elements of the arrays and the units of a network in
+a model. A `Hybridization` says where a network sits in a problem: before the
 simulation, where a fit evaluates it, or in the right hand side or an
 observable of the model, where `compile_network` writes it into the model;
 `ALL_CONDITIONS` is the condition of an input which holds for every
-condition. The package knows nothing of
-PEtab, the translation of a PEtab SciML problem is
-`sbmlsim.fit.petab_v2.sciml`.
+condition. `Hybridization.fit_parameters` gives the parameters of a fit
+defined in python and freezes the other elements; `network_fit_parameters` is
+the primitive it and the reader share. The package knows nothing of PEtab,
+the translation of a PEtab SciML problem is `sbmlsim.fit.petab_v2.sciml`.
 
 The layers are implemented against the backends of `sbmlsim.sciml.backend`,
 which are the extension point of the layers and not needed to use a network.
