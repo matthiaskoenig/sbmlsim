@@ -21,7 +21,9 @@ from typing import Any
 import numpy as np
 import pandas as pd
 import petab.v2 as petab_v2
+from petab.v1.yaml import load_yaml
 from petab.v2 import Problem as PetabProblem
+from petab.v2.math import petab_math_str
 
 from sbmlsim.data import DataSet
 from sbmlsim.experiment import SimulationExperiment
@@ -32,10 +34,17 @@ from sbmlsim.fit.objects import (
     FitMappingCollection,
     FitParameter,
     MappingKind,
+    NoiseDistribution,
+    NoiseModel,
+    NoiseParameter,
 )
 from sbmlsim.fit.optimization import OptimizationProblem
 from sbmlsim.fit.options import FitSettings
-from sbmlsim.fit.petab_v2.extension import SbmlsimExtension, extension_of
+from sbmlsim.fit.petab_v2.extension import (
+    SbmlsimExtension,
+    check_extensions,
+    extension_of,
+)
 from sbmlsim.fit.petab_v2.observables import (
     MODEL_SUFFIX,
     add_observables,
@@ -107,9 +116,19 @@ class PetabReader:
                 only written if an observable of the problem is a formula.
 
         Raises:
-            ValueError: if the problem has no model or no measurements.
+            ValueError: if the problem has no model or no measurements, or if
+                it requires an extension `sbmlsim` does not know.
         """
         self.petab_problem = petab_problem
+        for extension_id in check_extensions(
+            getattr(petab_problem.config, "extensions", None)
+        ):
+            logger.warning(
+                "The extension '%s' of the PEtab problem is not known to "
+                "`sbmlsim` and is ignored, which the problem allows: it is not "
+                "required.",
+                extension_id,
+            )
         self.extension: SbmlsimExtension | None = extension_of(petab_problem.config)
 
         config_path = getattr(petab_problem.config, "base_path", None)
@@ -149,6 +168,17 @@ class PetabReader:
         for measurements in self._measurements.values():
             measurements.sort(key=lambda m: m.time)
 
+        #: the observables and the parameters of the problem by their id
+        self._observables: dict[str, petab_v2.Observable] = {
+            observable.id: observable for observable in petab_problem.observables
+        }
+        self._parameters: dict[str, petab_v2.Parameter] = {
+            parameter.id: parameter for parameter in petab_problem.parameters
+        }
+        #: the noise models by the id of their observable, read once: the
+        #: mappings are resolved again by every `initialize`
+        self._noise_models: dict[str, NoiseModel] = {}
+
     @staticmethod
     def from_yaml(yaml_file: Path, name: str | None = None) -> "PetabReader":
         """Read the problem of a PEtab YAML file.
@@ -159,8 +189,15 @@ class PetabReader:
 
         Returns:
             The reader of the problem.
+
+        Raises:
+            ValueError: if the problem requires an extension `sbmlsim` does
+                not know. The extensions are checked on the YAML, before
+                `petab` reads the problem: it needs the package of an
+                extension to read its files.
         """
         yaml_file = Path(yaml_file)
+        check_extensions((load_yaml(yaml_file) or {}).get("extensions"))
         petab_problem = PetabProblem.from_yaml(yaml_file)
         return PetabReader(petab_problem, base_path=yaml_file.parent, name=name)
 
@@ -640,8 +677,131 @@ class PetabReader:
                 reference=reference,
                 observable=observable,
                 weight=info.get("weight_mapping", 1.0),
+                noise=self.noise_model(observable_id),
             )
         return mappings
+
+    def noise_model(self, observable_id: str) -> NoiseModel:
+        """Get the noise model of an observable of the problem.
+
+        The noise model is read once, see `_read_noise_model`.
+
+        Args:
+            observable_id: id of the observable.
+
+        Returns:
+            The noise model of the fit mapping of the observable.
+
+        Raises:
+            ValueError: if the problem has no observable of the id, or if a
+                measurement does not have a value for every placeholder.
+        """
+        if observable_id not in self._noise_models:
+            self._noise_models[observable_id] = self._read_noise_model(observable_id)
+        return self._noise_models[observable_id]
+
+    def _read_noise_model(self, observable_id: str) -> NoiseModel:
+        """Read the noise model of an observable of the problem.
+
+        The noise formula and the distribution of the observable are kept as
+        they are, with the noise parameters of its measurements as the values
+        of the placeholders. The parameters of the parameter table which the
+        formula uses and which the fit does not estimate are the parameters of
+        the noise model, with their nominal value: a parameter of the noise
+        which PEtab estimates is one of them, see the `noise-parameters` gap.
+
+        Args:
+            observable_id: id of the observable.
+
+        Returns:
+            The noise model of the fit mapping of the observable.
+
+        Raises:
+            ValueError: if the problem has no observable of the id, or if a
+                measurement does not have a value for every placeholder.
+        """
+        if observable_id not in self._observables:
+            raise ValueError(f"The problem has no observable '{observable_id}'.")
+        observable = self._observables[observable_id]
+
+        placeholders = tuple(str(p) for p in observable.noise_placeholders)
+        expressions: list[Any] = [observable.noise_formula]
+        rows: list[tuple[float | str, ...]] = []
+        if placeholders:
+            for measurement in self._measurements.get(observable_id, []):
+                expressions.extend(measurement.noise_parameters)
+                rows.append(
+                    tuple(_formula(value) for value in measurement.noise_parameters)
+                )
+
+        symbols = sorted(
+            {
+                str(symbol)
+                for expression in expressions
+                for symbol in getattr(expression, "free_symbols", set())
+            }
+            - set(placeholders)
+        )
+        parameters: list[NoiseParameter] = []
+        for symbol in symbols:
+            if symbol == observable_id:
+                continue
+            parameter = self._parameters.get(symbol)
+            if parameter is not None and self._is_fit_parameter(parameter):
+                # the value is the one of the parameter set, a nominal value
+                # is not needed
+                continue
+            if parameter is None or not _is_number(parameter.nominal_value):
+                logger.warning(
+                    "The noise formula '%s' of the observable '%s' uses '%s', "
+                    "which is not a parameter of the parameter table with a "
+                    "nominal value. The log-likelihood of the problem cannot "
+                    "be calculated.",
+                    observable.noise_formula,
+                    observable_id,
+                    symbol,
+                )
+                continue
+            parameters.append(
+                NoiseParameter(
+                    pid=parameter.id,
+                    value=_to_float(parameter.nominal_value),
+                    estimate=bool(parameter.estimate),
+                    lower_bound=float(parameter.lb)
+                    if parameter.lb is not None
+                    else None,
+                    upper_bound=float(parameter.ub)
+                    if parameter.ub is not None
+                    else None,
+                )
+            )
+
+        try:
+            return NoiseModel(
+                formula=str(_formula(observable.noise_formula)),
+                distribution=NoiseDistribution(str(observable.noise_distribution)),
+                placeholders=placeholders,
+                placeholder_values=tuple(rows),
+                parameters=tuple(parameters),
+                observable=observable_id if observable_id in symbols else None,
+            )
+        except ValueError as err:
+            raise ValueError(f"Observable '{observable_id}': {err}") from err
+
+    def _is_fit_parameter(self, parameter: Any) -> bool:
+        """Check whether a parameter of the problem is a parameter of the fit.
+
+        A parameter of the fit is estimated and is an entity of a model or a
+        version of one, see `_versions`. An estimated parameter which is
+        neither is a parameter of the noise or of an observable, which
+        `sbmlsim` does not fit.
+
+        Args:
+            parameter: parameter of the parameter table.
+        """
+        return bool(parameter.estimate) and (
+            parameter.id in self._versions() or self._in_model(parameter.id)
+        )
 
     def _selection_of(self, observable_id: str) -> str:
         """Get the selection of roadrunner which observes an observable.
@@ -968,6 +1128,21 @@ def _class_name(name: str) -> str:
 def _to_float(value: Any) -> float:
     """Get the number of a value of PEtab, which is a sympy expression."""
     return float(value)
+
+
+def _formula(value: Any) -> float | str:
+    """Get a value of PEtab as a number or as a formula of the math of PEtab.
+
+    Args:
+        value: sympy expression of a noise formula or of a noise parameter.
+
+    Returns:
+        The number as a `float` if the value is one, the formula as a string
+        otherwise.
+    """
+    if _is_number(value):
+        return _to_float(value)
+    return petab_math_str(value)
 
 
 def _is_number(value: Any) -> bool:

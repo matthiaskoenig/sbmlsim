@@ -21,6 +21,7 @@ from sbmlsim.fit.objects import (
     FitMappingCollection,
     FitParameter,
     MappingKind,
+    NoiseModel,
 )
 from sbmlsim.fit.options import (
     FitSettings,
@@ -266,6 +267,9 @@ class OptimizationProblem(ObjectJSONEncoder):
         self.y_references: list[Any] = []
         self.y_errors: list[Any] = []
         self.y_errors_type: list[str | None] = []
+        #: the noise model of every mapping, `None` for a mapping without one,
+        #: see `sbmlsim.fit.petab_v2.likelihood`
+        self.noise_models: list[NoiseModel | None] = []
         # total weights for points (data points and curve weights)
         self.weights: list[Any] = []
         self.weights_points: list[Any] = []  # weights for data points based on errors
@@ -744,6 +748,7 @@ class OptimizationProblem(ObjectJSONEncoder):
                 self.y_references.append(y_ref)
                 self.y_errors.append(y_ref_err)
                 self.y_errors_type.append(y_ref_err_type)
+                self.noise_models.append(mapping.noise)
                 # weights
                 self.weights.append(weight)
                 self.weights_points.append(weight_points)
@@ -994,7 +999,7 @@ class OptimizationProblem(ObjectJSONEncoder):
         on_run_finished: (
             Callable[[int, scipy.optimize.OptimizeResult, list[float]], None] | None
         ) = None,
-        **kwargs,
+        **kwargs: Any,
     ) -> tuple[list[scipy.optimize.OptimizeResult], list[list[float]]]:
         """Run parameter optimization.
 
@@ -1011,7 +1016,7 @@ class OptimizationProblem(ObjectJSONEncoder):
             on_run_finished: called with the index, the fit and the trajectory
                 of every finished optimization, i.e., to report the progress of
                 a fit and to store the runs while it runs.
-            kwargs: additional arguments of the optimizer.
+            **kwargs: additional arguments of the optimizer.
 
         Returns:
             The fits and the trajectories of the optimizations. A run which
@@ -1126,7 +1131,7 @@ class OptimizationProblem(ObjectJSONEncoder):
             run: index of the run, for the log messages.
             size: number of runs, for the log messages.
             run_seed: seed of the run, `None` if it does not need one.
-            kwargs: additional arguments of the optimizer.
+            **kwargs: additional arguments of the optimizer.
 
         Returns:
             The fit and the cost of every step of the optimization.
@@ -1165,7 +1170,7 @@ class OptimizationProblem(ObjectJSONEncoder):
         x0: np.ndarray | None = None,
         algorithm: OptimizationAlgorithmType = OptimizationAlgorithmType.LEAST_SQUARE,
         timeout: float | None = None,
-        **kwargs,
+        **kwargs: Any,
     ) -> tuple[scipy.optimize.OptimizeResult, list]:
         """Run single optimization with x0 start values.
 
@@ -1173,7 +1178,7 @@ class OptimizationProblem(ObjectJSONEncoder):
             x0: parameter start vector (important for deterministic optimizers).
             algorithm: optimization algorithm and method.
             timeout: seconds the optimization may run, no limit if `None`.
-            kwargs: additional arguments of the optimizer.
+            **kwargs: additional arguments of the optimizer.
 
         Returns:
             The fit and the trajectory of the optimization.
@@ -1196,7 +1201,7 @@ class OptimizationProblem(ObjectJSONEncoder):
         self,
         x0: np.ndarray | None = None,
         algorithm: OptimizationAlgorithmType = OptimizationAlgorithmType.LEAST_SQUARE,
-        **kwargs,
+        **kwargs: Any,
     ) -> tuple[scipy.optimize.OptimizeResult, list]:
         """Run a single optimization, see `_optimize_single`.
 
@@ -1349,6 +1354,118 @@ class OptimizationProblem(ObjectJSONEncoder):
 
         return results
 
+    def _interpolate(self, k: int, df: pd.DataFrame) -> np.ndarray:
+        """Get the simulation of a fit mapping at its reference data.
+
+        Args:
+            k: index of the fit mapping.
+            df: result of the simulation of the mapping.
+
+        Returns:
+            The observable, interpolated at the x values of the reference data.
+
+        Raises:
+            ValueError: if the reference data is outside of the simulation.
+        """
+        f = interpolate.interp1d(
+            x=df[self.xid_observable[k]],
+            y=df[self.yid_observable[k]],
+            copy=False,
+            assume_sorted=True,
+        )
+        try:
+            return np.asarray(f(self.x_references[k]), dtype=float)
+        except ValueError:
+            logger.error(
+                "Interpolation error in the fit mapping '%s.%s'.",
+                self.experiment_keys[k],
+                self.mapping_keys[k],
+            )
+            raise
+
+    def _simulator_and_quantities(
+        self, x: np.ndarray
+    ) -> tuple[SimulatorSerial, Sequence[Quantity]]:
+        """Get the simulator and the parameters as quantities.
+
+        The parameters are the same for every mapping, the quantities are
+        created once and not once per mapping.
+
+        Args:
+            x: values of the parameters in the units of the model.
+
+        Returns:
+            The simulator of the problem and the quantity of every parameter.
+
+        Raises:
+            ValueError: if the problem is not initialized or if no simulator
+                is set.
+        """
+        simulator: SimulatorSerial | None = self.runner_initialized.simulator
+        if simulator is None:
+            raise ValueError(f"No simulator set on OptimizationProblem '{self.opid}'.")
+        Q_ = self.runner_initialized.Q_
+        quantities = [Q_(value, self.punits[ix]) for ix, value in enumerate(x)]
+        return simulator, quantities
+
+    def predictions(
+        self, x: np.ndarray, indices: Sequence[int] | None = None
+    ) -> dict[int, np.ndarray]:
+        """Get the simulation of fit mappings at their reference data.
+
+        The predictions are the values of the observable as they are
+        simulated, i.e. the baseline of a curve is not subtracted, whatever
+        the residual of the settings is.
+
+        Args:
+            x: values of the parameters in the units of the model, i.e. on the
+                linear scale, in the order of the parameters of the problem.
+            indices: indices of the fit mappings, the training data by
+                default.
+
+        Returns:
+            The prediction at the reference data of every mapping, by the
+            index of the mapping.
+
+        Raises:
+            ValueError: if the problem is not initialized, if no simulator is
+                set, if `x` does not have a value for every parameter, if an
+                index is not the index of a fit mapping or if the integration
+                of a simulation failed.
+        """
+        values = np.asarray(x, dtype=float)
+        if values.shape != (len(self.pids),):
+            raise ValueError(
+                f"'{self.opid}': the predictions require one value per "
+                f"parameter, but '{values.size}' values are given for the "
+                f"'{len(self.pids)}' parameters '{self.pids}'."
+            )
+        simulator, quantities = self._simulator_and_quantities(values)
+        evaluated = set(self.training_indices if indices is None else indices)
+        valid = set(self.indices())
+        invalid = sorted(set(evaluated) - valid)
+        if invalid:
+            raise ValueError(
+                f"'{self.opid}': the indices {', '.join(f"'{k}'" for k in invalid)} "
+                f"are not indices of fit mappings, which are '0' to "
+                f"'{len(valid) - 1}'."
+            )
+        results = self._simulate_groups(
+            simulator=simulator, quantities=quantities, evaluated=evaluated, x=values
+        )
+
+        predictions: dict[int, np.ndarray] = {}
+        for k in sorted(evaluated):
+            df = results[k]
+            if df is None:
+                raise ValueError(
+                    f"'{self.opid}': the simulation of the fit mapping "
+                    f"'{self.experiment_keys[k]}.{self.mapping_keys[k]}' failed "
+                    f"for the parameters '{dict(zip(self.pids, values, strict=True))}'."
+                )
+            predictions[k] = self._interpolate(k, df)
+        return predictions
+
     def _interrupted_result(
         self, err: Exception, x0log: np.ndarray
     ) -> RuntimeErrorOptimizeResult:
@@ -1401,14 +1518,7 @@ class OptimizationProblem(ObjectJSONEncoder):
             residual_data = defaultdict(list)
 
         # simulate all mappings for all experiments
-        simulator: SimulatorSerial | None = self.runner_initialized.simulator
-        if simulator is None:
-            raise ValueError(f"No simulator set on OptimizationProblem '{self.opid}'.")
-        Q_ = self.runner_initialized.Q_
-
-        # the parameters are the same for every mapping, the quantities are
-        # created once and not once per mapping
-        quantities = [Q_(value, self.punits[ix]) for ix, value in enumerate(x)]
+        simulator, quantities = self._simulator_and_quantities(x)
         evaluated = {
             k
             for k in range(len(self.mapping_keys))
@@ -1427,18 +1537,7 @@ class OptimizationProblem(ObjectJSONEncoder):
 
             df = results[k]
             if df is not None:
-                # interpolation of simulation results and requested time points
-                f = interpolate.interp1d(
-                    x=df[self.xid_observable[k]],
-                    y=df[self.yid_observable[k]],
-                    copy=False,
-                    assume_sorted=True,
-                )
-                try:
-                    y_obsip = f(self.x_references[k])
-                except ValueError as err:
-                    console.print(f"Interpolation error in mapping key: {mapping_key}")
-                    raise err
+                y_obsip = self._interpolate(k, df)
 
                 if self.residual in {
                     ResidualType.ABSOLUTE_TO_BASELINE,

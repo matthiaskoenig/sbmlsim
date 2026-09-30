@@ -192,7 +192,38 @@ GAPS: tuple[Gap, ...] = (
         detail="a parameter of a problem which is not an entity of a model is "
         "not fitted and the reader says which; the data of its observable is "
         "weighted by `FitSettings.weighting_points` instead. A fit of such a "
-        "problem is therefore not the fit PEtab describes",
+        "problem is therefore not the fit PEtab describes. A parameter of a "
+        "noise formula is kept in the noise model of its fit mapping with its "
+        "nominal value, its bounds and whether the problem estimates it, so it "
+        "is written as it was read; `log_likelihood` evaluates it at the value "
+        "of the parameter set it is given and at the nominal value without one",
+    ),
+    Gap(
+        id="noise-model",
+        kind=GapKind.LOSSY,
+        sbmlsim="the cost of a fit is a weighted sum of squares. The noise "
+        "formula and the noise distribution of a fit mapping are kept as its "
+        "`NoiseModel`, which `log_likelihood` evaluates and the optimizer does "
+        "not use",
+        petab="`noiseFormula` and `noiseDistribution` per observable are the "
+        "objective, i.e. the negative log likelihood of the measurements",
+        detail="the noise model of a problem which is read is written as it "
+        "was read, so the tables of a round trip agree and the log-likelihood "
+        "of a problem is compared with the one of other tools. The fit stays a "
+        "least squares fit, i.e. its optimum is not the maximum of the "
+        "likelihood. A fit mapping without a noise model is written with a "
+        "normal noise of the standard deviation of its data, or of `1.0` for "
+        "data without errors, and has that noise model when it is read back",
+    ),
+    Gap(
+        id="foreign-extension",
+        kind=GapKind.UNSUPPORTED,
+        sbmlsim="the reader interprets the `sbmlsim` extension of a problem",
+        petab="a problem carries the extensions of any tool, and `required` "
+        "says whether it can be interpreted without one of them",
+        detail="a problem which requires an extension `sbmlsim` does not know "
+        "is not read, the reader raises and names the extension. An extension "
+        "which is not required is ignored with a message in the log",
     ),
     Gap(
         id="x-observable",
@@ -328,6 +359,13 @@ def gaps_of_problem(problem: "OptimizationProblem") -> list[Gap]:
                 hits.add("presimulation")
             if (tc.model_changes or tc.model_manipulations) and k >= 0:
                 hits.add("model-changes")
+
+    for noise in problem.noise_models:
+        if noise is None:
+            continue
+        hits.add("noise-model")
+        if any(parameter.estimate for parameter in noise.parameters):
+            hits.add("noise-parameters")
 
     for k, xid in enumerate(problem.xid_observable):
         if xid != "time":

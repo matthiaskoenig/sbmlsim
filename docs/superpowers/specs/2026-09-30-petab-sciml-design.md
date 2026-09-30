@@ -134,9 +134,8 @@ class Hybridization:
     network: Network
     pattern: NetworkPattern
     model: str  # id of the model in the experiment
-    inputs: dict[
-        str, NetworkInput
-    ]  # "<net>__input<k>__<index>" or "<net>__input<k>" for an array
+    # "<net>__input<k>__<index>", or "<net>__input<k>" for an array
+    inputs: dict[str, NetworkInput]
     outputs: dict[str, str]  # "<net>__output<k>__<index>" -> target
     frozen: set[str]  # ids of the elements which are not estimated
 ```

@@ -78,6 +78,120 @@ EVALUATED_KINDS: tuple[MappingKind, ...] = (
 UNUSED_KINDS: tuple[MappingKind, ...] = (MappingKind.EXCLUDED,)
 
 
+class NoiseDistribution(StrEnum):
+    """Distribution of the noise of a measurement.
+
+    These are the distributions of PEtab v2. The simulation is the median of
+    the distribution and the noise formula gives its scale: the standard
+    deviation of `normal`, the standard deviation of the logarithm of
+    `log-normal` and the scale `b` of `laplace` and, on the logarithm, of
+    `log-laplace`.
+    """
+
+    NORMAL = "normal"
+    LOG_NORMAL = "log-normal"
+    LAPLACE = "laplace"
+    LOG_LAPLACE = "log-laplace"
+
+    @property
+    def is_log(self) -> bool:
+        """Check whether the noise acts on the logarithm of the measurement."""
+        return self in {NoiseDistribution.LOG_NORMAL, NoiseDistribution.LOG_LAPLACE}
+
+
+@dataclass(frozen=True)
+class NoiseParameter:
+    """A parameter of a noise formula which is not an entity of a model.
+
+    Attributes:
+        pid: id of the parameter.
+        value: nominal value, which the log-likelihood uses unless the
+            parameter set it is evaluated at has a value for `pid`.
+        estimate: whether the problem the noise model was read from estimates
+            the parameter. `sbmlsim` does not estimate it, the flag and the
+            bounds are kept so that the problem is written as it was read.
+        lower_bound: lower bound of the estimation, `None` if there is none.
+        upper_bound: upper bound of the estimation, `None` if there is none.
+    """
+
+    pid: str
+    value: float
+    estimate: bool = False
+    lower_bound: float | None = None
+    upper_bound: float | None = None
+
+
+@dataclass(frozen=True)
+class NoiseModel:
+    """The noise of the measurements of a fit mapping.
+
+    The noise model does not enter the cost of a fit, which is a weighted
+    least squares fit. It is what the log-likelihood of a problem is
+    calculated with, see `sbmlsim.fit.petab_v2.likelihood`.
+
+    Attributes:
+        formula: the noise formula in the math of PEtab, e.g. `0.05`, `sd` or
+            `sigma_a + 0.1 * sd`. Its symbols are the `placeholders`, the
+            `parameters`, the parameters of the fit and the `observable`.
+        distribution: distribution of the noise.
+        placeholders: symbols of the formula which have a value per
+            measurement.
+        placeholder_values: for every measurement the values of the
+            placeholders, in the order of the measurements of the mapping. A
+            value is a number or a formula of parameters.
+        parameters: the parameters of the formula and of the placeholder
+            values which are not entities of a model, with their nominal value.
+        observable: symbol of the formula which stands for the simulation,
+            `None` if the formula has none.
+    """
+
+    formula: str
+    distribution: NoiseDistribution = NoiseDistribution.NORMAL
+    placeholders: tuple[str, ...] = ()
+    placeholder_values: tuple[tuple[float | str, ...], ...] = ()
+    parameters: tuple[NoiseParameter, ...] = ()
+    observable: str | None = None
+
+    def __post_init__(self) -> None:
+        """Coerce the fields and check them.
+
+        The distribution is coerced to the enum and the sequences to tuples,
+        so a noise model which is given a string and lists compares, hashes
+        and is written like any other.
+
+        Raises:
+            ValueError: if the formula is empty, if the distribution is not
+                one of PEtab, or if a measurement has more or fewer values
+                than the noise model has placeholders.
+        """
+        if not str(self.formula).strip():
+            raise ValueError("The noise formula of a noise model must not be empty.")
+        try:
+            distribution = NoiseDistribution(self.distribution)
+        except ValueError as err:
+            raise ValueError(
+                f"The noise distribution '{self.distribution}' is not one of "
+                f"PEtab, which are "
+                f"'{', '.join(d.value for d in NoiseDistribution)}'."
+            ) from err
+        object.__setattr__(self, "distribution", distribution)
+        object.__setattr__(self, "placeholders", tuple(self.placeholders))
+        object.__setattr__(
+            self,
+            "placeholder_values",
+            tuple(tuple(values) for values in self.placeholder_values),
+        )
+        object.__setattr__(self, "parameters", tuple(self.parameters))
+
+        for k, values in enumerate(self.placeholder_values):
+            if len(values) != len(self.placeholders):
+                raise ValueError(
+                    f"The noise formula '{self.formula}' has the placeholders "
+                    f"'{list(self.placeholders)}', but the measurement '{k}' "
+                    f"has the values '{list(values)}'."
+                )
+
+
 class FitMappingCollection:
     """The fit mappings of a simulation experiment which a fit uses together.
 
@@ -312,6 +426,7 @@ class FitMapping:
         observable: FitData,
         weight: float | None = None,
         metadata: MappingMetaData | None = None,
+        noise: NoiseModel | None = None,
     ):
         """Initialize FitMapping.
 
@@ -325,12 +440,17 @@ class FitMapping:
             weight: weight of the fit mapping, the count of the reference data
                 is used if no weight is given.
             metadata: metadata of the mapping.
+            noise: noise model of the measurements, which the log-likelihood
+                of the problem uses. Without one the noise is normal with the
+                standard deviation of the reference data, see
+                `sbmlsim.fit.petab_v2.likelihood.default_noise_model`.
         """
         self.experiment = experiment
         self.reference = reference
         self.observable = observable
         self._weight = weight
         self.metadata = metadata
+        self.noise = noise
 
     @property
     def weight(self) -> float:

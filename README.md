@@ -12,11 +12,11 @@
 
 Features include
 
-- **timecourse simulations** — concatenated timecourses with changes of parameters and initial conditions, in the units of the model
-- **parameter scans** — simulations over the dimensions of parameter changes, with results as labeled N-dimensional arrays ([xarray](https://xarray.dev))
-- **simulation experiments** — models, datasets, simulations, tasks and figures of an experiment as one reproducible python object, with HTML and markdown reports
-- **parameter fitting** — optimization problems from experimental data with local and global optimizers, and PEtab archives
-- **sensitivity analysis** — local sensitivities and the global Morris, Sobol and FAST methods
+- **timecourse simulations** - concatenated timecourses with changes of parameters and initial conditions, in the units of the model
+- **parameter scans** - simulations over the dimensions of parameter changes, with results as labeled N-dimensional arrays ([xarray](https://xarray.dev))
+- **simulation experiments** - models, datasets, simulations, tasks and figures of an experiment as one reproducible python object, with HTML and markdown reports
+- **parameter fitting** - optimization problems from experimental data with local and global optimizers, and PEtab archives
+- **sensitivity analysis** - local sensitivities and the global Morris, Sobol and FAST methods
 
 The documentation is available at [https://matthiaskoenig.github.io/sbmlsim](https://matthiaskoenig.github.io/sbmlsim).
 
