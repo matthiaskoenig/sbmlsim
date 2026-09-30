@@ -5,6 +5,7 @@ tables which are written here, so that a test controls every row.
 """
 
 import logging
+import re
 from collections.abc import Callable, Mapping, Sequence
 from pathlib import Path
 from typing import Any
@@ -330,3 +331,42 @@ def test_a_prior_of_a_parameter_is_dropped_with_a_warning(
     assert any("The parameter 'alpha' has the prior" in m for m in priors)
     assert any("The parameter 'sigma' has the prior" in m for m in priors)
     assert not any("'beta'" in m for m in priors)
+
+
+def _read_with_base_path(tmp_path: Path, base_path: str) -> PetabReader:
+    """Read the problem with `petab` and give its configuration `base_path`."""
+    from petab.v2 import Problem as PetabProblem
+    from pydantic import AnyUrl
+
+    path = write_problem(
+        tmp_path, observables={"prey_o": "prey"}, experiments={"e1": None}
+    )
+    petab_problem = PetabProblem.from_yaml(path)
+    # the URL `petab` makes of a location which is not a path of this machine
+    petab_problem.config.base_path = AnyUrl(base_path)
+    return PetabReader(petab_problem)
+
+
+def test_the_base_path_of_the_configuration_as_a_file_url(tmp_path: Path) -> None:
+    """`petab` keeps a `file` URL as a URL, the reader reads the directory of it."""
+    reader = _read_with_base_path(tmp_path, tmp_path.as_uri())
+    assert reader.base_path == tmp_path
+    assert reader.to_optimization_problem().mapping_collections
+
+
+def test_the_base_path_of_the_configuration_with_a_drive() -> None:
+    """`petab` parses a path of windows as a URL whose scheme is the drive."""
+    from petab.v2.core import ProblemConfig
+    from pydantic import AnyUrl
+
+    from sbmlsim.fit.petab_v2.reader import _local_path
+
+    config = ProblemConfig(base_path="C:\\Users\\runner\\problem")
+    assert isinstance(config.base_path, AnyUrl)
+    assert _local_path(config.base_path) == Path("c:\\Users\\runner\\problem")
+
+
+def test_the_base_path_of_the_configuration_on_a_server(tmp_path: Path) -> None:
+    """The files of a problem are read from a directory, not from a server."""
+    with pytest.raises(ValueError, match=re.escape("'https://example.org/problem'")):
+        _read_with_base_path(tmp_path, "https://example.org/problem")

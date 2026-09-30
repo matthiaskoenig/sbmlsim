@@ -18,6 +18,7 @@ import logging
 from collections.abc import Mapping
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
+from urllib.request import url2pathname
 
 import numpy as np
 import pandas as pd
@@ -25,6 +26,7 @@ import petab.v2 as petab_v2
 from petab.v1.yaml import load_yaml
 from petab.v2 import Problem as PetabProblem
 from petab.v2.math import petab_math_str
+from pydantic import AnyUrl
 
 from sbmlsim.data import DataSet
 from sbmlsim.experiment import SimulationExperiment
@@ -165,7 +167,7 @@ class PetabReader:
         self.extension: SbmlsimExtension | None = extension_of(petab_problem.config)
 
         config_path = getattr(petab_problem.config, "base_path", None)
-        self.base_path: Path = Path(base_path or config_path or ".")
+        self.base_path: Path = _local_path(base_path or config_path or ".")
 
         if not petab_problem.models:
             raise ValueError("The PEtab problem has no model.")
@@ -1431,6 +1433,34 @@ class PetabReader:
             data_path=self.base_path,
             hybridizations=None if self.sciml is None else self.sciml.hybridizations(),
         )
+
+
+def _local_path(location: AnyUrl | Path | str) -> Path:
+    """Get the local path of a location of a PEtab configuration.
+
+    `petab` parses a location into a URL when it can, a `Path` otherwise, so
+    a path of windows, whose drive looks like the scheme of a URL, and a `file`
+    URL both arrive as `AnyUrl`.
+
+    Args:
+        location: path or URL of the configuration, e.g. its `base_path`.
+
+    Returns:
+        The path of the location on this machine.
+
+    Raises:
+        ValueError: if the location is a URL of a server.
+    """
+    if not isinstance(location, AnyUrl):
+        return Path(location)
+    if location.scheme == "file":
+        return Path(url2pathname(location.path or ""))
+    if len(location.scheme) == 1 and location.host is None:
+        return Path(str(location))
+    raise ValueError(
+        f"The files of the PEtab problem are at '{location}', which is not a "
+        f"directory of this machine: download the problem and read it from there."
+    )
 
 
 def _class_name(name: str) -> str:
