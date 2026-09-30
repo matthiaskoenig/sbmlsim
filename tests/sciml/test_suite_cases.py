@@ -4,6 +4,7 @@ The cases are written by the tests, nothing is downloaded.
 """
 
 import zipfile
+from dataclasses import replace
 from pathlib import Path
 
 import h5py
@@ -285,6 +286,50 @@ def test_the_comparison_of_arrays() -> None:
     assert compare_arrays(np.array([]), np.array([]), 1e-3)[0] == CaseStatus.PASS
 
 
+@pytest.mark.parametrize("expected", [[1.0, np.nan], [np.inf, 2.0]])
+def test_a_reference_value_which_is_not_finite(expected: list[float]) -> None:
+    """A reference value which is not finite does not pass."""
+    status, message, _ = compare_arrays(np.array([1.0, 2.0]), np.array(expected), 1e-3)
+    assert status == CaseStatus.TOLERANCE
+    assert "not finite" in message
+
+
+def test_a_case_which_compares_nothing(tmp_path: Path) -> None:
+    """A case without a comparison is an error, not a pass."""
+    model_import = ModelImportCase(
+        cid="001",
+        path=tmp_path,
+        net_file=tmp_path / "net.yaml",
+        inputs=[],
+        parameters=[],
+        outputs=[],
+    )
+    directory = _initialization_case(
+        tmp_path, "net1.parameters[layer1]", {"weight": WEIGHT, "bias": BIAS}
+    )
+    initialization = replace(
+        InitializationCase.from_directory(directory), parameter_files={}
+    )
+    for result in (model_import.run(), initialization.run()):
+        assert result.status == CaseStatus.ERROR, result
+        assert result.message == "nothing was compared"
+
+
+@pytest.mark.parametrize(
+    "change",
+    [
+        {"net_output": []},
+        {"net_input": []},
+        {"net_output": ["net_output_1.hdf5"]},
+        {"net_ps": ["net_ps_1.hdf5"]},
+    ],
+)
+def test_the_combinations_of_a_case(tmp_path: Path, change: dict) -> None:
+    """Inputs, arrays and outputs are listed for every combination."""
+    with pytest.raises(ValueError, match=r"001'.*combinations"):
+        ModelImportCase.from_directory(_model_import_case(tmp_path, **change))
+
+
 # ---------------------------------------------------------------------------
 # initialization
 # ---------------------------------------------------------------------------
@@ -350,6 +395,36 @@ def test_an_initialization_which_differs(tmp_path: Path) -> None:
     assert result.max_difference == pytest.approx(0.3)
 
 
+@pytest.mark.parametrize(
+    ("solutions", "message"),
+    [
+        ({"parameter_files": {"net1": "ref.hdf5"}}, r"001'.*'tol'"),
+        ({"tol": 0.001}, r"001'.*'parameter_files'"),
+        ({"tol": 0.001, "parameter_files": {}}, r"001'.*no reference files"),
+    ],
+)
+def test_the_solutions_of_an_initialization_case(
+    tmp_path: Path, solutions: dict, message: str
+) -> None:
+    """A key which is missing is named."""
+    directory = tmp_path / "001"
+    directory.mkdir()
+    (directory / "solutions.yaml").write_text(yaml.safe_dump(solutions))
+    with pytest.raises(ValueError, match=message):
+        InitializationCase.from_directory(directory)
+
+
+def test_a_reference_file_without_the_network(tmp_path: Path) -> None:
+    """The reference file names the network."""
+    directory = _initialization_case(
+        tmp_path, "net1.parameters[layer1]", {"weight": WEIGHT, "bias": BIAS}
+    )
+    _h5(directory / "net1_ref.hdf5", {"parameters/net2/layer1/bias": BIAS})
+    result = InitializationCase.from_directory(directory).run()
+    assert result.status == CaseStatus.ERROR
+    assert "has no arrays of the network 'net1'" in result.message
+
+
 def test_a_network_in_another_format(tmp_path: Path) -> None:
     """Only the format `YAML` is read."""
     directory = _initialization_case(
@@ -390,6 +465,28 @@ def test_a_problem_import_case_is_read(tmp_path: Path) -> None:
         "mech": "grad_mech.tsv",
         "net1": "grad_net1.hdf5",
     }
+
+
+@pytest.mark.parametrize(
+    ("missing", "message"),
+    [
+        (["tol_llh"], r"'tol_llh' or 'tol_log_posterior'"),
+        (["tol_simulations"], r"'tol_simulations'"),
+        (["tol_grad"], r"'tol_grad'"),
+    ],
+)
+def test_the_tolerances_of_a_problem_import_case(
+    tmp_path: Path, missing: list[str], message: str
+) -> None:
+    """A tolerance which is missing is named."""
+    solutions = {"llh": 1.0, "tol_llh": 0.1, "tol_simulations": 0.1, "tol_grad": 0.1}
+    for key in missing:
+        del solutions[key]
+    directory = tmp_path / "007"
+    directory.mkdir()
+    (directory / "solutions.yaml").write_text(yaml.safe_dump(solutions))
+    with pytest.raises(ValueError, match=rf"007'.*{message}"):
+        ProblemImportCase.from_directory(directory)
 
 
 def test_a_problem_import_case_with_priors(tmp_path: Path) -> None:

@@ -22,7 +22,7 @@ from __future__ import annotations
 
 import logging
 from collections.abc import Iterator
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from enum import StrEnum
 from pathlib import Path
 from typing import Any
@@ -130,6 +130,26 @@ def read_solutions(path: Path) -> dict[str, Any]:
     return solutions
 
 
+def required(solutions: dict[str, Any], key: str, path: Path) -> Any:
+    """Get a value of the `solutions.yaml` of a case which must be there.
+
+    Args:
+        solutions: the content of the file.
+        key: the key of the value.
+        path: the directory of the case, for the message.
+
+    Returns:
+        The value.
+
+    Raises:
+        ValueError: if the file has no value for the key.
+    """
+    value = solutions.get(key)
+    if value is None:
+        raise ValueError(f"The case '{path}' has no '{key}' in 'solutions.yaml'")
+    return value
+
+
 def read_array(path: Path, group: str) -> np.ndarray:
     """Read the single array of an input or output file of a case.
 
@@ -175,7 +195,8 @@ def compare_arrays(
         tolerance: the absolute tolerance.
 
     Returns:
-        The outcome, the message and the largest absolute difference.
+        The outcome, the message and the largest absolute difference, `None`
+        when the shapes differ or a value is not finite.
     """
     if observed.shape != expected.shape:
         return (
@@ -183,10 +204,13 @@ def compare_arrays(
             f"the shape is {observed.shape}, expected {expected.shape}",
             None,
         )
+    for name, values in (("the values", observed), ("the reference values", expected)):
+        if not np.all(np.isfinite(values)):
+            return CaseStatus.TOLERANCE, f"{name} are not finite", None
     if observed.size == 0:
         return CaseStatus.PASS, "", 0.0
     difference = float(np.max(np.abs(observed - expected)))
-    if not np.all(np.isfinite(observed)) or difference > tolerance:
+    if not difference <= tolerance:
         return (
             CaseStatus.TOLERANCE,
             f"the largest difference {difference:.3g} is above the tolerance "
@@ -208,8 +232,11 @@ def _worst(
 
     Returns:
         The first comparison which fails, or the pass with the largest
-        difference of all comparisons.
+        difference of all comparisons. A case without a comparison is an
+        `ERROR`, it would pass without checking anything.
     """
+    if not outcomes:
+        return CaseResult(group, cid, CaseStatus.ERROR, "nothing was compared")
     for status, message, difference in outcomes:
         if status != CaseStatus.PASS:
             return CaseResult(group, cid, status, message, difference)
@@ -263,8 +290,10 @@ class ModelImportCase:
             The case.
 
         Raises:
-            ValueError: if the directory has no `solutions.yaml` or the file
-                does not list inputs and outputs.
+            ValueError: if the directory has no `solutions.yaml`, if the file
+                does not list inputs and outputs, or if the inputs, the array
+                files and the outputs are not listed for the same non-empty
+                list of combinations.
         """
         solutions = read_solutions(path)
         if "net_input" in solutions:
@@ -277,6 +306,19 @@ class ModelImportCase:
             columns = [solutions[key] for key in keys]
         if not columns or "net_output" not in solutions:
             raise ValueError(f"The case '{path}' lists no inputs or no outputs")
+        outputs = [path / name for name in solutions["net_output"]]
+        parameters = [path / name for name in solutions.get("net_ps", [])]
+        lengths = {len(column) for column in columns}
+        if (
+            not outputs
+            or lengths != {len(outputs)}
+            or (parameters and len(parameters) != len(outputs))
+        ):
+            raise ValueError(
+                f"The case '{path}' lists {sorted(lengths)} inputs per argument, "
+                f"{len(parameters)} array files and {len(outputs)} outputs, the "
+                f"combinations must agree and not be empty"
+            )
         return cls(
             cid=path.name,
             path=path,
@@ -284,8 +326,8 @@ class ModelImportCase:
             inputs=[
                 [path / name for name in row] for row in zip(*columns, strict=True)
             ],
-            parameters=[path / name for name in solutions.get("net_ps", [])],
-            outputs=[path / name for name in solutions["net_output"]],
+            parameters=parameters,
+            outputs=outputs,
             input_order=list(solutions.get("input_order_py", [])),
             output_order=list(solutions.get("output_order_py", [])),
             dropout=solutions.get("dropout"),
@@ -401,18 +443,20 @@ class InitializationCase:
             The case.
 
         Raises:
-            ValueError: if the directory has no `solutions.yaml`.
+            ValueError: if the directory has no `solutions.yaml`, or if the
+                file has no tolerance or no reference files.
         """
         solutions = read_solutions(path)
+        tolerance = float(required(solutions, "tol", path))
+        files = required(solutions, "parameter_files", path)
+        if not files:
+            raise ValueError(f"The case '{path}' lists no reference files")
         return cls(
             cid=path.name,
             path=path,
             problem_path=path / "petab" / "problem.yaml",
-            tolerance=float(solutions["tol"]),
-            parameter_files={
-                network: path / name
-                for network, name in solutions["parameter_files"].items()
-            },
+            tolerance=tolerance,
+            parameter_files={network: path / name for network, name in files.items()},
         )
 
     def nominal(self) -> dict[str, NetworkParameters]:
@@ -467,7 +511,9 @@ class InitializationCase:
             for array_file in sciml.array_files:
                 array_path = base / str(array_file)
                 if sid in load_array_data(array_path).parameters:
-                    network.parameters = network.read_arrays(array_path)
+                    network = replace(
+                        network, parameters=network.read_arrays(array_path)
+                    )
             nominal[sid] = nominal_parameters(
                 network,
                 {
@@ -483,10 +529,18 @@ class InitializationCase:
 
         Returns:
             id of the network -> the arrays of the network.
+
+        Raises:
+            ValueError: if a reference file has no arrays of its network.
         """
         expected: dict[str, NetworkParameters] = {}
         for sid, path in self.parameter_files.items():
             data = load_array_data(path)
+            if sid not in data.parameters:
+                raise ValueError(
+                    f"The reference file '{path}' has no arrays of the network "
+                    f"'{sid}', it has {sorted(data.parameters)}"
+                )
             expected[sid] = {
                 layer: {
                     name: np.asarray(array, dtype=float)
@@ -581,9 +635,17 @@ class ProblemImportCase:
             The case.
 
         Raises:
-            ValueError: if the directory has no `solutions.yaml`.
+            ValueError: if the directory has no `solutions.yaml`, or if the
+                file has no tolerance of the likelihood, the simulations or
+                the gradient.
         """
         solutions = read_solutions(path)
+        tol_llh = solutions.get("tol_llh", solutions.get("tol_log_posterior"))
+        if tol_llh is None:
+            raise ValueError(
+                f"The case '{path}' has no 'tol_llh' or 'tol_log_posterior' in "
+                f"'solutions.yaml'"
+            )
         llh = solutions.get("llh")
         log_posterior = solutions.get("log_posterior")
         return cls(
@@ -599,9 +661,9 @@ class ProblemImportCase:
                 key: path / name
                 for key, name in solutions.get("grad_files", {}).items()
             },
-            tol_llh=float(solutions.get("tol_llh", solutions.get("tol_log_posterior"))),
-            tol_simulations=float(solutions["tol_simulations"]),
-            tol_grad=float(solutions["tol_grad"]),
+            tol_llh=float(tol_llh),
+            tol_simulations=float(required(solutions, "tol_simulations", path)),
+            tol_grad=float(required(solutions, "tol_grad", path)),
         )
 
 

@@ -8,7 +8,8 @@ is the command line around `sbmlsim.sciml.testsuite`:
 # fetch the pinned commit into the cache, which the tests need
 uv run python scripts/sciml_testsuite.py download
 
-# run the cases and report the outcome
+# run the cases and report the outcome, fails when a case does not have the
+# outcome of the baseline
 uv run python scripts/sciml_testsuite.py run
 
 # refresh the expected outcomes after a change which fixes or breaks cases
@@ -55,26 +56,57 @@ def run(suite: SciMLSuite) -> list[CaseResult]:
     return results
 
 
+def unexpected_outcomes(results: list[CaseResult], baseline: dict) -> list[str]:
+    """Get the cases which do not have the outcome the baseline records.
+
+    Args:
+        results: the results of a run.
+        baseline: the content of the baseline.
+
+    Returns:
+        One line per case, `<key>: '<expected>' -> '<observed>'`.
+    """
+    expected_failures = baseline["expected_failures"]
+    lines: list[str] = []
+    for result in results:
+        recorded = expected_failures.get(result.key)
+        expected = CaseStatus.PASS.value if recorded is None else recorded["status"]
+        if result.status.value != expected:
+            lines.append(f"{result.key}: '{expected}' -> '{result.status.value}'")
+    return lines
+
+
 def write_baseline(results: list[CaseResult], suite: SciMLSuite, path: Path) -> None:
     """Write the cases which do not pass, keeping the reasons which are recorded.
+
+    A reason is kept while the case fails with the recorded status. A case
+    whose status changed gets `MISSING_REASON`, the recorded reason describes
+    the old status, and is reported.
 
     Args:
         results: the results of a run.
         suite: the suite which was run.
         path: the baseline.
     """
-    reasons: dict[str, str] = {}
+    recorded: dict[str, dict[str, str]] = {}
     if path.exists():
-        recorded = json.loads(path.read_text(encoding="utf-8"))
-        reasons = {
-            key: expected["reason"]
-            for key, expected in recorded["expected_failures"].items()
-        }
-    failures = {
-        r.key: {"status": r.status.value, "reason": reasons.get(r.key, MISSING_REASON)}
-        for r in results
-        if not r.passed
-    }
+        recorded = json.loads(path.read_text(encoding="utf-8"))["expected_failures"]
+    failures: dict[str, dict[str, str]] = {}
+    for result in results:
+        if result.passed:
+            continue
+        reason = MISSING_REASON
+        previous = recorded.get(result.key)
+        if previous is not None:
+            if previous["status"] == result.status.value:
+                reason = previous["reason"]
+            else:
+                console.print(
+                    f"  [yellow]{result.key}: the status changed "
+                    f"'{previous['status']}' -> '{result.status.value}', the "
+                    f"recorded reason was dropped[/yellow]"
+                )
+        failures[result.key] = {"status": result.status.value, "reason": reason}
     baseline = {
         "suite_commit": suite.commit,
         "n_cases": len(results),
@@ -89,7 +121,15 @@ def write_baseline(results: list[CaseResult], suite: SciMLSuite, path: Path) -> 
 
 
 def main(argv: list[str] | None = None) -> int:
-    """Run the command line."""
+    """Run the command line.
+
+    Args:
+        argv: command line arguments, `sys.argv` by default.
+
+    Returns:
+        The exit code: `1` when `run` finds a case without the outcome of the
+        baseline, `0` otherwise.
+    """
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("command", choices=["download", "run", "baseline"])
     parser.add_argument("--commit", default=SCIML_SUITE_COMMIT)
@@ -104,6 +144,17 @@ def main(argv: list[str] | None = None) -> int:
     results = run(suite)
     if args.command == "baseline":
         write_baseline(results, suite, BASELINE_PATH)
+        return 0
+    baseline = json.loads(BASELINE_PATH.read_text(encoding="utf-8"))
+    unexpected = unexpected_outcomes(results, baseline)
+    if unexpected:
+        console.print(
+            f"[red]{len(unexpected)} cases do not have the outcome of the "
+            f"baseline {BASELINE_PATH}[/red]"
+        )
+        for line in unexpected:
+            console.print(f"  {line}")
+        return 1
     return 0
 
 
