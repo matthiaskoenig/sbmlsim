@@ -8,10 +8,10 @@ moved into place, so an interrupted download does not leave a directory which
 looks like a cached suite.
 
 A fetch holds a lock on a file in its staging directory while it runs, which
-the operating system releases when the process ends, also when it is killed.
-A staging directory whose lock nobody holds is what a killed fetch left
-behind, the next fetch or load of the target removes it. Without `fcntl`,
-i.e. on Windows, the age of a staging directory decides.
+the operating system releases when the process ends, also when it is killed:
+`fcntl.flock` on POSIX, `msvcrt.locking` on Windows. A staging directory
+whose lock nobody holds is what a killed fetch left behind, the next fetch or
+load of the target removes it.
 """
 
 from __future__ import annotations
@@ -28,7 +28,9 @@ import zipfile
 from collections.abc import Callable
 from pathlib import Path
 
-if sys.platform != "win32":
+if sys.platform == "win32":
+    import msvcrt
+else:
     import fcntl
 
 logger = logging.getLogger(__name__)
@@ -142,27 +144,40 @@ def fetch(url: str, path: Path, select: Callable[[Path], Path]) -> Path:
                 raise
             logger.debug("'%s' was fetched by another process", path)
     finally:
-        shutil.rmtree(staging, ignore_errors=True)
+        # Windows removes no file which is open, the lock is released first
         if lock is not None:
             os.close(lock)
+        shutil.rmtree(staging, ignore_errors=True)
     return path
 
 
-def _lock(staging: Path) -> int | None:
+def _lock(staging: Path) -> int:
     """Create the lock file of a staging directory and hold its lock.
 
-    The lock file is locked under another name and renamed, so a fetch which
-    looks for stale directories never finds the lock file of a running fetch
-    unlocked.
+    On POSIX the lock file is locked under another name and renamed, so a
+    fetch which looks for stale directories never finds the lock file of a
+    running fetch unlocked. Windows renames no file which is open, the lock
+    file is locked under its name. A fetch which finds it in the moment
+    before it is locked cannot remove it: Windows removes no file which is
+    open, so the staging directory stays, and the lock waits until the probe
+    of that fetch has released it.
 
     Args:
         staging: the staging directory of a fetch.
 
     Returns:
-        The file descriptor which holds the lock, `None` without `fcntl`.
+        The file descriptor which holds the lock.
     """
     if sys.platform == "win32":
-        return None
+        fd = os.open(staging / LOCK_NAME, os.O_RDWR | os.O_CREAT, 0o600)
+        try:
+            # `LK_LOCK` tries for 10 seconds, the probe of another fetch
+            # holds the lock for a moment
+            msvcrt.locking(fd, msvcrt.LK_LOCK, 1)
+        except OSError:
+            os.close(fd)
+            raise
+        return fd
     pending = staging / f"{LOCK_NAME}.pending"
     fd = os.open(pending, os.O_RDWR | os.O_CREAT, 0o600)
     try:
@@ -174,28 +189,37 @@ def _lock(staging: Path) -> int | None:
     return fd
 
 
-def _try_lock(lock_file: Path) -> int | None:
-    """Take the lock of a staging directory if nobody holds it.
+def _is_released(lock_file: Path) -> bool:
+    """Check whether nobody holds the lock of a staging directory.
+
+    The probe takes the lock and releases it again. A lock file which is
+    released stays released, only the fetch which created it locks it.
 
     Args:
         lock_file: the lock file of the staging directory.
 
     Returns:
-        The file descriptor which holds the lock, `None` if a running fetch
-        holds it or the file is gone.
+        Whether the lock could be taken, `False` if a running fetch holds it
+        or the file is gone.
     """
-    if sys.platform == "win32":
-        return None
     try:
         fd = os.open(lock_file, os.O_RDWR)
     except OSError:
-        return None
+        return False
     try:
-        fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        if sys.platform == "win32":
+            msvcrt.locking(fd, msvcrt.LK_NBLCK, 1)
+            os.lseek(fd, 0, os.SEEK_SET)
+            msvcrt.locking(fd, msvcrt.LK_UNLCK, 1)
+        else:
+            fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
     except OSError:
+        return False
+    finally:
+        # the lock is released before the directory is removed, Windows
+        # removes no file which is open
         os.close(fd)
-        return None
-    return fd
+    return True
 
 
 def remove_stale(path: Path, stale_after: float = STALE_AFTER) -> list[Path]:
@@ -204,8 +228,8 @@ def remove_stale(path: Path, stale_after: float = STALE_AFTER) -> list[Path]:
     A fetch which is running has a staging directory as well and holds the
     lock of its lock file. A staging directory with a lock file is removed
     when its lock can be taken, i.e. the fetch which created it has ended. A
-    staging directory without a lock file, or any on a platform without
-    `fcntl`, is removed when it is older than `stale_after`.
+    staging directory without a lock file is removed when it is older than
+    `stale_after`.
 
     Args:
         path: the target of the fetch.
@@ -224,14 +248,10 @@ def remove_stale(path: Path, stale_after: float = STALE_AFTER) -> list[Path]:
         if not pattern.fullmatch(staging.name) or not staging.is_dir():
             continue
         lock_file = staging / LOCK_NAME
-        if sys.platform != "win32" and lock_file.is_file():
-            lock = _try_lock(lock_file)
-            if lock is None:
+        if lock_file.is_file():
+            if not _is_released(lock_file):
                 continue
-            try:
-                _remove(staging)
-            finally:
-                os.close(lock)
+            _remove(staging)
         else:
             try:
                 age = now - staging.stat().st_mtime

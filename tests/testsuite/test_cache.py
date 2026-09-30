@@ -196,7 +196,6 @@ def _killed_staging(parent: Path, name: str) -> Path:
     return staging
 
 
-@pytest.mark.skipif(sys.platform == "win32", reason="the lock is fcntl.flock")
 def test_a_killed_fetch_is_removed_while_a_running_one_is_kept(
     tmp_path: Path,
 ) -> None:
