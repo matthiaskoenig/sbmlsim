@@ -225,15 +225,36 @@ class RoadrunnerSBMLModel(AbstractModel):
 
             # adapt the absolute_tolerance relative to the amounts
             if key == "absolute_tolerance":
-                # special hack to acount for amount and concentration absolute
-                # tolerances
-                compartment_values = r.model.getCompartmentVolumes()
-                if len(compartment_values) > 0:
-                    value = min(value, value * min(compartment_values))
+                value = min(
+                    value,
+                    value * RoadrunnerSBMLModel._tolerance_volume_factor(r),
+                )
 
             integrator.setValue(key, value)
             logger.debug("Integrator setting: '%s = %s'", key, value)
         return integrator
+
+    @staticmethod
+    def _tolerance_volume_factor(r: roadrunner.RoadRunner) -> float:
+        """Get the factor of the absolute tolerance for amounts.
+
+        The species of a model are integrated as amounts, so the absolute
+        tolerance of the concentrations is scaled by the smallest volume. The
+        initial volumes are used, not the current ones, so that the tolerance
+        does not depend on the state an earlier simulation left behind;
+        compartments without a finite positive volume are ignored.
+
+        Args:
+            r: the roadrunner instance with a loaded model.
+
+        Returns:
+            The smallest finite positive initial volume, 1 if there is none.
+        """
+        volumes = np.asarray(r.model.getCompartmentInitVolumes(), dtype=float)
+        volumes = volumes[np.isfinite(volumes) & (volumes > 0)]
+        if volumes.size == 0:
+            return 1.0
+        return float(np.nanmin(volumes))
 
     @staticmethod
     def set_default_settings(r: roadrunner.RoadRunner, **kwargs):
