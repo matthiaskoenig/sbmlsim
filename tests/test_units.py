@@ -34,6 +34,13 @@ def test_units_from_doc(sbml_path: Path) -> None:
     check_uinfo(uinfo)
 
 
+def test_a_document_without_a_model() -> None:
+    """A document without a model has no units to read."""
+    doc = libsbml.SBMLDocument(3, 2)
+    with pytest.raises(ValueError, match="No model found in SBMLDocument"):
+        UnitsInformation.from_sbml_doc(doc)
+
+
 def test_default_ureg() -> None:
     """Test creation of default unit registry."""
     ureg = UnitsInformation._default_ureg()

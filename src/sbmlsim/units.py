@@ -200,6 +200,9 @@ class UnitsInformation(MutableMapping):
         without the units of its substance or its compartment, or an entity
         whose derived unit is no unit definition of the model, is logged at
         the level `DEBUG`, and the model once at `INFO` with their number.
+
+        Raises:
+            ValueError: if the document has no model.
         """
         if ureg is None:
             ureg = UnitsInformation._default_ureg()
@@ -207,7 +210,7 @@ class UnitsInformation(MutableMapping):
         # create sid to unit mapping
         model: libsbml.Model = doc.getModel()
         if not model:
-            ValueError(f"No model found in SBMLDocument: {doc}")
+            raise ValueError(f"No model found in SBMLDocument: {doc}")
 
         uid_dict: dict[str, str] = UnitsInformation.model_uid_dict(model, ureg=ureg)
 
