@@ -1,7 +1,8 @@
 """Tests of a network: its files, its ids and its forward pass."""
 
+import copy
 import pickle
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from dataclasses import FrozenInstanceError, replace
 from pathlib import Path
 from typing import Any
@@ -483,16 +484,49 @@ def test_the_equality_of_networks() -> None:
     assert network != Network(sid="net1", model=_model(), parameters=missing)
 
 
-def test_a_network_is_pickled() -> None:
-    """A fit pickles its networks for the workers, the copy is equal."""
+def _writes(network: Network) -> bool:
+    """Whether an array of the network can be written."""
+    return bool(network.parameters["layer1"]["weight"].flags.writeable)
+
+
+@pytest.mark.parametrize(
+    "copy_of",
+    [
+        copy.deepcopy,
+        lambda n: pickle.loads(pickle.dumps(n, protocol=2)),
+        lambda n: pickle.loads(pickle.dumps(n, protocol=4)),
+        lambda n: pickle.loads(pickle.dumps(n, protocol=5)),
+    ],
+    ids=["deepcopy", "pickle2", "pickle4", "pickle5"],
+)
+def test_a_copy_of_a_network_is_frozen(
+    copy_of: Callable[[Network], Network],
+) -> None:
+    """A deep copy and every pickle protocol give a frozen, equal network."""
     network = Network(sid="net1", model=_model(), parameters=_parameters())
     ids = network.parameter_ids()
-    copy = pickle.loads(pickle.dumps(network))
-    assert copy == network
-    assert copy.parameter_ids() == ids
+    duplicate = copy_of(network)
+    assert duplicate == network
+    assert duplicate.parameter_ids() == ids
+    assert not _writes(duplicate)
     np.testing.assert_array_equal(
-        copy.forward(np.array([0.5, -0.5]))[0],
+        duplicate.forward(np.array([0.5, -0.5]))[0],
         network.forward(np.array([0.5, -0.5]))[0],
     )
     with pytest.raises(ValueError, match="read-only"):
-        copy.parameters["layer1"]["weight"][0, 0] = 5.0
+        duplicate.parameters["layer1"]["weight"][0, 0] = 5.0
+    with pytest.raises(TypeError):
+        duplicate.parameters["layer1"]["weight"] = np.ones((3, 2))  # ty: ignore[invalid-assignment]
+    with pytest.raises(FrozenInstanceError):
+        duplicate.sid = "net2"  # ty: ignore[invalid-assignment]
+
+
+def test_the_containers_of_a_network_do_not_change() -> None:
+    """The layers and the arrays cannot be replaced, added or removed."""
+    network = Network(sid="net1", model=_model(), parameters=_parameters())
+    with pytest.raises(TypeError):
+        network.parameters["layer1"]["weight"] = np.ones((3, 2))  # ty: ignore[invalid-assignment]
+    with pytest.raises(TypeError):
+        network.parameters["layer3"] = {}  # ty: ignore[invalid-assignment]
+    with pytest.raises(TypeError):
+        del network.parameters["layer1"]  # ty: ignore[not-subscriptable]

@@ -28,6 +28,8 @@ from collections.abc import Mapping
 from dataclasses import dataclass, field
 from functools import cached_property
 from pathlib import Path
+from types import MappingProxyType
+from typing import Any
 
 import numpy as np
 import yaml
@@ -48,6 +50,9 @@ logger = logging.getLogger(__name__)
 
 #: the arrays of a network: layer id -> array name -> values
 NetworkParameters = dict[str, dict[str, np.ndarray]]
+
+#: the arrays of a network which cannot be changed: read-only views
+FrozenParameters = Mapping[str, Mapping[str, np.ndarray]]
 
 #: separator of the parts of an id
 ID_SEPARATOR = "__"
@@ -217,6 +222,22 @@ def copy_parameters(
     }
 
 
+def _rebuild_network(
+    sid: str, model: NNModel, parameters: NetworkParameters
+) -> Network:
+    """Create a network from the arguments of `Network.__reduce__`.
+
+    Args:
+        sid: id of the network.
+        model: the architecture.
+        parameters: the arrays.
+
+    Returns:
+        The network.
+    """
+    return Network(sid=sid, model=model, parameters=parameters)
+
+
 def load_array_data(path: Path) -> ArrayData:
     """Read an array file.
 
@@ -250,15 +271,21 @@ class Network:
     A network is validated when it is created: the id, the forward pass and
     the nominal values are checked against the architecture, and every layer
     needs an implementation. A network does not change afterwards: its
-    attributes cannot be assigned and its arrays cannot be written, so the
-    structures derived from them (`array_specs`, `used_layers`,
-    `parameter_ids`) are computed once and stay true. A network with other
-    nominal values is a new network, e.g.
-    `dataclasses.replace(network, parameters=...)`.
+    attributes cannot be assigned, the mappings of `parameters` cannot be
+    changed and its arrays cannot be written, so the structures derived from
+    them (`array_specs`, `used_layers`, `parameter_ids`) are computed once and
+    stay true. The arrays are copies of the ones the network was built from.
+    The `model` is shared and not copied, it must not be changed after the
+    network was created, the derived structures would not follow. A network
+    with other nominal values is a new network, e.g.
+    `dataclasses.replace(network, parameters=...)`. A copy of a network
+    (`copy.deepcopy`, pickle of any protocol) is created again from its id,
+    architecture and arrays, so it is validated and frozen like the original.
 
     Two networks are equal when they have the same id, the same architecture
     and the same arrays, which is what the round trip of a problem and the
-    pickling of a fit compare.
+    pickling of a fit compare. The hash is the one of the id only, networks of
+    one id are equal or differ in the architecture or the arrays.
 
     Attributes:
         sid: id of the network, an SBML `SId` which is the `nn_model_id` of
@@ -270,7 +297,7 @@ class Network:
 
     sid: str
     model: NNModel
-    parameters: NetworkParameters = field(default_factory=dict)
+    parameters: FrozenParameters = field(default_factory=dict)
 
     def __post_init__(self) -> None:
         """Validate the network.
@@ -299,7 +326,33 @@ class Network:
         for arrays in parameters.values():
             for array in arrays.values():
                 array.setflags(write=False)
-        object.__setattr__(self, "parameters", parameters)
+        object.__setattr__(
+            self,
+            "parameters",
+            MappingProxyType(
+                {
+                    layer: MappingProxyType(arrays)
+                    for layer, arrays in parameters.items()
+                }
+            ),
+        )
+
+    def __reduce__(self) -> tuple[Any, ...]:
+        """Reduce the network to its arguments.
+
+        A copy (`copy.deepcopy`, pickle) is created by the constructor, so it
+        is validated and its arrays are read-only for every protocol, and it
+        computes its derived structures on first use.
+
+        Returns:
+            The function which creates the network and its arguments, the
+            arrays as plain dictionaries.
+        """
+        return _rebuild_network, (
+            self.sid,
+            self.model,
+            {layer: dict(arrays) for layer, arrays in self.parameters.items()},
+        )
 
     def __eq__(self, other: object) -> bool:
         """Check whether two networks have the same architecture and arrays.
