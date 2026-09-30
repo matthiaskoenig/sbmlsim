@@ -56,7 +56,11 @@ class FisherInformation:
         pids: parameters, in the order of the matrix.
         values: values of the parameters, in the units of the model.
         scale: space the matrix is expressed in, i.e. the space the optimizer
-            searches, see `ParameterScaleType`.
+            searches, see `ParameterScaleType`. It is the scale of the
+            settings of the fit, i.e. of the parameters without a scale of
+            their own.
+        scales: the space of every parameter, in the order of the matrix.
+            Without them every parameter has the scale `scale`.
         matrix: the Fisher information `J' J`.
         cost: cost of the parameter set.
         n: number of data points of the fit.
@@ -74,16 +78,55 @@ class FisherInformation:
     alpha: float = 0.95
     rank_tolerance: float = DEFAULT_RANK_TOLERANCE
     units: list[str | None] = field(default_factory=list)
+    scales: list[ParameterScaleType] = field(default_factory=list)
 
     #: the covariance is read by the errors, the correlations and the table, so
     #: the warning of a rank deficient information is logged for the first of
     #: them and not once per reader
     _warned: bool = field(default=False, init=False, repr=False, compare=False)
 
+    def __post_init__(self) -> None:
+        """Check the scales of the parameters.
+
+        Raises:
+            ValueError: if the scales are given and not one per parameter.
+        """
+        if self.scales and len(self.scales) != len(self.pids):
+            raise ValueError(
+                f"'{self.opid}': the Fisher information requires one scale per "
+                f"parameter, but '{len(self.scales)}' scales are given for the "
+                f"'{len(self.pids)}' parameters '{self.pids}'."
+            )
+
     @property
     def k(self) -> int:
         """Get the number of parameters."""
         return len(self.pids)
+
+    @property
+    def parameter_scales(self) -> list[ParameterScaleType]:
+        """Get the space of every parameter, in the order of the matrix."""
+        return list(self.scales) if self.scales else [self.scale] * self.k
+
+    def to_scale(self, values: Any) -> np.ndarray:
+        """Transform one value per parameter into the space of the optimizer."""
+        return np.array(
+            [
+                scale.to_scale(value)
+                for scale, value in zip(self.parameter_scales, values, strict=True)
+            ],
+            dtype=float,
+        )
+
+    def from_scale(self, values: Any) -> np.ndarray:
+        """Transform one value per parameter into the units of the model."""
+        return np.array(
+            [
+                scale.from_scale(value)
+                for scale, value in zip(self.parameter_scales, values, strict=True)
+            ],
+            dtype=float,
+        )
 
     @property
     def sigma2(self) -> float:
@@ -178,8 +221,9 @@ class FisherInformation:
 
         The interval is `θ ± t · SE` in the space the optimizer searches, with
         the quantile of the t distribution of `n - k` degrees of freedom, and
-        is transformed back into the units of the model. On a logarithmic scale
-        the interval is therefore not symmetric around the value.
+        is transformed back into the units of the model, every parameter with
+        its own scale. On a logarithmic scale the interval is therefore not
+        symmetric around the value.
 
         Returns:
             The lower and the upper bound in the units of the model.
@@ -189,12 +233,9 @@ class FisherInformation:
             nan = np.full(self.k, np.nan)
             return nan, nan
         quantile = float(student_t.ppf(0.5 + self.alpha / 2.0, dof))
-        scaled = self.scale.to_scale(self.values)
+        scaled = self.to_scale(self.values)
         delta = quantile * self.standard_errors
-        return (
-            np.asarray(self.scale.from_scale(scaled - delta), dtype=float),
-            np.asarray(self.scale.from_scale(scaled + delta), dtype=float),
-        )
+        return self.from_scale(scaled - delta), self.from_scale(scaled + delta)
 
     @property
     def summary_df(self) -> pd.DataFrame:
@@ -203,7 +244,7 @@ class FisherInformation:
         errors = self.standard_errors
         with np.errstate(divide="ignore", invalid="ignore"):
             # the error relative to the value, in the scaled space
-            cv = np.abs(errors / self.scale.to_scale(self.values)) * 100.0
+            cv = np.abs(errors / self.to_scale(self.values)) * 100.0
         units = self.units or [None] * self.k
         return pd.DataFrame(
             {
@@ -225,6 +266,7 @@ class FisherInformation:
             "pids": list(self.pids),
             "values": [float(v) for v in self.values],
             "scale": self.scale.name,
+            "scales": [scale.name for scale in self.parameter_scales],
             "matrix": [[float(v) for v in row] for row in self.matrix],
             "cost": self.cost,
             "n": self.n,
@@ -302,4 +344,5 @@ def fisher_information(
         alpha=alpha,
         rank_tolerance=rank_tolerance,
         units=[p.unit for p in problem.parameters],
+        scales=list(problem.scales_initialized),
     )

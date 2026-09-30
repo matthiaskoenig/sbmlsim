@@ -15,6 +15,7 @@ import numpy as np
 import pandas as pd
 
 from sbmlsim.data import Data
+from sbmlsim.fit.options import ParameterScaleType
 from sbmlsim.serialization import to_json
 from sbmlsim.units import Quantity
 
@@ -493,6 +494,7 @@ class FitParameter:
         unit: str | None = None,
         target: str | None = None,
         mappings: Any = None,
+        scale: ParameterScaleType | str | None = None,
     ):
         """Initialize FitParameter.
 
@@ -514,10 +516,39 @@ class FitParameter:
                 A selector is a callable and is not serialized: it must be a
                 module level function, because the workers of a parallel fit
                 unpickle the parameters.
+            scale: space the optimizer searches the parameter in, or its name.
+                `None` is the `parameter_scale` of the `FitSettings`. A
+                parameter which is negative or zero, e.g. a weight of a
+                network, is searched on the linear scale.
 
         Raises:
-            ValueError: if the bounds or the start value are inconsistent.
+            ValueError: if the bounds or the start value are inconsistent, if
+                a value is not a number, or if the scale is not a scale.
         """
+        for key, value in (("lower_bound", lower_bound), ("upper_bound", upper_bound)):
+            if value is None or np.isnan(value):
+                raise ValueError(
+                    f"FitParameter '{pid}': the '{key}' is '{value}', which is "
+                    f"not a number. A parameter without a bound has an "
+                    f"infinite one."
+                )
+        if start_value is not None and not np.isfinite(start_value):
+            raise ValueError(
+                f"FitParameter '{pid}': the start value '{start_value}' is not "
+                f"a finite number."
+            )
+        if isinstance(scale, str):
+            if scale not in ParameterScaleType.__members__:
+                raise ValueError(
+                    f"FitParameter '{pid}': the scale '{scale}' is not one of "
+                    f"{list(ParameterScaleType.__members__)}."
+                )
+            scale = ParameterScaleType[scale]
+        if scale is not None and not isinstance(scale, ParameterScaleType):
+            raise ValueError(
+                f"FitParameter '{pid}': the scale '{scale}' is not a "
+                f"`ParameterScaleType`."
+            )
         if lower_bound > upper_bound:
             raise ValueError(
                 f"FitParameter '{pid}': lower bound '{lower_bound}' is larger than "
@@ -536,6 +567,7 @@ class FitParameter:
         self.unit = unit
         self.target = target
         self.mappings = mappings
+        self.scale: ParameterScaleType | None = scale
         if unit is None:
             logger.warning(
                 "No unit provided for FitParameter '%s', assuming model units.",
@@ -567,6 +599,7 @@ class FitParameter:
             and _isclose(self.upper_bound, other.upper_bound)
             and self.unit == other.unit
             and self.target_id == other.target_id
+            and self.scale == other.scale
         )
 
     def __hash__(self) -> int:
@@ -596,6 +629,7 @@ class FitParameter:
             "upper_bound": self.upper_bound,
             "unit": self.unit,
             "target": self.target,
+            "scale": None if self.scale is None else self.scale.name,
         }
 
     @staticmethod

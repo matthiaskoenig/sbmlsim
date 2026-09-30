@@ -747,9 +747,9 @@ ProfilePoint = tuple[np.ndarray, float, bool]
 def _scaled_bounds(problem: OptimizationProblem) -> tuple[np.ndarray, np.ndarray]:
     """Get the bounds of the parameters in the space of the optimizer.
 
-    The scans run in the space the fit searches, i.e. the
-    `parameter_scale` of its settings, so that a step of the scan is a step of
-    the optimizer.
+    The scans run in the space the fit searches, i.e. every parameter in its
+    own scale, which is the `parameter_scale` of the settings for a parameter
+    without one, so that a step of the scan is a step of the optimizer.
     """
     return (
         problem.to_scale([p.lower_bound for p in problem.parameters]),
@@ -980,11 +980,18 @@ def profile_likelihood(
 
     x = parameter_set.x(problem.pids)
     lower, upper = _scaled_bounds(problem)
-    if problem.parameter_scale.is_log and np.any(x <= 0.0):
+    negative = {
+        pid: (float(value), scale.name)
+        for pid, value, scale in zip(
+            problem.pids, x, problem.scales_initialized, strict=True
+        )
+        if scale.is_log and value <= 0.0
+    }
+    if negative:
         raise ValueError(
             f"'{problem.opid}': the parameters must be positive, the scans run in "
-            f"'{problem.parameter_scale.name}' space, got "
-            f"'{dict(zip(problem.pids, x, strict=True))}'."
+            f"the logarithmic space of a parameter, got the values and scales "
+            f"'{negative}'."
         )
     theta_optimum = problem.to_scale(x)
     outside = [

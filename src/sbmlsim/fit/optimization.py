@@ -461,6 +461,11 @@ class OptimizationProblem(ObjectJSONEncoder):
             return
 
         self.settings = settings
+        #: the space the optimizer searches every parameter in
+        self.scales: list[ParameterScaleType] = [
+            settings.parameter_scale if p.scale is None else p.scale
+            for p in self.parameters
+        ]
         self._validate_parameters()
         # initialize can be called more than once, e.g. for the report of a fit
         self._reset_mappings()
@@ -797,13 +802,70 @@ class OptimizationProblem(ObjectJSONEncoder):
         """Get the space the optimizer searches the parameters in."""
         return self.settings_initialized.parameter_scale
 
+    @property
+    def scales_initialized(self) -> list[ParameterScaleType]:
+        """Get the space the optimizer searches every parameter in.
+
+        The scale of a parameter is its `FitParameter.scale` and the
+        `parameter_scale` of the settings for a parameter without one.
+
+        Raises:
+            ValueError: if the problem was not initialized.
+        """
+        self.settings_initialized  # noqa: B018
+        return self.scales
+
+    def _scaled(self, x: Any, to_scale: bool) -> np.ndarray:
+        """Transform one value per parameter, every one with its own scale."""
+        values = np.asarray(x, dtype=float)
+        scales = self.scales_initialized
+        if values.shape != (len(scales),):
+            raise ValueError(
+                f"'{self.opid}': the transformation requires one value per "
+                f"parameter, but values of the shape '{values.shape}' are given "
+                f"for the '{len(scales)}' parameters '{self.pids}'."
+            )
+        if len(set(scales)) == 1:
+            # one scale, which is one call of numpy
+            scale = scales[0]
+            scaled = scale.to_scale(values) if to_scale else scale.from_scale(values)
+            return np.asarray(scaled, dtype=float)
+        return np.array(
+            [
+                scale.to_scale(value) if to_scale else scale.from_scale(value)
+                for scale, value in zip(scales, values, strict=True)
+            ],
+            dtype=float,
+        )
+
     def to_scale(self, x: Any) -> np.ndarray:
-        """Transform parameters of the model into the space of the optimizer."""
-        return np.asarray(self.parameter_scale.to_scale(x), dtype=float)
+        """Transform parameters of the model into the space of the optimizer.
+
+        Args:
+            x: one value per parameter, in the units of the model.
+
+        Returns:
+            The values in the space the optimizer searches, every parameter
+            with its own scale.
+
+        Raises:
+            ValueError: if `x` does not have one value per parameter.
+        """
+        return self._scaled(x, to_scale=True)
 
     def from_scale(self, x: Any) -> np.ndarray:
-        """Transform parameters of the optimizer into the units of the model."""
-        return np.asarray(self.parameter_scale.from_scale(x), dtype=float)
+        """Transform parameters of the optimizer into the units of the model.
+
+        Args:
+            x: one value per parameter, in the space the optimizer searches.
+
+        Returns:
+            The values in the units of the model.
+
+        Raises:
+            ValueError: if `x` does not have one value per parameter.
+        """
+        return self._scaled(x, to_scale=False)
 
     def _validate_parameters(self) -> None:
         """Check that the parameters can be optimized.
@@ -815,9 +877,8 @@ class OptimizationProblem(ObjectJSONEncoder):
         Raises:
             ValueError: if a bound or a start value does not suit the scale.
         """
-        scale = self.parameter_scale
-        space = f"'{scale.name}' parameter space"
-        for p in self.parameters:
+        for p, scale in zip(self.parameters, self.scales_initialized, strict=True):
+            space = f"'{scale.name}' parameter space"
             for key in ["lower_bound", "upper_bound"]:
                 value = getattr(p, key)
                 if not np.isfinite(value):
@@ -1260,10 +1321,13 @@ class OptimizationProblem(ObjectJSONEncoder):
             # https://docs.scipy.org/doc/scipy/reference/generated/scipy.optimize.differential_evolution.html#scipy.optimize.differential_evolution
             ts = time.time()
             try:
-                de_bounds_log = [
-                    (self.to_scale(p.lower_bound), self.to_scale(p.upper_bound))
-                    for k, p in enumerate(self.parameters)
-                ]
+                de_bounds_log = list(
+                    zip(
+                        self.to_scale([p.lower_bound for p in self.parameters]),
+                        self.to_scale([p.upper_bound for p in self.parameters]),
+                        strict=True,
+                    )
+                )
                 opt_result = scipy.optimize.differential_evolution(
                     func=self.cost_least_square, bounds=de_bounds_log, **kwargs
                 )
