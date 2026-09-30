@@ -757,3 +757,75 @@ def test_a_model_which_cannot_be_read(tmp_path: Path) -> None:
     path.write_text("<sbml/>")
     with pytest.raises(NetworkHybridizationError, match=r"'net1'.*holds no SBML model"):
         _hybridization().validate(path)
+
+
+def test_the_summary_of_a_hybridization() -> None:
+    network = feed_forward()
+    hybridization = Hybridization(
+        network=network,
+        pattern=NetworkPattern.RHS,
+        model="lv",
+        inputs={
+            "net1__input0__0": NetworkInput(formula="prey"),
+            "net1__input0__1": NetworkInput(formula="predator"),
+        },
+        outputs={"net1__output0__0": "gamma"},
+    )
+    summary = hybridization.summary()
+    assert summary.name == "net1"
+    assert summary.kind == "rhs"
+    assert summary.description == "layer1 (Linear), layer2 (Linear)"
+    assert summary.targets == ("gamma",)
+    assert [group.label for group in summary.groups] == [
+        "net1.layer1.weight",
+        "net1.layer1.bias",
+        "net1.layer2.weight",
+        "net1.layer2.bias",
+    ]
+    assert summary.groups[0].ids == tuple(
+        sid
+        for sid in network.parameter_ids()
+        if sid.startswith("net1__layer1__weight__")
+    )
+
+
+def test_fit_parameters_of_a_hybridization() -> None:
+    network = feed_forward()
+    before = Hybridization(
+        network=network,
+        pattern=NetworkPattern.PRE_INITIALIZATION,
+        model="lv",
+        inputs={
+            "net1__input0__0": NetworkInput(formula="alpha"),
+            "net1__input0__1": NetworkInput(formula="k"),
+        },
+        outputs={"net1__output0__0": "gamma"},
+        constants={"k": 0.5},
+    )
+    parameters, frozen = before.fit_parameters(
+        estimate={"net1.layer2": True}, bounds={"net1": (-2.0, 2.0)}
+    )
+    assert [p.pid for p in parameters] == [
+        sid for sid in network.parameter_ids() if "layer2" in sid
+    ]
+    assert all(p.is_external for p in parameters)
+    assert all((p.lower_bound, p.upper_bound) == (-2.0, 2.0) for p in parameters)
+    assert frozen.frozen == set(network.parameter_ids()) - {p.pid for p in parameters}
+    assert frozen.pattern is before.pattern and frozen.inputs == before.inputs
+    # the elements of a compiled network are entities of the model
+    in_model = Hybridization(
+        network=network,
+        pattern=NetworkPattern.RHS,
+        model="lv",
+        inputs={
+            "net1__input0__0": NetworkInput(formula="prey"),
+            "net1__input0__1": NetworkInput(formula="predator"),
+        },
+        outputs={"net1__output0__0": "gamma"},
+    )
+    parameters, _ = in_model.fit_parameters(estimate={"net1": True})
+    assert all(not p.is_external for p in parameters)
+    with pytest.raises(
+        NetworkImportError, match="is not the network, a layer or an array"
+    ):
+        in_model.fit_parameters(estimate={"net1.layer9": True})

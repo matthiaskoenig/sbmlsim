@@ -164,15 +164,13 @@ def test_the_arrays_of_the_simulations() -> None:
 def test_a_frozen_layer() -> None:
     """The elements of a frozen layer are not parameters and keep their values."""
     network = feed_forward()
-    elements = network_fit_parameters(
-        network,
-        estimate={"net1": True, "net1.layer1": False},
-        bounds={"net1": (-5.0, 5.0)},
-        external=True,
+    elements, hybridization = _before(network).fit_parameters(
+        estimate={"net1": True, "net1.layer1": False}, bounds={"net1": (-5.0, 5.0)}
     )
-    frozen = set(network.parameter_ids()) - {p.pid for p in elements}
-    assert frozen == {sid for sid in network.parameter_ids() if "layer1" in sid}
-    problem = _problem([_before(network, frozen=frozen)], elements)
+    assert hybridization.frozen == {
+        sid for sid in network.parameter_ids() if "layer1" in sid
+    }
+    problem = _problem([hybridization], elements)
     problem.initialize(SETTINGS)
     assert all(np.isfinite(problem.bounds[0]))
     grad = gradient(problem)
@@ -180,7 +178,7 @@ def test_a_frozen_layer() -> None:
 
     with pytest.raises(ValueError, match=r"\['net1__layer1__bias__0'\] are frozen"):
         _problem(
-            [_before(network, frozen=frozen)],
+            [hybridization],
             [
                 *elements,
                 FitParameter(
@@ -196,12 +194,11 @@ def test_a_frozen_layer() -> None:
 def test_a_parallel_fit_pickles_the_networks(tmp_path: Path) -> None:
     """The workers of a parallel fit get the hybridizations with the problem."""
     network = feed_forward()
-    elements = network_fit_parameters(
-        network, estimate={"net1.layer2": True}, bounds={}, external=True
-    )
     # an element which is not estimated is frozen
-    frozen = set(network.parameter_ids()) - {p.pid for p in elements}
-    problem = _problem([_before(network, frozen=frozen)], elements)
+    elements, hybridization = _before(network).fit_parameters(
+        estimate={"net1.layer2": True}
+    )
+    problem = _problem([hybridization], elements)
     restored = pickle.loads(pickle.dumps(problem))
     assert restored.hybridizations == problem.hybridizations
     assert restored.hybridizations[0].network == network

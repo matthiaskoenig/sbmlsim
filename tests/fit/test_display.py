@@ -270,3 +270,30 @@ def test_icons_are_distinct() -> None:
         display.ICON_REPORT,
     ]
     assert len(set(icons)) == len(icons)
+
+
+def test_the_parameters_of_a_hook_are_one_row_per_array(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    from sbmlsim.fit.derived import HookSummary, ParameterGroup
+    from sbmlsim.fit.display import groups_table, hooks_table, print_parameters
+
+    elements = [FitParameter(f"net__l__w__{k}", float(k), -5.0, 5.0) for k in range(4)]
+    ids = (*[p.pid for p in elements], "net__l__w__4")
+    summary = HookSummary(
+        name="net",
+        kind="pre_initialization",
+        description="l (Linear)",
+        targets=("gamma",),
+        groups=(ParameterGroup("net.l.w", ids),),
+    )
+    print_parameters(
+        [FitParameter("alpha", 1.0, 0.0, 10.0), *elements], hooks=[summary]
+    )
+    out = capsys.readouterr().out
+    assert "alpha" in out
+    assert "net.l.w" in out
+    assert "net__l__w__0" not in out
+    table = groups_table([(summary.groups[0], elements)])
+    assert table.row_count == 1
+    assert hooks_table([summary]).row_count == 1

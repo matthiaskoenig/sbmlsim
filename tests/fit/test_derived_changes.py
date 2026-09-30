@@ -344,7 +344,17 @@ def test_a_problem_with_hooks_is_a_dict(
     """The JSON of a problem records its hooks."""
     problem = _problem(definition_hctz_iv, [_factor()], hybridizations=[Scaling()])
     assert problem.to_dict()["hybridizations"] == [
-        {"type": "Scaling", "model": "model", "targets": [TARGET]}
+        {
+            "type": "Scaling",
+            "model": "model",
+            "targets": [TARGET],
+            "summary": {
+                "name": "scaling",
+                "kind": "scaling",
+                "description": f"{TARGET} = {FACTOR} * {TARGET}",
+                "arrays": [],
+            },
+        }
     ]
     assert json.loads(str(problem.to_json()))["hybridizations"][0]["model"] == "model"
 
@@ -380,3 +390,35 @@ def test_an_external_target_names_something() -> None:
     assert parameter.is_external
     assert parameter.entity_id == "x"
     assert not FitParameter("x", 1.0, unit="dimensionless").is_external
+
+
+def test_the_summary_of_a_hook_and_the_groups() -> None:
+    from sbmlsim.fit.derived import (
+        HookSummary,
+        ParameterGroup,
+        describe,
+        group_parameters,
+        hook_summaries,
+    )
+
+    scaling = Scaling()
+    (summary,) = hook_summaries([scaling])
+    assert summary == HookSummary(
+        name="scaling",
+        kind="scaling",
+        description=f"{TARGET} = {FACTOR} * {TARGET}",
+        targets=(TARGET,),
+        groups=(),
+    )
+    a, b, c = FitParameter("a", 1.0), FitParameter("b", 2.0), FitParameter("c", 3.0)
+    grouped = HookSummary(
+        "net",
+        "rhs",
+        "layer1 (Linear)",
+        ("x",),
+        (ParameterGroup("net.l.w", ("b", "z")),),
+    )
+    single, groups = group_parameters([a, b, c], [summary, grouped])
+    assert single == [a, c]
+    assert groups == [(ParameterGroup("net.l.w", ("b", "z")), [b])]
+    assert describe(scaling)["summary"]["name"] == "scaling"

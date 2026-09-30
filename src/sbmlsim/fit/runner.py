@@ -41,6 +41,7 @@ from scipy.optimize import OptimizeResult
 
 from sbmlsim.console import console
 from sbmlsim.fit import display
+from sbmlsim.fit.derived import hook_summaries
 from sbmlsim.fit.optimization import OptimizationProblem, RuntimeErrorOptimizeResult
 from sbmlsim.fit.options import FitSettings, OptimizationAlgorithmType
 from sbmlsim.fit.result import OptimizationResult
@@ -256,6 +257,7 @@ def run_optimization(
             if problem.parameter_mapping is not None
             else None
         ),
+        hooks=hook_summaries(problem.hybridizations),
     )
 
     opt_result: OptimizationResult

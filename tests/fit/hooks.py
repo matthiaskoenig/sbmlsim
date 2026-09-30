@@ -12,6 +12,7 @@ from dataclasses import dataclass, field
 import numpy as np
 
 from sbmlsim.fit import FitParameter
+from sbmlsim.fit.derived import HookSummary
 from sbmlsim.fit.objects import EXTERNAL_PREFIX
 from sbmlsim.fit.options import ParameterScaleType
 
@@ -43,6 +44,15 @@ class Scaling:
     frozen: frozenset[str] = frozenset()
     constants: Mapping[str, float] = field(default_factory=dict)
     calls: list[str] = field(default_factory=list, compare=False)
+
+    def summary(self) -> HookSummary:
+        return HookSummary(
+            name="scaling",
+            kind="scaling",
+            description=f"{self.target} = {self.factor} * {self.target}",
+            targets=(self.target,),
+            groups=(),
+        )
 
     def symbols(self) -> Collection[str]:
         return {self.factor, self.target}

@@ -21,7 +21,7 @@ The condition of a simulation is the id of the simulation in its experiment.
 from __future__ import annotations
 
 from collections.abc import Collection, Mapping
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from enum import StrEnum
 from pathlib import Path
 from typing import Any
@@ -30,6 +30,8 @@ import libsbml
 import numpy as np
 from numpy.typing import ArrayLike
 
+from sbmlsim.fit.derived import HookSummary, ParameterGroup
+from sbmlsim.fit.objects import FitParameter
 from sbmlsim.mathml import TIME, evaluate_formula, formula_symbols
 from sbmlsim.sciml.backend import BackendKind
 from sbmlsim.sciml.errors import NetworkHybridizationError, NetworkImportError
@@ -40,6 +42,7 @@ from sbmlsim.sciml.network import (
     output_id,
     parse_io_id,
 )
+from sbmlsim.sciml.parameters import network_fit_parameters
 
 #: the condition of the arrays and formulas which hold for every condition
 ALL_CONDITIONS = "0"
@@ -528,6 +531,67 @@ class Hybridization:
             targets[entity] = key
 
     # --- WHAT A FIT NEEDS ---
+
+    def fit_parameters(
+        self,
+        estimate: Mapping[str, bool],
+        bounds: Mapping[str, tuple[float, float]] | None = None,
+    ) -> tuple[list[FitParameter], Hybridization]:
+        """Get the parameters of a fit of the network and freeze the rest.
+
+        The pattern decides whether the elements are entities of the model,
+        see `sbmlsim.sciml.parameters.network_fit_parameters`, and every
+        element which is not estimated is frozen.
+
+        Args:
+            estimate: key of the entry -> whether the elements are estimated,
+                for the network, a layer or an array.
+            bounds: key of the entry -> lower and upper bound, none by
+                default.
+
+        Returns:
+            The parameters of the fit and the hybridization with the other
+            elements frozen.
+
+        Raises:
+            NetworkImportError: if a key does not name the network, a layer
+                or an array, or if an estimated element has no value.
+        """
+        parameters = network_fit_parameters(
+            self.network,
+            estimate=estimate,
+            bounds=bounds or {},
+            external=not self.pattern.is_compiled,
+        )
+        frozen = set(self.network.parameter_ids()) - {p.pid for p in parameters}
+        return parameters, replace(self, frozen=frozen)
+
+    def summary(self) -> HookSummary:
+        """Describe the network for the console and the report.
+
+        Returns:
+            The id of the network, its pattern, its layers with their types
+            in the order of the forward pass, the targets of its outputs and
+            one group per array of the layers the forward pass calls, with
+            the ids of all elements of the array.
+        """
+        network = self.network
+        types = {layer.layer_id: layer.layer_type for layer in network.model.layers}
+        used = network.used_layers()
+        groups: dict[tuple[str, str], list[str]] = {}
+        for sid, (layer, name, _) in network.parameter_ids().items():
+            if layer in used:
+                groups.setdefault((layer, name), []).append(sid)
+        return HookSummary(
+            name=network.sid,
+            kind=self.pattern.value,
+            description=", ".join(f"{layer} ({types[layer]})" for layer in used),
+            targets=tuple(sorted(self.outputs.values())),
+            groups=tuple(
+                ParameterGroup(label=f"{network.sid}.{layer}.{name}", ids=tuple(ids))
+                for (layer, name), ids in groups.items()
+            ),
+        )
 
     def symbols(self) -> frozenset[str]:
         """Get the ids whose values `derived_changes` reads.

@@ -18,12 +18,14 @@ from collections.abc import Iterable, Mapping, Sequence
 from pathlib import Path
 from typing import Any
 
+import numpy as np
 import pandas as pd
 from rich import box
 from rich.measure import Measurement
 from rich.table import Table
 
 from sbmlsim.console import console
+from sbmlsim.fit.derived import HookSummary, ParameterGroup, group_parameters
 from sbmlsim.fit.objects import FitParameter, MappingKind
 from sbmlsim.fit.options import FitSettings
 from sbmlsim.fit.parameter_mapping import CoverageRow, has_renamed_targets
@@ -147,6 +149,62 @@ def parameters_table(parameters: Iterable[FitParameter]) -> Table:
             ]
         )
         table.add_row(*row)
+    return table
+
+
+#: the unit of the elements of a network, as the tables show it
+ELEMENT_UNIT_LABEL = "dimensionless"
+
+
+def hooks_table(summaries: Iterable[HookSummary]) -> Table:
+    """Get the table of the hooks of a problem, e.g. its networks."""
+    table = _table("network", "pattern", "layers", "targets")
+    for summary in summaries:
+        table.add_row(
+            summary.name,
+            summary.kind,
+            summary.description,
+            ", ".join(summary.targets),
+        )
+    return table
+
+
+def _array_values(members: Sequence[FitParameter]) -> list[str]:
+    """Get the minimum, the maximum and the norm of the start values of an array."""
+    values = np.asarray([p.start_value for p in members], dtype=float)
+    if values.size == 0:
+        return ["-", "-", "-"]
+    return [
+        _number(float(values.min())),
+        _number(float(values.max())),
+        _number(float(np.linalg.norm(values))),
+    ]
+
+
+def groups_table(
+    groups: Sequence[tuple[ParameterGroup, Sequence[FitParameter]]],
+) -> Table:
+    """Get the table of the arrays of the networks, one row per array.
+
+    An array is shown with the number of its elements, the number of them
+    which are estimated and the minimum, the maximum and the norm of the
+    start values of the estimated elements, and the bounds when the elements
+    agree on them.
+    """
+    table = _table(
+        "array", "elements", "estimated", "min", "max", "norm", "lower", "upper"
+    )
+    for group, members in groups:
+        lower = {p.lower_bound for p in members}
+        upper = {p.upper_bound for p in members}
+        table.add_row(
+            group.label,
+            str(len(group.ids)),
+            str(len(members)),
+            *_array_values(members),
+            _number(lower.pop()) if len(lower) == 1 else "-",
+            _number(upper.pop()) if len(upper) == 1 else "-",
+        )
     return table
 
 
@@ -282,8 +340,14 @@ def _cell(value: Any) -> str:
 def print_parameters(
     parameters: Iterable[FitParameter],
     coverage: Sequence[CoverageRow] | None = None,
+    hooks: Iterable[HookSummary] | None = None,
 ) -> None:
     """Print the section of the parameters which are optimized.
+
+    The elements of a network are not listed one by one: the networks are
+    printed with their pattern, their layers and their targets, and their
+    arrays with the number of elements, the estimated ones and the range and
+    the norm of the start values.
 
     Args:
         parameters: parameters of the fit.
@@ -291,13 +355,23 @@ def print_parameters(
             `sbmlsim.fit.parameter_mapping.ParameterMapping.coverage`. The
             coverage table is only printed when some parameter does not reach
             every simulation, so an ordinary fit is not given an all-`-`
-            table.
+            table. The elements of the networks are left out of it.
+        hooks: the summaries of the hooks of the problem, see
+            `sbmlsim.fit.derived.hook_summaries`.
     """
     parameters = list(parameters)
+    summaries = list(hooks or [])
+    single, groups = group_parameters(parameters, summaries)
     section(f"Parameters ({len(parameters)})", icon=ICON_PARAMETERS)
-    console.print(parameters_table(parameters))
-    if coverage and any(row.uncovered_groups for row in coverage):
-        console.print(coverage_table(coverage))
+    if single:
+        console.print(parameters_table(single))
+    if summaries:
+        console.print(hooks_table(summaries))
+        print_wide(groups_table(groups))
+    grouped = {p.pid for _, members in groups for p in members}
+    rows = [row for row in (coverage or []) if row.pid not in grouped]
+    if rows and any(row.uncovered_groups for row in rows):
+        console.print(coverage_table(rows))
 
 
 def print_settings(settings: FitSettings) -> None:

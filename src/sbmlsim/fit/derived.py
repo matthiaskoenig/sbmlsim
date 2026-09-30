@@ -21,7 +21,8 @@ its simulation. `OptimizationProblem` calls both.
 
 from __future__ import annotations
 
-from collections.abc import Collection, Mapping, Sequence
+from collections.abc import Collection, Iterable, Mapping, Sequence
+from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
 
 from sbmlsim.units import Quantity
@@ -34,9 +35,49 @@ if TYPE_CHECKING:
     from sbmlsim.simulator import SimulatorSerial
 
 
+@dataclass(frozen=True)
+class ParameterGroup:
+    """Parameters of a fit which a hook holds as one array.
+
+    The console and the report show the group as one row, because a network
+    adds hundreds of elements to a fit.
+
+    Attributes:
+        label: what the group is, e.g. `net1.layer1.weight`.
+        ids: the ids of its elements, estimated or not, in the order of the
+            array.
+    """
+
+    label: str
+    ids: tuple[str, ...]
+
+
+@dataclass(frozen=True)
+class HookSummary:
+    """What the console and the report say about a hook.
+
+    Attributes:
+        name: id of the hook, e.g. of the network.
+        kind: where it sits, e.g. the pattern of a network.
+        description: what it is made of, e.g. the layers of a network.
+        targets: the entities it sets.
+        groups: its parameters, as the groups the tables show.
+    """
+
+    name: str
+    kind: str
+    description: str
+    targets: tuple[str, ...]
+    groups: tuple[ParameterGroup, ...]
+
+
 @runtime_checkable
 class DerivedChanges(Protocol):
     """The changes of a simulation which follow from the values of a fit."""
+
+    def summary(self) -> HookSummary:
+        """Describe the hook for the console and the report."""
+        ...
 
     @property
     def model(self) -> str:
@@ -118,13 +159,52 @@ def describe(hybridization: DerivedChanges) -> dict[str, Any]:
         hybridization: the hook.
 
     Returns:
-        The type, the model and the targets of the hook.
+        The type, the model, the targets and the summary of the hook.
     """
+    summary = hybridization.summary()
     return {
         "type": type(hybridization).__name__,
         "model": hybridization.model,
         "targets": sorted(hybridization.targets()),
+        "summary": {
+            "name": summary.name,
+            "kind": summary.kind,
+            "description": summary.description,
+            "arrays": [group.label for group in summary.groups],
+        },
     }
+
+
+def hook_summaries(hooks: Iterable[DerivedChanges]) -> list[HookSummary]:
+    """Get the summaries of the hooks of a problem, in their order."""
+    return [hook.summary() for hook in hooks]
+
+
+def group_parameters(
+    parameters: Sequence[FitParameter], summaries: Iterable[HookSummary]
+) -> tuple[list[FitParameter], list[tuple[ParameterGroup, list[FitParameter]]]]:
+    """Split the parameters of a fit into single ones and the groups of the hooks.
+
+    Args:
+        parameters: the parameters of the fit.
+        summaries: the summaries of the hooks of the problem.
+
+    Returns:
+        The parameters which belong to no group, in their order, and every
+        group with the parameters of the fit which are its elements. A group
+        without a parameter of the fit is listed with none, i.e. an array
+        which is frozen.
+    """
+    by_id = {p.pid: p for p in parameters}
+    grouped: set[str] = set()
+    groups: list[tuple[ParameterGroup, list[FitParameter]]] = []
+    for summary in summaries:
+        for group in summary.groups:
+            members = [by_id[sid] for sid in group.ids if sid in by_id]
+            grouped.update(group.ids)
+            groups.append((group, members))
+    single = [p for p in parameters if p.pid not in grouped]
+    return single, groups
 
 
 def _some(ids: list[str], n: int = 20) -> str:

@@ -36,7 +36,7 @@ from typing import Any
 
 from sbmlsim import log
 from sbmlsim.fit import display
-from sbmlsim.fit.derived import DerivedChanges
+from sbmlsim.fit.derived import DerivedChanges, hook_summaries
 from sbmlsim.fit.fisher import FisherInformation, fisher_information
 from sbmlsim.fit.identifiability import (
     IdentifiabilityResult,
@@ -559,6 +559,7 @@ def report_cli(
             if problem.parameter_mapping is not None
             else None
         ),
+        hooks=hook_summaries(problem.hybridizations),
     )
     display.print_settings(definition.settings)
 
@@ -716,6 +717,7 @@ def identifiability_cli(
             if problem.parameter_mapping is not None
             else None
         ),
+        hooks=hook_summaries(problem.hybridizations),
     )
     display.print_settings(definition.settings)
 

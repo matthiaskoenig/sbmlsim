@@ -85,6 +85,8 @@ Parameter fitting, see [Parameter fitting](../fitting.md).
 | [fit.optimization](fit.optimization.md) | `OptimizationProblem`, the residuals and cost of a fit problem |
 | [fit.options](fit.options.md) | `FitSettings` and the options of the optimization, i.e., algorithms, residuals, weighting and loss functions |
 | [fit.parameters](fit.parameters.md) | `ParameterSet` and `ParameterSets`, the fitted parameters a report is created from |
+| [fit.parameter_mapping](fit.parameter_mapping.md) | which parameter writes which entity in which simulation, the coverage of versioned parameters |
+| [fit.derived](fit.derived.md) | derived changes of a simulation, the protocol a network before the simulation implements, and the summary of a hook for the console and the report |
 | [fit.result](fit.result.md) | `OptimizationResult`, the result of an optimization |
 | [fit.runner](fit.runner.md) | running optimizations serially or in parallel |
 | [fit.report](fit.report.md) | `FitReport`, the figures and reports of one or more parameter sets |
