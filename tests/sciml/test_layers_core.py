@@ -140,3 +140,53 @@ def test_flatten_with_the_axes_of_torch_at_the_limit(
     model = layer_model("Flatten", args)
     (y,) = forward(model, {}, np.zeros(shape))
     assert y.shape == expected
+
+
+@pytest.mark.parametrize(
+    ("layer_type", "args", "shapes", "message"),
+    [
+        (
+            "Linear",
+            {"in_features": 2, "out_features": 3},
+            [(4, 3)],
+            r"Linear: the input has 3 features on the last axis, expected "
+            r"in_features 2",
+        ),
+        (
+            "Linear",
+            {"in_features": 1, "out_features": 3},
+            [()],
+            r"Linear: the input has no axes, expected in_features 1 on the last axis",
+        ),
+        (
+            "Bilinear",
+            {"in1_features": 2, "in2_features": 3, "out_features": 1},
+            [(4, 3), (4, 3)],
+            r"Bilinear: the input 1 has 3 features on the last axis, expected "
+            r"in1_features 2",
+        ),
+        (
+            "Bilinear",
+            {"in1_features": 2, "in2_features": 3, "out_features": 1},
+            [(4, 2), (4, 2)],
+            r"Bilinear: the input 2 has 2 features on the last axis, expected "
+            r"in2_features 3",
+        ),
+    ],
+)
+def test_an_input_with_the_wrong_features(
+    layer_model: Callable[..., NNModel],
+    forward: Callable[..., tuple[np.ndarray, ...]],
+    layer_type: str,
+    args: dict,
+    shapes: list[tuple[int, ...]],
+    message: str,
+) -> None:
+    """The features of an input are checked against the layer, as in PyTorch."""
+    arrays = {
+        name: np.ones(spec.shape)
+        for name, spec in LAYERS[layer_type].arrays(args).items()
+    }
+    model = layer_model(layer_type, args, n_inputs=len(shapes))
+    with pytest.raises(ValueError, match=rf"node 'layer1': {message}"):
+        forward(model, {"layer1": arrays}, *(np.ones(shape) for shape in shapes))

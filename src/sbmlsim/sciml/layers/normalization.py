@@ -30,7 +30,11 @@ def norm_arrays(args: Mapping[str, Any], affine: bool) -> dict[str, ArraySpec]:
 
     Returns:
         `weight` and `bias` for an affine layer and the running statistics,
-        which are neither required nor parameters of a fit.
+        which are neither required nor parameters of a fit. The statistics
+        include `num_batches_tracked`, the counter of the batches of the
+        training, which the `state_dict` of PyTorch holds next to
+        `running_mean` and `running_var` and which the evaluation does not
+        use.
     """
     shape = (args["num_features"],)
     arrays: dict[str, ArraySpec] = {}
@@ -40,6 +44,7 @@ def norm_arrays(args: Mapping[str, Any], affine: bool) -> dict[str, ArraySpec]:
             arrays["bias"] = ArraySpec(shape)
     arrays["running_mean"] = ArraySpec(shape, required=False, trainable=False)
     arrays["running_var"] = ArraySpec(shape, required=False, trainable=False)
+    arrays["num_batches_tracked"] = ArraySpec((), required=False, trainable=False)
     return arrays
 
 

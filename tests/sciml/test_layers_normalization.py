@@ -1,11 +1,13 @@
 """The normalization layers against PyTorch, in evaluation mode."""
 
 from collections.abc import Callable
+from pathlib import Path
 from typing import Any
 
+import h5py
 import numpy as np
 import pytest
-from petab_sciml import NNModel
+from petab_sciml import NNModel, NNModelStandard
 
 from sbmlsim.sciml import Network
 from sbmlsim.sciml.backend import NUMPY_ONLY
@@ -135,7 +137,13 @@ def test_the_arrays_of_a_normalization_layer(
 ) -> None:
     """The running statistics are arrays, but not required and not parameters."""
     arrays = LAYERS["BatchNorm2d"].arrays({"num_features": 3})
-    assert list(arrays) == ["weight", "bias", "running_mean", "running_var"]
+    assert list(arrays) == [
+        "weight",
+        "bias",
+        "running_mean",
+        "running_var",
+        "num_batches_tracked",
+    ]
     assert arrays["weight"].required and arrays["weight"].trainable
     assert not arrays["running_mean"].required
     assert not arrays["running_var"].trainable
@@ -143,7 +151,11 @@ def test_the_arrays_of_a_normalization_layer(
     assert list(LAYERS["InstanceNorm2d"].arrays({"num_features": 3})) == [
         "running_mean",
         "running_var",
+        "num_batches_tracked",
     ]
+    assert arrays["num_batches_tracked"].shape == ()
+    assert not arrays["num_batches_tracked"].required
+    assert not arrays["num_batches_tracked"].trainable
     assert list(LAYERS["LayerNorm"].arrays({"normalized_shape": [2, 3]})) == [
         "weight",
         "bias",
@@ -301,3 +313,52 @@ def test_the_axes_of_a_batch_norm_1d_are_named(
     model = layer_model("BatchNorm1d", {"num_features": 3, "affine": False})
     with pytest.raises(ValueError, match=r"node 'layer1'.*2 or 3 axes"):
         forward(model, {}, np.ones(3))
+
+
+@pytest.mark.parametrize(
+    ("layer_type", "args", "shape"),
+    [
+        ("BatchNorm1d", {"num_features": 3}, (4, 3, 7)),
+        (
+            "InstanceNorm2d",
+            {"num_features": 3, "track_running_stats": True},
+            (4, 3, 5, 6),
+        ),
+    ],
+)
+def test_a_file_of_a_state_dict(
+    tmp_path: Path,
+    rng: np.random.Generator,
+    layer_type: str,
+    args: dict[str, Any],
+    shape: tuple[int, ...],
+) -> None:
+    """`num_batches_tracked` of a `state_dict` is an array, which is not used."""
+    torch = pytest.importorskip("torch")
+    module = getattr(torch.nn, layer_type)(**args).double()
+    module.train()
+    with torch.no_grad():
+        for _ in range(3):
+            module(torch.from_numpy(rng.normal(size=shape)))
+    module.eval()
+    NNModelStandard.save_data(
+        data=NNModel.from_pytorch_module(
+            torch.nn.Sequential(module), "net1", inputs=[]
+        ),
+        filename=str(tmp_path / "net1.yaml"),
+    )
+    with h5py.File(tmp_path / "net1_ps.hdf5", "w") as f:
+        f.create_group("metadata")["pytorch_format"] = True
+        for key, tensor in module.state_dict().items():
+            f[f"parameters/net1/0/{key}"] = tensor.numpy()
+
+    network = Network.from_files(tmp_path / "net1.yaml", tmp_path / "net1_ps.hdf5")
+    tracked = module.state_dict()["num_batches_tracked"]
+    assert network.parameters["0"]["num_batches_tracked"] == float(tracked)
+    assert "net1__0__num_batches_tracked__" not in network.parameter_ids()
+
+    x = rng.normal(size=shape)
+    with torch.no_grad():
+        expected = module(torch.from_numpy(x)).numpy()
+    (observed,) = network.forward(x)
+    np.testing.assert_allclose(observed, expected, rtol=1e-10, atol=1e-10)

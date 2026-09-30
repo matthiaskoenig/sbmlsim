@@ -167,13 +167,16 @@ def max_pool(
         + 1`, rounded up in `ceil_mode`.
 
     Raises:
-        ValueError: if `return_indices` is set.
+        ValueError: if `return_indices` is set, or if the dilation is below 1,
+            which PyTorch refuses as well.
     """
     if args.get("return_indices", False):
         raise ValueError("MaxPool: return_indices is not supported")
     x, unbatched = add_batch(x, n, "MaxPool")
     kernel_size, stride, padding = pool_arguments(args, n)
     dilation = as_tuple(args.get("dilation", 1), n)
+    if any(d < 1 for d in dilation):
+        raise ValueError(f"MaxPool: dilation must be at least 1, got {dilation}")
     view = pooled_windows(
         x,
         kernel_size,
@@ -214,7 +217,9 @@ def avg_pool(
 
     Raises:
         ValueError: if `divisor_override` is given for `AvgPool1d`, which has no
-            such argument, or if it is zero.
+            such argument, or if it is zero, or if an axis of the input of
+            `AvgPool3d` is smaller than the kernel. PyTorch refuses the latter
+            for the three dimensional layer only, whatever the padding.
     """
     divisor_override = args.get("divisor_override")
     if divisor_override is not None:
@@ -224,6 +229,13 @@ def avg_pool(
             raise ValueError("divisor_override must not be zero")
     x, unbatched = add_batch(x, n, "AvgPool")
     kernel_size, stride, padding = pool_arguments(args, n)
+    if n == 3 and any(
+        size < k for size, k in zip(x.shape[2:], kernel_size, strict=True)
+    ):
+        raise ValueError(
+            f"AvgPool3d: the kernel {kernel_size} is larger than the input with "
+            f"the spatial shape {x.shape[2:]}, the padding does not count"
+        )
     y = average(
         x,
         kernel_size,
@@ -261,7 +273,10 @@ def lp_pool(
     Returns:
         The output `(sum(x ** norm_type)) ** (1 / norm_type)` over every
         window, of shape `(N, C, *output)` or `(C, *output)` with `output =
-        (spatial - kernel_size) // stride + 1`, rounded up in `ceil_mode`.
+        (spatial - kernel_size) // stride + 1`, rounded up in `ceil_mode`. A
+        power which is not defined, e.g. of a negative sum with an odd
+        `norm_type`, is `nan` and one of zero with a negative `norm_type` is
+        `inf`, as in PyTorch and without a warning.
 
     Raises:
         ValueError: if `norm_type` is zero.
@@ -287,16 +302,17 @@ def lp_pool(
         )
         y = sign * view.max(axis=tuple(range(2 + n, 2 + 2 * n)))
         return y[0] if unbatched else y
-    mean = average(
-        x**norm_type,
-        kernel_size,
-        stride,
-        (0,) * n,
-        ceil_mode,
-        count_include_pad=True,
-        divisor_override=None,
-    )
-    y = (mean * float(np.prod(kernel_size))) ** (1.0 / norm_type)
+    with np.errstate(invalid="ignore", divide="ignore"):
+        mean = average(
+            x**norm_type,
+            kernel_size,
+            stride,
+            (0,) * n,
+            ceil_mode,
+            count_include_pad=True,
+            divisor_override=None,
+        )
+        y = (mean * float(np.prod(kernel_size))) ** (1.0 / norm_type)
     return y[0] if unbatched else y
 
 
@@ -317,8 +333,9 @@ def adaptive(
     Args:
         n: the number of spatial dimensions.
         x: input of shape `(N, C, *spatial)` or `(C, *spatial)`.
-        output: `output_size` of the layer, an integer or one entry per axis,
-            `None` keeps the size of the input.
+        output: `output_size` of the layer, an integer or one entry per axis.
+            An entry `None` keeps the size of its axis, which PyTorch allows
+            for two and three dimensions only.
         reduce: `numpy.max` or `numpy.mean`.
         name: the name of the layer, for the message of the error.
 
@@ -326,10 +343,15 @@ def adaptive(
         The output of shape `(N, C, *output_size)` or `(C, *output_size)`.
 
     Raises:
-        ValueError: if `output_size` does not have one entry per spatial axis,
-            or if an entry is below 1 (an empty output is not supported).
+        ValueError: if `output_size` is `None`, does not have one entry per
+            spatial axis, has an entry `None` in one dimension, or if an entry
+            is below 1 (an empty output is not supported).
     """
+    if output is None:
+        raise ValueError(f"{name}: output_size must be given, got None")
     sizes = list(output) if isinstance(output, (list, tuple)) else [output] * n
+    if n == 1 and None in sizes:
+        raise ValueError(f"{name}1d: output_size must be an integer, got {sizes}")
     if len(sizes) != n:
         raise ValueError(f"output_size must have {n} entries, got {sizes}")
     if any(size is not None and size < 1 for size in sizes):

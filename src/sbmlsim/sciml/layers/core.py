@@ -50,6 +50,34 @@ def flatten_array(x: np.ndarray, start_dim: int = 0, end_dim: int = -1) -> np.nd
     return x.reshape((*x.shape[:start], -1, *x.shape[end + 1 :]))
 
 
+def check_features(
+    name: str, x: np.ndarray, expected: int, argument: str, label: str = "the input"
+) -> None:
+    """Check the size of the last axis of an input, as PyTorch does.
+
+    Args:
+        name: the name of the layer type, for the message.
+        x: the input.
+        expected: the number of features of the layer.
+        argument: the argument of the layer which states the features.
+        label: the input in the message.
+
+    Raises:
+        ValueError: if the input has no axes or not `expected` features on
+            its last axis.
+    """
+    if x.ndim == 0:
+        raise ValueError(
+            f"{name}: {label} has no axes, expected {argument} {expected} on the "
+            f"last axis"
+        )
+    if x.shape[-1] != expected:
+        raise ValueError(
+            f"{name}: {label} has {x.shape[-1]} features on the last axis, "
+            f"expected {argument} {expected}"
+        )
+
+
 def linear_arrays(args: Mapping[str, Any]) -> dict[str, ArraySpec]:
     """Get the arrays of a `Linear` layer."""
     arrays = {"weight": ArraySpec((args["out_features"], args["in_features"]))}
@@ -76,7 +104,12 @@ def linear(
 
     Returns:
         The output of shape `(*, out_features)`.
+
+    Raises:
+        ValueError: if the input does not have `in_features` features on its
+            last axis.
     """
+    check_features("Linear", x, arrays["weight"].shape[1], "in_features")
     y = x @ arrays["weight"].T
     if "bias" in arrays:
         y = y + arrays["bias"]
@@ -116,7 +149,14 @@ def bilinear(
 
     Returns:
         The output of shape `(*, out_features)`.
+
+    Raises:
+        ValueError: if an input does not have the features of the layer on
+            its last axis.
     """
+    weight = arrays["weight"]
+    check_features("Bilinear", x1, weight.shape[1], "in1_features", "the input 1")
+    check_features("Bilinear", x2, weight.shape[2], "in2_features", "the input 2")
     # (*, in1) . (out, in1, in2) over in1 -> (*, out, in2)
     left = np.tensordot(x1, arrays["weight"], axes=([-1], [1]))
     y = (left * x2[..., np.newaxis, :]).sum(axis=-1)

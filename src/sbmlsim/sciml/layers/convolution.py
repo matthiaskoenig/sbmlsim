@@ -248,7 +248,8 @@ def conv(
     if padding_mode not in PADDING_MODES:
         raise ValueError(f"Conv: padding_mode '{padding_mode}' is not known")
     if padding_mode == "zeros":
-        # the other modes crop a negative padding, as the transposed path does
+        # PyTorch rejects a negative padding in the mode zeros only, the other
+        # modes crop it
         check_padding(before, "padding")
     check_padding_mode(x.shape[2:], before, after, padding_mode)
     x = pad_spatial(x, before, after, mode=PADDING_MODES[padding_mode])

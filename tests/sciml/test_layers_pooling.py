@@ -268,27 +268,48 @@ def test_a_padding_without_a_kernel_is_an_error(
         forward(layer_model("AvgPool1d", args), {}, np.ones((1, 5)))
 
 
-@pytest.mark.parametrize("layer_type", ["MaxPool1d", "AvgPool1d", "LPPool1d"])
+@pytest.mark.parametrize("n", [1, 2, 3])
+@pytest.mark.parametrize("layer_type", ["MaxPool", "AvgPool", "LPPool"])
 @pytest.mark.parametrize("name", ["kernel_size", "stride"])
+@pytest.mark.parametrize("value", [0, -1])
 def test_a_kernel_and_a_stride_are_positive(
     layer_model: Callable[..., NNModel],
     forward: Callable[..., tuple[np.ndarray, ...]],
     layer_type: str,
     name: str,
+    n: int,
+    value: int,
 ) -> None:
     """PyTorch refuses a kernel size and a stride below 1."""
-    args = {"norm_type": 2, "kernel_size": 2, name: 0}
+    args = {"norm_type": 2, "kernel_size": 2, name: [2] * (n - 1) + [value]}
     with pytest.raises(ValueError, match=rf"node 'layer1'.*{name}"):
-        forward(layer_model(layer_type, args), {}, np.ones((1, 5)))
+        forward(layer_model(f"{layer_type}{n}d", args), {}, np.ones((1, *(5,) * n)))
 
 
+@pytest.mark.parametrize("n", [1, 2, 3])
+@pytest.mark.parametrize("value", [0, -1])
+def test_a_dilation_is_positive(
+    layer_model: Callable[..., NNModel],
+    forward: Callable[..., tuple[np.ndarray, ...]],
+    n: int,
+    value: int,
+) -> None:
+    """PyTorch refuses a dilation below 1."""
+    args = {"kernel_size": 2, "dilation": [1] * (n - 1) + [value]}
+    with pytest.raises(ValueError, match=r"node 'layer1': MaxPool: dilation must"):
+        forward(layer_model(f"MaxPool{n}d", args), {}, np.ones((1, *(5,) * n)))
+
+
+@pytest.mark.parametrize("n", [2, 3])
 def test_a_divisor_of_zero_is_an_error(
-    layer_model: Callable[..., NNModel], forward: Callable[..., tuple[np.ndarray, ...]]
+    layer_model: Callable[..., NNModel],
+    forward: Callable[..., tuple[np.ndarray, ...]],
+    n: int,
 ) -> None:
     """`divisor_override` of zero is refused by PyTorch."""
     args = {"kernel_size": 2, "divisor_override": 0}
     with pytest.raises(ValueError, match=r"node 'layer1'.*divisor_override"):
-        forward(layer_model("AvgPool2d", args), {}, np.ones((1, 4, 4)))
+        forward(layer_model(f"AvgPool{n}d", args), {}, np.ones((1, *(4,) * n)))
 
 
 def test_avg_pool1d_has_no_divisor_override(
@@ -339,3 +360,62 @@ def test_the_output_size_is_positive(
         forward(
             layer_model(layer_type, {"output_size": output_size}), {}, np.ones((1, 5))
         )
+
+
+@pytest.mark.parametrize("n", [1, 2, 3])
+@pytest.mark.parametrize("name", ["AdaptiveMaxPool", "AdaptiveAvgPool"])
+def test_an_output_size_of_none(
+    layer_model: Callable[..., NNModel],
+    forward: Callable[..., tuple[np.ndarray, ...]],
+    name: str,
+    n: int,
+) -> None:
+    """PyTorch refuses `None` as the output size, and as an entry for one axis."""
+    x = np.ones((1, *(4,) * n))
+    for output_size in (None, [None] * n):
+        if n > 1 and output_size is not None:
+            # an entry `None` keeps the size of the axis
+            (y,) = forward(
+                layer_model(f"{name}{n}d", {"output_size": output_size}), {}, x
+            )
+            assert y.shape == x.shape
+            continue
+        with pytest.raises(ValueError, match=r"node 'layer1'.*output_size"):
+            forward(layer_model(f"{name}{n}d", {"output_size": output_size}), {}, x)
+
+
+@pytest.mark.parametrize("axis", [0, 1, 2])
+def test_an_avg_pool_3d_smaller_than_the_kernel(
+    layer_model: Callable[..., NNModel],
+    forward: Callable[..., tuple[np.ndarray, ...]],
+    axis: int,
+) -> None:
+    """`AvgPool3d` refuses an input smaller than the kernel, the padding aside."""
+    spatial = [6, 6, 6]
+    spatial[axis] = 2
+    x = np.ones((1, 2, *spatial))
+    args = {"kernel_size": 3, "stride": 1, "padding": 1}
+    torch = pytest.importorskip("torch")
+    with pytest.raises(RuntimeError, match=r"smaller than kernel size"):
+        torch.nn.AvgPool3d(**args)(torch.from_numpy(x))
+    with pytest.raises(ValueError, match=r"node 'layer1'.*larger than the input"):
+        forward(layer_model("AvgPool3d", args), {}, x)
+    # the other pools of PyTorch compute it
+    torch.nn.MaxPool3d(**args)(torch.from_numpy(x))
+    forward(layer_model("MaxPool3d", args), {}, x)
+    forward(layer_model("AvgPool2d", args), {}, x[0])
+
+
+@pytest.mark.filterwarnings("error")
+def test_an_lp_pool_of_a_negative_sum(
+    layer_model: Callable[..., NNModel], forward: Callable[..., tuple[np.ndarray, ...]]
+) -> None:
+    """An odd norm of a window with a negative sum is `nan`, without a warning."""
+    torch = pytest.importorskip("torch")
+    x = np.array([[[-1.0, -2.0, 0.5, 3.0]]])
+    args = {"norm_type": 3, "kernel_size": 2}
+    with torch.no_grad():
+        expected = torch.nn.LPPool1d(**args)(torch.from_numpy(x)).numpy()
+    (observed,) = forward(layer_model("LPPool1d", args), {}, x)
+    assert np.isnan(expected[0, 0, 0])
+    np.testing.assert_allclose(observed, expected, rtol=1e-10, equal_nan=True)
