@@ -75,16 +75,18 @@ jobs:
         test "$RESULT" = "success"
 
   testsuite:
-    # the semantic cases of the SBML Test Suite. A normal run of the tests
-    # deselects them: they answer what libroadrunner supports, which a change
-    # to sbmlsim rarely moves, and they take longer than the rest together.
-    # A release does not go out without them, and the results it submits are
-    # produced from the same run
+    # the semantic cases of the SBML Test Suite and the cases of the PEtab
+    # SciML test suite. A normal run of the tests deselects them: they answer
+    # what libroadrunner and the networks support, which a change to sbmlsim
+    # rarely moves, and they take longer than the rest together. A release
+    # does not go out without them, and the results it submits are produced
+    # from the same run. The timeout covers both tox environments, the second
+    # one installs torch again
     name: sbml test suite
     needs: tests
     if: startsWith(github.ref, 'refs/tags/')
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 45
     steps:
     - uses: actions/checkout@v7
       with:

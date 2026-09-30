@@ -60,9 +60,12 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-# neural networks of hybrid problems (PEtab SciML), see sbmlsim.sciml
+# neural networks of hybrid problems (PEtab SciML), see sbmlsim.sciml: the
+# packages sbmlsim.sciml imports which are not dependencies of sbmlsim
 sciml = [
 	"petab-sciml>=0.0.3",
+	"h5py>=3.16.0",
+	"pyyaml>=6.0.3",
 ]
 dev = [
 	"sbmlsim[sciml]",
