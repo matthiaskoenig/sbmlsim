@@ -5,10 +5,14 @@ which is what [PEtab SciML](https://github.com/PEtab-dev/petab_sciml)
 describes. This package is the native half of the support: `Network` is the
 architecture and the arrays of one network and `Network.forward` evaluates it
 with numpy; `nominal_parameters` and `network_fit_parameters` give the arrays
-and the fit parameters a problem describes. A `Hybridization` says where a
-network sits in a problem: before the simulation, where a fit evaluates it,
-or in the right hand side or an observable of the model, where
-`compile_network` writes it into the model. The package knows nothing of
+and the fit parameters a problem describes; `input_id`, `output_id`,
+`element_id` and `unit_id` build the ids of the inputs, the outputs, the
+elements of the arrays and the units of a network in a model. A
+`Hybridization` says where a network sits in a problem: before the
+simulation, where a fit evaluates it, or in the right hand side or an
+observable of the model, where `compile_network` writes it into the model;
+`ALL_CONDITIONS` is the condition of an input which holds for every
+condition. The package knows nothing of
 PEtab, the translation of a PEtab SciML problem is
 `sbmlsim.fit.petab_v2.sciml`.
 
@@ -42,11 +46,25 @@ from sbmlsim.sciml.errors import (
     NetworkImportError,
     UnsupportedLayerError,
 )
-from sbmlsim.sciml.hybridization import Hybridization, NetworkInput, NetworkPattern
-from sbmlsim.sciml.network import Network, NetworkParameters
+from sbmlsim.sciml.hybridization import (
+    ALL_CONDITIONS,
+    Hybridization,
+    NetworkInput,
+    NetworkPattern,
+)
+from sbmlsim.sciml.network import (
+    Network,
+    NetworkParameters,
+    element_id,
+    input_id,
+    output_id,
+    parse_io_id,
+    unit_id,
+)
 from sbmlsim.sciml.parameters import network_fit_parameters, nominal_parameters
 
 __all__ = [
+    "ALL_CONDITIONS",
     "Hybridization",
     "Network",
     "NetworkCompilationError",
@@ -59,6 +77,11 @@ __all__ = [
     "UnsupportedLayerError",
     "compile_network",
     "compiled_path",
+    "element_id",
+    "input_id",
     "network_fit_parameters",
     "nominal_parameters",
+    "output_id",
+    "parse_io_id",
+    "unit_id",
 ]

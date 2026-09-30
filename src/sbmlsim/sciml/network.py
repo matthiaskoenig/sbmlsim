@@ -187,9 +187,11 @@ def parse_io_id(
         ValueError: if the id is not the id of an input or output of the
             network.
     """
+    # an id has one spelling: ascii digits without leading zeros
+    number = "(?:0|[1-9][0-9]*)"
     pattern = re.compile(
-        rf"{re.escape(network)}{ID_SEPARATOR}{kind}(?P<k>\d+)"
-        rf"(?:{ID_SEPARATOR}(?P<index>\d+(?:{INDEX_SEPARATOR}\d+)*))?"
+        rf"{re.escape(network)}{ID_SEPARATOR}{kind}(?P<k>{number})"
+        rf"(?:{ID_SEPARATOR}(?P<index>{number}(?:{INDEX_SEPARATOR}{number})*))?"
     )
     match = pattern.fullmatch(sid)
     if match is None:

@@ -96,6 +96,7 @@ def test_the_package_does_not_import_torch() -> None:
 def test_the_exports() -> None:
     """The package exports what the user of a network needs, not the backends."""
     assert sorted(sbmlsim.sciml.__all__) == [
+        "ALL_CONDITIONS",
         "Hybridization",
         "Network",
         "NetworkCompilationError",
@@ -108,9 +109,17 @@ def test_the_exports() -> None:
         "UnsupportedLayerError",
         "compile_network",
         "compiled_path",
+        "element_id",
+        "input_id",
         "network_fit_parameters",
         "nominal_parameters",
+        "output_id",
+        "parse_io_id",
+        "unit_id",
     ]
+    # the ids of the inputs and outputs are built, not typed
+    assert sbmlsim.sciml.input_id("net1", 0, (1,)) == "net1__input0__1"
+    assert sbmlsim.sciml.output_id("net1", 0, (0,)) == "net1__output0__0"
 
 
 def test_the_errors_have_a_common_base() -> None:

@@ -93,6 +93,12 @@ def test_an_id_is_read_back(kind: str, k: int, index: tuple[int, ...] | None) ->
         "net1__output0__0",
         "prey",
         "",
+        # an id has one spelling: ascii digits without leading zeros
+        "net1__input01__0",
+        "net1__input0__01",
+        "net1__input0__0_00",
+        "net1__input\u0661__0",
+        "net1__input0__\u0661",
     ],
 )
 def test_an_id_which_is_not_an_input(sid: str) -> None:
