@@ -36,6 +36,7 @@ from typing import Any
 
 from sbmlsim import log
 from sbmlsim.fit import display
+from sbmlsim.fit.derived import DerivedChanges
 from sbmlsim.fit.fisher import FisherInformation, fisher_information
 from sbmlsim.fit.identifiability import (
     IdentifiabilityResult,
@@ -95,6 +96,9 @@ class FitDefinition:
         base_path: base path of the simulation experiments.
         data_path: path of the datasets of the simulation experiments.
         settings: settings of the fit.
+        hybridizations: the derived changes of the problem, see
+            `sbmlsim.fit.derived`, e.g. the hybridizations of its neural
+            networks.
     """
 
     mapping_collections: Callable[[], dict[str, list[FitMappingCollection]]]
@@ -102,6 +106,7 @@ class FitDefinition:
     base_path: Path
     data_path: Path
     settings: FitSettings = field(default_factory=FitSettings)
+    hybridizations: Sequence[DerivedChanges] = ()
 
     def collections(
         self, study_ids: Sequence[str] | None = None
@@ -155,6 +160,7 @@ class FitDefinition:
             fit_parameters=self.parameters,
             base_path=self.base_path,
             data_path=self.data_path,
+            hybridizations=self.hybridizations,
         )
 
 

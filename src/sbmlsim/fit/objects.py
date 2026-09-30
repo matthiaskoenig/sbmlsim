@@ -24,6 +24,11 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
+#: prefix of the target of a parameter which is not an entity of the model.
+#: No change of the simulation is written for it, the derived changes of the
+#: problem read its value, see `sbmlsim.fit.derived`
+EXTERNAL_PREFIX = "sciml:"
+
 
 def _isclose(a: float | None, b: float | None) -> bool:
     """Compare two optional floats, None only equals None."""
@@ -523,7 +528,8 @@ class FitParameter:
 
         Raises:
             ValueError: if the bounds or the start value are inconsistent, if
-                a value is not a number, or if the scale is not a scale.
+                a value is not a number, if the scale is not a scale, or if
+                the target is the prefix of an external target alone.
         """
         for key, value in (("lower_bound", lower_bound), ("upper_bound", upper_bound)):
             if value is None or np.isnan(value):
@@ -548,6 +554,11 @@ class FitParameter:
             raise ValueError(
                 f"FitParameter '{pid}': the scale '{scale}' is not a "
                 f"`ParameterScaleType`."
+            )
+        if target == EXTERNAL_PREFIX:
+            raise ValueError(
+                f"FitParameter '{pid}': the target '{target}' names nothing, an "
+                f"external target is '{EXTERNAL_PREFIX}<id>'."
             )
         if lower_bound > upper_bound:
             raise ValueError(
@@ -578,6 +589,21 @@ class FitParameter:
     def target_id(self) -> str:
         """Get the entity of the model the value is written to."""
         return self.target if self.target is not None else self.pid
+
+    @property
+    def is_external(self) -> bool:
+        """Check whether the parameter is not an entity of the model.
+
+        The target of such a parameter has the prefix `EXTERNAL_PREFIX`. The
+        fit writes no change for it, the derived changes of the problem read
+        its value.
+        """
+        return self.target_id.startswith(EXTERNAL_PREFIX)
+
+    @property
+    def entity_id(self) -> str:
+        """Get the target without the prefix of an external target."""
+        return self.target_id.removeprefix(EXTERNAL_PREFIX)
 
     @property
     def is_versioned(self) -> bool:
