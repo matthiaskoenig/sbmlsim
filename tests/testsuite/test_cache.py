@@ -269,3 +269,33 @@ def test_a_load_from_the_cache_removes_a_killed_fetch(
 
     assert SemanticSuite.load("9.9.9") == suite
     assert not killed.exists()
+
+
+def test_a_lock_which_fails_leaves_nothing(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A staging directory whose lock cannot be taken is removed at once."""
+    url = _archive(tmp_path / "suite.zip", {"suite-1.0/cases/001/a.txt": "a"})
+    target = tmp_path / "cache" / "suite" / "1.0"
+
+    def fail(staging: Path) -> int | None:
+        raise OSError("no lock")
+
+    monkeypatch.setattr(cache, "_lock", fail)
+    with pytest.raises(OSError, match="no lock"):
+        cache.fetch(url, target, select=lambda s: s)
+    assert list(target.parent.iterdir()) == []
+
+
+def test_a_suite_elsewhere_leaves_its_neighbours_alone(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The directory of an override is not the cache, its parent is not scanned."""
+    elsewhere = tmp_path / "elsewhere" / "semantic"
+    (elsewhere / "00001").mkdir(parents=True)
+    (elsewhere / "00001" / "00001-settings.txt").write_text("start: 0")
+    neighbour = _killed_staging(elsewhere.parent, ".semantic.abc.incomplete")
+    monkeypatch.setenv("SBMLSIM_TEST_SUITE_PATH", str(elsewhere))
+
+    assert SemanticSuite.load("9.9.9").path == elsewhere
+    assert neighbour.exists()

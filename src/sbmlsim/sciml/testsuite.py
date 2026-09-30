@@ -1011,8 +1011,10 @@ class SciMLSuite:
         """
         suite = cls.cached(commit)
         if suite is not None:
-            # what a fetch which was killed left next to the cache
-            cache.remove_stale(suite.path)
+            # what a fetch which was killed left next to the cache, which an
+            # override is not
+            if not cache.is_overridden(SCIML_SUITE_PATH_VARIABLE):
+                cache.remove_stale(suite.path)
             return suite
         path = cls.cache_path(commit)
         url = SCIML_SUITE_URL.format(commit=commit)

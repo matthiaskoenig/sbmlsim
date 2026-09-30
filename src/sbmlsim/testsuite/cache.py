@@ -73,15 +73,30 @@ def cache_path(variable: str, *parts: str) -> Path:
     return cache_root().joinpath(*parts)
 
 
+def is_overridden(variable: str) -> bool:
+    """Check whether an environment variable points at the cases.
+
+    The directory of an override is not in the cache: nothing next to it
+    was left by a fetch, see `remove_stale`.
+
+    Args:
+        variable: the environment variable which overrides the directory.
+
+    Returns:
+        Whether the variable is set.
+    """
+    return bool(os.environ.get(variable))
+
+
 def fetch(url: str, path: Path, select: Callable[[Path], Path]) -> Path:
     """Download an archive and move a directory of it into place.
 
     Every fetch unpacks into a staging directory of its own next to `path`,
     so two processes which fetch one target do not share one. The fetch
     holds the lock of the staging directory until it is removed, and removes
-    the staging directories of the target nobody holds, see `remove_stale`. A target which
-    is in place when the cases are moved there is the result of another
-    fetch, and is used. The members of the archive are unpacked below the
+    the staging directories of the target nobody holds, see `remove_stale`.
+    A target which is in place when the cases are moved there is the result
+    of another fetch, and is used. The members of the archive are unpacked below the
     staging directory, a member with `..` or an absolute path does not leave
     it. The suite which calls `fetch` logs what it downloads, `fetch` logs the
     URL at the level `DEBUG`.
@@ -106,12 +121,14 @@ def fetch(url: str, path: Path, select: Callable[[Path], Path]) -> Path:
             prefix=f".{path.name}.", suffix=STAGING_SUFFIX, dir=path.parent
         )
     )
-    lock = _lock(staging)
     archive = staging / "archive.zip"
     # the archive is unpacked below the lock file, which does not move with
     # the directory `select` chooses
     unpacked = staging / "unpacked"
+    lock: int | None = None
     try:
+        # a lock which fails leaves no staging directory without a lock file
+        lock = _lock(staging)
         logger.debug("Downloading '%s' into '%s'", url, staging)
         urllib.request.urlretrieve(url, archive)
         with zipfile.ZipFile(archive) as zf:
