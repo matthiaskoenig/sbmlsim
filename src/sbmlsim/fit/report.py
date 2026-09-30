@@ -448,7 +448,11 @@ class FitReport:
         for pset in self.parameter_sets:
             if pset.cost is not None:
                 info.append(f"{pset.sid}: cost = {pset.cost:.6g}")
-            for msg in bound_warnings(self.problem.parameters, self.x(pset)):
+            for msg in bound_warnings(
+                self.problem.parameters,
+                self.x(pset),
+                self.problem.scales_initialized,
+            ):
                 info.append(f"\t>>> {pset.sid}: {msg} <<<")
         info.append("-" * 80)
         return "\n".join(info)
@@ -502,6 +506,7 @@ class FitReport:
             "AIC from eight data points on, so it prefers the smaller model."
         ),
         "value": "Value of the parameter in the units of the model.",
+        "scale": "Space the optimizer searches the parameter in.",
         "se": (
             "Standard error of the parameter, the square root of the diagonal "
             "of the covariance, in the space the optimizer searches."
@@ -660,7 +665,11 @@ class FitReport:
         for pset in psets:
             warnings.extend(
                 f"{pset.sid}: {message}"
-                for message in bound_warnings(self.problem.parameters, self.x(pset))
+                for message in bound_warnings(
+                    self.problem.parameters,
+                    self.x(pset),
+                    self.problem.scales_initialized,
+                )
             )
 
         # the data per experiment and kind
@@ -866,7 +875,11 @@ class FitReport:
         eigenvalues = fim.eigenvalues
         info: dict[str, Any] = {
             "parameter set": fim.sid,
-            "parameter scale": fim.scale.name,
+            "parameter scale": (
+                f"{fim.scale.name}, per parameter in the table"
+                if fim.has_mixed_scales
+                else fim.scale.name
+            ),
             "data points": str(fim.n),
             "rank": f"{fim.rank} of {fim.k}",
             "condition number": f"{fim.condition_number:.4g}",

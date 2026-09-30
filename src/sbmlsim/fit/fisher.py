@@ -238,18 +238,29 @@ class FisherInformation:
         return self.from_scale(scaled - delta), self.from_scale(scaled + delta)
 
     @property
+    def has_mixed_scales(self) -> bool:
+        """Check whether the parameters are searched in more than one space."""
+        return len(set(self.parameter_scales)) > 1
+
+    @property
     def summary_df(self) -> pd.DataFrame:
-        """Get the parameters with their errors and intervals as a table."""
+        """Get the parameters with their errors and intervals as a table.
+
+        The table has the column `scale` with the space of every parameter
+        when the parameters are searched in different spaces, see
+        `has_mixed_scales`.
+        """
         lower, upper = self.confidence_intervals()
         errors = self.standard_errors
         with np.errstate(divide="ignore", invalid="ignore"):
             # the error relative to the value, in the scaled space
             cv = np.abs(errors / self.to_scale(self.values)) * 100.0
         units = self.units or [None] * self.k
-        return pd.DataFrame(
+        columns: dict[str, Any] = {"parameter": self.pids, "value": self.values}
+        if self.has_mixed_scales:
+            columns["scale"] = [scale.name for scale in self.parameter_scales]
+        columns.update(
             {
-                "parameter": self.pids,
-                "value": self.values,
                 "se": errors,
                 "cv": cv,
                 "ci_lower": lower,
@@ -257,6 +268,7 @@ class FisherInformation:
                 "unit": units,
             }
         )
+        return pd.DataFrame(columns)
 
     def to_dict(self) -> dict[str, Any]:
         """Convert to a dictionary of JSON serializable values."""

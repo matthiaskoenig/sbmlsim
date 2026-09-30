@@ -3,7 +3,7 @@
 import datetime
 import logging
 import uuid
-from collections.abc import Iterable
+from collections.abc import Iterable, Sequence
 from pathlib import Path
 from typing import Any
 
@@ -13,7 +13,7 @@ from scipy.optimize import OptimizeResult
 
 from sbmlsim.console import console
 from sbmlsim.fit.objects import FitParameter
-from sbmlsim.fit.options import FitSettings
+from sbmlsim.fit.options import FitSettings, ParameterScaleType
 from sbmlsim.fit.parameters import ParameterSet, ParameterSets
 from sbmlsim.serialization import ObjectJSONEncoder, from_json, to_json
 
@@ -38,33 +38,37 @@ def fit_id(name: str | None = None) -> str:
 
 
 def bound_warnings(
-    parameters: list[FitParameter], x: np.ndarray, rtol: float = 0.05
+    parameters: list[FitParameter],
+    x: np.ndarray,
+    scales: Sequence[ParameterScaleType],
+    rtol: float = 0.05,
 ) -> list[str]:
     """Warn about optimal parameters which ended up on their bounds.
 
     A parameter on its bound means that the optimum is outside of the box in
     which the parameter was allowed to vary.
 
-    The distance to a bound is relative to the interval of the parameter. The
-    optimization runs in logarithmic parameter space, so the distance is measured
-    there as well whenever the bounds and the value are positive.
+    The distance to a bound is relative to the interval of the parameter, in
+    the scale the optimizer searched the parameter in.
 
     Args:
         parameters: fitted parameters with their bounds.
         x: optimal values of the parameters.
+        scales: the scale of every parameter, see
+            `OptimizationProblem.scales_initialized`.
         rtol: relative distance to a bound which is reported.
 
     Returns:
         Messages for the parameters which are within `rtol` of one of their bounds.
     """
     messages: list[str] = []
-    for k, p in enumerate(parameters):
+    for k, (p, scale) in enumerate(zip(parameters, scales, strict=True)):
         lb, ub, value = p.lower_bound, p.upper_bound, x[k]
         if not np.isfinite(lb) or not np.isfinite(ub):
             # no relative distance exists on an infinite bound
             continue
 
-        if lb > 0.0 and ub > 0.0 and value > 0.0:
+        if scale.is_log and lb > 0.0 and ub > 0.0 and value > 0.0:
             # the optimization runs in logarithmic space, so does the distance
             lb, ub, value = np.log10(lb), np.log10(ub), np.log10(value)
 
@@ -381,9 +385,25 @@ class OptimizationResult(ObjectJSONEncoder):
                     upper_bound=p.upper_bound,
                     unit=p.unit,
                     target=p.target,
+                    scale=p.scale,
+                    mappings=p.mappings,
                 )
             )
         return fit_pars
+
+    @property
+    def scales(self) -> list[ParameterScaleType]:
+        """Get the scale the optimizer searched every parameter in.
+
+        It is the `FitParameter.scale` of a parameter and the
+        `parameter_scale` of the settings, of the default settings for a
+        result without them, for a parameter without one.
+        """
+        settings = self.settings if self.settings is not None else FitSettings()
+        return [
+            settings.parameter_scale if p.scale is None else p.scale
+            for p in self.parameters
+        ]
 
     @staticmethod
     def process_traces(trajectories: list[list[float]]) -> pd.DataFrame:
@@ -453,7 +473,7 @@ class OptimizationResult(ObjectJSONEncoder):
         pd.reset_option("display.expand_frame_repr")
 
         xopt = self.xopt
-        for msg in bound_warnings(self.parameters, xopt):
+        for msg in bound_warnings(self.parameters, xopt, self.scales):
             logger.error(msg)
             info.append(f"\t>>> {msg} <<<")
 

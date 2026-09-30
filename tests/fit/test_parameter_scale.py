@@ -17,6 +17,7 @@ from sbmlsim.fit import FitParameter, FitSettings, ParameterSet
 from sbmlsim.fit.fisher import fisher_information
 from sbmlsim.fit.optimization import OptimizationProblem
 from sbmlsim.fit.options import OptimizationAlgorithmType, ParameterScaleType
+from sbmlsim.fit.report import FitReport
 from sbmlsim.fit.runner import run_optimization
 
 #: values which span orders of magnitude, i.e. what a log scale is for
@@ -348,11 +349,29 @@ def test_the_fisher_information_uses_the_scales_of_the_parameters(
     assert fim.parameter_scales == problem.scales_initialized
     assert fim.to_dict()["scales"] == ["LINEAR"] + ["LOG10"] * (n - 1)
     np.testing.assert_allclose(fim.from_scale(fim.to_scale(fim.values)), fim.values)
-    lower, upper = fim.confidence_intervals()
-    errors = fim.standard_errors
-    if np.isfinite(errors[0]):
-        # symmetric on the linear scale, and not on a logarithmic one
-        assert fim.values[0] - lower[0] == pytest.approx(upper[0] - fim.values[0])
+    # the table names the scale of every parameter when they differ
+    assert list(fim.summary_df["scale"]) == ["LINEAR"] + ["LOG10"] * (n - 1)
+    assert "scale" not in replace(fim, scales=[]).summary_df.columns
+    report = FitReport(
+        problem=problem,
+        settings=fit_settings,
+        parameter_sets=[pset],
+        fisher=fim,
+        mapping_figures=False,
+    )
+    context = report._fisher_context()
+    assert context is not None
+    assert "scale" in [column["name"] for column in context["columns"]]
+    assert context["info"]["parameter scale"] == "LOG10, per parameter in the table"
+    # the intravenous data does not determine every parameter, the intervals
+    # are the ones of a matrix of full rank
+    assert not np.all(np.isfinite(fim.standard_errors))
+    full = replace(fim, matrix=np.diag(np.arange(1.0, n + 1.0)) * 100.0)
+    lower, upper = full.confidence_intervals()
+    assert np.all(np.isfinite(full.standard_errors))
+    # symmetric on the linear scale, and not on a logarithmic one
+    assert full.values[0] - lower[0] == pytest.approx(upper[0] - full.values[0])
+    assert full.values[1] - lower[1] != pytest.approx(upper[1] - full.values[1])
 
     with pytest.raises(ValueError, match="one scale per parameter"):
         replace(fim, scales=[ParameterScaleType.LINEAR])
