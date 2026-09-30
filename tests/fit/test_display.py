@@ -278,7 +278,11 @@ def test_the_parameters_of_a_hook_are_one_row_per_array(
     from sbmlsim.fit.derived import HookSummary, ParameterGroup
     from sbmlsim.fit.display import groups_table, hooks_table, print_parameters
 
-    elements = [FitParameter(f"net__l__w__{k}", float(k), -5.0, 5.0) for k in range(4)]
+    # the elements of a network are dimensionless, as `network_fit_parameters` makes them
+    elements = [
+        FitParameter(f"net__l__w__{k}", float(k), -5.0, 5.0, unit="dimensionless")
+        for k in range(4)
+    ]
     ids = (*[p.pid for p in elements], "net__l__w__4")
     summary = HookSummary(
         name="net",
@@ -288,7 +292,8 @@ def test_the_parameters_of_a_hook_are_one_row_per_array(
         groups=(ParameterGroup("net.l.w", ids),),
     )
     print_parameters(
-        [FitParameter("alpha", 1.0, 0.0, 10.0), *elements], hooks=[summary]
+        [FitParameter("alpha", 1.0, 0.0, 10.0, unit="1/min"), *elements],
+        hooks=[summary],
     )
     out = capsys.readouterr().out
     assert "alpha" in out
