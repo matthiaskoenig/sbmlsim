@@ -199,11 +199,13 @@ class PetabReader:
             experiment_id = measurement.experiment_id or DEFAULT_EXPERIMENT
             if experiment_id not in experiment_ids:
                 experiment_ids.append(experiment_id)
+        # the observable and the experiment of every key, two must not share one
+        pairs: dict[str, tuple[str, str]] = {}
         for measurement in petab_problem.measurements:
             observable_id = measurement.observable_id
+            experiment_id = measurement.experiment_id or DEFAULT_EXPERIMENT
             key = observable_id
             if len(experiments[observable_id]) > 1:
-                experiment_id = measurement.experiment_id or DEFAULT_EXPERIMENT
                 key = f"{observable_id}_{experiment_id}"
                 if key in experiments:
                     raise ValueError(
@@ -212,6 +214,13 @@ class PetabReader:
                         f"mapping of the experiment '{experiment_id}' is "
                         f"'{key}', which is the id of another observable."
                     )
+            pair = (observable_id, experiment_id)
+            if pairs.setdefault(key, pair) != pair:
+                raise ValueError(
+                    f"The fit mapping '{key}' is the one of the observable and "
+                    f"experiment {pairs[key]} and of {pair}, the ids of the "
+                    "observables and experiments are ambiguous."
+                )
             self._measurements.setdefault(key, []).append(measurement)
             self._observable_ids[key] = observable_id
         for measurements in self._measurements.values():
@@ -917,7 +926,7 @@ class PetabReader:
             ValueError: if the problem has no fit mapping of the key, or if a
                 measurement does not have a value for every placeholder.
         """
-        observable_id = self._observable_ids.get(key, key)
+        observable_id = self.observable_id(key)
         if observable_id not in self._observables:
             raise ValueError(f"The problem has no observable '{observable_id}'.")
         observable = self._observables[observable_id]
