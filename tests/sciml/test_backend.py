@@ -1,8 +1,10 @@
-"""Tests of the backend on arrays of numbers."""
+"""Tests of the backends on arrays of numbers and of expressions."""
 
 import inspect
 
 import numpy as np
+import pytest
+import sympy
 
 from sbmlsim.sciml.backend import (
     ALL_BACKENDS,
@@ -10,6 +12,7 @@ from sbmlsim.sciml.backend import (
     Backend,
     BackendKind,
     NumpyBackend,
+    SympyBackend,
 )
 
 
@@ -81,3 +84,76 @@ def test_the_shift_of_softmax() -> None:
     x = np.array([[1.0, 5.0, 3.0], [7.0, 2.0, 4.0]])
     np.testing.assert_array_equal(backend.stabilizer(x, 1), [[5.0], [7.0]])
     np.testing.assert_array_equal(backend.stabilizer(x, 0), [[7.0, 5.0, 4.0]])
+
+
+# --- THE BACKEND ON EXPRESSIONS ---
+
+
+def test_the_backend_on_expressions() -> None:
+    """The backend on expressions is the second kind of backend."""
+    assert SympyBackend.kind == BackendKind.SYMPY
+    assert SympyBackend.dtype is object
+    assert not inspect.isabstract(SympyBackend)
+    x = SympyBackend().asarray([sympy.Symbol("a"), 1.5])
+    assert x.dtype == object
+    assert x.shape == (2,)
+
+
+@pytest.mark.parametrize(
+    ("name", "expected"),
+    [
+        ("exp", sympy.exp),
+        ("log", sympy.log),
+        ("tanh", sympy.tanh),
+        ("sqrt", sympy.sqrt),
+        ("erf", sympy.erf),
+        ("absolute", sympy.Abs),
+    ],
+)
+def test_the_elementwise_functions_on_expressions(name: str, expected: object) -> None:
+    """A function is applied to every element and keeps the shape."""
+    backend = SympyBackend()
+    a, b = sympy.symbols("a b")
+    x = np.array([[a, b], [a + b, 2 * a]], dtype=object)
+    y = getattr(backend, name)(x)
+    assert y.dtype == object
+    assert y.shape == (2, 2)
+    assert y[1, 0] == expected(a + b)  # ty: ignore[call-non-callable]
+
+
+def test_a_function_of_a_value_without_axes_is_an_array() -> None:
+    """numpy returns a scalar for an array without axes, the backend an array."""
+    backend = SympyBackend()
+    x = np.array(sympy.Symbol("a"), dtype=object)
+    for y in (backend.tanh(x), backend.select(x, 0.0, 0.0, x)):
+        assert isinstance(y, np.ndarray)
+        assert y.shape == ()
+        assert y.dtype == object
+
+
+def test_a_condition_is_a_piecewise() -> None:
+    """`select` is `above` where `x > threshold` and `below` elsewhere."""
+    backend = SympyBackend()
+    a = sympy.Symbol("a")
+    (y,) = backend.select(np.array([a], dtype=object), 0.0, 0.0, np.array([a]))
+    assert y == sympy.Piecewise((a, a > 0), (0, True))
+    assert y.subs(a, 2.0) == 2.0
+    assert y.subs(a, 0.0) == 0
+    assert y.subs(a, -2.0) == 0
+    # a number which is an integer is written as one, the others as they are
+    assert y.atoms(sympy.Float) == set()
+    (z,) = backend.select(np.array([a], dtype=object), 0.5, -1.25, 6.0)
+    assert z == sympy.Piecewise((6, a > 0.5), (-1.25, True))
+
+
+def test_a_condition_on_a_number() -> None:
+    """An element which is a number is evaluated."""
+    backend = SympyBackend()
+    y = backend.select(np.array([2.0, -1.0], dtype=object), 0.0, 0.0, 7.0)
+    assert list(y) == [7, 0]
+
+
+def test_an_expression_needs_no_shift() -> None:
+    """`softmax` on expressions is not shifted by a maximum."""
+    x = np.array([sympy.Symbol("a"), sympy.Symbol("b")], dtype=object)
+    assert SympyBackend().stabilizer(x, 0) == 0.0

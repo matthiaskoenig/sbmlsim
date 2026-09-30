@@ -6,7 +6,18 @@ in the PyTorch layout. `Network.forward` evaluates it with numpy.
 
 Every element of an array has an id, `<net>__<layer>__<array>__<index>` with
 the PyTorch index of the element and `_` between the axes, e.g.
-`net1__layer1__weight__0_1`. The id is a valid SBML `SId`.
+`net1__layer1__weight__0_1`. The units of the nodes of the forward pass, the
+inputs and the outputs have ids of the same form:
+
+| entity | id | function |
+| --- | --- | --- |
+| element of an array | `net1__layer1__weight__0_1` | `element_id` |
+| unit of a node | `net1__tanh_1__3` | `unit_id` |
+| input | `net1__input0__1`, `net1__input0` for the array | `input_id` |
+| output | `net1__output0__0` | `output_id` |
+
+Every id is a valid SBML `SId`, the compilation of a network into a model
+and the hybridization of a problem share these functions.
 """
 
 from __future__ import annotations
@@ -73,6 +84,120 @@ def element_id(network: str, layer: str, array: str, index: tuple[int, ...]) -> 
         [network, layer, array, INDEX_SEPARATOR.join(str(i) for i in index)]
     )
     return _NOT_SID.sub("_", sid)
+
+
+def index_id(index: tuple[int, ...]) -> str:
+    """Get the part of an id which is the index of an element.
+
+    Args:
+        index: the PyTorch index of the element, empty for a value without
+            axes.
+
+    Returns:
+        The axes joined by `_`, e.g. `0_1`, and `0` for a value without axes.
+
+    Raises:
+        ValueError: if an axis of the index is negative.
+    """
+    if any(i < 0 for i in index):
+        raise ValueError(f"The index {index} has a negative axis")
+    return INDEX_SEPARATOR.join(str(int(i)) for i in index) if index else "0"
+
+
+def unit_id(network: str, node: str, index: tuple[int, ...]) -> str:
+    """Get the id of a unit of a node of the forward pass.
+
+    Args:
+        network: id of the network.
+        node: name of the node.
+        index: the index of the unit in the value of the node.
+
+    Returns:
+        The id, e.g. `net1__tanh_1__3`. A character which is not part of an
+        SBML `SId` is replaced by `_`.
+    """
+    return _NOT_SID.sub("_", ID_SEPARATOR.join([network, node, index_id(index)]))
+
+
+def _io_id(network: str, kind: str, k: int, index: tuple[int, ...] | None) -> str:
+    """Get the id of an input or an output, see `input_id` and `output_id`."""
+    if k < 0:
+        raise ValueError(f"Network '{network}': the {kind} '{k}' is negative")
+    parts = [network, f"{kind}{int(k)}"]
+    if index is not None:
+        parts.append(index_id(index))
+    return _NOT_SID.sub("_", ID_SEPARATOR.join(parts))
+
+
+def input_id(network: str, k: int, index: tuple[int, ...] | None = None) -> str:
+    """Get the id of an input of a network or of an element of it.
+
+    Args:
+        network: id of the network.
+        k: the position of the input in the inputs of the forward pass.
+        index: the index of the element, `None` for the input as an array.
+
+    Returns:
+        The id, e.g. `net1__input0__1` for an element and `net1__input0` for
+        the array.
+
+    Raises:
+        ValueError: if the position or an axis of the index is negative.
+    """
+    return _io_id(network, "input", k, index)
+
+
+def output_id(network: str, k: int, index: tuple[int, ...]) -> str:
+    """Get the id of an element of an output of a network.
+
+    Args:
+        network: id of the network.
+        k: the position of the output in the outputs of the forward pass.
+        index: the index of the element.
+
+    Returns:
+        The id, e.g. `net1__output0__0`.
+
+    Raises:
+        ValueError: if the position or an axis of the index is negative.
+    """
+    return _io_id(network, "output", k, index)
+
+
+def parse_io_id(
+    network: str, kind: str, sid: str
+) -> tuple[int, tuple[int, ...] | None]:
+    """Read the position and the index from the id of an input or an output.
+
+    Args:
+        network: id of the network.
+        kind: `input` or `output`.
+        sid: the id, e.g. `net1__input0__1` or `net1__input0`.
+
+    Returns:
+        The position and the index of the element, `None` as index for an
+        id without one, i.e. for an input as an array.
+
+    Raises:
+        ValueError: if the id is not the id of an input or output of the
+            network.
+    """
+    pattern = re.compile(
+        rf"{re.escape(network)}{ID_SEPARATOR}{kind}(?P<k>\d+)"
+        rf"(?:{ID_SEPARATOR}(?P<index>\d+(?:{INDEX_SEPARATOR}\d+)*))?"
+    )
+    match = pattern.fullmatch(sid)
+    if match is None:
+        raise ValueError(
+            f"Network '{network}': '{sid}' is not the id of an {kind}, which is "
+            f"'{network}{ID_SEPARATOR}{kind}<k>{ID_SEPARATOR}<index>', e.g. "
+            f"'{_io_id(network, kind, 0, (1,))}'"
+        )
+    index = match.group("index")
+    return (
+        int(match.group("k")),
+        None if index is None else tuple(int(i) for i in index.split(INDEX_SEPARATOR)),
+    )
 
 
 def copy_parameters(

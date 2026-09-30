@@ -282,3 +282,38 @@ def test_a_network_is_compiled_node_by_node(
     np.testing.assert_allclose(
         observed, network.forward(point)[0], rtol=TOLERANCE, atol=TOLERANCE
     )
+
+
+@pytest.mark.parametrize("approximate", ["none", "tanh"])
+def test_gelu_on_expressions(
+    approximate: str,
+    sympy_backend: Backend,
+    symbolic: Callable[[str, tuple[int, ...]], np.ndarray],
+    rng: np.random.Generator,
+) -> None:
+    """Both forms of `gelu` are evaluated on expressions.
+
+    The form with the error function is an expression of sympy, which the
+    MathML of SBML does not have: the compilation of a network rejects it,
+    see `tests/sciml/test_compiler.py`.
+    """
+    model = NNModel(
+        nn_model_id="net1",
+        inputs=[Input(input_id="input0")],
+        layers=[],
+        forward=[
+            *_placeholders(1),
+            Node(
+                name="f",
+                op="call_function",
+                target="gelu",
+                args=["x0"],
+                kwargs={"approximate": approximate},
+            ),
+            _output("f"),
+        ],
+    )
+    x = symbolic("x0", (4,))
+    (expressions,) = evaluate(model, {}, [x], sympy_backend)
+    assert bool(expressions[0].has(sympy.erf)) == (approximate == "none")
+    _compare(model, {}, [x], sympy_backend, rng)

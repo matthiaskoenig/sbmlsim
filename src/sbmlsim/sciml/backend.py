@@ -6,19 +6,21 @@ A layer is implemented once. It uses the array operations of numpy (`@`,
 between the two from a `Backend`: the elementwise functions and the functions
 with a condition.
 
-`NumpyBackend` works on `float` arrays and is the forward pass. A backend on
-sympy expressions is the first half of the compilation of a network into an
-SBML model; it subclasses `Backend`, sets `kind` to `BackendKind.SYMPY` and
-implements the abstract methods, the layers do not change.
+`NumpyBackend` works on `float` arrays and is the forward pass.
+`SympyBackend` works on `object` arrays of sympy expressions and is the first
+half of the compilation of a network into an SBML model, see
+`sbmlsim.sciml.compiler`. The layers are the same for both.
 """
 
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
+from collections.abc import Callable
 from enum import StrEnum
 from typing import Any, ClassVar
 
 import numpy as np
+import sympy
 from scipy import special
 
 
@@ -173,3 +175,90 @@ class NumpyBackend(Backend):
     def stabilizer(self, x: np.ndarray, axis: int) -> np.ndarray | float:
         """Get the maximum along the axis."""
         return np.max(x, axis=axis, keepdims=True)
+
+
+def _elementwise(function: Callable[..., Any], n_args: int = 1) -> np.ufunc:
+    """Get the function which applies a function to every element of arrays.
+
+    Args:
+        function: the function of `n_args` elements.
+        n_args: the number of arrays the function takes an element of.
+
+    Returns:
+        The function of `object` arrays, with the broadcasting of numpy.
+    """
+    return np.frompyfunc(function, n_args, 1)
+
+
+def _exact(value: Any) -> Any:
+    """Get a number as the integer it is, which keeps the expressions short.
+
+    Args:
+        value: a number or an expression.
+
+    Returns:
+        The integer for a float without a fraction, e.g. `0` for `0.0`, the
+        value otherwise.
+    """
+    if isinstance(value, float | np.floating) and float(value).is_integer():
+        return sympy.Integer(int(value))
+    return value
+
+
+class SympyBackend(Backend):
+    """The backend on `object` arrays of sympy expressions.
+
+    The elements of the arrays are symbols, numbers and expressions of them.
+    A function with a condition is a `sympy.Piecewise`, which is the
+    `piecewise` of the MathML of SBML. `erf` is evaluated as `sympy.erf`,
+    which the MathML of SBML does not have: the compiler rejects an expression
+    with it.
+    """
+
+    kind: ClassVar[BackendKind] = BackendKind.SYMPY
+    dtype: ClassVar[type] = object
+
+    def exp(self, x: np.ndarray) -> np.ndarray:
+        """Calculate the exponential function."""
+        return np.asarray(_elementwise(sympy.exp)(x), dtype=object)
+
+    def log(self, x: np.ndarray) -> np.ndarray:
+        """Calculate the natural logarithm."""
+        return np.asarray(_elementwise(sympy.log)(x), dtype=object)
+
+    def tanh(self, x: np.ndarray) -> np.ndarray:
+        """Calculate the hyperbolic tangent."""
+        return np.asarray(_elementwise(sympy.tanh)(x), dtype=object)
+
+    def sqrt(self, x: np.ndarray) -> np.ndarray:
+        """Calculate the square root."""
+        return np.asarray(_elementwise(sympy.sqrt)(x), dtype=object)
+
+    def erf(self, x: np.ndarray) -> np.ndarray:
+        """Calculate the error function."""
+        return np.asarray(_elementwise(sympy.erf)(x), dtype=object)
+
+    def absolute(self, x: np.ndarray) -> np.ndarray:
+        """Calculate the absolute value."""
+        return np.asarray(_elementwise(sympy.Abs)(x), dtype=object)
+
+    def select(
+        self,
+        x: np.ndarray,
+        threshold: float,
+        below: np.ndarray | float,
+        above: np.ndarray | float,
+    ) -> np.ndarray:
+        """Choose between two values by a condition on `x`, as a `Piecewise`."""
+        limit = _exact(threshold)
+
+        def piecewise(value: Any, low: Any, high: Any) -> sympy.Basic:
+            return sympy.Piecewise(
+                (_exact(high), sympy.sympify(value) > limit), (_exact(low), True)
+            )
+
+        return np.asarray(_elementwise(piecewise, 3)(x, below, above), dtype=object)
+
+    def stabilizer(self, x: np.ndarray, axis: int) -> np.ndarray | float:
+        """Get zero, an expression has no maximum and needs no shift."""
+        return 0.0
