@@ -129,6 +129,23 @@ Local and global sensitivity analysis, see [Sensitivity analysis](../sensitivity
 | [sensitivity.classification](sensitivity.classification.md) | classification of sensitivities and uncertainties |
 | [sensitivity.plots](sensitivity.plots.md) | plots of the sensitivity results |
 
+## sbmlsim.sciml
+
+The neural networks of hybrid problems, see [PEtab](../petab.md#hybrid-problems-of-petab-sciml). The package needs the extra `sciml`.
+
+| module | description |
+| --- | --- |
+| [sciml](sciml.md) | the package: `Network`, `Hybridization`, `NetworkInput`, `NetworkPattern`, `compile_network`, `network_fit_parameters`, `nominal_parameters`, the id functions and the errors |
+| [sciml.network](sciml.network.md) | `Network`, the architecture and the arrays of a network, its forward pass and the ids of its elements, inputs and outputs |
+| [sciml.hybridization](sciml.hybridization.md) | `Hybridization`, where a network sits, its inputs and outputs, its fit parameters and the derived changes of a network before the simulation |
+| [sciml.compiler](sciml.compiler.md) | `compile_network`, a network in the right hand side or in an observable written into the model as assignment rules |
+| [sciml.parameters](sciml.parameters.md) | the nominal values and the fit parameters of a network per network, layer or array |
+| [sciml.interpreter](sciml.interpreter.md) | the walk over the forward pass of the NN YAML with a backend |
+| [sciml.backend](sciml.backend.md) | the numpy backend of the forward pass and the sympy backend of the compiler |
+| [sciml.layers](sciml.layers.md) | the layers and functions of PEtab SciML with the backends they support |
+| [sciml.errors](sciml.errors.md) | the errors of the package |
+| [sciml.testsuite](sciml.testsuite.md) | the PEtab SciML test suite: its cases, their comparison and the round trip |
+
 ## sbmlsim.testsuite
 
 The semantic cases of the SBML Test Suite, see [SBML Test Suite](../testsuite.md).
@@ -139,6 +156,7 @@ The semantic cases of the SBML Test Suite, see [SBML Test Suite](../testsuite.md
 | [testsuite.runner](testsuite.runner.md) | `run_case`, simulating a case, and `CaseStatus`, the outcomes a case can have |
 | [testsuite.comparison](testsuite.comparison.md) | comparing the results of a case within its tolerances |
 | [testsuite.report](testsuite.report.md) | `TestSuiteReport`, the interactive report of a run |
+| [testsuite.cache](testsuite.cache.md) | the download and the cache of a test suite, shared by the SBML Test Suite and the PEtab SciML test suite |
 
 ## sbmlsim.comparison
 

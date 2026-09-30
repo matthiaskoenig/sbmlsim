@@ -304,6 +304,8 @@ Two figures are drawn per fit mapping, the data with the simulation and the resi
 
 Every parameter set becomes a column of the parameter table and a curve in the plots, so several sets are compared in a single report, e.g., two fits against each other. The first set is the reference the others are compared against.
 
+A problem with neural networks (see [PEtab](petab.md#the-report-of-a-hybrid-fit)) shows every network in the overview of the report with its pattern, its layers and its targets, and its arrays as one row each with the number of elements, the estimated ones, their bounds and the range and the norm of their values; the parameters of the model keep their rows and `parameters.json` keeps every element.
+
 Two figures show the data points of the fit rather than the curves, each with one panel per kind of fit mapping, i.e. the training data, the validation data and the outliers. The points are colored by study, i.e. by the simulation experiment a fit mapping belongs to, and a study keeps its color in both figures:
 
 - **goodness of fit** (`goodness_of_fit`) plots the prediction against the measurement on logarithmic axes, with the identity line `prediction = measurement`. The points scatter around it when the model describes the data, and a systematic deviation from it is a systematic error of the model.
