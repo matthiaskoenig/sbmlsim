@@ -21,8 +21,10 @@ from typing import Any
 
 import libsbml
 import libsedml
+import numpy as np
 import sympy
 from sbmlmath import SBMLMathMLParser, SBMLMathMLPrinter, TimeSymbol
+from sbmlmath.csymbol import SBML_L3V2_AVOGADRO_VALUE, CSymbol
 from sympy import lambdify, sympify
 
 logger = logging.getLogger(__name__)
@@ -187,12 +189,80 @@ def replace_piecewise(formula):
     return formula
 
 
+_MATHML_NAMESPACE = "http://www.w3.org/1998/Math/MathML"
+
+
+def _truncate(quotient: sympy.Expr) -> sympy.Expr:
+    """Round a quotient towards zero, as `quotient` and `rem` of SBML do.
+
+    Args:
+        quotient: the expression to round.
+
+    Returns:
+        The expression, a piecewise of `floor` and `ceiling`, which the MathML
+        of SBML has.
+    """
+    return sympy.Piecewise(
+        (sympy.floor(quotient), quotient >= 0), (sympy.ceiling(quotient), True)
+    )
+
+
+class _FormulaParser(SBMLMathMLParser):
+    """The MathML parser of `sbmlmath` with the `rem` and `quotient` of SBML.
+
+    `sbmlmath` reads both with the modulo of sympy, which rounds towards
+    negative infinity. The `rem` of SBML is the remainder of the truncated
+    division, `rem(-7, 3)` is -1, and the `quotient` is the truncated
+    quotient, `quotient(-7, 3)` is -2.
+    """
+
+    def handle_apply(self, element: Any) -> sympy.Expr:
+        """Parse an `apply`, `rem` and `quotient` truncate.
+
+        Args:
+            element: the `apply` element.
+
+        Returns:
+            The expression.
+        """
+        operator, *operands = element
+        tag = str(operator.tag).removeprefix(f"{{{_MATHML_NAMESPACE}}}")
+        if tag in ("rem", "quotient") and len(operands) == 2:
+            x, y = (self._parse_element(operand) for operand in operands)
+            truncated = _truncate(x / y)
+            return truncated if tag == "quotient" else x - y * truncated
+        return super().handle_apply(element)
+
+
+def _log_quotient(expression: sympy.Basic) -> sympy.Basic:
+    """Write the logarithms with a base as quotients of natural logarithms.
+
+    `sbmlmath` reads `log(x)`, `log10(x)` and `log(b, x)` as `log(x, b)`,
+    which neither the printer of MathML nor `lambdify` at full precision
+    handle.
+
+    Args:
+        expression: the expression.
+
+    Returns:
+        The expression, in which `log(x, b)` is `log(x) / log(b)`.
+    """
+    return expression.replace(
+        lambda node: isinstance(node, sympy.log) and len(node.args) == 2,
+        lambda node: sympy.log(node.args[0]) / sympy.log(node.args[1]),
+    )
+
+
 def formula_expression(formula: str) -> sympy.Basic:
     """Parse an L3 formula of SBML into a sympy expression.
 
     Every identifier of the formula is a symbol of its name, also the
     identifiers which are functions or constants of sympy (`beta`, `gamma`,
-    `lambda`, `S`, `I`). The time of the model is the symbol `time`.
+    `lambda`, `S`, `I`). The time of the model is the symbol `time`. The
+    constant `avogadro` stays the `csymbol` of SBML, which is not an
+    identifier: `formula_symbols` does not list it and `evaluate_formula`
+    gives it its value. A logarithm with a base is a quotient of natural
+    logarithms, `rem` and `quotient` truncate as they do in SBML.
 
     Args:
         formula: the formula, e.g. `prey + (alpha - 1.3)`.
@@ -201,12 +271,17 @@ def formula_expression(formula: str) -> sympy.Basic:
         The expression.
 
     Raises:
-        ValueError: if the formula is empty, is not valid math or uses a
-            function which is not a function of the MathML of SBML.
+        ValueError: if the formula is empty, is not valid math (units of a
+            number are not) or uses a function which is not a function of
+            the MathML of SBML.
     """
     if not isinstance(formula, str) or not formula.strip():
         raise ValueError(f"The formula '{formula}' is empty")
-    astnode: libsbml.ASTNode | None = libsbml.parseL3Formula(formula)
+    settings = libsbml.L3ParserSettings()
+    settings.setParseUnits(False)
+    astnode: libsbml.ASTNode | None = libsbml.parseL3FormulaWithSettings(
+        formula, settings
+    )
     if astnode is None:
         raise ValueError(
             f"The formula '{formula}' is not valid math: "
@@ -217,9 +292,7 @@ def formula_expression(formula: str) -> sympy.Basic:
         # syntax tree, and the class of a node is the one of the library which
         # was imported last
         mathml = libsbml.writeMathMLToString(astnode)
-        expression = sympy.sympify(
-            SBMLMathMLParser(ignore_units=True).parse_str(mathml)
-        )
+        expression = sympy.sympify(_FormulaParser(ignore_units=True).parse_str(mathml))
     except Exception as err:
         raise ValueError(
             f"The formula '{formula}' cannot be evaluated: {type(err).__name__}: {err}"
@@ -237,12 +310,32 @@ def formula_expression(formula: str) -> sympy.Basic:
             f"have no value: they are not functions of the MathML of SBML, or "
             f"functions of a simulation"
         )
+    expression = _log_quotient(expression)
     return expression.subs(
         {
             symbol: sympy.Symbol(TIME)
             for symbol in expression.free_symbols
             if isinstance(symbol, TimeSymbol)
         }
+    )
+
+
+def _identifiers(expression: sympy.Basic) -> list[sympy.Basic]:
+    """Get the identifiers of an expression, sorted by their names.
+
+    Args:
+        expression: the expression.
+
+    Returns:
+        The symbols of the expression which are not constants of SBML.
+    """
+    return sorted(
+        (
+            symbol
+            for symbol in expression.free_symbols
+            if not isinstance(symbol, CSymbol)
+        ),
+        key=str,
     )
 
 
@@ -254,13 +347,43 @@ def formula_symbols(formula: str) -> set[str]:
 
     Returns:
         The names of the symbols of the formula, `time` for the time of the
-        model.
+        model. Constants like `pi` or `avogadro` are no identifiers.
 
     Raises:
         ValueError: if the formula is not valid math, see
             `formula_expression`.
     """
-    return {str(symbol) for symbol in formula_expression(formula).free_symbols}
+    return {str(symbol) for symbol in _identifiers(formula_expression(formula))}
+
+
+def _log10(expression: sympy.Basic) -> sympy.Basic:
+    """Write a quotient with the logarithm of 10 as `log10`.
+
+    `log(1000) / log(10)` is 2.9999999999999996, `log10(1000)` is 3.
+
+    Args:
+        expression: the expression, in which a base is a quotient of
+            logarithms, see `formula_expression`.
+
+    Returns:
+        The expression, in which `log(x) / log(10)` is `log10(x)`.
+    """
+    base = 1 / sympy.log(10)
+    log10: Any = sympy.Function("log10")
+
+    def replace(product: sympy.Mul) -> sympy.Basic:
+        logarithm = next(arg for arg in product.args if isinstance(arg, sympy.log))
+        rest = [arg for arg in product.args if arg not in (logarithm, base)]
+        return sympy.Mul(*rest, log10(logarithm.args[0]))
+
+    return expression.replace(
+        lambda node: (
+            isinstance(node, sympy.Mul)
+            and base in node.args
+            and any(isinstance(arg, sympy.log) for arg in node.args)
+        ),
+        replace,
+    )
 
 
 @functools.lru_cache(maxsize=1024)
@@ -282,14 +405,23 @@ def _formula_function(formula: str) -> tuple[tuple[str, ...], Any]:
             `formula_expression`.
     """
     expression = formula_expression(formula)
-    symbols = sorted(expression.free_symbols, key=str)
+    avogadro = {
+        symbol: sympy.Float(SBML_L3V2_AVOGADRO_VALUE)
+        for symbol in expression.free_symbols
+        if isinstance(symbol, CSymbol)
+    }
+    symbols = _identifiers(expression)
     # the symbols are arguments by position: an identifier of a model is not
     # always a name of python, e.g. `lambda`
     arguments = [sympy.Dummy() for _ in symbols]
     function = lambdify(
         args=arguments,
-        expr=expression.xreplace(dict(zip(symbols, arguments, strict=True))),
-        modules="numpy",
+        expr=_log10(
+            expression.xreplace(avogadro).xreplace(
+                dict(zip(symbols, arguments, strict=True))
+            )
+        ),
+        modules=[{"log10": np.log10}, "numpy"],
     )
     return tuple(str(symbol) for symbol in symbols), function
 
@@ -300,15 +432,18 @@ def evaluate_formula(formula: str, variables: Mapping[str, Any]) -> Any:
     Args:
         formula: the formula.
         variables: the value of every identifier of the formula, a number or
-            an array. Values of identifiers the formula does not use are
-            ignored.
+            an array. The values of identifiers the formula does not use are
+            not used, but give the shape of the result.
 
     Returns:
-        The value of the formula, an array if one of its values is one.
+        The value of the formula: a float if all values are numbers, else an
+        array of the shape the values broadcast to, with `nan` where the
+        formula is not defined.
 
     Raises:
         ValueError: if the formula is not valid math, see
-            `formula_expression`, or if an identifier has no value.
+            `formula_expression`, if an identifier has no value or if the
+            shapes of the values do not broadcast.
     """
     if not isinstance(formula, str):
         raise ValueError(f"The formula '{formula}' is empty")
@@ -319,14 +454,65 @@ def evaluate_formula(formula: str, variables: Mapping[str, Any]) -> Any:
             f"The formula '{formula}' uses {missing}, which have no value. The "
             f"values are given for {sorted(variables)}"
         )
-    return function(*[variables[symbol] for symbol in symbols])
+    try:
+        shape = np.broadcast_shapes(*(np.shape(value) for value in variables.values()))
+    except ValueError as err:
+        shapes = {name: np.shape(value) for name, value in variables.items()}
+        raise ValueError(
+            f"The values of the formula '{formula}' cannot be broadcast to "
+            f"one shape: {shapes}"
+        ) from err
+    value = np.asarray(function(*[variables[symbol] for symbol in symbols]), float)
+    if shape == () and value.shape == ():
+        return float(value)
+    return np.array(np.broadcast_to(value, np.broadcast_shapes(shape, value.shape)))
+
+
+class _ExpressionPrinter(SBMLMathMLPrinter):
+    """The MathML printer of `sbmlmath` for the math of SBML."""
+
+    def _element(self, expr: sympy.Basic) -> Any:
+        """Print an expression as a DOM element.
+
+        Args:
+            expr: the expression.
+
+        Returns:
+            The element.
+        """
+        return self._print(expr)
+
+    def _print_Piecewise(self, expr: sympy.Piecewise) -> Any:
+        """Print a piecewise, with an `otherwise` only if it has a default.
+
+        The printer of sympy insists on a default, while the MathML of SBML
+        leaves the value undefined outside of the pieces without one.
+
+        Args:
+            expr: the piecewise.
+
+        Returns:
+            The `piecewise` element.
+        """
+        root = self.dom.createElement("piecewise")
+        pieces: Any = expr.args
+        for value, condition in pieces:
+            if condition == True:  # noqa: E712 - sympy's `true`
+                child = self.dom.createElement("otherwise")
+                child.appendChild(self._element(value))
+            else:
+                child = self.dom.createElement("piece")
+                child.appendChild(self._element(value))
+                child.appendChild(self._element(condition))
+            root.appendChild(child)
+        return root
 
 
 def expression_to_astnode(expression: sympy.Basic) -> libsbml.ASTNode:
     """Convert a sympy expression into the math of SBML.
 
     The numbers of the expression carry no units, so the math is valid in
-    every level of SBML.
+    every level of SBML. The symbol `time` is the time of the model.
 
     Args:
         expression: the expression.
@@ -340,7 +526,18 @@ def expression_to_astnode(expression: sympy.Basic) -> libsbml.ASTNode:
     """
     functions = sorted({str(f.func) for f in expression.atoms(sympy.Function)})
     try:
-        mathml = SBMLMathMLPrinter(literals_dimensionless=False).doprint(expression)
+        time = TimeSymbol(TIME)
+        mathml = _ExpressionPrinter(literals_dimensionless=False).doprint(
+            expression.xreplace(
+                {
+                    symbol: time
+                    for symbol in expression.free_symbols
+                    if isinstance(symbol, sympy.Symbol)
+                    and not isinstance(symbol, CSymbol)
+                    and symbol.name == TIME
+                }
+            )
+        )
         astnode: libsbml.ASTNode | None = libsbml.readMathMLFromString(mathml)
     except Exception as err:
         raise ValueError(

@@ -71,7 +71,9 @@ def test_values_which_are_not_used() -> None:
     assert evaluate_formula("a", {"a": 1.0, "b": 2.0}) == 1.0
 
 
-@pytest.mark.parametrize("formula", ["", "  ", "x +", "1 +* 2", "(x"])
+@pytest.mark.parametrize(
+    "formula", ["", "  ", "x +", "1 +* 2", "(x", "3x", "2 mM", "2 mole"]
+)
 def test_a_formula_which_is_not_math(formula: str) -> None:
     """A formula which cannot be read names itself."""
     with pytest.raises(ValueError, match=r"The formula '.*' is (empty|not valid math)"):
@@ -158,3 +160,175 @@ def test_an_expression_without_mathml() -> None:
     """The error function is not a function of the MathML of SBML."""
     with pytest.raises(ValueError, match=r"'erf\(x\)' has no MathML.*\['erf'\]"):
         expression_to_astnode(sympy.erf(sympy.Symbol("x")))
+
+
+def test_the_logarithm_is_read_as_natural_logarithms() -> None:
+    """`log(x)`, `log10(x)` and `log(b, x)` are no two-argument logarithms.
+
+    The printer of MathML has no logarithm with a base, so the expression is
+    a quotient of natural logarithms.
+    """
+    for formula in ("log(x)", "log10(x)", "log(2, x)"):
+        expression = formula_expression(formula)
+        assert not any(len(log.args) == 2 for log in expression.atoms(sympy.log))
+        assert expression_to_formula(expression)
+    assert evaluate_formula("log(1000)", {}) == 3.0
+    assert evaluate_formula("log10(1000)", {}) == 3.0
+    assert evaluate_formula("2 * log10(x)", {"x": 1000.0}) == 6.0
+    assert evaluate_formula("log(2, 8)", {}) == pytest.approx(3.0)
+    assert evaluate_formula("log(3, x)", {"x": 9.0}) == pytest.approx(2.0)
+
+
+@pytest.mark.parametrize(
+    ("formula", "x", "expected"),
+    [
+        ("piecewise(1, x > 2)", 3.0, 1.0),
+        ("piecewise(1, x > 2)", 1.0, np.nan),
+        ("piecewise(1, x > 2, 2, x > 1)", 1.5, 2.0),
+        ("piecewise(1, x > 2, 2, x > 1)", 0.5, np.nan),
+    ],
+)
+def test_a_piecewise_without_otherwise(formula: str, x: float, expected: float) -> None:
+    """A piecewise without otherwise is written without it and is undefined outside."""
+    written = expression_to_formula(formula_expression(formula))
+    assert "otherwise" not in libsbml.writeMathMLToString(
+        libsbml.parseL3Formula(written)
+    )
+    value = evaluate_formula(written, {"x": x})
+    np.testing.assert_allclose(value, expected, equal_nan=True)
+    astnode = expression_to_astnode(formula_expression(formula))
+    assert astnode.isPiecewise()
+
+
+def test_avogadro_is_a_constant() -> None:
+    """The constant of Avogadro is neither an identifier nor a value to give."""
+    assert formula_symbols("avogadro * x") == {"x"}
+    value = evaluate_formula("avogadro * x", {"x": 2.0})
+    assert value == pytest.approx(2 * 6.02214179e23)
+    written = expression_to_formula(formula_expression("avogadro * x"))
+    assert "avogadro" in written
+    assert libsbml.parseL3Formula(written).getChild(0).isAvogadro()
+
+
+@pytest.mark.parametrize(
+    ("formula", "expected"),
+    [
+        ("rem(-7, 3)", -1.0),
+        ("rem(7, 3)", 1.0),
+        ("rem(7, -3)", 1.0),
+        ("rem(-7, -3)", -1.0),
+        ("rem(7.5, 2)", 1.5),
+        ("quotient(-7, 3)", -2.0),
+        ("quotient(7, 3)", 2.0),
+        ("quotient(7, -3)", -2.0),
+        ("quotient(-7, -3)", 2.0),
+        ("quotient(7.5, 2)", 3.0),
+    ],
+)
+def test_rem_and_quotient_truncate(formula: str, expected: float) -> None:
+    """The remainder and the quotient of SBML round to zero, also written."""
+    assert evaluate_formula(formula, {}) == expected
+    written = expression_to_formula(formula_expression(formula))
+    assert evaluate_formula(written, {}) == expected
+
+
+def test_the_time_of_an_expression_is_the_time_of_the_model() -> None:
+    """A symbol `time` is written as the time of the model and not as an identifier."""
+    time = sympy.Symbol("time")
+    astnode = expression_to_astnode(time * 2)
+    mathml = libsbml.writeMathMLToString(astnode)
+    assert 'definitionURL="http://www.sbml.org/sbml/symbols/time"' in mathml
+    assert "<ci>" not in mathml
+    assert expression_to_formula(time * 2) == "2 * time"
+    assert formula_symbols(expression_to_formula(time * 2)) == {"time"}
+
+
+def test_the_value_of_a_formula_is_a_float_or_an_array() -> None:
+    """A number is a float and an array is an array of the shape of the values."""
+    assert type(evaluate_formula("3.0", {})) is float
+    assert type(evaluate_formula("3", {})) is float
+    assert type(evaluate_formula("x > 2", {"x": 3.0})) is float
+    assert type(evaluate_formula("x", {"x": np.float32(1.5)})) is float
+    outside = evaluate_formula("piecewise(1, x > 2)", {"x": 1.0})
+    assert type(outside) is float
+    assert np.isnan(outside)
+    time = np.array([0.0, 1.0, 2.0])
+    constant = evaluate_formula("3", {"time": time})
+    assert isinstance(constant, np.ndarray)
+    np.testing.assert_array_equal(constant, [3.0, 3.0, 3.0])
+    scaled = evaluate_formula("a * time", {"a": 2.0, "time": time})
+    assert isinstance(scaled, np.ndarray)
+    assert scaled.shape == (3,)
+    array = evaluate_formula("piecewise(1, x > 1)", {"x": time})
+    assert isinstance(array, np.ndarray)
+    np.testing.assert_array_equal(np.isnan(array), [True, True, False])
+    with pytest.raises(ValueError, match="cannot be broadcast"):
+        evaluate_formula("a", {"a": time, "b": np.zeros(2)})
+
+
+ROUND_TRIP_FORMULAS = [
+    "x + y * 2",
+    "x - y",
+    "x / y",
+    "-x + y",
+    "x^y",
+    "pow(x, 2)",
+    "root(3, x)",
+    "sqrt(x)",
+    "exp(x)",
+    "ln(x)",
+    "log(x)",
+    "log10(x)",
+    "log(2, x)",
+    "abs(-x)",
+    "ceil(x)",
+    "floor(x)",
+    "min(x, y, 1.5)",
+    "max(x, y)",
+    "sin(x) + cos(y) + tanh(x)",
+    "rem(x, y)",
+    "quotient(x, y)",
+    "piecewise(1, x > 2, 0)",
+    "piecewise(1, x > 2)",
+    "piecewise(1, x > 2, 2, x > 1)",
+    "piecewise(x, x > y, y)",
+    "x < y",
+    "x <= y",
+    "x > y",
+    "x >= y",
+    "x == y",
+    "x != y",
+    "x && y",
+    "x || y",
+    "!x",
+    "xor(x, y)",
+    "piecewise(1, x > 0 && y > 0 || x < -2, 0)",
+    "pi * x",
+    "exponentiale * x",
+    "time * x",
+    "avogadro * x",
+    "beta * gamma + lambda",
+]
+
+
+@pytest.mark.parametrize("formula", ROUND_TRIP_FORMULAS)
+def test_a_formula_round_trips(formula: str) -> None:
+    """A formula written from its expression has the value of the formula."""
+    rng = np.random.default_rng(42)
+    names = sorted(formula_symbols(formula))
+    variables = {name: np.round(rng.uniform(-4.0, 4.0, size=40), 1) for name in names}
+    variables["x"] = variables.get("x", np.zeros(40))
+    written = expression_to_formula(formula_expression(formula))
+    # the formula written is a formula of SBML which libsbml reads again
+    assert libsbml.parseL3Formula(written) is not None
+    assert formula_symbols(written) == set(names)
+    # the values are also outside of the domains of the functions
+    with np.errstate(all="ignore"):
+        expected = evaluate_formula(formula, variables)
+        actual = evaluate_formula(written, variables)
+    np.testing.assert_allclose(actual, expected, rtol=1e-12, equal_nan=True)
+    # the formula has values, it is not only undefined
+    assert np.isfinite(expected).any()
+    # and the syntax tree is math of SBML too
+    astnode = expression_to_astnode(formula_expression(formula))
+    assert astnode.isWellFormedASTNode()
