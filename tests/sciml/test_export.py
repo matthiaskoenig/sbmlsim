@@ -7,6 +7,7 @@ every later one; the round trip of the cases of the test suite compares
 against a second read and is exact, see `tests/sciml/test_testsuite.py`.
 """
 
+import dataclasses
 import logging
 from pathlib import Path
 from typing import Any, ClassVar
@@ -15,6 +16,7 @@ import numpy as np
 import pandas as pd
 import petab.v2 as petab_v2
 import pytest
+import sympy
 import yaml
 
 from sbmlsim.fit import FitMappingCollection, FitParameter
@@ -26,6 +28,7 @@ from sbmlsim.fit.petab_v2.export import PetabExporter
 from sbmlsim.fit.petab_v2.likelihood import log_likelihood
 from sbmlsim.fit.petab_v2.reader import PetabReader
 from sbmlsim.fit.petab_v2.sciml_export import petab_index, petab_math
+from sbmlsim.mathml import formula_expression
 from sbmlsim.sciml import (
     Hybridization,
     NetworkInput,
@@ -35,8 +38,9 @@ from sbmlsim.sciml import (
 )
 from sbmlsim.sciml.hybridization import ALL_CONDITIONS
 from sbmlsim.sciml.testsuite import SciMLSuite
+from sbmlsim.simulation import AbstractSim, Timecourse, TimecourseSim
 from tests.fit.hooks import Scaling, factor_parameter
-from tests.sciml.experiment import LotkaVolterra
+from tests.sciml.experiment import SIMULATIONS, LotkaVolterra
 from tests.sciml.hybrid import MODEL_PATH, feed_forward, two_inputs
 from tests.sciml.test_fit import MECHANISTIC, PRE, RHS, SETTINGS, _before, _problem
 
@@ -94,6 +98,42 @@ def _tuple(p: FitParameter) -> tuple:
     )
 
 
+def _same_formulas(a: NetworkInput, b: NetworkInput) -> bool:
+    """Compare the formulas of two inputs as math, e.g. `kin * 2` and `2 * kin`."""
+
+    def formulas(network_input: NetworkInput) -> dict[str, str]:
+        # a formula for every condition is the formula of the input, which
+        # is how the reader gives it back
+        if network_input.formula is not None:
+            return {ALL_CONDITIONS: network_input.formula}
+        return dict(network_input.formulas or {})
+
+    fa, fb = formulas(a), formulas(b)
+    return fa.keys() == fb.keys() and all(
+        sympy.simplify(formula_expression(fa[key]))
+        == sympy.simplify(formula_expression(fb[key]))
+        for key in fa
+    )
+
+
+def assert_same_hybridizations(restored: list[Any], expected: list[Any]) -> None:
+    """Compare hybridizations, the formulas of their inputs as math."""
+    assert len(restored) == len(expected)
+    for a, b in zip(restored, expected, strict=True):
+        assert isinstance(a, Hybridization)
+        assert isinstance(b, Hybridization)
+        for f in dataclasses.fields(Hybridization):
+            if f.compare and f.name != "inputs":
+                assert getattr(a, f.name) == getattr(b, f.name), f.name
+        assert a.inputs.keys() == b.inputs.keys()
+        for key, network_input in a.inputs.items():
+            other = b.inputs[key]
+            if network_input.arrays is not None or other.arrays is not None:
+                assert network_input == other, key
+            else:
+                assert _same_formulas(network_input, other), (network_input, other)
+
+
 def assert_round_trip(
     problem: OptimizationProblem, tmp_path: Path
 ) -> OptimizationProblem:
@@ -105,7 +145,7 @@ def assert_round_trip(
     assert [_tuple(p) for p in restored.parameters] == [
         _tuple(p) for p in problem.parameters
     ]
-    assert restored.hybridizations == problem.hybridizations
+    assert_same_hybridizations(restored.hybridizations, problem.hybridizations)
     assert len(restored.mapping_keys) == len(problem.mapping_keys)
 
     keys = {
@@ -432,6 +472,73 @@ def test_an_input_with_a_formula_for_the_other_conditions(tmp_path: Path) -> Non
     assert_round_trip(_problem([hybridization], _elements(network)), tmp_path)
 
 
+def test_an_input_with_one_formula_for_all_conditions(tmp_path: Path) -> None:
+    network = feed_forward()
+    hybridization = _before(
+        network,
+        inputs=_inputs(
+            input0__0=NetworkInput(formulas={ALL_CONDITIONS: "alpha + 1"}),
+            input0__1=NetworkInput(formula="k"),
+        ),
+    )
+    assert_round_trip(_problem([hybridization], _elements(network)), tmp_path)
+
+
+def test_a_formula_which_is_not_in_the_canonical_form(tmp_path: Path) -> None:
+    network = feed_forward()
+    hybridization = _before(
+        network,
+        inputs=_inputs(
+            input0__0=NetworkInput(formula="kin * 2"),
+            input0__1=NetworkInput(formula="k"),
+        ),
+    )
+    assert_round_trip(
+        _problem([hybridization], [_external("kin"), *_elements(network)]), tmp_path
+    )
+
+
+def test_a_constant_and_a_species_in_the_right_hand_side(tmp_path: Path) -> None:
+    """The formula is evaluated along the trajectory, a row of the hybridization table."""
+    network = feed_forward()
+    hybridization = Hybridization(
+        network=network,
+        pattern=RHS,
+        model="lv",
+        inputs=_inputs(
+            input0__0=NetworkInput(formula="k * prey"),
+            input0__1=NetworkInput(formula="predator"),
+        ),
+        outputs={"net1__output0__0": "gamma"},
+        constants={"k": 0.5},
+    )
+    problem = _problem(
+        [hybridization],
+        network_fit_parameters(network, estimate={"net1": True}, bounds={}),
+        experiment=_compiled(tmp_path, hybridization),
+    )
+    assert_round_trip(problem, tmp_path)
+    assert not _condition_targets(tmp_path / "petab")
+    rows = pd.read_csv(tmp_path / "petab" / "hybridization.tsv", sep="\t", dtype=str)
+    assert "net1__input0__0" in set(rows["targetId"])
+
+
+def test_a_parameter_of_the_model_before_the_simulation(tmp_path: Path) -> None:
+    """`delta` is no parameter of the fit, the table fixes it to its value."""
+    network = feed_forward()
+    hybridization = _before(
+        network,
+        inputs=_inputs(
+            input0__0=NetworkInput(formula="delta"),
+            input0__1=NetworkInput(formula="delta * k"),
+        ),
+    )
+    assert_round_trip(_problem([hybridization], _elements(network)), tmp_path)
+    rows = _tables(tmp_path / "petab")["parameters"].set_index("parameterId")
+    assert rows.loc["delta", "estimate"] == "false"
+    assert float(rows.loc["delta", "nominalValue"]) == 1.8
+
+
 def test_the_arrays_of_a_simulation_the_problem_does_not_have(
     tmp_path: Path, caplog: pytest.LogCaptureFixture
 ) -> None:
@@ -530,6 +637,53 @@ def test_an_element_on_another_scale_is_refused(tmp_path: Path) -> None:
     problem = _problem([_before(network)], elements)
     problem.initialize(SETTINGS)
     with pytest.raises(ValueError, match="has the scale 'LOG10'"):
+        to_petab(problem, tmp_path / "petab")
+
+
+def test_an_input_of_an_entity_outside_the_parameter_table_is_refused(
+    tmp_path: Path,
+) -> None:
+    """The compartment is a constant of the simulation, but no parameter of PEtab."""
+    network = feed_forward()
+    hybridization = _before(
+        network,
+        inputs=_inputs(
+            input0__0=NetworkInput(formulas={"e1": "default", "e2": "2 * default"}),
+            input0__1=NetworkInput(formula="k"),
+        ),
+    )
+    problem = _problem([hybridization], _elements(network))
+    problem.initialize(SETTINGS)
+    with pytest.raises(
+        ValueError,
+        match=r"'net1__input0__0' of the network 'net1'.*'default'.*sciml-input-formula",
+    ):
+        to_petab(problem, tmp_path / "petab")
+
+
+class ChangedAlpha(LotkaVolterra):
+    """The simulations change `alpha`, which the fit estimates."""
+
+    def simulations(self) -> dict[str, AbstractSim]:
+        return {
+            sid: TimecourseSim(
+                [
+                    Timecourse(
+                        start=0.0,
+                        end=10.0,
+                        steps=100,
+                        changes={"alpha": self.Q_(1.0, "dimensionless")},
+                    )
+                ]
+            )
+            for sid in SIMULATIONS
+        }
+
+
+def test_a_change_of_an_estimated_parameter_is_refused(tmp_path: Path) -> None:
+    problem = _problem([], [], experiment=ChangedAlpha)
+    problem.initialize(SETTINGS)
+    with pytest.raises(ValueError, match=r"'alpha'.*'e1'"):
         to_petab(problem, tmp_path / "petab")
 
 

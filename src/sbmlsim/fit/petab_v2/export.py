@@ -393,9 +393,15 @@ class PetabExporter:
         petab_problem = PetabProblem()
 
         self._add_models(petab_problem)
+        if self.sciml is not None:
+            self.sciml.place_inputs(
+                {model.model_id: model for model in petab_problem.models},
+                self._model_changes(),
+            )
         self._add_experiments(petab_problem)
         self._add_observables_and_measurements(petab_problem)
         self._add_parameters(petab_problem)
+        self._check_condition_targets(petab_problem)
         self._add_extension(petab_problem)
         return petab_problem
 
@@ -481,6 +487,25 @@ class PetabExporter:
             f"'{name}' nor as '{sid}.xml', other models of the problem are "
             f"written to these files."
         )
+
+    def _model_changes(self) -> dict[str, dict[str, float]]:
+        """Get the changes of every model which is written, id -> value.
+
+        Returns:
+            id of the model -> the changes the fit applies to it, in the
+            units of the model.
+        """
+        changes: dict[str, dict[str, float]] = {}
+        for k in self.indices:
+            model = self.problem.models[k]
+            changes.setdefault(
+                self.model_ids[id(model)],
+                {
+                    target: _magnitude(value)
+                    for target, value in (model.changes or {}).items()
+                },
+            )
+        return changes
 
     # --- EXPERIMENTS AND CONDITIONS ---
 
@@ -858,6 +883,44 @@ class PetabExporter:
         return dataclasses.replace(
             noise, formula=petab_math_str(expression), observable=observable_id
         )
+
+    def _check_condition_targets(self, petab_problem: PetabProblem) -> None:
+        """Refuse a condition which sets a parameter of the parameter table.
+
+        PEtab does not allow an id in both tables: the parameter table gives
+        the value of a parameter for the whole simulation, a condition sets
+        it at the start of a period.
+
+        Raises:
+            ValueError: if a change of a simulation sets a parameter which is
+                estimated or which the parameter table fixes, naming the
+                parameter, the experiment and the simulation.
+        """
+        parameters = {p.id for p in petab_problem.parameters}
+        conditions = {c.id: c for c in petab_problem.conditions}
+        simulations = {
+            experiment_id: simulation
+            for simulation, ids in self._simulation_ids().items()
+            for experiment_id in ids
+        }
+        for experiment in petab_problem.experiments:
+            for period in experiment.periods:
+                for condition_id in period.condition_ids:
+                    condition = conditions.get(condition_id)
+                    if condition is None:
+                        continue
+                    for change in condition.changes:
+                        if change.target_id not in parameters:
+                            continue
+                        raise ValueError(
+                            f"'{self.problem.opid}': the parameter "
+                            f"'{change.target_id}' is a row of the parameter "
+                            f"table and is set by the condition '{condition_id}' "
+                            f"of the experiment '{experiment.id}' (simulation "
+                            f"'{simulations.get(experiment.id)}'), PEtab does not "
+                            f"allow a parameter in both tables. Do not change a "
+                            f"parameter of the fit in the simulation."
+                        )
 
     # --- PARAMETERS ---
 

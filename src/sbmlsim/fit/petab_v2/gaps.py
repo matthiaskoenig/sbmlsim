@@ -315,6 +315,19 @@ GAPS: tuple[Gap, ...] = (
         "expresses",
     ),
     Gap(
+        id="sciml-input-formula",
+        kind=GapKind.UNSUPPORTED,
+        sbmlsim="an input of a network before the simulation or with a formula "
+        "per condition is a formula of any constant of the simulation, e.g. a "
+        "compartment",
+        petab="a condition and an input of a network before the simulation use "
+        "only the parameters of the parameter table",
+        detail="the export writes a parameter of the model which the fit does "
+        "not estimate as a row of the parameter table which is not estimated, "
+        "and raises for any other entity of the model and names the network, "
+        "the input and the entity",
+    ),
+    Gap(
         id="foreign-extension",
         kind=GapKind.UNSUPPORTED,
         sbmlsim="the reader interprets the `sbmlsim` extension of a problem",

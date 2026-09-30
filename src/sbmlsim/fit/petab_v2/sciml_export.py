@@ -10,7 +10,7 @@ network with its arrays and the arrays of its inputs.
 | --- | --- |
 | `Network` | the NN YAML and the arrays of the array file |
 | `Hybridization.pattern` | `pre_initialization` of the network, and the observables |
-| an input which is a formula | a row of the hybridization table |
+| an input which is a formula | a row of the hybridization table, evaluated along the trajectory |
 | an input which is a parameter of its own | the parameter is the `petabEntityId` of the input |
 | an input with a formula per condition | a change of the condition of every experiment |
 | the formula of the other conditions | a change of the conditions without a formula of their own, and the block `sbmlsim` |
@@ -19,17 +19,27 @@ network with its arrays and the arrays of its inputs.
 | an output of `OBSERVABLE` | the symbol of the observable formula, mapped to the output |
 | `frozen` and the bounds of the elements | the most general rows of the parameter table |
 | `constants` | rows of the parameter table which are not estimated |
+| a parameter of the model an input before the simulation or per condition uses | a row of the parameter table which is not estimated |
 
-The linter of `petab` counts a parameter of the parameter table which the
-model does not have, i.e. a constant of a hybridization or an estimated
-parameter which is no entity of the model, as used where the mapping table
-names it or a condition uses it, not where the hybridization table uses it.
-An input whose formula is such a parameter, which no other formula uses, is
-therefore the parameter (its `petabEntityId`), and an input whose formula
-uses such a parameter otherwise is a change of the condition of every
-experiment. The formula of an input for the conditions without a formula of
-their own is written into the conditions of those experiments and into the
-block `sbmlsim`, from which the reader gives the input back as it was.
+A formula which holds for every condition is a row of the hybridization
+table, which PEtab SciML evaluates along the trajectory; a condition sets a
+value once at the start of a period and uses only the parameters of the
+parameter table, so only the inputs with a formula per condition are
+changes of the conditions. The linter of `petab` counts a parameter of the
+parameter table which the model does not have, i.e. a constant of a
+hybridization or an estimated parameter which is no entity of the model, as
+used where the mapping table names it or a condition uses it, not where the
+hybridization table uses it: an input whose formula is such a parameter,
+which no other formula uses, is the parameter (its `petabEntityId`, as the
+cases of PEtab SciML write it), and such a parameter in a row of the
+hybridization table gets a row of the mapping table without a
+`modelEntityId`, an annotation. An input before the simulation and a
+condition use only parameters of the table: a parameter of the model which
+the fit does not estimate is written as a row which is not estimated, any
+other entity of the model is refused (gap `sciml-input-formula`). The formula
+of an input for the conditions without a formula of their own is written
+into the conditions of those experiments and into the block `sbmlsim`, from
+which the reader gives the input back as it was.
 
 The module imports `sbmlsim.sciml` and with it `petab_sciml`, which is the
 extra `sciml`. `sbmlsim.fit.petab_v2.export` imports it only for a problem
@@ -60,7 +70,7 @@ from petab_sciml.constants import ALL_CONDITION_IDS, ARRAY
 
 from sbmlsim.fit.objects import FitParameter
 from sbmlsim.fit.options import ParameterScaleType
-from sbmlsim.fit.petab_v2.export import period_condition_id
+from sbmlsim.fit.petab_v2.export import period_condition_id, petab_id
 from sbmlsim.fit.petab_v2.sciml import YAML_FORMAT
 from sbmlsim.mathml import formula_expression, formula_symbols
 from sbmlsim.sciml.hybridization import (
@@ -221,6 +231,14 @@ class SciMLExporter:
         fallbacks: id of an input -> its formula for the simulations
             without a formula of their own, in the math of PEtab, which
             the conditions repeat and the block `sbmlsim` carries.
+        row_inputs: id of an input which is a row of the hybridization
+            table -> its formula.
+        annotations: id of a parameter which only rows of the hybridization
+            table use -> the first input which uses it, a row of the mapping
+            table without a `modelEntityId`.
+        fixed: id of a parameter of the model which an input before the
+            simulation or a condition uses and the fit does not estimate ->
+            its value, a row of the parameter table which is not estimated.
         hybridization_rows: the rows of the hybridization table.
     """
 
@@ -325,15 +343,15 @@ class SciMLExporter:
                             f"hybridizations."
                         )
                     self.constants[key] = value
+        self._parameters = parameters
+        # filled by `place_inputs`, which needs the models of the problem
         self.input_ids: dict[str, str] = {}
         self.input_formulas: dict[str, dict[str, str]] = {}
         self.fallbacks: dict[str, str] = {}
-        #: the inputs which are rows of the hybridization table
-        self._row_inputs: set[str] = set()
-        self._place_inputs(parameters)
-        # built once: the arrays of the inputs go into the array files while
-        # the rows are built
-        self.hybridization_rows: list[HybridizationRow] = self._hybridization_rows()
+        self.row_inputs: dict[str, str] = {}
+        self.annotations: dict[str, str] = {}
+        self.fixed: dict[str, float] = {}
+        self.hybridization_rows: list[HybridizationRow] = []
 
     # --- THE INPUTS ---
 
@@ -345,15 +363,30 @@ class SciMLExporter:
             for key, network_input in exported.hybridizations[0].inputs.items()
         ]
 
-    def _place_inputs(self, parameters: Mapping[str, FitParameter]) -> None:
+    def place_inputs(
+        self,
+        models: Mapping[str, Any],
+        model_changes: Mapping[str, Mapping[str, float]],
+    ) -> None:
         """Decide where every input of a formula is written, see the module.
 
+        Fills `input_ids`, `input_formulas`, `fallbacks`, `row_inputs`,
+        `annotations`, `fixed` and `hybridization_rows`; `PetabExporter`
+        calls it once the models of the problem are added.
+
         Args:
-            parameters: the fit parameters of the problem by their id.
+            models: id of a model of the problem -> its `SbmlModel` of
+                `petab`, the model without the networks.
+            model_changes: id of a model -> the changes the fit applies to
+                it, id -> value.
 
         Raises:
             ValueError: if an input has no formula for a simulation of the
-                problem.
+                problem, if the model of a network is not a model of the
+                problem, or if an input which a condition sets or which
+                runs before the simulation uses an entity of the model which
+                is no parameter of the parameter table (gap
+                'sciml-input-formula').
         """
         simulations = list(self.simulation_ids)
         # the parameters of the parameter table which the model does not
@@ -365,9 +398,10 @@ class SciMLExporter:
             for key in h.constants
         } | {
             p.pid
-            for p in parameters.values()
+            for p in self._parameters.values()
             if p.is_external and p.pid not in self.element_ids
         }
+        table = own | (set(self._parameters) - self.element_ids)
         uses: Counter[str] = Counter(
             symbol
             for _, _, network_input in self._inputs()
@@ -390,9 +424,17 @@ class SciMLExporter:
                     # the parameter of the input, as PEtab SciML writes it
                     self.input_ids[key] = fallback
                     continue
-                if not formula_symbols(fallback) & own:
-                    self._row_inputs.add(key)
-                    continue
+                # a row of the hybridization table, which is evaluated along
+                # the trajectory; the linter counts a parameter the model
+                # does not have as used where the mapping table names it
+                self.row_inputs[key] = fallback
+                for symbol in sorted(formula_symbols(fallback) & own):
+                    self.annotations.setdefault(symbol, key)
+                if self.networks[sid].pre_initialization:
+                    self._fix_symbols(
+                        sid, key, [fallback], table, models, model_changes
+                    )
+                continue
             by_simulation: dict[str, str] = {}
             for simulation in simulations:
                 formula = formulas.get(simulation, fallback)
@@ -403,9 +445,77 @@ class SciMLExporter:
                         f"'{simulation}', it has formulas for {sorted(formulas)}."
                     )
                 by_simulation[simulation] = formula
+            # a condition is applied at the start of a period and uses only
+            # the parameters of the parameter table
+            self._fix_symbols(
+                sid, key, list(by_simulation.values()), table, models, model_changes
+            )
             self.input_formulas[key] = by_simulation
             if fallback is not None:
                 self.fallbacks[key] = petab_math(fallback)
+        # built once: the arrays of the inputs go into the array files while
+        # the rows are built
+        self.hybridization_rows = self._hybridization_rows()
+
+    def _fix_symbols(
+        self,
+        sid: str,
+        key: str,
+        formulas: Sequence[str],
+        table: set[str],
+        models: Mapping[str, Any],
+        model_changes: Mapping[str, Mapping[str, float]],
+    ) -> None:
+        """Make the parameters of the model an input uses rows of the table.
+
+        A condition and an input of a network before the simulation use only
+        the parameters of the parameter table. A parameter of the model
+        which the fit does not estimate becomes a row which is not
+        estimated, with the value the fit simulates with.
+
+        Args:
+            sid: id of the network.
+            key: id of the input.
+            formulas: the formulas of the input.
+            table: the ids of the parameter table without the fixed rows.
+            models: id of a model -> its `SbmlModel` of `petab`.
+            model_changes: id of a model -> the changes of the fit.
+
+        Raises:
+            ValueError: if the model of the network is not a model of the
+                problem, or if a formula uses an entity of the model which
+                cannot be a row of the parameter table.
+        """
+        model_id = petab_id(self.networks[sid].hybridizations[0].model)
+        model = models.get(model_id)
+        if model is None:
+            raise ValueError(
+                f"'{self.problem.opid}': the network '{sid}' is hybridized with "
+                f"the model '{model_id}', which is not a model of the problem "
+                f"{sorted(models)}."
+            )
+        symbols = {
+            symbol for formula in formulas for symbol in formula_symbols(formula)
+        }
+        missing = sorted(symbols - table - set(self.fixed))
+        if not missing:
+            return
+        valid = set(model.get_valid_parameters_for_parameter_table())
+        refused = [symbol for symbol in missing if symbol not in valid]
+        if refused:
+            raise ValueError(
+                f"'{self.problem.opid}': the input '{key}' of the network "
+                f"'{sid}' uses {refused}, which are no parameters of the "
+                f"parameter table: a condition and an input of a network "
+                f"before the simulation use only parameters of the table "
+                f"(gap 'sciml-input-formula')."
+            )
+        changes = model_changes.get(model_id, {})
+        for symbol in missing:
+            value = changes.get(symbol)
+            if value is None:
+                value = float(model.sbml_model.getParameter(symbol).getValue())
+            self.fixed[symbol] = float(value)
 
     def _drop_unknown(
         self, sid: str, key: str, values: Mapping[str, Any], what: str
@@ -612,15 +722,25 @@ class SciMLExporter:
             for h in exported.hybridizations:
                 for key, target in h.outputs.items():
                     k, index = parse_io_id(sid, "output", key)
-                    petab_id = target if h.pattern is NetworkPattern.OBSERVABLE else key
+                    entity_id = (
+                        target if h.pattern is NetworkPattern.OBSERVABLE else key
+                    )
                     indices = petab_index(index or (), shapes[k])
                     rows.append(
                         petab_v2.Mapping(
-                            petab_id=petab_id, model_id=f"{sid}.outputs[{k}]{indices}"
+                            petab_id=entity_id, model_id=f"{sid}.outputs[{k}]{indices}"
                         )
                     )
-            for petab_id, (model_id, _) in exported.parameter_rows.items():
-                rows.append(petab_v2.Mapping(petab_id=petab_id, model_id=model_id))
+            for parameter_id, (model_id, _) in exported.parameter_rows.items():
+                rows.append(petab_v2.Mapping(petab_id=parameter_id, model_id=model_id))
+        # an annotation of a parameter which only the hybridization table
+        # uses, without which the linter of `petab` counts it as extraneous
+        for symbol, key in self.annotations.items():
+            rows.append(
+                petab_v2.Mapping(
+                    petab_id=symbol, model_id=None, name=f"used by the input {key}"
+                )
+            )
         return rows
 
     def _hybridization_rows(self) -> list[HybridizationRow]:
@@ -639,11 +759,11 @@ class SciMLExporter:
         for exported in self.networks.values():
             hybridization = exported.hybridizations[0]
             for key, network_input in hybridization.inputs.items():
-                if key in self._row_inputs and network_input.formula is not None:
+                if key in self.row_inputs:
                     rows.append(
                         HybridizationRow(
                             target_id=key,
-                            target_value=petab_math(network_input.formula),
+                            target_value=petab_math(self.row_inputs[key]),
                         )
                     )
                 elif network_input.arrays is not None:
@@ -678,17 +798,17 @@ class SciMLExporter:
         """
         rows: list[petab_v2.Parameter] = []
         for exported in self.networks.values():
-            for petab_id, (_, row) in exported.parameter_rows.items():
+            for parameter_id, (_, row) in exported.parameter_rows.items():
                 rows.append(
                     petab_v2.Parameter(
-                        id=petab_id,
+                        id=parameter_id,
                         lb=row.lower if row.estimate else None,
                         ub=row.upper if row.estimate else None,
                         nominal_value=ARRAY,
                         estimate=row.estimate,
                     )
                 )
-        for key, value in self.constants.items():
+        for key, value in {**self.constants, **self.fixed}.items():
             rows.append(
                 petab_v2.Parameter(
                     id=key, lb=None, ub=None, nominal_value=value, estimate=False
