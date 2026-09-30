@@ -164,3 +164,29 @@ def test_the_shift_of_softmax_on_expressions() -> None:
     numbers = np.array([1.0, 3.0, 2.0], dtype=object)
     assert backend.stabilizer(numbers, 0).tolist() == [3.0]
     assert backend.stabilizer(np.array([d], dtype=object), 0).tolist() == [d]
+
+
+def test_the_softmax_of_the_backends() -> None:
+    """Numbers are shifted by the maximum, expressions need no maximum.
+
+    `1 / sum_j exp(x_j - x_i)` overflows only in a term of the sum, which
+    gives the limit `0`. Its size grows with the number of units, a maximum
+    in every term with its square: roadrunner inlines the assignment rules.
+    """
+    x = np.array([[1.0, 800.0, -3.0], [0.5, 0.25, 2.0]])
+    for axis in (0, 1, -1):
+        shifted = np.exp(x - x.max(axis=axis, keepdims=True))
+        np.testing.assert_array_equal(
+            NumpyBackend().softmax(x, axis),
+            shifted / shifted.sum(axis=axis, keepdims=True),
+        )
+        expressions = SympyBackend().softmax(x.astype(object), axis)
+        assert expressions.shape == x.shape
+        np.testing.assert_allclose(
+            expressions.astype(float), NumpyBackend().softmax(x, axis), rtol=1e-14
+        )
+
+    a, b, c = sympy.symbols("a b c")
+    y = SympyBackend().softmax(np.array([a, b, c], dtype=object), 0)
+    assert y[0] == 1 / (1 + sympy.exp(b - a) + sympy.exp(c - a))
+    assert not any(expression.atoms(sympy.Max) for expression in y)

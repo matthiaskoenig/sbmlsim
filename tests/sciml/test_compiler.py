@@ -6,6 +6,7 @@ pass of the network at the same inputs.
 """
 
 from pathlib import Path
+from time import perf_counter
 from typing import Any
 
 import libsbml
@@ -292,40 +293,94 @@ def test_two_networks_with_one_target(
     assert not compiled_path(model_path).exists()
 
 
-@pytest.mark.parametrize("activation", ["softmax", "log_softmax"])
-@pytest.mark.parametrize(("level", "version"), [(3, 1), (3, 2), (2, 4)])
-def test_a_softmax_of_large_values(
-    tmp_path: Path, activation: str, level: int, version: int
-) -> None:
-    """The exponentials of a softmax stay finite, as in the forward pass.
+#: the largest size of the model with a softmax over 8 units: 33 KB, with a
+#: maximum in every exponential 530 KB at L3V1
+SOFTMAX_SIZE = 60 * 1024
 
-    An optimizer which explores elements without bounds reaches values whose
-    exponentials overflow; the rules subtract the maximum like numpy does.
-    """
+#: the longest time roadrunner takes to load it: 0.2 s, with a maximum in
+#: every exponential 28 s at L3V1
+SOFTMAX_LOAD_TIME = 10.0
+
+LEVELS = [(3, 1), (3, 2), (2, 4)]
+
+
+def _large_values(
+    tmp_path: Path, level: int, version: int, activation: str, n_hidden: int
+) -> tuple[Network, Path]:
+    """Compile a network whose activation gets values which overflow `exp`."""
     path = write_model(tmp_path / "lv.xml", level=level, version=version)
-    network = feed_forward(activation=activation, kwargs={"dim": 0})
+    network = feed_forward(n_hidden=n_hidden, activation=activation, kwargs={"dim": 0})
     parameters = {layer: dict(arrays) for layer, arrays in network.parameters.items()}
     parameters["layer1"]["weight"] = 400.0 * parameters["layer1"]["weight"]
     network = Network(sid="net1", model=network.model, parameters=parameters)
-    compiled = compile_network(path, [_hybridization(network)], compiled_path(path))
-    r = _load(compiled)
+    return network, compile_network(
+        path, [_hybridization(network)], compiled_path(path)
+    )
+
+
+def _compare_large_values(network: Network, r: roadrunner.RoadRunner) -> None:
+    """Compare the model with the forward pass where `exp` overflows."""
+    weight, bias = (
+        network.parameters["layer1"]["weight"],
+        network.parameters["layer1"]["bias"],
+    )
     logits = []
     for prey, predator in [(0.4, 4.6), (2.0, 0.1), (7.5, 3.0)]:
         r["init(prey)"] = prey
         r["init(predator)"] = predator
         r.reset()
         x = np.array([prey, predator])
-        logits.append(parameters["layer1"]["weight"] @ x + parameters["layer1"]["bias"])
+        logits.append(weight @ x + bias)
         (expected,) = network.forward(x)
         assert np.isfinite(expected[0])
         assert r["gamma"] == pytest.approx(expected[0], rel=TOLERANCE, abs=TOLERANCE)
-    # the exponential of the largest value overflows without the shift
-    assert np.max(np.abs(logits)) > 710.0
-    # the maximum is `max` from L3V2 on, a piecewise before
+    # the exponentials of the values overflow without care
+    assert np.ptp(logits) > 710.0
+
+
+def _rules(compiled: Path, ids: list[str]) -> list[str]:
     model = libsbml.readSBMLFromFile(str(compiled)).getModel()
-    rule = libsbml.formulaToL3String(model.getRuleByVariable("net1__act__0").getMath())
-    assert ("max(" in rule) == ((level, version) >= (3, 2))
-    assert ("piecewise(" in rule) == ((level, version) < (3, 2))
+    return [
+        libsbml.formulaToL3String(model.getRuleByVariable(sid).getMath()) for sid in ids
+    ]
+
+
+@pytest.mark.parametrize(("level", "version"), LEVELS)
+def test_a_softmax_of_large_values(tmp_path: Path, level: int, version: int) -> None:
+    """A softmax is finite where the exponentials overflow, without a maximum.
+
+    The rule of a unit is `1 / sum_j exp(x_j - x_i)`, the model grows with the
+    square of the number of units: roadrunner inlines the assignment rules,
+    a maximum would be a part of every exponential.
+    """
+    network, compiled = _large_values(tmp_path, level, version, "softmax", 8)
+    assert compiled.stat().st_size < SOFTMAX_SIZE
+    start = perf_counter()
+    r = _load(compiled)
+    assert perf_counter() - start < SOFTMAX_LOAD_TIME
+    _compare_large_values(network, r)
+    for rule in _rules(compiled, [f"net1__act__{k}" for k in range(8)]):
+        assert "max(" not in rule and "piecewise(" not in rule
+
+
+@pytest.mark.parametrize(("level", "version"), LEVELS)
+def test_a_log_softmax_of_large_values(
+    tmp_path: Path, level: int, version: int
+) -> None:
+    """A log_softmax is shifted by the maximum, which is written once.
+
+    The maximum is `max` from L3V2 on and a piecewise before, a parameter of
+    its own which the rules of the units name.
+    """
+    network, compiled = _large_values(tmp_path, level, version, "log_softmax", 4)
+    _compare_large_values(network, _load(compiled))
+    (maximum,) = _rules(compiled, ["net1__act__max__0"])
+    assert maximum.startswith("max(" if (level, version) >= (3, 2) else "piecewise(")
+    model = libsbml.readSBMLFromFile(str(compiled)).getModel()
+    assert model.getParameter("net1__act__max__1") is None
+    for rule in _rules(compiled, [f"net1__act__{k}" for k in range(4)]):
+        assert "net1__act__max__0" in rule
+        assert "max(" not in rule and "piecewise(" not in rule
 
 
 def test_a_layer_without_expressions(model_path: Path) -> None:
@@ -635,6 +690,44 @@ def test_a_formula_with_an_id_which_has_no_value(
     with pytest.raises(
         NetworkCompilationError,
         match=r"Network 'net1', input 'net1__input0__0'.*'prey \* k1' uses \['k1'\]",
+    ):
+        compile_network(path, [hybridization], compiled_path(path))
+
+
+def _species_reference(model: libsbml.Model) -> None:
+    model.getReaction("v1").getProduct(0).setId("sr1")
+
+
+@pytest.mark.parametrize(
+    ("level", "version", "symbol", "is_value"),
+    [
+        (3, 1, "sr1", True),
+        (2, 4, "sr1", False),
+        (2, 4, "v1", True),
+        (2, 1, "v1", False),
+    ],
+)
+def test_the_values_of_a_level(
+    tmp_path: Path, level: int, version: int, symbol: str, is_value: bool
+) -> None:
+    """A species reference is a value from L3 on, a reaction from L2V2 on."""
+    path = write_model(tmp_path / "lv.xml", level=level, version=version)
+    if (level, version) >= (2, 2):
+        path = _edit(path, tmp_path, _species_reference)
+    formula = f"prey + {symbol}"
+    hybridization = _hybridization(
+        inputs={
+            "net1__input0__0": NetworkInput(formula=formula),
+            "net1__input0__1": NetworkInput(formula="predator"),
+        }
+    )
+    if is_value:
+        compile_network(path, [hybridization], compiled_path(path))
+        return
+    with pytest.raises(
+        NetworkCompilationError,
+        match=rf"Network 'net1', input 'net1__input0__0': the formula "
+        rf"'prey \+ {symbol}' uses \['{symbol}'\]",
     ):
         compile_network(path, [hybridization], compiled_path(path))
 

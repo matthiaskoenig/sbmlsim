@@ -3,8 +3,8 @@
 A layer is implemented once. It uses the array operations of numpy (`@`,
 `reshape`, `sum`, `concatenate`), which work on arrays of numbers and on
 `object` arrays of expressions alike, and takes everything which differs
-between the two from a `Backend`: the elementwise functions and the functions
-with a condition.
+between the two from a `Backend`: the elementwise functions, the functions
+with a condition and the normalization of `softmax`.
 
 `NumpyBackend` works on `float` arrays and is the forward pass.
 `SympyBackend` works on `object` arrays of sympy expressions and is the first
@@ -114,11 +114,11 @@ class Backend(ABC):
     def stabilizer(self, x: np.ndarray, axis: int) -> np.ndarray:
         """Get a shift which keeps the exponentials of `softmax` finite.
 
-        `softmax` does not change when a value which is constant along `axis`
-        is subtracted from `x`. Both backends return the maximum along the
-        axis, a backend on expressions as the expression `Max`, so that a
-        model with the network does not overflow where the forward pass does
-        not.
+        `softmax` and `log_softmax` do not change when a value which is
+        constant along `axis` is subtracted from `x`. Both backends return
+        the maximum along the axis, a backend on expressions as the
+        expression `Max`, so that a model with the network does not overflow
+        where the forward pass does not.
 
         Args:
             x: the input of `softmax`.
@@ -127,6 +127,22 @@ class Backend(ABC):
         Returns:
             The shift, which broadcasts against `x`.
         """
+
+    def softmax(self, x: np.ndarray, axis: int) -> np.ndarray:
+        """Evaluate `exp(x) / sum(exp(x))` along an axis.
+
+        The exponentials are shifted by the `stabilizer`, which is what
+        PyTorch does.
+
+        Args:
+            x: the values.
+            axis: the axis the values are normalized over.
+
+        Returns:
+            The values of the softmax, of the shape of `x`.
+        """
+        exponential = self.exp(x - self.stabilizer(x, axis))
+        return exponential / exponential.sum(axis=axis, keepdims=True)
 
 
 class NumpyBackend(Backend):
@@ -260,6 +276,32 @@ class SympyBackend(Backend):
             )
 
         return np.asarray(_elementwise(piecewise, 3)(x, below, above), dtype=object)
+
+    def softmax(self, x: np.ndarray, axis: int) -> np.ndarray:
+        """Evaluate the softmax as `1 / sum_j exp(x_j - x_i)` along an axis.
+
+        The expression needs no maximum: an exponential overflows only in the
+        sum of a unit whose value is below the smallest number, and the unit
+        is its limit `0`. A maximum would be a part of every exponential, and
+        roadrunner inlines the assignment rules: the rules of a softmax over
+        `n` units would grow with `n**3` instead of `n**2`.
+
+        Args:
+            x: the expressions.
+            axis: the axis the values are normalized over.
+
+        Returns:
+            The expressions of the softmax, of the shape of `x`.
+        """
+        moved = np.moveaxis(np.asarray(x, dtype=object), axis, -1)
+        result = np.empty(moved.shape, dtype=object)
+        for index in np.ndindex(moved.shape[:-1]):
+            values = [sympy.sympify(value) for value in moved[index]]
+            for i, value in enumerate(values):
+                result[(*index, i)] = 1 / sympy.Add(
+                    *(sympy.exp(other - value) for other in values)
+                )
+        return np.moveaxis(result, -1, axis)
 
     def stabilizer(self, x: np.ndarray, axis: int) -> np.ndarray:
         """Get the maximum along the axis, as the expression `Max`."""

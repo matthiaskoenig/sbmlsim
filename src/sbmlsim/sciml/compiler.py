@@ -12,7 +12,8 @@ rule:
    the expressions of its units are replaced by symbols, and every unit is a
    parameter with an assignment rule of its expression. The rules stay one
    layer deep, so the size of the model grows with the number of units and
-   not with the depth of the network.
+   not with the depth of the network. A maximum of a node, the shift of a
+   `log_softmax`, is a parameter of its own with an assignment rule.
 4. Every element of an output is a parameter with an assignment rule, and
    the target of an output has the assignment rule `target = output`. The
    target of `RHS` is a parameter of the model, which becomes variable, the
@@ -20,12 +21,20 @@ rule:
 
 The ids of the parameters are the ids of `sbmlsim.sciml.network`. The
 expressions are written as the MathML of SBML by `sbmlmath`.
+
+roadrunner inlines the assignment rules when it compiles a model, so the
+time it takes to load the model grows with the size of the rules as they are
+inlined, not with the size of the file. A softmax over `n` units is written
+without a maximum and inlines to `n**2` terms. A `log_softmax` needs the
+maximum in every unit and inlines to `n**3` terms, and before L3V2 the
+maximum is a piecewise with `n**2` conditions: a `log_softmax` over more than
+a few units loads slowly, before L3V2 in particular.
 """
 
 from __future__ import annotations
 
 import logging
-from collections.abc import Sequence
+from collections.abc import Iterable, Sequence
 from pathlib import Path
 from typing import Any
 
@@ -46,6 +55,7 @@ from sbmlsim.sciml.hybridization import (
 )
 from sbmlsim.sciml.interpreter import evaluate
 from sbmlsim.sciml.network import (
+    ID_SEPARATOR,
     Network,
     input_id,
     output_id,
@@ -61,16 +71,15 @@ MODEL_SUFFIX = "_sciml"
 #: the unit of the parameters of a network
 UNIT = "dimensionless"
 
-#: the entities whose id is a value in the math of a model
-_VALUES = frozenset(
-    {
-        libsbml.SBML_PARAMETER,
-        libsbml.SBML_SPECIES,
-        libsbml.SBML_COMPARTMENT,
-        libsbml.SBML_REACTION,
-        libsbml.SBML_SPECIES_REFERENCE,
-    }
-)
+#: the entities whose id is a value in the math of a model -> the first level
+#: and version of SBML in which it is
+_VALUES: dict[int, tuple[int, int]] = {
+    libsbml.SBML_PARAMETER: (1, 1),
+    libsbml.SBML_SPECIES: (1, 1),
+    libsbml.SBML_COMPARTMENT: (1, 1),
+    libsbml.SBML_REACTION: (2, 2),
+    libsbml.SBML_SPECIES_REFERENCE: (3, 1),
+}
 
 #: the first level and version of SBML whose math has `max`
 _MAX_LEVEL = (3, 2)
@@ -104,6 +113,7 @@ class _Model:
             were added, which the networks of the model share.
         targets: id of every target which has a rule -> the network and the
             output which set it.
+        level_version: the level and the version of SBML of the model.
         has_max: whether the math of the level and version of the model has
             `max`, otherwise a maximum is written as a piecewise.
     """
@@ -125,7 +135,8 @@ class _Model:
         self.targets: dict[str, tuple[str, str]] = {}
         level: int = self.document.getLevel()
         version: int = self.document.getVersion()
-        self.has_max = (level, version) >= _MAX_LEVEL
+        self.level_version = (level, version)
+        self.has_max = self.level_version >= _MAX_LEVEL
         errors = self.errors()
         if errors:
             raise NetworkCompilationError(
@@ -156,13 +167,16 @@ class _Model:
         """Check whether an id is a value in the math of the model.
 
         Returns:
-            Whether the id is the id of a parameter of the model, a species, a
-            compartment, a reaction or a species reference. A local parameter
-            of a reaction, an event or a function definition has an id, but
-            no value in a rule.
+            Whether the id is the id of a parameter of the model, a species or
+            a compartment, of a reaction from L2V2 on, or of a species
+            reference from L3 on. A local parameter of a reaction, an event or
+            a function definition has an id, but no value in a rule.
         """
         element: libsbml.SBase | None = self.model.getElementBySId(sid)
-        return element is not None and element.getTypeCode() in _VALUES
+        if element is None:
+            return False
+        since = _VALUES.get(element.getTypeCode())
+        return since is not None and self.level_version >= since
 
     def add_parameter(
         self, network: str, sid: str, what: str, value: float | None = None
@@ -441,6 +455,7 @@ def _input_symbols(model: _Model, hybridization: Hybridization) -> list[np.ndarr
             raise NetworkCompilationError(
                 f"Network '{sid}': the input '{key}' has no formula"
             )
+        level, version = model.level_version
         unknown = sorted(
             symbol
             for symbol in formula_symbols(formula)
@@ -450,8 +465,9 @@ def _input_symbols(model: _Model, hybridization: Hybridization) -> list[np.ndarr
             raise NetworkCompilationError(
                 f"Network '{sid}', input '{key}': the formula '{formula}' uses "
                 f"{unknown}, which are neither parameters, species, compartments, "
-                f"reactions or species references of the model '{model.name}' "
-                f"nor constants of the hybridization"
+                f"reactions (from L2V2 on) or species references (from L3 on) of "
+                f"the model '{model.name}' (L{level}V{version}) nor constants of "
+                f"the hybridization"
             )
         math: libsbml.ASTNode | None = libsbml.parseL3FormulaWithModel(
             formula, model.model
@@ -511,6 +527,54 @@ def _element_symbols(model: _Model, network: Network) -> dict[str, dict[str, Any
     return symbols
 
 
+def _maximum_id(network: str, node: str, k: int) -> str:
+    """Get the id of a maximum of a node, e.g. the shift of a `log_softmax`.
+
+    Args:
+        network: id of the network.
+        node: name of the node.
+        k: the number of the maximum in the node.
+
+    Returns:
+        The id, e.g. `net1__log_softmax__max__0`.
+    """
+    return unit_id(network, f"{node}{ID_SEPARATOR}max", (k,))
+
+
+def _add_maxima(
+    model: _Model, network: str, node: str, expressions: Iterable[sympy.Basic]
+) -> dict[sympy.Basic, sympy.Symbol]:
+    """Add every maximum of the expressions of a node as a parameter.
+
+    A `log_softmax` subtracts the maximum of a slice from every unit of it
+    and from every term of its sum. Written once as a parameter with an
+    assignment rule, which the rules of the units name, the file grows with
+    the square of the number of units and not with its third or, with the
+    piecewise before L3V2, fourth power. roadrunner inlines the rule, see
+    the module.
+
+    Args:
+        model: the model.
+        network: id of the network.
+        node: name of the node.
+        expressions: the expressions of the units of the node.
+
+    Returns:
+        The maxima -> the symbols of their parameters.
+    """
+    maxima: dict[sympy.Basic, sympy.Symbol] = {}
+    for expression in expressions:
+        for maximum in sorted(expression.atoms(sympy.Max), key=sympy.default_sort_key):
+            if maximum in maxima:
+                continue
+            k = len(maxima)
+            sid = _maximum_id(network, node, k)
+            model.add_parameter(network, sid, f"the maximum {k} of the node '{node}'")
+            model.add_rule(network, sid, f"node '{node}'", maximum)
+            maxima[maximum] = sympy.Symbol(sid)
+    return maxima
+
+
 def _compile(model: _Model, hybridization: Hybridization) -> None:
     """Write one network into the model.
 
@@ -534,13 +598,17 @@ def _compile(model: _Model, hybridization: Hybridization) -> None:
 
     def on_node(node: Node, value: np.ndarray) -> np.ndarray:
         """Replace the expressions of a node by the symbols of its units."""
+        expressions = {
+            index: sympy.sympify(value[index]) for index in np.ndindex(value.shape)
+        }
+        maxima = _add_maxima(model, sid, node.name, expressions.values())
         ids = np.empty(value.shape, dtype=object)
-        for index in np.ndindex(value.shape):
+        for index, expression in expressions.items():
             ids[index] = unit_id(sid, node.name, index)
             what = f"the unit {index} of the node '{node.name}'"
             model.add_parameter(sid, ids[index], what)
             model.add_rule(
-                sid, ids[index], f"node '{node.name}'", sympy.sympify(value[index])
+                sid, ids[index], f"node '{node.name}'", expression.xreplace(maxima)
             )
         return _symbols(ids)
 
@@ -614,10 +682,13 @@ def compile_network(
             hybridizations name different models, if two hybridizations of
             a network differ, if two networks give a constant different
             values, if two networks set one target, if an id of a network is
-            an id of the model or of another part of a network, if a formula of an input uses a symbol the
-            model does not have, if an initial assignment sets a target, if
-            an expression has no MathML of SBML, or if the model with the
-            networks is not valid SBML. The message names the network.
+            an id of the model or of another part of a network, if a formula
+            of an input uses a symbol which is neither a constant of the
+            hybridization nor a value in the math of the model at its level
+            and version (see `_Model.is_value`), if an initial assignment
+            sets a target, if an expression has no MathML of SBML, or if the
+            model with the networks is not valid SBML. The message names the
+            network.
         NetworkHybridizationError: if the model does not exist or a
             hybridization does not fit it, e.g. a target of `RHS` which is
             not a parameter or which a rule or an event sets, see

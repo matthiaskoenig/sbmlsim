@@ -182,9 +182,8 @@ def tanhshrink(backend: Backend, x: np.ndarray) -> np.ndarray:
 
 @function("softmax")
 def softmax(backend: Backend, x: np.ndarray, dim: int) -> np.ndarray:
-    """Evaluate `exp(x) / sum(exp(x))` along the axis `dim`."""
-    exponential = backend.exp(x - backend.stabilizer(x, dim))
-    return exponential / exponential.sum(axis=dim, keepdims=True)
+    """Evaluate `exp(x) / sum(exp(x))` along the axis `dim`, see `Backend.softmax`."""
+    return backend.softmax(x, dim)
 
 
 @function("log_softmax")
