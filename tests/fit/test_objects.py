@@ -1,6 +1,9 @@
 """Test fit objects."""
 
+import json
+
 from sbmlsim.fit import FitParameter
+from sbmlsim.fit.optimization import OptimizationProblem
 
 
 def test_fit_parameter() -> None:
@@ -92,3 +95,12 @@ def test_the_target_is_serialized_and_the_selector_is_not() -> None:
     assert "mappings" not in d
     # the round trip through JSON keeps the target
     assert FitParameter.from_json(p.to_json()).target_id == "q"
+
+
+def test_a_problem_is_serialized(op_hctz_iv: OptimizationProblem) -> None:
+    """The experiment class of a collection is written as its import path."""
+    d = json.loads(str(op_hctz_iv.to_json()))
+    assert d["opid"] == "hctz_iv"
+    assert d["mapping_collections"][0]["experiment_class"] == (
+        "examples.hctz_fitting.experiments.studies.beermann1976.Beermann1976"
+    )
