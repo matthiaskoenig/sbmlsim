@@ -45,3 +45,11 @@ class UnsupportedLayerError(NetworkError, NotImplementedError):
         super().__init__(
             f"Network '{network}', node '{node}': '{target}' is not supported, {reason}"
         )
+
+
+class NetworkHybridizationError(NetworkError, ValueError):
+    """A hybridization does not fit its network, its model or its fit.
+
+    The message names the network and, where it applies, the input, the
+    output or the target.
+    """
