@@ -118,7 +118,7 @@ print(FitParameter.parameters_to_df(fit_parameters))
 
 A `FitMappingCollection` without mappings uses all fit mappings of its experiment, they are resolved when the problem is initialized. `FitMappingCollection(use_mapping_weights=True)` weights the mappings by the weights of the `FitMapping` objects, e.g., the counts of the data, instead of the weights given here; setting both is an error.
 
-`FitSettings.parameter_scale` is the space the optimizer searches the parameters in: `LOG10` by default, because a rate constant spans orders of magnitude and an optimizer on the linear scale spends its steps on the largest parameters, and `LOG` or `LINEAR` if a problem wants them. The bounds, the start values and the fitted parameters are always on the linear scale, i.e. in the units of the model, only the search happens in the scaled space. A logarithm needs finite positive bounds and a positive start value, the linear scale only needs finite bounds.
+`FitSettings.parameter_scale` is the space the optimizer searches the parameters in: `LOG10` by default, because a rate constant spans orders of magnitude and an optimizer on the linear scale spends its steps on the largest parameters, and `LOG` or `LINEAR` if a problem wants them. The bounds, the start values and the fitted parameters are always on the linear scale, i.e. in the units of the model, only the search happens in the scaled space. A logarithm needs finite positive bounds and a positive start value. A parameter on the linear scale may have infinite bounds, which the local optimizer takes; the global optimizer samples a finite box and rejects them. `FitParameter.scale` gives one parameter a scale of its own, e.g. the linear scale for a parameter which is negative or zero while the others are searched on the logarithmic scale of the settings.
 
 The scale is a property of the optimization and not of the model or of the data, which is why it is part of the settings; PEtab v2 removed the `parameterScale` of its parameter table for the same reason.
 
@@ -216,7 +216,7 @@ The same settings are needed to report a fit, so they are stored with its result
 
 ## Running the optimization
 
-`run_optimization` samples `size` start points within the bounds (see `sbmlsim.fit.sampling`), runs the optimizer from every start point, in parallel on `n_cores`, and returns an `OptimizationResult`. The progress of the runs is shown on the console, with the runs which are done, the elapsed time and an estimate of the total runtime, e.g. `~ 0:12:30 total`; the estimate is the time per batch of `n_cores` runs times the number of batches, so it is there as soon as the first run is done and settles as more runs come back:
+`run_optimization` samples `size` start points within the bounds (see `sbmlsim.fit.sampling`; a parameter with an infinite bound is not sampled and starts from its start value), runs the optimizer from every start point, in parallel on `n_cores`, and returns an `OptimizationResult`. The progress of the runs is shown on the console, with the runs which are done, the elapsed time and an estimate of the total runtime, e.g. `~ 0:12:30 total`; the estimate is the time per batch of `n_cores` runs times the number of batches, so it is there as soon as the first run is done and settles as more runs come back:
 
 ```py
 from sbmlsim.fit.options import OptimizationAlgorithmType

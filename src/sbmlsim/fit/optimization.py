@@ -867,25 +867,49 @@ class OptimizationProblem(ObjectJSONEncoder):
         """
         return self._scaled(x, to_scale=False)
 
-    def _validate_parameters(self) -> None:
+    def _validate_parameters(
+        self, algorithm: OptimizationAlgorithmType | None = None
+    ) -> None:
         """Check that the parameters can be optimized.
 
         An optimization on a logarithmic scale, which is the default, requires
-        finite positive bounds and start values; on the linear scale the bounds
-        only have to be finite.
+        finite positive bounds and start values. A parameter on the linear
+        scale may have infinite bounds, which the local optimizer takes; the
+        global optimizer samples a finite box.
+
+        Args:
+            algorithm: the algorithm of the optimization, `None` for the
+                checks which hold for every algorithm.
 
         Raises:
-            ValueError: if a bound or a start value does not suit the scale.
+            ValueError: if a bound or a start value does not suit the scale
+                or the algorithm.
         """
         for p, scale in zip(self.parameters, self.scales_initialized, strict=True):
             space = f"'{scale.name}' parameter space"
             for key in ["lower_bound", "upper_bound"]:
                 value = getattr(p, key)
                 if not np.isfinite(value):
-                    raise ValueError(
-                        f"{self.opid}: the optimization requires a finite "
-                        f"'{key}', but FitParameter '{p.pid}' has '{value}'."
-                    )
+                    if scale.is_log:
+                        raise ValueError(
+                            f"{self.opid}: the optimization is performed in "
+                            f"{space}, which requires a finite '{key}', but "
+                            f"FitParameter '{p.pid}' has '{value}'."
+                        )
+                    if algorithm == OptimizationAlgorithmType.DIFFERENTIAL_EVOLUTION:
+                        raise ValueError(
+                            f"{self.opid}: the optimization with "
+                            f"'{algorithm.name}' samples a finite box and "
+                            f"requires a finite '{key}', but FitParameter "
+                            f"'{p.pid}' has '{value}'."
+                        )
+                    if p.start_value is None:
+                        raise ValueError(
+                            f"{self.opid}: FitParameter '{p.pid}' has the "
+                            f"infinite '{key}' '{value}' and is not sampled, so "
+                            f"it requires a 'start_value'."
+                        )
+                    continue
                 if scale.is_log and value <= 0.0:
                     raise ValueError(
                         f"{self.opid}: the optimization is performed in {space}, "
@@ -1281,6 +1305,7 @@ class OptimizationProblem(ObjectJSONEncoder):
 
         # the optimizer searches the scaled space, see `ParameterScaleType`
         x0log: np.ndarray = self.to_scale(x0)
+        self._validate_parameters(algorithm)
 
         if algorithm == OptimizationAlgorithmType.LEAST_SQUARE:
             # scipy least square optimizer

@@ -16,7 +16,7 @@ import pytest
 from sbmlsim.fit import FitParameter, FitSettings, ParameterSet
 from sbmlsim.fit.fisher import fisher_information
 from sbmlsim.fit.optimization import OptimizationProblem
-from sbmlsim.fit.options import ParameterScaleType
+from sbmlsim.fit.options import OptimizationAlgorithmType, ParameterScaleType
 
 #: values which span orders of magnitude, i.e. what a log scale is for
 VALUES = np.array([1e-6, 1.0, 25.0, 1e3])
@@ -118,17 +118,35 @@ def test_a_logarithm_needs_positive_bounds(
     assert problem.parameter_scale is ParameterScaleType.LINEAR
 
 
-def test_an_infinite_bound_is_never_allowed(
+def test_an_infinite_bound_needs_the_linear_scale(
     op_hctz_pk: OptimizationProblem, fit_settings: FitSettings
 ) -> None:
-    """An optimizer cannot search an interval which has no end."""
+    """The logarithm of an interval without an end is not searched.
+
+    On the linear scale the local optimizer takes the infinite bound, the
+    global optimizer samples a finite box and rejects it.
+    """
     problem = op_hctz_pk
     problem.parameters = [deepcopy(p) for p in problem.parameters]
     problem.parameters[0].upper_bound = np.inf
 
-    for scale in ParameterScaleType:
-        with pytest.raises(ValueError, match="finite"):
+    for scale in [ParameterScaleType.LOG10, ParameterScaleType.LOG]:
+        with pytest.raises(ValueError, match="requires a finite 'upper_bound'"):
             problem.initialize(replace(fit_settings, parameter_scale=scale), force=True)
+
+    problem.initialize(
+        replace(fit_settings, parameter_scale=ParameterScaleType.LINEAR), force=True
+    )
+    with pytest.raises(ValueError, match=r"DIFFERENTIAL_EVOLUTION.*finite box"):
+        problem._validate_parameters(OptimizationAlgorithmType.DIFFERENTIAL_EVOLUTION)
+    problem._validate_parameters(OptimizationAlgorithmType.LEAST_SQUARE)
+
+    problem.parameters[0].start_value = None
+    with pytest.raises(ValueError, match="requires a 'start_value'"):
+        problem.initialize(
+            replace(fit_settings, parameter_scale=ParameterScaleType.LINEAR),
+            force=True,
+        )
 
 
 # --- THE SCALE OF A PARAMETER ---
@@ -263,6 +281,32 @@ def test_a_parameter_on_the_linear_scale_may_be_negative(
         ValueError, match=rf"'LOG10'.*positive.*'{problem.parameters[1].pid}'"
     ):
         problem.initialize(fit_settings, force=True)
+
+
+def test_a_fit_with_a_parameter_without_bounds(
+    op_hctz_iv: OptimizationProblem, fit_settings: FitSettings
+) -> None:
+    """The local optimizer takes an infinite bound on the linear scale."""
+    problem = op_hctz_iv
+    n = len(problem.parameters)
+    problem = _with_scales(problem, [ParameterScaleType.LINEAR] + [None] * (n - 1))
+    first = problem.parameters[0]
+    first.lower_bound, first.upper_bound = -np.inf, np.inf
+    problem.initialize(fit_settings)
+
+    starts = problem.start_values(size=3, seed=1)
+    assert [float(start[0]) for start in starts if start is not None] == [
+        first.start_value
+    ] * 3
+    fits, _ = problem.optimize(size=1, seed=1, max_nfev=3)
+    assert np.all(np.isfinite(fits[0].x))
+    assert np.isfinite(fits[0].cost)
+    assert fits[0].cost <= problem.cost_least_square(problem.to_scale(starts[0]))
+
+    fits, _ = problem.optimize(
+        size=1, seed=1, algorithm=OptimizationAlgorithmType.DIFFERENTIAL_EVOLUTION
+    )
+    assert "finite box" in fits[0].message
 
 
 def test_the_fisher_information_uses_the_scales_of_the_parameters(
