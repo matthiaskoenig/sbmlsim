@@ -61,7 +61,7 @@ from sbmlsim.mathml import expression_to_formula
 from sbmlsim.model import AbstractModel
 from sbmlsim.simulation.timecourse import Timecourse, TimecourseSim
 from sbmlsim.task import Task
-from sbmlsim.units import UnitRegistry, UnitsInformation
+from sbmlsim.units import Quantity, UnitRegistry, UnitsInformation
 
 if TYPE_CHECKING:
     from petab.v2.extensions.sciml import SciMLConfig
@@ -475,18 +475,20 @@ class PetabReader:
             for model in self.petab_problem.models
         }
 
-    def _nominal_changes(self) -> dict[str, float]:
+    def _nominal_changes(self) -> dict[str, Quantity | float]:
         """Get the values of the parameters which are not estimated.
 
         PEtab applies the nominal value of a parameter which is not estimated
         to the model before it simulates (PEtab v2, initialization), i.e. the
-        parameter table overrides what the model says.
+        parameter table overrides what the model says. PEtab has no units, a
+        value is in the unit of the entity in the model.
 
         Returns:
             The nominal value per parameter of the table which is an entity of
-            a model and is not estimated.
+            a model and is not estimated, as a quantity in the unit of the
+            model, a number if the models have no units.
         """
-        changes: dict[str, float] = {}
+        changes: dict[str, Quantity | float] = {}
         for parameter in self.petab_problem.parameters:
             if parameter.estimate or parameter.nominal_value is None:
                 continue
@@ -494,7 +496,11 @@ class PetabReader:
                 # `array` values are not a change of the model
                 continue
             if self._in_model(parameter.id):
-                changes[parameter.id] = float(parameter.nominal_value)
+                value = float(parameter.nominal_value)
+                unit = self._unit_of(parameter.id, None)
+                changes[parameter.id] = (
+                    self.ureg.Quantity(value, unit) if unit else value
+                )
         return changes
 
     def _formula_observables(self) -> dict[str, str]:

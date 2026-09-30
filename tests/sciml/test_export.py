@@ -415,6 +415,25 @@ def test_a_parameter_set_without_a_parameter_is_refused(tmp_path: Path) -> None:
         )
 
 
+def test_a_parameter_set_with_a_frozen_element_is_refused(tmp_path: Path) -> None:
+    """A set of another fit must not move the elements the problem freezes."""
+    network = feed_forward()
+    elements, hybridization = _before(network).fit_parameters(
+        estimate={"net1": False, "net1.layer1": True}
+    )
+    problem = _problem([hybridization], elements)
+    problem.initialize(SETTINGS)
+    values = dict(nominal_parameters(problem).values)
+    # the set of a fit of the whole network
+    values["net1__layer2__bias__0"] = 0.5
+    with pytest.raises(ValueError, match=r"'net1__layer2__bias__0'.*'net1'"):
+        to_petab(
+            problem,
+            tmp_path / "petab",
+            parameter_set=ParameterSet(sid="other", values=values),
+        )
+
+
 def test_the_arrays_of_a_compiled_network(tmp_path: Path) -> None:
     network = two_inputs()
     hybridization = Hybridization(
@@ -586,7 +605,9 @@ def test_a_constant_and_a_species_in_the_right_hand_side(tmp_path: Path) -> None
     assert "net1__input0__0" in set(rows["targetId"])
 
 
-def test_a_parameter_of_the_model_before_the_simulation(tmp_path: Path) -> None:
+def test_a_parameter_of_the_model_before_the_simulation(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
     """`delta` is no parameter of the fit, the table fixes it to its value."""
     network = feed_forward()
     hybridization = _before(
@@ -596,7 +617,10 @@ def test_a_parameter_of_the_model_before_the_simulation(tmp_path: Path) -> None:
             input0__1=NetworkInput(formula="delta * k"),
         ),
     )
-    assert_round_trip(_problem([hybridization], _elements(network)), tmp_path)
+    with caplog.at_level(logging.WARNING):
+        assert_round_trip(_problem([hybridization], _elements(network)), tmp_path)
+    # the fixed row is a change of the model in the unit of the model
+    assert not [r.getMessage() for r in caplog.records if r.levelno >= logging.WARNING]
     rows = _tables(tmp_path / "petab")["parameters"].set_index("parameterId")
     assert rows.loc["delta", "estimate"] == "false"
     assert float(rows.loc["delta", "nominalValue"]) == 1.8

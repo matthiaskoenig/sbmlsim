@@ -215,11 +215,13 @@ class PetabExporter:
                 parameter and the arrays of a network cannot carry a second
                 one, so a set which was written next to the start values would
                 read back as the elements of the set and the parameters of the
-                start. The problem is not changed.
+                start. The problem is not changed. An element of a network
+                which the problem freezes keeps its value.
 
         Raises:
             ValueError: if the problem is not initialized and no settings are
-                given.
+                given, or if the parameter set has a value for an element of a
+                network which is no parameter of the fit.
             KeyError: if the parameter set lacks a parameter of the problem.
         """
         if not problem.is_initialized:
@@ -790,6 +792,26 @@ class PetabExporter:
                 if len(experiments_of[observable_id]) == 1
                 else f"{observable_id}_{self.experiment_ids.get(k)}"
             )
+        # the key of a fit mapping in the extension is one fit mapping, e.g.
+        # `a` in the experiment `b_c` and `a_b` in `c` are both `a_b_c`
+        by_info_key: dict[str, list[int]] = defaultdict(list)
+        for k in self.indices:
+            by_info_key[self.info_keys[k]].append(k)
+        for info_key, group in by_info_key.items():
+            if len(group) < 2:
+                continue
+            mappings = ", ".join(
+                f"'{problem.mapping_keys[k]}' ({problem.experiment_keys[k]}, "
+                f"experiment '{self.experiment_ids.get(k)}')"
+                for k in group
+            )
+            raise ValueError(
+                f"'{problem.opid}': the fit mappings {mappings} are the fit "
+                f"mapping '{info_key}' of the `sbmlsim` extension, the key of "
+                f"an observable and its experiment. Give the mappings keys "
+                f"which differ in PEtab, i.e. in more than the characters "
+                f"which are no letters, digits or `_`."
+            )
         # one observable is one thing, measured once per experiment: the ids
         # of PEtab may join mappings whose keys differ
         by_id: dict[str, list[int]] = defaultdict(list)
@@ -1207,7 +1229,9 @@ def to_petab(
         Path of the YAML file of the problem.
 
     Raises:
-        ValueError: if the problem uses features PEtab v2 cannot express.
+        ValueError: if the problem uses features PEtab v2 cannot express, or if
+            the parameter set has a value for an element of a network which is
+            no parameter of the fit.
         KeyError: if the parameter set lacks a parameter of the problem.
     """
     exporter = PetabExporter(

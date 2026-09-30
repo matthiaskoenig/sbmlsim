@@ -263,7 +263,7 @@ class SciMLExporter:
                 result of a fit. The arrays of the networks are written with
                 the values of the elements in the set instead of the values
                 the networks have, the elements which are not in the set keep
-                theirs.
+                theirs; a value for a frozen element is refused.
 
         Raises:
             ValueError: if a hybridization is not a `Hybridization` of
@@ -272,8 +272,9 @@ class SciMLExporter:
                 network, the model or the inputs, if an element which is a
                 fit parameter differs from the network, if the elements of an
                 array are not described by one row, if two hybridizations
-                give a constant different values, or if an input has no
-                formula for a simulation of the problem.
+                give a constant different values, if an input has no
+                formula for a simulation of the problem, or if the parameter
+                set has a value for an element which is no parameter of the fit.
         """
         self.problem = problem
         self.simulation_ids = {key: list(ids) for key, ids in simulation_ids.items()}
@@ -318,7 +319,9 @@ class SciMLExporter:
                 network=first.network,
                 hybridizations=list(group),
                 pre_initialization=pre,
-                arrays=self._array_data(first.network, parameter_set),
+                arrays=self._array_data(
+                    first.network, parameter_set, parameters, frozen
+                ),
                 parameter_rows=self._parameter_rows(first.network, frozen, parameters),
             )
         self.element_ids: set[str] = {
@@ -349,17 +352,33 @@ class SciMLExporter:
         self.fixed: dict[str, float] = {}
         self.hybridization_rows: list[HybridizationRow] = []
 
-    @staticmethod
-    def _array_data(network: Network, parameter_set: ParameterSet | None) -> ArrayData:
+    def _array_data(
+        self,
+        network: Network,
+        parameter_set: ParameterSet | None,
+        parameters: Mapping[str, FitParameter],
+        frozen: set[str],
+    ) -> ArrayData:
         """Get the arrays of a network, with the elements of a parameter set.
+
+        Only the elements which are parameters of the fit take the value of the
+        set; a frozen element keeps the value of the network, so the problem
+        which is written is the problem which was fitted.
 
         Args:
             network: the network.
             parameter_set: values of elements, `None` writes the values of the
                 network.
+            parameters: id -> parameter of the fit of the problem.
+            frozen: the elements the hybridizations of the network freeze.
 
         Returns:
             The array file of the network.
+
+        Raises:
+            ValueError: if the set has a value for an element which is no
+                parameter of the fit, e.g. a set of a fit which estimated
+                other elements of the network.
         """
         arrays = {
             layer: {
@@ -370,8 +389,18 @@ class SciMLExporter:
         }
         if parameter_set is not None:
             for element, (layer, name, index) in network.parameter_ids().items():
-                if element in parameter_set.values:
-                    arrays[layer][name][index] = parameter_set.values[element]
+                if element not in parameter_set.values:
+                    continue
+                if element not in parameters:
+                    state = "frozen" if element in frozen else "no parameter of the fit"
+                    raise ValueError(
+                        f"'{self.problem.opid}': the parameter set "
+                        f"'{parameter_set.sid}' has a value for the element "
+                        f"'{element}' of the network '{network.sid}', which is "
+                        f"{state} in the problem; a set of the problem has values "
+                        f"for the parameters of its fit only."
+                    )
+                arrays[layer][name][index] = parameter_set.values[element]
         return ArrayData(
             metadata=Metadata(pytorch_format=True),
             parameters={network.sid: arrays},

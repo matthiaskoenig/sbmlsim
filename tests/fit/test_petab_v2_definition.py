@@ -121,6 +121,27 @@ def test_two_observables_whose_ids_collide_are_refused(tmp_path: Path) -> None:
         PetabExporter(problem).to_problem()
 
 
+def test_two_mappings_whose_keys_in_the_extension_collide_are_refused(
+    tmp_path: Path,
+) -> None:
+    """`a` in the experiment `b_c` and `a_b` in `c` are both `a_b_c`."""
+    path = write_problem(
+        tmp_path / "problem",
+        {"a": "prey", "z": "predator"},
+        {"b_c": None, "d": None, "c": None, "e": None},
+        measured={"a": ["b_c", "d"], "z": ["c", "e"]},
+    )
+    problem, _ = from_petab(path)
+    problem.initialize(FitSettings(parameter_scale=ParameterScaleType.LINEAR))
+    # the observable `a_b` measured in the experiments `c` and `e`
+    for old, new in [("z_c", "a_b_c"), ("z_e", "a_b_e")]:
+        problem.mapping_keys[problem.mapping_keys.index(old)] = new
+    with pytest.raises(
+        ValueError, match=r"'a_b_c'.*experiment 'b_c'.*'a_b_c'.*experiment 'c'"
+    ):
+        PetabExporter(problem).to_problem()
+
+
 def test_two_models_of_one_file_name_are_two_files(
     fit_settings: FitSettings, tmp_path: Path
 ) -> None:
