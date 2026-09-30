@@ -9,11 +9,22 @@ from pathlib import Path
 
 import h5py
 import numpy as np
+import pandas as pd
 import pytest
 import yaml
 from petab_sciml import Input, Layer, NNModel, NNModelStandard, Node
 
+from sbmlsim.fit.petab_v2.likelihood import (
+    gradient,
+    log_likelihood,
+)
+from sbmlsim.fit.petab_v2.likelihood import (
+    nominal_parameters as nominal_parameter_set,
+)
+from sbmlsim.fit.petab_v2.reader import PetabReader
 from sbmlsim.sciml.testsuite import (
+    GRADIENT_ORDER,
+    GRADIENT_STEP,
     SCIML_SUITE_COMMIT,
     CaseStatus,
     InitializationCase,
@@ -23,6 +34,8 @@ from sbmlsim.sciml.testsuite import (
     compare_arrays,
     parameter_key,
 )
+from tests.sciml.hybrid import feed_forward
+from tests.sciml.petab import write_problem
 
 WEIGHT = np.array([[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]])
 BIAS = np.array([0.1, 0.2, 0.3])
@@ -582,3 +595,173 @@ def test_an_archive_which_is_not_the_suite(
     with pytest.raises(OSError, match=r"No directory 'ml_model_import'"):
         SciMLSuite.load("abc")
     assert SciMLSuite.cached("abc") is None
+
+
+def _problem_import_case(
+    tmp_path: Path,
+    llh: float | None = None,
+    gradient_of: dict[str, float] | None = None,
+    log_posterior: float | None = None,
+    frozen_layer: bool = False,
+) -> ProblemImportCase:
+    """Write a case of `sciml_problem_import` with the values of `sbmlsim`.
+
+    The reference values are calculated with `sbmlsim` itself, so a case
+    which is not changed passes; `llh`, `gradient_of` and `log_posterior`
+    replace them.
+    """
+    directory = tmp_path / "sciml_problem_import" / "001"
+    network = feed_forward()
+    mapping = [
+        ("net1_input1", "net1.inputs[0][0]"),
+        ("net1_input2", "net1.inputs[0][1]"),
+        ("net1_output1", "net1.outputs[0][0]"),
+    ]
+    parameters = []
+    if frozen_layer:
+        mapping.append(("net1_layer1", "net1.parameters[layer1]"))
+        parameters.append(
+            {"parameterId": "net1_layer1", "nominalValue": "array", "estimate": False}
+        )
+    write_problem(
+        directory / "petab",
+        networks=[network],
+        pre_initialization={"net1": False},
+        mapping=mapping,
+        hybridization=[
+            ("net1_input1", "prey"),
+            ("net1_input2", "predator"),
+            ("gamma", "net1_output1"),
+        ],
+        parameters=parameters,
+    )
+    reader = PetabReader.from_yaml(directory / "petab" / "problem.yaml")
+    reader.derived_dir = tmp_path / "derived"
+    problem = reader.to_optimization_problem()
+    case = ProblemImportCase(
+        cid="001",
+        path=directory,
+        problem_path=directory / "petab" / "problem.yaml",
+        llh=llh,
+        log_posterior=log_posterior,
+        simulation_files=[directory / "simulations.tsv"],
+        gradient_files={
+            "mech": directory / "grad_mech.tsv",
+            "net1": directory / "grad_net1.hdf5",
+        },
+        tol_llh=1e-3,
+        tol_simulations=1e-3,
+        tol_grad=0.1,
+    )
+    problem.initialize(case.settings())
+    parameters_nominal = nominal_parameter_set(problem)
+    if llh is None and log_posterior is None:
+        case = replace(case, llh=log_likelihood(problem, parameters_nominal))
+    predictions = problem.predictions(parameters_nominal.x(problem.pids))
+    rows = []
+    for k, values in predictions.items():
+        for time, value in zip(problem.x_references[k], values, strict=True):
+            rows.append(
+                {
+                    "observableId": reader.observable_id(problem.mapping_keys[k]),
+                    "experimentId": "e1",
+                    "simulation": value,
+                    "time": time,
+                }
+            )
+    pd.DataFrame(rows).to_csv(directory / "simulations.tsv", sep="\t", index=False)
+    grad = gradient(
+        problem, parameters_nominal, step=GRADIENT_STEP, order=GRADIENT_ORDER
+    )
+    grad.update(pd.Series(gradient_of or {}))
+    pd.DataFrame(
+        {
+            "parameterId": [p for p in grad.index if not p.startswith("net1__")],
+            "value": [grad[p] for p in grad.index if not p.startswith("net1__")],
+        }
+    ).to_csv(directory / "grad_mech.tsv", sep="\t", index=False)
+    arrays = {
+        layer: {name: np.zeros_like(array) for name, array in layer_arrays.items()}
+        for layer, layer_arrays in network.parameters.items()
+    }
+    for sid, (layer, name, index) in network.parameter_ids().items():
+        if sid in grad.index:
+            arrays[layer][name][index] = grad[sid]
+        else:
+            arrays[layer][name] = np.zeros(0)
+    with h5py.File(directory / "grad_net1.hdf5", "w") as f:
+        f.create_group("metadata")["pytorch_format"] = True
+        for layer, layer_arrays in arrays.items():
+            for name, array in layer_arrays.items():
+                f[f"parameters/net1/{layer}/{name}"] = array
+    return case
+
+
+def test_a_problem_import_case_passes(tmp_path: Path) -> None:
+    """A case whose reference values are the values of `sbmlsim` passes."""
+    case = _problem_import_case(tmp_path)
+    result = case.run()
+    assert result.passed, result.message
+    assert result.max_difference is not None
+    assert result.max_difference < 1e-3
+
+
+def test_a_problem_import_case_with_a_frozen_layer(tmp_path: Path) -> None:
+    """The gradient of a frozen layer is an empty array without a reference."""
+    result = _problem_import_case(tmp_path, frozen_layer=True).run()
+    assert result.passed, result.message
+
+
+def test_a_log_likelihood_outside_of_the_tolerance(tmp_path: Path) -> None:
+    """The log-likelihood is compared first and named."""
+    result = _problem_import_case(tmp_path, llh=1.0).run()
+    assert result.status is CaseStatus.TOLERANCE
+    assert result.message.startswith("the log-likelihood:")
+
+
+def test_a_gradient_outside_of_the_tolerance(tmp_path: Path) -> None:
+    """A derivative which differs by more than the tolerance is named."""
+    result = _problem_import_case(tmp_path, gradient_of={"alpha": 1e6}).run()
+    assert result.status is CaseStatus.TOLERANCE
+    assert result.message.startswith("the gradient:")
+
+
+def test_a_problem_import_case_with_priors_is_unsupported(tmp_path: Path) -> None:
+    """A case which states the log-posterior is not compared."""
+    result = _problem_import_case(tmp_path, log_posterior=-1.0).run()
+    assert result.status is CaseStatus.UNSUPPORTED
+    assert "sciml-priors" in result.message
+
+
+def test_a_problem_import_case_names_what_is_missing(tmp_path: Path) -> None:
+    """A reference value without a parameter, and the other way round, is an error."""
+    case = _problem_import_case(tmp_path)
+    df = pd.read_csv(case.gradient_files["mech"], sep="\t")
+    df.loc[len(df)] = ["kappa", 1.0]
+    df = df[df["parameterId"] != "beta"]
+    df.to_csv(case.gradient_files["mech"], sep="\t", index=False)
+    result = case.run()
+    assert result.status is CaseStatus.ERROR
+    assert "['kappa'] of the reference values are not estimated" in result.message
+    assert "['beta'] have no reference value" in result.message
+
+
+def test_a_problem_import_case_with_a_simulation_of_nothing(tmp_path: Path) -> None:
+    """A reference value of the simulations without a fit mapping is an error."""
+    case = _problem_import_case(tmp_path)
+    df = pd.read_csv(case.simulation_files[0], sep="\t")
+    df.loc[len(df)] = ["other", "e1", 1.0, 1.0]
+    df.to_csv(case.simulation_files[0], sep="\t", index=False)
+    result = case.run()
+    assert result.status is CaseStatus.ERROR
+    assert "1 of the 21 reference values" in result.message
+
+
+def test_a_problem_import_case_which_cannot_be_read(tmp_path: Path) -> None:
+    """A problem which is not read is an error which names the reason."""
+    case = _problem_import_case(tmp_path)
+    (case.path / "petab" / "net1.yaml").unlink()
+    result = case.run()
+    assert result.status is CaseStatus.ERROR
+    assert "net1.yaml" in result.message
+    assert "does not exist" in result.message

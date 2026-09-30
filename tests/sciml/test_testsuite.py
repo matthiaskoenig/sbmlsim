@@ -20,10 +20,12 @@ import pytest
 from sbmlsim.sciml.testsuite import (
     INITIALIZATION,
     MODEL_IMPORT,
+    PROBLEM_IMPORT,
     SCIML_SUITE_COMMIT,
     CaseResult,
     InitializationCase,
     ModelImportCase,
+    ProblemImportCase,
     SciMLSuite,
 )
 
@@ -46,6 +48,7 @@ def _case_ids(group: str) -> list[str]:
 
 MODEL_IMPORT_IDS = _case_ids(MODEL_IMPORT)
 INITIALIZATION_IDS = _case_ids(INITIALIZATION)
+PROBLEM_IMPORT_IDS = _case_ids(PROBLEM_IMPORT)
 
 
 @pytest.fixture(scope="session")
@@ -97,17 +100,28 @@ def test_initialization(cid: str, suite: SciMLSuite, baseline: dict) -> None:
     _check(case.run(), baseline)
 
 
+@pytest.mark.parametrize("cid", PROBLEM_IMPORT_IDS)
+def test_problem_import(cid: str, suite: SciMLSuite, baseline: dict) -> None:
+    """The log-likelihood, the simulations and the gradient of the case agree."""
+    case = ProblemImportCase.from_directory(suite.path / PROBLEM_IMPORT / cid)
+    _check(case.run(), baseline)
+
+
 def test_the_baseline_matches_the_suite(suite: SciMLSuite, baseline: dict) -> None:
     """The baseline was recorded for the commit which is pinned and cached."""
     assert baseline["suite_commit"] == SCIML_SUITE_COMMIT == suite.commit
     assert [f"{i:03d}" for i in range(1, 55)] == MODEL_IMPORT_IDS
     assert INITIALIZATION_IDS == ["001", "002", "003"]
-    assert baseline["n_cases"] == len(MODEL_IMPORT_IDS) + len(INITIALIZATION_IDS)
+    assert [f"{i:03d}" for i in range(1, 40)] == PROBLEM_IMPORT_IDS
+    assert baseline["n_cases"] == (
+        len(MODEL_IMPORT_IDS) + len(INITIALIZATION_IDS) + len(PROBLEM_IMPORT_IDS)
+    )
     assert baseline["n_passed"] == baseline["n_cases"] - len(
         baseline["expected_failures"]
     )
     keys = {f"{MODEL_IMPORT}/{cid}" for cid in MODEL_IMPORT_IDS}
     keys |= {f"{INITIALIZATION}/{cid}" for cid in INITIALIZATION_IDS}
+    keys |= {f"{PROBLEM_IMPORT}/{cid}" for cid in PROBLEM_IMPORT_IDS}
     assert set(baseline["expected_failures"]) <= keys
 
 

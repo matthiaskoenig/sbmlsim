@@ -64,7 +64,8 @@ def unexpected_outcomes(results: list[CaseResult], baseline: dict) -> list[str]:
         baseline: the content of the baseline.
 
     Returns:
-        One line per case, `<key>: '<expected>' -> '<observed>'`.
+        One line per case, `<key>: '<expected>' -> '<observed>'`, and one per
+        case of the baseline which was not run.
     """
     expected_failures = baseline["expected_failures"]
     lines: list[str] = []
@@ -73,6 +74,10 @@ def unexpected_outcomes(results: list[CaseResult], baseline: dict) -> list[str]:
         expected = CaseStatus.PASS.value if recorded is None else recorded["status"]
         if result.status.value != expected:
             lines.append(f"{result.key}: '{expected}' -> '{result.status.value}'")
+    keys = {result.key for result in results}
+    for key, recorded in expected_failures.items():
+        if key not in keys:
+            lines.append(f"{key}: '{recorded['status']}' -> not run")
     return lines
 
 
@@ -141,6 +146,12 @@ def main(argv: list[str] | None = None) -> int:
         console.print(f"PEtab SciML test suite '{suite.commit}': {suite.path}")
         return 0
 
+    if args.command == "run" and not BASELINE_PATH.is_file():
+        console.print(
+            f"[red]The baseline {BASELINE_PATH} does not exist, write it with "
+            f"`baseline` first[/red]"
+        )
+        return 1
     results = run(suite)
     if args.command == "baseline":
         write_baseline(results, suite, BASELINE_PATH)

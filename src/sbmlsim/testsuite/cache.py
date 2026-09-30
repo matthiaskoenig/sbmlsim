@@ -14,12 +14,20 @@ import logging
 import os
 import shutil
 import tempfile
+import time
 import urllib.request
 import zipfile
 from collections.abc import Callable
 from pathlib import Path
 
 logger = logging.getLogger(__name__)
+
+#: suffix of the staging directory of a fetch
+STAGING_SUFFIX = ".incomplete"
+
+#: age in seconds after which the staging directory of a fetch is stale, i.e.
+#: left behind by a fetch which was killed. A fetch takes minutes
+STALE_AFTER = 6 * 3600.0
 
 
 def cache_root() -> Path:
@@ -75,8 +83,11 @@ def fetch(url: str, path: Path, select: Callable[[Path], Path]) -> Path:
             does not find the cases, or if they cannot be moved into place.
     """
     path.parent.mkdir(parents=True, exist_ok=True)
+    remove_stale(path)
     staging = Path(
-        tempfile.mkdtemp(prefix=f".{path.name}.", suffix=".incomplete", dir=path.parent)
+        tempfile.mkdtemp(
+            prefix=f".{path.name}.", suffix=STAGING_SUFFIX, dir=path.parent
+        )
     )
     archive = staging / "archive.zip"
     try:
@@ -95,3 +106,33 @@ def fetch(url: str, path: Path, select: Callable[[Path], Path]) -> Path:
     finally:
         shutil.rmtree(staging, ignore_errors=True)
     return path
+
+
+def remove_stale(path: Path, stale_after: float = STALE_AFTER) -> list[Path]:
+    """Remove the staging directories a killed fetch of a target left behind.
+
+    A fetch which is running has a staging directory as well, which is why
+    only a directory older than `stale_after` is removed.
+
+    Args:
+        path: the target of the fetch.
+        stale_after: age in seconds after which a staging directory is stale.
+
+    Returns:
+        The directories which were removed.
+    """
+    removed: list[Path] = []
+    now = time.time()
+    for staging in path.parent.glob(f".{path.name}.*{STAGING_SUFFIX}"):
+        if not staging.is_dir():
+            continue
+        try:
+            age = now - staging.stat().st_mtime
+        except OSError:
+            continue
+        if age < stale_after:
+            continue
+        logger.info("Removing the stale staging directory '%s'", staging)
+        shutil.rmtree(staging, ignore_errors=True)
+        removed.append(staging)
+    return removed

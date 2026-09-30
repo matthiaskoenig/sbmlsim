@@ -21,6 +21,7 @@ name the axes of the arrays as they are stored, nothing is permuted.
 from __future__ import annotations
 
 import logging
+import tempfile
 from collections.abc import Iterator
 from dataclasses import dataclass, field, replace
 from enum import StrEnum
@@ -29,13 +30,29 @@ from typing import Any
 
 import h5py
 import numpy as np
+import pandas as pd
 import yaml
 from petab.v2.core import MappingTable, ParameterTable, ProblemConfig
 from petab.v2.extensions.sciml import SciMLConfig
 from petab_sciml.constants import ARRAY
 
+from sbmlsim.fit.options import FitSettings, ParameterScaleType
+from sbmlsim.fit.petab_v2.likelihood import (
+    gradient,
+    log_likelihood,
+)
+from sbmlsim.fit.petab_v2.likelihood import (
+    nominal_parameters as nominal_parameter_set,
+)
+from sbmlsim.fit.petab_v2.reader import DEFAULT_EXPERIMENT, PetabReader
+from sbmlsim.fit.petab_v2.sciml import SciMLProblemError
 from sbmlsim.sciml.errors import NetworkImportError, UnsupportedLayerError
-from sbmlsim.sciml.network import Network, NetworkParameters, load_array_data
+from sbmlsim.sciml.network import (
+    Network,
+    NetworkParameters,
+    element_id,
+    load_array_data,
+)
 from sbmlsim.sciml.parameters import nominal_parameters
 from sbmlsim.testsuite import cache
 
@@ -66,6 +83,22 @@ MODEL_IMPORT_TOLERANCE = 1e-3
 #: absolute tolerance of a case with dropout, whose reference values are the
 #: mean of forward passes in training mode
 DROPOUT_TOLERANCE = 1e-2
+
+#: absolute and relative tolerance of the integrator in the cases of the
+#: group `sciml_problem_import`. The reference values are simulated with the
+#: tolerances `1e-12`, and the error of a simulation enters the gradient
+#: multiplied by the sensitivities of the log-likelihood, which are of the
+#: order `1e4`
+PROBLEM_IMPORT_TOLERANCE = 1e-13
+
+#: relative step and order of the differences of the gradient. The reference
+#: values are central differences of five points
+GRADIENT_STEP = 1e-6
+GRADIENT_ORDER = 4
+
+#: the key of the gradient of the parameters which are not elements of a
+#: network in the `grad_files` of a case
+MECHANISTIC = "mech"
 
 
 class CaseStatus(StrEnum):
@@ -593,9 +626,11 @@ class InitializationCase:
 class ProblemImportCase:
     """A case of the group `sciml_problem_import`.
 
-    The case reads its files. Its comparison needs the log-likelihood, the
-    simulation and the gradient of a hybrid problem and is not part of this
-    class yet.
+    A case is a PEtab SciML problem with the log-likelihood, the simulations
+    at the measurements and the gradient of the log-likelihood at the nominal
+    values of its parameters. The reference values of the gradient are the
+    central differences of five points of a simulation with the tolerances
+    `1e-12`.
 
     Attributes:
         cid: the number of the case, e.g. `001`.
@@ -665,6 +700,228 @@ class ProblemImportCase:
             tol_simulations=float(required(solutions, "tol_simulations", path)),
             tol_grad=float(required(solutions, "tol_grad", path)),
         )
+
+    def settings(self) -> FitSettings:
+        """Get the settings the problem of the case is initialized with.
+
+        Returns:
+            Settings with the linear scale, a fixed grid and the tolerances
+            `PROBLEM_IMPORT_TOLERANCE`: two simulations on a variable grid
+            differ by more than a difference of the gradient resolves.
+        """
+        return FitSettings(
+            parameter_scale=ParameterScaleType.LINEAR,
+            variable_step_size=False,
+            absolute_tolerance=PROBLEM_IMPORT_TOLERANCE,
+            relative_tolerance=PROBLEM_IMPORT_TOLERANCE,
+        )
+
+    def expected_simulations(self) -> pd.DataFrame:
+        """Read the reference values of the simulations.
+
+        Returns:
+            The rows of the simulation files with the columns `observableId`,
+            `experimentId`, `time` and `simulation`.
+
+        Raises:
+            ValueError: if the case has no simulation file, or if a file lacks
+                a column.
+        """
+        if not self.simulation_files:
+            raise ValueError(f"The case '{self.path}' lists no simulation files")
+        frames = [
+            pd.read_csv(path, sep="\t", float_precision="round_trip")
+            for path in self.simulation_files
+        ]
+        df = pd.concat(frames, ignore_index=True)
+        missing = sorted(
+            {"observableId", "experimentId", "time", "simulation"} - set(df.columns)
+        )
+        if missing:
+            raise ValueError(
+                f"The simulation files of the case '{self.path}' have no columns "
+                f"{missing}"
+            )
+        return df
+
+    def expected_gradient(self) -> dict[str, float]:
+        """Read the reference values of the gradient.
+
+        Returns:
+            id of the parameter -> derivative of the log-likelihood. The id of
+            an element of a network is its id in `sbmlsim`, see
+            `sbmlsim.sciml.network.element_id`. An array which the file
+            stores as an empty array is frozen and has no derivative.
+
+        Raises:
+            ValueError: if the case has no gradient of the mechanistic
+                parameters, or if a file cannot be read.
+        """
+        if MECHANISTIC not in self.gradient_files:
+            raise ValueError(
+                f"The case '{self.path}' has no gradient of the mechanistic "
+                f"parameters, the key '{MECHANISTIC}' of 'grad_files'"
+            )
+        expected: dict[str, float] = {}
+        for key, path in self.gradient_files.items():
+            if key == MECHANISTIC:
+                df = pd.read_csv(path, sep="\t", float_precision="round_trip")
+                for pid, value in zip(df["parameterId"], df["value"], strict=True):
+                    expected[str(pid)] = float(value)
+                continue
+            data = load_array_data(path)
+            if key not in data.parameters:
+                raise ValueError(
+                    f"The gradient file '{path}' has no arrays of the network "
+                    f"'{key}', it has {sorted(data.parameters)}"
+                )
+            for layer, arrays in data.parameters[key].items():
+                for name, values in arrays.items():
+                    array = np.asarray(values, dtype=float)
+                    for index in np.ndindex(array.shape):
+                        expected[element_id(key, layer, name, index)] = float(
+                            array[index]
+                        )
+        return expected
+
+    def run(self) -> CaseResult:
+        """Read the problem and compare its values with the reference values.
+
+        The log-likelihood, the simulations at the measurements and the
+        gradient of the log-likelihood are compared, each with its tolerance.
+        The models the problem is simulated with are written into a
+        temporary directory.
+
+        Returns:
+            The outcome of the case. It does not raise: a problem with a gap
+            or a layer without an implementation is `UNSUPPORTED` and any
+            other error is `ERROR`.
+        """
+        if self.llh is None:
+            return CaseResult(
+                PROBLEM_IMPORT,
+                self.cid,
+                CaseStatus.UNSUPPORTED,
+                "the case states the log-posterior of a problem with priors, "
+                "which are not a part of the log-likelihood (gap 'sciml-priors')",
+            )
+        try:
+            with tempfile.TemporaryDirectory(prefix="sbmlsim-sciml-") as directory:
+                outcomes = self._compare(Path(directory))
+        except (UnsupportedLayerError, SciMLProblemError) as err:
+            if isinstance(err, SciMLProblemError) and err.gap is None:
+                return CaseResult(PROBLEM_IMPORT, self.cid, CaseStatus.ERROR, str(err))
+            return CaseResult(
+                PROBLEM_IMPORT, self.cid, CaseStatus.UNSUPPORTED, str(err)
+            )
+        except Exception as err:
+            return CaseResult(
+                PROBLEM_IMPORT,
+                self.cid,
+                CaseStatus.ERROR,
+                f"{type(err).__name__}: {err}",
+            )
+        return _worst(PROBLEM_IMPORT, self.cid, outcomes)
+
+    def _compare(self, directory: Path) -> list[tuple[CaseStatus, str, float | None]]:
+        """Compare the values of the problem with the reference values.
+
+        Args:
+            directory: the directory the models of the problem are written to.
+
+        Returns:
+            Outcome, message and largest difference of every comparison.
+        """
+        reader = PetabReader.from_yaml(self.problem_path)
+        reader.derived_dir = directory
+        problem = reader.to_optimization_problem(opid=f"case_{self.cid}")
+        problem.initialize(self.settings())
+        parameters = nominal_parameter_set(problem)
+
+        def outcome(
+            what: str, observed: Any, expected: Any, tolerance: float
+        ) -> tuple[CaseStatus, str, float | None]:
+            status, message, difference = compare_arrays(
+                np.asarray(observed, dtype=float),
+                np.asarray(expected, dtype=float),
+                tolerance,
+            )
+            return status, f"{what}: {message}" if message else "", difference
+
+        outcomes = [
+            outcome(
+                "the log-likelihood",
+                log_likelihood(problem, parameters),
+                self.llh,
+                self.tol_llh,
+            )
+        ]
+
+        expected = self.expected_simulations()
+        predictions = problem.predictions(parameters.x(problem.pids))
+        compared = 0
+        for k, prediction in predictions.items():
+            key = problem.mapping_keys[k]
+            observable_id = reader.observable_id(key)
+            experiment_id = problem.simulation_keys[k]
+            rows = expected[expected["observableId"] == observable_id]
+            if experiment_id != DEFAULT_EXPERIMENT:
+                rows = rows[rows["experimentId"] == experiment_id]
+            rows = rows.sort_values("time")
+            compared += len(rows)
+            what = f"the simulations of '{observable_id}' in '{experiment_id}'"
+            outcomes.append(
+                outcome(
+                    f"{what}, times",
+                    problem.x_references[k],
+                    rows["time"].to_numpy(),
+                    0.0,
+                )
+            )
+            outcomes.append(
+                outcome(
+                    what,
+                    prediction,
+                    rows["simulation"].to_numpy(),
+                    self.tol_simulations,
+                )
+            )
+        if compared != len(expected):
+            outcomes.append(
+                (
+                    CaseStatus.ERROR,
+                    f"{len(expected) - compared} of the {len(expected)} reference "
+                    f"values of the simulations belong to no fit mapping",
+                    None,
+                )
+            )
+
+        observed = gradient(
+            problem, parameters, step=GRADIENT_STEP, order=GRADIENT_ORDER
+        )
+        reference = self.expected_gradient()
+        missing = sorted(set(reference) - set(observed.index))
+        extra = sorted(set(observed.index) - set(reference))
+        if missing or extra:
+            outcomes.append(
+                (
+                    CaseStatus.ERROR,
+                    f"the gradient: the parameters {missing} of the reference "
+                    f"values are not estimated, and the estimated parameters "
+                    f"{extra} have no reference value",
+                    None,
+                )
+            )
+        shared = [pid for pid in observed.index if pid in reference]
+        outcomes.append(
+            outcome(
+                "the gradient",
+                [observed[pid] for pid in shared],
+                [reference[pid] for pid in shared],
+                self.tol_grad,
+            )
+        )
+        return outcomes
 
 
 @dataclass(frozen=True)
@@ -785,12 +1042,13 @@ class SciMLSuite:
             yield ProblemImportCase.from_directory(self.path / PROBLEM_IMPORT / cid)
 
     def run(self) -> list[CaseResult]:
-        """Run the cases which are compared.
+        """Run the cases of the suite.
 
         Returns:
-            The results of the groups `ml_model_import` and `initialization`,
-            in this order.
+            The results of the groups `ml_model_import`, `initialization` and
+            `sciml_problem_import`, in this order.
         """
         results = [case.run() for case in self.model_import_cases()]
         results.extend(case.run() for case in self.initialization_cases())
+        results.extend(case.run() for case in self.problem_import_cases())
         return results

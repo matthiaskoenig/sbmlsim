@@ -1,6 +1,8 @@
 """Tests of the download and the cache of a test suite."""
 
 import logging
+import os
+import time
 import zipfile
 from pathlib import Path
 
@@ -151,3 +153,29 @@ def test_a_member_outside_of_the_archive_stays_inside(
 
     assert (target / "001" / "a.txt").read_text() == "a"
     assert list(tmp_path.rglob("evil.txt")) == []
+
+
+def test_a_stale_staging_directory_is_removed(tmp_path: Path) -> None:
+    """A fetch removes what a killed fetch of its target left behind."""
+    url = _archive(tmp_path / "suite.zip", {"suite-1.0/cases/001/a.txt": "a"})
+    target = tmp_path / "cache" / "suite" / "1.0"
+    target.parent.mkdir(parents=True)
+    stale = target.parent / ".1.0.abc.incomplete"
+    stale.mkdir()
+    (stale / "archive.zip").write_text("x")
+    old = time.time() - 2 * cache.STALE_AFTER
+    os.utime(stale, (old, old))
+    fresh = target.parent / ".1.0.def.incomplete"
+    fresh.mkdir()
+    other = target.parent / ".2.0.abc.incomplete"
+    other.mkdir()
+    os.utime(other, (old, old))
+
+    cache.fetch(url, target, select=lambda staging: staging / "suite-1.0/cases")
+
+    assert sorted(p.name for p in target.parent.iterdir()) == [
+        ".1.0.def.incomplete",
+        ".2.0.abc.incomplete",
+        "1.0",
+    ]
+    assert cache.remove_stale(target / "x", stale_after=0.0) == []

@@ -93,6 +93,35 @@ def test_run_fails_when_a_case_differs_from_the_baseline(
     assert script.main(["run"]) == code
 
 
+def test_a_case_of_the_baseline_which_was_not_run(script: ModuleType) -> None:
+    """A baseline entry of a case which is not in the results is reported."""
+    baseline = {
+        "expected_failures": {
+            "ml_model_import/002": {"status": "tolerance", "reason": REASON},
+            "ml_model_import/099": {"status": "error", "reason": REASON},
+        }
+    }
+    assert script.unexpected_outcomes(RESULTS, baseline) == [
+        "ml_model_import/099: 'error' -> not run"
+    ]
+
+
+def test_run_without_a_baseline(
+    script: ModuleType,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """`run` says that the baseline is missing instead of failing on the file."""
+    monkeypatch.setattr(script.SciMLSuite, "load", lambda commit: FakeSuite(RESULTS))
+    monkeypatch.setattr(script, "BASELINE_PATH", tmp_path / "missing.json")
+    assert script.main(["run"]) == 1
+    assert "does not exist" in capsys.readouterr().out
+    # `baseline` writes it
+    assert script.main(["baseline"]) == 0
+    assert (tmp_path / "missing.json").is_file()
+
+
 def test_the_baseline_keeps_a_reason_of_the_same_status(
     script: ModuleType, tmp_path: Path
 ) -> None:
