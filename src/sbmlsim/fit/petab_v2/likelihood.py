@@ -384,42 +384,141 @@ def log_likelihood(
     return total
 
 
+#: the orders of the differences of the gradient
+GRADIENT_ORDERS: tuple[int, ...] = (2, 4)
+
+
+def stencil(
+    value: float, h: float, lower_bound: float, upper_bound: float, order: int = 2
+) -> list[tuple[float, float]]:
+    """Get the points and the weights of the difference of a derivative.
+
+    The derivative is the sum of the weights times the values of the function
+    at the points. The points stay inside the bounds and keep the step:
+
+    | room | difference | error |
+    | --- | --- | --- |
+    | `2 h` on both sides, `order=4` | central, five points | `h^4` |
+    | `h` on both sides | central, three points | `h^2` |
+    | `2 h` above | forward, three points | `h^2` |
+    | `2 h` below | backward, three points | `h^2` |
+    | less | between the bounds | the distance of the bounds |
+
+    A step which is shrunk to the distance to a bound, which is what a
+    central difference next to a bound needs, divides the error of the
+    function by a vanishing step, so the difference is one sided with the
+    full step instead.
+
+    Args:
+        value: the value of the parameter.
+        h: the step.
+        lower_bound: lower bound of the parameter.
+        upper_bound: upper bound of the parameter.
+        order: order of the central difference, `2` or `4`.
+
+    Returns:
+        The points with their weights.
+
+    Raises:
+        ValueError: if the order is not `2` or `4`, if the step is not
+            positive, or if the value is outside the bounds or the bounds are
+            equal.
+    """
+    if order not in GRADIENT_ORDERS:
+        raise ValueError(
+            f"The order of the difference is one of {GRADIENT_ORDERS}, not '{order}'."
+        )
+    if not h > 0.0:
+        raise ValueError(f"The step of the difference must be positive, not '{h}'.")
+    below = value - lower_bound
+    above = upper_bound - value
+    if not (below >= 0.0 and above >= 0.0) or (below == 0.0 and above == 0.0):
+        raise ValueError(
+            f"the difference requires the value inside the bounds "
+            f"[{lower_bound} - {upper_bound}] with room for a step, but it is "
+            f"'{value}'"
+        )
+    if order == 4 and below >= 2.0 * h and above >= 2.0 * h:
+        return [
+            (value - 2.0 * h, 1.0 / (12.0 * h)),
+            (value - h, -8.0 / (12.0 * h)),
+            (value + h, 8.0 / (12.0 * h)),
+            (value + 2.0 * h, -1.0 / (12.0 * h)),
+        ]
+    if below >= h and above >= h:
+        return [(value - h, -0.5 / h), (value + h, 0.5 / h)]
+    if above >= 2.0 * h:
+        return [
+            (value, -1.5 / h),
+            (value + h, 2.0 / h),
+            (value + 2.0 * h, -0.5 / h),
+        ]
+    if below >= 2.0 * h:
+        return [
+            (value, 1.5 / h),
+            (value - h, -2.0 / h),
+            (value - 2.0 * h, 0.5 / h),
+        ]
+    # the bounds are closer than the steps of a difference
+    distance = upper_bound - lower_bound
+    return [(lower_bound, -1.0 / distance), (upper_bound, 1.0 / distance)]
+
+
 def gradient(
     problem: OptimizationProblem,
     parameters: ParameterSet | None = None,
     step: float = DEFAULT_STEP,
+    order: int = 2,
 ) -> pd.Series:
-    """Get the gradient of the log-likelihood by central finite differences.
+    """Get the gradient of the log-likelihood by finite differences.
 
     The differences are taken on the linear scale, i.e. in the units of the
     model, with the step `step * max(|x|, 1)` for a parameter of the value
-    `x`. The model is not simulated outside the bounds of a parameter: a step
-    which would leave them is shrunk to the distance to the nearer bound, and
-    a parameter at a bound has the one sided difference into the bounds. A
-    difference divides the error of a simulation by the step, so the
+    `x`, and are central differences, see `stencil`. The model is not
+    simulated outside the bounds of a parameter: next to a bound the
+    difference is one sided with the full step. A parameter without bounds
+    has the central difference.
+
+    A difference divides the error of a simulation by the step, so the
     problem is initialized with `FitSettings` of tight tolerances and
     `variable_step_size=False`: with a variable step size the data is
     interpolated on the steps of the integrator, which differ between two
     simulations, and the simulations of one problem differ by `1e-6` however
     tight the tolerances are. The gradient logs a warning in this case.
 
+    The error of the central difference of three points grows with the
+    square of the step and the third derivative. The log-likelihood of a
+    model which oscillates is strongly curved in the parameters of a network:
+    the difference of five points, `order=4`, has an error which grows with
+    the fourth power of the step, for four simulations per parameter instead
+    of two.
+
+    The gradient is defined inside the bounds only: a parameter outside its
+    bounds raises, while `log_likelihood` evaluates the same parameters.
+
     Args:
         problem: initialized optimization problem.
         parameters: parameters to evaluate the gradient at,
             `nominal_parameters` by default.
         step: relative step of the differences.
+        order: order of the central difference, `2` or `4`.
 
     Returns:
         The derivative of the log-likelihood by every parameter of the fit,
         indexed by the ids of the parameters.
 
     Raises:
-        ValueError: if the step is not positive, if a parameter is outside
-            its bounds or its bounds are equal, or if the log-likelihood
-            cannot be calculated, see `log_likelihood`.
+        ValueError: if the step is not positive, if the order is not `2` or
+            `4`, if a parameter is outside its bounds or its bounds are
+            equal, or if the log-likelihood cannot be calculated, see
+            `log_likelihood`.
     """
     if not step > 0.0:
         raise ValueError(f"The step of the gradient must be positive, not '{step}'.")
+    if order not in GRADIENT_ORDERS:
+        raise ValueError(
+            f"The order of the gradient is one of {GRADIENT_ORDERS}, not '{order}'."
+        )
     _check_problem(problem)
     if problem.settings_initialized.variable_step_size:
         logger.warning(
@@ -440,35 +539,30 @@ def gradient(
         )
 
     derivatives: dict[str, float] = {}
+    # the log-likelihood at the parameters, which a one sided difference uses
+    at_parameters: float | None = None
     for k, parameter in enumerate(problem.parameters):
         pid = parameter.pid
         value = float(x[k])
-        h = step * max(abs(value), 1.0)
-        lower_bound = float(parameter.lower_bound)
-        upper_bound = float(parameter.upper_bound)
-        below = value - lower_bound
-        above = upper_bound - value
-        if not (below >= 0.0 and above >= 0.0) or (below == 0.0 and above == 0.0):
-            raise ValueError(
-                f"'{problem.opid}': the gradient requires the parameter '{pid}' "
-                f"inside its bounds [{lower_bound} - {upper_bound}] with room "
-                f"for a difference, but it has the value '{value}'."
+        try:
+            points = stencil(
+                value=value,
+                h=step * max(abs(value), 1.0),
+                lower_bound=float(parameter.lower_bound),
+                upper_bound=float(parameter.upper_bound),
+                order=order,
             )
-        if below > 0.0 and above > 0.0:
-            # central, with the step shrunk to the distance to the nearer bound
-            h = min(h, below, above)
-            lower, upper = value - h, value + h
-        elif below == 0.0:
-            # at the lower bound, forward
-            h = min(h, above)
-            lower, upper = value, value + h
-        else:
-            # at the upper bound, backward
-            h = min(h, below)
-            lower, upper = value - h, value
-        # `value - h` rounds, the bound is where the step ends
-        lower, upper = max(lower, lower_bound), min(upper, upper_bound)
-        plus = log_likelihood(problem, shifted(pid, upper))
-        minus = log_likelihood(problem, shifted(pid, lower))
-        derivatives[pid] = (plus - minus) / (upper - lower)
+        except ValueError as err:
+            raise ValueError(
+                f"'{problem.opid}': the gradient of the parameter '{pid}': {err}."
+            ) from err
+        derivative = 0.0
+        for point, weight in points:
+            if point == value:
+                if at_parameters is None:
+                    at_parameters = log_likelihood(problem, pset)
+                derivative += weight * at_parameters
+            else:
+                derivative += weight * log_likelihood(problem, shifted(pid, point))
+        derivatives[pid] = derivative
     return pd.Series(derivatives, name="gradient", dtype=float)

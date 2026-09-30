@@ -2,6 +2,7 @@
 
 import logging
 from pathlib import Path
+from typing import Any
 
 import numpy as np
 import pandas as pd
@@ -21,6 +22,7 @@ from sbmlsim.fit.petab_v2.likelihood import (
     log_likelihood,
     noise_values,
     nominal_parameters,
+    stencil,
 )
 
 #: simulations and measurements of the case `sciml_problem_import/001` of the
@@ -521,7 +523,9 @@ def test_gradient_stays_inside_the_bounds(
     """A parameter smaller than the step is not simulated below its bound.
 
     `KI__HCTZEX_k` has the lower bound `1e-10`, the step `1e-6` of the
-    central difference would take it to a negative value.
+    central difference would take it to a negative value. The difference is
+    the forward one with the full step: a step which is shrunk to the distance
+    to the bound divides the error of the simulation by `1e-8`.
     """
     problem = op_unit_noise
     pid = "KI__HCTZEX_k"
@@ -539,8 +543,8 @@ def test_gradient_stays_inside_the_bounds(
         for x in evaluated
         for j, p in enumerate(problem.parameters)
     )
-    # the central difference with the step shrunk to the distance to the bound
-    assert min(x[k] for x in evaluated) == pytest.approx(parameter.lower_bound)
+    points = sorted({float(x[k]) for x in evaluated})
+    assert points == pytest.approx([1e-8, 1e-8 + 1e-6, 1e-8 + 2e-6], rel=1e-12)
 
 
 def test_gradient_at_a_bound_is_one_sided(
@@ -603,3 +607,76 @@ def test_gradient_requires_the_parameters_inside_their_bounds(
     outside = ParameterSet(sid="outside", values={**nominal.values, pid: 0.0})
     with pytest.raises(ValueError, match=rf"{pid}.*bounds"):
         gradient(problem, outside)
+
+
+# --- THE STENCIL OF A DIFFERENCE ---
+
+
+def _derivative(points: list[tuple[float, float]], f: Any) -> float:
+    return sum(weight * f(point) for point, weight in points)
+
+
+@pytest.mark.parametrize("order", [2, 4])
+def test_the_central_difference(order: int) -> None:
+    """A parameter with room on both sides has the central difference."""
+    points = stencil(1.0, 0.1, 0.0, 2.0, order=order)
+    assert len(points) == {2: 2, 4: 4}[order]
+    assert min(p for p, _ in points) == pytest.approx(1.0 - order / 2 * 0.1)
+    assert max(p for p, _ in points) == pytest.approx(1.0 + order / 2 * 0.1)
+    # exact for a polynomial of the order
+    assert _derivative(points, lambda x: x**order) == pytest.approx(order * 1.0)
+    assert _derivative(points, lambda x: 3.0 * x + 1.0) == pytest.approx(3.0)
+
+
+def test_the_difference_next_to_a_bound_keeps_its_step() -> None:
+    """A bound closer than the step gives a one sided difference of full step."""
+    forward = stencil(0.01, 0.1, 0.0, 2.0)
+    assert [p for p, _ in forward] == pytest.approx([0.01, 0.11, 0.21])
+    assert _derivative(forward, lambda x: x**2) == pytest.approx(0.02)
+    backward = stencil(1.99, 0.1, 0.0, 2.0, order=4)
+    assert [p for p, _ in backward] == pytest.approx([1.99, 1.89, 1.79])
+    assert _derivative(backward, lambda x: x**2) == pytest.approx(3.98)
+    # at the bound
+    assert [p for p, _ in stencil(0.0, 0.1, 0.0, 2.0)] == pytest.approx([0.0, 0.1, 0.2])
+    # room for the central difference of three points, not of five
+    assert len(stencil(0.15, 0.1, 0.0, 2.0, order=4)) == 2
+
+
+def test_the_difference_of_bounds_closer_than_the_steps() -> None:
+    """Bounds closer than the steps of a difference give the secant of the interval."""
+    points = stencil(0.5, 1.0, 0.0, 1.0)
+    assert [p for p, _ in points] == [0.0, 1.0]
+    assert _derivative(points, lambda x: x**2) == pytest.approx(1.0)
+
+
+@pytest.mark.parametrize(
+    ("kwargs", "message"),
+    [
+        ({"order": 3}, r"order.*\(2, 4\)"),
+        ({"h": 0.0}, "step of the difference must be positive"),
+        ({"value": 3.0}, "inside the bounds"),
+        ({"value": 1.0, "lower_bound": 1.0, "upper_bound": 1.0}, "room for a step"),
+    ],
+)
+def test_a_stencil_which_does_not_exist(kwargs: dict, message: str) -> None:
+    """The order, the step and the bounds of a difference are checked."""
+    arguments: dict[str, Any] = {
+        "value": 1.0,
+        "h": 0.1,
+        "lower_bound": 0.0,
+        "upper_bound": 2.0,
+    }
+    arguments.update(kwargs)
+    with pytest.raises(ValueError, match=message):
+        stencil(**arguments)
+
+
+def test_the_gradient_of_the_fourth_order(op_unit_noise: OptimizationProblem) -> None:
+    """The five point difference agrees with the three point one."""
+    problem = op_unit_noise
+    second = gradient(problem)
+    fourth = gradient(problem, order=4)
+    assert list(fourth.index) == problem.pids
+    np.testing.assert_allclose(fourth.to_numpy(), second.to_numpy(), rtol=1e-3)
+    with pytest.raises(ValueError, match=r"order of the gradient is one of \(2, 4\)"):
+        gradient(problem, order=3)
