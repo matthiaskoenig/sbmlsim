@@ -39,6 +39,21 @@ def write_model(path: Path, level: int = 3, version: int = 1) -> Path:
     return path
 
 
+def nominal_values(network: Network) -> dict[str, float]:
+    """Get the nominal value of every element of the arrays of a network.
+
+    Args:
+        network: the network, with the values of its arrays.
+
+    Returns:
+        id of the element -> value, the values a fit starts from.
+    """
+    return {
+        sid: float(network.parameters[layer][name][index])
+        for sid, (layer, name, index) in network.parameter_ids().items()
+    }
+
+
 def _node(
     name: str, op: str, target: str, args: list, kwargs: dict | None = None
 ) -> Node:

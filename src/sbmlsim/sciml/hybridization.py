@@ -20,7 +20,6 @@ The condition of a simulation is the id of the simulation in its experiment.
 
 from __future__ import annotations
 
-import logging
 from collections.abc import Collection, Mapping
 from dataclasses import dataclass, field
 from enum import StrEnum
@@ -41,8 +40,6 @@ from sbmlsim.sciml.network import (
     output_id,
     parse_io_id,
 )
-
-logger = logging.getLogger(__name__)
 
 #: the condition of the arrays and formulas which hold for every condition
 ALL_CONDITIONS = "0"
@@ -333,7 +330,9 @@ class Hybridization:
     """A network with its inputs, its outputs and its place in a problem.
 
     The hybridization is validated when it is created, as far as it can be
-    without the model: `validate` checks it against the model.
+    without the model: `validate` checks it against the model. Two
+    hybridizations are equal when their attributes are; a hybridization is
+    not hashable, its attributes are dictionaries.
 
     Attributes:
         network: the network.
@@ -361,6 +360,12 @@ class Hybridization:
     outputs: Mapping[str, str]
     frozen: Collection[str] = field(default_factory=frozenset)
     constants: Mapping[str, float] = field(default_factory=dict)
+    #: the shapes of the inputs of the forward pass, see `input_shapes`
+    _input_shapes: tuple[tuple[int, ...], ...] = field(
+        init=False, repr=False, compare=False
+    )
+
+    __hash__ = None
 
     def __post_init__(self) -> None:
         """Validate the hybridization against its network.
@@ -371,25 +376,24 @@ class Hybridization:
                 the inputs do not cover the inputs of the forward pass, if
                 the outputs are not outputs of the network, if two outputs
                 have one target, if an element which is frozen is not an
-                element of the network, if a constant is not finite, or if a
-                network which is compiled has a layer without expressions or
-                an input which differs in its formula between conditions.
+                element of the network, if `frozen` is a single id, if a
+                constant is not a finite number, or if a network which is
+                compiled has a layer without expressions or an input which
+                differs in its formula between conditions.
             NetworkImportError: if an array of the network has no values.
         """
-        object.__setattr__(self, "pattern", self._error(NetworkPattern, self.pattern))
+        object.__setattr__(self, "pattern", self._member(NetworkPattern, self.pattern))
         object.__setattr__(self, "inputs", dict(self.inputs))
         object.__setattr__(self, "outputs", dict(self.outputs))
+        if isinstance(self.frozen, str):
+            raise self.error(
+                f"the frozen elements are a collection of ids, not the id "
+                f"'{self.frozen}'"
+            )
         object.__setattr__(self, "frozen", frozenset(self.frozen))
-        object.__setattr__(
-            self,
-            "constants",
-            {key: float(value) for key, value in self.constants.items()},
-        )
+        object.__setattr__(self, "constants", self._numbers(self.constants))
         if not isinstance(self.model, str) or not self.model:
             raise self.error(f"the id of the model '{self.model}' is not an id")
-        for sid, value in self.constants.items():
-            if not np.isfinite(value):
-                raise self.error(f"the constant '{sid}' is '{value}', not a number")
         unknown = sorted(set(self.frozen) - set(self.network.parameter_ids()))
         if unknown:
             raise self.error(
@@ -397,7 +401,8 @@ class Hybridization:
             )
         self.network.check_arrays(self.network.parameters, complete=True)
 
-        shapes = self.input_shapes()
+        shapes = input_shapes(self.network, self.inputs)
+        object.__setattr__(self, "_input_shapes", tuple(shapes))
         if self.pattern.is_compiled:
             if BackendKind.SYMPY not in self.network.backends():
                 raise self.error(
@@ -417,14 +422,35 @@ class Hybridization:
                     )
         self._check_outputs(shapes)
 
-    def _error(self, enum: type[StrEnum], value: Any) -> Any:
-        """Get the member of an enumeration, as an error of the hybridization."""
+    def _member(self, enum: type[StrEnum], value: Any) -> Any:
+        """Get the member of an enumeration with a value.
+
+        Raises:
+            NetworkHybridizationError: if no member has the value.
+        """
         try:
             return enum(value)
         except ValueError as err:
             raise self.error(
                 f"'{value}' is not one of {[member.value for member in enum]}"
             ) from err
+
+    def _numbers(self, constants: Mapping[str, Any]) -> dict[str, float]:
+        """Get the constants as floats.
+
+        Raises:
+            NetworkHybridizationError: if a constant is not a finite number.
+        """
+        numbers: dict[str, float] = {}
+        for sid, value in constants.items():
+            try:
+                number = float(value)
+            except (TypeError, ValueError):
+                number = np.nan
+            if not np.isfinite(number):
+                raise self.error(f"the constant '{sid}' is '{value}', not a number")
+            numbers[sid] = number
+        return numbers
 
     def error(self, message: str) -> NetworkHybridizationError:
         """Get an error which names the network.
@@ -439,7 +465,7 @@ class Hybridization:
 
     def input_shapes(self) -> list[tuple[int, ...]]:
         """Get the shapes of the inputs of the forward pass, see `input_shapes`."""
-        return input_shapes(self.network, self.inputs)
+        return list(self._input_shapes)
 
     def output_shapes(self) -> list[tuple[int, ...]]:
         """Get the shapes of the outputs of the network for its inputs."""
@@ -467,7 +493,9 @@ class Hybridization:
                     f"'{key}' is the output {k}, but the forward pass has "
                     f"{len(shapes)} outputs"
                 )
-            if index not in set(np.ndindex(shapes[k])):
+            if len(index) != len(shapes[k]) or not all(
+                0 <= i < n for i, n in zip(index, shapes[k], strict=True)
+            ):
                 raise self.error(
                     f"'{key}' is not an element of the output {k}, which has the "
                     f"shape {shapes[k]} for inputs of the shapes {input_shapes}"
@@ -505,6 +533,11 @@ class Hybridization:
 
     def targets(self) -> frozenset[str]:
         """Get the entities of the model `derived_changes` sets.
+
+        The targets are the keys of `derived_changes` as they are written:
+        the id of an entity or the selection of the concentration of a
+        species (`[prey]`), which `sbmlsim.fit.derived` compares by their
+        entity (`entity_of`).
 
         Returns:
             The targets of the outputs for a network before the simulation,
@@ -596,7 +629,8 @@ class Hybridization:
         Raises:
             NetworkHybridizationError: if an input has no formula or array
                 for the condition, if a symbol of a formula has no value, or
-                if the value of a formula is not a finite number.
+                if the value of a formula is not defined or not a finite
+                number.
         """
         variables = {**self.constants, **values}
         sid = self.network.sid
@@ -625,7 +659,7 @@ class Hybridization:
                 )
             try:
                 value = np.asarray(evaluate_formula(formula, variables), dtype=float)
-            except (TypeError, ValueError) as err:
+            except (ArithmeticError, TypeError, ValueError) as err:
                 raise self.error(f"input '{key}': {err}") from err
             if value.shape != () or not np.isfinite(value):
                 raise self.error(
@@ -644,13 +678,15 @@ class Hybridization:
 
         A network before the simulation is evaluated: its inputs are resolved
         with `input_values`, its arrays are the nominal values with the
-        values of the elements which are not frozen, and its outputs are the
-        changes of their targets. For a network which is compiled the changes
-        are the elements of the inputs which are arrays of conditions.
+        values of the elements which are not frozen, which the fit estimates,
+        and its outputs are the changes of their targets. For a network which
+        is compiled the changes are the elements of the inputs which are
+        arrays of conditions.
 
         Args:
             values: id -> value, see `input_values`. The values of the
-                elements of the network are read from it by their id.
+                elements of the network which are not frozen are read from it
+                by their id, the values of the frozen ones are ignored.
             condition: id of the condition of the simulation.
 
         Returns:
@@ -658,7 +694,8 @@ class Hybridization:
 
         Raises:
             NetworkHybridizationError: if an input cannot be resolved, see
-                `input_values`, or if an output is not a finite number.
+                `input_values`, if an element which is not frozen has no
+                value, or if an output is not a finite number.
         """
         if self.pattern.is_compiled:
             return {
@@ -666,15 +703,21 @@ class Hybridization:
                 for sid, value in self._conditional_elements(condition)
                 if value is not None
             }
-        ids = self.network.parameter_ids()
-        elements = {
-            sid: float(values[sid])
-            for sid in ids
-            if sid in values and sid not in self.frozen
-        }
+        inputs = self.input_values(values, condition)
+        estimated = [
+            sid for sid in self.network.parameter_ids() if sid not in self.frozen
+        ]
+        missing = [sid for sid in estimated if sid not in values]
+        if missing:
+            raise self.error(
+                f"the elements {missing[:5]}{' ...' if len(missing) > 5 else ''} "
+                f"({len(missing)} of {len(estimated)} which are not frozen) have "
+                f"no value. The elements which are not frozen are estimated, "
+                f"the fit gives their values"
+            )
+        elements = {sid: float(values[sid]) for sid in estimated}
         outputs = self.network.forward(
-            *self.input_values(values, condition),
-            parameters=self.network.with_values(elements),
+            *inputs, parameters=self.network.with_values(elements)
         )
         changes: dict[str, float] = {}
         for key, target in self.outputs.items():
@@ -699,41 +742,16 @@ class Hybridization:
 
         Raises:
             NetworkHybridizationError: if the model cannot be read, if a
-                target of `RHS` or `PRE_INITIALIZATION` is not an entity of
-                the model, if a target of `OBSERVABLE` or a constant is one,
-                if a formula uses a symbol which is an output of the
-                network, or if an input of `PRE_INITIALIZATION` depends on
-                the time, on a species or on an entity which a rule sets.
+                target cannot be set by the network, see `_check_target`, if
+                a constant is an entity of the model, if a formula uses a
+                symbol which is an output of the network, or if an input of
+                `PRE_INITIALIZATION` is not a constant of the simulation,
+                i.e. depends on the time, a species, a reaction, a species
+                reference, an entity which a rule sets or an event changes.
         """
         _, model = read_model(sbml_path, self.network.sid)
         for key, target in self.outputs.items():
-            entity = entity_of(target)
-            exists = model.getElementBySId(entity) is not None
-            if self.pattern is NetworkPattern.OBSERVABLE:
-                if target != entity:
-                    raise self.error(
-                        f"the target '{target}' of '{key}' is the symbol of an "
-                        f"observable and not a concentration"
-                    )
-                if exists:
-                    raise self.error(
-                        f"the target '{target}' of '{key}' is the symbol of an "
-                        f"observable, which is added to the model, but the "
-                        f"model '{sbml_path.name}' has an entity '{entity}'"
-                    )
-            elif not exists:
-                raise self.error(
-                    f"the target '{target}' of '{key}' is not an entity of the "
-                    f"model '{sbml_path.name}'"
-                )
-            elif target != entity and (
-                self.pattern is NetworkPattern.RHS or model.getSpecies(entity) is None
-            ):
-                raise self.error(
-                    f"the target '{target}' of '{key}' is a concentration, "
-                    f"which is the initial value of a species for the pattern "
-                    f"'{NetworkPattern.PRE_INITIALIZATION.value}'"
-                )
+            self._check_target(model, sbml_path.name, key, target)
         for sid in self.constants:
             if model.getElementBySId(sid) is not None:
                 raise self.error(
@@ -760,6 +778,89 @@ class Hybridization:
                             f"the simulation is a constant, but its formula "
                             f"'{formula}' uses '{symbol}', which is {reason}"
                         )
+
+    def _check_target(
+        self, model: libsbml.Model, name: str, key: str, target: str
+    ) -> None:
+        """Check that the network can set a target in the model.
+
+        Args:
+            model: the model without the network.
+            name: the name of the file of the model, for the message.
+            key: id of the element of the output.
+            target: the target of the element.
+
+        Raises:
+            NetworkHybridizationError: if a target of `OBSERVABLE` is a
+                concentration, not a valid SBML id or an entity of the model;
+                if a target of `RHS` is not a parameter of the model or is set
+                by a rule or changed by an event; if a target of
+                `PRE_INITIALIZATION` is not a parameter, a species or a
+                compartment, or is set by an assignment rule; or if a
+                concentration is not the one of a species before the
+                simulation.
+        """
+        entity = entity_of(target)
+        element: libsbml.SBase | None = model.getElementBySId(entity)
+        about = f"the target '{target}' of '{key}'"
+        if self.pattern is NetworkPattern.OBSERVABLE:
+            if target != entity:
+                raise self.error(
+                    f"{about} is the symbol of an observable and not a concentration"
+                )
+            if not libsbml.SyntaxChecker.isValidSBMLSId(target):
+                raise self.error(
+                    f"{about} is not a valid SBML id, but it is the symbol of an "
+                    f"observable, which is added to the model"
+                )
+            if element is not None:
+                raise self.error(
+                    f"{about} is the symbol of an observable, which is added to "
+                    f"the model, but the model '{name}' has an entity '{entity}'"
+                )
+            return
+        if element is None:
+            raise self.error(f"{about} is not an entity of the model '{name}'")
+        if target != entity and (
+            self.pattern is NetworkPattern.RHS or model.getSpecies(entity) is None
+        ):
+            raise self.error(
+                f"{about} is a concentration, which is the initial value of a "
+                f"species for the pattern "
+                f"'{NetworkPattern.PRE_INITIALIZATION.value}'"
+            )
+        kind = _kind(element)
+        rule: libsbml.Rule | None = model.getRuleByVariable(entity)
+        if self.pattern is NetworkPattern.RHS:
+            if element.getTypeCode() != libsbml.SBML_PARAMETER:
+                raise self.error(
+                    f"{about} is {kind}, but a network in the right hand side "
+                    f"sets a parameter by an assignment rule"
+                )
+            reason = (
+                "set by a rule"
+                if rule is not None
+                else "changed by an event"
+                if _changed_by_event(model, entity)
+                else None
+            )
+            if reason is not None:
+                raise self.error(
+                    f"{about} is {reason} of the model '{name}', but the network "
+                    f"sets it by an assignment rule"
+                )
+            return
+        if element.getTypeCode() not in _INITIAL_VALUES:
+            raise self.error(
+                f"{about} is {kind}, but a network before the simulation sets "
+                f"a parameter, a species or a compartment"
+            )
+        if rule is not None and rule.isAssignment():
+            raise self.error(
+                f"{about} is set by an assignment rule of the model '{name}', "
+                f"which replaces the value the network sets before the "
+                f"simulation"
+            )
 
 
 def read_model(
@@ -792,6 +893,34 @@ def read_model(
     return document, model
 
 
+#: the kinds of the entities of a model, for the messages
+_KINDS: dict[int, str] = {
+    libsbml.SBML_PARAMETER: "a parameter",
+    libsbml.SBML_SPECIES: "a species",
+    libsbml.SBML_COMPARTMENT: "a compartment",
+    libsbml.SBML_REACTION: "a reaction",
+    libsbml.SBML_SPECIES_REFERENCE: "a species reference",
+}
+
+#: the kinds of the entities a network before the simulation sets
+_INITIAL_VALUES = frozenset(
+    {libsbml.SBML_PARAMETER, libsbml.SBML_SPECIES, libsbml.SBML_COMPARTMENT}
+)
+
+
+def _kind(element: libsbml.SBase) -> str:
+    """Get the kind of an element of a model, e.g. `a species`."""
+    return _KINDS.get(element.getTypeCode(), f"a {element.getElementName()}")
+
+
+def _changed_by_event(model: libsbml.Model, sid: str) -> bool:
+    """Check whether an event of a model assigns an entity."""
+    return any(
+        model.getEvent(k).getEventAssignment(sid) is not None
+        for k in range(model.getNumEvents())
+    )
+
+
 def _varies(model: libsbml.Model, symbol: str) -> str | None:
     """Get why the value of a symbol is not a constant of a simulation.
 
@@ -806,6 +935,12 @@ def _varies(model: libsbml.Model, symbol: str) -> str | None:
         return "the time"
     if model.getSpecies(symbol) is not None:
         return "a species"
+    if model.getReaction(symbol) is not None:
+        return "a reaction, whose rate depends on the state"
+    if model.getSpeciesReference(symbol) is not None:
+        return "a species reference"
     if model.getRuleByVariable(symbol) is not None:
         return "set by a rule of the model"
+    if _changed_by_event(model, symbol):
+        return "changed by an event of the model"
     return None
