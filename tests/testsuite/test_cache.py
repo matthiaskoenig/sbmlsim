@@ -1,5 +1,6 @@
 """Tests of the download and the cache of a test suite."""
 
+import logging
 import zipfile
 from pathlib import Path
 
@@ -94,3 +95,59 @@ def test_the_semantic_suite_is_loaded_through_the_cache(
     assert suite.path == tmp_path / "cache/sbmlsim/test-suite/9.9.9/semantic"
     assert (suite.path / "00001" / "00001-settings.txt").is_file()
     assert SemanticSuite.cached("9.9.9") == suite
+
+
+def test_two_fetches_of_one_target(tmp_path: Path) -> None:
+    """A fetch which finds the target in place uses it.
+
+    The second fetch runs while the first one selects its cases, as a second
+    process would. Each fetch has its own staging directory.
+    """
+    url = _archive(tmp_path / "suite.zip", {"suite-1.0/cases/001/a.txt": "a"})
+    target = tmp_path / "cache" / "suite" / "1.0"
+    stagings: list[Path] = []
+
+    def select(staging: Path) -> Path:
+        stagings.append(staging)
+        if len(stagings) == 1:
+            cache.fetch(url, target, select=select)
+        return staging / "suite-1.0/cases"
+
+    assert cache.fetch(url, target, select=select) == target
+
+    assert len(set(stagings)) == 2
+    assert (target / "001" / "a.txt").read_text() == "a"
+    assert [p.name for p in target.parent.iterdir()] == ["1.0"]
+
+
+def test_the_download_is_logged_at_debug(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    """The suite says what it downloads, `fetch` adds the URL at DEBUG."""
+    url = _archive(tmp_path / "suite.zip", {"suite-1.0/cases/001/a.txt": "a"})
+    target = tmp_path / "cache" / "suite" / "1.0"
+    with caplog.at_level(logging.DEBUG, logger="sbmlsim.testsuite.cache"):
+        cache.fetch(url, target, select=lambda staging: staging / "suite-1.0/cases")
+    records = [r for r in caplog.records if r.name == "sbmlsim.testsuite.cache"]
+    assert records
+    assert all(r.levelno == logging.DEBUG for r in records)
+    assert any(url in r.getMessage() for r in records)
+
+
+@pytest.mark.parametrize("member", ["../evil.txt", "../../evil.txt", "ABSOLUTE"])
+def test_a_member_outside_of_the_archive_stays_inside(
+    tmp_path: Path, member: str
+) -> None:
+    """A member with `..` or an absolute path is unpacked below the staging."""
+    outside = tmp_path / "evil.txt"
+    if member == "ABSOLUTE":
+        member = str(outside)
+    url = _archive(
+        tmp_path / "suite.zip", {"suite-1.0/cases/001/a.txt": "a", member: "evil"}
+    )
+    target = tmp_path / "cache" / "suite" / "1.0"
+
+    cache.fetch(url, target, select=lambda staging: staging / "suite-1.0/cases")
+
+    assert (target / "001" / "a.txt").read_text() == "a"
+    assert list(tmp_path.rglob("evil.txt")) == []

@@ -13,6 +13,7 @@ from __future__ import annotations
 import logging
 import os
 import shutil
+import tempfile
 import urllib.request
 import zipfile
 from collections.abc import Callable
@@ -52,10 +53,17 @@ def cache_path(variable: str, *parts: str) -> Path:
 def fetch(url: str, path: Path, select: Callable[[Path], Path]) -> Path:
     """Download an archive and move a directory of it into place.
 
+    Every fetch unpacks into a staging directory of its own next to `path`,
+    so two processes which fetch one target do not share one. A target which
+    is in place when the cases are moved there is the result of another
+    fetch, and is used. The members of the archive are unpacked below the
+    staging directory, a member with `..` or an absolute path does not leave
+    it. The suite which calls `fetch` logs what it downloads, `fetch` logs the
+    URL at the level `DEBUG`.
+
     Args:
         url: the zip archive.
-        path: the directory which holds the cases afterwards. It must not
-            exist.
+        path: the directory which holds the cases afterwards.
         select: gets the directory the archive was unpacked into and returns
             the directory of it which becomes `path`.
 
@@ -63,22 +71,27 @@ def fetch(url: str, path: Path, select: Callable[[Path], Path]) -> Path:
         `path`.
 
     Raises:
-        OSError: if the archive cannot be downloaded or unpacked, or if
-            `select` does not find the cases.
+        OSError: if the archive cannot be downloaded or unpacked, if `select`
+            does not find the cases, or if they cannot be moved into place.
     """
-    staging = path.parent / f".{path.name}.incomplete"
-    shutil.rmtree(staging, ignore_errors=True)
-    staging.mkdir(parents=True, exist_ok=True)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    staging = Path(
+        tempfile.mkdtemp(prefix=f".{path.name}.", suffix=".incomplete", dir=path.parent)
+    )
     archive = staging / "archive.zip"
     try:
-        logger.info("Downloading '%s'", url)
+        logger.debug("Downloading '%s' into '%s'", url, staging)
         urllib.request.urlretrieve(url, archive)
         with zipfile.ZipFile(archive) as zf:
             zf.extractall(staging)
         archive.unlink()
         selected = select(staging)
-        path.parent.mkdir(parents=True, exist_ok=True)
-        selected.replace(path)
+        try:
+            selected.replace(path)
+        except OSError:
+            if not path.is_dir():
+                raise
+            logger.debug("'%s' was fetched by another process", path)
     finally:
         shutil.rmtree(staging, ignore_errors=True)
     return path
