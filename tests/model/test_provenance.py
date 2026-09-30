@@ -3,6 +3,7 @@
 import copy
 import dataclasses
 import pickle
+import sys
 from collections.abc import Callable
 from pathlib import Path
 
@@ -256,6 +257,33 @@ def test_strip_refuses_a_target_whose_rule_is_not_the_one_of_the_network(
 
 
 @pytest.mark.parametrize("name", ["a&b.xml", 'q"b.xml', "a<b>'c.xml"])
+def test_the_record_escapes_the_name_of_its_source(tmp_path: Path, name: str) -> None:
+    """The name is written into the annotation and read back unchanged."""
+    document = libsbml.readSBMLFromFile(str(MODEL_PATH))
+    record_derivation(document.getModel(), Path(name), ["a"], {"gamma": True})
+    path = tmp_path / "derived.xml"
+    libsbml.writeSBMLToFile(document, str(path))
+    assert derivation_of(_read(path)) == Derivation(name, ("a",), (("gamma", True),))
+
+
+@pytest.mark.parametrize(
+    "name",
+    [
+        "a&b.xml",
+        pytest.param(
+            'q"b.xml',
+            marks=pytest.mark.skipif(
+                sys.platform == "win32", reason='windows forbids " in a file name'
+            ),
+        ),
+        pytest.param(
+            "a<b>'c.xml",
+            marks=pytest.mark.skipif(
+                sys.platform == "win32", reason="windows forbids <> in a file name"
+            ),
+        ),
+    ],
+)
 def test_a_source_with_xml_characters_in_its_name(tmp_path: Path, name: str) -> None:
     source = tmp_path / name
     source.write_bytes(MODEL_PATH.read_bytes())
