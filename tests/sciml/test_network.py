@@ -1,7 +1,8 @@
 """Tests of a network: its files, its ids and its forward pass."""
 
+import pickle
 from collections.abc import Mapping
-from dataclasses import replace
+from dataclasses import FrozenInstanceError, replace
 from pathlib import Path
 from typing import Any
 
@@ -438,3 +439,60 @@ def test_the_ids_of_a_file_in_the_column_major_layout(tmp_path: Path) -> None:
     expected = _parameters()["layer1"]["weight"]
     expected[2, 1] = 60.0
     np.testing.assert_array_equal(parameters["layer1"]["weight"], expected)
+
+
+def test_a_network_does_not_change() -> None:
+    """An attribute cannot be assigned and an array cannot be written."""
+    network = Network(sid="net1", model=_model(), parameters=_parameters())
+    with pytest.raises(FrozenInstanceError):
+        network.sid = "net2"  # ty: ignore[invalid-assignment]
+    with pytest.raises(FrozenInstanceError):
+        network.parameters = {}  # ty: ignore[invalid-assignment]
+    with pytest.raises(ValueError, match="read-only"):
+        network.parameters["layer1"]["weight"][0, 0] = 5.0
+    assert network.parameters["layer1"]["weight"][0, 0] == 1.0
+
+
+def test_the_arrays_of_a_network_are_its_own() -> None:
+    """Writing into the arrays a network was built from does not change it."""
+    parameters = _parameters()
+    network = Network(sid="net1", model=_model(), parameters=parameters)
+    parameters["layer1"]["weight"][0, 0] = 5.0
+    assert network.parameters["layer1"]["weight"][0, 0] == 1.0
+    assert network.with_values({})["layer1"]["weight"].flags.writeable
+
+
+def test_the_equality_of_networks() -> None:
+    """Networks with one architecture and equal arrays are equal."""
+    network = Network(sid="net1", model=_model(), parameters=_parameters())
+    assert network == Network(sid="net1", model=_model(), parameters=_parameters())
+    assert hash(network) == hash(
+        Network(sid="net1", model=_model(), parameters=_parameters())
+    )
+    assert network != Network(sid="net1", model=_model())
+    other = _model()
+    other.layers[1].args = {"in_features": 3, "out_features": 1, "bias": True}
+    assert network != Network(sid="net1", model=other)
+    assert network != "net1"
+
+    changed = _parameters()
+    changed["layer2"]["weight"][0, 1] = 1.0
+    assert network != Network(sid="net1", model=_model(), parameters=changed)
+    missing = _parameters()
+    del missing["layer1"]["bias"]
+    assert network != Network(sid="net1", model=_model(), parameters=missing)
+
+
+def test_a_network_is_pickled() -> None:
+    """A fit pickles its networks for the workers, the copy is equal."""
+    network = Network(sid="net1", model=_model(), parameters=_parameters())
+    ids = network.parameter_ids()
+    copy = pickle.loads(pickle.dumps(network))
+    assert copy == network
+    assert copy.parameter_ids() == ids
+    np.testing.assert_array_equal(
+        copy.forward(np.array([0.5, -0.5]))[0],
+        network.forward(np.array([0.5, -0.5]))[0],
+    )
+    with pytest.raises(ValueError, match="read-only"):
+        copy.parameters["layer1"]["weight"][0, 0] = 5.0

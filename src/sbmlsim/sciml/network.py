@@ -118,16 +118,22 @@ def load_array_data(path: Path) -> ArrayData:
     return data
 
 
-@dataclass
+@dataclass(frozen=True, eq=False)
 class Network:
     """The architecture and the arrays of one network.
 
     A network is validated when it is created: the id, the forward pass and
     the nominal values are checked against the architecture, and every layer
-    needs an implementation. `sid` and `model` do not change afterwards, the
+    needs an implementation. A network does not change afterwards: its
+    attributes cannot be assigned and its arrays cannot be written, so the
     structures derived from them (`array_specs`, `used_layers`,
-    `parameter_ids`) are computed once. A network with other nominal values is
-    a new network, e.g. `dataclasses.replace(network, parameters=...)`.
+    `parameter_ids`) are computed once and stay true. A network with other
+    nominal values is a new network, e.g.
+    `dataclasses.replace(network, parameters=...)`.
+
+    Two networks are equal when they have the same id, the same architecture
+    and the same arrays, which is what the round trip of a problem and the
+    pickling of a fit compare.
 
     Attributes:
         sid: id of the network, an SBML `SId` which is the `nn_model_id` of
@@ -163,6 +169,40 @@ class Network:
             )
         self.check_forward()
         self.check_arrays(self.parameters, complete=False)
+        # the arrays are the ones of the network alone and are not written
+        parameters = copy_parameters(self.parameters)
+        for arrays in parameters.values():
+            for array in arrays.values():
+                array.setflags(write=False)
+        object.__setattr__(self, "parameters", parameters)
+
+    def __eq__(self, other: object) -> bool:
+        """Check whether two networks have the same architecture and arrays.
+
+        Args:
+            other: the object the network is compared with.
+
+        Returns:
+            Whether the ids, the architectures and the arrays are equal, the
+            arrays element by element.
+        """
+        if not isinstance(other, Network):
+            return NotImplemented
+        if self.sid != other.sid or self.model != other.model:
+            return False
+        if self.parameters.keys() != other.parameters.keys():
+            return False
+        for layer, arrays in self.parameters.items():
+            others = other.parameters[layer]
+            if arrays.keys() != others.keys():
+                return False
+            if not all(np.array_equal(a, others[name]) for name, a in arrays.items()):
+                return False
+        return True
+
+    def __hash__(self) -> int:
+        """Get the hash of the id, equal networks have the same id."""
+        return hash(self.sid)
 
     @classmethod
     def from_files(

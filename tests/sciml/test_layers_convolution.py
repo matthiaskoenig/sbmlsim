@@ -275,10 +275,12 @@ def test_an_input_with_the_wrong_number_of_axes(
 
 def test_a_weight_of_the_wrong_shape(layer_model: Callable[..., NNModel]) -> None:
     """An array which does not fit the layer is an error of the import."""
-    network = Network(sid="net1", model=layer_model("Conv2d", CONV2D))
-    network.parameters = {"layer1": {"weight": np.ones((1, 1, 3, 2))}}
     with pytest.raises(NetworkImportError, match=r"'weight'.*\(1, 1, 3, 2\)"):
-        network.forward(np.ones((1, 1, 5, 5)))
+        Network(
+            sid="net1",
+            model=layer_model("Conv2d", CONV2D),
+            parameters={"layer1": {"weight": np.ones((1, 1, 3, 2))}},
+        )
 
 
 def test_an_unknown_padding_mode(
