@@ -361,6 +361,15 @@ def test_an_element_without_a_value() -> None:
         match=r"Network 'net1'.*\['net1__layer2__bias__0'\].*have no value",
     ):
         hybridization.derived_changes(values, condition="e1")
+    # many elements are listed with their count once
+    for sid in list(values):
+        if sid.startswith("net1__layer1__weight__"):
+            del values[sid]
+    with pytest.raises(NetworkHybridizationError) as info:
+        hybridization.derived_changes(values, condition="e1")
+    message = str(info.value)
+    assert "(7 in total) have no value, of the 12 elements which are not" in message
+    assert message.count("7") == 1
 
 
 def test_the_derived_changes_use_the_values_of_the_elements() -> None:

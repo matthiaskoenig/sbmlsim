@@ -724,7 +724,7 @@ class SciMLExporter:
 
         Returns:
             One change per input which is written as changes of the
-            conditions, see `_place_inputs`.
+            conditions, see `place_inputs`.
         """
         return [
             petab_v2.Change(target_id=key, target_value=petab_math(formula))
@@ -732,15 +732,12 @@ class SciMLExporter:
             if (formula := by_simulation.get(simulation)) is not None
         ]
 
-    def needs_condition(self, simulation: str) -> bool:
-        """Check whether the first period of an experiment needs a condition.
+    def needs_condition(self) -> bool:
+        """Check whether the first period of the experiments needs a condition.
 
         An input which differs between the conditions needs the condition of
-        the experiment: its formula is a change of it, its arrays are keyed
+        every experiment: its formula is a change of it, its arrays are keyed
         by it in the array file.
-
-        Args:
-            simulation: id of the simulation.
         """
         return any(
             network_input.is_conditional
@@ -801,7 +798,7 @@ class SciMLExporter:
 
         Returns:
             A row per input which is a formula for every condition and not
-            written otherwise, see `_place_inputs` (`targetValue` is the
+            written otherwise, see `place_inputs` (`targetValue` is the
             math), per input of arrays (`targetValue` is `array`,
             the arrays go into the array file of the network keyed by the
             conditions), and a row per output of a network before the

@@ -1,5 +1,7 @@
 """Tests of the report of a hybrid fit: one row per array of a network."""
 
+import dataclasses
+import logging
 from pathlib import Path
 
 import numpy as np
@@ -10,6 +12,7 @@ from sbmlsim.fit import FitParameter
 from sbmlsim.fit.fisher import fisher_information
 from sbmlsim.fit.helpers import filter_keys
 from sbmlsim.fit.identifiability import ProfileSettings, profile_likelihood
+from sbmlsim.fit.objects import describe_array
 from sbmlsim.fit.optimization import OptimizationProblem
 from sbmlsim.fit.options import ParameterScaleType
 from sbmlsim.fit.parameters import ParameterSet
@@ -21,7 +24,10 @@ from tests.sciml.test_fit import SETTINGS, _before, _problem
 
 
 def _report(
-    tmp_path: Path, fisher: bool = False, mechanistic: bool = True
+    tmp_path: Path,
+    fisher: bool = False,
+    mechanistic: bool = True,
+    data_points: int | None = None,
 ) -> tuple[FitReport, dict]:
     network = feed_forward()
     elements = network_fit_parameters(
@@ -43,6 +49,8 @@ def _report(
     values["net1__layer1__bias__0"] = 4.99
     pset = ParameterSet(sid="nominal", values=values)
     fim = fisher_information(problem, SETTINGS, pset) if fisher else None
+    if fim is not None and data_points is not None:
+        fim = dataclasses.replace(fim, n=data_points)
     report = FitReport(problem, SETTINGS, pset, fisher=fim, mapping_figures=False)
     context = report.html_context(tmp_path, "report")
     return report, context
@@ -80,6 +88,8 @@ def test_the_overview_shows_the_network_and_its_arrays(tmp_path: Path) -> None:
         "nominal: !1 of the 3 elements of 'net1.layer1.bias' within 5% of a bound!"
     ]
     assert "net1" in report.fit_info()["networks"]
+    # one collection per simulation, one class
+    assert report.fit_info()["experiments"] == "LotkaVolterra"
     path = report.create(tmp_path / "out", name="report")
     html = (path / "index.html").read_text()
     assert "net1.layer1.weight" in html
@@ -117,6 +127,20 @@ def test_the_fisher_table_has_one_row_per_array(tmp_path: Path) -> None:
     assert "13 elements are left out" in fisher["note"]
 
 
+def test_the_fisher_table_without_errors_shows_no_nan(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    """Without degrees of freedom there is no error, which is `-` and not `nan`."""
+    with caplog.at_level(logging.WARNING):
+        _, context = _report(tmp_path, fisher=True, data_points=15)
+    fisher = context["fisher"]
+    se = [column["name"] for column in fisher["columns"]].index("se")
+    rows = {row[0]: row for row in fisher["rows"]}
+    assert rows["alpha"][se] == "-"
+    assert rows["net1.layer1.weight (6 elements)"][se] == "-"
+    assert not any("nan" in cell for row in fisher["rows"] for cell in row)
+
+
 def test_bound_warnings_count_the_elements_of_a_group() -> None:
     parameters = [FitParameter(f"w{k}", 0.0, -1.0, 1.0) for k in range(3)]
     x = np.array([0.99, -0.99, 0.0])
@@ -128,6 +152,9 @@ def test_bound_warnings_count_the_elements_of_a_group() -> None:
     assert bound_warnings(
         parameters, x, scales, groups={"net.w": ["w0", "w1", "w2"]}
     ) == ["!2 of the 3 elements of 'net.w' within 5% of a bound!"]
+    assert bound_warnings(
+        parameters[:1], x[:1], scales[:1], groups={"net.b": ["w0"]}
+    ) == ["!1 of the 1 element of 'net.b' within 5% of a bound!"]
 
 
 def _result(problem: OptimizationProblem, x: np.ndarray) -> OptimizationResult:
@@ -174,6 +201,14 @@ def test_the_text_report_has_one_row_per_array(tmp_path: Path) -> None:
     # the problem alone, before the report
     assert "net1__layer" not in str(problem)
     assert "net1.layer1.weight: 6 of 6 elements estimated" in str(problem)
+
+
+def test_an_array_of_one_element_is_described_in_the_singular() -> None:
+    element = FitParameter("b0", 0.5, -1.0, 1.0, unit="dimensionless")
+    assert describe_array("net.b", 1, [element], [0.5]) == (
+        "net.b: 1 of 1 element estimated, min 0.5, max 0.5, norm 0.5, bounds [-1, 1]"
+    )
+    assert describe_array("net.w", 3, [], []) == "net.w: 0 of 3 elements estimated"
 
 
 def test_the_bound_warnings_count_the_elements_of_versioned_parameters() -> None:
@@ -279,3 +314,22 @@ def test_the_profiles_default_to_the_parameters_which_are_no_elements() -> None:
     profile = named.profiles[element]
     assert profile.value_optimum == pytest.approx(values[element])
     assert np.all(np.abs(profile.values) <= 5.0)
+
+    # nothing to profile: no parameter named, or only elements in the problem
+    with pytest.raises(ValueError, match="`pids` names none"):
+        profile_likelihood(problem, SETTINGS, pset, profile_settings, pids=[])
+    only_elements = OptimizationProblem(
+        opid="elements",
+        mapping_collections=problem.mapping_collections,
+        fit_parameters=elements,
+        base_path=problem.base_path,
+        data_path=problem.data_path,
+        hybridizations=problem.hybridizations,
+    )
+    with pytest.raises(ValueError, match="all elements of networks"):
+        profile_likelihood(
+            only_elements,
+            SETTINGS,
+            ParameterSet(sid="nominal", values=values),
+            profile_settings,
+        )

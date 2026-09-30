@@ -770,7 +770,10 @@ class ChangedAlpha(LotkaVolterra):
 def test_a_change_of_an_estimated_parameter_is_refused(tmp_path: Path) -> None:
     problem = _problem([], [], experiment=ChangedAlpha)
     problem.initialize(SETTINGS)
-    with pytest.raises(ValueError, match=r"'alpha'.*'e1'"):
+    with pytest.raises(
+        ValueError,
+        match=r"'alpha'.*'e1'.*a parameter of the fit or a parameter an input",
+    ):
         to_petab(problem, tmp_path / "petab")
 
 

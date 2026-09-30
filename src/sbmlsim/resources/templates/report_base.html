@@ -88,7 +88,12 @@ h3 { font-size: 14px; font-weight: 600; color: var(--fg-soft); margin: 26px 0 10
   background: var(--bg-card); border: 1px solid var(--line); border-radius: var(--radius);
   box-shadow: var(--shadow); padding: 16px; margin-bottom: 16px;
 }
-.grid { display: grid; gap: 16px; grid-template-columns: repeat(auto-fit, minmax(330px, 1fr)); }
+/* a heading which opens a card sits at the padding of the card */
+.card > h3:first-child { margin-top: 0; }
+.grid { display: grid; gap: 16px; grid-template-columns: repeat(auto-fit, minmax(330px, 1fr));
+        margin-bottom: 16px; }
+/* the gap of the grid is the space between its cards */
+.grid > .card { margin-bottom: 0; }
 .card.wide { grid-column: 1 / -1; }
 
 table { border-collapse: collapse; width: 100%; font-size: 13.5px; }

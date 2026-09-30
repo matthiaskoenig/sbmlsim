@@ -90,6 +90,9 @@ BAND_ALPHA: float = 0.12
 #: and the Bland-Altman plot with their panel per kind and their metrics
 WIDE_PLOTS: frozenset[str] = frozenset({"goodness_of_fit", "bland_altman"})
 
+#: width in inches of the legend next to the panels of a wide plot
+LEGEND_WIDTH: float = 3.0
+
 #: style of the box with the key metrics of a panel
 METRICS_BOX: dict[str, Any] = {
     "boxstyle": "round,pad=0.4",
@@ -108,6 +111,24 @@ SET_COLORS: tuple[str, ...] = (
     "tab:purple",
     "tab:brown",
 )
+
+
+def _cell(value: Any, spec: str) -> str:
+    """Format a value of a table, `-` for a value which is not defined.
+
+    Args:
+        value: the value, a text is kept as it is.
+        spec: format specification of a number, e.g. `.5g`.
+
+    Returns:
+        The text of the cell; `None` and `nan`, e.g. an error without degrees
+        of freedom, are `-`.
+    """
+    if isinstance(value, str):
+        return value
+    if value is None or (isinstance(value, float) and np.isnan(value)):
+        return "-"
+    return f"{value:{spec}}"
 
 
 class FitReport:
@@ -1039,10 +1060,7 @@ class FitReport:
         groups = self._grouping[1]
         grouped = {p.pid for _, members in groups for p in members}
         rows: list[list[str]] = [
-            [
-                value if isinstance(value, str) else f"{value:.5g}"
-                for value in row.values()
-            ]
+            [_cell(value, ".5g") for value in row.values()]
             for row in df.to_dict(orient="records")
             if row["parameter"] not in grouped
         ]
@@ -1059,7 +1077,13 @@ class FitReport:
                 ),
                 "value": f"norm {np.linalg.norm(sub['value'].to_numpy()):.4g}",
                 "scale": scales.pop() if len(scales) == 1 else "mixed",
-                "se": f"{sub['se'].min():.3g} to {sub['se'].max():.3g}",
+                # an error which is not defined, e.g. without degrees of
+                # freedom, is no error
+                "se": (
+                    f"{sub['se'].min():.3g} to {sub['se'].max():.3g}"
+                    if sub["se"].notna().any()
+                    else "-"
+                ),
                 "unit": display.ELEMENT_UNIT_LABEL,
             }
             rows.append([cells.get(column, "-") for column in df.columns])
@@ -1076,7 +1100,7 @@ class FitReport:
             "eigenvalues": [f"{value:.4g}" for value in eigenvalues],
             "pids": [fim.pids[i] for i in keep],
             "correlation": [
-                [f"{correlation.iloc[i, j]:.3f}" for j in keep] for i in keep
+                [_cell(correlation.iloc[i, j], ".3f") for j in keep] for i in keep
             ],
             "note": (
                 f"The correlation is shown for the {len(keep)} parameters which "
@@ -1149,9 +1173,12 @@ class FitReport:
                 f"{count} {kind.value}"
                 for kind, count in self.problem.mapping_counts().items()
             ),
+            # every class once, a class has one collection per kind or selection
             "experiments": ", ".join(
-                collection.experiment_class.__name__
-                for collection in self.problem.mapping_collections
+                dict.fromkeys(
+                    collection.experiment_class.__name__
+                    for collection in self.problem.mapping_collections
+                )
             ),
         }
         if self._summaries:
@@ -1524,13 +1551,16 @@ class FitReport:
         """Create a figure with a panel per subset of the data points.
 
         The figure covers a full row of the report, so the panels are large
-        enough for the points, the band and the box with the metrics.
+        enough for the points, the band and the box with the metrics. The
+        legend of the figure is next to the panels and gets a width of its own,
+        otherwise it takes the width from the panels, which a single panel
+        does not have to give.
         """
         kinds = self.point_kinds()
         fig, axes = plt.subplots(
             nrows=1,
             ncols=len(kinds),
-            figsize=(height * len(kinds), height),
+            figsize=(height * len(kinds) + LEGEND_WIDTH, height),
             layout="constrained",
             squeeze=False,
         )

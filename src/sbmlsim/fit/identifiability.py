@@ -1020,12 +1020,17 @@ def profile_likelihood(
                 problem.opid,
                 len(problem.parameters) - len(single),
             )
+        if not single:
+            raise ValueError(
+                f"'{problem.opid}': there is no parameter to profile, the "
+                f"parameters of the problem are all elements of networks, name "
+                f"the ones to profile."
+            )
         pids = [p.pid for p in single]
     pids = list(pids)
     if not pids:
         raise ValueError(
-            f"'{problem.opid}': there is no parameter to profile, the parameters "
-            f"of the problem are all elements of networks, name the ones to profile."
+            f"'{problem.opid}': there is no parameter to profile, `pids` names none."
         )
     unknown = [pid for pid in pids if pid not in problem.pids]
     if unknown:

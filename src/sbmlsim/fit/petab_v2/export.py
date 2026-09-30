@@ -632,7 +632,7 @@ class PetabExporter:
         needs_condition = False
         if self.sciml is not None:
             input_changes = self.sciml.input_changes(simulation_key)
-            needs_condition = self.sciml.needs_condition(simulation_key)
+            needs_condition = self.sciml.needs_condition()
 
         periods: list[petab_v2.ExperimentPeriod] = []
         offset: float = simulation.time_offset
@@ -964,7 +964,9 @@ class PetabExporter:
                             f"of the experiment '{experiment.id}' (simulation "
                             f"'{simulations.get(experiment.id)}'), PEtab does not "
                             f"allow a parameter in both tables. Do not change a "
-                            f"parameter of the fit in the simulation."
+                            f"row of the parameter table (a parameter of the fit "
+                            f"or a parameter an input of a network uses) in the "
+                            f"simulation."
                         )
 
     # --- PARAMETERS ---

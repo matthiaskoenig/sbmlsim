@@ -102,7 +102,7 @@ def bound_warnings(
         estimated = len(
             {p.entity_id for p in parameters if grouped.get(p.entity_id) == label}
         )
-        counts = f"{size} elements" + (
+        counts = f"{size} element{'s' if size != 1 else ''}" + (
             f" ({estimated} estimated)" if estimated != size else ""
         )
         messages.append(
@@ -520,11 +520,13 @@ class OptimizationResult(ObjectJSONEncoder):
         # the elements of a group are listed as one line per group, in the
         # table of the runs as well
         groups = groups or {}
+        label_of: dict[str, str] = {
+            sid: label for label, ids in groups.items() for sid in ids
+        }
         by_label: dict[str, list[int]] = {label: [] for label in groups}
         for k, p in enumerate(self.parameters):
-            for label, ids in groups.items():
-                if p.entity_id in ids:
-                    by_label[label].append(k)
+            if p.entity_id in label_of:
+                by_label[label_of[p.entity_id]].append(k)
         grouped = {self.parameters[k].pid for ks in by_label.values() for k in ks}
         fits = self.df_fits
         if grouped:

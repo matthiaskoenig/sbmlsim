@@ -815,10 +815,9 @@ class Hybridization:
         missing = [sid for sid in estimated if sid not in values]
         if missing:
             raise self.error(
-                f"the elements {some_ids(missing)} "
-                f"({len(missing)} of {len(estimated)} which are not frozen) have "
-                f"no value. The elements which are not frozen are estimated, "
-                f"the fit gives their values"
+                f"the elements {some_ids(missing)} have no value, of the "
+                f"{len(estimated)} elements which are not frozen. The elements "
+                f"which are not frozen are estimated, the fit gives their values"
             )
         elements = {sid: float(values[sid]) for sid in estimated}
         outputs = self.network.forward(

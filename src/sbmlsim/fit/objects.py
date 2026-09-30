@@ -699,7 +699,8 @@ def describe_array(
         agree on them.
     """
     estimated = len({p.entity_id for p in members})
-    text = f"{label}: {estimated} of {elements} elements estimated"
+    noun = "element" if elements == 1 else "elements"
+    text = f"{label}: {estimated} of {elements} {noun} estimated"
     if not members:
         return text
     array = np.asarray(values, dtype=float)

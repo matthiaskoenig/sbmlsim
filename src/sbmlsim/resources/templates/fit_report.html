@@ -227,7 +227,7 @@
   <p class="warn">The information does not have full rank: the data does not constrain every direction in parameter space, so the errors and the correlations of the unconstrained directions cannot be read. A parameter which no data informs is such a direction.</p>
   {% endif %}
   <div class="grid">
-    <div class="card">
+    <div class="card wide">
       <h3>Analysis</h3>
       <dl class="kv">
         {% for key, value in fisher.info.items() %}<dt>{{ key }}</dt><dd class="mono">{{ value }}</dd>{% endfor %}
@@ -235,7 +235,8 @@
         <dd class="mono">{{ fisher.eigenvalues | join(", ") }}</dd>
       </dl>
     </div>
-    <div class="card">
+    <!-- the table of seven columns needs the width of the page -->
+    <div class="card wide">
       <h3>Parameters</h3>
       <table data-filter="row">
         <thead><tr>{% for column in fisher.columns %}
@@ -279,7 +280,7 @@
   <p class="warn">A profile found a cost below the cost of the parameter set, the fit did not converge to the optimum. The threshold is relative to the lowest cost.</p>
   {% endif %}
   <div class="grid">
-    <div class="card">
+    <div class="card wide">
       <h3>Analysis</h3>
       <dl class="kv">
         {% for key, value in identifiability.info.items() %}<dt>{{ key }}</dt><dd class="mono">{{ value }}</dd>{% endfor %}
