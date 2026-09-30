@@ -44,6 +44,7 @@ from sbmlsim.fit.objects import (
 from sbmlsim.fit.optimization import OptimizationProblem
 from sbmlsim.fit.options import FitSettings, WeightingCurvesType
 from sbmlsim.fit.parameter_mapping import has_renamed_targets
+from sbmlsim.fit.parameters import ParameterSet
 from sbmlsim.fit.petab_v2.extension import (
     EXTENSION_ID,
     SCIML_EXTENSION_ID,
@@ -185,6 +186,7 @@ class PetabExporter:
         settings: FitSettings | None = None,
         kinds: set[MappingKind] | None = None,
         required_extension: bool = True,
+        parameter_set: ParameterSet | None = None,
     ):
         """Initialize the export of a problem.
 
@@ -204,10 +206,21 @@ class PetabExporter:
                 of fitting the same data differently. `False` writes a problem
                 which other tools fit with the objective PEtab defines, see
                 `sbmlsim.fit.petab_v2.extension.SbmlsimExtension`.
+            parameter_set: values of the parameters of the fit to write, e.g.
+                the result of a fit, which must have every parameter of the
+                problem. They are the nominal values of the parameter table,
+                the start values of the `sbmlsim` block and the values of the
+                arrays of the networks, i.e. the exported problem starts from
+                the set: a problem which is read has one start value per
+                parameter and the arrays of a network cannot carry a second
+                one, so a set which was written next to the start values would
+                read back as the elements of the set and the parameters of the
+                start. The problem is not changed.
 
         Raises:
             ValueError: if the problem is not initialized and no settings are
                 given.
+            KeyError: if the parameter set lacks a parameter of the problem.
         """
         if not problem.is_initialized:
             if settings is None:
@@ -219,6 +232,15 @@ class PetabExporter:
 
         self.problem = problem
         self.required_extension = required_extension
+        #: the value of every parameter of the fit which is written, the start
+        #: value of the parameter if there is no parameter set
+        self.values: dict[str, float | None] = {
+            p.pid: p.start_value for p in problem.parameters
+        }
+        if parameter_set is not None:
+            self.values = dict(
+                zip(problem.pids, parameter_set.x(problem.pids).tolist(), strict=True)
+            )
         self.kinds: set[MappingKind] = (
             kinds if kinds is not None else set(EVALUATED_KINDS)
         )
@@ -277,6 +299,7 @@ class PetabExporter:
                 problem,
                 problem.hybridizations,
                 simulation_ids=self._simulation_ids(),
+                parameter_set=parameter_set,
             )
 
     def _experiment_groups(self) -> Iterator[tuple[int, str, list[int]]]:
@@ -927,7 +950,8 @@ class PetabExporter:
     def _add_parameters(self, petab_problem: PetabProblem) -> None:
         """Add the parameters which are estimated.
 
-        The nominal value of a plain parameter is its start value. The
+        The nominal value of a plain parameter is its value, i.e. its start
+        value or the value of the parameter set of the export. The
         nominal value of a version is the value its target has in the model
         rather than the version's own start value, so that a tool which does
         not estimate it still simulates the model as it is today, i.e. with
@@ -941,7 +965,7 @@ class PetabExporter:
             nominal_value = (
                 float(self.problem.xmodel[index])
                 if has_renamed_targets([parameter])
-                else parameter.start_value
+                else self.values[parameter.pid]
             )
             _table(petab_problem, "parameter_tables").parameters.append(
                 petab_v2.Parameter(
@@ -1010,7 +1034,7 @@ class PetabExporter:
         parameters = {
             parameter.pid: {
                 "unit": parameter.unit,
-                "start_value": parameter.start_value,
+                "start_value": self.values[parameter.pid],
                 **(
                     {"scale": parameter.scale.name}
                     if parameter.scale is not None
@@ -1158,6 +1182,7 @@ def to_petab(
     settings: FitSettings | None = None,
     kinds: set[MappingKind] | None = None,
     required_extension: bool = True,
+    parameter_set: ParameterSet | None = None,
 ) -> Path:
     """Write an optimization problem as a PEtab v2 problem.
 
@@ -1173,18 +1198,24 @@ def to_petab(
         required_extension: mark the `sbmlsim` extension as required, which it
             is: the settings it carries are the objective of the fit. `False`
             writes a problem other tools fit with the objective of PEtab.
+        parameter_set: values of the parameters of the fit to write, e.g. the
+            result of a fit: the exported problem starts from them, see
+            `PetabExporter`. The start values of the problem are written if
+            there is none.
 
     Returns:
         Path of the YAML file of the problem.
 
     Raises:
         ValueError: if the problem uses features PEtab v2 cannot express.
+        KeyError: if the parameter set lacks a parameter of the problem.
     """
     exporter = PetabExporter(
         problem,
         settings=settings,
         kinds=kinds,
         required_extension=required_extension,
+        parameter_set=parameter_set,
     )
     petab_problem = exporter.to_problem()
 

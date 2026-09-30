@@ -23,11 +23,12 @@ from sbmlsim.fit import FitMappingCollection, FitParameter
 from sbmlsim.fit.objects import EXTERNAL_PREFIX
 from sbmlsim.fit.optimization import OptimizationProblem
 from sbmlsim.fit.options import ParameterScaleType
+from sbmlsim.fit.parameters import ParameterSet
 from sbmlsim.fit.petab_v2 import to_petab
 from sbmlsim.fit.petab_v2.export import PetabExporter
-from sbmlsim.fit.petab_v2.likelihood import log_likelihood
+from sbmlsim.fit.petab_v2.likelihood import log_likelihood, nominal_parameters
 from sbmlsim.fit.petab_v2.reader import PetabReader
-from sbmlsim.fit.petab_v2.sciml_export import petab_index, petab_math
+from sbmlsim.fit.petab_v2.sciml_export import parameters_id, petab_index, petab_math
 from sbmlsim.mathml import formula_expression
 from sbmlsim.sciml import (
     Hybridization,
@@ -350,6 +351,68 @@ def test_a_network_in_the_right_hand_side(tmp_path: Path) -> None:
     assert (tmp_path / "petab" / "net1.yaml").is_file()
     assert (tmp_path / "petab" / "net1_arrays.hdf5").is_file()
     assert (tmp_path / "petab" / "hybridization.tsv").is_file()
+
+
+def test_a_fitted_parameter_set_is_written(tmp_path: Path) -> None:
+    """The exported problem starts from the set, the problem is not changed."""
+    network = feed_forward()
+    hybridization = Hybridization(
+        network=network,
+        pattern=RHS,
+        model="lv",
+        inputs={
+            "net1__input0__0": NetworkInput(formula="prey"),
+            "net1__input0__1": NetworkInput(formula="predator"),
+        },
+        outputs={"net1__output0__0": "gamma"},
+    )
+    elements = network_fit_parameters(network, estimate={"net1": True}, bounds={})
+    problem = _problem(
+        [hybridization], elements, experiment=_compiled(tmp_path, hybridization)
+    )
+    problem.initialize(SETTINGS)
+    starts = [p.start_value for p in problem.parameters]
+    start = log_likelihood(problem)
+
+    # a set which differs from the start in a parameter of the model and in
+    # the elements of the network
+    values = {
+        pid: value * 1.05 + 0.01
+        for pid, value in nominal_parameters(problem).values.items()
+    }
+    fitted = ParameterSet(sid="fitted", values=values)
+    expected = log_likelihood(problem, fitted)
+    assert expected != pytest.approx(start)
+
+    yaml_file = to_petab(problem, tmp_path / "petab", parameter_set=fitted)
+    assert [p.start_value for p in problem.parameters] == starts
+
+    # the tables and the arrays carry the set
+    parameters = _tables(tmp_path / "petab")["parameters"].set_index("parameterId")
+    assert float(parameters.loc["alpha", "nominalValue"]) == pytest.approx(
+        values["alpha"]
+    )
+    assert parameters.loc[parameters_id("net1"), "nominalValue"] == "array"
+    written = network.read_arrays(tmp_path / "petab" / "net1_arrays.hdf5")
+    for element, (layer, name, index) in network.parameter_ids().items():
+        assert written[layer][name][index] == pytest.approx(values[element])
+
+    # the problem which is read starts from the set
+    _, restored = _read(yaml_file, tmp_path / "derived")
+    assert {p.pid: p.start_value for p in restored.parameters} == pytest.approx(values)
+    assert log_likelihood(restored) == pytest.approx(expected, rel=1e-8)
+
+
+def test_a_parameter_set_without_a_parameter_is_refused(tmp_path: Path) -> None:
+    """A set which lacks a parameter of the problem has nothing to write for it."""
+    problem = _problem([], [])
+    problem.initialize(SETTINGS)
+    with pytest.raises(KeyError, match="'beta'"):
+        to_petab(
+            problem,
+            tmp_path / "petab",
+            parameter_set=ParameterSet(sid="partial", values={"alpha": 1.0}),
+        )
 
 
 def test_the_arrays_of_a_compiled_network(tmp_path: Path) -> None:

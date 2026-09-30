@@ -85,6 +85,7 @@ from sbmlsim.sciml.parameters import ELEMENT_UNIT
 
 if TYPE_CHECKING:
     from sbmlsim.fit.optimization import OptimizationProblem
+    from sbmlsim.fit.parameters import ParameterSet
 
 logger = logging.getLogger(__name__)
 
@@ -247,6 +248,7 @@ class SciMLExporter:
         problem: OptimizationProblem,
         hybridizations: Sequence[Any],
         simulation_ids: Mapping[str, Sequence[str]],
+        parameter_set: ParameterSet | None = None,
     ) -> None:
         """Initialize the exporter.
 
@@ -257,6 +259,11 @@ class SciMLExporter:
                 condition of the inputs) -> ids of its experiments of PEtab: a
                 simulation whose fit mappings are in several collections is
                 several experiments, which have the same inputs.
+            parameter_set: values of the parameters of the fit, e.g. the
+                result of a fit. The arrays of the networks are written with
+                the values of the elements in the set instead of the values
+                the networks have, the elements which are not in the set keep
+                theirs.
 
         Raises:
             ValueError: if a hybridization is not a `Hybridization` of
@@ -311,18 +318,7 @@ class SciMLExporter:
                 network=first.network,
                 hybridizations=list(group),
                 pre_initialization=pre,
-                arrays=ArrayData(
-                    metadata=Metadata(pytorch_format=True),
-                    parameters={
-                        sid: {
-                            layer: {
-                                name: np.asarray(array, dtype=float)
-                                for name, array in arrays.items()
-                            }
-                            for layer, arrays in first.network.parameters.items()
-                        }
-                    },
-                ),
+                arrays=self._array_data(first.network, parameter_set),
                 parameter_rows=self._parameter_rows(first.network, frozen, parameters),
             )
         self.element_ids: set[str] = {
@@ -352,6 +348,34 @@ class SciMLExporter:
         self.annotations: dict[str, str] = {}
         self.fixed: dict[str, float] = {}
         self.hybridization_rows: list[HybridizationRow] = []
+
+    @staticmethod
+    def _array_data(network: Network, parameter_set: ParameterSet | None) -> ArrayData:
+        """Get the arrays of a network, with the elements of a parameter set.
+
+        Args:
+            network: the network.
+            parameter_set: values of elements, `None` writes the values of the
+                network.
+
+        Returns:
+            The array file of the network.
+        """
+        arrays = {
+            layer: {
+                name: np.array(array, dtype=float)
+                for name, array in layer_arrays.items()
+            }
+            for layer, layer_arrays in network.parameters.items()
+        }
+        if parameter_set is not None:
+            for element, (layer, name, index) in network.parameter_ids().items():
+                if element in parameter_set.values:
+                    arrays[layer][name][index] = parameter_set.values[element]
+        return ArrayData(
+            metadata=Metadata(pytorch_format=True),
+            parameters={network.sid: arrays},
+        )
 
     # --- THE INPUTS ---
 

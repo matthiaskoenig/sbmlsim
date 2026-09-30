@@ -13,6 +13,9 @@ from sbmlsim.fit.sampling import SamplingType, create_samples
 SIZE = 7
 SEED = 1234
 
+#: the sampling types which draw the start values
+RANDOM = [sampling for sampling in SamplingType if sampling is not SamplingType.START]
+
 
 def _bounded() -> list[FitParameter]:
     return [
@@ -52,7 +55,7 @@ def _expected(parameters: list[FitParameter], sampling: SamplingType) -> np.ndar
     return x
 
 
-@pytest.mark.parametrize("sampling", list(SamplingType))
+@pytest.mark.parametrize("sampling", RANDOM)
 def test_the_samples_of_bounded_parameters_did_not_change(
     sampling: SamplingType,
 ) -> None:
@@ -69,7 +72,7 @@ def test_the_samples_of_bounded_parameters_did_not_change(
         assert np.all(samples[p.pid] <= p.upper_bound)
 
 
-@pytest.mark.parametrize("sampling", list(SamplingType))
+@pytest.mark.parametrize("sampling", RANDOM)
 def test_a_parameter_without_a_bound_is_not_sampled(
     sampling: SamplingType, caplog: pytest.LogCaptureFixture
 ) -> None:
@@ -86,7 +89,7 @@ def test_a_parameter_without_a_bound_is_not_sampled(
     assert samples["p1"].nunique() == SIZE
 
 
-@pytest.mark.parametrize("sampling", list(SamplingType))
+@pytest.mark.parametrize("sampling", RANDOM)
 def test_the_samples_do_not_depend_on_the_parameters_without_bounds(
     sampling: SamplingType,
 ) -> None:
@@ -126,7 +129,7 @@ def test_the_sampling_is_checked() -> None:
         create_samples(negative, size=SIZE, sampling=SamplingType.LOGUNIFORM)
 
 
-@pytest.mark.parametrize("sampling", list(SamplingType))
+@pytest.mark.parametrize("sampling", RANDOM)
 def test_a_parameter_on_the_linear_scale_is_sampled_uniformly(
     sampling: SamplingType, caplog: pytest.LogCaptureFixture
 ) -> None:
@@ -158,3 +161,26 @@ def test_a_parameter_on_the_linear_scale_is_sampled_uniformly(
     )
     # a parameter without a scale of its own keeps the warning
     assert ("'p2': non-positive lower bound" in caplog.text) == sampling.is_log
+
+
+def test_the_start_sampling_repeats_the_start_values() -> None:
+    """Every run starts from the start values of the parameters, whatever the seed."""
+    parameters = [*_bounded()[:2], *_unbounded()]
+    samples = create_samples(parameters, size=3, sampling=SamplingType.START, seed=SEED)
+    assert list(samples.columns) == [p.pid for p in parameters]
+    for p in parameters:
+        np.testing.assert_array_equal(samples[p.pid], np.full(3, p.start_value))
+    other = create_samples(parameters, size=3, sampling=SamplingType.START, seed=1)
+    np.testing.assert_array_equal(samples.to_numpy(), other.to_numpy())
+
+
+def test_the_start_sampling_needs_a_start_value() -> None:
+    """A parameter without a start value has nothing to start from."""
+    with pytest.raises(ValueError, match=r"'p3'.*'start_value'"):
+        create_samples(_bounded(), size=SIZE, sampling=SamplingType.START)
+
+
+def test_the_start_sampling_is_not_random() -> None:
+    """The start sampling is neither logarithmic nor a latin hypercube."""
+    assert not SamplingType.START.is_log
+    assert not SamplingType.START.is_lhs

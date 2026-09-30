@@ -14,6 +14,8 @@ from sbmlsim.fit.petab_v2 import to_petab
 yaml_file = to_petab(problem, Path("results") / "petab", settings=settings)
 ```
 
+`to_petab(..., parameter_set=fitted)` writes the values of a `ParameterSet`, e.g. the result of a fit, instead of the start values: they are the `nominalValue` of the parameter table, the start values of the `sbmlsim` block and the values of the arrays of the networks, so the problem which is read again starts from the fit. The problem which is exported is not changed.
+
 The problem is translated as follows:
 
 | `sbmlsim` | PEtab v2 |
