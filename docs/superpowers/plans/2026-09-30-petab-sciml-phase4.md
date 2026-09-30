@@ -134,7 +134,9 @@ def test_the_record_keeps_an_rdf_annotation_without_metaid(tmp_path: Path) -> No
     libsbml.writeSBMLToFile(document, str(path))
     model = _read(path)
     annotation = model.getAnnotation()
-    names = {annotation.getChild(k).getName() for k in range(annotation.getNumChildren())}
+    names = {
+        annotation.getChild(k).getName() for k in range(annotation.getNumChildren())
+    }
     assert names == {"RDF", "derived"}
     assert derivation_of(model) == Derivation("lv.xml", ("a",), {})
     assert NAMESPACE in model.getAnnotationString()
@@ -167,9 +169,10 @@ def test_strip_gives_the_source_model_back(tmp_path: Path) -> None:
     source = _read(MODEL_PATH)
     assert model.getNumParameters() == source.getNumParameters()
     assert model.getNumRules() == source.getNumRules()
-    assert model.getParameter("gamma").getConstant() == source.getParameter(
-        "gamma"
-    ).getConstant()
+    assert (
+        model.getParameter("gamma").getConstant()
+        == source.getParameter("gamma").getConstant()
+    )
     assert derivation_of(model) is None
     assert libsbml.writeSBMLToString(document) == libsbml.writeSBMLToString(
         libsbml.readSBMLFromFile(str(MODEL_PATH))
@@ -177,7 +180,9 @@ def test_strip_gives_the_source_model_back(tmp_path: Path) -> None:
 
 
 def test_strip_of_observables_on_a_compiled_model(tmp_path: Path) -> None:
-    compiled = compile_network(MODEL_PATH, [_rhs(feed_forward())], tmp_path / "lv_sciml.xml")
+    compiled = compile_network(
+        MODEL_PATH, [_rhs(feed_forward())], tmp_path / "lv_sciml.xml"
+    )
     derived = add_observables(
         compiled, {"total": "prey + predator"}, tmp_path / "lv_sciml_observables.xml"
     )
@@ -186,7 +191,9 @@ def test_strip_of_observables_on_a_compiled_model(tmp_path: Path) -> None:
     assert derivation.source == "lotka_volterra.xml"
     assert "observable_total" in derivation.created
     document, _ = strip_derivation(derived)
-    assert document.getModel().getNumParameters() == _read(MODEL_PATH).getNumParameters()
+    assert (
+        document.getModel().getNumParameters() == _read(MODEL_PATH).getNumParameters()
+    )
 
 
 def test_strip_refuses_a_model_which_is_not_derived() -> None:
@@ -401,8 +408,7 @@ def record_derivation(
     node = libsbml.XMLNode.convertStringToXMLNode(derivation.xml())
     if node is None:
         raise ValueError(
-            f"The record of the derivation of '{source}' is not XML: "
-            f"{derivation.xml()}"
+            f"The record of the derivation of '{source}' is not XML: {derivation.xml()}"
         )
     if model.isSetAnnotation():
         success = model.getAnnotation().addChild(node)
@@ -633,7 +639,9 @@ def test_export_after_an_evaluation_writes_the_definition(
         set(problem.pids) & set(simulation.timecourses[0].changes)
         for simulation in problem.simulations
     )
-    assert not any(set(problem.pids) & set(changes) for changes in problem.defined_changes)
+    assert not any(
+        set(problem.pids) & set(changes) for changes in problem.defined_changes
+    )
 
     petab_problem = PetabExporter(problem).to_problem()
     targets = {
@@ -644,7 +652,9 @@ def test_export_after_an_evaluation_writes_the_definition(
     assert not targets & set(problem.pids)
 
 
-def test_the_observables_are_named_after_the_mappings(fit_settings: FitSettings) -> None:
+def test_the_observables_are_named_after_the_mappings(
+    fit_settings: FitSettings,
+) -> None:
     """Unique mapping keys are the observable ids, without the experiment."""
     problem = _hctz(fit_settings)
     exporter = PetabExporter(problem)
@@ -686,7 +696,9 @@ def test_an_observable_measured_in_two_experiments_is_written_once(
 
 def test_a_formula_observable_is_written_as_its_formula(tmp_path: Path) -> None:
     """The model of the problem is written, not the one with the observable."""
-    path = write_problem(tmp_path / "problem", {"total": "prey + predator"}, {"e1": None})
+    path = write_problem(
+        tmp_path / "problem", {"total": "prey + predator"}, {"e1": None}
+    )
     reader = PetabReader.from_yaml(path)
     reader.derived_dir = tmp_path / "derived"
     problem = reader.to_optimization_problem(opid="formula")
@@ -752,7 +764,9 @@ def test_the_scale_of_a_parameter_survives_the_round_trip(
     restored, _ = from_petab(yaml_file)
     scales = {p.pid: p.scale for p in restored.parameters}
     assert scales[parameters[0].pid] is ParameterScaleType.LINEAR
-    assert all(scale is None for pid, scale in scales.items() if pid != parameters[0].pid)
+    assert all(
+        scale is None for pid, scale in scales.items() if pid != parameters[0].pid
+    )
 
 
 def test_an_external_parameter_is_no_condition(
@@ -1066,126 +1080,128 @@ Apply to `src/sbmlsim/fit/petab_v2/export.py`:
 Insert after `_add_observables_and_measurements` (before `_noise_model`):
 
 ```python
-    def _name_observables(self) -> None:
-        """Name the observable of every fit mapping which is written.
+def _name_observables(self) -> None:
+    """Name the observable of every fit mapping which is written.
 
-        The id of an observable is the key of its fit mapping, and the key
-        with its experiment where two experiments share a key. Fit mappings
-        which observe the same thing with the same noise in different
-        experiments are one observable measured in several experiments,
-        which is what the reader splits into one fit mapping per experiment
-        (`<observable>_<experiment>`): they are written as one observable
-        again, so that the problem which was read keeps its observables. An
-        observable which would shadow an entity of the model is prefixed.
-        """
-        problem = self.problem
-        keys = [problem.mapping_keys[k] for k in self.indices]
-        unique = len(set(keys)) == len(keys)
-        content: dict[tuple[Any, ...], list[int]] = defaultdict(list)
-        for k in self.indices:
-            observable_id = (
-                petab_id(problem.mapping_keys[k])
-                if unique
-                else petab_id(problem.experiment_keys[k], problem.mapping_keys[k])
-            )
-            self.observable_ids[k] = observable_id
-            noise = noise_model_of(problem, k)
-            content[
-                (
-                    self.model_ids[id(problem.models[k])],
-                    self._observable_formula(k),
-                    noise.formula,
-                    noise.distribution,
-                    tuple(noise.placeholders),
-                )
-            ].append(k)
-        for group in content.values():
-            if len(group) < 2:
-                continue
-            experiments = [self.experiment_ids.get(k) for k in group]
-            if len(set(experiments)) != len(group) or None in experiments:
-                continue
-            stems: set[str] = set()
-            for k, experiment in zip(group, experiments, strict=True):
-                key, suffix = problem.mapping_keys[k], f"_{experiment}"
-                if not key.endswith(suffix):
-                    stems.clear()
-                    break
-                stems.add(key[: -len(suffix)])
-            if len(stems) != 1:
-                continue
-            stem = petab_id(next(iter(stems)))
-            for k in group:
-                self.observable_ids[k] = stem
-        # an observable must not shadow an entity of the model
-        for k in self.indices:
-            sbml_model = self.sbml_models.get(self.model_ids[id(problem.models[k])])
-            observable_id = self.observable_ids[k]
-            if sbml_model is not None and sbml_model.getElementBySId(observable_id):
-                self.observable_ids[k] = petab_id("observable", observable_id)
-        # the key of a fit mapping in the extension is the key the reader
-        # gives it: the observable, and `<observable>_<experiment>` for an
-        # observable which is measured in several experiments
-        experiments_of: dict[str, set[str | None]] = defaultdict(set)
-        for k in self.indices:
-            experiments_of[self.observable_ids[k]].add(self.experiment_ids.get(k))
-        for k in self.indices:
-            observable_id = self.observable_ids[k]
-            self.info_keys[k] = (
-                observable_id
-                if len(experiments_of[observable_id]) == 1
-                else f"{observable_id}_{self.experiment_ids.get(k)}"
-            )
-
-    def _observable_formula(self, k: int) -> str:
-        """Get the formula of the observable of a fit mapping.
-
-        An observable of a model which is derived, i.e. a parameter with the
-        formula of the observable as its rule which `add_observables` wrote,
-        is written as that formula, because the model is written as its
-        source. Every other observable is the math of its selection.
-
-        Args:
-            k: index of the fit mapping.
-
-        Returns:
-            The math of PEtab of the observable.
-
-        Raises:
-            ValueError: if the derived model has no rule for the observable.
-        """
-        problem = self.problem
-        model_id = self.model_ids[id(problem.models[k])]
-        sbml_model = self.sbml_models.get(model_id)
-        selection = problem.yid_observable[k]
-        if self._is_derived_observable(k):
-            derived = libsbml.readSBMLFromFile(str(problem.models[k].source.path))
-            rule = derived.getModel().getRuleByVariable(selection)
-            if rule is None:
-                raise ValueError(
-                    f"'{problem.opid}': the observable '{selection}' of the fit "
-                    f"mapping '{problem.mapping_keys[k]}' was added to the model "
-                    f"'{problem.models[k].source.path}' without a rule."
-                )
-            return petab_math_str(
-                formula_expression(libsbml.formulaToL3String(rule.getMath()))
-            )
-        return observable_formula(selection, sbml_model)
-
-    def _is_derived_observable(self, k: int) -> bool:
-        """Check whether the observable of a fit mapping was added to the model.
-
-        Args:
-            k: index of the fit mapping.
-
-        Returns:
-            Whether the selection of the mapping is a parameter which the
-            derivation of its model created, see `_observable_formula`.
-        """
-        derivation = self.derivations.get(self.model_ids[id(self.problem.models[k])])
-        return derivation is not None and (
-            self.problem.yid_observable[k] in derivation.created
+    The id of an observable is the key of its fit mapping, and the key
+    with its experiment where two experiments share a key. Fit mappings
+    which observe the same thing with the same noise in different
+    experiments are one observable measured in several experiments,
+    which is what the reader splits into one fit mapping per experiment
+    (`<observable>_<experiment>`): they are written as one observable
+    again, so that the problem which was read keeps its observables. An
+    observable which would shadow an entity of the model is prefixed.
+    """
+    problem = self.problem
+    keys = [problem.mapping_keys[k] for k in self.indices]
+    unique = len(set(keys)) == len(keys)
+    content: dict[tuple[Any, ...], list[int]] = defaultdict(list)
+    for k in self.indices:
+        observable_id = (
+            petab_id(problem.mapping_keys[k])
+            if unique
+            else petab_id(problem.experiment_keys[k], problem.mapping_keys[k])
         )
+        self.observable_ids[k] = observable_id
+        noise = noise_model_of(problem, k)
+        content[
+            (
+                self.model_ids[id(problem.models[k])],
+                self._observable_formula(k),
+                noise.formula,
+                noise.distribution,
+                tuple(noise.placeholders),
+            )
+        ].append(k)
+    for group in content.values():
+        if len(group) < 2:
+            continue
+        experiments = [self.experiment_ids.get(k) for k in group]
+        if len(set(experiments)) != len(group) or None in experiments:
+            continue
+        stems: set[str] = set()
+        for k, experiment in zip(group, experiments, strict=True):
+            key, suffix = problem.mapping_keys[k], f"_{experiment}"
+            if not key.endswith(suffix):
+                stems.clear()
+                break
+            stems.add(key[: -len(suffix)])
+        if len(stems) != 1:
+            continue
+        stem = petab_id(next(iter(stems)))
+        for k in group:
+            self.observable_ids[k] = stem
+    # an observable must not shadow an entity of the model
+    for k in self.indices:
+        sbml_model = self.sbml_models.get(self.model_ids[id(problem.models[k])])
+        observable_id = self.observable_ids[k]
+        if sbml_model is not None and sbml_model.getElementBySId(observable_id):
+            self.observable_ids[k] = petab_id("observable", observable_id)
+    # the key of a fit mapping in the extension is the key the reader
+    # gives it: the observable, and `<observable>_<experiment>` for an
+    # observable which is measured in several experiments
+    experiments_of: dict[str, set[str | None]] = defaultdict(set)
+    for k in self.indices:
+        experiments_of[self.observable_ids[k]].add(self.experiment_ids.get(k))
+    for k in self.indices:
+        observable_id = self.observable_ids[k]
+        self.info_keys[k] = (
+            observable_id
+            if len(experiments_of[observable_id]) == 1
+            else f"{observable_id}_{self.experiment_ids.get(k)}"
+        )
+
+
+def _observable_formula(self, k: int) -> str:
+    """Get the formula of the observable of a fit mapping.
+
+    An observable of a model which is derived, i.e. a parameter with the
+    formula of the observable as its rule which `add_observables` wrote,
+    is written as that formula, because the model is written as its
+    source. Every other observable is the math of its selection.
+
+    Args:
+        k: index of the fit mapping.
+
+    Returns:
+        The math of PEtab of the observable.
+
+    Raises:
+        ValueError: if the derived model has no rule for the observable.
+    """
+    problem = self.problem
+    model_id = self.model_ids[id(problem.models[k])]
+    sbml_model = self.sbml_models.get(model_id)
+    selection = problem.yid_observable[k]
+    if self._is_derived_observable(k):
+        derived = libsbml.readSBMLFromFile(str(problem.models[k].source.path))
+        rule = derived.getModel().getRuleByVariable(selection)
+        if rule is None:
+            raise ValueError(
+                f"'{problem.opid}': the observable '{selection}' of the fit "
+                f"mapping '{problem.mapping_keys[k]}' was added to the model "
+                f"'{problem.models[k].source.path}' without a rule."
+            )
+        return petab_math_str(
+            formula_expression(libsbml.formulaToL3String(rule.getMath()))
+        )
+    return observable_formula(selection, sbml_model)
+
+
+def _is_derived_observable(self, k: int) -> bool:
+    """Check whether the observable of a fit mapping was added to the model.
+
+    Args:
+        k: index of the fit mapping.
+
+    Returns:
+        Whether the selection of the mapping is a parameter which the
+        derivation of its model created, see `_observable_formula`.
+    """
+    derivation = self.derivations.get(self.model_ids[id(self.problem.models[k])])
+    return derivation is not None and (
+        self.problem.yid_observable[k] in derivation.created
+    )
 ```
 
 Then in `_add_extension`:
@@ -1354,7 +1370,9 @@ from tests.sciml.hybrid import MODEL_PATH, feed_forward, two_inputs
 from tests.sciml.test_fit import MECHANISTIC, PRE, RHS, SETTINGS, _before, _problem
 
 
-def _read(yaml_file: Path, derived_dir: Path) -> tuple[PetabReader, OptimizationProblem]:
+def _read(
+    yaml_file: Path, derived_dir: Path
+) -> tuple[PetabReader, OptimizationProblem]:
     reader = PetabReader.from_yaml(yaml_file)
     reader.derived_dir = derived_dir
     problem = reader.to_optimization_problem(opid="restored")
@@ -1387,13 +1405,17 @@ def _tuple(p: FitParameter) -> tuple:
     )
 
 
-def assert_round_trip(problem: OptimizationProblem, tmp_path: Path) -> OptimizationProblem:
+def assert_round_trip(
+    problem: OptimizationProblem, tmp_path: Path
+) -> OptimizationProblem:
     """Write the problem, read it back and compare the two."""
     problem.initialize(SETTINGS)
     yaml_file = to_petab(problem, tmp_path / "petab")
     reader, restored = _read(yaml_file, tmp_path / "derived")
 
-    assert [_tuple(p) for p in restored.parameters] == [_tuple(p) for p in problem.parameters]
+    assert [_tuple(p) for p in restored.parameters] == [
+        _tuple(p) for p in problem.parameters
+    ]
     assert restored.hybridizations == problem.hybridizations
     assert len(restored.mapping_keys) == len(problem.mapping_keys)
 
@@ -1404,7 +1426,9 @@ def assert_round_trip(problem: OptimizationProblem, tmp_path: Path) -> Optimizat
     x = np.asarray(problem.x0, dtype=float)
     expected = problem.predictions(x)
     observed = restored.predictions(
-        np.asarray([dict(zip(problem.pids, x, strict=True))[pid] for pid in restored.pids])
+        np.asarray(
+            [dict(zip(problem.pids, x, strict=True))[pid] for pid in restored.pids]
+        )
     )
     for i, key in enumerate(restored.mapping_keys):
         info = reader.observable_info(key)
@@ -1461,7 +1485,10 @@ def test_a_frozen_layer_and_bounds(tmp_path: Path) -> None:
     layer_row = rows.loc["net1__layer2__parameters"]
     assert {network_row["estimate"], layer_row["estimate"]} == {"true", "false"}
     estimated = layer_row if layer_row["estimate"] == "true" else network_row
-    assert (float(estimated["lowerBound"]), float(estimated["upperBound"])) == (-5.0, 5.0)
+    assert (float(estimated["lowerBound"]), float(estimated["upperBound"])) == (
+        -5.0,
+        5.0,
+    )
 
 
 def test_the_arrays_of_the_simulations(tmp_path: Path) -> None:
@@ -1511,12 +1538,17 @@ def test_a_network_in_the_right_hand_side(tmp_path: Path) -> None:
         outputs={"net1__output0__0": "gamma"},
     )
     elements = network_fit_parameters(network, estimate={"net1": True}, bounds={})
-    problem = _problem([hybridization], elements, experiment=_compiled(tmp_path, hybridization))
+    problem = _problem(
+        [hybridization], elements, experiment=_compiled(tmp_path, hybridization)
+    )
     assert_round_trip(problem, tmp_path)
     config = _tables(tmp_path / "petab")["config"]
     # the model of the problem is the model without the network
     assert config["model_files"]["lv"]["location"] == "lotka_volterra.xml"
-    assert "net1__output0__0" not in (tmp_path / "petab" / "lotka_volterra.xml").read_text()
+    assert (
+        "net1__output0__0"
+        not in (tmp_path / "petab" / "lotka_volterra.xml").read_text()
+    )
     assert (tmp_path / "petab" / "net1.yaml").is_file()
     assert (tmp_path / "petab" / "net1_arrays.hdf5").is_file()
     assert (tmp_path / "petab" / "hybridization.tsv").is_file()
@@ -1537,7 +1569,9 @@ def test_the_arrays_of_a_compiled_network(tmp_path: Path) -> None:
         outputs={"net6__output0__0": "gamma"},
         frozen=set(network.parameter_ids()),
     )
-    problem = _problem([hybridization], [], experiment=_compiled(tmp_path, hybridization))
+    problem = _problem(
+        [hybridization], [], experiment=_compiled(tmp_path, hybridization)
+    )
     assert_round_trip(problem, tmp_path)
 
 
@@ -1549,7 +1583,10 @@ def test_an_observable_which_shadows_an_entity(tmp_path: Path) -> None:
     )
     assert_round_trip(_problem([_before(network)], elements), tmp_path)
     observables = _tables(tmp_path / "petab")["observables"]
-    assert set(observables["observableId"]) == {"observable__prey", "observable__predator"}
+    assert set(observables["observableId"]) == {
+        "observable__prey",
+        "observable__predator",
+    }
 
 
 def test_the_exported_problem_is_valid_petab(tmp_path: Path) -> None:
@@ -1576,9 +1613,7 @@ def test_a_partial_array_is_refused(tmp_path: Path) -> None:
     )
     # one element of the bias of the first layer is frozen
     elements = [p for p in elements if p.pid != "net1__layer1__bias__0"]
-    problem = _problem(
-        [_before(network, frozen={"net1__layer1__bias__0"})], elements
-    )
+    problem = _problem([_before(network, frozen={"net1__layer1__bias__0"})], elements)
     problem.initialize(SETTINGS)
     with pytest.raises(ValueError, match="sciml-partial-array"):
         to_petab(problem, tmp_path / "petab")
@@ -1673,6 +1708,7 @@ Expected: FAIL with `ModuleNotFoundError: No module named 'sbmlsim.fit.petab_v2.
 Apply to `src/sbmlsim/fit/petab_v2/gaps.py`, after the gap `sciml-parameter-scale`:
 
 ```python
+(
     Gap(
         id="sciml-partial-array",
         kind=GapKind.UNSUPPORTED,
@@ -1686,6 +1722,7 @@ Apply to `src/sbmlsim/fit/petab_v2/gaps.py`, after the gap `sciml-parameter-scal
         "the elements per network, layer and array, which is what PEtab "
         "expresses",
     ),
+)
 ```
 
 - [ ] **Step 4: Create the module**
@@ -2584,6 +2621,7 @@ Apply to `src/sbmlsim/fit/petab_v2/reader.py`, in `fit_parameters`, after the `c
 Add to `src/sbmlsim/fit/petab_v2/gaps.py` after the gap `sciml-priors`:
 
 ```python
+(
     Gap(
         id="priors",
         kind=GapKind.LOSSY,
@@ -2596,6 +2634,7 @@ Add to `src/sbmlsim/fit/petab_v2/gaps.py` after the gap `sciml-priors`:
         "not use it. A prior on the parameters of a network is the gap "
         "`sciml-priors`, which raises",
     ),
+)
 ```
 
 Add to `tests/fit/test_petab_v2_reader.py`:
@@ -2677,7 +2716,11 @@ def test_the_summary_of_a_hook_and_the_groups() -> None:
     )
     a, b, c = FitParameter("a", 1.0), FitParameter("b", 2.0), FitParameter("c", 3.0)
     grouped = HookSummary(
-        "net", "rhs", "layer1 (Linear)", ("x",), (ParameterGroup("net.l.w", ("b", "z")),)
+        "net",
+        "rhs",
+        "layer1 (Linear)",
+        ("x",),
+        (ParameterGroup("net.l.w", ("b", "z")),),
     )
     single, groups = group_parameters([a, b, c], [summary, grouped])
     assert single == [a, c]
@@ -2714,7 +2757,9 @@ def test_the_summary_of_a_hybridization() -> None:
         "net1.layer2.bias",
     ]
     assert summary.groups[0].ids == tuple(
-        sid for sid in network.parameter_ids() if sid.startswith("net1__layer1__weight__")
+        sid
+        for sid in network.parameter_ids()
+        if sid.startswith("net1__layer1__weight__")
     )
 
 
@@ -2756,14 +2801,18 @@ def test_fit_parameters_of_a_hybridization() -> None:
     )
     parameters, _ = in_model.fit_parameters(estimate={"net1": True})
     assert all(not p.is_external for p in parameters)
-    with pytest.raises(NetworkImportError, match="is not the network, a layer or an array"):
+    with pytest.raises(
+        NetworkImportError, match="is not the network, a layer or an array"
+    ):
         in_model.fit_parameters(estimate={"net1.layer9": True})
 ```
 
 Add to `tests/fit/test_display.py`:
 
 ```python
-def test_the_parameters_of_a_hook_are_one_row_per_array(capsys: pytest.CaptureFixture) -> None:
+def test_the_parameters_of_a_hook_are_one_row_per_array(
+    capsys: pytest.CaptureFixture,
+) -> None:
     from sbmlsim.fit.derived import HookSummary, ParameterGroup
     from sbmlsim.fit.display import groups_table, hooks_table, print_parameters
 
@@ -2776,7 +2825,9 @@ def test_the_parameters_of_a_hook_are_one_row_per_array(capsys: pytest.CaptureFi
         targets=("gamma",),
         groups=(ParameterGroup("net.l.w", ids),),
     )
-    print_parameters([FitParameter("alpha", 1.0, 0.0, 10.0), *elements], hooks=[summary])
+    print_parameters(
+        [FitParameter("alpha", 1.0, 0.0, 10.0), *elements], hooks=[summary]
+    )
     out = capsys.readouterr().out
     assert "alpha" in out
     assert "net.l.w" in out
@@ -2924,66 +2975,67 @@ Apply to `src/sbmlsim/sciml/hybridization.py`:
 (check the existing `from dataclasses import ...` line and add `replace` to it) and, in `Hybridization` under the comment `# --- WHAT A FIT NEEDS ---` before `symbols`:
 
 ```python
-    def fit_parameters(
-        self,
-        estimate: Mapping[str, bool],
-        bounds: Mapping[str, tuple[float, float]] | None = None,
-    ) -> tuple[list[FitParameter], Hybridization]:
-        """Get the parameters of a fit of the network and freeze the rest.
+def fit_parameters(
+    self,
+    estimate: Mapping[str, bool],
+    bounds: Mapping[str, tuple[float, float]] | None = None,
+) -> tuple[list[FitParameter], Hybridization]:
+    """Get the parameters of a fit of the network and freeze the rest.
 
-        The pattern decides whether the elements are entities of the model,
-        see `sbmlsim.sciml.parameters.network_fit_parameters`, and every
-        element which is not estimated is frozen.
+    The pattern decides whether the elements are entities of the model,
+    see `sbmlsim.sciml.parameters.network_fit_parameters`, and every
+    element which is not estimated is frozen.
 
-        Args:
-            estimate: key of the entry -> whether the elements are estimated,
-                for the network, a layer or an array.
-            bounds: key of the entry -> lower and upper bound, none by
-                default.
+    Args:
+        estimate: key of the entry -> whether the elements are estimated,
+            for the network, a layer or an array.
+        bounds: key of the entry -> lower and upper bound, none by
+            default.
 
-        Returns:
-            The parameters of the fit and the hybridization with the other
-            elements frozen.
+    Returns:
+        The parameters of the fit and the hybridization with the other
+        elements frozen.
 
-        Raises:
-            NetworkImportError: if a key does not name the network, a layer
-                or an array, or if an estimated element has no value.
-        """
-        parameters = network_fit_parameters(
-            self.network,
-            estimate=estimate,
-            bounds=bounds or {},
-            external=not self.pattern.is_compiled,
-        )
-        frozen = set(self.network.parameter_ids()) - {p.pid for p in parameters}
-        return parameters, replace(self, frozen=frozen)
+    Raises:
+        NetworkImportError: if a key does not name the network, a layer
+            or an array, or if an estimated element has no value.
+    """
+    parameters = network_fit_parameters(
+        self.network,
+        estimate=estimate,
+        bounds=bounds or {},
+        external=not self.pattern.is_compiled,
+    )
+    frozen = set(self.network.parameter_ids()) - {p.pid for p in parameters}
+    return parameters, replace(self, frozen=frozen)
 
-    def summary(self) -> HookSummary:
-        """Describe the network for the console and the report.
 
-        Returns:
-            The id of the network, its pattern, its layers with their types
-            in the order of the forward pass, the targets of its outputs and
-            one group per array of the layers the forward pass calls, with
-            the ids of all elements of the array.
-        """
-        network = self.network
-        types = {layer.layer_id: layer.layer_type for layer in network.model.layers}
-        used = network.used_layers()
-        groups: dict[tuple[str, str], list[str]] = {}
-        for sid, (layer, name, _) in network.parameter_ids().items():
-            if layer in used:
-                groups.setdefault((layer, name), []).append(sid)
-        return HookSummary(
-            name=network.sid,
-            kind=self.pattern.value,
-            description=", ".join(f"{layer} ({types[layer]})" for layer in used),
-            targets=tuple(sorted(self.outputs.values())),
-            groups=tuple(
-                ParameterGroup(label=f"{network.sid}.{layer}.{name}", ids=tuple(ids))
-                for (layer, name), ids in groups.items()
-            ),
-        )
+def summary(self) -> HookSummary:
+    """Describe the network for the console and the report.
+
+    Returns:
+        The id of the network, its pattern, its layers with their types
+        in the order of the forward pass, the targets of its outputs and
+        one group per array of the layers the forward pass calls, with
+        the ids of all elements of the array.
+    """
+    network = self.network
+    types = {layer.layer_id: layer.layer_type for layer in network.model.layers}
+    used = network.used_layers()
+    groups: dict[tuple[str, str], list[str]] = {}
+    for sid, (layer, name, _) in network.parameter_ids().items():
+        if layer in used:
+            groups.setdefault((layer, name), []).append(sid)
+    return HookSummary(
+        name=network.sid,
+        kind=self.pattern.value,
+        description=", ".join(f"{layer} ({types[layer]})" for layer in used),
+        targets=tuple(sorted(self.outputs.values())),
+        groups=tuple(
+            ParameterGroup(label=f"{network.sid}.{layer}.{name}", ids=tuple(ids))
+            for (layer, name), ids in groups.items()
+        ),
+    )
 ```
 
 `sbmlsim.sciml.parameters` imports `sbmlsim.sciml.network` and `sbmlsim.fit.objects` only, so the import does not cycle; `tests/sciml/test_package.py` keeps pinning that `sbmlsim.fit` imports nothing of `sbmlsim.sciml` at import time.
@@ -3215,7 +3267,12 @@ def test_the_overview_shows_the_network_and_its_arrays(tmp_path: Path) -> None:
         "net1.layer2.bias",
     }
     row = arrays["net1.layer1.weight"]
-    assert (row["elements"], row["estimated"], row["lower"], row["upper"]) == (6, 6, "-5", "5")
+    assert (row["elements"], row["estimated"], row["lower"], row["upper"]) == (
+        6,
+        6,
+        "-5",
+        "5",
+    )
     (values,) = row["set_values"]
     assert len(values) == 3 and all(value != "-" for value in values)
     assert context["bound_warnings"] == [
@@ -3253,9 +3310,9 @@ def test_bound_warnings_count_the_elements_of_a_group() -> None:
         "!Optimal parameter 'w0' within 5% of upper bound!",
         "!Optimal parameter 'w1' within 5% of lower bound!",
     ]
-    assert bound_warnings(parameters, x, scales, groups={"net.w": ["w0", "w1", "w2"]}) == [
-        "!2 of the 3 elements of 'net.w' within 5% of a bound!"
-    ]
+    assert bound_warnings(
+        parameters, x, scales, groups={"net.w": ["w0", "w1", "w2"]}
+    ) == ["!2 of the 3 elements of 'net.w' within 5% of a bound!"]
 ```
 
 `feed_forward()` has `n_hidden=3` and `n_inputs=2`: `layer1.weight` 3x2 = 6 elements, `layer1.bias` 3, `layer2.weight` 1x3 = 3, `layer2.bias` 1, in all 13, which the numbers of the test are.
@@ -3404,120 +3461,115 @@ Apply to `src/sbmlsim/fit/report.py`:
 Insert after `html_context` (before `_fisher_context`):
 
 ```python
-    def _array_rows(
-        self,
-        groups: Sequence[tuple[ParameterGroup, Sequence[Any]]],
-        psets: Sequence[ParameterSet],
-    ) -> list[dict[str, Any]]:
-        """Get the rows of the arrays of the networks for the overview.
+def _array_rows(
+    self,
+    groups: Sequence[tuple[ParameterGroup, Sequence[Any]]],
+    psets: Sequence[ParameterSet],
+) -> list[dict[str, Any]]:
+    """Get the rows of the arrays of the networks for the overview.
 
-        Args:
-            groups: the arrays with the parameters of the fit which are their
-                elements, see `sbmlsim.fit.derived.group_parameters`.
-            psets: the parameter sets of the report.
+    Args:
+        groups: the arrays with the parameters of the fit which are their
+            elements, see `sbmlsim.fit.derived.group_parameters`.
+        psets: the parameter sets of the report.
 
-        Returns:
-            One row per array with the number of elements, the estimated
-            ones, the bounds when the elements agree on them, and the
-            minimum, the maximum and the norm of the values of every set.
-        """
-        rows: list[dict[str, Any]] = []
-        for group, members in groups:
-            pids = [p.pid for p in members]
-            lower = {p.lower_bound for p in members}
-            upper = {p.upper_bound for p in members}
-            set_values: list[list[str]] = []
-            for pset in psets:
-                values = np.asarray(
-                    [pset.values.get(pid, float("nan")) for pid in pids], dtype=float
-                )
-                set_values.append(
-                    ["-", "-", "-"]
-                    if values.size == 0
-                    else [
-                        f"{values.min():.4g}",
-                        f"{values.max():.4g}",
-                        f"{np.linalg.norm(values):.4g}",
-                    ]
-                )
-            rows.append(
-                {
-                    "label": group.label,
-                    "elements": len(group.ids),
-                    "estimated": len(members),
-                    "lower": f"{lower.pop():.4g}" if len(lower) == 1 else "-",
-                    "upper": f"{upper.pop():.4g}" if len(upper) == 1 else "-",
-                    "set_values": set_values,
-                }
+    Returns:
+        One row per array with the number of elements, the estimated
+        ones, the bounds when the elements agree on them, and the
+        minimum, the maximum and the norm of the values of every set.
+    """
+    rows: list[dict[str, Any]] = []
+    for group, members in groups:
+        pids = [p.pid for p in members]
+        lower = {p.lower_bound for p in members}
+        upper = {p.upper_bound for p in members}
+        set_values: list[list[str]] = []
+        for pset in psets:
+            values = np.asarray(
+                [pset.values.get(pid, float("nan")) for pid in pids], dtype=float
             )
-        return rows
-
-    def parameter_groups(self) -> dict[str, list[str]]:
-        """Get the arrays of the networks as groups of parameters of the fit.
-
-        Returns:
-            label of the array -> the ids of its elements which are
-            parameters of the fit, for `bound_warnings`.
-        """
-        _, groups = group_parameters(
-            self.problem.parameters, hook_summaries(self.problem.hybridizations)
+            set_values.append(
+                ["-", "-", "-"]
+                if values.size == 0
+                else [
+                    f"{values.min():.4g}",
+                    f"{values.max():.4g}",
+                    f"{np.linalg.norm(values):.4g}",
+                ]
+            )
+        rows.append(
+            {
+                "label": group.label,
+                "elements": len(group.ids),
+                "estimated": len(members),
+                "lower": f"{lower.pop():.4g}" if len(lower) == 1 else "-",
+                "upper": f"{upper.pop():.4g}" if len(upper) == 1 else "-",
+                "set_values": set_values,
+            }
         )
-        return {group.label: [p.pid for p in members] for group, members in groups}
+    return rows
+
+
+def parameter_groups(self) -> dict[str, list[str]]:
+    """Get the arrays of the networks as groups of parameters of the fit.
+
+    Returns:
+        label of the array -> the ids of its elements which are
+        parameters of the fit, for `bound_warnings`.
+    """
+    _, groups = group_parameters(
+        self.problem.parameters, hook_summaries(self.problem.hybridizations)
+    )
+    return {group.label: [p.pid for p in members] for group, members in groups}
 ```
 
 In `_fisher_context`, replace from `correlation = fim.correlation` to the end of the method by:
 
 ```python
-        # the elements of a network are one row per array, with the range of
-        # their errors, and are left out of the correlation matrix
-        _, groups = group_parameters(
-            self.problem.parameters, hook_summaries(self.problem.hybridizations)
-        )
-        grouped = {p.pid for _, members in groups for p in members}
-        rows: list[list[str]] = [
-            [
-                value if isinstance(value, str) else f"{value:.5g}"
-                for value in row.values()
-            ]
-            for row in df.to_dict(orient="records")
-            if row["parameter"] not in grouped
-        ]
-        for group, members in groups:
-            sub = df[df["parameter"].isin([p.pid for p in members])]
-            if not len(sub):
-                continue
-            n = len(sub)
-            cells = {
-                "parameter": f"{group.label} ({n} element{'s' if n != 1 else ''})",
-                "value": f"norm {np.linalg.norm(sub['value'].to_numpy()):.4g}",
-                "scale": "LINEAR",
-                "se": f"{sub['se'].min():.3g} to {sub['se'].max():.3g}",
-                "unit": display.ELEMENT_UNIT_LABEL,
-            }
-            rows.append([cells.get(column, "-") for column in df.columns])
-        keep = [i for i, pid in enumerate(fim.pids) if pid not in grouped]
-        correlation = fim.correlation
-        return {
-            "info": info,
-            "identifiable": fim.is_identifiable,
-            "columns": [
-                {"name": column, "hint": self.HINTS.get(column)}
-                for column in df.columns
-            ],
-            "rows": rows,
-            "eigenvalues": [f"{value:.4g}" for value in eigenvalues],
-            "pids": [fim.pids[i] for i in keep],
-            "correlation": [
-                [f"{correlation.iloc[i, j]:.3f}" for j in keep] for i in keep
-            ],
-            "note": (
-                f"The correlation is shown for the {len(keep)} parameters which "
-                f"are no elements of a network; the {fim.k - len(keep)} elements "
-                f"are left out."
-                if grouped
-                else None
-            ),
-        }
+# the elements of a network are one row per array, with the range of
+# their errors, and are left out of the correlation matrix
+_, groups = group_parameters(
+    self.problem.parameters, hook_summaries(self.problem.hybridizations)
+)
+grouped = {p.pid for _, members in groups for p in members}
+rows: list[list[str]] = [
+    [value if isinstance(value, str) else f"{value:.5g}" for value in row.values()]
+    for row in df.to_dict(orient="records")
+    if row["parameter"] not in grouped
+]
+for group, members in groups:
+    sub = df[df["parameter"].isin([p.pid for p in members])]
+    if not len(sub):
+        continue
+    n = len(sub)
+    cells = {
+        "parameter": f"{group.label} ({n} element{'s' if n != 1 else ''})",
+        "value": f"norm {np.linalg.norm(sub['value'].to_numpy()):.4g}",
+        "scale": "LINEAR",
+        "se": f"{sub['se'].min():.3g} to {sub['se'].max():.3g}",
+        "unit": display.ELEMENT_UNIT_LABEL,
+    }
+    rows.append([cells.get(column, "-") for column in df.columns])
+keep = [i for i, pid in enumerate(fim.pids) if pid not in grouped]
+correlation = fim.correlation
+return {
+    "info": info,
+    "identifiable": fim.is_identifiable,
+    "columns": [
+        {"name": column, "hint": self.HINTS.get(column)} for column in df.columns
+    ],
+    "rows": rows,
+    "eigenvalues": [f"{value:.4g}" for value in eigenvalues],
+    "pids": [fim.pids[i] for i in keep],
+    "correlation": [[f"{correlation.iloc[i, j]:.3f}" for j in keep] for i in keep],
+    "note": (
+        f"The correlation is shown for the {len(keep)} parameters which "
+        f"are no elements of a network; the {fim.k - len(keep)} elements "
+        f"are left out."
+        if grouped
+        else None
+    ),
+}
 ```
 
 In `fit_info`, after the `"experiments"` entry, add:
@@ -3636,7 +3688,10 @@ from sbmlsim.log import some_ids
 
 def test_some_ids_lists_the_first_ids_and_the_count() -> None:
     assert some_ids(["a", "b"]) == "['a', 'b']"
-    assert some_ids([f"x{k}" for k in range(7)], n=5) == "['x0', 'x1', 'x2', 'x3', 'x4'] ... (7 in total)"
+    assert (
+        some_ids([f"x{k}" for k in range(7)], n=5)
+        == "['x0', 'x1', 'x2', 'x3', 'x4'] ... (7 in total)"
+    )
     assert some_ids([], n=5) == "[]"
 ```
 
@@ -4268,7 +4323,9 @@ FIT_SETTINGS = FitSettings(
 
 def collections() -> dict[str, list[FitMappingCollection]]:
     """Get the fit mappings, both species of the one experiment."""
-    return {"neural_ode": [FitMappingCollection(experiment=NeuralODE, sid="neural_ode")]}
+    return {
+        "neural_ode": [FitMappingCollection(experiment=NeuralODE, sid="neural_ode")]
+    }
 
 
 FIT_DEFINITIONS: dict[str, FitDefinition] = {
