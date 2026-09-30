@@ -167,6 +167,41 @@ def test_a_mapping_named_like_an_observable(tmp_path: Path) -> None:
         PetabReader.from_yaml(path)
 
 
+def _add_sbmlsim_block(path: Path, parameters: dict[str, dict[str, Any]]) -> None:
+    """Add a block of the `sbmlsim` extension with the info of the parameters."""
+    config = yaml.safe_load(path.read_text(encoding="utf-8"))
+    config["extensions"] = {
+        "sbmlsim": {"version": "0.1.0", "required": True, "parameters": parameters}
+    }
+    path.write_text(yaml.safe_dump(config, sort_keys=False), encoding="utf-8")
+
+
+def test_the_scale_of_a_parameter_of_the_extension(tmp_path: Path) -> None:
+    """The `sbmlsim` block carries the scale of a parameter by its name."""
+    path = write_problem(
+        tmp_path,
+        observables={"prey_o": "prey", "predator_o": "predator"},
+        experiments={"e1": None},
+    )
+    _add_sbmlsim_block(path, {"alpha": {"scale": "LOG"}, "beta": {"unit": None}})
+    by_id = {p.pid: p for p in PetabReader.from_yaml(path).fit_parameters()}
+    assert by_id["alpha"].scale is ParameterScaleType.LOG
+    # a parameter without a scale has the scale of the settings
+    assert by_id["beta"].scale is None
+
+
+def test_a_scale_of_the_extension_which_is_not_one(tmp_path: Path) -> None:
+    """The error names the parameter and the scales."""
+    path = write_problem(
+        tmp_path,
+        observables={"prey_o": "prey"},
+        experiments={"e1": None},
+    )
+    _add_sbmlsim_block(path, {"alpha": {"scale": "lin"}})
+    with pytest.raises(ValueError, match=r"'alpha'.*'lin'.*\['LINEAR', 'LOG', 'LOG10'"):
+        PetabReader.from_yaml(path).fit_parameters()
+
+
 def test_the_math_of_an_observable_is_translated(tmp_path: Path) -> None:
     """`log` of PEtab is the natural logarithm, `log` of SBML the decadic one."""
     path = write_problem(

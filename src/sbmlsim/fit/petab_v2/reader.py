@@ -16,7 +16,7 @@ is the case for a problem of another tool.
 
 import logging
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import numpy as np
 import pandas as pd
@@ -39,11 +39,13 @@ from sbmlsim.fit.objects import (
     NoiseParameter,
 )
 from sbmlsim.fit.optimization import OptimizationProblem
-from sbmlsim.fit.options import FitSettings
+from sbmlsim.fit.options import FitSettings, ParameterScaleType
 from sbmlsim.fit.petab_v2.extension import (
+    SCIML_EXTENSION_ID,
     SbmlsimExtension,
     check_extensions,
     extension_of,
+    known_extensions,
 )
 from sbmlsim.fit.petab_v2.observables import (
     MODEL_SUFFIX,
@@ -59,6 +61,9 @@ from sbmlsim.model import AbstractModel
 from sbmlsim.simulation.timecourse import Timecourse, TimecourseSim
 from sbmlsim.task import Task
 from sbmlsim.units import UnitRegistry, UnitsInformation
+
+if TYPE_CHECKING:
+    from sbmlsim.fit.petab_v2.sciml import SciMLReader
 
 logger = logging.getLogger(__name__)
 
@@ -95,7 +100,14 @@ def dataset_id(observable_id: str) -> str:
 
 
 class PetabReader:
-    """Read a PEtab v2 problem as an `sbmlsim` simulation experiment and fit."""
+    """Read a PEtab v2 problem as an `sbmlsim` simulation experiment and fit.
+
+    Attributes:
+        sciml: the networks of a problem of PEtab SciML, `None` for a problem
+            without them.
+    """
+
+    sciml: "SciMLReader | None" = None
 
     def __init__(
         self,
@@ -103,6 +115,7 @@ class PetabReader:
         base_path: Path | None = None,
         name: str | None = None,
         derived_dir: Path | None = None,
+        sciml: Any | None = None,
     ):
         """Initialize the reader.
 
@@ -112,18 +125,31 @@ class PetabReader:
                 directory of its YAML file by default.
             name: name of the simulation experiment class which is created, the
                 id of the problem by default.
-            derived_dir: directory the model which carries the observables of
-                the problem is written to, next to the model by default. It is
-                only written if an observable of the problem is a formula.
+            derived_dir: directory the models the fit simulates are written
+                to, next to the model by default: the model which carries the
+                networks of the problem, `<stem>_sciml.xml`, and the model
+                which carries its observables, `<stem>_observables.xml`. A
+                model is only written if the problem has networks in the
+                model or an observable which is a formula.
+            sciml: the block of the extension of PEtab SciML, a `SciMLConfig`
+                or the dictionary of the YAML. It is the block of the
+                configuration of the problem by default, which a problem
+                carries that `petab` has read with its networks. `from_yaml`
+                reads the tables without the block and hands it over.
 
         Raises:
-            ValueError: if the problem has no model or no measurements, or if
-                it requires an extension `sbmlsim` does not know.
+            ImportError: if the problem has neural networks and the extra
+                `sciml` is not installed.
+            ValueError: if the problem has no model or no measurements, if
+                it requires an extension `sbmlsim` does not know, or if its
+                networks cannot be read, see
+                `sbmlsim.fit.petab_v2.sciml.SciMLReader`.
         """
         self.petab_problem = petab_problem
-        for extension_id in check_extensions(
-            getattr(petab_problem.config, "extensions", None)
-        ):
+        extensions = dict(getattr(petab_problem.config, "extensions", None) or {})
+        if sciml is not None:
+            extensions[SCIML_EXTENSION_ID] = sciml
+        for extension_id in check_extensions(extensions):
             logger.warning(
                 "The extension '%s' of the PEtab problem is not known to "
                 "`sbmlsim` and is ignored, which the problem allows: it is not "
@@ -202,6 +228,8 @@ class PetabReader:
         #: mappings are resolved again by every `initialize`
         self._noise_models: dict[str, NoiseModel] = {}
 
+        self.sciml = self._read_sciml(extensions)
+
     @staticmethod
     def from_yaml(yaml_file: Path, name: str | None = None) -> "PetabReader":
         """Read the problem of a PEtab YAML file.
@@ -214,15 +242,77 @@ class PetabReader:
             The reader of the problem.
 
         Raises:
+            ImportError: if the problem has neural networks and the extra
+                `sciml` is not installed.
             ValueError: if the problem requires an extension `sbmlsim` does
                 not know. The extensions are checked on the YAML, before
                 `petab` reads the problem: it needs the package of an
                 extension to read its files.
         """
         yaml_file = Path(yaml_file)
-        check_extensions((load_yaml(yaml_file) or {}).get("extensions"))
-        petab_problem = PetabProblem.from_yaml(yaml_file)
-        return PetabReader(petab_problem, base_path=yaml_file.parent, name=name)
+        config = load_yaml(yaml_file) or {}
+        extensions = dict(config.get("extensions") or {})
+        check_extensions(extensions)
+        sciml = extensions.pop(SCIML_EXTENSION_ID, None)
+        if sciml is None or SCIML_EXTENSION_ID not in known_extensions():
+            petab_problem = PetabProblem.from_yaml(yaml_file)
+            return PetabReader(petab_problem, base_path=yaml_file.parent, name=name)
+        # `petab` reads the networks of a problem through PyTorch, which is
+        # no dependency: it reads the tables, `SciMLReader` the networks
+        petab_problem = PetabProblem.from_yaml(
+            {**config, "extensions": extensions}, base_path=yaml_file.parent
+        )
+        return PetabReader(
+            petab_problem, base_path=yaml_file.parent, name=name, sciml=sciml
+        )
+
+    def _read_sciml(self, extensions: dict[str, Any]) -> "SciMLReader | None":
+        """Read the networks of a problem of PEtab SciML.
+
+        Args:
+            extensions: the blocks of the extensions of the problem.
+
+        Returns:
+            The reader of the networks, `None` for a problem without the
+            extension and for a problem whose extension is not required
+            while the extra `sciml` is not installed.
+
+        Raises:
+            ValueError: if the networks cannot be read.
+        """
+        if (
+            SCIML_EXTENSION_ID not in extensions
+            or SCIML_EXTENSION_ID not in known_extensions()
+        ):
+            return None
+        # the import needs the extra `sciml`
+        from sbmlsim.fit.petab_v2 import sciml
+
+        config = sciml.read_sciml_config(extensions)
+        if config is None:
+            return None
+        return sciml.SciMLReader(
+            petab_problem=self.petab_problem,
+            config=config,
+            base_path=self.base_path,
+            simulations=self._start_conditions(),
+        )
+
+    def _start_conditions(self) -> dict[str, list[str]]:
+        """Get the conditions every simulation starts with.
+
+        Returns:
+            id of the experiment -> the ids of the conditions of its first
+            period, none for the measurements which name no experiment.
+        """
+        conditions: dict[str, list[str]] = {
+            experiment_id: [] for experiment_id in self.experiment_ids
+        }
+        for experiment in self.petab_problem.experiments:
+            periods = sorted(experiment.periods, key=lambda p: p.time)
+            if periods:
+                conditions[experiment.id] = list(periods[0].condition_ids)
+        return conditions
 
     # --- INFORMATION OF THE EXTENSION ---
 
@@ -377,9 +467,12 @@ class PetabReader:
     def _model_source(self, model: Any) -> Path:
         """Get the file of the model the fit simulates.
 
-        The model of the problem is used as it is when every observable is an
-        entity of it, otherwise a copy which carries the observables is written
-        once, see `derived_dir`.
+        The model of the problem is used as it is when it has no networks
+        and every observable is an entity of it. Otherwise the networks of
+        the right hand side and of the observables are compiled into a copy,
+        `<stem>_sciml.xml`, and the observables which are formulas are
+        written into a copy of that, see `derived_dir`. The models are
+        written once.
 
         Args:
             model: model of the PEtab problem.
@@ -392,6 +485,20 @@ class PetabReader:
             return self._model_sources[path]
         derived_dir = self.derived_dir or path.parent
         source = path
+        if self.sciml is not None:
+            # the import needs the extra `sciml`
+            from sbmlsim.sciml.compiler import compile_network, compiled_path
+
+            hybridizations = [
+                hybridization
+                for hybridization in self.sciml.hybridizations()
+                if hybridization.pattern.is_compiled
+                and hybridization.model == model.model_id
+            ]
+            if hybridizations:
+                source = compile_network(
+                    path, hybridizations, compiled_path(path, derived_dir)
+                )
         formulas = self._formula_observables()
         if formulas:
             derived = derived_dir / f"{source.stem}{MODEL_SUFFIX}{source.suffix}"
@@ -511,12 +618,26 @@ class PetabReader:
             changes: dict[str, Any] = {}
             for condition_id in period.condition_ids:
                 condition = conditions.get(condition_id)
+                if (
+                    condition is None
+                    and self.sciml is not None
+                    and condition_id in self.sciml.condition_ids
+                ):
+                    # a condition of the array files, which selects the
+                    # arrays of the inputs of the networks
+                    continue
                 if condition is None:
                     raise ValueError(
                         f"The experiment '{experiment.id}' uses the condition "
                         f"'{condition_id}', which the problem does not define."
                     )
                 for change in condition.changes:
+                    if self.sciml is not None and (
+                        change.target_id in self.sciml.input_ids
+                    ):
+                        # the input of a network, which its hybridization
+                        # holds for the simulation of the experiment
+                        continue
                     if _is_number(change.target_value):
                         changes[change.target_id] = _to_float(change.target_value)
                         continue
@@ -1042,8 +1163,16 @@ class PetabReader:
         """
         versions = self._versions()
         parameters: list[FitParameter] = []
+        networks: list[FitParameter] = (
+            []
+            if self.sciml is None
+            else self.sciml.fit_parameters(lambda sid: self._unit_of(sid, None))
+        )
+        handled = {p.pid for p in networks}
+        if self.sciml is not None:
+            handled |= self.sciml.parameter_ids
         for parameter in self.petab_problem.parameters:
-            if not parameter.estimate:
+            if not parameter.estimate or parameter.id in handled:
                 continue
             target, keys = versions.get(parameter.id, (None, set()))
             if target is None and not self._in_model(parameter.id):
@@ -1084,9 +1213,49 @@ class PetabReader:
                     or self._unit_of(target or parameter.id, None),
                     target=target,
                     mappings=filter_keys(keys) if target is not None else None,
+                    scale=self._scale_of(parameter, info),
                 )
             )
-        return parameters
+        return parameters + networks
+
+    def _scale_of(
+        self, parameter: Any, info: dict[str, Any]
+    ) -> ParameterScaleType | None:
+        """Get the scale of a parameter.
+
+        PEtab v2 has no scale of a parameter. The `sbmlsim` extension carries
+        it by its name, and the problems of PEtab SciML carry the column
+        `parameterScale`, which is read for them when the extension does not
+        give the scale.
+
+        Args:
+            parameter: parameter of the parameter table.
+            info: what the `sbmlsim` extension says about the parameter.
+
+        Returns:
+            The scale, `None` for a parameter without a scale, which is the
+            scale of the settings.
+
+        Raises:
+            ValueError: if the scale of the extension is not the name of a
+                `ParameterScaleType`, or if the column `parameterScale` has a
+                value which is not a scale.
+        """
+        name = info.get("scale")
+        if name is not None:
+            if name not in ParameterScaleType.__members__:
+                raise ValueError(
+                    f"The 'sbmlsim' extension gives the parameter "
+                    f"'{parameter.id}' the scale '{name}', which is not one of "
+                    f"{list(ParameterScaleType.__members__)}."
+                )
+            return ParameterScaleType[name]
+        if self.sciml is None:
+            return None
+        # the import needs the extra `sciml`
+        from sbmlsim.fit.petab_v2.sciml import parameter_scale
+
+        return parameter_scale(parameter)
 
     def mapping_collections(
         self, experiment_class: type[SimulationExperiment]
@@ -1189,6 +1358,7 @@ class PetabReader:
             fit_parameters=self.fit_parameters(),
             base_path=self.base_path,
             data_path=self.base_path,
+            hybridizations=None if self.sciml is None else self.sciml.hybridizations(),
         )
 
 

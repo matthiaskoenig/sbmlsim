@@ -14,6 +14,7 @@ through `sbmlsim` keeps the fit it started from, and
 read and fit with the objective PEtab defines.
 """
 
+import importlib.util
 from collections.abc import Collection, Mapping
 from typing import Any
 
@@ -23,8 +24,16 @@ from pydantic import Field
 #: id of the extension, the key of the block in the YAML of the problem
 EXTENSION_ID = "sbmlsim"
 
-#: the extensions the reader interprets. A problem which requires another one
-#: is rejected, see `check_extensions`
+#: id of the extension of PEtab SciML, i.e. of the neural networks of a
+#: hybrid problem, see `sbmlsim.fit.petab_v2.sciml`
+SCIML_EXTENSION_ID = "sciml"
+
+#: the extra of `sbmlsim` which reads the extension of PEtab SciML
+SCIML_EXTRA = "pip install sbmlsim[sciml]"
+
+#: the extensions the reader interprets without an extra. A problem which
+#: requires another one is rejected, see `known_extensions` and
+#: `check_extensions`
 KNOWN_EXTENSIONS: frozenset[str] = frozenset({EXTENSION_ID})
 
 #: version of the extension, raised when the block changes
@@ -104,9 +113,26 @@ def extension_of(config: Any) -> SbmlsimExtension | None:
     return SbmlsimExtension(**data)
 
 
+def sciml_installed() -> bool:
+    """Check whether the extra `sciml` is installed, i.e. `petab_sciml`."""
+    return importlib.util.find_spec("petab_sciml") is not None
+
+
+def known_extensions() -> frozenset[str]:
+    """Get the extensions the reader interprets in this environment.
+
+    Returns:
+        `KNOWN_EXTENSIONS`, and the extension of PEtab SciML when the extra
+        `sciml` is installed.
+    """
+    if sciml_installed():
+        return KNOWN_EXTENSIONS | {SCIML_EXTENSION_ID}
+    return KNOWN_EXTENSIONS
+
+
 def check_extensions(
     extensions: Mapping[str, Any] | None,
-    known: Collection[str] = KNOWN_EXTENSIONS,
+    known: Collection[str] | None = None,
 ) -> list[str]:
     """Check the extensions of a problem against the ones the reader knows.
 
@@ -120,7 +146,8 @@ def check_extensions(
             the dictionaries of the YAML or as the `ExtensionConfig` objects
             of a problem which was read, `None` for a problem without
             extensions.
-        known: ids of the extensions the reader interprets.
+        known: ids of the extensions the reader interprets,
+            `known_extensions` by default.
 
     Returns:
         The ids of the extensions which are to be ignored, i.e. the ones
@@ -128,8 +155,13 @@ def check_extensions(
         The reader logs them.
 
     Raises:
+        ImportError: if the problem requires the extension of PEtab SciML
+            and the extra `sciml` is not installed. The message names the
+            extra.
         ValueError: if the problem requires an extension which is not known.
     """
+    if known is None:
+        known = known_extensions()
     required: list[str] = []
     ignored: list[str] = []
     for extension_id, block in (extensions or {}).items():
@@ -144,6 +176,13 @@ def check_extensions(
         else:
             ignored.append(extension_id)
 
+    if SCIML_EXTENSION_ID in required:
+        raise ImportError(
+            f"The PEtab problem requires the extension '{SCIML_EXTENSION_ID}', "
+            f"i.e. it is a problem of PEtab SciML with neural networks. "
+            f"`sbmlsim` reads it with the package 'petab_sciml', which is "
+            f"installed with the extra 'sciml': {SCIML_EXTRA}"
+        )
     if required:
         raise ValueError(
             f"The PEtab problem requires the extensions '{', '.join(required)}', "

@@ -13,11 +13,13 @@ from petab.v1.yaml import load_yaml, write_yaml
 from sbmlsim.fit import FitSettings
 from sbmlsim.fit.objects import NoiseDistribution, NoiseModel, NoiseParameter
 from sbmlsim.fit.optimization import OptimizationProblem
-from sbmlsim.fit.petab_v2 import GapKind, gaps_of_problem, to_petab
+from sbmlsim.fit.petab_v2 import GapKind, extension, gaps_of_problem, to_petab
 from sbmlsim.fit.petab_v2.extension import (
     EXTENSION_ID,
     KNOWN_EXTENSIONS,
+    SCIML_EXTENSION_ID,
     check_extensions,
+    known_extensions,
 )
 from sbmlsim.fit.petab_v2.gaps import GAPS_BY_ID
 from sbmlsim.fit.petab_v2.likelihood import log_likelihood
@@ -229,7 +231,7 @@ def test_check_extensions() -> None:
         )
     # the ids are listed, not the representation of a list
     assert "'tool_a, tool_b'" in str(excinfo.value)
-    assert f"'{EXTENSION_ID}'" in str(excinfo.value)
+    assert f"it knows '{', '.join(sorted(known_extensions()))}'" in str(excinfo.value)
     assert "[" not in str(excinfo.value)
     # an extension which the caller knows is not foreign
     assert check_extensions({"tool_a": {"required": True}}, known={"tool_a"}) == []
@@ -263,23 +265,57 @@ def test_a_foreign_extension_which_is_not_required_is_ignored(
     assert len(problem.mapping_keys) == 4
 
 
-def test_the_sciml_extension_is_reported_and_not_a_missing_module(
-    petab_iv: Path,
+SCIML_BLOCK = {
+    "version": "0.1.0",
+    "required": True,
+    "array_files": [],
+    "hybridization_files": [],
+    "neural_networks": {},
+}
+
+
+def test_the_extension_of_the_networks_is_known_with_the_extra(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The extension `sciml` is read when `petab_sciml` is installed."""
+    monkeypatch.setattr(extension, "sciml_installed", lambda: True)
+    assert known_extensions() == {EXTENSION_ID, SCIML_EXTENSION_ID}
+    assert check_extensions({SCIML_EXTENSION_ID: SCIML_BLOCK}) == []
+
+    monkeypatch.setattr(extension, "sciml_installed", lambda: False)
+    assert known_extensions() == {EXTENSION_ID}
+    assert check_extensions({SCIML_EXTENSION_ID: {"required": False}}) == [
+        SCIML_EXTENSION_ID
+    ]
+
+
+def test_the_missing_extra_is_named_and_not_a_missing_module(
+    petab_iv: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """The extensions are checked before `petab` reads their files."""
-    _add_extension(
-        petab_iv,
-        "sciml",
-        {
-            "version": "0.1.0",
-            "required": True,
-            "array_files": [],
-            "hybridization_files": [],
-            "neural_networks": {},
-        },
-    )
-    with pytest.raises(ValueError, match=r"requires the extensions.*sciml"):
+    _add_extension(petab_iv, SCIML_EXTENSION_ID, SCIML_BLOCK)
+    monkeypatch.setattr(extension, "sciml_installed", lambda: False)
+    with pytest.raises(ImportError, match=r"pip install sbmlsim\[sciml\]"):
         from_petab(petab_iv / "problem.yaml")
+    # the other extensions which are required are still named
+    _add_extension(petab_iv, "tool_a", {"version": "1.0.0", "required": True})
+    with pytest.raises(ImportError, match=r"pip install sbmlsim\[sciml\]"):
+        from_petab(petab_iv / "problem.yaml")
+
+
+def test_a_problem_with_the_extension_and_without_networks_is_read(
+    petab_iv: Path,
+) -> None:
+    """The tables of a problem are read without its block of the networks."""
+    pytest.importorskip("petab_sciml")
+    _add_extension(petab_iv, SCIML_EXTENSION_ID, SCIML_BLOCK)
+    reader = PetabReader.from_yaml(petab_iv / "problem.yaml")
+    assert reader.sciml is not None
+    assert reader.sciml.networks == {}
+    problem = reader.to_optimization_problem()
+    assert problem.hybridizations == []
+    problem.initialize(reader.settings)
+    assert len(problem.mapping_keys) == 4
 
 
 def test_round_trip_keeps_the_noise_models(petab_iv: Path, tmp_path: Path) -> None:

@@ -47,7 +47,10 @@ def test_the_package_does_not_import_the_networks() -> None:
         "import sys; sys.modules['petab_sciml'] = None\n"
         "import sbmlsim, sbmlsim.fit, sbmlsim.testsuite, sbmlsim.fit.petab_v2\n"
         "import sbmlsim.fit.cli, sbmlsim.fit.derived, sbmlsim.fit.runner\n"
+        "from sbmlsim.fit.petab_v2.extension import known_extensions\n"
+        "assert known_extensions() == {'sbmlsim'}, known_extensions()\n"
         "assert 'sbmlsim.sciml' not in sys.modules\n"
+        "assert 'sbmlsim.fit.petab_v2.sciml' not in sys.modules\n"
     )
     assert result.returncode == 0, result.stderr
 
