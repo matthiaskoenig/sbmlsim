@@ -1,5 +1,6 @@
 """Test that a fit survives runs which fail or run out of time."""
 
+import sys
 from pathlib import Path
 from typing import Any
 
@@ -279,3 +280,45 @@ def test_a_worker_without_a_problem_reports_it() -> None:
     assert fit.success is False
     assert "no data" in fit.message
     assert trajectory == []
+
+
+def _start_methods(
+    monkeypatch: pytest.MonkeyPatch, explicit: str | None, default: str
+) -> None:
+    """Pretend the start method set by the user and the default of the platform."""
+    monkeypatch.setattr(
+        runner.multiprocessing,
+        "get_start_method",
+        lambda allow_none=False: explicit if allow_none else explicit or default,
+    )
+    monkeypatch.setattr(
+        runner.multiprocessing,
+        "get_all_start_methods",
+        lambda: [default, *({"fork", "spawn", "forkserver"} - {default})],
+    )
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="windows has no forkserver")
+def test_the_workers_are_not_forked(
+    op_hctz_pk: OptimizationProblem, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The default `fork` of python 3.13 on linux is replaced by `forkserver`."""
+    _start_methods(monkeypatch, explicit=None, default="fork")
+    assert runner._pool_context(op_hctz_pk).get_start_method() == "forkserver"
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="windows has no fork")
+def test_a_start_method_the_user_sets_is_kept(
+    op_hctz_pk: OptimizationProblem, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A start method set with `multiprocessing.set_start_method` is used."""
+    _start_methods(monkeypatch, explicit="fork", default="fork")
+    assert runner._pool_context(op_hctz_pk).get_start_method() == "fork"
+
+
+def test_another_default_start_method_is_kept(
+    op_hctz_pk: OptimizationProblem, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The default `spawn` of macos and windows is used."""
+    _start_methods(monkeypatch, explicit=None, default="spawn")
+    assert runner._pool_context(op_hctz_pk).get_start_method() == "spawn"
