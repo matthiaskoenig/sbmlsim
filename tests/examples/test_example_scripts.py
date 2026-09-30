@@ -49,13 +49,14 @@ def run_example(
     """Run an example as a module in `cwd`."""
     if module.startswith("examples.sciml"):
         pytest.importorskip("petab_sciml", reason="the extra `sciml` is not installed")
-    env = dict(os.environ, PYTHONPATH=str(REPO_DIR), MPLBACKEND="Agg")
+    # the output of rich is utf-8 on every platform, the locale of windows is not
+    env = dict(os.environ, PYTHONPATH=str(REPO_DIR), MPLBACKEND="Agg", PYTHONUTF8="1")
     result = subprocess.run(
         [sys.executable, "-m", module, *arguments],
         cwd=cwd,
         env=env,
         capture_output=True,
-        text=True,
+        encoding="utf-8",
         check=False,
     )
     assert result.returncode == 0, result.stderr
