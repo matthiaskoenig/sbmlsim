@@ -32,6 +32,7 @@ from matplotlib.lines import Line2D
 
 from sbmlsim import __version__
 from sbmlsim.fit import display
+from sbmlsim.fit.derived import ParameterGroup, group_parameters, hook_summaries
 from sbmlsim.fit.fisher import FisherInformation
 from sbmlsim.fit.identifiability import IdentifiabilityResult, plot_all
 from sbmlsim.fit.metrics import FitMetrics
@@ -425,7 +426,11 @@ class FitReport:
         info.append(self.parameters_report())
         info.extend(self.metrics(pset).report() for pset in self.parameter_sets)
         if self.opt_result:
-            info.append(self.opt_result.report(path=None, print_output=False))
+            info.append(
+                self.opt_result.report(
+                    path=None, print_output=False, groups=self.parameter_groups()
+                )
+            )
         if self.identifiability:
             info.append(self.identifiability.report())
 
@@ -452,6 +457,7 @@ class FitReport:
                 self.problem.parameters,
                 self.x(pset),
                 self.problem.scales_initialized,
+                groups=self.parameter_groups(),
             ):
                 info.append(f"\t>>> {pset.sid}: {msg} <<<")
         info.append("-" * 80)
@@ -461,6 +467,9 @@ class FitReport:
     #: what a value of the report means, shown as a tooltip on its column.
     #: The keys are the column names of the tables of the report
     HINTS: ClassVar[dict[str, str]] = {
+        "elements": "Number of elements of the array.",
+        "estimated": "Number of elements of the array the fit adjusts.",
+        "norm": "Euclidean norm of the values of the estimated elements.",
         "n": "Number of data points which enter the value.",
         "k": "Number of parameters the fit adjusts.",
         "cost": (
@@ -645,8 +654,11 @@ class FitReport:
         metrics = self.metrics_df()
         mapping_metrics = self.metrics_mappings_df()
 
-        # the parameters with one column per set
+        # the parameters with one column per set; the elements of a network
+        # are one row per array, see `_array_rows`
         psets = list(self.parameter_sets)
+        summaries = hook_summaries(self.problem.hybridizations)
+        single, groups = group_parameters(self.problem.parameters, summaries)
         parameters = [
             {
                 "pid": p.pid,
@@ -659,8 +671,18 @@ class FitReport:
                 "upper": f"{p.upper_bound:.4g}",
                 "unit": p.unit or "model",
             }
-            for p in self.problem.parameters
+            for p in single
         ]
+        hooks = [
+            {
+                "name": summary.name,
+                "kind": summary.kind,
+                "description": summary.description,
+                "targets": ", ".join(summary.targets),
+            }
+            for summary in summaries
+        ]
+        arrays = self._array_rows(groups, psets)
         warnings: list[str] = []
         for pset in psets:
             warnings.extend(
@@ -669,6 +691,7 @@ class FitReport:
                     self.problem.parameters,
                     self.x(pset),
                     self.problem.scales_initialized,
+                    groups=self.parameter_groups(),
                 )
             )
 
@@ -797,7 +820,9 @@ class FitReport:
             "kinds": kinds,
             "fit_info": self.fit_info(),
             "parameters": parameters,
-            "versioned_parameters": has_renamed_targets(self.problem.parameters),
+            "hooks": hooks,
+            "arrays": arrays,
+            "versioned_parameters": has_renamed_targets(single),
             "parameter_set_ids": [pset.sid for pset in psets],
             "bound_warnings": warnings,
             "settings": {
@@ -865,6 +890,66 @@ class FitReport:
             "files": files,
         }
 
+    def _array_rows(
+        self,
+        groups: Sequence[tuple[ParameterGroup, Sequence[Any]]],
+        psets: Sequence[ParameterSet],
+    ) -> list[dict[str, Any]]:
+        """Get the rows of the arrays of the networks for the overview.
+
+        Args:
+            groups: the arrays with the parameters of the fit which are their
+                elements, see `sbmlsim.fit.derived.group_parameters`.
+            psets: the parameter sets of the report.
+
+        Returns:
+            One row per array with the number of elements, the estimated
+            ones, the bounds when the elements agree on them, and the
+            minimum, the maximum and the norm of the values of every set.
+        """
+        rows: list[dict[str, Any]] = []
+        for group, members in groups:
+            pids = [p.pid for p in members]
+            lower = {p.lower_bound for p in members}
+            upper = {p.upper_bound for p in members}
+            set_values: list[list[str]] = []
+            for pset in psets:
+                values = np.asarray(
+                    [pset.values.get(pid, float("nan")) for pid in pids], dtype=float
+                )
+                set_values.append(
+                    ["-", "-", "-"]
+                    if values.size == 0
+                    else [
+                        f"{values.min():.4g}",
+                        f"{values.max():.4g}",
+                        f"{np.linalg.norm(values):.4g}",
+                    ]
+                )
+            rows.append(
+                {
+                    "label": group.label,
+                    "elements": len(group.ids),
+                    "estimated": len(members),
+                    "lower": f"{lower.pop():.4g}" if len(lower) == 1 else "-",
+                    "upper": f"{upper.pop():.4g}" if len(upper) == 1 else "-",
+                    "set_values": set_values,
+                }
+            )
+        return rows
+
+    def parameter_groups(self) -> dict[str, list[str]]:
+        """Get the arrays of the networks as groups of parameters of the fit.
+
+        Returns:
+            label of the array -> the ids of its elements which are
+            parameters of the fit, for `bound_warnings`.
+        """
+        _, groups = group_parameters(
+            self.problem.parameters, hook_summaries(self.problem.hybridizations)
+        )
+        return {group.label: [p.pid for p in members] for group, members in groups}
+
     def _fisher_context(self) -> dict[str, Any] | None:
         """Collect what the Fisher information of the report shows."""
         fim = self.fisher
@@ -885,6 +970,34 @@ class FitReport:
             "condition number": f"{fim.condition_number:.4g}",
             "confidence level": f"{fim.alpha:.0%}",
         }
+        # the elements of a network are one row per array, with the range of
+        # their errors, and are left out of the correlation matrix
+        _, groups = group_parameters(
+            self.problem.parameters, hook_summaries(self.problem.hybridizations)
+        )
+        grouped = {p.pid for _, members in groups for p in members}
+        rows: list[list[str]] = [
+            [
+                value if isinstance(value, str) else f"{value:.5g}"
+                for value in row.values()
+            ]
+            for row in df.to_dict(orient="records")
+            if row["parameter"] not in grouped
+        ]
+        for group, members in groups:
+            sub = df[df["parameter"].isin([p.pid for p in members])]
+            if not len(sub):
+                continue
+            n = len(sub)
+            cells = {
+                "parameter": f"{group.label} ({n} element{'s' if n != 1 else ''})",
+                "value": f"norm {np.linalg.norm(sub['value'].to_numpy()):.4g}",
+                "scale": "LINEAR",
+                "se": f"{sub['se'].min():.3g} to {sub['se'].max():.3g}",
+                "unit": display.ELEMENT_UNIT_LABEL,
+            }
+            rows.append([cells.get(column, "-") for column in df.columns])
+        keep = [i for i, pid in enumerate(fim.pids) if pid not in grouped]
         correlation = fim.correlation
         return {
             "info": info,
@@ -893,19 +1006,19 @@ class FitReport:
                 {"name": column, "hint": self.HINTS.get(column)}
                 for column in df.columns
             ],
-            "rows": [
-                [
-                    value if isinstance(value, str) else f"{value:.5g}"
-                    for value in row.values()
-                ]
-                for row in df.to_dict(orient="records")
-            ],
+            "rows": rows,
             "eigenvalues": [f"{value:.4g}" for value in eigenvalues],
-            "pids": list(fim.pids),
+            "pids": [fim.pids[i] for i in keep],
             "correlation": [
-                [f"{correlation.iloc[i, j]:.3f}" for j in range(fim.k)]
-                for i in range(fim.k)
+                [f"{correlation.iloc[i, j]:.3f}" for j in keep] for i in keep
             ],
+            "note": (
+                f"The correlation is shown for the {len(keep)} parameters which "
+                f"are no elements of a network; the {fim.k - len(keep)} elements "
+                f"are left out."
+                if grouped
+                else None
+            ),
         }
 
     def _identifiability_context(self, plots_dir: Path) -> dict[str, Any] | None:
@@ -963,7 +1076,7 @@ class FitReport:
 
     def fit_info(self) -> dict[str, str]:
         """Get the key facts of the fit, the same the console reports."""
-        info = {
+        info: dict[str, str] = {
             "problem": self.problem.opid,
             "parameter sets": ", ".join(pset.sid for pset in self.parameter_sets),
             "fit mappings": ", ".join(
@@ -974,9 +1087,12 @@ class FitReport:
                 collection.experiment_class.__name__
                 for collection in self.problem.mapping_collections
             ),
-            "base path": str(self.problem.base_path),
-            "data path": str(self.problem.data_path),
         }
+        summaries = hook_summaries(self.problem.hybridizations)
+        if summaries:
+            info["networks"] = ", ".join(f"{s.name} ({s.kind})" for s in summaries)
+        info["base path"] = str(self.problem.base_path)
+        info["data path"] = str(self.problem.data_path)
         if self.opt_result:
             info["optimization"] = f"{self.opt_result.size} runs"
         return info

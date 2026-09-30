@@ -63,6 +63,42 @@
     {% endif %}
   </div>
 
+  {% if hooks %}
+  <h3>Networks</h3>
+  <div class="card">
+    <table data-filter="row">
+      <thead><tr>
+        <th data-sort="text">network</th><th data-sort="text">pattern</th>
+        <th data-sort="text">layers</th><th data-sort="text">targets</th>
+      </tr></thead>
+      <tbody>
+      {% for hook in hooks %}
+      <tr><td class="mono">{{ hook.name }}</td><td>{{ hook.kind }}</td><td class="mono">{{ hook.description }}</td><td class="mono">{{ hook.targets }}</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+    <table data-filter="row">
+      <thead><tr>
+        <th data-sort="text">array</th>
+        <th class="num" data-sort="num">elements<span class="hint" tabindex="0" data-tip="{{ hints['elements'] }}">?</span></th>
+        <th class="num" data-sort="num">estimated<span class="hint" tabindex="0" data-tip="{{ hints['estimated'] }}">?</span></th>
+        {% for pset in parameter_set_ids %}<th class="num" data-sort="num">{{ pset }} min</th><th class="num" data-sort="num">{{ pset }} max</th><th class="num" data-sort="num">{{ pset }} norm<span class="hint" tabindex="0" data-tip="{{ hints['norm'] }}">?</span></th>{% endfor %}
+        <th class="num" data-sort="num">lower</th><th class="num" data-sort="num">upper</th>
+      </tr></thead>
+      <tbody>
+      {% for row in arrays %}
+      <tr>
+        <td class="mono">{{ row.label }}</td>
+        <td class="num mono">{{ row.elements }}</td><td class="num mono">{{ row.estimated }}</td>
+        {% for values in row.set_values %}{% for value in values %}<td class="num mono">{{ value }}</td>{% endfor %}{% endfor %}
+        <td class="num mono">{{ row.lower }}</td><td class="num mono">{{ row.upper }}</td>
+      </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% endif %}
+
   <h3>Settings</h3>
   <div class="card">
     <table data-filter="row">
@@ -211,6 +247,7 @@
 
   <div class="card">
     <h3>Correlation<span class="hint" tabindex="0" data-tip="Correlation of the parameters from the covariance. A pair at plus or minus one is a pair the data only determines together, i.e. the fit trades one against the other.">?</span></h3>
+    {% if fisher.note %}<p>{{ fisher.note }}</p>{% endif %}
     <table>
       <thead><tr><th></th>{% for pid in fisher.pids %}<th class="num">{{ pid }}</th>{% endfor %}</tr></thead>
       <tbody>

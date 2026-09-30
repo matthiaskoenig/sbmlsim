@@ -108,7 +108,7 @@ def test_profile_identifiable() -> None:
         costs=[5.0, 2.0, 1.0, 2.0, 5.0],
         index_optimum=2,
     )
-    profile.evaluate(threshold=3.0, flatness_cost=0.1)
+    profile.evaluate(threshold=3.0, flatness_cost=0.1, scale=ParameterScaleType.LOG10)
     assert profile.identifiability is Identifiability.IDENTIFIABLE
     assert profile.ci_lower is not None and 0.1 < profile.ci_lower < 1.0 / 3.0
     assert profile.ci_upper is not None and 3.0 < profile.ci_upper < 10.0
@@ -120,8 +120,13 @@ def test_profile_crossing_interpolation() -> None:
     """The crossing is interpolated linearly in the logarithm of the parameter."""
     profile = _profile(values=[1.0, 100.0], costs=[1.0, 3.0], index_optimum=0)
     # halfway in the cost is halfway in log10, i.e., at 10
-    assert profile.crossing(threshold=2.0, direction=+1) == pytest.approx(10.0)
-    assert profile.crossing(threshold=2.0, direction=-1) is None
+    assert profile.crossing(
+        threshold=2.0, direction=+1, scale=ParameterScaleType.LOG10
+    ) == pytest.approx(10.0)
+    assert (
+        profile.crossing(threshold=2.0, direction=-1, scale=ParameterScaleType.LOG10)
+        is None
+    )
 
 
 def test_profile_crossing_on_the_linear_scale() -> None:
@@ -218,7 +223,7 @@ def test_profile_non_identifiable_lower() -> None:
     profile = _profile(
         values=[0.01, 0.1, 1.0, 10.0], costs=[1.2, 1.1, 1.0, 5.0], index_optimum=2
     )
-    profile.evaluate(threshold=3.0, flatness_cost=0.05)
+    profile.evaluate(threshold=3.0, flatness_cost=0.05, scale=ParameterScaleType.LOG10)
     assert profile.identifiability is Identifiability.NON_IDENTIFIABLE_LOWER
     assert profile.ci_lower is None
     assert profile.ci_upper is not None
@@ -229,7 +234,7 @@ def test_profile_non_identifiable_upper() -> None:
     profile = _profile(
         values=[0.01, 1.0, 10.0, 100.0], costs=[5.0, 1.0, 1.5, 1.6], index_optimum=1
     )
-    profile.evaluate(threshold=3.0, flatness_cost=0.05)
+    profile.evaluate(threshold=3.0, flatness_cost=0.05, scale=ParameterScaleType.LOG10)
     assert profile.identifiability is Identifiability.NON_IDENTIFIABLE_UPPER
     assert profile.ci_lower is not None
     assert profile.ci_upper is None
@@ -242,7 +247,7 @@ def test_profile_non_identifiable_both() -> None:
         costs=[2.0, 1.5, 1.0, 1.5, 2.0],
         index_optimum=2,
     )
-    profile.evaluate(threshold=3.0, flatness_cost=0.05)
+    profile.evaluate(threshold=3.0, flatness_cost=0.05, scale=ParameterScaleType.LOG10)
     assert profile.identifiability is Identifiability.NON_IDENTIFIABLE
     assert profile.ci_lower is None and profile.ci_upper is None
 
@@ -254,7 +259,7 @@ def test_profile_structural() -> None:
         costs=[1.0, 1.001, 1.0, 1.0, 1.002],
         index_optimum=2,
     )
-    profile.evaluate(threshold=3.0, flatness_cost=0.05)
+    profile.evaluate(threshold=3.0, flatness_cost=0.05, scale=ParameterScaleType.LOG10)
     assert profile.identifiability is Identifiability.STRUCTURAL
     assert profile.identifiability.label == "structurally non-identifiable"
     assert not profile.identifiability.is_identifiable

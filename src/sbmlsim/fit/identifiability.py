@@ -401,7 +401,7 @@ class ParameterProfile:
         self,
         threshold: float,
         direction: int,
-        scale: ParameterScaleType = ParameterScaleType.LOG10,
+        scale: ParameterScaleType,
     ) -> float | None:
         """Get the value at which the profile crosses the threshold.
 
@@ -452,7 +452,7 @@ class ParameterProfile:
         self,
         threshold: float,
         flatness_cost: float,
-        scale: ParameterScaleType = ParameterScaleType.LOG10,
+        scale: ParameterScaleType,
     ) -> None:
         """Set the confidence interval and the classification.
 

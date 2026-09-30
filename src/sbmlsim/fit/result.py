@@ -3,7 +3,7 @@
 import datetime
 import logging
 import uuid
-from collections.abc import Iterable, Sequence
+from collections.abc import Collection, Iterable, Mapping, Sequence
 from pathlib import Path
 from typing import Any
 
@@ -42,6 +42,7 @@ def bound_warnings(
     x: np.ndarray,
     scales: Sequence[ParameterScaleType],
     rtol: float = 0.05,
+    groups: Mapping[str, Collection[str]] | None = None,
 ) -> list[str]:
     """Warn about optimal parameters which ended up on their bounds.
 
@@ -57,11 +58,20 @@ def bound_warnings(
         scales: the scale of every parameter, see
             `OptimizationProblem.scales_initialized`.
         rtol: relative distance to a bound which is reported.
+        groups: label of a group -> the ids of the parameters which are its
+            elements, e.g. the arrays of a network. The elements of a group
+            are reported as one message which counts them, because a network
+            has hundreds.
 
     Returns:
-        Messages for the parameters which are within `rtol` of one of their bounds.
+        Messages for the parameters which are within `rtol` of one of their
+        bounds, and one message per group with such elements.
     """
+    grouped: dict[str, str] = {
+        pid: label for label, ids in (groups or {}).items() for pid in ids
+    }
     messages: list[str] = []
+    at_bound: dict[str, int] = {}
     for k, (p, scale) in enumerate(zip(parameters, scales, strict=True)):
         lb, ub, value = p.lower_bound, p.upper_bound, x[k]
         if not np.isfinite(lb) or not np.isfinite(ub):
@@ -79,9 +89,19 @@ def bound_warnings(
 
         for bound, name in [(lb, "lower"), (ub, "upper")]:
             if abs(value - bound) / span < rtol:
+                if p.pid in grouped:
+                    label = grouped[p.pid]
+                    at_bound[label] = at_bound.get(label, 0) + 1
+                    continue
                 messages.append(
                     f"!Optimal parameter '{p.pid}' within {rtol:.0%} of {name} bound!"
                 )
+    sizes = {label: len(ids) for label, ids in (groups or {}).items()}
+    for label, count in at_bound.items():
+        messages.append(
+            f"!{count} of the {sizes[label]} elements of '{label}' within "
+            f"{rtol:.0%} of a bound!"
+        )
     return messages
 
 
@@ -455,8 +475,20 @@ class OptimizationResult(ObjectJSONEncoder):
         df = pd.DataFrame(results)
         return df.sort_values(by=["cost"]).reset_index(drop=True)
 
-    def report(self, path: Path | None = None, print_output: bool = True) -> str:
-        """Report of optimization."""
+    def report(
+        self,
+        path: Path | None = None,
+        print_output: bool = True,
+        groups: Mapping[str, Collection[str]] | None = None,
+    ) -> str:
+        """Report of optimization.
+
+        Args:
+            path: file the report is written to, none by default.
+            print_output: print the report.
+            groups: the groups of parameters which `bound_warnings` reports
+                as one, e.g. the arrays of a network.
+        """
         pd.set_option("display.max_columns", None)
         pd.set_option("display.expand_frame_repr", False)
         info = [
@@ -473,7 +505,7 @@ class OptimizationResult(ObjectJSONEncoder):
         pd.reset_option("display.expand_frame_repr")
 
         xopt = self.xopt
-        for msg in bound_warnings(self.parameters, xopt, self.scales):
+        for msg in bound_warnings(self.parameters, xopt, self.scales, groups=groups):
             logger.error(msg)
             info.append(f"\t>>> {msg} <<<")
 
