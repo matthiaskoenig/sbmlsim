@@ -229,6 +229,9 @@ class _FormulaParser(SBMLMathMLParser):
         tag = str(operator.tag).removeprefix(f"{{{_MATHML_NAMESPACE}}}")
         if tag in ("rem", "quotient") and len(operands) == 2:
             x, y = (self._parse_element(operand) for operand in operands)
+            if y.is_zero:
+                # not defined; sympy would simplify `x - 0 * zoo` to `x`
+                return sympy.nan
             truncated = _truncate(x / y)
             return truncated if tag == "quotient" else x - y * truncated
         return super().handle_apply(element)
@@ -442,8 +445,9 @@ def evaluate_formula(formula: str, variables: Mapping[str, Any]) -> Any:
 
     Raises:
         ValueError: if the formula is not valid math, see
-            `formula_expression`, if an identifier has no value or if the
-            shapes of the values do not broadcast.
+            `formula_expression`, if an identifier has no value, if the
+            shapes of the values do not broadcast, or if the value of numbers
+            is complex, overflows or divides by zero.
     """
     if not isinstance(formula, str):
         raise ValueError(f"The formula '{formula}' is empty")
@@ -462,7 +466,11 @@ def evaluate_formula(formula: str, variables: Mapping[str, Any]) -> Any:
             f"The values of the formula '{formula}' cannot be broadcast to "
             f"one shape: {shapes}"
         ) from err
-    value = np.asarray(function(*[variables[symbol] for symbol in symbols]), float)
+    try:
+        value = np.asarray(function(*[variables[symbol] for symbol in symbols]), float)
+    except (ArithmeticError, TypeError) as err:
+        # a complex value, an overflow or a division by zero of numbers
+        raise ValueError(f"The formula '{formula}' cannot be evaluated: {err}") from err
     if shape == () and value.shape == ():
         return float(value)
     return np.array(np.broadcast_to(value, np.broadcast_shapes(shape, value.shape)))

@@ -47,8 +47,10 @@ dependencies = [
 	"xarray>=2026.7.0",
 	"scipy>=1.18.1",
 	"sympy>=1.14.0",
-	# the formulas of a model and of a network as sympy expressions
-	"sbmlmath>=0.4.1",
+	# the formulas of a model and of a network as sympy expressions;
+	# `sbmlsim.mathml` overrides `handle_apply` of its parser for `rem` and
+	# `quotient`, the test of both is the tripwire when the bound is raised
+	"sbmlmath>=0.4.1,<0.5",
 	"pint>=0.25.3",
 	"pydantic>=2.13.5",
 	# parameter fitting and sensitivity analysis

@@ -1,5 +1,6 @@
 """Tests of the formulas of SBML which are read with libsbml and sbmlmath."""
 
+import re
 from typing import Any
 
 import libsbml
@@ -332,3 +333,25 @@ def test_a_formula_round_trips(formula: str) -> None:
     # and the syntax tree is math of SBML too
     astnode = expression_to_astnode(formula_expression(formula))
     assert astnode.isWellFormedASTNode()
+
+
+@pytest.mark.parametrize(
+    ("formula", "variables"),
+    [
+        ("sqrt(x)", {"x": -1.0}),
+        ("x^y", {"x": -8.0, "y": 0.5}),
+        ("x^y", {"x": 10.0, "y": 400.0}),
+        ("rem(x, y)", {"x": 7.0, "y": 0.0}),
+        ("quotient(x, y)", {"x": 7.0, "y": 0.0}),
+    ],
+)
+def test_a_formula_without_a_real_value(formula: str, variables: dict) -> None:
+    """A complex value, an overflow or a division by zero names the formula."""
+    with pytest.raises(ValueError, match=rf"The formula '{re.escape(formula)}' cannot"):
+        evaluate_formula(formula, variables)
+
+
+@pytest.mark.parametrize("formula", ["rem(x, 0)", "quotient(x, 0)"])
+def test_the_remainder_by_zero_is_not_defined(formula: str) -> None:
+    """A literal zero divisor is not simplified away."""
+    assert np.isnan(evaluate_formula(formula, {"x": 7.0}))
