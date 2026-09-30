@@ -262,8 +262,28 @@ class OptimizationResult(ObjectJSONEncoder):
         return combined
 
     def to_tsv(self, path: Path) -> None:
-        """Store fit results as TSV."""
-        self.df_fits.to_csv(path, sep="\t", index=False)
+        """Store fit results as TSV, one line per run.
+
+        The columns named by the parameter ids are the fitted values, the columns
+        `x0.<pid>` the start values of the run (`.` is no character of an id, so
+        the names cannot collide). The vectors `x` and `x0` of `df_fits` are not
+        written as such, their text would span several lines and be rounded.
+        """
+        df = self.df_fits.drop(columns=["x", "x0"])
+        pids = [p.pid for p in self.parameters]
+        x0 = pd.DataFrame(
+            [
+                np.full(len(pids), np.nan) if x is None else np.asarray(x, dtype=float)
+                for x in self.df_fits.x0
+            ],
+            columns=pd.Index([f"x0.{pid}" for pid in pids]),
+        )
+        df = pd.concat([df, x0], axis=1)
+        # a message of an error can span several lines
+        df["message"] = [
+            m if not isinstance(m, str) else " ".join(m.split()) for m in df.message
+        ]
+        df.to_csv(path, sep="\t", index=False)
 
     def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary."""

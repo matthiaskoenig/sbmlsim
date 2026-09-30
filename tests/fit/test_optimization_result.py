@@ -3,6 +3,7 @@
 from pathlib import Path
 
 import numpy as np
+import pandas as pd
 from scipy.optimize import OptimizeResult
 
 from sbmlsim.fit import FitParameter, FitSettings
@@ -166,3 +167,46 @@ def test_the_distance_to_a_bound_is_measured_in_the_scale_of_the_parameter() -> 
     )
     assert result.scales == [ParameterScaleType.LINEAR]
     assert "within 5% of lower bound" in result.report(print_output=False)
+
+
+def test_the_tsv_of_a_result_has_one_line_per_run(tmp_path: Path) -> None:
+    """Every run is one line of the TSV, the start values are columns too."""
+    n = 12
+    parameters = [
+        FitParameter(f"p{k}", 1.0, 0.1, 10.0, unit="dimensionless") for k in range(n)
+    ]
+    fits = [
+        OptimizeResult(
+            x=np.linspace(1.0, 2.0, n) + run,
+            x0=np.linspace(0.5, 1.5, n) + run,
+            cost=1.0 + run,
+            status=1,
+            success=True,
+            duration=0.1,
+            message="`ftol` termination condition\nis satisfied.",
+        )
+        for run in range(2)
+    ]
+    fits.append(
+        OptimizeResult(
+            x=None, x0=None, cost=np.inf, success=False, duration=0.0, message="error"
+        )
+    )
+    result = OptimizationResult(
+        parameters=parameters, fits=fits, trajectories=[[1.0], [2.0], []]
+    )
+
+    path = tmp_path / "optimization_result.tsv"
+    result.to_tsv(path)
+
+    assert len(path.read_text().splitlines()) == 1 + 3
+    df = pd.read_csv(path, sep="\t")
+    assert len(df) == 3
+    assert "x" not in df.columns and "x0" not in df.columns
+    pids = [p.pid for p in parameters]
+    assert np.allclose(df.loc[0, pids].to_numpy(dtype=float), fits[0].x)
+    assert np.allclose(
+        df.loc[1, [f"x0.{pid}" for pid in pids]].to_numpy(dtype=float), fits[1].x0
+    )
+    assert df.loc[2, [f"x0.{pid}" for pid in pids]].isna().all()
+    assert df.loc[0, "message"] == "`ftol` termination condition is satisfied."
