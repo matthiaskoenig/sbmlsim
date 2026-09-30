@@ -148,6 +148,13 @@ def test_a_definition_carries_its_hooks(definition_hctz_iv: FitDefinition) -> No
             r"reads \['KI__HCTZEX_k'\], which a hybridization sets",
         ),
         ([_factor()], [Scaling(), Scaling()], "two hybridizations.*set 'KI__HCTZEX_k'"),
+        # a constant the fit estimates: the value of the fit would win silently
+        (
+            [_factor()],
+            [Scaling(constants={FACTOR: 3.0})],
+            r"reads 'factor_k' \(FitParameter 'factor_k'\) as a constant of "
+            r"the hybridization and as a parameter of the fit",
+        ),
         (
             [
                 FitParameter(
@@ -303,7 +310,30 @@ def test_a_hook_which_sets_more_than_its_targets(
     problem.initialize(fit_settings)
     with pytest.raises(
         ValueError,
-        match=r"'Beermann1976\|fm_hctz_iv1_5_feces'.*\['Ka_dis_hctz'\].*not its targets",
+        match=r"'Beermann1976\|fm_hctz_iv1_5_feces'.*\['Ka_dis_hctz'\].*not its "
+        r"targets\.$",
+    ):
+        problem.predictions(np.array([1.0]))
+
+
+@dataclass(frozen=True)
+class Missing(Scaling):
+    """A hook which answers without its target."""
+
+    def derived_changes(
+        self, values: Mapping[str, float], condition: str
+    ) -> dict[str, float]:
+        return {}
+
+
+def test_a_hook_which_sets_less_than_its_targets(
+    definition_hctz_iv: FitDefinition, fit_settings: FitSettings
+) -> None:
+    """The message names what is missing and nothing else."""
+    problem = _problem(definition_hctz_iv, [_factor()], hybridizations=[Missing()])
+    problem.initialize(fit_settings)
+    with pytest.raises(
+        ValueError, match=r"answers without its targets \['KI__HCTZEX_k'\]\.$"
     ):
         problem.predictions(np.array([1.0]))
 
@@ -320,12 +350,7 @@ def test_a_problem_with_hooks_is_a_dict(
 
 
 def test_a_parallel_fit_with_hooks(definition_hctz_iv: FitDefinition) -> None:
-    """The workers unpickle the hooks and fit what the serial fit fits.
-
-    The residuals of a problem depend on its earlier evaluations in the
-    order of `1e-4` (the integrator, with and without hooks), so the runs
-    agree in the cost and to `1e-3` in the parameter.
-    """
+    """The workers unpickle the hooks and fit what the serial fit fits."""
     definition = replace(
         definition_hctz_iv, parameters=[_factor(2.0)], hybridizations=[Scaling()]
     )

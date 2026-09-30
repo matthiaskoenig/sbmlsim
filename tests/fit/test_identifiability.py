@@ -2,6 +2,7 @@
 
 from pathlib import Path
 
+import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import pytest
@@ -21,6 +22,7 @@ from sbmlsim.fit.identifiability import (
 )
 from sbmlsim.fit.objects import FitParameter
 from sbmlsim.fit.optimization import OptimizationProblem
+from sbmlsim.fit.options import ParameterScaleType
 from sbmlsim.fit.report import FitReport
 
 #: settings of a fast analysis of the reference problem, plain scans with a
@@ -120,6 +122,95 @@ def test_profile_crossing_interpolation() -> None:
     # halfway in the cost is halfway in log10, i.e., at 10
     assert profile.crossing(threshold=2.0, direction=+1) == pytest.approx(10.0)
     assert profile.crossing(threshold=2.0, direction=-1) is None
+
+
+def test_profile_crossing_on_the_linear_scale() -> None:
+    """A parameter on the linear scale is interpolated linearly."""
+    profile = _profile(values=[1.0, 100.0], costs=[1.0, 3.0], index_optimum=0)
+    crossing = profile.crossing(
+        threshold=2.0, direction=+1, scale=ParameterScaleType.LINEAR
+    )
+    assert crossing == pytest.approx(50.5)
+
+
+def _linear_result() -> IdentifiabilityResult:
+    """Get a result with an element of a network and a parameter of the model.
+
+    The element `w` is on the linear scale with infinite bounds and a negative
+    optimum, the parameter `k` is on the logarithmic scale of the settings.
+    """
+    w = np.array([-4.0, -3.0, -2.0, -1.0, 0.5])
+    k = np.array([0.5, 1.0, 2.0])
+    return IdentifiabilityResult(
+        opid="hybrid",
+        parameter_set=ParameterSet(sid="fit", values={"w": -2.0, "k": 1.0}),
+        parameters=[
+            FitParameter(
+                "w", -2.0, unit="dimensionless", scale=ParameterScaleType.LINEAR
+            ),
+            FitParameter("k", 1.0, 0.1, 10.0, unit="1/min"),
+        ],
+        settings=ProfileSettings(),
+        fit_settings=FitSettings(),
+        cost=1.0,
+        profiles={
+            "w": ParameterProfile(
+                pid="w",
+                values=w,
+                costs=np.array([5.0, 2.0, 1.0, 2.0, 5.0]),
+                paths=np.column_stack([w, np.array([0.8, 0.9, 1.0, 1.1, 1.3])]),
+                converged=np.ones(5, dtype=bool),
+                index_optimum=2,
+            ),
+            "k": ParameterProfile(
+                pid="k",
+                values=k,
+                costs=np.array([4.0, 1.0, 4.0]),
+                paths=np.column_stack([np.array([-2.5, -2.0, -1.0]), k]),
+                converged=np.ones(3, dtype=bool),
+                index_optimum=1,
+            ),
+        },
+    )
+
+
+def test_the_profiles_of_a_parameter_on_the_linear_scale(tmp_path: Path) -> None:
+    """The axis of a profile is the scale of its parameter, with finite limits.
+
+    An element of a network has infinite bounds and may be negative.
+    """
+    result = _linear_result()
+    assert result.scale("w") is ParameterScaleType.LINEAR
+    assert result.scale("k") is ParameterScaleType.LOG10
+    threshold = result.threshold
+    profile = result.profiles["w"]
+    # the crossing is linear between -3 (cost 2) and -4 (cost 5)
+    assert profile.ci_lower == pytest.approx(-3.0 - (threshold - 2.0) / 3.0)
+
+    figure = plot_profiles(result)
+    ax_w, ax_k = figure.axes[:2]
+    assert ax_w.get_xscale() == "linear"
+    assert ax_k.get_xscale() == "log"
+    lower, upper = ax_w.get_xlim()
+    assert np.isfinite(lower) and np.isfinite(upper)
+    assert lower < -4.0 and upper > 0.5
+    assert ax_k.get_xlim() == pytest.approx((0.1 / 1.5, 10.0 * 1.5))
+    plt.close(figure)
+
+    plot_profiles(result, path=tmp_path / "profiles.svg")
+    plot_profile(result, pid="w", path=tmp_path / "profile_w.svg")
+    assert (tmp_path / "profiles.svg").exists()
+    assert (tmp_path / "profile_w.svg").exists()
+
+    # the paths are differences for linear and ratios for logarithmic ones
+    figure = plot_profile(result, pid="k")
+    (line,) = figure.axes[1].get_lines()[:1]
+    np.testing.assert_allclose(line.get_ydata(), [-0.5, 0.0, 1.0])
+    plt.close(figure)
+    figure = plot_profile(result, pid="w")
+    (line,) = figure.axes[1].get_lines()[:1]
+    np.testing.assert_allclose(line.get_ydata(), np.log10([0.8, 0.9, 1.0, 1.1, 1.3]))
+    plt.close(figure)
 
 
 def test_profile_non_identifiable_lower() -> None:

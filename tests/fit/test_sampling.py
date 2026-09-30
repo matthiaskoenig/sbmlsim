@@ -7,6 +7,7 @@ import pytest
 from scipy.stats import qmc
 
 from sbmlsim.fit import FitParameter
+from sbmlsim.fit.options import ParameterScaleType
 from sbmlsim.fit.sampling import SamplingType, create_samples
 
 SIZE = 7
@@ -123,3 +124,37 @@ def test_the_sampling_is_checked() -> None:
     negative = [FitParameter("p1", -2.0, lower_bound=-3.0, upper_bound=-1.0, unit="mM")]
     with pytest.raises(ValueError, match=r"'p1'.*positive upper bound"):
         create_samples(negative, size=SIZE, sampling=SamplingType.LOGUNIFORM)
+
+
+@pytest.mark.parametrize("sampling", list(SamplingType))
+def test_a_parameter_on_the_linear_scale_is_sampled_uniformly(
+    sampling: SamplingType, caplog: pytest.LogCaptureFixture
+) -> None:
+    """The scale of a parameter wins over a logarithmic sampling.
+
+    The elements of a network are on the linear scale and have negative
+    bounds, a logarithmic sampling would start them in `[1e-10, 5]` only.
+    """
+    weight = FitParameter(
+        "w", 0.0, -5.0, 5.0, unit="dimensionless", scale=ParameterScaleType.LINEAR
+    )
+    parameters = [*_bounded(), weight]
+    with caplog.at_level(logging.WARNING, logger="sbmlsim.fit.sampling"):
+        samples = create_samples(parameters, size=SIZE, sampling=sampling, seed=SEED)
+    uniform = (
+        sampling
+        if not sampling.is_log
+        else (SamplingType.UNIFORM_LHS if sampling.is_lhs else SamplingType.UNIFORM)
+    )
+    expected = _expected(parameters, uniform)
+    np.testing.assert_allclose(samples["w"], expected[:, 3], rtol=1e-14)
+    assert np.all((samples["w"] >= -5.0) & (samples["w"] <= 5.0))
+    assert "'w'" not in caplog.text
+    # the other parameters follow the sampling type
+    np.testing.assert_allclose(
+        samples[["p1", "p2", "p3"]].to_numpy(),
+        _expected(parameters, sampling)[:, :3],
+        rtol=1e-14,
+    )
+    # a parameter without a scale of its own keeps the warning
+    assert ("'p2': non-positive lower bound" in caplog.text) == sampling.is_log

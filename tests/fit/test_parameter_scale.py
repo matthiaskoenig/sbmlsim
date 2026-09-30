@@ -17,6 +17,7 @@ from sbmlsim.fit import FitParameter, FitSettings, ParameterSet
 from sbmlsim.fit.fisher import fisher_information
 from sbmlsim.fit.optimization import OptimizationProblem
 from sbmlsim.fit.options import OptimizationAlgorithmType, ParameterScaleType
+from sbmlsim.fit.runner import run_optimization
 
 #: values which span orders of magnitude, i.e. what a log scale is for
 VALUES = np.array([1e-6, 1.0, 25.0, 1e3])
@@ -307,6 +308,28 @@ def test_a_fit_with_a_parameter_without_bounds(
         size=1, seed=1, algorithm=OptimizationAlgorithmType.DIFFERENTIAL_EVOLUTION
     )
     assert "finite box" in fits[0].message
+
+
+@pytest.mark.parametrize("serial", [True, False])
+def test_a_global_fit_with_an_infinite_bound_is_refused_once(
+    op_hctz_iv: OptimizationProblem, fit_settings: FitSettings, serial: bool
+) -> None:
+    """The finite box of differential evolution is checked before the runs."""
+    problem = op_hctz_iv
+    n = len(problem.parameters)
+    problem = _with_scales(problem, [ParameterScaleType.LINEAR] + [None] * (n - 1))
+    problem.parameters[0].upper_bound = np.inf
+    with pytest.raises(ValueError, match=r"DIFFERENTIAL_EVOLUTION.*finite box"):
+        run_optimization(
+            problem,
+            settings=fit_settings,
+            size=2,
+            n_cores=2,
+            serial=serial,
+            seed=1,
+            algorithm=OptimizationAlgorithmType.DIFFERENTIAL_EVOLUTION,
+            show_progress=False,
+        )
 
 
 def test_the_fisher_information_uses_the_scales_of_the_parameters(

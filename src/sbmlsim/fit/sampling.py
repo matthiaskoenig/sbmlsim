@@ -8,6 +8,7 @@ import pandas as pd
 from scipy.stats import qmc
 
 from sbmlsim.fit.objects import FitParameter
+from sbmlsim.fit.options import ParameterScaleType
 
 logger = logging.getLogger(__name__)
 
@@ -48,8 +49,11 @@ def create_samples(
     parameters with finite bounds. The samples of these do not depend on the
     parameters which are not sampled.
 
-    Logarithmic sampling requires positive bounds, non-positive lower bounds are
-    replaced by `min_bound`.
+    A parameter on the linear scale (`FitParameter.scale`), e.g. an element
+    of a neural network with negative bounds, is sampled uniformly in its
+    bounds whatever the sampling type; a parameter without a scale of its own
+    follows the sampling type. Logarithmic sampling requires positive bounds,
+    non-positive lower bounds are replaced by `min_bound`.
 
     Args:
         parameters: parameters to sample, the bounds define the sampled interval.
@@ -94,10 +98,11 @@ def create_samples(
                 )
             x[:, k] = p.start_value
             continue
-        lb, ub = _sampling_bounds(parameter=p, sampling=sampling, min_bound=min_bound)
+        is_log = sampling.is_log and p.scale is not ParameterScaleType.LINEAR
+        lb, ub = _sampling_bounds(parameter=p, is_log=is_log, min_bound=min_bound)
 
         # stretch sampling dimension from [0, 1) to [lb, ub)
-        if sampling.is_log:
+        if is_log:
             lb_log = np.log10(lb)
             ub_log = np.log10(ub)
             # samples are in log space, parameter values in real space
@@ -110,15 +115,29 @@ def create_samples(
 
 def _sampling_bounds(
     parameter: FitParameter,
-    sampling: SamplingType,
+    is_log: bool,
     min_bound: float,
 ) -> tuple[float, float]:
-    """Resolve the finite bounds of a parameter to the interval which is sampled."""
+    """Resolve the finite bounds of a parameter to the interval which is sampled.
+
+    Args:
+        parameter: the parameter with finite bounds.
+        is_log: whether the parameter is sampled in logarithmic space.
+        min_bound: replaces a non-positive lower bound of a logarithmic
+            sampling.
+
+    Returns:
+        The lower and the upper bound of the sampled interval.
+
+    Raises:
+        ValueError: if the bounds are not an interval, or if the upper bound
+            of a logarithmic sampling is not positive.
+    """
     pid = parameter.pid
     lb = float(parameter.lower_bound)
     ub = float(parameter.upper_bound)
 
-    if sampling.is_log:
+    if is_log:
         # logarithmic sampling requires positive bounds
         if lb <= 0.0:
             logger.warning("'%s': non-positive lower bound set to '%s'", pid, min_bound)

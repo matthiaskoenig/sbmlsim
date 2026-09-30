@@ -167,10 +167,11 @@ def resolve_derived_changes(problem: OptimizationProblem) -> list[GroupDerivedCh
             what a hook sets or holds constant, if a hook sets what is not an
             entity of the model or what the first timecourse of the
             simulation changes, if two hooks set one entity, if a hook reads
-            what another one sets, if a hook reads a symbol which is neither
-            an entity of the model, nor a parameter of the fit in the group,
-            nor one of its constants, or if a parameter which is not an
-            entity of the model is read by no hook.
+            what another one sets, if a hook reads a constant of its own
+            which a parameter of the fit writes, if a hook reads a symbol
+            which is neither an entity of the model, nor a parameter of the
+            fit in the group, nor one of its constants, or if a parameter
+            which is not an entity of the model is read by no hook.
     """
     model_keys = problem.model_keys
     unknown = sorted({h.model for h in problem.hybridizations} - set(model_keys))
@@ -309,6 +310,15 @@ def _group_derived_changes(
                 f"changes are calculated from the parameters of the fit and "
                 f"the model, not from each other."
             )
+        # the value of the fit would silently replace the constant
+        pids = {p.entity_id: p.pid for p in parameters}
+        both = sorted(set(hook.constants) & symbols & set(pids))
+        if both:
+            names = ", ".join(f"'{s}' (FitParameter '{pids[s]}')" for s in both)
+            raise ValueError(
+                f"{prefix} {names} as a constant of the hybridization and as a "
+                f"parameter of the fit. A symbol is constant or estimated."
+            )
         missing = sorted(
             s
             for s in symbols
@@ -420,13 +430,17 @@ def evaluate_derived_changes(
         hook_changes = hook.derived_changes(values, condition=condition)
         targets = set(hook.targets())
         if set(hook_changes) != targets:
+            extra = sorted(set(hook_changes) - targets)
+            absent = sorted(targets - set(hook_changes))
+            clauses = []
+            if extra:
+                clauses.append(f"with the changes {extra} which are not its targets")
+            if absent:
+                clauses.append(f"without its targets {absent}")
             raise ValueError(
                 f"'{problem.opid}': in the simulation "
                 f"'{mapping.group_names[k_group]}' a hybridization of the model "
-                f"'{hook.model}' answers with the changes "
-                f"{sorted(set(hook_changes) - targets)} which are not its "
-                f"targets, and without its targets "
-                f"{sorted(targets - set(hook_changes))}."
+                f"'{hook.model}' answers {' and '.join(clauses)}."
             )
         for target, value in hook_changes.items():
             result[target] = Q_(value, uinfo[target])

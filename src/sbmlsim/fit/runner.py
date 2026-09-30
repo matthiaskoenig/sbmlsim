@@ -224,7 +224,9 @@ def run_optimization(
 
     Raises:
         ValueError: for the removed parameters `fitting_type` and
-            `weighting_local`, or if every worker of a parallel fit failed.
+            `weighting_local`, if a bound or a start value does not suit the
+            scale of its parameter or the algorithm, or if every worker of a
+            parallel fit failed.
     """
     for deprecated, replacement in [
         ("fitting_type", "fitting_strategy"),
@@ -245,6 +247,8 @@ def run_optimization(
     # workers of a parallel fit start; `initialize` is a no-op when the
     # helpers initialize the same problem with the same settings again
     problem.initialize(settings)
+    # the bounds the algorithm needs are checked once, not in every run
+    problem._validate_parameters(algorithm)
     display.print_parameters(
         problem.parameters,
         coverage=(
