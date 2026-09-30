@@ -194,7 +194,13 @@ class UnitsInformation(MutableMapping):
     def from_sbml_doc(
         doc: libsbml.SBMLDocument, ureg: UnitRegistry | None = None
     ) -> UnitsInformation:
-        """Get pint UnitsInformation for model in document."""
+        """Get pint UnitsInformation for model in document.
+
+        An entity without units, i.e. the time without time units, a species
+        without the units of its substance or its compartment, or an entity
+        whose derived unit is no unit definition of the model, is logged at
+        the level `DEBUG`, and the model once at `INFO` with their number.
+        """
         if ureg is None:
             ureg = UnitsInformation._default_ureg()
 
@@ -207,13 +213,16 @@ class UnitsInformation(MutableMapping):
 
         # add additional units
         udict: dict[str, str] = {}
+        # the entities without units
+        missing: list[str] = []
 
         # add time unit
         time_uid: str = model.getTimeUnits()
         if time_uid:
             udict["time"] = uid_dict[time_uid]
         if not time_uid:
-            logger.warning("No time units defined in model, falling back to 'second'.")
+            logger.debug("No time units defined for 'time', falling back to 'second'")
+            missing.append("time")
             udict["time"] = "second"
 
         # get all objects in model
@@ -248,16 +257,20 @@ class UnitsInformation(MutableMapping):
                     if substance_uid and volume_uid:
                         udict[f"[{sid}]"] = f"{substance_uid}/{volume_uid}"
                     elif not substance_uid:
-                        logger.warning(
-                            "Substance unit missing, undefined concentration unit for '[%s]')",
+                        logger.debug(
+                            "Substance unit missing, undefined concentration unit "
+                            "for '[%s]'",
                             sid,
                         )
+                        missing.append(f"[{sid}]")
                         udict[f"[{sid}]"] = ""
                     elif not volume_uid:
-                        logger.warning(
-                            "Volume unit missing, undefined concentration unit for '[%s]')",
+                        logger.debug(
+                            "Volume unit missing, undefined concentration unit "
+                            "for '[%s]'",
                             sid,
                         )
+                        missing.append(f"[{sid}]")
                         udict[f"[{sid}]"] = ""
 
                 elif isinstance(element, (libsbml.Compartment, libsbml.Parameter)):
@@ -280,10 +293,12 @@ class UnitsInformation(MutableMapping):
                         # udict[sid] = uid_dict[uid]
                         udict[sid] = uid
                     else:
-                        logger.warning(
-                            "DerivedUnit not in UnitDefinitions: '%s'",
+                        logger.debug(
+                            "DerivedUnit of '%s' not in UnitDefinitions: '%s'",
+                            sid,
                             Units.udef_to_str(udef),
                         )
+                        missing.append(sid)
                         udict[sid] = Units.udef_to_str(udef)
 
             else:
@@ -292,6 +307,14 @@ class UnitsInformation(MutableMapping):
                 if udef is None:
                     # elements in packages
                     logger.debug("No element found for id '%s'", sid)
+
+        if missing:
+            logger.info(
+                "The model '%s' has %s entities without units or with a derived "
+                "unit which is no unit definition, they are logged at DEBUG",
+                model.getId(),
+                len(missing),
+            )
 
         return UnitsInformation(udict=udict, ureg=ureg)
 

@@ -1,5 +1,6 @@
 """Test units."""
 
+import logging
 from pathlib import Path
 
 import libsbml
@@ -8,6 +9,8 @@ import pytest
 from examples import units as example_units
 from sbmlsim.resources import DEMO_SBML, MIDAZOLAM_SBML, REPRESSILATOR_SBML
 from sbmlsim.units import UnitRegistry, Units, UnitsInformation
+
+LOTKA_VOLTERRA_SBML = Path(__file__).parent / "data" / "models" / "lotka_volterra.xml"
 
 sbml_paths: list[Path] = [
     DEMO_SBML,
@@ -92,3 +95,23 @@ def test_udef_to_str(udef: libsbml.UnitDefinition, s: str) -> None:
     _ = libsbml.UnitDefinition.printUnits(udef)
     s2 = Units.udef_to_str(udef)
     assert s2 == s
+
+
+def test_the_missing_units_of_a_model_are_one_line(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """A model without units is one line at INFO and one per entity at DEBUG."""
+    with caplog.at_level(logging.DEBUG, logger="sbmlsim.units"):
+        uinfo = UnitsInformation.from_sbml(LOTKA_VOLTERRA_SBML)
+    records = [r for r in caplog.records if r.name == "sbmlsim.units"]
+
+    assert [r.levelno for r in records if r.levelno > logging.DEBUG] == [logging.INFO]
+    info = next(r.getMessage() for r in records if r.levelno == logging.INFO)
+    assert "'lv'" in info
+    assert "7 entities" in info
+    debug = "\n".join(r.getMessage() for r in records if r.levelno == logging.DEBUG)
+    for entity in ["time", "[prey]", "[predator]", "v1", "v2", "v3", "v4"]:
+        assert f"'{entity}'" in debug
+    # the units are the ones read before
+    assert uinfo["time"] == "second"
+    assert uinfo["[prey]"] == ""
