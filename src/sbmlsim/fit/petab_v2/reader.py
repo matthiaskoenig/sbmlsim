@@ -54,6 +54,7 @@ from sbmlsim.fit.petab_v2.observables import (
     observable_id as petab_observable_id,
 )
 from sbmlsim.fit.petab_v2.symbols import selection_of_formula, split_selection
+from sbmlsim.mathml import expression_to_formula
 from sbmlsim.model import AbstractModel
 from sbmlsim.simulation.timecourse import Timecourse, TimecourseSim
 from sbmlsim.task import Task
@@ -159,12 +160,34 @@ class PetabReader:
             self.uinfo.ureg if self.uinfo is not None else UnitRegistry()
         )
 
-        # measurements by observable, in the order of their time
+        #: the measurements of every fit mapping, in the order of their time.
+        #: A fit mapping is an observable in an experiment: its key is the id
+        #: of the observable, and `<observable>_<experiment>` for an
+        #: observable which is measured in several experiments
         self._measurements: dict[str, list[petab_v2.Measurement]] = {}
+        #: the observable of every fit mapping
+        self._observable_ids: dict[str, str] = {}
+        experiments: dict[str, list[str]] = {}
         for measurement in petab_problem.measurements:
-            self._measurements.setdefault(measurement.observable_id, []).append(
-                measurement
-            )
+            experiment_ids = experiments.setdefault(measurement.observable_id, [])
+            experiment_id = measurement.experiment_id or DEFAULT_EXPERIMENT
+            if experiment_id not in experiment_ids:
+                experiment_ids.append(experiment_id)
+        for measurement in petab_problem.measurements:
+            observable_id = measurement.observable_id
+            key = observable_id
+            if len(experiments[observable_id]) > 1:
+                experiment_id = measurement.experiment_id or DEFAULT_EXPERIMENT
+                key = f"{observable_id}_{experiment_id}"
+                if key in experiments:
+                    raise ValueError(
+                        f"The observable '{observable_id}' is measured in the "
+                        f"experiments {experiments[observable_id]}, its fit "
+                        f"mapping of the experiment '{experiment_id}' is "
+                        f"'{key}', which is the id of another observable."
+                    )
+            self._measurements.setdefault(key, []).append(measurement)
+            self._observable_ids[key] = observable_id
         for measurements in self._measurements.values():
             measurements.sort(key=lambda m: m.time)
 
@@ -343,7 +366,10 @@ class PetabReader:
         """Get the observables which are a formula and not an entity."""
         sbml_model = self._sbml_model()
         return {
-            observable.id: str(observable.formula)
+            # the math of PEtab is not the math of a formula of SBML: `log`
+            # is the natural logarithm in the one and the logarithm to the
+            # base 10 in the other
+            observable.id: expression_to_formula(observable.formula)
             for observable in self.petab_problem.observables
             if not is_entity(str(observable.formula), sbml_model)
         }
@@ -362,14 +388,37 @@ class PetabReader:
             The path of the model the fit simulates.
         """
         path = self._model_path(model)
+        if path in self._model_sources:
+            return self._model_sources[path]
+        derived_dir = self.derived_dir or path.parent
+        source = path
         formulas = self._formula_observables()
-        if not formulas:
-            return path
-        if path not in self._model_sources:
-            derived_dir = self.derived_dir or path.parent
-            derived = derived_dir / f"{path.stem}{MODEL_SUFFIX}{path.suffix}"
-            self._model_sources[path] = add_observables(path, formulas, derived)
-        return self._model_sources[path]
+        if formulas:
+            derived = derived_dir / f"{source.stem}{MODEL_SUFFIX}{source.suffix}"
+            source = add_observables(source, formulas, derived)
+        self._model_sources[path] = source
+        return source
+
+    def model_source(self, model_id: str | None = None) -> Path:
+        """Get the file of the model the fit simulates.
+
+        Args:
+            model_id: id of the model, the first model of the problem by
+                default.
+
+        Returns:
+            The path of the model, see `_model_source`.
+
+        Raises:
+            ValueError: if the problem has no model of the id.
+        """
+        for model in self.petab_problem.models:
+            if model_id is None or model.model_id == model_id:
+                return self._model_source(model)
+        raise ValueError(
+            f"The problem has no model '{model_id}', its models are "
+            f"{[m.model_id for m in self.petab_problem.models]}."
+        )
 
     @property
     def experiment_ids(self) -> list[str]:
@@ -603,9 +652,10 @@ class PetabReader:
         return None
 
     def datasets(self) -> dict[str, DataSet]:
-        """Get the datasets, one per observable, from its measurements."""
+        """Get the datasets, one per fit mapping, from its measurements."""
         datasets: dict[str, DataSet] = {}
-        for observable_id, measurements in self._measurements.items():
+        for key, measurements in self._measurements.items():
+            observable_id = self._observable_ids[key]
             info = self._observable_info(observable_id)
             # without the extension the data is in the units of the model,
             # which is what PEtab measures in
@@ -632,22 +682,25 @@ class PetabReader:
                 data["value_sd"] = errors
                 data["value_sd_unit"] = value_unit
 
-            datasets[dataset_id(observable_id)] = DataSet.from_df(
+            datasets[dataset_id(key)] = DataSet.from_df(
                 pd.DataFrame(data), ureg=self.ureg
             )
         return datasets
 
     def fit_mappings(self, experiment: SimulationExperiment) -> dict[str, FitMapping]:
-        """Get the fit mappings, one per observable of the problem.
+        """Get the fit mappings, one per observable and experiment.
 
         Args:
             experiment: experiment the mappings belong to.
 
         Returns:
-            The mappings by the id of their observable.
+            The mappings by their key, which is the id of their observable,
+            and `<observable>_<experiment>` for an observable which is
+            measured in several experiments.
         """
         mappings: dict[str, FitMapping] = {}
-        for observable_id, measurements in self._measurements.items():
+        for key, measurements in self._measurements.items():
+            observable_id = self._observable_ids[key]
             info = self._observable_info(observable_id)
             experiment_id = measurements[0].experiment_id or DEFAULT_EXPERIMENT
             task_id = f"task_{experiment_id}"
@@ -662,9 +715,9 @@ class PetabReader:
                 xid="time",
                 yid="value",
                 yid_sd="value_sd"
-                if "value_sd" in experiment._datasets[dataset_id(observable_id)].columns
+                if "value_sd" in experiment._datasets[dataset_id(key)].columns
                 else None,
-                dataset=dataset_id(observable_id),
+                dataset=dataset_id(key),
             )
             observable = FitData(
                 experiment,
@@ -672,36 +725,59 @@ class PetabReader:
                 yid=observable_yid,
                 task=task_id,
             )
-            mappings[observable_id] = FitMapping(
+            mappings[key] = FitMapping(
                 experiment,
                 reference=reference,
                 observable=observable,
                 weight=info.get("weight_mapping", 1.0),
-                noise=self.noise_model(observable_id),
+                noise=self.noise_model(key),
             )
         return mappings
 
-    def noise_model(self, observable_id: str) -> NoiseModel:
-        """Get the noise model of an observable of the problem.
+    def observable_id(self, key: str) -> str:
+        """Get the observable of a fit mapping of the problem.
+
+        Args:
+            key: key of the fit mapping, which is the id of its observable,
+                and `<observable>_<experiment>` for an observable which is
+                measured in several experiments.
+
+        Returns:
+            The id of the observable.
+
+        Raises:
+            ValueError: if the problem has no fit mapping of the key.
+        """
+        if key not in self._observable_ids:
+            raise ValueError(
+                f"The problem has no fit mapping '{key}', its fit mappings are "
+                f"{sorted(self._observable_ids)}."
+            )
+        return self._observable_ids[key]
+
+    def noise_model(self, key: str) -> NoiseModel:
+        """Get the noise model of a fit mapping of the problem.
 
         The noise model is read once, see `_read_noise_model`.
 
         Args:
-            observable_id: id of the observable.
+            key: key of the fit mapping, which is the id of its observable,
+                and `<observable>_<experiment>` for an observable which is
+                measured in several experiments.
 
         Returns:
-            The noise model of the fit mapping of the observable.
+            The noise model of the fit mapping.
 
         Raises:
-            ValueError: if the problem has no observable of the id, or if a
+            ValueError: if the problem has no fit mapping of the key, or if a
                 measurement does not have a value for every placeholder.
         """
-        if observable_id not in self._noise_models:
-            self._noise_models[observable_id] = self._read_noise_model(observable_id)
-        return self._noise_models[observable_id]
+        if key not in self._noise_models:
+            self._noise_models[key] = self._read_noise_model(key)
+        return self._noise_models[key]
 
-    def _read_noise_model(self, observable_id: str) -> NoiseModel:
-        """Read the noise model of an observable of the problem.
+    def _read_noise_model(self, key: str) -> NoiseModel:
+        """Read the noise model of a fit mapping of the problem.
 
         The noise formula and the distribution of the observable are kept as
         they are, with the noise parameters of its measurements as the values
@@ -711,15 +787,16 @@ class PetabReader:
         which PEtab estimates is one of them, see the `noise-parameters` gap.
 
         Args:
-            observable_id: id of the observable.
+            key: key of the fit mapping, see `noise_model`.
 
         Returns:
-            The noise model of the fit mapping of the observable.
+            The noise model of the fit mapping.
 
         Raises:
-            ValueError: if the problem has no observable of the id, or if a
+            ValueError: if the problem has no fit mapping of the key, or if a
                 measurement does not have a value for every placeholder.
         """
+        observable_id = self._observable_ids.get(key, key)
         if observable_id not in self._observables:
             raise ValueError(f"The problem has no observable '{observable_id}'.")
         observable = self._observables[observable_id]
@@ -728,7 +805,7 @@ class PetabReader:
         expressions: list[Any] = [observable.noise_formula]
         rows: list[tuple[float | str, ...]] = []
         if placeholders:
-            for measurement in self._measurements.get(observable_id, []):
+            for measurement in self._measurements.get(key, []):
                 expressions.extend(measurement.noise_parameters)
                 rows.append(
                     tuple(_formula(value) for value in measurement.noise_parameters)
@@ -875,16 +952,15 @@ class PetabReader:
     def _mapping_keys_of_condition(self, condition_id: str) -> set[str]:
         """Get the fit mappings of the experiments which use a condition.
 
-        A fit mapping of a problem which is read is named after its observable
-        and belongs to the experiment of its measurements, so the mappings of a
-        condition are the observables measured in the experiments which
-        reference it.
+        A fit mapping of a problem which is read is an observable in the
+        experiment of its measurements, so the mappings of a condition are the
+        ones of the experiments which reference it.
 
         Args:
             condition_id: id of the condition.
 
         Returns:
-            The ids of the fit mappings, which are the ids of the observables.
+            The keys of the fit mappings.
         """
         experiments = {
             experiment.id
@@ -894,8 +970,8 @@ class PetabReader:
             )
         }
         return {
-            observable_id
-            for observable_id, measurements in self._measurements.items()
+            key
+            for key, measurements in self._measurements.items()
             if (measurements[0].experiment_id or DEFAULT_EXPERIMENT) in experiments
         }
 
@@ -1031,29 +1107,29 @@ class PetabReader:
             The collections, in the order of the experiments of the problem.
         """
         by_experiment: dict[str, list[str]] = {}
-        for observable_id, measurements in self._measurements.items():
+        for key, measurements in self._measurements.items():
             experiment_id = measurements[0].experiment_id or DEFAULT_EXPERIMENT
-            by_experiment.setdefault(experiment_id, []).append(observable_id)
+            by_experiment.setdefault(experiment_id, []).append(key)
 
         collections: list[FitMappingCollection] = []
         for experiment_id, mappings in by_experiment.items():
             kinds = {
                 MappingKind(
-                    self._observable_info(observable_id).get(
+                    self._observable_info(self._observable_ids[key]).get(
                         "kind", MappingKind.TRAINING.value
                     )
                 )
-                for observable_id in mappings
+                for key in mappings
             }
             if len(kinds) > 1:
                 # an experiment whose observables are used differently is one
                 # collection per kind, the kind belongs to the selection
                 for kind in sorted(kinds):
                     selected = [
-                        observable_id
-                        for observable_id in mappings
+                        key
+                        for key in mappings
                         if MappingKind(
-                            self._observable_info(observable_id).get(
+                            self._observable_info(self._observable_ids[key]).get(
                                 "kind", MappingKind.TRAINING.value
                             )
                         )
