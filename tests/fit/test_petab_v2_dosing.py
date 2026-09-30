@@ -181,7 +181,8 @@ def test_the_extension_keeps_the_protocol(dosing_simulation: TimecourseSim) -> N
         "time_offset": dosing_simulation.time_offset,
         "reset": dosing_simulation.reset,
         "timecourses": [
-            PetabExporter._timecourse_dict(tc) for tc in dosing_simulation.timecourses
+            PetabExporter._timecourse_dict(tc, tc.changes)
+            for tc in dosing_simulation.timecourses
         ],
     }
     reader = PetabReader.__new__(PetabReader)

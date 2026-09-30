@@ -362,7 +362,7 @@ class PetabReader:
         if self.extension is None:
             return {}
         info = self.extension.observables.get(key)
-        if info is None:
+        if info is None and self.extension.version == "0.1.0":
             info = self.extension.observables.get(self._observable_ids.get(key, ""))
         return info or {}
 

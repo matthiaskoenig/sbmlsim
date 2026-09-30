@@ -16,7 +16,7 @@ import petab.v2 as petab_v2
 import pytest
 import yaml
 
-from sbmlsim.fit import FitParameter
+from sbmlsim.fit import FitMappingCollection, FitParameter
 from sbmlsim.fit.optimization import OptimizationProblem
 from sbmlsim.fit.options import ParameterScaleType
 from sbmlsim.fit.petab_v2 import to_petab
@@ -179,6 +179,63 @@ def test_the_arrays_of_the_simulations(tmp_path: Path) -> None:
     # the arrays are keyed by the condition of the first period of the experiment
     experiments = _tables(tmp_path / "petab")["experiments"]
     assert sorted(experiments["conditionId"]) == ["e1__tc0", "e2__tc0"]
+
+
+def test_a_simulation_of_two_experiments(tmp_path: Path) -> None:
+    """The arrays of a simulation are keyed by the condition of each experiment."""
+    network = two_inputs()
+    hybridization = Hybridization(
+        network=network,
+        pattern=PRE,
+        model="lv",
+        inputs={
+            "net6__input0__0": NetworkInput(formula="alpha"),
+            "net6__input1": NetworkInput(
+                arrays={"e1": [1.0, 2.0, 3.0], "e2": [3.0, 2.0, 1.0]}
+            ),
+        },
+        outputs={"net6__output0__0": "gamma"},
+    )
+    elements = network_fit_parameters(
+        network, estimate={"net6": True}, bounds={}, external=True
+    )
+    # the simulation `e1` is in both collections, i.e. in two experiments
+    problem = OptimizationProblem(
+        opid="hybrid",
+        mapping_collections=[
+            FitMappingCollection(
+                experiment=LotkaVolterra, sid="first", mappings=["prey_e1"]
+            ),
+            FitMappingCollection(
+                experiment=LotkaVolterra,
+                sid="second",
+                mappings=["predator_e1", "prey_e2", "predator_e2"],
+            ),
+        ],
+        fit_parameters=[*MECHANISTIC, *elements],
+        base_path=MODEL_PATH.parent,
+        data_path=MODEL_PATH.parent,
+        hybridizations=[hybridization],
+    )
+    problem.initialize(SETTINGS)
+    yaml_file = to_petab(problem, tmp_path / "petab")
+    experiments = _tables(tmp_path / "petab")["experiments"]
+    assert sorted(experiments["conditionId"]) == [
+        "first__tc0",
+        "second__sim0__tc0",
+        "second__sim1__tc0",
+    ]
+    _, restored = _read(yaml_file, tmp_path / "derived")
+    (restored_hybridization,) = restored.hybridizations
+    assert isinstance(restored_hybridization, Hybridization)
+    arrays = restored_hybridization.inputs["net6__input1"].arrays
+    assert arrays is not None
+    assert {key: np.asarray(value).tolist() for key, value in arrays.items()} == {
+        "first": [1.0, 2.0, 3.0],
+        "second__sim0": [1.0, 2.0, 3.0],
+        "second__sim1": [3.0, 2.0, 1.0],
+    }
+    assert log_likelihood(restored) == pytest.approx(log_likelihood(problem), rel=1e-8)
 
 
 def _compiled(tmp_path: Path, hybridization: Hybridization) -> type[LotkaVolterra]:

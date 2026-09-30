@@ -1,15 +1,17 @@
 """Tests that the export writes the definition of a fit, not its state."""
 
+import copy
 import dataclasses
+from collections import defaultdict
 from pathlib import Path
 from typing import Any
 
+import libsbml
 import numpy as np
 import pandas as pd
 import petab.v2 as petab_v2
 import pytest
 import yaml
-from test_petab_v2_reader import write_problem
 
 from examples.hctz_fitting.fitting.fitting import FIT_DEFINITIONS
 from sbmlsim.fit import FitSettings
@@ -26,6 +28,7 @@ from sbmlsim.fit.petab_v2.extension import (
 from sbmlsim.fit.petab_v2.likelihood import log_likelihood
 from sbmlsim.fit.petab_v2.reader import DEFAULT_EXPERIMENT, PetabReader, from_petab
 from tests.fit.hooks import Scaling, factor_parameter
+from tests.fit.test_petab_v2_reader import write_problem
 
 
 def _extension(config: Any) -> SbmlsimExtension:
@@ -64,6 +67,115 @@ def test_export_after_an_evaluation_writes_the_definition(
         for change in condition.changes
     }
     assert not targets & set(problem.pids)
+
+
+def test_an_export_after_an_evaluation_equals_one_before(
+    fit_settings: FitSettings, tmp_path: Path
+) -> None:
+    """Every file, the extension included, is the definition, and valid PEtab."""
+    problem = _hctz(fit_settings)
+    before = to_petab(problem, tmp_path / "before").parent
+    problem.cost_least_square(problem.to_scale(np.asarray(problem.x0, dtype=float)))
+    after = to_petab(problem, tmp_path / "after").parent
+
+    names = sorted(path.name for path in before.iterdir())
+    assert names == sorted(path.name for path in after.iterdir())
+    for name in names:
+        assert (before / name).read_bytes() == (after / name).read_bytes(), name
+
+    # the problem which is read from it is written again as valid PEtab
+    restored, settings = from_petab(after / "problem.yaml")
+    restored.initialize(settings)
+    again = to_petab(restored, tmp_path / "again")
+    issues = petab_v2.Problem.from_yaml(again).validate()
+    assert not issues.has_errors(), str(issues)
+
+
+def test_the_ids_of_the_simulations_are_the_ids_of_the_experiments(
+    fit_settings: FitSettings,
+) -> None:
+    """The networks key their arrays by the ids `_add_experiments` gives."""
+    problem = _hctz(fit_settings)
+    exporter = PetabExporter(problem)
+    ids = exporter._simulation_ids()
+    exporter.to_problem()
+    expected: dict[str, list[str]] = defaultdict(list)
+    for k in sorted(exporter.experiment_ids):
+        experiment_id = exporter.experiment_ids[k]
+        if experiment_id not in expected[problem.simulation_keys[k]]:
+            expected[problem.simulation_keys[k]].append(experiment_id)
+    assert {key: sorted(value) for key, value in ids.items()} == {
+        key: sorted(value) for key, value in expected.items()
+    }
+    # a simulation of several experiments has the id of each of them
+    assert any(len(value) > 1 for value in ids.values())
+
+
+def test_two_observables_whose_ids_collide_are_refused(tmp_path: Path) -> None:
+    """A mapping `prey.o` is the observable `prey_o` of PEtab, which is taken."""
+    path = write_problem(
+        tmp_path / "problem", {"prey_o": "prey", "q": "predator"}, {"e1": None}
+    )
+    problem, _ = from_petab(path)
+    problem.initialize(FitSettings(parameter_scale=ParameterScaleType.LINEAR))
+    problem.mapping_keys[problem.mapping_keys.index("q")] = "prey.o"
+    with pytest.raises(ValueError, match=r"'prey_o'.*'prey\.o'"):
+        PetabExporter(problem).to_problem()
+
+
+def test_two_models_of_one_file_name_are_two_files(
+    fit_settings: FitSettings, tmp_path: Path
+) -> None:
+    """A model is not overwritten by another model of the same file name."""
+    problem = _hctz(fit_settings)
+    source = Path(problem.models[0].source.path)
+    other = tmp_path / "other" / source.name
+    other.parent.mkdir()
+    document: libsbml.SBMLDocument = libsbml.readSBMLFromFile(str(source))
+    document.getModel().setName("other")
+    libsbml.writeSBMLToFile(document, str(other))
+    # the experiments share one model, the last collection gets another file
+    # of the same name
+    model = copy.copy(problem.models[-1])
+    model.source = dataclasses.replace(model.source, path=other)
+    collection = problem.collection_indices[-1]
+    for k in range(len(problem.models)):
+        if problem.collection_indices[k] == collection:
+            problem.models[k] = model
+
+    yaml_file = to_petab(problem, tmp_path / "export")
+    config = yaml.safe_load(yaml_file.read_text())
+    locations = [entry["location"] for entry in config["model_files"].values()]
+    assert len(locations) == len(set(locations)) == 2
+    names = {
+        libsbml.readSBMLFromFile(str(tmp_path / "export" / location))
+        .getModel()
+        .getName()
+        for location in locations
+    }
+    assert "other" in names and len(names) == 2
+
+
+def test_the_info_of_a_mapping_falls_back_to_the_observable_only_before_0_2(
+    tmp_path: Path,
+) -> None:
+    """Version 0.1.0 keyed the block by the observable, 0.2.0 by the mapping."""
+    path = write_problem(
+        tmp_path / "problem", {"prey_o": "prey"}, {"e1": None, "e2": None}
+    )
+    problem, _ = from_petab(path)
+    problem.initialize(FitSettings(parameter_scale=ParameterScaleType.LINEAR))
+    yaml_file = to_petab(problem, tmp_path / "export")
+    config = yaml.safe_load(yaml_file.read_text())
+    block = config["extensions"]["sbmlsim"]
+    block["observables"] = {"prey_o": block["observables"]["prey_o_e1"]}
+    yaml_file.write_text(yaml.safe_dump(config, sort_keys=False))
+    assert PetabReader.from_yaml(yaml_file).observable_info("prey_o_e1") == {}
+
+    block["version"] = "0.1.0"
+    yaml_file.write_text(yaml.safe_dump(config, sort_keys=False))
+    info = PetabReader.from_yaml(yaml_file).observable_info("prey_o_e1")
+    assert info["mapping"] == "prey_o_e1"
 
 
 def test_the_observables_are_named_after_the_mappings(
@@ -148,10 +260,11 @@ def test_a_model_named_model(tmp_path: Path) -> None:
     config.pop("experiment_files")
     config["model_files"] = {"model": config["model_files"]["lv"]}
     path.write_text(yaml.safe_dump(config, sort_keys=False))
+    # the default experiment and the model do not share the key `model`
     problem, _ = from_petab(path)
     problem.initialize(FitSettings(parameter_scale=ParameterScaleType.LINEAR))
-    assert problem.simulation_keys == [DEFAULT_EXPERIMENT] * 1
-    assert DEFAULT_EXPERIMENT != "model"
+    assert problem.simulation_keys == [DEFAULT_EXPERIMENT]
+    assert problem.model_keys == ["model"]
 
 
 def test_the_scale_of_a_parameter_survives_the_round_trip(

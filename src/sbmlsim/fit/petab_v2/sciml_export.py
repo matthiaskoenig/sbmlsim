@@ -191,8 +191,8 @@ class SciMLExporter:
 
     Attributes:
         problem: the problem which is exported.
-        simulation_ids: id of the simulation of a fit mapping -> id of the
-            PEtab experiment.
+        simulation_ids: id of the simulation of a fit mapping -> ids of its
+            PEtab experiments.
         networks: the networks by their id.
         element_ids: the ids of the elements of all networks, which are no
             rows of the parameter table and no part of the `sbmlsim` block.
@@ -208,7 +208,7 @@ class SciMLExporter:
         self,
         problem: OptimizationProblem,
         hybridizations: Sequence[Any],
-        simulation_ids: Mapping[str, str],
+        simulation_ids: Mapping[str, Sequence[str]],
     ) -> None:
         """Initialize the exporter.
 
@@ -216,7 +216,9 @@ class SciMLExporter:
             problem: the initialized problem.
             hybridizations: the hybridizations of the problem.
             simulation_ids: id of the simulation of a fit mapping (the
-                condition of the inputs) -> id of the experiment of PEtab.
+                condition of the inputs) -> ids of its experiments of PEtab: a
+                simulation whose fit mappings are in several collections is
+                several experiments, which have the same inputs.
 
         Raises:
             ValueError: if a hybridization is not a `Hybridization` of
@@ -228,7 +230,7 @@ class SciMLExporter:
                 give a constant different values.
         """
         self.problem = problem
-        self.simulation_ids = dict(simulation_ids)
+        self.simulation_ids = {key: list(ids) for key, ids in simulation_ids.items()}
         by_network: dict[str, list[Hybridization]] = {}
         for hybridization in hybridizations:
             if not isinstance(hybridization, Hybridization):
@@ -426,16 +428,21 @@ class SciMLExporter:
 
     # --- THE TABLES ---
 
-    def condition_of(self, simulation: str) -> str:
-        """Get the id of the condition of the first period of an experiment.
+    def conditions_of(self, simulation: str) -> list[str]:
+        """Get the ids of the conditions of the first periods of a simulation.
 
         Args:
-            simulation: id of the simulation of the experiment.
+            simulation: id of the simulation.
 
         Returns:
-            The id, which `PetabExporter._periods` gives the first period.
+            The id of the condition of the first period of every experiment of
+            the simulation, which `PetabExporter._periods` gives it; none for
+            a simulation none of whose fit mappings is written.
         """
-        return f"{self.simulation_ids[simulation]}__tc0"
+        return [
+            f"{experiment_id}__tc0"
+            for experiment_id in self.simulation_ids.get(simulation, [])
+        ]
 
     def input_changes(self, simulation: str) -> list[petab_v2.Change]:
         """Get the changes of the condition of a simulation which set inputs.
@@ -548,12 +555,13 @@ class SciMLExporter:
                 elif network_input.arrays is not None:
                     rows.append(HybridizationRow(target_id=key, target_value=ARRAY))
                     exported.arrays.inputs[key] = {
-                        (
-                            ALL_CONDITION_IDS
-                            if condition == ALL_CONDITIONS
-                            else self.condition_of(condition)
-                        ): np.asarray(array, dtype=float)
+                        condition_id: np.asarray(array, dtype=float)
                         for condition, array in network_input.arrays.items()
+                        for condition_id in (
+                            [ALL_CONDITION_IDS]
+                            if condition == ALL_CONDITIONS
+                            else self.conditions_of(condition)
+                        )
                     }
             for h in exported.hybridizations:
                 if h.pattern is NetworkPattern.OBSERVABLE:

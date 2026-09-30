@@ -22,9 +22,8 @@ see `sbmlsim.fit.petab_v2.extension`, and what is lost is reported by
 import dataclasses
 import logging
 import re
-import shutil
 from collections import defaultdict
-from collections.abc import Mapping
+from collections.abc import Iterator, Mapping
 from pathlib import Path
 from typing import Any
 
@@ -248,6 +247,12 @@ class PetabExporter:
         }
         #: the derivation of every model which is derived, by model id
         self.derivations: dict[str, Derivation] = {}
+        #: the formula of the observable of every fit mapping, see
+        #: `_observable_formula`
+        self._formulas: dict[int, str] = {}
+        #: the document of every derived model as the fit simulates it, by
+        #: model id
+        self._derived_documents: dict[str, libsbml.SBMLDocument] = {}
         #: the networks of the problem, `None` for a problem without them
         self.sciml: Any = None
         if problem.hybridizations:
@@ -260,32 +265,56 @@ class PetabExporter:
                 simulation_ids=self._simulation_ids(),
             )
 
-    def _simulation_ids(self) -> dict[str, str]:
-        """Get the id of the PEtab experiment of every simulation of the problem.
+    def _experiment_groups(self) -> Iterator[tuple[int, str, list[int]]]:
+        """Get the fit mappings which are one experiment of PEtab.
 
-        The ids are the ones `_add_experiments` gives the experiments, computed
-        ahead of it: the networks key the arrays of their inputs by them.
+        A `FitMappingCollection` is the unit a fit is defined in, so it is the
+        unit the problem is built from: the mappings of a collection which
+        share a model and a simulation are one experiment. A collection whose
+        mappings all share one simulation is exactly one experiment and
+        carries its id; a collection over several simulations, e.g. the doses
+        of a study, is one experiment per simulation, numbered after the
+        collection.
 
-        Returns:
-            id of the simulation of a fit mapping -> id of the experiment.
+        Yields:
+            The index of the collection, the id of the experiment and the
+            indices of its fit mappings, in the order of the collections.
         """
         problem = self.problem
-        ids: dict[str, str] = {}
-        exported = set(self.indices)
+        exported = sorted(self.indices)
         for collection_index, collection in enumerate(problem.mapping_collections):
-            indices = [
-                k for k in exported if problem.collection_indices[k] == collection_index
-            ]
             groups: dict[tuple[int, int], list[int]] = defaultdict(list)
-            for k in sorted(indices):
-                groups[(id(problem.models[k]), id(problem.simulations[k]))].append(k)
+            for k in exported:
+                if problem.collection_indices[k] == collection_index:
+                    key = (id(problem.models[k]), id(problem.simulations[k]))
+                    groups[key].append(k)
             for n, group in enumerate(groups.values()):
-                experiment_id = petab_id(collection.sid)
-                if len(groups) > 1:
-                    experiment_id = petab_id(collection.sid, f"sim{n}")
-                for k in group:
-                    ids.setdefault(problem.simulation_keys[k], experiment_id)
-        return ids
+                experiment_id = (
+                    petab_id(collection.sid)
+                    if len(groups) == 1
+                    else petab_id(collection.sid, f"sim{n}")
+                )
+                yield collection_index, experiment_id, group
+
+    def _simulation_ids(self) -> dict[str, list[str]]:
+        """Get the ids of the PEtab experiments of every simulation of the problem.
+
+        The ids are the ones `_add_experiments` gives the experiments, computed
+        ahead of it: the networks key the arrays of their inputs by them. The
+        key of a simulation is unique in its simulation experiment only, and
+        a simulation whose fit mappings are in several collections is several
+        experiments: the networks read their inputs by the key of the
+        simulation, so every one of these experiments has the same inputs.
+
+        Returns:
+            id of the simulation of a fit mapping -> ids of its experiments.
+        """
+        ids: dict[str, list[str]] = defaultdict(list)
+        for _, experiment_id, group in self._experiment_groups():
+            key = self.problem.simulation_keys[group[0]]
+            if experiment_id not in ids[key]:
+                ids[key].append(experiment_id)
+        return dict(ids)
 
     def check(self) -> None:
         """Check that the problem can be written.
@@ -366,6 +395,8 @@ class PetabExporter:
         the PEtab problem, so it is written once.
         """
         by_source: dict[Path, str] = {}
+        #: the file of every model which is written -> its content
+        files: dict[Path, str] = {}
         for k in self.indices:
             model = self.problem.models[k]
             if id(model) in self.model_ids:
@@ -397,68 +428,79 @@ class PetabExporter:
                     self.derivations[sid] = derivation
                     name = derivation.source
                 model_file = SbmlModel(sbml_document=document, model_id=sid)
-                model_file.rel_path = Path(name)
+                model_file.rel_path = self._model_file(
+                    files, Path(name), sid, libsbml.writeSBMLToString(document)
+                )
                 petab_problem.models.append(model_file)
                 self.sbml_models[sid] = model_file.sbml_model
                 by_source[path] = sid
             self.model_ids[id(model)] = sid
+
+    def _model_file(
+        self, files: dict[Path, str], name: Path, sid: str, content: str
+    ) -> Path:
+        """Get the file a model is written to.
+
+        A model is written to the file of its source. Two models whose sources
+        have the same name, e.g. two models of different directories or two
+        models derived from one source, are different files: the second is
+        named after its model id.
+
+        Args:
+            files: the files which are written -> their content, the file of
+                the model is added.
+            name: name of the file of the source of the model.
+            sid: id of the model.
+            content: the SBML the model is written as.
+
+        Returns:
+            The path of the file, relative to the problem.
+
+        Raises:
+            ValueError: if the file named after the model id is taken, too.
+        """
+        for path in (name, Path(f"{sid}.xml")):
+            if files.setdefault(path, content) == content:
+                return path
+        raise ValueError(
+            f"'{self.problem.opid}': the model '{sid}' can be written neither as "
+            f"'{name}' nor as '{sid}.xml', other models of the problem are "
+            f"written to these files."
+        )
 
     # --- EXPERIMENTS AND CONDITIONS ---
 
     def _add_experiments(self, petab_problem: PetabProblem) -> None:
         """Add the experiments of the fit mapping collections.
 
-        A `FitMappingCollection` is the unit a fit is defined in, so it is the
-        unit the problem is built from: the mappings of a collection which
-        share a model and a simulation are one experiment of PEtab, its periods
-        are the timecourses of the simulation and the changes of a timecourse
-        are its condition. A collection whose mappings all share one simulation
-        is exactly one experiment and carries its id; a collection over several
-        simulations, e.g. the doses of a study, is one experiment per
-        simulation, numbered after the collection.
+        The experiments are the ones of `_experiment_groups`: the periods of
+        an experiment are the timecourses of its simulation and the changes of
+        a timecourse are its condition.
         """
         problem = self.problem
-        exported = set(self.indices)
-        for collection_index, collection in enumerate(problem.mapping_collections):
-            indices = [
-                k for k in exported if problem.collection_indices[k] == collection_index
-            ]
-            if not indices:
-                continue
-
-            # the mappings of the collection which share a model and simulation
-            groups: dict[tuple[int, int], list[int]] = defaultdict(list)
-            for k in sorted(indices):
-                groups[(id(problem.models[k]), id(problem.simulations[k]))].append(k)
-
-            for n, group in enumerate(groups.values()):
-                k0 = group[0]
-                simulation = problem.simulations[k0]
-                if not isinstance(simulation, TimecourseSim):
-                    raise ValueError(
-                        f"'{problem.opid}': only a `TimecourseSim` is exported, "
-                        f"'{simulation}' is a '{type(simulation).__name__}'."
-                    )
-                experiment_id = petab_id(collection.sid)
-                if len(groups) > 1:
-                    experiment_id = petab_id(collection.sid, f"sim{n}")
-                periods = self._periods(
-                    petab_problem,
-                    experiment_id=experiment_id,
-                    simulation=simulation,
-                    group_index=self.group_indices[k0],
-                    simulation_key=problem.simulation_keys[k0],
-                    defined_changes=problem.defined_changes[k0],
-                    sbml_model=self.sbml_models.get(
-                        self.model_ids[id(problem.models[k0])]
-                    ),
+        for collection_index, experiment_id, group in self._experiment_groups():
+            k0 = group[0]
+            simulation = problem.simulations[k0]
+            if not isinstance(simulation, TimecourseSim):
+                raise ValueError(
+                    f"'{problem.opid}': only a `TimecourseSim` is exported, "
+                    f"'{simulation}' is a '{type(simulation).__name__}'."
                 )
-                _table(petab_problem, "experiment_tables").experiments.append(
-                    petab_v2.Experiment(id=experiment_id, periods=periods)
-                )
-                for k in group:
-                    self.experiment_ids[k] = experiment_id
-                    self.experiment_collections[experiment_id] = collection_index
+            periods = self._periods(
+                petab_problem,
+                experiment_id=experiment_id,
+                simulation=simulation,
+                group_index=self.group_indices[k0],
+                simulation_key=problem.simulation_keys[k0],
+                defined_changes=problem.defined_changes[k0],
+                sbml_model=self.sbml_models.get(self.model_ids[id(problem.models[k0])]),
+            )
+            _table(petab_problem, "experiment_tables").experiments.append(
+                petab_v2.Experiment(id=experiment_id, periods=periods)
+            )
+            for k in group:
+                self.experiment_ids[k] = experiment_id
+                self.experiment_collections[experiment_id] = collection_index
 
     def _periods(
         self,
@@ -620,10 +662,18 @@ class PetabExporter:
         (`<observable>_<experiment>`): they are written as one observable
         again, so that the problem which was read keeps its observables. An
         observable which would shadow an entity of the model is prefixed.
+
+        Raises:
+            ValueError: if fit mappings which observe different things, or
+                one thing in the same experiment, get the id of one
+                observable, e.g. the mappings `a.b` and `a_b`.
         """
         problem = self.problem
         keys = [problem.mapping_keys[k] for k in self.indices]
         unique = len(set(keys)) == len(keys)
+        #: what the observable of a fit mapping is: its model, its formula and
+        #: its noise
+        contents: dict[int, tuple[Any, ...]] = {}
         content: dict[tuple[Any, ...], list[int]] = defaultdict(list)
         for k in self.indices:
             observable_id = (
@@ -633,15 +683,14 @@ class PetabExporter:
             )
             self.observable_ids[k] = observable_id
             noise = noise_model_of(problem, k)
-            content[
-                (
-                    self.model_ids[id(problem.models[k])],
-                    self._observable_formula(k),
-                    noise.formula,
-                    noise.distribution,
-                    tuple(noise.placeholders),
-                )
-            ].append(k)
+            contents[k] = (
+                self.model_ids[id(problem.models[k])],
+                self._observable_formula(k),
+                noise.formula,
+                noise.distribution,
+                tuple(noise.placeholders),
+            )
+            content[contents[k]].append(k)
         for group in content.values():
             if len(group) < 2:
                 continue
@@ -679,6 +728,28 @@ class PetabExporter:
                 if len(experiments_of[observable_id]) == 1
                 else f"{observable_id}_{self.experiment_ids.get(k)}"
             )
+        # one observable is one thing, measured once per experiment: the ids
+        # of PEtab may join mappings whose keys differ
+        by_id: dict[str, list[int]] = defaultdict(list)
+        for k in self.indices:
+            by_id[self.observable_ids[k]].append(k)
+        for observable_id, group in by_id.items():
+            info_keys = [self.info_keys[k] for k in group]
+            if len({contents[k] for k in group}) == 1 and len(set(info_keys)) == len(
+                info_keys
+            ):
+                continue
+            mappings = ", ".join(
+                f"'{problem.mapping_keys[k]}' ({problem.experiment_keys[k]})"
+                for k in group
+            )
+            raise ValueError(
+                f"'{problem.opid}': the fit mappings {mappings} are the "
+                f"observable '{observable_id}' of PEtab, but they observe "
+                f"different things or one thing in the same experiment. Give "
+                f"the mappings keys which differ in PEtab, i.e. in more than "
+                f"the characters which are no letters, digits or `_`."
+            )
 
     def _observable_formula(self, k: int) -> str:
         """Get the formula of the observable of a fit mapping.
@@ -697,12 +768,16 @@ class PetabExporter:
         Raises:
             ValueError: if the derived model has no rule for the observable.
         """
+        if k in self._formulas:
+            return self._formulas[k]
         problem = self.problem
         model_id = self.model_ids[id(problem.models[k])]
-        sbml_model = self.sbml_models.get(model_id)
         selection = problem.yid_observable[k]
         if self._is_derived_observable(k):
-            derived = libsbml.readSBMLFromFile(str(problem.models[k].source.path))
+            derived = self._derived_documents.get(model_id)
+            if derived is None:
+                derived = libsbml.readSBMLFromFile(str(problem.models[k].source.path))
+                self._derived_documents[model_id] = derived
             rule = derived.getModel().getRuleByVariable(selection)
             if rule is None:
                 raise ValueError(
@@ -710,10 +785,13 @@ class PetabExporter:
                     f"mapping '{problem.mapping_keys[k]}' was added to the model "
                     f"'{problem.models[k].source.path}' without a rule."
                 )
-            return petab_math_str(
+            formula = petab_math_str(
                 formula_expression(libsbml.formulaToL3String(rule.getMath()))
             )
-        return observable_formula(selection, sbml_model)
+        else:
+            formula = observable_formula(selection, self.sbml_models.get(model_id))
+        self._formulas[k] = formula
+        return formula
 
     def _is_derived_observable(self, k: int) -> bool:
         """Check whether the observable of a fit mapping was added to the model.
@@ -903,8 +981,13 @@ class PetabExporter:
                 "collection": problem.mapping_collections[collection_index].sid,
                 "time_offset": simulation.time_offset,
                 "reset": simulation.reset,
+                # the changes of the first timecourse as the experiment
+                # defines them, not the values an evaluation wrote into it
                 "timecourses": [
-                    self._timecourse_dict(tc) for tc in simulation.timecourses
+                    self._timecourse_dict(
+                        tc, problem.defined_changes[k] if i == 0 else tc.changes
+                    )
+                    for i, tc in enumerate(simulation.timecourses)
                 ],
             }
 
@@ -973,17 +1056,21 @@ class PetabExporter:
         return weight
 
     @staticmethod
-    def _timecourse_dict(tc: Timecourse) -> dict[str, Any]:
-        """Get the timecourse as a dictionary, with the units of its changes."""
+    def _timecourse_dict(tc: Timecourse, changes: Mapping[str, Any]) -> dict[str, Any]:
+        """Get the timecourse as a dictionary, with the units of its changes.
+
+        Args:
+            tc: the timecourse.
+            changes: the changes of the timecourse as the experiment defines
+                them, see `OptimizationProblem.defined_changes`.
+        """
         return {
             "start": tc.start,
             "end": tc.end,
             "steps": tc.steps,
             "discard": tc.discard,
-            "changes": {
-                target: _magnitude(value) for target, value in tc.changes.items()
-            },
-            "units": {target: _unit(value) for target, value in tc.changes.items()},
+            "changes": {target: _magnitude(value) for target, value in changes.items()},
+            "units": {target: _unit(value) for target, value in changes.items()},
         }
 
 
@@ -1026,18 +1113,8 @@ def to_petab(
     output_dir = Path(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    # the models are copied, `to_files` writes them from their libsbml document
-    for k in exporter.indices:
-        model = problem.models[k]
-        source_path = model.source.path
-        if exporter.model_ids[id(model)] in exporter.derivations:
-            # a derived model is written as its source by `to_files`
-            continue
-        if source_path is not None:
-            target = output_dir / Path(source_path).name
-            if not target.exists():
-                shutil.copyfile(source_path, target)
-
+    # `to_files` writes every model from its libsbml document, a derived model
+    # as its source, see `_add_models`
     _set_table_paths(petab_problem)
     petab_problem.to_files(base_path=output_dir)
     if exporter.sciml is not None:
