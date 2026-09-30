@@ -131,9 +131,9 @@ for sa in [sa_sampling, sa_sobol, sa_fast, sa_morris]:
 - **Sampling** draws `N` parameter sets and reports the distribution of every output (mean, median, standard deviation, coefficient of variation, quantiles), i.e., an uncertainty analysis.
 - **Sobol** computes the first order (`S1`) and total (`ST`) variance based indices with the Saltelli sampling scheme of the Sobol' sequence (`SALib.sample.sobol`, not scrambled); `N` samples per parameter, a power of 2.
 - **FAST** computes first order and total indices with the extended Fourier amplitude sensitivity test.
+- **Morris** computes the elementary effects `mu`, `mu_star` and `sigma` of the screening method, with `num_levels` grid levels and `optimal_trajectories` trajectories.
 
 An output which does not vary over the samples has no Sobol or FAST indices: they are `nan` and the log names the output.
-- **Morris** computes the elementary effects `mu`, `mu_star` and `sigma` of the screening method, with `num_levels` grid levels and `optimal_trajectories` trajectories.
 
 The sensitivities are stored as `xarray.DataArray` objects per group and key (`sa.sensitivity[group_id][key]`), returned as data frames with `sensitivity_df`, and written as tables and figures into the results path. `sbmlsim.sensitivity.classification` groups parameters by their sensitivities across outputs.
 

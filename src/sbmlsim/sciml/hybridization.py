@@ -32,6 +32,7 @@ from numpy.typing import ArrayLike
 
 from sbmlsim.fit.derived import HookSummary, ParameterGroup
 from sbmlsim.fit.objects import FitParameter
+from sbmlsim.log import some_ids
 from sbmlsim.mathml import TIME, evaluate_formula, formula_symbols
 from sbmlsim.sciml.backend import BackendKind
 from sbmlsim.sciml.errors import NetworkHybridizationError, NetworkImportError
@@ -799,7 +800,7 @@ class Hybridization:
         missing = [sid for sid in estimated if sid not in values]
         if missing:
             raise self.error(
-                f"the elements {missing[:5]}{' ...' if len(missing) > 5 else ''} "
+                f"the elements {some_ids(missing)} "
                 f"({len(missing)} of {len(estimated)} which are not frozen) have "
                 f"no value. The elements which are not frozen are estimated, "
                 f"the fit gives their values"
@@ -837,7 +838,7 @@ class Hybridization:
         missing = [sid for sid in ids if sid not in values]
         if missing:
             raise self.error(
-                f"the frozen elements {_some(missing)} have no value, the model "
+                f"the frozen elements {some_ids(missing)} have no value, the model "
                 f"of a compiled network gives them"
             )
         actual = np.array([values[sid] for sid in ids], dtype=float)
@@ -848,7 +849,7 @@ class Hybridization:
             others = [sid for sid, d in zip(ids, differ, strict=True) if d]
             raise self.error(
                 f"the model carries other values of the frozen elements "
-                f"{_some(others)} than the network, compile the network again"
+                f"{some_ids(others)} than the network, compile the network again"
             )
 
     # --- THE MODEL ---
@@ -1026,13 +1027,6 @@ _KINDS: dict[int, str] = {
 _INITIAL_VALUES = frozenset(
     {libsbml.SBML_PARAMETER, libsbml.SBML_SPECIES, libsbml.SBML_COMPARTMENT}
 )
-
-
-def _some(ids: list[str], n: int = 5) -> str:
-    """Get the first ids of a list and how many there are, for a message."""
-    if len(ids) <= n:
-        return str(ids)
-    return f"{ids[:n]} ... ({len(ids)} in total)"
 
 
 def _kind(element: libsbml.SBase) -> str:

@@ -34,6 +34,7 @@ from petab.v2.math import sympify_petab
 from sbmlsim.fit.objects import NoiseDistribution, NoiseModel
 from sbmlsim.fit.options import ResidualType
 from sbmlsim.fit.parameters import ParameterSet
+from sbmlsim.log import some_ids
 
 if TYPE_CHECKING:
     from sbmlsim.fit.optimization import OptimizationProblem
@@ -458,9 +459,7 @@ def _warn_fall_back(fall_back: str, names: list[str], order: int) -> None:
         names: ids of the parameters.
         order: order of the difference which was asked for.
     """
-    listed = str(names[:20]) + (
-        f" ... ({len(names)} in total)" if len(names) > 20 else ""
-    )
+    listed = some_ids(names, n=20)
     if fall_back == FALL_BACK_SECANT:
         logger.warning(
             "The bounds of the parameters %s are closer than the steps of the "
