@@ -6,18 +6,77 @@ tests which need it are skipped without it.
 """
 
 from collections.abc import Callable
-from typing import Any
+from typing import Any, ClassVar
 
 import numpy as np
 import pytest
+import sympy
 from petab_sciml import Input, Layer, NNModel, Node
 
-from sbmlsim.sciml.backend import NumpyBackend
+from sbmlsim.sciml.backend import Backend, BackendKind, NumpyBackend
 from sbmlsim.sciml.interpreter import evaluate
 
 #: absolute and relative tolerance of the comparison with PyTorch, which runs
 #: in double precision
 TOLERANCE = 1e-10
+
+
+def _elementwise(function: Callable[..., Any], n_args: int = 1) -> np.ufunc:
+    """Apply a sympy function to every element of `object` arrays."""
+    return np.frompyfunc(function, n_args, 1)
+
+
+class SympyBackend(Backend):
+    """A backend on `object` arrays of sympy expressions.
+
+    It is the backend the compilation of a network into expressions needs,
+    reduced to what the tests of the layers and functions which declare
+    `BackendKind.SYMPY` evaluate with.
+    """
+
+    kind: ClassVar[BackendKind] = BackendKind.SYMPY
+    dtype: ClassVar[type] = object
+
+    def exp(self, x: np.ndarray) -> np.ndarray:
+        return _elementwise(sympy.exp)(x)
+
+    def log(self, x: np.ndarray) -> np.ndarray:
+        return _elementwise(sympy.log)(x)
+
+    def tanh(self, x: np.ndarray) -> np.ndarray:
+        return _elementwise(sympy.tanh)(x)
+
+    def sqrt(self, x: np.ndarray) -> np.ndarray:
+        return _elementwise(sympy.sqrt)(x)
+
+    def erf(self, x: np.ndarray) -> np.ndarray:
+        return _elementwise(sympy.erf)(x)
+
+    def absolute(self, x: np.ndarray) -> np.ndarray:
+        return _elementwise(sympy.Abs)(x)
+
+    def select(
+        self,
+        x: np.ndarray,
+        threshold: float,
+        below: np.ndarray | float,
+        above: np.ndarray | float,
+    ) -> np.ndarray:
+        def piecewise(value: Any, low: Any, high: Any) -> sympy.Expr:
+            return sympy.Piecewise((high, value > threshold), (low, True))
+
+        return _elementwise(piecewise, 3)(x, below, above)
+
+    def stabilizer(self, x: np.ndarray, axis: int) -> np.ndarray | float:
+        return 0.0
+
+
+def symbols(prefix: str, shape: tuple[int, ...]) -> np.ndarray:
+    """Get an `object` array of symbols, named by the prefix and the index."""
+    array = np.empty(shape, dtype=object)
+    for index in np.ndindex(shape):
+        array[index] = sympy.Symbol("_".join([prefix, *map(str, index)]))
+    return array
 
 
 def build_layer_model(
@@ -163,3 +222,15 @@ def compare_function() -> Callable[..., None]:
         np.testing.assert_allclose(observed, expected, rtol=TOLERANCE, atol=TOLERANCE)
 
     return compare
+
+
+@pytest.fixture
+def sympy_backend() -> SympyBackend:
+    """Get the backend on sympy expressions."""
+    return SympyBackend()
+
+
+@pytest.fixture
+def symbolic() -> Callable[[str, tuple[int, ...]], np.ndarray]:
+    """Get the function which builds an array of symbols."""
+    return symbols

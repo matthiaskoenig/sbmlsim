@@ -1,6 +1,6 @@
 """Tests of the interpreter of the forward pass."""
 
-from collections.abc import Callable
+import inspect
 
 import numpy as np
 import pytest
@@ -8,7 +8,7 @@ from petab_sciml import Input, Layer, NNModel, Node
 
 from sbmlsim.sciml import UnsupportedLayerError
 from sbmlsim.sciml.backend import NUMPY_ONLY, Backend, BackendKind, NumpyBackend
-from sbmlsim.sciml.interpreter import evaluate
+from sbmlsim.sciml.interpreter import _array_parameters, evaluate
 from sbmlsim.sciml.layers import FUNCTIONS, LAYERS
 from sbmlsim.sciml.layers.registry import FunctionType, function
 
@@ -180,15 +180,9 @@ def test_a_layer_without_an_implementation() -> None:
     )
 
 
-class ExpressionBackend(NumpyBackend):
-    """A backend which says that it is the one on expressions."""
-
-    kind = BackendKind.SYMPY
-
-
 @pytest.mark.usefixtures("scale")
 def test_a_node_which_the_backend_does_not_support(
-    monkeypatch: pytest.MonkeyPatch,
+    monkeypatch: pytest.MonkeyPatch, sympy_backend: Backend
 ) -> None:
     """A layer and a function declare the backends they are evaluated by."""
     function_model = _model(
@@ -197,10 +191,10 @@ def test_a_node_which_the_backend_does_not_support(
         _node("output", "output", "output", ["scale"]),
     )
     with pytest.raises(UnsupportedLayerError, match=r"'scale'.*backend 'sympy'"):
-        evaluate(function_model, {}, [np.zeros(2)], ExpressionBackend())
+        evaluate(function_model, {}, [np.zeros(2)], sympy_backend)
 
     layer_model = _model(X, LAYER1, _node("output", "output", "output", ["layer1"]))
-    evaluate(layer_model, ARRAYS, [np.zeros(2)], ExpressionBackend())
+    evaluate(layer_model, ARRAYS, [np.zeros(2)], sympy_backend)
     monkeypatch.setitem(
         LAYERS,
         "Linear",
@@ -212,7 +206,7 @@ def test_a_node_which_the_backend_does_not_support(
         ),
     )
     with pytest.raises(UnsupportedLayerError, match=r"'Linear'.*backend 'sympy'"):
-        evaluate(layer_model, ARRAYS, [np.zeros(2)], ExpressionBackend())
+        evaluate(layer_model, ARRAYS, [np.zeros(2)], sympy_backend)
 
 
 def test_a_keyword_argument_of_a_layer_is_not_dropped() -> None:
@@ -257,4 +251,131 @@ def test_a_function_is_registered_under_every_name(
     assert set(registry.FUNCTIONS) == {"one", "uno"}
     assert registry.FUNCTIONS["uno"].function is one
     assert registry.FUNCTIONS["uno"].backends == NUMPY_ONLY
-    assert isinstance(one, Callable)
+    # the decorator returns the function which was decorated, not a wrapper
+    assert one.__name__ == "one"
+    np.testing.assert_array_equal(one(NumpyBackend(), np.zeros(2)), [1.0, 1.0])
+
+
+@pytest.mark.parametrize(
+    ("node", "output"),
+    [
+        (_node("output", "output", "output", ["nope"]), "output"),
+        (_node("output", "output", "output", [["x", "nope"]]), "output"),
+        (_node("output", "output", "output", [1.0]), "output"),
+        (_node("layer1", "call_module", "layer1", ["nope"]), "layer1"),
+        (_node("tanh", "call_function", "tanh", ["nope"]), "tanh"),
+        (_node("cat", "call_function", "cat", [["x", "nope"]]), "cat"),
+    ],
+)
+def test_a_reference_to_a_node_which_does_not_exist(node: Node, output: str) -> None:
+    """An argument which names no evaluated node is an error, not a literal."""
+    nodes = [X, node]
+    if node.op != "output":
+        nodes.append(_node("output", "output", "output", [output]))
+    with pytest.raises(
+        ValueError,
+        match=rf"Network 'net1', node '{node.name}': the argument .* is "
+        r"not a node which was evaluated",
+    ):
+        evaluate(_model(*nodes), ARRAYS, [np.zeros(2)], NumpyBackend())
+
+
+def test_the_input_of_a_function_is_an_array() -> None:
+    """The first argument of a function is the array it is applied to."""
+    model = _model(
+        X,
+        _node("tanh", "call_function", "tanh", [1.0]),
+        _node("output", "output", "output", ["tanh"]),
+    )
+    with pytest.raises(
+        ValueError, match=r"Network 'net1', node 'tanh': the input 1.0 is not an array"
+    ):
+        evaluate(model, ARRAYS, [np.zeros(2)], NumpyBackend())
+
+
+def test_a_type_error_of_a_function_names_the_node() -> None:
+    """An argument of the wrong type is an error of the node."""
+    model = _model(
+        X,
+        _node("softmax", "call_function", "softmax", ["x"], dim="a"),
+        _node("output", "output", "output", ["softmax"]),
+    )
+    with pytest.raises(ValueError, match=r"Network 'net1', node 'softmax'") as e:
+        evaluate(model, ARRAYS, [np.zeros(2)], NumpyBackend())
+    assert isinstance(e.value.__cause__, TypeError)
+
+
+def test_an_output_node_without_an_argument() -> None:
+    """The output node names the outputs."""
+    model = _model(X, LAYER1, _node("output", "output", "output", []))
+    with pytest.raises(
+        ValueError, match=r"Network 'net1', node 'output': .*0 arguments, expected one"
+    ):
+        evaluate(model, ARRAYS, [np.zeros(2)], NumpyBackend())
+
+
+def test_a_layer_with_the_wrong_number_of_inputs() -> None:
+    """The inputs of a layer are bound to its implementation."""
+    model = _model(
+        X,
+        _node("layer1", "call_module", "layer1", ["x", "x"]),
+        _node("output", "output", "output", ["layer1"]),
+    )
+    with pytest.raises(
+        UnsupportedLayerError, match=r"'net1', node 'layer1': 'Linear'.*inputs"
+    ):
+        evaluate(model, ARRAYS, [np.zeros(2)], NumpyBackend())
+
+
+def test_a_literal_which_is_the_name_of_a_node() -> None:
+    """Only the array arguments of a function are resolved to nodes."""
+    model = _model(
+        X,
+        _node("tanh", "call_function", "tanh", ["x"]),
+        _node("gelu", "call_function", "gelu", ["tanh", "tanh"]),
+        _node("output", "output", "output", ["gelu"]),
+    )
+    x = np.array([0.5, -0.25])
+    (y,) = evaluate(model, ARRAYS, [x], NumpyBackend())
+    t = np.tanh(x)
+    inner = np.sqrt(2.0 / np.pi) * (t + 0.044715 * t**3)
+    np.testing.assert_allclose(y, 0.5 * t * (1.0 + np.tanh(inner)))
+
+
+def test_the_value_of_a_node_is_an_array() -> None:
+    """A function of an array without axes gives an array, not a scalar."""
+    model = _model(
+        X,
+        _node("tanh", "call_function", "tanh", ["x"]),
+        _node("output", "output", "output", ["tanh"]),
+    )
+    (y,) = evaluate(model, ARRAYS, [np.array(0.5)], NumpyBackend())
+    assert type(y) is np.ndarray
+    assert y.shape == ()
+
+
+@pytest.mark.parametrize(
+    "node",
+    [
+        _node("layer1", "call_module", "layer1", ["x"]),
+        _node("flatten", "call_function", "flatten", ["x"]),
+    ],
+)
+def test_an_output_does_not_share_memory_with_an_input(node: Node) -> None:
+    """Writing into an output does not change the input."""
+    model = _model(
+        X, node, _node("output", "output", "output", [node.name]), layer_type="Dropout"
+    )
+    x = np.array([[0.5, -0.25]])
+    (y,) = evaluate(model, {}, [x], NumpyBackend())
+    assert not np.shares_memory(x, y)
+    y[...] = 1.0
+    np.testing.assert_array_equal(x, [[0.5, -0.25]])
+
+
+@pytest.mark.parametrize("name", sorted(FUNCTIONS))
+def test_the_input_of_every_function_takes_arrays(name: str) -> None:
+    """The first parameter after the backend is resolved to nodes."""
+    implementation = FUNCTIONS[name].function
+    first = list(inspect.signature(implementation).parameters)[1]
+    assert first in _array_parameters(implementation)

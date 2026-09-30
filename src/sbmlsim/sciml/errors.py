@@ -3,7 +3,15 @@
 from __future__ import annotations
 
 
-class NetworkImportError(ValueError):
+class NetworkError(Exception):
+    """The base of the errors of a network.
+
+    A caller catches every error of the import and the evaluation of a
+    network with it.
+    """
+
+
+class NetworkImportError(NetworkError, ValueError):
     """A network or its arrays cannot be read.
 
     The message names the network and, where it applies, the layer and the
@@ -11,7 +19,7 @@ class NetworkImportError(ValueError):
     """
 
 
-class UnsupportedLayerError(NotImplementedError):
+class UnsupportedLayerError(NetworkError, NotImplementedError):
     """A node of the forward pass has no implementation.
 
     Attributes:
