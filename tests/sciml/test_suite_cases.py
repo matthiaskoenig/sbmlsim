@@ -21,7 +21,7 @@ from sbmlsim.fit.petab_v2.likelihood import (
 from sbmlsim.fit.petab_v2.likelihood import (
     nominal_parameters as nominal_parameter_set,
 )
-from sbmlsim.fit.petab_v2.reader import PetabReader
+from sbmlsim.fit.petab_v2.reader import DEFAULT_EXPERIMENT, PetabReader
 from sbmlsim.sciml.testsuite import (
     GRADIENT_ORDER,
     GRADIENT_STEP,
@@ -34,6 +34,7 @@ from sbmlsim.sciml.testsuite import (
     compare_arrays,
     parameter_key,
 )
+from sbmlsim.testsuite import cache
 from tests.sciml.hybrid import feed_forward
 from tests.sciml.petab import write_problem
 
@@ -580,6 +581,13 @@ def test_the_suite_is_loaded_from_the_archive_of_a_commit(
     assert suite.case_ids("initialization") == ["001"]
     assert SciMLSuite.cached("abc") == suite
 
+    # a fetch which was killed left its staging directory, the next load removes it
+    killed = suite.path.parent / ".abc.xyz.incomplete"
+    killed.mkdir()
+    (killed / cache.LOCK_NAME).touch()
+    assert SciMLSuite.load("abc") == suite
+    assert not killed.exists()
+
 
 def test_an_archive_which_is_not_the_suite(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
@@ -603,12 +611,13 @@ def _problem_import_case(
     gradient_of: dict[str, float] | None = None,
     log_posterior: float | None = None,
     frozen_layer: bool = False,
+    experiment: bool = True,
 ) -> ProblemImportCase:
     """Write a case of `sciml_problem_import` with the values of `sbmlsim`.
 
     The reference values are calculated with `sbmlsim` itself, so a case
     which is not changed passes; `llh`, `gradient_of` and `log_posterior`
-    replace them.
+    replace them. Without `experiment` the measurements name no experiment.
     """
     directory = tmp_path / "sciml_problem_import" / "001"
     network = feed_forward()
@@ -635,6 +644,12 @@ def _problem_import_case(
         ],
         parameters=parameters,
     )
+    if not experiment:
+        measurements = pd.read_csv(directory / "petab" / "measurements.tsv", sep="\t")
+        measurements["experimentId"] = ""
+        measurements.to_csv(
+            directory / "petab" / "measurements.tsv", sep="\t", index=False
+        )
     reader = PetabReader.from_yaml(directory / "petab" / "problem.yaml")
     reader.derived_dir = tmp_path / "derived"
     problem = reader.to_optimization_problem()
@@ -664,7 +679,11 @@ def _problem_import_case(
             rows.append(
                 {
                     "observableId": reader.observable_id(problem.mapping_keys[k]),
-                    "experimentId": "e1",
+                    "experimentId": (
+                        ""
+                        if problem.simulation_keys[k] == DEFAULT_EXPERIMENT
+                        else problem.simulation_keys[k]
+                    ),
                     "simulation": value,
                     "time": time,
                 }
@@ -755,6 +774,31 @@ def test_a_problem_import_case_with_a_simulation_of_nothing(tmp_path: Path) -> N
     result = case.run()
     assert result.status is CaseStatus.ERROR
     assert "1 of the 21 reference values" in result.message
+
+
+def test_the_simulations_of_measurements_without_an_experiment(
+    tmp_path: Path,
+) -> None:
+    """A fit mapping without an experiment has the rows without an experiment."""
+    case = _problem_import_case(tmp_path, experiment=False)
+    assert case.run().passed
+    df = pd.read_csv(case.simulation_files[0], sep="\t")
+    df.loc[len(df)] = ["prey_o", "e1", 1.0, 1.0]
+    df.to_csv(case.simulation_files[0], sep="\t", index=False)
+    result = case.run()
+    assert result.status is CaseStatus.ERROR
+    assert "1 of the 21 reference values" in result.message
+
+
+def test_the_most_severe_outcome_is_the_result(tmp_path: Path) -> None:
+    """An error outranks a log-likelihood outside of the tolerance."""
+    case = _problem_import_case(tmp_path, llh=1.0)
+    df = pd.read_csv(case.gradient_files["mech"], sep="\t")
+    df.loc[len(df)] = ["kappa", 1.0]
+    df.to_csv(case.gradient_files["mech"], sep="\t", index=False)
+    result = case.run()
+    assert result.status is CaseStatus.ERROR
+    assert "['kappa'] of the reference values are not estimated" in result.message
 
 
 def test_a_problem_import_case_which_cannot_be_read(tmp_path: Path) -> None:

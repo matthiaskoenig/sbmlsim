@@ -2,6 +2,9 @@
 
 import logging
 import os
+import subprocess
+import sys
+import textwrap
 import time
 import zipfile
 from pathlib import Path
@@ -156,7 +159,10 @@ def test_a_member_outside_of_the_archive_stays_inside(
 
 
 def test_a_stale_staging_directory_is_removed(tmp_path: Path) -> None:
-    """A fetch removes what a killed fetch of its target left behind."""
+    """A fetch removes what a killed fetch of its target left behind.
+
+    A staging directory without a lock file is judged by its age.
+    """
     url = _archive(tmp_path / "suite.zip", {"suite-1.0/cases/001/a.txt": "a"})
     target = tmp_path / "cache" / "suite" / "1.0"
     target.parent.mkdir(parents=True)
@@ -179,3 +185,87 @@ def test_a_stale_staging_directory_is_removed(tmp_path: Path) -> None:
         "1.0",
     ]
     assert cache.remove_stale(target / "x", stale_after=0.0) == []
+
+
+def _killed_staging(parent: Path, name: str) -> Path:
+    """Write what a fetch which was killed leaves behind: its unlocked lock file."""
+    staging = parent / name
+    staging.mkdir(parents=True)
+    (staging / cache.LOCK_NAME).touch()
+    (staging / "archive.zip").write_text("partial")
+    return staging
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="the lock is fcntl.flock")
+def test_a_killed_fetch_is_removed_while_a_running_one_is_kept(
+    tmp_path: Path,
+) -> None:
+    """A staging directory is stale when no process holds its lock, at any age."""
+    url = _archive(tmp_path / "suite.zip", {"suite-1.0/cases/001/a.txt": "a"})
+    target = tmp_path / "cache" / "suite" / "1.0"
+    marker = tmp_path / "selecting"
+    code = textwrap.dedent(
+        f"""
+        import time
+        from pathlib import Path
+
+        from sbmlsim.testsuite import cache
+
+        def select(unpacked: Path) -> Path:
+            Path({str(marker)!r}).touch()
+            time.sleep(600)
+            return unpacked
+
+        cache.fetch({url!r}, Path({str(target)!r}), select=select)
+        """
+    )
+    process = subprocess.Popen([sys.executable, "-c", code])
+    try:
+        deadline = time.monotonic() + 60
+        while not marker.exists():
+            assert process.poll() is None, "the fetch ended before it selected"
+            assert time.monotonic() < deadline, "the fetch did not select"
+            time.sleep(0.05)
+        (staging,) = target.parent.iterdir()
+
+        # the fetch runs: its staging directory is kept, however old
+        assert cache.remove_stale(target, stale_after=0.0) == []
+        assert (staging / cache.LOCK_NAME).is_file()
+    finally:
+        process.kill()
+        process.wait()
+
+    # killed a moment ago, nothing releases the directory but the next fetch
+    assert staging.is_dir()
+    assert cache.remove_stale(target) == [staging]
+    assert list(target.parent.iterdir()) == []
+
+
+def test_the_staging_of_another_target_is_kept(tmp_path: Path) -> None:
+    """Only the staging directories of the target itself are removed."""
+    parent = tmp_path / "cache" / "suite"
+    own = _killed_staging(parent, ".1.0.abc.incomplete")
+    sibling = _killed_staging(parent, ".1.0.1.abc.incomplete")
+    old = time.time() - 2 * cache.STALE_AFTER
+    os.utime(sibling, (old, old))
+
+    assert cache.remove_stale(parent / "1.0") == [own]
+    assert sibling.is_dir()
+    assert cache.remove_stale(tmp_path / "missing" / "1.0") == []
+
+
+def test_a_load_from_the_cache_removes_a_killed_fetch(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A suite which is cached removes what a killed fetch left next to it."""
+    url = _archive(
+        tmp_path / "semantic.zip", {"semantic/00001/00001-settings.txt": "start: 0"}
+    )
+    monkeypatch.delenv("SBMLSIM_TEST_SUITE_PATH", raising=False)
+    monkeypatch.setenv("XDG_CACHE_HOME", str(tmp_path / "cache"))
+    monkeypatch.setattr("sbmlsim.testsuite.cases.SUITE_URL", url)
+    suite = SemanticSuite.load("9.9.9")
+    killed = _killed_staging(suite.path.parent, ".semantic.abc.incomplete")
+
+    assert SemanticSuite.load("9.9.9") == suite
+    assert not killed.exists()

@@ -111,6 +111,16 @@ class CaseStatus(StrEnum):
     ERROR = "error"
 
 
+#: the outcomes of a comparison from the least to the most severe
+SEVERITY: tuple[CaseStatus, ...] = (
+    CaseStatus.PASS,
+    CaseStatus.TOLERANCE,
+    CaseStatus.SHAPE,
+    CaseStatus.UNSUPPORTED,
+    CaseStatus.ERROR,
+)
+
+
 @dataclass(frozen=True)
 class CaseResult:
     """The outcome of a case.
@@ -264,15 +274,18 @@ def _worst(
         outcomes: outcome, message and largest difference of every comparison.
 
     Returns:
-        The first comparison which fails, or the pass with the largest
-        difference of all comparisons. A case without a comparison is an
-        `ERROR`, it would pass without checking anything.
+        The first of the most severe comparisons which fail, see `SEVERITY`,
+        or the pass with the largest difference of all comparisons. A case
+        without a comparison is an `ERROR`, it would pass without checking
+        anything.
     """
     if not outcomes:
         return CaseResult(group, cid, CaseStatus.ERROR, "nothing was compared")
-    for status, message, difference in outcomes:
-        if status != CaseStatus.PASS:
-            return CaseResult(group, cid, status, message, difference)
+    status, message, difference = max(
+        outcomes, key=lambda outcome: SEVERITY.index(outcome[0])
+    )
+    if status != CaseStatus.PASS:
+        return CaseResult(group, cid, status, message, difference)
     differences = [d for _, _, d in outcomes if d is not None]
     return CaseResult(
         group, cid, CaseStatus.PASS, "", max(differences) if differences else None
@@ -859,17 +872,33 @@ class ProblemImportCase:
 
         expected = self.expected_simulations()
         predictions = problem.predictions(parameters.x(problem.pids))
-        compared = 0
+        # a measurement without an experiment has a row without one
+        experiment_ids = expected["experimentId"].fillna("").astype(str)
+        matched: set[int] = set()
         for k, prediction in predictions.items():
             key = problem.mapping_keys[k]
             observable_id = reader.observable_id(key)
             experiment_id = problem.simulation_keys[k]
-            rows = expected[expected["observableId"] == observable_id]
-            if experiment_id != DEFAULT_EXPERIMENT:
-                rows = rows[rows["experimentId"] == experiment_id]
-            rows = rows.sort_values("time")
-            compared += len(rows)
+            selected = (expected["observableId"] == observable_id) & (
+                experiment_ids == experiment_id
+            )
+            if experiment_id == DEFAULT_EXPERIMENT:
+                selected |= (expected["observableId"] == observable_id) & (
+                    experiment_ids == ""
+                )
+            rows = expected[selected].sort_values("time")
             what = f"the simulations of '{observable_id}' in '{experiment_id}'"
+            twice = sorted(matched & set(rows.index))
+            if twice:
+                outcomes.append(
+                    (
+                        CaseStatus.ERROR,
+                        f"{what}: the reference values {twice} belong to "
+                        f"another fit mapping as well",
+                        None,
+                    )
+                )
+            matched |= set(rows.index)
             outcomes.append(
                 outcome(
                     f"{what}, times",
@@ -886,12 +915,12 @@ class ProblemImportCase:
                     self.tol_simulations,
                 )
             )
-        if compared != len(expected):
+        if len(matched) != len(expected):
             outcomes.append(
                 (
                     CaseStatus.ERROR,
-                    f"{len(expected) - compared} of the {len(expected)} reference "
-                    f"values of the simulations belong to no fit mapping",
+                    f"{len(expected) - len(matched)} of the {len(expected)} "
+                    f"reference values of the simulations belong to no fit mapping",
                     None,
                 )
             )
@@ -982,6 +1011,8 @@ class SciMLSuite:
         """
         suite = cls.cached(commit)
         if suite is not None:
+            # what a fetch which was killed left next to the cache
+            cache.remove_stale(suite.path)
             return suite
         path = cls.cache_path(commit)
         url = SCIML_SUITE_URL.format(commit=commit)
