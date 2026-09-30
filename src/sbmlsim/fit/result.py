@@ -12,7 +12,7 @@ import pandas as pd
 from scipy.optimize import OptimizeResult
 
 from sbmlsim.console import console
-from sbmlsim.fit.objects import FitParameter
+from sbmlsim.fit.objects import FitParameter, describe_array
 from sbmlsim.fit.options import FitSettings, ParameterScaleType
 from sbmlsim.fit.parameters import ParameterSet, ParameterSets
 from sbmlsim.serialization import ObjectJSONEncoder, from_json, to_json
@@ -58,20 +58,21 @@ def bound_warnings(
         scales: the scale of every parameter, see
             `OptimizationProblem.scales_initialized`.
         rtol: relative distance to a bound which is reported.
-        groups: label of a group -> the ids of the parameters which are its
-            elements, e.g. the arrays of a network. The elements of a group
-            are reported as one message which counts them, because a network
-            has hundreds.
+        groups: label of a group -> the ids of its elements, e.g. the arrays
+            of a network with `ParameterGroup.ids`. A parameter belongs to
+            the group which has the entity it writes (`FitParameter.entity_id`)
+            as an element. The elements of a group are reported as one
+            message which counts them, because a network has hundreds.
 
     Returns:
         Messages for the parameters which are within `rtol` of one of their
         bounds, and one message per group with such elements.
     """
     grouped: dict[str, str] = {
-        pid: label for label, ids in (groups or {}).items() for pid in ids
+        sid: label for label, ids in (groups or {}).items() for sid in ids
     }
     messages: list[str] = []
-    at_bound: dict[str, int] = {}
+    at_bound: dict[str, set[str]] = {}
     for k, (p, scale) in enumerate(zip(parameters, scales, strict=True)):
         lb, ub, value = p.lower_bound, p.upper_bound, x[k]
         if not np.isfinite(lb) or not np.isfinite(ub):
@@ -89,17 +90,23 @@ def bound_warnings(
 
         for bound, name in [(lb, "lower"), (ub, "upper")]:
             if abs(value - bound) / span < rtol:
-                if p.pid in grouped:
-                    label = grouped[p.pid]
-                    at_bound[label] = at_bound.get(label, 0) + 1
+                if p.entity_id in grouped:
+                    # a versioned element counts once
+                    at_bound.setdefault(grouped[p.entity_id], set()).add(p.entity_id)
                     continue
                 messages.append(
                     f"!Optimal parameter '{p.pid}' within {rtol:.0%} of {name} bound!"
                 )
-    sizes = {label: len(ids) for label, ids in (groups or {}).items()}
-    for label, count in at_bound.items():
+    for label, elements in at_bound.items():
+        size = len((groups or {})[label])
+        estimated = len(
+            {p.entity_id for p in parameters if grouped.get(p.entity_id) == label}
+        )
+        counts = f"{size} elements" + (
+            f" ({estimated} estimated)" if estimated != size else ""
+        )
         messages.append(
-            f"!{count} of the {sizes[label]} elements of '{label}' within "
+            f"!{len(elements)} of the {counts} of '{label}' within "
             f"{rtol:.0%} of a bound!"
         )
     return messages
@@ -486,9 +493,23 @@ class OptimizationResult(ObjectJSONEncoder):
         Args:
             path: file the report is written to, none by default.
             print_output: print the report.
-            groups: the groups of parameters which `bound_warnings` reports
-                as one, e.g. the arrays of a network.
+            groups: the groups of elements which are reported as one, e.g. the
+                arrays of a network, see `bound_warnings`. The optimal
+                parameters are listed as one line per group.
         """
+        # the elements of a group are listed as one line per group, in the
+        # table of the runs as well
+        groups = groups or {}
+        by_label: dict[str, list[int]] = {label: [] for label in groups}
+        for k, p in enumerate(self.parameters):
+            for label, ids in groups.items():
+                if p.entity_id in ids:
+                    by_label[label].append(k)
+        grouped = {self.parameters[k].pid for ks in by_label.values() for k in ks}
+        fits = self.df_fits
+        if grouped:
+            fits = fits.drop(columns=[*grouped, "x", "x0"], errors="ignore")
+
         pd.set_option("display.max_columns", None)
         pd.set_option("display.expand_frame_repr", False)
         info = [
@@ -497,7 +518,7 @@ class OptimizationResult(ObjectJSONEncoder):
             "-" * 80,
             f"Optimization results: {self.sid}",
             "-" * 80,
-            str(self.df_fits),
+            str(fits),
             "-" * 80,
             "Optimal parameters:",
         ]
@@ -509,14 +530,21 @@ class OptimizationResult(ObjectJSONEncoder):
             logger.error(msg)
             info.append(f"\t>>> {msg} <<<")
 
-        fitted_pars = {
-            p.pid: (xopt[k], p.unit, p.lower_bound, p.upper_bound)
-            for k, p in enumerate(self.parameters)
-        }
-
-        for key, value in fitted_pars.items():
+        for k, p in enumerate(self.parameters):
+            if p.pid not in grouped:
+                info.append(
+                    f"\t'{p.pid}': Q_({xopt[k]}, '{p.unit}'),  "
+                    f"# [{p.lower_bound} - {p.upper_bound}]"
+                )
+        for label, ks in by_label.items():
             info.append(
-                f"\t'{key}': Q_({value[0]}, '{value[1]}'),  # [{value[2]} - {value[3]}]"
+                "\t"
+                + describe_array(
+                    label,
+                    len(groups[label]),
+                    [self.parameters[k] for k in ks],
+                    [xopt[k] for k in ks],
+                )
             )
         info.append("-" * 80)
         info_str: str = "\n".join(info)

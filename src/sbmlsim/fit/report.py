@@ -19,6 +19,7 @@ import json
 import logging
 import webbrowser
 from collections.abc import Iterable, Sequence
+from functools import cached_property
 from pathlib import Path
 from typing import Any, ClassVar
 
@@ -32,11 +33,21 @@ from matplotlib.lines import Line2D
 
 from sbmlsim import __version__
 from sbmlsim.fit import display
-from sbmlsim.fit.derived import ParameterGroup, group_parameters, hook_summaries
+from sbmlsim.fit.derived import (
+    HookSummary,
+    ParameterGroup,
+    group_parameters,
+    hook_summaries,
+)
 from sbmlsim.fit.fisher import FisherInformation
 from sbmlsim.fit.identifiability import IdentifiabilityResult, plot_all
 from sbmlsim.fit.metrics import FitMetrics
-from sbmlsim.fit.objects import EVALUATED_KINDS, MappingKind
+from sbmlsim.fit.objects import (
+    EVALUATED_KINDS,
+    FitParameter,
+    MappingKind,
+    describe_array,
+)
 from sbmlsim.fit.optimization import OptimizationProblem
 from sbmlsim.fit.options import FitSettings
 from sbmlsim.fit.parameter_mapping import has_renamed_targets
@@ -443,16 +454,30 @@ class FitReport:
         Reports the values of every set and the parameters which ended up close
         to one of their bounds.
         """
+        table = self.parameter_sets.to_df()
+        # the elements of a network are one line per array and set
+        grouped = {p.pid for _, members in self._grouping[1] for p in members}
+        table = table[~table["parameter"].isin(grouped)]
         info = [
             "-" * 80,
             f"Parameter sets: {[pset.sid for pset in self.parameter_sets]}",
             "-" * 80,
-            self.parameter_sets.to_df().to_string(index=False),
+            table.to_string(index=False),
             "",
         ]
         for pset in self.parameter_sets:
             if pset.cost is not None:
                 info.append(f"{pset.sid}: cost = {pset.cost:.6g}")
+            info.extend(
+                f"{pset.sid}: "
+                + describe_array(
+                    group.label,
+                    len(group.ids),
+                    members,
+                    [pset.values.get(p.pid, float("nan")) for p in members],
+                )
+                for group, members in self._grouping[1]
+            )
             for msg in bound_warnings(
                 self.problem.parameters,
                 self.x(pset),
@@ -657,8 +682,8 @@ class FitReport:
         # the parameters with one column per set; the elements of a network
         # are one row per array, see `_array_rows`
         psets = list(self.parameter_sets)
-        summaries = hook_summaries(self.problem.hybridizations)
-        single, groups = group_parameters(self.problem.parameters, summaries)
+        summaries = self._summaries
+        single, groups = self._grouping
         parameters = [
             {
                 "pid": p.pid,
@@ -683,6 +708,7 @@ class FitReport:
             for summary in summaries
         ]
         arrays = self._array_rows(groups, psets)
+        groups_of_ids = self.parameter_groups()
         warnings: list[str] = []
         for pset in psets:
             warnings.extend(
@@ -691,7 +717,7 @@ class FitReport:
                     self.problem.parameters,
                     self.x(pset),
                     self.problem.scales_initialized,
-                    groups=self.parameter_groups(),
+                    groups=groups_of_ids,
                 )
             )
 
@@ -906,6 +932,8 @@ class FitReport:
             One row per array with the number of elements, the estimated
             ones, the bounds when the elements agree on them, and the
             minimum, the maximum and the norm of the values of every set.
+            A versioned element is one element, its versions are values of
+            the array.
         """
         rows: list[dict[str, Any]] = []
         for group, members in groups:
@@ -930,7 +958,7 @@ class FitReport:
                 {
                     "label": group.label,
                     "elements": len(group.ids),
-                    "estimated": len(members),
+                    "estimated": len({p.entity_id for p in members}),
                     "lower": f"{lower.pop():.4g}" if len(lower) == 1 else "-",
                     "upper": f"{upper.pop():.4g}" if len(upper) == 1 else "-",
                     "set_values": set_values,
@@ -938,17 +966,26 @@ class FitReport:
             )
         return rows
 
-    def parameter_groups(self) -> dict[str, list[str]]:
-        """Get the arrays of the networks as groups of parameters of the fit.
+    @cached_property
+    def _summaries(self) -> list[HookSummary]:
+        """Get the summaries of the hooks of the problem, e.g. its networks."""
+        return hook_summaries(self.problem.hybridizations)
+
+    @cached_property
+    def _grouping(
+        self,
+    ) -> tuple[list[FitParameter], list[tuple[ParameterGroup, list[FitParameter]]]]:
+        """Split the parameters into single ones and the arrays of the hooks."""
+        return group_parameters(self.problem.parameters, self._summaries)
+
+    def parameter_groups(self) -> dict[str, tuple[str, ...]]:
+        """Get the arrays of the networks as groups of elements.
 
         Returns:
-            label of the array -> the ids of its elements which are
-            parameters of the fit, for `bound_warnings`.
+            label of the array -> the ids of all its elements, for
+            `bound_warnings` and `OptimizationResult.report`.
         """
-        _, groups = group_parameters(
-            self.problem.parameters, hook_summaries(self.problem.hybridizations)
-        )
-        return {group.label: [p.pid for p in members] for group, members in groups}
+        return {group.label: group.ids for group, _ in self._grouping[1]}
 
     def _fisher_context(self) -> dict[str, Any] | None:
         """Collect what the Fisher information of the report shows."""
@@ -972,9 +1009,7 @@ class FitReport:
         }
         # the elements of a network are one row per array, with the range of
         # their errors, and are left out of the correlation matrix
-        _, groups = group_parameters(
-            self.problem.parameters, hook_summaries(self.problem.hybridizations)
-        )
+        groups = self._grouping[1]
         grouped = {p.pid for _, members in groups for p in members}
         rows: list[list[str]] = [
             [
@@ -988,11 +1023,15 @@ class FitReport:
             sub = df[df["parameter"].isin([p.pid for p in members])]
             if not len(sub):
                 continue
-            n = len(sub)
+            n = len({p.entity_id for p in members})
+            versions = f", {len(sub)} parameters" if len(sub) != n else ""
+            scales = {fim.parameter_scales[i].name for i in sub.index}
             cells = {
-                "parameter": f"{group.label} ({n} element{'s' if n != 1 else ''})",
+                "parameter": (
+                    f"{group.label} ({n} element{'s' if n != 1 else ''}{versions})"
+                ),
                 "value": f"norm {np.linalg.norm(sub['value'].to_numpy()):.4g}",
-                "scale": "LINEAR",
+                "scale": scales.pop() if len(scales) == 1 else "mixed",
                 "se": f"{sub['se'].min():.3g} to {sub['se'].max():.3g}",
                 "unit": display.ELEMENT_UNIT_LABEL,
             }
@@ -1088,9 +1127,10 @@ class FitReport:
                 for collection in self.problem.mapping_collections
             ),
         }
-        summaries = hook_summaries(self.problem.hybridizations)
-        if summaries:
-            info["networks"] = ", ".join(f"{s.name} ({s.kind})" for s in summaries)
+        if self._summaries:
+            info["networks"] = ", ".join(
+                f"{s.name} ({s.kind})" for s in self._summaries
+            )
         info["base path"] = str(self.problem.base_path)
         info["data path"] = str(self.problem.data_path)
         if self.opt_result:

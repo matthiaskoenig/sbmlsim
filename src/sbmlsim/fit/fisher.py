@@ -235,7 +235,10 @@ class FisherInformation:
         quantile = float(student_t.ppf(0.5 + self.alpha / 2.0, dof))
         scaled = self.to_scale(self.values)
         delta = quantile * self.standard_errors
-        return self.from_scale(scaled - delta), self.from_scale(scaled + delta)
+        # the error of a direction the data does not constrain is huge, its
+        # interval on a logarithmic scale is unbounded
+        with np.errstate(over="ignore"):
+            return self.from_scale(scaled - delta), self.from_scale(scaled + delta)
 
     @property
     def has_mixed_scales(self) -> bool:

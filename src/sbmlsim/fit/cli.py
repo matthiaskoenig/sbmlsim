@@ -36,7 +36,7 @@ from typing import Any
 
 from sbmlsim import log
 from sbmlsim.fit import display
-from sbmlsim.fit.derived import DerivedChanges, group_parameters, hook_summaries
+from sbmlsim.fit.derived import DerivedChanges, hook_summaries
 from sbmlsim.fit.fisher import FisherInformation, fisher_information
 from sbmlsim.fit.identifiability import (
     IdentifiabilityResult,
@@ -724,27 +724,12 @@ def identifiability_cli(
     )
     display.print_settings(definition.settings)
 
-    # the elements of a network are profiled only when named: one scan per
-    # element is impractical for hundreds of elements
-    pids = options.parameter
-    if pids is None:
-        single, _ = group_parameters(
-            problem.parameters, hook_summaries(problem.hybridizations)
-        )
-        if len(single) < len(problem.parameters):
-            logger.info(
-                "The %d elements of the networks are not profiled, name an "
-                "element with --parameter to profile it.",
-                len(problem.parameters) - len(single),
-            )
-        pids = [p.pid for p in single]
-
     result = profile_likelihood(
         problem=problem,
         settings=definition.settings,
         parameter_set=parameter_set,
         profile_settings=profile_settings,
-        pids=pids,
+        pids=options.parameter,
         n_cores=options.cores,
     )
 

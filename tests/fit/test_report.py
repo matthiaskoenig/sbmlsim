@@ -134,6 +134,9 @@ def test_the_report_of_an_ordinary_fit_has_no_target_column(
     )
     html = (report.create(tmp_path, name="ordinary") / "index.html").read_text()
     assert ">target</th>" not in html
+    # a fit without networks has no section of them, and no line in its place
+    assert "Networks" not in html
+    assert "  </div>\n\n  <h3>Settings</h3>" in html
 
 
 def test_the_subsets_of_the_data_points(

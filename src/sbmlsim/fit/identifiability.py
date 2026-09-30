@@ -110,6 +110,7 @@ from matplotlib.axes import Axes
 from scipy.stats import chi2
 
 from sbmlsim.fit import display, runner
+from sbmlsim.fit.derived import group_parameters, hook_summaries
 from sbmlsim.fit.objects import FitParameter
 from sbmlsim.fit.optimization import FitTimeout, OptimizationProblem
 from sbmlsim.fit.options import FitSettings, ParameterScaleType
@@ -940,22 +941,28 @@ def _worker_scan(task: dict[str, Any]) -> tuple[int, int, list[ProfilePoint]]:
 
 
 def _assemble_profile(
+    problem: OptimizationProblem,
     pid: str,
     theta_optimum: np.ndarray,
     cost_optimum: float,
     index: int,
     scans: Mapping[int, list[ProfilePoint]],
 ) -> ParameterProfile:
-    """Combine the scans of both directions into the profile of a parameter."""
+    """Combine the scans of both directions into the profile of a parameter.
+
+    The scans run in the space the optimizer searches every parameter in, the
+    profile has the values of the parameters, i.e. every parameter is
+    converted back with its own scale.
+    """
     lower = list(reversed(scans.get(-1, [])))
     upper = scans.get(+1, [])
     points = [*lower, (np.asarray(theta_optimum), cost_optimum, True), *upper]
-    thetas = np.array([theta for theta, _, _ in points], dtype=float)
+    paths = np.array([problem.from_scale(theta) for theta, _, _ in points], dtype=float)
     return ParameterProfile(
         pid=pid,
-        values=10.0 ** thetas[:, index],
+        values=paths[:, index],
         costs=np.array([cost for _, cost, _ in points], dtype=float),
-        paths=10.0**thetas,
+        paths=paths,
         converged=np.array([converged for _, _, converged in points], dtype=bool),
         index_optimum=len(lower),
     )
@@ -981,7 +988,10 @@ def profile_likelihood(
         settings: settings of the fit, which define the cost.
         parameter_set: optimal parameters, e.g., the best run of a fit.
         profile_settings: settings of the analysis, the defaults if `None`.
-        pids: parameters to profile, all parameters of the problem by default.
+        pids: parameters to profile, all parameters of the problem which are no
+            elements of a network by default. The elements of a network are
+            profiled when they are named: one scan per element is impractical
+            for hundreds of elements.
         n_cores: number of worker processes, the scans of the parameters run
             in parallel. A parallel analysis needs the
             `if __name__ == "__main__":` guard like a parallel fit.
@@ -993,12 +1003,30 @@ def profile_likelihood(
 
     Raises:
         KeyError: if a parameter id is not a parameter of the problem.
-        ValueError: if the parameter set is outside of the bounds of the problem.
+        ValueError: if the parameter set is outside of the bounds of the problem
+            or if there is no parameter to profile.
     """
     profile_settings = profile_settings or ProfileSettings()
     problem.initialize(settings)
 
-    pids = list(pids) if pids is not None else list(problem.pids)
+    if pids is None:
+        single, _ = group_parameters(
+            problem.parameters, hook_summaries(problem.hybridizations)
+        )
+        if len(single) < len(problem.parameters):
+            logger.info(
+                "'%s': the %d elements of the networks are not profiled, name "
+                "an element to profile it.",
+                problem.opid,
+                len(problem.parameters) - len(single),
+            )
+        pids = [p.pid for p in single]
+    pids = list(pids)
+    if not pids:
+        raise ValueError(
+            f"'{problem.opid}': there is no parameter to profile, the parameters "
+            f"of the problem are all elements of networks, name the ones to profile."
+        )
     unknown = [pid for pid in pids if pid not in problem.pids]
     if unknown:
         raise KeyError(
@@ -1099,6 +1127,7 @@ def profile_likelihood(
 
     profiles = {
         pid: _assemble_profile(
+            problem=problem,
             pid=pid,
             theta_optimum=theta_optimum,
             cost_optimum=cost_optimum,

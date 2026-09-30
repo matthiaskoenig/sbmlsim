@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 import logging
 import math
-from collections.abc import Iterable
+from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
 from enum import StrEnum
 from pathlib import Path
@@ -672,6 +672,46 @@ class FitParameter:
     def parameters_to_df(parameters: Iterable[FitParameter]) -> pd.DataFrame:
         """DataFrame of parameters."""
         return pd.DataFrame([p.to_dict() for p in parameters])
+
+
+def describe_array(
+    label: str,
+    elements: int,
+    members: Sequence[FitParameter],
+    values: Sequence[float | None],
+) -> str:
+    """Describe an array of elements, e.g. of a network, in one line of text.
+
+    The console and the text reports show an array in place of its elements,
+    because a network has hundreds of them.
+
+    Args:
+        label: what the array is, e.g. `net1.layer1.weight`.
+        elements: number of elements of the array, estimated or not.
+        members: the parameters of the fit which are elements of the array. A
+            versioned element has one parameter per version.
+        values: the value of every member, e.g. its start value, `None` for a
+            member without one.
+
+    Returns:
+        The number of estimated elements, the minimum, the maximum and the
+        norm of the values of the members and the bounds when the members
+        agree on them.
+    """
+    estimated = len({p.entity_id for p in members})
+    text = f"{label}: {estimated} of {elements} elements estimated"
+    if not members:
+        return text
+    array = np.asarray(values, dtype=float)
+    lower = {p.lower_bound for p in members}
+    upper = {p.upper_bound for p in members}
+    text += (
+        f", min {array.min():.4g}, max {array.max():.4g}, "
+        f"norm {np.linalg.norm(array):.4g}"
+    )
+    if len(lower) == 1 and len(upper) == 1:
+        text += f", bounds [{lower.pop():.4g}, {upper.pop():.4g}]"
+    return text
 
 
 class FitData:

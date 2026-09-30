@@ -19,6 +19,8 @@ from sbmlsim.fit.derived import (
     GroupDerivedChanges,
     describe,
     evaluate_derived_changes,
+    group_parameters,
+    hook_summaries,
     resolve_derived_changes,
 )
 from sbmlsim.fit.helpers import _filters
@@ -30,6 +32,7 @@ from sbmlsim.fit.objects import (
     FitParameter,
     MappingKind,
     NoiseModel,
+    describe_array,
 )
 from sbmlsim.fit.options import (
     FitSettings,
@@ -406,8 +409,12 @@ class OptimizationProblem(ObjectJSONEncoder):
     def __str__(self) -> str:
         """Get string representation.
 
-        This can be run before initialization.
+        This can be run before initialization. The elements of a network are
+        listed as one line per array.
         """
+        single, groups = group_parameters(
+            self.parameters, hook_summaries(self.hybridizations)
+        )
         info = [
             "-" * 80,
             f"{self.__class__.__name__}: {self.opid}",
@@ -416,7 +423,11 @@ class OptimizationProblem(ObjectJSONEncoder):
         ]
         info.extend([f"\t{e}" for e in self.mapping_collections])
         info.append("Parameters")
-        info.extend([f"\t{p}" for p in self.parameters])
+        info.extend([f"\t{p}" for p in single])
+        info.extend(
+            "\t" + describe_array(g.label, len(g.ids), m, [p.start_value for p in m])
+            for g, m in groups
+        )
         return "\n".join(info)
 
     def to_dict(self) -> dict[str, Any]:
