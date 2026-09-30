@@ -310,6 +310,9 @@ class OptimizationProblem(ObjectJSONEncoder):
 
         self.models: list[Any] = []
         self.simulations: list[Any] = []
+        #: the changes of the first timecourse of every simulation as defined,
+        #: see `initialize`
+        self.defined_changes: list[dict[str, Any]] = []
         self.selections: list[Any] = []
         #: id of the model and of the simulation of every mapping in its
         #: experiment
@@ -820,6 +823,16 @@ class OptimizationProblem(ObjectJSONEncoder):
                 f"be '{MappingKind.TRAINING.value}'."
             )
 
+        #: the changes of the first timecourse of every fit mapping as the
+        #: experiment defines them: `_simulate_groups` writes the values of
+        #: the parameters and the derived changes into the timecourse, and an
+        #: export writes the definition
+        self.defined_changes = [
+            dict(simulation.timecourses[0].changes)
+            if isinstance(simulation, TimecourseSim) and simulation.timecourses
+            else {}
+            for simulation in self.simulations
+        ]
         self.parameter_mapping = ParameterMapping(
             parameters=self.parameters,
             mapping_indices=selected_mappings,

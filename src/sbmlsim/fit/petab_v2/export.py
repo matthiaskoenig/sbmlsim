@@ -3,12 +3,15 @@
 The export walks an initialized `OptimizationProblem`, i.e., a problem whose
 fit mappings are resolved, and builds the tables of PEtab v2 from it:
 
-- every model of the fit is a model of the problem,
+- every model of the fit is a model of the problem, written as the model the
+  problem was defined with when the fit simulates a derived one (compiled
+  networks, formula observables, see `sbmlsim.model.provenance`),
 - the fit mappings which share a model and a simulation are one experiment, its
   periods are the timecourses of the `TimecourseSim` and their changes are the
   conditions,
-- every fit mapping is one observable, its reference data are the measurements
-  of that observable,
+- every fit mapping is one observable, named after the mapping; mappings which
+  observe one thing in several experiments are one observable, its reference
+  data are the measurements of that observable,
 - every fit parameter is a parameter which is estimated.
 
 What the tables do not hold goes into the `sbmlsim` extension of the problem,
@@ -21,9 +24,11 @@ import logging
 import re
 import shutil
 from collections import defaultdict
+from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
 
+import libsbml
 import numpy as np
 import petab.v2 as petab_v2
 import sympy as sp
@@ -47,6 +52,8 @@ from sbmlsim.fit.petab_v2.extension import (
 from sbmlsim.fit.petab_v2.gaps import Gap, GapKind, gaps_dict, gaps_of_problem
 from sbmlsim.fit.petab_v2.likelihood import noise_model_of
 from sbmlsim.fit.petab_v2.symbols import condition_target, observable_formula
+from sbmlsim.mathml import formula_expression
+from sbmlsim.model.provenance import Derivation, derivation_of, strip_derivation
 from sbmlsim.simulation.timecourse import Timecourse, TimecourseSim
 from sbmlsim.units import Quantity
 
@@ -217,6 +224,10 @@ class PetabExporter:
         self.experiment_collections: dict[str, int] = {}
         self.experiment_ids: dict[int, str] = {}
         self.observable_ids: dict[int, str] = {}
+        #: the key of every fit mapping in the block `observables` of the
+        #: extension: the key the reader gives the mapping when it reads the
+        #: problem again, see `_name_observables`
+        self.info_keys: dict[int, str] = {}
 
         #: index into `problem.mapping_groups` of the simulation group a fit
         #: mapping belongs to, i.e. the group `ParameterMapping.indices_for`
@@ -227,6 +238,37 @@ class PetabExporter:
         self.group_indices: dict[int, int] = {
             k: g for g, group in enumerate(problem.mapping_groups) for k in group
         }
+        #: the derivation of every model which is derived, by model id
+        self.derivations: dict[str, Derivation] = {}
+        #: the networks of the problem, `None` for a problem without them
+        self.sciml: Any = None
+
+    def _simulation_ids(self) -> dict[str, str]:
+        """Get the id of the PEtab experiment of every simulation of the problem.
+
+        The ids are the ones `_add_experiments` gives the experiments, computed
+        ahead of it: the networks key the arrays of their inputs by them.
+
+        Returns:
+            id of the simulation of a fit mapping -> id of the experiment.
+        """
+        problem = self.problem
+        ids: dict[str, str] = {}
+        exported = set(self.indices)
+        for collection_index, collection in enumerate(problem.mapping_collections):
+            indices = [
+                k for k in exported if problem.collection_indices[k] == collection_index
+            ]
+            groups: dict[tuple[int, int], list[int]] = defaultdict(list)
+            for k in sorted(indices):
+                groups[(id(problem.models[k]), id(problem.simulations[k]))].append(k)
+            for n, group in enumerate(groups.values()):
+                experiment_id = petab_id(collection.sid)
+                if len(groups) > 1:
+                    experiment_id = petab_id(collection.sid, f"sim{n}")
+                for k in group:
+                    ids.setdefault(problem.simulation_keys[k], experiment_id)
+        return ids
 
     def check(self) -> None:
         """Check that the problem can be written.
@@ -321,13 +363,24 @@ class PetabExporter:
             path = Path(source.path).resolve()
             sid = by_source.get(path)
             if sid is None:
-                sid = petab_id(model.sid or path.stem)
+                # the id the experiment gives the model, which is what the
+                # hybridizations of the problem name
+                sid = petab_id(self.problem.model_keys[k])
                 if sid in by_source.values():
                     sid = petab_id(sid, f"model{len(by_source)}")
                 # `petab.v2.Model` is the abstract base, the SBML model is the
-                # concrete class which reads a file
-                model_file = SbmlModel.from_file(path, model_id=sid)
-                model_file.rel_path = Path(path.name)
+                # concrete class which reads a file. A model which is derived
+                # from the model of the problem, i.e. carries compiled
+                # networks or observables, is written as its source
+                document: libsbml.SBMLDocument = libsbml.readSBMLFromFile(str(path))
+                name = path.name
+                sbml_model = document.getModel()
+                if sbml_model is not None and derivation_of(sbml_model) is not None:
+                    document, derivation = strip_derivation(path)
+                    self.derivations[sid] = derivation
+                    name = derivation.source
+                model_file = SbmlModel(sbml_document=document, model_id=sid)
+                model_file.rel_path = Path(name)
                 petab_problem.models.append(model_file)
                 self.sbml_models[sid] = model_file.sbml_model
                 by_source[path] = sid
@@ -377,6 +430,8 @@ class PetabExporter:
                     experiment_id=experiment_id,
                     simulation=simulation,
                     group_index=self.group_indices[k0],
+                    simulation_key=problem.simulation_keys[k0],
+                    defined_changes=problem.defined_changes[k0],
                     sbml_model=self.sbml_models.get(
                         self.model_ids[id(problem.models[k0])]
                     ),
@@ -394,6 +449,8 @@ class PetabExporter:
         experiment_id: str,
         simulation: TimecourseSim,
         group_index: int,
+        simulation_key: str,
+        defined_changes: Mapping[str, Any],
         sbml_model: Any = None,
     ) -> list[petab_v2.ExperimentPeriod]:
         """Get the periods of an experiment and add their conditions.
@@ -411,6 +468,11 @@ class PetabExporter:
                 group this experiment was built from, i.e. `self.group_indices`
                 of the fit mapping the experiment groups around. It is what
                 `ParameterMapping.indices_for` resolves the binding for.
+            simulation_key: id of the simulation in its experiment, which is
+                the condition of the inputs of the networks.
+            defined_changes: the changes of the first timecourse as the
+                experiment defines them, see
+                `OptimizationProblem.defined_changes`.
             sbml_model: `libsbml.Model` of the problem, for the math of the
                 selections.
 
@@ -429,6 +491,9 @@ class PetabExporter:
         if mapping is not None:
             for target, index in sorted(mapping.indices_for(group_index).items()):
                 parameter = self.problem.parameters[index]
+                if parameter.is_external:
+                    # not an entity of the model, the networks read it
+                    continue
                 if has_renamed_targets([parameter]):
                     version_changes.append(
                         petab_v2.Change(
@@ -436,6 +501,15 @@ class PetabExporter:
                             target_value=parameter.pid,
                         )
                     )
+
+        # the inputs of the networks which differ between the conditions
+        # are changes of the condition of the first period, and the arrays
+        # of such inputs are keyed by its id
+        input_changes: list[petab_v2.Change] = []
+        needs_condition = False
+        if self.sciml is not None:
+            input_changes = self.sciml.input_changes(simulation_key)
+            needs_condition = self.sciml.needs_condition(simulation_key)
 
         periods: list[petab_v2.ExperimentPeriod] = []
         offset: float = simulation.time_offset
@@ -447,22 +521,24 @@ class PetabExporter:
                     f"is not the pre-equilibration of a PEtab experiment."
                 )
             condition_ids: list[str] = []
-            tc_version_changes = version_changes if k == 0 else []
-            if tc.changes or tc_version_changes:
-                condition_id = petab_id(experiment_id, f"tc{k}")
-                _table(petab_problem, "condition_tables").conditions.append(
-                    petab_v2.Condition(
-                        id=condition_id,
-                        changes=[
-                            petab_v2.Change(
-                                target_id=condition_target(target, sbml_model),
-                                target_value=_magnitude(value),
-                            )
-                            for target, value in tc.changes.items()
-                        ]
-                        + tc_version_changes,
-                    )
+            # the changes as the experiment defines them, not the values of
+            # the parameters an evaluation wrote into the timecourse
+            changes = defined_changes if k == 0 else tc.changes
+            tc_changes = [
+                petab_v2.Change(
+                    target_id=condition_target(target, sbml_model),
+                    target_value=_magnitude(value),
                 )
+                for target, value in changes.items()
+            ]
+            if k == 0:
+                tc_changes += version_changes + input_changes
+            if tc_changes or (k == 0 and needs_condition):
+                condition_id = petab_id(experiment_id, f"tc{k}")
+                if tc_changes:
+                    _table(petab_problem, "condition_tables").conditions.append(
+                        petab_v2.Condition(id=condition_id, changes=tc_changes)
+                    )
                 condition_ids.append(condition_id)
 
             time = float("-inf") if tc.discard else offset + tc.start
@@ -477,27 +553,26 @@ class PetabExporter:
     def _add_observables_and_measurements(self, petab_problem: PetabProblem) -> None:
         """Add one observable per fit mapping with its reference data."""
         problem = self.problem
+        self._name_observables()
+        written: set[str] = set()
         for k in self.indices:
-            observable_id = petab_id(
-                problem.experiment_keys[k], problem.mapping_keys[k]
-            )
-            self.observable_ids[k] = observable_id
-
+            observable_id = self.observable_ids[k]
             # the noise model of the mapping, which is the one it was read
             # with or the standard deviation of its data: the noise parameter
             # of a measurement fills in the placeholder the observable declares
             noise = self._noise_model(k, observable_id)
-            sbml_model = self.sbml_models.get(self.model_ids[id(problem.models[k])])
-            _table(petab_problem, "observable_tables").observables.append(
-                petab_v2.Observable(
-                    id=observable_id,
-                    name=f"{problem.experiment_keys[k]}.{problem.mapping_keys[k]}",
-                    formula=observable_formula(problem.yid_observable[k], sbml_model),
-                    noise_formula=noise.formula,
-                    noise_distribution=noise.distribution.value,
-                    noise_placeholders=list(noise.placeholders),
+            if observable_id not in written:
+                written.add(observable_id)
+                _table(petab_problem, "observable_tables").observables.append(
+                    petab_v2.Observable(
+                        id=observable_id,
+                        name=f"{problem.experiment_keys[k]}.{problem.mapping_keys[k]}",
+                        formula=self._observable_formula(k),
+                        noise_formula=noise.formula,
+                        noise_distribution=noise.distribution.value,
+                        noise_placeholders=list(noise.placeholders),
+                    )
                 )
-            )
 
             experiment_id = self.experiment_ids.get(k)
             _measurements = _table(petab_problem, "measurement_tables").measurements
@@ -516,6 +591,127 @@ class PetabExporter:
                         else [],
                     )
                 )
+
+    def _name_observables(self) -> None:
+        """Name the observable of every fit mapping which is written.
+
+        The id of an observable is the key of its fit mapping, and the key
+        with its experiment where two experiments share a key. Fit mappings
+        which observe the same thing with the same noise in different
+        experiments are one observable measured in several experiments,
+        which is what the reader splits into one fit mapping per experiment
+        (`<observable>_<experiment>`): they are written as one observable
+        again, so that the problem which was read keeps its observables. An
+        observable which would shadow an entity of the model is prefixed.
+        """
+        problem = self.problem
+        keys = [problem.mapping_keys[k] for k in self.indices]
+        unique = len(set(keys)) == len(keys)
+        content: dict[tuple[Any, ...], list[int]] = defaultdict(list)
+        for k in self.indices:
+            observable_id = (
+                petab_id(problem.mapping_keys[k])
+                if unique
+                else petab_id(problem.experiment_keys[k], problem.mapping_keys[k])
+            )
+            self.observable_ids[k] = observable_id
+            noise = noise_model_of(problem, k)
+            content[
+                (
+                    self.model_ids[id(problem.models[k])],
+                    self._observable_formula(k),
+                    noise.formula,
+                    noise.distribution,
+                    tuple(noise.placeholders),
+                )
+            ].append(k)
+        for group in content.values():
+            if len(group) < 2:
+                continue
+            experiments = [self.experiment_ids.get(k) for k in group]
+            if len(set(experiments)) != len(group) or None in experiments:
+                continue
+            stems: set[str] = set()
+            for k, experiment in zip(group, experiments, strict=True):
+                key, suffix = problem.mapping_keys[k], f"_{experiment}"
+                if not key.endswith(suffix):
+                    stems.clear()
+                    break
+                stems.add(key[: -len(suffix)])
+            if len(stems) != 1:
+                continue
+            stem = petab_id(next(iter(stems)))
+            for k in group:
+                self.observable_ids[k] = stem
+        # an observable must not shadow an entity of the model
+        for k in self.indices:
+            sbml_model = self.sbml_models.get(self.model_ids[id(problem.models[k])])
+            observable_id = self.observable_ids[k]
+            if sbml_model is not None and sbml_model.getElementBySId(observable_id):
+                self.observable_ids[k] = petab_id("observable", observable_id)
+        # the key of a fit mapping in the extension is the key the reader
+        # gives it: the observable, and `<observable>_<experiment>` for an
+        # observable which is measured in several experiments
+        experiments_of: dict[str, set[str | None]] = defaultdict(set)
+        for k in self.indices:
+            experiments_of[self.observable_ids[k]].add(self.experiment_ids.get(k))
+        for k in self.indices:
+            observable_id = self.observable_ids[k]
+            self.info_keys[k] = (
+                observable_id
+                if len(experiments_of[observable_id]) == 1
+                else f"{observable_id}_{self.experiment_ids.get(k)}"
+            )
+
+    def _observable_formula(self, k: int) -> str:
+        """Get the formula of the observable of a fit mapping.
+
+        An observable of a model which is derived, i.e. a parameter with the
+        formula of the observable as its rule which `add_observables` wrote,
+        is written as that formula, because the model is written as its
+        source. Every other observable is the math of its selection.
+
+        Args:
+            k: index of the fit mapping.
+
+        Returns:
+            The math of PEtab of the observable.
+
+        Raises:
+            ValueError: if the derived model has no rule for the observable.
+        """
+        problem = self.problem
+        model_id = self.model_ids[id(problem.models[k])]
+        sbml_model = self.sbml_models.get(model_id)
+        selection = problem.yid_observable[k]
+        if self._is_derived_observable(k):
+            derived = libsbml.readSBMLFromFile(str(problem.models[k].source.path))
+            rule = derived.getModel().getRuleByVariable(selection)
+            if rule is None:
+                raise ValueError(
+                    f"'{problem.opid}': the observable '{selection}' of the fit "
+                    f"mapping '{problem.mapping_keys[k]}' was added to the model "
+                    f"'{problem.models[k].source.path}' without a rule."
+                )
+            return petab_math_str(
+                formula_expression(libsbml.formulaToL3String(rule.getMath()))
+            )
+        return observable_formula(selection, sbml_model)
+
+    def _is_derived_observable(self, k: int) -> bool:
+        """Check whether the observable of a fit mapping was added to the model.
+
+        Args:
+            k: index of the fit mapping.
+
+        Returns:
+            Whether the selection of the mapping is a parameter which the
+            derivation of its model created, see `_observable_formula`.
+        """
+        derivation = self.derivations.get(self.model_ids[id(self.problem.models[k])])
+        return derivation is not None and (
+            self.problem.yid_observable[k] in derivation.created
+        )
 
     def _noise_model(self, k: int, observable_id: str) -> NoiseModel:
         """Get the noise model a fit mapping is written with.
@@ -631,6 +827,11 @@ class PetabExporter:
             parameter.pid: {
                 "unit": parameter.unit,
                 "start_value": parameter.start_value,
+                **(
+                    {"scale": parameter.scale.name}
+                    if parameter.scale is not None
+                    else {}
+                ),
             }
             for parameter in problem.parameters
         }
@@ -638,7 +839,10 @@ class PetabExporter:
         observables: dict[str, dict[str, Any]] = {}
         for k in self.indices:
             model = problem.models[k]
-            observables[self.observable_ids[k]] = {
+            # keyed by the fit mapping, several of which may share an
+            # observable, see `_name_observables`
+            observables[self.info_keys[k]] = {
+                "observable": self.observable_ids[k],
                 "experiment": problem.experiment_keys[k],
                 "mapping": problem.mapping_keys[k],
                 "kind": problem.mapping_kinds[k].value,
@@ -646,7 +850,11 @@ class PetabExporter:
                     problem.collection_indices[k]
                 ].sid,
                 "xid_observable": problem.xid_observable[k],
-                "yid_observable": problem.yid_observable[k],
+                # an observable of a derived model is written as its formula
+                # and selected as the reader adds it to the model again
+                "yid_observable": None
+                if self._is_derived_observable(k)
+                else problem.yid_observable[k],
                 "x_unit": str(model.uinfo[problem.xid_observable[k]]),
                 "y_unit": str(model.uinfo[problem.yid_observable[k]]),
                 "error_type": problem.y_errors_type[k],
@@ -790,6 +998,9 @@ def to_petab(
     for k in exporter.indices:
         model = problem.models[k]
         source_path = model.source.path
+        if exporter.model_ids[id(model)] in exporter.derivations:
+            # a derived model is written as its source by `to_files`
+            continue
         if source_path is not None:
             target = output_dir / Path(source_path).name
             if not target.exists():

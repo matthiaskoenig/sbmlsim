@@ -88,8 +88,11 @@ END_MARGIN = 1e-9
 
 #: id of the experiment of the measurements which name none. PEtab reads an
 #: empty `experimentId` as "use the model as is", i.e. a simulation from the
-#: initial time of the model without conditions
-DEFAULT_EXPERIMENT = "model"
+#: initial time of the model without conditions. It is not `model`, the id the
+#: PEtab documentation and the helpers of `petab_sciml` give the model, because
+#: the keys of the models, the simulations and the tasks of an experiment share
+#: one namespace
+DEFAULT_EXPERIMENT = "default_experiment"
 
 #: prefix of the dataset of an observable. The keys of the datasets, the
 #: simulations, the tasks and the fit mappings of a simulation experiment share
@@ -346,11 +349,22 @@ class PetabReader:
 
     # --- INFORMATION OF THE EXTENSION ---
 
-    def _observable_info(self, observable_id: str) -> dict[str, Any]:
-        """Get what the extension says about an observable, empty without one."""
+    def observable_info(self, key: str) -> dict[str, Any]:
+        """Get what the extension says about a fit mapping, empty without one.
+
+        Args:
+            key: key of the fit mapping. The block `observables` of the
+                extension is keyed by the fit mapping since its version
+                0.2.0, and by the observable before: an observable measured
+                in several experiments is one observable of several fit
+                mappings, each with its own kind and weight.
+        """
         if self.extension is None:
             return {}
-        return self.extension.observables.get(observable_id, {})
+        info = self.extension.observables.get(key)
+        if info is None:
+            info = self.extension.observables.get(self._observable_ids.get(key, ""))
+        return info or {}
 
     def _experiment_info(self, experiment_id: str) -> dict[str, Any]:
         """Get what the extension says about an experiment, empty without one."""
@@ -817,7 +831,7 @@ class PetabReader:
         datasets: dict[str, DataSet] = {}
         for key, measurements in self._measurements.items():
             observable_id = self._observable_ids[key]
-            info = self._observable_info(observable_id)
+            info = self.observable_info(key)
             # without the extension the data is in the units of the model,
             # which is what PEtab measures in
             yid = info.get("yid_observable") or self._selection_of(observable_id)
@@ -862,7 +876,7 @@ class PetabReader:
         mappings: dict[str, FitMapping] = {}
         for key, measurements in self._measurements.items():
             observable_id = self._observable_ids[key]
-            info = self._observable_info(observable_id)
+            info = self.observable_info(key)
             experiment_id = measurements[0].experiment_id or DEFAULT_EXPERIMENT
             task_id = f"task_{experiment_id}"
 
@@ -1324,9 +1338,7 @@ class PetabReader:
         for experiment_id, mappings in by_experiment.items():
             kinds = {
                 MappingKind(
-                    self._observable_info(self._observable_ids[key]).get(
-                        "kind", MappingKind.TRAINING.value
-                    )
+                    self.observable_info(key).get("kind", MappingKind.TRAINING.value)
                 )
                 for key in mappings
             }
@@ -1338,7 +1350,7 @@ class PetabReader:
                         key
                         for key in mappings
                         if MappingKind(
-                            self._observable_info(self._observable_ids[key]).get(
+                            self.observable_info(key).get(
                                 "kind", MappingKind.TRAINING.value
                             )
                         )

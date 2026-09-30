@@ -315,12 +315,16 @@ def test_round_trip_keeps_the_data(
     problem.initialize(settings)
     original = op_hctz_pk_module
 
+    # the observable of a fit mapping is named after the mapping, the
+    # extension says which mapping of which experiment it was
+    reader = PetabReader.from_yaml(petab_dir / "problem.yaml")
     keys = {
-        f"{original.experiment_keys[k]}__{original.mapping_keys[k]}": k
+        (original.experiment_keys[k], original.mapping_keys[k]): k
         for k in range(len(original.mapping_keys))
     }
     for i, key in enumerate(problem.mapping_keys):
-        k = keys[key]
+        info = reader.observable_info(key)
+        k = keys[(info["experiment"], info["mapping"])]
         assert np.array_equal(
             np.asarray(problem.x_references[i]),
             np.asarray(original.x_references[k]),

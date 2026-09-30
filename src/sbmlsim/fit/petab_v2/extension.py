@@ -37,7 +37,7 @@ SCIML_EXTRA = "pip install sbmlsim[sciml]"
 KNOWN_EXTENSIONS: frozenset[str] = frozenset({EXTENSION_ID})
 
 #: version of the extension, raised when the block changes
-EXTENSION_VERSION = "0.1.0"
+EXTENSION_VERSION = "0.2.0"
 
 
 class SbmlsimExtension(ExtensionConfig):
@@ -63,8 +63,11 @@ class SbmlsimExtension(ExtensionConfig):
             `True` because the settings it carries are the objective of the fit.
         opid: id of the optimization problem.
         settings: the `FitSettings` of the fit as a dictionary.
-        parameters: unit and start value per fit parameter.
-        observables: the fit mapping behind every observable, i.e. its kind, the
+        parameters: unit, start value and, when set, the scale of every fit
+            parameter which is no element of a network.
+        observables: the fit mapping behind every observable, keyed by the fit
+            mapping (an observable measured in several experiments is one
+            observable of several fit mappings): the observable, its kind, the
             weight of the curve, the units of the data, the experiment and the
             task it belongs to and the metadata of the curve.
         experiments: the structure of the `TimecourseSim` behind every PEtab
