@@ -85,9 +85,10 @@ def test_neural_ode_example(tmp_path: Path) -> None:
         assert match is not None, pattern
         return float(match.group(1))
 
-    # the first run starts from the values of the network and improves them
+    # the first run starts from the values of the network and improves them,
+    # the first best cost of the console is the one of that fit
     start = value(r"(?m)^start\s+cost NUMBER")
-    fit = value(r"fit from start\s+cost NUMBER")
+    fit = value(r"best cost\s+NUMBER")
     assert 0.0 < fit <= start
 
     # the multistart runs in the two workers

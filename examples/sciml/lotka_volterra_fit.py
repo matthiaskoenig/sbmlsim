@@ -15,6 +15,8 @@ The values of the problem are a solution already, its cost is small. The fit
 starts from them (`SamplingType.START`, so every run would be the same one and
 the example makes one run) and improves the cost, which `--max-nfev`, the
 evaluations of the cost, limits: the default is a demonstration and stops early.
+The report carries the Fisher information of the fit, which has no full rank
+for 54 parameters on 20 data points and warns about it.
 A problem which is read from PEtab builds its simulation experiment at
 runtime, which the workers of a parallel fit cannot import, so the fit runs in
 one process. The results are written into `results/lotka_volterra` of the
@@ -66,9 +68,13 @@ def read(problem_path: Path, derived_dir: Path, opid: str) -> OptimizationProble
 
 def main() -> None:
     """Read, fit, report and write the problem."""
-    parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[1])
+    parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     parser.add_argument(
-        "--max-nfev", type=int, default=50, help="evaluations of the cost of the fit"
+        "--max-nfev",
+        type=int,
+        default=50,
+        help="evaluations of the cost of the fit; the default is a demonstration "
+        "which stops early, so the run does not converge",
     )
     options = parser.parse_args()
     output_dir = Path("results") / "lotka_volterra"
@@ -108,14 +114,11 @@ def main() -> None:
         max_nfev=options.max_nfev,
     )
     parameter_set = opt_result.parameter_set(0)
-    display.key_values(
-        {
-            "fit": f"cost {parameter_set.cost:.4g}, log-likelihood "
-            f"{log_likelihood(problem, parameter_set):.6g}",
-        }
-    )
 
     # --- REPORT ---
+    # 54 parameters on 20 data points: the Fisher information has no full rank,
+    # which it warns about, and the report shows the directions the data
+    # constrains
     fisher = fisher_information(
         problem=problem, settings=FIT_SETTINGS, parameter_set=parameter_set
     )

@@ -160,12 +160,16 @@ def fit(
 
 def main() -> None:
     """Compile the model, fit the network from its values and from random ones."""
-    parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[1])
+    parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     parser.add_argument("--runs", type=int, default=2, help="runs of the multistart")
     parser.add_argument("--cores", type=int, default=2, help="workers of the fit")
     parser.add_argument("--seed", type=int, default=1234, help="seed of the runs")
     parser.add_argument(
-        "--max-nfev", type=int, default=100, help="evaluations of the cost per run"
+        "--max-nfev",
+        type=int,
+        default=100,
+        help="evaluations of the cost per run; the default is a demonstration "
+        "which stops early, so the runs do not converge",
     )
     options = parser.parse_args()
 
@@ -184,12 +188,8 @@ def main() -> None:
     start_cost = problem.cost_least_square(
         problem.to_scale(nominal_parameters(problem).x(problem.pids))
     )
-    display.key_values(
-        {
-            "start": f"cost {start_cost:.4g}",
-            "fit from start": f"cost {start.result.parameter_set().cost:.4g}",
-        }
-    )
+    # the fit shows its cost, the cost of the values it started from is not
+    display.key_values({"start": f"cost {start_cost:.4g} of the network"})
 
     # --- MULTISTART, IN PARALLEL ---
     multistart = fit(
@@ -217,7 +217,8 @@ def main() -> None:
     restored.initialize(FIT_SETTINGS)
     display.key_values(
         {
-            "written": yaml_file,
+            "written": yaml_file.relative_to(Path.cwd()),
+            "fit": best.problem.opid,
             "the fit": f"log-likelihood {log_likelihood(best.problem, parameter_set):.10g}",
             "read again": f"log-likelihood {log_likelihood(restored):.10g}",
         }
