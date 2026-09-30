@@ -20,13 +20,15 @@ from sbmlsim.sciml import (
     NetworkHybridizationError,
     NetworkInput,
     NetworkPattern,
+    UnsupportedLayerError,
     compile_network,
     compiled_path,
 )
 from sbmlsim.sciml.backend import BackendKind
+from sbmlsim.sciml.compiler import _compile, _Model
 from sbmlsim.sciml.hybridization import ALL_CONDITIONS
 from sbmlsim.sciml.layers import FUNCTIONS
-from tests.sciml.hybrid import feed_forward, two_inputs, write_model
+from tests.sciml.hybrid import convolution, feed_forward, two_inputs, write_model
 
 PRE = NetworkPattern.PRE_INITIALIZATION
 RHS = NetworkPattern.RHS
@@ -272,6 +274,82 @@ def test_two_networks_in_one_model(model_path: Path) -> None:
     assert "net3__output0__0" not in r.model.getGlobalParameterIds()
 
 
+@pytest.mark.parametrize(("pattern", "target"), [(RHS, "gamma"), (OBSERVABLE, "y")])
+def test_two_networks_with_one_target(
+    model_path: Path, pattern: NetworkPattern, target: str
+) -> None:
+    """A target has one rule, the error names both outputs."""
+    hybridizations = [
+        _hybridization(feed_forward(sid, seed=seed), pattern=pattern, target=target)
+        for sid, seed in (("net1", 1), ("net2", 2))
+    ]
+    with pytest.raises(
+        NetworkCompilationError,
+        match=rf"Network 'net2': the target '{target}' of 'net2__output0__0' is "
+        r"set by the output 'net1__output0__0' of the network 'net1'",
+    ):
+        compile_network(model_path, hybridizations, compiled_path(model_path))
+    assert not compiled_path(model_path).exists()
+
+
+@pytest.mark.parametrize("activation", ["softmax", "log_softmax"])
+@pytest.mark.parametrize(("level", "version"), [(3, 1), (3, 2), (2, 4)])
+def test_a_softmax_of_large_values(
+    tmp_path: Path, activation: str, level: int, version: int
+) -> None:
+    """The exponentials of a softmax stay finite, as in the forward pass.
+
+    An optimizer which explores elements without bounds reaches values whose
+    exponentials overflow; the rules subtract the maximum like numpy does.
+    """
+    path = write_model(tmp_path / "lv.xml", level=level, version=version)
+    network = feed_forward(activation=activation, kwargs={"dim": 0})
+    parameters = {layer: dict(arrays) for layer, arrays in network.parameters.items()}
+    parameters["layer1"]["weight"] = 400.0 * parameters["layer1"]["weight"]
+    network = Network(sid="net1", model=network.model, parameters=parameters)
+    compiled = compile_network(path, [_hybridization(network)], compiled_path(path))
+    r = _load(compiled)
+    logits = []
+    for prey, predator in [(0.4, 4.6), (2.0, 0.1), (7.5, 3.0)]:
+        r["init(prey)"] = prey
+        r["init(predator)"] = predator
+        r.reset()
+        x = np.array([prey, predator])
+        logits.append(parameters["layer1"]["weight"] @ x + parameters["layer1"]["bias"])
+        (expected,) = network.forward(x)
+        assert np.isfinite(expected[0])
+        assert r["gamma"] == pytest.approx(expected[0], rel=TOLERANCE, abs=TOLERANCE)
+    # the exponential of the largest value overflows without the shift
+    assert np.max(np.abs(logits)) > 710.0
+    # the maximum is `max` from L3V2 on, a piecewise before
+    model = libsbml.readSBMLFromFile(str(compiled)).getModel()
+    rule = libsbml.formulaToL3String(model.getRuleByVariable("net1__act__0").getMath())
+    assert ("max(" in rule) == ((level, version) >= (3, 2))
+    assert ("piecewise(" in rule) == ((level, version) < (3, 2))
+
+
+def test_a_layer_without_expressions(model_path: Path) -> None:
+    """The compilation of a layer without expressions names the network and node.
+
+    `Hybridization` refuses such a network for the patterns which are
+    compiled, so only a direct call of the compilation reaches the error.
+    """
+    hybridization = Hybridization(
+        network=convolution(),
+        pattern=PRE,
+        model="lv",
+        inputs={
+            "net3__input0": NetworkInput(arrays={ALL_CONDITIONS: np.ones((1, 4, 4))})
+        },
+        outputs={"net3__output0__0": "gamma"},
+    )
+    with pytest.raises(
+        UnsupportedLayerError,
+        match=r"Network 'net3', node 'layer1': 'Conv2d' is not supported.*'sympy'",
+    ):
+        _compile(_Model(model_path, "net3"), hybridization)
+
+
 def test_an_input_which_is_an_array(model_path: Path) -> None:
     """The elements of an array are constant parameters of the model."""
     network = two_inputs()
@@ -510,6 +588,55 @@ def test_a_formula_with_a_symbol_the_model_does_not_have(model_path: Path) -> No
         r"\['kappa'\]",
     ):
         compile_network(model_path, [hybridization], compiled_path(model_path))
+
+
+def _local_parameter(model: libsbml.Model) -> None:
+    local = model.getReaction("v1").getKineticLaw().createLocalParameter()
+    local.setId("k1")
+    local.setValue(2.0)
+
+
+def _event_id(model: libsbml.Model) -> None:
+    event = model.createEvent()
+    event.setId("k1")
+    event.setUseValuesFromTriggerTime(True)
+    trigger = event.createTrigger()
+    trigger.setMath(libsbml.parseL3Formula("time > 100"))
+    trigger.setInitialValue(True)
+    trigger.setPersistent(True)
+    assignment = event.createEventAssignment()
+    assignment.setVariable("delta")
+    assignment.setMath(libsbml.parseL3Formula("1"))
+    model.getParameter("delta").setConstant(False)
+
+
+def _function_definition(model: libsbml.Model) -> None:
+    definition = model.createFunctionDefinition()
+    definition.setId("k1")
+    definition.setMath(libsbml.parseL3Formula("lambda(x, 2 * x)"))
+
+
+@pytest.mark.parametrize("edit", [_local_parameter, _event_id, _function_definition])
+def test_a_formula_with_an_id_which_has_no_value(
+    model_path: Path, tmp_path: Path, edit: Any
+) -> None:
+    """A symbol of an input is a species, a compartment, a parameter or a reaction.
+
+    A local parameter of a reaction, an event or a function definition has an
+    id but no value in a rule.
+    """
+    path = _edit(model_path, tmp_path, edit)
+    hybridization = _hybridization(
+        inputs={
+            "net1__input0__0": NetworkInput(formula="prey * k1"),
+            "net1__input0__1": NetworkInput(formula="predator"),
+        }
+    )
+    with pytest.raises(
+        NetworkCompilationError,
+        match=r"Network 'net1', input 'net1__input0__0'.*'prey \* k1' uses \['k1'\]",
+    ):
+        compile_network(path, [hybridization], compiled_path(path))
 
 
 def test_what_is_compiled_together(model_path: Path, tmp_path: Path) -> None:

@@ -153,7 +153,14 @@ def test_a_condition_on_a_number() -> None:
     assert list(y) == [7, 0]
 
 
-def test_an_expression_needs_no_shift() -> None:
-    """`softmax` on expressions is not shifted by a maximum."""
-    x = np.array([sympy.Symbol("a"), sympy.Symbol("b")], dtype=object)
-    assert SympyBackend().stabilizer(x, 0) == 0.0
+def test_the_shift_of_softmax_on_expressions() -> None:
+    """`softmax` on expressions is shifted by the maximum, as on numbers."""
+    a, b, c, d = sympy.symbols("a b c d")
+    x = np.array([[a, b], [c, 2.0]], dtype=object)
+    backend = SympyBackend()
+    assert backend.stabilizer(x, 0).tolist() == [[sympy.Max(a, c), sympy.Max(b, 2.0)]]
+    assert backend.stabilizer(x, 1).tolist() == [[sympy.Max(a, b)], [sympy.Max(c, 2.0)]]
+    assert backend.stabilizer(x, -1).shape == (2, 1)
+    numbers = np.array([1.0, 3.0, 2.0], dtype=object)
+    assert backend.stabilizer(numbers, 0).tolist() == [3.0]
+    assert backend.stabilizer(np.array([d], dtype=object), 0).tolist() == [d]

@@ -61,6 +61,20 @@ MODEL_SUFFIX = "_sciml"
 #: the unit of the parameters of a network
 UNIT = "dimensionless"
 
+#: the entities whose id is a value in the math of a model
+_VALUES = frozenset(
+    {
+        libsbml.SBML_PARAMETER,
+        libsbml.SBML_SPECIES,
+        libsbml.SBML_COMPARTMENT,
+        libsbml.SBML_REACTION,
+        libsbml.SBML_SPECIES_REFERENCE,
+    }
+)
+
+#: the first level and version of SBML whose math has `max`
+_MAX_LEVEL = (3, 2)
+
 
 def compiled_path(sbml_path: Path, directory: Path | None = None) -> Path:
     """Get the path of the model which carries the networks of a model.
@@ -88,6 +102,10 @@ class _Model:
         created: id of every parameter which was added -> what it is.
         constants: id -> value of the constants of the hybridizations which
             were added, which the networks of the model share.
+        targets: id of every target which has a rule -> the network and the
+            output which set it.
+        has_max: whether the math of the level and version of the model has
+            `max`, otherwise a maximum is written as a piecewise.
     """
 
     def __init__(self, sbml_path: Path, network: str) -> None:
@@ -104,6 +122,10 @@ class _Model:
         self.name = Path(sbml_path).name
         self.created: dict[str, str] = {}
         self.constants: dict[str, float] = {}
+        self.targets: dict[str, tuple[str, str]] = {}
+        level: int = self.document.getLevel()
+        version: int = self.document.getVersion()
+        self.has_max = (level, version) >= _MAX_LEVEL
         errors = self.errors()
         if errors:
             raise NetworkCompilationError(
@@ -127,8 +149,20 @@ class _Model:
         return "; ".join(error.getMessage().strip() for error in errors)
 
     def has(self, sid: str) -> bool:
-        """Check whether the model has an entity of an id."""
+        """Check whether the model has an element of an id, of any kind."""
         return self.model.getElementBySId(sid) is not None
+
+    def is_value(self, sid: str) -> bool:
+        """Check whether an id is a value in the math of the model.
+
+        Returns:
+            Whether the id is the id of a parameter of the model, a species, a
+            compartment, a reaction or a species reference. A local parameter
+            of a reaction, an event or a function definition has an id, but
+            no value in a rule.
+        """
+        element: libsbml.SBase | None = self.model.getElementBySId(sid)
+        return element is not None and element.getTypeCode() in _VALUES
 
     def add_parameter(
         self, network: str, sid: str, what: str, value: float | None = None
@@ -206,6 +240,8 @@ class _Model:
         rule: libsbml.AssignmentRule = self.model.createAssignmentRule()
         rule.setVariable(sid)
         if isinstance(math, sympy.Basic):
+            if not self.has_max:
+                math = math.replace(sympy.Max, _piecewise_max)
             try:
                 math = expression_to_astnode(math)
             except ValueError as err:
@@ -242,6 +278,27 @@ class _Model:
                 f"The model with the networks cannot be written to '{output_path}'"
             )
         return output_path
+
+
+def _piecewise_max(*args: sympy.Expr) -> sympy.Basic:
+    """Write the maximum of expressions as a piecewise, for SBML before L3V2.
+
+    The piece of an argument is taken if it is not smaller than the
+    arguments after it: the first such argument is the maximum. The size of
+    the piecewise grows with the square of the number of arguments, not
+    exponentially as a nesting of maxima of two arguments.
+
+    Args:
+        args: the arguments of `Max`.
+
+    Returns:
+        The piecewise.
+    """
+    pieces: list[tuple[sympy.Expr, Any]] = [
+        (arg, sympy.And(*(arg >= other for other in args[k + 1 :])))
+        for k, arg in enumerate(args[:-1])
+    ]
+    return sympy.Piecewise(*pieces, (args[-1], True))
 
 
 def _merge(hybridizations: Sequence[Hybridization]) -> list[Hybridization]:
@@ -356,8 +413,8 @@ def _input_symbols(model: _Model, hybridization: Hybridization) -> list[np.ndarr
         The symbols of the elements of the inputs, one array per input.
 
     Raises:
-        NetworkCompilationError: if a formula uses a symbol which is not an
-            entity of the model, or if an id is taken.
+        NetworkCompilationError: if a formula uses a symbol which is not a
+            value of the model, see `_Model.is_value`, or if an id is taken.
     """
     sid = hybridization.network.sid
     shapes = hybridization.input_shapes()
@@ -387,13 +444,14 @@ def _input_symbols(model: _Model, hybridization: Hybridization) -> list[np.ndarr
         unknown = sorted(
             symbol
             for symbol in formula_symbols(formula)
-            if symbol != TIME and not model.has(symbol)
+            if symbol != TIME and not model.is_value(symbol)
         )
         if unknown:
             raise NetworkCompilationError(
                 f"Network '{sid}', input '{key}': the formula '{formula}' uses "
-                f"{unknown}, which are neither entities of the model "
-                f"'{model.name}' nor constants of the hybridization"
+                f"{unknown}, which are neither parameters, species, compartments, "
+                f"reactions or species references of the model '{model.name}' "
+                f"nor constants of the hybridization"
             )
         math: libsbml.ASTNode | None = libsbml.parseL3FormulaWithModel(
             formula, model.model
@@ -463,7 +521,9 @@ def _compile(model: _Model, hybridization: Hybridization) -> None:
     Raises:
         NetworkCompilationError: if the network cannot be compiled.
         UnsupportedLayerError: if a layer or function is not evaluated on
-            expressions.
+            expressions. `Hybridization` refuses such a network for the
+            patterns which are compiled, this is the fallback of a direct
+            call.
     """
     network = hybridization.network
     sid = network.sid
@@ -509,10 +569,19 @@ def _compile_targets(
         patterns: id of the output -> the pattern of its hybridization.
 
     Raises:
-        NetworkCompilationError: if a target cannot be set by a rule.
+        NetworkCompilationError: if a target cannot be set by a rule, or if
+            an output of another network sets it.
     """
     sid = hybridization.network.sid
     for key, target in hybridization.outputs.items():
+        if target in model.targets:
+            network, output = model.targets[target]
+            raise NetworkCompilationError(
+                f"Network '{sid}': the target '{target}' of '{key}' is set by "
+                f"the output '{output}' of the network '{network}', a target "
+                f"has one rule"
+            )
+        model.targets[target] = (sid, key)
         if patterns[key] is NetworkPattern.OBSERVABLE:
             model.add_parameter(
                 sid, target, f"the target '{target}' of the output '{key}'"
@@ -544,17 +613,17 @@ def compile_network(
         NetworkCompilationError: if no hybridization is compiled, if the
             hybridizations name different models, if two hybridizations of
             a network differ, if two networks give a constant different
-            values, if an id of a network is an id of the model or of another
-            part of a network, if a formula of an input uses a symbol the
+            values, if two networks set one target, if an id of a network is
+            an id of the model or of another part of a network, if a formula of an input uses a symbol the
             model does not have, if an initial assignment sets a target, if
             an expression has no MathML of SBML, or if the model with the
             networks is not valid SBML. The message names the network.
         NetworkHybridizationError: if the model does not exist or a
             hybridization does not fit it, e.g. a target of `RHS` which is
             not a parameter or which a rule or an event sets, see
-            `Hybridization.validate`.
-        UnsupportedLayerError: if a layer or function is not evaluated on
-            expressions.
+            `Hybridization.validate`. `Hybridization` also refuses a network
+            with a layer or function which is not evaluated on expressions
+            for the patterns which are compiled.
     """
     compiled = [h for h in hybridizations if h.pattern.is_compiled]
     if not compiled:

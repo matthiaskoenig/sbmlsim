@@ -111,12 +111,14 @@ class Backend(ABC):
         """
 
     @abstractmethod
-    def stabilizer(self, x: np.ndarray, axis: int) -> np.ndarray | float:
+    def stabilizer(self, x: np.ndarray, axis: int) -> np.ndarray:
         """Get a shift which keeps the exponentials of `softmax` finite.
 
         `softmax` does not change when a value which is constant along `axis`
-        is subtracted from `x`. A backend on numbers returns the maximum along
-        the axis, a backend on expressions returns zero.
+        is subtracted from `x`. Both backends return the maximum along the
+        axis, a backend on expressions as the expression `Max`, so that a
+        model with the network does not overflow where the forward pass does
+        not.
 
         Args:
             x: the input of `softmax`.
@@ -172,7 +174,7 @@ class NumpyBackend(Backend):
         """Choose between two values by a condition on `x`."""
         return np.where(x > threshold, above, below)
 
-    def stabilizer(self, x: np.ndarray, axis: int) -> np.ndarray | float:
+    def stabilizer(self, x: np.ndarray, axis: int) -> np.ndarray:
         """Get the maximum along the axis."""
         return np.max(x, axis=axis, keepdims=True)
 
@@ -259,6 +261,10 @@ class SympyBackend(Backend):
 
         return np.asarray(_elementwise(piecewise, 3)(x, below, above), dtype=object)
 
-    def stabilizer(self, x: np.ndarray, axis: int) -> np.ndarray | float:
-        """Get zero, an expression has no maximum and needs no shift."""
-        return 0.0
+    def stabilizer(self, x: np.ndarray, axis: int) -> np.ndarray:
+        """Get the maximum along the axis, as the expression `Max`."""
+        moved = np.moveaxis(np.asarray(x, dtype=object), axis, -1)
+        maximum = np.empty(moved.shape[:-1], dtype=object)
+        for index in np.ndindex(maximum.shape):
+            maximum[index] = sympy.Max(*(sympy.sympify(v) for v in moved[index]))
+        return np.expand_dims(maximum, axis)
