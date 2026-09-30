@@ -366,7 +366,7 @@ def print_parameters(
     if single:
         console.print(parameters_table(single))
     if summaries:
-        console.print(hooks_table(summaries))
+        print_wide(hooks_table(summaries))
         print_wide(groups_table(groups))
     grouped = {p.pid for _, members in groups for p in members}
     rows = [row for row in (coverage or []) if row.pid not in grouped]

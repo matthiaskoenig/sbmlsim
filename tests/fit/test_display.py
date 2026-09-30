@@ -297,3 +297,60 @@ def test_the_parameters_of_a_hook_are_one_row_per_array(
     table = groups_table([(summary.groups[0], elements)])
     assert table.row_count == 1
     assert hooks_table([summary]).row_count == 1
+
+
+def test_a_network_in_two_hooks_is_printed_once(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """The arrays of a network which two hooks share are one row each, and the
+    coverage of their elements is left out."""
+    from sbmlsim.fit.derived import HookSummary, ParameterGroup
+    from sbmlsim.fit.display import print_parameters
+    from sbmlsim.fit.parameter_mapping import CoverageRow
+
+    elements = [
+        FitParameter(f"net__l__w__{k}", float(k), -5.0, 5.0, unit="dimensionless")
+        for k in range(3)
+    ]
+    group = ParameterGroup("net.l.w", tuple(p.pid for p in elements))
+    long_layers = ", ".join(f"layer{k} (Linear)" for k in range(8))
+    hooks = [
+        HookSummary("net", "observable", long_layers, ("gamma",), (group,)),
+        HookSummary("net", "rhs", long_layers, ("delta",), (group,)),
+    ]
+    coverage = [
+        CoverageRow("alpha", "alpha", 1, 2, ["other"]),
+        *[CoverageRow(p.pid, p.pid, 1, 2, ["other"]) for p in elements],
+    ]
+    print_parameters(
+        [FitParameter("alpha", 1.0, 0.0, 10.0, unit="mM"), *elements],
+        coverage=coverage,
+        hooks=hooks,
+    )
+    out = capsys.readouterr().out
+    assert out.count("net.l.w") == 1
+    assert "net__l__w__0" not in out
+    # the coverage table lists the single parameter only
+    assert "not covered" in out
+    # the description of the layers is not cut at the width of the console
+    assert "…" not in out
+    assert long_layers in out.replace("\n", "")
+
+
+def test_a_versioned_element_is_a_member_of_its_array() -> None:
+    """The elements of an array are found by the entity they write."""
+    from sbmlsim.fit.derived import HookSummary, ParameterGroup, group_parameters
+
+    group = ParameterGroup("net.l.w", ("net__l__w__0", "net__l__w__1"))
+    first = FitParameter("w0_a", 1.0, unit="dimensionless", target="sciml:net__l__w__0")
+    second = FitParameter("net__l__w__1", 2.0, unit="dimensionless")
+    other = FitParameter("alpha", 1.0, unit="mM")
+    single, groups = group_parameters(
+        [first, other, second],
+        [
+            HookSummary("net", "rhs", "l (Linear)", (), (group,)),
+            HookSummary("net", "observable", "l (Linear)", (), (group,)),
+        ],
+    )
+    assert single == [other]
+    assert groups == [(group, [first, second])]

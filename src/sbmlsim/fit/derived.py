@@ -185,6 +185,12 @@ def group_parameters(
 ) -> tuple[list[FitParameter], list[tuple[ParameterGroup, list[FitParameter]]]]:
     """Split the parameters of a fit into single ones and the groups of the hooks.
 
+    The elements of a group are found by the entity they write
+    (`FitParameter.entity_id`), so a parameter of an element which is versioned
+    under another id belongs to the group as well. A group which several hooks
+    share, e.g. a network which is used twice, is listed once, at its first
+    occurrence.
+
     Args:
         parameters: the parameters of the fit.
         summaries: the summaries of the hooks of the problem.
@@ -195,15 +201,21 @@ def group_parameters(
         without a parameter of the fit is listed with none, i.e. an array
         which is frozen.
     """
-    by_id = {p.pid: p for p in parameters}
+    by_entity: dict[str, list[FitParameter]] = {}
+    for parameter in parameters:
+        by_entity.setdefault(parameter.entity_id, []).append(parameter)
     grouped: set[str] = set()
+    seen: set[ParameterGroup] = set()
     groups: list[tuple[ParameterGroup, list[FitParameter]]] = []
     for summary in summaries:
         for group in summary.groups:
-            members = [by_id[sid] for sid in group.ids if sid in by_id]
+            if group in seen:
+                continue
+            seen.add(group)
+            members = [p for sid in group.ids for p in by_entity.get(sid, [])]
             grouped.update(group.ids)
             groups.append((group, members))
-    single = [p for p in parameters if p.pid not in grouped]
+    single = [p for p in parameters if p.entity_id not in grouped]
     return single, groups
 
 
