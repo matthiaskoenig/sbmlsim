@@ -520,6 +520,34 @@ def test_an_input_of_a_later_period(
         _read(path)
 
 
+def test_an_input_of_the_main_period_after_a_pre_equilibration(
+    tmp_path: Path,
+) -> None:
+    """The pre-equilibration is the first period, it gives the inputs."""
+    path = write_problem(
+        tmp_path,
+        networks=[feed_forward()],
+        pre_initialization={"net1": True},
+        mapping=[*INPUTS, *OUTPUT],
+        hybridization=[("gamma", "net1_output1")],
+        parameters=[
+            {"parameterId": "net1_input2", "nominalValue": 2.0, "estimate": False}
+        ],
+        conditions=[
+            ("cond1", "net1_input1", "10.0"),
+            ("cond2", "net1_input1", "3.0"),
+        ],
+        experiments={"e1": "cond1"},
+    )
+    _periods(path, [("e1", -np.inf, "cond1"), ("e1", 0.0, "cond2")])
+    with pytest.raises(
+        SciMLProblemError,
+        match=r"period at the time 0\.0 sets \['net1_input1'\].*main period "
+        r"after the pre-equilibration",
+    ):
+        _read(path)
+
+
 def test_an_array_of_a_later_period(tmp_path: Path) -> None:
     """The array of an input is selected by the first period."""
     network = convolution()

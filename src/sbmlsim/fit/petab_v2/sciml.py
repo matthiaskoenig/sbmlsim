@@ -380,7 +380,8 @@ class SciMLReader:
 
         Raises:
             SciMLProblemError: if a condition of such a period sets an input
-                of a network or selects the arrays of an input.
+                of a network or selects the arrays of an input, which is the
+                case for the main period after a pre-equilibration as well.
         """
         changes = {
             condition.id: sorted(
@@ -392,8 +393,15 @@ class SciMLReader:
             )
             for condition in self.petab_problem.conditions
         }
+        # the experiments whose first period is a pre-equilibration
+        pre_equilibrated = {
+            experiment.id
+            for experiment in self.petab_problem.experiments
+            if experiment.periods
+            and min(float(period.time) for period in experiment.periods) == -np.inf
+        }
         for simulation, periods in later_periods.items():
-            for time, condition_ids in periods:
+            for k, (time, condition_ids) in enumerate(periods):
                 for condition_id in condition_ids:
                     inputs = changes.get(condition_id, [])
                     arrays = sorted(
@@ -409,6 +417,13 @@ class SciMLReader:
                         if inputs
                         else f"selects the arrays of {arrays}"
                     )
+                    main = (
+                        ". The period is the main period after the "
+                        "pre-equilibration, which is the first period and "
+                        "gives the inputs"
+                        if k == 0 and simulation in pre_equilibrated
+                        else ""
+                    )
                     if inputs or arrays:
                         raise SciMLProblemError(
                             f"The experiment '{simulation}': the condition "
@@ -417,7 +432,7 @@ class SciMLReader:
                             f"a network are the ones of the first period of an "
                             f"experiment: a network before the simulation is "
                             f"evaluated once per simulation, a network in the "
-                            f"model has one formula per input"
+                            f"model has one formula per input{main}"
                         )
 
     # --- THE NETWORKS ---
