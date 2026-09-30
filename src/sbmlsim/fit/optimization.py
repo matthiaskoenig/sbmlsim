@@ -3,7 +3,7 @@
 import logging
 import time
 from collections import defaultdict
-from collections.abc import Callable, Mapping, Sequence
+from collections.abc import Callable, Sequence
 from pathlib import Path
 from typing import Any
 
@@ -14,7 +14,13 @@ from scipy import interpolate
 
 from sbmlsim.console import console
 from sbmlsim.experiment import ExperimentRunner, SimulationExperiment
-from sbmlsim.fit.derived import DerivedChanges
+from sbmlsim.fit.derived import (
+    DerivedChanges,
+    GroupDerivedChanges,
+    describe,
+    evaluate_derived_changes,
+    resolve_derived_changes,
+)
 from sbmlsim.fit.helpers import _filters
 from sbmlsim.fit.objects import (
     UNUSED_KINDS,
@@ -310,7 +316,7 @@ class OptimizationProblem(ObjectJSONEncoder):
         self.simulation_keys: list[str] = []
         #: the derived changes of every simulation group with the values of
         #: the model they read, see `_group_derived_changes`
-        self.group_derived: list[list[tuple[DerivedChanges, dict[str, float]]]] = []
+        self.group_derived: list[GroupDerivedChanges] = []
         # indices of the mappings which share a simulation, see `_group_mappings`
         self.mapping_groups: list[list[int]] = []
         #: which parameter writes which entity in which simulation, resolved
@@ -420,6 +426,7 @@ class OptimizationProblem(ObjectJSONEncoder):
             "data_path",
         ]:
             d[key] = self.__dict__[key]
+        d["hybridizations"] = [describe(h) for h in self.hybridizations]
         return d
 
     def to_json(self, path: Path | None = None) -> str | Path:
@@ -822,8 +829,8 @@ class OptimizationProblem(ObjectJSONEncoder):
                 for group in self.mapping_groups
             ],
         )
-        self._check_shared_simulation_bindings()
         self._group_derived_changes()
+        self._check_shared_simulation_bindings()
 
         # set simulator instance with arguments
         simulator = SimulatorSerial(
@@ -998,9 +1005,14 @@ class OptimizationProblem(ObjectJSONEncoder):
         simulation, because it is pathological and a clear error at
         `initialize` beats a silently wrong number.
 
+        The derived changes are written into the same object, so the groups
+        must derive the same targets: each writes all of them before it
+        simulates and reads none of them as a change of the simulation.
+
         Raises:
             ValueError: if two groups share a simulation object and
-                `ParameterMapping` binds a target of theirs differently.
+                `ParameterMapping` binds a target of theirs differently, or
+                they derive different targets.
         """
         mapping = self.parameter_mapping_initialized
         groups_by_simulation: dict[int, list[int]] = {}
@@ -1015,6 +1027,19 @@ class OptimizationProblem(ObjectJSONEncoder):
             k_first = group_indices[0]
             bindings_first = mapping.indices_for(k_first)
             for k_other in group_indices[1:]:
+                derived = self._derived_targets(k_first) ^ self._derived_targets(
+                    k_other
+                )
+                if derived:
+                    raise ValueError(
+                        f"'{self.opid}': the simulations "
+                        f"'{mapping.group_names[k_first]}' and "
+                        f"'{mapping.group_names[k_other]}' share one "
+                        f"`TimecourseSim` object (same simulation_id, different "
+                        f"model_id) but do not both derive {sorted(derived)}. "
+                        f"The derived change of one would leak into the other. "
+                        f"Give these fit mappings distinct simulation ids."
+                    )
                 bindings_other = mapping.indices_for(k_other)
                 if bindings_first == bindings_other:
                     continue
@@ -1034,114 +1059,21 @@ class OptimizationProblem(ObjectJSONEncoder):
                     f"for both."
                 )
 
+    def _derived_targets(self, k_group: int) -> set[str]:
+        """Get the targets the hybridizations of a simulation group set."""
+        return {
+            target
+            for hook, _ in self.group_derived[k_group]
+            for target in hook.targets()
+        }
+
     def _group_derived_changes(self) -> None:
         """Resolve the derived changes of every simulation group.
 
-        The derived changes of a group are the hybridizations of its model.
-        The values of the model which they read are stored here, from the
-        model as it was loaded: a simulation changes the state of the model.
-
-        Raises:
-            ValueError: if a hybridization names a model no fit mapping is
-                simulated with, if a parameter of the fit writes what a
-                hybridization sets or holds constant, if a hybridization
-                reads what another one sets, or if a parameter which is not
-                an entity of the model is read by no hybridization.
+        See `sbmlsim.fit.derived.resolve_derived_changes`, whose checks refuse
+        what would make the objective flat or wrong.
         """
-        self.group_derived = []
-        unknown = sorted({h.model for h in self.hybridizations} - set(self.model_keys))
-        if unknown:
-            raise ValueError(
-                f"'{self.opid}': the hybridizations name the models {unknown}, "
-                f"but the fit mappings are simulated with the models "
-                f"{sorted(set(self.model_keys))}."
-            )
-        mapping = self.parameter_mapping_initialized
-        read: set[str] = set()
-        for k_group, group in enumerate(self.mapping_groups):
-            k0 = group[0]
-            hybridizations = [
-                h for h in self.hybridizations if h.model == self.model_keys[k0]
-            ]
-            targets = [
-                self.parameters[index].entity_id
-                for index in mapping.indices_for(k_group).values()
-            ]
-            derived: list[tuple[DerivedChanges, dict[str, float]]] = []
-            written: dict[str, int] = {}
-            for k, hybridization in enumerate(hybridizations):
-                hybridization.check_parameters(targets)
-                for target in hybridization.targets():
-                    if target in written:
-                        raise ValueError(
-                            f"'{self.opid}': two hybridizations of the model "
-                            f"'{hybridization.model}' set '{target}'."
-                        )
-                    written[target] = k
-            for hybridization in hybridizations:
-                symbols = set(hybridization.symbols())
-                # a hybridization reads the value of the model of what it sets
-                others = {
-                    t
-                    for t, k in written.items()
-                    if hybridizations[k] is not hybridization
-                }
-                chained = sorted(symbols & others)
-                if chained:
-                    raise ValueError(
-                        f"'{self.opid}': a hybridization of the model "
-                        f"'{hybridization.model}' reads {chained}, which a "
-                        f"hybridization sets. Derived changes are calculated "
-                        f"from the parameters of the fit and the model, not "
-                        f"from each other."
-                    )
-                read |= symbols
-                derived.append(
-                    (hybridization, self._model_values(self.models[k0], symbols))
-                )
-            self.group_derived.append(derived)
-
-        for parameter in self.parameters:
-            if parameter.is_external and parameter.entity_id not in read:
-                raise ValueError(
-                    f"'{self.opid}': FitParameter '{parameter.pid}' writes "
-                    f"'{parameter.target_id}', which is not an entity of a model "
-                    f"and which no hybridization reads. The objective does not "
-                    f"depend on the parameter."
-                )
-
-    @staticmethod
-    def _model_values(
-        model: RoadrunnerSBMLModel, symbols: set[str]
-    ) -> dict[str, float]:
-        """Get the values of the entities of a model which are symbols.
-
-        Args:
-            model: the model as it was loaded, with its changes.
-            symbols: ids, of which some are entities of the model.
-
-        Returns:
-            id -> value of the symbols which are entities of the model.
-
-        Raises:
-            ValueError: if the model is not loaded in roadrunner.
-        """
-        if model.r is None:
-            raise ValueError(f"Model '{model}' is not loaded in roadrunner.")
-        values: dict[str, float] = {}
-        for symbol in sorted(symbols):
-            try:
-                values[symbol] = float(model.r[symbol])
-            except (RuntimeError, TypeError, ValueError):
-                # not an entity of the model: a parameter of the fit or a
-                # constant of the hybridization
-                continue
-            if symbol in model.changes:
-                change = model.changes[symbol]
-                values[symbol] = float(
-                    change.magnitude if isinstance(change, Quantity) else change
-                )
-        return values
+        self.group_derived = resolve_derived_changes(self)
 
     def _store_model_parameters(self) -> None:
         """Store the initial values of the fitted parameters in the models.
@@ -1613,10 +1545,7 @@ class OptimizationProblem(ObjectJSONEncoder):
     ) -> dict[str, Quantity]:
         """Get the derived changes of the simulation of a group.
 
-        The values the hybridizations calculate from are the values of the
-        parameters of the fit, the changes of the first timecourse of the
-        simulation and the values of the model, in this order of precedence
-        and in the units of the model.
+        See `sbmlsim.fit.derived.evaluate_derived_changes`.
 
         Args:
             k_group: index of the simulation group.
@@ -1628,46 +1557,10 @@ class OptimizationProblem(ObjectJSONEncoder):
 
         Returns:
             The changes by entity of the model, in the unit of the entity.
-
-        Raises:
-            ValueError: if a hybridization cannot calculate its changes, or
-                if a target is not an entity of the model.
         """
-        uinfo = simulator.uinfo
-        Q_ = self.runner_initialized.Q_
-        mapping = self.parameter_mapping_initialized
-        k0 = self.mapping_groups[k_group][0]
-        derived = self.group_derived[k_group]
-        written = {target for h, _ in derived for target in h.targets()}
-
-        changes: dict[str, float] = {
-            key: float(value.magnitude if isinstance(value, Quantity) else value)
-            for key, value in simulation.timecourses[0].changes.items()
-            # a derived change of the last evaluation is not a value
-            if key not in written
-        }
-        fitted: dict[str, float] = {}
-        for index in mapping.indices_for(k_group).values():
-            parameter = self.parameters[index]
-            quantity = quantities[index]
-            if not parameter.is_external and parameter.target_id in uinfo:
-                quantity = quantity.to(uinfo[parameter.target_id])
-            fitted[parameter.entity_id] = float(quantity.magnitude)
-
-        result: dict[str, Quantity] = {}
-        for hybridization, model_values in derived:
-            values: Mapping[str, float] = {**model_values, **changes, **fitted}
-            for target, value in hybridization.derived_changes(
-                values, condition=self.simulation_keys[k0]
-            ).items():
-                if target not in uinfo:
-                    raise ValueError(
-                        f"'{self.opid}': a hybridization of the model "
-                        f"'{hybridization.model}' sets '{target}', which is not "
-                        f"an entity of the model."
-                    )
-                result[target] = Q_(value, uinfo[target])
-        return result
+        return evaluate_derived_changes(
+            self, k_group, simulation, simulator, quantities
+        )
 
     def _interpolate(self, k: int, df: pd.DataFrame) -> np.ndarray:
         """Get the simulation of a fit mapping at its reference data.

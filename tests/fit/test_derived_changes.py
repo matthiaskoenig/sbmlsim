@@ -1,77 +1,26 @@
 """Tests of the derived changes of a problem, with a hook of the tests.
 
-The hook scales an entity of the model by a parameter of the fit which is
-not an entity of the model, i.e. what a network before the simulation does
-without a network.
+The hook of `hooks.py` scales an entity of the model by a parameter of the fit
+which is not an entity of the model, i.e. what a network before the
+simulation does without a network.
 """
 
+import json
 import pickle
-from collections.abc import Collection, Mapping
-from dataclasses import dataclass, field
+from collections.abc import Mapping
+from dataclasses import dataclass, replace
 
 import numpy as np
 import pytest
 
 from sbmlsim.fit import FitParameter, FitSettings
-from sbmlsim.fit.cli import FitDefinition
+from sbmlsim.fit.cli import FitDefinition, run_fit
 from sbmlsim.fit.derived import DerivedChanges
 from sbmlsim.fit.objects import EXTERNAL_PREFIX
 from sbmlsim.fit.optimization import OptimizationProblem
 from sbmlsim.fit.options import ParameterScaleType
-
-#: the entity of the hctz model the hook writes
-TARGET = "KI__HCTZEX_k"
-
-#: the parameter of the fit the hook reads, which is not an entity
-FACTOR = "factor_k"
-
-
-@dataclass(frozen=True)
-class Scaling:
-    """The change `target = factor * value of the model`.
-
-    Attributes:
-        model: id of the model in the experiment.
-        target: the entity which is set.
-        factor: the parameter of the fit which is read.
-        frozen: ids the fit must not write.
-        calls: the conditions the changes were calculated for.
-    """
-
-    model: str = "model"
-    target: str = TARGET
-    factor: str = FACTOR
-    frozen: frozenset[str] = frozenset()
-    calls: list[str] = field(default_factory=list, compare=False)
-
-    def symbols(self) -> Collection[str]:
-        return {self.factor, self.target}
-
-    def targets(self) -> Collection[str]:
-        return {self.target}
-
-    def check_parameters(self, targets: Collection[str]) -> None:
-        frozen = sorted(set(targets) & self.frozen)
-        if frozen:
-            raise ValueError(f"the parameters write {frozen}, which are frozen")
-
-    def derived_changes(
-        self, values: Mapping[str, float], condition: str
-    ) -> dict[str, float]:
-        self.calls.append(condition)
-        return {self.target: values[self.factor] * values.get(self.target, 1.0)}
-
-
-def _factor(start: float = 1.0) -> FitParameter:
-    return FitParameter(
-        FACTOR,
-        start,
-        lower_bound=0.0,
-        upper_bound=np.inf,
-        unit="dimensionless",
-        target=f"{EXTERNAL_PREFIX}{FACTOR}",
-        scale=ParameterScaleType.LINEAR,
-    )
+from tests.fit.hooks import FACTOR, TARGET, Scaling
+from tests.fit.hooks import factor_parameter as _factor
 
 
 def _problem(
@@ -176,8 +125,6 @@ def test_a_problem_with_hooks_is_pickled(
 
 def test_a_definition_carries_its_hooks(definition_hctz_iv: FitDefinition) -> None:
     """A `FitDefinition` builds the problem with the hybridizations."""
-    from dataclasses import replace
-
     definition = replace(
         definition_hctz_iv, parameters=[_factor()], hybridizations=[Scaling()]
     )
@@ -216,6 +163,48 @@ def test_a_definition_carries_its_hooks(definition_hctz_iv: FitDefinition) -> No
             [Scaling(factor="x")],
             "requires a 'start_value'",
         ),
+        (
+            [_factor()],
+            [Scaling(target="nothing")],
+            r"Beermann1976\|fm_hctz_iv1_5_feces.*sets 'nothing', which is not an entity",
+        ),
+        # a misspelled symbol is neither an entity nor a parameter
+        (
+            [_factor(), FitParameter(TARGET, 1e-4, 1e-10, 1.0, unit="1/ml")],
+            [Scaling(target="Ka_dis_hctz", factor="factr_k")],
+            r"Beermann1976\|fm_hctz_iv1_5_feces.*reads \['factr_k'\], which",
+        ),
+        # the check of the problem, the hook does not freeze the target
+        (
+            [_factor(), FitParameter(TARGET, 1e-4, 1e-10, 1.0, unit="1/ml")],
+            [Scaling()],
+            r"sets 'KI__HCTZEX_k', which the parameters \['KI__HCTZEX_k'\] of the fit",
+        ),
+        # the first timecourse changes the dose, the hook would overwrite it
+        (
+            [_factor()],
+            [Scaling(target="IVDOSE_hctz")],
+            r"Beermann1976\|fm_hctz_iv1_5_feces.*sets 'IVDOSE_hctz', which the "
+            r"first timecourse",
+        ),
+        # an external parameter and an entity reach the hook with one id
+        (
+            [
+                FitParameter(
+                    "ext",
+                    1.0,
+                    0.0,
+                    np.inf,
+                    unit="dimensionless",
+                    target=f"{EXTERNAL_PREFIX}{TARGET}",
+                    scale=ParameterScaleType.LINEAR,
+                ),
+                FitParameter(TARGET, 1e-4, 1e-10, 1.0, unit="1/ml"),
+            ],
+            [Scaling(target="Ka_dis_hctz", factor=TARGET)],
+            r"'ext' \(target 'sciml:KI__HCTZEX_k'\) and 'KI__HCTZEX_k' "
+            r"\(target 'KI__HCTZEX_k'\)",
+        ),
     ],
 )
 def test_hooks_and_parameters_which_do_not_fit(
@@ -231,16 +220,127 @@ def test_hooks_and_parameters_which_do_not_fit(
         problem.initialize(fit_settings)
 
 
-def test_a_hook_which_sets_no_entity(
+def _is_iv35(key: str, mapping: object) -> bool:
+    """Select the fit mappings of the dose of 35 mg."""
+    return "iv35" in key
+
+
+def test_a_symbol_a_simulation_does_not_have(
     definition_hctz_iv: FitDefinition, fit_settings: FitSettings
 ) -> None:
-    """A change of something which is not in the model is an error."""
+    """An external parameter versioned away from a simulation is not read there."""
+    factor = FitParameter(
+        FACTOR,
+        1.0,
+        0.0,
+        np.inf,
+        unit="dimensionless",
+        target=f"{EXTERNAL_PREFIX}{FACTOR}",
+        scale=ParameterScaleType.LINEAR,
+        mappings=_is_iv35,
+    )
+    problem = _problem(definition_hctz_iv, [factor], hybridizations=[Scaling()])
+    with pytest.raises(
+        ValueError, match=r"'Beermann1976\|fm_hctz_iv1_5_feces'.*\['factor_k'\]"
+    ):
+        problem.initialize(fit_settings)
+
+
+def test_a_hook_reads_its_constants(
+    definition_hctz_iv: FitDefinition, fit_settings: FitSettings
+) -> None:
+    """A symbol which is neither an entity nor a parameter is a constant."""
     problem = _problem(
-        definition_hctz_iv, [_factor()], hybridizations=[Scaling(target="nothing")]
+        definition_hctz_iv,
+        [FitParameter(TARGET, 1e-4, 1e-10, 1.0, unit="1/ml")],
+        hybridizations=[
+            Scaling(target="Ka_dis_hctz", factor="c", constants={"c": 3.0})
+        ],
     )
     problem.initialize(fit_settings)
-    with pytest.raises(ValueError, match="sets 'nothing', which is not an entity"):
+    nominal = float(problem.models[0].r["Ka_dis_hctz"])
+    problem.predictions(np.array([1e-4]))
+    changes = problem.simulations[0].timecourses[0].changes
+    assert changes["Ka_dis_hctz"].magnitude == pytest.approx(3.0 * nominal)
+
+
+def test_a_change_of_the_simulation_has_precedence_over_the_model(
+    definition_hctz_iv: FitDefinition, fit_settings: FitSettings
+) -> None:
+    """The hook reads the dose of the simulation, not the dose of the model."""
+    problem = _problem(
+        definition_hctz_iv,
+        [FitParameter(TARGET, 1e-4, 1e-10, 1.0, unit="1/ml")],
+        hybridizations=[Scaling(target="Ka_dis_hctz", factor="IVDOSE_hctz")],
+    )
+    problem.initialize(fit_settings)
+    model = problem.models[0]
+    nominal = float(model.r["Ka_dis_hctz"])
+    assert float(model.r["IVDOSE_hctz"]) == 0.0
+    problem.predictions(np.array([1e-4]))
+    Q_ = problem.runner_initialized.Q_
+    for k, dose in ((0, 1.0), (1, 35.0)):
+        value = Q_(dose, "mg").to(model.uinfo["IVDOSE_hctz"]).magnitude
+        changes = problem.simulations[k].timecourses[0].changes
+        assert changes["Ka_dis_hctz"].magnitude == pytest.approx(value * nominal)
+
+
+@dataclass(frozen=True)
+class Extra(Scaling):
+    """A hook which answers with a change it does not name as a target."""
+
+    def derived_changes(
+        self, values: Mapping[str, float], condition: str
+    ) -> dict[str, float]:
+        return {**super().derived_changes(values, condition), "Ka_dis_hctz": 1.0}
+
+
+def test_a_hook_which_sets_more_than_its_targets(
+    definition_hctz_iv: FitDefinition, fit_settings: FitSettings
+) -> None:
+    """The changes of a hook are its targets."""
+    problem = _problem(definition_hctz_iv, [_factor()], hybridizations=[Extra()])
+    problem.initialize(fit_settings)
+    with pytest.raises(
+        ValueError,
+        match=r"'Beermann1976\|fm_hctz_iv1_5_feces'.*\['Ka_dis_hctz'\].*not its targets",
+    ):
         problem.predictions(np.array([1.0]))
+
+
+def test_a_problem_with_hooks_is_a_dict(
+    definition_hctz_iv: FitDefinition, fit_settings: FitSettings
+) -> None:
+    """The JSON of a problem records its hooks."""
+    problem = _problem(definition_hctz_iv, [_factor()], hybridizations=[Scaling()])
+    assert problem.to_dict()["hybridizations"] == [
+        {"type": "Scaling", "model": "model", "targets": [TARGET]}
+    ]
+    assert json.loads(str(problem.to_json()))["hybridizations"][0]["model"] == "model"
+
+
+def test_a_parallel_fit_with_hooks(definition_hctz_iv: FitDefinition) -> None:
+    """The workers unpickle the hooks and fit what the serial fit fits.
+
+    The residuals of a problem depend on its earlier evaluations in the
+    order of `1e-4` (the integrator, with and without hooks), so the runs
+    agree in the cost and to `1e-3` in the parameter.
+    """
+    definition = replace(
+        definition_hctz_iv, parameters=[_factor(2.0)], hybridizations=[Scaling()]
+    )
+    serial = run_fit(definition=definition, opid="serial", size=1, n_cores=1, seed=1)
+    parallel = run_fit(
+        definition=definition, opid="parallel", size=2, n_cores=2, seed=1
+    )
+    result, expected = parallel["parallel"].result, serial["serial"].result
+    assert result.size == 2
+    # the factor moved away from its start value in the workers
+    assert abs(result.xopt[0] - 2.0) > 0.5
+    np.testing.assert_allclose(result.xopt, expected.xopt, rtol=1e-3)
+    np.testing.assert_allclose(
+        result.df_fits["cost"], expected.df_fits["cost"].iloc[0], rtol=1e-6
+    )
 
 
 def test_an_external_target_names_something() -> None:
