@@ -125,10 +125,9 @@ error-on-warning = true
 
 [tool.uv.sources]
 # the CPU build of torch: the default build for linux brings 2 GB of CUDA
-# libraries, which the comparison of a forward pass does not need
-torch = [
-    { index = "pytorch-cpu", marker = "sys_platform == 'linux'" },
-]
+# libraries, which the comparison of a forward pass does not need. A single
+# table and not a list of sources, which tox-uv cannot read
+torch = { index = "pytorch-cpu", marker = "sys_platform == 'linux'" }
 
 [[tool.uv.index]]
 name = "pytorch-cpu"
