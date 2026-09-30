@@ -31,13 +31,13 @@ SCAN_SETTINGS = ProfileSettings(
     reoptimize=False, initial_step=0.5, min_step=0.1, max_step=2.0, max_points=6
 )
 
-#: tolerance the cost of a scan is compared with between processes. A worker
-#: integrates on a fresh roadrunner instance while the serial scans reuse one,
-#: so a cost differs by about the relative tolerance of the integrator, `1e-6`
-#: in `fit_settings`; this is that with headroom. It still separates the scans:
-#: a scan which took another path differs by the threshold of the test, i.e.
-#: `1.92` in the cost, not by a millionth of it
-COST_RTOL = 1e-3
+#: tolerance the cost of a scan is compared with between processes. The
+#: residuals of a problem do not depend on its earlier evaluations, so a
+#: worker on a fresh roadrunner instance gives the cost of the serial scans;
+#: the headroom covers the first load of a model by roadrunner, which differs
+#: from the later ones by about `1e-9` relative. A scan which took another
+#: path differs by the threshold of the test, i.e. `1.92` in the cost
+COST_RTOL = 1e-8
 
 
 def _profile(
@@ -411,7 +411,7 @@ def test_parallel_equals_serial(
     """The scans of the workers give the result of the serial scans.
 
     The scans take the same path, i.e. the same parameter values, and their
-    costs agree up to the integrator, see `COST_RTOL`.
+    costs agree, see `COST_RTOL`.
     """
     serial = _result_of_scan(op_hctz_pk, fit_settings)
     parallel = profile_likelihood(
