@@ -107,6 +107,9 @@ PEtab v2, see [PEtab](../petab.md).
 | [fit.petab_v2.observables](fit.petab_v2.observables.md) | the model a fit simulates when an observable is a formula |
 | [fit.petab_v2.symbols](fit.petab_v2.symbols.md) | the identifiers and symbols shared by the PEtab layer |
 | [fit.petab_v2.gaps](fit.petab_v2.gaps.md) | the catalogue of the differences between a fit and its PEtab problem |
+| [fit.petab_v2.likelihood](fit.petab_v2.likelihood.md) | the log-likelihood and its gradient, the noise models of PEtab v2 |
+| [fit.petab_v2.sciml](fit.petab_v2.sciml.md) | the networks of a PEtab SciML problem read into `Hybridization` objects |
+| [fit.petab_v2.sciml_export](fit.petab_v2.sciml_export.md) | the hybridizations of a problem written as PEtab SciML |
 
 ## sbmlsim.sensitivity
 

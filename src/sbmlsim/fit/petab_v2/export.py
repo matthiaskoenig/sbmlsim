@@ -47,6 +47,7 @@ from sbmlsim.fit.options import FitSettings, WeightingCurvesType
 from sbmlsim.fit.parameter_mapping import has_renamed_targets
 from sbmlsim.fit.petab_v2.extension import (
     EXTENSION_ID,
+    SCIML_EXTENSION_ID,
     SbmlsimExtension,
 )
 from sbmlsim.fit.petab_v2.gaps import Gap, GapKind, gaps_dict, gaps_of_problem
@@ -72,6 +73,7 @@ TABLE_FILES: dict[str, str] = {
     "observable_tables": "observables.tsv",
     "measurement_tables": "measurements.tsv",
     "parameter_tables": "parameters.tsv",
+    "mapping_tables": "mapping.tsv",
 }
 
 
@@ -97,6 +99,7 @@ def _table(petab_problem: PetabProblem, attribute: str) -> Any:
             "observable_tables": petab_v2.ObservableTable,
             "measurement_tables": petab_v2.MeasurementTable,
             "parameter_tables": petab_v2.ParameterTable,
+            "mapping_tables": petab_v2.MappingTable,
         }[attribute]
         # the tables have a default for their elements, which ty does not see
         tables.append(table_class(elements=[]))
@@ -156,7 +159,12 @@ def _unit(value: Any) -> str | None:
 
 
 class PetabExporter:
-    """Write an optimization problem as a PEtab v2 problem."""
+    """Write an optimization problem as a PEtab v2 problem.
+
+    A problem with hybridizations is written with its networks as PEtab
+    SciML, see `sbmlsim.fit.petab_v2.sciml_export`, which needs the extra
+    `sciml`.
+    """
 
     def __init__(
         self,
@@ -242,6 +250,15 @@ class PetabExporter:
         self.derivations: dict[str, Derivation] = {}
         #: the networks of the problem, `None` for a problem without them
         self.sciml: Any = None
+        if problem.hybridizations:
+            # the import needs the extra `sciml`
+            from sbmlsim.fit.petab_v2.sciml_export import SciMLExporter
+
+            self.sciml = SciMLExporter(
+                problem,
+                problem.hybridizations,
+                simulation_ids=self._simulation_ids(),
+            )
 
     def _simulation_ids(self) -> dict[str, str]:
         """Get the id of the PEtab experiment of every simulation of the problem.
@@ -761,7 +778,11 @@ class PetabExporter:
         not estimate it still simulates the model as it is today, i.e. with
         no version applied.
         """
+        elements = self.sciml.element_ids if self.sciml is not None else set()
         for index, parameter in enumerate(self.problem.parameters):
+            if parameter.pid in elements:
+                # the rows of the networks describe the elements
+                continue
             nominal_value = (
                 float(self.problem.xmodel[index])
                 if has_renamed_targets([parameter])
@@ -777,6 +798,13 @@ class PetabExporter:
                 )
             )
         self._add_noise_parameters(petab_problem)
+        if self.sciml is not None:
+            _table(petab_problem, "parameter_tables").parameters.extend(
+                self.sciml.parameter_rows()
+            )
+            _table(petab_problem, "mapping_tables").mappings.extend(
+                self.sciml.mapping_rows()
+            )
 
     def _add_noise_parameters(self, petab_problem: PetabProblem) -> None:
         """Add the parameters of the noise models, every one of them once.
@@ -823,6 +851,7 @@ class PetabExporter:
         problem = self.problem
         settings = problem.settings
 
+        elements = self.sciml.element_ids if self.sciml is not None else set()
         parameters = {
             parameter.pid: {
                 "unit": parameter.unit,
@@ -834,6 +863,7 @@ class PetabExporter:
                 ),
             }
             for parameter in problem.parameters
+            if parameter.pid not in elements
         }
 
         observables: dict[str, dict[str, Any]] = {}
@@ -919,6 +949,8 @@ class PetabExporter:
         if petab_problem.config is None:
             petab_problem.config = petab_v2.ProblemConfig(format_version="2.0.0")
         petab_problem.config.extensions[EXTENSION_ID] = extension
+        if self.sciml is not None:
+            petab_problem.config.extensions[SCIML_EXTENSION_ID] = self.sciml.config()
 
     def _weight_mapping(self, k: int) -> float:
         """Get the weight the user gave a fit mapping.
@@ -1008,6 +1040,8 @@ def to_petab(
 
     _set_table_paths(petab_problem)
     petab_problem.to_files(base_path=output_dir)
+    if exporter.sciml is not None:
+        exporter.sciml.write(output_dir)
     yaml_file = output_dir / YAML_FILE
     logger.info("PEtab v2 problem written: %s", yaml_file.resolve().as_uri())
     return yaml_file

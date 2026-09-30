@@ -290,6 +290,19 @@ GAPS: tuple[Gap, ...] = (
         "parameter goes to the extension",
     ),
     Gap(
+        id="sciml-partial-array",
+        kind=GapKind.UNSUPPORTED,
+        sbmlsim="every element of a network is its own `FitParameter`, so a "
+        "fit can estimate some elements of an array or bound them differently",
+        petab="a row of the parameter table of PEtab SciML describes the "
+        "network, a layer or an array as a whole",
+        detail="the export raises for an array whose elements differ in "
+        "whether they are estimated or in their bounds and names the array. "
+        "`network_fit_parameters` and `Hybridization.fit_parameters` describe "
+        "the elements per network, layer and array, which is what PEtab "
+        "expresses",
+    ),
+    Gap(
         id="foreign-extension",
         kind=GapKind.UNSUPPORTED,
         sbmlsim="the reader interprets the `sbmlsim` extension of a problem",

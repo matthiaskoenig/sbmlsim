@@ -183,20 +183,14 @@ def test_the_scale_of_a_parameter_survives_the_round_trip(
     )
 
 
-def test_an_external_parameter_is_no_condition(
+def test_a_problem_with_a_hook_which_is_no_network_is_refused(
     definition_hctz_iv: FitDefinition, fit_settings: FitSettings
 ) -> None:
-    """A parameter which is no entity of the model is not assigned by a condition."""
+    """A hook which is no network has no representation in PEtab SciML."""
     definition = dataclasses.replace(
         definition_hctz_iv, parameters=[factor_parameter()], hybridizations=[Scaling()]
     )
     problem = definition.problem(opid="external")
     problem.initialize(fit_settings)
-    petab_problem = PetabExporter(problem).to_problem()
-    targets = {
-        change.target_id
-        for condition in petab_problem.conditions
-        for change in condition.changes
-    }
-    assert "factor_k" not in targets
-    assert not any(target.startswith("sciml:") for target in targets)
+    with pytest.raises(ValueError, match="is not a `Hybridization`"):
+        PetabExporter(problem)
