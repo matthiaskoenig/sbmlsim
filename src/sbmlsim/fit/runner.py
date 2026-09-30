@@ -41,6 +41,7 @@ from scipy.optimize import OptimizeResult
 
 from sbmlsim.console import console
 from sbmlsim.fit import display
+from sbmlsim.fit.derived import hook_summaries
 from sbmlsim.fit.optimization import OptimizationProblem, RuntimeErrorOptimizeResult
 from sbmlsim.fit.options import FitSettings, OptimizationAlgorithmType
 from sbmlsim.fit.result import OptimizationResult
@@ -224,7 +225,9 @@ def run_optimization(
 
     Raises:
         ValueError: for the removed parameters `fitting_type` and
-            `weighting_local`, or if every worker of a parallel fit failed.
+            `weighting_local`, if a bound or a start value does not suit the
+            scale of its parameter or the algorithm, or if every worker of a
+            parallel fit failed.
     """
     for deprecated, replacement in [
         ("fitting_type", "fitting_strategy"),
@@ -245,6 +248,8 @@ def run_optimization(
     # workers of a parallel fit start; `initialize` is a no-op when the
     # helpers initialize the same problem with the same settings again
     problem.initialize(settings)
+    # the bounds the algorithm needs are checked once, not in every run
+    problem._validate_parameters(algorithm)
     display.print_parameters(
         problem.parameters,
         coverage=(
@@ -252,6 +257,7 @@ def run_optimization(
             if problem.parameter_mapping is not None
             else None
         ),
+        hooks=hook_summaries(problem.hybridizations),
     )
 
     opt_result: OptimizationResult
@@ -322,7 +328,7 @@ GUARD_MESSAGE = (
     "A parallel fit starts worker processes which import the script again, so "
     "the fit must run behind a guard:\n\n"
     '    if __name__ == "__main__":\n        main()\n\n'
-    "Use 'serial=True' or 'n_cores=1' to fit without worker processes."
+    "Use 'serial=True' to fit without worker processes."
 )
 
 
@@ -403,12 +409,17 @@ def _worker_run(task: dict[str, Any]) -> tuple[int, OptimizeResult, list[float]]
 def _pool_context(problem: OptimizationProblem) -> BaseContext:
     """Get the multiprocessing context of a fit.
 
-    Under the `forkserver` start method, the default on linux since python
-    3.14, every worker imports sbmlsim and the module of the experiments again,
-    which costs more than a short optimization. The forkserver imports them once
-    and the workers inherit them, which matters for a fit of several problems:
-    the forkserver of the context outlives the pool, so only the first pool
-    pays the imports.
+    A start method set with `multiprocessing.set_start_method` is used, else
+    the default of the platform, except `fork`: the process of a fit runs the
+    threads of roadrunner and of the linear algebra, and a fork of a process
+    with threads may deadlock in the child. Python 3.14 made `forkserver` the
+    default on linux for this reason, a fit takes it on python 3.13 as well.
+
+    Under the `forkserver` start method every worker imports sbmlsim and the
+    module of the experiments again, which costs more than a short
+    optimization. The forkserver imports them once and the workers inherit
+    them, which matters for a fit of several problems: the forkserver of the
+    context outlives the pool, so only the first pool pays the imports.
 
     Args:
         problem: problem of the fit, its experiments name the modules to import.
@@ -416,8 +427,17 @@ def _pool_context(problem: OptimizationProblem) -> BaseContext:
     Returns:
         The context the pool is created from.
     """
-    ctx = multiprocessing.get_context()
-    if ctx.get_start_method() != "forkserver":
+    # `get_context()` without a method would fix the start method of the process,
+    # after which a second fit could not tell it from one the user set
+    method = multiprocessing.get_start_method(allow_none=True)
+    if method is None:
+        # the first of the supported methods is the default of the platform
+        methods = multiprocessing.get_all_start_methods()
+        method = methods[0]
+        if method == "fork" and "forkserver" in methods:
+            method = "forkserver"
+    ctx = multiprocessing.get_context(method)
+    if method != "forkserver":
         return ctx
     modules = {"sbmlsim.fit.optimization"}
     for mapping_collection in problem.mapping_collections:

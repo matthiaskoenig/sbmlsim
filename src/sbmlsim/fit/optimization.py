@@ -14,13 +14,25 @@ from scipy import interpolate
 
 from sbmlsim.console import console
 from sbmlsim.experiment import ExperimentRunner, SimulationExperiment
+from sbmlsim.fit.derived import (
+    DerivedChanges,
+    GroupDerivedChanges,
+    describe,
+    evaluate_derived_changes,
+    group_parameters,
+    hook_summaries,
+    resolve_derived_changes,
+)
 from sbmlsim.fit.helpers import _filters
 from sbmlsim.fit.objects import (
+    EXTERNAL_PREFIX,
     UNUSED_KINDS,
     FitMapping,
     FitMappingCollection,
     FitParameter,
     MappingKind,
+    NoiseModel,
+    describe_array,
 )
 from sbmlsim.fit.options import (
     FitSettings,
@@ -175,18 +187,42 @@ class OptimizationProblem(ObjectJSONEncoder):
         fit_parameters: list[FitParameter],
         base_path: Path | None = None,
         data_path: Path | None = None,
+        hybridizations: Sequence[DerivedChanges] | None = None,
     ):
         """Optimization problem.
 
         The problem must be pickable for parallelization !
         So initialize must be run to create the non-pickable instances.
 
-        :param opid: id for optimization problem
-        :param mapping_collections:
-        :param fit_parameters:
+        Args:
+            opid: id for optimization problem.
+            mapping_collections: the fit mappings of the problem.
+            fit_parameters: the parameters of the fit.
+            base_path: directory the models of the experiments are relative
+                to.
+            data_path: directory of the data of the experiments.
+            hybridizations: the derived changes of the problem, i.e. changes
+                of a simulation which are calculated from the parameters of
+                the fit, see `sbmlsim.fit.derived`. The hybridizations of the
+                neural networks of a hybrid problem are what implements
+                them. They are part of the definition and are pickled with
+                it.
+
+        Raises:
+            ValueError: if the problem has no parameters or two parameters of
+                one id.
+            TypeError: if a hybridization does not provide the derived
+                changes.
         """
         super().__init__()
         self.opid: str = opid
+        self.hybridizations: list[DerivedChanges] = list(hybridizations or [])
+        for hybridization in self.hybridizations:
+            if not isinstance(hybridization, DerivedChanges):
+                raise TypeError(
+                    f"'{opid}': the hybridization '{hybridization}' does not "
+                    f"provide `sbmlsim.fit.derived.DerivedChanges`."
+                )
         self.mapping_collections = []
         for collection in mapping_collections:
             if collection.exclude:
@@ -246,6 +282,7 @@ class OptimizationProblem(ObjectJSONEncoder):
             fit_parameters=self.parameters,
             base_path=self.base_path,
             data_path=self.data_path,
+            hybridizations=self.hybridizations,
         )
         return fresh.__dict__
 
@@ -266,6 +303,9 @@ class OptimizationProblem(ObjectJSONEncoder):
         self.y_references: list[Any] = []
         self.y_errors: list[Any] = []
         self.y_errors_type: list[str | None] = []
+        #: the noise model of every mapping, `None` for a mapping without one,
+        #: see `sbmlsim.fit.petab_v2.likelihood`
+        self.noise_models: list[NoiseModel | None] = []
         # total weights for points (data points and curve weights)
         self.weights: list[Any] = []
         self.weights_points: list[Any] = []  # weights for data points based on errors
@@ -273,7 +313,17 @@ class OptimizationProblem(ObjectJSONEncoder):
 
         self.models: list[Any] = []
         self.simulations: list[Any] = []
+        #: the changes of the first timecourse of every simulation as defined,
+        #: see `initialize`
+        self.defined_changes: list[dict[str, Any]] = []
         self.selections: list[Any] = []
+        #: id of the model and of the simulation of every mapping in its
+        #: experiment
+        self.model_keys: list[str] = []
+        self.simulation_keys: list[str] = []
+        #: the derived changes of every simulation group with the values of
+        #: the model they read, see `_group_derived_changes`
+        self.group_derived: list[GroupDerivedChanges] = []
         # indices of the mappings which share a simulation, see `_group_mappings`
         self.mapping_groups: list[list[int]] = []
         #: which parameter writes which entity in which simulation, resolved
@@ -359,8 +409,12 @@ class OptimizationProblem(ObjectJSONEncoder):
     def __str__(self) -> str:
         """Get string representation.
 
-        This can be run before initialization.
+        This can be run before initialization. The elements of a network are
+        listed as one line per array.
         """
+        single, groups = group_parameters(
+            self.parameters, hook_summaries(self.hybridizations)
+        )
         info = [
             "-" * 80,
             f"{self.__class__.__name__}: {self.opid}",
@@ -369,7 +423,11 @@ class OptimizationProblem(ObjectJSONEncoder):
         ]
         info.extend([f"\t{e}" for e in self.mapping_collections])
         info.append("Parameters")
-        info.extend([f"\t{p}" for p in self.parameters])
+        info.extend([f"\t{p}" for p in single])
+        info.extend(
+            "\t" + describe_array(g.label, len(g.ids), m, [p.start_value for p in m])
+            for g, m in groups
+        )
         return "\n".join(info)
 
     def to_dict(self) -> dict[str, Any]:
@@ -383,6 +441,7 @@ class OptimizationProblem(ObjectJSONEncoder):
             "data_path",
         ]:
             d[key] = self.__dict__[key]
+        d["hybridizations"] = [describe(h) for h in self.hybridizations]
         return d
 
     def to_json(self, path: Path | None = None) -> str | Path:
@@ -457,6 +516,11 @@ class OptimizationProblem(ObjectJSONEncoder):
             return
 
         self.settings = settings
+        #: the space the optimizer searches every parameter in
+        self.scales: list[ParameterScaleType] = [
+            settings.parameter_scale if p.scale is None else p.scale
+            for p in self.parameters
+        ]
         self._validate_parameters()
         # initialize can be called more than once, e.g. for the report of a fit
         self._reset_mappings()
@@ -722,6 +786,8 @@ class OptimizationProblem(ObjectJSONEncoder):
                 self.models.append(model)
                 self.simulations.append(simulation)
                 self.selections.append(selections)
+                self.model_keys.append(task.model_id)
+                self.simulation_keys.append(task.simulation_id)
 
                 # store information
                 self.experiment_keys.append(sid)
@@ -744,6 +810,7 @@ class OptimizationProblem(ObjectJSONEncoder):
                 self.y_references.append(y_ref)
                 self.y_errors.append(y_ref_err)
                 self.y_errors_type.append(y_ref_err_type)
+                self.noise_models.append(mapping.noise)
                 # weights
                 self.weights.append(weight)
                 self.weights_points.append(weight_points)
@@ -767,6 +834,16 @@ class OptimizationProblem(ObjectJSONEncoder):
                 f"be '{MappingKind.TRAINING.value}'."
             )
 
+        #: the changes of the first timecourse of every fit mapping as the
+        #: experiment defines them: `_simulate_groups` writes the values of
+        #: the parameters and the derived changes into the timecourse, and an
+        #: export writes the definition
+        self.defined_changes = [
+            dict(simulation.timecourses[0].changes)
+            if isinstance(simulation, TimecourseSim) and simulation.timecourses
+            else {}
+            for simulation in self.simulations
+        ]
         self.parameter_mapping = ParameterMapping(
             parameters=self.parameters,
             mapping_indices=selected_mappings,
@@ -777,6 +854,7 @@ class OptimizationProblem(ObjectJSONEncoder):
                 for group in self.mapping_groups
             ],
         )
+        self._group_derived_changes()
         self._check_shared_simulation_bindings()
 
         # set simulator instance with arguments
@@ -792,34 +870,114 @@ class OptimizationProblem(ObjectJSONEncoder):
         """Get the space the optimizer searches the parameters in."""
         return self.settings_initialized.parameter_scale
 
+    @property
+    def scales_initialized(self) -> list[ParameterScaleType]:
+        """Get the space the optimizer searches every parameter in.
+
+        The scale of a parameter is its `FitParameter.scale` and the
+        `parameter_scale` of the settings for a parameter without one.
+
+        Raises:
+            ValueError: if the problem was not initialized.
+        """
+        self.settings_initialized  # noqa: B018
+        return self.scales
+
+    def _scaled(self, x: Any, to_scale: bool) -> np.ndarray:
+        """Transform one value per parameter, every one with its own scale."""
+        values = np.asarray(x, dtype=float)
+        scales = self.scales_initialized
+        if values.shape != (len(scales),):
+            raise ValueError(
+                f"'{self.opid}': the transformation requires one value per "
+                f"parameter, but values of the shape '{values.shape}' are given "
+                f"for the '{len(scales)}' parameters '{self.pids}'."
+            )
+        if len(set(scales)) == 1:
+            # one scale, which is one call of numpy
+            scale = scales[0]
+            scaled = scale.to_scale(values) if to_scale else scale.from_scale(values)
+            return np.asarray(scaled, dtype=float)
+        return np.array(
+            [
+                scale.to_scale(value) if to_scale else scale.from_scale(value)
+                for scale, value in zip(scales, values, strict=True)
+            ],
+            dtype=float,
+        )
+
     def to_scale(self, x: Any) -> np.ndarray:
-        """Transform parameters of the model into the space of the optimizer."""
-        return np.asarray(self.parameter_scale.to_scale(x), dtype=float)
+        """Transform parameters of the model into the space of the optimizer.
+
+        Args:
+            x: one value per parameter, in the units of the model.
+
+        Returns:
+            The values in the space the optimizer searches, every parameter
+            with its own scale.
+
+        Raises:
+            ValueError: if `x` does not have one value per parameter.
+        """
+        return self._scaled(x, to_scale=True)
 
     def from_scale(self, x: Any) -> np.ndarray:
-        """Transform parameters of the optimizer into the units of the model."""
-        return np.asarray(self.parameter_scale.from_scale(x), dtype=float)
+        """Transform parameters of the optimizer into the units of the model.
 
-    def _validate_parameters(self) -> None:
+        Args:
+            x: one value per parameter, in the space the optimizer searches.
+
+        Returns:
+            The values in the units of the model.
+
+        Raises:
+            ValueError: if `x` does not have one value per parameter.
+        """
+        return self._scaled(x, to_scale=False)
+
+    def _validate_parameters(
+        self, algorithm: OptimizationAlgorithmType | None = None
+    ) -> None:
         """Check that the parameters can be optimized.
 
         An optimization on a logarithmic scale, which is the default, requires
-        finite positive bounds and start values; on the linear scale the bounds
-        only have to be finite.
+        finite positive bounds and start values. A parameter on the linear
+        scale may have infinite bounds, which the local optimizer takes; the
+        global optimizer samples a finite box.
+
+        Args:
+            algorithm: the algorithm of the optimization, `None` for the
+                checks which hold for every algorithm.
 
         Raises:
-            ValueError: if a bound or a start value does not suit the scale.
+            ValueError: if a bound or a start value does not suit the scale
+                or the algorithm.
         """
-        scale = self.parameter_scale
-        space = f"'{scale.name}' parameter space"
-        for p in self.parameters:
+        for p, scale in zip(self.parameters, self.scales_initialized, strict=True):
+            space = f"'{scale.name}' parameter space"
             for key in ["lower_bound", "upper_bound"]:
                 value = getattr(p, key)
                 if not np.isfinite(value):
-                    raise ValueError(
-                        f"{self.opid}: the optimization requires a finite "
-                        f"'{key}', but FitParameter '{p.pid}' has '{value}'."
-                    )
+                    if scale.is_log:
+                        raise ValueError(
+                            f"{self.opid}: the optimization is performed in "
+                            f"{space}, which requires a finite '{key}', but "
+                            f"FitParameter '{p.pid}' has '{value}'."
+                        )
+                    if algorithm == OptimizationAlgorithmType.DIFFERENTIAL_EVOLUTION:
+                        raise ValueError(
+                            f"{self.opid}: the optimization with "
+                            f"'{algorithm.name}' samples a finite box and "
+                            f"requires a finite '{key}', but FitParameter "
+                            f"'{p.pid}' has '{value}'."
+                        )
+                    if p.start_value is None:
+                        raise ValueError(
+                            f"{self.opid}: FitParameter '{p.pid}' has the "
+                            f"infinite '{key}' '{value}' and is not sampled, so "
+                            f"it requires a 'start_value'."
+                        )
+                    continue
                 if scale.is_log and value <= 0.0:
                     raise ValueError(
                         f"{self.opid}: the optimization is performed in {space}, "
@@ -872,9 +1030,14 @@ class OptimizationProblem(ObjectJSONEncoder):
         simulation, because it is pathological and a clear error at
         `initialize` beats a silently wrong number.
 
+        The derived changes are written into the same object, so the groups
+        must derive the same targets: each writes all of them before it
+        simulates and reads none of them as a change of the simulation.
+
         Raises:
             ValueError: if two groups share a simulation object and
-                `ParameterMapping` binds a target of theirs differently.
+                `ParameterMapping` binds a target of theirs differently, or
+                they derive different targets.
         """
         mapping = self.parameter_mapping_initialized
         groups_by_simulation: dict[int, list[int]] = {}
@@ -889,6 +1052,19 @@ class OptimizationProblem(ObjectJSONEncoder):
             k_first = group_indices[0]
             bindings_first = mapping.indices_for(k_first)
             for k_other in group_indices[1:]:
+                derived = self._derived_targets(k_first) ^ self._derived_targets(
+                    k_other
+                )
+                if derived:
+                    raise ValueError(
+                        f"'{self.opid}': the simulations "
+                        f"'{mapping.group_names[k_first]}' and "
+                        f"'{mapping.group_names[k_other]}' share one "
+                        f"`TimecourseSim` object (same simulation_id, different "
+                        f"model_id) but do not both derive {sorted(derived)}. "
+                        f"The derived change of one would leak into the other. "
+                        f"Give these fit mappings distinct simulation ids."
+                    )
                 bindings_other = mapping.indices_for(k_other)
                 if bindings_first == bindings_other:
                     continue
@@ -908,14 +1084,34 @@ class OptimizationProblem(ObjectJSONEncoder):
                     f"for both."
                 )
 
+    def _derived_targets(self, k_group: int) -> set[str]:
+        """Get the targets the hybridizations of a simulation group set."""
+        return {
+            target
+            for hook, _ in self.group_derived[k_group]
+            for target in hook.targets()
+        }
+
+    def _group_derived_changes(self) -> None:
+        """Resolve the derived changes of every simulation group.
+
+        See `sbmlsim.fit.derived.resolve_derived_changes`, whose checks refuse
+        what would make the objective flat or wrong.
+        """
+        self.group_derived = resolve_derived_changes(self)
+
     def _store_model_parameters(self) -> None:
         """Store the initial values of the fitted parameters in the models.
 
         The values are read from the first model, a model which starts from
-        different values is reported.
+        different values is reported. A parameter which is not an entity of
+        the model starts from its start value.
 
         Raises:
-            ValueError: if a model is not loaded in roadrunner.
+            ValueError: if a model is not loaded in roadrunner, if a
+                parameter which is not an entity of the model has no start
+                value, or if the target of a parameter is not an entity of
+                the model.
         """
         for k_model, model in enumerate(self.models):
             if model.r is None:
@@ -923,7 +1119,24 @@ class OptimizationProblem(ObjectJSONEncoder):
 
             for k, parameter in enumerate(self.parameters):
                 target = parameter.target_id
-                pid_value = model.r[target]
+                if parameter.is_external:
+                    if parameter.start_value is None:
+                        raise ValueError(
+                            f"'{self.opid}': FitParameter '{parameter.pid}' "
+                            f"writes '{target}', which is not an entity of the "
+                            f"model, so it requires a 'start_value'."
+                        )
+                    self.xmodel[k] = parameter.start_value
+                    continue
+                try:
+                    pid_value = model.r[target]
+                except RuntimeError as err:
+                    raise ValueError(
+                        f"'{self.opid}': FitParameter '{parameter.pid}' writes "
+                        f"'{target}', which is not an entity of the model "
+                        f"'{model}'. A parameter which is not an entity of a "
+                        f"model has the target '{EXTERNAL_PREFIX}<id>'."
+                    ) from err
                 if target in model.changes:
                     change = model.changes[target]
                     # model changes have units
@@ -994,7 +1207,7 @@ class OptimizationProblem(ObjectJSONEncoder):
         on_run_finished: (
             Callable[[int, scipy.optimize.OptimizeResult, list[float]], None] | None
         ) = None,
-        **kwargs,
+        **kwargs: Any,
     ) -> tuple[list[scipy.optimize.OptimizeResult], list[list[float]]]:
         """Run parameter optimization.
 
@@ -1011,7 +1224,7 @@ class OptimizationProblem(ObjectJSONEncoder):
             on_run_finished: called with the index, the fit and the trajectory
                 of every finished optimization, i.e., to report the progress of
                 a fit and to store the runs while it runs.
-            kwargs: additional arguments of the optimizer.
+            **kwargs: additional arguments of the optimizer.
 
         Returns:
             The fits and the trajectories of the optimizations. A run which
@@ -1126,7 +1339,7 @@ class OptimizationProblem(ObjectJSONEncoder):
             run: index of the run, for the log messages.
             size: number of runs, for the log messages.
             run_seed: seed of the run, `None` if it does not need one.
-            kwargs: additional arguments of the optimizer.
+            **kwargs: additional arguments of the optimizer.
 
         Returns:
             The fit and the cost of every step of the optimization.
@@ -1165,7 +1378,7 @@ class OptimizationProblem(ObjectJSONEncoder):
         x0: np.ndarray | None = None,
         algorithm: OptimizationAlgorithmType = OptimizationAlgorithmType.LEAST_SQUARE,
         timeout: float | None = None,
-        **kwargs,
+        **kwargs: Any,
     ) -> tuple[scipy.optimize.OptimizeResult, list]:
         """Run single optimization with x0 start values.
 
@@ -1173,7 +1386,7 @@ class OptimizationProblem(ObjectJSONEncoder):
             x0: parameter start vector (important for deterministic optimizers).
             algorithm: optimization algorithm and method.
             timeout: seconds the optimization may run, no limit if `None`.
-            kwargs: additional arguments of the optimizer.
+            **kwargs: additional arguments of the optimizer.
 
         Returns:
             The fit and the trajectory of the optimization.
@@ -1196,7 +1409,7 @@ class OptimizationProblem(ObjectJSONEncoder):
         self,
         x0: np.ndarray | None = None,
         algorithm: OptimizationAlgorithmType = OptimizationAlgorithmType.LEAST_SQUARE,
-        **kwargs,
+        **kwargs: Any,
     ) -> tuple[scipy.optimize.OptimizeResult, list]:
         """Run a single optimization, see `_optimize_single`.
 
@@ -1215,6 +1428,7 @@ class OptimizationProblem(ObjectJSONEncoder):
 
         # the optimizer searches the scaled space, see `ParameterScaleType`
         x0log: np.ndarray = self.to_scale(x0)
+        self._validate_parameters(algorithm)
 
         if algorithm == OptimizationAlgorithmType.LEAST_SQUARE:
             # scipy least square optimizer
@@ -1255,10 +1469,13 @@ class OptimizationProblem(ObjectJSONEncoder):
             # https://docs.scipy.org/doc/scipy/reference/generated/scipy.optimize.differential_evolution.html#scipy.optimize.differential_evolution
             ts = time.time()
             try:
-                de_bounds_log = [
-                    (self.to_scale(p.lower_bound), self.to_scale(p.upper_bound))
-                    for k, p in enumerate(self.parameters)
-                ]
+                de_bounds_log = list(
+                    zip(
+                        self.to_scale([p.lower_bound for p in self.parameters]),
+                        self.to_scale([p.upper_bound for p in self.parameters]),
+                        strict=True,
+                    )
+                )
                 opt_result = scipy.optimize.differential_evolution(
                     func=self.cost_least_square, bounds=de_bounds_log, **kwargs
                 )
@@ -1330,6 +1547,10 @@ class OptimizationProblem(ObjectJSONEncoder):
                 selections=sorted({s for k in indices for s in self.selections[k]})
             )
             simulation.normalize(uinfo=simulator.uinfo)
+            if self.group_derived[k_group]:
+                simulation.timecourses[0].changes.update(
+                    self._derived_changes(k_group, simulation, simulator, quantities)
+                )
 
             df: pd.DataFrame | None
             try:
@@ -1348,6 +1569,144 @@ class OptimizationProblem(ObjectJSONEncoder):
                 results[k] = df
 
         return results
+
+    def _derived_changes(
+        self,
+        k_group: int,
+        simulation: TimecourseSim,
+        simulator: SimulatorSerial,
+        quantities: Sequence[Quantity],
+    ) -> dict[str, Quantity]:
+        """Get the derived changes of the simulation of a group.
+
+        See `sbmlsim.fit.derived.evaluate_derived_changes`.
+
+        Args:
+            k_group: index of the simulation group.
+            simulation: the simulation of the group with the changes of the
+                parameters, normalized to the units of the model.
+            simulator: simulator of the problem, with the model of the group.
+            quantities: the quantity of every parameter, in the order of the
+                parameter vector.
+
+        Returns:
+            The changes by entity of the model, in the unit of the entity.
+        """
+        return evaluate_derived_changes(
+            self, k_group, simulation, simulator, quantities
+        )
+
+    def _interpolate(self, k: int, df: pd.DataFrame) -> np.ndarray:
+        """Get the simulation of a fit mapping at its reference data.
+
+        Args:
+            k: index of the fit mapping.
+            df: result of the simulation of the mapping.
+
+        Returns:
+            The observable, interpolated at the x values of the reference data.
+
+        Raises:
+            ValueError: if the reference data is outside of the simulation.
+        """
+        f = interpolate.interp1d(
+            x=df[self.xid_observable[k]],
+            y=df[self.yid_observable[k]],
+            copy=False,
+            assume_sorted=True,
+        )
+        try:
+            return np.asarray(f(self.x_references[k]), dtype=float)
+        except ValueError:
+            logger.error(
+                "Interpolation error in the fit mapping '%s.%s'.",
+                self.experiment_keys[k],
+                self.mapping_keys[k],
+            )
+            raise
+
+    def _simulator_and_quantities(
+        self, x: np.ndarray
+    ) -> tuple[SimulatorSerial, Sequence[Quantity]]:
+        """Get the simulator and the parameters as quantities.
+
+        The parameters are the same for every mapping, the quantities are
+        created once and not once per mapping.
+
+        Args:
+            x: values of the parameters in the units of the model.
+
+        Returns:
+            The simulator of the problem and the quantity of every parameter.
+
+        Raises:
+            ValueError: if the problem is not initialized or if no simulator
+                is set.
+        """
+        simulator: SimulatorSerial | None = self.runner_initialized.simulator
+        if simulator is None:
+            raise ValueError(f"No simulator set on OptimizationProblem '{self.opid}'.")
+        Q_ = self.runner_initialized.Q_
+        quantities = [Q_(value, self.punits[ix]) for ix, value in enumerate(x)]
+        return simulator, quantities
+
+    def predictions(
+        self, x: np.ndarray, indices: Sequence[int] | None = None
+    ) -> dict[int, np.ndarray]:
+        """Get the simulation of fit mappings at their reference data.
+
+        The predictions are the values of the observable as they are
+        simulated, i.e. the baseline of a curve is not subtracted, whatever
+        the residual of the settings is.
+
+        Args:
+            x: values of the parameters in the units of the model, i.e. on the
+                linear scale, in the order of the parameters of the problem.
+            indices: indices of the fit mappings, the training data by
+                default.
+
+        Returns:
+            The prediction at the reference data of every mapping, by the
+            index of the mapping.
+
+        Raises:
+            ValueError: if the problem is not initialized, if no simulator is
+                set, if `x` does not have a value for every parameter, if an
+                index is not the index of a fit mapping or if the integration
+                of a simulation failed.
+        """
+        values = np.asarray(x, dtype=float)
+        if values.shape != (len(self.pids),):
+            raise ValueError(
+                f"'{self.opid}': the predictions require one value per "
+                f"parameter, but '{values.size}' values are given for the "
+                f"'{len(self.pids)}' parameters '{self.pids}'."
+            )
+        simulator, quantities = self._simulator_and_quantities(values)
+        evaluated = set(self.training_indices if indices is None else indices)
+        valid = set(self.indices())
+        invalid = sorted(set(evaluated) - valid)
+        if invalid:
+            raise ValueError(
+                f"'{self.opid}': the indices {', '.join(f"'{k}'" for k in invalid)} "
+                f"are not indices of fit mappings, which are '0' to "
+                f"'{len(valid) - 1}'."
+            )
+        results = self._simulate_groups(
+            simulator=simulator, quantities=quantities, evaluated=evaluated, x=values
+        )
+
+        predictions: dict[int, np.ndarray] = {}
+        for k in sorted(evaluated):
+            df = results[k]
+            if df is None:
+                raise ValueError(
+                    f"'{self.opid}': the simulation of the fit mapping "
+                    f"'{self.experiment_keys[k]}.{self.mapping_keys[k]}' failed "
+                    f"for the parameters '{dict(zip(self.pids, values, strict=True))}'."
+                )
+            predictions[k] = self._interpolate(k, df)
+        return predictions
 
     def _interrupted_result(
         self, err: Exception, x0log: np.ndarray
@@ -1401,14 +1760,7 @@ class OptimizationProblem(ObjectJSONEncoder):
             residual_data = defaultdict(list)
 
         # simulate all mappings for all experiments
-        simulator: SimulatorSerial | None = self.runner_initialized.simulator
-        if simulator is None:
-            raise ValueError(f"No simulator set on OptimizationProblem '{self.opid}'.")
-        Q_ = self.runner_initialized.Q_
-
-        # the parameters are the same for every mapping, the quantities are
-        # created once and not once per mapping
-        quantities = [Q_(value, self.punits[ix]) for ix, value in enumerate(x)]
+        simulator, quantities = self._simulator_and_quantities(x)
         evaluated = {
             k
             for k in range(len(self.mapping_keys))
@@ -1427,18 +1779,7 @@ class OptimizationProblem(ObjectJSONEncoder):
 
             df = results[k]
             if df is not None:
-                # interpolation of simulation results and requested time points
-                f = interpolate.interp1d(
-                    x=df[self.xid_observable[k]],
-                    y=df[self.yid_observable[k]],
-                    copy=False,
-                    assume_sorted=True,
-                )
-                try:
-                    y_obsip = f(self.x_references[k])
-                except ValueError as err:
-                    console.print(f"Interpolation error in mapping key: {mapping_key}")
-                    raise err
+                y_obsip = self._interpolate(k, df)
 
                 if self.residual in {
                     ResidualType.ABSOLUTE_TO_BASELINE,

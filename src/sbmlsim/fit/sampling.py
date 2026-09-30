@@ -8,6 +8,7 @@ import pandas as pd
 from scipy.stats import qmc
 
 from sbmlsim.fit.objects import FitParameter
+from sbmlsim.fit.options import ParameterScaleType
 
 logger = logging.getLogger(__name__)
 
@@ -15,13 +16,19 @@ logger = logging.getLogger(__name__)
 class SamplingType(Enum):
     """Type of sampling used.
 
-    The LHS options are latin hypercube sampling types.
+    The LHS options are latin hypercube sampling types. `START` does not
+    sample: every run starts from the start values of the parameters, which is
+    what a fit needs when the start values are a solution to improve, e.g. the
+    nominal values of a model or the trained network of a hybrid problem,
+    instead of a point of the bounds. The runs are identical then, so one run is
+    enough for a local optimizer.
     """
 
     LOGUNIFORM = 1
     UNIFORM = 2
     LOGUNIFORM_LHS = 3
     UNIFORM_LHS = 4
+    START = 5
 
     @property
     def is_log(self) -> bool:
@@ -40,32 +47,46 @@ def create_samples(
     sampling: SamplingType = SamplingType.LOGUNIFORM,
     seed: int | None = None,
     min_bound: float = 1e-10,
-    max_bound: float = 1e10,
 ) -> pd.DataFrame:
     """Create samples of start values from the bounds of the parameters.
 
-    Infinite bounds are replaced by the hard bounds `min_bound` and `max_bound`.
-    Logarithmic sampling requires positive bounds, non-positive lower bounds are
-    replaced by `min_bound`.
+    With `SamplingType.START` every sample is the vector of the start values
+    of the parameters and the bounds and the seed are not used.
+
+    A parameter with an infinite bound has no interval to sample: it starts
+    from its start value in every sample, so the samples differ in the
+    parameters with finite bounds. The samples of these do not depend on the
+    parameters which are not sampled.
+
+    A parameter on the linear scale (`FitParameter.scale`), e.g. an element
+    of a neural network with negative bounds, is sampled uniformly in its
+    bounds whatever the sampling type; a parameter without a scale of its own
+    follows the sampling type. Logarithmic sampling requires positive bounds,
+    non-positive lower bounds are replaced by `min_bound`.
 
     Args:
         parameters: parameters to sample, the bounds define the sampled interval.
         size: number of samples.
         sampling: type of sampling.
         seed: seed of the random number generator, for reproducible samples.
-        min_bound: hard lower bound, replaces an infinite or non-positive bound.
-        max_bound: hard upper bound, replaces an infinite bound.
+        min_bound: hard lower bound, replaces a non-positive bound of a
+            logarithmic sampling.
 
     Returns:
         DataFrame with one row per sample and one column per parameter.
 
     Raises:
-        ValueError: if the sampling type is unsupported or the bounds are invalid.
+        ValueError: if the sampling type is unsupported, the bounds are
+            invalid, or a parameter with an infinite bound has no start value
+            (with `SamplingType.START` a parameter without a start value).
     """
     if size < 1:
         raise ValueError(f"'size' must be a positive integer, but '{size}' given.")
     if not parameters:
         raise ValueError("'parameters' must not be empty.")
+
+    if sampling is SamplingType.START:
+        return _start_samples(parameters, size)
 
     rng = np.random.default_rng(seed)
 
@@ -81,15 +102,20 @@ def create_samples(
         raise ValueError(f"Unsupported SamplingType: '{sampling}'")
 
     for k, p in enumerate(parameters):
-        lb, ub = _sampling_bounds(
-            parameter=p,
-            sampling=sampling,
-            min_bound=min_bound,
-            max_bound=max_bound,
-        )
+        if np.isinf(p.lower_bound) or np.isinf(p.upper_bound):
+            if p.start_value is None:
+                raise ValueError(
+                    f"'{p.pid}': a parameter with the infinite bounds "
+                    f"[{p.lower_bound} - {p.upper_bound}] is not sampled and "
+                    f"requires a 'start_value'."
+                )
+            x[:, k] = p.start_value
+            continue
+        is_log = sampling.is_log and p.scale is not ParameterScaleType.LINEAR
+        lb, ub = _sampling_bounds(parameter=p, is_log=is_log, min_bound=min_bound)
 
         # stretch sampling dimension from [0, 1) to [lb, ub)
-        if sampling.is_log:
+        if is_log:
             lb_log = np.log10(lb)
             ub_log = np.log10(ub)
             # samples are in log space, parameter values in real space
@@ -100,25 +126,54 @@ def create_samples(
     return pd.DataFrame(x, columns=pd.Index([p.pid for p in parameters]))
 
 
+def _start_samples(parameters: list[FitParameter], size: int) -> pd.DataFrame:
+    """Repeat the start values of the parameters `size` times.
+
+    Raises:
+        ValueError: if a parameter has no start value.
+    """
+    start: list[float] = []
+    missing: list[str] = []
+    for p in parameters:
+        if p.start_value is None:
+            missing.append(p.pid)
+        else:
+            start.append(float(p.start_value))
+    if missing:
+        raise ValueError(
+            f"The parameters {missing} have no 'start_value', which the sampling "
+            f"'START' starts every run from."
+        )
+    return pd.DataFrame(
+        np.tile(start, (size, 1)), columns=pd.Index([p.pid for p in parameters])
+    )
+
+
 def _sampling_bounds(
     parameter: FitParameter,
-    sampling: SamplingType,
+    is_log: bool,
     min_bound: float,
-    max_bound: float,
 ) -> tuple[float, float]:
-    """Resolve the bounds of a parameter to the finite interval which is sampled."""
+    """Resolve the finite bounds of a parameter to the interval which is sampled.
+
+    Args:
+        parameter: the parameter with finite bounds.
+        is_log: whether the parameter is sampled in logarithmic space.
+        min_bound: replaces a non-positive lower bound of a logarithmic
+            sampling.
+
+    Returns:
+        The lower and the upper bound of the sampled interval.
+
+    Raises:
+        ValueError: if the bounds are not an interval, or if the upper bound
+            of a logarithmic sampling is not positive.
+    """
     pid = parameter.pid
     lb = float(parameter.lower_bound)
     ub = float(parameter.upper_bound)
 
-    if np.isinf(lb):
-        lb = -max_bound if lb < 0 else max_bound
-        logger.warning("'%s': infinite lower bound set to '%s'", pid, lb)
-    if np.isinf(ub):
-        ub = max_bound if ub > 0 else -max_bound
-        logger.warning("'%s': infinite upper bound set to '%s'", pid, ub)
-
-    if sampling.is_log:
+    if is_log:
         # logarithmic sampling requires positive bounds
         if lb <= 0.0:
             logger.warning("'%s': non-positive lower bound set to '%s'", pid, min_bound)

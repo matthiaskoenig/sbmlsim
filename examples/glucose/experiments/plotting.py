@@ -98,4 +98,4 @@ def add_data(
             kwargs["capsize"] = 3
         ax.errorbar(x.magnitude, y.magnitude, y_err.magnitude, label=label, **kwargs)
     else:
-        ax.plot(x, y, label=label, **kwargs)
+        ax.plot(x.magnitude, y.magnitude, label=label, **kwargs)

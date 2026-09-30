@@ -47,6 +47,10 @@ dependencies = [
 	"xarray>=2026.7.0",
 	"scipy>=1.18.1",
 	"sympy>=1.14.0",
+	# the formulas of a model and of a network as sympy expressions;
+	# `sbmlsim.mathml` overrides `handle_apply` of its parser for `rem` and
+	# `quotient`, the test of both is the tripwire when the bound is raised
+	"sbmlmath>=0.4.1,<0.5",
 	"pint>=0.25.3",
 	"pydantic>=2.13.5",
 	# parameter fitting and sensitivity analysis
@@ -60,7 +64,17 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+# neural networks of hybrid problems (PEtab SciML), see sbmlsim.sciml: the
+# packages sbmlsim.sciml imports which are not dependencies of sbmlsim
+sciml = [
+	"petab-sciml>=0.0.3",
+	"h5py>=3.16.0",
+	"pyyaml>=6.0.3",
+]
 dev = [
+	"sbmlsim[sciml]",
+	# the reference of the forward pass in the tests, never imported by the package
+	"torch>=2.14.0",
 	"bump-my-version>=1.5.1",
 	"ruff>=0.16.6",
 	"pre-commit>=4.6.2",
@@ -94,9 +108,10 @@ testpaths = ["tests"]
 # The semantic cases of the SBML Test Suite are not part of a normal run, they
 # are the conformance of libroadrunner and not of a change: `pytest -m testsuite`
 # runs them, and a release does
-addopts = "-n auto -m 'not testsuite'"
+addopts = "-n auto -m 'not testsuite and not sciml_testsuite'"
 markers = [
     "testsuite: a semantic case of the SBML Test Suite, run before a release",
+    "sciml_testsuite: a case of the PEtab SciML test suite, run before a release",
 ]
 
 [tool.ty.environment]
@@ -111,3 +126,14 @@ include = ["src", "tests", "examples", "scripts"]
 [tool.ty.terminal]
 # warnings are failures: keep the codebase free of any diagnostic
 error-on-warning = true
+
+[tool.uv.sources]
+# the CPU build of torch: the default build for linux brings 2 GB of CUDA
+# libraries, which the comparison of a forward pass does not need. A single
+# table and not a list of sources, which tox-uv cannot read
+torch = { index = "pytorch-cpu", marker = "sys_platform == 'linux'" }
+
+[[tool.uv.index]]
+name = "pytorch-cpu"
+url = "https://download.pytorch.org/whl/cpu"
+explicit = true

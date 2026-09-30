@@ -33,6 +33,7 @@ log.enable_rich_logging()
 """
 
 import logging
+from collections.abc import Sequence
 
 from rich.console import Console
 from rich.logging import RichHandler
@@ -78,3 +79,22 @@ def enable_rich_logging(
     logger.addHandler(handler)
     logger.setLevel(level)
     return logger
+
+
+def some_ids(ids: Sequence[str], n: int = 5) -> str:
+    """Get the first ids of a list and how many there are, for a message.
+
+    The ids a message lists can be the elements of a network, which are
+    hundreds or thousands.
+
+    Args:
+        ids: the ids.
+        n: how many of them are listed.
+
+    Returns:
+        The ids as a list, followed by the count when there are more than `n`.
+    """
+    ids = list(ids)
+    if len(ids) <= n:
+        return str(ids)
+    return f"{ids[:n]} ... ({len(ids)} in total)"

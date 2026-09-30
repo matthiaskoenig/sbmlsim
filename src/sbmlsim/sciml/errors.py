@@ -1,0 +1,63 @@
+"""Errors of the neural networks."""
+
+from __future__ import annotations
+
+
+class NetworkError(Exception):
+    """The base of the errors of a network.
+
+    A caller catches every error of the import and the evaluation of a
+    network with it.
+    """
+
+
+class NetworkImportError(NetworkError, ValueError):
+    """A network or its arrays cannot be read.
+
+    The message names the network and, where it applies, the layer and the
+    array.
+    """
+
+
+class UnsupportedLayerError(NetworkError, NotImplementedError):
+    """A node of the forward pass has no implementation.
+
+    Attributes:
+        network: id of the network.
+        node: name of the node of the forward pass.
+        target: the layer type, function or method of the node.
+        reason: why the node is not evaluated.
+    """
+
+    def __init__(self, network: str, node: str, target: str, reason: str) -> None:
+        """Initialize the error.
+
+        Args:
+            network: id of the network.
+            node: name of the node of the forward pass.
+            target: the layer type, function or method of the node.
+            reason: why the node is not evaluated.
+        """
+        self.network = network
+        self.node = node
+        self.target = target
+        self.reason = reason
+        super().__init__(
+            f"Network '{network}', node '{node}': '{target}' is not supported, {reason}"
+        )
+
+
+class NetworkHybridizationError(NetworkError, ValueError):
+    """A hybridization does not fit its network, its model or its fit.
+
+    The message names the network and, where it applies, the input, the
+    output or the target.
+    """
+
+
+class NetworkCompilationError(NetworkError, ValueError):
+    """A network cannot be compiled into a model.
+
+    The message names the network and, where it applies, the node or the
+    target, and the reason.
+    """

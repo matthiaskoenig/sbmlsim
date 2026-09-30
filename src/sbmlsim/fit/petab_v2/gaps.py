@@ -29,6 +29,24 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
+#: the layers of a network which behave differently in training mode
+EVALUATION_MODE_LAYERS: frozenset[str] = frozenset(
+    {
+        "Dropout",
+        "Dropout1d",
+        "Dropout2d",
+        "Dropout3d",
+        "AlphaDropout",
+        "FeatureAlphaDropout",
+        "BatchNorm1d",
+        "BatchNorm2d",
+        "BatchNorm3d",
+        "InstanceNorm1d",
+        "InstanceNorm2d",
+        "InstanceNorm3d",
+    }
+)
+
 
 class GapKind(StrEnum):
     """What the layer does about a difference to PEtab v2."""
@@ -192,7 +210,132 @@ GAPS: tuple[Gap, ...] = (
         detail="a parameter of a problem which is not an entity of a model is "
         "not fitted and the reader says which; the data of its observable is "
         "weighted by `FitSettings.weighting_points` instead. A fit of such a "
-        "problem is therefore not the fit PEtab describes",
+        "problem is therefore not the fit PEtab describes. A parameter of a "
+        "noise formula is kept in the noise model of its fit mapping with its "
+        "nominal value, its bounds and whether the problem estimates it, so it "
+        "is written as it was read; `log_likelihood` evaluates it at the value "
+        "of the parameter set it is given and at the nominal value without one",
+    ),
+    Gap(
+        id="noise-model",
+        kind=GapKind.LOSSY,
+        sbmlsim="the cost of a fit is a weighted sum of squares. The noise "
+        "formula and the noise distribution of a fit mapping are kept as its "
+        "`NoiseModel`, which `log_likelihood` evaluates and the optimizer does "
+        "not use",
+        petab="`noiseFormula` and `noiseDistribution` per observable are the "
+        "objective, i.e. the negative log likelihood of the measurements",
+        detail="the noise model of a problem which is read is written as it "
+        "was read, so the tables of a round trip agree and the log-likelihood "
+        "of a problem is compared with the one of other tools. The fit stays a "
+        "least squares fit, i.e. its optimum is not the maximum of the "
+        "likelihood. A fit mapping without a noise model is written with a "
+        "normal noise of the standard deviation of its data, or of `1.0` for "
+        "data without errors, and has that noise model when it is read back",
+    ),
+    Gap(
+        id="sciml-model-format",
+        kind=GapKind.UNSUPPORTED,
+        sbmlsim="a network is the NN YAML of PEtab SciML, which "
+        "`sbmlsim.sciml` evaluates and compiles",
+        petab="PEtab SciML also allows the formats `pytorch`, `equinox` and "
+        "`lux.jl`, i.e. a network in the code of a framework",
+        detail="the reader raises for a network which is not in the format "
+        "`YAML` and names the network: the code of a framework is not read",
+    ),
+    Gap(
+        id="sciml-layer-sbml",
+        kind=GapKind.UNSUPPORTED,
+        sbmlsim="a network in the right hand side or in an observable is "
+        "compiled into the model as assignment rules, which the MathML of "
+        "SBML expresses",
+        petab="a layer of the NN YAML is any layer of PEtab SciML, and a "
+        "network of any layers sits in the right hand side",
+        detail="a convolution, a pooling or a normalization layer, and `gelu` "
+        "with the error function, have no MathML: the reader raises for such a "
+        "network in the right hand side or in an observable and names the "
+        "network and the node. Such a network runs before the simulation",
+    ),
+    Gap(
+        id="sciml-training-mode",
+        kind=GapKind.LOSSY,
+        sbmlsim="a network is evaluated in evaluation mode: dropout is the "
+        "identity and the normalization layers use their stored statistics",
+        petab="PEtab SciML does not say in which mode a network is evaluated, "
+        "the reference values of its test suite are built in training mode "
+        "for dropout",
+        detail="the values of a problem with such a layer differ from the ones "
+        "of a tool which evaluates in training mode",
+    ),
+    Gap(
+        id="sciml-priors",
+        kind=GapKind.UNSUPPORTED,
+        sbmlsim="the objective of a fit has no priors (issue #190)",
+        petab="`priorDistribution` and `priorParameters` of a parameter of a "
+        "network, i.e. of all elements a row covers",
+        detail="the reader raises for a prior on the parameters of a network "
+        "and names the parameter. A problem with priors states a log-posterior, "
+        "which the log-likelihood is not",
+    ),
+    Gap(
+        id="priors",
+        kind=GapKind.LOSSY,
+        sbmlsim="the objective of a fit is a weighted least squares, without "
+        "priors on the parameters (issue #190)",
+        petab="`priorDistribution` and `priorParameters` of a parameter of "
+        "the parameter table",
+        detail="the reader drops the prior of a parameter of the model with a "
+        "warning which names the parameter, the fit and the log-likelihood do "
+        "not use it. A prior on the parameters of a network is the gap "
+        "`sciml-priors`, which raises",
+    ),
+    Gap(
+        id="sciml-parameter-scale",
+        kind=GapKind.EXTENSION,
+        sbmlsim="`FitParameter.scale`, the space the optimizer searches one "
+        "parameter in: the elements of a network are negative and zero and "
+        "are searched on the linear scale",
+        petab="PEtab v2 has no scale of a parameter. The problems of PEtab "
+        "SciML carry the column `parameterScale` of PEtab v1",
+        detail="the reader reads the column of a problem of PEtab SciML, the "
+        "elements of a network are on the linear scale, and the scale of a "
+        "parameter goes to the extension",
+    ),
+    Gap(
+        id="sciml-partial-array",
+        kind=GapKind.UNSUPPORTED,
+        sbmlsim="every element of a network is its own `FitParameter`, so a "
+        "fit can estimate some elements of an array or bound them differently",
+        petab="a row of the parameter table of PEtab SciML describes the "
+        "network, a layer or an array as a whole",
+        detail="the export raises for an array whose elements differ in "
+        "whether they are estimated or in their bounds and names the array. "
+        "`network_fit_parameters` and `Hybridization.fit_parameters` describe "
+        "the elements per network, layer and array, which is what PEtab "
+        "expresses",
+    ),
+    Gap(
+        id="sciml-input-formula",
+        kind=GapKind.UNSUPPORTED,
+        sbmlsim="an input of a network before the simulation or with a formula "
+        "per condition is a formula of any constant of the simulation, e.g. a "
+        "compartment",
+        petab="a condition and an input of a network before the simulation use "
+        "only the parameters of the parameter table",
+        detail="the export writes a parameter of the model which the fit does "
+        "not estimate as a row of the parameter table which is not estimated, "
+        "and raises for any other entity of the model and names the network, "
+        "the input and the entity",
+    ),
+    Gap(
+        id="foreign-extension",
+        kind=GapKind.UNSUPPORTED,
+        sbmlsim="the reader interprets the `sbmlsim` extension of a problem",
+        petab="a problem carries the extensions of any tool, and `required` "
+        "says whether it can be interpreted without one of them",
+        detail="a problem which requires an extension `sbmlsim` does not know "
+        "is not read, the reader raises and names the extension. An extension "
+        "which is not required is ignored with a message in the log",
     ),
     Gap(
         id="x-observable",
@@ -328,6 +471,22 @@ def gaps_of_problem(problem: "OptimizationProblem") -> list[Gap]:
                 hits.add("presimulation")
             if (tc.model_changes or tc.model_manipulations) and k >= 0:
                 hits.add("model-changes")
+
+    for noise in problem.noise_models:
+        if noise is None:
+            continue
+        hits.add("noise-model")
+        if any(parameter.estimate for parameter in noise.parameters):
+            hits.add("noise-parameters")
+
+    if any(parameter.scale is not None for parameter in problem.parameters):
+        hits.add("sciml-parameter-scale")
+    for hybridization in problem.hybridizations:
+        # the layers of a network of `sbmlsim.sciml`, without importing it
+        model = getattr(getattr(hybridization, "network", None), "model", None)
+        layer_types = {layer.layer_type for layer in getattr(model, "layers", [])}
+        if layer_types & EVALUATION_MODE_LAYERS:
+            hits.add("sciml-training-mode")
 
     for k, xid in enumerate(problem.xid_observable):
         if xid != "time":

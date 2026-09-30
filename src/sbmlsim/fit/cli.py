@@ -1,9 +1,9 @@
 """Running fits and their reports from the command line.
 
 A fit problem is defined by the fit experiments which enter it and the
-parameters which are adjusted, see `FitDefinition`. Everything else — creating
-the optimization problems for a strategy, running the optimizations and
-reporting them — is the same for every problem and lives here, so that a model
+parameters which are adjusted, see `FitDefinition`. Everything else, i.e.
+creating the optimization problems for a strategy, running the optimizations
+and reporting them, is the same for every problem and lives here, so that a model
 only has to define its fits:
 
 ```python
@@ -36,6 +36,7 @@ from typing import Any
 
 from sbmlsim import log
 from sbmlsim.fit import display
+from sbmlsim.fit.derived import DerivedChanges, hook_summaries
 from sbmlsim.fit.fisher import FisherInformation, fisher_information
 from sbmlsim.fit.identifiability import (
     IdentifiabilityResult,
@@ -95,6 +96,9 @@ class FitDefinition:
         base_path: base path of the simulation experiments.
         data_path: path of the datasets of the simulation experiments.
         settings: settings of the fit.
+        hybridizations: the derived changes of the problem, see
+            `sbmlsim.fit.derived`, e.g. the hybridizations of its neural
+            networks.
     """
 
     mapping_collections: Callable[[], dict[str, list[FitMappingCollection]]]
@@ -102,6 +106,7 @@ class FitDefinition:
     base_path: Path
     data_path: Path
     settings: FitSettings = field(default_factory=FitSettings)
+    hybridizations: Sequence[DerivedChanges] = ()
 
     def collections(
         self, study_ids: Sequence[str] | None = None
@@ -155,6 +160,7 @@ class FitDefinition:
             fit_parameters=self.parameters,
             base_path=self.base_path,
             data_path=self.data_path,
+            hybridizations=self.hybridizations,
         )
 
 
@@ -553,6 +559,7 @@ def report_cli(
             if problem.parameter_mapping is not None
             else None
         ),
+        hooks=hook_summaries(problem.hybridizations),
     )
     display.print_settings(definition.settings)
 
@@ -614,7 +621,10 @@ def identifiability_cli(
         "--parameter",
         action="append",
         default=None,
-        help="parameter to profile, all parameters by default; repeatable",
+        help=(
+            "parameter to profile, all parameters which are no elements of a "
+            "network by default; repeatable"
+        ),
     )
     parser.add_argument(
         "-a",
@@ -710,6 +720,7 @@ def identifiability_cli(
             if problem.parameter_mapping is not None
             else None
         ),
+        hooks=hook_summaries(problem.hybridizations),
     )
     display.print_settings(definition.settings)
 
