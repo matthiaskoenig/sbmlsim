@@ -165,7 +165,10 @@ class DoseResponseExperiment(SimulationExperiment):
             head = da.head({"_time": 1}).to_series()
             dose_response[sid] = head.values
 
-        dose_response["[glc_ext]"] = glc_vec
+        # the column is in the unit of the model, which `udict` gives
+        dose_response["[glc_ext]"] = glc_vec.to(
+            model.uinfo.udict["[glc_ext]"]
+        ).magnitude
         df = pd.DataFrame(dose_response)
         dset = DataSet.from_df(df, udict=model.uinfo.udict, ureg=self.ureg)
 

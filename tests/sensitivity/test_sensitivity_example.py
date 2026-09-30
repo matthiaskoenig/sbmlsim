@@ -2,6 +2,8 @@
 
 from pathlib import Path
 
+import pytest
+
 from examples.sensitivity.sensitivity_example import (
     sensitivity_groups,
     sensitivity_parameters,
@@ -14,6 +16,9 @@ from sbmlsim.sensitivity import (
     SamplingSensitivityAnalysis,
     SobolSensitivityAnalysis,
 )
+
+#: the output of an analysis is pristine, a warning of a library is a failure
+pytestmark = pytest.mark.filterwarnings("error")
 
 
 def test_sampling_sensitivity_analysis(tmp_path: Path):
