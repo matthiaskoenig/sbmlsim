@@ -1,10 +1,13 @@
 """Tests of the reader of PEtab SciML problems."""
 
+import logging
+import shutil
 from pathlib import Path
 from typing import Any
 
 import numpy as np
 import pytest
+import yaml
 from petab_sciml import Layer, Node
 from petab_sciml.constants import ALL_CONDITION_IDS
 
@@ -230,8 +233,13 @@ def test_a_network_in_an_observable(tmp_path: Path) -> None:
     )
 
 
-def test_a_network_with_outputs_of_two_patterns(tmp_path: Path) -> None:
-    """A network in the right hand side and an observable is two hybridizations."""
+def test_a_network_with_outputs_of_two_patterns(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    """A network in the right hand side and an observable is two hybridizations.
+
+    The parameters of the network are resolved once.
+    """
     network = feed_forward(n_outputs=2)
     path = write_problem(
         tmp_path,
@@ -247,12 +255,14 @@ def test_a_network_with_outputs_of_two_patterns(tmp_path: Path) -> None:
     )
     reader = _read(path)
     assert reader.sciml is not None
-    observable, rhs = sorted(reader.sciml.hybridizations(), key=lambda h: h.pattern)
+    with caplog.at_level(logging.INFO, logger="sbmlsim.sciml.parameters"):
+        observable, rhs = sorted(reader.sciml.hybridizations(), key=lambda h: h.pattern)
+        problem = reader.to_optimization_problem()
+    assert caplog.text.count("elements are estimated") == 1
     assert rhs.pattern is RHS
     assert rhs.outputs == {"net1__output0__1": "gamma"}
     assert observable.pattern is OBSERVABLE
     assert observable.outputs == {"net1__output0__0": "net1_output1"}
-    problem = reader.to_optimization_problem()
     problem.initialize(SETTINGS)
     assert np.isfinite(log_likelihood(problem))
 
@@ -587,6 +597,21 @@ def test_a_format_which_is_not_read(tmp_path: Path) -> None:
     assert excinfo.value.gap == "sciml-model-format"
 
 
+def test_two_array_files_of_a_network(tmp_path: Path) -> None:
+    """The values of a network are in one array file, two would be a guess."""
+    path = _problem(tmp_path)
+    shutil.copy(tmp_path / "arrays.hdf5", tmp_path / "arrays2.hdf5")
+    config = yaml.safe_load(path.read_text())
+    config["extensions"]["sciml"]["array_files"].append("arrays2.hdf5")
+    path.write_text(yaml.safe_dump(config))
+    with pytest.raises(
+        SciMLProblemError,
+        match=r"Network 'net1': the array files \['arrays\.hdf5', "
+        r"'arrays2\.hdf5'\] each hold its arrays",
+    ):
+        _read(path).to_optimization_problem()
+
+
 def test_a_prior_of_a_network(tmp_path: Path) -> None:
     """Priors on the parameters of a network are not read (#190)."""
     path = _problem(
@@ -729,6 +754,24 @@ def test_a_convolution_in_the_right_hand_side(tmp_path: Path) -> None:
         match=r"Network 'net3'.*node 'layer1' \(Conv2d\).*sciml-layer-sbml",
     ) as excinfo:
         _read(path).to_optimization_problem()
+    assert excinfo.value.gap == "sciml-layer-sbml"
+
+
+def test_a_gelu_in_the_right_hand_side(tmp_path: Path) -> None:
+    """The error function has no MathML, the compiler refuses it with the gap."""
+    network = feed_forward(activation="gelu", kwargs={"approximate": "none"})
+    path = write_problem(
+        tmp_path,
+        networks=[network],
+        pre_initialization={"net1": False},
+        mapping=[*INPUTS, *OUTPUT],
+        hybridization=[*SPECIES, ("gamma", "net1_output1")],
+    )
+    reader = _read(path)
+    with pytest.raises(
+        SciMLProblemError, match=r"Network 'net1', node 'act'.*\['erf'\]"
+    ) as excinfo:
+        reader.model_source()
     assert excinfo.value.gap == "sciml-layer-sbml"
 
 

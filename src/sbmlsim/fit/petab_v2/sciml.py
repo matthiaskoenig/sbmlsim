@@ -25,6 +25,7 @@ networks, the hybridization tables and the array files are read here.
 
 from __future__ import annotations
 
+import copy
 import logging
 import re
 from collections.abc import Callable, Mapping
@@ -308,6 +309,9 @@ class SciMLReader:
         }
         #: the hybridizations, built once, see `hybridizations`
         self._hybridizations: list[Hybridization] | None = None
+        #: the parameters of the fit of every network, resolved once, see
+        #: `network_parameters`
+        self._network_parameters: dict[str, list[FitParameter]] = {}
 
     def _output_targets(self) -> dict[str, str]:
         """Check the rows of the hybridization table and get the targets.
@@ -437,8 +441,9 @@ class SciMLReader:
             values of the rows of the parameter table which are numbers.
 
         Raises:
-            SciMLProblemError: if the network is not in the format `YAML`,
-                or if a parameter of the network has a prior.
+            SciMLProblemError: if the network is not in the format `YAML`, if
+                two array files hold its arrays, or if a parameter of the
+                network has a prior.
             NetworkImportError: if the network or its arrays cannot be read.
         """
         network_config = (self.config.neural_networks or {})[sid]
@@ -451,11 +456,20 @@ class SciMLReader:
         network = Network.from_files(
             self.base_path / str(network_config.location), sid=sid
         )
-        for path, data in zip(self.config.array_files, self._arrays, strict=True):
-            if sid in data.parameters:
-                network = replace(
-                    network, parameters=network.read_arrays(self.base_path / str(path))
-                )
+        files = [
+            str(path)
+            for path, data in zip(self.config.array_files, self._arrays, strict=True)
+            if sid in data.parameters
+        ]
+        if len(files) > 1:
+            raise SciMLProblemError(
+                f"Network '{sid}': the array files {files} each hold its arrays, "
+                f"the arrays of a network are in one file"
+            )
+        if files:
+            network = replace(
+                network, parameters=network.read_arrays(self.base_path / files[0])
+            )
         values: dict[str, float] = {}
         for entity in self._entities(sid, "parameters"):
             parameter = self._parameters.get(entity.petab_id)
@@ -787,8 +801,15 @@ class SciMLReader:
             One parameter per estimated element, see
             `sbmlsim.sciml.parameters.network_fit_parameters`. The elements of
             a network which runs before the simulation are not entities of
-            the model.
+            the model. The parameters are resolved once, every call gets
+            copies of them.
         """
+        if sid not in self._network_parameters:
+            self._network_parameters[sid] = self._resolve_network_parameters(sid)
+        return [copy.copy(p) for p in self._network_parameters[sid]]
+
+    def _resolve_network_parameters(self, sid: str) -> list[FitParameter]:
+        """Resolve the parameters of the fit of a network, see `network_parameters`."""
         estimate: dict[str, bool] = {}
         bounds: dict[str, tuple[float, float]] = {}
         for entity in self._entities(sid, "parameters"):

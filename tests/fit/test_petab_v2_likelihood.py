@@ -796,6 +796,36 @@ def test_the_order_4_falls_back_with_a_warning(
     assert not caplog.text
 
 
+def test_the_gradient_warns_once_about_the_parameters_next_to_a_bound(
+    op_unit_noise: OptimizationProblem,
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """A network has hundreds of elements, one warning names all of them."""
+    problem = op_unit_noise
+    nominal = nominal_parameters(problem)
+    # two parameters without room for five points, one without room for three
+    for pid, room in [
+        (problem.pids[0], 1.5),
+        (problem.pids[1], 1.5),
+        (problem.pids[2], 0.5),
+    ]:
+        k = problem.pids.index(pid)
+        value = nominal.values[pid]
+        h = 1e-6 * max(abs(value), 1.0)
+        monkeypatch.setattr(problem.parameters[k], "lower_bound", value - room * h)
+        monkeypatch.setattr(problem.parameters[k], "upper_bound", value + room * h)
+    with caplog.at_level(logging.WARNING, logger="sbmlsim.fit.petab_v2.likelihood"):
+        gradient(problem, nominal, order=4)
+    records = [r.getMessage() for r in caplog.records]
+    assert len(records) == 2
+    three, secant = records
+    assert f"{problem.pids[:2]}" in three
+    assert "three points" in three
+    assert f"{problem.pids[2:3]}" in secant
+    assert "secant" in secant
+
+
 def test_the_secant_warns(caplog: pytest.LogCaptureFixture) -> None:
     """The secant has a step different from the step of the difference."""
     with caplog.at_level(logging.WARNING, logger="sbmlsim.fit.petab_v2.likelihood"):

@@ -388,6 +388,12 @@ def log_likelihood(
 GRADIENT_ORDERS: tuple[int, ...] = (2, 4)
 
 
+#: the fall back of a difference which is logged: fewer points than the
+#: order needs, or the secant of the bounds
+FALL_BACK_THREE_POINTS = "three points"
+FALL_BACK_SECANT = "secant"
+
+
 def stencil(
     value: float,
     h: float,
@@ -438,6 +444,58 @@ def stencil(
             positive, or if the value is outside the bounds or the bounds are
             equal.
     """
+    points, fall_back = _stencil(value, h, lower_bound, upper_bound, order)
+    if fall_back is not None:
+        _warn_fall_back(fall_back, [name], order)
+    return points
+
+
+def _warn_fall_back(fall_back: str, names: list[str], order: int) -> None:
+    """Log the fall back of the differences of parameters, once for all of them.
+
+    Args:
+        fall_back: `FALL_BACK_THREE_POINTS` or `FALL_BACK_SECANT`.
+        names: ids of the parameters.
+        order: order of the difference which was asked for.
+    """
+    listed = str(names[:20]) + (
+        f" ... ({len(names)} in total)" if len(names) > 20 else ""
+    )
+    if fall_back == FALL_BACK_SECANT:
+        logger.warning(
+            "The bounds of the parameters %s are closer than the steps of the "
+            "difference, their derivatives are the secants of the bounds.",
+            listed,
+        )
+    else:
+        logger.warning(
+            "The bounds of the parameters %s leave less than four steps of "
+            "room on both sides for the difference of five points (order %s), "
+            "their derivatives are differences of three points.",
+            listed,
+            order,
+        )
+
+
+def _stencil(
+    value: float, h: float, lower_bound: float, upper_bound: float, order: int
+) -> tuple[list[tuple[float, float]], str | None]:
+    """Get the points and the weights of a difference and its fall back.
+
+    Args:
+        value: the value of the parameter.
+        h: the step.
+        lower_bound: lower bound of the parameter.
+        upper_bound: upper bound of the parameter.
+        order: order of the central difference, `2` or `4`.
+
+    Returns:
+        The points with their weights, see `stencil`, and the fall back,
+        `None` for the difference of the order.
+
+    Raises:
+        ValueError: see `stencil`.
+    """
     if order not in GRADIENT_ORDERS:
         raise ValueError(
             f"The order of the difference is one of {GRADIENT_ORDERS}, not '{order}'."
@@ -464,7 +522,7 @@ def stencil(
                 (value - h, -8.0 / (12.0 * h)),
                 (value + h, 8.0 / (12.0 * h)),
                 (value + 2.0 * h, -1.0 / (12.0 * h)),
-            ]
+            ], None
         if inside(value + 4.0 * h):
             return [
                 (value, -25.0 / (12.0 * h)),
@@ -472,7 +530,7 @@ def stencil(
                 (value + 2.0 * h, -36.0 / (12.0 * h)),
                 (value + 3.0 * h, 16.0 / (12.0 * h)),
                 (value + 4.0 * h, -3.0 / (12.0 * h)),
-            ]
+            ], None
         if inside(value - 4.0 * h):
             return [
                 (value, 25.0 / (12.0 * h)),
@@ -480,7 +538,7 @@ def stencil(
                 (value - 2.0 * h, 36.0 / (12.0 * h)),
                 (value - 3.0 * h, -16.0 / (12.0 * h)),
                 (value - 4.0 * h, 3.0 / (12.0 * h)),
-            ]
+            ], None
     if inside(value - h, value + h):
         points = [(value - h, -0.5 / h), (value + h, 0.5 / h)]
     elif inside(value + 2.0 * h):
@@ -498,27 +556,11 @@ def stencil(
     else:
         # the bounds are closer than the steps of a difference
         distance = upper_bound - lower_bound
-        logger.warning(
-            "The bounds [%s - %s] of the parameter '%s' are closer than the step '%s' of the "
-            "difference, the derivative is the secant of the bounds.",
-            lower_bound,
-            upper_bound,
-            name,
-            h,
-        )
-        return [(lower_bound, -1.0 / distance), (upper_bound, 1.0 / distance)]
-    if order == 4:
-        logger.warning(
-            "The bounds [%s - %s] of the parameter '%s' leave less than '%s' of room around "
-            "'%s' for the difference of five points, the derivative is the "
-            "difference of three points.",
-            lower_bound,
-            upper_bound,
-            name,
-            4.0 * h,
-            value,
-        )
-    return points
+        return [
+            (lower_bound, -1.0 / distance),
+            (upper_bound, 1.0 / distance),
+        ], FALL_BACK_SECANT
+    return points, FALL_BACK_THREE_POINTS if order == 4 else None
 
 
 def gradient(
@@ -534,7 +576,9 @@ def gradient(
     `x`, and are central differences, see `stencil`. The model is not
     simulated outside the bounds of a parameter: next to a bound the
     difference is one sided with the full step. A parameter without bounds
-    has the central difference.
+    has the central difference. The parameters whose difference falls back
+    to fewer points or to the secant of the bounds are logged in one warning
+    per fall back and call.
 
     A difference divides the error of a simulation by the step, so the
     problem is initialized with `FitSettings` of tight tolerances and
@@ -592,24 +636,27 @@ def gradient(
         )
 
     derivatives: dict[str, float] = {}
+    # the parameters whose difference fell back, logged once per gradient
+    fall_backs: dict[str, list[str]] = {}
     # the log-likelihood at the parameters, which a one sided difference uses
     at_parameters: float | None = None
     for k, parameter in enumerate(problem.parameters):
         pid = parameter.pid
         value = float(x[k])
         try:
-            points = stencil(
+            points, fall_back = _stencil(
                 value=value,
                 h=step * max(abs(value), 1.0),
                 lower_bound=float(parameter.lower_bound),
                 upper_bound=float(parameter.upper_bound),
                 order=order,
-                name=pid,
             )
         except ValueError as err:
             raise ValueError(
                 f"'{problem.opid}': the gradient of the parameter '{pid}': {err}."
             ) from err
+        if fall_back is not None:
+            fall_backs.setdefault(fall_back, []).append(pid)
         derivative = 0.0
         for point, weight in points:
             if point == value:
@@ -619,4 +666,7 @@ def gradient(
             else:
                 derivative += weight * log_likelihood(problem, shifted(pid, point))
         derivatives[pid] = derivative
+    for fall_back in (FALL_BACK_THREE_POINTS, FALL_BACK_SECANT):
+        if fall_back in fall_backs:
+            _warn_fall_back(fall_back, fall_backs[fall_back], order)
     return pd.Series(derivatives, name="gradient", dtype=float)

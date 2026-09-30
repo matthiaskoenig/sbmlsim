@@ -509,6 +509,10 @@ class PetabReader:
 
         Returns:
             The path of the model the fit simulates.
+
+        Raises:
+            SciMLProblemError: if a network cannot be compiled, which is the
+                gap `sciml-layer-sbml`.
         """
         path = self._model_path(model)
         if path in self._model_sources:
@@ -517,7 +521,9 @@ class PetabReader:
         source = path
         if self.sciml is not None:
             # the import needs the extra `sciml`
+            from sbmlsim.fit.petab_v2.sciml import SciMLProblemError
             from sbmlsim.sciml.compiler import compile_network, compiled_path
+            from sbmlsim.sciml.errors import NetworkCompilationError
 
             hybridizations = [
                 hybridization
@@ -526,9 +532,13 @@ class PetabReader:
                 and hybridization.model == model.model_id
             ]
             if hybridizations:
-                source = compile_network(
-                    path, hybridizations, compiled_path(path, derived_dir)
-                )
+                try:
+                    source = compile_network(
+                        path, hybridizations, compiled_path(path, derived_dir)
+                    )
+                except NetworkCompilationError as err:
+                    # e.g. `gelu` with the error function, which has no MathML
+                    raise SciMLProblemError(str(err), gap="sciml-layer-sbml") from err
         formulas = self._formula_observables()
         if formulas:
             derived = derived_dir / f"{source.stem}{MODEL_SUFFIX}{source.suffix}"
