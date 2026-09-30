@@ -28,9 +28,8 @@ from __future__ import annotations
 
 import logging
 from collections.abc import Iterable, Iterator, Mapping
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
-from types import MappingProxyType
 from typing import Any
 from xml.sax.saxutils import escape, quoteattr
 
@@ -53,26 +52,31 @@ class Derivation:
         source: name of the file of the model the derivation started from.
         created: ids of the parameters which were added, in the order they
             were added; a rule of such a parameter was added with it.
-        targets: id of a parameter of the source which got a rule -> whether
-            it was constant before; a read only view, which the hash leaves
-            out.
+        targets: the parameters of the source which got a rule, as pairs of
+            the id and whether it was constant before, in the order they got
+            it; `dict(derivation.targets)` is the lookup. Pairs and not a
+            mapping, so the record is a value which hashes, pickles and copies.
     """
 
     source: str
     created: tuple[str, ...] = ()
-    targets: Mapping[str, bool] = field(default_factory=dict, hash=False)
+    targets: tuple[tuple[str, bool], ...] = ()
 
     def __post_init__(self) -> None:
-        """Freeze the attributes."""
+        """Freeze the attributes, a list becomes a tuple."""
         object.__setattr__(self, "created", tuple(self.created))
-        object.__setattr__(self, "targets", MappingProxyType(dict(self.targets)))
+        object.__setattr__(
+            self,
+            "targets",
+            tuple((str(sid), bool(constant)) for sid, constant in self.targets),
+        )
 
     def xml(self) -> str:
         """Get the record as the element of the annotation."""
         targets = "".join(
             f"<target id={quoteattr(sid)} "
             f'constant="{"true" if constant else "false"}"/>'
-            for sid, constant in self.targets.items()
+            for sid, constant in self.targets
         )
         return (
             f'<{ELEMENT} xmlns="{NAMESPACE}" source={quoteattr(self.source)}>'
@@ -131,7 +135,9 @@ def derivation_of(model: libsbml.Model) -> Derivation | None:
                     f"with the target '{sid}' and constant '{constant}'"
                 )
             targets[sid] = constant == "true"
-    return Derivation(source=source, created=tuple(created), targets=targets)
+    return Derivation(
+        source=source, created=tuple(created), targets=tuple(targets.items())
+    )
 
 
 def _remove_record(model: libsbml.Model) -> None:
@@ -173,20 +179,24 @@ def record_derivation(
     earlier = derivation_of(model)
     if earlier is None:
         derivation = Derivation(
-            source=Path(source).name, created=tuple(created), targets=dict(targets)
+            source=Path(source).name,
+            created=tuple(created),
+            targets=tuple(targets.items()),
         )
     else:
         derivation = Derivation(
             source=earlier.source,
             created=(*earlier.created, *created),
-            targets={
-                **earlier.targets,
-                **{
-                    sid: constant
-                    for sid, constant in targets.items()
-                    if sid not in earlier.created
-                },
-            },
+            targets=tuple(
+                {
+                    **dict(earlier.targets),
+                    **{
+                        sid: constant
+                        for sid, constant in targets.items()
+                        if sid not in earlier.created
+                    },
+                }.items()
+            ),
         )
         _remove_record(model)
     if model.isSetAnnotation():
@@ -358,7 +368,7 @@ def strip_derivation(sbml_path: Path) -> tuple[libsbml.SBMLDocument, Derivation]
                 f"derivation created"
             )
     created = set(derivation.created)
-    for sid in derivation.targets:
+    for sid, _ in derivation.targets:
         if model.getParameter(sid) is None:
             raise ValueError(
                 f"The model '{sbml_path}' has no parameter '{sid}', which its "
@@ -368,7 +378,7 @@ def strip_derivation(sbml_path: Path) -> tuple[libsbml.SBMLDocument, Derivation]
     for sid in derivation.created:
         model.removeRuleByVariable(sid)
         model.removeParameter(sid)
-    for sid, constant in derivation.targets.items():
+    for sid, constant in derivation.targets:
         model.removeRuleByVariable(sid)
         model.getParameter(sid).setConstant(constant)
     _check_references(model, created, Path(sbml_path).name)

@@ -1,5 +1,8 @@
 """Tests of the record of a derivation of a model."""
 
+import copy
+import dataclasses
+import pickle
 from collections.abc import Callable
 from pathlib import Path
 
@@ -58,7 +61,7 @@ def test_a_model_without_annotation_gets_the_record(tmp_path: Path) -> None:
     path = tmp_path / "derived.xml"
     libsbml.writeSBMLToFile(document, str(path))
     derivation = derivation_of(_read(path))
-    assert derivation == Derivation("lv.xml", ("a", "b"), {"gamma": True})
+    assert derivation == Derivation("lv.xml", ("a", "b"), (("gamma", True),))
 
 
 def test_the_record_keeps_an_rdf_annotation_without_metaid(tmp_path: Path) -> None:
@@ -74,7 +77,7 @@ def test_the_record_keeps_an_rdf_annotation_without_metaid(tmp_path: Path) -> No
         annotation.getChild(k).getName() for k in range(annotation.getNumChildren())
     }
     assert names == {"RDF", "derived"}
-    assert derivation_of(model) == Derivation("lv.xml", ("a",), {})
+    assert derivation_of(model) == Derivation("lv.xml", ("a",))
     assert NAMESPACE in model.getAnnotationString()
 
 
@@ -85,7 +88,9 @@ def test_a_second_derivation_extends_the_record(tmp_path: Path) -> None:
     record_derivation(model, Path("lv_sciml.xml"), ["b"], {"a": False, "beta": True})
     derivation = derivation_of(model)
     # the source stays, a target which the first derivation created is no target
-    assert derivation == Derivation("lv.xml", ("a", "b"), {"gamma": True, "beta": True})
+    assert derivation == Derivation(
+        "lv.xml", ("a", "b"), (("gamma", True), ("beta", True))
+    )
     annotation = model.getAnnotation()
     assert annotation.getNumChildren() == 1
 
@@ -97,7 +102,7 @@ def test_strip_gives_the_source_model_back(tmp_path: Path) -> None:
     assert derivation is not None
     assert derivation.source == "lotka_volterra.xml"
     assert set(network.parameter_ids()) <= set(derivation.created)
-    assert derivation.targets == {"gamma": True}
+    assert dict(derivation.targets) == {"gamma": True}
 
     document, stripped = strip_derivation(compiled)
     assert stripped == derivation
@@ -270,10 +275,21 @@ def test_a_source_with_xml_characters_in_its_name(tmp_path: Path, name: str) -> 
 
 
 def test_a_derivation_is_hashable_and_immutable() -> None:
-    derivation = Derivation("lv.xml", ("a",), {"gamma": True})
-    assert hash(derivation) == hash(Derivation("lv.xml", ("a",), {"gamma": True}))
-    with pytest.raises(TypeError):
-        derivation.targets["beta"] = False  # ty: ignore[invalid-assignment]
+    derivation = Derivation("lv.xml", ("a",), (("gamma", True),))
+    assert hash(derivation) == hash(Derivation("lv.xml", ("a",), (("gamma", True),)))
+    assert hash(derivation) != hash(Derivation("lv.xml", ("a",), (("gamma", False),)))
+    with pytest.raises(dataclasses.FrozenInstanceError):
+        derivation.targets = ()  # ty: ignore[invalid-assignment]
+
+
+def test_a_derivation_is_a_value_which_pickles_and_copies() -> None:
+    derivation = Derivation("lv.xml", ("a", "b"), (("gamma", True), ("beta", False)))
+    assert pickle.loads(pickle.dumps(derivation)) == derivation
+    assert copy.deepcopy(derivation) == derivation
+    assert dataclasses.asdict(derivation)["targets"] == (
+        ("gamma", True),
+        ("beta", False),
+    )
 
 
 def test_strip_restores_a_target_which_was_not_constant(tmp_path: Path) -> None:
@@ -284,7 +300,7 @@ def test_strip_restores_a_target_which_was_not_constant(tmp_path: Path) -> None:
     compiled = compile_network(source, [_rhs(feed_forward())], tmp_path / "c.xml")
     derivation = derivation_of(_read(compiled))
     assert derivation is not None
-    assert derivation.targets == {"gamma": False}
+    assert dict(derivation.targets) == {"gamma": False}
     stripped, _ = strip_derivation(compiled)
     assert stripped.getModel().getParameter("gamma").getConstant() is False
     assert libsbml.writeSBMLToString(stripped) == libsbml.writeSBMLToString(
