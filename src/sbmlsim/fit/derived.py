@@ -127,6 +127,17 @@ def describe(hybridization: DerivedChanges) -> dict[str, Any]:
     }
 
 
+def _some(ids: list[str], n: int = 20) -> str:
+    """Get the first ids of a list and how many there are, for a message.
+
+    The ids a hook reads are the elements of a network, which can be
+    thousands.
+    """
+    if len(ids) <= n:
+        return str(ids)
+    return f"{ids[:n]} ... ({len(ids)} in total)"
+
+
 def _entity(target: str) -> str:
     """Get the entity a target names, `S` for the concentration `[S]`."""
     if target.startswith("[") and target.endswith("]"):
@@ -305,7 +316,7 @@ def _group_derived_changes(
         )
         if missing:
             raise ValueError(
-                f"{prefix} {missing}, which are neither entities of the model, "
+                f"{prefix} {_some(missing)}, which are neither entities of the model, "
                 f"nor parameters of the fit in the simulation, nor constants "
                 f"of the hybridization."
             )

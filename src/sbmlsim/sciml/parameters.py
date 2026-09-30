@@ -134,26 +134,30 @@ def network_fit_parameters(
     network: Network,
     estimate: Mapping[str, bool],
     bounds: Mapping[str, tuple[float, float]],
-    values: Mapping[str, float] | None = None,
     external: bool = False,
 ) -> list[FitParameter]:
     """Create the fit parameters of the estimated elements of a network.
 
-    `estimate`, `bounds` and `values` are given for the network, for a layer
-    or for an array, and the more specific entry wins, see `covered_arrays`.
+    `estimate` and `bounds` are given for the network, for a layer or for an
+    array, and the more specific entry wins, see `covered_arrays`.
+
+    The nominal values of the elements are the values the network carries,
+    which are the start values of the estimated elements and the values of
+    the frozen ones. They are set on the network, not here, so that the
+    network a hybridization runs is the network the fit parameters describe:
+    `dataclasses.replace(network, parameters=nominal_parameters(network,
+    values))`.
 
     The elements of a layer which the forward pass does not call are left
     out: the outputs of the network do not depend on them, so a fit cannot
     estimate them.
 
     Args:
-        network: the network with the values of its array file.
+        network: the network with the nominal values of its elements.
         estimate: key of the entry -> whether the elements are estimated. An
             element no entry covers is not estimated.
         bounds: key of the entry -> lower and upper bound of the elements. An
             estimated element no entry covers is not bounded.
-        values: key of the entry -> nominal value of the elements, which
-            replaces the values of the array file.
         external: whether the elements are not entities of a model, which is
             the case for a network which runs before the simulation. The
             target of such a parameter is `sciml:<id>`. The elements of a
@@ -169,7 +173,7 @@ def network_fit_parameters(
             array, or if an estimated element has no nominal value.
         ValueError: if a nominal value is outside of its bounds.
     """
-    parameters = nominal_parameters(network, values)
+    parameters = nominal_parameters(network)
     estimated = resolve_entries(network, estimate)
     bounded = resolve_entries(network, bounds)
 

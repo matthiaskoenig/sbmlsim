@@ -23,6 +23,7 @@ from sbmlsim.fit.derived import (
 )
 from sbmlsim.fit.helpers import _filters
 from sbmlsim.fit.objects import (
+    EXTERNAL_PREFIX,
     UNUSED_KINDS,
     FitMapping,
     FitMappingCollection,
@@ -1083,9 +1084,10 @@ class OptimizationProblem(ObjectJSONEncoder):
         the model starts from its start value.
 
         Raises:
-            ValueError: if a model is not loaded in roadrunner, or if a
+            ValueError: if a model is not loaded in roadrunner, if a
                 parameter which is not an entity of the model has no start
-                value.
+                value, or if the target of a parameter is not an entity of
+                the model.
         """
         for k_model, model in enumerate(self.models):
             if model.r is None:
@@ -1102,7 +1104,15 @@ class OptimizationProblem(ObjectJSONEncoder):
                         )
                     self.xmodel[k] = parameter.start_value
                     continue
-                pid_value = model.r[target]
+                try:
+                    pid_value = model.r[target]
+                except RuntimeError as err:
+                    raise ValueError(
+                        f"'{self.opid}': FitParameter '{parameter.pid}' writes "
+                        f"'{target}', which is not an entity of the model "
+                        f"'{model}'. A parameter which is not an entity of a "
+                        f"model has the target '{EXTERNAL_PREFIX}<id>'."
+                    ) from err
                 if target in model.changes:
                     change = model.changes[target]
                     # model changes have units

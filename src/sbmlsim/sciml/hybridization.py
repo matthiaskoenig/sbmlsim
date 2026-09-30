@@ -44,6 +44,10 @@ from sbmlsim.sciml.network import (
 #: the condition of the arrays and formulas which hold for every condition
 ALL_CONDITIONS = "0"
 
+#: relative tolerance of the values of the frozen elements in a compiled
+#: model, libsbml writes 15 significant digits
+FROZEN_RTOL = 1e-14
+
 
 class NetworkPattern(StrEnum):
     """The place of a network in a hybrid problem."""
@@ -364,6 +368,10 @@ class Hybridization:
     _input_shapes: tuple[tuple[int, ...], ...] = field(
         init=False, repr=False, compare=False
     )
+    #: the sorted ids and the values of the frozen elements in the network
+    _frozen_values: tuple[tuple[str, ...], np.ndarray] = field(
+        init=False, repr=False, compare=False
+    )
 
     __hash__ = None
 
@@ -403,6 +411,16 @@ class Hybridization:
 
         shapes = input_shapes(self.network, self.inputs)
         object.__setattr__(self, "_input_shapes", tuple(shapes))
+        # the elements of an array without values are not compiled
+        arrays = self.network.parameters
+        frozen = {
+            sid: float(arrays[layer][name][index])
+            for sid, (layer, name, index) in self.network.parameter_ids().items()
+            if sid in self.frozen and name in arrays.get(layer, {})
+        }
+        ids = tuple(sorted(frozen))
+        values = np.array([frozen[sid] for sid in ids], dtype=float)
+        object.__setattr__(self, "_frozen_values", (ids, values))
         if self.pattern.is_compiled:
             if BackendKind.SYMPY not in self.network.backends():
                 raise self.error(
@@ -517,11 +535,13 @@ class Hybridization:
         Returns:
             The symbols of the formulas of the inputs and the ids of the
             elements which are not frozen, for a network before the
-            simulation. A network which is compiled reads nothing, the model
-            evaluates it.
+            simulation. For a network which is compiled, which the model
+            evaluates, the ids of the frozen elements and of the outputs:
+            the model must have them, and `derived_changes` checks that the
+            model carries the values of the frozen elements.
         """
         if self.pattern.is_compiled:
-            return frozenset()
+            return frozenset(self._frozen_values[0]) | frozenset(self.outputs)
         symbols = {
             symbol
             for network_input in self.inputs.values()
@@ -681,7 +701,9 @@ class Hybridization:
         values of the elements which are not frozen, which the fit estimates,
         and its outputs are the changes of their targets. For a network which
         is compiled the changes are the elements of the inputs which are
-        arrays of conditions.
+        arrays of conditions, and the values of its frozen elements are
+        compared with the network, which is how a model which was compiled
+        from another network is found.
 
         Args:
             values: id -> value, see `input_values`. The values of the
@@ -695,9 +717,12 @@ class Hybridization:
         Raises:
             NetworkHybridizationError: if an input cannot be resolved, see
                 `input_values`, if an element which is not frozen has no
-                value, or if an output is not a finite number.
+                value, if an output is not a finite number, or if the values
+                of the frozen elements of a network which is compiled are
+                missing or differ from the network.
         """
         if self.pattern.is_compiled:
+            self._check_compiled_values(values)
             return {
                 sid: float(value)
                 for sid, value in self._conditional_elements(condition)
@@ -730,6 +755,37 @@ class Hybridization:
                 )
             changes[target] = value
         return changes
+
+    def _check_compiled_values(self, values: Mapping[str, float]) -> None:
+        """Check the values of the frozen elements of a compiled network.
+
+        The model gives the values of the frozen elements, which are the ones
+        of the network when it was compiled, see `FROZEN_RTOL`.
+
+        Args:
+            values: id -> value, which holds the values of the model.
+
+        Raises:
+            NetworkHybridizationError: if a frozen element has no value or a
+                value which differs from the network.
+        """
+        ids, expected = self._frozen_values
+        missing = [sid for sid in ids if sid not in values]
+        if missing:
+            raise self.error(
+                f"the frozen elements {_some(missing)} have no value, the model "
+                f"of a compiled network gives them"
+            )
+        actual = np.array([values[sid] for sid in ids], dtype=float)
+        differ = np.abs(actual - expected) > FROZEN_RTOL * np.maximum(
+            np.abs(actual), np.abs(expected)
+        )
+        if np.any(differ):
+            others = [sid for sid, d in zip(ids, differ, strict=True) if d]
+            raise self.error(
+                f"the model carries other values of the frozen elements "
+                f"{_some(others)} than the network, compile the network again"
+            )
 
     # --- THE MODEL ---
 
@@ -906,6 +962,13 @@ _KINDS: dict[int, str] = {
 _INITIAL_VALUES = frozenset(
     {libsbml.SBML_PARAMETER, libsbml.SBML_SPECIES, libsbml.SBML_COMPARTMENT}
 )
+
+
+def _some(ids: list[str], n: int = 5) -> str:
+    """Get the first ids of a list and how many there are, for a message."""
+    if len(ids) <= n:
+        return str(ids)
+    return f"{ids[:n]} ... ({len(ids)} in total)"
 
 
 def _kind(element: libsbml.SBase) -> str:

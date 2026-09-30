@@ -484,10 +484,27 @@ def test_an_output_which_is_not_finite() -> None:
 
 
 def test_the_derived_changes_of_a_compiled_network() -> None:
-    """The model evaluates the network, the fit sets the arrays of a condition."""
-    assert _hybridization(pattern=RHS).symbols() == frozenset()
+    """The model evaluates the network, the fit sets the arrays of a condition.
+
+    The hook reads the outputs and the frozen elements from the model, which
+    must carry the values of the network.
+    """
+    assert _hybridization(pattern=RHS).symbols() == {"net1__output0__0"}
     assert _hybridization(pattern=RHS).targets() == frozenset()
     assert _hybridization(pattern=RHS).derived_changes({}, "e1") == {}
+
+    frozen = _hybridization(pattern=RHS, frozen={"net1__layer1__bias__0"})
+    assert frozen.symbols() == {"net1__output0__0", "net1__layer1__bias__0"}
+    (bias,) = frozen._frozen_values[1]
+    assert frozen.derived_changes({"net1__layer1__bias__0": bias}, "e1") == {}
+    assert (
+        frozen.derived_changes({"net1__layer1__bias__0": bias * (1 + 1e-15)}, "e1")
+        == {}
+    )
+    with pytest.raises(NetworkHybridizationError, match=r"compile the network again"):
+        frozen.derived_changes({"net1__layer1__bias__0": bias + 1e-6}, "e1")
+    with pytest.raises(NetworkHybridizationError, match=r"have no value"):
+        frozen.derived_changes({}, "e1")
 
     def hybridization(arrays: dict) -> Hybridization:
         return Hybridization(

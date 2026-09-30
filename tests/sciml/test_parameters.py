@@ -1,7 +1,9 @@
 """Tests of the nominal values and the fit parameters of a network."""
 
 import logging
+from dataclasses import replace
 from itertools import pairwise
+from typing import Any
 
 import numpy as np
 import pytest
@@ -181,11 +183,15 @@ def test_a_value_which_is_not_finite(value: float) -> None:
 
 def test_the_fit_parameters_of_the_estimated_elements() -> None:
     """One parameter per estimated element, the other elements are frozen."""
+    network = _network()
+    network = replace(
+        network,
+        parameters=nominal_parameters(network, {"net1.layer2.weight": 0.5}),
+    )
     fit_parameters = network_fit_parameters(
-        _network(),
+        network,
         estimate={"net1": True, "net1.block.layer1": False, "net1.norm": False},
         bounds={"net1": (-10.0, 10.0), "net1.layer2.bias": (0.0, 20.0)},
-        values={"net1.layer2.weight": 0.5},
     )
     assert [p.pid for p in fit_parameters] == [
         "net1__layer2__weight__0_0",
@@ -258,15 +264,26 @@ def test_the_elements_of_a_layer_which_is_not_called(
     network = Network(sid="net1", model=model)
     values = {"net1.block.layer1": 0.0, "net1.norm": 1.0, "net1.layer2": 0.5}
     assert "unused" not in nominal_parameters(network, values)
+    network = replace(network, parameters=nominal_parameters(network, values))
     with caplog.at_level(logging.WARNING, logger="sbmlsim.sciml.parameters"):
-        parameters = network_fit_parameters(
-            network, estimate={"net1": True}, bounds={}, values=values
-        )
+        parameters = network_fit_parameters(network, estimate={"net1": True}, bounds={})
     assert "['unused']" in caplog.text
     assert parameters
     assert not [p.pid for p in parameters if "unused" in p.pid]
     assert {p.scale for p in parameters} == {ParameterScaleType.LINEAR}
     assert {p.target for p in parameters} == {None}
+
+
+def test_the_nominal_values_are_the_values_of_the_network() -> None:
+    """The start values are the values the network carries, nothing else.
+
+    The network a fit parameter comes from is the network the hybridization
+    runs, so a nominal value which is not in the network would be a start
+    value which the frozen elements do not have.
+    """
+    values: dict[str, Any] = {"values": {"net1": 0.0}}
+    with pytest.raises(TypeError, match=r"values"):
+        network_fit_parameters(_network(), estimate={"net1": True}, bounds={}, **values)
 
 
 def test_an_estimated_array_without_nominal_values() -> None:

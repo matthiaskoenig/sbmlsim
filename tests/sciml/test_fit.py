@@ -6,6 +6,7 @@ three patterns, without PEtab.
 
 import pickle
 from collections.abc import Sequence
+from dataclasses import replace
 from pathlib import Path
 from typing import ClassVar
 
@@ -25,6 +26,7 @@ from sbmlsim.sciml import (
     compile_network,
     compiled_path,
     network_fit_parameters,
+    nominal_parameters,
 )
 from sbmlsim.sciml.hybridization import ALL_CONDITIONS
 from tests.sciml.experiment import LotkaVolterra, collections
@@ -246,7 +248,10 @@ def test_a_network_in_the_right_hand_side(tmp_path: Path) -> None:
     problem = _problem([hybridization], elements, experiment=Compiled)
     problem.initialize(SETTINGS)
     # the network is a part of the model, nothing is derived
-    assert problem.group_derived == [[(hybridization, {})], [(hybridization, {})]]
+    assert [
+        [(hook, set(values)) for hook, values in derived]
+        for derived in problem.group_derived
+    ] == [[(hybridization, {"net1__output0__0"})]] * 2
     x = np.asarray(problem.x0, dtype=float)
     np.testing.assert_allclose(problem.xmodel, x, rtol=1e-14)
     cost = problem.cost_least_square(x)
@@ -299,8 +304,82 @@ def test_a_network_which_the_model_does_not_have() -> None:
     """The elements of a compiled network are entities of the compiled model."""
     network = feed_forward()
     elements = network_fit_parameters(network, estimate={"net1": True}, bounds={})
-    with pytest.raises(RuntimeError, match="net1__layer1__weight__0_0"):
+    with pytest.raises(
+        ValueError,
+        match=r"FitParameter 'net1__layer1__weight__0_0' writes "
+        r"'net1__layer1__weight__0_0', which is not an entity of the model",
+    ):
         _problem([], elements).initialize(SETTINGS)
+
+
+def _rhs(network: Network, **kwargs: object) -> Hybridization:
+    """Get the network in the right hand side, `gamma = net(prey, predator)`."""
+    arguments: dict[str, object] = {
+        "network": network,
+        "pattern": RHS,
+        "model": "lv",
+        "inputs": {
+            f"{network.sid}__input0__0": NetworkInput(formula="prey"),
+            f"{network.sid}__input0__1": NetworkInput(formula="predator"),
+        },
+        "outputs": {f"{network.sid}__output0__0": "gamma"},
+    }
+    arguments.update(kwargs)
+    return Hybridization(**arguments)  # ty: ignore[invalid-argument-type]
+
+
+def test_a_compiled_model_with_other_values_than_the_network(
+    tmp_path: Path,
+) -> None:
+    """A compiled model whose network was changed afterwards is refused.
+
+    The frozen elements are evaluated by the model, so the model must carry
+    the values of the network the hybridization describes.
+    """
+    network = feed_forward()
+    compiled = compile_network(
+        MODEL_PATH, [_rhs(network)], compiled_path(MODEL_PATH, tmp_path)
+    )
+
+    class Compiled(LotkaVolterra):
+        model_path: ClassVar[Path] = compiled
+
+    changed = replace(
+        network, parameters=nominal_parameters(network, {"net1.layer1": 0.0})
+    )
+    elements = network_fit_parameters(
+        changed, estimate={"net1.layer2": True}, bounds={}
+    )
+    frozen = set(network.parameter_ids()) - {p.pid for p in elements}
+    problem = _problem([_rhs(changed, frozen=frozen)], elements, experiment=Compiled)
+    problem.initialize(SETTINGS)
+    with pytest.raises(
+        ValueError,
+        match=r"Network 'net1': the model carries other values of the frozen "
+        r"elements \['net1__layer1__bias__0', .*compile the network again",
+    ):
+        problem.residuals(np.asarray(problem.x0, dtype=float))
+
+    # the network which was compiled runs
+    same = _problem([_rhs(network, frozen=frozen)], elements, experiment=Compiled)
+    same.initialize(SETTINGS)
+    residuals = np.asarray(
+        same.residuals(np.asarray(same.x0, dtype=float)), dtype=float
+    )
+    assert np.all(np.isfinite(residuals))
+
+
+def test_a_compiled_network_with_a_model_without_it() -> None:
+    """A model which does not carry the compiled network is refused."""
+    network = feed_forward()
+    frozen = set(network.parameter_ids())
+    problem = _problem([_rhs(network, frozen=frozen)], [])
+    with pytest.raises(
+        ValueError,
+        match=r"reads \['net1__layer1__bias__0', .*which are neither entities of "
+        r"the model",
+    ):
+        problem.initialize(SETTINGS)
 
 
 def test_an_array_which_all_conditions_share(tmp_path: Path) -> None:
@@ -325,6 +404,9 @@ def test_an_array_which_all_conditions_share(tmp_path: Path) -> None:
 
     problem = _problem([hybridization], [], experiment=Compiled)
     problem.initialize(SETTINGS)
-    assert problem.group_derived == [[(hybridization, {})], [(hybridization, {})]]
+    assert [
+        [(hook, set(values)) for hook, values in derived]
+        for derived in problem.group_derived
+    ] == [[(hybridization, {"net6__output0__0"})]] * 2
     problem.predictions(np.asarray(problem.x0, dtype=float))
     assert "net6__input1__0" not in problem.simulations[0].timecourses[0].changes
