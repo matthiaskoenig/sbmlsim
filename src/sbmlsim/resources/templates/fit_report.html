@@ -36,6 +36,7 @@
     </dl>
   </div>
 
+  {% if parameters %}
   <h3>Parameters</h3>
   <div class="card">
     <table data-filter="row">
@@ -62,6 +63,7 @@
     <p class="warn">{% for message in bound_warnings %}{{ message }}<br>{% endfor %}</p>
     {% endif %}
   </div>
+  {% endif %}
   {% if hooks %}
 
   <h3>Networks</h3>
@@ -96,6 +98,9 @@
       {% endfor %}
       </tbody>
     </table>
+    {% if array_bound_warnings %}
+    <p class="warn">{% for message in array_bound_warnings %}{{ message }}<br>{% endfor %}</p>
+    {% endif %}
   </div>
   {% endif %}
 

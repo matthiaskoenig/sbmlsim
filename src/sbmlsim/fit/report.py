@@ -462,9 +462,10 @@ class FitReport:
             "-" * 80,
             f"Parameter sets: {[pset.sid for pset in self.parameter_sets]}",
             "-" * 80,
-            table.to_string(index=False),
-            "",
         ]
+        if not table.empty:
+            # a fit of the elements of networks only has no single parameters
+            info.extend([table.to_string(index=False), ""])
         for pset in self.parameter_sets:
             if pset.cost is not None:
                 info.append(f"{pset.sid}: cost = {pset.cost:.6g}")
@@ -708,17 +709,15 @@ class FitReport:
             for summary in summaries
         ]
         arrays = self._array_rows(groups, psets)
-        groups_of_ids = self.parameter_groups()
+        # the warnings of the single parameters are under their table, the
+        # warnings of the arrays under the table of the arrays
         warnings: list[str] = []
+        array_warnings: list[str] = []
         for pset in psets:
-            warnings.extend(
-                f"{pset.sid}: {message}"
-                for message in bound_warnings(
-                    self.problem.parameters,
-                    self.x(pset),
-                    self.problem.scales_initialized,
-                    groups=groups_of_ids,
-                )
+            single_messages, array_messages = self._bound_warnings(pset)
+            warnings.extend(f"{pset.sid}: {message}" for message in single_messages)
+            array_warnings.extend(
+                f"{pset.sid}: {message}" for message in array_messages
             )
 
         # the data per experiment and kind
@@ -851,6 +850,7 @@ class FitReport:
             "versioned_parameters": has_renamed_targets(single),
             "parameter_set_ids": [pset.sid for pset in psets],
             "bound_warnings": warnings,
+            "array_bound_warnings": array_warnings,
             "settings": {
                 key.replace("_", " "): value
                 for key, value in self.settings.to_dict().items()
@@ -977,6 +977,33 @@ class FitReport:
     ) -> tuple[list[FitParameter], list[tuple[ParameterGroup, list[FitParameter]]]]:
         """Split the parameters into single ones and the arrays of the hooks."""
         return group_parameters(self.problem.parameters, self._summaries)
+
+    def _bound_warnings(self, pset: ParameterSet) -> tuple[list[str], list[str]]:
+        """Get the bound warnings of a set, split into single ones and arrays.
+
+        Args:
+            pset: parameter set of the report.
+
+        Returns:
+            The messages of the parameters which are no elements of a network
+            and the messages of the arrays, see `bound_warnings`.
+        """
+        single = {p.pid for p in self._grouping[0]}
+        x = self.x(pset)
+        scales = self.problem.scales_initialized
+        parameters = self.problem.parameters
+        parts: list[list[str]] = []
+        for is_single in (True, False):
+            ks = [k for k, p in enumerate(parameters) if (p.pid in single) == is_single]
+            parts.append(
+                bound_warnings(
+                    [parameters[k] for k in ks],
+                    x[ks],
+                    [scales[k] for k in ks],
+                    groups=self.parameter_groups(),
+                )
+            )
+        return parts[0], parts[1]
 
     def parameter_groups(self) -> dict[str, tuple[str, ...]]:
         """Get the arrays of the networks as groups of elements.

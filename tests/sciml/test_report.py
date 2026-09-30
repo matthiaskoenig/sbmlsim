@@ -20,12 +20,23 @@ from tests.sciml.hybrid import feed_forward
 from tests.sciml.test_fit import SETTINGS, _before, _problem
 
 
-def _report(tmp_path: Path, fisher: bool = False) -> tuple[FitReport, dict]:
+def _report(
+    tmp_path: Path, fisher: bool = False, mechanistic: bool = True
+) -> tuple[FitReport, dict]:
     network = feed_forward()
     elements = network_fit_parameters(
         network, estimate={"net1": True}, bounds={"net1": (-5.0, 5.0)}, external=True
     )
     problem = _problem([_before(network)], elements)
+    if not mechanistic:
+        problem = OptimizationProblem(
+            opid="hybrid",
+            mapping_collections=problem.mapping_collections,
+            fit_parameters=elements,
+            base_path=problem.base_path,
+            data_path=problem.data_path,
+            hybridizations=problem.hybridizations,
+        )
     problem.initialize(SETTINGS)
     values = dict(zip(problem.pids, np.asarray(problem.x0, dtype=float), strict=True))
     # one element at its bound
@@ -63,7 +74,9 @@ def test_the_overview_shows_the_network_and_its_arrays(tmp_path: Path) -> None:
     )
     (values,) = row["set_values"]
     assert len(values) == 3 and all(value != "-" for value in values)
-    assert context["bound_warnings"] == [
+    # the warnings of an array are under the table of the arrays
+    assert context["bound_warnings"] == []
+    assert context["array_bound_warnings"] == [
         "nominal: !1 of the 3 elements of 'net1.layer1.bias' within 5% of a bound!"
     ]
     assert "net1" in report.fit_info()["networks"]
@@ -72,6 +85,23 @@ def test_the_overview_shows_the_network_and_its_arrays(tmp_path: Path) -> None:
     assert "net1.layer1.weight" in html
     assert "net1__layer1__weight__0_0" not in html
     text = (path / "report.txt").read_text()
+    assert "1 of the 3 elements of 'net1.layer1.bias'" in text
+
+
+def test_a_fit_of_elements_only_has_no_parameters_table(tmp_path: Path) -> None:
+    """Without parameters which are no elements the report has no empty table."""
+    report, context = _report(tmp_path, mechanistic=False)
+    assert context["parameters"] == []
+    assert context["array_bound_warnings"] == [
+        "nominal: !1 of the 3 elements of 'net1.layer1.bias' within 5% of a bound!"
+    ]
+    path = report.create(tmp_path / "out", name="report")
+    html = (path / "index.html").read_text()
+    assert "<h3>Parameters</h3>" not in html
+    networks = html.index("<h3>Networks</h3>")
+    assert html.index("of &#39;net1.layer1.bias&#39; within 5%", networks) > networks
+    text = (path / "report.txt").read_text()
+    assert "Empty DataFrame" not in text
     assert "1 of the 3 elements of 'net1.layer1.bias'" in text
 
 
