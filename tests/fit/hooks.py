@@ -36,6 +36,8 @@ class Scaling:
         constants: id -> value of the symbols which are neither entities of
             the model nor parameters of the fit.
         calls: the conditions the changes were calculated for.
+        per_condition: id of an input -> the conditions it has values for,
+            what `conditions` answers.
     """
 
     model: str = "model"
@@ -44,6 +46,7 @@ class Scaling:
     frozen: frozenset[str] = frozenset()
     constants: Mapping[str, float] = field(default_factory=dict)
     calls: list[str] = field(default_factory=list, compare=False)
+    per_condition: Mapping[str, Collection[str]] = field(default_factory=dict)
 
     def summary(self) -> HookSummary:
         return HookSummary(
@@ -53,6 +56,9 @@ class Scaling:
             targets=(self.target,),
             groups=(),
         )
+
+    def conditions(self) -> Mapping[str, Collection[str]]:
+        return self.per_condition
 
     def symbols(self) -> Collection[str]:
         return {self.factor, self.target}

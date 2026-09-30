@@ -6,6 +6,7 @@ simulation does without a network.
 """
 
 import json
+import logging
 import pickle
 from collections.abc import Mapping
 from dataclasses import dataclass, replace
@@ -105,6 +106,30 @@ def test_the_hook_reads_the_changes_of_the_fit(
     # and the value of the model does not change between the evaluations
     problem.predictions(np.array([1e-4]))
     assert changes["Ka_dis_hctz"].magnitude == pytest.approx(factor.magnitude * nominal)
+
+
+def test_a_condition_the_problem_does_not_simulate_is_logged(
+    definition_hctz_iv: FitDefinition,
+    fit_settings: FitSettings,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """A typo in the key of a condition would fall back to the other values."""
+    scaling = Scaling(per_condition={"input0": ["hctz_iv1", "hctz_iv_35"]})
+    problem = _problem(definition_hctz_iv, [_factor()], hybridizations=[scaling])
+    with caplog.at_level(logging.WARNING, logger="sbmlsim.fit.derived"):
+        problem.initialize(fit_settings)
+    (record,) = caplog.records
+    message = record.getMessage()
+    assert "'input0' of 'scaling'" in message
+    assert "['hctz_iv_35']" in message
+    assert "['hctz_iv1', 'hctz_iv35']" in message
+
+    caplog.clear()
+    known = Scaling(per_condition={"input0": ["hctz_iv1", "hctz_iv35"]})
+    problem = _problem(definition_hctz_iv, [_factor()], hybridizations=[known])
+    with caplog.at_level(logging.WARNING, logger="sbmlsim.fit.derived"):
+        problem.initialize(fit_settings)
+    assert not caplog.records
 
 
 def test_a_problem_with_hooks_is_pickled(

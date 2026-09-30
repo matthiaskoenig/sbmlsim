@@ -594,6 +594,21 @@ class Hybridization:
             ),
         )
 
+    def conditions(self) -> dict[str, list[str]]:
+        """Get the conditions for which an input has formulas or arrays.
+
+        Returns:
+            id of an input -> the conditions its formulas or arrays name,
+            without `ALL_CONDITIONS`; an input of one formula is not listed.
+        """
+        conditions: dict[str, list[str]] = {}
+        for key, network_input in self.inputs.items():
+            values = network_input.formulas or network_input.arrays or {}
+            named = sorted(set(values) - {ALL_CONDITIONS})
+            if named:
+                conditions[key] = named
+        return conditions
+
     def symbols(self) -> frozenset[str]:
         """Get the ids whose values `derived_changes` reads.
 

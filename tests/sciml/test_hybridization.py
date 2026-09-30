@@ -789,6 +789,30 @@ def test_the_summary_of_a_hybridization() -> None:
     )
 
 
+def test_the_conditions_of_the_inputs() -> None:
+    """The conditions an input names, which the problem checks at `initialize`."""
+    network = two_inputs()
+    hybridization = Hybridization(
+        network=network,
+        pattern=NetworkPattern.PRE_INITIALIZATION,
+        model="lv",
+        inputs={
+            "net6__input0__0": NetworkInput(
+                formulas={"e2": "beta", ALL_CONDITIONS: "alpha"}
+            ),
+            "net6__input1": NetworkInput(
+                arrays={"e1": [1.0, 2.0, 3.0], "sim2": [3.0, 2.0, 1.0]}
+            ),
+        },
+        outputs={"net6__output0__0": "gamma"},
+    )
+    assert isinstance(hybridization, DerivedChanges)
+    assert hybridization.conditions() == {
+        "net6__input0__0": ["e2"],
+        "net6__input1": ["e1", "sim2"],
+    }
+
+
 def test_fit_parameters_of_a_hybridization() -> None:
     network = feed_forward()
     before = Hybridization(

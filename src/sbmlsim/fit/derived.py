@@ -21,6 +21,7 @@ its simulation. `OptimizationProblem` calls both.
 
 from __future__ import annotations
 
+import logging
 from collections.abc import Collection, Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
@@ -34,6 +35,8 @@ if TYPE_CHECKING:
     from sbmlsim.model import RoadrunnerSBMLModel
     from sbmlsim.simulation import TimecourseSim
     from sbmlsim.simulator import SimulatorSerial
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -92,6 +95,17 @@ class DerivedChanges(Protocol):
         Returns:
             id -> value of the symbols which are neither entities of the
             model nor parameters of the fit.
+        """
+        ...
+
+    def conditions(self) -> Mapping[str, Collection[str]]:
+        """Get the conditions for which the hook has values of its own.
+
+        Returns:
+            id of an input, e.g. of a network -> the ids of the simulations
+            the input has values for, without the values of every other
+            simulation; an input which is the same for every simulation is
+            not listed.
         """
         ...
 
@@ -284,6 +298,7 @@ def resolve_derived_changes(problem: OptimizationProblem) -> list[GroupDerivedCh
         read.update(symbol for h, _ in derived for symbol in h.symbols())
         group_derived.append(derived)
 
+    _log_unknown_conditions(problem)
     for parameter in problem.parameters:
         if parameter.is_external and parameter.entity_id not in read:
             raise ValueError(
@@ -293,6 +308,43 @@ def resolve_derived_changes(problem: OptimizationProblem) -> list[GroupDerivedCh
                 f"depend on the parameter."
             )
     return group_derived
+
+
+def _log_unknown_conditions(problem: OptimizationProblem) -> None:
+    """Log the conditions of the inputs of a hook which are no simulations.
+
+    An input which names a simulation the problem does not simulate with the
+    model of the hook is a typo of its key, which falls back to the values of
+    the other conditions, or a selection of the data which left the
+    simulation out. The second is legitimate, so it is a warning and not an
+    error.
+
+    Args:
+        problem: the problem, with its fit mappings resolved into simulation
+            groups.
+    """
+    simulations: dict[str, set[str]] = {}
+    for group in problem.mapping_groups:
+        k0 = group[0]
+        simulations.setdefault(problem.model_keys[k0], set()).add(
+            problem.simulation_keys[k0]
+        )
+    for hook in problem.hybridizations:
+        known = simulations.get(hook.model, set())
+        for key, conditions in hook.conditions().items():
+            unknown = sorted(set(conditions) - known)
+            if unknown:
+                logger.warning(
+                    "'%s': the input '%s' of '%s' has values for the simulations "
+                    "%s, which the problem does not simulate with the model '%s' "
+                    "(it simulates %s); they are not used.",
+                    problem.opid,
+                    key,
+                    hook.summary().name,
+                    unknown,
+                    hook.model,
+                    sorted(known),
+                )
 
 
 def _check_entity_ids(where: str, parameters: Sequence[FitParameter]) -> None:
