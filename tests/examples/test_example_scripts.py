@@ -36,6 +36,7 @@ SCRIPTS = [
     "examples.hctz_fitting.simulations",
     "examples.hctz_fitting.fitting.petab_problem",
     "examples.petab.benchmark",
+    "examples.sciml.lotka_volterra_fit",
     "examples.sensitivity.sensitivity_example",
     "examples.comparison.diff_example",
 ]
