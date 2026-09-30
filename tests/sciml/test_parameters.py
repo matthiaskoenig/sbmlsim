@@ -105,7 +105,7 @@ def test_the_arrays_an_entry_covers() -> None:
 )
 def test_an_entry_which_covers_nothing(key: str) -> None:
     """A key which is not part of the network is an error, not an empty entry."""
-    with pytest.raises(KeyError, match=r"is not the network, a layer or an array"):
+    with pytest.raises(NetworkImportError, match=r"is not the network, a layer or an"):
         covered_arrays(_network(), key)
 
 
@@ -235,3 +235,49 @@ def test_the_ids_are_the_ids_of_the_network() -> None:
         np.all(parameters[layer][name] == 0.0)
         for layer, name, _ in network.parameter_ids().values()
     )
+
+
+def test_an_estimated_array_without_nominal_values() -> None:
+    """An estimated element needs a start value.
+
+    A layer which the forward pass does not call needs no values to be
+    evaluated, but its elements are not estimated without them.
+    """
+    network = _network(with_values=False)
+    model = network.model.model_copy(deep=True)
+    model.layers.append(
+        Layer(
+            layer_id="unused",
+            layer_type="Linear",
+            args={"in_features": 2, "out_features": 1, "bias": False},
+        )
+    )
+    network = Network(sid="net1", model=model)
+    values = {"net1.block.layer1": 0.0, "net1.norm": 1.0, "net1.layer2": 0.5}
+    assert "unused" not in nominal_parameters(network, values)
+    with pytest.raises(
+        NetworkImportError, match=r"'unused'.*'weight' is estimated and has no nominal"
+    ):
+        network_fit_parameters(
+            network, estimate={"net1.unused": True}, bounds={}, values=values
+        )
+
+
+def test_a_layer_without_trainable_arrays() -> None:
+    """A key of a layer without parameters is part of the network and covers nothing."""
+    network = _network()
+    model = network.model.model_copy(deep=True)
+    model.layers.append(Layer(layer_id="drop", layer_type="Dropout", args={"p": 0.1}))
+    network = Network(sid="net1", model=model, parameters=network.parameters)
+
+    assert covered_arrays(network, "net1.drop") == (1, [])
+    with_entry = nominal_parameters(network, {"net1.drop": 0.0})
+    without_entry = nominal_parameters(network)
+    assert list(with_entry) == list(without_entry)
+    for layer, arrays in without_entry.items():
+        for name, array in arrays.items():
+            np.testing.assert_array_equal(with_entry[layer][name], array)
+    fit_parameters = network_fit_parameters(
+        network, estimate={"net1.drop": True}, bounds={"net1.drop": (0.0, 1.0)}
+    )
+    assert fit_parameters == []

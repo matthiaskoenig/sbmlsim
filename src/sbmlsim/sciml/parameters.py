@@ -17,12 +17,7 @@ import numpy as np
 
 from sbmlsim.fit.objects import FitParameter
 from sbmlsim.sciml.errors import NetworkImportError
-from sbmlsim.sciml.network import (
-    Network,
-    NetworkParameters,
-    copy_parameters,
-    element_id,
-)
+from sbmlsim.sciml.network import Network, NetworkParameters, copy_parameters
 
 logger = logging.getLogger(__name__)
 
@@ -48,8 +43,8 @@ def covered_arrays(network: Network, key: str) -> tuple[int, list[tuple[str, str
         statistics of a normalization layer.
 
     Raises:
-        KeyError: if the key does not name the network, one of its layers or
-            one of their arrays.
+        NetworkImportError: if the key does not name the network, one of its
+            layers or one of their arrays.
     """
     specs = {
         layer: [name for name, spec in arrays.items() if spec.trainable]
@@ -67,7 +62,7 @@ def covered_arrays(network: Network, key: str) -> tuple[int, list[tuple[str, str
         layer, _, name = rest.rpartition(KEY_SEPARATOR)
         if layer in specs and name in specs[layer]:
             return 2, [(layer, name)]
-    raise KeyError(
+    raise NetworkImportError(
         f"Network '{network.sid}': '{key}' is not the network, a layer or an "
         f"array of it. The layers and their arrays are {specs}"
     )
@@ -87,7 +82,8 @@ def resolve_entries[T](
         covers the array. An array no entry covers is not part of it.
 
     Raises:
-        KeyError: if a key does not name the network, a layer or an array.
+        NetworkImportError: if a key does not name the network, a layer or an
+            array.
     """
     covered = {key: covered_arrays(network, key) for key in entries}
     resolved: dict[tuple[str, str], T] = {}
@@ -113,10 +109,10 @@ def nominal_parameters(
         The arrays in the PyTorch layout. The network is not changed.
 
     Raises:
-        KeyError: if a key does not name the network, a layer or an array.
-        NetworkImportError: if a value is not finite, or if an array of a
-            layer of the forward pass has values neither in the array file
-            nor in `values`.
+        NetworkImportError: if a key does not name the network, a layer or an
+            array, if a value is not finite, or if an array of a layer of the
+            forward pass has values neither in the array file nor in
+            `values`.
     """
     parameters = copy_parameters(network.parameters)
     specs = network.array_specs()
@@ -159,16 +155,17 @@ def network_fit_parameters(
         order of `Network.parameter_ids`.
 
     Raises:
-        KeyError: if a key does not name the network, a layer or an array.
-        NetworkImportError: if an estimated element has no nominal value.
+        NetworkImportError: if a key does not name the network, a layer or an
+            array, or if an estimated element has no nominal value.
         ValueError: if a nominal value is outside of its bounds.
     """
     parameters = nominal_parameters(network, values)
     estimated = resolve_entries(network, estimate)
     bounded = resolve_entries(network, bounds)
 
+    ids = network.parameter_ids()
     fit_parameters: list[FitParameter] = []
-    for layer, name, index in network.parameter_ids().values():
+    for sid, (layer, name, index) in ids.items():
         if not estimated.get((layer, name), False):
             continue
         if name not in parameters.get(layer, {}):
@@ -179,7 +176,7 @@ def network_fit_parameters(
         lower, upper = bounded.get((layer, name), (-np.inf, np.inf))
         fit_parameters.append(
             FitParameter(
-                pid=element_id(network.sid, layer, name, index),
+                pid=sid,
                 start_value=float(parameters[layer][name][index]),
                 lower_bound=lower,
                 upper_bound=upper,
@@ -190,6 +187,6 @@ def network_fit_parameters(
         "Network '%s': %d of %d elements are estimated",
         network.sid,
         len(fit_parameters),
-        len(network.parameter_ids()),
+        len(ids),
     )
     return fit_parameters

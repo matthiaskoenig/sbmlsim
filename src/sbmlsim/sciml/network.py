@@ -15,9 +15,11 @@ import logging
 import re
 from collections.abc import Mapping
 from dataclasses import dataclass, field
+from functools import cached_property
 from pathlib import Path
 
 import numpy as np
+import yaml
 from petab_sciml import ArrayData, ArrayDataStandard, NNModel, NNModelStandard
 
 from sbmlsim.sciml.backend import ALL_BACKENDS, BackendKind, NumpyBackend
@@ -26,6 +28,7 @@ from sbmlsim.sciml.interpreter import (
     CALL_FUNCTION,
     CALL_METHOD,
     CALL_MODULE,
+    OUTPUT,
     evaluate,
 )
 from sbmlsim.sciml.layers import FUNCTIONS, LAYERS, ArraySpec
@@ -44,6 +47,12 @@ INDEX_SEPARATOR = "_"
 
 #: the characters of an id which are not part of an SBML `SId`
 _NOT_SID = re.compile(r"[^A-Za-z0-9_]")
+
+#: an SBML `SId`
+_SID = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
+
+#: id of an element -> layer id, array name and PyTorch index
+ParameterIds = dict[str, tuple[str, str, tuple[int, ...]]]
 
 
 def element_id(network: str, layer: str, array: str, index: tuple[int, ...]) -> str:
@@ -93,12 +102,17 @@ def load_array_data(path: Path) -> ArrayData:
         The arrays of the file.
 
     Raises:
-        NetworkImportError: if the file does not exist or is not an array
-            file.
+        NetworkImportError: if the file does not exist, cannot be read or is
+            not an array file.
     """
     if not path.is_file():
         raise NetworkImportError(f"The array file '{path}' does not exist")
-    data = ArrayDataStandard.load_data(str(path))
+    try:
+        data = ArrayDataStandard.load_data(str(path))
+    except (OSError, KeyError, TypeError, ValueError) as err:
+        raise NetworkImportError(
+            f"The array file '{path}' cannot be read: {err}"
+        ) from err
     if not isinstance(data, ArrayData):
         raise NetworkImportError(f"'{path}' is not an array file")
     return data
@@ -108,8 +122,16 @@ def load_array_data(path: Path) -> ArrayData:
 class Network:
     """The architecture and the arrays of one network.
 
+    A network is validated when it is created: the id, the forward pass and
+    the nominal values are checked against the architecture, and every layer
+    needs an implementation. `sid` and `model` do not change afterwards, the
+    structures derived from them (`array_specs`, `used_layers`,
+    `parameter_ids`) are computed once. A network with other nominal values is
+    a new network, e.g. `dataclasses.replace(network, parameters=...)`.
+
     Attributes:
-        sid: id of the network.
+        sid: id of the network, an SBML `SId` which is the `nn_model_id` of
+            the model.
         model: the architecture, i.e. the content of the NN YAML.
         parameters: the nominal values of the arrays in the PyTorch layout,
             layer id -> array name -> values.
@@ -118,6 +140,29 @@ class Network:
     sid: str
     model: NNModel
     parameters: NetworkParameters = field(default_factory=dict)
+
+    def __post_init__(self) -> None:
+        """Validate the network.
+
+        Raises:
+            NetworkImportError: if the id is not an SBML `SId` or not the id
+                of the model, if the forward pass does not fit the layers, if
+                the arguments of a layer do not give its arrays, or if a
+                nominal value does not fit its array.
+            UnsupportedLayerError: if a layer has no implementation.
+        """
+        if not _SID.fullmatch(self.sid):
+            raise NetworkImportError(
+                f"Network '{self.sid}': the id is not an SBML SId, i.e. a letter "
+                f"or '_' followed by letters, digits and '_'"
+            )
+        if self.model.nn_model_id != self.sid:
+            raise NetworkImportError(
+                f"Network '{self.sid}': the architecture has the id "
+                f"'{self.model.nn_model_id}', the ids must agree"
+            )
+        self.check_forward()
+        self.check_arrays(self.parameters, complete=False)
 
     @classmethod
     def from_files(
@@ -140,7 +185,8 @@ class Network:
             The network.
 
         Raises:
-            NetworkImportError: if a file does not exist, if the array file
+            NetworkImportError: if a file does not exist or cannot be read, if
+                the network is not valid (see `Network`), if the array file
                 has no arrays for the network, or if an array does not belong
                 to a layer or does not have the shape of the layer.
             UnsupportedLayerError: if the network has a layer without an
@@ -148,16 +194,20 @@ class Network:
         """
         if not yaml_path.is_file():
             raise NetworkImportError(f"The NN YAML '{yaml_path}' does not exist")
-        model = NNModelStandard.load_data(str(yaml_path))
+        try:
+            model = NNModelStandard.load_data(str(yaml_path))
+        except (yaml.YAMLError, TypeError, ValueError) as err:
+            raise NetworkImportError(f"'{yaml_path}' is not a NN YAML: {err}") from err
         if not isinstance(model, NNModel):
             raise NetworkImportError(f"'{yaml_path}' is not a NN YAML")
         if sid is not None:
             model = model.model_copy(update={"nn_model_id": sid})
         network = cls(sid=model.nn_model_id, model=model)
-        if array_path is not None:
-            network.parameters = network.read_arrays(array_path)
-        network.check_arrays(network.parameters, complete=False)
-        return network
+        if array_path is None:
+            return network
+        return cls(
+            sid=network.sid, model=model, parameters=network.read_arrays(array_path)
+        )
 
     def read_arrays(self, array_path: Path) -> NetworkParameters:
         """Read the arrays of the network from an array file.
@@ -169,11 +219,12 @@ class Network:
             array_path: the HDF5 file.
 
         Returns:
-            The arrays in the PyTorch layout.
+            The arrays in the PyTorch layout, not checked against the
+            architecture; a network created with them checks them.
 
         Raises:
-            NetworkImportError: if the file does not exist or has no arrays
-                for the network.
+            NetworkImportError: if the file does not exist, cannot be read or
+                has no arrays for the network.
         """
         data = load_array_data(array_path)
         if self.sid not in data.parameters:
@@ -199,16 +250,32 @@ class Network:
                 parameters.setdefault(layer, {})[name] = array
         return parameters
 
-    def array_specs(self) -> dict[str, dict[str, ArraySpec]]:
-        """Get the arrays of every layer of the network.
-
-        Returns:
-            The arrays of the layers, layer id -> array name -> shape and
-            kind, in the order of the layers.
+    def check_forward(self) -> None:
+        """Check the forward pass against the layers.
 
         Raises:
-            UnsupportedLayerError: if a layer has no implementation.
+            NetworkImportError: if a `call_module` node calls a layer the
+                network does not have, or if an output node does not have one
+                argument, the output or the list of the outputs.
         """
+        layer_ids = {layer.layer_id for layer in self.model.layers}
+        for node in self.model.forward:
+            if node.op == CALL_MODULE and node.target not in layer_ids:
+                raise NetworkImportError(
+                    f"Network '{self.sid}', node '{node.name}': '{node.target}' "
+                    f"is not a layer of the network, the layers are "
+                    f"{sorted(layer_ids)}"
+                )
+            if node.op == OUTPUT and len(node.args or []) != 1:
+                raise NetworkImportError(
+                    f"Network '{self.sid}', node '{node.name}': the output node "
+                    f"has {len(node.args or [])} arguments, expected one argument "
+                    f"with the outputs"
+                )
+
+    @cached_property
+    def _array_specs(self) -> dict[str, dict[str, ArraySpec]]:
+        """Get the arrays of every layer, computed once."""
         specs: dict[str, dict[str, ArraySpec]] = {}
         for layer in self.model.layers:
             layer_type = LAYERS.get(layer.layer_type)
@@ -219,19 +286,52 @@ class Network:
                     layer.layer_type,
                     "the layer is not implemented",
                 )
-            specs[layer.layer_id] = layer_type.arrays(layer.args or {})
+            args = layer.args or {}
+            try:
+                specs[layer.layer_id] = layer_type.arrays(args)
+            except KeyError as err:
+                raise NetworkImportError(
+                    f"Network '{self.sid}', layer '{layer.layer_id}': the layer "
+                    f"'{layer.layer_type}' needs the argument {err}, the "
+                    f"arguments are {args}"
+                ) from err
+            except (TypeError, ValueError) as err:
+                raise NetworkImportError(
+                    f"Network '{self.sid}', layer '{layer.layer_id}': the "
+                    f"arguments {args} do not fit the layer "
+                    f"'{layer.layer_type}': {err}"
+                ) from err
         return specs
+
+    def array_specs(self) -> dict[str, dict[str, ArraySpec]]:
+        """Get the arrays of every layer of the network.
+
+        Returns:
+            The arrays of the layers, layer id -> array name -> shape and
+            kind, in the order of the layers. The layers were checked when the
+            network was created.
+        """
+        return {layer: dict(specs) for layer, specs in self._array_specs.items()}
+
+    @cached_property
+    def _used_layers(self) -> tuple[str, ...]:
+        """Get the ids of the layers the forward pass calls, computed once."""
+        used: dict[str, None] = {}
+        for node in self.model.forward:
+            if node.op == CALL_MODULE:
+                used[node.target] = None
+        return tuple(used)
 
     def used_layers(self) -> list[str]:
         """Get the ids of the layers the forward pass calls, in its order."""
-        used: list[str] = []
-        for node in self.model.forward:
-            if node.op == CALL_MODULE and node.target not in used:
-                used.append(node.target)
-        return used
+        return list(self._used_layers)
 
     def backends(self) -> frozenset[BackendKind]:
         """Get the backends which evaluate every node of the forward pass.
+
+        This is about the evaluation of the nodes: the layers and functions
+        of the forward pass, not the layers the network defines and does not
+        call.
 
         Returns:
             The backends all layers and functions of the forward pass support.
@@ -272,7 +372,7 @@ class Network:
                 network, does not have the shape of the layer, holds a value
                 which is not finite or, with `complete`, is missing.
         """
-        specs = self.array_specs()
+        specs = self._array_specs
         for layer, arrays in parameters.items():
             if layer not in specs:
                 raise NetworkImportError(
@@ -300,7 +400,7 @@ class Network:
                     )
         if not complete:
             return
-        for layer in self.used_layers():
+        for layer in self._used_layers:
             for name, spec in specs[layer].items():
                 if spec.required and name not in parameters.get(layer, {}):
                     raise NetworkImportError(
@@ -322,7 +422,8 @@ class Network:
                 values when `None`.
 
         Returns:
-            The outputs of the network.
+            The outputs of the network, arrays which share no memory with the
+            inputs.
 
         Raises:
             NetworkImportError: if an array of a layer is missing or has the
@@ -335,7 +436,25 @@ class Network:
         self.check_arrays(arrays)
         return evaluate(self.model, arrays, inputs, NumpyBackend())
 
-    def parameter_ids(self) -> dict[str, tuple[str, str, tuple[int, ...]]]:
+    @cached_property
+    def _parameter_ids(self) -> ParameterIds:
+        """Get the ids of the elements which are parameters, computed once."""
+        ids: ParameterIds = {}
+        for layer, specs in self._array_specs.items():
+            for name, spec in specs.items():
+                if not spec.trainable:
+                    continue
+                for index in np.ndindex(spec.shape):
+                    sid = element_id(self.sid, layer, name, index)
+                    if sid in ids:
+                        raise NetworkImportError(
+                            f"Network '{self.sid}': the elements {ids[sid]} "
+                            f"and {(layer, name, index)} have the id '{sid}'"
+                        )
+                    ids[sid] = (layer, name, index)
+        return ids
+
+    def parameter_ids(self) -> ParameterIds:
         """Get the ids of the elements of the arrays which are parameters.
 
         The ids follow from the architecture, so they exist for an array
@@ -351,20 +470,7 @@ class Network:
             NetworkImportError: if two elements have the same id, which the
                 ids of two layers such as `block.0` and `block_0` cause.
         """
-        ids: dict[str, tuple[str, str, tuple[int, ...]]] = {}
-        for layer, specs in self.array_specs().items():
-            for name, spec in specs.items():
-                if not spec.trainable:
-                    continue
-                for index in np.ndindex(spec.shape):
-                    sid = element_id(self.sid, layer, name, index)
-                    if sid in ids:
-                        raise NetworkImportError(
-                            f"Network '{self.sid}': the elements {ids[sid]} "
-                            f"and {(layer, name, index)} have the id '{sid}'"
-                        )
-                    ids[sid] = (layer, name, index)
-        return ids
+        return dict(self._parameter_ids)
 
     def with_values(self, values: Mapping[str, float]) -> NetworkParameters:
         """Get the arrays with the values of some elements replaced.
@@ -377,16 +483,21 @@ class Network:
             network is not changed.
 
         Raises:
-            KeyError: if an id is not the id of an element of the network.
-            NetworkImportError: if an element of an array without nominal
-                values is set.
+            NetworkImportError: if an id is not the id of an element of the
+                network, if a value is not finite, or if an element of an
+                array without nominal values is set.
         """
-        ids = self.parameter_ids()
+        ids = self._parameter_ids
         parameters = copy_parameters(self.parameters)
         for sid, value in values.items():
             if sid not in ids:
-                raise KeyError(
+                raise NetworkImportError(
                     f"Network '{self.sid}': '{sid}' is not the id of an element"
+                )
+            if not np.isfinite(value):
+                raise NetworkImportError(
+                    f"Network '{self.sid}': the value '{value}' of '{sid}' is "
+                    f"not finite"
                 )
             layer, name, index = ids[sid]
             if name not in parameters.get(layer, {}):

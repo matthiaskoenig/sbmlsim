@@ -1,18 +1,18 @@
 """Tests of a network: its files, its ids and its forward pass."""
 
+from collections.abc import Mapping
+from dataclasses import replace
 from pathlib import Path
+from typing import Any
 
 import h5py
 import numpy as np
 import pytest
 from petab_sciml import Input, Layer, NNModel, NNModelStandard, Node
 
-from sbmlsim.sciml import (
-    BackendKind,
-    Network,
-    NetworkImportError,
-    UnsupportedLayerError,
-)
+from sbmlsim.sciml import Network, NetworkImportError, UnsupportedLayerError
+from sbmlsim.sciml.backend import BackendKind
+from sbmlsim.sciml.layers import LAYERS, ArraySpec
 from sbmlsim.sciml.network import element_id
 
 
@@ -199,6 +199,8 @@ def test_two_elements_with_one_id() -> None:
     model = _model()
     model.layers[0].layer_id = "block.0"
     model.layers[1] = model.layers[0].model_copy(update={"layer_id": "block_0"})
+    model.forward[1] = _node("layer1", "call_module", "block.0", ["net_input"])
+    model.forward[3] = _node("layer2", "call_module", "block_0", ["tanh"])
     with pytest.raises(NetworkImportError, match=r"have the id 'net1__block_0__"):
         Network(sid="net1", model=model).parameter_ids()
 
@@ -225,7 +227,7 @@ def test_values_replace_elements() -> None:
 def test_a_value_of_an_unknown_element() -> None:
     """An id which is not an element of the network is an error."""
     network = Network(sid="net1", model=_model(), parameters=_parameters())
-    with pytest.raises(KeyError, match=r"net1__layer1__weight__3_0"):
+    with pytest.raises(NetworkImportError, match=r"net1__layer1__weight__3_0"):
         network.with_values({"net1__layer1__weight__3_0": 1.0})
 
 
@@ -255,12 +257,9 @@ def test_the_backends_of_a_network() -> None:
 
 
 def test_a_layer_without_an_implementation() -> None:
-    """An unknown layer names the network, the node and the type."""
-    network = Network(sid="net1", model=_model(layer_type="LSTM"))
+    """Every layer needs an implementation, the error names the layer and its type."""
     with pytest.raises(UnsupportedLayerError, match=r"'net1'.*'layer1'.*'LSTM'"):
-        network.forward(np.zeros(2))
-    with pytest.raises(UnsupportedLayerError):
-        network.parameter_ids()
+        Network(sid="net1", model=_model(layer_type="LSTM"))
 
 
 def test_the_number_of_inputs() -> None:
@@ -287,3 +286,155 @@ def test_several_outputs() -> None:
     hidden, y = network.forward(np.array([0.5, -0.25]))
     assert hidden.shape == (3,)
     assert y.shape == (1,)
+
+
+# the errors of the import
+
+
+@pytest.mark.parametrize(
+    "content",
+    [
+        "nn_model_id: net1\nlayers: [\n",
+        "a: 1\n",
+        "- 1\n- 2\n",
+    ],
+    ids=["malformed", "not-a-network", "list"],
+)
+def test_a_yaml_which_is_not_a_network(tmp_path: Path, content: str) -> None:
+    """A file which is not a NN YAML is an error of the import naming the file."""
+    path = tmp_path / "net.yaml"
+    path.write_text(content)
+    with pytest.raises(NetworkImportError, match=r"net\.yaml") as e:
+        Network.from_files(path)
+    assert e.value.__cause__ is not None
+
+
+def test_an_array_file_which_is_not_hdf5(tmp_path: Path) -> None:
+    """A file which is not HDF5 is an error of the import naming the file."""
+    _write(tmp_path, _parameters())
+    (tmp_path / "ps.hdf5").write_text("not hdf5")
+    with pytest.raises(NetworkImportError, match=r"ps\.hdf5") as e:
+        Network.from_files(tmp_path / "net1.yaml", tmp_path / "ps.hdf5")
+    assert isinstance(e.value.__cause__, OSError)
+
+
+def test_a_layer_without_a_required_argument() -> None:
+    """The arrays of a layer follow from its arguments."""
+    model = _model()
+    model.layers[0].args = {"out_features": 3}
+    with pytest.raises(
+        NetworkImportError,
+        match=r"Network 'net1', layer 'layer1': .*'Linear'.*'in_features'",
+    ):
+        Network(sid="net1", model=model)
+
+
+def test_a_node_which_calls_no_layer() -> None:
+    """Every `call_module` node calls a layer of the network."""
+    model = _model()
+    model.forward[1] = _node("layer1", "call_module", "layer9", ["net_input"])
+    with pytest.raises(
+        NetworkImportError,
+        match=r"Network 'net1', node 'layer1': 'layer9' is not a layer",
+    ):
+        Network(sid="net1", model=model)
+
+
+@pytest.mark.parametrize("args", [[], ["layer1", "layer2"]])
+def test_an_output_node_with_one_argument(args: list) -> None:
+    """The output node has one argument, the output or the list of them."""
+    model = _model()
+    model.forward[-1] = _node("output", "output", "output", args)
+    with pytest.raises(
+        NetworkImportError, match=rf"Network 'net1', node 'output': .*{len(args)} arg"
+    ):
+        Network(sid="net1", model=model)
+
+
+# the network is validated once
+
+
+def test_the_nominal_values_are_checked() -> None:
+    """A network which is built directly checks its arrays."""
+    parameters = _parameters()
+    parameters["layer1"]["weight"] = np.ones((2, 3))
+    with pytest.raises(NetworkImportError, match=r"'weight' has the shape \(2, 3\)"):
+        Network(sid="net1", model=_model(), parameters=parameters)
+
+
+def test_the_arrays_of_the_layers_are_derived_once(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The structures of the architecture are not rebuilt on every call."""
+    calls: list[str] = []
+    linear = LAYERS["Linear"]
+
+    def arrays(args: Mapping[str, Any]) -> dict[str, ArraySpec]:
+        calls.append("arrays")
+        return linear.arrays(args)
+
+    monkeypatch.setitem(LAYERS, "Linear", replace(linear, arrays=arrays))
+    network = Network(sid="net1", model=_model(), parameters=_parameters())
+    for _ in range(3):
+        network.array_specs()
+        network.parameter_ids()
+        network.used_layers()
+        parameters = network.with_values({"net1__layer1__weight__0_0": 2.0})
+        network.forward(np.zeros(2), parameters=parameters)
+    assert calls == ["arrays", "arrays"]
+
+
+def test_the_structures_are_copies() -> None:
+    """Changing what a method returns does not change the network."""
+    network = Network(sid="net1", model=_model(), parameters=_parameters())
+    network.parameter_ids().clear()
+    network.array_specs().clear()
+    network.used_layers().clear()
+    assert len(network.parameter_ids()) == 12
+    assert list(network.array_specs()) == ["layer1", "layer2"]
+    assert network.used_layers() == ["layer1", "layer2"]
+
+
+@pytest.mark.parametrize("value", [np.nan, np.inf])
+def test_a_value_which_is_not_finite(value: float) -> None:
+    """`with_values` checks the values it writes."""
+    network = Network(sid="net1", model=_model(), parameters=_parameters())
+    with pytest.raises(
+        NetworkImportError, match=r"'net1__layer1__weight__0_0'.*not finite"
+    ):
+        network.with_values({"net1__layer1__weight__0_0": value})
+
+
+# the id of the network
+
+
+def test_the_id_is_the_id_of_the_architecture() -> None:
+    """The messages of the interpreter name the network by the id of the model."""
+    with pytest.raises(NetworkImportError, match=r"'net2'.*'net1'"):
+        Network(sid="net2", model=_model())
+
+
+@pytest.mark.parametrize("sid", ["1net", "net-1", "net.1", ""])
+def test_the_id_is_an_sid(sid: str) -> None:
+    """The ids of the elements start with the id of the network."""
+    model = _model().model_copy(update={"nn_model_id": sid})
+    with pytest.raises(NetworkImportError, match=r"is not an SBML SId"):
+        Network(sid=sid, model=model)
+
+
+def test_the_ids_of_a_file_in_the_column_major_layout(tmp_path: Path) -> None:
+    """The ids and `with_values` use the PyTorch index after the permutation."""
+    stored = {
+        layer: {name: array.T for name, array in arrays.items()}
+        for layer, arrays in _parameters().items()
+    }
+    _write(tmp_path, stored, pytorch_format=False)
+    network = Network.from_files(tmp_path / "net1.yaml", tmp_path / "net1_ps.hdf5")
+
+    ids = network.parameter_ids()
+    assert ids["net1__layer1__weight__2_1"] == ("layer1", "weight", (2, 1))
+    assert "net1__layer1__weight__1_2" not in ids
+    parameters = network.with_values({"net1__layer1__weight__2_1": 60.0})
+    expected = _parameters()["layer1"]["weight"]
+    expected[2, 1] = 60.0
+    np.testing.assert_array_equal(parameters["layer1"]["weight"], expected)
