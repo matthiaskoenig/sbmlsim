@@ -1,11 +1,13 @@
 """Tests of the nominal values and the fit parameters of a network."""
 
+import logging
 from itertools import pairwise
 
 import numpy as np
 import pytest
 from petab_sciml import Input, Layer, NNModel, Node
 
+from sbmlsim.fit.options import ParameterScaleType
 from sbmlsim.sciml import Network, NetworkImportError
 from sbmlsim.sciml.parameters import (
     covered_arrays,
@@ -237,11 +239,12 @@ def test_the_ids_are_the_ids_of_the_network() -> None:
     )
 
 
-def test_an_estimated_array_without_nominal_values() -> None:
-    """An estimated element needs a start value.
+def test_the_elements_of_a_layer_which_is_not_called(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """The elements of a layer the forward pass does not call are left out.
 
-    A layer which the forward pass does not call needs no values to be
-    evaluated, but its elements are not estimated without them.
+    The outputs do not depend on them, a fit cannot estimate them.
     """
     network = _network(with_values=False)
     model = network.model.model_copy(deep=True)
@@ -255,12 +258,32 @@ def test_an_estimated_array_without_nominal_values() -> None:
     network = Network(sid="net1", model=model)
     values = {"net1.block.layer1": 0.0, "net1.norm": 1.0, "net1.layer2": 0.5}
     assert "unused" not in nominal_parameters(network, values)
-    with pytest.raises(
-        NetworkImportError, match=r"'unused'.*'weight' is estimated and has no nominal"
-    ):
-        network_fit_parameters(
-            network, estimate={"net1.unused": True}, bounds={}, values=values
+    with caplog.at_level(logging.WARNING, logger="sbmlsim.sciml.parameters"):
+        parameters = network_fit_parameters(
+            network, estimate={"net1": True}, bounds={}, values=values
         )
+    assert "['unused']" in caplog.text
+    assert parameters
+    assert not [p.pid for p in parameters if "unused" in p.pid]
+    assert {p.scale for p in parameters} == {ParameterScaleType.LINEAR}
+    assert {p.target for p in parameters} == {None}
+
+
+def test_an_estimated_array_without_nominal_values() -> None:
+    """An estimated element needs a start value."""
+    network = _network(with_values=False)
+    with pytest.raises(NetworkImportError, match=r"has no values"):
+        network_fit_parameters(network, estimate={"net1": True}, bounds={})
+
+
+def test_the_elements_of_a_network_before_the_simulation() -> None:
+    """The elements are not entities of a model, their target says so."""
+    parameters = network_fit_parameters(
+        _network(), estimate={"net1": True}, bounds={}, external=True
+    )
+    assert parameters
+    assert all(p.target == f"sciml:{p.pid}" for p in parameters)
+    assert all(p.is_external and p.entity_id == p.pid for p in parameters)
 
 
 def test_a_layer_without_trainable_arrays() -> None:

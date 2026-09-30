@@ -53,3 +53,11 @@ class NetworkHybridizationError(NetworkError, ValueError):
     The message names the network and, where it applies, the input, the
     output or the target.
     """
+
+
+class NetworkCompilationError(NetworkError, ValueError):
+    """A network cannot be compiled into a model.
+
+    The message names the network and, where it applies, the node or the
+    target, and the reason.
+    """

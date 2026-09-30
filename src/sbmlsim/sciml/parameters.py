@@ -15,7 +15,8 @@ from collections.abc import Mapping
 
 import numpy as np
 
-from sbmlsim.fit.objects import FitParameter
+from sbmlsim.fit.objects import EXTERNAL_PREFIX, FitParameter
+from sbmlsim.fit.options import ParameterScaleType
 from sbmlsim.sciml.errors import NetworkImportError
 from sbmlsim.sciml.network import Network, NetworkParameters, copy_parameters
 
@@ -134,11 +135,16 @@ def network_fit_parameters(
     estimate: Mapping[str, bool],
     bounds: Mapping[str, tuple[float, float]],
     values: Mapping[str, float] | None = None,
+    external: bool = False,
 ) -> list[FitParameter]:
     """Create the fit parameters of the estimated elements of a network.
 
     `estimate`, `bounds` and `values` are given for the network, for a layer
     or for an array, and the more specific entry wins, see `covered_arrays`.
+
+    The elements of a layer which the forward pass does not call are left
+    out: the outputs of the network do not depend on them, so a fit cannot
+    estimate them.
 
     Args:
         network: the network with the values of its array file.
@@ -148,11 +154,15 @@ def network_fit_parameters(
             estimated element no entry covers is not bounded.
         values: key of the entry -> nominal value of the elements, which
             replaces the values of the array file.
+        external: whether the elements are not entities of a model, which is
+            the case for a network which runs before the simulation. The
+            target of such a parameter is `sciml:<id>`. The elements of a
+            network which is compiled into a model are entities of it.
 
     Returns:
         One parameter per estimated element, named by the id of the element,
-        with the nominal value as start value and the unit `dimensionless`, in the
-        order of `Network.parameter_ids`.
+        with the nominal value as start value, the linear scale and the unit
+        `dimensionless`, in the order of `Network.parameter_ids`.
 
     Raises:
         NetworkImportError: if a key does not name the network, a layer or an
@@ -164,9 +174,20 @@ def network_fit_parameters(
     bounded = resolve_entries(network, bounds)
 
     ids = network.parameter_ids()
+    used = set(network.used_layers())
+    unused = sorted(
+        {layer for layer, name in estimated if estimated[(layer, name)]} - used
+    )
+    if unused:
+        logger.warning(
+            "Network '%s': the layers %s are not called by the forward pass, "
+            "their elements are not estimated",
+            network.sid,
+            unused,
+        )
     fit_parameters: list[FitParameter] = []
     for sid, (layer, name, index) in ids.items():
-        if not estimated.get((layer, name), False):
+        if layer not in used or not estimated.get((layer, name), False):
             continue
         if name not in parameters.get(layer, {}):
             raise NetworkImportError(
@@ -181,6 +202,8 @@ def network_fit_parameters(
                 lower_bound=lower,
                 upper_bound=upper,
                 unit=ELEMENT_UNIT,
+                target=f"{EXTERNAL_PREFIX}{sid}" if external else None,
+                scale=ParameterScaleType.LINEAR,
             )
         )
     logger.info(

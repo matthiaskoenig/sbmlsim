@@ -93,11 +93,18 @@ def test_the_package_does_not_import_torch() -> None:
 def test_the_exports() -> None:
     """The package exports what the user of a network needs, not the backends."""
     assert sorted(sbmlsim.sciml.__all__) == [
+        "Hybridization",
         "Network",
+        "NetworkCompilationError",
         "NetworkError",
+        "NetworkHybridizationError",
         "NetworkImportError",
+        "NetworkInput",
         "NetworkParameters",
+        "NetworkPattern",
         "UnsupportedLayerError",
+        "compile_network",
+        "compiled_path",
         "network_fit_parameters",
         "nominal_parameters",
     ]
