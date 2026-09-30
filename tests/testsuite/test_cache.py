@@ -1,10 +1,8 @@
 """Tests of the download and the cache of a test suite."""
 
 import logging
+import multiprocessing
 import os
-import subprocess
-import sys
-import textwrap
 import time
 import zipfile
 from pathlib import Path
@@ -196,33 +194,38 @@ def _killed_staging(parent: Path, name: str) -> Path:
     return staging
 
 
+def _fetch_and_hang(url: str, target: Path, marker: Path) -> None:
+    """Fetch in a process of its own which hangs while it selects the cases."""
+
+    def select(unpacked: Path) -> Path:
+        marker.touch()
+        time.sleep(600)
+        return unpacked
+
+    cache.fetch(url, target, select=select)
+
+
 def test_a_killed_fetch_is_removed_while_a_running_one_is_kept(
     tmp_path: Path,
 ) -> None:
-    """A staging directory is stale when no process holds its lock, at any age."""
+    """A staging directory is stale when no process holds its lock, at any age.
+
+    The fetch runs in a process of multiprocessing rather than of `subprocess`:
+    `python.exe` of a virtual environment on windows is a launcher which runs
+    the interpreter as a process of its own, a kill of the launcher leaves the
+    interpreter and its lock alive. multiprocessing starts the interpreter.
+    """
     url = _archive(tmp_path / "suite.zip", {"suite-1.0/cases/001/a.txt": "a"})
     target = tmp_path / "cache" / "suite" / "1.0"
     marker = tmp_path / "selecting"
-    code = textwrap.dedent(
-        f"""
-        import time
-        from pathlib import Path
-
-        from sbmlsim.testsuite import cache
-
-        def select(unpacked: Path) -> Path:
-            Path({str(marker)!r}).touch()
-            time.sleep(600)
-            return unpacked
-
-        cache.fetch({url!r}, Path({str(target)!r}), select=select)
-        """
+    process = multiprocessing.get_context("spawn").Process(
+        target=_fetch_and_hang, args=(url, target, marker)
     )
-    process = subprocess.Popen([sys.executable, "-c", code])
+    process.start()
     try:
         deadline = time.monotonic() + 60
         while not marker.exists():
-            assert process.poll() is None, "the fetch ended before it selected"
+            assert process.is_alive(), "the fetch ended before it selected"
             assert time.monotonic() < deadline, "the fetch did not select"
             time.sleep(0.05)
         (staging,) = target.parent.iterdir()
@@ -232,11 +235,16 @@ def test_a_killed_fetch_is_removed_while_a_running_one_is_kept(
         assert (staging / cache.LOCK_NAME).is_file()
     finally:
         process.kill()
-        process.wait()
+        process.join()
 
-    # killed a moment ago, nothing releases the directory but the next fetch
+    # killed a moment ago, nothing releases the directory but the next fetch.
+    # Windows may release the lock of a process a moment after it has ended
     assert staging.is_dir()
-    assert cache.remove_stale(target) == [staging]
+    deadline = time.monotonic() + 10
+    while not (removed := cache.remove_stale(target)):
+        assert time.monotonic() < deadline, "the lock of the killed fetch is held"
+        time.sleep(0.1)
+    assert removed == [staging]
     assert list(target.parent.iterdir()) == []
 
 
