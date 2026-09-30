@@ -7,8 +7,8 @@ import numpy as np
 import pytest
 from petab_sciml import NNModel
 
-from sbmlsim.sciml import BackendKind, Network, NetworkImportError
-from sbmlsim.sciml.backend import NUMPY_ONLY
+from sbmlsim.sciml import Network, NetworkImportError
+from sbmlsim.sciml.backend import NUMPY_ONLY, BackendKind
 from sbmlsim.sciml.layers import LAYERS
 
 CONV_CASES: list[tuple[str, dict[str, Any], tuple[int, ...]]] = [
