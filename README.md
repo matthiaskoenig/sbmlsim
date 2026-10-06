@@ -27,18 +27,18 @@ If you have any questions or issues please [open an issue](https://github.com/ma
 
 If you use `sbmlsim` please cite the archived software on [Zenodo](https://doi.org/10.5281/zenodo.3597770):
 
-> König, M. (2026). *sbmlsim: SBML simulation made easy* (Version 0.6.0) [Computer software]. Zenodo. https://doi.org/10.5281/zenodo.22653603
+> König, M. (2026). *sbmlsim: SBML simulation made easy* (Version 0.8.0) [Computer software]. Zenodo. https://doi.org/10.5281/zenodo.23190970
 
 ```bibtex
 @software{konig_sbmlsim,
   author    = {König, Matthias},
   title     = {sbmlsim: SBML simulation made easy},
   year      = {2026},
-  month     = sep,
-  version   = {0.6.0},
+  month     = oct,
+  version   = {0.8.0},
   publisher = {Zenodo},
-  doi       = {10.5281/zenodo.22653603},
-  url       = {https://doi.org/10.5281/zenodo.22653603},
+  doi       = {10.5281/zenodo.23190970},
+  url       = {https://doi.org/10.5281/zenodo.23190970},
 }
 ```
 
