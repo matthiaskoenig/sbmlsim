@@ -1,7 +1,9 @@
 """Test the profile likelihood analysis of the parameters of a fit."""
 
+import re
 from pathlib import Path
 
+import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import pytest
@@ -9,6 +11,7 @@ from scipy.stats import chi2
 
 from sbmlsim.fit import FitSettings, ParameterSet, ParameterSets
 from sbmlsim.fit.cli import FitDefinition, identifiability_cli
+from sbmlsim.fit.fisher import fisher_information
 from sbmlsim.fit.identifiability import (
     Identifiability,
     IdentifiabilityResult,
@@ -21,6 +24,7 @@ from sbmlsim.fit.identifiability import (
 )
 from sbmlsim.fit.objects import FitParameter
 from sbmlsim.fit.optimization import OptimizationProblem
+from sbmlsim.fit.options import ParameterScaleType
 from sbmlsim.fit.report import FitReport
 
 #: settings of a fast analysis of the reference problem, plain scans with a
@@ -29,13 +33,13 @@ SCAN_SETTINGS = ProfileSettings(
     reoptimize=False, initial_step=0.5, min_step=0.1, max_step=2.0, max_points=6
 )
 
-#: tolerance the cost of a scan is compared with between processes. A worker
-#: integrates on a fresh roadrunner instance while the serial scans reuse one,
-#: so a cost differs by about the relative tolerance of the integrator, `1e-6`
-#: in `fit_settings`; this is that with headroom. It still separates the scans:
-#: a scan which took another path differs by the threshold of the test, i.e.
-#: `1.92` in the cost, not by a millionth of it
-COST_RTOL = 1e-3
+#: tolerance the cost of a scan is compared with between processes. The
+#: residuals of a problem do not depend on its earlier evaluations, so a
+#: worker on a fresh roadrunner instance gives the cost of the serial scans;
+#: the headroom covers the first load of a model by roadrunner, which differs
+#: from the later ones by about `1e-9` relative. A scan which took another
+#: path differs by the threshold of the test, i.e. `1.92` in the cost
+COST_RTOL = 1e-8
 
 
 def _profile(
@@ -106,7 +110,7 @@ def test_profile_identifiable() -> None:
         costs=[5.0, 2.0, 1.0, 2.0, 5.0],
         index_optimum=2,
     )
-    profile.evaluate(threshold=3.0, flatness_cost=0.1)
+    profile.evaluate(threshold=3.0, flatness_cost=0.1, scale=ParameterScaleType.LOG10)
     assert profile.identifiability is Identifiability.IDENTIFIABLE
     assert profile.ci_lower is not None and 0.1 < profile.ci_lower < 1.0 / 3.0
     assert profile.ci_upper is not None and 3.0 < profile.ci_upper < 10.0
@@ -118,8 +122,102 @@ def test_profile_crossing_interpolation() -> None:
     """The crossing is interpolated linearly in the logarithm of the parameter."""
     profile = _profile(values=[1.0, 100.0], costs=[1.0, 3.0], index_optimum=0)
     # halfway in the cost is halfway in log10, i.e., at 10
-    assert profile.crossing(threshold=2.0, direction=+1) == pytest.approx(10.0)
-    assert profile.crossing(threshold=2.0, direction=-1) is None
+    assert profile.crossing(
+        threshold=2.0, direction=+1, scale=ParameterScaleType.LOG10
+    ) == pytest.approx(10.0)
+    assert (
+        profile.crossing(threshold=2.0, direction=-1, scale=ParameterScaleType.LOG10)
+        is None
+    )
+
+
+def test_profile_crossing_on_the_linear_scale() -> None:
+    """A parameter on the linear scale is interpolated linearly."""
+    profile = _profile(values=[1.0, 100.0], costs=[1.0, 3.0], index_optimum=0)
+    crossing = profile.crossing(
+        threshold=2.0, direction=+1, scale=ParameterScaleType.LINEAR
+    )
+    assert crossing == pytest.approx(50.5)
+
+
+def _linear_result() -> IdentifiabilityResult:
+    """Get a result with an element of a network and a parameter of the model.
+
+    The element `w` is on the linear scale with infinite bounds and a negative
+    optimum, the parameter `k` is on the logarithmic scale of the settings.
+    """
+    w = np.array([-4.0, -3.0, -2.0, -1.0, 0.5])
+    k = np.array([0.5, 1.0, 2.0])
+    return IdentifiabilityResult(
+        opid="hybrid",
+        parameter_set=ParameterSet(sid="fit", values={"w": -2.0, "k": 1.0}),
+        parameters=[
+            FitParameter(
+                "w", -2.0, unit="dimensionless", scale=ParameterScaleType.LINEAR
+            ),
+            FitParameter("k", 1.0, 0.1, 10.0, unit="1/min"),
+        ],
+        settings=ProfileSettings(),
+        fit_settings=FitSettings(),
+        cost=1.0,
+        profiles={
+            "w": ParameterProfile(
+                pid="w",
+                values=w,
+                costs=np.array([5.0, 2.0, 1.0, 2.0, 5.0]),
+                paths=np.column_stack([w, np.array([0.8, 0.9, 1.0, 1.1, 1.3])]),
+                converged=np.ones(5, dtype=bool),
+                index_optimum=2,
+            ),
+            "k": ParameterProfile(
+                pid="k",
+                values=k,
+                costs=np.array([4.0, 1.0, 4.0]),
+                paths=np.column_stack([np.array([-2.5, -2.0, -1.0]), k]),
+                converged=np.ones(3, dtype=bool),
+                index_optimum=1,
+            ),
+        },
+    )
+
+
+def test_the_profiles_of_a_parameter_on_the_linear_scale(tmp_path: Path) -> None:
+    """The axis of a profile is the scale of its parameter, with finite limits.
+
+    An element of a network has infinite bounds and may be negative.
+    """
+    result = _linear_result()
+    assert result.scale("w") is ParameterScaleType.LINEAR
+    assert result.scale("k") is ParameterScaleType.LOG10
+    threshold = result.threshold
+    profile = result.profiles["w"]
+    # the crossing is linear between -3 (cost 2) and -4 (cost 5)
+    assert profile.ci_lower == pytest.approx(-3.0 - (threshold - 2.0) / 3.0)
+
+    figure = plot_profiles(result)
+    ax_w, ax_k = figure.axes[:2]
+    assert ax_w.get_xscale() == "linear"
+    assert ax_k.get_xscale() == "log"
+    lower, upper = ax_w.get_xlim()
+    assert np.isfinite(lower) and np.isfinite(upper)
+    assert lower < -4.0 and upper > 0.5
+    assert ax_k.get_xlim() == pytest.approx((0.1 / 1.5, 10.0 * 1.5))
+    plt.close(figure)
+
+    plot_profiles(result, path=tmp_path / "profiles.svg")
+    plot_profile(result, pid="w", path=tmp_path / "profile_w.svg")
+    assert (tmp_path / "profiles.svg").exists()
+    assert (tmp_path / "profile_w.svg").exists()
+
+    # the paths are differences for linear and ratios for logarithmic ones
+    figure = plot_profile(result, pid="k")
+    (line,) = figure.axes[1].get_lines()[:1]
+    np.testing.assert_allclose(line.get_ydata(), [-0.5, 0.0, 1.0])
+    plt.close(figure)
+    figure = plot_profile(result, pid="w")
+    (line,) = figure.axes[1].get_lines()[:1]
+    np.testing.assert_allclose(line.get_ydata(), np.log10([0.8, 0.9, 1.0, 1.1, 1.3]))
+    plt.close(figure)
 
 
 def test_profile_non_identifiable_lower() -> None:
@@ -127,7 +225,7 @@ def test_profile_non_identifiable_lower() -> None:
     profile = _profile(
         values=[0.01, 0.1, 1.0, 10.0], costs=[1.2, 1.1, 1.0, 5.0], index_optimum=2
     )
-    profile.evaluate(threshold=3.0, flatness_cost=0.05)
+    profile.evaluate(threshold=3.0, flatness_cost=0.05, scale=ParameterScaleType.LOG10)
     assert profile.identifiability is Identifiability.NON_IDENTIFIABLE_LOWER
     assert profile.ci_lower is None
     assert profile.ci_upper is not None
@@ -138,7 +236,7 @@ def test_profile_non_identifiable_upper() -> None:
     profile = _profile(
         values=[0.01, 1.0, 10.0, 100.0], costs=[5.0, 1.0, 1.5, 1.6], index_optimum=1
     )
-    profile.evaluate(threshold=3.0, flatness_cost=0.05)
+    profile.evaluate(threshold=3.0, flatness_cost=0.05, scale=ParameterScaleType.LOG10)
     assert profile.identifiability is Identifiability.NON_IDENTIFIABLE_UPPER
     assert profile.ci_lower is not None
     assert profile.ci_upper is None
@@ -151,7 +249,7 @@ def test_profile_non_identifiable_both() -> None:
         costs=[2.0, 1.5, 1.0, 1.5, 2.0],
         index_optimum=2,
     )
-    profile.evaluate(threshold=3.0, flatness_cost=0.05)
+    profile.evaluate(threshold=3.0, flatness_cost=0.05, scale=ParameterScaleType.LOG10)
     assert profile.identifiability is Identifiability.NON_IDENTIFIABLE
     assert profile.ci_lower is None and profile.ci_upper is None
 
@@ -163,7 +261,7 @@ def test_profile_structural() -> None:
         costs=[1.0, 1.001, 1.0, 1.0, 1.002],
         index_optimum=2,
     )
-    profile.evaluate(threshold=3.0, flatness_cost=0.05)
+    profile.evaluate(threshold=3.0, flatness_cost=0.05, scale=ParameterScaleType.LOG10)
     assert profile.identifiability is Identifiability.STRUCTURAL
     assert profile.identifiability.label == "structurally non-identifiable"
     assert not profile.identifiability.is_identifiable
@@ -320,7 +418,7 @@ def test_parallel_equals_serial(
     """The scans of the workers give the result of the serial scans.
 
     The scans take the same path, i.e. the same parameter values, and their
-    costs agree up to the integrator, see `COST_RTOL`.
+    costs agree, see `COST_RTOL`.
     """
     serial = _result_of_scan(op_hctz_pk, fit_settings)
     parallel = profile_likelihood(
@@ -393,6 +491,7 @@ def test_report_with_identifiability(
         settings=fit_settings,
         parameter_sets=ParameterSets([result.parameter_set]),
         identifiability=result,
+        fisher=fisher_information(op_hctz_pk, fit_settings, result.parameter_set),
         mapping_figures=False,
     )
     results_dir = report.create(output_dir=tmp_path, name="report")
@@ -405,6 +504,23 @@ def test_report_with_identifiability(
     html = (results_dir / "index.html").read_text(encoding="utf-8")
     assert 'id="identifiability"' in html
     assert "structurally non-identifiable" in html
+    # the cards of the analysis and of the table of seven columns take the
+    # width of the page, a narrow card is too small for the table
+    section = html[html.index('id="identifiability"') :]
+    cards = re.findall(
+        r'<div class="(card[^"]*)">\s*<h3>(Analysis|Parameters)</h3>', section
+    )
+    assert [name for _, name in cards] == ["Analysis", "Parameters"] * 2
+    assert {css for css, _ in cards} == {"card wide"}
+    # the Fisher information and the profiles are one section with one heading
+    assert html.count("<section") == html.count("</section>")
+    assert html.count("<h2>Identifiability</h2>") == 1
+    heading = section.index("<h2>Identifiability</h2>")
+    assert heading < section.index("<h3>Fisher information</h3>")
+    assert section.index("<h3>Fisher information</h3>") < section.index(
+        "<h3>Profile likelihood</h3>"
+    )
+    assert section.index("<h3>Profile likelihood</h3>") < section.index("</section>")
     assert "Identifiability" in (results_dir / "report.txt").read_text(encoding="utf-8")
 
 

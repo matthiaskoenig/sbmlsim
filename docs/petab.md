@@ -14,6 +14,8 @@ from sbmlsim.fit.petab_v2 import to_petab
 yaml_file = to_petab(problem, Path("results") / "petab", settings=settings)
 ```
 
+`to_petab(..., parameter_set=fitted)` writes the values of a `ParameterSet`, e.g. the result of a fit, instead of the start values: they are the `nominalValue` of the parameter table, the start values of the `sbmlsim` block and the values of the arrays of the networks, so the problem which is read again starts from the fit. The problem which is exported is not changed.
+
 The problem is translated as follows:
 
 | `sbmlsim` | PEtab v2 |
@@ -48,7 +50,7 @@ opt_result = run_optimization(problem=problem, settings=settings, size=5, n_core
 
 The reader builds a `SimulationExperiment` from the tables, in the same way the SED-ML parser builds one from a document: the models of the problem are its models, its experiments are the timecourse simulations, its observables are the fit mappings and the measurements of an observable are its dataset. `PetabReader` gives access to the parts.
 
-An experiment of PEtab is a simulation with its conditions and the observables which are measured in it, which is what a `FitMappingCollection` is, so the reader gives one collection back per experiment of the problem. A fit which is written and read again therefore comes back as one collection per simulation rather than as the collections it was defined with, which is the same fit of the same data.
+An experiment of PEtab is a simulation with its conditions and the observables which are measured in it, which is what a `FitMappingCollection` is, so the reader gives one collection back per experiment of the problem. A fit mapping is an observable in an experiment: it is named after its observable, and `<observable>_<experiment>` when the observable is measured in several experiments. The math of an observable formula is translated into the math of SBML, e.g. `log` of PEtab is the natural logarithm and `log` of a formula of SBML is the one to the base 10. A fit which is written and read again therefore comes back as one collection per simulation rather than as the collections it was defined with, which is the same fit of the same data.
 
 ## What PEtab does not express
 
@@ -70,17 +72,152 @@ console.print(gaps_table(gaps_of_problem(problem)))
 
 A gap is of one of three kinds:
 
-- **extension**: PEtab has no place for it and the extension carries it, i.e. the units, the settings of the fit, the kind of every mapping, the output grid of the timecourses, the metadata of a curve and the settings of the integrator. The scale the optimizer searches in is part of the settings, which is where PEtab v2 puts it as well: it removed the `parameterScale` of its parameter table because the scale is a property of the optimization and not of the problem, so the bounds and the start values are written on the linear scale. The round trip through `sbmlsim` is exact, a tool which reads the problem without the extension gets a valid PEtab problem which does not know these things.
-- **lossy**: the information is transformed. The weights of `sbmlsim` are not the standard deviation PEtab uses as the noise, a pre-simulation of a finite duration is not the pre-equilibration of PEtab, and the reader builds one simulation experiment for a problem, so a task selects the observables of the whole problem rather than those of the experiment a measurement came from.
-- **unsupported**: the export raises. A structural model change (`ModelChange.clamp_species`), an observable which is a python function and a mapping whose x is not the time of the simulation have no PEtab representation.
+- **extension**: PEtab has no place for it and the extension carries it, i.e. the units, the settings of the fit, the kind of every mapping, the output grid of the timecourses, the metadata of a curve and the settings of the integrator. The scale the optimizer searches in is part of the settings, which is where PEtab v2 puts it as well: it removed the `parameterScale` of its parameter table because the scale is a property of the optimization and not of the problem, so the bounds and the start values are written on the linear scale. A parameter with a scale of its own (`FitParameter.scale`), e.g. an element of a neural network on the linear scale, is the `sciml-parameter-scale` gap. The round trip through `sbmlsim` is exact, a tool which reads the problem without the extension gets a valid PEtab problem which does not know these things.
+- **lossy**: the information is transformed. The noise model of PEtab is its objective and is only evaluated by `sbmlsim`, the weights of `sbmlsim` are not the standard deviation PEtab uses as the noise, a pre-simulation of a finite duration is not the pre-equilibration of PEtab, and the reader builds one simulation experiment for a problem, so a task selects the observables of the whole problem rather than those of the experiment a measurement came from.
+- **unsupported**: the export raises. A structural model change (`ModelChange.clamp_species`), an observable which is a python function and a mapping whose x is not the time of the simulation have no PEtab representation. The reader raises for a problem which requires the extension of another tool.
 
 The round trip of the HCTZ example keeps the settings, the parameters with their units, the mappings with their kinds and the reference data of every mapping, and its cost agrees to `7e-6`, which is the `selections` gap above.
 
 A parameter which is estimated separately for parts of the data is a condition of PEtab: the condition assigns the entity of the model the value of the estimated parameter, and the experiments of the subset reference it. The selector which chose the subset is a python callable and is not written; PEtab stores the resolution, so a problem which is read back selects the same fit mappings by their id. The fit, its cost and its parameters are the same, i.e. the round trip is exact in effect and not in source form.
 
+## The log-likelihood
+
+PEtab defines the objective of a problem as the likelihood of its measurements under a noise model, and `sbmlsim` fits by weighted least squares. `sbmlsim.fit.petab_v2.likelihood` calculates the log-likelihood of a problem for its evaluation, e.g. to compare a parameter set with the result of another tool. The optimizer does not use it.
+
+```py
+from dataclasses import replace
+from pathlib import Path
+
+from sbmlsim.fit.petab_v2 import from_petab, gradient, log_likelihood
+
+problem, settings = from_petab(Path("results") / "petab" / "problem.yaml")
+problem.initialize(settings)
+
+llh = log_likelihood(problem)
+llh_fit = log_likelihood(problem, parameters=opt_result.parameter_set())
+
+# a gradient needs an integrator which is more exact than its step
+problem.initialize(
+    replace(
+        settings,
+        variable_step_size=False,
+        absolute_tolerance=1e-12,
+        relative_tolerance=1e-10,
+    )
+)
+grad = gradient(problem)
+```
+
+`log_likelihood` simulates the problem at the parameters and sums the log density of every measurement of the training data; the validation data and the outliers do not enter, and neither do the residual, the weights and the loss function of the `FitSettings`. Without parameters it is evaluated at the nominal values, i.e. the start values of the parameters, which are the `nominalValue` of the parameter table of a problem which was read. The simulation `y` is the median of the distribution of the measurement `m` and the noise formula gives its scale `σ`, which are the definitions of PEtab v2:
+
+| `noiseDistribution` | log density of a measurement |
+| --- | --- |
+| `normal` | `-0.5 log(2π σ²) - 0.5 ((m - y) / σ)²` |
+| `log-normal` | `-0.5 log(2π σ² m²) - 0.5 ((log m - log y) / σ)²` |
+| `laplace` | `-log(2σ) - abs(m - y) / σ` |
+| `log-laplace` | `-log(2σ m) - abs(log m - log y) / σ` |
+
+The reader keeps the noise formula and the noise distribution of every observable as the `NoiseModel` of its fit mapping, `problem.noise_models` holds them after `initialize`, and the export writes them back, so a round trip keeps the noise. The symbols of a noise formula are resolved as follows:
+
+| symbol | value |
+| --- | --- |
+| a placeholder of `noisePlaceholders` | the `noiseParameters` of the measurement, a number or a formula of parameters |
+| the id of the observable | the simulation at the measurement |
+| a parameter of the fit | the value of the parameter set |
+| another parameter of the parameter table | the value of the parameter set if it has one, the `nominalValue` otherwise |
+
+A parameter of the noise which the problem estimates is therefore evaluated and not estimated, which is the `noise-parameters` gap: `log_likelihood(problem, ParameterSet(sid="fit", values={..., "sd_obs": 0.1}))` gives the log-likelihood another tool reports for its estimate. A noise formula over anything else, e.g. a species of the model, is read with a warning and `log_likelihood` raises for it. A fit mapping which has no noise model, i.e. every mapping of a problem which is defined in python, has a normal noise whose standard deviation is the error of its reference data as the problem resolves it: the standard deviations of the data, the standard errors when the data has none, and for a point whose error is zero or missing the largest error of its curve; data without errors, or whose errors are all zero or missing, has the scale `1.0`. The log-likelihood uses these errors and the export writes them, so a problem and its PEtab problem have the same log-likelihood. A `NoiseModel` is given to a `FitMapping` with its `noise` argument.
+
+The log-likelihood is the one of the measurements, so a problem whose residuals are relative to the baseline of a curve (`ABSOLUTE_TO_BASELINE`, `NORMALIZED_TO_BASELINE`) has none and `log_likelihood` raises. The logarithmic distributions require positive measurements and simulations.
+
+`gradient` is the central finite difference of the log-likelihood on the linear scale, with the step `step * max(|x|, 1)` for every parameter of the fit, and returns a `pandas.Series` indexed by the ids of the parameters. The difference is of three points by default and of five points with `order=4`, whose error grows with the fourth power of the step instead of the square: the log-likelihood of a model which oscillates is strongly curved in the parameters of a neural network, and the reference values of the PEtab SciML test suite are differences of five points. The model is not simulated outside the bounds of a parameter: next to a bound the difference is one sided with the full step (three points, five points with `order=4`), because a step which is shrunk to the distance to the bound divides the error of a simulation by a vanishing step; a parameter outside its bounds is an error. Two fall backs are logged, one warning per call which names the parameters: the difference of three points where the bounds leave no room for the five points of `order=4`, and the secant of the bounds where the bounds are closer than the steps of a difference. A difference divides the error of a simulation by the step. With `variable_step_size=True` the data is interpolated on the steps of the integrator, which differ between two simulations, so the simulations of one problem differ by `1e-6` however tight the tolerances are and the gradient is noise; `gradient` logs a warning in this case.
+
+## Extensions of other tools
+
+A problem carries the extensions of any tool in the `extensions` block of its YAML, and `required` says whether the problem can be interpreted without one of them. The reader knows the `sbmlsim` extension and, with the extra `sciml` installed, the `sciml` extension of PEtab SciML. A problem which requires another extension is not read: `from_petab` raises a `ValueError` which names the extension, before `petab` reads the files of the problem; a problem which requires `sciml` without the extra raises an `ImportError` which names `pip install sbmlsim[sciml]`. An extension which is not required is ignored and the log says so.
+
+## Hybrid problems of PEtab SciML
+
+[PEtab SciML](https://github.com/PEtab-dev/petab_sciml) is the extension of PEtab v2 for hybrid problems, in which the model is combined with neural networks. The extra `sciml` (`pip install sbmlsim[sciml]`, which brings `petab-sciml`, `h5py` and `pyyaml`) is required to read one. `sbmlsim.sciml` is the native half: a `Network` is the architecture and the arrays of a network, which `Network.forward` evaluates with numpy, and a `Hybridization` says where it sits, in one of three patterns:
+
+| pattern | the network is evaluated | inputs | outputs |
+| --- | --- | --- | --- |
+| `pre_initialization` | once per simulation, with numpy, before the simulation | constants: formulas of parameters, arrays | changes of the simulation, i.e. parameters or initial values |
+| `rhs` | by roadrunner at every step, compiled into the model | formulas of species, parameters and time, arrays | parameters of the rate equations |
+| `observable` | by roadrunner at every step, compiled into the model | formulas of species, parameters and time, arrays | symbols of an observable |
+
+`compile_network` compiles a network of the last two patterns into the model as parameters with assignment rules, one rule per unit and one layer deep, so the size of the model grows with the number of units and not with the depth of the network. The target of an output in the right hand side is a parameter of the model, which becomes variable; a rule or an event which sets it is refused. A layer without MathML (convolution, pooling, normalization, `gelu` with the error function) cannot be compiled, such a network runs before the simulation. A softmax is compiled without a maximum, which roadrunner inlines to `n**2` terms for `n` units, and a `log_softmax` needs the maximum in every unit, which before SBML L3V2 is a piecewise with `n**2` conditions: measured, 8 units load in 25 s at L3V1 and in 1.2 s at L3V2, and 16 units are unusable before L3V2.
+
+A hybrid fit is defined in python with the same objects: `Hybridization.fit_parameters(estimate, bounds)` gives one parameter of the fit per estimated element, with the value the network carries as its start value, and the hybridization with every other element frozen, and `OptimizationProblem(..., hybridizations=[...])` runs the networks. `network_fit_parameters(network, estimate, bounds, external=...)` is the primitive it and the reader share, for networks without a hybridization; it freezes nothing. The nominal values are the values of the network, which `nominal_parameters` sets for the network, a layer or an array and `dataclasses.replace(network, parameters=...)` gives to the network, so the frozen elements run with the values the fit parameters start from.
+
+The reader translates a problem with the `sciml` extension into these objects: the model with the networks is written as `<stem>_sciml.xml`, next to the model by default, `derived_dir` of the reader redirects it, the elements of the networks are parameters of the fit on the linear scale, and `from_petab` gives a problem which is simulated, evaluated and fitted like any other. An element of a network which is not frozen is estimated and therefore a parameter of the fit, a network before the simulation refuses an element which no parameter of the fit provides, and a parameter of the fit must not write a frozen element or an output. The inputs of a network are the ones of the first period of an experiment: the reader refuses a network input which a condition of a later period sets, which includes a problem whose main period after a pre-equilibration sets the inputs of a network. The scale of a parameter (`FitParameter.scale`) is written as `scale` into the `sbmlsim` block and read from it, and the problems of PEtab SciML carry the column `parameterScale` of PEtab v1, which becomes the scale of the parameter when the block does not give one. The networks are read from the NN YAML and the array files without `torch`, which `petab` needs for them.
+
+The cost of a compiled network is the cost of its rules: a `Linear`-`tanh`-`Linear` network of 5 units per layer (51 elements) loads in `0.1 s` and simulates 101 points in `1.4 ms` against `0.6 ms` for the model without it, 20 units per layer (501 elements) load in `2 s` and simulate in `9 ms`, and 50 units per layer (2751 elements) load in `44 s` and simulate in `32 ms`. roadrunner compiles every rule when it loads the model, so the time to load grows faster than the number of units, and a large network belongs before the simulation.
+
+The cases `sciml_problem_import` of the [PEtab SciML test suite](https://github.com/PEtab-dev/petab_sciml_testsuite) compare the log-likelihood, the simulations at the measurements and the gradient (five points) with the reference values: `tox r -e sciml` downloads the suite and runs them, and `tests/data/sciml_baseline.json` lists the cases which do not pass with their reason. What `sbmlsim` does not express is in the catalogue of the gaps:
+
+- `priors`: a prior on a parameter of the model is dropped with a warning which names the parameter, the objective of `sbmlsim` has none (issue #190)
+- `sciml-priors`: the cases with priors on the parameters of a network state a log-posterior, which the log-likelihood is not, and wait for issue #190
+- `sciml-model-format`: a network in the format `pytorch`, `equinox` or `lux.jl`, which is not read
+- `sciml-layer-sbml`: a layer without MathML in the right hand side or in an observable
+- `sciml-training-mode`: dropout and the normalization layers are evaluated in evaluation mode, the reference values of the suite are built in training mode for dropout
+- `sciml-parameter-scale`: the scale of one parameter, which goes to the extension
+- `sciml-partial-array`: a fit which estimates some elements of an array or bounds them differently, which a row of the parameter table of PEtab SciML cannot say; the export raises and names the array
+- `sciml-input-formula`: an input of a network before the simulation, or with a formula per condition, which uses an entity of the model other than a parameter the fit does not estimate, e.g. a compartment; a condition of PEtab uses only the parameters of the parameter table, the export raises and names the network, the input and the entity
+
+### Writing a hybrid problem
+
+`to_petab` writes a problem with hybridizations as PEtab SciML: the model the problem was defined with, the `sciml` block of the YAML, the hybridization table, the rows of the mapping table which name the inputs, the outputs and the arrays of every network, the rows of the parameter table which say which arrays are estimated with which bounds (one row for the network with the description most of its arrays share, rows for the layers or the arrays which differ), the NN YAML `<net>.yaml` and the array file `<net>_arrays.hdf5` with the arrays of the network and of its inputs, keyed by the condition of the experiment. A model which carries compiled networks or formula observables records what was added to it (`sbmlsim.model.provenance`), and the exporter writes the model it was derived from; a derived model which was changed by hand after the derivation is refused. The values of the network are its nominal values, so the exported problem carries them in the array file and no numeric rows, and `to_petab(..., parameter_set=...)` writes the values of the set into the array file instead; the scale of a parameter goes to the `sbmlsim` block.
+
+An input of a network whose formula holds for every condition is a row of the hybridization table, which PEtab SciML evaluates along the trajectory, and an input with a formula per condition is a change of the conditions of the experiments. A parameter which only the rows of the hybridization table use, e.g. a constant of a hybridization, gets a row of the mapping table without a `modelEntityId`, so that the linter of `petab` counts it as used. A condition and an input before the simulation use only the parameters of the parameter table: a parameter of the model which the fit does not estimate is written as a row which is not estimated, any other entity of the model is the gap `sciml-input-formula`. PEtab does not allow an id in both tables, so the export refuses a simulation whose changes set a parameter of the parameter table, i.e. a parameter of the fit, and names the parameter, the experiment and the simulation.
+
+The round trip is exact: every case of the test suite which is read (`tox r -e sciml` runs `test_problem_round_trip`) and every python defined problem of `tests/sciml/test_export.py` reads back to the same parameters, hybridizations, data and log-likelihood. What cannot be written is refused with the name of the array: a fit which estimates some elements of an array, or bounds them differently, is the gap `sciml-partial-array`, because a row of PEtab SciML describes an array as a whole, and an element which is estimated must start from the value of its network, on the linear scale; `network_fit_parameters` and `Hybridization.fit_parameters(estimate, bounds)` describe the elements per network, layer and array, which is what PEtab SciML expresses. A hook which is no network is refused as well.
+
+`examples/sciml/lotka_volterra_fit.py` reads the case 001 of the test suite, fits it in one process from the values of the problem (`SamplingType.START`, one run, because a problem which is read builds its experiment at runtime, which the workers of a parallel fit cannot import), reports it, writes it with the fitted parameter set and reads it back. `examples/sciml/neural_ode/` defines a neural ODE in python, a network 2-5-5-2 of 57 elements in the right hand side of the model, trained on the first four seconds of a Lotka-Volterra system and validated on the two seconds after them; it compiles the network into the `base_path` of the problem, so that the workers of a parallel fit load the same file, fits it once from the values of the network (`SamplingType.START`) and as a multistart from random values in the bounds of the elements on several cores, and writes the better of the two fits as PEtab SciML (`python -m examples.sciml.neural_ode.fitting --runs=2 --cores=2`). Both write into `results/` of the working directory.
+
+### The report of a hybrid fit
+
+The console and the report do not list the elements of a network one by one: the overview names every network with its pattern, its layers and its targets, and shows one row per array with the number of its elements, the number of them the fit estimates, the bounds when the elements agree on them and the minimum, the maximum and the norm of the values of every parameter set; the parameter table keeps the parameters of the model, and `report.txt` has one line per array and set. The parameter sets (`parameters.json`) and the runs of the optimization (`optimization_result.tsv`, `optimization_result.json`) keep every element. A warning about a parameter at a bound counts the elements of an array (`3 of the 25 elements of 'net1.layer2.weight' within 5% of a bound`), the table of the Fisher information shows an array as one row with the norm of its values and the range of the standard errors of its elements, and the correlation matrix leaves the elements out. `profile_likelihood` and `identifiability_cli` profile the parameters which are no elements of a network, unless `pids` or `--parameter` name an element: a profile is one optimization scan per parameter, which a network of hundreds of elements makes impractical, while the Fisher information is one jacobian and covers them.
+
+### The size of a network
+
+The optimizer stays a least squares fit whose jacobian is built by finite differences: an iteration costs one simulation per parameter, so a network with `n` elements costs `n + 1` simulations per iteration. Measured on the neural ODE of the example with a fixed grid and the tolerances `1e-10`: a network of 57 elements simulates in 2 ms, an iteration takes 0.15 s and a fit of the first four seconds of the Lotka-Volterra system from a random initialization converges in 80 evaluations, i.e. 15 s; a network of 162 elements simulates in 4 ms, an iteration takes 0.7 s, and the same fit over three oscillations does not converge from a random initialization within 150 iterations (2 minutes, the cost falls from 91 to 70), which is the well known difficulty of a neural ODE over a long window and not a matter of the jacobian. A network of a few hundred elements is the size a fit with the finite difference jacobian is made for; a network of thousands of elements (2751 elements in the right hand side simulate in 32 ms, see above, i.e. 90 s per iteration) needs the gradients by sensitivities or automatic differentiation and the optimizers of the machine learning frameworks, which are out of scope. The step of the finite differences matters: the default of `sbmlsim.fit.cli` (`diff_step=0.05`, relative, made for parameters on a logarithmic scale) is too coarse for elements around zero, the examples pass `diff_step=1e-4` and `x_scale="jac"` to `run_optimization` and `run_fit`. An element without bounds starts from the value of the network in every run of a multistart; give the elements bounds when the runs should start from different values, and use `SamplingType.START` for a fit from the values of the network.
+
+### The layers
+
+The layers and the functions of PEtab SciML (the [table of PEtab SciML](https://petab-sciml.readthedocs.io/latest/layers.html), `-` where it does not list a layer for a tool) with the backends of `sbmlsim`: a layer of the `numpy` backend runs before the simulation, a layer of both backends is also compiled into the model, i.e. can sit in the right hand side or in an observable. `gelu` with the error function (`approximate="none"`, the default) is evaluated on expressions but not compiled, the error function has no MathML (gap `sciml-layer-sbml`); its approximation `approximate="tanh"` is compiled. Dropout is the identity and the normalization layers use their stored statistics, or the statistics of their input when the arrays hold none, i.e. every network is evaluated in evaluation mode (gap `sciml-training-mode`).
+
+| layer | PEtab.jl | AMICI | sbmlsim |
+| --- | --- | --- | --- |
+| `Linear` | yes | yes | numpy, sympy |
+| `Bilinear` | yes | - | numpy, sympy |
+| `Flatten` | yes | yes | numpy, sympy |
+| `Dropout`, `Dropout1d`, `Dropout2d`, `Dropout3d`, `AlphaDropout` | yes | - | numpy, sympy (the identity) |
+| `FeatureAlphaDropout` | - | - | numpy, sympy (the identity) |
+| `Conv1d`, `Conv2d`, `Conv3d` | yes | yes | numpy |
+| `ConvTranspose1d`, `ConvTranspose2d`, `ConvTranspose3d` | yes | yes | numpy |
+| `MaxPool1d`, `MaxPool2d`, `MaxPool3d` | yes | yes | numpy |
+| `AvgPool1d`, `AvgPool2d`, `AvgPool3d` | yes | yes | numpy |
+| `LPPool1d`, `LPPool2d`, `LPPool3d` | yes | yes | numpy |
+| `AdaptiveMaxPool1d`, `AdaptiveMaxPool2d`, `AdaptiveMaxPool3d` | yes | yes | numpy |
+| `AdaptiveAvgPool1d`, `AdaptiveAvgPool2d`, `AdaptiveAvgPool3d` | yes | yes | numpy |
+| `BatchNorm1d`, `BatchNorm2d`, `BatchNorm3d` | - | - | numpy (evaluation mode) |
+| `InstanceNorm1d`, `InstanceNorm2d`, `InstanceNorm3d` | - | - | numpy (evaluation mode) |
+| `LayerNorm` | - | - | numpy |
+
+| function | PEtab.jl | AMICI | sbmlsim |
+| --- | --- | --- | --- |
+| `relu`, `relu6`, `hardtanh`, `hardswish`, `hardsigmoid`, `leaky_relu` | yes | yes | numpy, sympy |
+| `selu`, `elu`, `celu`, `softplus`, `softsign`, `tanhshrink`, `mish`, `silu` | yes | yes | numpy, sympy |
+| `tanh`, `sigmoid` | yes | yes | numpy, sympy |
+| `log_sigmoid` (`logsigmoid`) | - | - | numpy, sympy |
+| `gelu` | yes | yes | numpy, sympy (compiled with `approximate="tanh"` only) |
+| `softmax`, `log_softmax` | yes | yes | numpy, sympy (see the size of `log_softmax` above) |
+| `flatten`, `cat` (`concat`, `concatenate`) | - | - | numpy, sympy |
+
 ## The example
 
-`examples/hctz_fitting/fitting/petab_problem.py` runs the layer on the reference problem, i.e. it reports the gaps of the fit, writes it, validates the problem with `petab`, lists which collection every experiment came from and reads the fit back:
+`examples/hctz_fitting/fitting/petab_problem.py` runs the layer on the reference problem, i.e. it reports the gaps of the fit, writes it, validates the problem with `petab`, lists which collection every experiment came from, reads the fit back and compares the cost and the log-likelihood of the two:
 
 ```bash
 python -m examples.hctz_fitting.fitting.petab_problem
@@ -107,7 +244,7 @@ python -m examples.petab.benchmark --runs=8 --no-identifiability
 
 The example reads the converted problem, reports what PEtab cannot express about it, fits it, analyses the identifiability of the fitted parameters and writes the report of the fit. For `Perelson_Science1996` the clearance rate `c` of the virions is identifiable and the loss rate `delta` of the infected cells is not identifiable towards zero.
 
-The observables of `Boehm_JProteomeRes2014` are formulas over several species, e.g. `(100 * pApB + 200 * pApA * specC17) / (...)`, which is not what roadrunner selects. `sbmlsim.fit.petab_v2.observables` therefore writes a copy of the model in which every such observable is a parameter with an assignment rule, and the fit selects that parameter: the math of PEtab is the math of the model, so the formula is the rule. Simulated at the nominal parameters of the problem, the observables agree with the `simulatedData` of the collection to `2e-4` at a relative tolerance of `1e-9` of the integrator.
+The observables of `Boehm_JProteomeRes2014` are formulas over several species, e.g. `(100 * pApB + 200 * pApA * specC17) / (...)`, which is not what roadrunner selects. `sbmlsim.fit.petab_v2.observables` therefore writes a copy of the model in which every such observable is a parameter with an assignment rule, and the fit selects that parameter: the identifiers of the math of PEtab are the ones of the model, and the formula is translated into the math of SBML for the rule. Simulated at the nominal parameters of the problem, the observables agree with the `simulatedData` of the collection to `2e-4` at a relative tolerance of `1e-9` of the integrator.
 
 The parameters of a problem which are not estimated are applied to the model with the nominal values of the parameter table, which is what PEtab prescribes and which the model does not have to agree with.
 
@@ -115,7 +252,7 @@ A problem of the collection is not the same fit for `sbmlsim` as it is for PEtab
 
 A simulation experiment which is read from a PEtab problem is created when the problem is read, and a class which is created cannot be pickled, so such a fit runs in one process: `n_cores=1`, which is what the example uses.
 
-Two things of the collection do not survive the conversion, and the example shows both. The parameter table of v1 has a `parameterScale`, which v2 removed and which is `FitSettings.parameter_scale` here, and the observable of the problem has a `log10-normal` noise distribution which the converter maps to `log-normal`; `sbmlsim` has no log noise, so the example fits the relative residuals (`ResidualType.NORMALIZED`) which describe a viral load over orders of magnitude in the same spirit. The problem also estimates the standard deviation `sd_task0_model0_perelson1_V` of its observable, which is not an entity of the model: `sbmlsim` fits the parameters of a model and weights the data, so it is not fitted and the reader says so.
+Two things of the collection do not survive the conversion, and the example shows both. The parameter table of v1 has a `parameterScale`, which v2 removed and which is `FitSettings.parameter_scale` here, and the observable of the problem has a `log10-normal` noise distribution which the converter maps to `log-normal`; the noise of an observable is what the log-likelihood is calculated with and not what `sbmlsim` fits, so the example fits the relative residuals (`ResidualType.NORMALIZED`) which describe a viral load over orders of magnitude in the same spirit. The problem also estimates the standard deviation `sd_task0_model0_perelson1_V` of its observable, which is not an entity of the model: `sbmlsim` fits the parameters of a model and weights the data, so it is not fitted and the reader says so.
 
 ## COMBINE archives
 

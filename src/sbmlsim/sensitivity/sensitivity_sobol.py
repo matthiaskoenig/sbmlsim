@@ -10,8 +10,10 @@ The following indices are computed:
 - Total-effect indices (ST)
 - Associated confidence intervals
 
-Sampling is based on Saltelli's extension of the Sobol sequence and requires
-(2D + 2) * N model evaluations for D parameters.
+Sampling is based on Saltelli's extension of the Sobol sequence
+(`SALib.sample.sobol`, not scrambled, so the samples do not depend on a seed)
+and requires (2D + 2) * N model evaluations for D parameters. An output which
+does not vary over the samples has no indices, they are `nan`.
 
 References:
     - Sobol, I. M. (2001). Math. Comput. Simul., 55, 271–280.
@@ -19,6 +21,7 @@ References:
     - Saltelli et al. (2010). Comput. Phys. Commun., 181, 259–270.
 """
 
+import logging
 from pathlib import Path
 from typing import ClassVar
 
@@ -27,7 +30,7 @@ import SALib
 import SALib.analyze.sobol
 import xarray as xr
 from SALib import ProblemSpec
-from SALib.sample import saltelli
+from SALib.sample import sobol as sobol_sampler
 
 from sbmlsim.sensitivity import (
     AnalysisGroup,
@@ -36,6 +39,8 @@ from sbmlsim.sensitivity import (
     SensitivitySimulation,
 )
 from sbmlsim.sensitivity.plots import plot_S1_ST_indices
+
+logger = logging.getLogger(__name__)
 
 
 class SobolSensitivityAnalysis(SensitivityAnalysis):
@@ -98,8 +103,8 @@ class SobolSensitivityAnalysis(SensitivityAnalysis):
 
         for gid in self.group_ids:
             # libsa samples based on definition
-            ssa_samples = saltelli.sample(
-                self.ssa_problems[gid], N=self.N, calc_second_order=True
+            ssa_samples = sobol_sampler.sample(
+                self.ssa_problems[gid], N=self.N, calc_second_order=True, scramble=False
             )
             self.ssa_problems[gid].set_samples(ssa_samples)
 
@@ -136,6 +141,15 @@ class SobolSensitivityAnalysis(SensitivityAnalysis):
             # level of 95%.
             for ko in range(self.num_outputs):
                 Yo = Y[:, ko]
+                if np.ptp(Yo) == 0.0:
+                    # the indices of an output without variance are not defined
+                    logger.warning(
+                        "Group '%s': the output '%s' does not vary over the "
+                        "samples, its Sobol indices are nan",
+                        gid,
+                        self.output_ids[ko],
+                    )
+                    continue
                 Si = SALib.analyze.sobol.analyze(
                     self.ssa_problems[gid],
                     Yo,

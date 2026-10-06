@@ -36,6 +36,7 @@
     </dl>
   </div>
 
+  {% if parameters %}
   <h3>Parameters</h3>
   <div class="card">
     <table data-filter="row">
@@ -62,6 +63,46 @@
     <p class="warn">{% for message in bound_warnings %}{{ message }}<br>{% endfor %}</p>
     {% endif %}
   </div>
+  {% endif %}
+  {% if hooks %}
+
+  <h3>Networks</h3>
+  <div class="card">
+    <table data-filter="row">
+      <thead><tr>
+        <th data-sort="text">network</th><th data-sort="text">pattern</th>
+        <th data-sort="text">layers</th><th data-sort="text">targets</th>
+      </tr></thead>
+      <tbody>
+      {% for hook in hooks %}
+      <tr><td class="mono">{{ hook.name }}</td><td>{{ hook.kind }}</td><td class="mono">{{ hook.description }}</td><td class="mono">{{ hook.targets }}</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+    <table data-filter="row">
+      <thead><tr>
+        <th data-sort="text">array</th>
+        <th class="num" data-sort="num">elements<span class="hint" tabindex="0" data-tip="{{ hints['elements'] }}">?</span></th>
+        <th class="num" data-sort="num">estimated<span class="hint" tabindex="0" data-tip="{{ hints['estimated'] }}">?</span></th>
+        {% for pset in parameter_set_ids %}<th class="num" data-sort="num">{{ pset }} min</th><th class="num" data-sort="num">{{ pset }} max</th><th class="num" data-sort="num">{{ pset }} norm<span class="hint" tabindex="0" data-tip="{{ hints['norm'] }}">?</span></th>{% endfor %}
+        <th class="num" data-sort="num">lower</th><th class="num" data-sort="num">upper</th>
+      </tr></thead>
+      <tbody>
+      {% for row in arrays %}
+      <tr>
+        <td class="mono">{{ row.label }}</td>
+        <td class="num mono">{{ row.elements }}</td><td class="num mono">{{ row.estimated }}</td>
+        {% for values in row.set_values %}{% for value in values %}<td class="num mono">{{ value }}</td>{% endfor %}{% endfor %}
+        <td class="num mono">{{ row.lower }}</td><td class="num mono">{{ row.upper }}</td>
+      </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+    {% if array_bound_warnings %}
+    <p class="warn">{% for message in array_bound_warnings %}{{ message }}<br>{% endfor %}</p>
+    {% endif %}
+  </div>
+  {% endif %}
 
   <h3>Settings</h3>
   <div class="card">
@@ -177,16 +218,19 @@
   {% endif %}
 </section>
 
+{% if fisher or identifiability %}
+<!-- the local analysis and the profiles are one section under one heading -->
+<section id="identifiability">
+  <h2>Identifiability</h2>
+{% endif %}
 {% if fisher %}
-<section id="{{ 'fisher' if identifiability else 'identifiability' }}">
-  {% if not identifiability %}<h2>Identifiability</h2>{% endif %}
   <h3>Fisher information</h3>
   <p>The curvature of the cost at the parameters, <code>FIM = J'J</code> with the jacobian of the weighted residuals, from which the standard errors and the correlations of the parameters follow. It is a local statement: the intervals are exact for a cost which is a quadratic around the optimum and approximate for a non-linear model, where the profile likelihood is the one to trust. The errors and the intervals are computed in the space the optimizer searches, so an interval on a logarithmic scale is not symmetric around the value.</p>
   {% if not fisher.identifiable %}
   <p class="warn">The information does not have full rank: the data does not constrain every direction in parameter space, so the errors and the correlations of the unconstrained directions cannot be read. A parameter which no data informs is such a direction.</p>
   {% endif %}
   <div class="grid">
-    <div class="card">
+    <div class="card wide">
       <h3>Analysis</h3>
       <dl class="kv">
         {% for key, value in fisher.info.items() %}<dt>{{ key }}</dt><dd class="mono">{{ value }}</dd>{% endfor %}
@@ -194,15 +238,16 @@
         <dd class="mono">{{ fisher.eigenvalues | join(", ") }}</dd>
       </dl>
     </div>
-    <div class="card">
+    <!-- the table of seven columns needs the width of the page -->
+    <div class="card wide">
       <h3>Parameters</h3>
       <table data-filter="row">
         <thead><tr>{% for column in fisher.columns %}
-          <th class="{{ 'num' if not loop.first }}" data-sort="{{ 'text' if loop.first else 'num' }}">{{ column.name }}{% if column.hint %}<span class="hint" tabindex="0" data-tip="{{ column.hint }}">?</span>{% endif %}</th>
+          <th{% if column.numeric %} class="num"{% endif %} data-sort="{{ 'num' if column.numeric else 'text' }}">{{ column.name }}{% if column.hint %}<span class="hint" tabindex="0" data-tip="{{ column.hint }}">?</span>{% endif %}</th>
         {% endfor %}</tr></thead>
         <tbody>
         {% for row in fisher.rows %}
-        <tr>{% for value in row %}<td class="{{ 'num mono' if not loop.first }}">{{ value }}</td>{% endfor %}</tr>
+        <tr>{% for value in row %}<td{% if fisher.columns[loop.index0].numeric %} class="num mono"{% endif %}>{{ value }}</td>{% endfor %}</tr>
         {% endfor %}
         </tbody>
       </table>
@@ -211,6 +256,7 @@
 
   <div class="card">
     <h3>Correlation<span class="hint" tabindex="0" data-tip="Correlation of the parameters from the covariance. A pair at plus or minus one is a pair the data only determines together, i.e. the fit trades one against the other.">?</span></h3>
+    {% if fisher.note %}<p>{{ fisher.note }}</p>{% endif %}
     <table>
       <thead><tr><th></th>{% for pid in fisher.pids %}<th class="num">{{ pid }}</th>{% endfor %}</tr></thead>
       <tbody>
@@ -220,30 +266,29 @@
       </tbody>
     </table>
   </div>
-</section>
 {% endif %}
 
 {% if identifiability %}
-<section id="identifiability">
   <style>
     .tag.identifiable { background: var(--training); }
     .tag.non_identifiable_lower, .tag.non_identifiable_upper { background: var(--outlier); }
     .tag.non_identifiable { background: #c92a2a; }
     .tag.structural { background: #862e9c; }
   </style>
-  <h2>Identifiability</h2>
+  <h3>Profile likelihood</h3>
   <p>Profile likelihood of the parameters: every parameter is fixed at values around the optimum and the other parameters are optimized again. A parameter is identifiable if its profile crosses the threshold of the confidence level on both sides of the optimum, i.e., its confidence interval is finite; practically non-identifiable if the profile stays below the threshold up to a bound of the parameter; structurally non-identifiable if the profile is flat. An open side of an interval is shown as the bound of the parameter.</p>
   {% if identifiability.better_optimum %}
   <p class="warn">A profile found a cost below the cost of the parameter set, the fit did not converge to the optimum. The threshold is relative to the lowest cost.</p>
   {% endif %}
   <div class="grid">
-    <div class="card">
+    <div class="card wide">
       <h3>Analysis</h3>
       <dl class="kv">
         {% for key, value in identifiability.info.items() %}<dt>{{ key }}</dt><dd class="mono">{{ value }}</dd>{% endfor %}
       </dl>
     </div>
-    <div class="card">
+    <!-- the table of seven columns needs the width of the page -->
+    <div class="card wide">
       <h3>Parameters</h3>
       <table data-filter="row">
         <thead><tr>
@@ -287,6 +332,8 @@
     {% endfor %}
   </div>
   {% endif %}
+{% endif %}
+{% if fisher or identifiability %}
 </section>
 {% endif %}
 

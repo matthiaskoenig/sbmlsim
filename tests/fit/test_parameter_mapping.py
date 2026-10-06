@@ -12,6 +12,7 @@ from sbmlsim.fit.cli import FitDefinition
 from sbmlsim.fit.objects import FitParameter, MappingKind
 from sbmlsim.fit.optimization import OptimizationProblem
 from sbmlsim.fit.parameter_mapping import ParameterMapping, has_renamed_targets
+from tests.fit.hooks import Scaling
 
 
 def _parameter(
@@ -284,18 +285,18 @@ def test_an_unversioned_fit_cost_is_pinned(
         op.initialize(fit_settings)
         op.cost_least_square(op.to_scale(op.xmodel))
 
-    The tolerance is `rel=1e-3`, not pytest's default `1e-6`: this exact
-    problem is on record for needing headroom of that order across
-    platforms, see `COST_RTOL` in `tests/fit/test_identifiability.py` -- a
-    cost differs from the integrator by about its own relative tolerance
-    (`1e-6` in `fit_settings`), and that differs between linux, macOS and
-    windows. `1e-3` still separates a systematic mis-binding, which moves
-    this cost by orders of magnitude, from integrator noise.
+    The tolerance is `rel=1e-4`, not pytest's default `1e-6`: a cost differs
+    from the integrator by about its own relative tolerance (`1e-6` in
+    `fit_settings`), and that differs between linux, macOS and windows; the
+    pin of 0.7.0 was `rel=1e-3` for that reason and the tighter pin was
+    measured on linux only. `1e-4` still separates a systematic mis-binding,
+    which moves this cost by orders of magnitude, from integrator noise, and
+    is a hundred times the relative tolerance of the integrator.
     """
     op_hctz_pk.initialize(fit_settings)
     x = op_hctz_pk.to_scale(op_hctz_pk.xmodel)
 
-    assert op_hctz_pk.cost_least_square(x) == pytest.approx(23.96168054253333, rel=1e-3)
+    assert op_hctz_pk.cost_least_square(x) == pytest.approx(23.96168054253333, rel=1e-4)
 
 
 def _versioned_definition(definition: FitDefinition) -> FitDefinition:
@@ -453,6 +454,37 @@ def test_two_groups_sharing_a_simulation_object_must_bind_alike() -> None:
     problem.parameter_mapping = ParameterMapping(
         parameters, {0: {0}, 1: {1}}, problem.mapping_groups, KEYS
     )
+    problem.group_derived = [[], [], []]
 
     with pytest.raises(ValueError, match="share one"):
         problem._check_shared_simulation_bindings()
+
+
+def test_two_groups_sharing_a_simulation_object_must_derive_alike() -> None:
+    """A derived change of one group must not leak into the other group.
+
+    `_simulate_groups` writes the derived changes into the shared
+    `TimecourseSim`, so a target only one group derives would be simulated
+    by the other group with the value of the first.
+    """
+    problem = OptimizationProblem.__new__(OptimizationProblem)
+    problem.opid = "shared-simulation"
+    shared_simulation = object()
+    problem.simulations = [shared_simulation, shared_simulation, object()]
+    problem.mapping_groups = [[0], [1], [2]]
+    problem.parameter_mapping = ParameterMapping(
+        [_parameter("Ka")],
+        {},
+        problem.mapping_groups,
+        KEYS,
+        group_names=["e|fm_a", "e|fm_b", "e|fm_c"],
+    )
+    problem.group_derived = [[(Scaling(target="Ka"), {})], [], []]
+
+    with pytest.raises(
+        ValueError, match=r"'e\|fm_a' and 'e\|fm_b' share one.*derive \['Ka'\]"
+    ):
+        problem._check_shared_simulation_bindings()
+    # the same derived targets are written by both groups before they simulate
+    problem.group_derived = [[(Scaling(target="Ka"), {})]] * 2 + [[]]
+    problem._check_shared_simulation_bindings()

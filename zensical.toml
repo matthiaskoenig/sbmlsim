@@ -43,6 +43,7 @@ nav = [
       { "model_roadrunner" = "api/model.model_roadrunner.md" },
       { "model_change" = "api/model.model_change.md" },
       { "model_resources" = "api/model.model_resources.md" },
+      { "provenance" = "api/model.provenance.md" },
     ] },
     { "sbmlsim.simulation" = [
       { "timecourse" = "api/simulation.timecourse.md" },
@@ -80,8 +81,10 @@ nav = [
     { "sbmlsim.fit" = [
       { "objects" = "api/fit.objects.md" },
       { "optimization" = "api/fit.optimization.md" },
+      { "derived" = "api/fit.derived.md" },
       { "options" = "api/fit.options.md" },
       { "parameters" = "api/fit.parameters.md" },
+      { "parameter_mapping" = "api/fit.parameter_mapping.md" },
       { "result" = "api/fit.result.md" },
       { "runner" = "api/fit.runner.md" },
       { "report" = "api/fit.report.md" },
@@ -99,6 +102,9 @@ nav = [
       { "petab_v2.symbols" = "api/fit.petab_v2.symbols.md" },
       { "petab_v2.observables" = "api/fit.petab_v2.observables.md" },
       { "petab_v2.gaps" = "api/fit.petab_v2.gaps.md" },
+      { "petab_v2.likelihood" = "api/fit.petab_v2.likelihood.md" },
+      { "petab_v2.sciml" = "api/fit.petab_v2.sciml.md" },
+      { "petab_v2.sciml_export" = "api/fit.petab_v2.sciml_export.md" },
     ] },
     { "sbmlsim.sensitivity" = [
       { "analysis" = "api/sensitivity.analysis.md" },
@@ -111,11 +117,24 @@ nav = [
       { "classification" = "api/sensitivity.classification.md" },
       { "plots" = "api/sensitivity.plots.md" },
     ] },
+    { "sbmlsim.sciml" = [
+      { "sciml" = "api/sciml.md" },
+      { "network" = "api/sciml.network.md" },
+      { "hybridization" = "api/sciml.hybridization.md" },
+      { "compiler" = "api/sciml.compiler.md" },
+      { "parameters" = "api/sciml.parameters.md" },
+      { "interpreter" = "api/sciml.interpreter.md" },
+      { "backend" = "api/sciml.backend.md" },
+      { "layers" = "api/sciml.layers.md" },
+      { "errors" = "api/sciml.errors.md" },
+      { "testsuite" = "api/sciml.testsuite.md" },
+    ] },
     { "sbmlsim.testsuite" = [
       { "cases" = "api/testsuite.cases.md" },
       { "runner" = "api/testsuite.runner.md" },
       { "comparison" = "api/testsuite.comparison.md" },
       { "report" = "api/testsuite.report.md" },
+      { "cache" = "api/testsuite.cache.md" },
     ] },
     { "sbmlsim.comparison" = [
       { "diff" = "api/comparison.diff.md" },

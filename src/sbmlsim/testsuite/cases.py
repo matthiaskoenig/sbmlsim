@@ -11,16 +11,15 @@ suite and cached.
 from __future__ import annotations
 
 import logging
-import os
 import re
-import shutil
 import urllib.request
-import zipfile
 from collections.abc import Iterator
 from dataclasses import dataclass, field
 from pathlib import Path
 
 import pandas as pd
+
+from sbmlsim.testsuite import cache
 
 logger = logging.getLogger(__name__)
 
@@ -35,6 +34,10 @@ SUITE_URL = (
     "https://github.com/sbmlteam/sbml-test-suite/releases/download/"
     "{version}/semantic_tests_v{version}.zip"
 )
+
+#: the environment variable which points at the cases when they are not in
+#: the cache
+SUITE_PATH_VARIABLE = "SBMLSIM_TEST_SUITE_PATH"
 
 #: the newest release of the suite
 LATEST_RELEASE_URL = (
@@ -331,11 +334,7 @@ class SemanticSuite:
         Returns:
             The directory the cases of the release live in.
         """
-        override = os.environ.get("SBMLSIM_TEST_SUITE_PATH")
-        if override:
-            return Path(override)
-        cache = Path(os.environ.get("XDG_CACHE_HOME") or Path.home() / ".cache")
-        return cache / "sbmlsim" / "test-suite" / version / "semantic"
+        return cache.cache_path(SUITE_PATH_VARIABLE, "test-suite", version, "semantic")
 
     @classmethod
     def latest_version(cls) -> str:
@@ -379,29 +378,16 @@ class SemanticSuite:
         """
         suite = cls.cached(version)
         if suite is not None:
+            # what a fetch which was killed left next to the cache, which an
+            # override is not
+            if not cache.is_overridden(SUITE_PATH_VARIABLE):
+                cache.remove_stale(suite.path)
             return suite
 
         path = cls.cache_path(version)
         url = SUITE_URL.format(version=version)
         logger.info("Downloading the SBML Test Suite '%s' from '%s'", version, url)
-
-        # unpack next to the target and move it into place, so an interrupted
-        # download does not leave a directory which looks like a cached suite
-        staging = path.parent / f".{path.name}.incomplete"
-        shutil.rmtree(staging, ignore_errors=True)
-        staging.mkdir(parents=True, exist_ok=True)
-        archive = staging / "semantic.zip"
-        try:
-            urllib.request.urlretrieve(url, archive)
-            with zipfile.ZipFile(archive) as zf:
-                zf.extractall(staging)
-            archive.unlink()
-            cases = cls._cases_dir(staging)
-            path.parent.mkdir(parents=True, exist_ok=True)
-            cases.replace(path)
-        finally:
-            shutil.rmtree(staging, ignore_errors=True)
-
+        cache.fetch(url, path, select=cls._cases_dir)
         return cls(path=path, version=version)
 
     @staticmethod

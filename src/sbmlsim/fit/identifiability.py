@@ -110,9 +110,10 @@ from matplotlib.axes import Axes
 from scipy.stats import chi2
 
 from sbmlsim.fit import display, runner
+from sbmlsim.fit.derived import group_parameters, hook_summaries
 from sbmlsim.fit.objects import FitParameter
 from sbmlsim.fit.optimization import FitTimeout, OptimizationProblem
-from sbmlsim.fit.options import FitSettings
+from sbmlsim.fit.options import FitSettings, ParameterScaleType
 from sbmlsim.fit.parameters import ParameterSet
 
 logger = logging.getLogger(__name__)
@@ -397,17 +398,22 @@ class ParameterProfile:
             return self.values[: k + 1][::-1], self.costs[: k + 1][::-1]
         return self.values[k:], self.costs[k:]
 
-    def crossing(self, threshold: float, direction: int) -> float | None:
+    def crossing(
+        self,
+        threshold: float,
+        direction: int,
+        scale: ParameterScaleType,
+    ) -> float | None:
         """Get the value at which the profile crosses the threshold.
 
         The crossing is interpolated between the last point below and the
-        first point above the threshold, in logarithmic space where the two
-        values are positive, i.e. where the scan ran on a logarithmic scale,
-        and linearly otherwise.
+        first point above the threshold, in the scale of the parameter, i.e.
+        the scale the scan ran on.
 
         Args:
             threshold: threshold on the cost.
             direction: `-1` for the crossing below the optimum, `+1` above.
+            scale: the scale of the parameter.
 
         Returns:
             The value of the parameter at the crossing, `None` if the profile
@@ -426,7 +432,7 @@ class ParameterProfile:
         if cost_b == cost_a:
             return float(values[k])
         fraction = (threshold - cost_a) / (cost_b - cost_a)
-        if value_a > 0.0 and value_b > 0.0:
+        if scale.is_log:
             log_a, log_b = np.log10(value_a), np.log10(value_b)
             return float(10 ** (log_a + fraction * (log_b - log_a)))
         return float(value_a + fraction * (value_b - value_a))
@@ -443,15 +449,21 @@ class ParameterProfile:
         _, costs = self.side(direction)
         return float(np.max(costs) - self.cost_min)
 
-    def evaluate(self, threshold: float, flatness_cost: float) -> None:
+    def evaluate(
+        self,
+        threshold: float,
+        flatness_cost: float,
+        scale: ParameterScaleType,
+    ) -> None:
         """Set the confidence interval and the classification.
 
         Args:
             threshold: threshold on the cost of the confidence intervals.
             flatness_cost: rise of the cost below which a side is flat.
+            scale: the scale of the parameter, see `crossing`.
         """
-        self.ci_lower = self.crossing(threshold, direction=-1)
-        self.ci_upper = self.crossing(threshold, direction=+1)
+        self.ci_lower = self.crossing(threshold, direction=-1, scale=scale)
+        self.ci_upper = self.crossing(threshold, direction=+1, scale=scale)
 
         flat_lower = self.rise(-1) <= flatness_cost
         flat_upper = self.rise(+1) <= flatness_cost
@@ -580,8 +592,25 @@ class IdentifiabilityResult:
     def evaluate(self) -> None:
         """Set the confidence intervals and the classifications."""
         threshold, flatness_cost = self.threshold, self.flatness_cost
-        for profile in self.profiles.values():
-            profile.evaluate(threshold=threshold, flatness_cost=flatness_cost)
+        for pid, profile in self.profiles.items():
+            profile.evaluate(
+                threshold=threshold,
+                flatness_cost=flatness_cost,
+                scale=self.scale(pid),
+            )
+
+    def scale(self, pid: str) -> ParameterScaleType:
+        """Get the scale a parameter was profiled on.
+
+        It is the `FitParameter.scale` of the parameter and the
+        `parameter_scale` of the settings of the fit for a parameter without
+        one, i.e. `OptimizationProblem.scales_initialized`.
+
+        Raises:
+            KeyError: if the problem has no parameter with the id.
+        """
+        scale = self.parameter(pid).scale
+        return self.fit_settings.parameter_scale if scale is None else scale
 
     def parameter(self, pid: str) -> FitParameter:
         """Get the fit parameter of an id.
@@ -747,9 +776,9 @@ ProfilePoint = tuple[np.ndarray, float, bool]
 def _scaled_bounds(problem: OptimizationProblem) -> tuple[np.ndarray, np.ndarray]:
     """Get the bounds of the parameters in the space of the optimizer.
 
-    The scans run in the space the fit searches, i.e. the
-    `parameter_scale` of its settings, so that a step of the scan is a step of
-    the optimizer.
+    The scans run in the space the fit searches, i.e. every parameter in its
+    own scale, which is the `parameter_scale` of the settings for a parameter
+    without one, so that a step of the scan is a step of the optimizer.
     """
     return (
         problem.to_scale([p.lower_bound for p in problem.parameters]),
@@ -912,22 +941,28 @@ def _worker_scan(task: dict[str, Any]) -> tuple[int, int, list[ProfilePoint]]:
 
 
 def _assemble_profile(
+    problem: OptimizationProblem,
     pid: str,
     theta_optimum: np.ndarray,
     cost_optimum: float,
     index: int,
     scans: Mapping[int, list[ProfilePoint]],
 ) -> ParameterProfile:
-    """Combine the scans of both directions into the profile of a parameter."""
+    """Combine the scans of both directions into the profile of a parameter.
+
+    The scans run in the space the optimizer searches every parameter in, the
+    profile has the values of the parameters, i.e. every parameter is
+    converted back with its own scale.
+    """
     lower = list(reversed(scans.get(-1, [])))
     upper = scans.get(+1, [])
     points = [*lower, (np.asarray(theta_optimum), cost_optimum, True), *upper]
-    thetas = np.array([theta for theta, _, _ in points], dtype=float)
+    paths = np.array([problem.from_scale(theta) for theta, _, _ in points], dtype=float)
     return ParameterProfile(
         pid=pid,
-        values=10.0 ** thetas[:, index],
+        values=paths[:, index],
         costs=np.array([cost for _, cost, _ in points], dtype=float),
-        paths=10.0**thetas,
+        paths=paths,
         converged=np.array([converged for _, _, converged in points], dtype=bool),
         index_optimum=len(lower),
     )
@@ -953,7 +988,10 @@ def profile_likelihood(
         settings: settings of the fit, which define the cost.
         parameter_set: optimal parameters, e.g., the best run of a fit.
         profile_settings: settings of the analysis, the defaults if `None`.
-        pids: parameters to profile, all parameters of the problem by default.
+        pids: parameters to profile, all parameters of the problem which are no
+            elements of a network by default. The elements of a network are
+            profiled when they are named: one scan per element is impractical
+            for hundreds of elements.
         n_cores: number of worker processes, the scans of the parameters run
             in parallel. A parallel analysis needs the
             `if __name__ == "__main__":` guard like a parallel fit.
@@ -965,12 +1003,35 @@ def profile_likelihood(
 
     Raises:
         KeyError: if a parameter id is not a parameter of the problem.
-        ValueError: if the parameter set is outside of the bounds of the problem.
+        ValueError: if the parameter set is outside of the bounds of the problem
+            or if there is no parameter to profile.
     """
     profile_settings = profile_settings or ProfileSettings()
     problem.initialize(settings)
 
-    pids = list(pids) if pids is not None else list(problem.pids)
+    if pids is None:
+        single, _ = group_parameters(
+            problem.parameters, hook_summaries(problem.hybridizations)
+        )
+        if len(single) < len(problem.parameters):
+            logger.info(
+                "'%s': the %d elements of the networks are not profiled, name "
+                "an element to profile it.",
+                problem.opid,
+                len(problem.parameters) - len(single),
+            )
+        if not single:
+            raise ValueError(
+                f"'{problem.opid}': there is no parameter to profile, the "
+                f"parameters of the problem are all elements of networks, name "
+                f"the ones to profile."
+            )
+        pids = [p.pid for p in single]
+    pids = list(pids)
+    if not pids:
+        raise ValueError(
+            f"'{problem.opid}': there is no parameter to profile, `pids` names none."
+        )
     unknown = [pid for pid in pids if pid not in problem.pids]
     if unknown:
         raise KeyError(
@@ -980,11 +1041,18 @@ def profile_likelihood(
 
     x = parameter_set.x(problem.pids)
     lower, upper = _scaled_bounds(problem)
-    if problem.parameter_scale.is_log and np.any(x <= 0.0):
+    negative = {
+        pid: (float(value), scale.name)
+        for pid, value, scale in zip(
+            problem.pids, x, problem.scales_initialized, strict=True
+        )
+        if scale.is_log and value <= 0.0
+    }
+    if negative:
         raise ValueError(
             f"'{problem.opid}': the parameters must be positive, the scans run in "
-            f"'{problem.parameter_scale.name}' space, got "
-            f"'{dict(zip(problem.pids, x, strict=True))}'."
+            f"the logarithmic space of a parameter, got the values and scales "
+            f"'{negative}'."
         )
     theta_optimum = problem.to_scale(x)
     outside = [
@@ -1064,6 +1132,7 @@ def profile_likelihood(
 
     profiles = {
         pid: _assemble_profile(
+            problem=problem,
             pid=pid,
             theta_optimum=theta_optimum,
             cost_optimum=cost_optimum,
@@ -1108,17 +1177,48 @@ COLORS: dict[Identifiability, str] = {
 }
 
 
+def _x_limits(
+    values: np.ndarray, lower: float, upper: float, is_log: bool
+) -> tuple[float, float]:
+    """Get the limits of the axis of a profile.
+
+    Args:
+        values: the values of the scanned parameter.
+        lower: lower bound of the parameter.
+        upper: upper bound of the parameter.
+        is_log: whether the axis is logarithmic.
+
+    Returns:
+        The finite bounds with a margin, the range of the scanned values with a
+        margin on a side without a finite bound.
+    """
+    finite = values[np.isfinite(values)]
+    lo = lower if np.isfinite(lower) and (lower > 0 or not is_log) else np.min(finite)
+    hi = upper if np.isfinite(upper) else np.max(finite)
+    lo, hi = float(lo), float(hi)
+    if is_log:
+        return lo / 1.5, hi * 1.5
+    margin = 0.1 * (hi - lo) if hi > lo else 0.1 * max(abs(lo), 1.0)
+    return lo - margin, hi + margin
+
+
 def _plot_profile_axis(
     ax: Axes, result: IdentifiabilityResult, pid: str, title: bool = True
 ) -> None:
-    """Draw the profile of a parameter on an axis."""
+    """Draw the profile of a parameter on an axis, in the scale of the parameter."""
     profile = result.profiles[pid]
     p = result.parameter(pid)
+    is_log = result.scale(pid).is_log
     color = COLORS[profile.identifiability] if profile.identifiability else "tab:blue"
+    xlim = _x_limits(profile.values, p.lower_bound, p.upper_bound, is_log)
 
-    # the confidence interval, an open side extends to the bound
-    ci_lower = p.lower_bound if profile.ci_lower is None else profile.ci_lower
-    ci_upper = p.upper_bound if profile.ci_upper is None else profile.ci_upper
+    # the confidence interval, an open side extends to the bound or the axis
+    ci_lower = (
+        max(p.lower_bound, xlim[0]) if profile.ci_lower is None else profile.ci_lower
+    )
+    ci_upper = (
+        min(p.upper_bound, xlim[1]) if profile.ci_upper is None else profile.ci_upper
+    )
     ax.axvspan(ci_lower, ci_upper, color=color, alpha=0.12, linewidth=0)
 
     ax.axhline(result.threshold, color="black", linestyle="--", label="threshold")
@@ -1151,10 +1251,11 @@ def _plot_profile_axis(
         label="optimum",
     )
     for bound in (p.lower_bound, p.upper_bound):
-        ax.axvline(bound, color="gray", linewidth=0.8)
+        if np.isfinite(bound):
+            ax.axvline(bound, color="gray", linewidth=0.8)
 
-    ax.set_xscale("log")
-    ax.set_xlim(p.lower_bound / 1.5, p.upper_bound * 1.5)
+    ax.set_xscale("log" if is_log else "linear")
+    ax.set_xlim(*xlim)
     ymax = max(result.threshold, float(np.max(profile.costs[converged])))
     span = max(ymax - result.cost_min, 1e-12)
     ax.set_ylim(result.cost_min - 0.1 * span, ymax + 0.2 * span)
@@ -1211,8 +1312,10 @@ def plot_profile(
     """Plot the profile of a parameter with the paths of the other parameters.
 
     The upper panel is the profile, the lower panel the other parameters along
-    it, relative to their values at the optimum. A parameter which changes
-    along the profile is coupled to the scanned one (Maiwald et al. 2016).
+    it, relative to their values at the optimum: `log10(parameter / optimum)`
+    for a parameter on a logarithmic scale and `parameter - optimum` for one
+    on the linear scale. A parameter which changes along the profile is
+    coupled to the scanned one (Maiwald et al. 2016).
 
     Args:
         result: result of the analysis.
@@ -1238,20 +1341,29 @@ def plot_profile(
 
     converged = profile.converged
     optimum = profile.paths[profile.index_optimum]
+    linear: list[str] = []
+    logarithmic: list[str] = []
     for k, other in enumerate(result.pids):
         if k == index:
             continue
-        ax_paths.plot(
-            profile.values[converged],
-            np.log10(profile.paths[converged, k] / optimum[k]),
-            marker=".",
-            label=other,
-        )
+        along = profile.paths[converged, k]
+        if result.scale(other).is_log:
+            logarithmic.append(other)
+            relative = np.log10(along / optimum[k])
+        else:
+            linear.append(other)
+            relative = along - optimum[k]
+        ax_paths.plot(profile.values[converged], relative, marker=".", label=other)
     ax_paths.axhline(0.0, color="gray", linestyle=":")
     ax_paths.axvline(profile.value_optimum, color="gray", linestyle=":")
     p = result.parameter(pid)
     ax_paths.set_xlabel(f"{pid} [{p.unit or 'model'}]")
-    ax_paths.set_ylabel("log10(parameter / optimum)")
+    labels = []
+    if logarithmic or not linear:
+        labels.append("log10(parameter / optimum)")
+    if linear:
+        labels.append("parameter - optimum" + (" (linear)" if logarithmic else ""))
+    ax_paths.set_ylabel(", ".join(labels))
     ax_paths.grid(alpha=0.3)
     if len(result.pids) > 1:
         ax_paths.legend(fontsize="x-small", title="other parameters")

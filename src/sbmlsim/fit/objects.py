@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 import logging
 import math
-from collections.abc import Iterable
+from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
 from enum import StrEnum
 from pathlib import Path
@@ -15,6 +15,7 @@ import numpy as np
 import pandas as pd
 
 from sbmlsim.data import Data
+from sbmlsim.fit.options import ParameterScaleType
 from sbmlsim.serialization import to_json
 from sbmlsim.units import Quantity
 
@@ -22,6 +23,11 @@ if TYPE_CHECKING:
     from sbmlsim.experiment import SimulationExperiment
 
 logger = logging.getLogger(__name__)
+
+#: prefix of the target of a parameter which is not an entity of the model.
+#: No change of the simulation is written for it, the derived changes of the
+#: problem read its value, see `sbmlsim.fit.derived`
+EXTERNAL_PREFIX = "sciml:"
 
 
 def _isclose(a: float | None, b: float | None) -> bool:
@@ -76,6 +82,120 @@ EVALUATED_KINDS: tuple[MappingKind, ...] = (
 
 #: kinds which a fit does not use at all, i.e. which are not even resolved
 UNUSED_KINDS: tuple[MappingKind, ...] = (MappingKind.EXCLUDED,)
+
+
+class NoiseDistribution(StrEnum):
+    """Distribution of the noise of a measurement.
+
+    These are the distributions of PEtab v2. The simulation is the median of
+    the distribution and the noise formula gives its scale: the standard
+    deviation of `normal`, the standard deviation of the logarithm of
+    `log-normal` and the scale `b` of `laplace` and, on the logarithm, of
+    `log-laplace`.
+    """
+
+    NORMAL = "normal"
+    LOG_NORMAL = "log-normal"
+    LAPLACE = "laplace"
+    LOG_LAPLACE = "log-laplace"
+
+    @property
+    def is_log(self) -> bool:
+        """Check whether the noise acts on the logarithm of the measurement."""
+        return self in {NoiseDistribution.LOG_NORMAL, NoiseDistribution.LOG_LAPLACE}
+
+
+@dataclass(frozen=True)
+class NoiseParameter:
+    """A parameter of a noise formula which is not an entity of a model.
+
+    Attributes:
+        pid: id of the parameter.
+        value: nominal value, which the log-likelihood uses unless the
+            parameter set it is evaluated at has a value for `pid`.
+        estimate: whether the problem the noise model was read from estimates
+            the parameter. `sbmlsim` does not estimate it, the flag and the
+            bounds are kept so that the problem is written as it was read.
+        lower_bound: lower bound of the estimation, `None` if there is none.
+        upper_bound: upper bound of the estimation, `None` if there is none.
+    """
+
+    pid: str
+    value: float
+    estimate: bool = False
+    lower_bound: float | None = None
+    upper_bound: float | None = None
+
+
+@dataclass(frozen=True)
+class NoiseModel:
+    """The noise of the measurements of a fit mapping.
+
+    The noise model does not enter the cost of a fit, which is a weighted
+    least squares fit. It is what the log-likelihood of a problem is
+    calculated with, see `sbmlsim.fit.petab_v2.likelihood`.
+
+    Attributes:
+        formula: the noise formula in the math of PEtab, e.g. `0.05`, `sd` or
+            `sigma_a + 0.1 * sd`. Its symbols are the `placeholders`, the
+            `parameters`, the parameters of the fit and the `observable`.
+        distribution: distribution of the noise.
+        placeholders: symbols of the formula which have a value per
+            measurement.
+        placeholder_values: for every measurement the values of the
+            placeholders, in the order of the measurements of the mapping. A
+            value is a number or a formula of parameters.
+        parameters: the parameters of the formula and of the placeholder
+            values which are not entities of a model, with their nominal value.
+        observable: symbol of the formula which stands for the simulation,
+            `None` if the formula has none.
+    """
+
+    formula: str
+    distribution: NoiseDistribution = NoiseDistribution.NORMAL
+    placeholders: tuple[str, ...] = ()
+    placeholder_values: tuple[tuple[float | str, ...], ...] = ()
+    parameters: tuple[NoiseParameter, ...] = ()
+    observable: str | None = None
+
+    def __post_init__(self) -> None:
+        """Coerce the fields and check them.
+
+        The distribution is coerced to the enum and the sequences to tuples,
+        so a noise model which is given a string and lists compares, hashes
+        and is written like any other.
+
+        Raises:
+            ValueError: if the formula is empty, if the distribution is not
+                one of PEtab, or if a measurement has more or fewer values
+                than the noise model has placeholders.
+        """
+        if not str(self.formula).strip():
+            raise ValueError("The noise formula of a noise model must not be empty.")
+        try:
+            distribution = NoiseDistribution(self.distribution)
+        except ValueError as err:
+            raise ValueError(
+                f"The noise distribution '{self.distribution}' is not one of "
+                f"PEtab, which are "
+                f"'{', '.join(d.value for d in NoiseDistribution)}'."
+            ) from err
+        object.__setattr__(self, "distribution", distribution)
+        object.__setattr__(self, "placeholders", tuple(self.placeholders))
+        object.__setattr__(
+            self,
+            "placeholder_values",
+            tuple(tuple(values) for values in self.placeholder_values),
+        )
+        object.__setattr__(self, "parameters", tuple(self.parameters))
+
+        for k, values in enumerate(self.placeholder_values):
+            if len(values) != len(self.placeholders):
+                raise ValueError(
+                    f"The noise formula '{self.formula}' has the placeholders "
+                    f"'{list(self.placeholders)}', but the measurement '{k}' "
+                    f"has the values '{list(values)}'."
+                )
 
 
 class FitMappingCollection:
@@ -312,6 +432,7 @@ class FitMapping:
         observable: FitData,
         weight: float | None = None,
         metadata: MappingMetaData | None = None,
+        noise: NoiseModel | None = None,
     ):
         """Initialize FitMapping.
 
@@ -325,12 +446,17 @@ class FitMapping:
             weight: weight of the fit mapping, the count of the reference data
                 is used if no weight is given.
             metadata: metadata of the mapping.
+            noise: noise model of the measurements, which the log-likelihood
+                of the problem uses. Without one the noise is normal with the
+                standard deviation of the reference data, see
+                `sbmlsim.fit.petab_v2.likelihood.default_noise_model`.
         """
         self.experiment = experiment
         self.reference = reference
         self.observable = observable
         self._weight = weight
         self.metadata = metadata
+        self.noise = noise
 
     @property
     def weight(self) -> float:
@@ -373,6 +499,7 @@ class FitParameter:
         unit: str | None = None,
         target: str | None = None,
         mappings: Any = None,
+        scale: ParameterScaleType | str | None = None,
     ):
         """Initialize FitParameter.
 
@@ -394,10 +521,45 @@ class FitParameter:
                 A selector is a callable and is not serialized: it must be a
                 module level function, because the workers of a parallel fit
                 unpickle the parameters.
+            scale: space the optimizer searches the parameter in, or its name.
+                `None` is the `parameter_scale` of the `FitSettings`. A
+                parameter which is negative or zero, e.g. a weight of a
+                network, is searched on the linear scale.
 
         Raises:
-            ValueError: if the bounds or the start value are inconsistent.
+            ValueError: if the bounds or the start value are inconsistent, if
+                a value is not a number, if the scale is not a scale, or if
+                the target is the prefix of an external target alone.
         """
+        for key, value in (("lower_bound", lower_bound), ("upper_bound", upper_bound)):
+            if value is None or np.isnan(value):
+                raise ValueError(
+                    f"FitParameter '{pid}': the '{key}' is '{value}', which is "
+                    f"not a number. A parameter without a bound has an "
+                    f"infinite one."
+                )
+        if start_value is not None and not np.isfinite(start_value):
+            raise ValueError(
+                f"FitParameter '{pid}': the start value '{start_value}' is not "
+                f"a finite number."
+            )
+        if isinstance(scale, str):
+            if scale not in ParameterScaleType.__members__:
+                raise ValueError(
+                    f"FitParameter '{pid}': the scale '{scale}' is not one of "
+                    f"{list(ParameterScaleType.__members__)}."
+                )
+            scale = ParameterScaleType[scale]
+        if scale is not None and not isinstance(scale, ParameterScaleType):
+            raise ValueError(
+                f"FitParameter '{pid}': the scale '{scale}' is not a "
+                f"`ParameterScaleType`."
+            )
+        if target == EXTERNAL_PREFIX:
+            raise ValueError(
+                f"FitParameter '{pid}': the target '{target}' names nothing, an "
+                f"external target is '{EXTERNAL_PREFIX}<id>'."
+            )
         if lower_bound > upper_bound:
             raise ValueError(
                 f"FitParameter '{pid}': lower bound '{lower_bound}' is larger than "
@@ -416,6 +578,7 @@ class FitParameter:
         self.unit = unit
         self.target = target
         self.mappings = mappings
+        self.scale: ParameterScaleType | None = scale
         if unit is None:
             logger.warning(
                 "No unit provided for FitParameter '%s', assuming model units.",
@@ -426,6 +589,21 @@ class FitParameter:
     def target_id(self) -> str:
         """Get the entity of the model the value is written to."""
         return self.target if self.target is not None else self.pid
+
+    @property
+    def is_external(self) -> bool:
+        """Check whether the parameter is not an entity of the model.
+
+        The target of such a parameter has the prefix `EXTERNAL_PREFIX`. The
+        fit writes no change for it, the derived changes of the problem read
+        its value.
+        """
+        return self.target_id.startswith(EXTERNAL_PREFIX)
+
+    @property
+    def entity_id(self) -> str:
+        """Get the target without the prefix of an external target."""
+        return self.target_id.removeprefix(EXTERNAL_PREFIX)
 
     @property
     def is_versioned(self) -> bool:
@@ -447,6 +625,7 @@ class FitParameter:
             and _isclose(self.upper_bound, other.upper_bound)
             and self.unit == other.unit
             and self.target_id == other.target_id
+            and self.scale == other.scale
         )
 
     def __hash__(self) -> int:
@@ -476,6 +655,7 @@ class FitParameter:
             "upper_bound": self.upper_bound,
             "unit": self.unit,
             "target": self.target,
+            "scale": None if self.scale is None else self.scale.name,
         }
 
     @staticmethod
@@ -492,6 +672,47 @@ class FitParameter:
     def parameters_to_df(parameters: Iterable[FitParameter]) -> pd.DataFrame:
         """DataFrame of parameters."""
         return pd.DataFrame([p.to_dict() for p in parameters])
+
+
+def describe_array(
+    label: str,
+    elements: int,
+    members: Sequence[FitParameter],
+    values: Sequence[float | None],
+) -> str:
+    """Describe an array of elements, e.g. of a network, in one line of text.
+
+    The console and the text reports show an array in place of its elements,
+    because a network has hundreds of them.
+
+    Args:
+        label: what the array is, e.g. `net1.layer1.weight`.
+        elements: number of elements of the array, estimated or not.
+        members: the parameters of the fit which are elements of the array. A
+            versioned element has one parameter per version.
+        values: the value of every member, e.g. its start value, `None` for a
+            member without one.
+
+    Returns:
+        The number of estimated elements, the minimum, the maximum and the
+        norm of the values of the members and the bounds when the members
+        agree on them.
+    """
+    estimated = len({p.entity_id for p in members})
+    noun = "element" if elements == 1 else "elements"
+    text = f"{label}: {estimated} of {elements} {noun} estimated"
+    if not members:
+        return text
+    array = np.asarray(values, dtype=float)
+    lower = {p.lower_bound for p in members}
+    upper = {p.upper_bound for p in members}
+    text += (
+        f", min {array.min():.4g}, max {array.max():.4g}, "
+        f"norm {np.linalg.norm(array):.4g}"
+    )
+    if len(lower) == 1 and len(upper) == 1:
+        text += f", bounds [{lower.pop():.4g}, {upper.pop():.4g}]"
+    return text
 
 
 class FitData:
