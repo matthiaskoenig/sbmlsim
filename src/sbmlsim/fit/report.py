@@ -1137,8 +1137,8 @@ class FitReport:
                 for pset in self.parameter_sets:
                     data = res_data[pset.sid]
                     ax.plot(
-                        data["x_obs"][k].values,
-                        data["y_obs"][k].values,
+                        data["x_obs"][k],
+                        data["y_obs"][k],
                         "-",
                         color=self.color(pset),
                         label=pset.sid,
@@ -1207,8 +1207,8 @@ class FitReport:
                     data = res_data[pset.sid]
                     color = self.color(pset)
                     ax.plot(
-                        data["x_obs"][k].values,
-                        data["y_obs"][k].values,
+                        data["x_obs"][k],
+                        data["y_obs"][k],
                         "-",
                         color=color,
                         label=pset.sid,

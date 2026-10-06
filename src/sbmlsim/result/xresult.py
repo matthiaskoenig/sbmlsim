@@ -1,6 +1,7 @@
 """Module for encoding simulation results and processed data."""
 
 import logging
+from collections.abc import Sequence
 from pathlib import Path
 from typing import Any
 
@@ -8,6 +9,7 @@ import numpy as np
 import pandas as pd
 import xarray as xr
 
+from sbmlsim.result.timecourse import TimecourseResult
 from sbmlsim.simulation import Dimension, ScanSim
 from sbmlsim.units import Quantity, UnitsInformation
 
@@ -153,15 +155,109 @@ class XResult:
         return [str(dim_id) for dim_id in self.xds.dims if dim_id != "_time"]
 
     @classmethod
+    def from_timecourses(
+        cls,
+        results: Sequence[TimecourseResult],
+        scan: ScanSim | None = None,
+        uinfo: UnitsInformation | None = None,
+    ) -> "XResult":
+        """Create XResult from the results of timecourse simulations.
+
+        Structure is based on the underlying scans: the result of the k-th
+        simulation is placed at the indices of the k-th combination of the
+        dimensions of the scan. Without a scan every result is an entry of the
+        dimension `_dfs`.
+
+        Args:
+            results: results of the individual simulations, which share their
+                columns and time points.
+            scan: Scan defining the additional dimensions.
+            uinfo: Units information.
+
+        Returns:
+            XResult combining the results.
+
+        Raises:
+            ValueError: if there are no results, a result has no time or the
+                results differ in their columns or time points.
+        """
+        if not results:
+            raise ValueError("No results of timecourse simulations.")
+
+        if uinfo is None:
+            uinfo = UnitsInformation(udict={}, ureg=None)  # ty: ignore[invalid-argument-type]  # FIXME(cross-area): UnitsInformation.ureg should allow None
+
+        first = results[0]
+        columns = first.columns
+        if "time" not in columns:
+            raise ValueError(
+                f"The results have no column 'time', the columns are {columns}."
+            )
+        n_time = len(first)
+        for result in results:
+            if result.columns != columns:
+                raise ValueError(
+                    f"The results differ in their columns: {columns} and "
+                    f"{result.columns}."
+                )
+            if len(result) != n_time:
+                raise ValueError(
+                    f"The results differ in their number of time points: "
+                    f"{n_time} and {len(result)}."
+                )
+
+        # add time dimension
+        shape = [n_time]
+        dims = ["_time"]
+        coords: dict[str, np.ndarray] = {"_time": first.time}
+
+        # Additional dimensions
+        dimensions: list[Dimension]
+        if scan is None:
+            dimensions = [Dimension("_dfs", index=np.arange(len(results)))]
+        else:
+            dimensions = scan.dimensions
+
+        # add additional dimensions
+        for dimension in dimensions:
+            shape.append(len(dimension))
+            dim_id = dimension.dimension
+            coords[dim_id] = dimension.index
+            dims.append(dim_id)
+
+        # one array for all columns with the column as the first axis, so a
+        # result is copied with a single assignment and every variable is a
+        # contiguous block of it
+        indices = Dimension.indices_from_dimensions(dimensions)
+        data = np.empty(shape=(len(columns), *shape))
+        for k, result in enumerate(results):
+            data[(slice(None), slice(None), *indices[k])] = result.values.T
+
+        # Create the DataSet, a name which appears twice is its first column
+        keys = {key: columns.index(key) for key in dict.fromkeys(columns)}
+        ds = xr.Dataset(
+            {
+                key: xr.DataArray(data=data[k], dims=dims, coords=coords)
+                for key, k in keys.items()
+            }
+        )
+        for key in keys:
+            if key in uinfo:
+                # set units attribute
+                ds[key].attrs["units"] = uinfo[key]
+        return XResult(xdataset=ds, uinfo=uinfo)
+
+    @classmethod
     def from_dfs(
         cls,
-        dfs: list[pd.DataFrame],
+        dfs: pd.DataFrame | Sequence[pd.DataFrame],
         scan: ScanSim | None = None,
         uinfo: UnitsInformation | None = None,
     ) -> "XResult":
         """Create XResult from DataFrames.
 
-        Structure is based on the underlying scans.
+        The DataFrames are converted to `TimecourseResult`, see
+        `from_timecourses`, which the simulator uses directly.
 
         Args:
             dfs: DataFrames of the individual simulations.
@@ -173,55 +269,14 @@ class XResult:
         """
         if isinstance(dfs, pd.DataFrame):
             dfs = [dfs]
-
-        if uinfo is None:
-            uinfo = UnitsInformation(udict={}, ureg=None)  # ty: ignore[invalid-argument-type]  # FIXME(cross-area): UnitsInformation.ureg should allow None
-
-        df = dfs[0]
-        num_dfs = len(dfs)
-
-        # add time dimension
-        shape = [len(df)]
-        dims = ["_time"]
-        coords = {"_time": df.time.values}
-        columns = df.columns
-        del df
-
-        # Additional dimensions
-        dimensions: list[Dimension]
-        if scan is None:
-            dimensions = [Dimension("_dfs", index=np.arange(num_dfs))]
-        else:
-            dimensions = scan.dimensions
-
-        # add additional dimensions
-        for dimension in dimensions:
-            shape.append(len(dimension))
-            dim_id = dimension.dimension
-            coords[dim_id] = dimension.index
-            dims.append(dim_id)
-
-        indices = Dimension.indices_from_dimensions(dimensions)
-        data_dict = {col: np.empty(shape=shape) for col in columns}
-        for k_df, df in enumerate(dfs):
-            for column in columns:
-                # trick to get the ':' in first time dimension
-                index = (..., *indices[k_df])
-                data = data_dict[column]
-                data[index] = df[column].values
-
-        # Create the DataSet
-        ds = xr.Dataset(
-            {
-                key: xr.DataArray(data=data, dims=dims, coords=coords)
-                for key, data in data_dict.items()
-            }
-        )
-        for key in data_dict:
-            if key in uinfo:
-                # set units attribute
-                ds[key].attrs["units"] = uinfo[key]
-        return XResult(xdataset=ds, uinfo=uinfo)
+        results = [
+            TimecourseResult(
+                columns=tuple(str(c) for c in df.columns),
+                values=df.to_numpy(dtype=float),
+            )
+            for df in dfs
+        ]
+        return cls.from_timecourses(results=results, scan=scan, uinfo=uinfo)
 
     def to_netcdf(self, path_nc: str | Path) -> None:
         """Store results as netcdf.

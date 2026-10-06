@@ -3,11 +3,11 @@
 import logging
 from pathlib import Path
 
-import pandas as pd
+import numpy as np
 import roadrunner
 
 from sbmlsim.model import AbstractModel, ModelChange, RoadrunnerSBMLModel
-from sbmlsim.result import XResult
+from sbmlsim.result import TimecourseResult, XResult
 from sbmlsim.simulation import ScanSim, Timecourse, TimecourseSim
 from sbmlsim.units import Quantity, UnitsInformation
 
@@ -125,15 +125,23 @@ class SimulatorSerial:
         _indices, simulations = scan.to_simulations()
 
         # simulate (uses respective function of simulator)
-        dfs = self._timecourses(simulations)
+        results = self._timecourses(simulations)
 
         # based on the indices the result structure must be created
-        return XResult.from_dfs(dfs=dfs, scan=scan, uinfo=self.uinfo)
+        return XResult.from_timecourses(results=results, scan=scan, uinfo=self.uinfo)
 
-    def _timecourses(self, simulations: list[TimecourseSim]) -> list[pd.DataFrame]:
+    def _timecourses(self, simulations: list[TimecourseSim]) -> list[TimecourseResult]:
+        """Run timecourse simulations.
+
+        Args:
+            simulations: unit normalized simulations.
+
+        Returns:
+            The result of every simulation.
+        """
         return [self._timecourse(sim) for sim in simulations]
 
-    def _timecourse(self, simulation: TimecourseSim) -> pd.DataFrame:
+    def _timecourse(self, simulation: TimecourseSim) -> TimecourseResult:
         """Timecourse simulation.
 
         Requires for all timecourse definitions in the timecourse simulation
@@ -141,8 +149,18 @@ class SimulatorSerial:
         for parallel simulations.
         You should never call this function directly!
 
-        :param simulation: Simulation definition(s)
-        :return: DataFrame with results
+        The result is the array roadrunner returns, a DataFrame per simulation
+        would cost as much as the simulation of a small model.
+
+        Args:
+            simulation: Simulation definition(s).
+
+        Returns:
+            The values of the timecourse selections, the timecourses which are
+            not discarded one after the other.
+
+        Raises:
+            ValueError: if every timecourse of the simulation is discarded.
         """
         if isinstance(simulation, Timecourse):
             simulation = TimecourseSim(timecourses=[simulation])
@@ -151,7 +169,7 @@ class SimulatorSerial:
         if simulation.reset:
             r.resetToOrigin()
 
-        frames = []
+        results: list[TimecourseResult] = []
         t_offset = simulation.time_offset
         for k, tc in enumerate(simulation.timecourses):
             if k == 0 and tc.model_changes:
@@ -229,12 +247,18 @@ class SimulatorSerial:
             else:
                 s = r.simulate(start=tc.start, end=tc.end, steps=tc.steps)
 
-            df = pd.DataFrame(s, columns=s.colnames)
-            df.time = df.time + t_offset
-
             if not tc.discard:
                 # discard timecourses (pre-simulation)
+                result = TimecourseResult(
+                    columns=tuple(s.colnames), values=np.array(s, dtype=float)
+                )
+                if t_offset != 0.0:
+                    result.time[:] += t_offset
                 t_offset += tc.end
-                frames.append(df)
+                results.append(result)
 
-        return pd.concat(frames, sort=False)
+        if not results:
+            raise ValueError(
+                "Every timecourse of the simulation is discarded, there are no results."
+            )
+        return TimecourseResult.concatenate(results)

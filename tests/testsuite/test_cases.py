@@ -3,9 +3,9 @@
 from pathlib import Path
 
 import numpy as np
-import pandas as pd
 import pytest
 
+from sbmlsim.result import TimecourseResult
 from sbmlsim.testsuite.cases import SemanticCase, SemanticSuite
 from sbmlsim.testsuite.comparison import compare_case
 
@@ -132,9 +132,12 @@ def test_the_cache_is_per_release(monkeypatch: pytest.MonkeyPatch) -> None:
 # ---------------------------------------------------------------------------
 # the comparison
 # ---------------------------------------------------------------------------
-def _observed(s1: list[float], s2: list[float]) -> pd.DataFrame:
+def _observed(s1: list[float], s2: list[float]) -> TimecourseResult:
     """Build the results of a simulation of the fixture case."""
-    return pd.DataFrame({"time": [0.0, 1.0, 2.0], "S1": s1, "[S2]": s2})
+    return TimecourseResult(
+        columns=("time", "S1", "[S2]"),
+        values=np.column_stack([[0.0, 1.0, 2.0], s1, s2]),
+    )
 
 
 def test_a_simulation_within_the_tolerances_passes(tmp_path: Path) -> None:
@@ -182,7 +185,11 @@ def test_a_variable_which_was_not_simulated_is_reported(tmp_path: Path) -> None:
     case = SemanticCase.from_directory(_case(tmp_path))
     assert case is not None
     comparison = compare_case(
-        case, pd.DataFrame({"time": [0.0, 1.0, 2.0], "S1": [1.0, 0.5, 0.25]})
+        case,
+        TimecourseResult(
+            columns=("time", "S1"),
+            values=np.column_stack([[0.0, 1.0, 2.0], [1.0, 0.5, 0.25]]),
+        ),
     )
 
     assert not comparison.valid
@@ -248,9 +255,11 @@ def test_a_case_whose_variables_shadow_the_time_is_compared_by_position(
     assert case is not None
     # what roadrunner answers for the selections of the case: the model time
     # first, then the three parameters
-    observed = pd.DataFrame(
-        [[0.0, 0.0, 1.0, 2.0], [5.0, 5.0, 6.0, 7.0], [10.0, 10.0, 11.0, 12.0]],
-        columns=["time", "time", "Time", "TIME"],
+    observed = TimecourseResult(
+        columns=("time", "time", "Time", "TIME"),
+        values=np.array(
+            [[0.0, 0.0, 1.0, 2.0], [5.0, 5.0, 6.0, 7.0], [10.0, 10.0, 11.0, 12.0]]
+        ),
     )
 
     comparison = compare_case(case, observed)
