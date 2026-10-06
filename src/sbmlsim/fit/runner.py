@@ -19,7 +19,7 @@ import logging
 import multiprocessing
 import os
 import time
-from collections.abc import Callable, Iterator
+from collections.abc import Callable, Generator
 from contextlib import contextmanager, suppress
 from multiprocessing.context import BaseContext
 from multiprocessing.pool import Pool
@@ -138,7 +138,7 @@ def optimization_progress(
     enabled: bool = True,
     unit: str = "runs",
     workers: int = 1,
-) -> Iterator[Progress | None]:
+) -> Generator[Progress | None]:
     """Show the progress of the optimization runs on the console.
 
     The bar shows the count, the elapsed time and the estimated total runtime,
@@ -613,7 +613,7 @@ def _store_run(
 @contextmanager
 def worker_pool(
     problem: OptimizationProblem, settings: FitSettings, n_cores: int
-) -> Iterator[Pool]:
+) -> Generator[Pool]:
     """Create the pool of workers of a parallel fit.
 
     Every worker initializes the problem once, see `_worker_initialize`, and
