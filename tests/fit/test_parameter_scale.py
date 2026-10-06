@@ -8,13 +8,17 @@ of its parameter table.
 
 from copy import deepcopy
 from dataclasses import replace
+from typing import Any
 
 import numpy as np
 import pytest
 
-from sbmlsim.fit import FitSettings
+from sbmlsim.fit import FitParameter, FitSettings, ParameterSet
+from sbmlsim.fit.fisher import fisher_information
 from sbmlsim.fit.optimization import OptimizationProblem
-from sbmlsim.fit.options import ParameterScaleType
+from sbmlsim.fit.options import OptimizationAlgorithmType, ParameterScaleType
+from sbmlsim.fit.report import FitReport
+from sbmlsim.fit.runner import run_optimization
 
 #: values which span orders of magnitude, i.e. what a log scale is for
 VALUES = np.array([1e-6, 1.0, 25.0, 1e3])
@@ -116,14 +120,259 @@ def test_a_logarithm_needs_positive_bounds(
     assert problem.parameter_scale is ParameterScaleType.LINEAR
 
 
-def test_an_infinite_bound_is_never_allowed(
+def test_an_infinite_bound_needs_the_linear_scale(
     op_hctz_pk: OptimizationProblem, fit_settings: FitSettings
 ) -> None:
-    """An optimizer cannot search an interval which has no end."""
+    """The logarithm of an interval without an end is not searched.
+
+    On the linear scale the local optimizer takes the infinite bound, the
+    global optimizer samples a finite box and rejects it.
+    """
     problem = op_hctz_pk
     problem.parameters = [deepcopy(p) for p in problem.parameters]
     problem.parameters[0].upper_bound = np.inf
 
-    for scale in ParameterScaleType:
-        with pytest.raises(ValueError, match="finite"):
+    for scale in [ParameterScaleType.LOG10, ParameterScaleType.LOG]:
+        with pytest.raises(ValueError, match="requires a finite 'upper_bound'"):
             problem.initialize(replace(fit_settings, parameter_scale=scale), force=True)
+
+    problem.initialize(
+        replace(fit_settings, parameter_scale=ParameterScaleType.LINEAR), force=True
+    )
+    with pytest.raises(ValueError, match=r"DIFFERENTIAL_EVOLUTION.*finite box"):
+        problem._validate_parameters(OptimizationAlgorithmType.DIFFERENTIAL_EVOLUTION)
+    problem._validate_parameters(OptimizationAlgorithmType.LEAST_SQUARE)
+
+    problem.parameters[0].start_value = None
+    with pytest.raises(ValueError, match="requires a 'start_value'"):
+        problem.initialize(
+            replace(fit_settings, parameter_scale=ParameterScaleType.LINEAR),
+            force=True,
+        )
+
+
+# --- THE SCALE OF A PARAMETER ---
+
+
+def test_a_parameter_has_the_scale_of_the_settings_by_default() -> None:
+    """Every existing definition means what it means without a scale."""
+    parameter = FitParameter("k", 1.0, 0.1, 10.0, unit="1/min")
+    assert parameter.scale is None
+    assert parameter.to_dict()["scale"] is None
+    assert FitParameter(**parameter.to_dict()) == parameter
+
+
+@pytest.mark.parametrize("scale", list(ParameterScaleType))
+def test_the_scale_of_a_parameter_is_stored(scale: ParameterScaleType) -> None:
+    """The scale is a part of the parameter and of its serialization."""
+    parameter = FitParameter("k", 1.0, 0.1, 10.0, unit="1/min", scale=scale)
+    assert parameter.scale is scale
+    assert parameter.to_dict()["scale"] == scale.name
+    assert FitParameter(**parameter.to_dict()).scale is scale
+    restored = FitParameter.from_json(str(parameter.to_json()))
+    assert restored.scale is scale
+    assert restored == parameter
+    assert parameter != FitParameter("k", 1.0, 0.1, 10.0, unit="1/min")
+    assert (
+        FitParameter("k", 1.0, 0.1, 10.0, unit="1/min", scale=scale.name) == parameter
+    )
+
+
+@pytest.mark.parametrize("scale", ["lin", "LOG2", 1, 2.0, ParameterScaleType])
+def test_a_scale_which_is_not_a_scale(scale: object) -> None:
+    """A scale is a `ParameterScaleType` or the name of one."""
+    with pytest.raises(ValueError, match=r"FitParameter 'k': the scale"):
+        FitParameter("k", 1.0, 0.1, 10.0, unit="1/min", scale=scale)  # ty: ignore[invalid-argument-type]
+
+
+@pytest.mark.parametrize(
+    ("kwargs", "message"),
+    [
+        ({"lower_bound": np.nan}, "the 'lower_bound' is 'nan'"),
+        ({"upper_bound": np.nan}, "the 'upper_bound' is 'nan'"),
+        ({"upper_bound": None}, "the 'upper_bound' is 'None'"),
+        ({"start_value": np.nan}, "the start value 'nan' is not a finite number"),
+        ({"start_value": np.inf}, "the start value 'inf' is not a finite number"),
+    ],
+)
+def test_the_values_of_a_parameter_are_numbers(kwargs: dict, message: str) -> None:
+    """A value which is no number is an error and not a bound which holds."""
+    arguments: dict[str, Any] = {
+        "start_value": 1.0,
+        "lower_bound": 0.1,
+        "upper_bound": 10.0,
+    }
+    arguments.update(kwargs)
+    with pytest.raises(ValueError, match=rf"FitParameter 'k': {message}"):
+        FitParameter("k", unit="1/min", **arguments)
+
+
+def _with_scales(
+    problem: OptimizationProblem, scales: list[ParameterScaleType | None]
+) -> OptimizationProblem:
+    """Get the problem with copies of its parameters which have the scales."""
+    problem.parameters = [deepcopy(p) for p in problem.parameters]
+    for parameter, scale in zip(problem.parameters, scales, strict=True):
+        parameter.scale = scale
+    return problem
+
+
+def test_the_problem_transforms_every_parameter_with_its_scale(
+    op_hctz_pk: OptimizationProblem, fit_settings: FitSettings
+) -> None:
+    """A parameter without a scale has the one of the settings."""
+    problem = _with_scales(
+        op_hctz_pk, [ParameterScaleType.LINEAR, None, ParameterScaleType.LOG]
+    )
+    with pytest.raises(ValueError, match="must be initialized first"):
+        problem.to_scale([1.0, 2.0, 3.0])
+
+    problem.initialize(fit_settings)
+    assert problem.parameter_scale is ParameterScaleType.LOG10
+    assert problem.scales_initialized == [
+        ParameterScaleType.LINEAR,
+        ParameterScaleType.LOG10,
+        ParameterScaleType.LOG,
+    ]
+    x = np.array([0.5, 100.0, np.e])
+    scaled = problem.to_scale(x)
+    np.testing.assert_allclose(scaled, [0.5, 2.0, 1.0])
+    np.testing.assert_allclose(problem.from_scale(scaled), x)
+
+    for values in ([1.0, 2.0], [1.0, 2.0, 3.0, 4.0], 1.0, [[1.0, 2.0, 3.0]]):
+        with pytest.raises(ValueError, match="one value per parameter"):
+            problem.to_scale(values)
+        with pytest.raises(ValueError, match="one value per parameter"):
+            problem.from_scale(values)
+
+
+def test_the_cost_does_not_depend_on_the_scales_of_the_parameters(
+    op_hctz_iv: OptimizationProblem, fit_settings: FitSettings
+) -> None:
+    """The scales are how the optimizer walks, not what it optimizes."""
+    problem = op_hctz_iv
+    problem.initialize(fit_settings)
+    x = np.asarray(problem.x0, dtype=float)
+    cost = problem.cost_least_square(problem.to_scale(x))
+
+    n = len(problem.parameters)
+    scales: list[ParameterScaleType | None] = [
+        [ParameterScaleType.LINEAR, ParameterScaleType.LOG, None][k % 3]
+        for k in range(n)
+    ]
+    problem = _with_scales(problem, scales)
+    problem.initialize(fit_settings, force=True)
+    assert problem.cost_least_square(problem.to_scale(x)) == pytest.approx(
+        cost, rel=1e-12
+    )
+
+
+def test_a_parameter_on_the_linear_scale_may_be_negative(
+    op_hctz_pk: OptimizationProblem, fit_settings: FitSettings
+) -> None:
+    """The scale of a parameter decides which bounds it may have."""
+    problem = _with_scales(op_hctz_pk, [ParameterScaleType.LINEAR, None, None])
+    problem.parameters[0].lower_bound = -1.0
+    problem.initialize(fit_settings)
+    lower = problem.to_scale([p.lower_bound for p in problem.parameters])
+    assert lower[0] == -1.0
+    assert lower[1] == pytest.approx(np.log10(problem.parameters[1].lower_bound))
+
+    problem.parameters[1].lower_bound = -1.0
+    with pytest.raises(
+        ValueError, match=rf"'LOG10'.*positive.*'{problem.parameters[1].pid}'"
+    ):
+        problem.initialize(fit_settings, force=True)
+
+
+def test_a_fit_with_a_parameter_without_bounds(
+    op_hctz_iv: OptimizationProblem, fit_settings: FitSettings
+) -> None:
+    """The local optimizer takes an infinite bound on the linear scale."""
+    problem = op_hctz_iv
+    n = len(problem.parameters)
+    problem = _with_scales(problem, [ParameterScaleType.LINEAR] + [None] * (n - 1))
+    first = problem.parameters[0]
+    first.lower_bound, first.upper_bound = -np.inf, np.inf
+    problem.initialize(fit_settings)
+
+    starts = problem.start_values(size=3, seed=1)
+    assert [float(start[0]) for start in starts if start is not None] == [
+        first.start_value
+    ] * 3
+    fits, _ = problem.optimize(size=1, seed=1, max_nfev=3)
+    assert np.all(np.isfinite(fits[0].x))
+    assert np.isfinite(fits[0].cost)
+    assert fits[0].cost <= problem.cost_least_square(problem.to_scale(starts[0]))
+
+    fits, _ = problem.optimize(
+        size=1, seed=1, algorithm=OptimizationAlgorithmType.DIFFERENTIAL_EVOLUTION
+    )
+    assert "finite box" in fits[0].message
+
+
+@pytest.mark.parametrize("serial", [True, False])
+def test_a_global_fit_with_an_infinite_bound_is_refused_once(
+    op_hctz_iv: OptimizationProblem, fit_settings: FitSettings, serial: bool
+) -> None:
+    """The finite box of differential evolution is checked before the runs."""
+    problem = op_hctz_iv
+    n = len(problem.parameters)
+    problem = _with_scales(problem, [ParameterScaleType.LINEAR] + [None] * (n - 1))
+    problem.parameters[0].upper_bound = np.inf
+    with pytest.raises(ValueError, match=r"DIFFERENTIAL_EVOLUTION.*finite box"):
+        run_optimization(
+            problem,
+            settings=fit_settings,
+            size=2,
+            n_cores=2,
+            serial=serial,
+            seed=1,
+            algorithm=OptimizationAlgorithmType.DIFFERENTIAL_EVOLUTION,
+            show_progress=False,
+        )
+
+
+def test_the_fisher_information_uses_the_scales_of_the_parameters(
+    op_hctz_iv: OptimizationProblem, fit_settings: FitSettings
+) -> None:
+    """The intervals are transformed back with the scale of every parameter."""
+    problem = op_hctz_iv
+    n = len(problem.parameters)
+    problem = _with_scales(problem, [ParameterScaleType.LINEAR] + [None] * (n - 1))
+    problem.initialize(fit_settings)
+    pset = ParameterSet.from_fit_parameters(
+        problem.parameters, x=np.asarray(problem.x0, dtype=float), sid="start"
+    )
+    fim = fisher_information(problem, fit_settings, pset)
+    assert fim.scale is ParameterScaleType.LOG10
+    assert fim.parameter_scales == problem.scales_initialized
+    assert fim.to_dict()["scales"] == ["LINEAR"] + ["LOG10"] * (n - 1)
+    np.testing.assert_allclose(fim.from_scale(fim.to_scale(fim.values)), fim.values)
+    # the table names the scale of every parameter when they differ
+    assert list(fim.summary_df["scale"]) == ["LINEAR"] + ["LOG10"] * (n - 1)
+    assert "scale" not in replace(fim, scales=[]).summary_df.columns
+    report = FitReport(
+        problem=problem,
+        settings=fit_settings,
+        parameter_sets=[pset],
+        fisher=fim,
+        mapping_figures=False,
+    )
+    context = report._fisher_context()
+    assert context is not None
+    assert "scale" in [column["name"] for column in context["columns"]]
+    assert context["info"]["parameter scale"] == "LOG10, per parameter in the table"
+    # the intravenous data does not determine every parameter, the intervals
+    # are the ones of a matrix of full rank
+    assert not np.all(np.isfinite(fim.standard_errors))
+    full = replace(fim, matrix=np.diag(np.arange(1.0, n + 1.0)) * 100.0)
+    lower, upper = full.confidence_intervals()
+    assert np.all(np.isfinite(full.standard_errors))
+    # symmetric on the linear scale, and not on a logarithmic one
+    assert full.values[0] - lower[0] == pytest.approx(upper[0] - full.values[0])
+    assert full.values[1] - lower[1] != pytest.approx(upper[1] - full.values[1])
+
+    with pytest.raises(ValueError, match="one scale per parameter"):
+        replace(fim, scales=[ParameterScaleType.LINEAR])
+    assert replace(fim, scales=[]).parameter_scales == [ParameterScaleType.LOG10] * n

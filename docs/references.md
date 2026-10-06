@@ -137,6 +137,13 @@
 > *PLoS Computational Biology.* 2021;17(1):e1008646.
 > [doi:10.1371/journal.pcbi.1008646](https://doi.org/10.1371/journal.pcbi.1008646)
 
+**PEtab SciML.** The extension of PEtab for hybrid problems of a mechanistic model and neural networks, which `sbmlsim.fit.petab_v2` reads and writes and `sbmlsim.sciml` runs, see [PEtab](petab.md#hybrid-problems-of-petab-sciml).
+
+> Persson S, Snelling B, Philipps M, Weindl D, Cvijovic M, Hasenauer J, Pathirana D, Fröhlich F.
+> **PEtab SciML: an exchange format for specifying and training dynamic scientific machine learning models.**
+> *arXiv.* 2026;2608.20184.
+> [arXiv:2608.20184](https://arxiv.org/abs/2608.20184)
+
 ## Sensitivity analysis
 
 The global methods of `sbmlsim.sensitivity` are the implementations of [SALib](https://salib.readthedocs.io), see [Sensitivity analysis](sensitivity.md).

@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<sbml xmlns="http://www.sbml.org/sbml/level3/version1/core" level="3" version="1">
+  <model>
+    <listOfCompartments>
+      <compartment size="1" constant="true"/>
+    </listOfCompartments>
+    <listOfSpecies>
+      <species id="prey" initialAmount="0.44249296" hasOnlySubstanceUnits="true" boundaryCondition="false" constant="false"/>
+      <species id="predator" initialAmount="4.6280594" hasOnlySubstanceUnits="true" boundaryCondition="false" constant="false"/>
+    </listOfSpecies>
+    <listOfParameters>
+      <parameter id="prey_param" value="0" constant="false"/>
+      <parameter id="predator_param" value="0" constant="false"/>
+    </listOfParameters>
+    <listOfRules>
+      <rateRule variable="prey">
+        <math xmlns="http://www.w3.org/1998/Math/MathML">
+          <ci> prey_param </ci>
+        </math>
+      </rateRule>
+      <rateRule variable="predator">
+        <math xmlns="http://www.w3.org/1998/Math/MathML">
+          <ci> predator_param </ci>
+        </math>
+      </rateRule>
+    </listOfRules>
+  </model>
+</sbml>

@@ -256,10 +256,14 @@ class ParameterMapping:
                 residuals and referenced here.
 
         Returns:
-            The quantity by entity of the model.
+            The quantity by entity of the model. A target which is not an
+            entity of the model, see `FitParameter.is_external`, is not a
+            change: the derived changes of the problem read its value.
         """
         return {
-            target: quantities[index] for target, index in self._by_group[group].items()
+            target: quantities[index]
+            for target, index in self._by_group[group].items()
+            if not self.parameters[index].is_external
         }
 
     def coverage(self) -> list[CoverageRow]:

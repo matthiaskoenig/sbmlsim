@@ -29,8 +29,10 @@ References:
     https://doi.org/10.1080/00401706.1999.10485594
 """
 
+import logging
+import warnings
 from pathlib import Path
-from typing import ClassVar
+from typing import Any, ClassVar
 
 import numpy as np
 import SALib
@@ -46,6 +48,8 @@ from sbmlsim.sensitivity import (
     SensitivitySimulation,
 )
 from sbmlsim.sensitivity.plots import plot_S1_ST_indices
+
+logger = logging.getLogger(__name__)
 
 
 class FASTSensitivityAnalysis(SensitivityAnalysis):
@@ -74,7 +78,7 @@ class FASTSensitivityAnalysis(SensitivityAnalysis):
         seed: int | None = None,
         n_cores: int | None = None,
         cache_results: bool = False,
-        **kwargs,
+        **kwargs: Any,
     ):
         """Initialize a FAST sensitivity analysis.
 
@@ -185,14 +189,31 @@ class FASTSensitivityAnalysis(SensitivityAnalysis):
             # Calculate FAST indices
             for ko in range(self.num_outputs):
                 Yo = Y[:, ko]
-                Si = SALib.analyze.fast.analyze(
-                    self.ssa_problems[gid],
-                    Yo,
-                    M=self.M,
-                    num_resamples=100,
-                    conf_level=0.95,
-                    print_to_console=False,
-                )
+                if np.ptp(Yo) == 0.0:
+                    # the indices of an output without variance are not defined
+                    logger.warning(
+                        "Group '%s': the output '%s' does not vary over the "
+                        "samples, its FAST indices are nan",
+                        gid,
+                        self.output_ids[ko],
+                    )
+                    continue
+                with warnings.catch_warnings():
+                    # SALib 1.6.0 warns in every call of `fast.analyze` that the
+                    # bootstrap intervals are indicative, no argument turns it off
+                    warnings.filterwarnings(
+                        "ignore",
+                        message="FAST confidence intervals are estimated via bootstrap",
+                        category=UserWarning,
+                    )
+                    Si = SALib.analyze.fast.analyze(
+                        self.ssa_problems[gid],
+                        Yo,
+                        M=self.M,
+                        num_resamples=100,
+                        conf_level=0.95,
+                        print_to_console=False,
+                    )
                 for key in self.sensitivity_keys:
                     self.sensitivity[gid][key][:, ko] = Si[key]
 

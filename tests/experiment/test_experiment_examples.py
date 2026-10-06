@@ -19,6 +19,7 @@ def test_demo_example(tmp_path: Path) -> None:
     run_demo_experiments(tmp_path)
 
 
+@pytest.mark.filterwarnings("error")
 def test_glucose_example(tmp_path: Path) -> None:
     """Test glucose simulation experiment."""
     run_glucose_experiments(tmp_path)

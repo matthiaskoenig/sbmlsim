@@ -55,10 +55,12 @@ class ObjectJSONEncoder(JSONEncoder):
             # handle numpy ndarrays
             return o.tolist()
 
+        if isinstance(o, type):
+            # a class, e.g. the experiment class of a fit, is its import path
+            return f"{o.__module__}.{o.__qualname__}"
+
         if hasattr(o, "to_dict"):
             # custom serializer
-            if isinstance(o, type):
-                print(o.__name__)
             return o.to_dict()
 
         if hasattr(o, "__dict__"):

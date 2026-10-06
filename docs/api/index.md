@@ -26,6 +26,7 @@ Models and model changes, see [Models](../models.md).
 | [model.model_roadrunner](model.model_roadrunner.md) | `RoadrunnerSBMLModel`, the roadrunner instance of an SBML model with its units and parameter changes |
 | [model.model_change](model.model_change.md) | `ModelChange`, clamping species and other structural changes |
 | [model.model_resources](model.model_resources.md) | resolving model sources, i.e., files, URNs and URLs |
+| [model.provenance](model.provenance.md) | the record of what was added to a derived model, i.e. the compiled networks and the formula observables, and its inverse |
 
 ## sbmlsim.simulation
 
@@ -85,6 +86,8 @@ Parameter fitting, see [Parameter fitting](../fitting.md).
 | [fit.optimization](fit.optimization.md) | `OptimizationProblem`, the residuals and cost of a fit problem |
 | [fit.options](fit.options.md) | `FitSettings` and the options of the optimization, i.e., algorithms, residuals, weighting and loss functions |
 | [fit.parameters](fit.parameters.md) | `ParameterSet` and `ParameterSets`, the fitted parameters a report is created from |
+| [fit.parameter_mapping](fit.parameter_mapping.md) | which parameter writes which entity in which simulation, the coverage of versioned parameters |
+| [fit.derived](fit.derived.md) | derived changes of a simulation, the protocol a network before the simulation implements, and the summary of a hook for the console and the report |
 | [fit.result](fit.result.md) | `OptimizationResult`, the result of an optimization |
 | [fit.runner](fit.runner.md) | running optimizations serially or in parallel |
 | [fit.report](fit.report.md) | `FitReport`, the figures and reports of one or more parameter sets |
@@ -107,6 +110,9 @@ PEtab v2, see [PEtab](../petab.md).
 | [fit.petab_v2.observables](fit.petab_v2.observables.md) | the model a fit simulates when an observable is a formula |
 | [fit.petab_v2.symbols](fit.petab_v2.symbols.md) | the identifiers and symbols shared by the PEtab layer |
 | [fit.petab_v2.gaps](fit.petab_v2.gaps.md) | the catalogue of the differences between a fit and its PEtab problem |
+| [fit.petab_v2.likelihood](fit.petab_v2.likelihood.md) | the log-likelihood and its gradient, the noise models of PEtab v2 |
+| [fit.petab_v2.sciml](fit.petab_v2.sciml.md) | the networks of a PEtab SciML problem read into `Hybridization` objects |
+| [fit.petab_v2.sciml_export](fit.petab_v2.sciml_export.md) | the hybridizations of a problem written as PEtab SciML |
 
 ## sbmlsim.sensitivity
 
@@ -124,6 +130,23 @@ Local and global sensitivity analysis, see [Sensitivity analysis](../sensitivity
 | [sensitivity.classification](sensitivity.classification.md) | classification of sensitivities and uncertainties |
 | [sensitivity.plots](sensitivity.plots.md) | plots of the sensitivity results |
 
+## sbmlsim.sciml
+
+The neural networks of hybrid problems, see [PEtab](../petab.md#hybrid-problems-of-petab-sciml). The package needs the extra `sciml`.
+
+| module | description |
+| --- | --- |
+| [sciml](sciml.md) | the package: `Network`, `Hybridization`, `NetworkInput`, `NetworkPattern`, `compile_network`, `network_fit_parameters`, `nominal_parameters`, the id functions and the errors |
+| [sciml.network](sciml.network.md) | `Network`, the architecture and the arrays of a network, its forward pass and the ids of its elements, inputs and outputs |
+| [sciml.hybridization](sciml.hybridization.md) | `Hybridization`, where a network sits, its inputs and outputs, its fit parameters and the derived changes of a network before the simulation |
+| [sciml.compiler](sciml.compiler.md) | `compile_network`, a network in the right hand side or in an observable written into the model as assignment rules |
+| [sciml.parameters](sciml.parameters.md) | the nominal values and the fit parameters of a network per network, layer or array |
+| [sciml.interpreter](sciml.interpreter.md) | the walk over the forward pass of the NN YAML with a backend |
+| [sciml.backend](sciml.backend.md) | the numpy backend of the forward pass and the sympy backend of the compiler |
+| [sciml.layers](sciml.layers.md) | the layers and functions of PEtab SciML with the backends they support |
+| [sciml.errors](sciml.errors.md) | the errors of the package |
+| [sciml.testsuite](sciml.testsuite.md) | the PEtab SciML test suite: its cases, their comparison and the round trip |
+
 ## sbmlsim.testsuite
 
 The semantic cases of the SBML Test Suite, see [SBML Test Suite](../testsuite.md).
@@ -134,6 +157,7 @@ The semantic cases of the SBML Test Suite, see [SBML Test Suite](../testsuite.md
 | [testsuite.runner](testsuite.runner.md) | `run_case`, simulating a case, and `CaseStatus`, the outcomes a case can have |
 | [testsuite.comparison](testsuite.comparison.md) | comparing the results of a case within its tolerances |
 | [testsuite.report](testsuite.report.md) | `TestSuiteReport`, the interactive report of a run |
+| [testsuite.cache](testsuite.cache.md) | the download and the cache of a test suite, shared by the SBML Test Suite and the PEtab SciML test suite |
 
 ## sbmlsim.comparison
 

@@ -3,7 +3,7 @@
 import datetime
 import logging
 import uuid
-from collections.abc import Iterable
+from collections.abc import Collection, Iterable, Mapping, Sequence
 from pathlib import Path
 from typing import Any
 
@@ -12,8 +12,8 @@ import pandas as pd
 from scipy.optimize import OptimizeResult
 
 from sbmlsim.console import console
-from sbmlsim.fit.objects import FitParameter
-from sbmlsim.fit.options import FitSettings
+from sbmlsim.fit.objects import FitParameter, describe_array
+from sbmlsim.fit.options import FitSettings, ParameterScaleType
 from sbmlsim.fit.parameters import ParameterSet, ParameterSets
 from sbmlsim.serialization import ObjectJSONEncoder, from_json, to_json
 
@@ -38,33 +38,48 @@ def fit_id(name: str | None = None) -> str:
 
 
 def bound_warnings(
-    parameters: list[FitParameter], x: np.ndarray, rtol: float = 0.05
+    parameters: list[FitParameter],
+    x: np.ndarray,
+    scales: Sequence[ParameterScaleType],
+    rtol: float = 0.05,
+    groups: Mapping[str, Collection[str]] | None = None,
 ) -> list[str]:
     """Warn about optimal parameters which ended up on their bounds.
 
     A parameter on its bound means that the optimum is outside of the box in
     which the parameter was allowed to vary.
 
-    The distance to a bound is relative to the interval of the parameter. The
-    optimization runs in logarithmic parameter space, so the distance is measured
-    there as well whenever the bounds and the value are positive.
+    The distance to a bound is relative to the interval of the parameter, in
+    the scale the optimizer searched the parameter in.
 
     Args:
         parameters: fitted parameters with their bounds.
         x: optimal values of the parameters.
+        scales: the scale of every parameter, see
+            `OptimizationProblem.scales_initialized`.
         rtol: relative distance to a bound which is reported.
+        groups: label of a group -> the ids of its elements, e.g. the arrays
+            of a network with `ParameterGroup.ids`. A parameter belongs to
+            the group which has the entity it writes (`FitParameter.entity_id`)
+            as an element. The elements of a group are reported as one
+            message which counts them, because a network has hundreds.
 
     Returns:
-        Messages for the parameters which are within `rtol` of one of their bounds.
+        Messages for the parameters which are within `rtol` of one of their
+        bounds, and one message per group with such elements.
     """
+    grouped: dict[str, str] = {
+        sid: label for label, ids in (groups or {}).items() for sid in ids
+    }
     messages: list[str] = []
-    for k, p in enumerate(parameters):
+    at_bound: dict[str, set[str]] = {}
+    for k, (p, scale) in enumerate(zip(parameters, scales, strict=True)):
         lb, ub, value = p.lower_bound, p.upper_bound, x[k]
         if not np.isfinite(lb) or not np.isfinite(ub):
             # no relative distance exists on an infinite bound
             continue
 
-        if lb > 0.0 and ub > 0.0 and value > 0.0:
+        if scale.is_log and lb > 0.0 and ub > 0.0 and value > 0.0:
             # the optimization runs in logarithmic space, so does the distance
             lb, ub, value = np.log10(lb), np.log10(ub), np.log10(value)
 
@@ -75,9 +90,25 @@ def bound_warnings(
 
         for bound, name in [(lb, "lower"), (ub, "upper")]:
             if abs(value - bound) / span < rtol:
+                if p.entity_id in grouped:
+                    # a versioned element counts once
+                    at_bound.setdefault(grouped[p.entity_id], set()).add(p.entity_id)
+                    continue
                 messages.append(
                     f"!Optimal parameter '{p.pid}' within {rtol:.0%} of {name} bound!"
                 )
+    for label, elements in at_bound.items():
+        size = len((groups or {})[label])
+        estimated = len(
+            {p.entity_id for p in parameters if grouped.get(p.entity_id) == label}
+        )
+        counts = f"{size} element{'s' if size != 1 else ''}" + (
+            f" ({estimated} estimated)" if estimated != size else ""
+        )
+        messages.append(
+            f"!{len(elements)} of the {counts} of '{label}' within "
+            f"{rtol:.0%} of a bound!"
+        )
     return messages
 
 
@@ -231,8 +262,28 @@ class OptimizationResult(ObjectJSONEncoder):
         return combined
 
     def to_tsv(self, path: Path) -> None:
-        """Store fit results as TSV."""
-        self.df_fits.to_csv(path, sep="\t", index=False)
+        """Store fit results as TSV, one line per run.
+
+        The columns named by the parameter ids are the fitted values, the columns
+        `x0.<pid>` the start values of the run (`.` is no character of an id, so
+        the names cannot collide). The vectors `x` and `x0` of `df_fits` are not
+        written as such, their text would span several lines and be rounded.
+        """
+        df = self.df_fits.drop(columns=["x", "x0"])
+        pids = [p.pid for p in self.parameters]
+        x0 = pd.DataFrame(
+            [
+                np.full(len(pids), np.nan) if x is None else np.asarray(x, dtype=float)
+                for x in self.df_fits.x0
+            ],
+            columns=pd.Index([f"x0.{pid}" for pid in pids]),
+        )
+        df = pd.concat([df, x0], axis=1)
+        # a message of an error can span several lines
+        df["message"] = [
+            m if not isinstance(m, str) else " ".join(m.split()) for m in df.message
+        ]
+        df.to_csv(path, sep="\t", index=False)
 
     def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary."""
@@ -381,9 +432,25 @@ class OptimizationResult(ObjectJSONEncoder):
                     upper_bound=p.upper_bound,
                     unit=p.unit,
                     target=p.target,
+                    scale=p.scale,
+                    mappings=p.mappings,
                 )
             )
         return fit_pars
+
+    @property
+    def scales(self) -> list[ParameterScaleType]:
+        """Get the scale the optimizer searched every parameter in.
+
+        It is the `FitParameter.scale` of a parameter and the
+        `parameter_scale` of the settings, of the default settings for a
+        result without them, for a parameter without one.
+        """
+        settings = self.settings if self.settings is not None else FitSettings()
+        return [
+            settings.parameter_scale if p.scale is None else p.scale
+            for p in self.parameters
+        ]
 
     @staticmethod
     def process_traces(trajectories: list[list[float]]) -> pd.DataFrame:
@@ -435,8 +502,36 @@ class OptimizationResult(ObjectJSONEncoder):
         df = pd.DataFrame(results)
         return df.sort_values(by=["cost"]).reset_index(drop=True)
 
-    def report(self, path: Path | None = None, print_output: bool = True) -> str:
-        """Report of optimization."""
+    def report(
+        self,
+        path: Path | None = None,
+        print_output: bool = True,
+        groups: Mapping[str, Collection[str]] | None = None,
+    ) -> str:
+        """Report of optimization.
+
+        Args:
+            path: file the report is written to, none by default.
+            print_output: print the report.
+            groups: the groups of elements which are reported as one, e.g. the
+                arrays of a network, see `bound_warnings`. The optimal
+                parameters are listed as one line per group.
+        """
+        # the elements of a group are listed as one line per group, in the
+        # table of the runs as well
+        groups = groups or {}
+        label_of: dict[str, str] = {
+            sid: label for label, ids in groups.items() for sid in ids
+        }
+        by_label: dict[str, list[int]] = {label: [] for label in groups}
+        for k, p in enumerate(self.parameters):
+            if p.entity_id in label_of:
+                by_label[label_of[p.entity_id]].append(k)
+        grouped = {self.parameters[k].pid for ks in by_label.values() for k in ks}
+        fits = self.df_fits
+        if grouped:
+            fits = fits.drop(columns=[*grouped, "x", "x0"], errors="ignore")
+
         pd.set_option("display.max_columns", None)
         pd.set_option("display.expand_frame_repr", False)
         info = [
@@ -445,7 +540,7 @@ class OptimizationResult(ObjectJSONEncoder):
             "-" * 80,
             f"Optimization results: {self.sid}",
             "-" * 80,
-            str(self.df_fits),
+            str(fits),
             "-" * 80,
             "Optimal parameters:",
         ]
@@ -453,18 +548,25 @@ class OptimizationResult(ObjectJSONEncoder):
         pd.reset_option("display.expand_frame_repr")
 
         xopt = self.xopt
-        for msg in bound_warnings(self.parameters, xopt):
+        for msg in bound_warnings(self.parameters, xopt, self.scales, groups=groups):
             logger.error(msg)
             info.append(f"\t>>> {msg} <<<")
 
-        fitted_pars = {
-            p.pid: (xopt[k], p.unit, p.lower_bound, p.upper_bound)
-            for k, p in enumerate(self.parameters)
-        }
-
-        for key, value in fitted_pars.items():
+        for k, p in enumerate(self.parameters):
+            if p.pid not in grouped:
+                info.append(
+                    f"\t'{p.pid}': Q_({xopt[k]}, '{p.unit}'),  "
+                    f"# [{p.lower_bound} - {p.upper_bound}]"
+                )
+        for label, ks in by_label.items():
             info.append(
-                f"\t'{key}': Q_({value[0]}, '{value[1]}'),  # [{value[2]} - {value[3]}]"
+                "\t"
+                + describe_array(
+                    label,
+                    len(groups[label]),
+                    [self.parameters[k] for k in ks],
+                    [xopt[k] for k in ks],
+                )
             )
         info.append("-" * 80)
         info_str: str = "\n".join(info)

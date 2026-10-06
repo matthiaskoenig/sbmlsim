@@ -32,7 +32,12 @@ from rich.table import Table
 from examples.hctz_fitting.fitting.fitting import FIT_DEFINITIONS
 from sbmlsim.console import console
 from sbmlsim.fit import display
-from sbmlsim.fit.petab_v2 import gaps_of_problem, gaps_table, to_petab
+from sbmlsim.fit.petab_v2 import (
+    gaps_of_problem,
+    gaps_table,
+    log_likelihood,
+    to_petab,
+)
 from sbmlsim.fit.petab_v2.extension import extension_of
 from sbmlsim.fit.petab_v2.reader import from_petab
 
@@ -137,6 +142,10 @@ def main() -> None:
     x = np.log10(np.asarray(problem.x0, dtype=float))
     cost = problem.cost_least_square(x)
     cost_petab = petab_problem_read.cost_least_square(x)
+    # the log-likelihood of the nominal parameters, with the noise model the
+    # export wrote, i.e. the standard deviation of the data
+    llh = log_likelihood(problem)
+    llh_petab = log_likelihood(petab_problem_read)
     display.key_values(
         {
             "collections": (
@@ -156,6 +165,7 @@ def main() -> None:
             ),
             "cost": f"{cost:.6f} -> {cost_petab:.6f}",
             "difference": f"{abs(cost - cost_petab) / cost:.2e} (relative)",
+            "log-likelihood": f"{llh:.4f} -> {llh_petab:.4f}",
         }
     )
     display.print_parameters(petab_problem_read.parameters)

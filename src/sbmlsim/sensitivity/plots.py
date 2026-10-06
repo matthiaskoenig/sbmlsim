@@ -1,5 +1,6 @@
 """Plotting functionality for sensitivity analysis."""
 
+import warnings
 from pathlib import Path
 
 import numpy as np
@@ -73,28 +74,36 @@ def heatmap(
     figsize = (15, int(n_parameters / n_outputs * 15))
 
     # plot heatmap
-    cg = sns.clustermap(
-        df_subset,
-        center=vcenter,
-        vmin=vmin,
-        vmax=vmax,
-        xticklabels=xticklabels,
-        yticklabels=yticklabels,
-        cmap=cmap,
-        cbar_pos=(0.0, 0.4, 0.03, 0.2),  # (left, bottom, width, height),
-        cbar_kws={
-            "orientation": "vertical",
-            # "label": "sensitivity"
-        },
-        annot=annotate_values,
-        fmt="1.2f",
-        annot_kws={"size": 11},
-        mask=df_subset_mask,
-        col_cluster=cluster_cols,
-        row_cluster=cluster_rows,
-        method="single",
-        figsize=figsize,
-    )
+    with warnings.catch_warnings():
+        # seaborn 0.13.2 calls `Colormap.set_bad` for `center`, which
+        # matplotlib 3.11 deprecates
+        warnings.filterwarnings(
+            "ignore",
+            message="The set_bad function will be deprecated",
+            category=PendingDeprecationWarning,
+        )
+        cg = sns.clustermap(
+            df_subset,
+            center=vcenter,
+            vmin=vmin,
+            vmax=vmax,
+            xticklabels=xticklabels,
+            yticklabels=yticklabels,
+            cmap=cmap,
+            cbar_pos=(0.0, 0.4, 0.03, 0.2),  # (left, bottom, width, height),
+            cbar_kws={
+                "orientation": "vertical",
+                # "label": "sensitivity"
+            },
+            annot=annotate_values,
+            fmt="1.2f",
+            annot_kws={"size": 11},
+            mask=df_subset_mask,
+            col_cluster=cluster_cols,
+            row_cluster=cluster_rows,
+            method="single",
+            figsize=figsize,
+        )
     plt.setp(
         cg.ax_heatmap.get_xticklabels(),
         rotation=45,
