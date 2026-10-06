@@ -19,13 +19,17 @@
 {% endblock %}
 
 {% block footer %}
-<a href="../index.html">all experiments</a> · <a href="{{ code_path }}">{{ code_path }}</a>
+<a href="../index.html">all experiments</a> · <a href="{{ code_path }}" title="{{ code_path }}">{{ code_path | basename }}</a>
 {% endblock %}
 
 {% block head %}
 <style>
   /* an interactive figure is a page of its own, shown in place of the image */
   figure iframe { width: 100%; height: 520px; border: 1px solid var(--line); border-radius: 8px; background: var(--bg-card); }
+  /* a figure of one panel is not stretched to the width of the page, a figure
+     of many panels still uses it */
+  #figures figure img { width: auto; max-width: 100%; max-height: 70vh; display: block; margin: 0 auto; }
+  .mapping header .exp a + a::before { content: "·"; color: var(--fg-soft); margin: 0 6px; }
 </style>
 {% endblock %}
 
@@ -40,7 +44,7 @@
       <thead><tr><th data-sort="text">model</th><th data-sort="text">source</th></tr></thead>
       <tbody>
       {% for model_id, model_path in models.items() %}
-      <tr><td class="mono">{{ model_id }}</td><td><a href="{{ model_path }}">{{ model_path }}</a></td></tr>
+      <tr><td class="mono">{{ model_id }}</td><td><a href="{{ model_path }}" title="{{ model_path }}">{{ model_path | basename }}</a></td></tr>
       {% endfor %}
       </tbody>
     </table>
@@ -70,7 +74,7 @@
     <header>
       <span class="name mono">{{ fig_id }}</span>
       <span class="exp">
-        {% if fig.static %}<a href="{{ fig.path }}.svg">{{ fig.path }}.svg</a>{% endif %}
+        {% if fig.static %}<a href="{{ fig.path }}.svg">svg</a>{% endif %}
         {% if fig.interactive %}<a href="{{ fig.path }}.html">interactive</a>{% endif %}
       </span>
     </header>
@@ -90,7 +94,7 @@
 <section id="code">
   <h2>Code</h2>
   <div class="card">
-    <p><a href="{{ code_path }}">{{ code_path }}</a></p>
+    <p><a href="{{ code_path }}" title="{{ code_path }}">{{ code_path | basename }}</a></p>
     <pre class="code"><code>{{ code }}</code></pre>
   </div>
 </section>

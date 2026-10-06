@@ -1,9 +1,11 @@
-"""Test the HTML report of the simulation experiments.
+"""Test the reports of the simulation experiments.
 
-The report shares its design with the report of a fit, see
-`sbmlsim.report.templates`.
+The HTML report shares its design with the report of a fit, see
+`sbmlsim.report.templates`; the markdown report is read in the preview of an
+editor and the LaTeX report includes the figures in a document.
 """
 
+import html as html_module
 import re
 import sys
 from html.parser import HTMLParser
@@ -11,24 +13,74 @@ from pathlib import Path
 
 import pytest
 
+from examples.hctz_fitting import DATA_PATH, HCTZ_PATH
 from examples.hctz_fitting.experiments.studies import Beermann1976
-from examples.hctz_fitting.helpers import run_experiments
+from examples.hctz_fitting.helpers import MODEL_PATH
+from sbmlsim.experiment import ExperimentRunner
+from sbmlsim.report.experiment_report import ExperimentReport, ReportResults
+from sbmlsim.simulator import SimulatorSerial
 
 VOID_TAGS = {"img", "br", "hr", "meta", "link", "input", "source", "col"}
+
+#: the figures of Beermann1976
+FIGURES = ["Tab1A", "Fig3"]
 
 
 @pytest.fixture(scope="module")
 def report_dir(tmp_path_factory: pytest.TempPathFactory) -> Path:
-    """Run a simulation experiment and report it, once for the module."""
-    tmp_path = tmp_path_factory.mktemp("experiment_report")
-    cwd = Path.cwd()
-    import os
+    """Run a simulation experiment and write its reports, once for the module.
 
-    os.chdir(tmp_path)
-    try:
-        return tmp_path / run_experiments(Beermann1976, output_dir="report")
-    finally:
-        os.chdir(cwd)
+    The figures are written as static images and as interactive pages, the
+    report is written as HTML, markdown and LaTeX.
+    """
+    output_path = tmp_path_factory.mktemp("experiment_report")
+    runner = ExperimentRunner(
+        experiment_classes=[Beermann1976],
+        data_path=DATA_PATH,
+        base_path=HCTZ_PATH,
+        simulator=SimulatorSerial(model=MODEL_PATH),
+    )
+    results = runner.run_experiments(
+        output_path=output_path,
+        show_figures=False,
+        save_results=False,
+        figure_formats=["svg", "png", "html"],
+        reduced_selections=True,
+    )
+    report_results = ReportResults()
+    for result in results:
+        report_results.add_experiment_result(exp_result=result)
+    report = ExperimentReport(report_results)
+    for report_type in ExperimentReport.ReportType:
+        report.create_report(output_path, report_type=report_type)
+    return output_path
+
+
+def _references(path: Path) -> list[str]:
+    """Get the local files a page of the report refers to.
+
+    The references of a page are its `src` and `href` attributes and, in
+    markdown, the targets of its links and images; anchors and urls are not
+    files.
+    """
+    text = path.read_text(encoding="utf-8")
+    references = re.findall(r'(?:src|href)="([^"]+)"', text)
+    if path.suffix == ".md":
+        references += re.findall(r"\]\(([^)\s]+)\)", text)
+    return [
+        html_module.unescape(ref)
+        for ref in references
+        if not ref.startswith("#") and not re.match(r"^[a-zA-Z][a-zA-Z0-9+.-]*:", ref)
+    ]
+
+
+def _unresolved(path: Path) -> list[str]:
+    """Get the references of a page which are no file next to it."""
+    return [
+        ref
+        for ref in _references(path)
+        if ref.startswith("/") or not (path.parent / ref).exists()
+    ]
 
 
 def _html(path: Path) -> str:
@@ -97,15 +149,12 @@ def test_pages_are_offline_and_well_formed(report_dir: Path, page: str) -> None:
     assert "http://" not in html
     assert "https://" not in html
 
-    references = re.findall(r'(?:src|href)="([^"#:]+)"', html)
-    assert references
-    assert [ref for ref in references if not (path.parent / ref).exists()] == []
+    assert _references(path)
+    assert _unresolved(path) == []
 
 
 def test_code_is_escaped(report_dir: Path) -> None:
     """The source of the experiment is escaped, it is not markup."""
-    import html as html_module
-
     page = _html(report_dir / "Beermann1976" / "Beermann1976.html")
     code = re.search(r'<pre class="code"><code>(.*?)</code></pre>', page, re.S)
     assert code is not None
@@ -115,3 +164,54 @@ def test_code_is_escaped(report_dir: Path) -> None:
     assert module.__file__ is not None
     source = Path(module.__file__)
     assert html_module.unescape(code.group(1)) == source.read_text(encoding="utf-8")
+
+
+def test_index_shows_every_figure(report_dir: Path) -> None:
+    """The index shows the static image of every figure of an experiment."""
+    images = re.findall(r'<img[^>]*src="([^"]+)"', _html(report_dir / "index.html"))
+    assert images == [f"Beermann1976/Beermann1976_{fig}.svg" for fig in FIGURES]
+
+
+@pytest.mark.parametrize("page", ["index.md", "Beermann1976/Beermann1976.md"])
+def test_markdown_pages_resolve_their_references(report_dir: Path, page: str) -> None:
+    """The images and links of the markdown report are relative to the page.
+
+    A path which starts with `/` is relative to the root of the file system or
+    of the workspace of an editor, the preview of VS Code does not show it.
+    """
+    path = report_dir / page
+    assert _references(path)
+    assert _unresolved(path) == []
+
+
+@pytest.mark.parametrize("page", ["index.md", "Beermann1976/Beermann1976.md"])
+def test_markdown_pages_show_every_figure(report_dir: Path, page: str) -> None:
+    """Every figure is an image of the index and of the page of the experiment."""
+    text = (report_dir / page).read_text(encoding="utf-8")
+    images = [
+        Path(target).name for target in re.findall(r"!\[[^]]*\]\(([^)]+)\)", text)
+    ]
+    assert images == [f"Beermann1976_{fig}.svg" for fig in FIGURES]
+
+
+def test_markdown_experiment_page(report_dir: Path) -> None:
+    """The page of an experiment lists its models, datasets, figures and code."""
+    text = (report_dir / "Beermann1976" / "Beermann1976.md").read_text(encoding="utf-8")
+    assert re.findall(r"^## (.+)$", text, re.M) == [
+        "Models",
+        "Datasets",
+        "Figures",
+        "Code",
+    ]
+    assert "[Beermann1976_Fig3.html](Beermann1976_Fig3.html)" in text
+    module = sys.modules[Beermann1976.__module__]
+    assert module.__file__ is not None
+    assert Path(module.__file__).read_text(encoding="utf-8") in text
+
+
+def test_latex_report_includes_every_figure(report_dir: Path) -> None:
+    """The LaTeX report includes the copied images of the figures."""
+    tex = report_dir / "index.tex"
+    graphics = re.findall(r"\\includegraphics\[[^]]*\]\{([^}]+)\}", tex.read_text())
+    assert graphics == [f"index_figures/Beermann1976_{fig}.png" for fig in FIGURES]
+    assert [g for g in graphics if not (report_dir / g).exists()] == []

@@ -1,48 +1,35 @@
-[Experiments](index.html)
+[Simulation experiments](../index.md)
 
 # {{ exp_id }}
 
-## Model
-* **SBML**: [{{ model_path }}]({{ model_path }})
-{% if report_path %}
-* **HTML**: [{{ report_path }}]({{ report_path }})
-{% endif %}
+## Models
+{% for model_id, model_path in models.items() %}
+* **{{ model_id }}**: [{{ model_path | basename }}]({{ model_path }})
+{% endfor %}
 
 ## Datasets
-{% for dset_id in datasets %}
-* [{{results_path}}/{{ exp_id }}_data_{{ dset_id }}.tsv]({{results_path}}/{{ exp_id }}_data_{{ dset_id }}.tsv)
-{% endfor %}
-
-## Simulations
-{% for sim_id in simulations %}
-* [{{results_path}}/{{ exp_id }}_sim_{{ sim_id }}.h5]({{results_path}}/{{ exp_id }}_sim_{{ sim_id }}.h5)
-{% endfor %}
-
-## Scans
-{% for scan_id in scans %}
-* [{{results_path}}/{{ exp_id }}_scan_{{ scan_id }}.h5]({{results_path}}/{{ exp_id }}_scan_{{ scan_id }}.h5)
+{% for dset_id, dset_path in datasets.items() %}
+* **{{ dset_id }}**: [{{ dset_path }}]({{ dset_path }})
 {% endfor %}
 
 ## Figures
-{% for fig_id in figures %}
-* [{{results_path}}/{{ exp_id }}_{{ fig_id }}.svg]({{results_path}}/{{ exp_id }}_{{ fig_id }}.svg)
-{% endfor %}
+{% for fig_id, fig in figures.items() %}
 
-{% for fig_id, meta in figures.items() %}
 ### {{ fig_id }}
-{% if meta %}
-{% for k, v in meta.items() %}
-{% if v %}
-**{{ k }}**: {{ v }}  
+
+{% if fig.static %}
+![{{ fig_id }}]({{ fig.path }}.svg)
+
 {% endif %}
-{% endfor %}
+{% if fig.interactive %}
+[{{ fig.path }}.html]({{ fig.path }}.html)
 {% endif %}
-![{{results_path}}/{{ exp_id }}_{{ fig_id }}.svg]({{results_path}}/{{ exp_id }}_{{ fig_id }}.svg)
 {% endfor %}
 
 ## Code
-[{{ code_path }}]({{ code_path }})
 
-```python
+[{{ code_path | basename }}]({{ code_path }})
+
+````python
 {{code}}
-```
+````
