@@ -27,7 +27,6 @@ from __future__ import annotations
 import argparse
 import json
 import sys
-import zipfile
 from collections import Counter
 from pathlib import Path
 
@@ -35,8 +34,9 @@ from sbmlsim import log
 from sbmlsim.console import console
 from sbmlsim.testsuite import SemanticSuite, run_suite
 from sbmlsim.testsuite.cases import SUITE_VERSION
-from sbmlsim.testsuite.report import TestSuiteReport, versions
+from sbmlsim.testsuite.report import TestSuiteReport
 from sbmlsim.testsuite.runner import CaseResult, CaseStatus
+from sbmlsim.testsuite.submission import write_submission
 
 #: the expected outcomes the tests compare a run with
 BASELINE_PATH = (
@@ -61,88 +61,16 @@ def load(version: str) -> SemanticSuite:
     return SemanticSuite.load(resolve_version(version))
 
 
-def run(suite: SemanticSuite) -> list[CaseResult]:
+def run(suite: SemanticSuite, workers: int | None = None) -> list[CaseResult]:
     """Run every timecourse case of the suite and report the outcome."""
     console.print(f"Running the SBML Test Suite '{suite.version}' from {suite.path}")
-    results = run_suite(suite)
+    results = run_suite(suite, workers=workers)
     counts = Counter(r.status for r in results)
     n = len(results)
     console.print(f"[bold]{counts[CaseStatus.PASS]}/{n} cases pass[/bold]")
     for status, count in counts.most_common():
         console.print(f"  {status.value:18s} {count:5d}  {100 * count / n:5.1f}%")
     return results
-
-
-def write_submission(suite: SemanticSuite, output_dir: Path) -> Path:
-    """Write the archive which is submitted to the SBML Test Suite Database.
-
-    The archive holds the results of every case which could be simulated, one
-    CSV per case named after it, and a manifest with the versions the results
-    were produced with. A case which the simulator cannot read or integrate has
-    no results and is left out, which is how a submission says that it does not
-    support the case. Uploading the archive is a deliberate step and is not
-    done here.
-
-    Args:
-        suite: the suite to run.
-        output_dir: directory the archive is written into.
-
-    Returns:
-        Path of the archive.
-    """
-    import pandas as pd
-
-    from sbmlsim import __version__
-    from sbmlsim.model import AbstractModel
-    from sbmlsim.simulator.simulation_serial import SimulatorSerial
-    from sbmlsim.testsuite.runner import (
-        INTEGRATOR_ABSOLUTE_TOLERANCE,
-        INTEGRATOR_RELATIVE_TOLERANCE,
-        simulate_case,
-    )
-
-    output_dir.mkdir(parents=True, exist_ok=True)
-    path = output_dir / f"sbmlsim-{__version__}-sbml-test-suite-{suite.version}.zip"
-
-    n_cases = 0
-    submitted = 0
-    with zipfile.ZipFile(path, "w", zipfile.ZIP_DEFLATED) as zf:
-        for case in suite.cases():
-            n_cases += 1
-            simulator = SimulatorSerial(
-                absolute_tolerance=INTEGRATOR_ABSOLUTE_TOLERANCE,
-                relative_tolerance=INTEGRATOR_RELATIVE_TOLERANCE,
-                variable_step_size=False,
-            )
-            try:
-                simulator.set_model(model=AbstractModel(source=case.model_path))
-                observed = simulate_case(case, simulator)
-            except Exception as err:
-                console.print(f"  [dim]{case.cid}: no results ({err})[/dim]")
-                continue
-            # the submission names the columns as the case names its variables,
-            # i.e. `S1` and not the selection `[S1]`; the columns are the
-            # selections of the case in their order
-            df = pd.DataFrame(observed.values, columns=["time", *case.variables])
-            zf.writestr(f"{case.cid}.csv", df.to_csv(index=False))
-            submitted += 1
-
-        zf.writestr(
-            "manifest.json",
-            json.dumps(
-                {
-                    "simulator": "sbmlsim",
-                    "versions": versions(),
-                    "suite_version": suite.version,
-                    "n_cases": n_cases,
-                    "n_submitted": submitted,
-                },
-                indent=2,
-            ),
-        )
-
-    console.print(f"Submission archive with {submitted} of {n_cases} cases: {path}")
-    return path
 
 
 def write_baseline(results: list[CaseResult], suite: SemanticSuite) -> Path:
@@ -193,6 +121,13 @@ def main(argv: list[str] | None = None) -> int:
         default=Path("site") / "testsuite" / "report",
         help="directory of the report or of the submission archive",
     )
+    parser.add_argument(
+        "-w",
+        "--workers",
+        type=int,
+        default=None,
+        help="processes the cases run in, the available cores by default",
+    )
     options = parser.parse_args(argv)
     log.enable_rich_logging()
 
@@ -204,10 +139,10 @@ def main(argv: list[str] | None = None) -> int:
     if options.command == "submission":
         # the submission needs the results of every case and not their outcome,
         # so it simulates in one pass of its own
-        write_submission(suite, options.output)
+        write_submission(suite, options.output, workers=options.workers)
         return 0
 
-    results = run(suite)
+    results = run(suite, workers=options.workers)
     if options.command == "report":
         TestSuiteReport(results, suite_version=suite.version).create(options.output)
     elif options.command == "baseline":

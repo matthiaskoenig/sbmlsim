@@ -135,6 +135,7 @@ nav = [
       { "runner" = "api/testsuite.runner.md" },
       { "comparison" = "api/testsuite.comparison.md" },
       { "report" = "api/testsuite.report.md" },
+      { "submission" = "api/testsuite.submission.md" },
       { "cache" = "api/testsuite.cache.md" },
     ] },
     { "sbmlsim.comparison" = [

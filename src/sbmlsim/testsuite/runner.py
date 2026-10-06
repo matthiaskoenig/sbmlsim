@@ -10,8 +10,10 @@ by exactly these outcomes.
 from __future__ import annotations
 
 import logging
+import os
 import time
-from collections.abc import Iterable
+from collections.abc import Callable, Iterable, Sequence
+from concurrent.futures import ProcessPoolExecutor
 from dataclasses import dataclass, field
 from enum import StrEnum
 
@@ -140,24 +142,53 @@ def simulate_case(case: SemanticCase, simulator: SimulatorSerial) -> TimecourseR
     return simulator._timecourses([simulation])[0]
 
 
+def map_cases[T](
+    function: Callable[[SemanticCase], T],
+    cases: Sequence[SemanticCase],
+    workers: int | None = None,
+) -> list[T]:
+    """Apply a function to every case, in parallel processes.
+
+    The cases are independent of each other, so they are spread over a pool of
+    processes. A case takes from milliseconds to seconds, so they are handed
+    out in small chunks, which keeps every process busy until the end.
+
+    Args:
+        function: a module level function, the processes import it.
+        cases: the cases.
+        workers: number of processes, the cores available to this process by
+            default; `1` applies the function in this process.
+
+    Returns:
+        The answers of the function, in the order of the cases.
+    """
+    workers = workers or os.process_cpu_count() or 1
+    if workers == 1 or len(cases) <= 1:
+        return [function(case) for case in cases]
+    chunksize = max(1, min(8, len(cases) // (4 * workers)))
+    with ProcessPoolExecutor(max_workers=min(workers, len(cases))) as executor:
+        return list(executor.map(function, cases, chunksize=chunksize))
+
+
 def run_suite(
-    suite: SemanticSuite, cids: Iterable[str] | None = None
+    suite: SemanticSuite,
+    cids: Iterable[str] | None = None,
+    workers: int | None = None,
 ) -> list[CaseResult]:
     """Run the cases of a suite.
 
     Args:
         suite: the suite to run.
         cids: identifiers to run, all timecourse cases by default.
+        workers: number of processes the cases are run in, the cores available
+            to this process by default; `1` runs them in this process.
 
     Returns:
         The results, in the order of the case identifiers.
     """
     selected = set(cids) if cids is not None else None
-    return [
-        run_case(case)
-        for case in suite.cases()
-        if selected is None or case.cid in selected
-    ]
+    cases = [case for case in suite.cases() if selected is None or case.cid in selected]
+    return map_cases(run_case, cases, workers=workers)
 
 
 def run_case(case: SemanticCase) -> CaseResult:
