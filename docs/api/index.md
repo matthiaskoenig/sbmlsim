@@ -14,6 +14,7 @@ The top level modules: data, formulas, units and the shared output.
 | [serialization](serialization.md) | JSON serialization of experiments |
 | [utils](utils.md) | timing and other helpers |
 | [console](console.md) | shared rich console |
+| [display](display.md) | the output of scripts: sections, key/value blocks and links which the terminal opens with a click |
 | [log](log.md) | logging of the package |
 
 ## sbmlsim.model

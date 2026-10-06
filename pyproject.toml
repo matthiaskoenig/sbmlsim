@@ -84,6 +84,9 @@ dev = [
 	"pre-commit>=4.6.2",
 	"ty>=0.0.85",
 	"tox>=4.64.9",
+	# tox creates its environments with uv, as the continuous integration does;
+	# without the plugin it installs with pip, whose resolver fails on python 3.14
+	"tox-uv>=1.36.1",
 	"pytest>=9.1.1",
 	"zensical>=0.0.68",
 	"mkdocstrings-python>=2.0.9",

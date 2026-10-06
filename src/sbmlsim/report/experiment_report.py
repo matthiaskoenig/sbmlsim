@@ -1,19 +1,25 @@
 """Create report of simulation experiments."""
 
+from __future__ import annotations
+
 import json
 import logging
 import os
 import shutil
 import sys
+import webbrowser
 from collections.abc import Callable
 from enum import Enum
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
-from sbmlsim import __version__
-from sbmlsim.experiment.experiment import ExperimentResult, SimulationExperiment
+from sbmlsim import __version__, display
 from sbmlsim.model import AbstractModel
 from sbmlsim.report.templates import TEMPLATE_DIR, template_environment
+
+if TYPE_CHECKING:
+    # the experiments import the runner, which imports this module
+    from sbmlsim.experiment.experiment import ExperimentResult, SimulationExperiment
 
 logger = logging.getLogger(__name__)
 TEMPLATE_PATH = TEMPLATE_DIR
@@ -47,7 +53,7 @@ class ReportResults:
             json.dump(self.data, fp, indent=2)
 
     @staticmethod
-    def from_json(json_path: Path) -> "ReportResults":
+    def from_json(json_path: Path) -> ReportResults:
         """Read from JSON.
 
         Args:
@@ -172,6 +178,7 @@ class ExperimentReport:
         filename: str | None = None,
         report_type: ReportType = ReportType.HTML,
         f_filter_context: Callable[[dict[str, Any]], None] | None = None,
+        show_report: bool = False,
         **kwargs: Any,
     ) -> Path:
         """Create report of SimulationExperiments.
@@ -182,11 +189,16 @@ class ExperimentReport:
         paths are below the report or at the same level in the file
         hierarchy.
 
+        The report ends the output of a run with its section: the number of
+        experiments and the link to the index file, which the terminal opens
+        with a click, see `sbmlsim.display.link`.
+
         Args:
             output_path: Directory for the report.
             filename: Name of the index file (without suffix).
             report_type: Type of the report.
             f_filter_context: Function filtering the context (latex reports).
+            show_report: open the report in a web browser.
             **kwargs: Additional arguments, e.g. `latex_path_prefix`.
 
         Returns:
@@ -268,5 +280,11 @@ class ExperimentReport:
         report_path = write_report(
             filename=filename, context=context, template_str=f"index.{suffix}"
         )
-        logger.info("report created: %s", report_path.resolve().as_uri())
+        logger.debug("report created: %s", report_path.resolve().as_uri())
+
+        display.section("Report", icon=display.ICON_REPORT)
+        display.key_values({"experiments": len(self.data_dict)})
+        display.link("report", report_path)
+        if show_report:
+            webbrowser.open(report_path.resolve().as_uri(), new=2)
         return report_path
