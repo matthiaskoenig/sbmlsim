@@ -64,7 +64,7 @@ class ExperimentRunner:
         experiment_classes: type[SimulationExperiment]
         | Iterable[type[SimulationExperiment]],
         base_path: Path | None,
-        data_path: Path | None,
+        data_path: Path | Iterable[Path] | None,
         simulator: SimulatorSerial | None = None,
         ureg: UnitRegistry | None = None,  # FIXME: is this needed on ExperimentRunner?
         **kwargs,
@@ -196,7 +196,7 @@ def run_experiments(
     experiments: type[SimulationExperiment] | list[type[SimulationExperiment]],
     output_path: Path,
     base_path: Path | None = None,
-    data_path: Path | None = None,
+    data_path: Path | Iterable[Path] | None = None,
 ) -> None:
     """Run simulation experiments and write their report to the output path."""
     if not isinstance(experiments, (list, tuple)):

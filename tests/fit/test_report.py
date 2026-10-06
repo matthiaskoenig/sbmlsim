@@ -12,10 +12,11 @@ from pathlib import Path
 import numpy as np
 import pytest
 
+from examples.hctz_fitting.experiments.studies import Weir1998
 from sbmlsim.fit import FitSettings, MappingKind, ParameterSet, ParameterSets
 from sbmlsim.fit.cli import FitDefinition
 from sbmlsim.fit.fisher import fisher_information
-from sbmlsim.fit.objects import EVALUATED_KINDS, FitParameter
+from sbmlsim.fit.objects import EVALUATED_KINDS, FitMappingCollection, FitParameter
 from sbmlsim.fit.optimization import OptimizationProblem
 from sbmlsim.fit.report import FitReport
 from sbmlsim.fit.result import OptimizationResult
@@ -137,6 +138,55 @@ def test_the_report_of_an_ordinary_fit_has_no_target_column(
     # a fit without networks has no section of them, and no line in its place
     assert "Networks" not in html
     assert "  </div>\n\n  <h3>Settings</h3>" in html
+
+
+def test_the_report_shows_every_data_path(
+    tmp_path: Path, op_hctz_iv: OptimizationProblem, fit_settings: FitSettings
+) -> None:
+    """A problem with several data paths shows the paths, one per line."""
+    data_path = op_hctz_iv.data_path
+    assert isinstance(data_path, Path)
+    problem = OptimizationProblem(
+        opid=op_hctz_iv.opid,
+        mapping_collections=op_hctz_iv.mapping_collections,
+        fit_parameters=op_hctz_iv.parameters,
+        base_path=op_hctz_iv.base_path,
+        data_path=[data_path, data_path.parent],
+    )
+    problem.initialize(fit_settings)
+    report = FitReport(
+        problem=problem,
+        settings=fit_settings,
+        parameter_sets=problem.parameter_set_model(),
+        mapping_figures=False,
+    )
+    info = report.fit_info()
+    assert info["data path"] == f"{data_path}\n{data_path.parent}"
+    assert info["base path"] == str(op_hctz_iv.base_path)
+    html = (report.create(tmp_path, name="paths") / "index.html").read_text()
+    assert "PosixPath" not in html and "WindowsPath" not in html
+
+
+def test_the_experiments_are_those_with_fit_mappings(
+    op_hctz_iv: OptimizationProblem, fit_settings: FitSettings
+) -> None:
+    """An experiment whose mappings are all excluded is not listed."""
+    excluded = FitMappingCollection(experiment=Weir1998, kind=MappingKind.EXCLUDED)
+    problem = OptimizationProblem(
+        opid=op_hctz_iv.opid,
+        mapping_collections=[*op_hctz_iv.mapping_collections, excluded],
+        fit_parameters=op_hctz_iv.parameters,
+        base_path=op_hctz_iv.base_path,
+        data_path=op_hctz_iv.data_path,
+    )
+    problem.initialize(fit_settings)
+    report = FitReport(
+        problem=problem,
+        settings=fit_settings,
+        parameter_sets=problem.parameter_set_model(),
+        mapping_figures=False,
+    )
+    assert report.fit_info()["experiments"] == "Beermann1976"
 
 
 def test_a_metric_which_is_not_defined_is_a_dash(

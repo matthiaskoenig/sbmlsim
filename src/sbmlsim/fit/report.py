@@ -54,6 +54,7 @@ from sbmlsim.fit.parameter_mapping import has_renamed_targets
 from sbmlsim.fit.parameters import ParameterSet, ParameterSets
 from sbmlsim.fit.result import OptimizationResult, bound_warnings
 from sbmlsim.report.templates import template_environment
+from sbmlsim.utils import paths_text
 
 logger = logging.getLogger(__name__)
 
@@ -1177,11 +1178,13 @@ class FitReport:
                 f"{count} {kind.value}"
                 for kind, count in self.problem.mapping_counts().items()
             ),
-            # every class once, a class has one collection per kind or selection
+            # every class with fit mappings once, a class has one collection per
+            # kind or selection, and a collection whose mappings are all
+            # filtered out by the selection of the problem has none
             "experiments": ", ".join(
                 dict.fromkeys(
-                    collection.experiment_class.__name__
-                    for collection in self.problem.mapping_collections
+                    self.problem.mapping_collections[k].experiment_class.__name__
+                    for k in sorted(set(self.problem.collection_indices))
                 )
             ),
         }
@@ -1189,8 +1192,8 @@ class FitReport:
             info["networks"] = ", ".join(
                 f"{s.name} ({s.kind})" for s in self._summaries
             )
-        info["base path"] = str(self.problem.base_path)
-        info["data path"] = str(self.problem.data_path)
+        info["base path"] = paths_text(self.problem.base_path)
+        info["data path"] = paths_text(self.problem.data_path)
         if self.opt_result:
             info["optimization"] = f"{self.opt_result.size} runs"
         return info
