@@ -242,18 +242,28 @@ class ExperimentReport:
                 # FIXME: more robust
                 f_filter_context(self.data_dict)
 
-            # collect and copy figures
-
-            context["latex_path_prefix"] = kwargs.get("latex_path_prefix", "")
-            figure_base_path = output_path / f"{filename}_figures"
-            if not figure_base_path.exists():
-                figure_base_path.mkdir(parents=True)
+            # collect and copy the png images of the figures; by default the
+            # document includes them from the directory they are copied to
+            figures_dir = f"{filename}_figures"
+            context["latex_path_prefix"] = kwargs.get("latex_path_prefix", figures_dir)
+            figure_base_path = output_path / figures_dir
+            figure_base_path.mkdir(parents=True, exist_ok=True)
+            latex_figures: dict[str, list[str]] = {}
             for exp_id, exp_context in self.data_dict.items():
-                for fig_path in exp_context["figures"].values():
-                    shutil.copy(
-                        str(output_path / exp_id / f"{fig_path}.png"),
-                        str(figure_base_path / f"{fig_path}.png"),
-                    )
+                latex_figures[exp_id] = []
+                for fig_id, fig in exp_context["figures"].items():
+                    png_path = output_path / exp_id / f"{fig['path']}.png"
+                    if not png_path.exists():
+                        logger.warning(
+                            "Figure '%s' of '%s' is not in the LaTeX report, it "
+                            "has no png image; add 'png' to the figure formats.",
+                            fig_id,
+                            exp_id,
+                        )
+                        continue
+                    shutil.copy(png_path, figure_base_path / png_path.name)
+                    latex_figures[exp_id].append(fig["path"])
+            context["latex_figures"] = latex_figures
 
         report_path = write_report(
             filename=filename, context=context, template_str=f"index.{suffix}"

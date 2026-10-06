@@ -31,9 +31,26 @@ def template_environment(template_dir: Path | None = None) -> jinja2.Environment
     Returns:
         The environment the reports are rendered with.
     """
-    return jinja2.Environment(
+    env = jinja2.Environment(
         loader=jinja2.FileSystemLoader(str(template_dir or TEMPLATE_DIR)),
         autoescape=jinja2.select_autoescape(["html"]),
         trim_blocks=True,
         lstrip_blocks=True,
     )
+    env.filters["basename"] = basename
+    return env
+
+
+def basename(path: Path | str) -> str:
+    """Get the name of the file of a path, the `basename` filter of the templates.
+
+    A report shows the name of a file and links its path, which is relative to
+    the report and can climb many directories.
+
+    Args:
+        path: path of the file, a string after the report data was stored as JSON.
+
+    Returns:
+        The last component of the path.
+    """
+    return Path(str(path).replace("\\", "/")).name

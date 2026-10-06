@@ -14,6 +14,15 @@
 <a href="#experiments">Experiments</a>
 {% endblock %}
 
+{% block head %}
+<style>
+  /* the figures of an experiment are thumbnails of one height, a click opens
+     a figure in full size */
+  #experiments figure img { height: 220px; object-fit: contain; }
+  #experiments figure a.interactive { display: flex; align-items: center; justify-content: center; height: 220px; border: 1px dashed var(--line); border-radius: 8px; }
+</style>
+{% endblock %}
+
 {% block content %}
 
 <section id="experiments">
@@ -25,9 +34,13 @@
       <span class="exp">{{ context.figures | length }} figure(s) · {{ context.models | length }} model(s)</span>
     </header>
     <div class="grid">
-      {% for fig_id, fig_path in context.figures.items() %}
+      {% for fig_id, fig in context.figures.items() %}
       <figure>
-        <img loading="lazy" src="./{{ exp_id }}/{{ fig_path }}.svg" alt="{{ fig_id }}">
+        {% if fig.static %}
+        <img loading="lazy" src="{{ exp_id }}/{{ fig.path }}.svg" alt="{{ fig_id }}">
+        {% elif fig.interactive %}
+        <a class="interactive" href="{{ exp_id }}/{{ fig.path }}.html">interactive figure</a>
+        {% endif %}
         <figcaption>{{ fig_id }}</figcaption>
       </figure>
       {% endfor %}

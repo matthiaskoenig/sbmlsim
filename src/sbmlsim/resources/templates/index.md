@@ -1,17 +1,19 @@
-# Simulation Experiments
-{% for exp_id, context in exp_ids.items() %}
-## [{{ exp_id }}]({{ exp_id }}.html)
+# Simulation experiments
+{% for exp_id, context in data.items() %}
 
-{% for fig_id, meta in context.figures.items() %}
+## [{{ exp_id }}]({{ exp_id }}/{{ exp_id }}.md)
+
+{{ context.figures | length }} figure(s), {{ context.models | length }} model(s)
+{% for fig_id, fig in context.figures.items() %}
+
 ### {{ fig_id }}
-<a href="{{ exp_d }}.html"><img src="{{context.results_path}}/{{ exp_id }}_{{ fig_id }}.svg" width=150/></a>
 
-{% if meta %}
-{% for k, v in meta.items() %}
-{% if v %}
-**{{ k }}**: {{ v }}  
+{% if fig.static %}
+![{{ fig_id }}]({{ exp_id }}/{{ fig.path }}.svg)
+
 {% endif %}
-{% endfor %}
+{% if fig.interactive %}
+[interactive]({{ exp_id }}/{{ fig.path }}.html)
 {% endif %}
 {% endfor %}
 {% endfor %}
