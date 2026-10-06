@@ -68,7 +68,7 @@ A single sync creates the virtual environment in `.venv`, installs `sbmlsim` int
 uv sync --extra dev
 ```
 
-The `dev` extra contains everything used below, i.e., pytest, ruff, ty, tox, pre-commit, zensical and bump-my-version, so nothing has to be installed separately. The python version is taken from `.python-version` (currently 3.14); to work against the oldest supported version instead use `uv sync --extra dev --python 3.13`, which replaces the environment.
+The `dev` extra contains everything used below, i.e., pytest, ruff, ty, tox with tox-uv, pre-commit, zensical and bump-my-version, so nothing has to be installed separately. The python version is taken from `.python-version` (currently 3.14); to work against the oldest supported version instead use `uv sync --extra dev --python 3.13`, which replaces the environment.
 
 The tools are then run either with `uv run <command>`, which uses the environment without activating it, or from the activated environment:
 
