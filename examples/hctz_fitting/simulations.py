@@ -11,7 +11,7 @@ from pathlib import Path
 
 from examples.hctz_fitting.experiments.studies import Beermann1976, Patel1984, Weir1998
 from examples.hctz_fitting.helpers import run_experiments
-from sbmlsim.console import console
+from sbmlsim import display
 from sbmlsim.experiment import SimulationExperiment
 from sbmlsim.plot import Figure
 
@@ -71,7 +71,7 @@ def run_simulation_experiments(
         if f.parent == figures_dir:
             continue
         shutil.copy2(f, figures_dir / f.name)
-    console.print(f"Figures copied to: {figures_dir.resolve().as_uri()}")
+    display.link("figures", figures_dir)
 
 
 if __name__ == "__main__":
