@@ -211,6 +211,10 @@ def test_differential_evolution_without_convergence(
         serial=True,
         seed=1234,
         maxiter=1,
+        # the smallest population and no polishing by least squares, which
+        # would be most of the evaluations
+        popsize=2,
+        polish=False,
         show_progress=False,
     )
     assert opt_result.size == 1

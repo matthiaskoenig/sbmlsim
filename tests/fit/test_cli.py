@@ -2,6 +2,7 @@
 
 import dataclasses
 from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -55,7 +56,9 @@ def test_definition_problem(definition_hctz_pk: FitDefinition) -> None:
     assert not problem.is_initialized
 
 
-def test_run_fit_all(definition_hctz_pk: FitDefinition) -> None:
+def test_run_fit_all(
+    definition_hctz_pk: FitDefinition, short_fit: dict[str, Any]
+) -> None:
     """The `ALL` strategy fits the experiments together."""
     runs = run_fit(
         definition=definition_hctz_pk,
@@ -64,6 +67,7 @@ def test_run_fit_all(definition_hctz_pk: FitDefinition) -> None:
         size=1,
         n_cores=1,
         seed=1234,
+        **short_fit,
     )
     assert list(runs) == ["pk"]
     run = runs["pk"]
@@ -74,7 +78,9 @@ def test_run_fit_all(definition_hctz_pk: FitDefinition) -> None:
     assert run.result.settings == definition_hctz_pk.settings
 
 
-def test_run_fit_single(definition_hctz_pk: FitDefinition) -> None:
+def test_run_fit_single(
+    definition_hctz_pk: FitDefinition, short_fit: dict[str, Any]
+) -> None:
     """The `SINGLE` strategy fits every collection of training data on its own.
 
     A collection which is not fitted is not a problem of its own: the
@@ -98,6 +104,7 @@ def test_run_fit_single(definition_hctz_pk: FitDefinition) -> None:
         size=1,
         n_cores=1,
         seed=1234,
+        **short_fit,
     )
     # every collection of training data gets its own problem, they share the
     # id of the fit
@@ -106,10 +113,17 @@ def test_run_fit_single(definition_hctz_pk: FitDefinition) -> None:
     ]
 
 
-def test_run_fit_report(tmp_path: Path, definition_hctz_pk: FitDefinition) -> None:
+def test_run_fit_report(
+    tmp_path: Path, definition_hctz_pk: FitDefinition, short_fit: dict[str, Any]
+) -> None:
     """A finished fit creates its report."""
     runs = run_fit(
-        definition=definition_hctz_pk, opid="pk", size=1, n_cores=1, seed=1234
+        definition=definition_hctz_pk,
+        opid="pk",
+        size=1,
+        n_cores=1,
+        seed=1234,
+        **short_fit,
     )
     results_dir = runs["pk"].report(output_dir=tmp_path, mapping_figures=False)
     assert (results_dir / "index.html").exists()
@@ -143,12 +157,19 @@ def test_fit_cli(tmp_path: Path) -> None:
     assert (tmp_path / "cli" / "parameters.json").exists()
 
 
-def test_report_cli(tmp_path: Path, definition_hctz_pk: FitDefinition) -> None:
+def test_report_cli(
+    tmp_path: Path, definition_hctz_pk: FitDefinition, short_fit: dict[str, Any]
+) -> None:
     """The report tool reports stored parameters without optimizing."""
     from examples.hctz_fitting.fitting.fitting import FIT_DEFINITIONS
 
     runs = run_fit(
-        definition=definition_hctz_pk, opid="pk", size=1, n_cores=1, seed=1234
+        definition=definition_hctz_pk,
+        opid="pk",
+        size=1,
+        n_cores=1,
+        seed=1234,
+        **short_fit,
     )
     parameters_path = tmp_path / "parameters.json"
     runs["pk"].result.parameter_sets(size=1).to_json(path=parameters_path)
@@ -210,11 +231,16 @@ def test_fit_id_is_unique_and_sortable() -> None:
 
 
 def test_fit_id_is_used_everywhere(
-    tmp_path: Path, definition_hctz_pk: FitDefinition
+    tmp_path: Path, definition_hctz_pk: FitDefinition, short_fit: dict[str, Any]
 ) -> None:
     """The id created for a fit is the id of its problem, result and report."""
     runs = run_fit(
-        definition=definition_hctz_pk, opid="the_fit", size=1, n_cores=1, seed=1234
+        definition=definition_hctz_pk,
+        opid="the_fit",
+        size=1,
+        n_cores=1,
+        seed=1234,
+        **short_fit,
     )
     run = runs["the_fit"]
     assert run.problem.opid == "the_fit"
@@ -226,9 +252,13 @@ def test_fit_id_is_used_everywhere(
     assert run.result.parameter_set().sid.startswith("the_fit")
 
 
-def test_run_fit_creates_an_id(definition_hctz_pk: FitDefinition) -> None:
+def test_run_fit_creates_an_id(
+    definition_hctz_pk: FitDefinition, short_fit: dict[str, Any]
+) -> None:
     """A fit without an id gets one."""
-    runs = run_fit(definition=definition_hctz_pk, size=1, n_cores=1, seed=1234)
+    runs = run_fit(
+        definition=definition_hctz_pk, size=1, n_cores=1, seed=1234, **short_fit
+    )
     opid = next(iter(runs))
     assert "__" in opid
     assert runs[opid].result.sid == opid

@@ -139,6 +139,7 @@ class FASTSensitivityAnalysis(SensitivityAnalysis):
                 self.ssa_problems[gid],
                 N=self.N,
                 M=self.M,
+                seed=self.seed,
             )
             self.ssa_problems[gid].set_samples(ssa_samples)
 
@@ -213,6 +214,7 @@ class FASTSensitivityAnalysis(SensitivityAnalysis):
                         num_resamples=100,
                         conf_level=0.95,
                         print_to_console=False,
+                        seed=self.seed,
                     )
                 for key in self.sensitivity_keys:
                     self.sensitivity[gid][key][:, ko] = Si[key]

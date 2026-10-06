@@ -4,6 +4,7 @@ import multiprocessing
 import os
 import pickle
 import time
+from contextlib import ExitStack
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -167,6 +168,7 @@ class SensitivityAnalysis:
         results_path.mkdir(parents=True, exist_ok=True)
 
         # set seed
+        self.seed: int | None = seed
         if seed is not None:
             np.random.seed(seed)
 
@@ -272,62 +274,74 @@ class SensitivityAnalysis:
             self.results = data
             return
 
-        for group in self.groups:
-            console.print(f"Simulate group: '{group}'", style="blue")
-
-            start = time.perf_counter()
-
-            # num_samples x num_outputs
-            results = xr.DataArray(
-                np.full((self.num_samples, self.num_outputs), np.nan),
-                dims=["sample", "output"],
-                coords={"sample": range(self.num_samples), "output": self.outputs},
-                name="results",
+        # one pool for every group: a process imports sbmlsim when it starts,
+        # which takes longer than simulating a small sample. A single core
+        # simulates in this process
+        with ExitStack() as stack:
+            pool = (
+                stack.enter_context(multiprocessing.Pool(processes=self.n_cores))
+                if self.n_cores > 1
+                else None
             )
+            for group in self.groups:
+                console.print(f"Simulate group: '{group}'", style="blue")
 
-            # load model
-            r: roadrunner.RoadRunner = self.sensitivity_simulation.load_model(
-                model_path=self.sensitivity_simulation.model_path,
-                selections=self.sensitivity_simulation.selections,
-            )
+                start = time.perf_counter()
 
-            # number of cores
-            samples = self.samples_required(group.uid)
+                # num_samples x num_outputs
+                results = xr.DataArray(
+                    np.full((self.num_samples, self.num_outputs), np.nan),
+                    dims=["sample", "output"],
+                    coords={"sample": range(self.num_samples), "output": self.outputs},
+                    name="results",
+                )
 
-            # create chunk of samples for core
-            items = list(range(self.num_samples))
-            chunks = self._split_into_chunks(items, self.n_cores)
-            chunked_samples = [
-                [
-                    {
-                        **group.changes,
-                        **dict(
-                            zip(
-                                self.parameter_ids,
-                                samples[k, :].values,
-                                strict=False,
-                            )
-                        ),
-                    }
-                    for k in chunk
+                # load model
+                r: roadrunner.RoadRunner = self.sensitivity_simulation.load_model(
+                    model_path=self.sensitivity_simulation.model_path,
+                    selections=self.sensitivity_simulation.selections,
+                )
+
+                # number of cores
+                samples = self.samples_required(group.uid)
+
+                # create chunk of samples for core
+                items = list(range(self.num_samples))
+                chunks = self._split_into_chunks(items, self.n_cores)
+                chunked_samples = [
+                    [
+                        {
+                            **group.changes,
+                            **dict(
+                                zip(
+                                    self.parameter_ids,
+                                    samples[k, :].values,
+                                    strict=False,
+                                )
+                            ),
+                        }
+                        for k in chunk
+                    ]
+                    for chunk in chunks
                 ]
-                for chunk in chunks
-            ]
 
-            # parameters for multiprocessing
-            sa_sim = self.sensitivity_simulation
-            rrs = [(sa_sim, r, chunked_samples[i]) for i in range(self.n_cores)]
+                # parameters for multiprocessing
+                sa_sim = self.sensitivity_simulation
+                rrs = [(sa_sim, r, chunked_samples[i]) for i in range(self.n_cores)]
 
-            with multiprocessing.Pool(processes=self.n_cores) as pool:
-                outputs_list: list = pool.map(run_simulation, rrs)
+                outputs_list: list = (
+                    pool.map(run_simulation, rrs)
+                    if pool is not None
+                    else [run_simulation(rr) for rr in rrs]
+                )
 
-            for kc, chunk in enumerate(chunks):
-                for kp, idx in enumerate(chunk):
-                    results[idx, :] = list(outputs_list[kc][kp].values())
+                for kc, chunk in enumerate(chunks):
+                    for kp, idx in enumerate(chunk):
+                        results[idx, :] = list(outputs_list[kc][kp].values())
 
-            elapsed = time.perf_counter() - start
-            self.results[group.uid] = results
-            console.print(f"Parallel simulation: {elapsed:.3f} s")
+                elapsed = time.perf_counter() - start
+                self.results[group.uid] = results
+                console.print(f"Simulation: {elapsed:.3f} s on {self.n_cores} core(s)")
 
         # write to cache
         self.write_cache(data=self.results, cache_filename=cache_filename, cache=cache)

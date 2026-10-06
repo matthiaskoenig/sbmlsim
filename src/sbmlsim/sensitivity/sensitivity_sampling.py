@@ -94,8 +94,9 @@ class SamplingSensitivityAnalysis(SensitivityAnalysis):
 
         Use LHS sampling of parameters.
         """
-        # LHS sampling (uniform distributed in bounds)
-        sampler = qmc.LatinHypercube(d=self.num_parameters)  # number of dimensions
+        # LHS sampling (uniform distributed in bounds); the sampler draws from a
+        # generator of its own, which the global seed of numpy does not set
+        sampler = qmc.LatinHypercube(d=self.num_parameters, rng=self.seed)
         lower = np.array([p.lower_bound for p in self.parameters])
         upper = np.array([p.upper_bound for p in self.parameters])
 
