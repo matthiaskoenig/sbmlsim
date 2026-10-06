@@ -35,32 +35,36 @@ keywords = [
 ]
 dependencies = [
 	# SBML, COMBINE archives and formula parsing
-	"sbmlutils>=0.15.1",
+	"sbmlutils>=0.16.0",
 	"pymetadata>=0.8.0",
 	"python-libsbml>=5.21.2",
-	"python-libsedml>=2.0.33",
+	"python-libsedml>=2.0.34",
 	# simulation
 	"libroadrunner>=2.10.0",
 	# data structures, units and numerics
 	"numpy>=2.5.3",
-	"pandas>=3.0.5",
-	"xarray>=2026.7.0",
+	"pandas>=3.0.6",
+	"xarray>=2026.9.0",
 	"scipy>=1.18.1",
 	"sympy>=1.14.0",
 	# the formulas of a model and of a network as sympy expressions;
 	# `sbmlsim.mathml` overrides `handle_apply` of its parser for `rem` and
 	# `quotient`, the test of both is the tripwire when the bound is raised
 	"sbmlmath>=0.4.1,<0.5",
-	"pint>=0.25.3",
+	"pint>=0.26.1",
 	"pydantic>=2.13.5",
 	# parameter fitting and sensitivity analysis
 	"petab>=0.9.0",
-	"SALib>=1.5.2",
+	"SALib>=1.6.0",
+	# pharmacokinetic and pharmacodynamic analysis of timecourses
+	"pkpdutils>=1.3.0",
 	# plots and reports
-	"matplotlib>=3.11.1",
+	"matplotlib>=3.11.2",
 	"seaborn>=0.13.2",
 	"jinja2>=3.1.6",
 	"rich>=15.0.0",
+	# human readable reports of the SBML models
+	"sbml4humans>=0.12.2",
 ]
 
 [project.optional-dependencies]
@@ -74,18 +78,18 @@ sciml = [
 dev = [
 	"sbmlsim[sciml]",
 	# the reference of the forward pass in the tests, never imported by the package
-	"torch>=2.14.0",
+	"torch>=2.14.1",
 	"bump-my-version>=1.5.1",
-	"ruff>=0.16.6",
+	"ruff>=0.16.10",
 	"pre-commit>=4.6.2",
-	"ty>=0.0.79",
-	"tox>=4.61.2",
+	"ty>=0.0.84",
+	"tox>=4.64.9",
 	"pytest>=9.1.1",
-	"zensical>=0.0.59",
-	"mkdocstrings-python>=2.0.8",
-	"pytest-xdist>=3.8",
+	"zensical>=0.0.68",
+	"mkdocstrings-python>=2.0.9",
+	"pytest-xdist>=3.8.0",
 	# the prototype of the plotly figures, see sbmlsim.plot.serialization_plotly
-	"plotly>=6.0",
+	"plotly>=7.1.0",
 ]
 
 [project.urls]
