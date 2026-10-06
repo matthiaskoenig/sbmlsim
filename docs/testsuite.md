@@ -35,7 +35,7 @@ uv run python scripts/testsuite.py report --output site/testsuite/report
 uv run python scripts/testsuite.py submission --output dist
 ```
 
-`--version latest` resolves the newest release of the suite instead of the pinned one. The cases are cached under `~/.cache/sbmlsim/test-suite/<version>/`, and `SBMLSIM_TEST_SUITE_PATH` points at a directory of cases somewhere else.
+`--version latest` resolves the newest release of the suite instead of the pinned one. The cases run in one process per core, `--workers` sets the number of processes and `--workers 1` runs them in the process of the script. The cases are cached under `~/.cache/sbmlsim/test-suite/<version>/`, and `SBMLSIM_TEST_SUITE_PATH` points at a directory of cases somewhere else.
 
 ## Part of the test suite of sbmlsim
 

@@ -80,7 +80,7 @@ groups = [
 
 ## Running an analysis
 
-Every analysis is created with the simulation, the parameters, the groups and a `results_path`; `execute` creates the samples, simulates them (in parallel on `n_cores`, cached with `cache_results=True`) and computes the sensitivities, `plot` writes the figures into the results path:
+Every analysis is created with the simulation, the parameters, the groups and a `results_path`; `execute` creates the samples, simulates them (in parallel on `n_cores`, one pool of processes for all groups, in the process itself for `n_cores=1`, cached with `cache_results=True`) and computes the sensitivities, `plot` writes the figures into the results path. The `seed` decides the samples and the bootstrap of the confidence intervals, so an analysis is reproducible:
 
 ```python
 from pathlib import Path
@@ -137,4 +137,4 @@ An output which does not vary over the samples has no Sobol or FAST indices: the
 
 The sensitivities are stored as `xarray.DataArray` objects per group and key (`sa.sensitivity[group_id][key]`), returned as data frames with `sensitivity_df`, and written as tables and figures into the results path. `sbmlsim.sensitivity.classification` groups parameters by their sensitivities across outputs.
 
-The complete example with all methods is `examples/sensitivity/sensitivity_example.py`.
+The complete example with all methods is `examples/sensitivity/sensitivity_example.py`; `--cores` sets the number of processes and `--quick` runs it with the smallest samples every method accepts, which shows that it runs and not what the parameters do.

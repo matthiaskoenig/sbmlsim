@@ -10,8 +10,9 @@ Test Suite Database is made of.
 This package is the library half of that: `SemanticCase` is a case on disk,
 `SemanticSuite` is a directory of them with the download and the cache of a
 release, `run_case` simulates one and `compare_case` decides whether its
-results are within the tolerances of the case. Writing the report and the
-submission archive is `scripts/testsuite_report.py`.
+results are within the tolerances of the case; `run_suite` runs the cases in
+parallel processes and `write_submission` writes the archive which is submitted
+to the database. `scripts/testsuite.py` is the command line around them.
 
 Only the semantic cases which are timecourse simulations are run: the
 stochastic and the flux balance cases need a different kind of simulation, and
@@ -22,6 +23,7 @@ which is covered by `sbmlutils`.
 from sbmlsim.testsuite.cases import SemanticCase, SemanticSuite
 from sbmlsim.testsuite.comparison import CaseComparison, compare_case
 from sbmlsim.testsuite.runner import CaseResult, CaseStatus, run_case, run_suite
+from sbmlsim.testsuite.submission import write_submission
 
 __all__ = [
     "CaseComparison",
@@ -32,4 +34,5 @@ __all__ = [
     "compare_case",
     "run_case",
     "run_suite",
+    "write_submission",
 ]

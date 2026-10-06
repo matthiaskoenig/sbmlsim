@@ -82,7 +82,7 @@ dev = [
 	"bump-my-version>=1.5.1",
 	"ruff>=0.16.10",
 	"pre-commit>=4.6.2",
-	"ty>=0.0.84",
+	"ty>=0.0.85",
 	"tox>=4.64.9",
 	# tox creates its environments with uv, as the continuous integration does;
 	# without the plugin it installs with pip, whose resolver fails on python 3.14

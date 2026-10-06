@@ -42,7 +42,9 @@ settings_testdata: list[FitSettings] = [
 
 
 @pytest.mark.parametrize("settings", settings_testdata)
-def test_fit_settings(settings: FitSettings, op_hctz_pk: OptimizationProblem) -> None:
+def test_fit_settings(
+    settings: FitSettings, op_hctz_pk: OptimizationProblem, short_fit: dict[str, Any]
+) -> None:
     """Test various settings of the optimization problem."""
     op = op_hctz_pk
     opt_result: OptimizationResult = run_optimization(
@@ -52,6 +54,7 @@ def test_fit_settings(settings: FitSettings, op_hctz_pk: OptimizationProblem) ->
         size=1,
         n_cores=1,
         serial=True,
+        **short_fit,
     )
 
     assert opt_result is not None
@@ -133,6 +136,7 @@ def test_loss_function(
     loss_function: LossFunctionType,
     op_hctz_pk: OptimizationProblem,
     fit_settings: FitSettings,
+    short_fit: dict[str, Any],
 ) -> None:
     """Test the various loss functions."""
     op = op_hctz_pk
@@ -149,6 +153,7 @@ def test_loss_function(
         size=1,
         n_cores=1,
         serial=True,
+        **short_fit,
     )
     assert opt_result
     assert op.loss_function == loss_function
@@ -183,7 +188,11 @@ def test_fit_de_serial(
         size=1,
         n_cores=1,
         serial=True,
+        # the smallest population and no polishing by least squares, which
+        # would be most of the evaluations
         maxiter=2,
+        popsize=2,
+        polish=False,
     )
     assert opt_result is not None
 
@@ -193,6 +202,7 @@ def test_fit_lsq_parallel(
     show_progress: bool,
     op_hctz_pk: OptimizationProblem,
     fit_settings: FitSettings,
+    short_fit: dict[str, Any],
 ) -> None:
     """Test parallel least square fit, with and without the progress display."""
     opt_result: OptimizationResult = run_optimization(
@@ -203,6 +213,7 @@ def test_fit_lsq_parallel(
         n_cores=2,
         serial=False,
         show_progress=show_progress,
+        **short_fit,
     )
     assert opt_result is not None
     assert opt_result.size == 2

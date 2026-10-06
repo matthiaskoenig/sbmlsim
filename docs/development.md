@@ -219,7 +219,7 @@ A release is made from `develop`. Since `develop` only accepts pull requests, th
     git push origin x.y.z
     ```
 
-    This starts the `CI-CD` workflow, which runs the test matrix, publishes to [pypi](https://pypi.org/project/sbmlsim/), creates the GitHub release from `release-notes/x.y.z.md` and fast-forwards `main` to the tagged commit. Check the version before pushing, a tag cannot be moved or deleted afterwards.
+    This starts the `CI-CD` workflow, which publishes to [pypi](https://pypi.org/project/sbmlsim/), creates the GitHub release from `release-notes/x.y.z.md` and fast-forwards `main` to the tagged commit. It does not run the test matrix again: the merge into `develop` ran it on the same commit, and the job `tested on develop` waits for that run and stops the release unless it passed, so the tag can be pushed right after the merge. Next to it the SBML Test Suite and the PEtab SciML test suite run against their pins and the submission to the SBML Test Suite Database is written, which the release attaches; a release takes a few minutes once the run on `develop` has finished. Check the version before pushing, a tag cannot be moved or deleted afterwards.
 
 8. test the installation from pypi in a fresh environment:
 
