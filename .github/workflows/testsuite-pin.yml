@@ -27,18 +27,16 @@ jobs:
       pull-requests: write  # open the pull request
     steps:
       - uses: actions/checkout@v7
-      - name: Install uv and set the python version
-        # with the libpython roadrunner needs, see the action
-        uses: ./.github/actions/setup-python
+      - name: Set up the environment
+        uses: ./.github/actions/setup
         with:
           python-version: "3.14"
-      - name: Install dependencies
-        run: uv sync --extra dev
+          sync: --extra dev
       - name: Compare the pinned release with the newest one
         id: versions
         run: |
-          PINNED=$(uv run python -c "from sbmlsim.testsuite.cases import SUITE_VERSION; print(SUITE_VERSION)")
-          LATEST=$(uv run python -c "from sbmlsim.testsuite import SemanticSuite; print(SemanticSuite.latest_version())")
+          PINNED=$(uv run --no-sync python -c "from sbmlsim.testsuite.cases import SUITE_VERSION; print(SUITE_VERSION)")
+          LATEST=$(uv run --no-sync python -c "from sbmlsim.testsuite import SemanticSuite; print(SemanticSuite.latest_version())")
           echo "pinned=$PINNED" >> "$GITHUB_OUTPUT"
           echo "latest=$LATEST" >> "$GITHUB_OUTPUT"
           echo "The pinned release is '$PINNED', the newest is '$LATEST'"
@@ -58,7 +56,7 @@ jobs:
           PY
           # the baseline records the outcome of every case, so it is recorded
           # again for the release which is adopted
-          uv run python scripts/testsuite.py baseline
+          uv run --no-sync python scripts/testsuite.py baseline
       - name: Open the pull request
         if: steps.versions.outputs.pinned != steps.versions.outputs.latest
         uses: peter-evans/create-pull-request@v8

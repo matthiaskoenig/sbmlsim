@@ -29,27 +29,25 @@ jobs:
           persist-credentials: false
       - name: Configure GitHub Pages
         uses: actions/configure-pages@v6
-      - name: Install uv and set the python version
-        # with the libpython roadrunner needs, see the action
-        uses: ./.github/actions/setup-python
+      - name: Set up the environment
+        uses: ./.github/actions/setup
         with:
           python-version: "3.14"
-      - name: Install dependencies
-        run: uv sync --extra dev
+          sync: --extra dev
       - name: Build the documentation
         # the API reference is rendered from the docstrings by mkdocstrings,
         # so the package has to be importable
-        run: uv run zensical build --clean
+        run: uv run --no-sync zensical build --clean
       - name: Generate the agent facing files
         # llms.txt, llms-full.txt and the markdown of every page
-        run: uv run python scripts/llms_txt.py
+        run: uv run --no-sync python scripts/llms_txt.py
       - name: Run the SBML Test Suite and write its report
         # the interactive report is generated into the site and not committed,
         # so the published one always describes the code it was built from.
         # Only a build which can be published pays the three minutes: a pull
         # request builds the site to check that it builds, it does not deploy
         if: github.event_name != 'pull_request'
-        run: uv run python scripts/testsuite.py report --output site/testsuite/report
+        run: uv run --no-sync python scripts/testsuite.py report --output site/testsuite/report
       - name: Upload the site
         uses: actions/upload-pages-artifact@v5
         with:

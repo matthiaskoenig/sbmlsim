@@ -1,11 +1,17 @@
-name: Set up uv and python
+name: Set up the environment
 description: >-
-  Install uv with its cache and set the python version of the job, with the
-  libpython of the interpreter on the library search path
+  Install uv with its cache, set the python version of the job, put the
+  libpython of the interpreter on the library search path and sync the
+  environment of the project
 inputs:
   python-version:
     description: the python version, e.g. 3.14
     required: true
+  sync:
+    description: >-
+      the arguments of `uv sync`, e.g. `--extra dev`; empty does not sync
+    required: false
+    default: ""
 runs:
   using: composite
   steps:
@@ -15,13 +21,17 @@ runs:
       with:
         python-version: ${{ inputs.python-version }}
         enable-cache: true
+    - name: Compile the bytecode when installing
+      # uv does not compile it by default, so the first import of every module
+      # did, one after the other: pytest needed 23 s on linux, 40 s on windows
+      # and 62 s on macos before it started. uv compiles in parallel
+      shell: bash
+      run: echo "UV_COMPILE_BYTECODE=1" >> "$GITHUB_ENV"
     - name: Put libpython on the library search path (linux only)
       # the extension of libroadrunner links against libpython. The standalone
       # interpreters uv installs link it statically and ship it in their `lib`,
       # where the loader does not look; without it the import of roadrunner
-      # fails with `libpython3.14.so.1.0: cannot open shared object file`.
-      # This replaces installing the dev files of deadsnakes, which took half a
-      # minute per job and was a different build than the interpreter
+      # fails with `libpython3.14.so.1.0: cannot open shared object file`
       if: runner.os == 'Linux'
       shell: bash
       env:
@@ -30,3 +40,10 @@ runs:
         prefix=$(uv run --no-project --python "$PYTHON_VERSION" python -c "import sys; print(sys.base_prefix)")
         echo "LD_LIBRARY_PATH=$prefix/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}" >> "$GITHUB_ENV"
         echo "libpython: $(ls "$prefix"/lib/libpython*.so.1.0)"
+    - name: Sync the environment
+      if: inputs.sync != ''
+      shell: bash
+      env:
+        SYNC: ${{ inputs.sync }}
+      # word splitting of the arguments is intended
+      run: uv sync $SYNC
