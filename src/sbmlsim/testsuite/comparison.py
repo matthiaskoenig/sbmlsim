@@ -13,9 +13,9 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 
 import numpy as np
-import pandas as pd
 
 from sbmlsim.comparison.diff import within_tolerance
+from sbmlsim.result import TimecourseResult
 from sbmlsim.testsuite.cases import SemanticCase
 
 
@@ -59,7 +59,7 @@ class CaseComparison:
         )
 
 
-def compare_case(case: SemanticCase, observed: pd.DataFrame) -> CaseComparison:
+def compare_case(case: SemanticCase, observed: TimecourseResult) -> CaseComparison:
     """Compare the simulation of a case with its expected results.
 
     Both tables are the time followed by one column per variable of the case,
@@ -97,7 +97,7 @@ def compare_case(case: SemanticCase, observed: pd.DataFrame) -> CaseComparison:
     times = np.asarray(expected.iloc[:, 0], dtype=float)
     for index, variable in enumerate(case.variables):
         c = np.asarray(expected.iloc[:, index + 1], dtype=float)
-        u = np.asarray(observed.iloc[:, index + 1], dtype=float)[: c.size]
+        u = observed.values[: c.size, index + 1]
         if u.size != c.size:
             return CaseComparison(
                 cid=case.cid, valid=False, missing=[f"{variable} (point count)"]

@@ -61,6 +61,7 @@ Simulation experiments and their results, see [Simulation experiments](../experi
 | --- | --- |
 | [experiment.experiment](experiment.experiment.md) | `SimulationExperiment`, models, datasets, simulations, tasks, data and figures of an experiment |
 | [experiment.runner](experiment.runner.md) | `ExperimentRunner`, executing experiments and writing their results |
+| [result.timecourse](result.timecourse.md) | `TimecourseResult`, the array of the selections of a single timecourse simulation |
 | [result.xresult](result.xresult.md) | `XResult`, simulation results as an xarray dataset with units |
 | [result.datagenerator](result.datagenerator.md) | data generators processing results |
 | [result.report](result.report.md) | reports of results |

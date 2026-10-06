@@ -336,7 +336,6 @@ class RoadrunnerSBMLModel(AbstractModel):
                     "unit",
                     "constant",
                     "boundaryCondition",
-                    "species",
                     "name",
                 ]
             ),

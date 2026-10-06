@@ -67,6 +67,7 @@ nav = [
       { "runner" = "api/experiment.runner.md" },
     ] },
     { "sbmlsim.result" = [
+      { "timecourse" = "api/result.timecourse.md" },
       { "xresult" = "api/result.xresult.md" },
       { "datagenerator" = "api/result.datagenerator.md" },
       { "report" = "api/result.report.md" },

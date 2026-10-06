@@ -77,10 +77,9 @@ if __name__ == "__main__":
         validation_options=ValidationOptions(units_consistency=False),
         # TODO: antimony & markdown
     )
-    from sbmlutils.converters import odefac
+    from sbmlode import OdeSystem
 
-    ode_factory = odefac.SBML2ODE.from_file(sbml_file=results.sbml_path)
-    ode_factory.to_markdown(
-        md_file=results.sbml_path.parent / f"{results.sbml_path.stem}.md"
+    OdeSystem.from_sbml(results.sbml_path).write(
+        results.sbml_path.parent / f"{results.sbml_path.stem}.md"
     )
     visualize_sbml(sbml_path=results.sbml_path)

@@ -90,6 +90,8 @@ def write_submission(suite: SemanticSuite, output_dir: Path) -> Path:
     Returns:
         Path of the archive.
     """
+    import pandas as pd
+
     from sbmlsim import __version__
     from sbmlsim.model import AbstractModel
     from sbmlsim.simulator.simulation_serial import SimulatorSerial
@@ -114,17 +116,14 @@ def write_submission(suite: SemanticSuite, output_dir: Path) -> Path:
             )
             try:
                 simulator.set_model(model=AbstractModel(source=case.model_path))
-                df = simulate_case(case, simulator)
+                observed = simulate_case(case, simulator)
             except Exception as err:
                 console.print(f"  [dim]{case.cid}: no results ({err})[/dim]")
                 continue
             # the submission names the columns as the case names its variables,
-            # i.e. `S1` and not the selection `[S1]`
-            df = df.rename(
-                columns=dict(
-                    zip(case.selections, ["time", *case.variables], strict=True)
-                )
-            )
+            # i.e. `S1` and not the selection `[S1]`; the columns are the
+            # selections of the case in their order
+            df = pd.DataFrame(observed.values, columns=["time", *case.variables])
             zf.writestr(f"{case.cid}.csv", df.to_csv(index=False))
             submitted += 1
 

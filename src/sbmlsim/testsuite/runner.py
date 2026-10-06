@@ -15,9 +15,8 @@ from collections.abc import Iterable
 from dataclasses import dataclass, field
 from enum import StrEnum
 
-import pandas as pd
-
 from sbmlsim.model import AbstractModel
+from sbmlsim.result import TimecourseResult
 from sbmlsim.simulation import Timecourse, TimecourseSim
 from sbmlsim.simulator.simulation_serial import SimulatorSerial
 from sbmlsim.testsuite.cases import SemanticCase, SemanticSuite
@@ -117,7 +116,7 @@ class CaseResult:
         return f"{self.cid}: {self.status.value}{f' ({self.message})' if self.message else ''}"
 
 
-def simulate_case(case: SemanticCase, simulator: SimulatorSerial) -> pd.DataFrame:
+def simulate_case(case: SemanticCase, simulator: SimulatorSerial) -> TimecourseResult:
     """Simulate a case on a simulator which has its model loaded.
 
     Args:

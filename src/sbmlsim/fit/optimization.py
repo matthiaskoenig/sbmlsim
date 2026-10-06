@@ -47,6 +47,7 @@ from sbmlsim.fit.parameter_mapping import ParameterMapping
 from sbmlsim.fit.parameters import ParameterSet
 from sbmlsim.fit.sampling import SamplingType, create_samples
 from sbmlsim.model import RoadrunnerSBMLModel
+from sbmlsim.result import TimecourseResult
 from sbmlsim.serialization import ObjectJSONEncoder, to_json
 from sbmlsim.simulation import TimecourseSim
 from sbmlsim.simulator import SimulatorSerial
@@ -1508,7 +1509,7 @@ class OptimizationProblem(ObjectJSONEncoder):
         quantities: Sequence[Quantity],
         evaluated: set[int],
         x: np.ndarray,
-    ) -> dict[int, pd.DataFrame | None]:
+    ) -> dict[int, TimecourseResult | None]:
         """Simulate the groups of fit mappings for the given parameters.
 
         The mappings of a group share a simulation, so it runs once with the
@@ -1530,7 +1531,7 @@ class OptimizationProblem(ObjectJSONEncoder):
             its integration failed.
         """
         mapping = self.parameter_mapping_initialized
-        results: dict[int, pd.DataFrame | None] = {}
+        results: dict[int, TimecourseResult | None] = {}
         for k_group, group in enumerate(self.mapping_groups):
             indices = [k for k in group if k in evaluated]
             if not indices:
@@ -1552,10 +1553,10 @@ class OptimizationProblem(ObjectJSONEncoder):
                     self._derived_changes(k_group, simulation, simulator, quantities)
                 )
 
-            df: pd.DataFrame | None
+            result: TimecourseResult | None
             try:
                 # FIXME: just simulate at the requested timepoints with step
-                df = simulator._timecourses([simulation])[0]
+                result = simulator._timecourses([simulation])[0]
             except RuntimeError as err:
                 logger.error(
                     "RuntimeError in ODE integration ('%s = %s'): \n%s",
@@ -1563,10 +1564,10 @@ class OptimizationProblem(ObjectJSONEncoder):
                     x,
                     err,
                 )
-                df = None
+                result = None
 
             for k in indices:
-                results[k] = df
+                results[k] = result
 
         return results
 
@@ -1596,12 +1597,12 @@ class OptimizationProblem(ObjectJSONEncoder):
             self, k_group, simulation, simulator, quantities
         )
 
-    def _interpolate(self, k: int, df: pd.DataFrame) -> np.ndarray:
+    def _interpolate(self, k: int, result: TimecourseResult) -> np.ndarray:
         """Get the simulation of a fit mapping at its reference data.
 
         Args:
             k: index of the fit mapping.
-            df: result of the simulation of the mapping.
+            result: result of the simulation of the mapping.
 
         Returns:
             The observable, interpolated at the x values of the reference data.
@@ -1610,8 +1611,8 @@ class OptimizationProblem(ObjectJSONEncoder):
             ValueError: if the reference data is outside of the simulation.
         """
         f = interpolate.interp1d(
-            x=df[self.xid_observable[k]],
-            y=df[self.yid_observable[k]],
+            x=result[self.xid_observable[k]],
+            y=result[self.yid_observable[k]],
             copy=False,
             assume_sorted=True,
         )
@@ -1698,14 +1699,14 @@ class OptimizationProblem(ObjectJSONEncoder):
 
         predictions: dict[int, np.ndarray] = {}
         for k in sorted(evaluated):
-            df = results[k]
-            if df is None:
+            result = results[k]
+            if result is None:
                 raise ValueError(
                     f"'{self.opid}': the simulation of the fit mapping "
                     f"'{self.experiment_keys[k]}.{self.mapping_keys[k]}' failed "
                     f"for the parameters '{dict(zip(self.pids, values, strict=True))}'."
                 )
-            predictions[k] = self._interpolate(k, df)
+            predictions[k] = self._interpolate(k, result)
         return predictions
 
     def _interrupted_result(
@@ -1772,14 +1773,14 @@ class OptimizationProblem(ObjectJSONEncoder):
             simulator=simulator, quantities=quantities, evaluated=evaluated, x=x
         )
 
-        df: pd.DataFrame | None = None
+        result: TimecourseResult | None = None
         for k, mapping_key in enumerate(self.mapping_keys):
             if k not in evaluated:
                 continue
 
-            df = results[k]
-            if df is not None:
-                y_obsip = self._interpolate(k, df)
+            result = results[k]
+            if result is not None:
+                y_obsip = self._interpolate(k, result)
 
                 if self.residual in {
                     ResidualType.ABSOLUTE_TO_BASELINE,
@@ -1829,13 +1830,13 @@ class OptimizationProblem(ObjectJSONEncoder):
 
             # for post_processing
             if complete_data:
-                if df is None:
+                if result is None:
                     raise ValueError(
                         f"'{mapping_key}': no simulation results, the complete data "
                         f"of a failed simulation cannot be evaluated."
                     )
-                residual_data["x_obs"].append(df[self.xid_observable[k]])
-                residual_data["y_obs"].append(df[self.yid_observable[k]])
+                residual_data["x_obs"].append(result[self.xid_observable[k]])
+                residual_data["y_obs"].append(result[self.yid_observable[k]])
                 residual_data["y_obsip"].append(y_obsip)
                 residual_data["residuals"].append(residuals)
                 residual_data["weights_curve"].append(self.weights_curves[k])

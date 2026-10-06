@@ -3,6 +3,7 @@
 from pathlib import Path
 
 import pandas as pd
+import pytest
 
 from sbmlsim import RESOURCES_DIR
 from sbmlsim.data import DataSet, load_pkdb_dataframe
@@ -87,3 +88,25 @@ def test_unit_conversion() -> None:
         # check that factor applied correctly
         assert d["mean"].values[0] < 0.00004
         assert d["mean"].values[0] > 0.00003
+
+
+def test_dataset_external_units_are_columns() -> None:
+    """A unit of the `udict` is a `*_unit` column, like the units of the table."""
+    df = pd.DataFrame({"col1": [1, 2, 3], "col2": [2, 3, 4]})
+    dset = DataSet.from_df(
+        df,
+        udict={"col1": "mM", "absent": "mg"},
+        ureg=UnitRegistry(on_redefinition="ignore"),
+    )
+    assert list(dset["col1_unit"].unique()) == ["mM"]
+    # a unit of a column which the table does not have adds no column
+    assert "absent_unit" not in dset.columns
+    assert dset.uinfo["absent"] == "mg"
+
+
+def test_load_pkdb_dataframe_missing(tmp_path: Path) -> None:
+    """A dataset which is in none of the data paths names every path."""
+    data_path = [tmp_path, data_dir / "datasets"]
+    with pytest.raises(FileNotFoundError, match="Faber1978_Fig9") as err:
+        load_pkdb_dataframe(sid="Faber1978_Fig9", data_path=data_path)
+    assert all(str(p) in str(err.value) for p in data_path)
