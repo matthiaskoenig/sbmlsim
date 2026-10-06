@@ -55,6 +55,7 @@ from sbmlsim.fit.report import FitReport
 from sbmlsim.fit.result import OptimizationResult, fit_id
 from sbmlsim.fit.runner import run_optimization
 from sbmlsim.fit.sampling import SamplingType
+from sbmlsim.utils import paths_text
 
 logger = logging.getLogger(__name__)
 
@@ -94,7 +95,7 @@ class FitDefinition:
             and the data.
         parameters: parameters which are adjusted in the fit.
         base_path: base path of the simulation experiments.
-        data_path: path of the datasets of the simulation experiments.
+        data_path: path or paths of the datasets of the simulation experiments.
         settings: settings of the fit.
         hybridizations: the derived changes of the problem, see
             `sbmlsim.fit.derived`, e.g. the hybridizations of its neural
@@ -104,7 +105,7 @@ class FitDefinition:
     mapping_collections: Callable[[], dict[str, list[FitMappingCollection]]]
     parameters: list[FitParameter]
     base_path: Path
-    data_path: Path
+    data_path: Path | Sequence[Path]
     settings: FitSettings = field(default_factory=FitSettings)
     hybridizations: Sequence[DerivedChanges] = ()
 
@@ -455,8 +456,8 @@ def fit_cli(
             "runs": f"{options.runs} on {options.cores} core(s)",
             "seed": options.seed,
             "timeout": (f"{options.timeout} s per run" if options.timeout else "none"),
-            "base path": definition.base_path,
-            "data path": definition.data_path,
+            "base path": paths_text(definition.base_path),
+            "data path": paths_text(definition.data_path),
             "output": options.output_dir,
         }
     )

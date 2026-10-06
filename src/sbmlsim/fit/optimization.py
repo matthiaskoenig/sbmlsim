@@ -187,7 +187,7 @@ class OptimizationProblem(ObjectJSONEncoder):
         mapping_collections: list[FitMappingCollection],
         fit_parameters: list[FitParameter],
         base_path: Path | None = None,
-        data_path: Path | None = None,
+        data_path: Path | Sequence[Path] | None = None,
         hybridizations: Sequence[DerivedChanges] | None = None,
     ):
         """Optimization problem.
@@ -201,7 +201,8 @@ class OptimizationProblem(ObjectJSONEncoder):
             fit_parameters: the parameters of the fit.
             base_path: directory the models of the experiments are relative
                 to.
-            data_path: directory of the data of the experiments.
+            data_path: directory or directories of the data of the
+                experiments.
             hybridizations: the derived changes of the problem, i.e. changes
                 of a simulation which are calculated from the parameters of
                 the fit, see `sbmlsim.fit.derived`. The hybridizations of the

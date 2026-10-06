@@ -143,14 +143,15 @@ class FitMappings:
         self,
         experiment_classes: Iterable[type[SimulationExperiment]],
         base_path: Path,
-        data_path: Path,
+        data_path: Path | Iterable[Path],
     ):
         """Instantiate the simulation experiments.
 
         Args:
             experiment_classes: simulation experiment classes with fit mappings.
             base_path: base path of the simulation experiments.
-            data_path: path of the datasets of the simulation experiments.
+            data_path: path or paths of the datasets of the simulation
+                experiments.
         """
         self.runner = ExperimentRunner(
             experiment_classes=list(experiment_classes),
@@ -283,7 +284,7 @@ def _row(
 def select_mapping_collections(
     experiment_classes: Iterable[type[SimulationExperiment]],
     base_path: Path,
-    data_path: Path,
+    data_path: Path | Iterable[Path],
     filters: MappingFilter | Iterable[MappingFilter] = (),
     outliers: Iterable[str] = (),
     validation: Iterable[str] | MappingFilter = (),
@@ -297,7 +298,7 @@ def select_mapping_collections(
     Args:
         experiment_classes: simulation experiment classes with fit mappings.
         base_path: base path of the simulation experiments.
-        data_path: path of the datasets of the simulation experiments.
+        data_path: path or paths of the datasets of the simulation experiments.
         filters: filters of the training data.
         outliers: keys of the outliers.
         validation: keys or filter of the validation data.

@@ -580,7 +580,7 @@ class SimulationExperiment:
         return {
             "experiment_id": self.sid,
             "base_path": str(self.base_path) if self.base_path else None,
-            "data_path": str(self.data_path) if self.data_path else None,
+            "data_path": [str(p) for p in self.data_path] if self.data_path else None,
             "models": {k: v.to_dict() for k, v in self._models.items()},
             "tasks": {k: v.to_dict() for k, v in self._tasks.items()},
             "simulations": {k: v.to_dict() for k, v in self._simulations.items()},
