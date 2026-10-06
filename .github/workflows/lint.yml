@@ -54,6 +54,5 @@ jobs:
         with:
           python-version: "3.14"
           sync: --extra dev
-          compile-bytecode: false
       - name: Type check
         run: uv run --no-sync ty check --output-format github

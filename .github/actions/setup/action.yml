@@ -12,12 +12,6 @@ inputs:
       the arguments of `uv sync`, e.g. `--extra dev`; empty does not sync
     required: false
     default: ""
-  compile-bytecode:
-    description: >-
-      compile the bytecode when installing, which a job saves when it imports
-      the modules; `false` for a job which only reads the sources, e.g. ty
-    required: false
-    default: "true"
 runs:
   using: composite
   steps:
@@ -27,13 +21,6 @@ runs:
       with:
         python-version: ${{ inputs.python-version }}
         enable-cache: true
-    - name: Compile the bytecode when installing
-      # uv does not compile it by default, so the first import of every module
-      # did, one after the other: pytest needed 23 s on linux, 40 s on windows
-      # and 62 s on macos before it started. uv compiles in parallel
-      if: inputs.compile-bytecode == 'true'
-      shell: bash
-      run: echo "UV_COMPILE_BYTECODE=1" >> "$GITHUB_ENV"
     - name: Put libpython on the library search path (linux only)
       # the extension of libroadrunner links against libpython. The standalone
       # interpreters uv installs link it statically and ship it in their `lib`,

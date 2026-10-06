@@ -26,7 +26,7 @@ A pull request can only be merged once the four required checks are green:
 
 `tests` aggregates the test matrix into a single job, so the name of the required check stays the same when the matrix changes.
 
-Every job sets up its environment with the action `.github/actions/setup`: uv with its cache, the python of the job, the bytecode compiled when installing, the libpython roadrunner needs on linux, and `uv sync` with the extras of the job. The jobs run the same commands as a local environment (`pytest`, `ty check`, `zensical build`), the tests against the package installed as a wheel (`uv sync --no-editable`). A run of a pull request is cancelled by the next push to it; a push to `develop` or `main` is never cancelled, a release waits for the run of its commit.
+Every job sets up its environment with the action `.github/actions/setup`: uv with its cache, the python of the job, the libpython roadrunner needs on linux, and `uv sync` with the extras of the job. The jobs run the same commands as a local environment (`pytest`, `ty check`, `zensical build`), the tests against the package installed as a wheel (`uv sync --no-editable`). A run of a pull request is cancelled by the next push to it; a push to `develop` or `main` is never cancelled, a release waits for the run of its commit.
 
 Further rules of a pull request:
 
