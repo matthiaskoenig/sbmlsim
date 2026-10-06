@@ -197,8 +197,17 @@ def run_experiments(
     output_path: Path,
     base_path: Path | None = None,
     data_path: Path | Iterable[Path] | None = None,
+    show_report: bool = False,
 ) -> None:
-    """Run simulation experiments and write their report to the output path."""
+    """Run simulation experiments and write their report to the output path.
+
+    Args:
+        experiments: the simulation experiments.
+        output_path: directory of the results and the report.
+        base_path: base path of the simulation experiments.
+        data_path: path or paths of the datasets of the simulation experiments.
+        show_report: open the report in a web browser.
+    """
     if not isinstance(experiments, (list, tuple)):
         experiments = [experiments]
     simulator = SimulatorSerial()
@@ -218,4 +227,4 @@ def run_experiments(
         report_results.add_experiment_result(exp_result=exp_result)
 
     report = ExperimentReport(report_results)
-    report.create_report(output_path=output_path)
+    report.create_report(output_path=output_path, show_report=show_report)

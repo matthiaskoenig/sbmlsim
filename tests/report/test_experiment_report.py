@@ -8,6 +8,7 @@ editor and the LaTeX report includes the figures in a document.
 import html as html_module
 import re
 import sys
+import webbrowser
 from html.parser import HTMLParser
 from pathlib import Path
 
@@ -27,7 +28,9 @@ FIGURES = ["Tab1A", "Fig3"]
 
 
 @pytest.fixture(scope="module")
-def report_dir(tmp_path_factory: pytest.TempPathFactory) -> Path:
+def report_and_dir(
+    tmp_path_factory: pytest.TempPathFactory,
+) -> tuple[ExperimentReport, Path]:
     """Run a simulation experiment and write its reports, once for the module.
 
     The figures are written as static images and as interactive pages, the
@@ -53,7 +56,39 @@ def report_dir(tmp_path_factory: pytest.TempPathFactory) -> Path:
     report = ExperimentReport(report_results)
     for report_type in ExperimentReport.ReportType:
         report.create_report(output_path, report_type=report_type)
-    return output_path
+    return report, output_path
+
+
+@pytest.fixture(scope="module")
+def report_dir(report_and_dir: tuple[ExperimentReport, Path]) -> Path:
+    """Get the directory of the reports."""
+    return report_and_dir[1]
+
+
+def test_the_report_ends_the_output_with_a_link(
+    report_and_dir: tuple[ExperimentReport, Path],
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The report is a section with a link to its index, which can be opened."""
+    report, output_path = report_and_dir
+    opened: list[str] = []
+    monkeypatch.setattr(webbrowser, "open", lambda url, new=0: opened.append(url))
+
+    report_path = report.create_report(output_path)
+    lines = capsys.readouterr().out.splitlines()
+    assert any("Report" in line for line in lines)
+    uri = report_path.resolve().as_uri()
+    experiments = next(line for line in lines if line.startswith("experiments"))
+    link = next(line for line in lines if line.startswith("report"))
+    assert experiments.split() == ["experiments", "1"]
+    assert link.split() == ["report", uri]
+    # the link is aligned with the values of the section
+    assert link.index(uri) == experiments.index("1")
+    assert not opened
+
+    report.create_report(output_path, show_report=True)
+    assert opened == [uri]
 
 
 def _references(path: Path) -> list[str]:

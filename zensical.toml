@@ -36,6 +36,7 @@ nav = [
       { "serialization" = "api/serialization.md" },
       { "utils" = "api/utils.md" },
       { "console" = "api/console.md" },
+      { "display" = "api/display.md" },
       { "log" = "api/log.md" },
     ] },
     { "sbmlsim.model" = [
