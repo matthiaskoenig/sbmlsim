@@ -100,8 +100,9 @@ from sbmlsim.report.experiment_report import ExperimentReport
 
 report = ExperimentReport(results)
 report_path = report.create_report(output_path=Path.cwd() / "results")
-print(report_path)
 ```
+
+The report ends the output with its section, the number of experiments and the link to the report, which the terminal opens with a click (a hyperlink in VS Code, iTerm2, Windows Terminal, GNOME Terminal or kitty, the `file://` URI in any other terminal and in a log). `show_report=True` opens the report in the web browser. The sections, key/value blocks and links of `sbmlsim.display` are the output of scripts as well, e.g. `display.link("figures", figures_dir)`.
 
 ## Serialization
 

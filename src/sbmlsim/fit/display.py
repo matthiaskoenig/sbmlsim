@@ -10,12 +10,14 @@ an interactive session produce the same output.
 
     display.section("Fit problem 'PK'")
     display.key_values({"strategy": "ALL", "runs": 4})
+
+The sections, the key/value blocks and the links are those of
+`sbmlsim.display`, which this module provides as well.
 """
 
 from __future__ import annotations
 
-from collections.abc import Iterable, Mapping, Sequence
-from pathlib import Path
+from collections.abc import Iterable, Sequence
 from typing import Any
 
 import numpy as np
@@ -25,13 +27,18 @@ from rich.measure import Measurement
 from rich.table import Table
 
 from sbmlsim.console import console
+
+# the output of the fit is made of the sections, blocks and links of
+# `sbmlsim.display`, which are provided here as well
+from sbmlsim.display import ICON_REPORT as ICON_REPORT
+from sbmlsim.display import KEY_WIDTH as KEY_WIDTH
+from sbmlsim.display import key_values as key_values
+from sbmlsim.display import link as link
+from sbmlsim.display import section
 from sbmlsim.fit.derived import HookSummary, ParameterGroup, group_parameters
 from sbmlsim.fit.objects import FitParameter, MappingKind
 from sbmlsim.fit.options import FitSettings
 from sbmlsim.fit.parameter_mapping import CoverageRow, has_renamed_targets
-
-#: width of the keys of a key/value block
-KEY_WIDTH = 18
 
 #: icon of every section, so the sections of a fit are told apart at a glance
 ICON_FIT = ":wrench:"
@@ -39,7 +46,6 @@ ICON_PARAMETERS = ":control_knobs:"
 ICON_SETTINGS = ":gear:"
 ICON_DATA = ":bar_chart:"
 ICON_OPTIMIZATION = ":rocket:"
-ICON_REPORT = ":clipboard:"
 ICON_IDENTIFIABILITY = ":mag:"
 
 #: color of every identifiability, see `sbmlsim.fit.identifiability`
@@ -58,49 +64,6 @@ KIND_STYLES: dict[str, str] = {
     MappingKind.OUTLIER.value: "orange3",
     MappingKind.EXCLUDED.value: "grey35",
 }
-
-
-def section(title: str, icon: str | None = None) -> None:
-    """Start a section of the output.
-
-    A blank line separates the section from whatever came before it, so the
-    sections are told apart whether the previous one ended in a table or in a
-    key/value block.
-
-    Args:
-        title: title of the section.
-        icon: emoji in front of the title, e.g. `ICON_PARAMETERS`.
-    """
-    prefix = f"{icon} " if icon else ""
-    console.line()
-    console.rule(f"{prefix}[bold]{title}", align="left", style="white")
-
-
-def key_values(items: Mapping[str, Any]) -> None:
-    """Print aligned key/value lines, the smallest section of the output."""
-    table = Table(box=None, show_header=False, pad_edge=False, padding=(0, 1))
-    table.add_column("key", style="bold", width=KEY_WIDTH)
-    table.add_column("value", overflow="fold")
-    for key, value in items.items():
-        table.add_row(key, str(value))
-    console.print(table)
-
-
-def link(key: str, path: Path | str) -> None:
-    """Print a file link, on a single line so that the terminal can open it.
-
-    The path is a `file://` URI, i.e., it has forward slashes and a drive is
-    `file:///C:/...`; a windows path with backslashes is not a link a terminal
-    opens.
-
-    Args:
-        key: what the link points to, in front of it.
-        path: path of the file, relative paths are resolved.
-    """
-    console.print(
-        f"[bold]{key:<{KEY_WIDTH}}[/bold] {Path(path).resolve().as_uri()}",
-        soft_wrap=True,
-    )
 
 
 def _table(*columns: str, title: str | None = None) -> Table:

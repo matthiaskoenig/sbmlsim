@@ -4,7 +4,6 @@ from pathlib import Path
 
 from examples.hctz_fitting import DATA_PATH, HCTZ_PATH, MODEL_PATH
 from sbmlsim import log
-from sbmlsim.console import console
 from sbmlsim.experiment import ExperimentRunner, SimulationExperiment
 from sbmlsim.plot import Figure
 from sbmlsim.report.experiment_report import ExperimentReport, ReportResults
@@ -57,13 +56,7 @@ def run_experiments(
     for exp_result in results:
         report_results.add_experiment_result(exp_result=exp_result)
 
-    # create HTML report
+    # create the HTML report, which ends the output with the link to it
     report = ExperimentReport(report_results, metadata=None)
     report.create_report(output_path, report_type=ExperimentReport.ReportType.HTML)
-
-    console.print(
-        f"Successfully executed simulation experiments: "
-        f"{output_path.resolve().as_uri()}",
-        style="success",
-    )
     return output_path
