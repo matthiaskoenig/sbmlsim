@@ -11,9 +11,16 @@ from sbmlsim.fit import display as fit_display
 
 
 def _terminal(monkeypatch: pytest.MonkeyPatch, width: int) -> StringIO:
-    """Print to a terminal of the given width, with its control codes."""
+    """Print to a terminal of the given width, with its control codes.
+
+    The terminal is one with virtual terminal sequences, i.e. on windows the
+    Windows Terminal or VS Code rather than the legacy console, which rich
+    assumes on a windows runner and which has no hyperlinks.
+    """
     buffer = StringIO()
-    console = Console(file=buffer, force_terminal=True, width=width)
+    console = Console(
+        file=buffer, force_terminal=True, width=width, legacy_windows=False
+    )
     monkeypatch.setattr(display, "console", console)
     return buffer
 
