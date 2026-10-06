@@ -21,6 +21,13 @@ import pytest
 #: the root of the repository, `python -m examples.<module>` is run from here
 REPO_DIR = Path(__file__).parent.parent.parent
 
+#: the arguments an example runs with in the tests: the samples and the fits
+#: of the examples are sized to show what they do, a test only needs them to run
+ARGUMENTS: dict[str, list[str]] = {
+    "examples.sciml.lotka_volterra_fit": ["--max-nfev=4"],
+    "examples.sensitivity.sensitivity_example": ["--quick", "--cores=1"],
+}
+
 #: examples which run offline and without optional dependencies
 SCRIPTS = [
     "examples.timecourse",
@@ -66,7 +73,7 @@ def run_example(
 @pytest.mark.parametrize("module", SCRIPTS)
 def test_example_script(module: str, tmp_path: Path) -> None:
     """Every example runs without an error and writes into the working directory."""
-    run_example(module, tmp_path)
+    run_example(module, tmp_path, *ARGUMENTS.get(module, []))
 
 
 def test_neural_ode_example(tmp_path: Path) -> None:

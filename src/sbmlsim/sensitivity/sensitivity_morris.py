@@ -134,6 +134,7 @@ class MorrisSensitivityAnalysis(SensitivityAnalysis):
                 num_levels=self.num_levels,
                 optimal_trajectories=self.optimal_trajectories,
                 local_optimization=self.local_optimization,
+                seed=self.seed,
             )
             self.ssa_problems[gid].set_samples(morris_samples)
 
@@ -192,6 +193,7 @@ class MorrisSensitivityAnalysis(SensitivityAnalysis):
                     num_resamples=100,
                     conf_level=0.95,
                     print_to_console=False,
+                    seed=self.seed,
                 )
                 for key in self.sensitivity_keys:
                     if key == "r":

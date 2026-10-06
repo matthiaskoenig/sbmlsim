@@ -1,0 +1,32 @@
+name: Set up uv and python
+description: >-
+  Install uv with its cache and set the python version of the job, with the
+  libpython of the interpreter on the library search path
+inputs:
+  python-version:
+    description: the python version, e.g. 3.14
+    required: true
+runs:
+  using: composite
+  steps:
+    - name: Install uv and set the python version
+      # astral-sh/setup-uv publishes no floating major tag beyond v7
+      uses: astral-sh/setup-uv@v10.2.0
+      with:
+        python-version: ${{ inputs.python-version }}
+        enable-cache: true
+    - name: Put libpython on the library search path (linux only)
+      # the extension of libroadrunner links against libpython. The standalone
+      # interpreters uv installs link it statically and ship it in their `lib`,
+      # where the loader does not look; without it the import of roadrunner
+      # fails with `libpython3.14.so.1.0: cannot open shared object file`.
+      # This replaces installing the dev files of deadsnakes, which took half a
+      # minute per job and was a different build than the interpreter
+      if: runner.os == 'Linux'
+      shell: bash
+      env:
+        PYTHON_VERSION: ${{ inputs.python-version }}
+      run: |
+        prefix=$(uv run --no-project --python "$PYTHON_VERSION" python -c "import sys; print(sys.base_prefix)")
+        echo "LD_LIBRARY_PATH=$prefix/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}" >> "$GITHUB_ENV"
+        echo "libpython: $(ls "$prefix"/lib/libpython*.so.1.0)"

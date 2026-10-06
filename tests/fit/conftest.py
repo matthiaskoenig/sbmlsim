@@ -4,6 +4,8 @@ The HCTZ example is the reference fitting problem, `op_hctz_pk` is its
 smallest subset: a single simulation experiment with four fit mappings.
 """
 
+from typing import Any
+
 import pytest
 
 from examples.hctz_fitting import DATA_PATH, HCTZ_PATH
@@ -102,3 +104,14 @@ def fit_settings() -> FitSettings:
         absolute_tolerance=1e-6,
         relative_tolerance=1e-6,
     )
+
+
+@pytest.fixture
+def short_fit() -> dict[str, Any]:
+    """Get the arguments of a least squares fit which stops after a few steps.
+
+    A test of what a fit produces, rather than of where it converges, does not
+    wait for the convergence: a fit of the HCTZ problem to convergence takes up
+    to 40 s, a step takes a fraction of a second.
+    """
+    return {"max_nfev": 3}

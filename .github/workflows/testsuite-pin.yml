@@ -27,18 +27,11 @@ jobs:
       pull-requests: write  # open the pull request
     steps:
       - uses: actions/checkout@v7
-      - name: Install the python dev files
-        # the extension of libroadrunner links against libpython, which the
-        # standalone interpreters do not put on the library search path
-        run: |
-          sudo add-apt-repository -y ppa:deadsnakes/ppa
-          sudo apt-get update
-          sudo apt-get install -y python3.14-dev
       - name: Install uv and set the python version
-        uses: astral-sh/setup-uv@v10.2.0
+        # with the libpython roadrunner needs, see the action
+        uses: ./.github/actions/setup-python
         with:
           python-version: "3.14"
-          enable-cache: true
       - name: Install dependencies
         run: uv sync --extra dev
       - name: Compare the pinned release with the newest one

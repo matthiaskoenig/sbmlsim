@@ -158,6 +158,7 @@ class SobolSensitivityAnalysis(SensitivityAnalysis):
                     conf_level=0.95,
                     print_to_console=False,
                     n_processors=4,
+                    seed=self.seed,
                 )
                 for key in self.sensitivity_keys:
                     self.sensitivity[gid][key][:, ko] = Si[key]

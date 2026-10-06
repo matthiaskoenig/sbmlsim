@@ -26,7 +26,11 @@ from sbmlsim.fit.runner import run_optimization
 def _fit(
     problem: OptimizationProblem, settings: FitSettings, size: int = 1
 ) -> OptimizationResult:
-    """Run a small fit of the problem."""
+    """Run a small fit of the problem.
+
+    A few steps of every run: a report shows a fit, whether it converged or
+    not, see the fixture `short_fit`.
+    """
     return run_optimization(
         problem=problem,
         settings=settings,
@@ -34,6 +38,7 @@ def _fit(
         n_cores=1,
         serial=True,
         seed=1234,
+        max_nfev=3,
     )
 
 

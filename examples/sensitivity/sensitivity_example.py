@@ -115,6 +115,7 @@ def _sensitivity_parameters() -> list[SensitivityParameter]:
 sensitivity_parameters = _sensitivity_parameters()
 
 if __name__ == "__main__":
+    import argparse
     import multiprocessing
 
     from sbmlsim.sensitivity import (
@@ -125,6 +126,35 @@ if __name__ == "__main__":
         SobolSensitivityAnalysis,
     )
 
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument(
+        "--cores",
+        type=int,
+        default=round(0.9 * multiprocessing.cpu_count()),
+        help="number of processes, 90%% of the cores by default",
+    )
+    parser.add_argument(
+        "--quick",
+        action="store_true",
+        help="the smallest samples every method accepts, which checks that the "
+        "example runs; the indices of such samples mean nothing",
+    )
+    options = parser.parse_args()
+    # the sample sizes of the analyses; the smallest ones are the limits of the
+    # methods: FAST needs N > 4 M^2 with M = 4, Morris more trajectories than
+    # it selects
+    samples = (
+        {"sampling": 20, "sobol": 16, "fast": 65, "morris": 4, "trajectories": 2}
+        if options.quick
+        else {
+            "sampling": 1000,
+            "sobol": 4096,
+            "fast": 1000,
+            "morris": 100,
+            "trajectories": 25,
+        }
+    )
+
     sensitivity_path = Path.cwd() / "results" / "sensitivity"
     sensitivity_path.mkdir(parents=True, exist_ok=True)
     df = SensitivityParameter.parameters_to_df(sensitivity_parameters)
@@ -133,7 +163,7 @@ if __name__ == "__main__":
 
     settings: dict[str, Any] = {
         "cache_results": False,
-        "n_cores": round(0.9 * multiprocessing.cpu_count()),
+        "n_cores": options.cores,
         "seed": 1234,
     }
 
@@ -142,7 +172,7 @@ if __name__ == "__main__":
         parameters=sensitivity_parameters,
         groups=sensitivity_groups,
         results_path=sensitivity_path / "sampling",
-        N=1000,
+        N=samples["sampling"],
         **settings,
     )
 
@@ -160,7 +190,7 @@ if __name__ == "__main__":
         parameters=sensitivity_parameters,
         groups=[sensitivity_groups[1]],
         results_path=sensitivity_path / "sobol",
-        N=4096,
+        N=samples["sobol"],
         **settings,
     )
 
@@ -169,7 +199,7 @@ if __name__ == "__main__":
         parameters=sensitivity_parameters,
         groups=sensitivity_groups,
         results_path=sensitivity_path / "fast",
-        N=1000,
+        N=samples["fast"],
         **settings,
     )
 
@@ -178,9 +208,9 @@ if __name__ == "__main__":
         parameters=sensitivity_parameters,
         groups=sensitivity_groups,
         results_path=sensitivity_path / "morris",
-        N=100,
+        N=samples["morris"],
         num_levels=4,
-        optimal_trajectories=25,
+        optimal_trajectories=samples["trajectories"],
         **settings,
     )
 
