@@ -442,8 +442,9 @@ class DataSet(pd.DataFrame):
                     logger.error("Duplicate unit definition for: '%s'", key)
                 else:
                     all_udict[key] = unit
-                    # add the unit columns to the data frame
-                    setattr(df, f"{key}_unit", unit)
+                    # add the unit column of a column of the data frame
+                    if key in df.columns:
+                        df[f"{key}_unit"] = unit
 
         dset = DataSet(df)
         dset.uinfo = UnitsInformation(all_udict, ureg=ureg)
@@ -536,18 +537,19 @@ def load_pkdb_dataframe(
     :param comment: comment characters
     :param kwargs: additional kwargs for csv parsing
     :return: pandas DataFrame
+    :raises FileNotFoundError: if the dataset is in none of the data paths
     """
     study = sid.split("_")[0]
     if isinstance(data_path, Path):
         data_path = [data_path]
 
-    for p in data_path:
-        path = p / study / f".{sid}.tsv"
-        if path.exists():
-            # use the first path which exists
-            break
-    if not path.exists():
-        ValueError(f"file path not found in data_path: {data_path}")
+    # use the first path which exists
+    paths = [p / study / f".{sid}.tsv" for p in data_path]
+    path = next((p for p in paths if p.exists()), None)
+    if path is None:
+        raise FileNotFoundError(
+            f"Dataset '{sid}' not found, none of the files exists: {paths}"
+        )
 
     try:
         df = pd.read_csv(path, sep=sep, comment=comment, **kwargs)
