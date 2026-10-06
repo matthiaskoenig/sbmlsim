@@ -44,13 +44,21 @@ SCRIPTS = [
 @pytest.mark.parametrize("module", SCRIPTS)
 def test_example_script(module: str, tmp_path: Path) -> None:
     """Every example runs without an error and writes into the working directory."""
-    env = dict(os.environ, PYTHONPATH=str(REPO_DIR), MPLBACKEND="Agg")
+    # the output is utf-8 on every platform, windows writes and reads cp1252
+    # otherwise and fails on the characters of the rich console
+    env = dict(
+        os.environ,
+        PYTHONPATH=str(REPO_DIR),
+        MPLBACKEND="Agg",
+        PYTHONIOENCODING="utf-8",
+    )
     result = subprocess.run(
         [sys.executable, "-m", module],
         cwd=tmp_path,
         env=env,
         capture_output=True,
-        text=True,
+        encoding="utf-8",
+        errors="replace",
         check=False,
     )
     assert result.returncode == 0, result.stderr

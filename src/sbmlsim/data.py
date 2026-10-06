@@ -548,7 +548,8 @@ def load_pkdb_dataframe(
     path = next((p for p in paths if p.exists()), None)
     if path is None:
         raise FileNotFoundError(
-            f"Dataset '{sid}' not found, none of the files exists: {paths}"
+            f"Dataset '{sid}' not found, none of the files exists: "
+            f"{', '.join(str(p) for p in paths)}"
         )
 
     try:
