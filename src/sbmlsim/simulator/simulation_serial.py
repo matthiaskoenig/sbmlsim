@@ -84,8 +84,9 @@ class SimulatorSerial:
 
     def set_timecourse_selections(self, selections: list[str] | None) -> None:
         """Set the selections of the simulations, all of the model for `None`."""
-        self.model_loaded.selections = RoadrunnerSBMLModel.set_timecourse_selections(
-            self.r_loaded, selections=selections
+        model = self.model_loaded
+        model.selections = RoadrunnerSBMLModel.set_timecourse_selections(
+            self.r_loaded, selections=selections, exclude=set(model.parameters)
         )
 
     @property
