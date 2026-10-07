@@ -245,16 +245,21 @@ class PetabCase:
         problem = reader.to_optimization_problem(opid=f"case_{self.cid}")
         problem.initialize(CASE_SETTINGS)
         nominal = reader.nominal_parameters(problem)
+        # the problem is simulated once, every value is calculated from it
+        evaluations = problem.evaluations(nominal.x(problem.pids), problem.indices())
 
         differences = [
             _difference(
                 "llh",
-                log_likelihood(problem, nominal),
+                log_likelihood(problem, nominal, evaluations),
                 solution["llh"],
                 solution["tol_llh"],
             ),
             _difference(
-                "chi2", chi2(problem, nominal), solution["chi2"], solution["tol_chi2"]
+                "chi2",
+                chi2(problem, nominal, evaluations),
+                solution["chi2"],
+                solution["tol_chi2"],
             ),
         ]
         if "log_prior" in solution:
@@ -278,7 +283,7 @@ class PetabCase:
             differences.append(
                 _difference(
                     "unnorm_log_posterior",
-                    unnorm_log_posterior(problem, nominal),
+                    unnorm_log_posterior(problem, nominal, evaluations),
                     solution["unnorm_log_posterior"],
                     solution["tol_unnorm_log_posterior"],
                 )
@@ -296,9 +301,9 @@ class PetabCase:
             if "experimentId" in expected
             else pd.Series([""] * len(expected))
         )
-        predictions = problem.predictions(nominal.x(problem.pids), problem.indices())
         compared = 0
-        for k, prediction in predictions.items():
+        for k, evaluation in evaluations.items():
+            prediction = evaluation.prediction
             observable_id = reader.observable_id(problem.mapping_keys[k])
             experiment_id = problem.simulation_keys[k]
             selected = (expected["observableId"] == observable_id) & (

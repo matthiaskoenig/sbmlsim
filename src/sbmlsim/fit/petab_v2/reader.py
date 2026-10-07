@@ -14,6 +14,7 @@ the fit which was written, and falls back on the tables when it is not, which
 is the case for a problem of another tool.
 """
 
+import functools
 import logging
 from collections.abc import Mapping
 from pathlib import Path
@@ -665,9 +666,7 @@ class PetabReader:
         pre-equilibration, a `SteadyState` whose conditions are applied before
         the initialization; the next period is then a change at the start.
         """
-        conditions = {
-            condition.id: condition for condition in self.petab_problem.conditions
-        }
+        conditions = self._conditions
         periods = sorted(experiment.periods, key=lambda p: p.time)
         steady = [p for p in periods if np.isinf(p.time)]
         finite = [p for p in periods if not np.isinf(p.time)]
@@ -706,7 +705,7 @@ class PetabReader:
             ValueError: if the period uses a condition the problem does not
                 define.
         """
-        estimated = self._estimated_parameter_ids()
+        versions = self._versions()
         changes: dict[str, Any] = {}
         for condition_id in period.condition_ids:
             condition = conditions.get(condition_id)
@@ -737,11 +736,11 @@ class PetabReader:
                 if _is_number(change.target_value):
                     changes[target] = _to_float(change.target_value)
                     continue
-                if str(change.target_value) in estimated:
-                    # the value is the id of an estimated parameter, i.e. a
-                    # versioned parameter's binding rather than a number:
-                    # `ParameterMapping` sets the target of every simulation of
-                    # the group it covers, see `_versions`
+                if str(change.target_value) in versions:
+                    # the value is the id of a versioned parameter, i.e. its
+                    # binding rather than a number: `ParameterMapping` sets
+                    # the target of every simulation of the group it covers,
+                    # see `_versions`
                     continue
                 changes[target] = selections_of_formula(
                     petab_math_str(change.target_value), sbml_model
@@ -772,13 +771,25 @@ class PetabReader:
             experiment_id: id of the experiment, `None` for the measurements
                 which name no experiment.
         """
-        times = [
-            measurement.time
-            for measurement in self.petab_problem.measurements
-            if (measurement.experiment_id or None) == experiment_id
-            and np.isfinite(measurement.time)
-        ]
-        return float(max(times)) if times else 0.0
+        return self._last_times.get(experiment_id, 0.0)
+
+    @functools.cached_property
+    def _last_times(self) -> dict[str | None, float]:
+        """Get the last finite time of the measurements of every experiment."""
+        last: dict[str | None, float] = {}
+        for measurement in self.petab_problem.measurements:
+            if not np.isfinite(measurement.time):
+                continue
+            experiment_id = measurement.experiment_id or None
+            last[experiment_id] = max(
+                last.get(experiment_id, -np.inf), float(measurement.time)
+            )
+        return last
+
+    @functools.cached_property
+    def _conditions(self) -> dict[str, Any]:
+        """Get the conditions of the problem by their id."""
+        return {condition.id: condition for condition in self.petab_problem.conditions}
 
     def tasks(self) -> dict[str, Task]:
         """Get the tasks, one per experiment of the problem."""
@@ -936,6 +947,17 @@ class PetabReader:
             self._observable_models[key] = self._read_observable_model(key)
         return self._observable_models[key]
 
+    @functools.cached_property
+    def _observable_formulas(self) -> dict[str, str]:
+        """Get the formula of every observable in the selections of roadrunner."""
+        sbml_model = self._sbml_model()
+        return {
+            observable.id: selections_of_formula(
+                petab_math_str(observable.formula), sbml_model
+            )
+            for observable in self.petab_problem.observables
+        }
+
     def _read_observable_model(self, key: str) -> ObservableModel | None:
         """Read the observable model of a fit mapping, see `observable_model`."""
         observable_id = self.observable_id(key)
@@ -963,15 +985,34 @@ class PetabReader:
             ]
         try:
             return ObservableModel(
-                formula=selections_of_formula(
-                    petab_math_str(observable.formula), sbml_model
-                ),
+                formula=self._observable_formulas[observable_id],
                 placeholders=placeholders,
                 placeholder_values=tuple(rows),
                 unit=info.get("y_unit") or DEFAULT_VALUE_UNIT,
             )
         except ValueError as err:
             raise ValueError(f"Observable '{observable_id}': {err}") from err
+
+    def measurement_rows(self) -> list[tuple[str, int]]:
+        """Get the data point of every measurement of the problem.
+
+        The measurements of a fit mapping are its data in the order of their
+        time, so the measurement table and the data of the fit differ in
+        their order.
+
+        Returns:
+            The key of the fit mapping and the position in its data of every
+            measurement, in the order of the measurement table.
+        """
+        positions = {
+            id(measurement): (key, position)
+            for key, measurements in self._measurements.items()
+            for position, measurement in enumerate(measurements)
+        }
+        return [
+            positions[id(measurement)]
+            for measurement in self.petab_problem.measurements
+        ]
 
     def observable_id(self, key: str) -> str:
         """Get the observable of a fit mapping of the problem.
@@ -1051,14 +1092,29 @@ class PetabReader:
             return formula
 
         placeholders = tuple(str(p) for p in observable.noise_placeholders)
+        # a placeholder of the observable in the noise formula, e.g. its scale,
+        # has the observable parameter of the measurement
+        formula_symbols = {
+            str(symbol)
+            for symbol in getattr(observable.noise_formula, "free_symbols", set())
+        }
+        observable_placeholders = [
+            (k, str(placeholder))
+            for k, placeholder in enumerate(observable.observable_placeholders)
+            if str(placeholder) in formula_symbols
+            and str(placeholder) not in placeholders
+        ]
+        placeholders += tuple(placeholder for _, placeholder in observable_placeholders)
         expressions: list[Any] = [observable.noise_formula]
         rows: list[tuple[float | str, ...]] = []
         if placeholders:
             for measurement in self._measurements.get(key, []):
-                expressions.extend(measurement.noise_parameters)
-                rows.append(
-                    tuple(selections(value) for value in measurement.noise_parameters)
-                )
+                values = list(measurement.noise_parameters) + [
+                    measurement.observable_parameters[k]
+                    for k, _ in observable_placeholders
+                ]
+                expressions.extend(values)
+                rows.append(tuple(selections(value) for value in values))
 
         symbols = sorted(
             {
@@ -1206,18 +1262,23 @@ class PetabReader:
         Returns:
             The keys of the fit mappings.
         """
-        experiments = {
-            experiment.id
-            for experiment in self.petab_problem.experiments
-            if any(
-                condition_id in period.condition_ids for period in experiment.periods
-            )
-        }
-        return {
-            key
-            for key, measurements in self._measurements.items()
-            if (measurements[0].experiment_id or DEFAULT_EXPERIMENT) in experiments
-        }
+        return self._condition_keys.get(condition_id, set())
+
+    @functools.cached_property
+    def _condition_keys(self) -> dict[str, set[str]]:
+        """Get the keys of the fit mappings of every condition."""
+        keys_of_experiment: dict[str, set[str]] = {}
+        for key, measurements in self._measurements.items():
+            experiment_id = measurements[0].experiment_id or DEFAULT_EXPERIMENT
+            keys_of_experiment.setdefault(experiment_id, set()).add(key)
+        keys: dict[str, set[str]] = {}
+        for experiment in self.petab_problem.experiments:
+            for period in experiment.periods:
+                for condition_id in period.condition_ids:
+                    keys.setdefault(condition_id, set()).update(
+                        keys_of_experiment.get(experiment.id, set())
+                    )
+        return keys
 
     def _estimated_parameter_ids(self) -> set[str]:
         """Get the ids of the parameters the PEtab problem estimates.
@@ -1235,19 +1296,29 @@ class PetabReader:
         """Get the versioned parameters of the problem, from its conditions.
 
         A condition which assigns an estimated parameter to an entity of the
-        model is a version: the entity is estimated separately for the
-        experiments which carry the condition. A change whose value is a
-        number stays a change of the timecourse and is not a version, see
-        `_simulation_of_periods`, and a change of the input of a network is
-        the input, which its hybridization holds.
+        model is a version when the parameter is assigned to this entity
+        only: the entity is estimated separately for the experiments which
+        carry the condition. A parameter which is assigned to several
+        entities is a parameter of the model the fit simulates, which the
+        conditions read like a formula, see `_period_changes`. A change whose
+        value is a number stays a change of the timecourse and is not a
+        version, see `_simulation_of_periods`, and a change of the input of a
+        network is the input, which its hybridization holds. The versions are
+        read once.
 
         Returns:
             For every estimated parameter which is the value of such a change,
             the entity of the model it writes and the ids of the fit mappings
             of the experiments which use a condition assigning it.
         """
+        return self._version_table
+
+    @functools.cached_property
+    def _version_table(self) -> dict[str, tuple[str, set[str]]]:
+        """Get the versioned parameters, see `_versions`."""
         estimated = self._estimated_parameter_ids()
-        versions: dict[str, tuple[str, set[str]]] = {}
+        targets: dict[str, set[str]] = {}
+        keys: dict[str, set[str]] = {}
         for condition in self.petab_problem.conditions:
             for change in condition.changes:
                 value = str(change.target_value)
@@ -1256,23 +1327,21 @@ class PetabReader:
                 if self.sciml is not None and change.target_id in self.sciml.input_ids:
                     # the input of a network, which its hybridization holds
                     continue
-                target, keys = versions.setdefault(value, (change.target_id, set()))
-                if change.target_id != target:
-                    # one entity is estimated by one parameter; a foreign
-                    # problem which assigns an estimated parameter to two
-                    # different entities keeps the first and is not what
-                    # `sbmlsim` writes, so it is worth a warning
-                    logger.warning(
-                        "The estimated parameter '%s' is assigned to '%s' by "
-                        "the condition '%s' and to '%s' elsewhere; only the "
-                        "first target is kept.",
-                        value,
-                        change.target_id,
-                        condition.id,
-                        target,
-                    )
-                    continue
-                keys.update(self._mapping_keys_of_condition(condition.id))
+                targets.setdefault(value, set()).add(change.target_id)
+                keys.setdefault(value, set()).update(
+                    self._mapping_keys_of_condition(condition.id)
+                )
+        versions: dict[str, tuple[str, set[str]]] = {}
+        for pid, entities in targets.items():
+            if len(entities) > 1:
+                logger.debug(
+                    "The estimated parameter '%s' is assigned to %s, the "
+                    "conditions read it.",
+                    pid,
+                    sorted(entities),
+                )
+                continue
+            versions[pid] = (next(iter(entities)), keys[pid])
         return versions
 
     def fit_parameters(self) -> list[FitParameter]:

@@ -908,3 +908,21 @@ def test_the_secant_warns(caplog: pytest.LogCaptureFixture) -> None:
     assert [p for p, _ in points] == [0.0, 1.0]
     assert "'p1'" in caplog.text
     assert "secant" in caplog.text
+
+
+def test_log_likelihood_of_given_evaluations(
+    op_unit_noise: OptimizationProblem, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The evaluations of the problem are not simulated again."""
+    problem = op_unit_noise
+    nominal = nominal_parameters(problem)
+    evaluations = problem.evaluations(nominal.x(problem.pids))
+    llh = log_likelihood(problem, nominal)
+    value = chi2(problem, nominal)
+
+    def no_simulation(*args: object, **kwargs: object) -> None:
+        raise AssertionError("the problem is simulated again")
+
+    monkeypatch.setattr(problem, "evaluations", no_simulation)
+    assert log_likelihood(problem, nominal, evaluations=evaluations) == llh
+    assert chi2(problem, nominal, evaluations=evaluations) == value

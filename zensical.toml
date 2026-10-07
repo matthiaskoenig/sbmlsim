@@ -120,6 +120,7 @@ nav = [
       { "petab_v2.gaps" = "api/fit.petab_v2.gaps.md" },
       { "petab_v2.likelihood" = "api/fit.petab_v2.likelihood.md" },
       { "petab_v2.testsuite" = "api/fit.petab_v2.testsuite.md" },
+      { "petab_v2.benchmark" = "api/fit.petab_v2.benchmark.md" },
       { "petab_v2.sciml" = "api/fit.petab_v2.sciml.md" },
       { "petab_v2.sciml_export" = "api/fit.petab_v2.sciml_export.md" },
     ] },

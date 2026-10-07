@@ -14,6 +14,7 @@ process, see `sbmlsim.simulator.formula`.
 
 from __future__ import annotations
 
+import functools
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field, replace
 from enum import StrEnum
@@ -170,6 +171,24 @@ class Plan:
         )
 
 
+@functools.lru_cache(maxsize=4096)
+def _factor(units: Any, unit: str) -> float:
+    """Get the factor which converts a unit into another, see `_to`."""
+    return float(units._REGISTRY.Quantity(1.0, units).to(unit).magnitude)
+
+
+def _to(value: Quantity, unit: str) -> float:
+    """Convert a quantity into a unit, the factor of a pair of units once.
+
+    The changes of a model are the same quantities in every simulation of a
+    fit, and pint converts slowly. A unit with an offset, e.g. a temperature
+    in degree Celsius, is converted directly.
+    """
+    if not value._is_multiplicative:
+        return float(value.to(unit).magnitude)
+    return float(value.magnitude) * _factor(value.units, unit)
+
+
 class _Converter:
     """Convert the times and values of a simulation into the units of a model."""
 
@@ -238,7 +257,7 @@ class _Converter:
                     f"means."
                 )
             try:
-                magnitude = value.to(unit or "dimensionless").magnitude
+                magnitude = _to(value, unit or "dimensionless")
             except (DimensionalityError, UndefinedUnitError) as err:
                 raise ValueError(
                     f"The value '{value}' of '{target}' cannot be converted into "

@@ -21,7 +21,8 @@ likelihood and reported.
     python -m examples.petab.benchmark --runs=8 --no-identifiability
 
 The converted problem and the results are written into `results/<problem>` of
-the working directory.
+the working directory. The whole collection is read and simulated by
+`scripts/petab_benchmark.py`, see `sbmlsim.fit.petab_v2.benchmark`.
 """
 
 import argparse

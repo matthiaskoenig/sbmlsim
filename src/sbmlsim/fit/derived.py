@@ -276,6 +276,12 @@ def resolve_derived_changes(problem: OptimizationProblem) -> list[GroupDerivedCh
             f"but the fit mappings are simulated with the models "
             f"{sorted(set(model_keys))}."
         )
+    if not problem.hybridizations and not any(
+        parameter.is_external for parameter in problem.parameters
+    ):
+        # nothing derives a change and every parameter is an entity, which is
+        # every problem without networks
+        return [[] for _ in problem.mapping_groups]
     mapping = problem.parameter_mapping_initialized
     group_derived: list[GroupDerivedChanges] = []
     read: set[str] = set()

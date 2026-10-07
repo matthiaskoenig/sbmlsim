@@ -606,3 +606,94 @@ def test_a_nominal_value_outside_of_the_bounds(
     problem.initialize(SETTINGS)
     nominal = reader.nominal_parameters(problem)
     assert nominal.values == {"alpha": 20.0, "beta": 0.9}
+
+
+def test_the_rows_of_the_measurement_table(tmp_path: Path) -> None:
+    """Every measurement is a data point of a fit mapping, sorted by time."""
+    path = write_problem(tmp_path, {"prey_o": "prey"}, {"e1": None, "e2": None})
+    table = pd.read_csv(tmp_path / "measurements.tsv", sep="\t")
+    # the measurements of e1 in reverse order of the time
+    table = pd.concat(
+        [
+            table[table["experimentId"] == "e1"].iloc[::-1],
+            table[table["experimentId"] == "e2"],
+        ],
+        ignore_index=True,
+    )
+    table.to_csv(tmp_path / "measurements.tsv", sep="\t", index=False)
+    rows = PetabReader.from_yaml(path).measurement_rows()
+    assert rows[:3] == [("prey_o_e1", 9), ("prey_o_e1", 8), ("prey_o_e1", 7)]
+    assert rows[10:12] == [("prey_o_e2", 0), ("prey_o_e2", 1)]
+    assert len(rows) == 20
+
+
+def test_a_parameter_which_a_condition_assigns_to_several_targets(
+    tmp_path: Path,
+) -> None:
+    """The conditions read the parameter, every target gets its value.
+
+    A version estimates one entity, `theta` is the value of `alpha` and of
+    `beta` (`Bruno_JExpBot2016`), so it is a parameter which the conditions
+    read like a formula.
+    """
+
+    def theta_problem(directory: Path, value: str) -> Path:
+        path = write_problem(
+            directory,
+            {"prey_o": "prey"},
+            {"e1": "c1"},
+            conditions=[("c1", "alpha", value), ("c1", "beta", value)],
+        )
+        table = directory / "parameters.tsv"
+        parameters = pd.read_csv(table, sep="\t")
+        theta = parameters.iloc[[0]].copy()
+        theta["parameterId"] = "theta"
+        theta["nominalValue"] = 0.7
+        parameters = pd.concat([parameters, theta], ignore_index=True)
+        # alpha and beta are set by the condition
+        parameters["estimate"] = [False, False, True]
+        parameters.to_csv(table, sep="\t", index=False)
+        return path
+
+    reference = PetabReader.from_yaml(theta_problem(tmp_path / "reference", "0.7"))
+    reference_problem = reference.to_optimization_problem()
+    reference_problem.initialize(SETTINGS)
+    reader = PetabReader.from_yaml(theta_problem(tmp_path / "theta", "theta"))
+    by_id = {p.pid: p for p in reader.fit_parameters()}
+    assert by_id["theta"].target is None
+    problem = reader.to_optimization_problem()
+    problem.initialize(SETTINGS)
+    np.testing.assert_allclose(
+        problem.predictions(np.array([0.7]))[0],
+        reference_problem.predictions(np.array([0.7]))[0],
+        rtol=1e-10,
+    )
+
+
+def test_a_noise_formula_with_an_observable_placeholder(tmp_path: Path) -> None:
+    """The noise reads the observable parameters of its measurement.
+
+    `Raia_CancerResearch2011` scales the noise with the scale of its
+    observable, a placeholder of the observable.
+    """
+    from sbmlsim.fit.petab_v2.likelihood import log_density, log_likelihood
+
+    path = write_problem(
+        tmp_path, observables={"prey_o": "scale_prey * prey"}, experiments={"e1": None}
+    )
+    observables = pd.read_csv(tmp_path / "observables.tsv", sep="\t")
+    observables["observablePlaceholders"] = "scale_prey"
+    observables["noiseFormula"] = "0.1 * scale_prey"
+    observables.to_csv(tmp_path / "observables.tsv", sep="\t", index=False)
+    measurements = pd.read_csv(tmp_path / "measurements.tsv", sep="\t")
+    measurements["observableParameters"] = [
+        2.0 if k < 5 else 3.0 for k in range(len(measurements))
+    ]
+    measurements.to_csv(tmp_path / "measurements.tsv", sep="\t", index=False)
+
+    problem = PetabReader.from_yaml(path).to_optimization_problem()
+    problem.initialize(SETTINGS)
+    (prediction,) = problem.predictions(np.asarray(problem.x0, dtype=float)).values()
+    scale = np.where(np.arange(10) < 5, 2.0, 3.0)
+    expected = log_density(np.asarray(problem.y_references[0]), prediction, 0.1 * scale)
+    assert log_likelihood(problem) == pytest.approx(float(np.sum(expected)))

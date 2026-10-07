@@ -40,7 +40,7 @@ from sbmlsim.fit.parameters import ParameterSet
 from sbmlsim.log import some_ids
 
 if TYPE_CHECKING:
-    from sbmlsim.fit.optimization import OptimizationProblem
+    from sbmlsim.fit.optimization import MappingEvaluation, OptimizationProblem
 
 logger = logging.getLogger(__name__)
 
@@ -367,13 +367,17 @@ def _check_problem(problem: OptimizationProblem) -> None:
 
 
 def _noise_terms(
-    problem: OptimizationProblem, pset: ParameterSet
+    problem: OptimizationProblem,
+    pset: ParameterSet,
+    evaluations: Mapping[int, MappingEvaluation] | None = None,
 ) -> list[tuple[str, np.ndarray, np.ndarray, np.ndarray, NoiseDistribution]]:
     """Simulate a problem and get the noise of its training data.
 
     Args:
         problem: initialized optimization problem.
         pset: the parameters to simulate at.
+        evaluations: the evaluations of the problem at the parameters, which
+            are simulated if they are not given.
 
     Returns:
         Per fit mapping of the training data its name, the measurements, the
@@ -383,7 +387,8 @@ def _noise_terms(
         ValueError: if a simulation failed or if the noise model of a mapping
             cannot be evaluated.
     """
-    evaluations = problem.evaluations(pset.x(problem.pids))
+    if evaluations is None:
+        evaluations = problem.evaluations(pset.x(problem.pids))
     terms = []
     for k in problem.training_indices:
         key = f"{problem.experiment_keys[k]}.{problem.mapping_keys[k]}"
@@ -405,7 +410,9 @@ def _noise_terms(
 
 
 def log_likelihood(
-    problem: OptimizationProblem, parameters: ParameterSet | None = None
+    problem: OptimizationProblem,
+    parameters: ParameterSet | None = None,
+    evaluations: Mapping[int, MappingEvaluation] | None = None,
 ) -> float:
     """Get the log-likelihood of the training data of a problem.
 
@@ -419,6 +426,8 @@ def log_likelihood(
         parameters: parameters to evaluate the log-likelihood at, with the
             values of the parameters of the fit and, optionally, of parameters
             of the noise formulas. `nominal_parameters` by default.
+        evaluations: `problem.evaluations` at the parameters, of the training
+            data at least, which saves the simulation.
 
     Returns:
         The log-likelihood.
@@ -433,7 +442,7 @@ def log_likelihood(
     pset = parameters if parameters is not None else nominal_parameters(problem)
     total = 0.0
     for key, measurement, simulation, sigma, distribution in _noise_terms(
-        problem, pset
+        problem, pset, evaluations
     ):
         try:
             density = log_density(
@@ -445,7 +454,11 @@ def log_likelihood(
     return total
 
 
-def chi2(problem: OptimizationProblem, parameters: ParameterSet | None = None) -> float:
+def chi2(
+    problem: OptimizationProblem,
+    parameters: ParameterSet | None = None,
+    evaluations: Mapping[int, MappingEvaluation] | None = None,
+) -> float:
     """Get the chi2 of the training data of a problem.
 
     The sum of the squares of the `normalized_residuals` of the training
@@ -454,6 +467,7 @@ def chi2(problem: OptimizationProblem, parameters: ParameterSet | None = None) -
     Args:
         problem: initialized optimization problem.
         parameters: parameters to evaluate chi2 at, see `log_likelihood`.
+        evaluations: see `log_likelihood`.
 
     Returns:
         The chi2.
@@ -466,7 +480,7 @@ def chi2(problem: OptimizationProblem, parameters: ParameterSet | None = None) -
     pset = parameters if parameters is not None else nominal_parameters(problem)
     total = 0.0
     for key, measurement, simulation, sigma, distribution in _noise_terms(
-        problem, pset
+        problem, pset, evaluations
     ):
         try:
             residuals = normalized_residuals(
@@ -527,7 +541,9 @@ def log_prior(
 
 
 def unnorm_log_posterior(
-    problem: OptimizationProblem, parameters: ParameterSet | None = None
+    problem: OptimizationProblem,
+    parameters: ParameterSet | None = None,
+    evaluations: Mapping[int, MappingEvaluation] | None = None,
 ) -> float:
     """Get the unnormalized log posterior of a problem.
 
@@ -538,6 +554,7 @@ def unnorm_log_posterior(
         problem: initialized optimization problem.
         parameters: parameters to evaluate it at, `nominal_parameters` by
             default.
+        evaluations: see `log_likelihood`.
 
     Returns:
         The unnormalized log posterior.
@@ -547,7 +564,9 @@ def unnorm_log_posterior(
         KeyError: if the parameters lack a parameter of the fit.
     """
     pset = parameters if parameters is not None else nominal_parameters(problem)
-    return log_likelihood(problem, pset) + float(sum(log_prior(problem, pset).values()))
+    return log_likelihood(problem, pset, evaluations) + float(
+        sum(log_prior(problem, pset).values())
+    )
 
 
 #: the orders of the differences of the gradient

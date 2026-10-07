@@ -1199,6 +1199,8 @@ class OptimizationProblem(ObjectJSONEncoder):
         mapping = self.parameter_mapping_initialized
         self.plans = []
         self._group_targets = []
+        factors: dict[tuple[str, str], float] = {}
+        external = {k for k, p in enumerate(self.parameters) if p.is_external}
         self._rows = [None] * len(self.mapping_keys)
         for k_group, group in enumerate(self.mapping_groups):
             k0 = group[0]
@@ -1246,14 +1248,17 @@ class OptimizationProblem(ObjectJSONEncoder):
 
             targets: list[tuple[str, int, float]] = []
             for target, index in mapping.indices_for(k_group).items():
-                parameter = self.parameters[index]
-                if parameter.is_external:
+                if index in external:
                     continue
                 factor = 1.0
                 unit = model.uinfo.get(target)
                 punit = self.punits[index]
                 if unit and punit:
-                    factor = float(Q(1.0, punit).to(unit).magnitude)
+                    # one conversion per pair of units, not per group
+                    key = (str(punit), str(unit))
+                    if key not in factors:
+                        factors[key] = float(Q(1.0, punit).to(unit).magnitude)
+                    factor = factors[key]
                 targets.append((target, index, factor))
             self._group_targets.append(targets)
 
@@ -1286,7 +1291,9 @@ class OptimizationProblem(ObjectJSONEncoder):
                 value, or if the target of a parameter is not an entity of
                 the model.
         """
-        for k_model, model in enumerate(self.models):
+        # `models` holds the model of every fit mapping, a model is read once
+        models = list({id(model): model for model in self.models}.values())
+        for k_model, model in enumerate(models):
             if model.r is None:
                 raise ValueError(f"Model '{model}' is not loaded in roadrunner.")
 
