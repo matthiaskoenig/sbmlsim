@@ -104,17 +104,15 @@ class RoadrunnerSBMLModel(AbstractModel):
             if self.source.content is not None
             else Path(str(self.source.path)).read_text(encoding="utf-8")
         )
-        r: roadrunner.RoadRunner | None = None
-        if _is_hierarchical(sbml):
-            # roadrunner flattens a hierarchical model and resolves its
-            # external model definitions relative to the file, the symbols are
-            # the ones of the model it simulates; `getSBML` is the flattened
-            # model as loaded, `getCurrentSBML` drops the initial assignments
-            r = self.load_roadrunner_model(source=self.source)
-            sbml = r.getSBML()
+        # roadrunner looks for the package comp in the text of the <sbml> tag
+        # and misses it in a file with the line endings of Windows and in the
+        # SBML as a string, it then simulates a hierarchical model unflattened;
+        # the model is flattened here, the symbols are the ones it simulates
+        hierarchical = _is_hierarchical(sbml)
+        if hierarchical:
+            sbml = _flatten(sbml, path=self.source.path)
         if self.parameters:
             sbml = _with_parameters(sbml, self.parameters)
-            r = None
         self.symbols: ModelSymbols = ModelSymbols.from_sbml(sbml)
         #: entity with an initial assignment -> the parameter whose
         #: assignment rule is the math of the initial assignment, see
@@ -122,19 +120,15 @@ class RoadrunnerSBMLModel(AbstractModel):
         self.initial_helpers: dict[str, str] = {}
         if self.symbols.initial_assignments:
             sbml, self.initial_helpers = _with_initial_helpers(sbml)
-            r = None
 
         # load model
         self.r: roadrunner.RoadRunner | None = (
-            r
-            if r is not None
-            else (
-                roadrunner.RoadRunner(sbml)
-                if self.initial_helpers
-                or self.parameters
-                or self.source.content is not None
-                else self.load_roadrunner_model(source=self.source)
-            )
+            roadrunner.RoadRunner(sbml)
+            if hierarchical
+            or self.initial_helpers
+            or self.parameters
+            or self.source.content is not None
+            else self.load_roadrunner_model(source=self.source)
         )
 
         #: whether the instance was reset or loaded and not simulated since,
@@ -653,6 +647,43 @@ def _is_hierarchical(sbml: str) -> bool:
         return False
     doc: libsbml.SBMLDocument = libsbml.readSBMLFromString(sbml)
     return bool(doc.isPackageEnabled("comp"))
+
+
+def _flatten(sbml: str, path: Path | None) -> str:
+    """Flatten a hierarchical model.
+
+    The model is read from its file if it has one, so that libsbml resolves
+    its external model definitions relative to the file.
+
+    Args:
+        sbml: the SBML of the model.
+        path: the file of the model, `None` for the SBML as a string.
+
+    Returns:
+        The SBML of the flattened model.
+
+    Raises:
+        ValueError: if the model cannot be flattened.
+    """
+    doc: libsbml.SBMLDocument = (
+        libsbml.readSBMLFromFile(str(path))
+        if path is not None
+        else libsbml.readSBMLFromString(sbml)
+    )
+    properties = libsbml.ConversionProperties()
+    properties.addOption("flatten comp", True)
+    properties.addOption("performValidation", False)
+    if doc.convert(properties) != libsbml.LIBSBML_OPERATION_SUCCESS:
+        errors = [
+            doc.getError(k).getMessage().strip()
+            for k in range(doc.getNumErrors())
+            if doc.getError(k).getSeverity() >= libsbml.LIBSBML_SEV_ERROR
+        ]
+        raise ValueError(
+            f"The hierarchical model '{path or sbml[:200]}' cannot be flattened: "
+            + "; ".join(errors)
+        )
+    return libsbml.writeSBMLToString(doc)
 
 
 def _with_parameters(sbml: str, parameters: Mapping[str, float]) -> str:

@@ -317,10 +317,57 @@ HIERARCHICAL_SBML = """<?xml version="1.0" encoding="UTF-8"?>
 """
 
 
-def test_initial_assignments_of_a_hierarchical_model(tmp_path: Path) -> None:
-    """The flattened hierarchical model keeps the initial assignments."""
+@pytest.mark.parametrize("source", ["file", "file with CRLF", "string"])
+def test_initial_assignments_of_a_hierarchical_model(
+    source: str, tmp_path: Path
+) -> None:
+    """The flattened hierarchical model keeps the initial assignments.
+
+    roadrunner misses the package comp of a file with the line endings of
+    Windows and of the SBML as a string and simulates the model unflattened.
+    """
     path = tmp_path / "hierarchical.xml"
-    path.write_text(HIERARCHICAL_SBML, encoding="utf-8")
+    newline = "\r\n" if source == "file with CRLF" else "\n"
+    path.write_bytes(HIERARCHICAL_SBML.replace("\n", newline).encode("utf-8"))
+    model = RoadrunnerSBMLModel(
+        source=HIERARCHICAL_SBML if source == "string" else path
+    )
+    assert model.symbols.initial_assignment_order == ("sub__A1",)
+    model.initialize([_a("sub__k", 10.0)])
+    assert model.r_loaded["sub__A1"] == pytest.approx(20.0)
+
+
+#: a hierarchical model whose submodel is defined in another file
+EXTERNAL_SBML = """<?xml version="1.0" encoding="UTF-8"?>
+<sbml xmlns="http://www.sbml.org/sbml/level3/version1/core"
+      xmlns:comp="http://www.sbml.org/sbml/level3/version1/comp/version1"
+      level="3" version="1" comp:required="true">
+  <model id="top">
+    <comp:listOfSubmodels>
+      <comp:submodel comp:id="sub" comp:modelRef="inner"/>
+    </comp:listOfSubmodels>
+  </model>
+  <comp:listOfExternalModelDefinitions>
+    <comp:externalModelDefinition comp:id="inner" comp:source="inner.xml"
+                                  comp:modelRef="inner"/>
+  </comp:listOfExternalModelDefinitions>
+</sbml>
+"""
+
+
+def test_a_hierarchical_model_resolves_its_files(tmp_path: Path) -> None:
+    """An external model definition is resolved relative to the model."""
+    inner = HIERARCHICAL_SBML.split("<comp:listOfModelDefinitions>")[1]
+    inner = inner.split("</comp:listOfModelDefinitions>")[0]
+    inner = inner.replace("comp:modelDefinition", "model")
+    (tmp_path / "inner.xml").write_text(
+        '<?xml version="1.0" encoding="UTF-8"?>\n'
+        '<sbml xmlns="http://www.sbml.org/sbml/level3/version1/core" '
+        f'level="3" version="1">{inner}</sbml>\n',
+        encoding="utf-8",
+    )
+    path = tmp_path / "top.xml"
+    path.write_text(EXTERNAL_SBML, encoding="utf-8")
     model = RoadrunnerSBMLModel(source=path)
     assert model.symbols.initial_assignment_order == ("sub__A1",)
     model.initialize([_a("sub__k", 10.0)])
