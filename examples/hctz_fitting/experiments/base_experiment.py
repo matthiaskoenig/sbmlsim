@@ -1,16 +1,18 @@
 """Reusable functionality for multiple simulation experiments."""
 
 from collections import namedtuple
+from collections.abc import Mapping
 from pathlib import Path
 from typing import ClassVar
 
 import pandas as pd
 
 from examples.hctz_fitting import MODEL_PATH
+from sbmlsim import Q
 from sbmlsim.data import load_pkdb_dataframe
 from sbmlsim.experiment import SimulationExperiment
 from sbmlsim.model import AbstractModel
-from sbmlsim.simulation import AbstractSim
+from sbmlsim.simulation import ScanSim, Simulation
 from sbmlsim.task import Task
 
 MolecularWeights = namedtuple("MolecularWeights", "hctz ren ang1 ald")
@@ -137,7 +139,7 @@ class HCTZSimulationExperiment(SimulationExperiment):
         }
 
     @staticmethod
-    def _default_changes(Q_):
+    def _default_changes() -> dict:
         """Default changes to simulations.
 
         The fitted parameters of the last optimizations are kept as a reference,
@@ -148,27 +150,27 @@ class HCTZSimulationExperiment(SimulationExperiment):
             # 20260421_191243__251fc
             #     >>> !Optimal parameter 'Kp_hctz' within 5% of upper bound! <<<
             #     >>> !Optimal parameter 'GU__F_hctz_abs' within 5% of lower bound! <<<
-            # 'ftissue_hctz': Q_(0.24614387687774153, 'l/min'),  # [0.01 - 10]
-            # 'Kp_hctz': Q_(0.9997280036700814, 'dimensionless'),  # [0.25 - 1.0]
-            # 'KI__HCTZEX_k': Q_(0.0037108904792554284, '1/ml'),  # [1e-10 - 1]
-            # 'Ka_dis_hctz': Q_(0.35181331155360623, '1/hr'),  # [0.0001 - 10]
-            # 'GU__F_hctz_abs': Q_(0.6121311521798801, 'dimensionless'),  # [0.6 - 0.8]
-            # 'GU__HCTZABS_k': Q_(0.02041376871688115, '1/min'),  # [0.0001 - 10]
+            # 'ftissue_hctz': Q(0.24614387687774153, 'l/min'),  # [0.01 - 10]
+            # 'Kp_hctz': Q(0.9997280036700814, 'dimensionless'),  # [0.25 - 1.0]
+            # 'KI__HCTZEX_k': Q(0.0037108904792554284, '1/ml'),  # [1e-10 - 1]
+            # 'Ka_dis_hctz': Q(0.35181331155360623, '1/hr'),  # [0.0001 - 10]
+            # 'GU__F_hctz_abs': Q(0.6121311521798801, 'dimensionless'),  # [0.6 - 0.8]
+            # 'GU__HCTZABS_k': Q(0.02041376871688115, '1/min'),  # [0.0001 - 10]
             # pharmacodynamics
             # 20260428_215542__acc84
-            # 'gamma_hctz_nacl': Q_(3.139520154586461, 'dimensionless'),  # [1 - 10]
-            # 'E50_hctz_nacl': Q_(0.00015768610209207848, 'mM'),  # [1e-06 - 0.01]
-            # 'Emax_hctz_na': Q_(1.8546129025527704, 'dimensionless'),  # [1 - 20]
-            # 'Emax_hctz_cl': Q_(1.0072984331883104, 'dimensionless'),  # [1 - 20]
-            # 'k_na': Q_(0.0006459968399240859, 'l/min'),  # [1e-10 - 1000.0]
-            # 'k_cl': Q_(0.003002476234054992, 'l/min'),  # [1e-10 - 1000.0]
+            # 'gamma_hctz_nacl': Q(3.139520154586461, 'dimensionless'),  # [1 - 10]
+            # 'E50_hctz_nacl': Q(0.00015768610209207848, 'mM'),  # [1e-06 - 0.01]
+            # 'Emax_hctz_na': Q(1.8546129025527704, 'dimensionless'),  # [1 - 20]
+            # 'Emax_hctz_cl': Q(1.0072984331883104, 'dimensionless'),  # [1 - 20]
+            # 'k_na': Q(0.0006459968399240859, 'l/min'),  # [1e-10 - 1000.0]
+            # 'k_cl': Q(0.003002476234054992, 'l/min'),  # [1e-10 - 1000.0]
         }
 
     def default_changes(self: SimulationExperiment) -> dict:
         """Default changes to simulations."""
-        return HCTZSimulationExperiment._default_changes(Q_=self.Q_)
+        return HCTZSimulationExperiment._default_changes()
 
-    def simulations(self) -> dict[str, AbstractSim]:
+    def simulations(self) -> Mapping[str, Simulation | ScanSim]:
         return {}
 
     def tasks(self) -> dict[str, Task]:
@@ -227,10 +229,10 @@ class HCTZSimulationExperiment(SimulationExperiment):
     @property
     def Mr(self):
         return MolecularWeights(
-            hctz=self.Q_(297.7, "g/mole"),
-            ren=self.Q_(45057, "g/mole"),
-            ang1=self.Q_(1296.499, "g/mole"),
-            ald=self.Q_(360.444, "g/mole"),
+            hctz=Q(297.7, "g/mole"),
+            ren=Q(45057, "g/mole"),
+            ang1=Q(1296.499, "g/mole"),
+            ald=Q(360.444, "g/mole"),
         )
 
     renal_colors: ClassVar[dict] = {

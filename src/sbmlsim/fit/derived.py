@@ -27,7 +27,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
 
 from sbmlsim.log import some_ids
-from sbmlsim.units import Quantity
+from sbmlsim.units import Q, Quantity
 
 if TYPE_CHECKING:
     from sbmlsim.fit.objects import FitParameter
@@ -536,7 +536,6 @@ def evaluate_derived_changes(
         ValueError: if a hook cannot calculate its changes, or if it answers
             with other changes than the ones of its targets.
     """
-    Q_ = problem.runner_initialized.Q_
     mapping = problem.parameter_mapping_initialized
     k0 = problem.mapping_groups[k_group][0]
     derived = problem.group_derived[k_group]
@@ -576,5 +575,5 @@ def evaluate_derived_changes(
                 f"'{hook.model}' answers {' and '.join(clauses)}."
             )
         for target, value in hook_changes.items():
-            result[target] = Q_(value, uinfo[target])
+            result[target] = Q(value, uinfo[target])
     return result

@@ -5,10 +5,11 @@ Example for handling units in simulations and results.
 import numpy as np
 from matplotlib import pyplot as plt
 
+from sbmlsim import Q
 from sbmlsim.console import console
 from sbmlsim.resources import DEMO_SBML
 from sbmlsim.result import XResult
-from sbmlsim.simulation import Dimension, ScanSim, Timecourse, TimecourseSim
+from sbmlsim.simulation import Dimension, ScanSim, Simulation
 from sbmlsim.simulator import SimulatorSerial
 from sbmlsim.units import UnitsInformation
 
@@ -19,35 +20,29 @@ def run_demo_example():
 
     # units information
     uinfo = UnitsInformation.from_sbml(DEMO_SBML)
-    Q_ = uinfo.Q_
 
     # 1. simple timecourse simulation
     print("*** setting concentrations and amounts ***")
 
-    # FIXME: units of changes are not used for conversion
+    # the quantities are converted into the units of the model
     tc_scan = ScanSim(
-        simulation=TimecourseSim(
-            [
-                Timecourse(
-                    start=0,
-                    end=10,
-                    steps=100,
-                    changes={
-                        "[e__A]": Q_(10, "mM"),
-                        "[e__B]": Q_(1, "mmole/litre"),
-                        "[e__C]": Q_(1, "mole/m**3"),
-                        "c__A": Q_(1e-5, "mole"),
-                        "c__B": Q_(10, "µmole"),
-                        "Vmax_bA": Q_(300.0, "mole/min"),
-                    },
-                )
-            ]
+        simulation=Simulation(
+            end=10,
+            steps=100,
+            preinit_changes={
+                "[e__A]": Q(10, "mM"),
+                "[e__B]": Q(1, "mmole/litre"),
+                "[e__C]": Q(1, "mole/m**3"),
+                "c__A": Q(1e-5, "mole"),
+                "c__B": Q(10, "µmole"),
+                "Vmax_bA": Q(300.0, "mole/min"),
+            },
         ),
         dimensions=[
             Dimension(
                 "dim1",
                 index=np.arange(20),
-                changes={"[e__A]": Q_(np.linspace(5, 15, num=20), "mM")},
+                changes={"[e__A]": Q(np.linspace(5, 15, num=20), "mM")},
             )
         ],
     )
@@ -77,8 +72,8 @@ def run_demo_example():
 
         for key in ["[e__A]", "[e__B]", "[e__C]", "[c__A]", "[c__B]", "[c__C]"]:
             ax.plot(
-                Q_(xres["time"].values, xres.uinfo["time"]).to(xunit).m,
-                Q_(xres[key].values, xres.uinfo[key]).to(yunit).m,
+                Q(xres["time"].values, xres.uinfo["time"]).to(xunit).m,
+                Q(xres[key].values, xres.uinfo[key]).to(yunit).m,
                 label=f"{key} [{yunit}]",
             )
         ax.legend()

@@ -19,6 +19,7 @@ import pytest
 import sympy
 import yaml
 
+from sbmlsim import Q
 from sbmlsim.fit import FitMappingCollection, FitParameter
 from sbmlsim.fit.objects import EXTERNAL_PREFIX
 from sbmlsim.fit.optimization import OptimizationProblem
@@ -39,7 +40,7 @@ from sbmlsim.sciml import (
 )
 from sbmlsim.sciml.hybridization import ALL_CONDITIONS
 from sbmlsim.sciml.testsuite import SciMLSuite
-from sbmlsim.simulation import AbstractSim, Timecourse, TimecourseSim
+from sbmlsim.simulation import Simulation
 from sbmlsim.units import Quantity
 from tests.fit.hooks import Scaling, factor_parameter
 from tests.sciml.experiment import SIMULATIONS, LotkaVolterra
@@ -759,17 +760,13 @@ def test_an_input_of_an_entity_outside_the_parameter_table_is_refused(
 class ChangedAlpha(LotkaVolterra):
     """The simulations change `alpha`, which the fit estimates."""
 
-    def simulations(self) -> dict[str, AbstractSim]:
+    def simulations(self) -> dict[str, Simulation]:
         return {
-            sid: TimecourseSim(
-                [
-                    Timecourse(
-                        start=0.0,
-                        end=10.0,
-                        steps=100,
-                        changes={"alpha": self.Q_(1.0, "dimensionless")},
-                    )
-                ]
+            sid: Simulation(
+                start=0.0,
+                end=10.0,
+                steps=100,
+                preinit_changes={"alpha": Q(1.0, "dimensionless")},
             )
             for sid in SIMULATIONS
         }

@@ -19,7 +19,7 @@ from sbmlsim.data import DataSet
 from sbmlsim.experiment import SimulationExperiment
 from sbmlsim.fit import FitData, FitMapping
 from sbmlsim.model import AbstractModel
-from sbmlsim.simulation import AbstractSim, Timecourse, TimecourseSim
+from sbmlsim.simulation import Simulation
 from sbmlsim.task import Task
 
 #: the directory of the example, with the model and the data
@@ -79,10 +79,8 @@ class NeuralODE(SimulationExperiment):
                 )
         return datasets
 
-    def simulations(self) -> dict[str, AbstractSim]:
-        return {
-            "sim": TimecourseSim([Timecourse(start=0.0, end=SIMULATION_END, steps=150)])
-        }
+    def simulations(self) -> dict[str, Simulation]:
+        return {"sim": Simulation(end=SIMULATION_END, steps=150)}
 
     def tasks(self) -> dict[str, Task]:
         return {"task_sim": Task(model="lv", simulation="sim")}

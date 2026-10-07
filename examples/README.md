@@ -16,10 +16,10 @@ An example writes what it creates into the current working directory: figures ar
 
 | path | content |
 | --- | --- |
-| `examples/timecourse.py` | timecourse simulations of the repressilator: single, with parameter changes and concatenated timecourses |
+| `examples/timecourse.py` | simulations of the repressilator: the steps of the integrator, changes before the initialization and a change at a time on an equidistant grid |
 | `examples/scan.py` | parameter scans of dimension 0, 1 and 2, including a scan over a distribution of parameter values |
 | `examples/fit_sampling.py` | sampling of the start values of a parameter fit, uniform and logarithmic, with and without latin hypercube sampling |
-| `examples/model_change.py` | clamping species with `ModelChange`, manually on the roadrunner instance and in a `TimecourseSim` |
+| `examples/model_change.py` | clamping a species with `ModelChange` on the roadrunner instance of a model |
 | `examples/units.py` | units of a model and changes with pint quantities |
 | `examples/model_sensitivity.py` | sensitivity scans of all parameters, by relative differences and by sampling from distributions |
 | `examples/datagenerator.py` | reducing scan results with a `DataGenerator` |
@@ -40,6 +40,6 @@ An example writes what it creates into the current working directory: figures ar
 
 `tests/examples/test_example_scripts.py` runs the examples which work offline and without optional dependencies as `python -m examples.<module>` in a temporary working directory, so an example which breaks fails the test suite.
 
-`examples/demo` fails: a curve of a multi-dimensional scan is a three dimensional array and matplotlib draws two dimensions, so the experiment has to say how the scan is reduced before it is plotted. It is the one skipped test in `tests/experiment/`; `examples/glucose` and `examples/repressilator` run and are tested.
+A curve of a scan draws the first simulation of the scan; `examples/demo`, `examples/glucose` and `examples/repressilator` run and are tested.
 
 `examples/hctz_fitting` is the reference problem of the parameter fitting: `python -m examples.hctz_fitting.simulations` runs the simulation experiments, `python -m examples.hctz_fitting.fitting.fitting` the fit, and `python -m examples.hctz_fitting.fitting.run_report <parameters.json>` creates the report of a finished fit again, or of several fits at once, without optimizing. `python -m examples.hctz_fitting.fitting.identifiability` runs a global optimization followed by the profile likelihood of the best parameter set, and `python -m examples.hctz_fitting.fitting.identifiability_report <parameters.json>` computes the profiles of stored parameters. `python -m examples.hctz_fitting.fitting.petab_problem` writes the fit as a PEtab v2 problem, validates it with `petab` and reads it back, and reports what PEtab cannot express about the fit. These are the general tools of `sbmlsim.fit.cli` and `sbmlsim.fit.petab_v2` on the `FitDefinition` objects of `examples/hctz_fitting/fitting/fitting.py`, which is all the example has to provide. The tests in `tests/fit/` use it.

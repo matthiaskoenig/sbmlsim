@@ -1,7 +1,9 @@
-"""
-Examples for model changes.
+"""Examples for structural changes of a model.
 
-For instance clamping species to given formulas.
+`ModelChange.clamp_species` clamps a species of a loaded roadrunner instance
+to a value or a formula, by a fast reaction which drives the species to it. It
+changes the structure of the model, which a `Simulation` does not do: the
+instance is changed between simulations.
 """
 
 import pandas as pd
@@ -9,9 +11,6 @@ from matplotlib import pyplot as plt
 
 from sbmlsim.model import ModelChange, RoadrunnerSBMLModel
 from sbmlsim.resources import REPRESSILATOR_SBML
-from sbmlsim.result import XResult
-from sbmlsim.simulation import Timecourse, TimecourseSim
-from sbmlsim.simulator import SimulatorSerial
 
 
 def run_model_change_example1():
@@ -59,89 +58,5 @@ def run_model_change_example1():
     plt.close(fig)
 
 
-def run_model_clamp1():
-    """Using Timecourse simulations for clamps."""
-    simulator = SimulatorSerial(REPRESSILATOR_SBML)
-
-    # setting a species as boundary condition
-    tcsim = TimecourseSim(
-        [
-            Timecourse(start=0, end=100, steps=100),
-            Timecourse(
-                start=0,
-                end=300,
-                steps=100,
-                model_manipulations={ModelChange.CLAMP_SPECIES: {"X": True}},
-            ),
-            Timecourse(
-                start=0,
-                end=200,
-                steps=100,
-                model_manipulations={ModelChange.CLAMP_SPECIES: {"X": False}},
-            ),
-        ]
-    )
-    xres = simulator.run_timecourse(tcsim)
-
-    # create figure
-    fig, ax = plt.subplots(nrows=1, ncols=1, figsize=(5, 5))
-    ax.set_xlabel("time")
-    ax.set_ylabel("concentration")
-
-    for sid in ["X", "Y", "Z"]:
-        ax.plot(xres["time"], xres[f"[{sid}]"], label=sid)
-
-    ax.legend()
-    fig.savefig("model_change_clamp1.png", bbox_inches="tight")
-    plt.close(fig)
-
-
-def run_model_clamp2():
-    def plot_result(xres: XResult, title: str | None = None) -> None:
-        """Plot the results with title."""
-        fig: plt.Figure
-        ax: plt.Axes
-        fig, ax = plt.subplots(nrows=1, ncols=1, figsize=(5, 5))
-        fig.subplots_adjust(wspace=0.3, hspace=0.3)
-
-        t = xres["time"]
-        ax.plot(t, xres["[X]"], label="X")
-        ax.plot(t, xres["[Y]"], label="Y")
-
-        if title:
-            ax.set_title(title)
-
-        ax.legend()
-        fig.savefig(f"model_change_clamp2_{title}.png", bbox_inches="tight")
-        plt.close(fig)
-
-    # reference simulation
-    simulator = SimulatorSerial(REPRESSILATOR_SBML)
-    tcsim = TimecourseSim(
-        [
-            Timecourse(start=0, end=220, steps=300, changes={"X": 10}),
-            # clamp simulation
-            Timecourse(
-                start=0,
-                end=200,
-                steps=200,
-                model_manipulations={ModelChange.CLAMP_SPECIES: {"X": True}},
-            ),
-            # free simulation
-            Timecourse(
-                start=0,
-                end=400,
-                steps=400,
-                model_manipulations={ModelChange.CLAMP_SPECIES: {"X": False}},
-            ),
-        ]
-    )
-    xres = simulator.run_timecourse(tcsim)
-    assert isinstance(xres, XResult)
-    plot_result(xres, "clamp experiment (220-420)")
-
-
 if __name__ == "__main__":
     run_model_change_example1()
-    run_model_clamp1()
-    run_model_clamp2()

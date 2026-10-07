@@ -1,6 +1,6 @@
 """Result of a single timecourse simulation.
 
-The simulator answers every `TimecourseSim` with a `TimecourseResult`: the
+The simulator answers every `Simulation` with a `TimecourseResult`: the
 array of the selections which roadrunner returns, with a row per time point and
 a column per selection, and the names of the columns. `XResult.from_timecourses`
 places the results of the simulations of a scan into one `xarray.Dataset`.

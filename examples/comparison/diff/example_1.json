@@ -1,13 +1,12 @@
 {
-  "timecourses": [
-    {
-      "start": 0,
-      "end": 60,
-      "steps": 60,
-      "changes": {},
-      "model_changes": {}
-    }
-  ],
-  "selections": null,
-  "reset": true
+  "type": "Simulation",
+  "time_unit": null,
+  "start": 0.0,
+  "end": 60,
+  "preinit_changes": {},
+  "changes": [],
+  "presimulation": null,
+  "times": null,
+  "steps": 60,
+  "time_shift": 0.0
 }

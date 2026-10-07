@@ -113,26 +113,3 @@ def test_json_file(tmp_path) -> None:
     path = tmp_path / "sim.json"
     assert sim.to_json(path) is None
     assert Simulation.from_json(path).times == (0, 5, 10)
-
-
-def test_timecourse_sim_to_simulation() -> None:
-    """Relative timecourses become changes at absolute times."""
-    from sbmlsim.simulation import Timecourse, TimecourseSim
-
-    tcsim = TimecourseSim(
-        [
-            Timecourse(start=0, end=5, steps=5, changes={"k": 1.0}, discard=True),
-            Timecourse(start=0, end=10, steps=2, changes={"d": 2.0}),
-            Timecourse(start=0, end=10, steps=2, changes={"d": 3.0}),
-        ],
-        time_offset=-10,
-    )
-    sim = tcsim.to_simulation()
-    assert sim.start == -15
-    assert sim.end == 10
-    assert sim.preinit_changes == {"k": 1.0}
-    assert [(c.times, c.values) for c in sim.changes] == [
-        ((-10,), {"d": 2.0}),
-        ((0,), {"d": 3.0}),
-    ]
-    assert sim.times == (-10.0, -5.0, 0.0, 5.0, 10.0)

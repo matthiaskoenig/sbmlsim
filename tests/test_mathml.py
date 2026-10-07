@@ -86,3 +86,18 @@ def test_mathml_str() -> None:
               </math>
     """
     _ = parse_mathml_str(mathml_str)
+
+
+def test_max_and_min_of_one_array_reduce_it() -> None:
+    """`max(Y)` of a function of data is the largest value of the array."""
+    import numpy as np
+
+    from sbmlsim import mathml
+
+    y = np.array([1.0, 2.0, 4.0])
+    ast = mathml.formula_to_astnode("Y/max(Y)")
+    np.testing.assert_allclose(mathml.evaluate(ast, {"Y": y}), [0.25, 0.5, 1.0])
+    ast = mathml.formula_to_astnode("Y - min(Y)")
+    np.testing.assert_allclose(mathml.evaluate(ast, {"Y": y}), [0.0, 1.0, 3.0])
+    ast = mathml.formula_to_astnode("max(Y, 2)")
+    np.testing.assert_allclose(mathml.evaluate(ast, {"Y": y}), [2.0, 2.0, 4.0])

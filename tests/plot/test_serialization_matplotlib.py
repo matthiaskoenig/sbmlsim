@@ -27,7 +27,7 @@ from sbmlsim.plot.serialization_matplotlib import (
     MatplotlibFigureSerializer,
 )
 from sbmlsim.resources import REPRESSILATOR_SBML
-from sbmlsim.simulation import Timecourse, TimecourseSim
+from sbmlsim.simulation import Simulation
 from sbmlsim.simulator.simulation_serial import SimulatorSerial
 from sbmlsim.task import Task
 
@@ -176,7 +176,7 @@ class _CurveExperiment(SimulationExperiment):
         return {"m": AbstractModel(source=REPRESSILATOR_SBML)}
 
     def simulations(self) -> dict:
-        return {"s": TimecourseSim([Timecourse(start=0, end=20, steps=20)])}
+        return {"s": Simulation(end=20, steps=20)}
 
     def tasks(self) -> dict:
         return {"t": Task(model="m", simulation="s")}

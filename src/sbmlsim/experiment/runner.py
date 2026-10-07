@@ -79,7 +79,6 @@ class ExperimentRunner:
         if not ureg:
             ureg = package_ureg
         self.ureg = ureg
-        self.Q_ = ureg.Quantity
 
         # initialize experiments
         self.base_path = base_path

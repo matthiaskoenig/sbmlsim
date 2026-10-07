@@ -6,7 +6,7 @@ from matplotlib import pyplot as plt
 
 from sbmlsim.resources import REPRESSILATOR_SBML
 from sbmlsim.result import XResult
-from sbmlsim.simulation import Timecourse, TimecourseSim
+from sbmlsim.simulation import Simulation
 from sbmlsim.simulation.sensitivity import ModelSensitivity
 from sbmlsim.simulator import SimulatorSerial
 
@@ -65,11 +65,7 @@ def run_sensitivity():
     simulator = SimulatorSerial(REPRESSILATOR_SBML)
 
     # parameter sensitivity
-    tcsim = TimecourseSim(
-        [
-            Timecourse(start=0, end=200, steps=2000),
-        ]
-    )
+    tcsim = Simulation(end=200, steps=2000)
 
     model = simulator.model_loaded
 

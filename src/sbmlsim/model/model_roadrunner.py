@@ -15,7 +15,7 @@ from roadrunner import _roadrunner  # ty: ignore[unresolved-import]
 from sbmlsim.model import AbstractModel
 from sbmlsim.model.model_resources import Source
 from sbmlsim.model.symbols import ModelSymbols, TargetKind
-from sbmlsim.units import Quantity, UnitRegistry, UnitsInformation
+from sbmlsim.units import UnitRegistry, UnitsInformation
 from sbmlsim.units import ureg as package_ureg
 from sbmlsim.utils import md5_for_path
 
@@ -268,11 +268,6 @@ class RoadrunnerSBMLModel(AbstractModel):
         self._set(compartment, value)
         for species, concentration in concentrations.items():
             r.setValue(f"[{species}]", concentration)
-
-    @property
-    def Q_(self) -> type[Quantity]:
-        """Quantity to create quantities for model changes."""
-        return self.uinfo.ureg.Quantity
 
     @staticmethod
     def from_abstract_model(

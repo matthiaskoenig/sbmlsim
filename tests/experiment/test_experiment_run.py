@@ -16,7 +16,7 @@ from sbmlsim.model import AbstractModel
 from sbmlsim.model.model_roadrunner import RoadrunnerSBMLModel
 from sbmlsim.plot import Axis, Curve, Figure, Plot, SubPlot
 from sbmlsim.resources import REPRESSILATOR_SBML
-from sbmlsim.simulation import Timecourse, TimecourseSim
+from sbmlsim.simulation import Simulation
 from sbmlsim.simulator.simulation_serial import SimulatorSerial
 from sbmlsim.task import Task
 from sbmlsim.units import Quantity
@@ -29,7 +29,7 @@ class FitMappingExperiment(SimulationExperiment):
         return {"m": AbstractModel(source=REPRESSILATOR_SBML)}
 
     def simulations(self) -> dict:
-        return {"sim": TimecourseSim([Timecourse(start=0, end=20, steps=20)])}
+        return {"sim": Simulation(end=20, steps=20)}
 
     def tasks(self) -> dict:
         return {"task": Task(model="m", simulation="sim")}

@@ -10,7 +10,13 @@ import pandas as pd
 
 from sbmlsim import mathml
 from sbmlsim.result import XResult
-from sbmlsim.units import DimensionalityError, Quantity, UnitRegistry, UnitsInformation
+from sbmlsim.units import (
+    DimensionalityError,
+    Q,
+    Quantity,
+    UnitRegistry,
+    UnitsInformation,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -266,7 +272,7 @@ class Data:
             if not isinstance(x, Quantity):
                 # a formula of plain numbers evaluates to a number, e.g. a
                 # function of parameters alone; it is dimensionless
-                x = experiment.Q_(x, "dimensionless")
+                x = Q(x, "dimensionless")
             self.unit = str(x.units)
 
         # convert units to requested units

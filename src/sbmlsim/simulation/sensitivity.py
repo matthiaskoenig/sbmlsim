@@ -12,8 +12,9 @@ import numpy as np
 
 from sbmlsim.console import console
 from sbmlsim.model import RoadrunnerSBMLModel
-from sbmlsim.simulation import Dimension, ScanSim, Simulation, TimecourseSim
+from sbmlsim.simulation import Dimension, ScanSim, Simulation
 from sbmlsim.simulator.plan import compile_simulation
+from sbmlsim.units import Q
 
 logger = logging.getLogger(__name__)
 
@@ -41,14 +42,14 @@ class ModelSensitivity:
     @staticmethod
     def difference_sensitivity_scan(
         model: RoadrunnerSBMLModel,
-        simulation: TimecourseSim | Simulation,
+        simulation: Simulation,
         difference: float = 0.1,
         stype: SensitivityType = SensitivityType.PARAMETER_SENSITIVITY,
         exclude_filter=None,
         exclude_zero: bool = True,
         zero_eps: float = 1e-8,
     ) -> ScanSim:
-        """Create a parameter sensitivity scan for given TimecourseSimulation.
+        """Create a parameter sensitivity scan for a simulation.
 
         :param model: model for execution (needed to select parameters)
         :param simulation: timecourse simulation to scan
@@ -72,13 +73,12 @@ class ModelSensitivity:
         return ScanSim(
             simulation=simulation,
             dimensions=[dim],
-            mapping=None if isinstance(simulation, Simulation) else {"dim_sens": 0},
         )
 
     @staticmethod
     def distribution_sensitivity_scan(
         model: RoadrunnerSBMLModel,
-        simulation: TimecourseSim | Simulation,
+        simulation: Simulation,
         cv: float = 0.1,
         size: int = 10,
         distribution: DistributionType = DistributionType.NORMAL_DISTRIBUTION,
@@ -102,15 +102,12 @@ class ModelSensitivity:
         return ScanSim(
             simulation=simulation,
             dimensions=[dim],
-            mapping=None if isinstance(simulation, Simulation) else {"dim_sens": 0},
         )
 
     @staticmethod
-    def _changes(simulation: TimecourseSim | Simulation) -> dict:
+    def _changes(simulation: Simulation) -> dict:
         """Get the changes the reference values of a simulation are taken with."""
-        if isinstance(simulation, Simulation):
-            return dict(simulation.preinit_changes)
-        return simulation.timecourses[0].changes
+        return dict(simulation.preinit_changes)
 
     @staticmethod
     def create_sampling_dimension(
@@ -139,7 +136,6 @@ class ModelSensitivity:
             exclude_zero=exclude_zero,
             zero_eps=zero_eps,
         )
-        Q_ = model.Q_
 
         changes = {}
         for key, magnitude in p_ref.items():
@@ -149,7 +145,7 @@ class ModelSensitivity:
                 values = np.random.normal(magnitude, scale=magnitude * cv, size=size)
             else:
                 raise ValueError(f"Unsupported distribution: {distribution}")
-            changes[key] = Q_(values, units)
+            changes[key] = Q(values, units)
 
         return Dimension("dim_sens", changes=changes)
 
@@ -178,7 +174,6 @@ class ModelSensitivity:
             exclude_zero=exclude_zero,
             zero_eps=zero_eps,
         )
-        Q_ = model.Q_
 
         changes = {}
         num_pars = len(p_ref)
@@ -187,7 +182,7 @@ class ModelSensitivity:
             # change parameters in correct position
             values[index] = magnitude * (1.0 + difference)
             values[index + num_pars] = magnitude * (1.0 - difference)
-            changes[key] = Q_(values, model.uinfo[key])
+            changes[key] = Q(values, model.uinfo[key])
         return Dimension("dim_sens", changes=changes)
 
     @staticmethod

@@ -6,11 +6,12 @@ import xarray as xr
 from matplotlib import pyplot as plt
 from matplotlib.pyplot import Figure
 
+from sbmlsim import Q
 from sbmlsim.data import Data, DataSet, load_pkdb_dataframe
 from sbmlsim.experiment import SimulationExperiment
 from sbmlsim.model import AbstractModel
 from sbmlsim.result import XResult
-from sbmlsim.simulation import Dimension, ScanSim, Timecourse, TimecourseSim
+from sbmlsim.simulation import Dimension, ScanSim, Simulation
 from sbmlsim.task import Task
 from sbmlsim.utils import timeit
 
@@ -118,11 +119,11 @@ class DoseResponseExperiment(SimulationExperiment):
         Vary external glucose concentrations (boundary condition).
         """
         glc_scan = ScanSim(
-            simulation=TimecourseSim([Timecourse(start=0, end=1, steps=1, changes={})]),
+            simulation=Simulation(end=1, steps=1),
             dimensions=[
                 Dimension(
                     "dim1",
-                    changes={"[glc_ext]": self.Q_(np.linspace(2, 20, num=30), "mM")},
+                    changes={"[glc_ext]": Q(np.linspace(2, 20, num=30), "mM")},
                 ),
             ],
         )
@@ -162,7 +163,7 @@ class DoseResponseExperiment(SimulationExperiment):
             da: xr.DataArray = xres[sid]
 
             # get initial time
-            head = da.head({"_time": 1}).to_series()
+            head = da.head({"_point": 1}).to_series()
             dose_response[sid] = head.values
 
         # the column is in the unit of the model, which `udict` gives

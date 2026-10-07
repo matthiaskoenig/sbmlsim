@@ -14,6 +14,7 @@ from dataclasses import dataclass, replace
 import numpy as np
 import pytest
 
+from sbmlsim import Q
 from sbmlsim.fit import FitParameter, FitSettings
 from sbmlsim.fit.cli import FitDefinition, run_fit
 from sbmlsim.fit.derived import DerivedChanges
@@ -107,7 +108,7 @@ def test_the_hook_reads_the_changes_of_the_fit(
     assert float(model.r["Ka_dis_hctz"]) != nominal
     changes = _preinit(problem, 0, np.array([1e-4]))
     # the values of the fit reach the hook in the units of the model
-    factor = problem.runner_initialized.Q_(1e-4, "1/ml").to(model.uinfo[TARGET])
+    factor = Q(1e-4, "1/ml").to(model.uinfo[TARGET])
     assert changes["Ka_dis_hctz"] == pytest.approx(factor.magnitude * nominal)
     # and the value of the model does not change between the evaluations
     problem.predictions(np.array([1e-4]))
@@ -317,9 +318,8 @@ def test_a_change_of_the_simulation_has_precedence_over_the_model(
     nominal = float(model.r["Ka_dis_hctz"])
     assert float(model.r["IVDOSE_hctz"]) == 0.0
     problem.predictions(np.array([1e-4]))
-    Q_ = problem.runner_initialized.Q_
     for k, dose in ((0, 1.0), (1, 35.0)):
-        value = Q_(dose, "mg").to(model.uinfo["IVDOSE_hctz"]).magnitude
+        value = Q(dose, "mg").to(model.uinfo["IVDOSE_hctz"]).magnitude
         changes = _preinit(problem, k, np.array([1e-4]))
         assert changes["Ka_dis_hctz"] == pytest.approx(value * nominal)
 

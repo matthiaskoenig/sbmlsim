@@ -5,9 +5,7 @@ files it writes do not end up in the repository. An example which breaks
 fails the test suite.
 
 The examples which need optional tools (`examples.julia`, the AMICI and COPASI
-scripts of `examples.comparison`) or the simulation experiment pipeline which
-is being reworked (`examples.demo`, `examples.repressilator`) are not run
-here, see `examples/README.md`.
+scripts of `examples.comparison`) are not run here, see `examples/README.md`.
 """
 
 import os
@@ -47,6 +45,9 @@ SCRIPTS = [
     "examples.sciml.lotka_volterra_fit",
     "examples.sensitivity.sensitivity_example",
     "examples.comparison.diff_example",
+    "examples.demo.demo",
+    "examples.repressilator.repressilator",
+    "examples.repressilator.repressilator_scans",
 ]
 
 

@@ -50,11 +50,11 @@ from sbmlsim.fit.sampling import SamplingType, create_samples
 from sbmlsim.model import RoadrunnerSBMLModel
 from sbmlsim.result import TimecourseResult
 from sbmlsim.serialization import ObjectJSONEncoder, to_json
-from sbmlsim.simulation import Simulation, TimecourseSim
+from sbmlsim.simulation import Simulation
 from sbmlsim.simulator import SimulatorSerial
 from sbmlsim.simulator.executor import SteadyStateError, execute
 from sbmlsim.simulator.plan import OutputMode, Plan, compile_simulation
-from sbmlsim.units import DimensionalityError, Quantity
+from sbmlsim.units import DimensionalityError, Q, Quantity
 from sbmlsim.utils import timeit
 
 logger = logging.getLogger(__name__)
@@ -1037,8 +1037,7 @@ class OptimizationProblem(ObjectJSONEncoder):
 
         The simulation is created once per experiment, model and simulation,
         so the fit mappings of a task share it and are simulated together,
-        see `_group_mappings`. A `TimecourseSim` is converted into a
-        `Simulation`.
+        see `_group_mappings`.
 
         Raises:
             ValueError: if the simulation is a scan.
@@ -1047,8 +1046,6 @@ class OptimizationProblem(ObjectJSONEncoder):
         if key in self._simulation_cache:
             return self._simulation_cache[key]
         simulation = experiment._simulations[simulation_id]
-        if isinstance(simulation, TimecourseSim):
-            simulation = simulation.to_simulation()
         if not isinstance(simulation, Simulation):
             raise ValueError(
                 f"Only a `Simulation` is supported in fitting, but the simulation "
@@ -1072,7 +1069,6 @@ class OptimizationProblem(ObjectJSONEncoder):
         Raises:
             ValueError: if a time of the data is outside of its simulation.
         """
-        Q_ = self.runner_initialized.Q_
         mapping = self.parameter_mapping_initialized
         self.plans = []
         self._group_targets = []
@@ -1114,7 +1110,7 @@ class OptimizationProblem(ObjectJSONEncoder):
                 unit = model.uinfo.get(target)
                 punit = self.punits[index]
                 if unit and punit:
-                    factor = float(Q_(1.0, punit).to(unit).magnitude)
+                    factor = float(Q(1.0, punit).to(unit).magnitude)
                 targets.append((target, index, factor))
             self._group_targets.append(targets)
 
@@ -1702,12 +1698,11 @@ class OptimizationProblem(ObjectJSONEncoder):
         simulator: SimulatorSerial | None = self.runner_initialized.simulator
         if simulator is None:
             raise ValueError(f"No simulator set on OptimizationProblem '{self.opid}'.")
-        Q_ = self.runner_initialized.Q_
         if not any(self.group_derived):
             # only the derived changes read quantities, a fit without them
             # does not call pint
             return simulator, []
-        quantities = [Q_(value, self.punits[ix]) for ix, value in enumerate(x)]
+        quantities = [Q(value, self.punits[ix]) for ix, value in enumerate(x)]
         return simulator, quantities
 
     def predictions(

@@ -24,10 +24,11 @@ from examples.hctz_fitting.experiments.metadata import (
     Tissue,
 )
 from examples.hctz_fitting.helpers import run_experiments
+from sbmlsim import Q
 from sbmlsim.data import DataSet
 from sbmlsim.fit import FitData, FitMapping
 from sbmlsim.plot import Axis, Figure
-from sbmlsim.simulation import AbstractSim, Timecourse, TimecourseSim
+from sbmlsim.simulation import Simulation
 
 
 class Beermann1976(HCTZSimulationExperiment):
@@ -76,26 +77,23 @@ class Beermann1976(HCTZSimulationExperiment):
         # console.print(dsets)
         return dsets
 
-    def simulations(self) -> dict[str, AbstractSim]:
-        Q_ = self.Q_
-        tcsims: dict[str, AbstractSim] = {}
+    def simulations(self) -> dict[str, Simulation]:
+        simulations: dict[str, Simulation] = {}
 
         for kd, dose in enumerate(self.doses):
             route = self.routes[kd]
 
-            tcsims[f"hctz_{route}{dose}"] = TimecourseSim(
-                Timecourse(
-                    start=0,
-                    end=180 * 60,  # [min]
-                    steps=1000,
-                    changes={
-                        **self.default_changes(),
-                        f"{route.upper()}DOSE_hctz": Q_(dose, "mg"),
-                    },
-                )
+            simulations[f"hctz_{route}{dose}"] = Simulation(
+                time_unit="hr",
+                end=180,
+                steps=1000,
+                preinit_changes={
+                    **self.default_changes(),
+                    f"{route.upper()}DOSE_hctz": Q(dose, "mg"),
+                },
             )
 
-        return tcsims
+        return simulations
 
     def fit_mappings(self) -> dict[str, FitMapping]:
         mappings = {}

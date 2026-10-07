@@ -5,7 +5,6 @@ import logging
 import re
 from collections import defaultdict
 from collections.abc import Iterable, Iterator, Mapping
-from copy import deepcopy
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -23,7 +22,7 @@ from sbmlsim.plot.serialization_matplotlib import (
 )
 from sbmlsim.result import XResult
 from sbmlsim.serialization import ObjectJSONEncoder
-from sbmlsim.simulation import AbstractSim, ScanSim, Simulation, TimecourseSim
+from sbmlsim.simulation import ScanSim, Simulation
 from sbmlsim.simulator import SimulatorSerial
 from sbmlsim.task import Task
 from sbmlsim.units import UnitRegistry
@@ -95,7 +94,6 @@ class SimulationExperiment:
         if not ureg:
             ureg = package_ureg
         self.ureg = ureg
-        self.Q_ = ureg.Quantity
 
         # settings
         self.settings = kwargs
@@ -105,7 +103,7 @@ class SimulationExperiment:
         self._data: dict[str, Data] = {}
         self._datasets: dict[str, DataSet] = {}
         self._fit_mappings: dict[str, FitMapping] = {}
-        self._simulations: dict[str, AbstractSim | Simulation] = {}
+        self._simulations: dict[str, Simulation | ScanSim] = {}
         self._tasks: dict[str, Task] = {}
         self._figures: dict[str, Figure] = {}
         self._results: dict[str, XResult] = {}
@@ -166,7 +164,7 @@ class SimulationExperiment:
         """
         return {}
 
-    def simulations(self) -> Mapping[str, AbstractSim | Simulation]:
+    def simulations(self) -> Mapping[str, Simulation | ScanSim]:
         """Define simulation definitions.
 
         The child classes fill out the information.
@@ -353,7 +351,7 @@ class SimulationExperiment:
                 )
 
         for key, sim in self._simulations.items():
-            if not isinstance(sim, AbstractSim | Simulation):
+            if not isinstance(sim, Simulation | ScanSim):
                 raise ValueError(
                     f"simulations must be of type Simulation or ScanSim, but "
                     f"simulation '{key}' has type: '{type(sim)}'"
@@ -484,42 +482,20 @@ class SimulationExperiment:
                 # use the complete selection
                 simulator.set_timecourse_selections(selections=None)
 
-            logger.debug("normalize changes")
-            # normalize model changes (these must be set in simulation!)
-            model.normalize(uinfo=model.uinfo)
-
             task_key: str
             for task_key in task_keys:
                 task = self._tasks[task_key]
-
                 sim = self._simulations[task.simulation_id]
                 if isinstance(sim, Simulation):
                     self._results[task_key] = simulator.run_simulation(
                         _with_model_changes(sim, model.changes)
                     )
-                    continue
-                if isinstance(sim, ScanSim) and isinstance(sim.simulation, Simulation):
+                else:
                     scan = ScanSim(
                         simulation=_with_model_changes(sim.simulation, model.changes),
                         dimensions=sim.dimensions,
                     )
                     self._results[task_key] = simulator.run_scan(scan)
-                    continue
-
-                # normalization before running to ensure correct serialization
-                sim.normalize(uinfo=simulator.uinfo)
-
-                # inject model changes (copy to create independent)
-                sim = deepcopy(sim)
-                sim.add_model_changes(model.changes)
-
-                logger.debug("running timecourse simulation")
-                if isinstance(sim, TimecourseSim):
-                    self._results[task_key] = simulator.run_timecourse(sim)
-                elif isinstance(sim, ScanSim):
-                    self._results[task_key] = simulator.run_scan(sim)
-                else:
-                    raise ValueError(f"Unsupported simulation type: {type(sim)}")
 
     def _task_data(self) -> Iterator[Data]:
         """Iterate the data of the experiment which comes from a task.
