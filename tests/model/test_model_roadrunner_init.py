@@ -1,6 +1,7 @@
 """The model is initialized with the pre-initialization values of a plan."""
 
 import time
+from pathlib import Path
 
 import pytest
 
@@ -235,3 +236,92 @@ def test_parameter_df_has_no_helpers() -> None:
     df = RoadrunnerSBMLModel.parameter_df(model.r_loaded)
     assert "pinit__initial" not in set(df["sid"])
     assert "pinit" in set(df["sid"])
+
+
+#: a model which enables the package comp without submodels, as the models of
+#: sbmlutils do, with an initial assignment
+COMP_SBML = """<?xml version="1.0" encoding="UTF-8"?>
+<sbml xmlns="http://www.sbml.org/sbml/level3/version1/core"
+      xmlns:comp="http://www.sbml.org/sbml/level3/version1/comp/version1"
+      level="3" version="1" comp:required="true">
+  <model id="comp_initial_assignment">
+    <listOfCompartments>
+      <compartment id="c" spatialDimensions="3" size="2" constant="true"/>
+    </listOfCompartments>
+    <listOfSpecies>
+      <species id="A1" compartment="c" initialAmount="1"
+               hasOnlySubstanceUnits="true" boundaryCondition="false"
+               constant="false"/>
+    </listOfSpecies>
+    <listOfParameters>
+      <parameter id="D" value="5" constant="true"/>
+    </listOfParameters>
+    <listOfInitialAssignments>
+      <initialAssignment symbol="A1">
+        <math xmlns="http://www.w3.org/1998/Math/MathML">
+          <apply><times/><ci> D </ci><cn> 2 </cn></apply>
+        </math>
+      </initialAssignment>
+    </listOfInitialAssignments>
+    <comp:listOfPorts>
+      <comp:port comp:id="D_port" comp:idRef="D"/>
+    </comp:listOfPorts>
+  </model>
+</sbml>
+"""
+
+
+def test_initial_assignments_of_a_model_with_the_package_comp() -> None:
+    """A model which enables comp keeps its initial assignments."""
+    model = RoadrunnerSBMLModel(source=COMP_SBML)
+    assert model.symbols.initial_assignment_order == ("A1",)
+    model.initialize([_a("D", 2.0)])
+    assert model.r_loaded["A1"] == pytest.approx(4.0)
+    model.initialize([])
+    assert model.r_loaded["A1"] == pytest.approx(10.0)
+
+
+#: a hierarchical model, the initial assignment is in its submodel
+HIERARCHICAL_SBML = """<?xml version="1.0" encoding="UTF-8"?>
+<sbml xmlns="http://www.sbml.org/sbml/level3/version1/core"
+      xmlns:comp="http://www.sbml.org/sbml/level3/version1/comp/version1"
+      level="3" version="1" comp:required="true">
+  <model id="top">
+    <comp:listOfSubmodels>
+      <comp:submodel comp:id="sub" comp:modelRef="inner"/>
+    </comp:listOfSubmodels>
+  </model>
+  <comp:listOfModelDefinitions>
+    <comp:modelDefinition id="inner">
+      <listOfCompartments>
+        <compartment id="c" spatialDimensions="3" size="2" constant="true"/>
+      </listOfCompartments>
+      <listOfSpecies>
+        <species id="A1" compartment="c" initialAmount="1"
+                 hasOnlySubstanceUnits="true" boundaryCondition="false"
+                 constant="false"/>
+      </listOfSpecies>
+      <listOfParameters>
+        <parameter id="k" value="3" constant="true"/>
+      </listOfParameters>
+      <listOfInitialAssignments>
+        <initialAssignment symbol="A1">
+          <math xmlns="http://www.w3.org/1998/Math/MathML">
+            <apply><times/><ci> k </ci><cn> 2 </cn></apply>
+          </math>
+        </initialAssignment>
+      </listOfInitialAssignments>
+    </comp:modelDefinition>
+  </comp:listOfModelDefinitions>
+</sbml>
+"""
+
+
+def test_initial_assignments_of_a_hierarchical_model(tmp_path: Path) -> None:
+    """The flattened hierarchical model keeps the initial assignments."""
+    path = tmp_path / "hierarchical.xml"
+    path.write_text(HIERARCHICAL_SBML, encoding="utf-8")
+    model = RoadrunnerSBMLModel(source=path)
+    assert model.symbols.initial_assignment_order == ("sub__A1",)
+    model.initialize([_a("sub__k", 10.0)])
+    assert model.r_loaded["sub__A1"] == pytest.approx(20.0)

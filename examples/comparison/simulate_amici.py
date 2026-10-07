@@ -4,6 +4,8 @@ sudo apt-get install libatlas-base-dev swig libhdf5-serial-dev
 pip install amici --upgrade
 """
 
+from typing import override
+
 import amici  # ty: ignore[unresolved-import]
 import numpy as np
 import pandas as pd
@@ -36,11 +38,12 @@ class SimulateAmiciSBML(SimulateSBML):
         self.solver.setAbsoluteTolerance(self.absolute_tolerance)
         self.solver.setRelativeTolerance(self.relative_tolerance)
 
+    @override
     def simulate_condition(
         self, condition: Condition, timepoints: np.ndarray
     ) -> pd.DataFrame:
         """Simulate the condition with AMICI."""
-        print(f"simulate condition: {condition.sid}")
+        console.print(f"simulate condition: {condition.sid}")
 
         # changes
         x0 = np.asarray(self.model.getInitialStates())
@@ -68,16 +71,8 @@ class SimulateAmiciSBML(SimulateSBML):
         # simulation
         rdata = amici.runAmiciSimulation(self.model, self.solver)
         xids = self.model.getStateIds()
-        yids = self.model.getObservableIds()
-        print(f"{yids}")
-
-        # def _ids_and_names_to_rdata(
 
         # create result dataframe
-        # print("Model parameters:", list(model.getParameterIds()), "\n")
-        # print("Model const parameters:", list(model.getFixedParameterIds()), "\n")
-        # print("Model outputs:", list(model.getObservableIds()), "\n")
-        # print("Model states:", list(model.getStateIds()), "\n")
         df = pd.DataFrame(rdata.x, columns=xids)
         df.insert(loc=0, column="time", value=timepoints)
 

@@ -1,117 +1,105 @@
-"""Example for model comparison.
+"""Comparison of the simulations of roadrunner with AMICI and COPASI.
 
-This supports:
-- roadrunner, COPASI & AMICI as solvers
-- simulations of conditions as given by PETab conditions
-- setting of absolute and relative tolerances
-- variable timepoints (as occurring in typical parameter fitting simulations)
-
-# FIXME: improve comparison plots
-# - multiple comparison [3 way comparison]
-# - show top differences curves
-
-# add additional information for comparison: AMICI/COPASI
-# FIXME: run all conditions and make comparison
+Every condition of a PEtab condition table is simulated by every simulator at
+the same time points and with the same tolerances, as in a parameter fit, and
+the results of AMICI and COPASI are compared with the results of roadrunner.
+AMICI and COPASI (via basico) are not dependencies of sbmlsim, a simulator which
+is not installed is skipped.
 """
 
 from pathlib import Path
 
 import numpy as np
 import pandas as pd
+from matplotlib import pyplot as plt
 
 from examples.comparison.simulate import Condition, SimulateSBML
-from examples.comparison.simulate_amici import SimulateAmiciSBML
 from examples.comparison.simulate_roadrunner import SimulateRoadrunnerSBML
 from sbmlsim.comparison.diff import DataSetsComparison
 from sbmlsim.console import console
 
-if __name__ == "__main__":
-    """Comparison of ICG model simulations."""
+#: the simulator the others are compared with
+REFERENCE = "roadrunner"
 
-    base_path: Path = Path(__file__).parent
 
-    # model
-    # model_path = base_path / "resources" / "icg_events_sd.xml"
-    # model_path = base_path / "resources" / "icg_sd.xml"
-    model_path = base_path / "resources" / "icg_liver.xml"
+def simulator_classes() -> dict[str, type[SimulateSBML]]:
+    """Get the simulators which are installed, the reference first."""
+    classes: dict[str, type[SimulateSBML]] = {REFERENCE: SimulateRoadrunnerSBML}
+    try:
+        from examples.comparison.simulate_amici import SimulateAmiciSBML
 
-    # flatten_sbml(
-    #     sbml_path=base_path / "resources" / "icg_liver.xml",
-    #     sbml_flat_path=base_path / "resources" / "icg_liver_flat.xml",
-    # )
-    # model_path = base_path / "resources" / "icg_liver_flat.xml"
+        classes["amici"] = SimulateAmiciSBML
+    except ImportError:
+        console.print("AMICI is not installed, it is not compared.")
+    try:
+        from examples.comparison.simulate_copasi import SimulateCopasiSBML
 
-    print(model_path)
+        classes["copasi"] = SimulateCopasiSBML
+    except ImportError:
+        console.print("basico is not installed, COPASI is not compared.")
+    return classes
 
-    # results
-    results_dir: Path = base_path / "results"
 
-    # conditions
-    # conditions_path = base_path / "resources" / "condition.tsv"
-    conditions_path = base_path / "resources" / "condition_liver.tsv"
+def compare_simulators(
+    model_path: Path,
+    conditions_path: Path,
+    timepoints: np.ndarray,
+    results_dir: Path,
+    absolute_tolerance: float = 1e-12,
+    relative_tolerance: float = 1e-14,
+) -> dict[str, dict[str, DataSetsComparison]]:
+    """Simulate every condition with every simulator and compare the results.
 
-    conditions_list: list[Condition] = Condition.parse_conditions_from_file(
+    Returns:
+        The comparisons per condition and simulator, against the reference.
+    """
+    conditions: list[Condition] = Condition.parse_conditions_from_file(
         conditions_path=conditions_path
     )
-    conditions: dict[str, Condition] = {c.sid: c for c in conditions_list}
+    classes = simulator_classes()
 
-    # simulate condition with simulators
-    # ----------------------------------------------------------------
-    # timepoints = np.linspace(start=0, stop=100, num=51).tolist()
-    timepoints = np.linspace(start=0, stop=10, num=51).tolist()
-    # timepoints = np.linspace(0, 10, num=11).tolist()
-    absolute_tolerance = 1e-12
-    relative_tolerance = 1e-14
-    # condition = conditions["infusion1"]
-    # condition = conditions["bw80"]
-    # condition = conditions["Andersen1999_task_icg_iv"]
-    condition = conditions["icg1"]
-    # ----------------------------------------------------------------
+    comparisons: dict[str, dict[str, DataSetsComparison]] = {}
+    for condition in conditions:
+        console.rule(title=condition.sid, align="left", style="white")
+        # the simulators keep the changes of a condition, every condition is
+        # simulated by new simulators
+        dfs: dict[str, pd.DataFrame] = {
+            key: simulator_class(
+                sbml_path=model_path,
+                results_dir=results_dir,
+                absolute_tolerance=absolute_tolerance,
+                relative_tolerance=relative_tolerance,
+            ).simulate_condition(condition=condition, timepoints=timepoints)
+            for key, simulator_class in classes.items()
+        }
+        comparisons[condition.sid] = {}
+        for key, df in dfs.items():
+            if key == REFERENCE:
+                continue
+            comparison = DataSetsComparison(
+                dfs_dict={REFERENCE: dfs[REFERENCE], key: df},
+                title=f"{condition.sid}: {REFERENCE} | {key}",
+            )
+            fig = comparison.report()
+            fig.savefig(
+                results_dir / f"comparison_{condition.sid}_{key}.png",
+                dpi=150,
+                bbox_inches="tight",
+            )
+            plt.close(fig)
+            comparisons[condition.sid][key] = comparison
 
-    print(f"{timepoints=}")
-    # timepoints = [0, 1, 10, 20, 35]
-    # print(f"{timepoints=}")
+    return comparisons
 
-    # run comparison
-    dfs: dict[str, pd.DataFrame] = {}
-    simulator_class: type[SimulateSBML]
-    for key, simulator_class in {
-        "roadrunner": SimulateRoadrunnerSBML,
-        # "copasi": SimulateCopasiSBML,
-        "amici": SimulateAmiciSBML,
-    }.items():
-        console.rule(title=key, align="left", style="white")
 
-        simulator = simulator_class(
-            sbml_path=model_path,
-            results_dir=results_dir,
-            absolute_tolerance=absolute_tolerance,
-            relative_tolerance=relative_tolerance,
-        )
-        df = simulator.simulate_condition(
-            condition=condition,
-            timepoints=np.asarray(timepoints, dtype=float),
-        )
-        console.print(df.columns)
-        console.print(df)
-        # console.print(df["Cve_icg"])
-        dfs[key] = df
+if __name__ == "__main__":
+    resources_path: Path = Path(__file__).parent / "resources"
+    results_dir: Path = Path.cwd() / "results"
+    results_dir.mkdir(parents=True, exist_ok=True)
 
-    # debugging plots
-    from matplotlib import pyplot as plt
-    # f, ax = plt.subplots(nrows=1, ncols=1)
-    # df_roadrunner = dfs["roadrunner"]
-    # df_amici = dfs["amici"]
-    # sid = "LI__bil_ext"
-    # for key, df in dfs.items():
-    #     ax.plot(df.time, df[sid], label=key)
-    # ax.set_xlabel("time")
-    # ax.set_ylabel(sid)
-    # ax.legend()
-
-    # comparison
-    console.rule(style="white")
-    comparison = DataSetsComparison(dfs_dict=dfs)
-    fig = comparison.report()
-    fig.savefig("comparison.png", dpi=150, bbox_inches="tight")
-    plt.close(fig)
+    compare_simulators(
+        model_path=resources_path / "icg_liver.xml",
+        conditions_path=resources_path / "condition_liver.tsv",
+        timepoints=np.linspace(start=0, stop=10, num=51),
+        results_dir=results_dir,
+    )

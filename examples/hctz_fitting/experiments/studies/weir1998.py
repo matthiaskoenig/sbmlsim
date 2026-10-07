@@ -1,4 +1,6 @@
-from typing import ClassVar
+"""Simulation experiment of Weir1998."""
+
+from typing import ClassVar, override
 
 import pandas as pd
 
@@ -33,7 +35,9 @@ class Weir1998(HCTZSimulationExperiment):
         "_kombi": "tab:blue",
     }
 
+    @override
     def datasets(self) -> dict[str, DataSet]:
+        """Define the datasets, the mass based data is converted to amounts."""
         dsets = {}
         for fig_id in ["Fig2", "Fig3", "Tab4"]:
             df: pd.DataFrame = self.load_dataframe(fig_id)
@@ -45,7 +49,9 @@ class Weir1998(HCTZSimulationExperiment):
                 dsets[f"{fig_id}_{label}"] = dset
         return dsets
 
+    @override
     def simulations(self) -> dict[str, Simulation]:
+        """Define the multiple dosing simulation."""
         # 11 doses, every 12 hours, the data is reported from the last dose
         dose_times = [-120 + 12 * k for k in range(11)]
         return {
@@ -63,7 +69,9 @@ class Weir1998(HCTZSimulationExperiment):
             )
         }
 
+    @override
     def fit_mappings(self) -> dict[str, FitMapping]:
+        """Define the fit mappings of the data on the simulations."""
         mappings = {}
 
         infos = [
@@ -101,7 +109,9 @@ class Weir1998(HCTZSimulationExperiment):
 
         return mappings
 
+    @override
     def figures(self) -> dict[str, Figure]:
+        """Define the figures of the data and the simulations."""
         return {
             **self.figure_Fig2_Fig3_Tab4(),
         }

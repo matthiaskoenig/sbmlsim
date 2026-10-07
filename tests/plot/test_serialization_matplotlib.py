@@ -8,6 +8,8 @@ import pytest
 matplotlib.use("Agg")
 from matplotlib import pyplot as plt
 from matplotlib.axes import Axes
+from matplotlib.backends.backend_agg import FigureCanvasAgg
+from matplotlib.text import Text
 
 from sbmlsim.data import Data
 from sbmlsim.experiment import ExperimentRunner, SimulationExperiment
@@ -301,3 +303,35 @@ def test_a_rendered_figure_can_still_be_saved(tmp_path: Path) -> None:
     path = tmp_path / "figure.svg"
     figure.savefig(path, bbox_inches="tight")
     assert path.stat().st_size > 0
+
+
+# ---------------------------------------------------------------------------
+# the title of the figure
+# ---------------------------------------------------------------------------
+@pytest.mark.parametrize("height", [3.0, 5.0, 10.0, 20.0])
+def test_the_title_of_the_figure_is_above_the_titles_of_the_plots(
+    height: float,
+) -> None:
+    """The title of a figure does not overlap the titles of its plots."""
+    figure = Figure(
+        experiment=None,
+        sid="fig",
+        name="Title of the figure",
+        num_rows=1,
+        num_cols=1,
+        width=5,
+        height=height,
+        subplots=[
+            SubPlot(plot=Plot(sid="plot", name="Title of the plot"), row=1, col=1)
+        ],
+    )
+    mpl_figure = MatplotlibFigureSerializer.to_figure(experiment=None, figure=figure)
+    renderer = FigureCanvasAgg(mpl_figure).get_renderer()
+    title = next(
+        text
+        for text in mpl_figure.findobj(Text)
+        if text.get_text() == mpl_figure.get_suptitle()
+    ).get_window_extent(renderer)
+    plot_title = mpl_figure.axes[0].title.get_window_extent(renderer)
+    plt.close(mpl_figure)
+    assert plot_title.y1 <= title.y0

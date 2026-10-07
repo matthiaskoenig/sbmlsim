@@ -108,9 +108,10 @@ class RoadrunnerSBMLModel(AbstractModel):
         if _is_hierarchical(sbml):
             # roadrunner flattens a hierarchical model and resolves its
             # external model definitions relative to the file, the symbols are
-            # the ones of the model it simulates
+            # the ones of the model it simulates; `getSBML` is the flattened
+            # model as loaded, `getCurrentSBML` drops the initial assignments
             r = self.load_roadrunner_model(source=self.source)
-            sbml = r.getCurrentSBML()
+            sbml = r.getSBML()
         if self.parameters:
             sbml = _with_parameters(sbml, self.parameters)
             r = None

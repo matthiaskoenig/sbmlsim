@@ -2,6 +2,7 @@
 
 from dataclasses import dataclass
 from enum import StrEnum
+from typing import override
 
 from sbmlsim.fit.objects import MappingMetaData
 
@@ -64,6 +65,8 @@ class Coadministration(StrEnum):
 
 @dataclass
 class HCTZMappingMetaData(MappingMetaData):
+    """Metadata of a fit mapping of the HCTZ studies."""
+
     tissue: Tissue
     route: Route
     application_form: ApplicationForm
@@ -72,7 +75,9 @@ class HCTZMappingMetaData(MappingMetaData):
     fasting: Fasting
     coadministration: Coadministration = Coadministration.NONE
 
+    @override
     def to_dict(self) -> dict:
+        """Serialize the metadata with the names of the enums."""
         return {
             "tissue": self.tissue.name,
             "route": self.route.name,

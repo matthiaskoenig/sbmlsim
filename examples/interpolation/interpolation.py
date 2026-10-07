@@ -3,10 +3,10 @@
 https://github.com/allyhume/SBMLDataTools
 https://github.com/allyhume/SBMLDataTools.git
 
-TODO: fix composition with existing models
-TODO: support coupling with existing models via comp
-The functionality is very useful, but only if this can be applied to existing
-models in a simple manner.
+Every interpolated column is a parameter with an assignment rule and a port of
+the hierarchical model composition (comp), `<column>_port`. A model couples to
+the data by including the interpolation as a submodel and replacing its
+parameters with these ports.
 """
 
 import logging
@@ -341,7 +341,7 @@ class Interpolation:
 
     def _init_sbml_model(self) -> None:
         """Create and initialize the SBML model."""
-        # FIXME: support arbitrary levels and versions
+        # comp version 1 is a package of SBML level 3
         sbmlns = libsbml.SBMLNamespaces(3, 1)
         sbmlns.addPackageNamespace("comp", 1)
         doc: libsbml.SBMLDocument = libsbml.SBMLDocument(sbmlns)
@@ -375,7 +375,8 @@ class Interpolation:
     ) -> None:
         """Add interpolator to model.
 
-        The parameters, formulas and rules have to be added to the SBML model.
+        The parameter, its assignment rule and its port are added to the SBML
+        model.
 
         :param interpolator:
         :param model: Model
@@ -395,6 +396,12 @@ class Interpolation:
                 model.removeRule(rule)
                 break
 
+        # if port exists remove it
+        comp_model: libsbml.CompModelPlugin = model.getPlugin("comp")
+        port_id = f"{pid}_port"
+        if comp_model.getPort(port_id):
+            comp_model.removePort(port_id)
+
         p = model.createParameter()
         p.setId(pid)
         p.setName(pid)
@@ -410,4 +417,8 @@ class Interpolation:
         else:
             rule.setMath(ast_node)
 
-            # TODO: add ports for connection with other model
+        # create port, which replaces the parameter of a model the interpolation
+        # is a submodel of
+        port: libsbml.Port = comp_model.createPort()
+        port.setId(port_id)
+        port.setIdRef(pid)

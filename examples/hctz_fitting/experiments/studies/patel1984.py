@@ -1,4 +1,6 @@
-from typing import ClassVar
+"""Simulation experiment of Patel1984."""
+
+from typing import ClassVar, override
 
 import pandas as pd
 
@@ -37,7 +39,9 @@ class Patel1984(HCTZSimulationExperiment):
         "tab:red",
     ]
 
+    @override
     def datasets(self) -> dict[str, DataSet]:
+        """Define the datasets, the mass based data is converted to amounts."""
         dsets = {}
         for fig_id in ["Fig1", "Fig2", "Tab4"]:
             df: pd.DataFrame = self.load_dataframe(fig_id)
@@ -50,11 +54,11 @@ class Patel1984(HCTZSimulationExperiment):
                     dset.unit_conversion("mean", 1 / self.Mr.hctz)
                 dsets[f"{fig_id}_{label}"] = dset
 
-        # print(dsets.keys())
-        # print(dsets)
         return dsets
 
+    @override
     def simulations(self) -> dict[str, Simulation]:
+        """Define a simulation per oral dose."""
         simulations: dict[str, Simulation] = {}
 
         for dose in self.doses:
@@ -70,14 +74,16 @@ class Patel1984(HCTZSimulationExperiment):
 
         return simulations
 
+    @override
     def fit_mappings(self) -> dict[str, FitMapping]:
+        """Define the fit mappings of the data on the simulations."""
         mappings = {}
 
         # plasma
-        for _kd, dose in enumerate(self.doses[:-1]):
+        for dose in self.doses[:-1]:
             if dose == 0:
                 continue
-            for form in iter(self.forms):
+            for form in self.forms:
                 mappings[f"fm_{dose}_{form}"] = FitMapping(
                     self,
                     reference=FitData(
@@ -161,7 +167,7 @@ class Patel1984(HCTZSimulationExperiment):
         for _kd, dose in enumerate(self.doses):
             if dose == 0:
                 continue
-            for form in iter(self.forms):
+            for form in self.forms:
                 mappings[f"fm_{dose}_{form}_urine"] = FitMapping(
                     self,
                     reference=FitData(
@@ -190,7 +196,9 @@ class Patel1984(HCTZSimulationExperiment):
 
         return mappings
 
+    @override
     def figures(self) -> dict[str, Figure]:
+        """Define the figures of the data and the simulations."""
         return {
             **self.figure_Fig1(),
             **self.figure_Fig2(),
@@ -220,7 +228,7 @@ class Patel1984(HCTZSimulationExperiment):
             # data
             if dose == 0:
                 continue
-            for form in iter(self.forms):
+            for form in self.forms:
                 plots[0].add_data(
                     dataset=f"Fig1_hctz{dose}_{form}",
                     xid="time",
@@ -261,7 +269,7 @@ class Patel1984(HCTZSimulationExperiment):
             # data
             if dose == 0:
                 continue
-            for form in iter(self.forms):
+            for form in self.forms:
                 plots[0].add_data(
                     dataset=f"Fig2_amount_cumulative_hctz{dose}_{form}",
                     xid="time",
@@ -313,7 +321,7 @@ class Patel1984(HCTZSimulationExperiment):
             # data
             if dose == 0:
                 continue
-            for form in iter(self.forms):
+            for form in self.forms:
                 plots[0].add_data(
                     dataset=f"Tab4_increase_Naurine_HCTZ{dose}_{form}",
                     xid="time",

@@ -1,5 +1,7 @@
 """Simulation of SBML models with roadrunner."""
 
+from typing import override
+
 import numpy as np
 import pandas as pd
 import roadrunner
@@ -35,11 +37,12 @@ class SimulateRoadrunnerSBML(SimulateSBML):
         integrator.setValue("absolute_tolerance", self.absolute_tolerance)
         integrator.setValue("relative_tolerance", self.relative_tolerance)
 
+    @override
     def simulate_condition(
         self, condition: Condition, timepoints: np.ndarray
     ) -> pd.DataFrame:
-        """Simulate condition."""
-        # print(f"simulate condition: {condition.sid}")
+        """Simulate the condition with roadrunner."""
+        console.print(f"simulate condition: {condition.sid}")
 
         # reset
         self.r.resetAll()
@@ -51,7 +54,6 @@ class SimulateRoadrunnerSBML(SimulateSBML):
             if np.isnan(value):
                 continue
             # is species
-            # print(tid)
             if tid in self.species:
                 if self.has_only_substance[tid] is True:
                     # amount
@@ -60,7 +62,7 @@ class SimulateRoadrunnerSBML(SimulateSBML):
                     # concentration
                     target = f"init([{tid}])"
                 self.r.setValue(target, value)
-                # print(f"{target} = {value}")
+                console.print(f"{target} = {value}")
             else:
                 self.r.setValue(tid, value)
                 console.print(f"{tid} = {value}")

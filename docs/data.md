@@ -70,6 +70,7 @@ print(f.sid, f.dtype, f.function)
 
 ```python
 from pathlib import Path
+from typing import override
 
 from sbmlsim.experiment import ExperimentRunner, SimulationExperiment
 from sbmlsim.model import AbstractModel
@@ -80,15 +81,19 @@ from sbmlsim.task import Task
 
 
 class DataExperiment(SimulationExperiment):
+    @override
     def models(self) -> dict[str, AbstractModel | Path]:
         return {"model": REPRESSILATOR_SBML}
 
+    @override
     def simulations(self) -> dict[str, Simulation]:
         return {"tc": Simulation(end=100, steps=100)}
 
+    @override
     def tasks(self) -> dict[str, Task]:
         return {"task_tc": Task(model="model", simulation="tc")}
 
+    @override
     def data(self) -> dict[str, Data]:
         data = [Data(sid, task="task_tc") for sid in ["time", "[X]"]]
         return {d.sid: d for d in data}

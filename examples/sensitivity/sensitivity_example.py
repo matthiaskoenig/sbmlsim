@@ -1,7 +1,7 @@
 """Example for sensitivity analysis."""
 
 from pathlib import Path
-from typing import Any
+from typing import Any, override
 
 import numpy as np
 import roadrunner
@@ -46,9 +46,11 @@ class ExampleSensitivitySimulation(SensitivitySimulation):
     tend = 1000
     steps = 1000
 
+    @override
     def simulate(
         self, r: roadrunner.RoadRunner, changes: dict[str, float]
     ) -> dict[str, float]:
+        """Simulate the model with the changes and calculate the outputs."""
         # apply changes and simulate
         all_changes = {
             **self.changes_simulation,  # model
@@ -59,8 +61,6 @@ class ExampleSensitivitySimulation(SensitivitySimulation):
         # ensure identical tolerances on all simulations
         r.integrator.setValue("absolute_tolerance", self.init_tolerances)
         s = r.simulate(start=0, end=self.tend, steps=self.steps)
-        # r.integrator.setValue("variable_step_size", True)
-        # s = r.simulate(start=0, end=self.tend)
 
         # calculate outputs y (custom functions)
         # this can be registered functions calculating scalars based on subsets of the

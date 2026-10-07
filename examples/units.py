@@ -47,7 +47,6 @@ def run_demo_example():
         ],
     )
 
-    # print(tc_sim)
     xres: XResult = simulator.run_scan(tc_scan)
     xres.uinfo = uinfo
 

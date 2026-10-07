@@ -3,6 +3,7 @@ Example simulation experiment.
 """
 
 from pathlib import Path
+from typing import override
 
 from sbmlsim import Q
 from sbmlsim.data import Data
@@ -18,6 +19,7 @@ from sbmlsim.task import Task
 class RepressilatorExperiment(SimulationExperiment):
     """Simple repressilator experiment."""
 
+    @override
     def models(self) -> dict[str, Path | AbstractModel]:
         """Define models."""
         return {
@@ -31,27 +33,31 @@ class RepressilatorExperiment(SimulationExperiment):
             ),
         }
 
+    @override
     def simulations(self) -> dict[str, Simulation]:
         """Define simulations."""
         return {"tc": Simulation(end=1000, steps=1000)}
 
+    @override
     def tasks(self) -> dict[str, Task]:
         """Define tasks."""
-        tasks = {}
-        for model in ["model1", "model2"]:
-            tasks[f"task_{model}_tc"] = Task(model=model, simulation="tc")
-        return tasks
+        return {
+            f"task_{model}_tc": Task(model=model, simulation="tc")
+            for model in ["model1", "model2"]
+        }
 
+    @override
     def data(self) -> dict[str, Data]:
         """Define data generators."""
         # direct access via id
-        data = []
-        for model in ["model1", "model2"]:
-            for selection in ["time", "PX", "PY", "PZ"]:
-                data.append(Data(task=f"task_{model}_tc", index=selection))
+        data = [
+            Data(task=f"task_{model}_tc", index=selection)
+            for model in ["model1", "model2"]
+            for selection in ["time", "PX", "PY", "PZ"]
+        ]
 
-        # functions (calculated data generators)
-        # FIXME: necessary to store units in the xres
+        # functions (calculated data generators), which carry the units of
+        # their variables
         for sid in ["PX", "PY", "PZ"]:
             data.append(
                 Data(
@@ -60,18 +66,12 @@ class RepressilatorExperiment(SimulationExperiment):
                     variables={
                         sid: Data(index=f"{sid}", task="task_model1_tc"),
                     },
-                    parameters={
-                        # 'p1': 1.0
-                    },
                 )
             )
 
-        data_dict = {d.sid: d for d in data}
-        from pprint import pprint
+        return {d.sid: d for d in data}
 
-        pprint(data_dict)
-        return data_dict
-
+    @override
     def figures(self) -> dict[str, Figure]:
         """Define figure outputs (plots)."""
         fig = Figure(
@@ -84,7 +84,7 @@ class RepressilatorExperiment(SimulationExperiment):
             height=10,
         )
         p0 = fig.add_subplot(Plot(sid="plot0", name="Timecourse"), row=1, col=1)
-        p1 = fig.add_subplot(Plot(sid="plot1", name="Preprocessing"), row=1, col=2)
+        p1 = fig.add_subplot(Plot(sid="plot1", name="Changes"), row=1, col=2)
         p2 = fig.add_subplot(
             Plot(sid="plot2", name="Postprocessing"), row=2, col=1, col_span=2
         )
@@ -92,7 +92,7 @@ class RepressilatorExperiment(SimulationExperiment):
         p0.set_title("Timecourse")
         p0.set_xaxis("time", unit="second")
         p0.set_yaxis("data", unit="dimensionless")
-        p1.set_title("Preprocessing")
+        p1.set_title("Timecourse with model changes")
         p1.set_xaxis("time", unit="second")
         p1.set_yaxis("data", unit="dimensionless")
         colors = ["tab:red", "tab:green", "tab:blue"]
@@ -125,14 +125,6 @@ class RepressilatorExperiment(SimulationExperiment):
                 linewidth=2.0,
             )
         return {"fig1": fig}
-
-    def reports(self) -> dict[str, dict[str, str]]:
-        """Define reports.
-
-        HashMap of DataGenerators.
-
-        """
-        return {}
 
 
 def run_repressilator_example(output_path: Path) -> None:
