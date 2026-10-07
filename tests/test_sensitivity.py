@@ -55,3 +55,37 @@ def test_sensitivity_change() -> None:
     for key in ["KM", "eff", "n", "ps_0", "ps_a", "tau_mRNA", "tau_prot"]:
         assert pytest.approx(1.1 * p_ref[key]) == plus[key]
         assert pytest.approx(0.9 * p_ref[key]) == minus[key]
+
+
+def test_difference_scan_of_a_simulation() -> None:
+    """The reference values are the ones of the model with the simulation's changes."""
+    from sbmlsim.simulation import Simulation
+    from sbmlsim.simulator import SimulatorSerial
+
+    model = RoadrunnerSBMLModel(REPRESSILATOR_SBML)
+    simulation = Simulation(end=10, steps=10, preinit_changes={"n": 3.0})
+    scan = ModelSensitivity.difference_sensitivity_scan(
+        model=model, simulation=simulation, difference=0.1
+    )
+    assert scan.simulation is simulation
+    values = scan.dimensions[0].changes["n"].magnitude
+    assert any(v == pytest.approx(3.0 * 1.1) for v in values)
+    simulator = SimulatorSerial(model)
+    simulator.set_timecourse_selections(["time", "n"])
+    xres = simulator.run_scan(scan)
+    assert xres["n"].values[0].max() == pytest.approx(3.3)
+
+
+def test_reference_dict_follows_initial_assignments() -> None:
+    """A change of a parameter reaches the species whose initial assignment uses it."""
+    from tests.simulator.models import sbml
+
+    model = RoadrunnerSBMLModel(sbml())
+    ref = ModelSensitivity.reference_dict(
+        model=model,
+        changes={"b0": 0.5},
+        stype=SensitivityType.All_SENSITIVITY,
+        exclude_zero=False,
+    )
+    # B is the amount of the species, b0 a concentration in C = 2
+    assert ref["B"] == pytest.approx(1.0)

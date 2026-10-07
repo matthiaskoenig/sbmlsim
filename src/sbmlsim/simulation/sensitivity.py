@@ -12,7 +12,8 @@ import numpy as np
 
 from sbmlsim.console import console
 from sbmlsim.model import RoadrunnerSBMLModel
-from sbmlsim.simulation import Dimension, ScanSim, TimecourseSim
+from sbmlsim.simulation import Dimension, ScanSim, Simulation, TimecourseSim
+from sbmlsim.simulator.plan import compile_simulation
 
 logger = logging.getLogger(__name__)
 
@@ -40,7 +41,7 @@ class ModelSensitivity:
     @staticmethod
     def difference_sensitivity_scan(
         model: RoadrunnerSBMLModel,
-        simulation: TimecourseSim,
+        simulation: TimecourseSim | Simulation,
         difference: float = 0.1,
         stype: SensitivityType = SensitivityType.PARAMETER_SENSITIVITY,
         exclude_filter=None,
@@ -61,7 +62,7 @@ class ModelSensitivity:
         """
         dim = ModelSensitivity.create_difference_dimension(
             model=model,
-            changes=simulation.timecourses[0].changes,
+            changes=ModelSensitivity._changes(simulation),
             difference=difference,
             stype=stype,
             exclude_filter=exclude_filter,
@@ -70,16 +71,14 @@ class ModelSensitivity:
         )
         return ScanSim(
             simulation=simulation,
-            dimensions=[
-                dim,
-            ],
-            mapping={"dim_sens": 0},
+            dimensions=[dim],
+            mapping=None if isinstance(simulation, Simulation) else {"dim_sens": 0},
         )
 
     @staticmethod
     def distribution_sensitivity_scan(
         model: RoadrunnerSBMLModel,
-        simulation: TimecourseSim,
+        simulation: TimecourseSim | Simulation,
         cv: float = 0.1,
         size: int = 10,
         distribution: DistributionType = DistributionType.NORMAL_DISTRIBUTION,
@@ -91,7 +90,7 @@ class ModelSensitivity:
         """Get sensitivity scan based on distributions for values."""
         dim = ModelSensitivity.create_sampling_dimension(
             model=model,
-            changes=simulation.timecourses[0].changes,
+            changes=ModelSensitivity._changes(simulation),
             cv=cv,
             size=size,
             distribution=distribution,
@@ -102,11 +101,16 @@ class ModelSensitivity:
         )
         return ScanSim(
             simulation=simulation,
-            dimensions=[
-                dim,
-            ],
-            mapping={"dim_sens": 0},
+            dimensions=[dim],
+            mapping=None if isinstance(simulation, Simulation) else {"dim_sens": 0},
         )
+
+    @staticmethod
+    def _changes(simulation: TimecourseSim | Simulation) -> dict:
+        """Get the changes the reference values of a simulation are taken with."""
+        if isinstance(simulation, Simulation):
+            return dict(simulation.preinit_changes)
+        return simulation.timecourses[0].changes
 
     @staticmethod
     def create_sampling_dimension(
@@ -206,25 +210,22 @@ class ModelSensitivity:
         :param exclude_zero: exclude parameters which are zero
         :return:
         """
-        # reset model
+        # the model with the changes before its initialization, so that an
+        # initial assignment follows a changed parameter
         r = model.r
         if r is None:
             raise ValueError(f"Model '{model}' is not loaded in roadrunner.")
+        plan = compile_simulation(
+            Simulation(end=1.0, preinit_changes=changes or {}),
+            model.symbols,
+            model.uinfo,
+        )
+        model.free_initial_assignments(
+            {model.symbols.entity(a.target) for a in plan.preinit}
+        )
+        model.set_initial_values(plan.preinit)
+        r = model.r_loaded
         r.resetAll()
-
-        # apply normalized model changes
-        if changes is None:
-            changes = {}
-        for key, item in changes.items():
-            try:
-                r[key] = item.magnitude
-            except AttributeError as err:
-                logger.error(
-                    "Change is not a Quantity with unit: '%s = %s'. Add units to all changes.",
-                    key,
-                    item,
-                )
-                raise err
 
         doc: libsbml.SBMLDocument = libsbml.readSBMLFromString(r.getSBML())
         sbml_model: libsbml.Model = doc.getModel()
