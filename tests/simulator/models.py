@@ -39,3 +39,28 @@ def sbml(model: str = PROBE) -> str:
     if antimony.loadAntimonyString(model) < 0:
         raise ValueError(antimony.getLastError())
     return antimony.getSBMLString(antimony.getMainModuleName())
+
+
+def sbml_minutes() -> str:
+    """Get the probe model with the time unit minute and a dose in mg."""
+    import libsbml
+
+    doc: libsbml.SBMLDocument = libsbml.readSBMLFromString(sbml())
+    model: libsbml.Model = doc.getModel()
+    minute = model.createUnitDefinition()
+    minute.setId("minute")
+    unit = minute.createUnit()
+    unit.setKind(libsbml.UNIT_KIND_SECOND)
+    unit.setMultiplier(60.0)
+    unit.setScale(0)
+    unit.setExponent(1)
+    mg = model.createUnitDefinition()
+    mg.setId("mg")
+    unit = mg.createUnit()
+    unit.setKind(libsbml.UNIT_KIND_GRAM)
+    unit.setMultiplier(1.0)
+    unit.setScale(-3)
+    unit.setExponent(1)
+    model.setTimeUnits("minute")
+    model.getParameter("f").setUnits("mg")
+    return libsbml.writeSBMLToString(doc)
