@@ -22,20 +22,19 @@ pytest tests/simulation/test_simulation.py         # single file
 pytest tests/simulation/test_scan.py::test_scan1d  # single test
 pytest -rs                                         # list the skipped tests
 tox r -e py3.14                                    # single tox env (py3.13, py3.14 available)
-tox run-parallel                                   # full matrix + ty
+tox run-parallel                                   # the tests on every supported python
 
 # lint / format / types
 ruff check
 ruff format
-tox -e ty                       # ty type check (config in [tool.ty] in pyproject.toml)
-uvx ty check                    # same check, straight from the working tree
+uv run ty check                 # ty type check (config in [tool.ty] in pyproject.toml)
 
 # examples, they are modules of the `examples` package and not part of sbmlsim
 python -m examples.timecourse
 python -m examples.sensitivity.sensitivity_example
 ```
 
-`develop` is the default branch and takes every change through a pull request; direct pushes are rejected by the rulesets in `.github/rulesets/` (applied with `.github/rulesets/apply.sh`), which require the `tests`, `ruff`, `ty` and `docs` checks. `main` only tracks the latest release and is fast-forwarded by the `sync-main` job of the release workflow, never by hand.
+`develop` is the default branch and takes every change through a pull request; direct pushes are rejected by the rulesets in `.github/rulesets/` (applied with `.github/rulesets/apply.sh`), which require the `tests`, `ruff`, `ty` and `docs` checks (`ruff` and `ty` are the jobs of `lint.yml`). Every job of the workflows sets up uv, python and the environment with the action `.github/actions/setup` and runs the commands a developer runs, without tox; a push to `develop` is never cancelled, since a release waits for the run of its commit. `main` only tracks the latest release and is fast-forwarded by the `sync-main` job of the release workflow, never by hand.
 
 Release steps are in `docs/development.md` (there is no separate `RELEASE.md`): the release is prepared on a branch, `uvx bump-my-version bump [major|minor|patch]` updates `src/sbmlsim/__init__.py` and `CITATION.cff` and commits without tagging (`tag = false`, a squash merge would rewrite the commit), and the tag is created on `develop` after the pull request was merged, which triggers the PyPI release workflow; it does not run the test matrix again, its job `tested on develop` waits for the run of the push of the same commit to `develop`, which is why the runs of `develop` are never cancelled.
 

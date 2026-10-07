@@ -20,11 +20,13 @@ A pull request can only be merged once the four required checks are green:
 | check   | workflow      | content                                                              |
 | ------- | ------------- | -------------------------------------------------------------------- |
 | `tests` | `ci-cd.yml`   | the test matrix, linux with python 3.13 and 3.14, macos and windows with 3.14 |
-| `ruff`  | `ruff.yml`    | `ruff check` and `ruff format --check`                                |
-| `ty`    | `ty.yml`      | `tox r -e ty`                                                         |
+| `ruff`  | `lint.yml`    | `ruff check` and `ruff format --check`                                |
+| `ty`    | `lint.yml`    | `ty check`                                                            |
 | `docs`  | `docs.yml`    | the zensical build including the api reference and the agent files    |
 
 `tests` aggregates the test matrix into a single job, so the name of the required check stays the same when the matrix changes.
+
+Every job sets up its environment with the action `.github/actions/setup`: uv with its cache, the python of the job, the libpython roadrunner needs on linux, and `uv sync` with the extras of the job. The jobs run the same commands as a local environment (`pytest`, `ty check`, `zensical build`), the tests against the package installed as a wheel (`uv sync --no-editable`). A run of a pull request is cancelled by the next push to it; a push to `develop` or `main` is never cancelled, a release waits for the run of its commit.
 
 Further rules of a pull request:
 
@@ -98,13 +100,13 @@ The tox environments are named after the interpreter (`py3.13` to `py3.14`, see 
 tox r -e py3.14
 ```
 
-and the complete matrix, including the `ty` environment, in parallel with
+and the complete matrix in parallel with
 
 ```bash
 tox run-parallel
 ```
 
-This needs the interpreters to be available, which uv installs with `uv python install 3.13 3.14`. Continuous integration runs the same environments as `uvx --with tox-uv tox -e py3.14`.
+This needs the interpreters to be available, which uv installs with `uv python install 3.13 3.14`. Continuous integration does not use tox, it runs `pytest` in an environment of the python of the job, see [pull requests](#pull-requests).
 
 To run the tests directly against the development environment use
 
@@ -115,7 +117,7 @@ pytest tests/simulation/test_simulation.py                  # a single module
 pytest tests/simulation/test_simulation.py::test_timecourse  # a single test
 ```
 
-The tests run in parallel, `addopts = "-n auto"` in `pyproject.toml` gives pytest-xdist one worker per core; `-n 0` on the command line runs everything in one process, which the debugger needs.
+The tests run in parallel, `-n auto --dist worksteal` in the `addopts` of `pyproject.toml` gives pytest-xdist one worker per core, and a worker which is idle takes over the tests which wait at a busy one; `-n 0` on the command line runs everything in one process, which the debugger needs.
 
 The `conftest.py` at the root of the repository selects the non-interactive matplotlib backend for the session and puts the repository on `sys.path`, so that the tests can import the examples.
 
@@ -139,14 +141,10 @@ The docstring rules (`D`) are enforced for the package, not for `examples/` and 
 Type checking is performed with [ty](https://docs.astral.sh/ty/):
 
 ```bash
-tox r -e ty
+uv run ty check
 ```
 
-Or directly in the working tree:
-
-```bash
-uvx ty check
-```
+ty resolves the imports in the environment of the project, which `uv sync --extra dev` creates; the `ty` check of continuous integration runs the same command and the pre-commit hook runs it on every commit.
 
 The configuration lives in `[tool.ty]` in `pyproject.toml`. Warnings are treated as errors, so the codebase is kept free of diagnostics. Suppress an unavoidable diagnostic with a rule specific `# ty: ignore[rule-name]` rather than a blanket comment.
 
@@ -206,7 +204,7 @@ A release is made from `develop`. Since `develop` only accepts pull requests, th
 
 1. branch off `develop`: `git switch -c release/x.y.z develop`
 2. write the release notes for the version in `release-notes/x.y.z.md`
-3. make sure everything passes: `tox run-parallel`, `ruff check`, `tox r -e ty`
+3. make sure everything passes: `tox run-parallel`, `ruff check`, `uv run ty check`
 4. check the version bump: `uvx bump-my-version bump [major|minor|patch] --dry-run -vv`
 5. bump the version: `uvx bump-my-version bump [major|minor|patch]`, which updates `src/sbmlsim/__init__.py` and `CITATION.cff` and commits. It does not create the tag; a squash or rebase merge would rewrite the commit and leave the tag behind on a commit which is not part of `develop`
 6. push the branch, open the pull request against `develop` and merge it once the checks are green

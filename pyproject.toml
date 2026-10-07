@@ -112,10 +112,12 @@ packages = ["src/sbmlsim"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 # the tests run in parallel (pytest-xdist), `pytest -n 0` runs them in one process.
+# `worksteal` hands the tests which wait at a busy worker to an idle one, which
+# takes a fifth less time than `load` with the long tests near the end.
 # The semantic cases of the SBML Test Suite are not part of a normal run, they
 # are the conformance of libroadrunner and not of a change: `pytest -m testsuite`
 # runs them, and a release does
-addopts = "-n auto -m 'not testsuite and not sciml_testsuite'"
+addopts = "-n auto --dist worksteal -m 'not testsuite and not sciml_testsuite'"
 markers = [
     "testsuite: a semantic case of the SBML Test Suite, run before a release",
     "sciml_testsuite: a case of the PEtab SciML test suite, run before a release",
