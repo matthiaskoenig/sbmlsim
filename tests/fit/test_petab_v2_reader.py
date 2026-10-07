@@ -357,29 +357,59 @@ def test_the_model_source(tmp_path: Path) -> None:
         reader.model_source("other")
 
 
-def test_a_prior_of_a_parameter_is_dropped_with_a_warning(
-    tmp_path: Path, caplog: pytest.LogCaptureFixture
-) -> None:
-    path = write_problem(tmp_path / "problem", {"prey_o": "prey"}, {"e1": None})
-    table = tmp_path / "problem" / "parameters.tsv"
+def _with_priors(directory: Path) -> Path:
+    """Write a problem whose `alpha` has a prior and `sigma` is estimated."""
+    path = write_problem(directory, {"prey_o": "prey"}, {"e1": None})
+    table = directory / "parameters.tsv"
     parameters = pd.read_csv(table, sep="\t")
-    # sigma is estimated but is no entity of the model, i.e. it is dropped
+    # sigma is estimated but is no entity of the model
     sigma = parameters.iloc[[0]].copy()
     sigma["parameterId"] = "sigma"
     parameters = pd.concat([parameters, sigma], ignore_index=True)
     parameters["priorDistribution"] = ["normal", "", "normal"]
     parameters["priorParameters"] = ["1.0;0.5", "", "1.0;0.5"]
     parameters.to_csv(table, sep="\t", index=False)
-    with caplog.at_level(logging.WARNING, logger="sbmlsim.fit.petab_v2.reader"):
-        fit_parameters = PetabReader.from_yaml(path).fit_parameters()
-    assert [p.pid for p in fit_parameters] == ["alpha", "beta"]
-    priors = [
-        r.getMessage() for r in caplog.records if "gap 'priors'" in r.getMessage()
-    ]
-    assert len(priors) == 2
-    assert any("The parameter 'alpha' has the prior" in m for m in priors)
-    assert any("The parameter 'sigma' has the prior" in m for m in priors)
-    assert not any("'beta'" in m for m in priors)
+    return path
+
+
+def test_the_prior_of_a_parameter_is_kept(tmp_path: Path) -> None:
+    """The prior of a parameter of the fit is the prior of its `FitParameter`."""
+    from sbmlsim.fit.objects import Prior, PriorDistribution
+
+    fit_parameters = PetabReader.from_yaml(
+        _with_priors(tmp_path / "problem")
+    ).fit_parameters()
+    by_id = {p.pid: p for p in fit_parameters}
+    assert by_id["alpha"].prior == Prior(PriorDistribution.NORMAL, (1.0, 0.5))
+    assert by_id["beta"].prior is None
+    # a parameter which is not an entity of the model is one of the model the
+    # fit simulates, see `PetabReader.models`
+    assert by_id["sigma"].prior == Prior(PriorDistribution.NORMAL, (1.0, 0.5))
+
+
+def test_the_log_prior_of_a_problem(tmp_path: Path) -> None:
+    """The log prior of every parameter of the fit, uniform without a prior."""
+    from sbmlsim.fit.objects import Prior, PriorDistribution
+    from sbmlsim.fit.petab_v2.likelihood import (
+        log_likelihood,
+        log_prior,
+        nominal_parameters,
+        unnorm_log_posterior,
+    )
+
+    problem = PetabReader.from_yaml(
+        _with_priors(tmp_path / "problem")
+    ).to_optimization_problem()
+    problem.initialize(SETTINGS)
+    nominal = nominal_parameters(problem)
+    priors = log_prior(problem)
+    assert priors["alpha"] == pytest.approx(
+        Prior(PriorDistribution.NORMAL, (1.0, 0.5)).log_density(1.3, 0.0, 15.0)
+    )
+    assert priors["beta"] == pytest.approx(-np.log(15.0))
+    assert unnorm_log_posterior(problem, nominal) == pytest.approx(
+        log_likelihood(problem, nominal) + sum(priors.values())
+    )
 
 
 def _read_with_base_path(tmp_path: Path, base_path: str) -> PetabReader:
@@ -419,3 +449,160 @@ def test_the_base_path_of_the_configuration_on_a_server(tmp_path: Path) -> None:
     """The files of a problem are read from a directory, not from a server."""
     with pytest.raises(ValueError, match=re.escape("'https://example.org/problem'")):
         _read_with_base_path(tmp_path, "https://example.org/problem")
+
+
+def test_a_noise_parameter_set_by_a_condition(tmp_path: Path) -> None:
+    """The noise reads the value the condition of its experiment gives a parameter.
+
+    `sigma` is a parameter of the parameter table, i.e. of the model, which the
+    condition of `e2` sets to `0.25`; the noise of `e1` is its nominal `0.5`.
+    """
+    from sbmlsim.fit.petab_v2.likelihood import log_density, log_likelihood
+
+    directory = tmp_path / "problem"
+    path = write_problem(
+        directory,
+        observables={"prey_o": "prey"},
+        experiments={"e1": None, "e2": "c2"},
+        conditions=[("c2", "sigma", "0.25")],
+    )
+    observables = pd.read_csv(directory / "observables.tsv", sep="\t")
+    observables["noiseFormula"] = "sigma"
+    observables.to_csv(directory / "observables.tsv", sep="\t", index=False)
+    parameters = pd.read_csv(directory / "parameters.tsv", sep="\t")
+    sigma = parameters.iloc[[0]].copy()
+    sigma["parameterId"] = "sigma"
+    sigma["nominalValue"] = 0.5
+    sigma["estimate"] = False
+    pd.concat([parameters, sigma], ignore_index=True).to_csv(
+        directory / "parameters.tsv", sep="\t", index=False
+    )
+
+    problem = PetabReader.from_yaml(path).to_optimization_problem()
+    problem.initialize(SETTINGS)
+    x = np.asarray(problem.x0, dtype=float)
+    predictions = problem.predictions(x)
+    expected = 0.0
+    for k, key in enumerate(problem.mapping_keys):
+        scale = 0.25 if key.endswith("e2") else 0.5
+        expected += float(
+            np.sum(
+                log_density(
+                    np.asarray(problem.y_references[k]),
+                    predictions[k],
+                    np.full(len(predictions[k]), scale),
+                )
+            )
+        )
+    assert log_likelihood(problem) == pytest.approx(expected, rel=1e-12)
+
+
+def test_the_noise_formula_in_the_selections(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    """A concentration based species of a noise formula is its concentration.
+
+    The species `A` of the probe model is concentration based in the compartment
+    `C = 2`, so its identifier in the math of PEtab is the concentration `[A]`
+    and not the amount `A` roadrunner selects.
+    """
+    from tests.simulator.models import sbml
+
+    (tmp_path / "probe.xml").write_text(sbml())
+
+    def table(name: str, rows: list[dict[str, Any]]) -> None:
+        pd.DataFrame(rows).to_csv(tmp_path / f"{name}.tsv", sep="\t", index=False)
+
+    table(
+        "observables",
+        [
+            {
+                "observableId": "a_o",
+                "observableFormula": "A",
+                "noiseFormula": "0.1 * A",
+                "noiseDistribution": "normal",
+            }
+        ],
+    )
+    table(
+        "measurements",
+        [
+            {"observableId": "a_o", "experimentId": "e1", "measurement": 0.5, "time": t}
+            for t in [0.5, 1.0]
+        ],
+    )
+    table("experiments", [{"experimentId": "e1", "time": 0.0, "conditionId": ""}])
+    table(
+        "parameters",
+        [
+            {
+                "parameterId": "k1",
+                "lowerBound": 0.1,
+                "upperBound": 2.0,
+                "nominalValue": 0.8,
+                "estimate": True,
+            }
+        ],
+    )
+    path = tmp_path / "problem.yaml"
+    path.write_text(
+        yaml.safe_dump(
+            {
+                "format_version": "2.0.0",
+                "model_files": {"probe": {"location": "probe.xml", "language": "sbml"}},
+                "measurement_files": ["measurements.tsv"],
+                "observable_files": ["observables.tsv"],
+                "experiment_files": ["experiments.tsv"],
+                "parameter_files": ["parameters.tsv"],
+            },
+            sort_keys=False,
+        )
+    )
+    reader = PetabReader.from_yaml(path)
+    with caplog.at_level(logging.WARNING, logger="sbmlsim.fit.petab_v2.reader"):
+        noise = reader.noise_model("a_o")
+    assert noise.symbols == ("[A]",)
+
+    from sbmlsim.fit.petab_v2.likelihood import log_density, log_likelihood
+
+    problem = reader.to_optimization_problem()
+    problem.initialize(SETTINGS)
+    (prediction,) = problem.predictions(np.asarray(problem.x0, dtype=float)).values()
+    expected = log_density(np.array([0.5, 0.5]), prediction, 0.1 * prediction)
+    assert log_likelihood(problem) == pytest.approx(float(np.sum(expected)))
+    assert not [r for r in caplog.records if "cannot be calculated" in r.getMessage()]
+
+    from petab import v2 as petab_v2
+
+    from sbmlsim.fit.petab_v2 import to_petab
+
+    exported = petab_v2.Problem.from_yaml(to_petab(problem, tmp_path / "export"))
+    (observable,) = exported.observables
+    assert str(observable.noise_formula) == "0.1*A"
+
+
+def test_a_nominal_value_outside_of_the_bounds(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    """The start value is in the bounds, the nominal value is the one of PEtab.
+
+    PEtab evaluates a problem at the nominal values, which may be outside of
+    the bounds of an estimated parameter (case 0026); an optimizer starts in
+    the bounds.
+    """
+    path = write_problem(tmp_path / "problem", {"prey_o": "prey"}, {"e1": None})
+    table = tmp_path / "problem" / "parameters.tsv"
+    parameters = pd.read_csv(table, sep="\t")
+    parameters.loc[parameters["parameterId"] == "alpha", "nominalValue"] = 20.0
+    parameters.to_csv(table, sep="\t", index=False)
+
+    reader = PetabReader.from_yaml(path)
+    with caplog.at_level(logging.WARNING, logger="sbmlsim.fit.petab_v2.reader"):
+        by_id = {p.pid: p for p in reader.fit_parameters()}
+    assert by_id["alpha"].start_value == 15.0
+    assert any("'alpha'" in r.getMessage() for r in caplog.records)
+
+    problem = reader.to_optimization_problem()
+    problem.initialize(SETTINGS)
+    nominal = reader.nominal_parameters(problem)
+    assert nominal.values == {"alpha": 20.0, "beta": 0.9}

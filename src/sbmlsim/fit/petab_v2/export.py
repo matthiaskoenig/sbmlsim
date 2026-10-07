@@ -932,7 +932,9 @@ class PetabExporter:
 
         Returns:
             The noise model of the mapping, see
-            `sbmlsim.fit.petab_v2.likelihood.noise_model_of`.
+            `sbmlsim.fit.petab_v2.likelihood.noise_model_of`, in the math of
+            PEtab, i.e. the formula and the placeholder values in what the
+            identifiers of the model mean.
 
         Raises:
             ValueError: if the noise model does not have the values of its
@@ -948,14 +950,26 @@ class PetabExporter:
                 f"values of its placeholders '{list(noise.placeholders)}' for "
                 f"'{size}' measurements."
             )
-        if noise.observable is None or noise.observable == observable_id:
-            return noise
-        expression = sympify_petab(noise.formula).subs(
-            sp.Symbol(noise.observable, real=True),
-            sp.Symbol(observable_id, real=True),
-        )
+        sbml_model = self.sbml_models.get(self.model_ids[id(problem.models[k])])
+        expression = sympify_petab(formula_of_selections(noise.formula, sbml_model))
+        if noise.observable is not None and noise.observable != observable_id:
+            expression = expression.subs(
+                sp.Symbol(noise.observable, real=True),
+                sp.Symbol(observable_id, real=True),
+            )
         return dataclasses.replace(
-            noise, formula=petab_math_str(expression), observable=observable_id
+            noise,
+            formula=petab_math_str(expression),
+            placeholder_values=tuple(
+                tuple(
+                    formula_of_selections(value, sbml_model)
+                    if isinstance(value, str)
+                    else value
+                    for value in values
+                )
+                for values in noise.placeholder_values
+            ),
+            observable=observable_id if noise.observable is not None else None,
         )
 
     def _check_condition_targets(self, petab_problem: PetabProblem) -> None:
@@ -1027,6 +1041,12 @@ class PetabExporter:
                     ub=parameter.upper_bound,
                     nominal_value=nominal_value,
                     estimate=True,
+                    prior_distribution=None
+                    if parameter.prior is None
+                    else parameter.prior.distribution.value,
+                    prior_parameters=[]
+                    if parameter.prior is None
+                    else list(parameter.prior.parameters),
                 )
             )
         self._add_noise_parameters(petab_problem)

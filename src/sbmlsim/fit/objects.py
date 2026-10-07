@@ -107,6 +107,104 @@ class NoiseDistribution(StrEnum):
         return self in {NoiseDistribution.LOG_NORMAL, NoiseDistribution.LOG_LAPLACE}
 
 
+class PriorDistribution(StrEnum):
+    """Distribution of the prior of a parameter.
+
+    These are the priors of PEtab v2, with the parameters of PEtab, e.g. the
+    mean and the standard deviation of `normal` and the bounds of `uniform`.
+    """
+
+    CAUCHY = "cauchy"
+    CHISQUARE = "chisquare"
+    EXPONENTIAL = "exponential"
+    GAMMA = "gamma"
+    LAPLACE = "laplace"
+    LOG_LAPLACE = "log-laplace"
+    LOG_NORMAL = "log-normal"
+    LOG_UNIFORM = "log-uniform"
+    NORMAL = "normal"
+    RAYLEIGH = "rayleigh"
+    UNIFORM = "uniform"
+
+
+@dataclass(frozen=True)
+class Prior:
+    """The prior of a parameter.
+
+    The prior is a distribution of PEtab v2 over the value of the parameter in
+    its unit, truncated at the bounds of the parameter, i.e. normalized over
+    them. A parameter without a prior has the uniform prior over its bounds.
+
+    Attributes:
+        distribution: the distribution.
+        parameters: the parameters of the distribution, see
+            `PriorDistribution`.
+    """
+
+    distribution: PriorDistribution
+    parameters: tuple[float, ...]
+
+    def __post_init__(self) -> None:
+        """Coerce the fields and check them.
+
+        Raises:
+            ValueError: if the distribution is not one of PEtab or a parameter
+                is not a number.
+        """
+        try:
+            distribution = PriorDistribution(self.distribution)
+        except ValueError as err:
+            raise ValueError(
+                f"The prior distribution '{self.distribution}' is not one of "
+                f"PEtab, which are "
+                f"'{', '.join(d.value for d in PriorDistribution)}'."
+            ) from err
+        object.__setattr__(self, "distribution", distribution)
+        object.__setattr__(
+            self, "parameters", tuple(float(value) for value in self.parameters)
+        )
+
+    def log_density(self, value: float, lower: float, upper: float) -> float:
+        """Get the log density of the prior at a value.
+
+        The distributions are the ones of `petab`, which the PEtab test suite
+        is calculated with.
+
+        Args:
+            value: the value of the parameter.
+            lower: the lower bound of the parameter.
+            upper: the upper bound of the parameter.
+
+        Returns:
+            The log density of the prior truncated at the bounds, `-inf`
+            outside of them.
+
+        Raises:
+            ValueError: if the parameters do not fit the distribution.
+        """
+        from petab.v2 import Parameter as PetabParameter
+
+        distribution = PetabParameter(
+            id="p",
+            lb=lower,
+            ub=upper,
+            estimate=True,
+            prior_distribution=self.distribution.value,
+            prior_parameters=list(self.parameters),
+        ).prior_dist
+        if distribution is None:
+            raise ValueError(f"The prior '{self}' has no distribution.")
+        density = float(distribution.pdf(value))
+        return math.log(density) if density > 0.0 else -math.inf
+
+    def to_dict(self) -> dict[str, Any]:
+        """Convert to a dictionary for serialization."""
+        return {
+            "distribution": self.distribution.value,
+            "parameters": list(self.parameters),
+        }
+
+
 @dataclass(frozen=True)
 class NoiseParameter:
     """A parameter of a noise formula which is not an entity of a model.
@@ -138,17 +236,20 @@ class NoiseModel:
     calculated with, see `sbmlsim.fit.petab_v2.likelihood`.
 
     Attributes:
-        formula: the noise formula in the math of PEtab, e.g. `0.05`, `sd` or
-            `sigma_a + 0.1 * sd`. Its symbols are the `placeholders`, the
-            `parameters`, the parameters of the fit and the `observable`.
+        formula: the noise formula in the math of PEtab over the selections of
+            roadrunner, e.g. `0.05`, `sd` or `sigma_a + 0.1 * sd`, see
+            `ObservableModel`. Its symbols are the `placeholders`, the
+            `observable` and the `symbols`, i.e. selections of the simulation
+            or `parameters`.
         distribution: distribution of the noise.
         placeholders: symbols of the formula which have a value per
             measurement.
         placeholder_values: for every measurement the values of the
             placeholders, in the order of the measurements of the mapping. A
-            value is a number or a formula of parameters.
+            value is a number or a formula of the selections.
         parameters: the parameters of the formula and of the placeholder
-            values which are not entities of a model, with their nominal value.
+            values with their nominal value, for a symbol which the
+            simulation does not select.
         observable: symbol of the formula which stands for the simulation,
             `None` if the formula has none.
     """
@@ -198,6 +299,50 @@ class NoiseModel:
                     f"'{list(self.placeholders)}', but the measurement '{k}' "
                     f"has the values '{list(values)}'."
                 )
+
+    @functools.cached_property
+    def formula_model(self) -> ObservableModel:
+        """Get the noise formula with its placeholders as a formula model.
+
+        Raises:
+            ValueError: if the formula or a placeholder value is not valid
+                math.
+        """
+        return ObservableModel(
+            formula=self.formula,
+            placeholders=self.placeholders,
+            placeholder_values=self.placeholder_values,
+        )
+
+    @property
+    def symbols(self) -> tuple[str, ...]:
+        """Get the symbols the noise reads besides placeholders and observable.
+
+        These are selections of the simulation or `parameters`, sorted.
+        """
+        return tuple(s for s in self.formula_model.symbols if s != self.observable)
+
+    def select(self, mask: np.ndarray) -> NoiseModel:
+        """Get the noise model of a selection of the measurements.
+
+        Args:
+            mask: whether a measurement is selected, one entry per
+                measurement.
+
+        Returns:
+            The noise model with the placeholder values of the selected
+            measurements.
+        """
+        if not self.placeholders:
+            return self
+        return replace(
+            self,
+            placeholder_values=tuple(
+                values
+                for values, keep in zip(self.placeholder_values, mask, strict=True)
+                if keep
+            ),
+        )
 
 
 @dataclass(frozen=True)
@@ -674,6 +819,7 @@ class FitParameter:
         target: str | None = None,
         mappings: Any = None,
         scale: ParameterScaleType | str | None = None,
+        prior: Prior | Mapping[str, Any] | None = None,
     ):
         """Initialize FitParameter.
 
@@ -699,6 +845,9 @@ class FitParameter:
                 `None` is the `parameter_scale` of the `FitSettings`. A
                 parameter which is negative or zero, e.g. a weight of a
                 network, is searched on the linear scale.
+            prior: the prior of the parameter or its dictionary, see `Prior`.
+                `None` is the uniform prior over the bounds. The objective of
+                a fit does not use it, `log_prior` evaluates it.
 
         Raises:
             ValueError: if the bounds or the start value are inconsistent, if
@@ -753,6 +902,11 @@ class FitParameter:
         self.target = target
         self.mappings = mappings
         self.scale: ParameterScaleType | None = scale
+        if isinstance(prior, Mapping):
+            prior = Prior(
+                distribution=prior["distribution"], parameters=prior["parameters"]
+            )
+        self.prior: Prior | None = prior
         if unit is None:
             logger.warning(
                 "No unit provided for FitParameter '%s', assuming model units.",
@@ -800,6 +954,7 @@ class FitParameter:
             and self.unit == other.unit
             and self.target_id == other.target_id
             and self.scale == other.scale
+            and self.prior == other.prior
         )
 
     def __hash__(self) -> int:
@@ -830,6 +985,7 @@ class FitParameter:
             "unit": self.unit,
             "target": self.target,
             "scale": None if self.scale is None else self.scale.name,
+            "prior": None if self.prior is None else self.prior.to_dict(),
         }
 
     @staticmethod

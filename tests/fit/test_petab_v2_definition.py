@@ -402,3 +402,41 @@ def test_a_formula_change_is_written_as_a_formula(tmp_path: Path) -> None:
     np.testing.assert_allclose(
         restored.predictions(x)[0], problem.predictions(x)[0], rtol=1e-10
     )
+
+
+def test_the_prior_of_a_parameter_is_written(tmp_path: Path) -> None:
+    """A prior is the prior of the parameter table, a round trip keeps it."""
+    from sbmlsim.fit.objects import Prior, PriorDistribution
+    from tests.fit.test_petab_v2_reader import _with_priors
+
+    problem = PetabReader.from_yaml(
+        _with_priors(tmp_path / "problem")
+    ).to_optimization_problem(opid="priors")
+    settings = FitSettings(parameter_scale=ParameterScaleType.LINEAR)
+    problem.initialize(settings)
+
+    yaml_file = to_petab(problem, tmp_path / "export")
+    petab_problem = petab_v2.Problem.from_yaml(yaml_file)
+    by_id = {p.id: p for p in petab_problem.parameters}
+    assert str(by_id["alpha"].prior_distribution) == "normal"
+    assert list(by_id["alpha"].prior_parameters) == [1.0, 0.5]
+    assert by_id["beta"].prior_distribution is None
+
+    restored, _ = from_petab(yaml_file)
+    assert {p.pid: p.prior for p in restored.parameters} == {
+        "alpha": Prior(PriorDistribution.NORMAL, (1.0, 0.5)),
+        "beta": None,
+        "sigma": Prior(PriorDistribution.NORMAL, (1.0, 0.5)),
+    }
+
+
+def test_a_prior_is_a_gap_of_the_problem(tmp_path: Path) -> None:
+    """The optimizer does not use a prior, the gaps say so."""
+    from sbmlsim.fit.petab_v2 import gaps_of_problem
+    from tests.fit.test_petab_v2_reader import _with_priors
+
+    problem = PetabReader.from_yaml(
+        _with_priors(tmp_path / "problem")
+    ).to_optimization_problem(opid="priors")
+    problem.initialize(FitSettings(parameter_scale=ParameterScaleType.LINEAR))
+    assert "priors" in {gap.id for gap in gaps_of_problem(problem)}

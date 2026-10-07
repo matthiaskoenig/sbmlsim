@@ -42,9 +42,11 @@ from sbmlsim.fit.objects import (
     NoiseModel,
     NoiseParameter,
     ObservableModel,
+    Prior,
 )
 from sbmlsim.fit.optimization import OptimizationProblem
 from sbmlsim.fit.options import FitSettings, ParameterScaleType
+from sbmlsim.fit.parameters import ParameterSet
 from sbmlsim.fit.petab_v2.extension import (
     SCIML_EXTENSION_ID,
     SbmlsimExtension,
@@ -53,6 +55,7 @@ from sbmlsim.fit.petab_v2.extension import (
     known_extensions,
     simulation_of_timecourses,
 )
+from sbmlsim.fit.petab_v2.likelihood import nominal_parameters
 from sbmlsim.fit.petab_v2.symbols import (
     is_entity,
     selection_of_formula,
@@ -1037,6 +1040,16 @@ class PetabReader:
             raise ValueError(f"The problem has no observable '{observable_id}'.")
         observable = self._observables[observable_id]
 
+        sbml_model = self._sbml_model()
+
+        def selections(value: Any) -> float | str:
+            # the identifiers of PEtab are what the model means, i.e. a
+            # concentration based species is its concentration `[S]`
+            formula = _formula(value)
+            if isinstance(formula, str):
+                return selections_of_formula(formula, sbml_model)
+            return formula
+
         placeholders = tuple(str(p) for p in observable.noise_placeholders)
         expressions: list[Any] = [observable.noise_formula]
         rows: list[tuple[float | str, ...]] = []
@@ -1044,7 +1057,7 @@ class PetabReader:
             for measurement in self._measurements.get(key, []):
                 expressions.extend(measurement.noise_parameters)
                 rows.append(
-                    tuple(_formula(value) for value in measurement.noise_parameters)
+                    tuple(selections(value) for value in measurement.noise_parameters)
                 )
 
         symbols = sorted(
@@ -1060,6 +1073,9 @@ class PetabReader:
             if symbol == observable_id:
                 continue
             parameter = self._parameters.get(symbol)
+            if parameter is None and self._in_model(symbol):
+                # an entity of the model, which the simulation selects
+                continue
             if parameter is not None and self._is_fit_parameter(parameter):
                 # the value is the one of the parameter set, a nominal value
                 # is not needed
@@ -1091,7 +1107,7 @@ class PetabReader:
 
         try:
             return NoiseModel(
-                formula=str(_formula(observable.noise_formula)),
+                formula=str(selections(observable.noise_formula)),
                 distribution=NoiseDistribution(str(observable.noise_distribution)),
                 placeholders=placeholders,
                 placeholder_values=tuple(rows),
@@ -1104,17 +1120,13 @@ class PetabReader:
     def _is_fit_parameter(self, parameter: Any) -> bool:
         """Check whether a parameter of the problem is a parameter of the fit.
 
-        A parameter of the fit is estimated and is an entity of a model or a
-        version of one, see `_versions`. An estimated parameter which is
-        neither is a parameter of the noise or of an observable, which
-        `sbmlsim` does not fit.
+        Every estimated parameter is a parameter of the fit, see
+        `fit_parameters`.
 
         Args:
             parameter: parameter of the parameter table.
         """
-        return bool(parameter.estimate) and (
-            parameter.id in self._versions() or self._in_model(parameter.id)
-        )
+        return bool(parameter.estimate)
 
     def _selection_of(self, observable_id: str) -> str:
         """Get the selection of roadrunner which observes an observable.
@@ -1267,10 +1279,10 @@ class PetabReader:
         """Get the parameters which are estimated.
 
         A parameter which a condition assigns to an entity of the model, see
-        `_versions`, is a versioned parameter: it is not itself an entity of a
-        model, so it is exempt from the check which otherwise drops a
-        parameter PEtab estimates that `sbmlsim` cannot fit, and it is built
-        with the `target` it writes and the `mappings` selector of its keys.
+        `_versions`, is a versioned parameter, built with the `target` it
+        writes and the `mappings` selector of its keys. Every other parameter
+        writes itself: an entity of the model, or a parameter which the model
+        the fit simulates gets, e.g. a parameter of the noise, see `models`.
 
         Returns:
             The parameters with their bounds, their start value and, if the
@@ -1289,27 +1301,10 @@ class PetabReader:
         for parameter in self.petab_problem.parameters:
             if not parameter.estimate or parameter.id in handled:
                 continue
+            # a parameter which is not an entity of the model, e.g. of the
+            # noise or of an observable, is a parameter of the model the fit
+            # simulates, see `models`
             target, keys = versions.get(parameter.id, (None, set()))
-            if parameter.prior_distribution is not None:
-                # the objective of `sbmlsim` has no priors, see the gap
-                logger.warning(
-                    "The parameter '%s' has the prior '%s', which the objective "
-                    "of `sbmlsim` does not use (gap 'priors', issue #190).",
-                    parameter.id,
-                    parameter.prior_distribution,
-                )
-            if target is None and not self._in_model(parameter.id):
-                # a parameter of the noise or of an observable, which PEtab
-                # estimates with the parameters of the model. The objective of
-                # `sbmlsim` has no such parameter, it weights the data instead
-                logger.warning(
-                    "The parameter '%s' is estimated by the problem but is not "
-                    "an entity of a model, i.e. it is a parameter of the noise "
-                    "or of an observable. `sbmlsim` fits the parameters of a "
-                    "model and weights the data, so it is not fitted.",
-                    parameter.id,
-                )
-                continue
             info = (
                 self.extension.parameters.get(parameter.id, {})
                 if self.extension
@@ -1319,16 +1314,30 @@ class PetabReader:
             start_value = info.get("start_value")
             if start_value is None and isinstance(nominal, int | float):
                 start_value = float(nominal)
+            lower_bound = float(parameter.lb) if parameter.lb is not None else -np.inf
+            upper_bound = float(parameter.ub) if parameter.ub is not None else np.inf
+            if start_value is not None and not (
+                lower_bound <= start_value <= upper_bound
+            ):
+                # PEtab evaluates a problem at the nominal values, see
+                # `nominal_parameters`, an optimizer starts in the bounds
+                clipped = float(np.clip(start_value, lower_bound, upper_bound))
+                logger.warning(
+                    "The nominal value '%s' of the parameter '%s' is outside of "
+                    "its bounds [%s, %s], the fit starts at '%s'.",
+                    start_value,
+                    parameter.id,
+                    lower_bound,
+                    upper_bound,
+                    clipped,
+                )
+                start_value = clipped
             parameters.append(
                 FitParameter(
                     pid=parameter.id,
                     start_value=start_value,
-                    lower_bound=(
-                        float(parameter.lb) if parameter.lb is not None else -np.inf
-                    ),
-                    upper_bound=(
-                        float(parameter.ub) if parameter.ub is not None else np.inf
-                    ),
+                    lower_bound=lower_bound,
+                    upper_bound=upper_bound,
                     # PEtab has no units, a parameter is in the unit the
                     # model gives it; a versioned parameter is not an entity
                     # itself, so its unit is the one of its target
@@ -1337,9 +1346,43 @@ class PetabReader:
                     target=target,
                     mappings=filter_keys(keys) if target is not None else None,
                     scale=self._scale_of(parameter, info),
+                    prior=_prior(parameter),
                 )
             )
         return parameters + networks
+
+    def nominal_parameters(self, problem: OptimizationProblem) -> ParameterSet:
+        """Get the nominal values of the parameters of the fit of the problem.
+
+        The nominal value of PEtab is the value a problem is evaluated at,
+        e.g. by the test suite, and it may be outside of the bounds of the
+        parameter, while the start value of the `FitParameter` is in them. A
+        parameter without a nominal value in the parameter table, e.g. an
+        element of a network, has the one of
+        `sbmlsim.fit.petab_v2.likelihood.nominal_parameters`.
+
+        Args:
+            problem: initialized optimization problem of the reader.
+
+        Returns:
+            The parameter set `nominal`.
+        """
+        defaults = nominal_parameters(problem)
+        x = []
+        for pid in problem.pids:
+            parameter = self._parameters.get(pid)
+            nominal = parameter.nominal_value if parameter is not None else None
+            x.append(
+                float(nominal)
+                if isinstance(nominal, int | float)
+                else defaults.values[pid]
+            )
+        return ParameterSet.from_fit_parameters(
+            parameters=problem.parameters,
+            x=x,
+            sid="nominal",
+            provenance=f"nominal values of the PEtab problem '{self.name}'",
+        )
 
     def _scale_of(
         self, parameter: Any, info: dict[str, Any]
@@ -1518,6 +1561,17 @@ def _class_name(name: str) -> str:
     if not class_name or class_name[0].isdigit():
         class_name = f"Petab{class_name}"
     return class_name
+
+
+def _prior(parameter: Any) -> Prior | None:
+    """Get the prior of a parameter of the parameter table, `None` without one."""
+    distribution = parameter.prior_distribution
+    if distribution is None:
+        return None
+    return Prior(
+        distribution=getattr(distribution, "value", distribution),
+        parameters=tuple(float(value) for value in parameter.prior_parameters),
+    )
 
 
 def _to_float(value: Any) -> float:

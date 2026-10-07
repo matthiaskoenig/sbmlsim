@@ -4,7 +4,7 @@ import logging
 import time
 from collections import defaultdict
 from collections.abc import Callable, Sequence
-from dataclasses import replace
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any
 
@@ -140,6 +140,15 @@ def minimal_result(
     )
 
 
+def _is_selection(model: RoadrunnerSBMLModel, symbol: str) -> bool:
+    """Check whether a symbol is a selection of the model."""
+    try:
+        model.r_loaded.getValue(symbol)
+    except RuntimeError:
+        return False
+    return True
+
+
 def _check_symbols(
     model: RoadrunnerSBMLModel, observable: ObservableModel, name: str
 ) -> None:
@@ -153,16 +162,53 @@ def _check_symbols(
     Raises:
         ValueError: if a symbol is not a selection of the model.
     """
-    r = model.r_loaded
     for symbol in observable.symbols:
-        try:
-            r.getValue(symbol)
-        except RuntimeError as err:
+        if not _is_selection(model, symbol):
             raise ValueError(
                 f"{name}: the symbol '{symbol}' of the observable "
                 f"'{observable.formula}' is not a selection of the model, nor a "
                 f"placeholder of the observable."
-            ) from err
+            )
+
+
+def _noise_selections(
+    model: RoadrunnerSBMLModel, noise: NoiseModel | None, name: str
+) -> tuple[str, ...]:
+    """Get the symbols of a noise model which the simulation selects.
+
+    A noise formula which is not valid math does not stop a fit, which does
+    not use it; the log-likelihood reports it.
+
+    Args:
+        model: the model the noise is simulated with.
+        noise: the noise model of the fit mapping.
+        name: name of the fit mapping, for the warning.
+
+    Returns:
+        The selections, the other symbols are parameters of the noise model.
+    """
+    if noise is None:
+        return ()
+    try:
+        symbols = noise.symbols
+    except ValueError as err:
+        logger.warning("%s: the noise model cannot be evaluated: %s", name, err)
+        return ()
+    return tuple(s for s in symbols if _is_selection(model, s))
+
+
+@dataclass(frozen=True)
+class MappingEvaluation:
+    """The simulation of a fit mapping at its reference data.
+
+    Attributes:
+        prediction: the observable at every data point.
+        selections: the selections the noise model of the mapping reads, at
+            every data point, see `OptimizationProblem.noise_selections`.
+    """
+
+    prediction: np.ndarray
+    selections: dict[str, np.ndarray]
 
 
 class FitTimeout(Exception):
@@ -347,6 +393,9 @@ class OptimizationProblem(ObjectJSONEncoder):
         #: observes a selection, with the placeholder values of the data which
         #: is fitted
         self.observable_models: list[ObservableModel | None] = []
+        #: the symbols of the noise model of every mapping which the
+        #: simulation selects, see `evaluations`
+        self.noise_selections: list[tuple[str, ...]] = []
         # total weights for points (data points and curve weights)
         self.weights: list[Any] = []
         self.weights_points: list[Any] = []  # weights for data points based on errors
@@ -785,6 +834,18 @@ class OptimizationProblem(ObjectJSONEncoder):
                 y_ref = y_ref[nonnan_mask]
                 if observable_model is not None:
                     observable_model = observable_model.select(nonnan_mask)
+                noise = mapping.noise
+                if noise is not None and (
+                    not noise.placeholders
+                    or len(noise.placeholder_values) == nonnan_mask.size
+                ):
+                    # a noise model of other measurements is reported by the
+                    # log-likelihood
+                    noise = noise.select(nonnan_mask)
+                noise_selections = _noise_selections(
+                    model, noise, f"{sid}.{mapping_id}"
+                )
+                selections_set.update(noise_selections)
                 if y_ref_err is not None:
                     y_ref_err = y_ref_err[nonnan_mask]
 
@@ -888,7 +949,8 @@ class OptimizationProblem(ObjectJSONEncoder):
                 self.y_references.append(y_ref)
                 self.y_errors.append(y_ref_err)
                 self.y_errors_type.append(y_ref_err_type)
-                self.noise_models.append(mapping.noise)
+                self.noise_models.append(noise)
+                self.noise_selections.append(noise_selections)
                 self.observable_models.append(observable_model)
                 # weights
                 self.weights.append(weight)
@@ -1848,6 +1910,27 @@ class OptimizationProblem(ObjectJSONEncoder):
     ) -> dict[int, np.ndarray]:
         """Get the simulation of fit mappings at their reference data.
 
+        See `evaluations`, whose predictions these are.
+
+        Args:
+            x: values of the parameters in the units of the model.
+            indices: indices of the fit mappings, the training data by
+                default.
+
+        Returns:
+            The prediction at the reference data of every mapping, by the
+            index of the mapping.
+        """
+        return {
+            k: evaluation.prediction
+            for k, evaluation in self.evaluations(x, indices).items()
+        }
+
+    def evaluations(
+        self, x: np.ndarray, indices: Sequence[int] | None = None
+    ) -> dict[int, MappingEvaluation]:
+        """Get the simulation of fit mappings at their reference data.
+
         The predictions are the values of the observable as they are
         simulated, i.e. the baseline of a curve is not subtracted, whatever
         the residual of the settings is.
@@ -1859,8 +1942,8 @@ class OptimizationProblem(ObjectJSONEncoder):
                 default.
 
         Returns:
-            The prediction at the reference data of every mapping, by the
-            index of the mapping.
+            The prediction and the selections of the noise model at the
+            reference data of every mapping, by the index of the mapping.
 
         Raises:
             ValueError: if the problem is not initialized, if no simulator is
@@ -1889,7 +1972,7 @@ class OptimizationProblem(ObjectJSONEncoder):
             simulator=simulator, quantities=quantities, evaluated=evaluated, x=values
         )
 
-        predictions: dict[int, np.ndarray] = {}
+        evaluations: dict[int, MappingEvaluation] = {}
         for k in sorted(evaluated):
             result = results[k]
             if result is None:
@@ -1898,8 +1981,13 @@ class OptimizationProblem(ObjectJSONEncoder):
                     f"'{self.experiment_keys[k]}.{self.mapping_keys[k]}' failed "
                     f"for the parameters '{dict(zip(self.pids, values, strict=True))}'."
                 )
-            predictions[k] = self._interpolate(k, result)
-        return predictions
+            evaluations[k] = MappingEvaluation(
+                prediction=self._interpolate(k, result),
+                selections={
+                    s: self._at_data(k, result, s) for s in self.noise_selections[k]
+                },
+            )
+        return evaluations
 
     def _interrupted_result(
         self, err: Exception, x0log: np.ndarray
