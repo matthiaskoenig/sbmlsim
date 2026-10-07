@@ -4,10 +4,11 @@ import json
 import logging
 import re
 from collections import defaultdict
-from collections.abc import Iterable, Iterator
+from collections.abc import Iterable, Iterator, Mapping
 from copy import deepcopy
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any
 
 from matplotlib import pyplot as plt
 
@@ -22,7 +23,7 @@ from sbmlsim.plot.serialization_matplotlib import (
 )
 from sbmlsim.result import XResult
 from sbmlsim.serialization import ObjectJSONEncoder
-from sbmlsim.simulation import AbstractSim, ScanSim, TimecourseSim
+from sbmlsim.simulation import AbstractSim, ScanSim, Simulation, TimecourseSim
 from sbmlsim.simulator import SimulatorSerial
 from sbmlsim.task import Task
 from sbmlsim.units import UnitRegistry
@@ -104,7 +105,7 @@ class SimulationExperiment:
         self._data: dict[str, Data] = {}
         self._datasets: dict[str, DataSet] = {}
         self._fit_mappings: dict[str, FitMapping] = {}
-        self._simulations: dict[str, AbstractSim] = {}
+        self._simulations: dict[str, AbstractSim | Simulation] = {}
         self._tasks: dict[str, Task] = {}
         self._figures: dict[str, Figure] = {}
         self._results: dict[str, XResult] = {}
@@ -165,7 +166,7 @@ class SimulationExperiment:
         """
         return {}
 
-    def simulations(self) -> dict[str, AbstractSim]:
+    def simulations(self) -> Mapping[str, AbstractSim | Simulation]:
         """Define simulation definitions.
 
         The child classes fill out the information.
@@ -352,9 +353,9 @@ class SimulationExperiment:
                 )
 
         for key, sim in self._simulations.items():
-            if not isinstance(sim, AbstractSim):
+            if not isinstance(sim, AbstractSim | Simulation):
                 raise ValueError(
-                    f"simulations must be of type AbstractSim, but "
+                    f"simulations must be of type Simulation or ScanSim, but "
                     f"simulation '{key}' has type: '{type(sim)}'"
                 )
 
@@ -491,7 +492,19 @@ class SimulationExperiment:
             for task_key in task_keys:
                 task = self._tasks[task_key]
 
-                sim: AbstractSim = self._simulations[task.simulation_id]
+                sim = self._simulations[task.simulation_id]
+                if isinstance(sim, Simulation):
+                    self._results[task_key] = simulator.run_simulation(
+                        _with_model_changes(sim, model.changes)
+                    )
+                    continue
+                if isinstance(sim, ScanSim) and isinstance(sim.simulation, Simulation):
+                    scan = ScanSim(
+                        simulation=_with_model_changes(sim.simulation, model.changes),
+                        dimensions=sim.dimensions,
+                    )
+                    self._results[task_key] = simulator.run_scan(scan)
+                    continue
 
                 # normalization before running to ensure correct serialization
                 sim.normalize(uinfo=simulator.uinfo)
@@ -747,3 +760,22 @@ class ExperimentResult:
         return {
             "output_path": self.output_path,
         }
+
+
+def _with_model_changes(simulation: Simulation, changes: dict[str, Any]) -> Simulation:
+    """Get a simulation with the changes of its model.
+
+    A change of the model is a pre-initialization change of the simulation
+    unless the simulation sets the target itself, which wins.
+
+    Args:
+        simulation: the simulation of a task.
+        changes: the changes of the model of the task.
+
+    Returns:
+        The simulation with the changes of the model.
+    """
+    targets = simulation.targets()
+    return simulation.with_values(
+        {key: value for key, value in changes.items() if key not in targets}
+    )
