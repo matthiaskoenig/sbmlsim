@@ -230,3 +230,10 @@ Both suites follow the pattern of the PEtab SciML suite (`sbmlsim/sciml/testsuit
 - PEtab v1; v1 problems are converted with `petab1to2`.
 - Models in other languages than SBML (PySB cases of the test suite).
 - The complete benchmark on a server; this design delivers the runner it uses.
+
+## Amendments after phase 1
+
+- **The initialization** does not use `init(...)`: roadrunner regenerates the model on every such call (0.3 to 0.5 s on the HCTZ model). `RoadrunnerSBMLModel.initialize` resets the model, sets the pre-initialization values as current values and evaluates the initial assignments which read a changed entity again, from a helper parameter `<x>__initial` with an assignment rule of the math of every initial assignment. A model is not reset twice without a simulation in between, roadrunner queues the events at the time 0 with every reset.
+- **Events and a start other than 0**: roadrunner evaluates the triggers of the events at the reset, at the time 0, and keeps their state across resets; an event whose trigger depends on the time may fire at the start of a simulation which does not start at 0. The executor warns once per model.
+- **The parameters of a fit have one kind.** Every parameter of the parameter table of a PEtab problem which is not an entity of the model is added to the model as a constant parameter (`AbstractModel(parameters=...)`): a parameter of an observable, of the noise or of a condition is a model parameter like any other, set before the initialization and read from the simulation by the observables and the noise formulas. The kinds `MODEL`, `OBSERVABLE` and `NOISE` of a `FitParameter` are not needed.
+- **Model changes** fill the `preinit_changes` of a simulation which does not set the target before the initialization itself (`Simulation.with_preinit_defaults`); a `Change` of the target at a later time does not replace them.

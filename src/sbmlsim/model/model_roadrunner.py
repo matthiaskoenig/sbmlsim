@@ -2,7 +2,7 @@
 
 import logging
 import tempfile
-from collections.abc import Sequence
+from collections.abc import Collection, Mapping, Sequence
 from pathlib import Path
 from typing import TYPE_CHECKING, ClassVar
 
@@ -76,8 +76,13 @@ class RoadrunnerSBMLModel(AbstractModel):
         selections: list[str] | None = None,
         ureg: UnitRegistry | None = None,
         settings: dict | None = None,
+        parameters: dict[str, float] | None = None,
     ):
-        """Load the model into roadrunner, with changes, selections and settings."""
+        """Load the model into roadrunner, with changes, selections and settings.
+
+        The `parameters` are added to the model as constant parameters, see
+        `AbstractModel`; they are not selected by default.
+        """
         super().__init__(
             source=source,
             language_type=AbstractModel.LanguageType.SBML,
@@ -86,6 +91,7 @@ class RoadrunnerSBMLModel(AbstractModel):
             name=name,
             base_path=base_path,
             selections=selections,
+            parameters=parameters,
         )
 
         # check SBML
@@ -105,6 +111,9 @@ class RoadrunnerSBMLModel(AbstractModel):
             # the ones of the model it simulates
             r = self.load_roadrunner_model(source=self.source)
             sbml = r.getCurrentSBML()
+        if self.parameters:
+            sbml = _with_parameters(sbml, self.parameters)
+            r = None
         self.symbols: ModelSymbols = ModelSymbols.from_sbml(sbml)
         #: entity with an initial assignment -> the parameter whose
         #: assignment rule is the math of the initial assignment, see
@@ -120,7 +129,9 @@ class RoadrunnerSBMLModel(AbstractModel):
             if r is not None
             else (
                 roadrunner.RoadRunner(sbml)
-                if self.initial_helpers or self.source.content is not None
+                if self.initial_helpers
+                or self.parameters
+                or self.source.content is not None
                 else self.load_roadrunner_model(source=self.source)
             )
         )
@@ -137,7 +148,7 @@ class RoadrunnerSBMLModel(AbstractModel):
         # set selections
         # logger.info("set selections")
         self.selections = self.set_timecourse_selections(
-            self.r, selections=self.selections
+            self.r, selections=self.selections, exclude=set(self.parameters)
         )
 
         # set integrator settings
@@ -188,11 +199,8 @@ class RoadrunnerSBMLModel(AbstractModel):
         other species.
 
         Args:
-            assignments: the pre-initialization assignments of a plan, values
-                only.
-
-        Raises:
-            ValueError: if an assignment is a formula.
+            assignments: the pre-initialization assignments of a plan. A
+                formula reads the parameters after the values are set.
         """
         self._reset()
         r = self.r_loaded
@@ -201,23 +209,36 @@ class RoadrunnerSBMLModel(AbstractModel):
         concentrations: set[str] = set()
         amounts: set[str] = set()
         for a in assignments:
-            if a.value is None:
-                raise ValueError(
-                    f"The pre-initialization value of '{a.target}' is the "
-                    f"formula '{a.formula}', it must be a number."
-                )
             entity = symbols.entity(a.target)
             entities.add(entity)
             if a.kind is TargetKind.SPECIES_CONCENTRATION:
                 concentrations.add(entity)
             elif a.kind is TargetKind.SPECIES_AMOUNT:
                 amounts.add(entity)
-        for a in assignments:
+        # the values first, then the formulas, which read the values and are
+        # evaluated before any of them is set
+        values = [a for a in assignments if a.value is not None]
+        for a in values:
             if a.kind is TargetKind.COMPARTMENT:
                 self._set_compartment(a.target, float(a.value), concentrations, amounts)  # ty: ignore[invalid-argument-type]
-        for a in assignments:
+        for a in values:
             if a.kind is not TargetKind.COMPARTMENT:
                 self._set(a.target, float(a.value))  # ty: ignore[invalid-argument-type]
+        # the package of the simulator imports the models
+        from sbmlsim.simulator.formula import compile_formula
+
+        evaluated: list[tuple[Assignment, float]] = []
+        for a in assignments:
+            if a.formula is not None:
+                formula = compile_formula(a.formula)
+                evaluated.append(
+                    (a, formula.evaluate([r.getValue(s) for s in formula.symbols]))
+                )
+        for a, value in evaluated:
+            if a.kind is TargetKind.COMPARTMENT:
+                self._set_compartment(a.target, value, concentrations, amounts)
+            else:
+                self._set(a.target, value)
 
         dependencies = symbols.initial_assignment_dependencies or {}
         changed = set(entities)
@@ -309,8 +330,11 @@ class RoadrunnerSBMLModel(AbstractModel):
         """Create from AbstractModel."""
         logger.debug("RoadrunnerSBMLModel from AbstractModel")
         return RoadrunnerSBMLModel(
-            source=abstract_model.source.source,
+            source=abstract_model.source.content
+            if abstract_model.source.content is not None
+            else abstract_model.source.source,
             changes=abstract_model.changes,
+            parameters=abstract_model.parameters,
             sid=abstract_model.sid,
             name=abstract_model.name,
             base_path=abstract_model.base_path,
@@ -394,9 +418,22 @@ class RoadrunnerSBMLModel(AbstractModel):
 
     @classmethod
     def set_timecourse_selections(
-        cls, r: roadrunner.RoadRunner, selections: list[str] | None = None
+        cls,
+        r: roadrunner.RoadRunner,
+        selections: list[str] | None = None,
+        exclude: Collection[str] = (),
     ) -> list[str]:
-        """Set the model selections for timecourse simulation."""
+        """Set the selections of the simulations.
+
+        Args:
+            r: the roadrunner instance.
+            selections: the selections, every entity of the model without.
+            exclude: ids which are not selected by default, e.g. the
+                parameters a problem added to the model.
+
+        Returns:
+            The selections.
+        """
         if selections is None:
             r_model: roadrunner.ExecutableModel = r.model
 
@@ -407,7 +444,7 @@ class RoadrunnerSBMLModel(AbstractModel):
                 *[
                     pid
                     for pid in r_model.getGlobalParameterIds()
-                    if not pid.endswith(INITIAL_SUFFIX)
+                    if not pid.endswith(INITIAL_SUFFIX) and pid not in exclude
                 ],
                 *r_model.getReactionIds(),
                 *r_model.getCompartmentIds(),
@@ -615,3 +652,32 @@ def _is_hierarchical(sbml: str) -> bool:
         return False
     doc: libsbml.SBMLDocument = libsbml.readSBMLFromString(sbml)
     return bool(doc.isPackageEnabled("comp"))
+
+
+def _with_parameters(sbml: str, parameters: Mapping[str, float]) -> str:
+    """Add constant parameters to a model.
+
+    Args:
+        sbml: the SBML of the model.
+        parameters: the parameters by their id and value.
+
+    Returns:
+        The SBML with the parameters.
+
+    Raises:
+        ValueError: if the model already has an entity of the id of a
+            parameter.
+    """
+    doc: libsbml.SBMLDocument = libsbml.readSBMLFromString(sbml)
+    model: libsbml.Model = doc.getModel()
+    for pid, value in parameters.items():
+        if model.getElementBySId(pid) is not None:
+            raise ValueError(
+                f"The parameter '{pid}' which is added to the model is an entity "
+                f"of the model already."
+            )
+        parameter: libsbml.Parameter = model.createParameter()
+        parameter.setId(pid)
+        parameter.setValue(float(value))
+        parameter.setConstant(True)
+    return libsbml.writeSBMLToString(doc)

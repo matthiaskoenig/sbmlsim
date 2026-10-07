@@ -15,21 +15,24 @@ the noise formula gives its scale `s`, which are the definitions of PEtab v2:
     laplace       log p = -log(2 s)                - |m - y| / s
     log-laplace   log p = -log(2 s m)              - |log m - log y| / s
 
-The functions of arrays (`log_density`, `noise_values`) know nothing of a
-problem, `log_likelihood` and `gradient` simulate one.
+`chi2` is the sum of the squares of the `normalized_residuals`, and
+`log_prior` the log density of the prior of every parameter, which
+`unnorm_log_posterior` adds to the log-likelihood.
+
+The functions of arrays (`log_density`, `normalized_residuals`,
+`noise_values`) know nothing of a problem, `log_likelihood`, `chi2` and
+`gradient` simulate one.
 """
 
 from __future__ import annotations
 
 import logging
 from collections.abc import Mapping
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 import numpy as np
 import pandas as pd
-import sympy as sp
 from numpy.typing import ArrayLike
-from petab.v2.math import sympify_petab
 
 from sbmlsim.fit.objects import NoiseDistribution, NoiseModel
 from sbmlsim.fit.options import ResidualType
@@ -37,7 +40,7 @@ from sbmlsim.fit.parameters import ParameterSet
 from sbmlsim.log import some_ids
 
 if TYPE_CHECKING:
-    from sbmlsim.fit.optimization import OptimizationProblem
+    from sbmlsim.fit.optimization import MappingEvaluation, OptimizationProblem
 
 logger = logging.getLogger(__name__)
 
@@ -84,6 +87,64 @@ def log_density(
             finite, or if a measurement or a simulation of a logarithmic
             distribution is not positive.
     """
+    m, y, s, distribution = _checked(measurement, simulation, sigma, distribution)
+    residual = _residual(m, y, s, distribution)
+    # the density of the measurement and not of its logarithm, i.e. the
+    # jacobian `1 / m` of the transformation is part of it
+    scale = s * m if distribution.is_log else s
+    if distribution in {NoiseDistribution.NORMAL, NoiseDistribution.LOG_NORMAL}:
+        return -0.5 * np.log(2.0 * np.pi * np.square(scale)) - 0.5 * np.square(residual)
+    return -np.log(2.0 * scale) - np.abs(residual)
+
+
+def normalized_residuals(
+    measurement: ArrayLike,
+    simulation: ArrayLike,
+    sigma: ArrayLike,
+    distribution: NoiseDistribution = NoiseDistribution.NORMAL,
+) -> np.ndarray:
+    """Get the residual of every measurement in units of the scale of its noise.
+
+    The residual is `(m - y) / s`, and `(log m - log y) / s` for a
+    logarithmic distribution, whose square summed over the measurements is
+    the `chi2` of PEtab.
+
+    Args:
+        measurement: the measured values.
+        simulation: the simulated values at the measurements.
+        sigma: scale of the noise, one value or one value per measurement.
+        distribution: distribution of the noise.
+
+    Returns:
+        The normalized residual of every measurement.
+
+    Raises:
+        ValueError: see `log_density`.
+    """
+    return _residual(*_checked(measurement, simulation, sigma, distribution))
+
+
+def _residual(
+    m: np.ndarray, y: np.ndarray, s: np.ndarray, distribution: NoiseDistribution
+) -> np.ndarray:
+    """Get the normalized residual of checked arrays, see `normalized_residuals`."""
+    if distribution.is_log:
+        return (np.log(m) - np.log(y)) / s
+    return (m - y) / s
+
+
+def _checked(
+    measurement: ArrayLike,
+    simulation: ArrayLike,
+    sigma: ArrayLike,
+    distribution: NoiseDistribution,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray, NoiseDistribution]:
+    """Check the arrays of a log density, see `log_density`.
+
+    Returns:
+        The measurements, the simulations, the scale of every measurement and
+        the distribution.
+    """
     m = np.asarray(measurement, dtype=float)
     y = np.asarray(simulation, dtype=float)
     if m.shape != y.shape:
@@ -122,46 +183,7 @@ def log_density(
                     f"values, but '{int(np.sum(values <= 0.0))}' of the "
                     f"'{name}' values are not: '{values[values <= 0.0]}'."
                 )
-        residual = (np.log(m) - np.log(y)) / s
-        # the density of the measurement and not of its logarithm, i.e. the
-        # jacobian `1 / m` of the transformation is part of it
-        scale = s * m
-    else:
-        residual = (m - y) / s
-        scale = s
-
-    if distribution in {NoiseDistribution.NORMAL, NoiseDistribution.LOG_NORMAL}:
-        return -0.5 * np.log(2.0 * np.pi * np.square(scale)) - 0.5 * np.square(residual)
-    return -np.log(2.0 * scale) - np.abs(residual)
-
-
-def _evaluate(formula: str | float, variables: Mapping[str, Any], context: str) -> Any:
-    """Evaluate a formula of the math of PEtab on the values of its symbols.
-
-    Args:
-        formula: the formula, or a number.
-        variables: value of every symbol, a number or an array.
-        context: what the formula belongs to, for the message of an error.
-
-    Returns:
-        The value of the formula, an array if one of its symbols is one.
-
-    Raises:
-        ValueError: if a symbol of the formula has no value.
-    """
-    if isinstance(formula, int | float):
-        return float(formula)
-    expression = sympify_petab(formula)
-    symbols = sorted(expression.free_symbols, key=str)
-    missing = [str(symbol) for symbol in symbols if str(symbol) not in variables]
-    if missing:
-        raise ValueError(
-            f"{context}: the formula '{formula}' uses '{missing}', which are "
-            f"neither placeholders nor parameters with a value. A noise formula "
-            f"is a number, a parameter or a formula of them."
-        )
-    function = sp.lambdify(symbols, expression, modules="numpy")
-    return function(*[variables[str(symbol)] for symbol in symbols])
+    return m, y, s, distribution
 
 
 def noise_values(
@@ -169,14 +191,16 @@ def noise_values(
     size: int,
     values: Mapping[str, float] | None = None,
     simulation: ArrayLike | None = None,
+    selections: Mapping[str, ArrayLike] | None = None,
 ) -> np.ndarray:
     """Get the scale of the noise of every measurement of a fit mapping.
 
     The symbols of the noise formula are resolved in this order: a placeholder
     is the value of the measurement, the symbol of the observable is the
-    simulation, a parameter is the value of `values` and, without one, the
-    nominal value of the noise model. A parameter which a problem estimates is
-    therefore evaluated at the value it is given, it is not estimated.
+    simulation, a selection of the simulation is its value at the
+    measurement, which is what a condition or the fit gave it, a parameter is
+    the value of `values` and, without one, the nominal value of the noise
+    model.
 
     Args:
         noise: noise model of the fit mapping.
@@ -185,6 +209,8 @@ def noise_values(
             parameter set.
         simulation: the simulated values at the measurements, for a noise
             formula which holds the observable.
+        selections: values of the selections of the simulation at the
+            measurements, see `NoiseModel.symbols`.
 
     Returns:
         The scale of the noise, one value per measurement.
@@ -196,39 +222,45 @@ def noise_values(
             not a positive finite number.
     """
     context = f"noise formula '{noise.formula}'"
-    parameters: dict[str, Any] = {p.pid: p.value for p in noise.parameters}
-    parameters.update(values or {})
-
-    variables: dict[str, Any] = dict(parameters)
-    if noise.observable is not None:
-        if simulation is None:
-            raise ValueError(
-                f"{context}: the formula holds the observable "
-                f"'{noise.observable}', so it requires the simulation."
-            )
-        variables[noise.observable] = np.asarray(simulation, dtype=float)
-    if noise.placeholders:
-        if len(noise.placeholder_values) != size:
-            raise ValueError(
-                f"{context}: '{len(noise.placeholder_values)}' values of the "
-                f"placeholders '{list(noise.placeholders)}' for '{size}' "
-                f"measurements."
-            )
-        for k, placeholder in enumerate(noise.placeholders):
-            variables[placeholder] = np.array(
-                [
-                    float(_evaluate(row[k], parameters, context))
-                    for row in noise.placeholder_values
-                ],
-                dtype=float,
-            )
-
-    sigma = np.array(
-        np.broadcast_to(
-            np.asarray(_evaluate(noise.formula, variables, context), dtype=float),
-            (size,),
+    if noise.placeholders and len(noise.placeholder_values) != size:
+        raise ValueError(
+            f"{context}: '{len(noise.placeholder_values)}' values of the "
+            f"placeholders '{list(noise.placeholders)}' for '{size}' "
+            f"measurements."
         )
-    )
+    try:
+        formula = noise.formula_model
+    except ValueError as err:
+        raise ValueError(f"{context}: {err}") from err
+    parameters: dict[str, float] = {p.pid: p.value for p in noise.parameters}
+    parameters.update(values or {})
+    selections = selections or {}
+
+    variables: dict[str, np.ndarray] = {}
+    missing: list[str] = []
+    for symbol in formula.symbols:
+        if symbol == noise.observable:
+            if simulation is None:
+                raise ValueError(
+                    f"{context}: the formula holds the observable "
+                    f"'{noise.observable}', so it requires the simulation."
+                )
+            variables[symbol] = np.asarray(simulation, dtype=float)
+        elif symbol in selections:
+            variables[symbol] = np.asarray(selections[symbol], dtype=float)
+        elif symbol in parameters:
+            variables[symbol] = np.full(size, float(parameters[symbol]))
+        else:
+            missing.append(symbol)
+    if missing:
+        raise ValueError(
+            f"{context}: the formula uses '{missing}', which are neither "
+            f"placeholders nor selections of the simulation nor parameters with "
+            f"a value. A noise formula is a number, a parameter or a formula of "
+            f"them."
+        )
+
+    sigma = formula.evaluate(variables, size=size)
     if np.any(~np.isfinite(sigma)) or np.any(sigma <= 0.0):
         raise ValueError(
             f"{context}: the scale of the noise must be a positive finite "
@@ -334,8 +366,53 @@ def _check_problem(problem: OptimizationProblem) -> None:
         )
 
 
+def _noise_terms(
+    problem: OptimizationProblem,
+    pset: ParameterSet,
+    evaluations: Mapping[int, MappingEvaluation] | None = None,
+) -> list[tuple[str, np.ndarray, np.ndarray, np.ndarray, NoiseDistribution]]:
+    """Simulate a problem and get the noise of its training data.
+
+    Args:
+        problem: initialized optimization problem.
+        pset: the parameters to simulate at.
+        evaluations: the evaluations of the problem at the parameters, which
+            are simulated if they are not given.
+
+    Returns:
+        Per fit mapping of the training data its name, the measurements, the
+        simulations, the scale of the noise and the distribution.
+
+    Raises:
+        ValueError: if a simulation failed or if the noise model of a mapping
+            cannot be evaluated.
+    """
+    if evaluations is None:
+        evaluations = problem.evaluations(pset.x(problem.pids))
+    terms = []
+    for k in problem.training_indices:
+        key = f"{problem.experiment_keys[k]}.{problem.mapping_keys[k]}"
+        noise = noise_model_of(problem, k)
+        measurement = np.asarray(problem.y_references[k], dtype=float)
+        simulation = evaluations[k].prediction
+        try:
+            sigma = noise_values(
+                noise,
+                size=measurement.size,
+                values=pset.values,
+                simulation=simulation,
+                selections=evaluations[k].selections,
+            )
+        except ValueError as err:
+            raise ValueError(f"'{problem.opid}', fit mapping '{key}': {err}") from err
+        terms.append((key, measurement, simulation, sigma, noise.distribution))
+    return terms
+
+
 def log_likelihood(
-    problem: OptimizationProblem, parameters: ParameterSet | None = None
+    problem: OptimizationProblem,
+    parameters: ParameterSet | None = None,
+    evaluations: Mapping[int, MappingEvaluation] | None = None,
 ) -> float:
     """Get the log-likelihood of the training data of a problem.
 
@@ -349,6 +426,8 @@ def log_likelihood(
         parameters: parameters to evaluate the log-likelihood at, with the
             values of the parameters of the fit and, optionally, of parameters
             of the noise formulas. `nominal_parameters` by default.
+        evaluations: `problem.evaluations` at the parameters, of the training
+            data at least, which saves the simulation.
 
     Returns:
         The log-likelihood.
@@ -361,28 +440,133 @@ def log_likelihood(
     """
     _check_problem(problem)
     pset = parameters if parameters is not None else nominal_parameters(problem)
-    predictions = problem.predictions(pset.x(problem.pids))
-
     total = 0.0
-    for k in problem.training_indices:
-        key = f"{problem.experiment_keys[k]}.{problem.mapping_keys[k]}"
-        noise = noise_model_of(problem, k)
-        measurement = np.asarray(problem.y_references[k], dtype=float)
-        simulation = predictions[k]
+    for key, measurement, simulation, sigma, distribution in _noise_terms(
+        problem, pset, evaluations
+    ):
         try:
-            sigma = noise_values(
-                noise,
-                size=measurement.size,
-                values=pset.values,
-                simulation=simulation,
-            )
             density = log_density(
-                measurement, simulation, sigma, distribution=noise.distribution
+                measurement, simulation, sigma, distribution=distribution
             )
         except ValueError as err:
             raise ValueError(f"'{problem.opid}', fit mapping '{key}': {err}") from err
         total += float(np.sum(density))
     return total
+
+
+def chi2(
+    problem: OptimizationProblem,
+    parameters: ParameterSet | None = None,
+    evaluations: Mapping[int, MappingEvaluation] | None = None,
+) -> float:
+    """Get the chi2 of the training data of a problem.
+
+    The sum of the squares of the `normalized_residuals` of the training
+    data, which is the `chi2` of PEtab.
+
+    Args:
+        problem: initialized optimization problem.
+        parameters: parameters to evaluate chi2 at, see `log_likelihood`.
+        evaluations: see `log_likelihood`.
+
+    Returns:
+        The chi2.
+
+    Raises:
+        ValueError: see `log_likelihood`.
+        KeyError: if the parameters lack a parameter of the fit.
+    """
+    _check_problem(problem)
+    pset = parameters if parameters is not None else nominal_parameters(problem)
+    total = 0.0
+    for key, measurement, simulation, sigma, distribution in _noise_terms(
+        problem, pset, evaluations
+    ):
+        try:
+            residuals = normalized_residuals(
+                measurement, simulation, sigma, distribution=distribution
+            )
+        except ValueError as err:
+            raise ValueError(f"'{problem.opid}', fit mapping '{key}': {err}") from err
+        total += float(np.sum(np.square(residuals)))
+    return total
+
+
+def log_prior(
+    problem: OptimizationProblem, parameters: ParameterSet | None = None
+) -> dict[str, float]:
+    """Get the log density of the prior of every parameter of a problem.
+
+    The prior of a parameter is its `Prior`, truncated at its bounds, and the
+    uniform distribution over its bounds without one, which is `0` for a
+    parameter with an infinite bound, i.e. the improper flat prior.
+
+    Args:
+        problem: initialized optimization problem.
+        parameters: parameters to evaluate the priors at,
+            `nominal_parameters` by default.
+
+    Returns:
+        The log prior by the id of the parameter.
+
+    Raises:
+        ValueError: if the problem is not initialized, or if the parameters
+            of a prior do not fit its distribution.
+        KeyError: if the parameters lack a parameter of the fit.
+    """
+    if parameters is None and not problem.is_initialized:
+        raise ValueError(
+            f"'{problem.opid}': the nominal parameters require the resolved "
+            f"problem, call `initialize(settings)` first."
+        )
+    pset = parameters if parameters is not None else nominal_parameters(problem)
+    priors: dict[str, float] = {}
+    for parameter in problem.parameters:
+        value = float(pset.values[parameter.pid])
+        lower, upper = parameter.lower_bound, parameter.upper_bound
+        if parameter.prior is not None:
+            try:
+                priors[parameter.pid] = parameter.prior.log_density(value, lower, upper)
+            except ValueError as err:
+                raise ValueError(
+                    f"'{problem.opid}', parameter '{parameter.pid}': {err}"
+                ) from err
+        elif not lower <= value <= upper:
+            priors[parameter.pid] = -np.inf
+        elif np.isfinite(lower) and np.isfinite(upper):
+            priors[parameter.pid] = -float(np.log(upper - lower))
+        else:
+            priors[parameter.pid] = 0.0
+    return priors
+
+
+def unnorm_log_posterior(
+    problem: OptimizationProblem,
+    parameters: ParameterSet | None = None,
+    evaluations: Mapping[int, MappingEvaluation] | None = None,
+) -> float:
+    """Get the unnormalized log posterior of a problem.
+
+    The sum of the `log_likelihood` and the `log_prior` of the parameters,
+    which is the `unnorm_log_posterior` of PEtab.
+
+    Args:
+        problem: initialized optimization problem.
+        parameters: parameters to evaluate it at, `nominal_parameters` by
+            default.
+        evaluations: see `log_likelihood`.
+
+    Returns:
+        The unnormalized log posterior.
+
+    Raises:
+        ValueError: see `log_likelihood` and `log_prior`.
+        KeyError: if the parameters lack a parameter of the fit.
+    """
+    pset = parameters if parameters is not None else nominal_parameters(problem)
+    return log_likelihood(problem, pset, evaluations) + float(
+        sum(log_prior(problem, pset).values())
+    )
 
 
 #: the orders of the differences of the gradient

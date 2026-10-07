@@ -1,0 +1,35 @@
+{
+  "suite_commit": "fcbddf1b900efabdfbdc2b58452c89556e63f1ce",
+  "n_cases": 35,
+  "n_passed": 28,
+  "expected_failures": {
+    "Chen_MSB2009": {
+      "status": "error",
+      "reason": "roadrunner stalls at the steps of the rules of the model at t = 1799.99 and 2659.99 (piecewise of the time, a sine ramp of 0.01, t + h = t, CV_TOO_MUCH_WORK) with the tolerances 1e-10 and 1e-8; it integrates with 1e-8 and 1e-6, which the other problems are too coarse for"
+    },
+    "Crauste_CellSystems2017": {
+      "status": "tolerance",
+      "reason": "the simulations of the collection differ by up to 1.7 % (6382 against 6489); the log-likelihood agrees with AMICI (-190.96554 against -190.96522), the simulations of the collection are off"
+    },
+    "Froehlich_CellSystems2018": {
+      "status": "error",
+      "reason": "takes more than the 600 s of the script: 9169 experiments with a pre-equilibration each, 28 s per experiment in the integration to the steady state (reading and initializing take 100 s); phase 4, a Newton steady state and one pre-equilibration per distinct condition"
+    },
+    "Fujita_SciSignal2010": {
+      "status": "tolerance",
+      "reason": "the simulations of the collection differ by up to 0.5 % (0.0045); the log-likelihood agrees with AMICI (53.08345 against 53.08378), the simulations of the collection are off"
+    },
+    "Perelson_Science1996": {
+      "status": "tolerance",
+      "reason": "the simulations of the collection are not the ones of the model at the nominal parameters: roadrunner without sbmlsim gives V(0.169) = 1.857e6 as sbmlsim does, the collection 2.036e6; AMICI has no log-likelihood of the problem"
+    },
+    "Sneyd_PNAS2002": {
+      "status": "tolerance",
+      "reason": "the simulations of the collection differ in the conditions Ca_dose_response__5 and __6 by up to 0.027; the log-likelihood agrees with AMICI (319.791776 against 319.791778), the simulations of the collection are off"
+    },
+    "Zheng_PNAS2012": {
+      "status": "tolerance",
+      "reason": "the simulations of the collection are its measurements; the log-likelihood agrees with AMICI (278.333556 against 278.333533)"
+    }
+  }
+}

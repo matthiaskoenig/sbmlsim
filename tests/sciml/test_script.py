@@ -116,7 +116,8 @@ def test_run_without_a_baseline(
     monkeypatch.setattr(script.SciMLSuite, "load", lambda commit: FakeSuite(RESULTS))
     monkeypatch.setattr(script, "BASELINE_PATH", tmp_path / "missing.json")
     assert script.main(["run"]) == 1
-    assert "does not exist" in capsys.readouterr().out
+    # the console wraps a long path, the words of the message stay
+    assert "does not exist" in " ".join(capsys.readouterr().out.split())
     # `baseline` writes it
     assert script.main(["baseline"]) == 0
     assert (tmp_path / "missing.json").is_file()
@@ -152,6 +153,6 @@ def test_the_baseline_drops_the_reason_of_a_changed_status(
         "status": "tolerance",
         "reason": script.MISSING_REASON,
     }
-    output = capsys.readouterr().out
+    output = " ".join(capsys.readouterr().out.split())
     assert "ml_model_import/002" in output
     assert "'shape' -> 'tolerance'" in output

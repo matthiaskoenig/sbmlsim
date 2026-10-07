@@ -120,3 +120,65 @@ def test_the_round_trip_of_a_selection(sbml_model: libsbml.Model) -> None:
     for selection in ["S_amount", "[S_conc]", "k1"]:
         formula = observable_formula(selection, sbml_model)
         assert selection_of_formula(formula, sbml_model) == selection
+
+
+def test_selection_of_a_target(sbml_document: libsbml.SBMLDocument) -> None:
+    """The target of a condition is the selection which means what the model means."""
+    from sbmlsim.fit.petab_v2.symbols import selection_of_target
+
+    model = sbml_document.getModel()
+    assert selection_of_target("S_conc", model) == "[S_conc]"
+    assert selection_of_target("S_amount", model) == "S_amount"
+    assert selection_of_target("k1", model) == "k1"
+    assert selection_of_target("cyto", model) == "cyto"
+
+
+def test_selections_of_a_formula(sbml_document: libsbml.SBMLDocument) -> None:
+    """A concentration based species of a formula is its concentration."""
+    from sbmlsim.fit.petab_v2.symbols import selections_of_formula
+
+    model = sbml_document.getModel()
+    assert (
+        selections_of_formula("cyto + S_conc * k1 + S_amount", model)
+        == "cyto + [S_conc] * k1 + S_amount"
+    )
+    # an identifier which contains the id of a species is another identifier
+    assert selections_of_formula("S_conc_2 + xS_conc", model) == "S_conc_2 + xS_conc"
+
+
+def test_formula_of_selections(sbml_document: libsbml.SBMLDocument) -> None:
+    """A formula of selections is the math of PEtab of what the model means."""
+    from sbmlsim.fit.petab_v2.symbols import formula_of_selections
+
+    model = sbml_document.getModel()
+    assert formula_of_selections("[S_conc] + 2 * k1", model) == "S_conc + 2 * k1"
+    assert (
+        formula_of_selections("S_conc * [S_amount]", model)
+        == "(S_conc * cyto) * (S_amount / cyto)"
+    )
+
+
+def test_the_round_trip_of_a_formula(sbml_document: libsbml.SBMLDocument) -> None:
+    """A formula of PEtab comes back as it was."""
+    from sbmlsim.fit.petab_v2.symbols import (
+        formula_of_selections,
+        selections_of_formula,
+    )
+
+    model = sbml_document.getModel()
+    formula = "log(S_conc) + S_amount * time / k1"
+    selections = selections_of_formula(formula, model)
+    assert selections == "log([S_conc]) + S_amount * time / k1"
+    assert formula_of_selections(selections, model) == formula
+
+
+def test_is_entity(sbml_document: libsbml.SBMLDocument) -> None:
+    """Only the identifier of an entity of the model is an entity."""
+    from sbmlsim.fit.petab_v2.symbols import is_entity
+
+    model = sbml_document.getModel()
+    assert is_entity("S_conc", model)
+    assert is_entity(" k1 ", model)
+    assert not is_entity("S_conc + 1", model)
+    assert not is_entity("unknown", model)
+    assert is_entity("unknown")

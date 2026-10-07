@@ -12,16 +12,18 @@ from sbmlsim.fit import FitSettings
 from sbmlsim.fit.cli import FitDefinition
 from sbmlsim.fit.fisher import jacobian
 from sbmlsim.fit.objects import NoiseDistribution, NoiseModel, NoiseParameter
-from sbmlsim.fit.optimization import OptimizationProblem
+from sbmlsim.fit.optimization import MappingEvaluation, OptimizationProblem
 from sbmlsim.fit.options import ParameterScaleType, ResidualType
 from sbmlsim.fit.parameters import ParameterSet
 from sbmlsim.fit.petab_v2.likelihood import (
+    chi2,
     default_noise_model,
     gradient,
     log_density,
     log_likelihood,
     noise_values,
     nominal_parameters,
+    normalized_residuals,
     stencil,
 )
 
@@ -210,6 +212,55 @@ def test_noise_values_of_a_placeholder_named_like_a_parameter() -> None:
     assert sigma.tolist() == [0.5, 0.25]
 
 
+def test_noise_values_of_a_selection() -> None:
+    """A symbol which the simulation selects has its value at every measurement.
+
+    The simulation knows the value a condition or the fit gave the parameter,
+    so it takes precedence over the values and the nominal value.
+    """
+    noise = NoiseModel(
+        formula="sigma_a * [S]",
+        parameters=(NoiseParameter(pid="sigma_a", value=3.0),),
+    )
+    sigma = noise_values(
+        noise,
+        size=2,
+        values={"sigma_a": 7.0},
+        selections={"sigma_a": np.array([1.0, 2.0]), "[S]": np.array([0.5, 0.5])},
+    )
+    assert sigma == pytest.approx([0.5, 1.0])
+
+
+def test_noise_values_of_a_placeholder_which_reads_a_selection() -> None:
+    """The formula of a placeholder value is evaluated at its measurement."""
+    noise = NoiseModel(
+        formula="sd",
+        placeholders=("sd",),
+        placeholder_values=(("2 * k",), ("k",), (0.5,)),
+    )
+    sigma = noise_values(noise, size=3, selections={"k": np.array([1.0, 3.0, 9.0])})
+    assert sigma == pytest.approx([2.0, 3.0, 0.5])
+
+
+def test_the_symbols_of_a_noise_model() -> None:
+    """The symbols are what a noise formula reads besides placeholders and observable."""
+    noise = NoiseModel(
+        formula="sigma_a * obs_a + sd",
+        placeholders=("sd",),
+        placeholder_values=(("k1 * 2",), (0.5,)),
+        observable="obs_a",
+    )
+    assert noise.symbols == ("k1", "sigma_a")
+
+
+def test_a_selection_of_the_measurements_of_a_noise_model() -> None:
+    """A selection of the measurements keeps their placeholder values."""
+    noise = NoiseModel(
+        formula="sd", placeholders=("sd",), placeholder_values=((1.0,), (2.0,))
+    )
+    assert noise.select(np.array([False, True])).placeholder_values == ((2.0,),)
+
+
 def test_noise_values_require_every_symbol() -> None:
     """A symbol without a value is named."""
     with pytest.raises(ValueError, match="k_unknown"):
@@ -387,6 +438,32 @@ def test_log_likelihood_of_a_unit_noise_is_the_cost(
     )
 
 
+def test_normalized_residuals() -> None:
+    """The residual is the difference in units of the scale of the noise."""
+    m = np.array([1.0, 2.0])
+    y = np.array([1.5, 1.0])
+    sigma = np.array([0.5, 0.5])
+    assert normalized_residuals(m, y, sigma) == pytest.approx([-1.0, 2.0])
+    assert normalized_residuals(
+        m, y, sigma, distribution=NoiseDistribution.LAPLACE
+    ) == pytest.approx([-1.0, 2.0])
+    for distribution in [NoiseDistribution.LOG_NORMAL, NoiseDistribution.LOG_LAPLACE]:
+        assert normalized_residuals(
+            m, y, sigma, distribution=distribution
+        ) == pytest.approx((np.log(m) - np.log(y)) / sigma)
+
+
+def test_chi2_of_a_unit_noise_is_twice_the_cost(
+    op_unit_noise: OptimizationProblem,
+) -> None:
+    """With a normal noise of scale one chi2 is the sum of squares."""
+    problem = op_unit_noise
+    nominal = nominal_parameters(problem)
+    cost = problem.cost_least_square(problem.to_scale(nominal.x(problem.pids)))
+    assert chi2(problem, nominal) == pytest.approx(2.0 * cost, rel=1e-8)
+    assert chi2(problem) == pytest.approx(2.0 * cost, rel=1e-8)
+
+
 def test_gradient_of_a_unit_noise_is_the_gradient_of_the_cost(
     op_unit_noise: OptimizationProblem,
 ) -> None:
@@ -503,15 +580,15 @@ def _record_predictions(
 ) -> list[np.ndarray]:
     """Record the parameters every simulation of the problem is run at."""
     evaluated: list[np.ndarray] = []
-    predictions = problem.predictions
+    evaluations = problem.evaluations
 
     def record(
         x: np.ndarray, indices: list[int] | None = None
-    ) -> dict[int, np.ndarray]:
+    ) -> dict[int, MappingEvaluation]:
         evaluated.append(np.asarray(x, dtype=float).copy())
-        return predictions(x, indices=indices)
+        return evaluations(x, indices=indices)
 
-    monkeypatch.setattr(problem, "predictions", record)
+    monkeypatch.setattr(problem, "evaluations", record)
     return evaluated
 
 
@@ -831,3 +908,21 @@ def test_the_secant_warns(caplog: pytest.LogCaptureFixture) -> None:
     assert [p for p, _ in points] == [0.0, 1.0]
     assert "'p1'" in caplog.text
     assert "secant" in caplog.text
+
+
+def test_log_likelihood_of_given_evaluations(
+    op_unit_noise: OptimizationProblem, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The evaluations of the problem are not simulated again."""
+    problem = op_unit_noise
+    nominal = nominal_parameters(problem)
+    evaluations = problem.evaluations(nominal.x(problem.pids))
+    llh = log_likelihood(problem, nominal)
+    value = chi2(problem, nominal)
+
+    def no_simulation(*args: object, **kwargs: object) -> None:
+        raise AssertionError("the problem is simulated again")
+
+    monkeypatch.setattr(problem, "evaluations", no_simulation)
+    assert log_likelihood(problem, nominal, evaluations=evaluations) == llh
+    assert chi2(problem, nominal, evaluations=evaluations) == value

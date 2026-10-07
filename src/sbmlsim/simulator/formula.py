@@ -16,6 +16,7 @@ import re
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 
+import numpy as np
 import sympy as sp
 from petab.v2.math import sympify_petab
 
@@ -49,6 +50,20 @@ class CompiledFormula:
             The value of the formula.
         """
         return float(self._function(*values))
+
+    def evaluate_array(self, values: Sequence[np.ndarray], size: int) -> np.ndarray:
+        """Evaluate the formula on arrays of the values of its symbols.
+
+        Args:
+            values: the values of the symbols, in the order of `symbols`, one
+                array of `size` values per symbol.
+            size: the number of values, which a formula without symbols needs.
+
+        Returns:
+            The `size` values of the formula.
+        """
+        value = np.asarray(self._function(*values), dtype=float)
+        return np.broadcast_to(value, (size,)).copy()
 
 
 def _selection(name: str) -> str:

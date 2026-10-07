@@ -66,25 +66,6 @@ def _times(times: Times) -> tuple[Time, ...]:
     return tuple(sequence)
 
 
-def _check_numbers(changes: Mapping[str, Any], what: str) -> None:
-    """Refuse a formula among changes which must be numbers.
-
-    Args:
-        changes: target -> value.
-        what: what the changes are, for the message.
-
-    Raises:
-        ValueError: if a value is a formula.
-    """
-    for target, value in changes.items():
-        if isinstance(value, str):
-            raise ValueError(
-                f"The value '{value}' of '{target}' is a formula, {what} are "
-                f"numbers or quantities: they are applied before the model is "
-                f"initialized, when nothing a formula could read has a value."
-            )
-
-
 @dataclass(frozen=True, init=False)
 class Change:
     """Changes of the model at one or several times.
@@ -152,18 +133,10 @@ class SteadyState:
             a simulation which does not reach the steady state by then fails.
     """
 
-    preinit_changes: dict[str, float | Quantity] = field(default_factory=dict)
+    preinit_changes: dict[str, Value] = field(default_factory=dict)
     absolute_tolerance: float = 1e-8
     relative_tolerance: float = 1e-6
     max_time: float = 1e8
-
-    def __post_init__(self) -> None:
-        """Check the changes.
-
-        Raises:
-            ValueError: if a change is a formula.
-        """
-        _check_numbers(self.preinit_changes, "the pre-initialization changes")
 
     def to_dict(self) -> dict[str, Any]:
         """Convert to a dictionary of JSON types."""
@@ -210,7 +183,7 @@ class Simulation:
         end: Time,
         start: Time = 0.0,
         time_unit: str | None = None,
-        preinit_changes: Mapping[str, float | Quantity] | None = None,
+        preinit_changes: Mapping[str, Value] | None = None,
         changes: Sequence[Change] | None = None,
         presimulation: SteadyState | None = None,
         times: Sequence[Time] | Quantity | None = None,
@@ -228,7 +201,7 @@ class Simulation:
         self.time_unit: str | None = time_unit
         self.start: Time = start
         self.end: Time = end
-        self.preinit_changes: dict[str, float | Quantity] = dict(preinit_changes or {})
+        self.preinit_changes: dict[str, Value] = dict(preinit_changes or {})
         self.changes: list[Change] = list(changes or [])
         self.presimulation: SteadyState | None = presimulation
         self.times: tuple[Time, ...] | None = None if times is None else _times(times)
@@ -250,7 +223,6 @@ class Simulation:
             )
         if self.steps is not None and self.steps < 1:
             raise ValueError(f"The 'steps' must be at least 1, not {self.steps}.")
-        _check_numbers(self.preinit_changes, "the pre-initialization changes")
         if self.presimulation is not None:
             shared = sorted(
                 set(self.preinit_changes) & set(self.presimulation.preinit_changes)
@@ -342,13 +314,13 @@ class Simulation:
         own = set(self.preinit_changes)
         if self.presimulation is not None:
             own |= set(self.presimulation.preinit_changes)
-        preinit = {k: v for k, v in values.items() if k not in own}
+        preinit: dict[str, Value] = {k: v for k, v in values.items() if k not in own}
         preinit.update(self.preinit_changes)
         return self._copy(preinit, list(self.changes), self.presimulation)
 
     def _copy(
         self,
-        preinit: Mapping[str, float | Quantity],
+        preinit: Mapping[str, Value],
         changes: Sequence[Change],
         presimulation: SteadyState | None,
     ) -> Simulation:

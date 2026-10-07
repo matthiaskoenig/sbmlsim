@@ -11,6 +11,7 @@ import numpy as np
 import pandas as pd
 import petab.v2 as petab_v2
 import pytest
+import sympy
 import yaml
 
 from examples.hctz_fitting.fitting.fitting import FIT_DEFINITIONS
@@ -244,31 +245,68 @@ def test_an_observable_measured_in_two_experiments_is_written_once(
 
 
 def test_a_formula_observable_is_written_as_its_formula(tmp_path: Path) -> None:
-    """The model of the problem is written, not the one with the observable."""
+    """An observable model is written as its formula, the model as it is."""
     path = write_problem(
         tmp_path / "problem", {"total": "prey + predator"}, {"e1": None}
     )
-    reader = PetabReader.from_yaml(path)
-    reader.derived_dir = tmp_path / "derived"
-    problem = reader.to_optimization_problem(opid="formula")
+    problem = PetabReader.from_yaml(path).to_optimization_problem(opid="formula")
     settings = FitSettings(parameter_scale=ParameterScaleType.LINEAR)
     problem.initialize(settings)
-    assert problem.yid_observable == ["observable_total"]
+    assert problem.yid_observable == ["total"]
 
     yaml_file = to_petab(problem, tmp_path / "export")
     petab_problem = petab_v2.Problem.from_yaml(yaml_file)
     assert (tmp_path / "export" / "lv.xml").is_file()
-    assert not (tmp_path / "export" / "lv_observables.xml").exists()
-    assert not petab_problem.models[0].has_entity_with_id("observable_total")
     (observable,) = petab_problem.observables
     assert str(observable.formula) == "predator + prey"
     info = _extension(petab_problem.config).observables["total"]
     assert info["yid_observable"] is None
+    assert info["y_unit"] == "dimensionless"
 
     restored, _ = from_petab(yaml_file)
     restored.initialize(settings)
-    assert restored.yid_observable == ["observable_total"]
+    assert restored.yid_observable == ["total"]
     assert log_likelihood(restored) == pytest.approx(log_likelihood(problem), rel=1e-9)
+
+
+def test_the_placeholders_of_an_observable_are_written(tmp_path: Path) -> None:
+    """The values of the placeholders are written with their measurements."""
+    path = write_problem(
+        tmp_path / "problem", {"prey_o": "scale_prey * prey + offset"}, {"e1": None}
+    )
+    observables = pd.read_csv(tmp_path / "problem" / "observables.tsv", sep="\t")
+    observables["observablePlaceholders"] = "scale_prey;offset"
+    observables.to_csv(tmp_path / "problem" / "observables.tsv", sep="\t", index=False)
+    measurements = pd.read_csv(tmp_path / "problem" / "measurements.tsv", sep="\t")
+    measurements["observableParameters"] = [
+        f"{1.0 + k};{'alpha' if k % 2 else 0.5}" for k in range(len(measurements))
+    ]
+    measurements.to_csv(
+        tmp_path / "problem" / "measurements.tsv", sep="\t", index=False
+    )
+    problem = PetabReader.from_yaml(path).to_optimization_problem(opid="placeholders")
+    settings = FitSettings(parameter_scale=ParameterScaleType.LINEAR)
+    problem.initialize(settings)
+
+    yaml_file = to_petab(problem, tmp_path / "export")
+    petab_problem = petab_v2.Problem.from_yaml(yaml_file)
+    (observable,) = petab_problem.observables
+    assert [str(p) for p in observable.observable_placeholders] == [
+        "scale_prey",
+        "offset",
+    ]
+    values = [
+        [sympy.sympify(str(v)) for v in m.observable_parameters]
+        for m in petab_problem.measurements
+    ]
+    assert values[:2] == [[1.0, 0.5], [2.0, sympy.Symbol("alpha")]]
+
+    restored, _ = from_petab(yaml_file)
+    restored.initialize(settings)
+    x = np.asarray(problem.x0, dtype=float)
+    np.testing.assert_allclose(
+        restored.predictions(x)[0], problem.predictions(x)[0], rtol=1e-12
+    )
 
 
 def test_a_model_named_model(tmp_path: Path) -> None:
@@ -317,3 +355,88 @@ def test_the_scale_of_a_parameter_survives_the_round_trip(
     assert all(
         scale is None for pid, scale in scales.items() if pid != parameters[0].pid
     )
+
+
+def test_a_formula_change_is_written_as_a_formula(tmp_path: Path) -> None:
+    """A change whose value is a formula is a condition with that formula."""
+    path = write_problem(
+        tmp_path / "problem",
+        {"prey_o": "prey"},
+        {"e1": "c1"},
+        conditions=[("c1", "prey", "2 * beta")],
+    )
+    problem = PetabReader.from_yaml(path).to_optimization_problem(opid="formula")
+    settings = FitSettings(parameter_scale=ParameterScaleType.LINEAR)
+    problem.initialize(settings)
+    x = np.asarray(problem.x0, dtype=float)
+    beta = x[problem.pids.index("beta")]
+    reference = PetabReader.from_yaml(
+        write_problem(
+            tmp_path / "reference",
+            {"prey_o": "prey"},
+            {"e1": "c1"},
+            conditions=[("c1", "prey", str(2 * beta))],
+        )
+    ).to_optimization_problem(opid="reference")
+    reference.initialize(settings)
+    np.testing.assert_allclose(
+        problem.predictions(x)[0], reference.predictions(x)[0], rtol=1e-10
+    )
+
+    yaml_file = to_petab(problem, tmp_path / "export")
+    petab_problem = petab_v2.Problem.from_yaml(yaml_file)
+    values = [
+        str(change.target_value)
+        for condition in petab_problem.conditions
+        for change in condition.changes
+        if change.target_id == "prey"
+    ]
+    assert values == ["2.0*beta"]
+
+    # the tables, not the extension
+    petab_problem.config.extensions = {}
+    restored = PetabReader(
+        petab_problem, base_path=tmp_path / "export"
+    ).to_optimization_problem()
+    restored.initialize(settings)
+    np.testing.assert_allclose(
+        restored.predictions(x)[0], problem.predictions(x)[0], rtol=1e-10
+    )
+
+
+def test_the_prior_of_a_parameter_is_written(tmp_path: Path) -> None:
+    """A prior is the prior of the parameter table, a round trip keeps it."""
+    from sbmlsim.fit.objects import Prior, PriorDistribution
+    from tests.fit.test_petab_v2_reader import _with_priors
+
+    problem = PetabReader.from_yaml(
+        _with_priors(tmp_path / "problem")
+    ).to_optimization_problem(opid="priors")
+    settings = FitSettings(parameter_scale=ParameterScaleType.LINEAR)
+    problem.initialize(settings)
+
+    yaml_file = to_petab(problem, tmp_path / "export")
+    petab_problem = petab_v2.Problem.from_yaml(yaml_file)
+    by_id = {p.id: p for p in petab_problem.parameters}
+    assert str(by_id["alpha"].prior_distribution) == "normal"
+    assert list(by_id["alpha"].prior_parameters) == [1.0, 0.5]
+    assert by_id["beta"].prior_distribution is None
+
+    restored, _ = from_petab(yaml_file)
+    assert {p.pid: p.prior for p in restored.parameters} == {
+        "alpha": Prior(PriorDistribution.NORMAL, (1.0, 0.5)),
+        "beta": None,
+        "sigma": Prior(PriorDistribution.NORMAL, (1.0, 0.5)),
+    }
+
+
+def test_a_prior_is_a_gap_of_the_problem(tmp_path: Path) -> None:
+    """The optimizer does not use a prior, the gaps say so."""
+    from sbmlsim.fit.petab_v2 import gaps_of_problem
+    from tests.fit.test_petab_v2_reader import _with_priors
+
+    problem = PetabReader.from_yaml(
+        _with_priors(tmp_path / "problem")
+    ).to_optimization_problem(opid="priors")
+    problem.initialize(FitSettings(parameter_scale=ParameterScaleType.LINEAR))
+    assert "priors" in {gap.id for gap in gaps_of_problem(problem)}

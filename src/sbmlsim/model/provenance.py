@@ -1,10 +1,8 @@
 """The record of what was derived from a model.
 
-`sbmlsim` writes models which are derived from the model of a problem: the
-model with the compiled networks of a hybrid problem
-(`sbmlsim.sciml.compiler.compile_network`) and the model with the observables
-which are formulas (`sbmlsim.fit.petab_v2.observables.add_observables`). A fit
-simulates the derived model, an export writes the model the problem was
+`sbmlsim` writes models which are derived from the model of a problem, i.e.
+the model with the compiled networks of a hybrid problem
+(`sbmlsim.sciml.compiler.compile_network`). A fit simulates the derived model, an export writes the model the problem was
 defined with. The derived model therefore carries what was added to it, as an
 element of the annotation of the model in the namespace `NAMESPACE`:
 

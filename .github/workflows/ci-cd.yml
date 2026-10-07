@@ -170,6 +170,26 @@ jobs:
     - name: Run the cases of the PEtab SciML test suite against the pinned commit
       run: uv run --no-sync pytest -m sciml_testsuite tests/sciml
 
+  petab:
+    # see the job `testsuite`
+    name: petab test suite
+    if: startsWith(github.ref, 'refs/tags/')
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+    - uses: actions/checkout@v7
+      with:
+        persist-credentials: false
+    - name: Set up the environment
+      uses: ./.github/actions/setup
+      with:
+        python-version: "3.14"
+        sync: --extra dev --no-editable
+    - name: Download the pinned commit
+      run: uv run --no-sync python scripts/petab_testsuite.py download
+    - name: Run the cases of the PEtab test suite against the pinned commit
+      run: uv run --no-sync pytest -m petab_testsuite tests/fit
+
   submission:
     # the results a submission to the SBML Test Suite Database is made of. A
     # release submits against the newest suite, not against the pinned one.
@@ -199,13 +219,14 @@ jobs:
         if-no-files-found: error
 
   release:
-    needs: [tested, testsuite, sciml, submission]
+    needs: [tested, testsuite, sciml, petab, submission]
     # the submission is an attachment, the release goes out without it
     if: >-
       ${{ !cancelled() && startsWith(github.ref, 'refs/tags/')
       && needs.tested.result == 'success'
       && needs.testsuite.result == 'success'
-      && needs.sciml.result == 'success' }}
+      && needs.sciml.result == 'success'
+      && needs.petab.result == 'success' }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
     environment:

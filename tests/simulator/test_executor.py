@@ -210,3 +210,141 @@ def test_steady_state_error_names_the_model() -> None:
     with pytest.raises(SteadyStateError) as err:
         execute(plan, model, ["time", "x"])
     assert "'None'" not in str(err.value)
+
+
+def test_preinit_formula_of_parameters() -> None:
+    """A formula before the initialization reads the parameters as they are set."""
+    res = run(Simulation(end=1, preinit_changes={"[B]": "a0 + b0"}, times=[0]))
+    assert res["[B]"][0] == pytest.approx(2.0)
+    res = run(
+        Simulation(end=1, preinit_changes={"a0": 3.0, "[B]": "a0 + b0"}, times=[0])
+    )
+    assert res["[B]"][0] == pytest.approx(4.0)
+    # the initial assignment A = a0 follows the parameter
+    assert res["[A]"][0] == pytest.approx(3.0)
+
+
+def test_preinit_formula_reads_only_parameters() -> None:
+    """A formula before the initialization cannot read a species, which has no value yet."""
+    model = RoadrunnerSBMLModel(source=sbml())
+    with pytest.raises(ValueError, match=r"'\[A\]'.*parameter"):
+        compile_simulation(
+            Simulation(end=1, preinit_changes={"[B]": "[A] + 1"}),
+            model.symbols,
+            model.uinfo,
+        )
+
+
+def test_steady_state_output_at_infinity() -> None:
+    """An output time `inf` is the steady state after the end of the simulation."""
+    res = run(Simulation(end=1, times=[0, 1, np.inf]))
+    assert res.time[-1] == np.inf
+    assert res["[A]"][-1] == pytest.approx(A_STEADY * 2.0, rel=1e-5)
+    assert res["[A]"][1] != pytest.approx(A_STEADY * 2.0, rel=1e-5)
+
+
+def test_only_the_steady_state_is_an_output() -> None:
+    """A simulation whose only output is the steady state has one row."""
+    res = run(Simulation(end=1, times=[np.inf]))
+    assert res.time.tolist() == [np.inf]
+
+
+#: a concentration S with dS/dt = 1 in a compartment C, and an event which
+#: doubles C once S exceeds 14 (case 0016 of the PEtab test suite)
+EVENT_MODEL = """
+model ev_change
+  compartment C = 4
+  species S in C = 3
+  S' = 1
+  E: at (S > 14), t0=true: C = 2 * C
+end
+"""
+
+
+def test_a_change_triggers_an_event() -> None:
+    """An event whose trigger a change makes true fires at the time of the change."""
+    model = RoadrunnerSBMLModel(source=sbml(EVENT_MODEL))
+    plan = compile_simulation(
+        Simulation(
+            end=15,
+            preinit_changes={"[S]": 2.0},
+            changes=[Change(10, {"[S]": "C + [S]", "C": 8.0})],
+            times=[0, 5, 10, 15],
+        ),
+        model.symbols,
+        model.uinfo,
+    )
+    res = execute(plan, model, ["time", "C", "[S]", "S"])
+    np.testing.assert_allclose(res["C"], [4, 4, 16, 16])
+    np.testing.assert_allclose(res["[S]"], [2, 7, 8, 13])
+    np.testing.assert_allclose(res["S"], [8, 28, 128, 208])
+
+
+def test_an_event_fires_once_after_a_change() -> None:
+    """The event of a change does not fire again when the integration continues."""
+    model = RoadrunnerSBMLModel(
+        source=sbml(
+            "model ev4\n  X = 0\n  Y = 0\n  E: at (X > 1), t0=true: Y = Y + 1\nend"
+        )
+    )
+    plan = compile_simulation(
+        Simulation(end=10, changes=[Change(5, {"X": 2.0})], times=[0, 5, 10]),
+        model.symbols,
+        model.uinfo,
+    )
+    res = execute(plan, model, ["time", "Y"])
+    np.testing.assert_allclose(res["Y"], [0, 1, 1])
+
+
+def test_an_event_at_the_time_of_a_change_fires_after_it() -> None:
+    """An event and a change at one time: the change first, then the event (case 0030)."""
+    model = RoadrunnerSBMLModel(
+        source=sbml(
+            "model ev_time\n  compartment C = 4\n  species S in C = 3\n  S' = 1\n"
+            "  E: at (time >= 10), t0=true: C = 2 * C\nend"
+        )
+    )
+    plan = compile_simulation(
+        Simulation(
+            end=15,
+            preinit_changes={"[S]": 2.0},
+            changes=[Change(10, {"[S]": "C + [S]", "C": 8.0})],
+            times=[0, 5, 10, 15],
+        ),
+        model.symbols,
+        model.uinfo,
+    )
+    res = execute(plan, model, ["time", "C", "[S]", "S"])
+    np.testing.assert_allclose(res["C"], [4, 4, 16, 16])
+    np.testing.assert_allclose(res["S"], [8, 28, 128, 208], rtol=1e-6)
+
+
+#: an event which counts the crossings of `X` above 1
+COUNTER = """
+model counter
+  var X = 0
+  var Y = 0
+  E1: at (X > 1): Y = Y + 1
+end
+"""
+
+
+def test_an_event_of_a_change_at_the_start_after_a_pre_equilibration() -> None:
+    """The change at the start after the steady state triggers the event."""
+    model = RoadrunnerSBMLModel(source=sbml(COUNTER))
+    simulation = Simulation(
+        end=1, steps=2, presimulation=SteadyState(), changes=[Change(0, {"X": 2.0})]
+    )
+    plan = compile_simulation(simulation, model.symbols, model.uinfo)
+    result = execute(plan, model, ["time", "X", "Y"])
+    assert np.asarray(result["Y"]).tolist() == [1.0, 1.0, 1.0]
+
+
+def test_an_event_of_a_change_at_the_end() -> None:
+    """The change at the end triggers the event, its output is after both."""
+    model = RoadrunnerSBMLModel(source=sbml(COUNTER))
+    simulation = Simulation(end=1, steps=2, changes=[Change(1, {"X": 2.0})])
+    plan = compile_simulation(simulation, model.symbols, model.uinfo)
+    result = execute(plan, model, ["time", "X", "Y"])
+    assert np.asarray(result["X"])[-1] == 2.0
+    assert np.asarray(result["Y"]).tolist() == [0.0, 0.0, 1.0]

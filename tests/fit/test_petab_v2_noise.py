@@ -1,12 +1,12 @@
 """Tests of the noise model and the extensions of a PEtab v2 problem."""
 
-import dataclasses
 import logging
 import sys
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
+import numpy as np
 import pandas as pd
 import pytest
 from petab.v1.yaml import load_yaml, write_yaml
@@ -106,8 +106,12 @@ def test_reader_keeps_a_number(petab_iv: Path) -> None:
     )
 
 
-def test_reader_keeps_a_parameter_of_the_noise(petab_iv: Path) -> None:
-    """A parameter of the noise is kept with its value and is not fitted."""
+def test_an_estimated_parameter_of_the_noise_is_fitted(petab_iv: Path) -> None:
+    """An estimated parameter of the noise is a parameter of the fit.
+
+    It is a parameter of the model the fit simulates, so the noise reads its
+    value from the simulation like any other.
+    """
     observable_id = _observable_ids(petab_iv)[0]
     _set_noise(
         petab_iv,
@@ -121,9 +125,8 @@ def test_reader_keeps_a_parameter_of_the_noise(petab_iv: Path) -> None:
     assert reader.noise_model(observable_id) == NoiseModel(
         formula=SIGMA.pid,
         distribution=NoiseDistribution.LOG_NORMAL,
-        parameters=(SIGMA,),
     )
-    assert SIGMA.pid not in {p.pid for p in reader.fit_parameters()}
+    assert SIGMA.pid in {p.pid for p in reader.fit_parameters()}
 
 
 def test_reader_keeps_the_placeholders(petab_iv: Path) -> None:
@@ -143,7 +146,8 @@ def test_reader_keeps_the_placeholders(petab_iv: Path) -> None:
     noise = PetabReader.from_yaml(petab_iv / "problem.yaml").noise_model(observable_id)
     assert noise.placeholders == ("sd",)
     assert noise.placeholder_values == ((0.25,), (SIGMA.pid,))
-    assert noise.parameters == (SIGMA,)
+    # an estimated parameter is a parameter of the fit
+    assert noise.parameters == ()
 
 
 def test_a_fit_parameter_is_not_a_parameter_of_the_noise(petab_iv: Path) -> None:
@@ -175,22 +179,34 @@ def test_a_fit_parameter_without_a_nominal_value_is_not_reported(
     assert "KI__HCTZEX_k" not in caplog.text
 
 
-def test_reader_reports_a_symbol_without_a_value(
+def test_a_noise_formula_over_an_entity_of_the_model(
     petab_iv: Path, caplog: pytest.LogCaptureFixture
 ) -> None:
-    """A noise formula over an entity of the model is read and reported once."""
+    """An entity of a noise formula is read from the simulation at the data."""
     observable_id = _observable_ids(petab_iv)[0]
     _set_noise(petab_iv, observable_id, noiseFormula="0.1 * Vurine")
 
     with caplog.at_level(logging.WARNING, logger="sbmlsim.fit.petab_v2.reader"):
         problem, settings = from_petab(petab_iv / "problem.yaml")
         problem.initialize(settings)
-        # the mappings are resolved again for other settings
-        problem.initialize(dataclasses.replace(settings, absolute_tolerance=1e-12))
-    messages = [r.getMessage() for r in caplog.records if "Vurine" in r.getMessage()]
-    assert len(messages) == 1
+    assert not [r for r in caplog.records if "Vurine" in r.getMessage()]
+    k = next(
+        k
+        for k, noise in enumerate(problem.noise_models)
+        if noise is not None and noise.symbols == ("Vurine",)
+    )
+    assert problem.noise_selections[k] == ("Vurine",)
+    assert np.isfinite(log_likelihood(problem))
+
+
+def test_a_noise_formula_over_an_unknown_symbol(petab_iv: Path) -> None:
+    """A symbol which is neither a selection nor a parameter is named."""
+    observable_id = _observable_ids(petab_iv)[0]
+    _set_noise(petab_iv, observable_id, noiseFormula="0.1 * k_unknown")
+    problem, settings = from_petab(petab_iv / "problem.yaml")
     # the fit does not need the noise, the log-likelihood does
-    with pytest.raises(ValueError, match="Vurine"):
+    problem.initialize(settings)
+    with pytest.raises(ValueError, match="k_unknown"):
         log_likelihood(problem)
 
 

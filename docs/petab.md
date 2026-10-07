@@ -32,7 +32,7 @@ The problem is translated as follows:
 
 Everything the fit evaluates is written, i.e. the training data, the validation data and the outliers, so that a round trip keeps the fit; the kind of every mapping is in the extension. A tool which reads the problem without the extension fits every measurement it finds, which is why the extension is required. The data the model does not describe is `excluded` and is not part of the problem at all.
 
-`sbmlsim` names an observable and the target of a change with a selection of roadrunner, where `S1` is the amount of a species and `[S1]` its concentration, and PEtab has no selections: in the math of a model the identifier of a species is its amount if `hasOnlySubstanceUnits=true` and its concentration if it is `false`. `sbmlsim.fit.petab_v2.symbols` converts between the two rather than dropping the brackets, i.e. the concentration of an amount based species is the formula `S1 / compartment`. A condition assigns an identifier and not an expression, so a change which sets the concentration of an amount based species has no PEtab representation and the export raises.
+`sbmlsim` names an observable and the target of a change with a selection of roadrunner, where `S1` is the amount of a species and `[S1]` its concentration, and PEtab has no selections: in the math of a model the identifier of a species is its amount if `hasOnlySubstanceUnits=true` and its concentration if it is `false`. `sbmlsim.fit.petab_v2.symbols` converts between the two rather than dropping the brackets, i.e. the concentration of an amount based species is the formula `S1 / compartment`. A condition assigns an identifier and not an expression, so a change which sets the concentration of an amount based species has no PEtab representation and the export raises. The value of a change which is a formula, e.g. `[S] + 5`, is written as the formula in the math of PEtab, `S + 5`.
 
 The standard deviation of the data is the noise of a measurement, through the `sd` placeholder the observable declares in `noisePlaceholders`; the `noiseParameter${n}_${observableId}` names of PEtab v1 are gone in v2.
 
@@ -52,7 +52,7 @@ opt_result = run_optimization(problem=problem, settings=settings, size=5, n_core
 
 The reader builds a `SimulationExperiment` from the tables, in the same way the SED-ML parser builds one from a document: the models of the problem are its models, its experiments are the timecourse simulations, its observables are the fit mappings and the measurements of an observable are its dataset. `PetabReader` gives access to the parts.
 
-An experiment of PEtab is a simulation with its conditions and the observables which are measured in it, which is what a `FitMappingCollection` is, so the reader gives one collection back per experiment of the problem. A fit mapping is an observable in an experiment: it is named after its observable, and `<observable>_<experiment>` when the observable is measured in several experiments. The math of an observable formula is translated into the math of SBML, e.g. `log` of PEtab is the natural logarithm and `log` of a formula of SBML is the one to the base 10. A fit which is written and read again therefore comes back as one collection per simulation rather than as the collections it was defined with, which is the same fit of the same data.
+An experiment of PEtab is a simulation with its conditions and the observables which are measured in it, which is what a `FitMappingCollection` is, so the reader gives one collection back per experiment of the problem. A fit mapping is an observable in an experiment: it is named after its observable, and `<observable>_<experiment>` when the observable is measured in several experiments. An observable which is the identifier of an entity is the selection of the entity, with its unit. Any other observable is an `ObservableModel` (`sbmlsim.fit.objects`): the formula in the math of PEtab over the selections of roadrunner, e.g. `log` is the natural logarithm and a concentration based species is its concentration `[S]`, which the fit evaluates on the simulation at the measurements; the `observableParameters` of every measurement are the values of its `observablePlaceholders`, numbers or formulas of parameters. The model is not rewritten for an observable, and the export writes the formula and the values of the placeholders back. A fit which is written and read again therefore comes back as one collection per simulation rather than as the collections it was defined with, which is the same fit of the same data.
 
 ## What PEtab does not express
 
@@ -75,7 +75,7 @@ console.print(gaps_table(gaps_of_problem(problem)))
 A gap is of one of three kinds:
 
 - **extension**: PEtab has no place for it and the extension carries it, i.e. the units, the settings of the fit, the kind of every mapping, the output grid of the timecourses, the metadata of a curve and the settings of the integrator. The scale the optimizer searches in is part of the settings, which is where PEtab v2 puts it as well: it removed the `parameterScale` of its parameter table because the scale is a property of the optimization and not of the problem, so the bounds and the start values are written on the linear scale. A parameter with a scale of its own (`FitParameter.scale`), e.g. an element of a neural network on the linear scale, is the `sciml-parameter-scale` gap. The round trip through `sbmlsim` is exact, a tool which reads the problem without the extension gets a valid PEtab problem which does not know these things.
-- **lossy**: the information is transformed. The noise model of PEtab is its objective and is only evaluated by `sbmlsim`, the weights of `sbmlsim` are not the standard deviation PEtab uses as the noise, a pre-simulation of a finite duration is not the pre-equilibration of PEtab, and the reader builds one simulation experiment for a problem, so a task selects the observables of the whole problem rather than those of the experiment a measurement came from.
+- **lossy**: the information is transformed. The noise model and the priors of PEtab are its objective and are only evaluated by `sbmlsim`, a parameter of the noise is estimated but not fitted by the weighted least squares, the weights of `sbmlsim` are not the standard deviation PEtab uses as the noise, and the reader builds one simulation experiment for a problem, so a task selects the observables of the whole problem rather than those of the experiment a measurement came from.
 - **unsupported**: the export raises. A structural model change (`ModelChange.clamp_species`), an observable which is a python function and a mapping whose x is not the time of the simulation have no PEtab representation. The reader raises for a problem which requires the extension of another tool.
 
 The round trip of the HCTZ example keeps the settings, the parameters with their units, the mappings with their kinds and the reference data of every mapping, and its cost agrees to `7e-6`, which is the `selections` gap above.
@@ -90,13 +90,23 @@ PEtab defines the objective of a problem as the likelihood of its measurements u
 from dataclasses import replace
 from pathlib import Path
 
-from sbmlsim.fit.petab_v2 import from_petab, gradient, log_likelihood
+from sbmlsim.fit.petab_v2 import (
+    chi2,
+    from_petab,
+    gradient,
+    log_likelihood,
+    log_prior,
+    unnorm_log_posterior,
+)
 
 problem, settings = from_petab(Path("results") / "petab" / "problem.yaml")
 problem.initialize(settings)
 
 llh = log_likelihood(problem)
 llh_fit = log_likelihood(problem, parameters=opt_result.parameter_set())
+chi2_fit = chi2(problem, parameters=opt_result.parameter_set())
+priors = log_prior(problem)  # by the id of the parameter
+posterior = unnorm_log_posterior(problem)
 
 # a gradient needs an integrator which is more exact than its step
 problem.initialize(
@@ -110,7 +120,7 @@ problem.initialize(
 grad = gradient(problem)
 ```
 
-`log_likelihood` simulates the problem at the parameters and sums the log density of every measurement of the training data; the validation data and the outliers do not enter, and neither do the residual, the weights and the loss function of the `FitSettings`. Without parameters it is evaluated at the nominal values, i.e. the start values of the parameters, which are the `nominalValue` of the parameter table of a problem which was read. The simulation `y` is the median of the distribution of the measurement `m` and the noise formula gives its scale `σ`, which are the definitions of PEtab v2:
+`log_likelihood` simulates the problem at the parameters and sums the log density of every measurement of the training data; the validation data and the outliers do not enter, and neither do the residual, the weights and the loss function of the `FitSettings`. Without parameters it is evaluated at the nominal values, i.e. the start values of the parameters, which are the `nominalValue` of the parameter table of a problem which was read; a nominal value outside of the bounds of an estimated parameter is clipped into them for the start value with a warning, and `PetabReader.nominal_parameters(problem)` gives the nominal values of the table, which is where PEtab evaluates a problem. The simulation `y` is the median of the distribution of the measurement `m` and the noise formula gives its scale `σ`, which are the definitions of PEtab v2:
 
 | `noiseDistribution` | log density of a measurement |
 | --- | --- |
@@ -119,16 +129,18 @@ grad = gradient(problem)
 | `laplace` | `-log(2σ) - abs(m - y) / σ` |
 | `log-laplace` | `-log(2σ m) - abs(log m - log y) / σ` |
 
-The reader keeps the noise formula and the noise distribution of every observable as the `NoiseModel` of its fit mapping, `problem.noise_models` holds them after `initialize`, and the export writes them back, so a round trip keeps the noise. The symbols of a noise formula are resolved as follows:
+The reader keeps the noise formula and the noise distribution of every observable as the `NoiseModel` of its fit mapping, in the selections of roadrunner like an observable, `problem.noise_models` holds them after `initialize`, and the export writes them back, so a round trip keeps the noise. Every parameter of the parameter table is a parameter of the model the fit simulates, so the symbols of a noise formula are resolved as follows:
 
 | symbol | value |
 | --- | --- |
-| a placeholder of `noisePlaceholders` | the `noiseParameters` of the measurement, a number or a formula of parameters |
+| a placeholder of `noisePlaceholders` | the `noiseParameters` of the measurement, a number or a formula of the selections |
 | the id of the observable | the simulation at the measurement |
-| a parameter of the fit | the value of the parameter set |
-| another parameter of the parameter table | the value of the parameter set if it has one, the `nominalValue` otherwise |
+| an entity of the model, e.g. a parameter of the parameter table or a species | the simulation at the measurement, i.e. the value of the parameter set for a parameter of the fit and the value a condition gives it |
+| a parameter of a `NoiseModel` which the model does not have | the value of the parameter set if it has one, the nominal value otherwise |
 
-A parameter of the noise which the problem estimates is therefore evaluated and not estimated, which is the `noise-parameters` gap: `log_likelihood(problem, ParameterSet(sid="fit", values={..., "sd_obs": 0.1}))` gives the log-likelihood another tool reports for its estimate. A noise formula over anything else, e.g. a species of the model, is read with a warning and `log_likelihood` raises for it. A fit mapping which has no noise model, i.e. every mapping of a problem which is defined in python, has a normal noise whose standard deviation is the error of its reference data as the problem resolves it: the standard deviations of the data, the standard errors when the data has none, and for a point whose error is zero or missing the largest error of its curve; data without errors, or whose errors are all zero or missing, has the scale `1.0`. The log-likelihood uses these errors and the export writes them, so a problem and its PEtab problem have the same log-likelihood. A `NoiseModel` is given to a `FitMapping` with its `noise` argument.
+A parameter of the noise which the problem estimates is a parameter of the fit, and the weighted least squares of a fit does not depend on it, which is the `noise-parameters` gap: it keeps its start value in a fit, and `log_likelihood` evaluates the noise at the value of the parameter set it is given.
+
+`chi2` is the sum of the squares of the residuals in units of the scale of the noise, `(m - y) / σ` and `(log m - log y) / σ` for the logarithmic distributions, which is the `chi2` of PEtab. `log_prior` gives the log density of the prior of every parameter of the fit, the `Prior` of the `FitParameter` truncated at its bounds as PEtab v2 defines it (the distributions of `petab`), and the uniform prior over the bounds for a parameter without one; `unnorm_log_posterior` is the sum of the log-likelihood and the log priors. The reader keeps the `priorDistribution` and the `priorParameters` of a parameter as its prior and the export writes them; the optimizer does not use them, which is the `priors` gap. A fit mapping which has no noise model, i.e. every mapping of a problem which is defined in python, has a normal noise whose standard deviation is the error of its reference data as the problem resolves it: the standard deviations of the data, the standard errors when the data has none, and for a point whose error is zero or missing the largest error of its curve; data without errors, or whose errors are all zero or missing, has the scale `1.0`. The log-likelihood uses these errors and the export writes them, so a problem and its PEtab problem have the same log-likelihood. A `NoiseModel` is given to a `FitMapping` with its `noise` argument.
 
 The log-likelihood is the one of the measurements, so a problem whose residuals are relative to the baseline of a curve (`ABSOLUTE_TO_BASELINE`, `NORMALIZED_TO_BASELINE`) has none and `log_likelihood` raises. The logarithmic distributions require positive measurements and simulations.
 

@@ -14,6 +14,7 @@ process, see `sbmlsim.simulator.formula`.
 
 from __future__ import annotations
 
+import functools
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field, replace
 from enum import StrEnum
@@ -26,6 +27,9 @@ from sbmlsim.model.symbols import ModelSymbols, TargetKind
 from sbmlsim.simulation.definition import Simulation, SteadyState, Time
 from sbmlsim.simulator.formula import compile_formula
 from sbmlsim.units import Quantity, UnitsInformation
+
+#: the tolerances of the steady state of an output at the time `inf`
+STEADY_STATE = SteadyState()
 
 
 @dataclass(frozen=True)
@@ -97,6 +101,8 @@ class Plan:
         steady_state: the pre-equilibration, `None` without one.
         output: the output of the simulation.
         times: the output times of `OutputMode.TIMES`, empty otherwise.
+        steady_state_output: the steady state after the end of the simulation,
+            the output at the time `inf`, `None` without one.
         time_shift: added to the time of the result.
         symbols: the symbols of the model, which resolve a target `with_values`
             adds.
@@ -111,6 +117,7 @@ class Plan:
     times: tuple[float, ...]
     time_shift: float
     symbols: ModelSymbols = field(repr=False, compare=False)
+    steady_state_output: SteadyStatePlan | None = None
 
     def with_values(self, values: Mapping[str, float]) -> Plan:
         """Get the plan with other values of targets.
@@ -162,6 +169,24 @@ class Plan:
         return replace(
             self, preinit=tuple(preinit), events=events, steady_state=steady_state
         )
+
+
+@functools.lru_cache(maxsize=4096)
+def _factor(units: Any, unit: str) -> float:
+    """Get the factor which converts a unit into another, see `_to`."""
+    return float(units._REGISTRY.Quantity(1.0, units).to(unit).magnitude)
+
+
+def _to(value: Quantity, unit: str) -> float:
+    """Convert a quantity into a unit, the factor of a pair of units once.
+
+    The changes of a model are the same quantities in every simulation of a
+    fit, and pint converts slowly. A unit with an offset, e.g. a temperature
+    in degree Celsius, is converted directly.
+    """
+    if not value._is_multiplicative:
+        return float(value.to(unit).magnitude)
+    return float(value.magnitude) * _factor(value.units, unit)
 
 
 class _Converter:
@@ -232,7 +257,7 @@ class _Converter:
                     f"means."
                 )
             try:
-                magnitude = value.to(unit or "dimensionless").magnitude
+                magnitude = _to(value, unit or "dimensionless")
             except (DimensionalityError, UndefinedUnitError) as err:
                 raise ValueError(
                     f"The value '{value}' of '{target}' cannot be converted into "
@@ -256,8 +281,28 @@ class _Converter:
             )
 
     def preinit(self, changes: Mapping[str, Any]) -> tuple[Assignment, ...]:
-        """Get the assignments of pre-initialization changes."""
-        return tuple(self.assignment(t, v) for t, v in changes.items())
+        """Get the assignments of pre-initialization changes.
+
+        A formula before the initialization reads parameters only: nothing
+        else has a value before the model is initialized (PEtab v2, the
+        conditions of the first period).
+
+        Raises:
+            ValueError: if a formula reads anything but a parameter.
+        """
+        assignments = tuple(self.assignment(t, v) for t, v in changes.items())
+        for a in assignments:
+            if a.formula is None:
+                continue
+            for symbol in compile_formula(a.formula).symbols:
+                if symbol not in self.symbols.parameters:
+                    raise ValueError(
+                        f"The formula '{a.formula}' of '{a.target}' before the "
+                        f"initialization reads '{symbol}', which is not a "
+                        f"parameter: nothing else has a value before the model "
+                        f"is initialized."
+                    )
+        return assignments
 
 
 def compile_simulation(
@@ -311,12 +356,23 @@ def compile_simulation(
 
     output = OutputMode.INTEGRATOR
     times: tuple[float, ...] = ()
+    steady_output: SteadyStatePlan | None = None
     if simulation.steps is not None:
         output = OutputMode.TIMES
         times = tuple(float(t) for t in np.linspace(start, end, simulation.steps + 1))
     elif simulation.times is not None:
         output = OutputMode.TIMES
-        times = tuple(sorted({convert.time(t) for t in simulation.times}))
+        converted = {convert.time(t) for t in simulation.times}
+        if np.inf in converted:
+            # the steady state after the end, see the executor
+            converted.discard(np.inf)
+            steady_output = SteadyStatePlan(
+                preinit=(),
+                absolute_tolerance=STEADY_STATE.absolute_tolerance,
+                relative_tolerance=STEADY_STATE.relative_tolerance,
+                max_time=STEADY_STATE.max_time,
+            )
+        times = tuple(sorted(converted))
         outside = [t for t in times if not start <= t <= end]
         if outside:
             raise ValueError(
@@ -334,6 +390,7 @@ def compile_simulation(
         times=times,
         time_shift=convert.time(simulation.time_shift),
         symbols=symbols,
+        steady_state_output=steady_output,
     )
 
 

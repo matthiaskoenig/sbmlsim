@@ -25,7 +25,13 @@ from sbmlsim.fit.petab_v2.gaps import (
     gaps_of_problem,
     gaps_table,
 )
-from sbmlsim.fit.petab_v2.likelihood import gradient, log_likelihood
+from sbmlsim.fit.petab_v2.likelihood import (
+    chi2,
+    gradient,
+    log_likelihood,
+    log_prior,
+    unnorm_log_posterior,
+)
 from sbmlsim.fit.petab_v2.reader import PetabReader, from_petab
 
 __all__ = [
@@ -37,10 +43,13 @@ __all__ = [
     "PetabExporter",
     "PetabReader",
     "SbmlsimExtension",
+    "chi2",
     "from_petab",
     "gaps_of_problem",
     "gaps_table",
     "gradient",
     "log_likelihood",
+    "log_prior",
     "to_petab",
+    "unnorm_log_posterior",
 ]

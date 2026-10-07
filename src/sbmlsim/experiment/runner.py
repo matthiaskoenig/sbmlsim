@@ -27,7 +27,7 @@ logger = logging.getLogger(__name__)
 
 #: the model of an experiment, i.e. what decides whether two experiments can
 #: share one loaded roadrunner instance
-ModelKey = tuple[str, str, tuple[tuple[str, str], ...]]
+ModelKey = tuple[str, str, tuple[tuple[str, str], ...], tuple[tuple[str, float], ...]]
 
 
 def model_key(abstract_model: AbstractModel) -> ModelKey:
@@ -54,6 +54,7 @@ def model_key(abstract_model: AbstractModel) -> ModelKey:
         str(abstract_model.source.source),
         str(abstract_model.language_type),
         changes,
+        tuple(sorted(abstract_model.parameters.items())),
     )
 
 

@@ -14,12 +14,14 @@ the fit which was written, and falls back on the tables when it is not, which
 is the case for a problem of another tool.
 """
 
+import functools
 import logging
 from collections.abc import Mapping
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 from urllib.request import url2pathname
 
+import libsbml
 import numpy as np
 import pandas as pd
 import petab.v2 as petab_v2
@@ -40,9 +42,12 @@ from sbmlsim.fit.objects import (
     NoiseDistribution,
     NoiseModel,
     NoiseParameter,
+    ObservableModel,
+    Prior,
 )
 from sbmlsim.fit.optimization import OptimizationProblem
 from sbmlsim.fit.options import FitSettings, ParameterScaleType
+from sbmlsim.fit.parameters import ParameterSet
 from sbmlsim.fit.petab_v2.extension import (
     SCIML_EXTENSION_ID,
     SbmlsimExtension,
@@ -51,16 +56,14 @@ from sbmlsim.fit.petab_v2.extension import (
     known_extensions,
     simulation_of_timecourses,
 )
-from sbmlsim.fit.petab_v2.observables import (
-    MODEL_SUFFIX,
-    add_observables,
+from sbmlsim.fit.petab_v2.likelihood import nominal_parameters
+from sbmlsim.fit.petab_v2.symbols import (
     is_entity,
+    selection_of_formula,
+    selection_of_target,
+    selections_of_formula,
+    split_selection,
 )
-from sbmlsim.fit.petab_v2.observables import (
-    observable_id as petab_observable_id,
-)
-from sbmlsim.fit.petab_v2.symbols import selection_of_formula, split_selection
-from sbmlsim.mathml import expression_to_formula
 from sbmlsim.model import AbstractModel
 from sbmlsim.simulation import Change, Simulation, SteadyState
 from sbmlsim.task import Task
@@ -130,12 +133,10 @@ class PetabReader:
                 directory of its YAML file by default.
             name: name of the simulation experiment class which is created, the
                 id of the problem by default.
-            derived_dir: directory the models the fit simulates are written
-                to, next to the model by default: the model which carries the
-                networks of the problem, `<stem>_sciml.xml`, and the model
-                which carries its observables, `<stem>_observables.xml`. A
-                model is only written if the problem has networks in the
-                model or an observable which is a formula.
+            derived_dir: directory the model the fit simulates is written to,
+                next to the model by default: the model which carries the
+                networks of the problem, `<stem>_sciml.xml`. It is only
+                written if the problem has networks in the model.
             sciml: the block of the extension of PEtab SciML, a `SciMLConfig`
                 or the dictionary of the YAML. It is the block of the
                 configuration of the problem by default, which a problem
@@ -171,7 +172,7 @@ class PetabReader:
         if not petab_problem.measurements:
             raise ValueError("The PEtab problem has no measurements.")
 
-        #: the model which carries the observables, by the file it came from
+        #: the model the fit simulates, by the file it came from
         self._model_sources: dict[Path, Path] = {}
         self.derived_dir: Path | None = (
             Path(derived_dir) if derived_dir is not None else None
@@ -241,6 +242,8 @@ class PetabReader:
         #: the noise models by the id of their observable, read once: the
         #: mappings are resolved again by every `initialize`
         self._noise_models: dict[str, NoiseModel] = {}
+        #: the observable model of every fit mapping, see `observable_model`
+        self._observable_models: dict[str, ObservableModel | None] = {}
 
         self.sciml = self._read_sciml(extensions)
 
@@ -457,12 +460,7 @@ class PetabReader:
         return unit if unit else DEFAULT_VALUE_UNIT
 
     def models(self) -> dict[str, AbstractModel]:
-        """Get the models of the experiment, one per model of the problem.
-
-        An observable which is a formula over the entities of the model is not
-        something roadrunner selects, so the model the fit simulates carries it
-        as an entity, see `sbmlsim.fit.petab_v2.observables`.
-        """
+        """Get the models of the experiment, one per model of the problem."""
         changes = self._nominal_changes()
         return {
             model.model_id: AbstractModel(
@@ -470,9 +468,47 @@ class PetabReader:
                 sid=model.model_id,
                 language_type=AbstractModel.LanguageType.SBML,
                 changes=dict(changes),
+                parameters=self._added_parameters(model),
             )
             for model in self.petab_problem.models
         }
+
+    def _added_parameters(self, model: Any) -> dict[str, float]:
+        """Get the parameters of the parameter table which the model lacks.
+
+        A parameter of the parameter table which is not an entity of the
+        model, e.g. a scaling of an observable or a standard deviation of the
+        noise, is added to the model as a constant parameter with its nominal
+        value: the conditions, the observables and the noise read it like any
+        parameter of the model, and the fit sets it like any parameter.
+
+        Args:
+            model: model of the PEtab problem.
+
+        Returns:
+            The nominal value of every such parameter, `0.0` without one.
+        """
+        # the model the fit simulates, which may be derived from the model of
+        # the problem, e.g. with the networks of PEtab SciML
+        document: libsbml.SBMLDocument = libsbml.readSBMLFromFile(
+            str(self._model_source(model))
+        )
+        source_model: libsbml.Model = document.getModel()
+        added: dict[str, float] = {}
+        for parameter in self.petab_problem.parameters:
+            if model.has_entity_with_id(parameter.id) or (
+                source_model is not None
+                and source_model.getElementBySId(parameter.id) is not None
+            ):
+                continue
+            if self.sciml is not None and parameter.id in self.sciml.parameter_ids:
+                # an array of a network, which its hybridization holds
+                continue
+            nominal = parameter.nominal_value
+            added[parameter.id] = (
+                float(nominal) if isinstance(nominal, int | float) else 0.0
+            )
+        return added
 
     def _nominal_changes(self) -> dict[str, Quantity]:
         """Get the values of the parameters which are not estimated.
@@ -502,27 +538,13 @@ class PetabReader:
                 )
         return changes
 
-    def _formula_observables(self) -> dict[str, str]:
-        """Get the observables which are a formula and not an entity."""
-        sbml_model = self._sbml_model()
-        return {
-            # the math of PEtab is not the math of a formula of SBML: `log`
-            # is the natural logarithm in the one and the logarithm to the
-            # base 10 in the other
-            observable.id: expression_to_formula(observable.formula)
-            for observable in self.petab_problem.observables
-            if not is_entity(str(observable.formula), sbml_model)
-        }
-
     def _model_source(self, model: Any) -> Path:
         """Get the file of the model the fit simulates.
 
-        The model of the problem is used as it is when it has no networks
-        and every observable is an entity of it. Otherwise the networks of
-        the right hand side and of the observables are compiled into a copy,
-        `<stem>_sciml.xml`, and the observables which are formulas are
-        written into a copy of that, see `derived_dir`. The models are
-        written once.
+        The model of the problem is used as it is when it has no networks.
+        Otherwise the networks of the right hand side and of the observables
+        are compiled into a copy, `<stem>_sciml.xml`, see `derived_dir`. The
+        model is written once.
 
         Args:
             model: model of the PEtab problem.
@@ -559,10 +581,6 @@ class PetabReader:
                 except NetworkCompilationError as err:
                     # e.g. `gelu` with the error function, which has no MathML
                     raise SciMLProblemError(str(err), gap="sciml-layer-sbml") from err
-        formulas = self._formula_observables()
-        if formulas:
-            derived = derived_dir / f"{source.stem}{MODEL_SUFFIX}{source.suffix}"
-            source = add_observables(source, formulas, derived)
         self._model_sources[path] = source
         return source
 
@@ -648,9 +666,7 @@ class PetabReader:
         pre-equilibration, a `SteadyState` whose conditions are applied before
         the initialization; the next period is then a change at the start.
         """
-        conditions = {
-            condition.id: condition for condition in self.petab_problem.conditions
-        }
+        conditions = self._conditions
         periods = sorted(experiment.periods, key=lambda p: p.time)
         steady = [p for p in periods if np.isinf(p.time)]
         finite = [p for p in periods if not np.isinf(p.time)]
@@ -687,10 +703,9 @@ class PetabReader:
 
         Raises:
             ValueError: if the period uses a condition the problem does not
-                define, or if a change is neither a number nor the id of an
-                estimated parameter.
+                define.
         """
-        estimated = self._estimated_parameter_ids()
+        versions = self._versions()
         changes: dict[str, Any] = {}
         for condition_id in period.condition_ids:
             condition = conditions.get(condition_id)
@@ -714,21 +729,21 @@ class PetabReader:
                     # the input of a network, which its hybridization holds for
                     # the simulation of the experiment
                     continue
+                # the ids of PEtab mean what the model means, a concentration
+                # based species is its concentration
+                sbml_model = self._sbml_model()
+                target = selection_of_target(change.target_id, sbml_model)
                 if _is_number(change.target_value):
-                    changes[change.target_id] = _to_float(change.target_value)
+                    changes[target] = _to_float(change.target_value)
                     continue
-                if str(change.target_value) in estimated:
-                    # the value is the id of an estimated parameter, i.e. a
-                    # versioned parameter's binding rather than a number:
-                    # `ParameterMapping` sets the target of every simulation of
-                    # the group it covers, see `_versions`
+                if str(change.target_value) in versions:
+                    # the value is the id of a versioned parameter, i.e. its
+                    # binding rather than a number: `ParameterMapping` sets
+                    # the target of every simulation of the group it covers,
+                    # see `_versions`
                     continue
-                raise ValueError(
-                    f"The condition '{condition.id}' of the experiment "
-                    f"'{experiment.id}' assigns '{change.target_id}' the "
-                    f"value '{change.target_value}', which is neither a "
-                    f"number nor the id of an estimated parameter. Such a "
-                    f"condition has no representation in `sbmlsim`."
+                changes[target] = selections_of_formula(
+                    petab_math_str(change.target_value), sbml_model
                 )
         return changes
 
@@ -756,13 +771,25 @@ class PetabReader:
             experiment_id: id of the experiment, `None` for the measurements
                 which name no experiment.
         """
-        times = [
-            measurement.time
-            for measurement in self.petab_problem.measurements
-            if (measurement.experiment_id or None) == experiment_id
-            and np.isfinite(measurement.time)
-        ]
-        return float(max(times)) if times else 0.0
+        return self._last_times.get(experiment_id, 0.0)
+
+    @functools.cached_property
+    def _last_times(self) -> dict[str | None, float]:
+        """Get the last finite time of the measurements of every experiment."""
+        last: dict[str | None, float] = {}
+        for measurement in self.petab_problem.measurements:
+            if not np.isfinite(measurement.time):
+                continue
+            experiment_id = measurement.experiment_id or None
+            last[experiment_id] = max(
+                last.get(experiment_id, -np.inf), float(measurement.time)
+            )
+        return last
+
+    @functools.cached_property
+    def _conditions(self) -> dict[str, Any]:
+        """Get the conditions of the problem by their id."""
+        return {condition.id: condition for condition in self.petab_problem.conditions}
 
     def tasks(self) -> dict[str, Task]:
         """Get the tasks, one per experiment of the problem."""
@@ -812,11 +839,15 @@ class PetabReader:
             info = self.observable_info(key)
             # without the extension the data is in the units of the model,
             # which is what PEtab measures in
-            yid = info.get("yid_observable") or self._selection_of(observable_id)
             time_unit = info.get("x_unit") or self._unit_of("time", DEFAULT_TIME_UNIT)
-            value_unit = info.get("y_unit") or self._unit_of(
-                split_selection(yid)[0], DEFAULT_VALUE_UNIT
-            )
+            observable_model = self.observable_model(key)
+            if observable_model is None:
+                yid = info.get("yid_observable") or self._selection_of(observable_id)
+                value_unit = info.get("y_unit") or self._unit_of(
+                    split_selection(yid)[0], DEFAULT_VALUE_UNIT
+                )
+            else:
+                value_unit = observable_model.unit
 
             data: dict[str, Any] = {
                 "time": [measurement.time for measurement in measurements],
@@ -858,8 +889,12 @@ class PetabReader:
             experiment_id = measurements[0].experiment_id or DEFAULT_EXPERIMENT
             task_id = f"task_{experiment_id}"
 
-            observable_yid = info.get("yid_observable") or self._selection_of(
+            observable_model = self.observable_model(key)
+            # an observable model observes a formula, its `y` is its name
+            observable_yid = (
                 observable_id
+                if observable_model is not None
+                else info.get("yid_observable") or self._selection_of(observable_id)
             )
             observable_xid = info.get("xid_observable") or "time"
 
@@ -884,8 +919,100 @@ class PetabReader:
                 observable=observable,
                 weight=info.get("weight_mapping", 1.0),
                 noise=self.noise_model(key),
+                observable_model=observable_model,
             )
         return mappings
+
+    def observable_model(self, key: str) -> ObservableModel | None:
+        """Get the observable model of a fit mapping of the problem.
+
+        An observable whose formula is the identifier of an entity of the
+        model is the selection of the entity, which keeps its unit. Every
+        other observable is an `ObservableModel`: its formula in the
+        selections of roadrunner, evaluated on the simulation at the
+        measurements, with the observable parameters of every measurement as
+        the values of its placeholders. The observable model is read once.
+
+        Args:
+            key: key of the fit mapping, see `noise_model`.
+
+        Returns:
+            The observable model, `None` for an observable which is an entity.
+
+        Raises:
+            ValueError: if the problem has no fit mapping of the key, or if a
+                measurement does not have a value for every placeholder.
+        """
+        if key not in self._observable_models:
+            self._observable_models[key] = self._read_observable_model(key)
+        return self._observable_models[key]
+
+    @functools.cached_property
+    def _observable_formulas(self) -> dict[str, str]:
+        """Get the formula of every observable in the selections of roadrunner."""
+        sbml_model = self._sbml_model()
+        return {
+            observable.id: selections_of_formula(
+                petab_math_str(observable.formula), sbml_model
+            )
+            for observable in self.petab_problem.observables
+        }
+
+    def _read_observable_model(self, key: str) -> ObservableModel | None:
+        """Read the observable model of a fit mapping, see `observable_model`."""
+        observable_id = self.observable_id(key)
+        info = self.observable_info(key)
+        if info.get("yid_observable"):
+            # the selection of the fit which was written
+            return None
+        observable = self._observables[observable_id]
+        sbml_model = self._sbml_model()
+        if is_entity(str(observable.formula), sbml_model):
+            return None
+
+        def selections(value: Any) -> float | str:
+            formula = _formula(value)
+            if isinstance(formula, str):
+                return selections_of_formula(formula, sbml_model)
+            return formula
+
+        placeholders = tuple(str(p) for p in observable.observable_placeholders)
+        rows: list[tuple[float | str, ...]] = []
+        if placeholders:
+            rows = [
+                tuple(selections(value) for value in measurement.observable_parameters)
+                for measurement in self._measurements.get(key, [])
+            ]
+        try:
+            return ObservableModel(
+                formula=self._observable_formulas[observable_id],
+                placeholders=placeholders,
+                placeholder_values=tuple(rows),
+                unit=info.get("y_unit") or DEFAULT_VALUE_UNIT,
+            )
+        except ValueError as err:
+            raise ValueError(f"Observable '{observable_id}': {err}") from err
+
+    def measurement_rows(self) -> list[tuple[str, int]]:
+        """Get the data point of every measurement of the problem.
+
+        The measurements of a fit mapping are its data in the order of their
+        time, so the measurement table and the data of the fit differ in
+        their order.
+
+        Returns:
+            The key of the fit mapping and the position in its data of every
+            measurement, in the order of the measurement table.
+        """
+        positions = {
+            id(measurement): (key, position)
+            for key, measurements in self._measurements.items()
+            for position, measurement in enumerate(measurements)
+        }
+        return [
+            positions[id(measurement)]
+            for measurement in self.petab_problem.measurements
+        ]
 
     def observable_id(self, key: str) -> str:
         """Get the observable of a fit mapping of the problem.
@@ -954,15 +1081,40 @@ class PetabReader:
             raise ValueError(f"The problem has no observable '{observable_id}'.")
         observable = self._observables[observable_id]
 
+        sbml_model = self._sbml_model()
+
+        def selections(value: Any) -> float | str:
+            # the identifiers of PEtab are what the model means, i.e. a
+            # concentration based species is its concentration `[S]`
+            formula = _formula(value)
+            if isinstance(formula, str):
+                return selections_of_formula(formula, sbml_model)
+            return formula
+
         placeholders = tuple(str(p) for p in observable.noise_placeholders)
+        # a placeholder of the observable in the noise formula, e.g. its scale,
+        # has the observable parameter of the measurement
+        formula_symbols = {
+            str(symbol)
+            for symbol in getattr(observable.noise_formula, "free_symbols", set())
+        }
+        observable_placeholders = [
+            (k, str(placeholder))
+            for k, placeholder in enumerate(observable.observable_placeholders)
+            if str(placeholder) in formula_symbols
+            and str(placeholder) not in placeholders
+        ]
+        placeholders += tuple(placeholder for _, placeholder in observable_placeholders)
         expressions: list[Any] = [observable.noise_formula]
         rows: list[tuple[float | str, ...]] = []
         if placeholders:
             for measurement in self._measurements.get(key, []):
-                expressions.extend(measurement.noise_parameters)
-                rows.append(
-                    tuple(_formula(value) for value in measurement.noise_parameters)
-                )
+                values = list(measurement.noise_parameters) + [
+                    measurement.observable_parameters[k]
+                    for k, _ in observable_placeholders
+                ]
+                expressions.extend(values)
+                rows.append(tuple(selections(value) for value in values))
 
         symbols = sorted(
             {
@@ -977,6 +1129,9 @@ class PetabReader:
             if symbol == observable_id:
                 continue
             parameter = self._parameters.get(symbol)
+            if parameter is None and self._in_model(symbol):
+                # an entity of the model, which the simulation selects
+                continue
             if parameter is not None and self._is_fit_parameter(parameter):
                 # the value is the one of the parameter set, a nominal value
                 # is not needed
@@ -1008,7 +1163,7 @@ class PetabReader:
 
         try:
             return NoiseModel(
-                formula=str(_formula(observable.noise_formula)),
+                formula=str(selections(observable.noise_formula)),
                 distribution=NoiseDistribution(str(observable.noise_distribution)),
                 placeholders=placeholders,
                 placeholder_values=tuple(rows),
@@ -1021,17 +1176,13 @@ class PetabReader:
     def _is_fit_parameter(self, parameter: Any) -> bool:
         """Check whether a parameter of the problem is a parameter of the fit.
 
-        A parameter of the fit is estimated and is an entity of a model or a
-        version of one, see `_versions`. An estimated parameter which is
-        neither is a parameter of the noise or of an observable, which
-        `sbmlsim` does not fit.
+        Every estimated parameter is a parameter of the fit, see
+        `fit_parameters`.
 
         Args:
             parameter: parameter of the parameter table.
         """
-        return bool(parameter.estimate) and (
-            parameter.id in self._versions() or self._in_model(parameter.id)
-        )
+        return bool(parameter.estimate)
 
     def _selection_of(self, observable_id: str) -> str:
         """Get the selection of roadrunner which observes an observable.
@@ -1045,11 +1196,7 @@ class PetabReader:
         for observable in self.petab_problem.observables:
             if observable.id != observable_id:
                 continue
-            formula = str(observable.formula)
-            if not is_entity(formula, sbml_model):
-                # the formula is an entity of the model the fit simulates
-                return petab_observable_id(observable_id)
-            return selection_of_formula(formula, sbml_model)
+            return selection_of_formula(str(observable.formula), sbml_model)
         raise ValueError(f"The problem has no observable '{observable_id}'.")
 
     def _in_model(self, sid: str) -> bool:
@@ -1115,18 +1262,23 @@ class PetabReader:
         Returns:
             The keys of the fit mappings.
         """
-        experiments = {
-            experiment.id
-            for experiment in self.petab_problem.experiments
-            if any(
-                condition_id in period.condition_ids for period in experiment.periods
-            )
-        }
-        return {
-            key
-            for key, measurements in self._measurements.items()
-            if (measurements[0].experiment_id or DEFAULT_EXPERIMENT) in experiments
-        }
+        return self._condition_keys.get(condition_id, set())
+
+    @functools.cached_property
+    def _condition_keys(self) -> dict[str, set[str]]:
+        """Get the keys of the fit mappings of every condition."""
+        keys_of_experiment: dict[str, set[str]] = {}
+        for key, measurements in self._measurements.items():
+            experiment_id = measurements[0].experiment_id or DEFAULT_EXPERIMENT
+            keys_of_experiment.setdefault(experiment_id, set()).add(key)
+        keys: dict[str, set[str]] = {}
+        for experiment in self.petab_problem.experiments:
+            for period in experiment.periods:
+                for condition_id in period.condition_ids:
+                    keys.setdefault(condition_id, set()).update(
+                        keys_of_experiment.get(experiment.id, set())
+                    )
+        return keys
 
     def _estimated_parameter_ids(self) -> set[str]:
         """Get the ids of the parameters the PEtab problem estimates.
@@ -1143,20 +1295,37 @@ class PetabReader:
     def _versions(self) -> dict[str, tuple[str, set[str]]]:
         """Get the versioned parameters of the problem, from its conditions.
 
-        A condition which assigns an estimated parameter to an entity of the
-        model is a version: the entity is estimated separately for the
-        experiments which carry the condition. A change whose value is a
-        number stays a change of the timecourse and is not a version, see
-        `_simulation_of_periods`, and a change of the input of a network is
-        the input, which its hybridization holds.
+        A condition of a problem which `sbmlsim` wrote, i.e. one with the
+        `sbmlsim` extension, which assigns an estimated parameter to an
+        entity of the model is a version when the parameter is assigned to
+        this entity only: the entity is estimated separately for the
+        experiments which carry the condition, as the fit was defined. In
+        every other case the estimated parameter is a parameter of the model
+        the fit simulates, which the condition reads like a formula at the
+        time of its period, see `_period_changes`: a version is applied
+        before the initialization, which a condition of a later period or
+        after a pre-equilibration is not. A change whose
+        value is a number stays a change of the timecourse and is not a
+        version, see `_simulation_of_periods`, and a change of the input of a
+        network is the input, which its hybridization holds. The versions are
+        read once.
 
         Returns:
             For every estimated parameter which is the value of such a change,
             the entity of the model it writes and the ids of the fit mappings
             of the experiments which use a condition assigning it.
         """
+        return self._version_table
+
+    @functools.cached_property
+    def _version_table(self) -> dict[str, tuple[str, set[str]]]:
+        """Get the versioned parameters, see `_versions`."""
+        if self.extension is None:
+            return {}
         estimated = self._estimated_parameter_ids()
-        versions: dict[str, tuple[str, set[str]]] = {}
+        sbml_model = self._sbml_model()
+        targets: dict[str, set[str]] = {}
+        keys: dict[str, set[str]] = {}
         for condition in self.petab_problem.conditions:
             for change in condition.changes:
                 value = str(change.target_value)
@@ -1165,33 +1334,35 @@ class PetabReader:
                 if self.sciml is not None and change.target_id in self.sciml.input_ids:
                     # the input of a network, which its hybridization holds
                     continue
-                target, keys = versions.setdefault(value, (change.target_id, set()))
-                if change.target_id != target:
-                    # one entity is estimated by one parameter; a foreign
-                    # problem which assigns an estimated parameter to two
-                    # different entities keeps the first and is not what
-                    # `sbmlsim` writes, so it is worth a warning
-                    logger.warning(
-                        "The estimated parameter '%s' is assigned to '%s' by "
-                        "the condition '%s' and to '%s' elsewhere; only the "
-                        "first target is kept.",
-                        value,
-                        change.target_id,
-                        condition.id,
-                        target,
-                    )
-                    continue
-                keys.update(self._mapping_keys_of_condition(condition.id))
+                # the id means what the model means, a concentration based
+                # species is its concentration
+                targets.setdefault(value, set()).add(
+                    selection_of_target(change.target_id, sbml_model)
+                )
+                keys.setdefault(value, set()).update(
+                    self._mapping_keys_of_condition(condition.id)
+                )
+        versions: dict[str, tuple[str, set[str]]] = {}
+        for pid, entities in targets.items():
+            if len(entities) > 1:
+                logger.debug(
+                    "The estimated parameter '%s' is assigned to %s, the "
+                    "conditions read it.",
+                    pid,
+                    sorted(entities),
+                )
+                continue
+            versions[pid] = (next(iter(entities)), keys[pid])
         return versions
 
     def fit_parameters(self) -> list[FitParameter]:
         """Get the parameters which are estimated.
 
         A parameter which a condition assigns to an entity of the model, see
-        `_versions`, is a versioned parameter: it is not itself an entity of a
-        model, so it is exempt from the check which otherwise drops a
-        parameter PEtab estimates that `sbmlsim` cannot fit, and it is built
-        with the `target` it writes and the `mappings` selector of its keys.
+        `_versions`, is a versioned parameter, built with the `target` it
+        writes and the `mappings` selector of its keys. Every other parameter
+        writes itself: an entity of the model, or a parameter which the model
+        the fit simulates gets, e.g. a parameter of the noise, see `models`.
 
         Returns:
             The parameters with their bounds, their start value and, if the
@@ -1210,27 +1381,10 @@ class PetabReader:
         for parameter in self.petab_problem.parameters:
             if not parameter.estimate or parameter.id in handled:
                 continue
+            # a parameter which is not an entity of the model, e.g. of the
+            # noise or of an observable, is a parameter of the model the fit
+            # simulates, see `models`
             target, keys = versions.get(parameter.id, (None, set()))
-            if parameter.prior_distribution is not None:
-                # the objective of `sbmlsim` has no priors, see the gap
-                logger.warning(
-                    "The parameter '%s' has the prior '%s', which the objective "
-                    "of `sbmlsim` does not use (gap 'priors', issue #190).",
-                    parameter.id,
-                    parameter.prior_distribution,
-                )
-            if target is None and not self._in_model(parameter.id):
-                # a parameter of the noise or of an observable, which PEtab
-                # estimates with the parameters of the model. The objective of
-                # `sbmlsim` has no such parameter, it weights the data instead
-                logger.warning(
-                    "The parameter '%s' is estimated by the problem but is not "
-                    "an entity of a model, i.e. it is a parameter of the noise "
-                    "or of an observable. `sbmlsim` fits the parameters of a "
-                    "model and weights the data, so it is not fitted.",
-                    parameter.id,
-                )
-                continue
             info = (
                 self.extension.parameters.get(parameter.id, {})
                 if self.extension
@@ -1240,16 +1394,30 @@ class PetabReader:
             start_value = info.get("start_value")
             if start_value is None and isinstance(nominal, int | float):
                 start_value = float(nominal)
+            lower_bound = float(parameter.lb) if parameter.lb is not None else -np.inf
+            upper_bound = float(parameter.ub) if parameter.ub is not None else np.inf
+            if start_value is not None and not (
+                lower_bound <= start_value <= upper_bound
+            ):
+                # PEtab evaluates a problem at the nominal values, see
+                # `nominal_parameters`, an optimizer starts in the bounds
+                clipped = float(np.clip(start_value, lower_bound, upper_bound))
+                logger.warning(
+                    "The nominal value '%s' of the parameter '%s' is outside of "
+                    "its bounds [%s, %s], the fit starts at '%s'.",
+                    start_value,
+                    parameter.id,
+                    lower_bound,
+                    upper_bound,
+                    clipped,
+                )
+                start_value = clipped
             parameters.append(
                 FitParameter(
                     pid=parameter.id,
                     start_value=start_value,
-                    lower_bound=(
-                        float(parameter.lb) if parameter.lb is not None else -np.inf
-                    ),
-                    upper_bound=(
-                        float(parameter.ub) if parameter.ub is not None else np.inf
-                    ),
+                    lower_bound=lower_bound,
+                    upper_bound=upper_bound,
                     # PEtab has no units, a parameter is in the unit the
                     # model gives it; a versioned parameter is not an entity
                     # itself, so its unit is the one of its target
@@ -1258,9 +1426,43 @@ class PetabReader:
                     target=target,
                     mappings=filter_keys(keys) if target is not None else None,
                     scale=self._scale_of(parameter, info),
+                    prior=_prior(parameter),
                 )
             )
         return parameters + networks
+
+    def nominal_parameters(self, problem: OptimizationProblem) -> ParameterSet:
+        """Get the nominal values of the parameters of the fit of the problem.
+
+        The nominal value of PEtab is the value a problem is evaluated at,
+        e.g. by the test suite, and it may be outside of the bounds of the
+        parameter, while the start value of the `FitParameter` is in them. A
+        parameter without a nominal value in the parameter table, e.g. an
+        element of a network, has the one of
+        `sbmlsim.fit.petab_v2.likelihood.nominal_parameters`.
+
+        Args:
+            problem: initialized optimization problem of the reader.
+
+        Returns:
+            The parameter set `nominal`.
+        """
+        defaults = nominal_parameters(problem)
+        x = []
+        for pid in problem.pids:
+            parameter = self._parameters.get(pid)
+            nominal = parameter.nominal_value if parameter is not None else None
+            x.append(
+                float(nominal)
+                if isinstance(nominal, int | float)
+                else defaults.values[pid]
+            )
+        return ParameterSet.from_fit_parameters(
+            parameters=problem.parameters,
+            x=x,
+            sid="nominal",
+            provenance=f"nominal values of the PEtab problem '{self.name}'",
+        )
 
     def _scale_of(
         self, parameter: Any, info: dict[str, Any]
@@ -1439,6 +1641,17 @@ def _class_name(name: str) -> str:
     if not class_name or class_name[0].isdigit():
         class_name = f"Petab{class_name}"
     return class_name
+
+
+def _prior(parameter: Any) -> Prior | None:
+    """Get the prior of a parameter of the parameter table, `None` without one."""
+    distribution = parameter.prior_distribution
+    if distribution is None:
+        return None
+    return Prior(
+        distribution=getattr(distribution, "value", distribution),
+        parameters=tuple(float(value) for value in parameter.prior_parameters),
+    )
 
 
 def _to_float(value: Any) -> float:

@@ -7,6 +7,7 @@ Other formats could be supported like CellML or NeuroML.
 """
 
 import logging
+from collections.abc import Mapping
 from enum import Enum
 from pathlib import Path
 
@@ -49,8 +50,24 @@ class AbstractModel:
         base_path: Path | None = None,
         changes: dict | None = None,
         selections: list[str] | None = None,
+        parameters: Mapping[str, float] | None = None,
     ):
-        """Initialize SourceType."""
+        """Initialize the model description.
+
+        Args:
+            source: path, URN or URL of the model, or the SBML itself.
+            sid: id of the model.
+            name: name of the model.
+            language: language of the model, e.g. `sbml`.
+            language_type: language of the model as `LanguageType`.
+            base_path: directory a relative path is resolved against.
+            changes: changes of the model, applied before the initialization
+                of every simulation of it.
+            selections: selections of the simulations.
+            parameters: constant parameters which are added to the model, by
+                their id and value, e.g. the parameters of the parameter
+                table of a PEtab problem which are not entities of the model.
+        """
         if not language and language_type is None:
             # SBML is the default language
             language_type = AbstractModel.LanguageType.SBML
@@ -79,6 +96,7 @@ class AbstractModel:
             changes = {}
         self.changes = changes
         self.selections = selections
+        self.parameters: dict[str, float] = dict(parameters or {})
 
         # normalize parameters at end of initialization
 
@@ -95,4 +113,5 @@ class AbstractModel:
             "language_type": self.language_type,
             "source": self.source.to_dict(),
             "changes": self.changes,
+            "parameters": self.parameters,
         }

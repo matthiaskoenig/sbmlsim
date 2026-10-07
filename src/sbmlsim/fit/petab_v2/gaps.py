@@ -159,16 +159,6 @@ GAPS: tuple[Gap, ...] = (
         "fit with fewer output points",
     ),
     Gap(
-        id="change-formula",
-        kind=GapKind.UNSUPPORTED,
-        sbmlsim="a `Change` whose value is a formula of the symbols of "
-        "roadrunner, e.g. `[S] + 5`",
-        petab="a condition whose target value is a math expression of the "
-        "identifiers of the model",
-        detail="the selections of a formula are not translated into the math of "
-        "PEtab yet, the export raises",
-    ),
-    Gap(
         id="model-changes",
         kind=GapKind.UNSUPPORTED,
         sbmlsim="a structural change of a model, i.e. "
@@ -208,14 +198,14 @@ GAPS: tuple[Gap, ...] = (
         petab="the parameters of the noise and of the observables are estimated "
         "with the parameters of the model, e.g. a `sd_<observable>` which the "
         "objective fits",
-        detail="a parameter of a problem which is not an entity of a model is "
-        "not fitted and the reader says which; the data of its observable is "
-        "weighted by `FitSettings.weighting_points` instead. A fit of such a "
-        "problem is therefore not the fit PEtab describes. A parameter of a "
-        "noise formula is kept in the noise model of its fit mapping with its "
-        "nominal value, its bounds and whether the problem estimates it, so it "
-        "is written as it was read; `log_likelihood` evaluates it at the value "
-        "of the parameter set it is given and at the nominal value without one",
+        detail="a parameter of a problem which is not an entity of a model is a "
+        "parameter of the model the fit simulates, and an estimated one is a "
+        "parameter of the fit. The weighted least squares of a fit does not "
+        "depend on a parameter of the noise, so it keeps its start value and the "
+        "data is weighted by `FitSettings.weighting_points` instead: a fit of "
+        "such a problem is not the fit PEtab describes. `log_likelihood` reads "
+        "the parameter from the simulation, i.e. at the value of the parameter "
+        "set it is given",
     ),
     Gap(
         id="noise-model",
@@ -285,10 +275,11 @@ GAPS: tuple[Gap, ...] = (
         "priors on the parameters (issue #190)",
         petab="`priorDistribution` and `priorParameters` of a parameter of "
         "the parameter table",
-        detail="the reader drops the prior of a parameter of the model with a "
-        "warning which names the parameter, the fit and the log-likelihood do "
-        "not use it. A prior on the parameters of a network is the gap "
-        "`sciml-priors`, which raises",
+        detail="the prior of a parameter of the fit is its `FitParameter.prior` "
+        "and is written as it was read; `log_prior` and `unnorm_log_posterior` "
+        "evaluate it truncated at the bounds, the optimizer does not use it. A "
+        "prior on the parameters of a network is the gap `sciml-priors`, which "
+        "raises",
     ),
     Gap(
         id="sciml-parameter-scale",
@@ -465,18 +456,25 @@ def gaps_of_problem(problem: "OptimizationProblem") -> list[Gap]:
     ) - {WeightingCurvesType.POINTS}:
         hits.add("weights")
 
-    for simulation in problem.simulations:
-        for change in simulation.changes:
-            if any(isinstance(v, str) for v in change.values.values()):
-                hits.add("change-formula")
-
+    fitted = {p.pid for p in problem.parameters} | {
+        p.target_id for p in problem.parameters
+    }
     for noise in problem.noise_models:
         if noise is None:
             continue
         hits.add("noise-model")
         if any(parameter.estimate for parameter in noise.parameters):
             hits.add("noise-parameters")
+        try:
+            symbols = set(noise.symbols)
+        except ValueError:
+            # a noise formula which is not math, the log-likelihood reports it
+            symbols = set()
+        if symbols & fitted:
+            hits.add("noise-parameters")
 
+    if any(parameter.prior is not None for parameter in problem.parameters):
+        hits.add("priors")
     if any(parameter.scale is not None for parameter in problem.parameters):
         hits.add("sciml-parameter-scale")
     for hybridization in problem.hybridizations:

@@ -424,11 +424,12 @@ class XResult:
         """Convert to DataFrame with mean data.
 
         Returns:
-            DataFrame with the mean over all dimensions.
+            DataFrame with the mean over all dimensions, in the units of the
+            variables.
         """
         res = {}
         for col in self.xds:
-            res[col] = self.dim_mean(key=str(col))
+            res[col] = self.dim_mean(key=str(col)).magnitude
         return pd.DataFrame(res)
 
     def to_dataframe(self) -> pd.DataFrame:

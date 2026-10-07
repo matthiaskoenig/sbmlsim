@@ -5,7 +5,7 @@ fit mappings are resolved, and builds the tables of PEtab v2 from it:
 
 - every model of the fit is a model of the problem, written as the model the
   problem was defined with when the fit simulates a derived one (compiled
-  networks, formula observables, see `sbmlsim.model.provenance`),
+  networks, see `sbmlsim.model.provenance`),
 - the fit mappings which share a model and a simulation are one experiment, its
   periods are the start of the `Simulation` and the times of its changes, and
   their changes are the conditions,
@@ -52,9 +52,12 @@ from sbmlsim.fit.petab_v2.extension import (
 )
 from sbmlsim.fit.petab_v2.gaps import Gap, GapKind, gaps_dict, gaps_of_problem
 from sbmlsim.fit.petab_v2.likelihood import noise_model_of
-from sbmlsim.fit.petab_v2.symbols import condition_target, observable_formula
-from sbmlsim.mathml import formula_expression
-from sbmlsim.model.provenance import Derivation, derivation_of, strip_derivation
+from sbmlsim.fit.petab_v2.symbols import (
+    condition_target,
+    formula_of_selections,
+    observable_formula,
+)
+from sbmlsim.model.provenance import derivation_of, strip_derivation
 from sbmlsim.simulator.plan import Assignment
 from sbmlsim.units import Quantity
 
@@ -283,14 +286,9 @@ class PetabExporter:
         self.group_indices: dict[int, int] = {
             k: g for g, group in enumerate(problem.mapping_groups) for k in group
         }
-        #: the derivation of every model which is derived, by model id
-        self.derivations: dict[str, Derivation] = {}
         #: the formula of the observable of every fit mapping, see
         #: `_observable_formula`
         self._formulas: dict[int, str] = {}
-        #: the document of every derived model as the fit simulates it, by
-        #: model id
-        self._derived_documents: dict[str, libsbml.SBMLDocument] = {}
         #: the networks of the problem, `None` for a problem without them
         self.sciml: Any = None
         if problem.hybridizations:
@@ -464,13 +462,12 @@ class PetabExporter:
                 # `petab.v2.Model` is the abstract base, the SBML model is the
                 # concrete class which reads a file. A model which is derived
                 # from the model of the problem, i.e. carries compiled
-                # networks or observables, is written as its source
+                # networks, is written as its source
                 document: libsbml.SBMLDocument = libsbml.readSBMLFromFile(str(path))
                 name = path.name
                 sbml_model = document.getModel()
                 if sbml_model is not None and derivation_of(sbml_model) is not None:
                     document, derivation = strip_derivation(path)
-                    self.derivations[sid] = derivation
                     name = derivation.source
                 model_file = SbmlModel(sbml_document=document, model_id=sid)
                 model_file.rel_path = self._model_file(
@@ -593,9 +590,6 @@ class PetabExporter:
         Returns:
             The periods of the experiment, with their conditions added to the
             problem.
-
-        Raises:
-            ValueError: if a change is a formula, see the gap `change-formula`.
         """
         # a versioned parameter is written as a condition: PEtab assigns the
         # entity of the model the value of the estimated parameter, which is
@@ -631,21 +625,17 @@ class PetabExporter:
         plan = self.problem.plans[group_index]
 
         def changes_of(assignments: Sequence[Assignment]) -> list[petab_v2.Change]:
-            changes = []
-            for a in assignments:
-                if a.value is None:
-                    raise ValueError(
-                        f"'{self.problem.opid}': the experiment '{experiment_id}' "
-                        f"changes '{a.target}' with the formula '{a.formula}', "
-                        f"which the export does not write (gap 'change-formula')."
-                    )
-                changes.append(
-                    petab_v2.Change(
-                        target_id=condition_target(a.target, sbml_model),
-                        target_value=a.value,
-                    )
+            # a formula is written in what the identifiers of the model mean,
+            # which is what a condition of PEtab evaluates
+            return [
+                petab_v2.Change(
+                    target_id=condition_target(a.target, sbml_model),
+                    target_value=a.value
+                    if a.value is not None
+                    else formula_of_selections(str(a.formula), sbml_model),
                 )
-            return changes
+                for a in assignments
+            ]
 
         # (time, changes) of every period, the first one is the one of the
         # changes before the initialization
@@ -699,6 +689,8 @@ class PetabExporter:
             # with or the standard deviation of its data: the noise parameter
             # of a measurement fills in the placeholder the observable declares
             noise = self._noise_model(k, observable_id)
+            observable = problem.observable_models[k]
+            observable_values = self._observable_values(k)
             if observable_id not in written:
                 written.add(observable_id)
                 _table(petab_problem, "observable_tables").observables.append(
@@ -709,6 +701,9 @@ class PetabExporter:
                         noise_formula=noise.formula,
                         noise_distribution=noise.distribution.value,
                         noise_placeholders=list(noise.placeholders),
+                        observable_placeholders=list(observable.placeholders)
+                        if observable is not None
+                        else [],
                     )
                 )
 
@@ -723,7 +718,9 @@ class PetabExporter:
                         experiment_id=experiment_id,
                         time=float(times[i]),
                         measurement=float(values[i]),
-                        observable_parameters=[],
+                        observable_parameters=list(observable_values[i])
+                        if observable_values
+                        else [],
                         noise_parameters=list(noise.placeholder_values[i])
                         if noise.placeholders
                         else [],
@@ -762,9 +759,11 @@ class PetabExporter:
             )
             self.observable_ids[k] = observable_id
             noise = noise_model_of(problem, k)
+            observable = problem.observable_models[k]
             contents[k] = (
                 self.model_ids[id(problem.models[k])],
                 self._observable_formula(k),
+                observable.placeholders if observable is not None else (),
                 noise.formula,
                 noise.distribution,
                 tuple(noise.placeholders),
@@ -853,59 +852,74 @@ class PetabExporter:
     def _observable_formula(self, k: int) -> str:
         """Get the formula of the observable of a fit mapping.
 
-        An observable of a model which is derived, i.e. a parameter with the
-        formula of the observable as its rule which `add_observables` wrote,
-        is written as that formula, because the model is written as its
-        source. Every other observable is the math of its selection.
+        An observable model is written as its formula, a selection as its
+        math, both in what the identifiers of the model mean in PEtab, see
+        `sbmlsim.fit.petab_v2.symbols`.
 
         Args:
             k: index of the fit mapping.
 
         Returns:
             The math of PEtab of the observable.
-
-        Raises:
-            ValueError: if the derived model has no rule for the observable.
         """
         if k in self._formulas:
             return self._formulas[k]
         problem = self.problem
-        model_id = self.model_ids[id(problem.models[k])]
-        selection = problem.yid_observable[k]
-        if self._is_derived_observable(k):
-            derived = self._derived_documents.get(model_id)
-            if derived is None:
-                derived = libsbml.readSBMLFromFile(str(problem.models[k].source.path))
-                self._derived_documents[model_id] = derived
-            rule = derived.getModel().getRuleByVariable(selection)
-            if rule is None:
-                raise ValueError(
-                    f"'{problem.opid}': the observable '{selection}' of the fit "
-                    f"mapping '{problem.mapping_keys[k]}' was added to the model "
-                    f"'{problem.models[k].source.path}' without a rule."
-                )
+        sbml_model = self.sbml_models.get(self.model_ids[id(problem.models[k])])
+        observable = problem.observable_models[k]
+        if observable is not None:
             formula = petab_math_str(
-                formula_expression(libsbml.formulaToL3String(rule.getMath()))
+                sympify_petab(formula_of_selections(observable.formula, sbml_model))
             )
         else:
-            formula = observable_formula(selection, self.sbml_models.get(model_id))
+            formula = observable_formula(problem.yid_observable[k], sbml_model)
         self._formulas[k] = formula
         return formula
 
-    def _is_derived_observable(self, k: int) -> bool:
-        """Check whether the observable of a fit mapping was added to the model.
+    def _observable_values(self, k: int) -> list[list[float | str]]:
+        """Get the values of the placeholders of the observable of a mapping.
 
         Args:
             k: index of the fit mapping.
 
         Returns:
-            Whether the selection of the mapping is a parameter which the
-            derivation of its model created, see `_observable_formula`.
+            The values of every measurement in the math of PEtab, empty for an
+            observable without placeholders.
+
+        Raises:
+            ValueError: if the observable model does not have the values of
+                its placeholders for every measurement which is written.
         """
-        derivation = self.derivations.get(self.model_ids[id(self.problem.models[k])])
-        return derivation is not None and (
-            self.problem.yid_observable[k] in derivation.created
-        )
+        problem = self.problem
+        observable = problem.observable_models[k]
+        if observable is None or not observable.placeholders:
+            return []
+        size = len(problem.y_references[k])
+        if len(observable.placeholder_values) != size:
+            raise ValueError(
+                f"'{problem.opid}': the observable model of the fit mapping "
+                f"'{problem.mapping_keys[k]}' has '{len(observable.placeholder_values)}' "
+                f"values of its placeholders '{list(observable.placeholders)}' for "
+                f"'{size}' measurements."
+            )
+        sbml_model = self.sbml_models.get(self.model_ids[id(problem.models[k])])
+        return [
+            [
+                formula_of_selections(value, sbml_model)
+                if isinstance(value, str)
+                else value
+                for value in values
+            ]
+            for values in observable.placeholder_values
+        ]
+
+    def _observable_unit(self, k: int) -> str:
+        """Get the unit of the observable of a fit mapping."""
+        problem = self.problem
+        observable = problem.observable_models[k]
+        if observable is not None:
+            return observable.unit
+        return str(problem.models[k].uinfo[problem.yid_observable[k]])
 
     def _noise_model(self, k: int, observable_id: str) -> NoiseModel:
         """Get the noise model a fit mapping is written with.
@@ -918,7 +932,9 @@ class PetabExporter:
 
         Returns:
             The noise model of the mapping, see
-            `sbmlsim.fit.petab_v2.likelihood.noise_model_of`.
+            `sbmlsim.fit.petab_v2.likelihood.noise_model_of`, in the math of
+            PEtab, i.e. the formula and the placeholder values in what the
+            identifiers of the model mean.
 
         Raises:
             ValueError: if the noise model does not have the values of its
@@ -934,14 +950,26 @@ class PetabExporter:
                 f"values of its placeholders '{list(noise.placeholders)}' for "
                 f"'{size}' measurements."
             )
-        if noise.observable is None or noise.observable == observable_id:
-            return noise
-        expression = sympify_petab(noise.formula).subs(
-            sp.Symbol(noise.observable, real=True),
-            sp.Symbol(observable_id, real=True),
-        )
+        sbml_model = self.sbml_models.get(self.model_ids[id(problem.models[k])])
+        expression = sympify_petab(formula_of_selections(noise.formula, sbml_model))
+        if noise.observable is not None and noise.observable != observable_id:
+            expression = expression.subs(
+                sp.Symbol(noise.observable, real=True),
+                sp.Symbol(observable_id, real=True),
+            )
         return dataclasses.replace(
-            noise, formula=petab_math_str(expression), observable=observable_id
+            noise,
+            formula=petab_math_str(expression),
+            placeholder_values=tuple(
+                tuple(
+                    formula_of_selections(value, sbml_model)
+                    if isinstance(value, str)
+                    else value
+                    for value in values
+                )
+                for values in noise.placeholder_values
+            ),
+            observable=observable_id if noise.observable is not None else None,
         )
 
     def _check_condition_targets(self, petab_problem: PetabProblem) -> None:
@@ -1013,6 +1041,12 @@ class PetabExporter:
                     ub=parameter.upper_bound,
                     nominal_value=nominal_value,
                     estimate=True,
+                    prior_distribution=None
+                    if parameter.prior is None
+                    else parameter.prior.distribution.value,
+                    prior_parameters=[]
+                    if parameter.prior is None
+                    else list(parameter.prior.parameters),
                 )
             )
         self._add_noise_parameters(petab_problem)
@@ -1098,13 +1132,13 @@ class PetabExporter:
                     problem.collection_indices[k]
                 ].sid,
                 "xid_observable": problem.xid_observable[k],
-                # an observable of a derived model is written as its formula
-                # and selected as the reader adds it to the model again
+                # an observable model is written as its formula, which the
+                # reader reads as an observable model again
                 "yid_observable": None
-                if self._is_derived_observable(k)
+                if problem.observable_models[k] is not None
                 else problem.yid_observable[k],
                 "x_unit": str(model.uinfo[problem.xid_observable[k]]),
-                "y_unit": str(model.uinfo[problem.yid_observable[k]]),
+                "y_unit": self._observable_unit(k),
                 "error_type": problem.y_errors_type[k],
                 "weight_curve": float(problem.weights_curves[k]),
                 "weight_mapping": self._weight_mapping(k),

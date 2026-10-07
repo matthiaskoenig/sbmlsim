@@ -1,6 +1,28 @@
 # PEtab Benchmark Problems
 
-The [PEtab benchmark collection](https://github.com/Benchmarking-Initiative/Benchmark-Models-PEtab) is a set of parameter estimation problems of published models of systems biology, each with its model, its data and the simulations at the nominal parameters (`simulations.tsv`). The problems were not written by `sbmlsim`, so they test the reader of [PEtab](petab.md) on what other tools produce, and the simulations of the collection are the reference a simulation of a problem is compared with. The collection is PEtab 1.0, a problem is converted to PEtab v2 before it is read. Not every problem of the collection is read and simulated yet.
+The [PEtab benchmark collection](https://github.com/Benchmarking-Initiative/Benchmark-Models-PEtab) is a set of parameter estimation problems of published models of systems biology, each with its model, its data and the simulations at the nominal parameters (`simulations.tsv`). The problems were not written by `sbmlsim`, so they test the reader of [PEtab](petab.md) on what other tools produce, and the simulations of the collection are the reference a simulation of a problem is compared with. The collection is PEtab 1.0, a problem is converted to PEtab v2 before it is read. All 35 problems of the pinned commit are converted and read; 28 agree with the simulations of the collection and with the log-likelihoods of AMICI, see [Running the collection](#running-the-collection).
+
+## Running the collection
+
+`sbmlsim.fit.petab_v2.benchmark` reads and simulates every problem of a pinned commit of the collection. `BenchmarkCollection.load()` downloads the commit into `~/.cache/sbmlsim/petab-benchmark/<commit>/` (`SBMLSIM_BENCHMARK_PATH` points elsewhere), converts every problem with `petab.v2.petab1to2` once and fetches the log-likelihoods which AMICI states for the problems (`tests/benchmark_models/benchmark_models.yaml` of a pinned commit of AMICI). `BenchmarkProblem.run()` reads a converted problem, simulates it once at the nominal values of its parameter table and compares:
+
+| value | reference | tolerance |
+| --- | --- | --- |
+| the simulation of every measurement | `simulations.tsv` of the collection | `1e-3` absolute and relative |
+| the log-likelihood | the `llh` of AMICI, where it has one and no observable is on the scale `log10`, whose density the conversion changes | `1e-3` absolute and `1e-6` relative |
+
+A simulation of the collection is the one of its measurement row by row when the observables, the conditions and the times agree, up to ids which were renamed after the simulations were written, and is found by the observable, the conditions and the time of the measurement otherwise. The outcome of a problem is `pass`, `tolerance`, `conversion` (`petab1to2` fails) or `error`, and the result carries the time it took to read, to initialize, to simulate and to calculate the log-likelihood.
+
+```bash
+uv run python scripts/petab_benchmark.py download                      # fetch, convert and cache
+uv run python scripts/petab_benchmark.py run --processes 8 --output results/benchmark
+uv run python scripts/petab_benchmark.py report --output results/benchmark  # benchmark.md
+uv run python scripts/petab_benchmark.py baseline --processes 8        # refresh the baseline
+uv run pytest -m petab_benchmark tests/fit                              # every problem is a test
+tox r -e benchmark                                                      # download and run
+```
+
+Of the seven which do not pass, five disagree with tables of the collection which are off, `Chen_MSB2009` stops in roadrunner at the steps of its rules, and `Froehlich_CellSystems2018`, 9169 experiments with a pre-equilibration each, takes longer than the `600` seconds a problem gets in `scripts/petab_benchmark.py`. The problems which do not pass are recorded in `tests/data/benchmark_baseline.json` with their status and the reason, which the tests and `run` compare a run with in both directions. Where the simulations of the collection disagree with `sbmlsim` while the log-likelihood agrees with the one of AMICI, it is the table of the collection which is off: the simulations of `Zheng_PNAS2012` are its measurements, the ones of `Perelson_Science1996` are not at the nominal parameters, which roadrunner without `sbmlsim` confirms.
 
 ## Fitting a problem of the collection
 
@@ -20,7 +42,7 @@ python -m examples.petab.benchmark --runs=8 --no-identifiability
 
 The example reads the converted problem, reports what PEtab cannot express about it, fits it, analyses the identifiability of the fitted parameters and writes the report of the fit. For `Perelson_Science1996` the clearance rate `c` of the virions is identifiable and the loss rate `delta` of the infected cells is not identifiable towards zero.
 
-The observables of `Boehm_JProteomeRes2014` are formulas over several species, e.g. `(100 * pApB + 200 * pApA * specC17) / (...)`, which is not what roadrunner selects. `sbmlsim.fit.petab_v2.observables` therefore writes a copy of the model in which every such observable is a parameter with an assignment rule, and the fit selects that parameter: the identifiers of the math of PEtab are the ones of the model, and the formula is translated into the math of SBML for the rule. Simulated at the nominal parameters of the problem, the observables agree with the `simulatedData` of the collection to `2e-4` at a relative tolerance of `1e-9` of the integrator.
+The observables of `Boehm_JProteomeRes2014` are formulas over several species, e.g. `(100 * pApB + 200 * pApA * specC17) / (...)`, which is not what roadrunner selects. `sbmlsim` therefore reads every such observable as an `ObservableModel` (`sbmlsim.fit.objects`), i.e. the formula in the selections of roadrunner, which the fit evaluates on the simulation at the measurements: the identifiers of the math of PEtab are the ones of the model, a concentration based species is its concentration `[S]`. Simulated at the nominal parameters of the problem, the observables agree with the `simulatedData` of the collection to `2e-4` at a relative tolerance of `1e-9` of the integrator.
 
 The parameters of a problem which are not estimated are applied to the model with the nominal values of the parameter table, which is what PEtab prescribes and which the model does not have to agree with.
 

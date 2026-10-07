@@ -33,13 +33,11 @@ from sbmlsim.sciml.testsuite import (
     CaseStatus,
     SciMLSuite,
 )
+from sbmlsim.testsuite import baseline
+from sbmlsim.testsuite.baseline import MISSING_REASON, unexpected_outcomes
 
 #: the expected outcomes the tests compare a run with
 BASELINE_PATH = Path(__file__).parent.parent / "tests" / "data" / "sciml_baseline.json"
-
-#: the reason of a case which is new in the baseline. The tests reject it, so
-#: a case is not listed until somebody wrote down why it does not pass
-MISSING_REASON = "reason missing"
 
 
 def run(suite: SciMLSuite) -> list[CaseResult]:
@@ -56,71 +54,22 @@ def run(suite: SciMLSuite) -> list[CaseResult]:
     return results
 
 
-def unexpected_outcomes(results: list[CaseResult], baseline: dict) -> list[str]:
-    """Get the cases which do not have the outcome the baseline records.
-
-    Args:
-        results: the results of a run.
-        baseline: the content of the baseline.
-
-    Returns:
-        One line per case, `<key>: '<expected>' -> '<observed>'`, and one per
-        case of the baseline which was not run.
-    """
-    expected_failures = baseline["expected_failures"]
-    lines: list[str] = []
-    for result in results:
-        recorded = expected_failures.get(result.key)
-        expected = CaseStatus.PASS.value if recorded is None else recorded["status"]
-        if result.status.value != expected:
-            lines.append(f"{result.key}: '{expected}' -> '{result.status.value}'")
-    keys = {result.key for result in results}
-    for key, recorded in expected_failures.items():
-        if key not in keys:
-            lines.append(f"{key}: '{recorded['status']}' -> not run")
-    return lines
-
-
 def write_baseline(results: list[CaseResult], suite: SciMLSuite, path: Path) -> None:
     """Write the cases which do not pass, keeping the reasons which are recorded.
 
-    A reason is kept while the case fails with the recorded status. A case
-    whose status changed gets `MISSING_REASON`, the recorded reason describes
-    the old status, and is reported.
+    See `sbmlsim.testsuite.baseline.write_baseline`, a case whose status
+    changed is reported.
 
     Args:
         results: the results of a run.
         suite: the suite which was run.
         path: the baseline.
     """
-    recorded: dict[str, dict[str, str]] = {}
-    if path.exists():
-        recorded = json.loads(path.read_text(encoding="utf-8"))["expected_failures"]
-    failures: dict[str, dict[str, str]] = {}
-    for result in results:
-        if result.passed:
-            continue
-        reason = MISSING_REASON
-        previous = recorded.get(result.key)
-        if previous is not None:
-            if previous["status"] == result.status.value:
-                reason = previous["reason"]
-            else:
-                console.print(
-                    f"  [yellow]{result.key}: the status changed "
-                    f"'{previous['status']}' -> '{result.status.value}', the "
-                    f"recorded reason was dropped[/yellow]"
-                )
-        failures[result.key] = {"status": result.status.value, "reason": reason}
-    baseline = {
-        "suite_commit": suite.commit,
-        "n_cases": len(results),
-        "n_passed": len(results) - len(failures),
-        "expected_failures": failures,
-    }
-    path.write_text(json.dumps(baseline, indent=2) + "\n", encoding="utf-8")
+    for note in baseline.write_baseline(results, suite.commit, path):
+        console.print(f"  [yellow]{note}[/yellow]")
     console.print(f"Baseline: {path}")
-    for key, expected in failures.items():
+    recorded = json.loads(path.read_text(encoding="utf-8"))["expected_failures"]
+    for key, expected in recorded.items():
         if expected["reason"] == MISSING_REASON:
             console.print(f"  [red]{key}: write the reason into the baseline[/red]")
 
@@ -156,8 +105,8 @@ def main(argv: list[str] | None = None) -> int:
     if args.command == "baseline":
         write_baseline(results, suite, BASELINE_PATH)
         return 0
-    baseline = json.loads(BASELINE_PATH.read_text(encoding="utf-8"))
-    unexpected = unexpected_outcomes(results, baseline)
+    recorded = json.loads(BASELINE_PATH.read_text(encoding="utf-8"))
+    unexpected = unexpected_outcomes(results, recorded)
     if unexpected:
         console.print(
             f"[red]{len(unexpected)} cases do not have the outcome of the "

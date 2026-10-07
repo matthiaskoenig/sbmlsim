@@ -7,8 +7,8 @@ which are vendored next to this module, see their `README.md`:
 - `Perelson_Science1996`, the viral dynamics of HIV-1 after the start of a
   protease inhibitor. One observable, which is a species of the model.
 - `Boehm_JProteomeRes2014`, the dimerization of STAT5A and STAT5B. Three
-  observables, each a formula over several species, which the fit gets as
-  entities of the model, see `sbmlsim.fit.petab_v2.observables`.
+  observables, each a formula over several species, which the fit evaluates
+  on the simulation, see `sbmlsim.fit.objects.ObservableModel`.
 
 The collection is PEtab 1.0 and `sbmlsim` reads PEtab 2.0, so the example
 converts a problem with `petab.v2.petab1to2` first: the files of the collection
@@ -21,7 +21,8 @@ likelihood and reported.
     python -m examples.petab.benchmark --runs=8 --no-identifiability
 
 The converted problem and the results are written into `results/<problem>` of
-the working directory.
+the working directory. The whole collection is read and simulated by
+`scripts/petab_benchmark.py`, see `sbmlsim.fit.petab_v2.benchmark`.
 """
 
 import argparse
