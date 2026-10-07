@@ -133,7 +133,7 @@ Local and global sensitivity analysis, see [Sensitivity analysis](../sensitivity
 
 ## sbmlsim.sciml
 
-The neural networks of hybrid problems, see [PEtab](../petab.md#hybrid-problems-of-petab-sciml). The package needs the extra `sciml`.
+The neural networks of hybrid problems, see [PEtab SciML](../petab_sciml.md). The package needs the extra `sciml`.
 
 | module | description |
 | --- | --- |
@@ -146,7 +146,7 @@ The neural networks of hybrid problems, see [PEtab](../petab.md#hybrid-problems-
 | [sciml.backend](sciml.backend.md) | the numpy backend of the forward pass and the sympy backend of the compiler |
 | [sciml.layers](sciml.layers.md) | the layers and functions of PEtab SciML with the backends they support |
 | [sciml.errors](sciml.errors.md) | the errors of the package |
-| [sciml.testsuite](sciml.testsuite.md) | the PEtab SciML test suite: its cases, their comparison and the round trip |
+| [sciml.testsuite](sciml.testsuite.md) | the [PEtab SciML Test Suite](../sciml_testsuite.md): its cases, their comparison and the round trip |
 
 ## sbmlsim.testsuite
 

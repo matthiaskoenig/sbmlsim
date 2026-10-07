@@ -13,18 +13,30 @@ edit_uri = "edit/develop/docs/"
 nav = [
   { "Home" = "index.md" },
   { "Installation" = "installation.md" },
-  { "User guide" = [
+  { "Core" = [
     { "Models" = "models.md" },
     { "Timecourse simulations" = "simulation.md" },
-    { "Parameter scans" = "scans.md" },
     { "Units" = "units.md" },
     { "Simulation experiments" = "experiments.md" },
     { "Data" = "data.md" },
     { "Plots and reports" = "plotting.md" },
-    { "Parameter fitting" = "fitting.md" },
+  ] },
+  { "Sensitivity & uncertainty" = [
+    { "Parameter scans" = "scans.md" },
     { "Sensitivity analysis" = "sensitivity.md" },
+  ] },
+  { "Parameter optimization" = [
+    { "Parameter fitting" = "fitting.md" },
+    { "Identifiability" = "identifiability.md" },
     { "PEtab" = "petab.md" },
+    { "PEtab SciML" = "petab_sciml.md" },
+  ] },
+  { "Test suites" = [
+    { "Overview" = "testsuites.md" },
     { "SBML Test Suite" = "testsuite.md" },
+    { "PEtab Test Suite" = "petab_testsuite.md" },
+    { "PEtab Benchmark Problems" = "petab_benchmark.md" },
+    { "PEtab SciML Test Suite" = "sciml_testsuite.md" },
   ] },
   { "References" = "references.md" },
   { "API reference" = [
