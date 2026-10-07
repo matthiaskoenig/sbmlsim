@@ -234,20 +234,28 @@ class Dimension:
         dimension: str,
         index: np.ndarray | None = None,
         changes: dict[str, Any] | None = None,
+        at: Any = None,
     ):
         """Dimension.
 
         If no index is provided the index is calculated from the changes.
+        The values of a dimension replace the values of their targets wherever
+        the scanned simulation sets them; a dimension with `at` applies them
+        as a `Change` at that time instead.
         So in most cases the index can be left empty (e.g., for scanning of
         parameters).
 
         :param dimension: unique id of dimension, should start with 'dim'
         :param index: index for values in dimension
         :param changes: changes to apply.
+        :param at: time of the change of the values, a number in the time
+            unit of the simulation or a quantity; `None` applies them where
+            the simulation sets them or before the initialization.
         """
         if index is None and changes is None:
             raise ValueError("Either 'index' or 'changes' required for Dimension.")
         self.dimension: str = dimension
+        self.at: Any = at
 
         if changes is None:
             changes = {}

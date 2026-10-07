@@ -9,7 +9,7 @@ from typing import Any
 
 import numpy as np
 
-from sbmlsim.simulation.definition import Simulation
+from sbmlsim.simulation.definition import Change, Simulation
 from sbmlsim.simulation.range import Dimension
 from sbmlsim.simulation.simulation import AbstractSim
 from sbmlsim.simulation.timecourse import TimecourseSim
@@ -104,15 +104,15 @@ class ScanSim(AbstractSim):
                 scan_dim.changes, uinfo=uinfo
             )
 
-    def to_simulations(self) -> tuple[list[tuple[Any, ...]], list[TimecourseSim]]:
-        """Flatten the scan to individual simulations.
+    def to_simulations(self) -> tuple[list[tuple[Any, ...]], list[Any]]:
+        """Flatten the scan to individual simulations, of `Simulation` or `TimecourseSim`.
 
         Here the changes are appended.
         Scan should be normalized before calling this function.
         Necessary to track the results.
         """
-        # TODO: support additional simulation types (currently
-        #       only Timecourses assumed.
+        if isinstance(self.simulation, Simulation):
+            return self._simulations_of_definition(self.simulation)
         if not isinstance(self.simulation, TimecourseSim):
             raise NotImplementedError(
                 f"Only TimecourseSim supported in scan, but '{type(self.simulation)}'"
@@ -138,6 +138,33 @@ class ScanSim(AbstractSim):
 
             simulations.append(sim_new)
 
+        return indices, simulations
+
+    def _simulations_of_definition(
+        self, simulation: Simulation
+    ) -> tuple[list[tuple[Any, ...]], list[Simulation]]:
+        """Get the simulations of a scan of a `Simulation`.
+
+        The values of a dimension replace the values of their targets wherever
+        the simulation sets them, see `Simulation.with_values`; the values of
+        a dimension with `at` are a `Change` at that time.
+        """
+        indices = self.indices()
+        simulations: list[Simulation] = []
+        for index_list in indices:
+            values: dict[str, Any] = {}
+            timed: list[Change] = []
+            for k_dim, k_index in enumerate(index_list):
+                dim = self.dimensions[k_dim]
+                dim_values = {key: dim.changes[key][k_index] for key in dim.changes}
+                if dim.at is None:
+                    values.update(dim_values)
+                else:
+                    timed.append(Change(dim.at, dim_values))
+            sim = simulation.with_values(values)
+            if timed:
+                sim.changes.extend(timed)
+            simulations.append(sim)
         return indices, simulations
 
 
