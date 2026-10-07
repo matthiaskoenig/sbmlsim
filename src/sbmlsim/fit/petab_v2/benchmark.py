@@ -364,7 +364,8 @@ class BenchmarkProblem:
             timeout: the seconds the problem may take, a problem which takes
                 longer is an error. The time is measured with the timer
                 `ITIMER_REAL` of the process, so a time limit needs the main
-                thread of a POSIX system; a call into roadrunner finishes
+                thread of a POSIX system, on Windows the problem runs without
+                one and a warning says so; a call into roadrunner finishes
                 before the problem stops.
 
         Returns:
@@ -383,6 +384,14 @@ class BenchmarkProblem:
             llh_reference = None
         timings: dict[str, float] = {}
         previous = None
+        if timeout is not None and not hasattr(signal, "setitimer"):
+            logger.warning(
+                "'%s': the time limit of %s s needs the timer of a POSIX "
+                "system, the problem runs without one.",
+                self.name,
+                timeout,
+            )
+            timeout = None
         if timeout is not None:
             previous = signal.signal(signal.SIGALRM, _timeout)
             signal.setitimer(signal.ITIMER_REAL, timeout)

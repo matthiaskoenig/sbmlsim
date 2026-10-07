@@ -5,6 +5,8 @@ PEtab v2 is the one the reader tests write, and the tables of PEtab v1 are
 the measurements and the simulations the collection compares with.
 """
 
+import logging
+import signal
 from pathlib import Path
 
 import pandas as pd
@@ -278,8 +280,23 @@ def test_simulations_of_renamed_observables_in_another_order(tmp_path: Path) -> 
     assert result.n_simulations == 20
 
 
+@pytest.mark.skipif(
+    not hasattr(signal, "setitimer"), reason="the time limit needs a POSIX timer"
+)
 def test_a_problem_which_takes_too_long(tmp_path: Path) -> None:
     """A problem which takes longer than its time is the status `error`."""
     result = _problem(tmp_path).run(timeout=1e-4)
     assert result.status is BenchmarkStatus.ERROR
     assert result.message.startswith("ProblemTimeout")
+
+
+def test_a_time_limit_without_a_posix_timer(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    """Without the timer of the process, e.g. on Windows, the problem has no limit."""
+    problem = _problem(tmp_path)
+    monkeypatch.delattr(signal, "setitimer", raising=False)
+    with caplog.at_level(logging.WARNING, logger="sbmlsim.fit.petab_v2.benchmark"):
+        result = problem.run(timeout=1e-4)
+    assert result.status is BenchmarkStatus.PASS, result.message
+    assert any("time limit" in r.getMessage() for r in caplog.records)
