@@ -210,3 +210,26 @@ def test_steady_state_error_names_the_model() -> None:
     with pytest.raises(SteadyStateError) as err:
         execute(plan, model, ["time", "x"])
     assert "'None'" not in str(err.value)
+
+
+def test_preinit_formula_of_parameters() -> None:
+    """A formula before the initialization reads the parameters as they are set."""
+    res = run(Simulation(end=1, preinit_changes={"[B]": "a0 + b0"}, times=[0]))
+    assert res["[B]"][0] == pytest.approx(2.0)
+    res = run(
+        Simulation(end=1, preinit_changes={"a0": 3.0, "[B]": "a0 + b0"}, times=[0])
+    )
+    assert res["[B]"][0] == pytest.approx(4.0)
+    # the initial assignment A = a0 follows the parameter
+    assert res["[A]"][0] == pytest.approx(3.0)
+
+
+def test_preinit_formula_reads_only_parameters() -> None:
+    """A formula before the initialization cannot read a species, which has no value yet."""
+    model = RoadrunnerSBMLModel(source=sbml())
+    with pytest.raises(ValueError, match=r"'\[A\]'.*parameter"):
+        compile_simulation(
+            Simulation(end=1, preinit_changes={"[B]": "[A] + 1"}),
+            model.symbols,
+            model.uinfo,
+        )

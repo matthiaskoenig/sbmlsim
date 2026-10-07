@@ -199,11 +199,8 @@ class RoadrunnerSBMLModel(AbstractModel):
         other species.
 
         Args:
-            assignments: the pre-initialization assignments of a plan, values
-                only.
-
-        Raises:
-            ValueError: if an assignment is a formula.
+            assignments: the pre-initialization assignments of a plan. A
+                formula reads the parameters after the values are set.
         """
         self._reset()
         r = self.r_loaded
@@ -212,23 +209,36 @@ class RoadrunnerSBMLModel(AbstractModel):
         concentrations: set[str] = set()
         amounts: set[str] = set()
         for a in assignments:
-            if a.value is None:
-                raise ValueError(
-                    f"The pre-initialization value of '{a.target}' is the "
-                    f"formula '{a.formula}', it must be a number."
-                )
             entity = symbols.entity(a.target)
             entities.add(entity)
             if a.kind is TargetKind.SPECIES_CONCENTRATION:
                 concentrations.add(entity)
             elif a.kind is TargetKind.SPECIES_AMOUNT:
                 amounts.add(entity)
-        for a in assignments:
+        # the values first, then the formulas, which read the values and are
+        # evaluated before any of them is set
+        values = [a for a in assignments if a.value is not None]
+        for a in values:
             if a.kind is TargetKind.COMPARTMENT:
                 self._set_compartment(a.target, float(a.value), concentrations, amounts)  # ty: ignore[invalid-argument-type]
-        for a in assignments:
+        for a in values:
             if a.kind is not TargetKind.COMPARTMENT:
                 self._set(a.target, float(a.value))  # ty: ignore[invalid-argument-type]
+        # the package of the simulator imports the models
+        from sbmlsim.simulator.formula import compile_formula
+
+        evaluated: list[tuple[Assignment, float]] = []
+        for a in assignments:
+            if a.formula is not None:
+                formula = compile_formula(a.formula)
+                evaluated.append(
+                    (a, formula.evaluate([r.getValue(s) for s in formula.symbols]))
+                )
+        for a, value in evaluated:
+            if a.kind is TargetKind.COMPARTMENT:
+                self._set_compartment(a.target, value, concentrations, amounts)
+            else:
+                self._set(a.target, value)
 
         dependencies = symbols.initial_assignment_dependencies or {}
         changed = set(entities)

@@ -256,8 +256,28 @@ class _Converter:
             )
 
     def preinit(self, changes: Mapping[str, Any]) -> tuple[Assignment, ...]:
-        """Get the assignments of pre-initialization changes."""
-        return tuple(self.assignment(t, v) for t, v in changes.items())
+        """Get the assignments of pre-initialization changes.
+
+        A formula before the initialization reads parameters only: nothing
+        else has a value before the model is initialized (PEtab v2, the
+        conditions of the first period).
+
+        Raises:
+            ValueError: if a formula reads anything but a parameter.
+        """
+        assignments = tuple(self.assignment(t, v) for t, v in changes.items())
+        for a in assignments:
+            if a.formula is None:
+                continue
+            for symbol in compile_formula(a.formula).symbols:
+                if symbol not in self.symbols.parameters:
+                    raise ValueError(
+                        f"The formula '{a.formula}' of '{a.target}' before the "
+                        f"initialization reads '{symbol}', which is not a "
+                        f"parameter: nothing else has a value before the model "
+                        f"is initialized."
+                    )
+        return assignments
 
 
 def compile_simulation(

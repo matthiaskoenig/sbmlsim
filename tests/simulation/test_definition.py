@@ -33,8 +33,6 @@ def test_simulation_validates_interval_and_output() -> None:
         Simulation(end=10, times=[0, 5], steps=10)
     with pytest.raises(ValueError, match="steps"):
         Simulation(end=10, steps=0)
-    with pytest.raises(ValueError, match="formula"):
-        Simulation(end=10, preinit_changes={"k": "2 * a"})  # ty: ignore[invalid-argument-type]
 
 
 def test_simulation_interval_with_quantities() -> None:
@@ -55,10 +53,12 @@ def test_simulation_rejects_conflicting_presimulation_targets() -> None:
         )
 
 
-def test_steady_state_rejects_formulas() -> None:
-    """The pre-initialization changes of a steady state are numbers."""
-    with pytest.raises(ValueError, match="'k' is a formula"):
-        SteadyState(preinit_changes={"k": "a + 1"})  # ty: ignore[invalid-argument-type]
+def test_preinit_changes_take_formulas() -> None:
+    """A change before the initialization is a formula of parameters as well."""
+    sim = Simulation(end=10, preinit_changes={"k": "2 * a"})
+    steady = SteadyState(preinit_changes={"k": "a + 1"})
+    assert sim.preinit_changes == {"k": "2 * a"}
+    assert steady.preinit_changes == {"k": "a + 1"}
 
 
 def test_targets() -> None:
