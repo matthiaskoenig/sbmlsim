@@ -102,3 +102,53 @@ def test_initialize_is_fast() -> None:
     for _ in range(100):
         model.initialize([_a("f", 5.0), _a("b0", 0.0)])
     assert (time.perf_counter() - start) / 100 < 0.005
+
+
+T0_EVENT = """
+model events_at_t0
+  P1 = 3/2
+  E0: at 2.5 after (P1 > 1), t0=false, fromTrigger=false: P1 = P1^2
+  E1: at 1.3 after (P1 > 1), t0=false: P1 = 5
+end
+"""
+
+
+def _p1(model: RoadrunnerSBMLModel) -> list[float]:
+    import numpy as np
+
+    r = model.r_loaded
+    r.timeCourseSelections = ["time", "P1"]
+    values = np.array(r.simulate(0, 5, 6))[:, 1].tolist()
+    model.simulated()
+    return values
+
+
+def test_events_at_t0_fire_once() -> None:
+    """A reset without a simulation after it does not fire the events at t0 again.
+
+    roadrunner queues the events which fire at the time 0 with every reset, a
+    loaded model counts as one (case 01757 of the SBML Test Suite).
+    """
+    expected = [1.5, 1.5, 5.0, 25.0, 25.0, 25.0]
+    model = RoadrunnerSBMLModel(source=sbml(T0_EVENT))
+    model.initialize([])
+    assert _p1(model) == pytest.approx(expected)
+    model.initialize([])
+    model.initialize([])
+    assert _p1(model) == pytest.approx(expected)
+
+
+def test_values_of_an_initialization_without_simulation_are_restored() -> None:
+    """Two initializations without a simulation do not leak into each other."""
+    model = RoadrunnerSBMLModel(source=sbml())
+    model.initialize(
+        [_a("f", 5.0), _a("b0", 0.0), _a("C", 4.0, TargetKind.COMPARTMENT)]
+    )
+    model.initialize([_a("k1", 0.1)])
+    r = model.r_loaded
+    assert r["f"] == pytest.approx(2.0)
+    assert r["X"] == pytest.approx(12.0)
+    assert r["[B]"] == pytest.approx(1.0)
+    assert r["C"] == pytest.approx(2.0)
+    assert r["[A]"] == pytest.approx(1.0)
+    assert r["k1"] == pytest.approx(0.1)

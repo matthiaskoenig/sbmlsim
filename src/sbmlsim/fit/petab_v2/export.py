@@ -7,8 +7,8 @@ fit mappings are resolved, and builds the tables of PEtab v2 from it:
   problem was defined with when the fit simulates a derived one (compiled
   networks, formula observables, see `sbmlsim.model.provenance`),
 - the fit mappings which share a model and a simulation are one experiment, its
-  periods are the timecourses of the `TimecourseSim` and their changes are the
-  conditions,
+  periods are the start of the `Simulation` and the times of its changes, and
+  their changes are the conditions,
 - every fit mapping is one observable, named after the mapping; mappings which
   observe one thing in several experiments are one observable, its reference
   data are the measurements of that observable,
@@ -23,7 +23,7 @@ import dataclasses
 import logging
 import re
 from collections import defaultdict
-from collections.abc import Iterator, Mapping
+from collections.abc import Iterator, Sequence
 from pathlib import Path
 from typing import Any
 
@@ -55,7 +55,7 @@ from sbmlsim.fit.petab_v2.likelihood import noise_model_of
 from sbmlsim.fit.petab_v2.symbols import condition_target, observable_formula
 from sbmlsim.mathml import formula_expression
 from sbmlsim.model.provenance import Derivation, derivation_of, strip_derivation
-from sbmlsim.simulation.timecourse import Timecourse, TimecourseSim
+from sbmlsim.simulator.plan import Assignment
 from sbmlsim.units import Quantity
 
 logger = logging.getLogger(__name__)
@@ -149,7 +149,7 @@ def period_condition_id(experiment_id: str, k: int) -> str:
 
     Args:
         experiment_id: id of the experiment.
-        k: index of the period, i.e. of the timecourse of the simulation.
+        k: index of the period of the experiment.
 
     Returns:
         The id, e.g. `e1__tc0`, which the arrays of the inputs of the
@@ -538,25 +538,17 @@ class PetabExporter:
         """Add the experiments of the fit mapping collections.
 
         The experiments are the ones of `_experiment_groups`: the periods of
-        an experiment are the timecourses of its simulation and the changes of
-        a timecourse are its condition.
+        an experiment are the times of the changes of its simulation, see
+        `_periods`.
         """
         problem = self.problem
         for collection_index, experiment_id, group in self._experiment_groups():
             k0 = group[0]
-            simulation = problem.simulations[k0]
-            if not isinstance(simulation, TimecourseSim):
-                raise ValueError(
-                    f"'{problem.opid}': only a `TimecourseSim` is exported, "
-                    f"'{simulation}' is a '{type(simulation).__name__}'."
-                )
             periods = self._periods(
                 petab_problem,
                 experiment_id=experiment_id,
-                simulation=simulation,
                 group_index=self.group_indices[k0],
                 simulation_key=problem.simulation_keys[k0],
-                defined_changes=problem.defined_changes[k0],
                 sbml_model=self.sbml_models.get(self.model_ids[id(problem.models[k0])]),
             )
             _table(petab_problem, "experiment_tables").experiments.append(
@@ -570,38 +562,40 @@ class PetabExporter:
         self,
         petab_problem: PetabProblem,
         experiment_id: str,
-        simulation: TimecourseSim,
         group_index: int,
         simulation_key: str,
-        defined_changes: Mapping[str, Any],
         sbml_model: Any = None,
     ) -> list[petab_v2.ExperimentPeriod]:
         """Get the periods of an experiment and add their conditions.
 
-        A leading timecourse which is discarded is the pre-equilibration of the
-        experiment, i.e. a period at `time=-inf`; its duration is lost. The
-        time of every other period is the time the timecourse starts at in the
-        simulation, i.e. the sum of the durations before it.
+        The periods are the ones of the compiled simulation of the group, in
+        the units of the model, which are the units of PEtab: the first period
+        is the start of the simulation, its condition the changes before the
+        initialization; every other time of a change is a period. A
+        `SteadyState` is the period at `time=-inf`, whose condition holds the
+        changes before the initialization, and the changes at the start are
+        then the condition of the first period (PEtab v2, initialization). The
+        times are shifted by the time shift of the simulation, as the
+        measurements are.
 
         Args:
             petab_problem: problem which is built.
             experiment_id: id of the experiment the periods belong to.
-            simulation: simulation whose timecourses become the periods.
             group_index: index into `problem.mapping_groups` of the simulation
                 group this experiment was built from, i.e. `self.group_indices`
                 of the fit mapping the experiment groups around. It is what
                 `ParameterMapping.indices_for` resolves the binding for.
             simulation_key: id of the simulation in its experiment, which is
                 the condition of the inputs of the networks.
-            defined_changes: the changes of the first timecourse as the
-                experiment defines them, see
-                `OptimizationProblem.defined_changes`.
             sbml_model: `libsbml.Model` of the problem, for the math of the
                 selections.
 
         Returns:
             The periods of the experiment, with their conditions added to the
             problem.
+
+        Raises:
+            ValueError: if a change is a formula, see the gap `change-formula`.
         """
         # a versioned parameter is written as a condition: PEtab assigns the
         # entity of the model the value of the estimated parameter, which is
@@ -634,41 +628,62 @@ class PetabExporter:
             input_changes = self.sciml.input_changes(simulation_key)
             needs_condition = self.sciml.needs_condition()
 
+        plan = self.problem.plans[group_index]
+
+        def changes_of(assignments: Sequence[Assignment]) -> list[petab_v2.Change]:
+            changes = []
+            for a in assignments:
+                if a.value is None:
+                    raise ValueError(
+                        f"'{self.problem.opid}': the experiment '{experiment_id}' "
+                        f"changes '{a.target}' with the formula '{a.formula}', "
+                        f"which the export does not write (gap 'change-formula')."
+                    )
+                changes.append(
+                    petab_v2.Change(
+                        target_id=condition_target(a.target, sbml_model),
+                        target_value=a.value,
+                    )
+                )
+            return changes
+
+        # (time, changes) of every period, the first one is the one of the
+        # changes before the initialization
+        events = {event.time: event.assignments for event in plan.events}
+        first: list[petab_v2.Change] = changes_of(plan.preinit)
+        timeline: list[tuple[float, list[petab_v2.Change]]] = []
+        if plan.steady_state is not None:
+            first = changes_of(plan.steady_state.preinit) + first
+            timeline.append((float("-inf"), first + version_changes + input_changes))
+            timeline.append((plan.start, changes_of(events.pop(plan.start, ()))))
+        else:
+            timeline.append(
+                (
+                    plan.start,
+                    first
+                    + changes_of(events.pop(plan.start, ()))
+                    + version_changes
+                    + input_changes,
+                )
+            )
+        for time in sorted(events):
+            timeline.append((time, changes_of(events[time])))
+
         periods: list[petab_v2.ExperimentPeriod] = []
-        offset: float = simulation.time_offset
-        for k, tc in enumerate(simulation.timecourses):
-            if tc.discard and k > 0:
-                raise ValueError(
-                    f"'{self.problem.opid}': the timecourse '{k}' of "
-                    f"'{experiment_id}' is discarded but is not the first, which "
-                    f"is not the pre-equilibration of a PEtab experiment."
-                )
+        for k, (time, changes) in enumerate(timeline):
             condition_ids: list[str] = []
-            # the changes as the experiment defines them, not the values of
-            # the parameters an evaluation wrote into the timecourse
-            changes = defined_changes if k == 0 else tc.changes
-            tc_changes = [
-                petab_v2.Change(
-                    target_id=condition_target(target, sbml_model),
-                    target_value=_magnitude(value),
-                )
-                for target, value in changes.items()
-            ]
-            if k == 0:
-                tc_changes += version_changes + input_changes
-            if tc_changes or (k == 0 and needs_condition):
+            if changes or (k == 0 and needs_condition):
                 condition_id = period_condition_id(experiment_id, k)
-                if tc_changes:
+                if changes:
                     _table(petab_problem, "condition_tables").conditions.append(
-                        petab_v2.Condition(id=condition_id, changes=tc_changes)
+                        petab_v2.Condition(id=condition_id, changes=changes)
                     )
                 condition_ids.append(condition_id)
-
-            time = float("-inf") if tc.discard else offset + tc.start
             periods.append(
-                petab_v2.ExperimentPeriod(time=time, condition_ids=condition_ids)
+                petab_v2.ExperimentPeriod(
+                    time=time + plan.time_shift, condition_ids=condition_ids
+                )
             )
-            offset += tc.end
         return periods
 
     # --- OBSERVABLES AND MEASUREMENTS ---
@@ -1100,20 +1115,11 @@ class PetabExporter:
         for k, experiment_id in self.experiment_ids.items():
             if experiment_id in experiments:
                 continue
-            simulation = problem.simulations[k]
             collection_index = self.experiment_collections[experiment_id]
             experiments[experiment_id] = {
                 "collection": problem.mapping_collections[collection_index].sid,
-                "time_offset": simulation.time_offset,
-                "reset": simulation.reset,
-                # the changes of the first timecourse as the experiment
-                # defines them, not the values an evaluation wrote into it
-                "timecourses": [
-                    self._timecourse_dict(
-                        tc, problem.defined_changes[k] if i == 0 else tc.changes
-                    )
-                    for i, tc in enumerate(simulation.timecourses)
-                ],
+                # the simulation as the experiment defines it, with units
+                "simulation": problem.simulations[k].to_dict(),
             }
 
         models: dict[str, dict[str, Any]] = {}
@@ -1180,24 +1186,6 @@ class PetabExporter:
         if WeightingCurvesType.POINTS in self.problem.weighting_curves:
             weight = weight * len(self.problem.y_references[k])
         return weight
-
-    @staticmethod
-    def _timecourse_dict(tc: Timecourse, changes: Mapping[str, Any]) -> dict[str, Any]:
-        """Get the timecourse as a dictionary, with the units of its changes.
-
-        Args:
-            tc: the timecourse.
-            changes: the changes of the timecourse as the experiment defines
-                them, see `OptimizationProblem.defined_changes`.
-        """
-        return {
-            "start": tc.start,
-            "end": tc.end,
-            "steps": tc.steps,
-            "discard": tc.discard,
-            "changes": {target: _magnitude(value) for target, value in changes.items()},
-            "units": {target: _unit(value) for target, value in changes.items()},
-        }
 
 
 def to_petab(

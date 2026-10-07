@@ -32,6 +32,14 @@ from sbmlsim.sciml.hybridization import ALL_CONDITIONS
 from tests.sciml.experiment import LotkaVolterra, collections
 from tests.sciml.hybrid import MODEL_PATH, feed_forward, two_inputs
 
+
+def _changes(problem: OptimizationProblem, k: int) -> dict[str, float]:
+    """Get the values the simulation of a fit mapping starts with at `x0`."""
+    group = next(g for g, ks in enumerate(problem.mapping_groups) if k in ks)
+    plan = problem.evaluated_plan(group, np.asarray(problem.x0, dtype=float))
+    return {a.target: float(a.value) for a in plan.preinit if a.value is not None}
+
+
 PRE = NetworkPattern.PRE_INITIALIZATION
 RHS = NetworkPattern.RHS
 
@@ -101,9 +109,9 @@ def test_a_network_before_the_simulation() -> None:
     np.testing.assert_allclose(problem.xmodel, x)
 
     problem.predictions(x)
-    changes = problem.simulations[0].timecourses[0].changes
+    changes = _changes(problem, 0)
     (expected,) = network.forward(np.array([1.3, 0.5]))
-    assert changes["gamma"].magnitude == pytest.approx(expected[0])
+    assert changes["gamma"] == pytest.approx(expected[0])
 
     # a plain problem with the value of gamma has the same predictions
     plain = OptimizationProblem(
@@ -156,9 +164,9 @@ def test_the_arrays_of_the_simulations() -> None:
     assert not np.allclose(e1, e2)
     for sid, array in (("e1", [1.0, 2.0, 3.0]), ("e2", [3.0, 2.0, 1.0])):
         k = problem.simulation_keys.index(sid)
-        changes = problem.simulations[k].timecourses[0].changes
+        changes = _changes(problem, k)
         (expected,) = network.forward(np.array([1.3]), np.array(array))
-        assert changes["gamma"].magnitude == pytest.approx(expected[0])
+        assert changes["gamma"] == pytest.approx(expected[0])
 
 
 def test_a_frozen_layer() -> None:
@@ -289,8 +297,8 @@ def test_the_arrays_of_the_simulations_of_a_compiled_network(tmp_path: Path) -> 
     e2 = predictions[problem.mapping_keys.index("prey_e2")]
     assert not np.allclose(e1, e2)
     k = problem.simulation_keys.index("e2")
-    changes = problem.simulations[k].timecourses[0].changes
-    assert [changes[f"net6__input1__{i}"].magnitude for i in range(3)] == [
+    changes = _changes(problem, k)
+    assert [changes[f"net6__input1__{i}"] for i in range(3)] == [
         3.0,
         2.0,
         1.0,
@@ -406,4 +414,4 @@ def test_an_array_which_all_conditions_share(tmp_path: Path) -> None:
         for derived in problem.group_derived
     ] == [[(hybridization, {"net6__output0__0"})]] * 2
     problem.predictions(np.asarray(problem.x0, dtype=float))
-    assert "net6__input1__0" not in problem.simulations[0].timecourses[0].changes
+    assert "net6__input1__0" not in _changes(problem, 0)

@@ -10,6 +10,7 @@ import libsbml
 import numpy as np
 import pandas as pd
 import roadrunner
+from roadrunner import _roadrunner  # ty: ignore[unresolved-import]
 
 from sbmlsim.model import AbstractModel
 from sbmlsim.model.model_resources import Source
@@ -21,9 +22,36 @@ from sbmlsim.utils import md5_for_path
 if TYPE_CHECKING:
     from sbmlsim.simulator.plan import Assignment
 
-#: suffix of the parameter which holds a freed initial assignment, see
-#: `RoadrunnerSBMLModel.free_initial_assignments`
+#: suffix of the parameter whose assignment rule is the math of an initial
+#: assignment, see `RoadrunnerSBMLModel.initialize`
 INITIAL_SUFFIX = "__initial"
+
+#: what `RoadRunner.resetAll` resets: every variable to its initial value, with
+#: the initial assignments evaluated
+RESET_ALL = (
+    roadrunner.SelectionRecord.TIME
+    | roadrunner.SelectionRecord.RATE
+    | roadrunner.SelectionRecord.FLOATING
+    | roadrunner.SelectionRecord.BOUNDARY
+    | roadrunner.SelectionRecord.COMPARTMENT
+    | roadrunner.SelectionRecord.GLOBAL_PARAMETER
+    | roadrunner.SelectionRecord.STOICHIOMETRY
+)
+
+
+def reset_all(r: roadrunner.RoadRunner) -> None:
+    """Reset a model to its initial values, as `RoadRunner.resetAll`.
+
+    roadrunner exposes the symbols of a model as attributes, so a model with a
+    species or parameter named `reset` hides the method `reset`, which
+    `resetAll` calls (case 00952 of the SBML Test Suite). The binding is
+    called directly.
+
+    Args:
+        r: the roadrunner instance.
+    """
+    _roadrunner.RoadRunner_reset(r, RESET_ALL)
+
 
 logger = logging.getLogger(__name__)
 
@@ -70,6 +98,13 @@ class RoadrunnerSBMLModel(AbstractModel):
             if self.source.content is not None
             else Path(str(self.source.path)).read_text(encoding="utf-8")
         )
+        r: roadrunner.RoadRunner | None = None
+        if _is_hierarchical(sbml):
+            # roadrunner flattens a hierarchical model and resolves its
+            # external model definitions relative to the file, the symbols are
+            # the ones of the model it simulates
+            r = self.load_roadrunner_model(source=self.source)
+            sbml = r.getCurrentSBML()
         self.symbols: ModelSymbols = ModelSymbols.from_sbml(sbml)
         #: entity with an initial assignment -> the parameter whose
         #: assignment rule is the math of the initial assignment, see
@@ -77,9 +112,25 @@ class RoadrunnerSBMLModel(AbstractModel):
         self.initial_helpers: dict[str, str] = {}
         if self.symbols.initial_assignments:
             sbml, self.initial_helpers = _with_initial_helpers(sbml)
+            r = None
 
         # load model
-        self.r: roadrunner.RoadRunner | None = roadrunner.RoadRunner(sbml)
+        self.r: roadrunner.RoadRunner | None = (
+            r
+            if r is not None
+            else (
+                roadrunner.RoadRunner(sbml)
+                if self.initial_helpers or self.source.content is not None
+                else self.load_roadrunner_model(source=self.source)
+            )
+        )
+
+        #: whether the instance was reset or loaded and not simulated since,
+        #: see `initialize`
+        self._reset_pending: bool = True
+        #: the values an initialization changed since the last reset, by
+        #: selection, see `initialize`
+        self._restore: dict[str, float] = {}
 
         # set selections
         # logger.info("set selections")
@@ -134,7 +185,18 @@ class RoadrunnerSBMLModel(AbstractModel):
             ValueError: if an assignment is a formula.
         """
         r = self.r_loaded
-        r.resetAll()
+        if self._reset_pending:
+            # roadrunner queues the events which fire at the time 0 with every
+            # reset, a loaded model counts as one, and a simulation fires them
+            # once: a second reset without a simulation would fire them twice
+            # (case 01757 of the SBML Test Suite). The values an earlier
+            # initialization set are restored instead
+            for key, value in self._restore.items():
+                r.setValue(key, value)
+        else:
+            reset_all(r)
+            self._reset_pending = True
+        self._restore = {}
         symbols = self.symbols
         entities: set[str] = set()
         for a in assignments:
@@ -149,21 +211,39 @@ class RoadrunnerSBMLModel(AbstractModel):
                 self._set_compartment(a.target, float(a.value), entities)  # ty: ignore[invalid-argument-type]
         for a in assignments:
             if a.kind is not TargetKind.COMPARTMENT:
-                r.setValue(a.target, a.value)
+                self._set(a.target, float(a.value))  # ty: ignore[invalid-argument-type]
 
         dependencies = symbols.initial_assignment_dependencies or {}
         changed = set(entities)
         for entity in symbols.initial_assignment_order:
-            if entity in entities or not (dependencies[entity] & changed):
+            if (
+                entity in entities
+                or entity not in self.initial_helpers
+                or not (dependencies[entity] & changed)
+            ):
                 continue
             value = float(r.getValue(self.initial_helpers[entity]))
             if entity in symbols.compartments:
                 self._set_compartment(entity, value, entities)
             elif entity in symbols.species and entity not in symbols.only_substance:
-                r.setValue(f"[{entity}]", value)
+                self._set(f"[{entity}]", value)
             else:
-                r.setValue(entity, value)
+                self._set(entity, value)
             changed.add(entity)
+
+    def simulated(self) -> None:
+        """Record that the model was simulated since its last initialization.
+
+        The next `initialize` resets the model, see there.
+        """
+        self._reset_pending = False
+
+    def _set(self, selection: str, value: float) -> None:
+        """Set a value in an initialization and record the value it replaces."""
+        r = self.r_loaded
+        if selection not in self._restore:
+            self._restore[selection] = float(r.getValue(selection))
+        r.setValue(selection, value)
 
     def _set_compartment(self, compartment: str, value: float, kept: set[str]) -> None:
         """Set a compartment before the initialization.
@@ -180,7 +260,12 @@ class RoadrunnerSBMLModel(AbstractModel):
             for s, c in symbols.species_compartment.items()
             if c == compartment and s in symbols.initial_concentration and s not in kept
         }
-        r.setValue(compartment, value)
+        # the amounts are restored, they keep the concentrations of a
+        # restored compartment
+        for species in concentrations:
+            if species not in self._restore:
+                self._restore[species] = float(r.getValue(species))
+        self._set(compartment, value)
         for species, concentration in concentrations.items():
             r.setValue(f"[{species}]", concentration)
 
@@ -473,6 +558,9 @@ def _with_initial_helpers(sbml: str) -> tuple[str, dict[str, str]]:
     model: libsbml.Model = doc.getModel()
     helpers: dict[str, str] = {}
     for assignment in list(model.getListOfInitialAssignments()):
+        if assignment.getMath() is None:
+            # an initial assignment without math assigns nothing
+            continue
         entity = assignment.getSymbol()
         helper = f"{entity}{INITIAL_SUFFIX}"
         if model.getElementBySId(helper) is not None:
@@ -488,3 +576,11 @@ def _with_initial_helpers(sbml: str) -> tuple[str, dict[str, str]]:
         rule.setMath(assignment.getMath().deepCopy())
         helpers[entity] = helper
     return libsbml.writeSBMLToString(doc), helpers
+
+
+def _is_hierarchical(sbml: str) -> bool:
+    """Check whether a model uses the package `comp` of hierarchical models."""
+    if "comp" not in sbml:
+        return False
+    doc: libsbml.SBMLDocument = libsbml.readSBMLFromString(sbml)
+    return bool(doc.isPackageEnabled("comp"))

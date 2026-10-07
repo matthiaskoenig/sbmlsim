@@ -64,7 +64,11 @@ def execute(
         SteadyStateError: if the presimulation does not reach a steady state.
         RuntimeError: if roadrunner fails to integrate.
     """
-    columns = ["time", *[s for s in selections if s != "time"]]
+    # a model may have an entity named `time` as well, which is a second
+    # column `time` after the time of the simulation (case 01820)
+    columns = list(selections)
+    if not columns or columns[0] != "time":
+        columns = ["time", *columns]
     r = model.r_loaded
     model.initialize(preinit_targets(plan))
     if list(r.timeCourseSelections) != columns:
@@ -78,6 +82,7 @@ def execute(
         values = _simulate(plan, r, columns)
     finally:
         integrator.setValue(VARIABLE_STEP_SIZE, variable_step_size)
+        model.simulated()
 
     if plan.time_shift != 0.0:
         values[:, 0] += plan.time_shift
