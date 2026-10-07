@@ -247,3 +247,73 @@ def test_only_the_steady_state_is_an_output() -> None:
     """A simulation whose only output is the steady state has one row."""
     res = run(Simulation(end=1, times=[np.inf]))
     assert res.time.tolist() == [np.inf]
+
+
+#: a concentration S with dS/dt = 1 in a compartment C, and an event which
+#: doubles C once S exceeds 14 (case 0016 of the PEtab test suite)
+EVENT_MODEL = """
+model ev_change
+  compartment C = 4
+  species S in C = 3
+  S' = 1
+  E: at (S > 14), t0=true: C = 2 * C
+end
+"""
+
+
+def test_a_change_triggers_an_event() -> None:
+    """An event whose trigger a change makes true fires at the time of the change."""
+    model = RoadrunnerSBMLModel(source=sbml(EVENT_MODEL))
+    plan = compile_simulation(
+        Simulation(
+            end=15,
+            preinit_changes={"[S]": 2.0},
+            changes=[Change(10, {"[S]": "C + [S]", "C": 8.0})],
+            times=[0, 5, 10, 15],
+        ),
+        model.symbols,
+        model.uinfo,
+    )
+    res = execute(plan, model, ["time", "C", "[S]", "S"])
+    np.testing.assert_allclose(res["C"], [4, 4, 16, 16])
+    np.testing.assert_allclose(res["[S]"], [2, 7, 8, 13])
+    np.testing.assert_allclose(res["S"], [8, 28, 128, 208])
+
+
+def test_an_event_fires_once_after_a_change() -> None:
+    """The event of a change does not fire again when the integration continues."""
+    model = RoadrunnerSBMLModel(
+        source=sbml(
+            "model ev4\n  X = 0\n  Y = 0\n  E: at (X > 1), t0=true: Y = Y + 1\nend"
+        )
+    )
+    plan = compile_simulation(
+        Simulation(end=10, changes=[Change(5, {"X": 2.0})], times=[0, 5, 10]),
+        model.symbols,
+        model.uinfo,
+    )
+    res = execute(plan, model, ["time", "Y"])
+    np.testing.assert_allclose(res["Y"], [0, 1, 1])
+
+
+def test_an_event_at_the_time_of_a_change_fires_after_it() -> None:
+    """An event and a change at one time: the change first, then the event (case 0030)."""
+    model = RoadrunnerSBMLModel(
+        source=sbml(
+            "model ev_time\n  compartment C = 4\n  species S in C = 3\n  S' = 1\n"
+            "  E: at (time >= 10), t0=true: C = 2 * C\nend"
+        )
+    )
+    plan = compile_simulation(
+        Simulation(
+            end=15,
+            preinit_changes={"[S]": 2.0},
+            changes=[Change(10, {"[S]": "C + [S]", "C": 8.0})],
+            times=[0, 5, 10, 15],
+        ),
+        model.symbols,
+        model.uinfo,
+    )
+    res = execute(plan, model, ["time", "C", "[S]", "S"])
+    np.testing.assert_allclose(res["C"], [4, 4, 16, 16])
+    np.testing.assert_allclose(res["S"], [8, 28, 128, 208], rtol=1e-6)

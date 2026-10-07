@@ -12,11 +12,34 @@ at all.
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 from enum import StrEnum
 from pathlib import Path
 
 import libsbml
+
+
+@dataclass(frozen=True)
+class EventSymbols:
+    """An event of a model in the selections of roadrunner.
+
+    The executor fires an event whose trigger a change of a simulation makes
+    true, which roadrunner does not, see `sbmlsim.simulator.executor`.
+
+    Attributes:
+        eid: id of the event.
+        trigger: the trigger, a formula of selections, see
+            `sbmlsim.simulator.formula`; `None` if it is not a formula the
+            simulator evaluates, e.g. one with a function definition.
+        delayed: whether the event has a delay.
+        assignments: the selection and the formula of every assignment.
+    """
+
+    eid: str
+    trigger: str | None
+    delayed: bool
+    assignments: tuple[tuple[str, str], ...]
 
 
 class TargetKind(StrEnum):
@@ -79,6 +102,7 @@ class ModelSymbols:
     initial_assignment_order: tuple[str, ...] = ()
     initial_assignment_dependencies: dict[str, frozenset[str]] | None = None
     initial_concentration: frozenset[str] = frozenset()
+    events: tuple[EventSymbols, ...] = ()
 
     @classmethod
     def from_sbml(cls, sbml: str | Path) -> ModelSymbols:
@@ -108,7 +132,12 @@ class ModelSymbols:
             # the concentration of a species depends on its compartment
             reads |= {compartment_of[s] for s in reads if s in compartment_of}
             dependencies[assignment.getSymbol()] = frozenset(reads)
+        concentration_species = frozenset(compartment_of)
         return cls(
+            events=tuple(
+                _event_symbols(event, concentration_species)
+                for event in model.getListOfEvents()
+            ),
             initial_assignment_order=_order(dependencies),
             initial_assignment_dependencies=dependencies,
             initial_concentration=frozenset(
@@ -239,3 +268,53 @@ def _order(dependencies: dict[str, frozenset[str]]) -> tuple[str, ...]:
             done.add(target)
             del remaining[target]
     return tuple(order)
+
+
+#: an identifier of a formula of libsbml
+_IDENTIFIER = re.compile(r"(?<![\w\[])([A-Za-z_]\w*)(?![\w\]])")
+
+
+def _selections(
+    math: libsbml.ASTNode | None, concentrations: frozenset[str]
+) -> str | None:
+    """Get the math of a model as a formula of selections.
+
+    A species whose value is a concentration in the math of the model, i.e. a
+    species without only substance units, is its concentration `[S]`.
+
+    Args:
+        math: the math.
+        concentrations: the species which are concentrations in the math.
+
+    Returns:
+        The formula, `None` without math.
+    """
+    if math is None:
+        return None
+    formula = libsbml.formulaToL3String(math)
+    return _IDENTIFIER.sub(
+        lambda m: f"[{m.group(1)}]" if m.group(1) in concentrations else m.group(1),
+        formula,
+    )
+
+
+def _event_symbols(
+    event: libsbml.Event, concentrations: frozenset[str]
+) -> EventSymbols:
+    """Read an event of a model."""
+    trigger: libsbml.Trigger | None = event.getTrigger()
+    assignments = []
+    for assignment in event.getListOfEventAssignments():
+        variable = assignment.getVariable()
+        target = f"[{variable}]" if variable in concentrations else variable
+        formula = _selections(assignment.getMath(), concentrations)
+        if formula is not None:
+            assignments.append((target, formula))
+    return EventSymbols(
+        eid=event.getId(),
+        trigger=None
+        if trigger is None
+        else _selections(trigger.getMath(), concentrations),
+        delayed=event.isSetDelay(),
+        assignments=tuple(assignments),
+    )

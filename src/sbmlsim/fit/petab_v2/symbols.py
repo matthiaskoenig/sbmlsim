@@ -155,3 +155,45 @@ def selection_of_formula(formula: str, sbml_model: Any = None) -> str:
         # SBML, which roadrunner selects with brackets
         return f"[{sid}]"
     return sid
+
+
+#: an identifier of the math of PEtab
+IDENTIFIER = re.compile(r"(?<![\w\[])([A-Za-z_]\w*)(?![\w\]])")
+
+
+def selection_of_target(target: str, sbml_model: Any = None) -> str:
+    """Get the selection of roadrunner of the target of a condition of PEtab.
+
+    The target of a condition means what the model means: the concentration
+    of a concentration based species, the amount of an amount based one.
+
+    Args:
+        target: the `targetId` of a change of a condition.
+        sbml_model: `libsbml.Model` of the problem.
+
+    Returns:
+        The selection, `[S]` for a concentration based species.
+    """
+    species = _species(sbml_model, target)
+    if species is not None and not species.getHasOnlySubstanceUnits():
+        return f"[{target}]"
+    return target
+
+
+def selections_of_formula(formula: str, sbml_model: Any = None) -> str:
+    """Get a formula of PEtab in the selections of roadrunner.
+
+    Every identifier of a concentration based species becomes its
+    concentration `[S]`, which is what the identifier means in the math of the
+    model and of PEtab; the other identifiers stay.
+
+    Args:
+        formula: a math expression of PEtab, e.g. a `targetValue`.
+        sbml_model: `libsbml.Model` of the problem.
+
+    Returns:
+        The formula, see `sbmlsim.simulator.formula`.
+    """
+    return IDENTIFIER.sub(
+        lambda m: selection_of_target(m.group(1), sbml_model), formula
+    )

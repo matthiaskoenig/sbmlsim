@@ -20,6 +20,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 from urllib.request import url2pathname
 
+import libsbml
 import numpy as np
 import pandas as pd
 import petab.v2 as petab_v2
@@ -59,7 +60,12 @@ from sbmlsim.fit.petab_v2.observables import (
 from sbmlsim.fit.petab_v2.observables import (
     observable_id as petab_observable_id,
 )
-from sbmlsim.fit.petab_v2.symbols import selection_of_formula, split_selection
+from sbmlsim.fit.petab_v2.symbols import (
+    selection_of_formula,
+    selection_of_target,
+    selections_of_formula,
+    split_selection,
+)
 from sbmlsim.mathml import expression_to_formula
 from sbmlsim.model import AbstractModel
 from sbmlsim.simulation import Change, Simulation, SteadyState
@@ -470,9 +476,47 @@ class PetabReader:
                 sid=model.model_id,
                 language_type=AbstractModel.LanguageType.SBML,
                 changes=dict(changes),
+                parameters=self._added_parameters(model),
             )
             for model in self.petab_problem.models
         }
+
+    def _added_parameters(self, model: Any) -> dict[str, float]:
+        """Get the parameters of the parameter table which the model lacks.
+
+        A parameter of the parameter table which is not an entity of the
+        model, e.g. a scaling of an observable or a standard deviation of the
+        noise, is added to the model as a constant parameter with its nominal
+        value: the conditions, the observables and the noise read it like any
+        parameter of the model, and the fit sets it like any parameter.
+
+        Args:
+            model: model of the PEtab problem.
+
+        Returns:
+            The nominal value of every such parameter, `0.0` without one.
+        """
+        # the model the fit simulates, which may be derived from the model of
+        # the problem, e.g. with the networks of PEtab SciML
+        document: libsbml.SBMLDocument = libsbml.readSBMLFromFile(
+            str(self._model_source(model))
+        )
+        source_model: libsbml.Model = document.getModel()
+        added: dict[str, float] = {}
+        for parameter in self.petab_problem.parameters:
+            if model.has_entity_with_id(parameter.id) or (
+                source_model is not None
+                and source_model.getElementBySId(parameter.id) is not None
+            ):
+                continue
+            if self.sciml is not None and parameter.id in self.sciml.parameter_ids:
+                # an array of a network, which its hybridization holds
+                continue
+            nominal = parameter.nominal_value
+            added[parameter.id] = (
+                float(nominal) if isinstance(nominal, int | float) else 0.0
+            )
+        return added
 
     def _nominal_changes(self) -> dict[str, Quantity]:
         """Get the values of the parameters which are not estimated.
@@ -687,8 +731,7 @@ class PetabReader:
 
         Raises:
             ValueError: if the period uses a condition the problem does not
-                define, or if a change is neither a number nor the id of an
-                estimated parameter.
+                define.
         """
         estimated = self._estimated_parameter_ids()
         changes: dict[str, Any] = {}
@@ -714,8 +757,12 @@ class PetabReader:
                     # the input of a network, which its hybridization holds for
                     # the simulation of the experiment
                     continue
+                # the ids of PEtab mean what the model means, a concentration
+                # based species is its concentration
+                sbml_model = self._sbml_model()
+                target = selection_of_target(change.target_id, sbml_model)
                 if _is_number(change.target_value):
-                    changes[change.target_id] = _to_float(change.target_value)
+                    changes[target] = _to_float(change.target_value)
                     continue
                 if str(change.target_value) in estimated:
                     # the value is the id of an estimated parameter, i.e. a
@@ -723,12 +770,8 @@ class PetabReader:
                     # `ParameterMapping` sets the target of every simulation of
                     # the group it covers, see `_versions`
                     continue
-                raise ValueError(
-                    f"The condition '{condition.id}' of the experiment "
-                    f"'{experiment.id}' assigns '{change.target_id}' the "
-                    f"value '{change.target_value}', which is neither a "
-                    f"number nor the id of an estimated parameter. Such a "
-                    f"condition has no representation in `sbmlsim`."
+                changes[target] = selections_of_formula(
+                    petab_math_str(change.target_value), sbml_model
                 )
         return changes
 

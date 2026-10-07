@@ -472,18 +472,13 @@ def test_the_round_trip_keeps_a_versioned_parameter(
     )
 
 
-def test_a_condition_of_an_unsupported_value_raises(petab_dir: Path) -> None:
-    """A condition value which is neither a number nor an estimated id raises.
+def test_a_condition_of_a_formula_is_a_formula(petab_dir: Path) -> None:
+    """A condition value which is neither a number nor an estimated id is a formula.
 
-    `_is_number` alone is too wide a net for "is a versioned parameter's
-    binding": it is also `False` for a fixed parameter's id, for an
-    expression such as `2*k1` and for `nan`/`inf`. None of those are a version
-    `_versions` would recognise either, so the target would silently keep its
-    model value with no versioned parameter to explain why. The reader raises
-    instead, the same way it already raises for a period which names a
-    condition the problem does not define.
+    The formula is kept and is checked when the simulation is compiled against
+    the model, which refuses a symbol the model does not have.
 
-    The `sbmlsim` extension keeps the exact timecourses it was written with,
+    The `sbmlsim` extension keeps the exact simulations it was written with,
     which is what `simulations()` uses when it is there, so the tables are not
     read at all; the extension is dropped here to fall back on them, the path
     a foreign PEtab problem takes.
@@ -496,5 +491,12 @@ def test_a_condition_of_an_unsupported_value_raises(petab_dir: Path) -> None:
 
     reader = PetabReader(petab_problem, base_path=petab_dir)
     assert reader.extension is None
-    with pytest.raises(ValueError, match=condition.id):
-        reader.simulations()
+    values = [
+        value
+        for simulation in reader.simulations().values()
+        for value in [
+            *simulation.preinit_changes.values(),
+            *[v for c in simulation.changes for v in c.values.values()],
+        ]
+    ]
+    assert "not_a_number_and_not_an_estimated_parameter" in values

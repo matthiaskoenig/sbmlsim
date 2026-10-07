@@ -11,7 +11,9 @@ The semantics are the ones of PEtab v2, see the design
    segment the events of its time are applied: every value is evaluated
    first, with the state at that time, then every target is set; a
    compartment keeps the concentration of the concentration species in it.
-4. A segment is integrated with the output of the plan. A time of a change
+4. After a change at a time after the start, the events whose triggers the
+   change made true fire, which roadrunner does not see.
+5. A segment is integrated with the output of the plan. A time of a change
    appears once in the output, with the state after the change.
 
 The executor uses no pint, no deepcopy, no xarray and no pandas: it is what
@@ -27,7 +29,7 @@ import numpy as np
 import roadrunner
 
 from sbmlsim.model.model_roadrunner import RoadrunnerSBMLModel
-from sbmlsim.model.symbols import TargetKind
+from sbmlsim.model.symbols import EventSymbols, TargetKind
 from sbmlsim.result.timecourse import TimecourseResult
 from sbmlsim.simulator.formula import compile_formula
 from sbmlsim.simulator.plan import (
@@ -116,6 +118,7 @@ def _simulate(
     """
     events = {event.time: event for event in plan.events}
     points = sorted({plan.start, plan.end, *events})
+    model_events = plan.symbols.events
     integrator: roadrunner.Integrator = r.getIntegrator()
     times = np.asarray(plan.times, dtype=float)
 
@@ -124,18 +127,29 @@ def _simulate(
         a, b = points[k], points[k + 1]
         last = k == len(points) - 2
         if a in events:
-            _apply(events[a], r, plan)
+            if a > plan.start and model_events:
+                # the triggers at the end of the integration before the change
+                triggers = _triggers(model_events, r, float(r.model.getTime()))
+                _apply(events[a], r, plan)
+                _fire_events(model_events, triggers, r, a, model)
+            else:
+                # at the start roadrunner evaluates the triggers itself
+                _apply(events[a], r, plan)
 
+        # an event of the model at the time of the next change fires after
+        # the change (PEtab v2, reinitialization): the integration stops just
+        # before it, where roadrunner does not fire it, see `_fire_events`
+        b_end = float(np.nextafter(b, -np.inf)) if model_events and not last else b
         if plan.output is OutputMode.INTEGRATOR:
             integrator.setValue(VARIABLE_STEP_SIZE, True)
-            block = np.array(r.simulate(a, b), dtype=float)
+            block = np.array(r.simulate(a, b_end), dtype=float)
             if not last:
                 # the state at `b` is the one before the change at `b`
                 block = block[:-1]
         else:
             integrator.setValue(VARIABLE_STEP_SIZE, False)
             wanted = times[(times >= a) & ((times <= b) if last else (times < b))]
-            grid = np.unique(np.concatenate([[a], wanted, [b]]))
+            grid = np.unique(np.concatenate([[a], wanted, [b_end]]))
             result = np.array(r.simulate(times=grid.tolist()), dtype=float)
             block = result[np.isin(grid, wanted)]
         blocks.append(block)
@@ -196,6 +210,116 @@ def _apply(event: PlanEvent, r: roadrunner.RoadRunner, plan: Plan) -> None:
     for target, kind, value in values:
         if kind is not TargetKind.COMPARTMENT:
             r.setValue(target, value)
+
+
+def _triggers(
+    events: Sequence[EventSymbols], r: roadrunner.RoadRunner, time: float
+) -> list[bool | None]:
+    """Evaluate the triggers of the events, `None` for one which is not evaluated."""
+    values: list[bool | None] = []
+    for event in events:
+        if event.trigger is None:
+            values.append(None)
+            continue
+        try:
+            formula = compile_formula(event.trigger)
+        except ValueError:
+            values.append(None)
+            continue
+        values.append(
+            bool(
+                formula.evaluate(
+                    [time if s == "time" else r.getValue(s) for s in formula.symbols]
+                )
+            )
+        )
+    return values
+
+
+#: the most rounds of events which a change triggers, an event may trigger
+#: another one
+MAX_EVENT_ROUNDS = 100
+
+
+def _fire_events(
+    events: Sequence[EventSymbols],
+    before: list[bool | None],
+    r: roadrunner.RoadRunner,
+    time: float,
+    model: RoadrunnerSBMLModel,
+) -> None:
+    """Fire the events whose triggers a change made true.
+
+    roadrunner does not see a trigger which becomes true by a value which is
+    set between two integrations, so the executor fires such events (PEtab
+    v2, reinitialization: the events are applied after the changes): the
+    values of the assignments of every triggered event are evaluated, then
+    set, and the events these assignments trigger fire in the next round. An
+    event with a delay is reported and not fired.
+
+    Args:
+        events: the events of the model.
+        before: the triggers before the change.
+        r: the roadrunner instance, in the state after the change.
+        time: the time of the change.
+        model: the model, for the messages.
+    """
+    for _ in range(MAX_EVENT_ROUNDS):
+        after = _triggers(events, r, time)
+        fired = [
+            event
+            for event, old, new in zip(events, before, after, strict=True)
+            if old is False and new is True
+        ]
+        if not fired:
+            return
+        values: list[tuple[str, float]] = []
+        for event in fired:
+            if event.delayed:
+                logger.warning(
+                    "The event '%s' of the model '%s' is triggered by a change at "
+                    "the time %s and has a delay, which the simulator does not "
+                    "schedule: it does not fire.",
+                    event.eid,
+                    model.sid or r.model.getModelName(),
+                    time,
+                )
+                continue
+            try:
+                formulas = [(t, compile_formula(f)) for t, f in event.assignments]
+            except ValueError as err:
+                logger.warning(
+                    "The event '%s' of the model '%s' is triggered by a change at "
+                    "the time %s, its assignments are no formulas the simulator "
+                    "evaluates: %s",
+                    event.eid,
+                    model.sid or r.model.getModelName(),
+                    time,
+                    err,
+                )
+                continue
+            for target, formula in formulas:
+                values.append(
+                    (
+                        target,
+                        formula.evaluate(
+                            [
+                                time if s == "time" else r.getValue(s)
+                                for s in formula.symbols
+                            ]
+                        ),
+                    )
+                )
+        for target, value in values:
+            r.setValue(target, value)
+        before = after
+    logger.warning(
+        "The events of the model '%s' at the time %s trigger each other more than "
+        "%s times.",
+        model.sid or r.model.getModelName(),
+        time,
+        MAX_EVENT_ROUNDS,
+    )
 
 
 def steady_state(
