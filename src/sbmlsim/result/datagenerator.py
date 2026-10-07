@@ -31,9 +31,13 @@ class DataGeneratorIndexingFunction(DataGeneratorFunction):
     def __init__(self, index: int, dimension: str = "_time"):
         """Initialize DataGeneratorIndexingFunction.
 
+        A ragged result, whose simulations have different time points, is
+        interpolated onto the union of its time points first, so that an
+        index is the same time in every simulation.
+
         Args:
             index: Index to select on the dimension.
-            dimension: Dimension to reduce.
+            dimension: Dimension to reduce, the time by default.
         """
         self.index = index
         self.dimension = dimension
@@ -41,7 +45,7 @@ class DataGeneratorIndexingFunction(DataGeneratorFunction):
     def __call__(
         self, xresults: dict[str, XResult], dsets: dict[str, DataSet] | None = None
     ) -> dict[str, XResult]:
-        """Reduce based on '_time' dimension with given index.
+        """Reduce a dimension, by default the time, at the index.
 
         Args:
             xresults: Results to process.
@@ -52,6 +56,8 @@ class DataGeneratorIndexingFunction(DataGeneratorFunction):
         """
         results = {}
         for key, xres in xresults.items():
+            if self.dimension == "_time" and "_point" in xres.xds.dims:
+                xres = xres.interpolate(xres.time_points())
             xds_new = xres.xds.isel({self.dimension: self.index})
             xres_new = XResult(xdataset=xds_new, uinfo=xres.uinfo)
             results[key] = xres_new

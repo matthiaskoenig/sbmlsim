@@ -9,6 +9,7 @@ from typing import Any
 
 import numpy as np
 
+from sbmlsim.simulation.definition import Simulation
 from sbmlsim.simulation.range import Dimension
 from sbmlsim.simulation.simulation import AbstractSim
 from sbmlsim.simulation.timecourse import TimecourseSim
@@ -25,7 +26,7 @@ class ScanSim(AbstractSim):
 
     def __init__(
         self,
-        simulation: AbstractSim,
+        simulation: "AbstractSim | Simulation",
         dimensions: list[Dimension] | None = None,
         mapping: dict[str, int] | None = None,
     ):
@@ -45,7 +46,7 @@ class ScanSim(AbstractSim):
         :param scan: dictionary of parameters or conditions to scan
         :param mapping: map of changes to parts of simulations
         """
-        self.simulation: AbstractSim = simulation
+        self.simulation: AbstractSim | Simulation = simulation
         if dimensions is None:
             # handling the simple simulation case
             dimensions = []
@@ -93,9 +94,9 @@ class ScanSim(AbstractSim):
         Requires normalization of timecourse simulation as well
         as all dimensions in the scan.
         """
-        # normalize simulation
-        # logger.error("NORMALIZING SCAN")
-        self.simulation.normalize(uinfo=uinfo)
+        # normalize simulation, a `Simulation` is converted when it is compiled
+        if isinstance(self.simulation, AbstractSim):
+            self.simulation.normalize(uinfo=uinfo)
 
         # normalize changes in all dimensions
         for scan_dim in self.dimensions:

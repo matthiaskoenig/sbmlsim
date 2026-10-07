@@ -55,11 +55,11 @@ def test_values_must_match_the_columns() -> None:
 
 
 def test_from_timecourses_without_scan() -> None:
-    """Every result is an entry of the `_dfs` dimension."""
+    """Several results without a scan are entries of the `_dfs` dimension."""
     xres = XResult.from_timecourses([_result(), _result(offset=0.0)])
-    assert xres.xds["[X]"].dims == ("_time", "_dfs")
+    assert xres.xds["[X]"].dims == ("_point", "_dfs")
     assert xres.xds.sizes["_dfs"] == 2
-    np.testing.assert_array_equal(xres.xds["_time"].values, [0.0, 1.0, 2.0])
+    np.testing.assert_array_equal(xres.xds["time"].values[:, 0], [0.0, 1.0, 2.0])
     np.testing.assert_array_equal(xres.xds["Y"].values[:, 1], [10.0, 20.0, 30.0])
 
 
@@ -71,11 +71,11 @@ def test_from_timecourses_without_time() -> None:
 
 
 def test_from_timecourses_of_different_lengths() -> None:
-    """The results of a scan share their time points."""
+    """Results of different lengths are padded, see `tests/result/test_xresult.py`."""
     short = TimecourseResult(columns=("time", "X"), values=np.zeros((2, 2)))
     long = TimecourseResult(columns=("time", "X"), values=np.zeros((3, 2)))
-    with pytest.raises(ValueError, match="time points"):
-        XResult.from_timecourses([long, short])
+    xres = XResult.from_timecourses([long, short])
+    assert np.isnan(xres.xds["X"].values[2, 1])
 
 
 def test_from_dfs_is_from_timecourses() -> None:

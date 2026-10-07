@@ -30,6 +30,7 @@ from typing import Any
 
 import numpy as np
 
+from sbmlsim.plot.padding import first_curve, without_padding
 from sbmlsim.plot.plotting import (
     Axis,
     AxisScale,
@@ -90,10 +91,9 @@ def _values(data: Any, experiment: Any, unit: str | None) -> np.ndarray | None:
     quantity = data.get_data(experiment=experiment, to_units=unit)
     if quantity is None:
         return None
-    magnitude = quantity.magnitude
-    # a scan has a column per repeat, the first one is plotted, as in the
+    # a scan has a column per simulation, the first one is plotted, as in the
     # matplotlib serializer
-    return magnitude[:, 0] if np.ndim(magnitude) == 2 else magnitude
+    return first_curve(np.asarray(quantity.magnitude))
 
 
 def _axis_options(axis: Axis | None) -> dict[str, Any]:
@@ -242,9 +242,11 @@ class PlotlyFigureSerializer:
 
         if isinstance(abstract_curve, ShadedArea):
             area: ShadedArea = abstract_curve
-            x = _values(area.x, experiment, xunit)
-            yfrom = _values(area.yfrom, experiment, yunit)
-            yto = _values(area.yto, experiment, yunit)
+            x, yfrom, yto = without_padding(
+                _values(area.x, experiment, xunit),
+                _values(area.yfrom, experiment, yunit),
+                _values(area.yto, experiment, yunit),
+            )
             if x is None or yfrom is None or yto is None:
                 return None
             color = None
@@ -270,17 +272,19 @@ class PlotlyFigureSerializer:
             )
             return None
 
-        x = _values(curve.x, experiment, xunit)
-        y = _values(curve.y, experiment, yunit)
+        x, y, yerr, xerr = without_padding(
+            _values(curve.x, experiment, xunit),
+            _values(curve.y, experiment, yunit),
+            _values(curve.yerr, experiment, yunit),
+            _values(curve.xerr, experiment, xunit),
+        )
         if x is None or y is None:
             return None
 
         error_y = None
-        yerr = _values(curve.yerr, experiment, yunit)
         if yerr is not None:
             error_y = {"type": "data", "array": yerr, "visible": True}
         error_x = None
-        xerr = _values(curve.xerr, experiment, xunit)
         if xerr is not None:
             error_x = {"type": "data", "array": xerr, "visible": True}
 

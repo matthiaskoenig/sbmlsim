@@ -10,6 +10,7 @@ from matplotlib.axes import Axes as AxesMPL
 from matplotlib.figure import Figure as FigureMPL
 
 from sbmlsim.plot import Axis, Curve, Figure, SubPlot
+from sbmlsim.plot.padding import first_curve, without_padding
 from sbmlsim.plot.plotting import (
     AbstractCurve,
     AxisScale,
@@ -156,43 +157,14 @@ class MatplotlibFigureSerializer:
 
                     label = curve.name if curve.name else "_nolegend_"
 
-                    # FIXME: necessary to get the individual curves out of the data cube
-                    # TODO: iterate over all repeats in the data
-                    if x is None:
-                        x_data = None
-                    else:
-                        x_data = (
-                            x.magnitude[:, 0]
-                            if np.ndim(x.magnitude) == 2
-                            else x.magnitude
-                        )
-
-                    if y is None:
-                        y_data = None
-                    else:
-                        y_data = (
-                            y.magnitude[:, 0]
-                            if np.ndim(y.magnitude) == 2
-                            else y.magnitude
-                        )
-
-                    if xerr is None:
-                        xerr_data = None
-                    else:
-                        xerr_data = (
-                            xerr.magnitude[:, 0]
-                            if np.ndim(xerr.magnitude) == 2
-                            else xerr.magnitude
-                        )
-
-                    if yerr is None:
-                        yerr_data = None
-                    else:
-                        yerr_data = (
-                            yerr.magnitude[:, 0]
-                            if np.ndim(yerr.magnitude) == 2
-                            else yerr.magnitude
-                        )
+                    # a scan has a column per simulation, the first one is
+                    # drawn without the padding of a ragged result
+                    x_data, y_data, xerr_data, yerr_data = without_padding(
+                        first_curve(None if x is None else x.magnitude),
+                        first_curve(None if y is None else y.magnitude),
+                        first_curve(None if xerr is None else xerr.magnitude),
+                        first_curve(None if yerr is None else yerr.magnitude),
+                    )
 
                     kwargs: dict[str, Any] = {}
                     if curve.style:
@@ -283,10 +255,12 @@ class MatplotlibFigureSerializer:
                     yfrom = area.yfrom.get_data(experiment=experiment, to_units=yunit)
                     yto = area.yto.get_data(experiment=experiment, to_units=yunit)
 
-                    # FIXME: support multidimensional results
-                    x_data = x.magnitude[:, 0] if x is not None else None
-                    yfrom_data = yfrom.magnitude[:, 0] if yfrom is not None else None
-                    yto_data = yto.magnitude[:, 0] if yto is not None else None
+                    # the first simulation of a scan, without the padding
+                    x_data, yfrom_data, yto_data = without_padding(
+                        first_curve(None if x is None else x.magnitude),
+                        first_curve(None if yfrom is None else yfrom.magnitude),
+                        first_curve(None if yto is None else yto.magnitude),
+                    )
 
                     label = area.name if area.name else "_nolegend_"
                     kwargs: dict[str, Any] = {}
