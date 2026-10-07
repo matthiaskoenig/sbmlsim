@@ -14,7 +14,7 @@ from sbmlsim.data import DataSet
 from sbmlsim.experiment import SimulationExperiment
 from sbmlsim.fit import FitData, FitMapping, FitMappingCollection
 from sbmlsim.model import AbstractModel
-from sbmlsim.simulation import AbstractSim, Timecourse, TimecourseSim
+from sbmlsim.simulation import Simulation
 from sbmlsim.task import Task
 from tests.sciml.hybrid import MODEL_PATH
 
@@ -85,11 +85,8 @@ class LotkaVolterra(SimulationExperiment):
             for sid, values in DATA.items()
         }
 
-    def simulations(self) -> dict[str, AbstractSim]:
-        return {
-            sid: TimecourseSim([Timecourse(start=0.0, end=10.0, steps=100)])
-            for sid in SIMULATIONS
-        }
+    def simulations(self) -> dict[str, Simulation]:
+        return {sid: Simulation(start=0.0, end=10.0, steps=100) for sid in SIMULATIONS}
 
     def tasks(self) -> dict[str, Task]:
         return {f"task_{sid}": Task(model="lv", simulation=sid) for sid in SIMULATIONS}

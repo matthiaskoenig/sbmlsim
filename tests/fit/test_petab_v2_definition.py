@@ -45,14 +45,18 @@ def _hctz(settings: FitSettings, **replaced: Any) -> OptimizationProblem:
 def test_export_after_an_evaluation_writes_the_definition(
     fit_settings: FitSettings,
 ) -> None:
-    """The values an evaluation writes into the timecourses are not conditions."""
+    """The values an evaluation sets are not conditions."""
     problem = _hctz(fit_settings)
     x = np.asarray(problem.x0, dtype=float)
     problem.cost_least_square(problem.to_scale(x))
-    # the evaluation wrote the parameters into the first timecourses
+    # an evaluation simulates the plans with the parameters, the definition
+    # stays as it is
     assert any(
-        set(problem.pids) & set(simulation.timecourses[0].changes)
-        for simulation in problem.simulations
+        set(problem.pids) & {a.target for a in problem.evaluated_plan(k, x).preinit}
+        for k in range(len(problem.mapping_groups))
+    )
+    assert not any(
+        set(problem.pids) & {a.target for a in plan.preinit} for plan in problem.plans
     )
     assert not any(
         set(problem.pids) & set(changes) for changes in problem.defined_changes

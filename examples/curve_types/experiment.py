@@ -10,7 +10,7 @@ from sbmlsim.experiment import ExperimentRunner, SimulationExperiment
 from sbmlsim.model import AbstractModel
 from sbmlsim.plot import Figure, Plot
 from sbmlsim.result.report import Report
-from sbmlsim.simulation import AbstractSim, Timecourse, TimecourseSim
+from sbmlsim.simulation import Simulation
 from sbmlsim.simulator.simulation_serial import SimulatorSerial
 from sbmlsim.task import Task
 
@@ -25,13 +25,9 @@ class CurveTypesExperiment(SimulationExperiment):
         """Define models."""
         return {"model": self.model_path}
 
-    def simulations(self) -> dict[str, AbstractSim]:
+    def simulations(self) -> dict[str, Simulation]:
         """Define simulations."""
-        tc = TimecourseSim(
-            timecourses=Timecourse(start=0, end=10, steps=10),
-            time_offset=0,
-        )
-        return {"tc": tc}
+        return {"tc": Simulation(end=10, steps=10)}
 
     def tasks(self) -> dict[str, Task]:
         """Define tasks."""

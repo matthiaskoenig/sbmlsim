@@ -8,18 +8,13 @@ from pathlib import Path
 
 import numpy as np
 
+from sbmlsim import Q
 from sbmlsim.data import Data
 from sbmlsim.experiment import ExperimentRunner, SimulationExperiment
 from sbmlsim.model import AbstractModel, RoadrunnerSBMLModel
 from sbmlsim.plot import Axis, Figure
 from sbmlsim.resources import DEMO_SBML
-from sbmlsim.simulation import (
-    AbstractSim,
-    Dimension,
-    ScanSim,
-    Timecourse,
-    TimecourseSim,
-)
+from sbmlsim.simulation import Change, Dimension, ScanSim, Simulation
 from sbmlsim.simulation.sensitivity import ModelSensitivity
 from sbmlsim.simulator.simulation_serial import SimulatorSerial
 from sbmlsim.task import Task
@@ -39,35 +34,29 @@ class DemoExperiment(SimulationExperiment):
             for key in self.simulations()
         }
 
-    def simulations(self) -> dict[str, AbstractSim]:
+    def simulations(self) -> dict[str, Simulation | ScanSim]:
         """Define simulations."""
         return {
             **self.sim_scans(),
         }
 
-    def sim_scans(self) -> dict[str, AbstractSim]:
-        Q_ = self.Q_
+    def sim_scans(self) -> dict[str, ScanSim]:
         scan_init = ScanSim(
-            simulation=TimecourseSim(
-                [
-                    Timecourse(
-                        start=0, end=10, steps=100, changes={"[e__A]": Q_(10, "mM")}
-                    ),
-                    Timecourse(
-                        start=0, end=10, steps=100, changes={"[e__B]": Q_(10, "mM")}
-                    ),
-                ]
+            simulation=Simulation(
+                end=20,
+                steps=200,
+                preinit_changes={"[e__A]": Q(10, "mM")},
+                changes=[Change(10, {"[e__B]": Q(10, "mM")})],
             ),
             dimensions=[
                 Dimension(
-                    "dim_init", changes={"[e__A]": Q_(np.linspace(5, 15, num=11), "mM")}
+                    "dim_init", changes={"[e__A]": Q(np.linspace(5, 15, num=11), "mM")}
                 ),
                 ModelSensitivity.create_difference_dimension(
                     model=self._models["model"],
                     difference=0.5,
                 ),
             ],
-            mapping={"dim_init": 0, "dim_sens": 0},
         )
 
         return {

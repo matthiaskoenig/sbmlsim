@@ -12,7 +12,9 @@ import numpy as np
 
 from sbmlsim.console import console
 from sbmlsim.model import RoadrunnerSBMLModel
-from sbmlsim.simulation import Dimension, ScanSim, TimecourseSim
+from sbmlsim.simulation import Dimension, ScanSim, Simulation
+from sbmlsim.simulator.plan import compile_simulation
+from sbmlsim.units import Q
 
 logger = logging.getLogger(__name__)
 
@@ -40,14 +42,14 @@ class ModelSensitivity:
     @staticmethod
     def difference_sensitivity_scan(
         model: RoadrunnerSBMLModel,
-        simulation: TimecourseSim,
+        simulation: Simulation,
         difference: float = 0.1,
         stype: SensitivityType = SensitivityType.PARAMETER_SENSITIVITY,
         exclude_filter=None,
         exclude_zero: bool = True,
         zero_eps: float = 1e-8,
     ) -> ScanSim:
-        """Create a parameter sensitivity scan for given TimecourseSimulation.
+        """Create a parameter sensitivity scan for a simulation.
 
         :param model: model for execution (needed to select parameters)
         :param simulation: timecourse simulation to scan
@@ -61,7 +63,7 @@ class ModelSensitivity:
         """
         dim = ModelSensitivity.create_difference_dimension(
             model=model,
-            changes=simulation.timecourses[0].changes,
+            changes=ModelSensitivity._changes(simulation),
             difference=difference,
             stype=stype,
             exclude_filter=exclude_filter,
@@ -70,16 +72,13 @@ class ModelSensitivity:
         )
         return ScanSim(
             simulation=simulation,
-            dimensions=[
-                dim,
-            ],
-            mapping={"dim_sens": 0},
+            dimensions=[dim],
         )
 
     @staticmethod
     def distribution_sensitivity_scan(
         model: RoadrunnerSBMLModel,
-        simulation: TimecourseSim,
+        simulation: Simulation,
         cv: float = 0.1,
         size: int = 10,
         distribution: DistributionType = DistributionType.NORMAL_DISTRIBUTION,
@@ -91,7 +90,7 @@ class ModelSensitivity:
         """Get sensitivity scan based on distributions for values."""
         dim = ModelSensitivity.create_sampling_dimension(
             model=model,
-            changes=simulation.timecourses[0].changes,
+            changes=ModelSensitivity._changes(simulation),
             cv=cv,
             size=size,
             distribution=distribution,
@@ -102,11 +101,13 @@ class ModelSensitivity:
         )
         return ScanSim(
             simulation=simulation,
-            dimensions=[
-                dim,
-            ],
-            mapping={"dim_sens": 0},
+            dimensions=[dim],
         )
+
+    @staticmethod
+    def _changes(simulation: Simulation) -> dict:
+        """Get the changes the reference values of a simulation are taken with."""
+        return dict(simulation.preinit_changes)
 
     @staticmethod
     def create_sampling_dimension(
@@ -135,7 +136,6 @@ class ModelSensitivity:
             exclude_zero=exclude_zero,
             zero_eps=zero_eps,
         )
-        Q_ = model.Q_
 
         changes = {}
         for key, magnitude in p_ref.items():
@@ -145,7 +145,7 @@ class ModelSensitivity:
                 values = np.random.normal(magnitude, scale=magnitude * cv, size=size)
             else:
                 raise ValueError(f"Unsupported distribution: {distribution}")
-            changes[key] = Q_(values, units)
+            changes[key] = Q(values, units)
 
         return Dimension("dim_sens", changes=changes)
 
@@ -174,7 +174,6 @@ class ModelSensitivity:
             exclude_zero=exclude_zero,
             zero_eps=zero_eps,
         )
-        Q_ = model.Q_
 
         changes = {}
         num_pars = len(p_ref)
@@ -183,7 +182,7 @@ class ModelSensitivity:
             # change parameters in correct position
             values[index] = magnitude * (1.0 + difference)
             values[index + num_pars] = magnitude * (1.0 - difference)
-            changes[key] = Q_(values, model.uinfo[key])
+            changes[key] = Q(values, model.uinfo[key])
         return Dimension("dim_sens", changes=changes)
 
     @staticmethod
@@ -206,25 +205,18 @@ class ModelSensitivity:
         :param exclude_zero: exclude parameters which are zero
         :return:
         """
-        # reset model
+        # the model with the changes before its initialization, so that an
+        # initial assignment follows a changed parameter
         r = model.r
         if r is None:
             raise ValueError(f"Model '{model}' is not loaded in roadrunner.")
-        r.resetAll()
-
-        # apply normalized model changes
-        if changes is None:
-            changes = {}
-        for key, item in changes.items():
-            try:
-                r[key] = item.magnitude
-            except AttributeError as err:
-                logger.error(
-                    "Change is not a Quantity with unit: '%s = %s'. Add units to all changes.",
-                    key,
-                    item,
-                )
-                raise err
+        plan = compile_simulation(
+            Simulation(end=1.0, preinit_changes=changes or {}),
+            model.symbols,
+            model.uinfo,
+        )
+        model.initialize(plan.preinit)
+        r = model.r_loaded
 
         doc: libsbml.SBMLDocument = libsbml.readSBMLFromString(r.getSBML())
         sbml_model: libsbml.Model = doc.getModel()

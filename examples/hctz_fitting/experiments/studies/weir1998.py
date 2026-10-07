@@ -14,10 +14,11 @@ from examples.hctz_fitting.experiments.metadata import (
     Tissue,
 )
 from examples.hctz_fitting.helpers import run_experiments
+from sbmlsim import Q
 from sbmlsim.data import DataSet
 from sbmlsim.fit import FitData, FitMapping
 from sbmlsim.plot import Axis, Figure
-from sbmlsim.simulation import AbstractSim, Timecourse, TimecourseSim
+from sbmlsim.simulation import Change, Simulation
 
 
 class Weir1998(HCTZSimulationExperiment):
@@ -44,44 +45,23 @@ class Weir1998(HCTZSimulationExperiment):
                 dsets[f"{fig_id}_{label}"] = dset
         return dsets
 
-    def simulations(self) -> dict[str, AbstractSim]:
-        Q_ = self.Q_
-        tcsims = {}
-
-        # 11 doses, every 12 hours
-
-        tc0 = Timecourse(
-            start=0,
-            end=12 * 60,  # [min]
-            steps=500,
-            changes={
-                **self.default_changes(),
-                "PODOSE_hctz": Q_(25, "mg"),
-            },
-        )
-        tc1 = Timecourse(
-            start=0,
-            end=12 * 60,  # [min]
-            steps=500,
-            changes={
-                "PODOSE_hctz": Q_(25, "mg"),
-                "Aurine_hctz": Q_(0, "mmole"),  # reset urine collection
-            },
-        )
-        tc2 = Timecourse(
-            start=0,
-            end=60 * 60,  # [min]
-            steps=500,
-            changes={
-                "PODOSE_hctz": Q_(25, "mg"),
-                "Aurine_hctz": Q_(0, "mmole"),  # reset urine collection
-            },
-        )
-        tcsims["hctz25"] = TimecourseSim(
-            [tc0] + [tc1 for _ in range(9)] + [tc2], time_offset=-10 * 12 * 60
-        )
-
-        return tcsims
+    def simulations(self) -> dict[str, Simulation]:
+        # 11 doses, every 12 hours, the data is reported from the last dose
+        dose_times = [-120 + 12 * k for k in range(11)]
+        return {
+            "hctz25": Simulation(
+                time_unit="hr",
+                start=-120,
+                end=60,
+                steps=7500,
+                preinit_changes=self.default_changes(),
+                changes=[
+                    Change(dose_times, {"PODOSE_hctz": Q(25, "mg")}),
+                    # the urine is collected from every dose
+                    Change(dose_times[1:], {"Aurine_hctz": Q(0, "mmole")}),
+                ],
+            )
+        }
 
     def fit_mappings(self) -> dict[str, FitMapping]:
         mappings = {}

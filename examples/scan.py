@@ -5,23 +5,26 @@ import numpy as np
 from sbmlsim.model import RoadrunnerSBMLModel
 from sbmlsim.resources import REPRESSILATOR_SBML
 from sbmlsim.result import XResult
-from sbmlsim.simulation import Dimension, ScanSim, Timecourse, TimecourseSim
+from sbmlsim.simulation import Change, Dimension, ScanSim, Simulation
 from sbmlsim.simulator import SimulatorSerial
 
 
+def _simulation() -> Simulation:
+    """Get a simulation with two changes during it, on a grid of 100 points."""
+    return Simulation(
+        end=220,
+        changes=[Change(100, {"[X]": 10}), Change(160, {"X": 10})],
+        steps=100,
+    )
+
+
 def run_scan0d() -> XResult:
-    """Perform a parameter 0D scan, i.e., simple simulation"""
+    """Perform a parameter 0D scan, i.e., simple simulation."""
     model = RoadrunnerSBMLModel(REPRESSILATOR_SBML)
     simulator = SimulatorSerial(model)
 
     scan0d = ScanSim(
-        simulation=TimecourseSim(
-            [
-                Timecourse(start=0, end=100, steps=100, changes={}),
-                Timecourse(start=0, end=60, steps=100, changes={"[X]": 10}),
-                Timecourse(start=0, end=60, steps=100, changes={"X": 10}),
-            ]
-        ),
+        simulation=_simulation(),
         dimensions=[],
     )
     return simulator.run_scan(scan0d)
@@ -36,13 +39,7 @@ def run_scan1d() -> XResult:
     simulator = SimulatorSerial(model)
 
     scan1d = ScanSim(
-        simulation=TimecourseSim(
-            [
-                Timecourse(start=0, end=100, steps=100, changes={}),
-                Timecourse(start=0, end=60, steps=100, changes={"[X]": 10}),
-                Timecourse(start=0, end=60, steps=100, changes={"X": 10}),
-            ]
-        ),
+        simulation=_simulation(),
         dimensions=[
             Dimension(
                 "dim1",
@@ -62,13 +59,7 @@ def run_scan2d() -> XResult:
     simulator = SimulatorSerial(model)
 
     scan2d = ScanSim(
-        simulation=TimecourseSim(
-            [
-                Timecourse(start=0, end=100, steps=100, changes={}),
-                Timecourse(start=0, end=60, steps=100, changes={"[X]": 10}),
-                Timecourse(start=0, end=60, steps=100, changes={"X": 10}),
-            ]
-        ),
+        simulation=_simulation(),
         dimensions=[
             Dimension(
                 "dim1",
@@ -93,13 +84,7 @@ def run_scan1d_distribution() -> XResult:
     simulator = SimulatorSerial(model)
 
     scan1d = ScanSim(
-        simulation=TimecourseSim(
-            [
-                Timecourse(start=0, end=100, steps=100, changes={}),
-                Timecourse(start=0, end=60, steps=100, changes={"[X]": 10}),
-                Timecourse(start=0, end=60, steps=100, changes={"X": 10}),
-            ]
-        ),
+        simulation=_simulation(),
         dimensions=[
             Dimension(
                 "dim1",

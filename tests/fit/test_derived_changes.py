@@ -14,6 +14,7 @@ from dataclasses import dataclass, replace
 import numpy as np
 import pytest
 
+from sbmlsim import Q
 from sbmlsim.fit import FitParameter, FitSettings
 from sbmlsim.fit.cli import FitDefinition, run_fit
 from sbmlsim.fit.derived import DerivedChanges
@@ -22,6 +23,12 @@ from sbmlsim.fit.optimization import OptimizationProblem
 from sbmlsim.fit.options import ParameterScaleType
 from tests.fit.hooks import FACTOR, TARGET, Scaling
 from tests.fit.hooks import factor_parameter as _factor
+
+
+def _preinit(problem: OptimizationProblem, k_group: int, x: np.ndarray) -> dict:
+    """Get the pre-initialization values of a group for the parameters."""
+    plan = problem.evaluated_plan(k_group, x)
+    return {a.target: a.value for a in plan.preinit}
 
 
 def _problem(
@@ -67,8 +74,8 @@ def test_an_external_parameter_writes_no_change_and_the_hook_reads_it(
     # once per simulation, with the id of the simulation
     assert scaling.calls == ["hctz_iv1", "hctz_iv35"]
     # the target of the hook was written, its value follows from the factor
-    changes = problem.simulations[0].timecourses[0].changes
-    assert changes[TARGET].magnitude == pytest.approx(2.0 * nominal)
+    changes = _preinit(problem, 0, np.array([2.0]))
+    assert changes[TARGET] == pytest.approx(2.0 * nominal)
 
     plain = _problem(
         definition_hctz_iv,
@@ -99,13 +106,14 @@ def test_the_hook_reads_the_changes_of_the_fit(
     nominal = float(model.r["Ka_dis_hctz"])
     problem.predictions(np.array([1e-4]))
     assert float(model.r["Ka_dis_hctz"]) != nominal
-    changes = problem.simulations[0].timecourses[0].changes
+    changes = _preinit(problem, 0, np.array([1e-4]))
     # the values of the fit reach the hook in the units of the model
-    factor = problem.runner_initialized.Q_(1e-4, "1/ml").to(model.uinfo[TARGET])
-    assert changes["Ka_dis_hctz"].magnitude == pytest.approx(factor.magnitude * nominal)
+    factor = Q(1e-4, "1/ml").to(model.uinfo[TARGET])
+    assert changes["Ka_dis_hctz"] == pytest.approx(factor.magnitude * nominal)
     # and the value of the model does not change between the evaluations
     problem.predictions(np.array([1e-4]))
-    assert changes["Ka_dis_hctz"].magnitude == pytest.approx(factor.magnitude * nominal)
+    changes = _preinit(problem, 0, np.array([1e-4]))
+    assert changes["Ka_dis_hctz"] == pytest.approx(factor.magnitude * nominal)
 
 
 def test_a_condition_the_problem_does_not_simulate_is_logged(
@@ -292,8 +300,8 @@ def test_a_hook_reads_its_constants(
     problem.initialize(fit_settings)
     nominal = float(problem.models[0].r["Ka_dis_hctz"])
     problem.predictions(np.array([1e-4]))
-    changes = problem.simulations[0].timecourses[0].changes
-    assert changes["Ka_dis_hctz"].magnitude == pytest.approx(3.0 * nominal)
+    changes = _preinit(problem, 0, np.array([1e-4]))
+    assert changes["Ka_dis_hctz"] == pytest.approx(3.0 * nominal)
 
 
 def test_a_change_of_the_simulation_has_precedence_over_the_model(
@@ -310,11 +318,10 @@ def test_a_change_of_the_simulation_has_precedence_over_the_model(
     nominal = float(model.r["Ka_dis_hctz"])
     assert float(model.r["IVDOSE_hctz"]) == 0.0
     problem.predictions(np.array([1e-4]))
-    Q_ = problem.runner_initialized.Q_
     for k, dose in ((0, 1.0), (1, 35.0)):
-        value = Q_(dose, "mg").to(model.uinfo["IVDOSE_hctz"]).magnitude
-        changes = problem.simulations[k].timecourses[0].changes
-        assert changes["Ka_dis_hctz"].magnitude == pytest.approx(value * nominal)
+        value = Q(dose, "mg").to(model.uinfo["IVDOSE_hctz"]).magnitude
+        changes = _preinit(problem, k, np.array([1e-4]))
+        assert changes["Ka_dis_hctz"] == pytest.approx(value * nominal)
 
 
 @dataclass(frozen=True)

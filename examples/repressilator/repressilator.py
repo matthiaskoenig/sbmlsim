@@ -4,13 +4,14 @@ Example simulation experiment.
 
 from pathlib import Path
 
+from sbmlsim import Q
 from sbmlsim.data import Data
 from sbmlsim.experiment import SimulationExperiment
 from sbmlsim.experiment.runner import run_experiments
 from sbmlsim.model import AbstractModel
 from sbmlsim.plot import Figure, Plot
 from sbmlsim.resources import REPRESSILATOR_SBML
-from sbmlsim.simulation import AbstractSim, Timecourse, TimecourseSim
+from sbmlsim.simulation import Simulation
 from sbmlsim.task import Task
 
 
@@ -24,19 +25,15 @@ class RepressilatorExperiment(SimulationExperiment):
             "model2": AbstractModel(
                 REPRESSILATOR_SBML,
                 changes={
-                    "ps_0": self.Q_(1.3e-5, "dimensionless"),
-                    "ps_a": self.Q_(0.013, "dimensionless"),
+                    "ps_0": Q(1.3e-5, "dimensionless"),
+                    "ps_a": Q(0.013, "dimensionless"),
                 },
             ),
         }
 
-    def simulations(self) -> dict[str, AbstractSim]:
+    def simulations(self) -> dict[str, Simulation]:
         """Define simulations."""
-        tc = TimecourseSim(
-            timecourses=Timecourse(start=0, end=1000, steps=1000),
-            time_offset=0,
-        )
-        return {"tc": tc}
+        return {"tc": Simulation(end=1000, steps=1000)}
 
     def tasks(self) -> dict[str, Task]:
         """Define tasks."""

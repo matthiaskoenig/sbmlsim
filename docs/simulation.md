@@ -1,97 +1,130 @@
-# Timecourse simulations
+# Simulations
 
-A timecourse simulation integrates the model over a period of time. In `sbmlsim` a period is a `Timecourse` with its changes, and a `TimecourseSim` concatenates timecourses into one simulation. This is how dosing protocols, perturbations and pre-simulations are described.
+A `Simulation` describes what is simulated: the interval, the changes applied to the model before it is initialized, the changes at times, an optional pre-equilibration and the output. It is the one way to set up a simulation in `sbmlsim`: simulation experiments, scans, parameter fits and the problems read from PEtab use it. The semantics are the ones of [PEtab v2](https://petab.readthedocs.io), see [the order below](#the-semantics).
 
-## A single timecourse
+## A simulation
 
-`Timecourse(start, end, steps)` integrates from `start` to `end` in `steps` intervals, i.e., `steps + 1` time points. The simulator runs the `TimecourseSim` and returns an `XResult`:
+`Simulation(start, end)` integrates the model from `start` to `end`. Without further settings the output are the steps of the integrator, i.e. the time points the integrator chose; the simulator returns an `XResult`:
 
 ```python
 from sbmlsim.resources import REPRESSILATOR_SBML
-from sbmlsim.simulation import Timecourse, TimecourseSim
+from sbmlsim.simulation import Simulation
 from sbmlsim.simulator import SimulatorSerial
 
 simulator = SimulatorSerial(model=REPRESSILATOR_SBML)
 
-tcsim = TimecourseSim(Timecourse(start=0, end=100, steps=100))
-xres = simulator.run_timecourse(tcsim)
-print(xres)
-```
-
-The result is a labeled N-dimensional array (an `xarray.Dataset` wrapped in an `XResult`) with a `_time` dimension. The variables are accessed with the selection ids of roadrunner: `X` for the amount of a species and `[X]` for its concentration:
-
-```python
+xres = simulator.run_simulation(Simulation(end=100))
 print(xres["time"].values[:5])
 print(xres["[X]"].values[:5])
 ```
 
-## Changes
-
-A timecourse applies `changes` before it starts: values of parameters, initial amounts (`X`) or initial concentrations (`[X]`) of species. Changes are plain floats in the units of the model or quantities with units, which are converted to the model units, see [Units](units.md):
+The variables are accessed with the selection ids of roadrunner: `X` for the amount of a species and `[X]` for its concentration. The output is set with `times`, exact output times, or with `steps`, an equidistant grid of `steps + 1` points:
 
 ```python
-tcsim = TimecourseSim(
-    Timecourse(start=0, end=100, steps=100, changes={"X": 10, "Y": 200})
+xres = simulator.run_simulation(Simulation(end=100, steps=100))
+xres = simulator.run_simulation(Simulation(end=100, times=[0, 1, 5, 10, 50, 100]))
+print(xres["time"].values)
+```
+
+## Units and times
+
+A value is a number in the unit of its target in the model or a quantity, which is converted into the unit of the model; `Q` is the quantity of the unit registry of `sbmlsim`, see [Units](units.md). The times of a simulation are numbers in its `time_unit`, the time unit of the model without one, or quantities. A simulation can start at a negative time:
+
+```python
+from sbmlsim import Q
+
+sim = Simulation(time_unit="hr", start=-24, end=Q(30, "min"), steps=50)
+```
+
+## Changes before the initialization
+
+`preinit_changes` are applied to the model before it is initialized: the initial assignments of the model are evaluated with them, so an entity whose initial assignment reads a changed parameter follows the change. A target which is set replaces its own initial assignment:
+
+```python
+xres = simulator.run_simulation(
+    Simulation(end=100, steps=100, preinit_changes={"X": 10, "Y": 200})
 )
-xres = simulator.run_timecourse(tcsim)
 print(xres["X"].values[0], xres["Y"].values[0])
 ```
 
-## Concatenated timecourses
+## Changes at times and multiple dosing
 
-Several timecourses are simulated one after the other. Every timecourse continues from the end state of the previous one and applies its changes; the time of the result is continuous:
-
-```python
-tcsim = TimecourseSim(
-    [
-        Timecourse(start=0, end=100, steps=100),
-        Timecourse(start=0, end=100, steps=100, changes={"X": 10, "Y": 20}),
-        Timecourse(start=0, end=100, steps=100, changes={"X": 0.5}),
-    ]
-)
-xres = simulator.run_timecourse(tcsim)
-print(xres["time"].values[[0, 100, 101, 200, 201, -1]])
-```
-
-This is the pattern for a dosing protocol: every dose is a timecourse whose change sets the dose parameter. A `Timecourse` with `discard=True` is simulated but removed from the result, which is how a pre-simulation to a steady state is described.
-
-By default a `TimecourseSim` resets the model to its initial state before the first timecourse (`reset=True`); `time_offset` shifts the time of the complete result.
-
-## Clamping species
-
-Structural changes of the model, e.g., clamping a species to a fixed value, are `model_manipulations` of a timecourse. Here `X` is clamped during the second period and released in the third:
+A `Change` sets values at one time or at a vector of times. A change at several times is the same change at each of them, which is a multiple dosing:
 
 ```python
-from sbmlsim.model import ModelChange
+from sbmlsim.simulation import Change
 
-tcsim = TimecourseSim(
-    [
-        Timecourse(start=0, end=100, steps=100),
-        Timecourse(
-            start=0,
-            end=100,
-            steps=100,
-            model_manipulations={ModelChange.CLAMP_SPECIES: {"X": True}},
-        ),
-        Timecourse(
-            start=0,
-            end=100,
-            steps=100,
-            model_manipulations={ModelChange.CLAMP_SPECIES: {"X": False}},
-        ),
-    ]
+sim = Simulation(
+    end=150,
+    changes=[
+        Change(50, {"X": 10, "Y": 20}),
+        Change([0, 50, 100], {"[Z]": 5.0}),
+    ],
+    steps=150,
 )
-xres = simulator.run_timecourse(tcsim)
-print(xres["[X]"].values[100:105])
+xres = simulator.run_simulation(sim)
 ```
+
+A value of a change is a number, a quantity or a formula. A formula is a string of the math of PEtab over the symbols of the model, in the units of the model, and is evaluated with the state at the time of the change; `S` is the amount of a species, `[S]` its concentration and `time` the time of the change:
+
+```python
+sim = Simulation(
+    end=100,
+    changes=[Change([20, 40, 60], {"[X]": "[X] + 5"})],
+    steps=100,
+)
+xres = simulator.run_simulation(sim)
+```
+
+A dosing protocol whose data is reported from the last dose starts at a negative time, e.g. eleven doses every twelve hours:
+
+```python
+dose_times = [-120 + 12 * k for k in range(11)]
+sim = Simulation(
+    time_unit="hr",
+    start=-120,
+    end=60,
+    changes=[Change(dose_times, {"[X]": "[X] + 10"})],
+)
+```
+
+## Pre-equilibration
+
+`presimulation=SteadyState()` integrates the model until the rates of change vanish, `|dx/dt| <= absolute_tolerance + relative_tolerance * |x|`, before the simulation starts. The model is initialized once, with the `preinit_changes` of the simulation and of the steady state, and what differs after the steady state is a change at the start:
+
+```python
+from sbmlsim.simulation import SteadyState
+
+sim = Simulation(
+    end=100,
+    preinit_changes={"n": 1.0},
+    presimulation=SteadyState(preinit_changes={"ps_a": 0.5}),
+    changes=[Change(0, {"ps_a": 0.4})],
+    times=[0, 50, 100],
+)
+xres = simulator.run_simulation(sim)
+```
+
+A model which does not reach a steady state by `SteadyState(max_time=...)` raises a `SteadyStateError`.
+
+## The semantics
+
+| step | what happens |
+| --- | --- |
+| pre-initialization | the `preinit_changes` are set on the model before its initialization |
+| initialization | the initial assignments are evaluated, except the ones of the targets of the pre-initialization |
+| steady state | with a `SteadyState`, the model is integrated until the rates of change vanish |
+| a change at a time | every value is evaluated with the state at that time, then all values are set at once; a compartment keeps the concentration of the concentration species in it and the amount of the amount species |
+| events | the events of the model whose trigger became true fire after the change |
+| output | an output time which is the time of a change is the state after the change |
 
 ## Selections and integrator settings
 
-The variables recorded in a simulation are the selections of the model. By default all species (amounts and concentrations), parameters, reactions and compartments are recorded; a smaller selection speeds up the simulation:
+The variables recorded in a simulation are the selections of the simulator. By default all species (amounts and concentrations), parameters, reactions and compartments are recorded; a smaller selection speeds up the simulation:
 
 ```python
 simulator.set_timecourse_selections(["time", "[X]", "[Y]", "[Z]"])
-xres = simulator.run_timecourse(TimecourseSim(Timecourse(start=0, end=10, steps=10)))
+xres = simulator.run_simulation(Simulation(end=10, steps=10))
 print(list(xres.xds.data_vars))
 ```
 
@@ -101,12 +134,12 @@ The integrator settings of roadrunner are passed to the simulator or set afterwa
 simulator = SimulatorSerial(
     model=REPRESSILATOR_SBML, absolute_tolerance=1e-10, relative_tolerance=1e-10
 )
-simulator.set_integrator_settings(variable_step_size=False)
+simulator.set_integrator_settings(stiff=True)
 ```
 
 ## Results
 
-An `XResult` is converted to pandas for further processing and stored as netCDF or TSV:
+The result of a simulation is a labeled array (an `xarray.Dataset` wrapped in an `XResult`) with the dimension `_point`, the output points of the simulation, and the time as a variable like every selection. The simulations of a [scan](scans.md) keep their own time points, `XResult.interpolate(times)` puts them on a common grid. An `XResult` is converted to pandas for further processing and stored as netCDF or TSV:
 
 ```python
 from pathlib import Path
@@ -118,14 +151,22 @@ xres.to_netcdf(Path("repressilator.nc"))
 xres.to_tsv(Path("repressilator.tsv"))
 ```
 
-`XResult.dim_mean`, `dim_std`, `dim_min` and `dim_max` reduce the result over all dimensions except time and return quantities with the units of the variable, see [Parameter scans](scans.md).
-
 ## Serialization
 
-A `TimecourseSim` is serialized to JSON and read back, which is how a simulation experiment stores its simulations:
+A `Simulation` is serialized to JSON with its units and read back, which is how a simulation experiment stores its simulations:
 
 ```python
-json_str = tcsim.to_json()
-tcsim2 = TimecourseSim.from_json(json_str)
-print(tcsim2)
+json_str = sim.to_json()
+sim2 = Simulation.from_json(json_str)
+print(sim2)
+```
+
+## Structural changes
+
+A change sets values, it does not change the structure of the model. `ModelChange.clamp_species` clamps a species of a loaded roadrunner instance to a value or a formula by a fast reaction, between simulations:
+
+```python
+from sbmlsim.model import ModelChange
+
+ModelChange.clamp_species(simulator.r_loaded, "X", "10.0")
 ```

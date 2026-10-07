@@ -3,36 +3,32 @@
 import numpy as np
 from matplotlib import pyplot as plt
 
+from sbmlsim import Q
 from sbmlsim.resources import MIDAZOLAM_SBML
 from sbmlsim.result import XResult
 from sbmlsim.result.datagenerator import DataGeneratorIndexingFunction
-from sbmlsim.simulation import Dimension, ScanSim, Timecourse, TimecourseSim
+from sbmlsim.simulation import Dimension, ScanSim, Simulation
 from sbmlsim.simulator.simulation_serial import SimulatorSerial
 
 
 def example_scan() -> XResult:
     """Run scan and return results."""
     simulator = SimulatorSerial(model=MIDAZOLAM_SBML)
-    Q_ = simulator.Q_
 
     scan = ScanSim(
-        simulation=TimecourseSim(
-            [
-                Timecourse(start=0, end=1000, steps=200, changes={}),
-            ]
-        ),
+        simulation=Simulation(end=1000, steps=200),
         dimensions=[
             Dimension(
                 "dim_dose",
                 changes={
-                    "IVDOSE_mid": Q_(np.linspace(start=0, stop=100, num=10), "mg"),
+                    "IVDOSE_mid": Q(np.linspace(start=0, stop=100, num=10), "mg"),
                 },
             ),
             Dimension(
                 "dim_bw",
                 changes={
-                    "BW": Q_(np.linspace(start=65, stop=100, num=5), "kg"),
-                    # 'BW': Q_(np.random.normal(loc=75.0, scale=5.0, size=20), "kg"),
+                    "BW": Q(np.linspace(start=65, stop=100, num=5), "kg"),
+                    # 'BW': Q(np.random.normal(loc=75.0, scale=5.0, size=20), "kg"),
                 },
             ),
         ],

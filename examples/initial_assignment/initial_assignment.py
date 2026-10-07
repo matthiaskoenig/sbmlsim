@@ -4,6 +4,7 @@ Example simulation experiment.
 
 from pathlib import Path
 
+from sbmlsim import Q
 from sbmlsim.experiment import ExperimentRunner, SimulationExperiment
 from sbmlsim.model import AbstractModel, RoadrunnerSBMLModel
 from sbmlsim.plot import Axis, Figure
@@ -16,7 +17,7 @@ from sbmlsim.plot.plotting import (
     MarkerType,
     Style,
 )
-from sbmlsim.simulation import AbstractSim, Timecourse, TimecourseSim
+from sbmlsim.simulation import Change, Simulation
 from sbmlsim.simulator.simulation_serial import SimulatorSerial
 from sbmlsim.task import Task
 
@@ -34,7 +35,7 @@ class AssignmentExperiment(SimulationExperiment):
             "model_changes": RoadrunnerSBMLModel(
                 source=base_path / "initial_assignment.xml",
                 ureg=self.ureg,
-                changes={"D": self.Q_(2.0, "mmole")},
+                changes={"D": Q(2.0, "mmole")},
             ),
         }
 
@@ -47,27 +48,15 @@ class AssignmentExperiment(SimulationExperiment):
                 )
         return tasks
 
-    def simulations(self) -> dict[str, AbstractSim]:
-        Q_ = self.Q_
-        tcs = {}
-        tcs["sim1"] = TimecourseSim(
-            [Timecourse(start=0, end=20, steps=200, changes={})]
-        )
-        tcs["sim2"] = TimecourseSim(
-            [
-                Timecourse(start=0, end=20, steps=200, changes={}),
-                Timecourse(
-                    start=0,
-                    end=10,
-                    steps=200,
-                    changes={
-                        "D": Q_(3.0, "mmole"),
-                    },
-                ),
-            ]
-        )
-
-        return tcs
+    def simulations(self) -> dict[str, Simulation]:
+        return {
+            "sim1": Simulation(end=20, steps=200),
+            # the change at the time 20 sets the dose, the initial assignment of
+            # the model is not evaluated again
+            "sim2": Simulation(
+                end=30, steps=400, changes=[Change(20, {"D": Q(3.0, "mmole")})]
+            ),
+        }
 
     def figures(self) -> dict[str, Figure]:
         unit_time = "min"

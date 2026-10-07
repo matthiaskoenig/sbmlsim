@@ -25,7 +25,7 @@ import numpy as np
 import sympy
 from sbmlmath import SBMLMathMLParser, SBMLMathMLPrinter, TimeSymbol
 from sbmlmath.csymbol import SBML_L3V2_AVOGADRO_VALUE, CSymbol
-from sympy import lambdify, sympify
+from sympy import Function, lambdify, sympify
 
 logger = logging.getLogger(__name__)
 
@@ -108,11 +108,46 @@ def expr_from_formula(formula: str):
     return sympify(formula)
 
 
+class _ArrayMax(Function):
+    """`max` of a function of data: of one array its largest value."""
+
+
+class _ArrayMin(Function):
+    """`min` of a function of data: of one array its smallest value."""
+
+
+def _array_max(*args: Any) -> Any:
+    """Reduce one array to its maximum, take the maximum of several values."""
+    if len(args) == 1:
+        return np.nanmax(args[0])
+    return np.maximum.reduce(np.broadcast_arrays(*args))
+
+
+def _array_min(*args: Any) -> Any:
+    """Reduce one array to its minimum, take the minimum of several values."""
+    if len(args) == 1:
+        return np.nanmin(args[0])
+    return np.minimum.reduce(np.broadcast_arrays(*args))
+
+
 def evaluate(astnode: libsedml.ASTNode, variables: dict):
-    """Evaluate the astnode with values."""
-    expr = parse_astnode(astnode)
+    """Evaluate the astnode with values.
+
+    The values are arrays of data, e.g. a timecourse, so `max` and `min` of a
+    single argument reduce it, `Y/max(Y)` is `Y` normalized to its maximum;
+    sympy would simplify `Max(Y)` to `Y`.
+    """
+    formula = replace_piecewise(libsedml.formulaToL3String(astnode))
+    formula = formula.replace("&&", "&").replace("||", "|")
+    functions: dict[str, Any] = {"max": _ArrayMax, "min": _ArrayMin}
+    # the overloads of sympy do not declare `locals`
+    expr = sympify(formula, locals=functions)  # ty: ignore[no-matching-overload]
     symbols = sorted(expr.free_symbols, key=str)
-    f = lambdify(args=symbols, expr=expr)
+    f = lambdify(
+        args=symbols,
+        expr=expr,
+        modules=[{"_ArrayMax": _array_max, "_ArrayMin": _array_min}, "numpy"],
+    )
     # only the variables of the expression are passed
     return f(*[variables[str(symbol)] for symbol in symbols])
 

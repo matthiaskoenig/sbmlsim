@@ -149,29 +149,30 @@ GAPS: tuple[Gap, ...] = (
         "subtracts the baseline again when it reads the problem",
     ),
     Gap(
-        id="presimulation",
-        kind=GapKind.LOSSY,
-        sbmlsim="`Timecourse(discard=True)`, a simulation of a finite duration "
-        "whose result is dropped",
-        petab="a period at `time=-inf`, i.e. simulation to a steady state",
-        detail="a leading discarded timecourse becomes the pre-equilibration "
-        "period of the experiment and its duration and its steps are lost; a "
-        "discarded timecourse which is not the first is unsupported",
-    ),
-    Gap(
         id="output-times",
         kind=GapKind.LOSSY,
-        sbmlsim="`Timecourse(start, end, steps)` is the output grid of the simulation",
+        sbmlsim="the output of a `Simulation`, i.e. the steps of the integrator, "
+        "exact `times` or a grid of `steps`",
         petab="the simulation is evaluated at the times of the measurements",
         detail="the grid goes to the extension so that `sbmlsim` simulates as "
         "before; another tool simulates the measurement times, which is the same "
         "fit with fewer output points",
     ),
     Gap(
+        id="change-formula",
+        kind=GapKind.UNSUPPORTED,
+        sbmlsim="a `Change` whose value is a formula of the symbols of "
+        "roadrunner, e.g. `[S] + 5`",
+        petab="a condition whose target value is a math expression of the "
+        "identifiers of the model",
+        detail="the selections of a formula are not translated into the math of "
+        "PEtab yet, the export raises",
+    ),
+    Gap(
         id="model-changes",
         kind=GapKind.UNSUPPORTED,
-        sbmlsim="`model_changes` and `model_manipulations`, i.e. "
-        "`ModelChange.clamp_species`, which change the structure of the model",
+        sbmlsim="a structural change of a model, i.e. "
+        "`ModelChange.clamp_species` on its roadrunner instance",
         petab="a condition changes the value of an entity of the model",
         detail="a structural change is not a value, the export raises. Apply the "
         "change to the model and export the model it produces",
@@ -179,7 +180,7 @@ GAPS: tuple[Gap, ...] = (
     Gap(
         id="condition-target",
         kind=GapKind.UNSUPPORTED,
-        sbmlsim="a change of a timecourse names what it sets with a selection, "
+        sbmlsim="a change of a simulation names what it sets with a selection, "
         "i.e. `[S1]` is the concentration and `S1` the amount of a species",
         petab="a condition assigns an identifier, and what it means is what the "
         "model means: the amount of a species with `hasOnlySubstanceUnits=true` "
@@ -465,12 +466,9 @@ def gaps_of_problem(problem: "OptimizationProblem") -> list[Gap]:
         hits.add("weights")
 
     for simulation in problem.simulations:
-        timecourses = getattr(simulation, "timecourses", [])
-        for k, tc in enumerate(timecourses):
-            if tc.discard:
-                hits.add("presimulation")
-            if (tc.model_changes or tc.model_manipulations) and k >= 0:
-                hits.add("model-changes")
+        for change in simulation.changes:
+            if any(isinstance(v, str) for v in change.values.values()):
+                hits.add("change-formula")
 
     for noise in problem.noise_models:
         if noise is None:

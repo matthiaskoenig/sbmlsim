@@ -15,7 +15,7 @@ nav = [
   { "Installation" = "installation.md" },
   { "Core" = [
     { "Models" = "models.md" },
-    { "Timecourse simulations" = "simulation.md" },
+    { "Simulations" = "simulation.md" },
     { "Units" = "units.md" },
     { "Simulation experiments" = "experiments.md" },
     { "Data" = "data.md" },
@@ -56,10 +56,11 @@ nav = [
       { "model_roadrunner" = "api/model.model_roadrunner.md" },
       { "model_change" = "api/model.model_change.md" },
       { "model_resources" = "api/model.model_resources.md" },
+      { "symbols" = "api/model.symbols.md" },
       { "provenance" = "api/model.provenance.md" },
     ] },
     { "sbmlsim.simulation" = [
-      { "timecourse" = "api/simulation.timecourse.md" },
+      { "definition" = "api/simulation.definition.md" },
       { "scan" = "api/simulation.scan.md" },
       { "sensitivity" = "api/simulation.sensitivity.md" },
       { "range" = "api/simulation.range.md" },
@@ -67,10 +68,12 @@ nav = [
       { "algorithm" = "api/simulation.algorithm.md" },
       { "calculation" = "api/simulation.calculation.md" },
       { "base" = "api/simulation.base.md" },
-      { "simulation" = "api/simulation.simulation.md" },
     ] },
     { "sbmlsim.simulator" = [
       { "simulation_serial" = "api/simulator.simulation_serial.md" },
+      { "plan" = "api/simulator.plan.md" },
+      { "executor" = "api/simulator.executor.md" },
+      { "formula" = "api/simulator.formula.md" },
     ] },
     { "sbmlsim.task" = [
       { "task" = "api/task.task.md" },

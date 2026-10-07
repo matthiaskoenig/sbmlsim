@@ -19,7 +19,7 @@ from enum import StrEnum
 
 from sbmlsim.model import AbstractModel
 from sbmlsim.result import TimecourseResult
-from sbmlsim.simulation import Timecourse, TimecourseSim
+from sbmlsim.simulation import Simulation
 from sbmlsim.simulator.simulation_serial import SimulatorSerial
 from sbmlsim.testsuite.cases import SemanticCase, SemanticSuite
 from sbmlsim.testsuite.comparison import CaseComparison, compare_case
@@ -129,17 +129,14 @@ def simulate_case(case: SemanticCase, simulator: SimulatorSerial) -> TimecourseR
         The results with a `time` column and one column per selection.
     """
     simulator.set_timecourse_selections(selections=case.selections)
-    # the model was just loaded, so there is nothing to reset. It must not be
-    # reset either: roadrunner exposes the symbols of a model as attributes of
-    # the instance, a model with a species or a parameter named `reset` hides
-    # the method of that name, and `resetToOrigin` calls it. Case 00952 is such
-    # a model and it stays hidden for every instance created afterwards, so a
-    # single case would otherwise break every case which follows it
-    simulation = TimecourseSim(
-        [Timecourse(start=case.start, end=case.duration, steps=case.steps)],
-        reset=False,
+    # the model is initialized with the binding of `resetAll` and not with the
+    # method: roadrunner exposes the symbols of a model as attributes of the
+    # instance, a model with a species or a parameter named `reset` hides the
+    # method of that name (case 00952), see `model_roadrunner.reset_all`
+    simulation = Simulation(
+        start=case.start, end=case.start + case.duration, steps=case.steps
     )
-    return simulator._timecourses([simulation])[0]
+    return simulator.simulate(simulation)
 
 
 def map_cases[T](

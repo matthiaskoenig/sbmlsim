@@ -6,18 +6,13 @@ from pathlib import Path
 
 import numpy as np
 
+from sbmlsim import Q
 from sbmlsim.data import Data
 from sbmlsim.experiment import ExperimentRunner, SimulationExperiment
 from sbmlsim.model import AbstractModel
 from sbmlsim.plot import Axis, Figure
 from sbmlsim.resources import REPRESSILATOR_SBML
-from sbmlsim.simulation import (
-    AbstractSim,
-    Dimension,
-    ScanSim,
-    Timecourse,
-    TimecourseSim,
-)
+from sbmlsim.simulation import Change, Dimension, ScanSim, Simulation
 from sbmlsim.simulator.simulation_serial import SimulatorSerial
 from sbmlsim.task import Task
 
@@ -29,11 +24,11 @@ class RepressilatorScanExperiment(SimulationExperiment):
         return {
             "model1": REPRESSILATOR_SBML,
             "model2": AbstractModel(
-                REPRESSILATOR_SBML, changes={"X": self.Q_(100, "dimensionless")}
+                REPRESSILATOR_SBML, changes={"X": Q(100, "dimensionless")}
             ),
         }
 
-    def simulations(self) -> dict[str, AbstractSim]:
+    def simulations(self) -> dict[str, Simulation | ScanSim]:
         return {
             **self.sim_scans(),
             # **self.sim_sensitivities(),
@@ -46,26 +41,23 @@ class RepressilatorScanExperiment(SimulationExperiment):
                 tasks[f"task_{model}_{sim_key}"] = Task(model=model, simulation=sim_key)
         return tasks
 
-    def sim_scans(self) -> dict[str, AbstractSim]:
-        Q_ = self.Q_
+    def sim_scans(self) -> dict[str, Simulation | ScanSim]:
         unit_data = "dimensionless"
-        tc = TimecourseSim(
-            [
-                Timecourse(start=0, end=100, steps=2000),
-                Timecourse(
-                    start=0,
-                    end=100,
-                    steps=2000,
-                    changes={"X": Q_(10, unit_data), "Y": Q_(20, unit_data)},
-                ),
-            ]
+        tc = Simulation(
+            end=200,
+            steps=4000,
+            changes=[Change(100, {"X": Q(10, unit_data), "Y": Q(20, unit_data)})],
         )
 
         scan1d = ScanSim(
             simulation=tc,
             dimensions=[
+                # the scan sets X at the start, the simulation sets it again at
+                # the time 100
                 Dimension(
-                    "dim1", changes={"X": Q_(np.linspace(0, 10, num=11), unit_data)}
+                    "dim1",
+                    changes={"X": Q(np.linspace(0, 10, num=11), unit_data)},
+                    at=0,
                 )
             ],
         )
@@ -74,11 +66,12 @@ class RepressilatorScanExperiment(SimulationExperiment):
             dimensions=[
                 Dimension(
                     "dim1",
-                    changes={"X": Q_(np.random.normal(5, 2, size=10), unit_data)},
+                    changes={"X": Q(np.random.normal(5, 2, size=10), unit_data)},
+                    at=0,
                 ),
                 Dimension(
                     "dim2",
-                    changes={"Y": Q_(np.random.normal(5, 2, size=10), unit_data)},
+                    changes={"Y": Q(np.random.normal(5, 2, size=10), unit_data)},
                 ),
             ],
         )
@@ -86,13 +79,13 @@ class RepressilatorScanExperiment(SimulationExperiment):
         #     simulation=tc,
         #     dimensions=[
         #         Dimension(
-        #             "dim1", changes={"X": Q_(np.linspace(0, 10, num=5), unit_data)}
+        #             "dim1", changes={"X": Q(np.linspace(0, 10, num=5), unit_data)}
         #         ),
         #         Dimension(
-        #             "dim2", changes={"Y": Q_(np.linspace(0, 10, num=5), unit_data)}
+        #             "dim2", changes={"Y": Q(np.linspace(0, 10, num=5), unit_data)}
         #         ),
         #         Dimension(
-        #             "dim3", changes={"Z": Q_(np.linspace(0, 10, num=5), unit_data)}
+        #             "dim3", changes={"Z": Q(np.linspace(0, 10, num=5), unit_data)}
         #         ),
         #     ],
         # )

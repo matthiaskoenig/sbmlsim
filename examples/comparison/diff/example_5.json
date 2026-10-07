@@ -1,17 +1,16 @@
 {
-  "timecourses": [
-    {
-      "start": 0,
-      "end": 60,
-      "steps": 60,
-      "changes": {
-        "n": 5,
-        "X": 100,
-        "[Y]": 50
-      },
-      "model_changes": {}
-    }
-  ],
-  "selections": null,
-  "reset": true
+  "type": "Simulation",
+  "time_unit": null,
+  "start": 0.0,
+  "end": 60,
+  "preinit_changes": {
+    "n": 5,
+    "X": 100,
+    "[Y]": 50
+  },
+  "changes": [],
+  "presimulation": null,
+  "times": null,
+  "steps": 60,
+  "time_shift": 0.0
 }

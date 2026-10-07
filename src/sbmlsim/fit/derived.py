@@ -27,14 +27,13 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
 
 from sbmlsim.log import some_ids
-from sbmlsim.units import Quantity
+from sbmlsim.units import Q, Quantity
 
 if TYPE_CHECKING:
     from sbmlsim.fit.objects import FitParameter
     from sbmlsim.fit.optimization import OptimizationProblem
     from sbmlsim.model import RoadrunnerSBMLModel
-    from sbmlsim.simulation import TimecourseSim
-    from sbmlsim.simulator import SimulatorSerial
+    from sbmlsim.units import UnitsInformation
 
 logger = logging.getLogger(__name__)
 
@@ -293,7 +292,7 @@ def resolve_derived_changes(problem: OptimizationProblem) -> list[GroupDerivedCh
             hooks,
             parameters,
             problem.models[k0],
-            problem.simulations[k0].timecourses[0].changes,
+            problem.simulations[k0].preinit_changes,
         )
         read.update(symbol for h, _ in derived for symbol in h.symbols())
         group_derived.append(derived)
@@ -509,8 +508,8 @@ def model_values(
 def evaluate_derived_changes(
     problem: OptimizationProblem,
     k_group: int,
-    simulation: TimecourseSim,
-    simulator: SimulatorSerial,
+    defined: Mapping[str, float],
+    uinfo: UnitsInformation,
     quantities: Sequence[Quantity],
 ) -> dict[str, Quantity]:
     """Get the derived changes of the simulation of a group.
@@ -523,9 +522,10 @@ def evaluate_derived_changes(
     Args:
         problem: the initialized problem.
         k_group: index of the simulation group.
-        simulation: the simulation of the group with the changes of the
-            parameters, normalized to the units of the model.
-        simulator: simulator of the problem, with the model of the group.
+        defined: the values of the pre-initialization changes of the plan of
+            the group with the values of the parameters, in the units of the
+            model.
+        uinfo: the units of the model of the group.
         quantities: the quantity of every parameter, in the order of the
             parameter vector.
 
@@ -536,17 +536,15 @@ def evaluate_derived_changes(
         ValueError: if a hook cannot calculate its changes, or if it answers
             with other changes than the ones of its targets.
     """
-    uinfo = simulator.uinfo
-    Q_ = problem.runner_initialized.Q_
     mapping = problem.parameter_mapping_initialized
     k0 = problem.mapping_groups[k_group][0]
     derived = problem.group_derived[k_group]
     written = {target for h, _ in derived for target in h.targets()}
 
     changes: dict[str, float] = {
-        key: float(value.magnitude if isinstance(value, Quantity) else value)
-        for key, value in simulation.timecourses[0].changes.items()
-        # a derived change of the last evaluation is not a value
+        key: float(value)
+        for key, value in defined.items()
+        # a derived change is calculated here, it is not a value
         if key not in written
     }
     fitted: dict[str, float] = {}
@@ -577,5 +575,5 @@ def evaluate_derived_changes(
                 f"'{hook.model}' answers {' and '.join(clauses)}."
             )
         for target, value in hook_changes.items():
-            result[target] = Q_(value, uinfo[target])
+            result[target] = Q(value, uinfo[target])
     return result

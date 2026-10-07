@@ -13,6 +13,7 @@ from petab_sciml.constants import ALL_CONDITION_IDS
 
 from sbmlsim.fit import FitSettings
 from sbmlsim.fit.objects import EXTERNAL_PREFIX
+from sbmlsim.fit.optimization import OptimizationProblem
 from sbmlsim.fit.options import ParameterScaleType
 from sbmlsim.fit.petab_v2 import GapKind, from_petab, gaps_of_problem
 from sbmlsim.fit.petab_v2.gaps import GAPS_BY_ID
@@ -32,6 +33,14 @@ from sbmlsim.sciml import (
 from sbmlsim.sciml.hybridization import ALL_CONDITIONS
 from tests.sciml.hybrid import convolution, feed_forward, two_inputs
 from tests.sciml.petab import write_problem, write_table
+
+
+def _changes(problem: OptimizationProblem, k: int) -> dict[str, float]:
+    """Get the values the simulation of a fit mapping starts with at `x0`."""
+    group = next(g for g, ks in enumerate(problem.mapping_groups) if k in ks)
+    plan = problem.evaluated_plan(group, np.asarray(problem.x0, dtype=float))
+    return {a.target: float(a.value) for a in plan.preinit if a.value is not None}
+
 
 PRE = NetworkPattern.PRE_INITIALIZATION
 RHS = NetworkPattern.RHS
@@ -200,9 +209,9 @@ def test_a_network_before_the_simulation(tmp_path: Path) -> None:
     problem.initialize(SETTINGS)
     x = np.asarray(problem.x0, dtype=float)
     problem.predictions(x)
-    changes = problem.simulations[0].timecourses[0].changes
+    changes = _changes(problem, 0)
     (expected,) = network.forward(np.array([1.0, 2.0]))
-    assert changes["gamma"].magnitude == pytest.approx(expected[0])
+    assert changes["gamma"] == pytest.approx(expected[0])
 
 
 def test_a_network_in_an_observable(tmp_path: Path) -> None:
@@ -377,9 +386,9 @@ def test_the_inputs_of_the_conditions(tmp_path: Path) -> None:
     problem.predictions(np.asarray(problem.x0, dtype=float))
     for sid, inputs in (("e1", [10.0, 20.0]), ("e2", [1.0, 2.0])):
         k = problem.simulation_keys.index(sid)
-        changes = problem.simulations[k].timecourses[0].changes
+        changes = _changes(problem, k)
         (expected,) = network.forward(np.array(inputs))
-        assert changes["gamma"].magnitude == pytest.approx(expected[0])
+        assert changes["gamma"] == pytest.approx(expected[0])
         # the conditions set no change of the model
         assert "net1_input1" not in changes
 
@@ -413,9 +422,7 @@ def test_the_arrays_of_the_conditions(tmp_path: Path) -> None:
     problem.predictions(np.asarray(problem.x0, dtype=float))
     k = problem.simulation_keys.index("e2")
     (expected,) = network.forward(arrays["cond2"])
-    assert problem.simulations[k].timecourses[0].changes["gamma"].magnitude == (
-        pytest.approx(expected[0])
-    )
+    assert _changes(problem, k)["gamma"] == (pytest.approx(expected[0]))
 
     # one array for every condition
     path = write_problem(
@@ -460,8 +467,8 @@ def test_an_array_of_a_network_in_the_right_hand_side(tmp_path: Path) -> None:
     problem.initialize(SETTINGS)
     problem.predictions(np.asarray(problem.x0, dtype=float))
     k = problem.simulation_keys.index("e2")
-    changes = problem.simulations[k].timecourses[0].changes
-    assert [changes[f"net6__input1__{i}"].magnitude for i in range(3)] == [
+    changes = _changes(problem, k)
+    assert [changes[f"net6__input1__{i}"] for i in range(3)] == [
         3.0,
         2.0,
         1.0,

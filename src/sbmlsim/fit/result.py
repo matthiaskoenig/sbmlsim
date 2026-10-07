@@ -555,7 +555,7 @@ class OptimizationResult(ObjectJSONEncoder):
         for k, p in enumerate(self.parameters):
             if p.pid not in grouped:
                 info.append(
-                    f"\t'{p.pid}': Q_({xopt[k]}, '{p.unit}'),  "
+                    f"\t'{p.pid}': Q({xopt[k]}, '{p.unit}'),  "
                     f"# [{p.lower_bound} - {p.upper_bound}]"
                 )
         for label, ks in by_label.items():

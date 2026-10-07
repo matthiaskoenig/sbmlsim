@@ -49,6 +49,7 @@ from sbmlsim.fit.petab_v2.extension import (
     check_extensions,
     extension_of,
     known_extensions,
+    simulation_of_timecourses,
 )
 from sbmlsim.fit.petab_v2.observables import (
     MODEL_SUFFIX,
@@ -61,9 +62,10 @@ from sbmlsim.fit.petab_v2.observables import (
 from sbmlsim.fit.petab_v2.symbols import selection_of_formula, split_selection
 from sbmlsim.mathml import expression_to_formula
 from sbmlsim.model import AbstractModel
-from sbmlsim.simulation.timecourse import Timecourse, TimecourseSim
+from sbmlsim.simulation import Change, Simulation, SteadyState
 from sbmlsim.task import Task
 from sbmlsim.units import Quantity, UnitRegistry, UnitsInformation
+from sbmlsim.units import ureg as package_ureg
 
 if TYPE_CHECKING:
     from petab.v2.extensions.sciml import SciMLConfig
@@ -79,14 +81,9 @@ DEFAULT_TIME_UNIT = "dimensionless"
 #: unit of a measurement if neither the extension nor the model says
 DEFAULT_VALUE_UNIT = "dimensionless"
 
-#: steps of a timecourse which is built from the times of the measurements
-DEFAULT_STEPS = 100
-
-#: relative margin the simulation runs past the last measurement. The output
-#: grid of a timecourse is a `linspace` which does not hit its end exactly, so
-#: a measurement at the end of the simulation would be outside of the result
-#: the residuals interpolate on
-END_MARGIN = 1e-9
+#: duration of a simulation whose measurements are all at its start, a
+#: simulation needs an end after its start
+MINIMAL_DURATION = 1.0
 
 #: id of the experiment of the measurements which name none. PEtab reads an
 #: empty `experimentId` as "use the model as is", i.e. a simulation from the
@@ -191,7 +188,7 @@ class PetabReader:
         # which is what PEtab says its measurements are in
         self.uinfo: UnitsInformation | None = self._model_units()
         self.ureg: UnitRegistry = (
-            self.uinfo.ureg if self.uinfo is not None else UnitRegistry()
+            self.uinfo.ureg if self.uinfo is not None else package_ureg
         )
 
         #: the measurements of every fit mapping, in the order of their time.
@@ -603,21 +600,20 @@ class PetabReader:
             ids.append(DEFAULT_EXPERIMENT)
         return ids
 
-    def simulations(self) -> dict[str, TimecourseSim]:
+    def simulations(self) -> dict[str, Simulation]:
         """Get the simulations, one per experiment of the problem.
 
-        The timecourses of the extension are used if the problem carries it,
-        which keeps the output grid and the pre-simulations of the fit which
-        was written. Without it a timecourse is built from the periods of the
-        experiment and the times of the measurements it holds.
+        The simulation of the extension is used if the problem carries it,
+        which keeps the output and the units of the fit which was written.
+        Without it a simulation is built from the periods of the experiment.
         """
         experiments = {
             experiment.id: experiment for experiment in self.petab_problem.experiments
         }
-        simulations: dict[str, TimecourseSim] = {}
+        simulations: dict[str, Simulation] = {}
         for experiment_id in self.experiment_ids:
             info = self._experiment_info(experiment_id)
-            if info.get("timecourses"):
+            if info.get("simulation") or info.get("timecourses"):
                 simulations[experiment_id] = self._simulation_of_extension(info)
             elif experiment_id in experiments:
                 simulations[experiment_id] = self._simulation_of_periods(
@@ -625,150 +621,133 @@ class PetabReader:
                 )
             else:
                 # the model as it is, simulated over the measurements
-                simulations[experiment_id] = TimecourseSim(
-                    [
-                        Timecourse(
-                            start=0.0,
-                            end=self._simulation_end(None),
-                            steps=DEFAULT_STEPS,
-                        )
-                    ]
+                simulations[experiment_id] = Simulation(
+                    start=0.0, end=self._simulation_end(None, 0.0)
                 )
         return simulations
 
-    def _simulation_of_extension(self, info: dict[str, Any]) -> TimecourseSim:
-        """Get the simulation the extension describes, i.e. the exact one."""
-        timecourses = [
-            Timecourse(
-                start=tc["start"],
-                end=tc["end"],
-                steps=tc["steps"],
-                changes=self._changes_with_units(
-                    tc.get("changes", {}), tc.get("units", {})
-                ),
-                discard=tc.get("discard", False),
-            )
-            for tc in info["timecourses"]
-        ]
-        return TimecourseSim(
-            timecourses,
-            reset=info.get("reset", True),
-            time_offset=info.get("time_offset", 0.0),
-        )
+    def _simulation_of_extension(self, info: dict[str, Any]) -> Simulation:
+        """Get the simulation the extension describes, i.e. the exact one.
 
-    def _simulation_of_periods(self, experiment: petab_v2.Experiment) -> TimecourseSim:
+        The extension of version 0.3.0 holds the `Simulation`, the earlier ones
+        the timecourses it is converted from.
+        """
+        if info.get("simulation"):
+            return Simulation.from_dict(info["simulation"])
+        return simulation_of_timecourses(info, self.ureg)
+
+    def _simulation_of_periods(self, experiment: petab_v2.Experiment) -> Simulation:
         """Build a simulation from the periods of a PEtab experiment.
 
-        The time of a period is the time of the simulation the condition
-        becomes active at, so a period lasts until the next one starts and the
-        last one until the last measurement of the experiment was taken. The
-        first of them is where the simulation starts, which is the
-        `time_offset` of the `TimecourseSim`: a multiple dosing experiment
-        whose data is reported from the last dose starts at a negative time.
-
-        A period at `time=-inf` is the pre-equilibration of the experiment,
-        which becomes a timecourse whose result is discarded.
+        The time of a period is the time of the simulation its conditions are
+        applied at; the first period which is not the pre-equilibration is the
+        start of the simulation and the last measurement its end. The
+        conditions of the first period are applied before the initialization
+        of the model, the ones of a later period at its time (PEtab v2,
+        initialization and reinitialization). A period at `time=-inf` is the
+        pre-equilibration, a `SteadyState` whose conditions are applied before
+        the initialization; the next period is then a change at the start.
         """
-        end = self._simulation_end(experiment.id)
         conditions = {
             condition.id: condition for condition in self.petab_problem.conditions
         }
-        estimated = self._estimated_parameter_ids()
-
-        timecourses: list[Timecourse] = []
         periods = sorted(experiment.periods, key=lambda p: p.time)
-        for k, period in enumerate(periods):
-            changes: dict[str, Any] = {}
-            for condition_id in period.condition_ids:
-                condition = conditions.get(condition_id)
-                if (
-                    condition is None
-                    and self.sciml is not None
-                    and condition_id in self.sciml.condition_ids
-                ):
-                    # a condition of the array files, which selects the
-                    # arrays of the inputs of the networks
-                    continue
-                if condition is None:
-                    raise ValueError(
-                        f"The experiment '{experiment.id}' uses the condition "
-                        f"'{condition_id}', which the problem does not define."
-                    )
-                for change in condition.changes:
-                    if self.sciml is not None and (
-                        change.target_id in self.sciml.input_ids
-                    ):
-                        # the input of a network, which its hybridization
-                        # holds for the simulation of the experiment
-                        continue
-                    if _is_number(change.target_value):
-                        changes[change.target_id] = _to_float(change.target_value)
-                        continue
-                    if str(change.target_value) in estimated:
-                        # the value is the id of an estimated parameter, i.e.
-                        # a versioned parameter's binding rather than a
-                        # number: `ParameterMapping.changes_for` sets the
-                        # target at the start of every simulation of the
-                        # group it covers, see `_versions`. Run outside an
-                        # `OptimizationProblem`, e.g. the generated
-                        # `SimulationExperiment` on its own, nothing sets it
-                        # and the target keeps the model's own value, because
-                        # only the fit resolves a version
-                        continue
-                    raise ValueError(
-                        f"The condition '{condition.id}' of the experiment "
-                        f"'{experiment.id}' assigns '{change.target_id}' the "
-                        f"value '{change.target_value}', which is neither a "
-                        f"number nor the id of an estimated parameter. Such a "
-                        f"condition has no representation in `sbmlsim`."
-                    )
+        steady = [p for p in periods if np.isinf(p.time)]
+        finite = [p for p in periods if not np.isinf(p.time)]
+        start = float(finite[0].time) if finite else 0.0
 
-            if np.isinf(period.time):
-                # pre-equilibration, the duration is not part of the problem
-                timecourses.append(
-                    Timecourse(
-                        start=0.0,
-                        end=end,
-                        steps=DEFAULT_STEPS,
-                        changes=changes,
-                        discard=True,
-                    )
-                )
-                continue
-
-            start = float(period.time)
-            stop = float(periods[k + 1].time) if k + 1 < len(periods) else end
-            timecourses.append(
-                Timecourse(
-                    start=0.0,
-                    end=max(stop - start, 0.0),
-                    steps=DEFAULT_STEPS,
-                    changes=changes,
-                )
+        presimulation: SteadyState | None = None
+        if steady:
+            presimulation = SteadyState(
+                preinit_changes=self._period_changes(experiment, steady[0], conditions)
             )
-
-        # the simulation starts where the first period which is not the
-        # pre-equilibration starts
-        finite = [period.time for period in periods if not np.isinf(period.time)]
-        return TimecourseSim(
-            timecourses, time_offset=float(finite[0]) if finite else 0.0
+        preinit: dict[str, Any] = {}
+        changes: list[Change] = []
+        for k, period in enumerate(finite):
+            values = self._period_changes(experiment, period, conditions)
+            if k == 0 and presimulation is None:
+                preinit = values
+            elif values:
+                changes.append(Change(float(period.time), values))
+        return Simulation(
+            start=start,
+            end=self._simulation_end(experiment.id, start),
+            preinit_changes=preinit,
+            changes=changes,
+            presimulation=presimulation,
         )
 
-    def _simulation_end(self, experiment_id: str | None) -> float:
+    def _period_changes(
+        self,
+        experiment: petab_v2.Experiment,
+        period: petab_v2.ExperimentPeriod,
+        conditions: Mapping[str, Any],
+    ) -> dict[str, Any]:
+        """Get the changes of the conditions of a period.
+
+        Raises:
+            ValueError: if the period uses a condition the problem does not
+                define, or if a change is neither a number nor the id of an
+                estimated parameter.
+        """
+        estimated = self._estimated_parameter_ids()
+        changes: dict[str, Any] = {}
+        for condition_id in period.condition_ids:
+            condition = conditions.get(condition_id)
+            if (
+                condition is None
+                and self.sciml is not None
+                and condition_id in self.sciml.condition_ids
+            ):
+                # a condition of the array files, which selects the arrays of
+                # the inputs of the networks
+                continue
+            if condition is None:
+                raise ValueError(
+                    f"The experiment '{experiment.id}' uses the condition "
+                    f"'{condition_id}', which the problem does not define."
+                )
+            for change in condition.changes:
+                if self.sciml is not None and (
+                    change.target_id in self.sciml.input_ids
+                ):
+                    # the input of a network, which its hybridization holds for
+                    # the simulation of the experiment
+                    continue
+                if _is_number(change.target_value):
+                    changes[change.target_id] = _to_float(change.target_value)
+                    continue
+                if str(change.target_value) in estimated:
+                    # the value is the id of an estimated parameter, i.e. a
+                    # versioned parameter's binding rather than a number:
+                    # `ParameterMapping` sets the target of every simulation of
+                    # the group it covers, see `_versions`
+                    continue
+                raise ValueError(
+                    f"The condition '{condition.id}' of the experiment "
+                    f"'{experiment.id}' assigns '{change.target_id}' the "
+                    f"value '{change.target_value}', which is neither a "
+                    f"number nor the id of an estimated parameter. Such a "
+                    f"condition has no representation in `sbmlsim`."
+                )
+        return changes
+
+    def _simulation_end(self, experiment_id: str | None, start: float) -> float:
         """Get the time the simulation of an experiment runs to.
 
-        The simulation has to cover the measurements, so it ends just past the
-        last of them, see `END_MARGIN`.
+        The simulation ends at the last measurement, and a simulation whose
+        measurements are all at its start runs for `MINIMAL_DURATION`.
 
         Args:
             experiment_id: id of the experiment, `None` for the measurements
                 which name no experiment.
+            start: start of the simulation.
 
         Returns:
             The end of the simulation.
         """
         end = self._last_measurement_time(experiment_id)
-        return end * (1.0 + END_MARGIN) if end > 0.0 else end
+        return end if end > start else start + MINIMAL_DURATION
 
     def _last_measurement_time(self, experiment_id: str | None) -> float:
         """Get the last time a measurement of an experiment was taken.
@@ -784,16 +763,6 @@ class PetabReader:
             and np.isfinite(measurement.time)
         ]
         return float(max(times)) if times else 0.0
-
-    def _changes_with_units(
-        self, changes: dict[str, float], units: dict[str, str | None]
-    ) -> dict[str, Any]:
-        """Get the changes as quantities, with the units of the extension."""
-        result: dict[str, Any] = {}
-        for target, value in changes.items():
-            unit = units.get(target)
-            result[target] = self.ureg.Quantity(value, unit) if unit else float(value)
-        return result
 
     def tasks(self) -> dict[str, Task]:
         """Get the tasks, one per experiment of the problem."""
@@ -1112,7 +1081,7 @@ class PetabReader:
         def f_datasets(obj: SimulationExperiment) -> dict[str, DataSet]:
             return reader.datasets()
 
-        def f_simulations(obj: SimulationExperiment) -> dict[str, TimecourseSim]:
+        def f_simulations(obj: SimulationExperiment) -> dict[str, Simulation]:
             return reader.simulations()
 
         def f_tasks(obj: SimulationExperiment) -> dict[str, Task]:

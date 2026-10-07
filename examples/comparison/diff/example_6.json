@@ -1,33 +1,31 @@
 {
-  "timecourses": [
+  "type": "Simulation",
+  "time_unit": null,
+  "start": 0.0,
+  "end": 600,
+  "preinit_changes": {
+    "X": 20
+  },
+  "changes": [
     {
-      "start": 0,
-      "end": 120,
-      "steps": 60,
-      "changes": {
-        "X": 20
-      },
-      "model_changes": {}
-    },
-    {
-      "start": 0,
-      "end": 240,
-      "steps": 120,
-      "changes": {
+      "times": [
+        120
+      ],
+      "values": {
         "n": 20
-      },
-      "model_changes": {}
+      }
     },
     {
-      "start": 0,
-      "end": 240,
-      "steps": 120,
-      "changes": {
+      "times": [
+        360
+      ],
+      "values": {
         "n": 2
-      },
-      "model_changes": {}
+      }
     }
   ],
-  "selections": null,
-  "reset": true
+  "presimulation": null,
+  "times": null,
+  "steps": 300,
+  "time_shift": 0.0
 }

@@ -19,7 +19,7 @@ from matplotlib import pyplot as plt
 
 from sbmlsim.comparison.diff import DataSetsComparison, get_files_by_extension
 from sbmlsim.resources import REPRESSILATOR_SBML
-from sbmlsim.simulation import TimecourseSim
+from sbmlsim.simulation import Simulation
 from sbmlsim.simulator import SimulatorSerial
 
 #: the simulations and the reference results of JWS Online
@@ -43,9 +43,9 @@ def simulate_examples() -> dict[str, pd.DataFrame]:
 
     dfs: dict[str, pd.DataFrame] = {}
     for key, json_path in sorted(get_files_by_extension(DIFF_DIR).items()):
-        tcsim = TimecourseSim.from_json(json_path)
-        xres = simulator.run_timecourse(tcsim)
-        dfs[key] = xres.to_mean_dataframe()
+        simulation = Simulation.from_json(json_path)
+        xres = simulator.run_simulation(simulation)
+        dfs[key] = xres.to_dataframe()
     return dfs
 
 
@@ -58,6 +58,11 @@ def compare_examples(dfs: dict[str, pd.DataFrame], output_path: Path) -> None:
     """
     for key, df_sbmlsim in dfs.items():
         df_jws = pd.read_csv(DIFF_DIR / "jws" / f"{key}.tsv", sep="\t")
+        # JWS Online reports the time of a change twice, before and after it;
+        # `sbmlsim` reports the state after the change
+        df_jws = df_jws.drop_duplicates(
+            subset=df_jws.columns[0], keep="last"
+        ).reset_index(drop=True)
 
         comparison = DataSetsComparison(
             dfs_dict={"sbmlsim": df_sbmlsim, "jws": df_jws},

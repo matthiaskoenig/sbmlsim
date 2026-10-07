@@ -10,7 +10,7 @@ A `DataSet` is a `pandas.DataFrame` with units. It is created from a data frame 
 import pandas as pd
 
 from sbmlsim.data import DataSet
-from sbmlsim.units import UnitsInformation
+from sbmlsim.units import ureg
 
 df = pd.DataFrame(
     {
@@ -21,7 +21,6 @@ df = pd.DataFrame(
         "mean_unit": ["mg/l"] * 4,
     }
 )
-ureg = UnitsInformation._default_ureg()
 dset = DataSet.from_df(df, ureg=ureg)
 print(dset.uinfo["time"], dset.uinfo["mean"])
 print(dset)
@@ -75,7 +74,7 @@ from pathlib import Path
 from sbmlsim.experiment import ExperimentRunner, SimulationExperiment
 from sbmlsim.model import AbstractModel
 from sbmlsim.resources import REPRESSILATOR_SBML
-from sbmlsim.simulation import AbstractSim, Timecourse, TimecourseSim
+from sbmlsim.simulation import Simulation
 from sbmlsim.simulator import SimulatorSerial
 from sbmlsim.task import Task
 
@@ -84,8 +83,8 @@ class DataExperiment(SimulationExperiment):
     def models(self) -> dict[str, AbstractModel | Path]:
         return {"model": REPRESSILATOR_SBML}
 
-    def simulations(self) -> dict[str, AbstractSim]:
-        return {"tc": TimecourseSim(Timecourse(start=0, end=100, steps=100))}
+    def simulations(self) -> dict[str, Simulation]:
+        return {"tc": Simulation(end=100, steps=100)}
 
     def tasks(self) -> dict[str, Task]:
         return {"task_tc": Task(model="model", simulation="tc")}

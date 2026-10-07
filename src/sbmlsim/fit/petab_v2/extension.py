@@ -4,7 +4,7 @@ PEtab v2 problems carry extensions, i.e., a block in the YAML of the problem
 which a tool reads if it knows it and ignores if it does not. The `sbmlsim`
 extension holds what the tables of PEtab do not express, see
 `sbmlsim.fit.petab_v2.gaps`: the units, the settings of the fit, what a fit
-does with a mapping and the structure of the timecourses.
+does with a mapping and the simulation behind every experiment.
 
 The extension is `required`, because the settings it carries are the objective
 of the fit: a tool which does not know it has to reject the problem rather than
@@ -18,8 +18,12 @@ import importlib.util
 from collections.abc import Collection, Mapping
 from typing import Any
 
+import numpy as np
 from petab.v2.extensions import ExtensionConfig
+from pint import UnitRegistry
 from pydantic import Field
+
+from sbmlsim.simulation import Change, Simulation
 
 #: id of the extension, the key of the block in the YAML of the problem
 EXTENSION_ID = "sbmlsim"
@@ -36,8 +40,9 @@ SCIML_EXTRA = "pip install sbmlsim[sciml]"
 #: `check_extensions`
 KNOWN_EXTENSIONS: frozenset[str] = frozenset({EXTENSION_ID})
 
-#: version of the extension, raised when the block changes
-EXTENSION_VERSION = "0.2.0"
+#: version of the extension, raised when the block changes. 0.3.0 holds the
+#: `Simulation` of an experiment, the versions before its timecourses
+EXTENSION_VERSION = "0.3.0"
 
 
 class SbmlsimExtension(ExtensionConfig):
@@ -70,9 +75,11 @@ class SbmlsimExtension(ExtensionConfig):
             observable of several fit mappings): the observable, its kind, the
             weight of the curve, the units of the data, the experiment and the
             task it belongs to and the metadata of the curve.
-        experiments: the structure of the `TimecourseSim` behind every PEtab
-            experiment, i.e. the timecourses with their steps and what is
-            discarded, and the fit mapping collection it belongs to.
+        experiments: the `Simulation` behind every PEtab experiment as its
+            dictionary (`simulation`), i.e. the changes with their units and
+            the output, and the fit mapping collection it belongs to. A
+            problem of a version before 0.3.0 holds the timecourses it is
+            converted from, see `simulation_of_timecourses`.
         collections: the `FitMappingCollection` objects of the fit, i.e. the id
             of the collection, the simulation experiment class its mappings
             come from and what the fit does with them.
@@ -199,3 +206,73 @@ def check_extensions(
             f"problem, so the problem cannot be read without it."
         )
     return ignored
+
+
+def simulation_of_timecourses(
+    info: Mapping[str, Any], ureg: UnitRegistry
+) -> Simulation:
+    """Convert the timecourses of an extension before 0.3.0 into a `Simulation`.
+
+    The extension stored the `TimecourseSim` of `sbmlsim` before 0.9.0: the
+    timecourses with a relative interval each, the time offset of the
+    simulation and the discarded timecourses of a pre-simulation. A timecourse
+    starts where the one before it ended; a leading discarded timecourse runs
+    before the time offset and is the start of the simulation. The changes of
+    the first timecourse are the pre-initialization changes, the ones of a
+    later timecourse a `Change` at its start, and the output are the grids of
+    the kept timecourses.
+
+    Args:
+        info: the block of an experiment, with `timecourses` and
+            `time_offset`.
+        ureg: the registry the units of the changes are read with.
+
+    Returns:
+        The simulation.
+
+    Raises:
+        ValueError: if a discarded timecourse follows a kept one.
+    """
+    timecourses = list(info["timecourses"])
+    offset = float(info.get("time_offset", 0.0))
+
+    def changes_of(tc: Mapping[str, Any]) -> dict[str, Any]:
+        units = tc.get("units", {})
+        return {
+            target: ureg.Quantity(value, units[target]) if units.get(target) else value
+            for target, value in tc.get("changes", {}).items()
+        }
+
+    discarded = 0.0
+    for tc in timecourses:
+        if not tc.get("discard", False):
+            break
+        discarded += float(tc["end"]) - float(tc["start"])
+    start = offset - discarded
+
+    changes: list[Change] = []
+    times: list[float] = []
+    t = start
+    kept = False
+    for k, tc in enumerate(timecourses):
+        duration = float(tc["end"]) - float(tc["start"])
+        if tc.get("discard", False) and kept:
+            raise ValueError(
+                f"The timecourse {k} of the extension is discarded after a kept "
+                f"one, which a `Simulation` cannot express."
+            )
+        t_start = t + float(tc["start"]) if k else start
+        values = changes_of(tc)
+        if k and values:
+            changes.append(Change(t_start, values))
+        if not tc.get("discard", False):
+            kept = True
+            times.extend(np.linspace(t_start, t_start + duration, int(tc["steps"]) + 1))
+        t = t_start + duration
+    return Simulation(
+        start=start,
+        end=t,
+        preinit_changes=changes_of(timecourses[0]),
+        changes=changes,
+        times=sorted({float(round(x, 12)) for x in times}),
+    )

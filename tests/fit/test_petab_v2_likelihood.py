@@ -485,13 +485,11 @@ def test_gradient_of_a_failed_simulation_raises(
     op_unit_noise: OptimizationProblem, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """A step which the model cannot simulate is an error and not a `nan`."""
-    simulator = op_unit_noise.runner_initialized.simulator
-    assert simulator is not None
 
     def fail(*args: object, **kwargs: object) -> None:
         raise RuntimeError("CVODE failed")
 
-    monkeypatch.setattr(simulator, "_timecourses", fail)
+    monkeypatch.setattr("sbmlsim.fit.optimization.execute", fail)
     with pytest.raises(ValueError, match="failed") as excinfo:
         gradient(op_unit_noise)
     # the first mapping which is simulated, at the values of every parameter
