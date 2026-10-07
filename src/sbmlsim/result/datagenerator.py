@@ -1,5 +1,8 @@
 """DataGenerator."""
 
+import numpy as np
+import xarray as xr
+
 from sbmlsim.data import DataSet
 from sbmlsim.result import XResult
 
@@ -31,9 +34,9 @@ class DataGeneratorIndexingFunction(DataGeneratorFunction):
     def __init__(self, index: int, dimension: str = "_time"):
         """Initialize DataGeneratorIndexingFunction.
 
-        A ragged result, whose simulations have different time points, is
-        interpolated onto the union of its time points first, so that an
-        index is the same time in every simulation.
+        The index of the time of a result whose simulations keep their own
+        time points (`_point`) is the index of the point of every simulation,
+        a negative index counts from its last point.
 
         Args:
             index: Index to select on the dimension.
@@ -57,8 +60,9 @@ class DataGeneratorIndexingFunction(DataGeneratorFunction):
         results = {}
         for key, xres in xresults.items():
             if self.dimension == "_time" and "_point" in xres.xds.dims:
-                xres = xres.interpolate(xres.time_points())
-            xds_new = xres.xds.isel({self.dimension: self.index})
+                xds_new = _point_of_every_simulation(xres.xds, self.index)
+            else:
+                xds_new = xres.xds.isel({self.dimension: self.index})
             xres_new = XResult(xdataset=xds_new, uinfo=xres.uinfo)
             results[key] = xres_new
 
@@ -101,3 +105,30 @@ class DataGenerator:
             Processed results.
         """
         return self.f(xresults=self.xresults, dsets=self.dsets)
+
+
+def _point_of_every_simulation(xds: xr.Dataset, index: int) -> xr.Dataset:
+    """Select a point of every simulation of a result, without its padding.
+
+    Args:
+        xds: the dataset with the dimension `_point` first.
+        index: the index of the point, negative from the last point.
+
+    Returns:
+        The dataset without the dimension `_point`.
+    """
+    time = np.asarray(xds["time"].values, dtype=float)
+    n_points = np.sum(np.isfinite(time), axis=0)
+    rows = n_points + index if index < 0 else np.full_like(n_points, index)
+    variables = {}
+    for key in xds.data_vars:
+        values = np.asarray(xds[key].values)
+        picked = np.take_along_axis(values, rows[np.newaxis, ...], axis=0)[0]
+        dims = [d for d in xds[key].dims if d != "_point"]
+        variables[key] = xr.DataArray(
+            picked,
+            dims=dims,
+            coords={d: xds.coords[d] for d in dims if d in xds.coords},
+            attrs=xds[key].attrs,
+        )
+    return xr.Dataset(variables)

@@ -25,9 +25,7 @@ class RepressilatorExperiment(SimulationExperiment):
         return {"model": REPRESSILATOR_SBML}
 
     def simulations(self) -> dict[str, Simulation]:
-        return {
-            "tc": Simulation(end=200, changes=[Change(100, {"X": 10})], steps=200)
-        }
+        return {"tc": Simulation(end=200, changes=[Change(100, {"X": 10})], steps=200)}
 
     def tasks(self) -> dict[str, Task]:
         return {"task_tc": Task(model="model", simulation="tc")}

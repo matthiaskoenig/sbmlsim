@@ -116,7 +116,8 @@ class Plan:
         """Get the plan with other values of targets.
 
         A value replaces the assignment of its target wherever the plan has
-        one, i.e. before the initialization and at every time, and is added
+        one, i.e. before the initialization, in the steady state and at every
+        time, and is added
         to the assignments before the initialization of a target which the
         plan does not set. This is the rule of `Simulation.with_values` on
         numbers in the units of the model, which is what a fit sets.
@@ -144,16 +145,23 @@ class Plan:
         events = tuple(
             PlanEvent(event.time, replaced(event.assignments)) for event in self.events
         )
-        in_events = {a.target for e in self.events for a in e.assignments}
+        steady_state = self.steady_state
+        if steady_state is not None:
+            steady_state = replace(steady_state, preinit=replaced(steady_state.preinit))
+        set_targets = {a.target for e in self.events for a in e.assignments}
+        set_targets |= {a.target for a in self.preinit}
+        if self.steady_state is not None:
+            set_targets |= {a.target for a in self.steady_state.preinit}
         preinit = list(replaced(self.preinit))
-        in_preinit = {a.target for a in self.preinit}
         for target, value in values.items():
-            if target in in_preinit or target in in_events:
+            if target in set_targets:
                 continue
             preinit.append(
                 Assignment(target, self.symbols.kind(target), value=float(value))
             )
-        return replace(self, preinit=tuple(preinit), events=events)
+        return replace(
+            self, preinit=tuple(preinit), events=events, steady_state=steady_state
+        )
 
 
 class _Converter:

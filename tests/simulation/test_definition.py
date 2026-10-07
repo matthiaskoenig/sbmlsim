@@ -113,3 +113,27 @@ def test_json_file(tmp_path) -> None:
     path = tmp_path / "sim.json"
     assert sim.to_json(path) is None
     assert Simulation.from_json(path).times == (0, 5, 10)
+
+
+def test_with_values_replaces_a_target_of_the_presimulation() -> None:
+    """A value of a target of the steady state replaces it there."""
+    sim = Simulation(end=1, presimulation=SteadyState(preinit_changes={"k": 0.2}))
+    changed = sim.with_values({"k": 5.0})
+    assert changed.presimulation is not None
+    assert changed.presimulation.preinit_changes == {"k": 5.0}
+    assert changed.preinit_changes == {}
+
+
+def test_with_preinit_defaults_only_fills_preinit() -> None:
+    """Defaults are pre-initialization changes, the simulation's own win."""
+    sim = Simulation(
+        end=1,
+        preinit_changes={"a": 1.0},
+        changes=[Change(0.5, {"k1": 3.0})],
+        presimulation=SteadyState(preinit_changes={"s": 1.0}),
+    )
+    filled = sim.with_preinit_defaults({"a": 9.0, "k1": 2.0, "s": 7.0, "b": 4.0})
+    assert filled.preinit_changes == {"a": 1.0, "k1": 2.0, "b": 4.0}
+    assert filled.changes[0].values == {"k1": 3.0}
+    assert filled.presimulation is not None
+    assert filled.presimulation.preinit_changes == {"s": 1.0}

@@ -92,8 +92,7 @@ class SimulatorSerial:
     def r(self) -> roadrunner.RoadRunner | None:
         """Get the roadrunner instance of the model, `None` without a model.
 
-        The instance belongs to the model, which loads it again when it
-        derives the model, see `RoadrunnerSBMLModel.free_initial_assignments`.
+        The instance belongs to the model, see `RoadrunnerSBMLModel`.
         """
         return None if self.model is None else self.model.r
 

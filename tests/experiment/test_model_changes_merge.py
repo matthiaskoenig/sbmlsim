@@ -25,6 +25,9 @@ def _experiment(path: Path) -> type[SimulationExperiment]:
                 "dosing": Simulation(
                     end=2, times=[0, 1, 2], changes=[Change([0, 1], {"X": "X + 1"})]
                 ),
+                "later": Simulation(
+                    end=1, times=[0, 1], changes=[Change(0.5, {"b0": 3.0})]
+                ),
                 "scan": ScanSim(
                     Simulation(end=1, steps=2),
                     [Dimension("d", changes={"b0": np.array([1.0, 4.0])})],
@@ -36,6 +39,7 @@ def _experiment(path: Path) -> type[SimulationExperiment]:
                 "t": Task(model="m", simulation="s"),
                 "t_dosing": Task(model="m", simulation="dosing"),
                 "t_scan": Task(model="m", simulation="scan"),
+                "t_later": Task(model="m", simulation="later"),
             }
 
     return Exp
@@ -56,6 +60,12 @@ def test_model_changes_merge_into_preinit(tmp_path: Path) -> None:
 
     xres = exp.results["t_dosing"]
     np.testing.assert_allclose(xres["X"].values, [13.0, 14.0, 14.0])
+
+    # the change of the model is a pre-initialization change, the change of
+    # the simulation at a later time does not replace it
+    xres = exp.results["t_later"]
+    assert xres["b0"].values[0] == 0.0
+    assert xres["[B]"].values[0] == 0.0
 
     xres = exp.results["t_scan"]
     np.testing.assert_allclose(xres["[B]"].values[0], [1.0, 4.0])

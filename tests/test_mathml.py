@@ -101,3 +101,14 @@ def test_max_and_min_of_one_array_reduce_it() -> None:
     np.testing.assert_allclose(mathml.evaluate(ast, {"Y": y}), [0.0, 1.0, 3.0])
     ast = mathml.formula_to_astnode("max(Y, 2)")
     np.testing.assert_allclose(mathml.evaluate(ast, {"Y": y}), [2.0, 2.0, 4.0])
+
+
+def test_max_of_a_padded_array_ignores_the_padding() -> None:
+    """The padding of a ragged result is no value of `max`."""
+    import numpy as np
+
+    from sbmlsim import mathml
+
+    y = np.array([1.0, 4.0, np.nan])
+    ast = mathml.formula_to_astnode("Y/max(Y)")
+    np.testing.assert_allclose(mathml.evaluate(ast, {"Y": y})[:2], [0.25, 1.0])

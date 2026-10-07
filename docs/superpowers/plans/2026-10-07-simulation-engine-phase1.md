@@ -85,7 +85,9 @@ def test_same_unit_id_two_models_converts_per_model() -> None:
 
 
 def test_model_unit_ids_are_not_defined_in_registry() -> None:
-    UnitsInformation.from_sbml(_model_with_unit("u_not_in_registry", libsbml.UNIT_KIND_GRAM))
+    UnitsInformation.from_sbml(
+        _model_with_unit("u_not_in_registry", libsbml.UNIT_KIND_GRAM)
+    )
     with pytest.raises(Exception):
         ureg("u_not_in_registry")
 ```
@@ -202,7 +204,10 @@ def test_json_round_trip() -> None:
         start=-72,
         end=48,
         preinit_changes={"BW": Q(70, "kg")},
-        changes=[Change([-72, 0], {"PODOSE": Q(10, "mg")}), Change(10, {"[glc]": "[glc] + 5"})],
+        changes=[
+            Change([-72, 0], {"PODOSE": Q(10, "mg")}),
+            Change(10, {"[glc]": "[glc] + 5"}),
+        ],
         presimulation=SteadyState(preinit_changes={"ins": 0.0}),
         steps=100,
     )
@@ -578,7 +583,9 @@ def test_two_values_for_one_target_at_one_time_raise(probe) -> None:
 def test_change_outside_interval_raises(probe) -> None:
     symbols, uinfo = probe
     with pytest.raises(ValueError, match="outside"):
-        compile_simulation(Simulation(end=1, changes=[Change(2, {"k1": 1.0})]), symbols, uinfo)
+        compile_simulation(
+            Simulation(end=1, changes=[Change(2, {"k1": 1.0})]), symbols, uinfo
+        )
 
 
 def test_time_unit_and_steps(probe) -> None:
@@ -593,7 +600,9 @@ def test_time_unit_and_steps(probe) -> None:
 def test_plan_is_picklable_and_overridable(probe) -> None:
     symbols, uinfo = probe
     plan = compile_simulation(
-        Simulation(end=1, preinit_changes={"k1": 1.0}, changes=[Change([0, 0.5], {"f": 3.0})]),
+        Simulation(
+            end=1, preinit_changes={"k1": 1.0}, changes=[Change([0, 0.5], {"f": 3.0})]
+        ),
         symbols,
         uinfo,
     )
@@ -648,7 +657,9 @@ from sbmlsim.simulator.symbols import TargetKind
 from tests.simulator.models import sbml
 
 
-def _a(target: str, value: float, kind: TargetKind = TargetKind.PARAMETER) -> Assignment:
+def _a(
+    target: str, value: float, kind: TargetKind = TargetKind.PARAMETER
+) -> Assignment:
     return Assignment(target=target, kind=kind, value=value, formula=None)
 
 
@@ -777,7 +788,9 @@ def test_change_at_start_and_output_at_change_time() -> None:
 
 def test_simultaneous_formulas_use_old_values() -> None:
     res = run(
-        Simulation(end=1, changes=[Change(0.5, {"[A]": "[B]", "[B]": "[A]"})], times=[0.5])
+        Simulation(
+            end=1, changes=[Change(0.5, {"[A]": "[B]", "[B]": "[A]"})], times=[0.5]
+        )
     )
     ref = run(Simulation(end=0.5, times=[0.5]))
     assert res["[A]"][0] == pytest.approx(ref["[B]"][0])
@@ -805,7 +818,11 @@ def test_integrator_output_has_change_time_once() -> None:
 
 
 def test_multiple_dosing() -> None:
-    res = run(Simulation(end=3, changes=[Change([0, 1, 2], {"[A]": "[A] + 1"})], times=[0, 1, 2, 3]))
+    res = run(
+        Simulation(
+            end=3, changes=[Change([0, 1, 2], {"[A]": "[A] + 1"})], times=[0, 1, 2, 3]
+        )
+    )
     assert res["[A]"][0] == pytest.approx(2.0)
 
 
@@ -818,7 +835,9 @@ def test_steady_state_not_reached_raises() -> None:
     growth = sbml("model g\n x' = 1\n x = 0\nend")
     model = RoadrunnerSBMLModel(source=growth)
     plan = compile_simulation(
-        Simulation(end=1, presimulation=SteadyState(max_time=100)), model.symbols, model.uinfo
+        Simulation(end=1, presimulation=SteadyState(max_time=100)),
+        model.symbols,
+        model.uinfo,
     )
     with pytest.raises(SteadyStateError, match="100"):
         execute(plan, model, ["time", "x"])
@@ -905,7 +924,9 @@ from sbmlsim.simulation import Dimension, ScanSim, Simulation
 
 
 def _tc(times, values) -> TimecourseResult:
-    return TimecourseResult(columns=("time", "y"), values=np.column_stack([times, values]))
+    return TimecourseResult(
+        columns=("time", "y"), values=np.column_stack([times, values])
+    )
 
 
 def test_single_result_has_no_scan_dimension() -> None:
@@ -915,12 +936,21 @@ def test_single_result_has_no_scan_dimension() -> None:
 
 
 def test_ragged_scan_is_padded_and_interpolated() -> None:
-    scan = ScanSim(Simulation(end=4), dimensions=[Dimension("d", index=np.arange(2), changes={"k": np.array([1.0, 2.0])})])
-    xres = XResult.from_timecourses([_tc([0, 4], [0, 4]), _tc([0, 1, 4], [0, 2, 8])], scan=scan)
+    scan = ScanSim(
+        Simulation(end=4),
+        dimensions=[
+            Dimension("d", index=np.arange(2), changes={"k": np.array([1.0, 2.0])})
+        ],
+    )
+    xres = XResult.from_timecourses(
+        [_tc([0, 4], [0, 4]), _tc([0, 1, 4], [0, 2, 8])], scan=scan
+    )
     assert xres["y"].shape == (3, 2)
     assert np.isnan(xres["y"].values[2, 0])
     grid = xres.interpolate([0, 2, 4])
-    np.testing.assert_allclose(grid["y"].values, [[0, 0], [2, 4.6666666667], [4, 8]], rtol=1e-6)
+    np.testing.assert_allclose(
+        grid["y"].values, [[0, 0], [2, 4.6666666667], [4, 8]], rtol=1e-6
+    )
     mean = xres.dim_mean("y", times=[4])
     np.testing.assert_allclose(mean.magnitude, [6.0])
 ```
@@ -967,9 +997,14 @@ from sbmlsim.simulation import Change, Dimension, ScanSim, Simulation
 
 def test_scan_replaces_dose_at_every_time() -> None:
     sim = Simulation(end=72, changes=[Change([0, 24, 48], {"PODOSE": Q(10, "mg")})])
-    scan = ScanSim(sim, [Dimension("dose", changes={"PODOSE": Q(np.array([5.0, 20.0]), "mg")})])
+    scan = ScanSim(
+        sim, [Dimension("dose", changes={"PODOSE": Q(np.array([5.0, 20.0]), "mg")})]
+    )
     _, sims = scan.to_simulations()
-    assert [s.changes[0].values["PODOSE"] for s in sims] == [Q(5.0, "mg"), Q(20.0, "mg")]
+    assert [s.changes[0].values["PODOSE"] for s in sims] == [
+        Q(5.0, "mg"),
+        Q(20.0, "mg"),
+    ]
     assert all(s.preinit_changes == {} for s in sims)
 
 
@@ -983,7 +1018,13 @@ def test_scan_at_time_adds_a_change() -> None:
 
 def test_scan_of_two_dimensions() -> None:
     sim = Simulation(end=1)
-    scan = ScanSim(sim, [Dimension("a", changes={"k1": np.array([1.0, 2.0])}), Dimension("b", changes={"k2": np.array([3.0, 4.0, 5.0])})])
+    scan = ScanSim(
+        sim,
+        [
+            Dimension("a", changes={"k1": np.array([1.0, 2.0])}),
+            Dimension("b", changes={"k2": np.array([3.0, 4.0, 5.0])}),
+        ],
+    )
     indices, sims = scan.to_simulations()
     assert len(sims) == 6 and indices[5] == (1, 2)
     assert sims[5].preinit_changes == {"k1": 2.0, "k2": 5.0}
@@ -1035,9 +1076,14 @@ def test_run_simulation_and_scan(tmp_path) -> None:
     path = tmp_path / "probe.xml"
     path.write_text(sbml())
     simulator = SimulatorSerial(model=path)
-    xres = simulator.run_simulation(Simulation(end=1, preinit_changes={"b0": 0.0}, steps=10))
+    xres = simulator.run_simulation(
+        Simulation(end=1, preinit_changes={"b0": 0.0}, steps=10)
+    )
     assert xres["[B]"].values[0] == pytest.approx(0.0)
-    scan = ScanSim(Simulation(end=1, steps=10), [Dimension("d", changes={"b0": np.array([0.0, 2.0])})])
+    scan = ScanSim(
+        Simulation(end=1, steps=10),
+        [Dimension("d", changes={"b0": np.array([0.0, 2.0])})],
+    )
     xres = simulator.run_scan(scan)
     assert xres["[B]"].values[0].tolist() == pytest.approx([0.0, 2.0])
 ```
@@ -1189,7 +1235,14 @@ class IAExperiment(SimulationExperiment):
         return {"m": AbstractModel(source=PATH)}
 
     def datasets(self):
-        df = pd.DataFrame({"time": [0.0], "time_unit": "dimensionless", "B": [0.0], "B_unit": "dimensionless"})
+        df = pd.DataFrame(
+            {
+                "time": [0.0],
+                "time_unit": "dimensionless",
+                "B": [0.0],
+                "B_unit": "dimensionless",
+            }
+        )
         return {"d": DataSet.from_df(df, ureg=self.ureg)}
 
     def simulations(self):
@@ -1199,7 +1252,13 @@ class IAExperiment(SimulationExperiment):
         return {"t": Task(model="m", simulation="s")}
 
     def fit_mappings(self):
-        return {"fm": FitMapping(self, reference=FitData(self, dataset="d", xid="time", yid="B"), observable=FitData(self, task="t", xid="time", yid="[B]"))}
+        return {
+            "fm": FitMapping(
+                self,
+                reference=FitData(self, dataset="d", xid="time", yid="B"),
+                observable=FitData(self, task="t", xid="time", yid="[B]"),
+            )
+        }
 
 
 def test_fit_parameter_reaches_initial_assignment(tmp_path) -> None:
@@ -1208,8 +1267,18 @@ def test_fit_parameter_reaches_initial_assignment(tmp_path) -> None:
     PATH.write_text(sbml())
     problem = OptimizationProblem(
         opid="ia",
-        mapping_collections=[FitMappingCollection(experiment=IAExperiment, mappings=["fm"])],
-        fit_parameters=[FitParameter(pid="b0", lower_bound=0.0, upper_bound=2.0, start_value=1.0, unit="dimensionless")],
+        mapping_collections=[
+            FitMappingCollection(experiment=IAExperiment, mappings=["fm"])
+        ],
+        fit_parameters=[
+            FitParameter(
+                pid="b0",
+                lower_bound=0.0,
+                upper_bound=2.0,
+                start_value=1.0,
+                unit="dimensionless",
+            )
+        ],
         base_path=tmp_path,
         data_path=tmp_path,
     )

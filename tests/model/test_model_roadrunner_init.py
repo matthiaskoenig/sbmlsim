@@ -152,3 +152,86 @@ def test_values_of_an_initialization_without_simulation_are_restored() -> None:
     assert r["C"] == pytest.approx(2.0)
     assert r["[A]"] == pytest.approx(1.0)
     assert r["k1"] == pytest.approx(0.1)
+
+
+def test_preinit_concentration_with_a_compartment_of_an_initial_assignment() -> None:
+    """A concentration set before the initialization keeps its value.
+
+    The compartment follows a changed parameter through its initial
+    assignment, the species set as a concentration keeps the concentration.
+    """
+    model = RoadrunnerSBMLModel(
+        source=sbml(
+            "model c\n  V = 1\n  compartment C = 2*V\n  species S in C = 1\nend"
+        )
+    )
+    model.initialize([_a("V", 2.0), _a("[S]", 3.0, TargetKind.SPECIES_CONCENTRATION)])
+    assert model.r_loaded["C"] == pytest.approx(4.0)
+    assert model.r_loaded["[S]"] == pytest.approx(3.0)
+
+
+def test_initial_assignment_of_a_concentration_follows_its_compartment() -> None:
+    """An initial assignment reading a concentration follows a changed compartment."""
+    import libsbml
+
+    doc = libsbml.readSBMLFromString(
+        sbml("model c\n  compartment C = 2\n  species T in C\n  T = 2\n  p = T\nend")
+    )
+    species = doc.getModel().getSpecies("T")
+    # a concentration species defined by its initial amount: a larger
+    # compartment dilutes it, and p reads its concentration
+    species.unsetInitialConcentration()
+    species.setInitialAmount(4.0)
+    model = RoadrunnerSBMLModel(source=libsbml.writeSBMLToString(doc))
+    model.initialize([_a("C", 4.0, TargetKind.COMPARTMENT)])
+    assert model.r_loaded["[T]"] == pytest.approx(1.0)
+    assert model.r_loaded["p"] == pytest.approx(1.0)
+
+
+def test_events_and_a_start_other_than_zero_are_reported(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """roadrunner evaluates the triggers of events at the time 0, which is reported.
+
+    The state of the triggers is kept across a reset, so an event whose
+    trigger depends on the time can fire at the start of a simulation which
+    does not start at 0; nothing in the API of roadrunner sets the time of
+    the initialization of the triggers.
+    """
+    import logging
+
+    from sbmlsim.simulation import Simulation
+    from sbmlsim.simulator.executor import execute
+    from sbmlsim.simulator.plan import compile_simulation
+
+    model = RoadrunnerSBMLModel(
+        source=sbml("model ev\n  X = 0\n  E: at (time >= 0), t0=false: X = 5\nend")
+    )
+    plan = compile_simulation(Simulation(start=-10, end=10), model.symbols, model.uinfo)
+    with caplog.at_level(logging.WARNING, logger="sbmlsim.simulator.executor"):
+        execute(plan, model, ["time", "X"])
+        execute(plan, model, ["time", "X"])
+    warnings = [r for r in caplog.records if "events" in r.getMessage()]
+    assert len(warnings) == 1
+
+
+def test_initialization_with_compartment_and_concentration_is_not_left_over() -> None:
+    """An initialization without a simulation after it leaves nothing behind."""
+    model = RoadrunnerSBMLModel(source=sbml())
+    model.initialize(
+        [
+            _a("C", 4.0, TargetKind.COMPARTMENT),
+            _a("[A]", 3.0, TargetKind.SPECIES_CONCENTRATION),
+        ]
+    )
+    model.initialize([])
+    assert model.r_loaded["C"] == pytest.approx(2.0)
+    assert model.r_loaded["[A]"] == pytest.approx(1.0)
+
+
+def test_parameter_df_has_no_helpers() -> None:
+    """The helpers of the initial assignments are not parameters of the model."""
+    model = RoadrunnerSBMLModel(source=sbml())
+    df = RoadrunnerSBMLModel.parameter_df(model.r_loaded)
+    assert "pinit__initial" not in set(df["sid"])
+    assert "pinit" in set(df["sid"])

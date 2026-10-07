@@ -180,9 +180,11 @@ class XResult:
             raise KeyError(key)
         xres = self
         if "_point" in self.xds.dims:
-            xres = self.interpolate(self.time_points() if times is None else times)
+            xres = self.interpolate(
+                self.time_points() if times is None else times, keys=[key]
+            )
         elif times is not None:
-            xres = self.interpolate(times)
+            xres = self.interpolate(times, keys=[key])
         array = xres.xds[key]
         values = getattr(array, operation)(dim=xres._redop_dims(), skipna=True).values
         return self._quantity(key, values)
@@ -206,14 +208,17 @@ class XResult:
             np.isnan(flat).any() or not np.allclose(flat, flat[:, :1], equal_nan=True)
         )
 
-    def interpolate(self, times: ArrayLike) -> "XResult":
+    def interpolate(
+        self, times: ArrayLike, keys: Sequence[str] | None = None
+    ) -> "XResult":
         """Get the result on a common grid of times.
 
         Every simulation is interpolated linearly onto the times; a time
-        outside of a simulation is `NaN`.
+        outside of a simulation is `NaN`. The variable `time` is the grid.
 
         Args:
             times: the times of the grid.
+            keys: the variables to interpolate, all by default.
 
         Returns:
             The result with the dimension `_time`, whose coordinate are the
@@ -221,7 +226,8 @@ class XResult:
         """
         grid = np.asarray(times, dtype=float).ravel()
         if "_point" not in self.xds.dims:
-            interpolated = self.xds.interp(_time=grid)
+            xds = self.xds if keys is None else self.xds[[*keys]]
+            interpolated = xds.interp(_time=grid)
             return XResult(xdataset=interpolated, uinfo=self.uinfo)
 
         time = self.xds["time"]
@@ -232,8 +238,18 @@ class XResult:
         for dim in scan_dims:
             if dim in self.xds.coords:
                 coords[dim] = self.xds.coords[dim].values
-        variables: dict[str, xr.DataArray] = {}
-        for key in self.xds.data_vars:
+        variables: dict[str, xr.DataArray] = {
+            "time": xr.DataArray(
+                data=np.broadcast_to(
+                    grid.reshape((-1,) + (1,) * len(shape)), (grid.size, *shape)
+                ).copy(),
+                dims=["_time", *scan_dims],
+                coords=coords,
+                attrs=self.xds["time"].attrs,
+            )
+        }
+        selected = list(self.xds.data_vars) if keys is None else list(keys)
+        for key in selected:
             if key == "time":
                 continue
             values = np.asarray(self.xds[key].values, dtype=float)

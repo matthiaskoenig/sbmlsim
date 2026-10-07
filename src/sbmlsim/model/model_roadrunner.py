@@ -128,9 +128,11 @@ class RoadrunnerSBMLModel(AbstractModel):
         #: whether the instance was reset or loaded and not simulated since,
         #: see `initialize`
         self._reset_pending: bool = True
-        #: the values an initialization changed since the last reset, by
-        #: selection, see `initialize`
+        #: the values an initialization changed since the last reset, the
+        #: amount of a species, see `initialize`
         self._restore: dict[str, float] = {}
+        #: whether the start of a simulation was reported, see `executor`
+        self.warned_start: bool = False
 
         # set selections
         # logger.info("set selections")
@@ -167,15 +169,23 @@ class RoadrunnerSBMLModel(AbstractModel):
         replaces its own initial assignment. roadrunner reinitializes the
         model when an initial value is set with `init(...)`, which costs a
         compilation of the model per value. The model is therefore
-        initialized as it was loaded (`resetAll`), the values are set as the
-        current values, and the initial assignments which read a changed
-        entity are evaluated again, in their order, from the assignment rule
-        of their helper parameter, which roadrunner evaluates on the current
-        values. Nothing is left to restore: the next `resetAll` starts from
-        the model as it was loaded.
+        initialized as it was loaded, the values are set as the current
+        values, and the initial assignments which read a changed entity are
+        evaluated again, in their order, from the assignment rule of their
+        helper parameter, which roadrunner evaluates on the current values.
+
+        roadrunner queues the events which fire at the time 0 with every
+        reset, a loaded model counts as one, and a simulation fires them once:
+        a second reset without a simulation in between fires them twice (case
+        01757 of the SBML Test Suite). A model which was not simulated since
+        its last reset is therefore not reset again, the values an earlier
+        initialization set are restored instead; `simulated` records a
+        simulation.
 
         A compartment keeps the concentration of the species whose initial
-        value is a concentration, as at the initialization of SBML.
+        value is a concentration, as at the initialization of SBML, and of a
+        species which is set as a concentration, and the amount of every
+        other species.
 
         Args:
             assignments: the pre-initialization assignments of a plan, values
@@ -184,31 +194,27 @@ class RoadrunnerSBMLModel(AbstractModel):
         Raises:
             ValueError: if an assignment is a formula.
         """
+        self._reset()
         r = self.r_loaded
-        if self._reset_pending:
-            # roadrunner queues the events which fire at the time 0 with every
-            # reset, a loaded model counts as one, and a simulation fires them
-            # once: a second reset without a simulation would fire them twice
-            # (case 01757 of the SBML Test Suite). The values an earlier
-            # initialization set are restored instead
-            for key, value in self._restore.items():
-                r.setValue(key, value)
-        else:
-            reset_all(r)
-            self._reset_pending = True
-        self._restore = {}
         symbols = self.symbols
         entities: set[str] = set()
+        concentrations: set[str] = set()
+        amounts: set[str] = set()
         for a in assignments:
             if a.value is None:
                 raise ValueError(
                     f"The pre-initialization value of '{a.target}' is the "
                     f"formula '{a.formula}', it must be a number."
                 )
-            entities.add(symbols.entity(a.target))
+            entity = symbols.entity(a.target)
+            entities.add(entity)
+            if a.kind is TargetKind.SPECIES_CONCENTRATION:
+                concentrations.add(entity)
+            elif a.kind is TargetKind.SPECIES_AMOUNT:
+                amounts.add(entity)
         for a in assignments:
             if a.kind is TargetKind.COMPARTMENT:
-                self._set_compartment(a.target, float(a.value), entities)  # ty: ignore[invalid-argument-type]
+                self._set_compartment(a.target, float(a.value), concentrations, amounts)  # ty: ignore[invalid-argument-type]
         for a in assignments:
             if a.kind is not TargetKind.COMPARTMENT:
                 self._set(a.target, float(a.value))  # ty: ignore[invalid-argument-type]
@@ -224,12 +230,23 @@ class RoadrunnerSBMLModel(AbstractModel):
                 continue
             value = float(r.getValue(self.initial_helpers[entity]))
             if entity in symbols.compartments:
-                self._set_compartment(entity, value, entities)
+                self._set_compartment(entity, value, concentrations, amounts)
             elif entity in symbols.species and entity not in symbols.only_substance:
                 self._set(f"[{entity}]", value)
             else:
                 self._set(entity, value)
             changed.add(entity)
+
+    def _reset(self) -> None:
+        """Set the model to the state it was loaded in, see `initialize`."""
+        r = self.r_loaded
+        if self._reset_pending:
+            for key, value in self._restore.items():
+                r.setValue(key, value)
+        else:
+            reset_all(r)
+            self._reset_pending = True
+        self._restore = {}
 
     def simulated(self) -> None:
         """Record that the model was simulated since its last initialization.
@@ -238,35 +255,48 @@ class RoadrunnerSBMLModel(AbstractModel):
         """
         self._reset_pending = False
 
-    def _set(self, selection: str, value: float) -> None:
-        """Set a value in an initialization and record the value it replaces."""
-        r = self.r_loaded
-        if selection not in self._restore:
-            self._restore[selection] = float(r.getValue(selection))
-        r.setValue(selection, value)
+    def _record(self, key: str) -> None:
+        """Record the value an initialization replaces, see `initialize`."""
+        if key not in self._restore:
+            self._restore[key] = float(self.r_loaded.getValue(key))
 
-    def _set_compartment(self, compartment: str, value: float, kept: set[str]) -> None:
+    def _set(self, selection: str, value: float) -> None:
+        """Set a value in an initialization and record the value it replaces.
+
+        A species is recorded by its amount, which does not depend on the
+        compartment, so the records restore in any order.
+        """
+        self._record(self.symbols.entity(selection))
+        self.r_loaded.setValue(selection, value)
+
+    def _set_compartment(
+        self,
+        compartment: str,
+        value: float,
+        concentrations: set[str],
+        amounts: set[str],
+    ) -> None:
         """Set a compartment before the initialization.
 
         Args:
             compartment: the compartment.
             value: its size.
-            kept: entities which are set themselves and are not rescaled.
+            concentrations: species which are set as concentrations.
+            amounts: species which are set as amounts.
         """
         r = self.r_loaded
         symbols = self.symbols
-        concentrations = {
+        kept = {
             s: r.getValue(f"[{s}]")
             for s, c in symbols.species_compartment.items()
-            if c == compartment and s in symbols.initial_concentration and s not in kept
+            if c == compartment
+            and s not in amounts
+            and (s in symbols.initial_concentration or s in concentrations)
         }
-        # the amounts are restored, they keep the concentrations of a
-        # restored compartment
-        for species in concentrations:
-            if species not in self._restore:
-                self._restore[species] = float(r.getValue(species))
+        for species in kept:
+            self._record(species)
         self._set(compartment, value)
-        for species, concentration in concentrations.items():
+        for species, concentration in kept.items():
             r.setValue(f"[{species}]", concentration)
 
     @staticmethod
@@ -466,11 +496,17 @@ class RoadrunnerSBMLModel(AbstractModel):
         r_model: roadrunner.ExecutableModel = r.model
         doc: libsbml.SBMLDocument = libsbml.readSBMLFromString(r.getCurrentSBML())
         model: libsbml.Model = doc.getModel()
-        sids = r_model.getGlobalParameterIds()
+        # the helpers of the initial assignments are not parameters of the
+        # model, see `initialize`
+        sids = [
+            sid
+            for sid in r_model.getGlobalParameterIds()
+            if not sid.endswith(INITIAL_SUFFIX)
+        ]
         parameters: list[libsbml.Parameter] = [model.getParameter(sid) for sid in sids]
         data = {
             "sid": sids,
-            "value": r_model.getGlobalParameterValues(),
+            "value": [r.getValue(sid) for sid in sids],
             "unit": [p.getUnits() for p in parameters],
             "constant": [p.getConstant() for p in parameters],
             "name": [p.getName() for p in parameters],

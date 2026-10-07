@@ -189,3 +189,24 @@ def test_integrator_setting_is_restored() -> None:
     model.r_loaded.getIntegrator().setValue("variable_step_size", False)
     run(Simulation(end=1), model)
     assert model.r_loaded.getIntegrator().getValue("variable_step_size") is False
+
+
+def test_change_at_the_end_keeps_the_earlier_output() -> None:
+    """Only the output at the end is the state after a change at the end."""
+    res = run(Simulation(end=1e6, changes=[Change(1e6, {"X": 0.0})], times=[0, 999995]))
+    assert res.time.tolist() == [0.0, 999995.0]
+    assert res["X"][1] == pytest.approx(12.0)
+
+
+def test_steady_state_error_names_the_model() -> None:
+    """The error of a steady state names the model even without an id."""
+    growth = sbml("model g\n  x' = 1\n  x = 0\nend")
+    model = RoadrunnerSBMLModel(source=growth)
+    plan = compile_simulation(
+        Simulation(end=1, presimulation=SteadyState(max_time=10)),
+        model.symbols,
+        model.uinfo,
+    )
+    with pytest.raises(SteadyStateError) as err:
+        execute(plan, model, ["time", "x"])
+    assert "'None'" not in str(err.value)

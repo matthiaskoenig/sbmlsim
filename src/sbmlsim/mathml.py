@@ -119,14 +119,14 @@ class _ArrayMin(Function):
 def _array_max(*args: Any) -> Any:
     """Reduce one array to its maximum, take the maximum of several values."""
     if len(args) == 1:
-        return np.max(args[0])
+        return np.nanmax(args[0])
     return np.maximum.reduce(np.broadcast_arrays(*args))
 
 
 def _array_min(*args: Any) -> Any:
     """Reduce one array to its minimum, take the minimum of several values."""
     if len(args) == 1:
-        return np.min(args[0])
+        return np.nanmin(args[0])
     return np.minimum.reduce(np.broadcast_arrays(*args))
 
 

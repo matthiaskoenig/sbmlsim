@@ -87,3 +87,36 @@ def test_to_dataframe_drops_the_padding() -> None:
     df = xres.to_dataframe()
     assert len(df) == 5
     assert not df["time"].isna().any()
+
+
+def test_mean_dataframe_and_mean_of_the_time() -> None:
+    """The mean data frame has the time, the mean of the time is the grid."""
+    uinfo = UnitsInformation(udict={"y": "mM", "time": "s"}, ureg=ureg)
+    xres = XResult.from_timecourses(
+        [_tc([0, 4], [0, 4]), _tc([0, 1, 4], [0, 2, 8])], scan=_scan(), uinfo=uinfo
+    )
+    df = xres.to_mean_dataframe()
+    np.testing.assert_allclose(df["time"], [0, 1, 4])
+    np.testing.assert_allclose(df["y"], [0, 1.5, 6])
+    np.testing.assert_allclose(xres.dim_mean("time").magnitude, [0, 1, 4])
+
+
+def test_a_reduction_interpolates_only_its_variable() -> None:
+    """`dim_mean` of one variable does not interpolate the others."""
+    xres = XResult.from_timecourses(
+        [_tc([0, 4], [0, 4]), _tc([0, 1, 4], [0, 2, 8])], scan=_scan()
+    )
+    grid = xres.interpolate([0, 4], keys=["y"])
+    assert set(grid.xds.data_vars) == {"y", "time"}
+
+
+def test_datagenerator_picks_the_last_point_of_every_simulation() -> None:
+    """The last point of a ragged result is the last point of each simulation."""
+    from sbmlsim.result.datagenerator import DataGeneratorIndexingFunction
+
+    xres = XResult.from_timecourses(
+        [_tc([0, 4], [0, 4]), _tc([0, 1, 4], [0, 2, 8])], scan=_scan()
+    )
+    last = DataGeneratorIndexingFunction(index=-1)(xresults={"r": xres})["r"]
+    np.testing.assert_allclose(last["y"].values, [4, 8])
+    np.testing.assert_allclose(last["time"].values, [4, 4])

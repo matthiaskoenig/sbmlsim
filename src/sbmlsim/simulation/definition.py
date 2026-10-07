@@ -28,7 +28,7 @@ from __future__ import annotations
 
 import json
 from collections.abc import Mapping, Sequence
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Any, overload
 
@@ -290,8 +290,8 @@ class Simulation:
         """Get a copy of the simulation with other values of targets.
 
         A value replaces the value of its target wherever the simulation sets
-        it, i.e. in the pre-initialization changes and in every change, and is
-        added to the pre-initialization changes of a target which the
+        it, i.e. in the pre-initialization changes, in those of the
+        presimulation and in every change, and is added to the pre-initialization changes of a target which the
         simulation does not set. This is how a scan and a fit set their values.
 
         Args:
@@ -302,24 +302,64 @@ class Simulation:
         """
         preinit = dict(self.preinit_changes)
         changes: list[Change] = []
-        set_in_changes: set[str] = set()
+        set_elsewhere: set[str] = set()
         for change in self.changes:
             new_values = dict(change.values)
             for target in change.values:
                 if target in values:
                     new_values[target] = values[target]
-                    set_in_changes.add(target)
+                    set_elsewhere.add(target)
             changes.append(Change(change.times, new_values))
+        presimulation = self.presimulation
+        if presimulation is not None:
+            steady = dict(presimulation.preinit_changes)
+            for target in steady:
+                if target in values:
+                    steady[target] = values[target]
+                    set_elsewhere.add(target)
+            presimulation = replace(presimulation, preinit_changes=steady)
         for target, value in values.items():
-            if target in preinit or target not in set_in_changes:
+            if target in preinit or target not in set_elsewhere:
                 preinit[target] = value
+        return self._copy(preinit, changes, presimulation)
+
+    def with_preinit_defaults(
+        self, values: Mapping[str, float | Quantity]
+    ) -> Simulation:
+        """Get a copy of the simulation with default pre-initialization changes.
+
+        A default applies unless the simulation sets its target before the
+        initialization itself, in its own `preinit_changes` or in those of
+        its presimulation; a `Change` of the target at a time does not replace
+        it. This is how the changes of a model reach its simulations.
+
+        Args:
+            values: target -> value.
+
+        Returns:
+            The new simulation, this one is not changed.
+        """
+        own = set(self.preinit_changes)
+        if self.presimulation is not None:
+            own |= set(self.presimulation.preinit_changes)
+        preinit = {k: v for k, v in values.items() if k not in own}
+        preinit.update(self.preinit_changes)
+        return self._copy(preinit, list(self.changes), self.presimulation)
+
+    def _copy(
+        self,
+        preinit: Mapping[str, float | Quantity],
+        changes: Sequence[Change],
+        presimulation: SteadyState | None,
+    ) -> Simulation:
+        """Get a copy with other changes, the output and the interval kept."""
         return Simulation(
             time_unit=self.time_unit,
             start=self.start,
             end=self.end,
             preinit_changes=preinit,
             changes=changes,
-            presimulation=self.presimulation,
+            presimulation=presimulation,
             times=None if self.times is None else list(self.times),
             steps=self.steps,
             time_shift=self.time_shift,

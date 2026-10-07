@@ -92,3 +92,48 @@ def test_fit_parameter_reaches_initial_assignment(
 def test_fit_simulates_at_the_data(problem: OptimizationProblem) -> None:
     """The plan of the fit outputs the times of the data, no interpolation."""
     assert problem.plans[0].times == (0.0, 0.5, 1.5)
+
+
+class ShiftedExperiment(IAExperiment):
+    """The data of the probe model on a shifted time axis."""
+
+    def datasets(self) -> dict[str, DataSet]:
+        df = pd.DataFrame(
+            {
+                "time": [-72.3, 0.5, 1.02],
+                "time_unit": "s",
+                "B": [0.0, 0.2, 0.5],
+                "B_unit": "dimensionless",
+            }
+        )
+        return {"d": DataSet.from_df(df, ureg=self.ureg)}
+
+    def simulations(self) -> dict[str, Simulation]:
+        return {"s": Simulation(end=73.32, time_shift=-72.3)}
+
+
+def test_fit_with_a_time_shift(tmp_path: Path) -> None:
+    """The data of a shifted simulation is found at its times, without rounding."""
+    MODEL_PATH["path"] = tmp_path / "probe.xml"
+    MODEL_PATH["path"].write_text(sbml())
+    problem = OptimizationProblem(
+        opid="shifted",
+        mapping_collections=[
+            FitMappingCollection(experiment=ShiftedExperiment, mappings=["fm"])
+        ],
+        fit_parameters=[
+            FitParameter(
+                pid="b0",
+                lower_bound=0.0,
+                upper_bound=2.0,
+                start_value=1.0,
+                unit="dimensionless",
+            )
+        ],
+        base_path=tmp_path,
+        data_path=tmp_path,
+    )
+    problem.initialize(FitSettings(parameter_scale=ParameterScaleType.LINEAR))
+    predictions = problem.predictions(np.array([0.5]))
+    assert predictions[0][0] == pytest.approx(0.5)
+    assert predictions[0].shape == (3,)

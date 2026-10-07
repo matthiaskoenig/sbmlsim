@@ -97,11 +97,17 @@ class ModelSymbols:
         rule_symbols = {
             r.getVariable(): _names(r.getMath()) for r in rules if r.isAssignment()
         }
+        compartment_of = {
+            sp.getId(): sp.getCompartment()
+            for sp in species
+            if not sp.getHasOnlySubstanceUnits()
+        }
         dependencies: dict[str, frozenset[str]] = {}
         for assignment in model.getListOfInitialAssignments():
-            dependencies[assignment.getSymbol()] = frozenset(
-                _expand(_names(assignment.getMath()), rule_symbols)
-            )
+            reads = _expand(_names(assignment.getMath()), rule_symbols)
+            # the concentration of a species depends on its compartment
+            reads |= {compartment_of[s] for s in reads if s in compartment_of}
+            dependencies[assignment.getSymbol()] = frozenset(reads)
         return cls(
             initial_assignment_order=_order(dependencies),
             initial_assignment_dependencies=dependencies,

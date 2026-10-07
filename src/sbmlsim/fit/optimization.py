@@ -330,6 +330,10 @@ class OptimizationProblem(ObjectJSONEncoder):
         #: target, index into the parameter vector and factor into the unit
         #: of the target in the model, of every parameter of a group
         self._group_targets: list[list[tuple[str, int, float]]] = []
+        #: the rows of the result of its group which are the data of a
+        #: mapping, `None` for a mapping whose x is not the time, see
+        #: `_compile_plans`
+        self._rows: list[np.ndarray | None] = []
         self.selections: list[Any] = []
         #: id of the model and of the simulation of every mapping in its
         #: experiment
@@ -1051,10 +1055,7 @@ class OptimizationProblem(ObjectJSONEncoder):
                 f"Only a `Simulation` is supported in fitting, but the simulation "
                 f"'{simulation_id}' of '{sid}' is a '{type(simulation).__name__}'."
             )
-        targets = simulation.targets()
-        simulation = simulation.with_values(
-            {k: v for k, v in model.changes.items() if k not in targets}
-        )
+        simulation = simulation.with_preinit_defaults(model.changes)
         self._simulation_cache[key] = simulation
         return simulation
 
@@ -1072,19 +1073,25 @@ class OptimizationProblem(ObjectJSONEncoder):
         mapping = self.parameter_mapping_initialized
         self.plans = []
         self._group_targets = []
+        self._rows = [None] * len(self.mapping_keys)
         for k_group, group in enumerate(self.mapping_groups):
             k0 = group[0]
             model: RoadrunnerSBMLModel = self.models[k0]
             plan = compile_simulation(self.simulations[k0], model.symbols, model.uinfo)
             if all(self.xid_observable[k] == "time" for k in group):
-                times = (
-                    np.unique(
-                        np.concatenate(
-                            [np.asarray(self.x_references[k], float) for k in group]
-                        )
+                data_times = np.unique(
+                    np.concatenate(
+                        [np.asarray(self.x_references[k], float) for k in group]
                     )
-                    - plan.time_shift
                 )
+                # the output are the times of the data and the rows are found
+                # by their index: the shift of the time back and forth is not
+                # exact in floating point
+                for k in group:
+                    self._rows[k] = np.searchsorted(
+                        data_times, np.asarray(self.x_references[k], float)
+                    )
+                times = data_times - plan.time_shift
                 outside = times[(times < plan.start) | (times > plan.end)]
                 if outside.size:
                     raise ValueError(
@@ -1661,6 +1668,10 @@ class OptimizationProblem(ObjectJSONEncoder):
         Raises:
             ValueError: if the reference data is outside of the simulation.
         """
+        rows = self._rows[k] if k < len(self._rows) else None
+        if rows is not None:
+            # the simulation outputs the times of the data
+            return np.asarray(result[self.yid_observable[k]][rows], dtype=float)
         f = interpolate.interp1d(
             x=result[self.xid_observable[k]],
             y=result[self.yid_observable[k]],

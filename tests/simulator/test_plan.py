@@ -189,3 +189,17 @@ def test_plan_is_picklable_and_takes_values(probe) -> None:
     assert {a.target: a.value for a in plan.preinit} == {"k1": 1.0}
     with pytest.raises(ValueError, match="'nope'"):
         plan.with_values({"nope": 1.0})
+
+
+def test_with_values_replaces_a_target_of_the_steady_state(probe) -> None:
+    """A value of a target of the presimulation replaces it, it is not added."""
+    symbols, uinfo = probe
+    plan = compile_simulation(
+        Simulation(end=1, presimulation=SteadyState(preinit_changes={"k1": 0.2})),
+        symbols,
+        uinfo,
+    )
+    changed = plan.with_values({"k1": 5.0})
+    assert changed.preinit == ()
+    assert changed.steady_state is not None
+    assert [(a.target, a.value) for a in changed.steady_state.preinit] == [("k1", 5.0)]

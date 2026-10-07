@@ -20,6 +20,7 @@ an evaluation of the objective of a fit runs.
 
 from __future__ import annotations
 
+import logging
 from collections.abc import Sequence
 
 import numpy as np
@@ -36,6 +37,8 @@ from sbmlsim.simulator.plan import (
     SteadyStatePlan,
     preinit_targets,
 )
+
+logger = logging.getLogger(__name__)
 
 #: the setting of the integrator which switches between the output of its
 #: steps and exact output times
@@ -70,6 +73,17 @@ def execute(
     if not columns or columns[0] != "time":
         columns = ["time", *columns]
     r = model.r_loaded
+    if plan.start != 0.0 and r.model.getNumEvents() > 0 and not model.warned_start:
+        # roadrunner evaluates the triggers of the events when the model is
+        # initialized, at the time 0, and keeps their state across a reset
+        logger.warning(
+            "The model '%s' has events and is simulated from the time %s: "
+            "roadrunner evaluates the triggers of the events at the time 0, an "
+            "event whose trigger depends on the time may fire at the start.",
+            model.sid or r.model.getModelName(),
+            plan.start,
+        )
+        model.warned_start = True
     model.initialize(preinit_targets(plan))
     if list(r.timeCourseSelections) != columns:
         r.timeCourseSelections = columns
@@ -125,7 +139,7 @@ def _simulate(plan: Plan, r: roadrunner.RoadRunner, columns: list[str]) -> np.nd
         # a change at the end is applied after the integration, the last
         # output is the state after it
         _apply(events[plan.end], r, plan)
-        if blocks and blocks[-1].shape[0] and np.isclose(blocks[-1][-1, 0], plan.end):
+        if blocks and blocks[-1].shape[0] and blocks[-1][-1, 0] == plan.end:
             blocks[-1][-1, :] = _state(r, columns, plan.end)
 
     if not blocks:
@@ -208,7 +222,8 @@ def steady_state(model: RoadrunnerSBMLModel, plan: SteadyStatePlan) -> float:
         if time >= plan.max_time:
             worst = float(np.max(rates)) if rates.size else 0.0
             raise SteadyStateError(
-                f"The model '{model.sid}' did not reach a steady state up to the "
-                f"time {plan.max_time}, the largest rate of change is {worst:.3g}."
+                f"The model '{model.sid or r.model.getModelName()}' did not reach a "
+                f"steady state up to the time {plan.max_time}, the largest rate of "
+                f"change is {worst:.3g}."
             )
         horizon *= 10.0

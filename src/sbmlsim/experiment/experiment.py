@@ -742,7 +742,8 @@ def _with_model_changes(simulation: Simulation, changes: dict[str, Any]) -> Simu
     """Get a simulation with the changes of its model.
 
     A change of the model is a pre-initialization change of the simulation
-    unless the simulation sets the target itself, which wins.
+    unless the simulation sets the target before the initialization itself,
+    see `Simulation.with_preinit_defaults`.
 
     Args:
         simulation: the simulation of a task.
@@ -751,7 +752,4 @@ def _with_model_changes(simulation: Simulation, changes: dict[str, Any]) -> Simu
     Returns:
         The simulation with the changes of the model.
     """
-    targets = simulation.targets()
-    return simulation.with_values(
-        {key: value for key, value in changes.items() if key not in targets}
-    )
+    return simulation.with_preinit_defaults(changes)
