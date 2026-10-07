@@ -10,7 +10,6 @@ from pathlib import Path
 import libsbml
 import pytest
 
-from sbmlsim.fit.petab_v2.observables import add_observables
 from sbmlsim.model.provenance import (
     NAMESPACE,
     Derivation,
@@ -116,23 +115,6 @@ def test_strip_gives_the_source_model_back(tmp_path: Path) -> None:
         == source.getParameter("gamma").getConstant()
     )
     assert derivation_of(model) is None
-    assert libsbml.writeSBMLToString(document) == libsbml.writeSBMLToString(
-        libsbml.readSBMLFromFile(str(MODEL_PATH))
-    )
-
-
-def test_strip_of_observables_on_a_compiled_model(tmp_path: Path) -> None:
-    compiled = compile_network(
-        MODEL_PATH, [_rhs(feed_forward())], tmp_path / "lv_sciml.xml"
-    )
-    derived = add_observables(
-        compiled, {"total": "prey + predator"}, tmp_path / "lv_sciml_observables.xml"
-    )
-    derivation = derivation_of(_read(derived))
-    assert derivation is not None
-    assert derivation.source == "lotka_volterra.xml"
-    assert "observable_total" in derivation.created
-    document, _ = strip_derivation(derived)
     assert libsbml.writeSBMLToString(document) == libsbml.writeSBMLToString(
         libsbml.readSBMLFromFile(str(MODEL_PATH))
     )
@@ -296,10 +278,6 @@ def test_a_source_with_xml_characters_in_its_name(tmp_path: Path, name: str) -> 
     assert libsbml.writeSBMLToString(document) == libsbml.writeSBMLToString(
         libsbml.readSBMLFromFile(str(source))
     )
-    observables = add_observables(source, {"total": "prey"}, tmp_path / "o.xml")
-    derivation = derivation_of(_read(observables))
-    assert derivation is not None
-    assert derivation.source == name
 
 
 def test_a_derivation_is_hashable_and_immutable() -> None:

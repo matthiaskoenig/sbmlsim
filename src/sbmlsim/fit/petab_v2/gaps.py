@@ -159,16 +159,6 @@ GAPS: tuple[Gap, ...] = (
         "fit with fewer output points",
     ),
     Gap(
-        id="change-formula",
-        kind=GapKind.UNSUPPORTED,
-        sbmlsim="a `Change` whose value is a formula of the symbols of "
-        "roadrunner, e.g. `[S] + 5`",
-        petab="a condition whose target value is a math expression of the "
-        "identifiers of the model",
-        detail="the selections of a formula are not translated into the math of "
-        "PEtab yet, the export raises",
-    ),
-    Gap(
         id="model-changes",
         kind=GapKind.UNSUPPORTED,
         sbmlsim="a structural change of a model, i.e. "
@@ -464,11 +454,6 @@ def gaps_of_problem(problem: "OptimizationProblem") -> list[Gap]:
         problem.weighting_curves
     ) - {WeightingCurvesType.POINTS}:
         hits.add("weights")
-
-    for simulation in problem.simulations:
-        for change in simulation.changes:
-            if any(isinstance(v, str) for v in change.values.values()):
-                hits.add("change-formula")
 
     for noise in problem.noise_models:
         if noise is None:

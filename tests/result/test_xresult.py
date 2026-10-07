@@ -1,5 +1,7 @@
 """Results keep the time points of every simulation, interpolation is on request."""
 
+import warnings
+
 import numpy as np
 import pytest
 
@@ -95,7 +97,10 @@ def test_mean_dataframe_and_mean_of_the_time() -> None:
     xres = XResult.from_timecourses(
         [_tc([0, 4], [0, 4]), _tc([0, 1, 4], [0, 2, 8])], scan=_scan(), uinfo=uinfo
     )
-    df = xres.to_mean_dataframe()
+    with warnings.catch_warnings():
+        # the data frame holds the magnitudes, the units are not stripped
+        warnings.simplefilter("error")
+        df = xres.to_mean_dataframe()
     np.testing.assert_allclose(df["time"], [0, 1, 4])
     np.testing.assert_allclose(df["y"], [0, 1.5, 6])
     np.testing.assert_allclose(xres.dim_mean("time").magnitude, [0, 1, 4])

@@ -12,7 +12,7 @@ The model is the dimerization of STAT5A and STAT5B after stimulation with erythr
 
     (100 * pApB + 200 * pApA * specC17) / (pApB + STAT5A * specC17 + 2 * pApA * specC17)
 
-which is what makes it interesting here: `sbmlsim` observes what roadrunner selects, so `sbmlsim.fit.petab_v2.observables` writes a copy of the model in which every such observable is a parameter with an assignment rule, and the fit selects that parameter.
+which is what makes it interesting here: `sbmlsim` reads every such observable as an `ObservableModel` (`sbmlsim.fit.objects`), the formula in the selections of roadrunner, which the fit evaluates on the simulation at the measurements.
 
 Simulated at the nominal parameters, the observables agree with the
 `simulatedData_Boehm_JProteomeRes2014.tsv` of the collection to `2e-4` at a

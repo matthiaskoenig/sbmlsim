@@ -28,7 +28,7 @@ Models and model changes, see [Models](../models.md).
 | [model.model_change](model.model_change.md) | `ModelChange`, clamping species and other structural changes |
 | [model.model_resources](model.model_resources.md) | resolving model sources, i.e., files, URNs and URLs |
 | [model.symbols](model.symbols.md) | `ModelSymbols`, the entities of a model a simulation changes and its initial assignments |
-| [model.provenance](model.provenance.md) | the record of what was added to a derived model, i.e. the compiled networks and the formula observables, and its inverse |
+| [model.provenance](model.provenance.md) | the record of what was added to a derived model, i.e. the compiled networks, and its inverse |
 
 ## sbmlsim.simulation
 
@@ -111,7 +111,6 @@ PEtab v2, see [PEtab](../petab.md).
 | [fit.petab_v2.export](fit.petab_v2.export.md) | writing an `OptimizationProblem` as a PEtab v2 problem |
 | [fit.petab_v2.reader](fit.petab_v2.reader.md) | reading a PEtab v2 problem back into a fit problem |
 | [fit.petab_v2.extension](fit.petab_v2.extension.md) | the `sbmlsim` block of the problem, i.e., what PEtab does not express |
-| [fit.petab_v2.observables](fit.petab_v2.observables.md) | the model a fit simulates when an observable is a formula |
 | [fit.petab_v2.symbols](fit.petab_v2.symbols.md) | the identifiers and symbols shared by the PEtab layer |
 | [fit.petab_v2.gaps](fit.petab_v2.gaps.md) | the catalogue of the differences between a fit and its PEtab problem |
 | [fit.petab_v2.likelihood](fit.petab_v2.likelihood.md) | the log-likelihood and its gradient, the noise models of PEtab v2 |

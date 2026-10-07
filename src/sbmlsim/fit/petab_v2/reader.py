@@ -41,6 +41,7 @@ from sbmlsim.fit.objects import (
     NoiseDistribution,
     NoiseModel,
     NoiseParameter,
+    ObservableModel,
 )
 from sbmlsim.fit.optimization import OptimizationProblem
 from sbmlsim.fit.options import FitSettings, ParameterScaleType
@@ -52,21 +53,13 @@ from sbmlsim.fit.petab_v2.extension import (
     known_extensions,
     simulation_of_timecourses,
 )
-from sbmlsim.fit.petab_v2.observables import (
-    MODEL_SUFFIX,
-    add_observables,
-    is_entity,
-)
-from sbmlsim.fit.petab_v2.observables import (
-    observable_id as petab_observable_id,
-)
 from sbmlsim.fit.petab_v2.symbols import (
+    is_entity,
     selection_of_formula,
     selection_of_target,
     selections_of_formula,
     split_selection,
 )
-from sbmlsim.mathml import expression_to_formula
 from sbmlsim.model import AbstractModel
 from sbmlsim.simulation import Change, Simulation, SteadyState
 from sbmlsim.task import Task
@@ -136,12 +129,10 @@ class PetabReader:
                 directory of its YAML file by default.
             name: name of the simulation experiment class which is created, the
                 id of the problem by default.
-            derived_dir: directory the models the fit simulates are written
-                to, next to the model by default: the model which carries the
-                networks of the problem, `<stem>_sciml.xml`, and the model
-                which carries its observables, `<stem>_observables.xml`. A
-                model is only written if the problem has networks in the
-                model or an observable which is a formula.
+            derived_dir: directory the model the fit simulates is written to,
+                next to the model by default: the model which carries the
+                networks of the problem, `<stem>_sciml.xml`. It is only
+                written if the problem has networks in the model.
             sciml: the block of the extension of PEtab SciML, a `SciMLConfig`
                 or the dictionary of the YAML. It is the block of the
                 configuration of the problem by default, which a problem
@@ -177,7 +168,7 @@ class PetabReader:
         if not petab_problem.measurements:
             raise ValueError("The PEtab problem has no measurements.")
 
-        #: the model which carries the observables, by the file it came from
+        #: the model the fit simulates, by the file it came from
         self._model_sources: dict[Path, Path] = {}
         self.derived_dir: Path | None = (
             Path(derived_dir) if derived_dir is not None else None
@@ -247,6 +238,8 @@ class PetabReader:
         #: the noise models by the id of their observable, read once: the
         #: mappings are resolved again by every `initialize`
         self._noise_models: dict[str, NoiseModel] = {}
+        #: the observable model of every fit mapping, see `observable_model`
+        self._observable_models: dict[str, ObservableModel | None] = {}
 
         self.sciml = self._read_sciml(extensions)
 
@@ -463,12 +456,7 @@ class PetabReader:
         return unit if unit else DEFAULT_VALUE_UNIT
 
     def models(self) -> dict[str, AbstractModel]:
-        """Get the models of the experiment, one per model of the problem.
-
-        An observable which is a formula over the entities of the model is not
-        something roadrunner selects, so the model the fit simulates carries it
-        as an entity, see `sbmlsim.fit.petab_v2.observables`.
-        """
+        """Get the models of the experiment, one per model of the problem."""
         changes = self._nominal_changes()
         return {
             model.model_id: AbstractModel(
@@ -546,27 +534,13 @@ class PetabReader:
                 )
         return changes
 
-    def _formula_observables(self) -> dict[str, str]:
-        """Get the observables which are a formula and not an entity."""
-        sbml_model = self._sbml_model()
-        return {
-            # the math of PEtab is not the math of a formula of SBML: `log`
-            # is the natural logarithm in the one and the logarithm to the
-            # base 10 in the other
-            observable.id: expression_to_formula(observable.formula)
-            for observable in self.petab_problem.observables
-            if not is_entity(str(observable.formula), sbml_model)
-        }
-
     def _model_source(self, model: Any) -> Path:
         """Get the file of the model the fit simulates.
 
-        The model of the problem is used as it is when it has no networks
-        and every observable is an entity of it. Otherwise the networks of
-        the right hand side and of the observables are compiled into a copy,
-        `<stem>_sciml.xml`, and the observables which are formulas are
-        written into a copy of that, see `derived_dir`. The models are
-        written once.
+        The model of the problem is used as it is when it has no networks.
+        Otherwise the networks of the right hand side and of the observables
+        are compiled into a copy, `<stem>_sciml.xml`, see `derived_dir`. The
+        model is written once.
 
         Args:
             model: model of the PEtab problem.
@@ -603,10 +577,6 @@ class PetabReader:
                 except NetworkCompilationError as err:
                     # e.g. `gelu` with the error function, which has no MathML
                     raise SciMLProblemError(str(err), gap="sciml-layer-sbml") from err
-        formulas = self._formula_observables()
-        if formulas:
-            derived = derived_dir / f"{source.stem}{MODEL_SUFFIX}{source.suffix}"
-            source = add_observables(source, formulas, derived)
         self._model_sources[path] = source
         return source
 
@@ -855,11 +825,15 @@ class PetabReader:
             info = self.observable_info(key)
             # without the extension the data is in the units of the model,
             # which is what PEtab measures in
-            yid = info.get("yid_observable") or self._selection_of(observable_id)
             time_unit = info.get("x_unit") or self._unit_of("time", DEFAULT_TIME_UNIT)
-            value_unit = info.get("y_unit") or self._unit_of(
-                split_selection(yid)[0], DEFAULT_VALUE_UNIT
-            )
+            observable_model = self.observable_model(key)
+            if observable_model is None:
+                yid = info.get("yid_observable") or self._selection_of(observable_id)
+                value_unit = info.get("y_unit") or self._unit_of(
+                    split_selection(yid)[0], DEFAULT_VALUE_UNIT
+                )
+            else:
+                value_unit = observable_model.unit
 
             data: dict[str, Any] = {
                 "time": [measurement.time for measurement in measurements],
@@ -901,8 +875,12 @@ class PetabReader:
             experiment_id = measurements[0].experiment_id or DEFAULT_EXPERIMENT
             task_id = f"task_{experiment_id}"
 
-            observable_yid = info.get("yid_observable") or self._selection_of(
+            observable_model = self.observable_model(key)
+            # an observable model observes a formula, its `y` is its name
+            observable_yid = (
                 observable_id
+                if observable_model is not None
+                else info.get("yid_observable") or self._selection_of(observable_id)
             )
             observable_xid = info.get("xid_observable") or "time"
 
@@ -927,8 +905,70 @@ class PetabReader:
                 observable=observable,
                 weight=info.get("weight_mapping", 1.0),
                 noise=self.noise_model(key),
+                observable_model=observable_model,
             )
         return mappings
+
+    def observable_model(self, key: str) -> ObservableModel | None:
+        """Get the observable model of a fit mapping of the problem.
+
+        An observable whose formula is the identifier of an entity of the
+        model is the selection of the entity, which keeps its unit. Every
+        other observable is an `ObservableModel`: its formula in the
+        selections of roadrunner, evaluated on the simulation at the
+        measurements, with the observable parameters of every measurement as
+        the values of its placeholders. The observable model is read once.
+
+        Args:
+            key: key of the fit mapping, see `noise_model`.
+
+        Returns:
+            The observable model, `None` for an observable which is an entity.
+
+        Raises:
+            ValueError: if the problem has no fit mapping of the key, or if a
+                measurement does not have a value for every placeholder.
+        """
+        if key not in self._observable_models:
+            self._observable_models[key] = self._read_observable_model(key)
+        return self._observable_models[key]
+
+    def _read_observable_model(self, key: str) -> ObservableModel | None:
+        """Read the observable model of a fit mapping, see `observable_model`."""
+        observable_id = self.observable_id(key)
+        info = self.observable_info(key)
+        if info.get("yid_observable"):
+            # the selection of the fit which was written
+            return None
+        observable = self._observables[observable_id]
+        sbml_model = self._sbml_model()
+        if is_entity(str(observable.formula), sbml_model):
+            return None
+
+        def selections(value: Any) -> float | str:
+            formula = _formula(value)
+            if isinstance(formula, str):
+                return selections_of_formula(formula, sbml_model)
+            return formula
+
+        placeholders = tuple(str(p) for p in observable.observable_placeholders)
+        rows: list[tuple[float | str, ...]] = []
+        if placeholders:
+            rows = [
+                tuple(selections(value) for value in measurement.observable_parameters)
+                for measurement in self._measurements.get(key, [])
+            ]
+        try:
+            return ObservableModel(
+                formula=selections_of_formula(
+                    petab_math_str(observable.formula), sbml_model
+                ),
+                placeholders=placeholders,
+                placeholder_values=tuple(rows),
+                unit=info.get("y_unit") or DEFAULT_VALUE_UNIT,
+            )
+        except ValueError as err:
+            raise ValueError(f"Observable '{observable_id}': {err}") from err
 
     def observable_id(self, key: str) -> str:
         """Get the observable of a fit mapping of the problem.
@@ -1088,11 +1128,7 @@ class PetabReader:
         for observable in self.petab_problem.observables:
             if observable.id != observable_id:
                 continue
-            formula = str(observable.formula)
-            if not is_entity(formula, sbml_model):
-                # the formula is an entity of the model the fit simulates
-                return petab_observable_id(observable_id)
-            return selection_of_formula(formula, sbml_model)
+            return selection_of_formula(str(observable.formula), sbml_model)
         raise ValueError(f"The problem has no observable '{observable_id}'.")
 
     def _in_model(self, sid: str) -> bool:

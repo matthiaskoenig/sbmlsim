@@ -230,11 +230,14 @@ def test_a_network_in_an_observable(tmp_path: Path) -> None:
     (hybridization,) = reader.sciml.hybridizations()
     assert hybridization.pattern is OBSERVABLE
     assert hybridization.outputs == {"net1__output0__0": "net1_output1"}
-    assert reader.model_source().name == "lv_sciml_observables.xml"
+    assert reader.model_source().name == "lv_sciml.xml"
     problem = reader.to_optimization_problem()
     problem.initialize(SETTINGS)
     k = problem.mapping_keys.index("prey_o")
-    assert problem.yid_observable[k] == "observable_prey_o"
+    assert problem.yid_observable[k] == "prey_o"
+    observable = problem.observable_models[k]
+    assert observable is not None
+    assert "net1_output1" in observable.symbols
     predictions = problem.predictions(np.asarray(problem.x0, dtype=float))
     assert np.all(np.isfinite(predictions[k]))
     assert not np.allclose(

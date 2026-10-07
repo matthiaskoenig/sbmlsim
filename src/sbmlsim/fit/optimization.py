@@ -33,6 +33,7 @@ from sbmlsim.fit.objects import (
     FitParameter,
     MappingKind,
     NoiseModel,
+    ObservableModel,
     describe_array,
 )
 from sbmlsim.fit.options import (
@@ -137,6 +138,31 @@ def minimal_result(
     return scipy.optimize.OptimizeResult(
         {key: opt_result[key] for key in RESULT_KEYS if key in opt_result}
     )
+
+
+def _check_symbols(
+    model: RoadrunnerSBMLModel, observable: ObservableModel, name: str
+) -> None:
+    """Check that the symbols of an observable model are selections of a model.
+
+    Args:
+        model: the model the observable is simulated with.
+        observable: the observable model.
+        name: name of the fit mapping, for the error.
+
+    Raises:
+        ValueError: if a symbol is not a selection of the model.
+    """
+    r = model.r_loaded
+    for symbol in observable.symbols:
+        try:
+            r.getValue(symbol)
+        except RuntimeError as err:
+            raise ValueError(
+                f"{name}: the symbol '{symbol}' of the observable "
+                f"'{observable.formula}' is not a selection of the model, nor a "
+                f"placeholder of the observable."
+            ) from err
 
 
 class FitTimeout(Exception):
@@ -317,6 +343,10 @@ class OptimizationProblem(ObjectJSONEncoder):
         #: the noise model of every mapping, `None` for a mapping without one,
         #: see `sbmlsim.fit.petab_v2.likelihood`
         self.noise_models: list[NoiseModel | None] = []
+        #: the observable model of every mapping, `None` for a mapping which
+        #: observes a selection, with the placeholder values of the data which
+        #: is fitted
+        self.observable_models: list[ObservableModel | None] = []
         # total weights for points (data points and curve weights)
         self.weights: list[Any] = []
         self.weights_points: list[Any] = []  # weights for data points based on errors
@@ -640,11 +670,20 @@ class OptimizationProblem(ObjectJSONEncoder):
 
                 # observable units
                 obs_xid = mapping.observable.x.selection
-                obs_yid = mapping.observable.y.selection
+                observable_model = mapping.observable_model
+                if observable_model is None:
+                    obs_yid = mapping.observable.y.selection
+                    selections_set.add(obs_yid)
+                    obs_y_unit = model.uinfo[obs_yid]
+                else:
+                    # the observable is a formula of selections, its `y` is a
+                    # name
+                    obs_yid = mapping.observable.y.index
+                    _check_symbols(model, observable_model, f"{sid}.{mapping_id}")
+                    selections_set.update(observable_model.symbols)
+                    obs_y_unit = observable_model.unit
                 selections_set.add(obs_xid)
-                selections_set.add(obs_yid)
                 obs_x_unit = model.uinfo[obs_xid]
-                obs_y_unit = model.uinfo[obs_yid]
 
                 # prepare data
                 data_ref = mapping.reference.get_data()
@@ -720,6 +759,19 @@ class OptimizationProblem(ObjectJSONEncoder):
                         # some NaNs could exist (err is maximal error of all points)
                         y_ref_err[np.isnan(y_ref_err)] = np.nanmax(y_ref_err)
 
+                if (
+                    observable_model is not None
+                    and observable_model.placeholders
+                    and len(observable_model.placeholder_values) != len(y_ref)
+                ):
+                    raise ValueError(
+                        f"{sid}.{mapping_id}: the observable model has the "
+                        f"placeholder values of "
+                        f"'{len(observable_model.placeholder_values)}' "
+                        f"measurements, but the reference data has "
+                        f"'{len(y_ref)}' values."
+                    )
+
                 # remove NaN from y-data
                 nonnan_mask = ~np.isnan(y_ref)
                 if not np.all(nonnan_mask):
@@ -731,6 +783,8 @@ class OptimizationProblem(ObjectJSONEncoder):
                     )
                 x_ref = x_ref[nonnan_mask]
                 y_ref = y_ref[nonnan_mask]
+                if observable_model is not None:
+                    observable_model = observable_model.select(nonnan_mask)
                 if y_ref_err is not None:
                     y_ref_err = y_ref_err[nonnan_mask]
 
@@ -835,6 +889,7 @@ class OptimizationProblem(ObjectJSONEncoder):
                 self.y_errors.append(y_ref_err)
                 self.y_errors_type.append(y_ref_err_type)
                 self.noise_models.append(mapping.noise)
+                self.observable_models.append(observable_model)
                 # weights
                 self.weights.append(weight)
                 self.weights_points.append(weight_points)
@@ -1677,6 +1732,9 @@ class OptimizationProblem(ObjectJSONEncoder):
     def _interpolate(self, k: int, result: TimecourseResult) -> np.ndarray:
         """Get the simulation of a fit mapping at its reference data.
 
+        An observable model is evaluated on its selections at the data, with
+        the placeholder values of every data point.
+
         Args:
             k: index of the fit mapping.
             result: result of the simulation of the mapping.
@@ -1687,13 +1745,63 @@ class OptimizationProblem(ObjectJSONEncoder):
         Raises:
             ValueError: if the reference data is outside of the simulation.
         """
+        observable = self.observable_models[k]
+        if observable is None:
+            return self._at_data(k, result, self.yid_observable[k])
+        return observable.evaluate(
+            {s: self._at_data(k, result, s) for s in observable.symbols},
+            size=len(self.x_references[k]),
+        )
+
+    def _observed_curve(
+        self, k: int, result: TimecourseResult
+    ) -> tuple[np.ndarray, np.ndarray]:
+        """Get the simulated curve of the observable of a fit mapping.
+
+        Args:
+            k: index of the fit mapping.
+            result: result of the simulation of the mapping.
+
+        Returns:
+            The x and the y of the observable at every output of the
+            simulation. An observable model with placeholders has values at
+            the data only, which are its points.
+        """
+        x = np.asarray(result[self.xid_observable[k]], dtype=float)
+        observable = self.observable_models[k]
+        if observable is None:
+            return x, np.asarray(result[self.yid_observable[k]], dtype=float)
+        if observable.placeholders:
+            return (
+                np.asarray(self.x_references[k], dtype=float),
+                self._interpolate(k, result),
+            )
+        return x, observable.evaluate(
+            {s: np.asarray(result[s], dtype=float) for s in observable.symbols},
+            size=x.size,
+        )
+
+    def _at_data(self, k: int, result: TimecourseResult, selection: str) -> np.ndarray:
+        """Get a selection of the simulation of a fit mapping at its data.
+
+        Args:
+            k: index of the fit mapping.
+            result: result of the simulation of the mapping.
+            selection: the selection.
+
+        Returns:
+            The values, interpolated at the x values of the reference data.
+
+        Raises:
+            ValueError: if the reference data is outside of the simulation.
+        """
         rows = self._rows[k] if k < len(self._rows) else None
         if rows is not None:
             # the simulation outputs the times of the data
-            return np.asarray(result[self.yid_observable[k]][rows], dtype=float)
+            return np.asarray(result[selection][rows], dtype=float)
         f = interpolate.interp1d(
             x=result[self.xid_observable[k]],
-            y=result[self.yid_observable[k]],
+            y=result[selection],
             copy=False,
             assume_sorted=True,
         )
@@ -1919,8 +2027,9 @@ class OptimizationProblem(ObjectJSONEncoder):
                         f"'{mapping_key}': no simulation results, the complete data "
                         f"of a failed simulation cannot be evaluated."
                     )
-                residual_data["x_obs"].append(result[self.xid_observable[k]])
-                residual_data["y_obs"].append(result[self.yid_observable[k]])
+                x_obs, y_obs = self._observed_curve(k, result)
+                residual_data["x_obs"].append(x_obs)
+                residual_data["y_obs"].append(y_obs)
                 residual_data["y_obsip"].append(y_obsip)
                 residual_data["residuals"].append(residuals)
                 residual_data["weights_curve"].append(self.weights_curves[k])

@@ -282,8 +282,69 @@ def test_the_noise_parameters_follow_the_experiment(tmp_path: Path) -> None:
         np.testing.assert_allclose(values, [[offset + 0.01 * k] for k in range(10)])
 
 
+def test_a_formula_observable_is_an_observable_model(tmp_path: Path) -> None:
+    """A formula is evaluated on the simulation, the model is not rewritten."""
+    path = write_problem(
+        tmp_path,
+        observables={"total": "prey + predator", "prey_o": "prey"},
+        experiments={"e1": None},
+    )
+    reader = PetabReader.from_yaml(path)
+    assert reader.model_source().name == "lv.xml"
+    problem = reader.to_optimization_problem()
+    problem.initialize(SETTINGS)
+    total = problem.observable_models[problem.mapping_keys.index("total")]
+    assert total is not None
+    assert total.symbols == ("predator", "prey")
+    assert problem.observable_models[problem.mapping_keys.index("prey_o")] is None
+    assert problem.yid_observable[problem.mapping_keys.index("total")] == "total"
+
+
+def _with_observable_parameters(
+    directory: Path, placeholders: str, values: Callable[[int], str]
+) -> None:
+    """Give the observables placeholders and the measurements their values."""
+    observables = pd.read_csv(directory / "observables.tsv", sep="\t")
+    observables["observablePlaceholders"] = placeholders
+    observables.to_csv(directory / "observables.tsv", sep="\t", index=False)
+    measurements = pd.read_csv(directory / "measurements.tsv", sep="\t")
+    measurements["observableParameters"] = [values(k) for k in range(len(measurements))]
+    measurements.to_csv(directory / "measurements.tsv", sep="\t", index=False)
+
+
+def test_the_placeholders_of_an_observable_per_measurement(tmp_path: Path) -> None:
+    """Every measurement has its own values of the placeholders (case 0006).
+
+    A value is a number or a parameter, here `alpha`, which the fit estimates.
+    """
+    reference = PetabReader.from_yaml(
+        write_problem(tmp_path / "reference", {"prey_o": "prey"}, {"e1": None})
+    ).to_optimization_problem()
+    reference.initialize(SETTINGS)
+
+    path = write_problem(
+        tmp_path / "placeholders",
+        observables={"prey_o": "scale_prey * prey + offset_prey"},
+        experiments={"e1": None},
+    )
+    _with_observable_parameters(
+        tmp_path / "placeholders",
+        "scale_prey;offset_prey",
+        lambda k: f"{2.0 if k < 5 else 3.0};{'alpha' if k % 2 else 0.5}",
+    )
+    problem = PetabReader.from_yaml(path).to_optimization_problem()
+    problem.initialize(SETTINGS)
+
+    x = np.asarray(problem.x0, dtype=float)
+    alpha = x[problem.pids.index("alpha")]
+    prey = reference.predictions(x)[0]
+    k = np.arange(prey.size)
+    expected = np.where(k < 5, 2.0, 3.0) * prey + np.where(k % 2, alpha, 0.5)
+    np.testing.assert_allclose(problem.predictions(x)[0], expected, rtol=1e-8)
+
+
 def test_the_model_source(tmp_path: Path) -> None:
-    """The model of the fit is the model of the problem, or the one with the observables."""
+    """The model of the fit is the model of the problem."""
     path = write_problem(
         tmp_path / "entities",
         observables={"prey_o": "prey"},
@@ -294,18 +355,6 @@ def test_the_model_source(tmp_path: Path) -> None:
     assert reader.model_source().name == "lv.xml"
     with pytest.raises(ValueError, match="no model 'other'"):
         reader.model_source("other")
-
-    path = write_problem(
-        tmp_path / "formulas",
-        observables={"log_prey": "log(prey)"},
-        experiments={"e1": None},
-    )
-    reader = PetabReader.from_yaml(path)
-    reader.derived_dir = tmp_path / "derived"
-    source = reader.model_source()
-    assert source == tmp_path / "derived" / "lv_observables.xml"
-    assert source.exists()
-    assert reader.model_source("lv") == source
 
 
 def test_a_prior_of_a_parameter_is_dropped_with_a_warning(
