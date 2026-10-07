@@ -18,7 +18,8 @@ from sbmlsim.experiment.experiment import ExperimentResult, SimulationExperiment
 from sbmlsim.model import AbstractModel, RoadrunnerSBMLModel
 from sbmlsim.report.experiment_report import ExperimentReport, ReportResults
 from sbmlsim.simulator import SimulatorSerial
-from sbmlsim.units import UnitRegistry, UnitsInformation
+from sbmlsim.units import UnitRegistry
+from sbmlsim.units import ureg as package_ureg
 from sbmlsim.utils import timeit
 
 logger = logging.getLogger(__name__)
@@ -76,7 +77,7 @@ class ExperimentRunner:
         """
         # single UnitRegistry per runner
         if not ureg:
-            ureg = UnitsInformation._default_ureg()
+            ureg = package_ureg
         self.ureg = ureg
         self.Q_ = ureg.Quantity
 

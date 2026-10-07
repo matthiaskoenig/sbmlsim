@@ -13,6 +13,7 @@ import roadrunner
 from sbmlsim.model import AbstractModel
 from sbmlsim.model.model_resources import Source
 from sbmlsim.units import Quantity, UnitRegistry, UnitsInformation
+from sbmlsim.units import ureg as package_ureg
 from sbmlsim.utils import md5_for_path
 
 logger = logging.getLogger(__name__)
@@ -73,9 +74,7 @@ class RoadrunnerSBMLModel(AbstractModel):
             RoadrunnerSBMLModel.set_integrator_settings(self.r, **settings)
 
         # normalize model changes
-        self.uinfo = self.parse_units(
-            ureg if ureg is not None else UnitsInformation._default_ureg()
-        )
+        self.uinfo = self.parse_units(ureg if ureg is not None else package_ureg)
         self.normalize(uinfo=self.uinfo)
 
     @property

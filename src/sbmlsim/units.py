@@ -41,6 +41,36 @@ logger = logging.getLogger(__name__)
 UdictType = dict[str, str]
 
 
+def _create_registry() -> UnitRegistry:
+    """Create the unit registry of the package with the units sbmlsim defines.
+
+    The units of a model are not defined in it: a model stores the expression
+    of every unit definition (`Units.udef_to_str`), so two models which use
+    one id for different units never share a definition.
+    """
+    registry = pint.UnitRegistry(on_redefinition="ignore")
+    registry.define("none = count")
+    registry.define("item = count")
+    registry.define("percent = 0.01*count")
+    # FIXME: the international unit is specific to a substance, these are the
+    # ones of insulin
+    registry.define("IU = 0.0347 * mg")
+    registry.define("IU_per_ml = 0.0347 * mg/ml")
+    return registry
+
+
+#: the unit registry of the package, every model, experiment and fit uses it
+ureg: UnitRegistry = _create_registry()
+
+#: the quantities of the registry of the package, `Q(10, "mg")`
+Q = ureg.Quantity
+
+
+def _package_registry() -> UnitRegistry:
+    """Get the unit registry of the package, for a function with a `ureg` argument."""
+    return ureg
+
+
 class UnitsInformation(MutableMapping):
     """Storage of units information.
 
@@ -136,10 +166,23 @@ class UnitsInformation(MutableMapping):
 
     @staticmethod
     def model_uid_dict(model: libsbml.Model, ureg: UnitRegistry) -> dict[str, str]:
-        """Populate the model uid dict for lookup."""
+        """Get the expression of every unit id a model can use.
+
+        The expression is a unit pint parses: the id itself for a unit kind of
+        SBML pint knows and for a unit definition whose id pint parses as the
+        same unit, the expression of the unit definition (`Units.udef_to_str`)
+        otherwise. Nothing is defined in the registry.
+
+        Args:
+            model: the model.
+            ureg: the registry the expressions are checked with.
+
+        Returns:
+            unit id -> expression.
+        """
         uid_dict: dict[str, str] = {}
 
-        # add SBML definitions
+        # the unit kinds of SBML
         for key in UnitsInformation.sbml_uids:
             try:
                 _ = ureg(key)
@@ -150,45 +193,73 @@ class UnitsInformation(MutableMapping):
         # map no units on dimensionless
         uid_dict[""] = "dimensionless"
 
-        # add predefined units (SBML Level 2)
-        for uid, unit_str in {
-            "substance": "mole",
-            "volume": "litre",
-            "area": "meter^2",
-            "length": "meter",
-            "time": "second",
-        }.items():
-            ureg.define(f"{uid} = {unit_str}")
+        # the predefined units of SBML Level 2
+        uid_dict.update(
+            {
+                "substance": "mole",
+                "volume": "litre",
+                "area": "meter^2",
+                "length": "meter",
+                "time": "second",
+            }
+        )
 
         udef: libsbml.UnitDefinition
         for udef in model.getListOfUnitDefinitions():
             uid = udef.getId()
             unit_str = Units.udef_to_str(udef)
-            q = ureg(unit_str)
-            try:
-                # check if uid is existing unit registry definition (short name)
-                q_uid = ureg(uid)
-
-                # check if identical
-                if q_uid != q:
-                    logger.debug(
-                        "SBML uid interpretation of '%s' does not match unit registry: '%s = %s != %s'.",
-                        uid,
-                        uid,
-                        q,
-                        q_uid,
-                    )
-                else:
-                    unit_str = uid
-
-            except UndefinedUnitError:
-                definition = f"{uid} = {unit_str}"
-                ureg.define(definition)
-
-            logger.debug("%s = %s (%s)", uid, unit_str, q)
+            if not UnitsInformation._is_unit(unit_str, ureg):
+                # a factor which is no prefix, e.g. the 133.322 of a mmHg: pint
+                # has no unit for it, so it is defined, under a name which no
+                # other definition uses
+                unit_str = UnitsInformation._define(uid, unit_str, ureg)
+            logger.debug("%s = %s", uid, unit_str)
             uid_dict[uid] = unit_str
 
         return uid_dict
+
+    @staticmethod
+    def _is_unit(expression: str, ureg: UnitRegistry) -> bool:
+        """Check whether an expression is a unit of pint without a factor."""
+        try:
+            ureg.parse_units(expression)
+        except Exception:  # pint raises many types
+            return False
+        return True
+
+    @staticmethod
+    def _define(uid: str, expression: str, ureg: UnitRegistry) -> str:
+        """Define a unit with a factor in the registry under a free name.
+
+        Args:
+            uid: the id of the unit definition, the name if it is free.
+            expression: the expression of the unit, with its factor.
+            ureg: the registry.
+
+        Returns:
+            The name of the unit: `uid` if the registry does not know it or
+            knows it as the same unit, `uid_<n>` with the first `n` which is
+            free or the same unit otherwise.
+        """
+        quantity = ureg(expression)
+        name = uid
+        n = 1
+        while True:
+            try:
+                defined = ureg(name)
+            except Exception:  # pint raises many types
+                ureg.define(f"{name} = {expression}")
+                return name
+            if (
+                np.isclose(
+                    defined.to_base_units().magnitude,
+                    quantity.to_base_units().magnitude,
+                )
+                and defined.dimensionality == quantity.dimensionality
+            ):
+                return name
+            n += 1
+            name = f"{uid}_{n}"
 
     @staticmethod
     def from_sbml_doc(
@@ -205,7 +276,7 @@ class UnitsInformation(MutableMapping):
             ValueError: if the document has no model.
         """
         if ureg is None:
-            ureg = UnitsInformation._default_ureg()
+            ureg = _package_registry()
 
         # create sid to unit mapping
         model: libsbml.Model = doc.getModel()
@@ -220,9 +291,13 @@ class UnitsInformation(MutableMapping):
         missing: list[str] = []
 
         # add time unit
+        def expression(uid: str) -> str:
+            """Get the expression of a unit id, the id if the model lacks it."""
+            return uid_dict.get(uid, uid)
+
         time_uid: str = model.getTimeUnits()
         if time_uid:
-            udict["time"] = uid_dict[time_uid]
+            udict["time"] = expression(time_uid)
         if not time_uid:
             logger.debug("No time units defined for 'time', falling back to 'second'")
             missing.append("time")
@@ -248,8 +323,7 @@ class UnitsInformation(MutableMapping):
                 if isinstance(element, libsbml.Species):
                     # amount units
                     substance_uid = element.getSubstanceUnits()
-                    # udict[sid] = uid_dict[substance_uid]
-                    udict[sid] = substance_uid
+                    udict[sid] = expression(substance_uid) if substance_uid else ""
 
                     compartment: libsbml.Compartment = model.getCompartment(
                         element.getCompartment()
@@ -258,7 +332,9 @@ class UnitsInformation(MutableMapping):
 
                     # store concentration
                     if substance_uid and volume_uid:
-                        udict[f"[{sid}]"] = f"{substance_uid}/{volume_uid}"
+                        udict[f"[{sid}]"] = Units.quotient(
+                            expression(substance_uid), expression(volume_uid)
+                        )
                     elif not substance_uid:
                         logger.debug(
                             "Substance unit missing, undefined concentration unit "
@@ -277,8 +353,8 @@ class UnitsInformation(MutableMapping):
                         udict[f"[{sid}]"] = ""
 
                 elif isinstance(element, (libsbml.Compartment, libsbml.Parameter)):
-                    # udict[sid] = uid_dict[element.getUnits()]
-                    udict[sid] = element.getUnits()
+                    uid_element = element.getUnits()
+                    udict[sid] = expression(uid_element) if uid_element else ""
                 else:
                     udef: libsbml.UnitDefinition = element.getDerivedUnitDefinition()
                     if udef is None:
@@ -293,8 +369,7 @@ class UnitsInformation(MutableMapping):
                             break
 
                     if uid:
-                        # udict[sid] = uid_dict[uid]
-                        udict[sid] = uid
+                        udict[sid] = expression(uid)
                     else:
                         logger.debug(
                             "DerivedUnit of '%s' not in UnitDefinitions: '%s'",
@@ -320,23 +395,6 @@ class UnitsInformation(MutableMapping):
             )
 
         return UnitsInformation(udict=udict, ureg=ureg)
-
-    @staticmethod
-    def _default_ureg() -> pint.UnitRegistry:
-        """Get default unit registry."""
-        ureg = pint.UnitRegistry(on_redefinition="ignore")
-        ureg.define("none = count")
-        ureg.define("item = count")
-        ureg.define("percent = 0.01*count")
-
-        # FIXME: manual conversion
-        ureg.define(
-            "IU = 0.0347 * mg"
-        )  # IU for insulin ! FIXME better handling of general IU
-        ureg.define(
-            "IU_per_ml = 0.0347 * mg/ml"
-        )  # IU for insulin ! FIXME better handling of general IU
-        return ureg
 
     @staticmethod
     def normalize_changes(
@@ -391,17 +449,99 @@ class Units:
     helpers for the unit conversion.
     """
 
-    # abbreviation dictionary for string representation
-    _units_abbreviation: ClassVar[dict[str, str]] = {
+    #: the symbols of the unit kinds of SBML in pint, a kind which is not
+    #: listed is written with its name
+    _symbols: ClassVar[dict[str, str]] = {
         "kilogram": "kg",
-        "meter": "m",
-        "metre": "m",
-        "second": "s",
-        "hour": "hr",
-        "dimensionless": "",
-        "katal": "kat",
         "gram": "g",
+        "metre": "m",
+        "meter": "m",
+        "second": "s",
+        "mole": "mol",
+        "litre": "l",
+        "liter": "l",
+        "katal": "kat",
+        "dimensionless": "",
     }
+
+    #: the SI prefixes of the scales of a unit
+    _prefixes: ClassVar[dict[int, str]] = {
+        9: "G",
+        6: "M",
+        3: "k",
+        2: "h",
+        1: "da",
+        -1: "d",
+        -2: "c",
+        -3: "m",
+        -6: "u",
+        -9: "n",
+        -12: "p",
+        -15: "f",
+    }
+
+    #: the names of the multiples of a second
+    _seconds: ClassVar[dict[float, str]] = {
+        60.0: "min",
+        3600.0: "hr",
+        86400.0: "day",
+        604800.0: "week",
+    }
+
+    @classmethod
+    def _unit_to_str(cls, u: libsbml.Unit) -> str:
+        """Format a unit of a unit definition without the sign of its exponent.
+
+        Args:
+            u: the unit, `(multiplier * 10^scale * kind)^exponent`.
+
+        Returns:
+            The unit with the prefix and the name of pint where there is one,
+            e.g. `mmol`, `min` or `mm^2`, a product with the multiplier and
+            the power of ten otherwise. Empty for a dimensionless unit.
+        """
+        kind = libsbml.UnitKind_toString(u.getKind())
+        symbol = cls._symbols.get(kind, kind)
+        multiplier = u.getMultiplier()
+        scale = u.getScale()
+        exponent = abs(u.getExponentAsDouble())
+
+        if not symbol and np.isclose(multiplier, 1.0) and scale == 0:
+            return ""
+
+        # a multiplier which is a power of ten is a scale, e.g. 0.001 * mole
+        value = multiplier * 10.0**scale
+        power = np.log10(value) if value > 0 else np.nan
+        if np.isfinite(power) and np.isclose(power, round(power), atol=1e-9):
+            scale, multiplier = round(power), 1.0
+
+        name: str
+        factor = ""
+        seconds = (
+            cls._seconds.get(round(multiplier * 10.0**scale, 9))
+            if kind == "second"
+            else None
+        )
+        if seconds is not None:
+            name = seconds
+        else:
+            if scale == 0:
+                name = symbol
+            elif scale in cls._prefixes and kind != "kilogram" and symbol:
+                name = f"{cls._prefixes[scale]}{symbol}"
+            elif kind == "kilogram" and scale + 3 in cls._prefixes:
+                name = f"{cls._prefixes[scale + 3]}g" if scale + 3 else "g"
+            else:
+                name = f"10^{scale}*{symbol}" if symbol else f"10^{scale}"
+            if not np.isclose(multiplier, 1.0):
+                factor = f"{multiplier}*"
+
+        term = f"{factor}{name}"
+        compound = "*" in term
+        if np.isclose(exponent, 1.0):
+            return f"({term})" if compound else term
+        exponent_str = f"{exponent:g}"
+        return f"({term})^{exponent_str}" if compound else f"{term}^{exponent_str}"
 
     @classmethod
     def udef_to_str(cls, udef: libsbml.UnitDefinition) -> str:
@@ -411,8 +551,10 @@ class Units:
             (multiplier * 10^scale *ukind)^exponent
             (m * 10^s *k)^e
 
-        Returns the string "None" in case no UnitDefinition was provided.
+        The string is a unit pint parses, with the prefixes and names of pint
+        where there are some, e.g. `mmol/min` for a millimole per minute.
 
+        Returns the string "None" in case no UnitDefinition was provided.
         """
         if udef is None:
             return "None"
@@ -421,59 +563,62 @@ class Units:
         libsbml.UnitDefinition.reorder(udef)
 
         # collect formated nominators and denominators
-        nom = []
-        denom = []
+        nom: list[str] = []
+        denom: list[str] = []
         for u in udef.getListOfUnits():
-            m = u.getMultiplier()
-            s = u.getScale()
-            e = u.getExponent()
-            k = libsbml.UnitKind_toString(u.getKind())
-
-            # get better name for unit
-            k_str = cls._units_abbreviation.get(k, k)
-
-            # (m * 10^s *k)^e
-
-            # handle m
-            m_str = "" if np.isclose(m, 1.0) else str(m) + "*"
-
-            e_str = "" if np.isclose(abs(e), 1.0) else "^" + str(abs(e))
-
-            # FIXME: handle unit prefixes;
-
-            if np.isclose(s, 0.0):
-                if not m_str and not e_str:
-                    string = k_str
-                else:
-                    string = f"({m_str}{k_str}{e_str})"
+            term = cls._unit_to_str(u)
+            if not term:
+                continue
+            if u.getExponentAsDouble() >= 0.0:
+                nom.append(term)
             else:
-                if e_str == "":
-                    string = f"({m_str}10^{s}*{k_str})"
-                else:
-                    string = f"(({m_str}10^{s}*{k_str})^{e_str})"
-
-            # collect the terms
-            if e >= 0.0:
-                nom.append(string)
-            else:
-                denom.append(string)
+                denom.append(term)
 
         nom_str = " * ".join(nom)
         denom_str = " * ".join(denom)
         if len(denom) > 1:
             denom_str = f"({denom_str})"
-        if (len(nom_str) > 0) and (len(denom_str) > 0):
+        if nom_str and denom_str:
             return f"{nom_str}/{denom_str}"
-        if (len(nom_str) > 0) and (len(denom_str) == 0):
+        if nom_str:
             return nom_str
-        if (len(nom_str) == 0) and (len(denom_str) > 0):
+        if denom_str:
             return f"1/{denom_str}"
         return ""
+
+    @staticmethod
+    def quotient(numerator: str, denominator: str) -> str:
+        """Get the quotient of two unit expressions, with the brackets it needs.
+
+        Args:
+            numerator: expression of the numerator, e.g. `mmol`.
+            denominator: expression of the denominator, e.g. `l` or `m^3`.
+
+        Returns:
+            The expression of the quotient, e.g. `mmol/l`.
+        """
+
+        def group(expression: str) -> str:
+            simple = all(c.isalnum() or c in "_^." for c in expression)
+            return expression if simple or _enclosed(expression) else f"({expression})"
+
+        return f"{group(numerator)}/{group(denominator)}"
+
+
+def _enclosed(expression: str) -> bool:
+    """Check whether an expression is one pair of brackets around the rest."""
+    if not (expression.startswith("(") and expression.endswith(")")):
+        return False
+    depth = 0
+    for k, c in enumerate(expression):
+        depth += {"(": 1, ")": -1}.get(c, 0)
+        if depth == 0 and k < len(expression) - 1:
+            return False
+    return True
 
 
 if __name__ == "__main__":
     from sbmlsim.resources import DEMO_SBML
 
-    ureg = UnitRegistry(on_redefinition="ignore")
-    uinfo = UnitsInformation.from_sbml(DEMO_SBML, ureg=ureg)
+    uinfo = UnitsInformation.from_sbml(DEMO_SBML)
     console.log(uinfo.udict)

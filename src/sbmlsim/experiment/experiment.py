@@ -25,7 +25,8 @@ from sbmlsim.serialization import ObjectJSONEncoder
 from sbmlsim.simulation import AbstractSim, ScanSim, TimecourseSim
 from sbmlsim.simulator import SimulatorSerial
 from sbmlsim.task import Task
-from sbmlsim.units import UnitRegistry, UnitsInformation
+from sbmlsim.units import UnitRegistry
+from sbmlsim.units import ureg as package_ureg
 from sbmlsim.utils import timeit
 
 logger = logging.getLogger(__name__)
@@ -91,7 +92,7 @@ class SimulationExperiment:
 
         # single UnitRegistry per SimulationExperiment (can be shared)
         if not ureg:
-            ureg = UnitsInformation._default_ureg()
+            ureg = package_ureg
         self.ureg = ureg
         self.Q_ = ureg.Quantity
 

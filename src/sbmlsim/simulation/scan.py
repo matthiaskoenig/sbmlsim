@@ -142,9 +142,8 @@ class ScanSim(AbstractSim):
 
 if __name__ == "__main__":
     from sbmlsim.simulation import Timecourse
-    from sbmlsim.units import UnitRegistry
+    from sbmlsim.units import ureg
 
-    ureg = UnitRegistry(on_redefinition="ignore")
     Q_ = ureg.Quantity
     uinfo = UnitsInformation(
         udict=dict.fromkeys(["X", "[X]", "n", "Y"], "dimensionless"), ureg=ureg

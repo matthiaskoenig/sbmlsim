@@ -64,6 +64,7 @@ from sbmlsim.model import AbstractModel
 from sbmlsim.simulation.timecourse import Timecourse, TimecourseSim
 from sbmlsim.task import Task
 from sbmlsim.units import Quantity, UnitRegistry, UnitsInformation
+from sbmlsim.units import ureg as package_ureg
 
 if TYPE_CHECKING:
     from petab.v2.extensions.sciml import SciMLConfig
@@ -191,7 +192,7 @@ class PetabReader:
         # which is what PEtab says its measurements are in
         self.uinfo: UnitsInformation | None = self._model_units()
         self.ureg: UnitRegistry = (
-            self.uinfo.ureg if self.uinfo is not None else UnitRegistry()
+            self.uinfo.ureg if self.uinfo is not None else package_ureg
         )
 
         #: the measurements of every fit mapping, in the order of their time.
