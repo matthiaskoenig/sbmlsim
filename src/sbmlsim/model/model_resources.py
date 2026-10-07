@@ -54,7 +54,10 @@ class Source:
         content: str | None = None
 
         if isinstance(source, str):
-            if is_urn(source):
+            if source.lstrip().startswith("<"):
+                # the SBML itself
+                content = source
+            elif is_urn(source):
                 content = model_from_urn(source)
             elif is_http(source):
                 content = model_from_url(url=source)

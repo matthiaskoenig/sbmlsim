@@ -22,9 +22,9 @@ from typing import Any
 import numpy as np
 from pint.errors import DimensionalityError, UndefinedUnitError
 
+from sbmlsim.model.symbols import ModelSymbols, TargetKind
 from sbmlsim.simulation.definition import Simulation, SteadyState, Time
 from sbmlsim.simulator.formula import compile_formula
-from sbmlsim.simulator.symbols import ModelSymbols, TargetKind
 from sbmlsim.units import Quantity, UnitsInformation
 
 

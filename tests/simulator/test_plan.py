@@ -5,9 +5,9 @@ import pickle
 import pytest
 
 from sbmlsim import Q
+from sbmlsim.model.symbols import ModelSymbols, TargetKind
 from sbmlsim.simulation import Change, Simulation, SteadyState
 from sbmlsim.simulator.plan import OutputMode, compile_simulation
-from sbmlsim.simulator.symbols import ModelSymbols, TargetKind
 from sbmlsim.units import UnitsInformation
 from tests.simulator.models import sbml, sbml_minutes
 

@@ -2,7 +2,7 @@
 
 import pytest
 
-from sbmlsim.simulator.symbols import ModelSymbols, TargetKind
+from sbmlsim.model.symbols import ModelSymbols, TargetKind
 from tests.simulator.models import sbml
 
 

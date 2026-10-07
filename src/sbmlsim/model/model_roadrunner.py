@@ -2,8 +2,9 @@
 
 import logging
 import tempfile
+from collections.abc import Collection, Sequence
 from pathlib import Path
-from typing import ClassVar
+from typing import TYPE_CHECKING, ClassVar
 
 import libsbml
 import numpy as np
@@ -12,9 +13,17 @@ import roadrunner
 
 from sbmlsim.model import AbstractModel
 from sbmlsim.model.model_resources import Source
+from sbmlsim.model.symbols import ModelSymbols
 from sbmlsim.units import Quantity, UnitRegistry, UnitsInformation
 from sbmlsim.units import ureg as package_ureg
 from sbmlsim.utils import md5_for_path
+
+if TYPE_CHECKING:
+    from sbmlsim.simulator.plan import Assignment
+
+#: suffix of the parameter which holds a freed initial assignment, see
+#: `RoadrunnerSBMLModel.free_initial_assignments`
+INITIAL_SUFFIX = "__initial"
 
 logger = logging.getLogger(__name__)
 
@@ -56,11 +65,23 @@ class RoadrunnerSBMLModel(AbstractModel):
             raise ValueError(f"language_type not supported '{self.language_type}'.")
 
         # load model
-        # logger.info("load model")
         self.r: roadrunner.RoadRunner | None = self.load_roadrunner_model(
             source=self.source
         )
-        # logger.info(self.r)
+        #: the SBML the instance was loaded from, with the freed initial
+        #: assignments, see `free_initial_assignments`
+        self._sbml: str = (
+            self.source.content
+            if self.source.content is not None
+            else Path(str(self.source.path)).read_text(encoding="utf-8")
+        )
+        #: the symbols of the model, read once
+        self.symbols: ModelSymbols = ModelSymbols.from_sbml(self._sbml)
+        #: the original initial value of every target a plan set, by its key
+        #: `init(...)`, see `set_initial_values`
+        self._init_original: dict[str, float] = {}
+        #: entity -> the parameter which holds its initial assignment
+        self.derived_initial: dict[str, str] = {}
 
         # set selections
         # logger.info("set selections")
@@ -76,6 +97,156 @@ class RoadrunnerSBMLModel(AbstractModel):
         # normalize model changes
         self.uinfo = self.parse_units(ureg if ureg is not None else package_ureg)
         self.normalize(uinfo=self.uinfo)
+
+    @property
+    def r_loaded(self) -> roadrunner.RoadRunner:
+        """Get the roadrunner instance of the model.
+
+        Raises:
+            ValueError: if no model is loaded.
+        """
+        if self.r is None:
+            raise ValueError(f"The model '{self.sid}' is not loaded.")
+        return self.r
+
+    def _entity_init_key(self, entity: str) -> str:
+        """Get the selection of the initial value of an entity as the model means it.
+
+        A species is its concentration unless it has only substance units,
+        which is what an initial assignment of the species means.
+        """
+        if entity in self.symbols.species and entity not in self.symbols.only_substance:
+            return f"init([{entity}])"
+        return f"init({entity})"
+
+    def set_initial_values(self, assignments: Sequence["Assignment"]) -> None:
+        """Set the initial values of a plan and restore the ones it does not set.
+
+        roadrunner keeps a value set with `init(...)` across `resetToOrigin`,
+        so the model records the original initial value of every target the
+        first time it is set and writes it back before a plan which does not
+        set it. An entity whose initial assignment was freed
+        (`free_initial_assignments`) has no fixed original value: when the
+        plan does not set it, it gets the value of its initial assignment,
+        which needs a `reset` in between. The caller initializes the model
+        with `reset()` afterwards.
+
+        Args:
+            assignments: the pre-initialization assignments of a plan, values
+                only.
+
+        Raises:
+            ValueError: if an assignment is a formula.
+        """
+        r = self.r_loaded
+        # `init(S)` is the initial amount, `init([S])` the initial concentration
+        values: dict[str, float] = {}
+        entities: dict[str, str] = {}
+        for a in assignments:
+            if a.value is None:
+                raise ValueError(
+                    f"The pre-initialization value of '{a.target}' is the "
+                    f"formula '{a.formula}', it must be a number."
+                )
+            key = f"init({a.target})"
+            values[key] = a.value
+            entities[key] = self.symbols.entity(a.target)
+
+        for key, value in self._init_original.items():
+            if key not in values:
+                r.setValue(key, value)
+        for key, value in values.items():
+            if key not in self._init_original and (
+                entities[key] not in self.derived_initial
+            ):
+                self._init_original[key] = float(r.getValue(key))
+            r.setValue(key, value)
+
+        set_entities = set(entities.values())
+        missing = [e for e in self.derived_initial if e not in set_entities]
+        if missing:
+            r.reset()
+            initial = {e: float(r.getValue(self.derived_initial[e])) for e in missing}
+            for entity, value in initial.items():
+                r.setValue(self._entity_init_key(entity), value)
+
+    def free_initial_assignments(self, entities: Collection[str]) -> None:
+        """Make entities with an initial assignment settable before initialization.
+
+        roadrunner refuses `init(p)` for a parameter with an initial
+        assignment, and a value set with `init(...)` replaces the initial
+        assignment of a species for good. The model is therefore derived once:
+        the initial assignment of every such entity moves to a new parameter
+        `<entity>__initial`, and `set_initial_values` sets the entity to the
+        value of that parameter whenever a plan does not set it. The model is
+        loaded again from the derived SBML with its integrator settings and
+        selections.
+
+        Args:
+            entities: entities a plan sets before the initialization; an
+                entity without an initial assignment or already freed is
+                skipped.
+        """
+        new = sorted(
+            e
+            for e in entities
+            if e in self.symbols.initial_assignments and e not in self.derived_initial
+        )
+        if not new:
+            return
+        doc: libsbml.SBMLDocument = libsbml.readSBMLFromString(self._sbml)
+        model: libsbml.Model = doc.getModel()
+        for entity in new:
+            helper = f"{entity}{INITIAL_SUFFIX}"
+            if model.getElementBySId(helper) is not None:
+                raise ValueError(
+                    f"The model already has an entity '{helper}', the id of the "
+                    f"initial assignment of '{entity}'."
+                )
+            assignment: libsbml.InitialAssignment = model.getInitialAssignmentBySymbol(
+                entity
+            )
+            math: libsbml.ASTNode = assignment.getMath().deepCopy()
+            model.removeInitialAssignment(entity)
+
+            parameter: libsbml.Parameter = model.createParameter()
+            parameter.setId(helper)
+            parameter.setConstant(True)
+            moved: libsbml.InitialAssignment = model.createInitialAssignment()
+            moved.setSymbol(helper)
+            moved.setMath(math)
+
+            # the entity needs a value of its own, the plan or the helper
+            # replaces it before every simulation
+            element = model.getElementBySId(entity)
+            if isinstance(element, libsbml.Parameter) and not element.isSetValue():
+                element.setValue(0.0)
+            elif isinstance(element, libsbml.Species) and not (
+                element.isSetInitialAmount() or element.isSetInitialConcentration()
+            ):
+                if element.getHasOnlySubstanceUnits():
+                    element.setInitialAmount(0.0)
+                else:
+                    element.setInitialConcentration(0.0)
+            elif isinstance(element, libsbml.Compartment) and not element.isSetSize():
+                element.setSize(1.0)
+            self.derived_initial[entity] = helper
+
+        self._sbml = libsbml.writeSBMLToString(doc)
+        old = self.r_loaded
+        r = roadrunner.RoadRunner(self._sbml)
+        integrator: roadrunner.Integrator = old.getIntegrator()
+        for key in self.IntegratorSettingKeys:
+            r.getIntegrator().setValue(key, integrator.getValue(key))
+        r.timeCourseSelections = list(old.timeCourseSelections)
+        self.r = r
+        self._init_original = {}
+        logger.info(
+            "The initial assignments of %s of '%s' are set before the "
+            "initialization, the model is derived",
+            new,
+            self.sid,
+        )
 
     @property
     def Q_(self) -> type[Quantity]:
@@ -187,7 +358,11 @@ class RoadrunnerSBMLModel(AbstractModel):
                 "time",
                 *r_model.getFloatingSpeciesIds(),
                 *r_model.getBoundarySpeciesIds(),
-                *r_model.getGlobalParameterIds(),
+                *[
+                    pid
+                    for pid in r_model.getGlobalParameterIds()
+                    if not pid.endswith(INITIAL_SUFFIX)
+                ],
                 *r_model.getReactionIds(),
                 *r_model.getCompartmentIds(),
             ]
