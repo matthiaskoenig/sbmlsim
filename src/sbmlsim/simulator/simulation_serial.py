@@ -1,4 +1,10 @@
-"""Serial simulator."""
+"""Serial simulator.
+
+`SimulatorSerial` loads a model and runs simulations on it: a `Simulation` is
+compiled into a `sbmlsim.simulator.plan.Plan` and run by
+`sbmlsim.simulator.executor.execute`, a `ScanSim` is a plan per combination of
+its dimensions.
+"""
 
 import logging
 from pathlib import Path
@@ -8,7 +14,9 @@ import roadrunner
 
 from sbmlsim.model import AbstractModel, ModelChange, RoadrunnerSBMLModel
 from sbmlsim.result import TimecourseResult, XResult
-from sbmlsim.simulation import ScanSim, Timecourse, TimecourseSim
+from sbmlsim.simulation import ScanSim, Simulation, Timecourse, TimecourseSim
+from sbmlsim.simulator.executor import execute
+from sbmlsim.simulator.plan import Plan, compile_simulation
 from sbmlsim.units import Quantity, UnitsInformation
 
 logger = logging.getLogger(__name__)
@@ -32,7 +40,6 @@ class SimulatorSerial:
         :param model: Path to model or model
         :param kwargs: integrator settings
         """
-        self.r: roadrunner.RoadRunner | None = None
         self.model: RoadrunnerSBMLModel | None = None
 
         # integrator settings
@@ -68,7 +75,6 @@ class SimulatorSerial:
 
             if self.model is None:
                 raise ValueError(f"Unsupported model type: {type(model)}")
-            self.r = self.model.r
             # logger.info("set integrator settings")
             self.set_integrator_settings(**self.integrator_settings)
             # logger.info("model loading finished")
@@ -77,11 +83,20 @@ class SimulatorSerial:
         """Set settings in the integrator."""
         RoadrunnerSBMLModel.set_integrator_settings(self.r_loaded, **kwargs)
 
-    def set_timecourse_selections(self, selections):
-        """Set timecourse selection in model."""
-        RoadrunnerSBMLModel.set_timecourse_selections(
+    def set_timecourse_selections(self, selections: list[str] | None) -> None:
+        """Set the selections of the simulations, all of the model for `None`."""
+        self.model_loaded.selections = RoadrunnerSBMLModel.set_timecourse_selections(
             self.r_loaded, selections=selections
         )
+
+    @property
+    def r(self) -> roadrunner.RoadRunner | None:
+        """Get the roadrunner instance of the model, `None` without a model.
+
+        The instance belongs to the model, which loads it again when it
+        derives the model, see `RoadrunnerSBMLModel.free_initial_assignments`.
+        """
+        return None if self.model is None else self.model.r
 
     @property
     def model_loaded(self) -> RoadrunnerSBMLModel:
@@ -107,6 +122,34 @@ class SimulatorSerial:
         """Quantity of the unit registry of the model."""
         return self.model_loaded.uinfo.ureg.Quantity
 
+    def compile(self, simulation: Simulation) -> Plan:
+        """Compile a simulation against the model of the simulator."""
+        model = self.model_loaded
+        return compile_simulation(simulation, model.symbols, model.uinfo)
+
+    def simulate(self, simulation: Simulation | Plan) -> TimecourseResult:
+        """Run one simulation with the selections of the simulator.
+
+        Args:
+            simulation: the simulation or its plan.
+
+        Returns:
+            The result of the simulation.
+        """
+        plan = simulation if isinstance(simulation, Plan) else self.compile(simulation)
+        model = self.model_loaded
+        return execute(plan, model, model.selections or ["time"])
+
+    def run_simulation(self, simulation: Simulation) -> XResult:
+        """Run a simulation.
+
+        Returns:
+            The result, without a dimension of a scan.
+        """
+        return XResult.from_timecourses(
+            results=[self.simulate(simulation)], uinfo=self.uinfo
+        )
+
     def run_timecourse(self, simulation: TimecourseSim) -> XResult:
         """Run single timecourse."""
         if not isinstance(simulation, TimecourseSim):
@@ -118,6 +161,13 @@ class SimulatorSerial:
 
     def run_scan(self, scan: ScanSim) -> XResult:
         """Run a scan simulation."""
+        if isinstance(scan.simulation, Simulation):
+            _indices, definitions = scan.to_simulations()
+            return XResult.from_timecourses(
+                results=[self.simulate(simulation) for simulation in definitions],
+                scan=scan,
+                uinfo=self.uinfo,
+            )
         # normalize the scan (simulation and dimensions)
         scan.normalize(uinfo=self.uinfo)
 
