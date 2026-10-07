@@ -23,7 +23,9 @@ The problem is translated as follows:
 | the model of a task | a model of `model_files`, every SBML file once |
 | a `FitMappingCollection` whose mappings share a simulation | one experiment, with the id of the collection |
 | a collection over several simulations, e.g. the doses of a study | one experiment per simulation, numbered after the collection |
-| a `Timecourse` of the `TimecourseSim` | a period of the experiment, its changes are a condition |
+| the changes before the initialization of a `Simulation` | the condition of the first period of the experiment |
+| a time of a `Change` of the `Simulation` | a period of the experiment, its changes are its condition |
+| a `SteadyState` | the period at `time=-inf` |
 | a fit mapping | an observable, the selection `[S1]` becomes the math of the model |
 | the reference data of a mapping | the measurements of its observable, its error is the noise parameter |
 | a `FitParameter` | a parameter which is estimated, with its bounds and its start value |

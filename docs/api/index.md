@@ -27,15 +27,16 @@ Models and model changes, see [Models](../models.md).
 | [model.model_roadrunner](model.model_roadrunner.md) | `RoadrunnerSBMLModel`, the roadrunner instance of an SBML model with its units and parameter changes |
 | [model.model_change](model.model_change.md) | `ModelChange`, clamping species and other structural changes |
 | [model.model_resources](model.model_resources.md) | resolving model sources, i.e., files, URNs and URLs |
+| [model.symbols](model.symbols.md) | `ModelSymbols`, the entities of a model a simulation changes and its initial assignments |
 | [model.provenance](model.provenance.md) | the record of what was added to a derived model, i.e. the compiled networks and the formula observables, and its inverse |
 
 ## sbmlsim.simulation
 
-Definition of simulations, see [Timecourse simulations](../simulation.md) and [Parameter scans](../scans.md).
+Definition of simulations, see [Simulations](../simulation.md) and [Parameter scans](../scans.md).
 
 | module | description |
 | --- | --- |
-| [simulation.timecourse](simulation.timecourse.md) | `Timecourse` and `TimecourseSim`, concatenated timecourses with changes |
+| [simulation.definition](simulation.definition.md) | `Simulation`, `Change` and `SteadyState`, a simulation with its changes, with units |
 | [simulation.scan](simulation.scan.md) | `ScanSim`, a simulation over the dimensions of parameter changes |
 | [simulation.sensitivity](simulation.sensitivity.md) | `ModelSensitivity`, sensitivity scans of parameters and initial conditions |
 | [simulation.range](simulation.range.md) | ranges of values for scans |
@@ -43,7 +44,6 @@ Definition of simulations, see [Timecourse simulations](../simulation.md) and [P
 | [simulation.algorithm](simulation.algorithm.md) | `Algorithm` and `AlgorithmParameter`, the KISAO description of an integrator |
 | [simulation.calculation](simulation.calculation.md) | calculations on simulation results |
 | [simulation.base](simulation.base.md) | base classes shared by the simulation objects |
-| [simulation.simulation](simulation.simulation.md) | `AbstractSim`, the base of all simulations |
 
 ## sbmlsim.simulator, sbmlsim.task
 
@@ -51,7 +51,10 @@ Execution of simulations.
 
 | module | description |
 | --- | --- |
-| [simulator.simulation_serial](simulator.simulation_serial.md) | `SimulatorSerial`, running timecourses and scans on a roadrunner model |
+| [simulator.simulation_serial](simulator.simulation_serial.md) | `SimulatorSerial`, running simulations and scans on a roadrunner model |
+| [simulator.plan](simulator.plan.md) | `Plan`, a simulation compiled against a model, without units |
+| [simulator.executor](simulator.executor.md) | `execute`, running a plan on roadrunner with the semantics of PEtab v2 |
+| [simulator.formula](simulator.formula.md) | the formulas of the changes of a simulation |
 | [task.task](task.task.md) | `Task`, a simulation applied to a model |
 
 ## sbmlsim.experiment, sbmlsim.result

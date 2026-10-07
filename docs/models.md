@@ -75,7 +75,7 @@ The source of a model is resolved by `sbmlsim.model.model_resources`: a path rel
 
 ## Clamping species
 
-`ModelChange` implements structural changes of the model, currently clamping a species to a fixed value or formula. Clamping is a boundary condition set during a simulation and is part of a `Timecourse`, see the `model_manipulations` of [Timecourse simulations](simulation.md#clamping-species):
+`ModelChange` implements structural changes of the model, currently clamping a species to a fixed value or formula. Clamping changes the roadrunner instance of a model between simulations, a `Simulation` itself only changes values, see [Simulations](simulation.md#structural-changes):
 
 ```python
 from sbmlsim.model import ModelChange

@@ -7,9 +7,9 @@
 
 ## Background
 
-SBML is the exchange format for computational models in systems biology ([Keating *et al.* 2020](references.md#standards)) and libroadrunner is a fast simulator for it ([Welsh *et al.* 2023](references.md#simulation)). Simulating a model is a few lines with roadrunner; a simulation *experiment* is more: the model comes with changes of parameters and initial conditions, timecourses are concatenated into dosing protocols, parameters are scanned over ranges, the results are compared to experimental data in the units of the model, plotted and reported, and all of that has to be reproducible.
+SBML is the exchange format for computational models in systems biology ([Keating *et al.* 2020](references.md#standards)) and libroadrunner is a fast simulator for it ([Welsh *et al.* 2023](references.md#simulation)). Simulating a model is a few lines with roadrunner; a simulation *experiment* is more: the model comes with changes of parameters and initial conditions, doses are given at times, parameters are scanned over ranges, the results are compared to experimental data in the units of the model, plotted and reported, and all of that has to be reproducible.
 
-`sbmlsim` is the layer above the simulator which describes these experiments. A `Timecourse` is a period of a simulation with its changes, a `TimecourseSim` concatenates them, a `ScanSim` runs a simulation over the dimensions of parameter changes, and a `SimulationExperiment` collects models, datasets, simulations, tasks, data and figures into one python object which is executed and reported by an `ExperimentRunner`. Results are `XResult` objects, labeled N-dimensional arrays with units, so the mean over a scan dimension or the conversion to the units of a dataset is one call.
+`sbmlsim` is the layer above the simulator which describes these experiments. A `Simulation` is a simulation with its changes before the initialization and at times, e.g. the doses of a dosing protocol, a `ScanSim` runs a simulation over the dimensions of parameter changes, and a `SimulationExperiment` collects models, datasets, simulations, tasks, data and figures into one python object which is executed and reported by an `ExperimentRunner`. Results are `XResult` objects, labeled N-dimensional arrays with units, so the mean over a scan dimension or the conversion to the units of a dataset is one call.
 
 Around this core the package collects the tasks which come with simulation experiments: fitting parameters to data, exchanging a fit as a PEtab problem, and analysing the sensitivity of a model to its parameters.
 
@@ -18,7 +18,7 @@ Around this core the package collects the tasks which come with simulation exper
 ### Core
 
 - **[Models](models.md)** - SBML models are loaded into roadrunner with their units, parameter changes and selections; species can be clamped and model sources can be files, URNs or URLs.
-- **[Timecourse simulations](simulation.md)** - `Timecourse` and `TimecourseSim`, concatenated periods with changes of parameters and initial conditions, for dosing protocols and perturbations.
+- **[Simulations](simulation.md)** - `Simulation` and `Change`, changes of parameters and initial conditions before the initialization and at times, for dosing protocols and perturbations, with the semantics of PEtab v2.
 - **[Units](units.md)** - the units of the model are read from the SBML and all changes and results carry [pint](https://pint.readthedocs.io) quantities, so values are converted instead of assumed.
 - **[Simulation experiments](experiments.md)** - `SimulationExperiment` and `ExperimentRunner`, the reproducible description of an experiment with models, datasets, simulations, tasks, data and figures.
 - **[Data](data.md)** - `Data` references simulation results and experimental datasets, with functions computed from them.
@@ -44,25 +44,20 @@ The standards and methods behind the package are cited in [References](reference
 
 ## Quickstart
 
-A model is simulated with a `TimecourseSim`, the result is an `XResult`:
+A model is simulated with a `Simulation`, the result is an `XResult`:
 
 ```python
 from sbmlsim.resources import REPRESSILATOR_SBML
-from sbmlsim.simulation import Timecourse, TimecourseSim
+from sbmlsim.simulation import Change, Simulation
 from sbmlsim.simulator import SimulatorSerial
 
 simulator = SimulatorSerial(model=REPRESSILATOR_SBML)
-simulation = TimecourseSim(
-    [
-        Timecourse(start=0, end=100, steps=100),
-        Timecourse(start=0, end=100, steps=100, changes={"X": 10}),
-    ]
-)
-xres = simulator.run_timecourse(simulation)
+simulation = Simulation(end=200, changes=[Change(100, {"X": 10})], steps=200)
+xres = simulator.run_simulation(simulation)
 print(xres["X"])
 ```
 
-Continue with [Installation](installation.md) and the [timecourse simulation guide](simulation.md).
+Continue with [Installation](installation.md) and the [simulation guide](simulation.md).
 
 ## How to cite
 

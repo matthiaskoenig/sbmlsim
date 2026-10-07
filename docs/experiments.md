@@ -14,7 +14,7 @@ from sbmlsim.experiment import SimulationExperiment
 from sbmlsim.model import AbstractModel
 from sbmlsim.plot import Axis, Figure
 from sbmlsim.resources import REPRESSILATOR_SBML
-from sbmlsim.simulation import AbstractSim, Timecourse, TimecourseSim
+from sbmlsim.simulation import Change, Simulation
 from sbmlsim.task import Task
 
 
@@ -24,14 +24,9 @@ class RepressilatorExperiment(SimulationExperiment):
     def models(self) -> dict[str, AbstractModel | Path]:
         return {"model": REPRESSILATOR_SBML}
 
-    def simulations(self) -> dict[str, AbstractSim]:
+    def simulations(self) -> dict[str, Simulation]:
         return {
-            "tc": TimecourseSim(
-                [
-                    Timecourse(start=0, end=100, steps=100),
-                    Timecourse(start=0, end=100, steps=100, changes={"X": 10}),
-                ]
-            )
+            "tc": Simulation(end=200, changes=[Change(100, {"X": 10})], steps=200)
         }
 
     def tasks(self) -> dict[str, Task]:
@@ -56,7 +51,7 @@ class RepressilatorExperiment(SimulationExperiment):
 ```
 
 - **models** are paths, URLs or `AbstractModel` objects with changes, see [Models](models.md). They are resolved relative to the `base_path` of the experiment.
-- **simulations** are `TimecourseSim` or `ScanSim` objects, see [Timecourse simulations](simulation.md) and [Parameter scans](scans.md).
+- **simulations** are `Simulation` or `ScanSim` objects, see [Simulations](simulation.md) and [Parameter scans](scans.md); the changes of a model are changes before the initialization of every simulation of it, unless the simulation sets the target itself.
 - **tasks** apply a simulation to a model; the results of the experiment are keyed by task.
 - **data** are `Data` objects referencing a task or a dataset, see [Data](data.md).
 - **figures** are `Figure` objects with plots and curves, see [Plots and reports](plotting.md).
