@@ -15,15 +15,30 @@ Around this core the package collects the tasks which come with simulation exper
 
 ## Features
 
+### Core
+
 - **[Models](models.md)** - SBML models are loaded into roadrunner with their units, parameter changes and selections; species can be clamped and model sources can be files, URNs or URLs.
 - **[Timecourse simulations](simulation.md)** - `Timecourse` and `TimecourseSim`, concatenated periods with changes of parameters and initial conditions, for dosing protocols and perturbations.
-- **[Parameter scans](scans.md)** - `ScanSim` runs a simulation over the dimensions of parameter changes, the result is an N-dimensional `XResult`.
 - **[Units](units.md)** - the units of the model are read from the SBML and all changes and results carry [pint](https://pint.readthedocs.io) quantities, so values are converted instead of assumed.
 - **[Simulation experiments](experiments.md)** - `SimulationExperiment` and `ExperimentRunner`, the reproducible description of an experiment with models, datasets, simulations, tasks, data and figures.
 - **[Data](data.md)** - `Data` references simulation results and experimental datasets, with functions computed from them.
 - **[Plots and reports](plotting.md)** - figures described independent of the backend and rendered with matplotlib, HTML and markdown reports of experiments.
-- **[Parameter fitting](fitting.md)** - `FitParameter`, `FitMapping` and `OptimizationProblem` with local and global optimizers, analysis of the results and PEtab archives.
+
+### Sensitivity and uncertainty
+
+- **[Parameter scans](scans.md)** - `ScanSim` runs a simulation over the dimensions of parameter changes, the result is an N-dimensional `XResult`.
 - **[Sensitivity analysis](sensitivity.md)** - local sensitivities by finite differences and the global Morris, Sobol and FAST methods of [SALib](https://salib.readthedocs.io), with classification and plots.
+
+### Parameter optimization
+
+- **[Parameter fitting](fitting.md)** - `FitParameter`, `FitMapping` and `OptimizationProblem` with local and global optimizers, the metrics and the reports of a fit.
+- **[Identifiability](identifiability.md)** - the profile likelihood and the Fisher information of the fitted parameters.
+- **[PEtab](petab.md)** - a fit is written as a PEtab v2 problem and a PEtab v2 problem is read as a fit.
+- **[PEtab SciML](petab_sciml.md)** - hybrid problems of a model and neural networks.
+
+### Test suites
+
+- **[Test suites](testsuites.md)** - the [SBML Test Suite](testsuite.md), the [PEtab Test Suite](petab_testsuite.md), the [PEtab Benchmark Problems](petab_benchmark.md) and the [PEtab SciML Test Suite](sciml_testsuite.md).
 
 The standards and methods behind the package are cited in [References](references.md).
 

@@ -39,7 +39,7 @@
 
 ## Parameter fitting
 
-**Identifiability.** What it means for the data to determine a parameter, and the difference between the structural identifiability of a model and the practical identifiability of a model and its data, see [Parameter fitting](fitting.md#identifiability).
+**Identifiability.** What it means for the data to determine a parameter, and the difference between the structural identifiability of a model and the practical identifiability of a model and its data, see [Identifiability](identifiability.md).
 
 > Bellman R, Åström KJ.
 > **On structural identifiability.**
@@ -63,7 +63,7 @@
 > *PLoS Computational Biology.* 2016;12(10):e1005153.
 > [doi:10.1371/journal.pcbi.1005153](https://doi.org/10.1371/journal.pcbi.1005153)
 
-**Sloppiness and the Fisher information.** The eigenvalues of the Fisher information of `sbmlsim.fit.fisher`, which are spread over orders of magnitude in most models of systems biology, see [Parameter fitting](fitting.md#fisher-information).
+**Sloppiness and the Fisher information.** The eigenvalues of the Fisher information of `sbmlsim.fit.fisher`, which are spread over orders of magnitude in most models of systems biology, see [Identifiability](identifiability.md#fisher-information).
 
 > Gutenkunst RN, Waterfall JJ, Casey FP, Brown KS, Myers CR, Sethna JP.
 > **Universally sloppy parameter sensitivities in systems biology models.**
@@ -75,7 +75,7 @@
 > *The Journal of Chemical Physics.* 2015;143(1):010901.
 > [doi:10.1063/1.4923066](https://doi.org/10.1063/1.4923066)
 
-**Profile likelihood.** The identifiability analysis of `sbmlsim.fit.identifiability`, see [Parameter fitting](fitting.md#identifiability): the profile likelihood, its threshold and the classification of the parameters.
+**Profile likelihood.** The identifiability analysis of `sbmlsim.fit.identifiability`, see [Identifiability](identifiability.md#profile-likelihood): the profile likelihood, its threshold and the classification of the parameters.
 
 > Raue A, Kreutz C, Maiwald T, Bachmann J, Schilling M, Klingmüller U, Timmer J.
 > **Structural and practical identifiability analysis of partially observed dynamical models by exploiting the profile likelihood.**
@@ -130,14 +130,14 @@
 > *Molecular Systems Biology.* 2011;7:543.
 > [doi:10.1038/msb.2011.77](https://doi.org/10.1038/msb.2011.77)
 
-**PEtab.** The specification of parameter estimation problems which `sbmlsim.fit.petab_omex` packages, see [Parameter fitting](fitting.md).
+**PEtab.** The specification of parameter estimation problems which `sbmlsim.fit.petab_v2` reads and writes and `sbmlsim.fit.petab_omex` packages, see [PEtab](petab.md).
 
 > Schmiester L, Schälte Y, Bergmann FT, Camba T, Dudkin E, Egert J, Fröhlich F, Fuhrmann L, Hauber AL, Kemmer S, Lakrisenko P, Loos C, Merkt S, Müller W, Pathirana D, Raimúndez E, Refisch L, Rosenblatt M, Stapor PL, Städter P, Wang D, Wieland FG, Banga JR, Timmer J, Villaverde AF, Sahle S, Kreutz C, Hasenauer J, Weindl D.
 > **PEtab — Interoperable specification of parameter estimation problems in systems biology.**
 > *PLoS Computational Biology.* 2021;17(1):e1008646.
 > [doi:10.1371/journal.pcbi.1008646](https://doi.org/10.1371/journal.pcbi.1008646)
 
-**PEtab SciML.** The extension of PEtab for hybrid problems of a mechanistic model and neural networks, which `sbmlsim.fit.petab_v2` reads and writes and `sbmlsim.sciml` runs, see [PEtab](petab.md#hybrid-problems-of-petab-sciml).
+**PEtab SciML.** The extension of PEtab for hybrid problems of a mechanistic model and neural networks, which `sbmlsim.fit.petab_v2` reads and writes and `sbmlsim.sciml` runs, see [PEtab SciML](petab_sciml.md).
 
 > Persson S, Snelling B, Philipps M, Weindl D, Cvijovic M, Hasenauer J, Pathirana D, Fröhlich F.
 > **PEtab SciML: an exchange format for specifying and training dynamic scientific machine learning models.**
