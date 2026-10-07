@@ -165,7 +165,7 @@ class RoadrunnerSBMLModel(AbstractModel):
         set_entities = set(entities.values())
         missing = [e for e in self.derived_initial if e not in set_entities]
         if missing:
-            r.reset()
+            r.resetAll()
             initial = {e: float(r.getValue(self.derived_initial[e])) for e in missing}
             for entity, value in initial.items():
                 r.setValue(self._entity_init_key(entity), value)
