@@ -127,13 +127,15 @@ def _simulate(
         a, b = points[k], points[k + 1]
         last = k == len(points) - 2
         if a in events:
-            if a > plan.start and model_events:
-                # the triggers at the end of the integration before the change
+            if model_events and (a > plan.start or plan.steady_state is not None):
+                # the triggers at the end of the integration before the change,
+                # the one of the steady state for the change at the start
                 triggers = _triggers(model_events, r, float(r.model.getTime()))
                 _apply(events[a], r, plan)
                 _fire_events(model_events, triggers, r, a, model)
             else:
-                # at the start roadrunner evaluates the triggers itself
+                # at the start after a reset roadrunner evaluates the triggers
+                # itself
                 _apply(events[a], r, plan)
 
         # an event of the model at the time of the next change fires after
@@ -156,8 +158,13 @@ def _simulate(
 
     if plan.end in events:
         # a change at the end is applied after the integration, the last
-        # output is the state after it
-        _apply(events[plan.end], r, plan)
+        # output is the state after it and the events it triggers
+        if model_events and plan.end > plan.start:
+            triggers = _triggers(model_events, r, float(r.model.getTime()))
+            _apply(events[plan.end], r, plan)
+            _fire_events(model_events, triggers, r, plan.end, model)
+        else:
+            _apply(events[plan.end], r, plan)
         if blocks and blocks[-1].shape[0] and blocks[-1][-1, 0] == plan.end:
             blocks[-1][-1, :] = _state(r, columns, plan.end)
 

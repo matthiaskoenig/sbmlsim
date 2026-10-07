@@ -1295,12 +1295,16 @@ class PetabReader:
     def _versions(self) -> dict[str, tuple[str, set[str]]]:
         """Get the versioned parameters of the problem, from its conditions.
 
-        A condition which assigns an estimated parameter to an entity of the
-        model is a version when the parameter is assigned to this entity
-        only: the entity is estimated separately for the experiments which
-        carry the condition. A parameter which is assigned to several
-        entities is a parameter of the model the fit simulates, which the
-        conditions read like a formula, see `_period_changes`. A change whose
+        A condition of a problem which `sbmlsim` wrote, i.e. one with the
+        `sbmlsim` extension, which assigns an estimated parameter to an
+        entity of the model is a version when the parameter is assigned to
+        this entity only: the entity is estimated separately for the
+        experiments which carry the condition, as the fit was defined. In
+        every other case the estimated parameter is a parameter of the model
+        the fit simulates, which the condition reads like a formula at the
+        time of its period, see `_period_changes`: a version is applied
+        before the initialization, which a condition of a later period or
+        after a pre-equilibration is not. A change whose
         value is a number stays a change of the timecourse and is not a
         version, see `_simulation_of_periods`, and a change of the input of a
         network is the input, which its hybridization holds. The versions are
@@ -1316,7 +1320,10 @@ class PetabReader:
     @functools.cached_property
     def _version_table(self) -> dict[str, tuple[str, set[str]]]:
         """Get the versioned parameters, see `_versions`."""
+        if self.extension is None:
+            return {}
         estimated = self._estimated_parameter_ids()
+        sbml_model = self._sbml_model()
         targets: dict[str, set[str]] = {}
         keys: dict[str, set[str]] = {}
         for condition in self.petab_problem.conditions:
@@ -1327,7 +1334,11 @@ class PetabReader:
                 if self.sciml is not None and change.target_id in self.sciml.input_ids:
                     # the input of a network, which its hybridization holds
                     continue
-                targets.setdefault(value, set()).add(change.target_id)
+                # the id means what the model means, a concentration based
+                # species is its concentration
+                targets.setdefault(value, set()).add(
+                    selection_of_target(change.target_id, sbml_model)
+                )
                 keys.setdefault(value, set()).update(
                     self._mapping_keys_of_condition(condition.id)
                 )

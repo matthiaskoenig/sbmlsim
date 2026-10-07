@@ -317,3 +317,34 @@ def test_an_event_at_the_time_of_a_change_fires_after_it() -> None:
     res = execute(plan, model, ["time", "C", "[S]", "S"])
     np.testing.assert_allclose(res["C"], [4, 4, 16, 16])
     np.testing.assert_allclose(res["S"], [8, 28, 128, 208], rtol=1e-6)
+
+
+#: an event which counts the crossings of `X` above 1
+COUNTER = """
+model counter
+  var X = 0
+  var Y = 0
+  E1: at (X > 1): Y = Y + 1
+end
+"""
+
+
+def test_an_event_of_a_change_at_the_start_after_a_pre_equilibration() -> None:
+    """The change at the start after the steady state triggers the event."""
+    model = RoadrunnerSBMLModel(source=sbml(COUNTER))
+    simulation = Simulation(
+        end=1, steps=2, presimulation=SteadyState(), changes=[Change(0, {"X": 2.0})]
+    )
+    plan = compile_simulation(simulation, model.symbols, model.uinfo)
+    result = execute(plan, model, ["time", "X", "Y"])
+    assert np.asarray(result["Y"]).tolist() == [1.0, 1.0, 1.0]
+
+
+def test_an_event_of_a_change_at_the_end() -> None:
+    """The change at the end triggers the event, its output is after both."""
+    model = RoadrunnerSBMLModel(source=sbml(COUNTER))
+    simulation = Simulation(end=1, steps=2, changes=[Change(1, {"X": 2.0})])
+    plan = compile_simulation(simulation, model.symbols, model.uinfo)
+    result = execute(plan, model, ["time", "X", "Y"])
+    assert np.asarray(result["X"])[-1] == 2.0
+    assert np.asarray(result["Y"]).tolist() == [0.0, 0.0, 1.0]
