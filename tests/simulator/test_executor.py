@@ -233,3 +233,17 @@ def test_preinit_formula_reads_only_parameters() -> None:
             model.symbols,
             model.uinfo,
         )
+
+
+def test_steady_state_output_at_infinity() -> None:
+    """An output time `inf` is the steady state after the end of the simulation."""
+    res = run(Simulation(end=1, times=[0, 1, np.inf]))
+    assert res.time[-1] == np.inf
+    assert res["[A]"][-1] == pytest.approx(A_STEADY * 2.0, rel=1e-5)
+    assert res["[A]"][1] != pytest.approx(A_STEADY * 2.0, rel=1e-5)
+
+
+def test_only_the_steady_state_is_an_output() -> None:
+    """A simulation whose only output is the steady state has one row."""
+    res = run(Simulation(end=1, times=[np.inf]))
+    assert res.time.tolist() == [np.inf]

@@ -93,7 +93,7 @@ def execute(
     try:
         if plan.steady_state is not None:
             steady_state(model, plan.steady_state)
-        values = _simulate(plan, r, columns)
+        values = _simulate(plan, model, r, columns)
     finally:
         integrator.setValue(VARIABLE_STEP_SIZE, variable_step_size)
         model.simulated()
@@ -103,7 +103,12 @@ def execute(
     return TimecourseResult(columns=tuple(columns), values=values)
 
 
-def _simulate(plan: Plan, r: roadrunner.RoadRunner, columns: list[str]) -> np.ndarray:
+def _simulate(
+    plan: Plan,
+    model: RoadrunnerSBMLModel,
+    r: roadrunner.RoadRunner,
+    columns: list[str],
+) -> np.ndarray:
     """Integrate the segments of a plan, see the module.
 
     Returns:
@@ -141,6 +146,12 @@ def _simulate(plan: Plan, r: roadrunner.RoadRunner, columns: list[str]) -> np.nd
         _apply(events[plan.end], r, plan)
         if blocks and blocks[-1].shape[0] and blocks[-1][-1, 0] == plan.end:
             blocks[-1][-1, :] = _state(r, columns, plan.end)
+
+    if plan.steady_state_output is not None:
+        # the steady state after the end, PEtab's measurement at `inf`
+        steady_state(model, plan.steady_state_output, start=plan.end)
+        row = _state(r, columns, np.inf)
+        blocks.append(row[np.newaxis, :])
 
     if not blocks:
         return np.empty((0, len(columns)))
@@ -187,17 +198,20 @@ def _apply(event: PlanEvent, r: roadrunner.RoadRunner, plan: Plan) -> None:
             r.setValue(target, value)
 
 
-def steady_state(model: RoadrunnerSBMLModel, plan: SteadyStatePlan) -> float:
+def steady_state(
+    model: RoadrunnerSBMLModel, plan: SteadyStatePlan, start: float = 0.0
+) -> float:
     """Integrate a model until its rates of change vanish.
 
     The model is integrated with the steps of the integrator over horizons
-    which grow by a factor of ten, starting at the time 0, until
+    which grow by a factor of ten, from `start`, until
     `|dx/dt| <= absolute_tolerance + relative_tolerance * |x|` for every
     state, events active.
 
     Args:
-        model: the initialized model.
-        plan: the presimulation.
+        model: the model in the state the integration starts from.
+        plan: the steady state.
+        start: the time the integration starts at.
 
     Returns:
         The time the steady state was reached at.
@@ -207,10 +221,10 @@ def steady_state(model: RoadrunnerSBMLModel, plan: SteadyStatePlan) -> float:
     """
     r = model.r_loaded
     r.getIntegrator().setValue(VARIABLE_STEP_SIZE, True)
-    time = 0.0
+    time = start
     horizon = 1.0
     while True:
-        end = min(horizon, plan.max_time)
+        end = start + min(horizon, plan.max_time)
         r.simulate(time, end)
         time = end
         # the rates of the species and of the targets of rate rules, `x'`
@@ -219,7 +233,7 @@ def steady_state(model: RoadrunnerSBMLModel, plan: SteadyStatePlan) -> float:
         state = np.abs(np.array([r.getValue(name[:-1]) for name in named.colnames]))
         if np.all(rates <= plan.absolute_tolerance + plan.relative_tolerance * state):
             return time
-        if time >= plan.max_time:
+        if time - start >= plan.max_time:
             worst = float(np.max(rates)) if rates.size else 0.0
             raise SteadyStateError(
                 f"The model '{model.sid or r.model.getModelName()}' did not reach a "

@@ -27,6 +27,9 @@ from sbmlsim.simulation.definition import Simulation, SteadyState, Time
 from sbmlsim.simulator.formula import compile_formula
 from sbmlsim.units import Quantity, UnitsInformation
 
+#: the tolerances of the steady state of an output at the time `inf`
+STEADY_STATE = SteadyState()
+
 
 @dataclass(frozen=True)
 class Assignment:
@@ -97,6 +100,8 @@ class Plan:
         steady_state: the pre-equilibration, `None` without one.
         output: the output of the simulation.
         times: the output times of `OutputMode.TIMES`, empty otherwise.
+        steady_state_output: the steady state after the end of the simulation,
+            the output at the time `inf`, `None` without one.
         time_shift: added to the time of the result.
         symbols: the symbols of the model, which resolve a target `with_values`
             adds.
@@ -111,6 +116,7 @@ class Plan:
     times: tuple[float, ...]
     time_shift: float
     symbols: ModelSymbols = field(repr=False, compare=False)
+    steady_state_output: SteadyStatePlan | None = None
 
     def with_values(self, values: Mapping[str, float]) -> Plan:
         """Get the plan with other values of targets.
@@ -331,12 +337,23 @@ def compile_simulation(
 
     output = OutputMode.INTEGRATOR
     times: tuple[float, ...] = ()
+    steady_output: SteadyStatePlan | None = None
     if simulation.steps is not None:
         output = OutputMode.TIMES
         times = tuple(float(t) for t in np.linspace(start, end, simulation.steps + 1))
     elif simulation.times is not None:
         output = OutputMode.TIMES
-        times = tuple(sorted({convert.time(t) for t in simulation.times}))
+        converted = {convert.time(t) for t in simulation.times}
+        if np.inf in converted:
+            # the steady state after the end, see the executor
+            converted.discard(np.inf)
+            steady_output = SteadyStatePlan(
+                preinit=(),
+                absolute_tolerance=STEADY_STATE.absolute_tolerance,
+                relative_tolerance=STEADY_STATE.relative_tolerance,
+                max_time=STEADY_STATE.max_time,
+            )
+        times = tuple(sorted(converted))
         outside = [t for t in times if not start <= t <= end]
         if outside:
             raise ValueError(
@@ -354,6 +371,7 @@ def compile_simulation(
         times=times,
         time_shift=convert.time(simulation.time_shift),
         symbols=symbols,
+        steady_state_output=steady_output,
     )
 
 

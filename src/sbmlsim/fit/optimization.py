@@ -53,7 +53,13 @@ from sbmlsim.serialization import ObjectJSONEncoder, to_json
 from sbmlsim.simulation import Simulation
 from sbmlsim.simulator import SimulatorSerial
 from sbmlsim.simulator.executor import SteadyStateError, execute
-from sbmlsim.simulator.plan import OutputMode, Plan, compile_simulation
+from sbmlsim.simulator.plan import (
+    STEADY_STATE,
+    OutputMode,
+    Plan,
+    SteadyStatePlan,
+    compile_simulation,
+)
 from sbmlsim.units import DimensionalityError, Q, Quantity
 from sbmlsim.utils import timeit
 
@@ -728,7 +734,8 @@ class OptimizationProblem(ObjectJSONEncoder):
                 if y_ref_err is not None:
                     y_ref_err = y_ref_err[nonnan_mask]
 
-                # at this point all x_ref, y_ref and y_ref_err must be finite
+                # at this point all x_ref, y_ref and y_ref_err must be finite,
+                # but for a time `inf`, which is the steady state
                 for data_key, data in [
                     ("x_ref", x_ref),
                     ("y_ref", y_ref),
@@ -737,6 +744,8 @@ class OptimizationProblem(ObjectJSONEncoder):
                     if data is None:
                         # no error data on the mapping
                         continue
+                    if data_key == "x_ref" and obs_xid == "time":
+                        data = data[~np.isposinf(data)]
                     if np.any(~np.isfinite(data)):
                         raise ValueError(
                             f"{mapping_collection}.{mapping_id}: NaN or INF in "
@@ -1091,7 +1100,8 @@ class OptimizationProblem(ObjectJSONEncoder):
                     self._rows[k] = np.searchsorted(
                         data_times, np.asarray(self.x_references[k], float)
                     )
-                times = data_times - plan.time_shift
+                steady = bool(np.isposinf(data_times[-1]))
+                times = data_times[np.isfinite(data_times)] - plan.time_shift
                 outside = times[(times < plan.start) | (times > plan.end)]
                 if outside.size:
                     raise ValueError(
@@ -1105,6 +1115,15 @@ class OptimizationProblem(ObjectJSONEncoder):
                     plan,
                     output=OutputMode.TIMES,
                     times=tuple(float(t) for t in times),
+                    # a measurement at `inf` is the steady state after the end
+                    steady_state_output=SteadyStatePlan(
+                        preinit=(),
+                        absolute_tolerance=STEADY_STATE.absolute_tolerance,
+                        relative_tolerance=STEADY_STATE.relative_tolerance,
+                        max_time=STEADY_STATE.max_time,
+                    )
+                    if steady
+                    else None,
                 )
             self.plans.append(plan)
 

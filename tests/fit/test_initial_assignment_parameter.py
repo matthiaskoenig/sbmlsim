@@ -137,3 +137,45 @@ def test_fit_with_a_time_shift(tmp_path: Path) -> None:
     predictions = problem.predictions(np.array([0.5]))
     assert predictions[0][0] == pytest.approx(0.5)
     assert predictions[0].shape == (3,)
+
+
+class SteadyExperiment(IAExperiment):
+    """Data at the steady state of the probe model."""
+
+    def datasets(self) -> dict[str, DataSet]:
+        df = pd.DataFrame(
+            {
+                "time": [0.0, np.inf],
+                "time_unit": "s",
+                "B": [0.0, 0.5],
+                "B_unit": "dimensionless",
+            }
+        )
+        return {"d": DataSet.from_df(df, ureg=self.ureg)}
+
+
+def test_fit_with_data_at_steady_state(tmp_path: Path) -> None:
+    """A measurement at `inf` is the steady state of its simulation."""
+    MODEL_PATH["path"] = tmp_path / "probe.xml"
+    MODEL_PATH["path"].write_text(sbml())
+    problem = OptimizationProblem(
+        opid="steady",
+        mapping_collections=[
+            FitMappingCollection(experiment=SteadyExperiment, mappings=["fm"])
+        ],
+        fit_parameters=[
+            FitParameter(
+                pid="b0",
+                lower_bound=0.0,
+                upper_bound=2.0,
+                start_value=1.0,
+                unit="dimensionless",
+            )
+        ],
+        base_path=tmp_path,
+        data_path=tmp_path,
+    )
+    problem.initialize(FitSettings(parameter_scale=ParameterScaleType.LINEAR))
+    predictions = problem.predictions(np.array([0.0]))
+    # A + B = a0 = 1, B = k1 / (k1 + k2) at steady state
+    assert predictions[0][1] == pytest.approx(0.8 / 1.4, rel=1e-5)
