@@ -48,3 +48,12 @@ def test_symbols_from_a_file(tmp_path) -> None:
     path = tmp_path / "probe.xml"
     path.write_text(sbml())
     assert ModelSymbols.from_sbml(path).kind("k2") is TargetKind.PARAMETER
+
+
+def test_dependencies_with_sciml_imported() -> None:
+    """The dependencies are read with the SWIG modules of the extras loaded."""
+    import sbmlsim.sciml  # noqa: F401
+
+    symbols = ModelSymbols.from_sbml(sbml())
+    assert symbols.initial_assignment_dependencies is not None
+    assert symbols.initial_assignment_dependencies["B"] == frozenset({"b0"})

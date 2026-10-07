@@ -12,7 +12,6 @@ from sbmlsim.fit.cli import FitDefinition
 from sbmlsim.fit.objects import FitParameter, MappingKind
 from sbmlsim.fit.optimization import OptimizationProblem
 from sbmlsim.fit.parameter_mapping import ParameterMapping, has_renamed_targets
-from tests.fit.hooks import Scaling
 
 
 def _parameter(
@@ -422,69 +421,3 @@ def test_a_version_counts_as_a_parameter_everywhere(
         show_progress=False,
     )
     assert set(result.profiles) == {"Ka_po", "Ka_iv"}
-
-
-def test_two_groups_sharing_a_simulation_object_must_bind_alike() -> None:
-    """A `TimecourseSim` shared by two groups must not carry disagreeing changes.
-
-    `_group_mappings` keys a group on `(id(model), id(simulation))`, not on
-    the simulation object alone: `Task` allows one `simulation_id` to be
-    combined with several `model_id`s to "execute the same simulation with
-    different model variants" (`sbmlsim.task.task.Task`), which puts the same
-    `TimecourseSim` object into two distinct groups. The fit path takes
-    `sim_experiment._simulations[task.simulation_id]` directly, with no
-    `deepcopy` (unlike the experiment path), so `_simulate_groups` mutating
-    that object's `changes` in place would leak a change bound in one group
-    into the other, silently, because `dict.update` never removes a key.
-    `_check_shared_simulation_bindings` refuses this at `initialize` instead.
-    """
-    problem = OptimizationProblem.__new__(OptimizationProblem)
-    problem.opid = "shared-simulation"
-
-    parameters = [
-        _parameter("Ka_a", target="Ka", versioned=True),
-        _parameter("Ka_b", target="Ka", versioned=True),
-    ]
-    shared_simulation = object()
-    # two model variants share one TimecourseSim object: mapping 0 (its own
-    # group) is bound by Ka_a and mapping 1 (a different group, same object)
-    # by Ka_b -- the pathological shape `_group_mappings` allows
-    problem.simulations = [shared_simulation, shared_simulation, object()]
-    problem.mapping_groups = [[0], [1], [2]]
-    problem.parameter_mapping = ParameterMapping(
-        parameters, {0: {0}, 1: {1}}, problem.mapping_groups, KEYS
-    )
-    problem.group_derived = [[], [], []]
-
-    with pytest.raises(ValueError, match="share one"):
-        problem._check_shared_simulation_bindings()
-
-
-def test_two_groups_sharing_a_simulation_object_must_derive_alike() -> None:
-    """A derived change of one group must not leak into the other group.
-
-    `_simulate_groups` writes the derived changes into the shared
-    `TimecourseSim`, so a target only one group derives would be simulated
-    by the other group with the value of the first.
-    """
-    problem = OptimizationProblem.__new__(OptimizationProblem)
-    problem.opid = "shared-simulation"
-    shared_simulation = object()
-    problem.simulations = [shared_simulation, shared_simulation, object()]
-    problem.mapping_groups = [[0], [1], [2]]
-    problem.parameter_mapping = ParameterMapping(
-        [_parameter("Ka")],
-        {},
-        problem.mapping_groups,
-        KEYS,
-        group_names=["e|fm_a", "e|fm_b", "e|fm_c"],
-    )
-    problem.group_derived = [[(Scaling(target="Ka"), {})], [], []]
-
-    with pytest.raises(
-        ValueError, match=r"'e\|fm_a' and 'e\|fm_b' share one.*derive \['Ka'\]"
-    ):
-        problem._check_shared_simulation_bindings()
-    # the same derived targets are written by both groups before they simulate
-    problem.group_derived = [[(Scaling(target="Ka"), {})]] * 2 + [[]]
-    problem._check_shared_simulation_bindings()

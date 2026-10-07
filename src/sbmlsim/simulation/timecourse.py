@@ -209,6 +209,61 @@ class TimecourseSim(AbstractSim):
         for tc in self.timecourses:
             tc.strip_units()
 
+    def to_simulation(self) -> Any:
+        """Convert to a `Simulation` with changes at absolute times.
+
+        A timecourse starts where the one before it ended, at
+        `time_offset + sum(end)` of the kept timecourses before it; leading
+        discarded timecourses run before `time_offset` and are the start of
+        the simulation. The changes of the first timecourse and the model
+        changes are pre-initialization changes, the changes of a later
+        timecourse a `Change` at its start. The output are the grids of the
+        kept timecourses.
+
+        Returns:
+            The simulation.
+
+        Raises:
+            ValueError: if a discarded timecourse follows a kept one.
+        """
+        from sbmlsim.simulation.definition import Change, Simulation
+
+        first = self.timecourses[0]
+        discarded = 0.0
+        for tc in self.timecourses:
+            if not tc.discard:
+                break
+            discarded += tc.end - tc.start
+        start = self.time_offset - discarded
+        preinit = {**first.model_changes, **first.changes}
+
+        changes = []
+        times: list[float] = []
+        t = start
+        kept = False
+        for k, tc in enumerate(self.timecourses):
+            if tc.discard and kept:
+                raise ValueError(
+                    f"The timecourse {k} of '{self}' is discarded after a kept "
+                    f"one, which a `Simulation` cannot express."
+                )
+            t_start = t + tc.start if k else start
+            if k and tc.changes:
+                changes.append(Change(t_start, dict(tc.changes)))
+            if not tc.discard:
+                kept = True
+                times.extend(
+                    np.linspace(t_start, t_start + tc.end - tc.start, tc.steps + 1)
+                )
+            t = t_start + tc.end - tc.start
+        return Simulation(
+            start=start,
+            end=t,
+            preinit_changes=preinit,
+            changes=changes,
+            times=sorted({float(round(x, 12)) for x in times}),
+        )
+
     def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary."""
         return {

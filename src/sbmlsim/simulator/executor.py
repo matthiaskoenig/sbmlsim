@@ -3,10 +3,9 @@
 The semantics are the ones of PEtab v2, see the design
 `docs/superpowers/specs/2026-10-07-simulation-engine-design.md`:
 
-1. The pre-initialization values are set as initial values (`init(...)`) and
-   the model is initialized with `resetAll()`, which evaluates the initial
-   assignments with them and resets the parameters and compartments a change
-   of an earlier simulation set.
+1. The model is initialized with the pre-initialization values, see
+   `RoadrunnerSBMLModel.initialize`: the initial assignments follow a changed
+   parameter, and nothing of an earlier simulation is left.
 2. A presimulation integrates until the rates of change vanish.
 3. The interval is split at the times of the events. At the start of a
    segment the events of its time are applied: every value is evaluated
@@ -66,13 +65,8 @@ def execute(
         RuntimeError: if roadrunner fails to integrate.
     """
     columns = ["time", *[s for s in selections if s != "time"]]
-    model.free_initial_assignments(
-        {plan.symbols.entity(a.target) for a in preinit_targets(plan)}
-    )
     r = model.r_loaded
-    model.set_initial_values(preinit_targets(plan))
-    r.resetAll()
-    # roadrunner sets the default selections when an initial value is set
+    model.initialize(preinit_targets(plan))
     if list(r.timeCourseSelections) != columns:
         r.timeCourseSelections = columns
 

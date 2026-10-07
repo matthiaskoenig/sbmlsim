@@ -4,6 +4,7 @@ import logging
 import time
 from collections import defaultdict
 from collections.abc import Callable, Sequence
+from dataclasses import replace
 from pathlib import Path
 from typing import Any
 
@@ -49,8 +50,10 @@ from sbmlsim.fit.sampling import SamplingType, create_samples
 from sbmlsim.model import RoadrunnerSBMLModel
 from sbmlsim.result import TimecourseResult
 from sbmlsim.serialization import ObjectJSONEncoder, to_json
-from sbmlsim.simulation import TimecourseSim
+from sbmlsim.simulation import Simulation, TimecourseSim
 from sbmlsim.simulator import SimulatorSerial
+from sbmlsim.simulator.executor import SteadyStateError, execute
+from sbmlsim.simulator.plan import OutputMode, Plan, compile_simulation
 from sbmlsim.units import DimensionalityError, Quantity
 from sbmlsim.utils import timeit
 
@@ -314,10 +317,19 @@ class OptimizationProblem(ObjectJSONEncoder):
         self.weights_curves: list[Any] = []  # user defined weights per mapping/curve
 
         self.models: list[Any] = []
-        self.simulations: list[Any] = []
-        #: the changes of the first timecourse of every simulation as defined,
-        #: see `initialize`
+        #: the simulation of every mapping with the changes of its model, see
+        #: `initialize`
+        self.simulations: list[Simulation] = []
+        #: the pre-initialization changes of every simulation as defined, the
+        #: values of the parameters replace them in an evaluation
         self.defined_changes: list[dict[str, Any]] = []
+        #: the plan of every simulation group, see `_compile_plans`
+        self.plans: list[Plan] = []
+        #: the simulation of every task, see `_simulation_of`
+        self._simulation_cache: dict[tuple[str, str, str], Simulation] = {}
+        #: target, index into the parameter vector and factor into the unit
+        #: of the target in the model, of every parameter of a group
+        self._group_targets: list[list[tuple[str, int, float]]] = []
         self.selections: list[Any] = []
         #: id of the model and of the simulation of every mapping in its
         #: experiment
@@ -612,12 +624,9 @@ class OptimizationProblem(ObjectJSONEncoder):
                 task_id = mapping.observable.task_id
                 task = sim_experiment._tasks[task_id]
                 model: RoadrunnerSBMLModel = sim_experiment._models[task.model_id]
-                simulation = sim_experiment._simulations[task.simulation_id]
-
-                if not isinstance(simulation, TimecourseSim):
-                    raise ValueError(
-                        f"Only TimecourseSims supported in fitting: '{simulation}"
-                    )
+                simulation = self._simulation_of(
+                    sid, task.model_id, task.simulation_id, sim_experiment, model
+                )
 
                 # observable units
                 obs_xid = mapping.observable.x.selection
@@ -836,15 +845,12 @@ class OptimizationProblem(ObjectJSONEncoder):
                 f"be '{MappingKind.TRAINING.value}'."
             )
 
-        #: the changes of the first timecourse of every fit mapping as the
-        #: experiment defines them: `_simulate_groups` writes the values of
-        #: the parameters and the derived changes into the timecourse, and an
-        #: export writes the definition
+        #: the pre-initialization changes of every fit mapping as the
+        #: experiment defines them: an evaluation replaces the values of the
+        #: parameters and the derived changes, and an export writes the
+        #: definition
         self.defined_changes = [
-            dict(simulation.timecourses[0].changes)
-            if isinstance(simulation, TimecourseSim) and simulation.timecourses
-            else {}
-            for simulation in self.simulations
+            dict(simulation.preinit_changes) for simulation in self.simulations
         ]
         self.parameter_mapping = ParameterMapping(
             parameters=self.parameters,
@@ -857,7 +863,6 @@ class OptimizationProblem(ObjectJSONEncoder):
             ],
         )
         self._group_derived_changes()
-        self._check_shared_simulation_bindings()
 
         # set simulator instance with arguments
         simulator = SimulatorSerial(
@@ -866,6 +871,11 @@ class OptimizationProblem(ObjectJSONEncoder):
             variable_step_size=settings.variable_step_size,
         )
         self.set_simulator(simulator)
+        for model in {id(m): m for m in self.models}.values():
+            RoadrunnerSBMLModel.set_integrator_settings(
+                model.r_loaded, **simulator.integrator_settings
+            )
+        self._compile_plans()
 
     @property
     def parameter_scale(self) -> ParameterScaleType:
@@ -1015,76 +1025,98 @@ class OptimizationProblem(ObjectJSONEncoder):
             len(self.mapping_groups),
         )
 
-    def _check_shared_simulation_bindings(self) -> None:
-        """Refuse two groups which share a simulation object but not its changes.
+    def _simulation_of(
+        self,
+        sid: str,
+        model_id: str,
+        simulation_id: str,
+        experiment: SimulationExperiment,
+        model: RoadrunnerSBMLModel,
+    ) -> Simulation:
+        """Get the simulation of a task with the changes of its model.
 
-        `_group_mappings` keys a group on `(id(model), id(simulation))`, not
-        on the simulation object alone: two fit mappings which name the same
-        `simulation_id` with a different `model_id` end up in two distinct
-        groups that nonetheless hold *the same* `TimecourseSim` object, because
-        the fit path takes `sim_experiment._simulations[task.simulation_id]`
-        directly, with no `deepcopy` (unlike the experiment path).
-        `_simulate_groups` mutates that object's `changes` in place, and
-        `dict.update` never removes a key, so a target one group's binding
-        writes and the other's does not would be silently inherited by
-        whichever group is simulated second. This shape is refused here
-        rather than resolved by clearing unbound targets before every
-        simulation, because it is pathological and a clear error at
-        `initialize` beats a silently wrong number.
-
-        The derived changes are written into the same object, so the groups
-        must derive the same targets: each writes all of them before it
-        simulates and reads none of them as a change of the simulation.
+        The simulation is created once per experiment, model and simulation,
+        so the fit mappings of a task share it and are simulated together,
+        see `_group_mappings`. A `TimecourseSim` is converted into a
+        `Simulation`.
 
         Raises:
-            ValueError: if two groups share a simulation object and
-                `ParameterMapping` binds a target of theirs differently, or
-                they derive different targets.
+            ValueError: if the simulation is a scan.
         """
-        mapping = self.parameter_mapping_initialized
-        groups_by_simulation: dict[int, list[int]] = {}
-        for k_group, group in enumerate(self.mapping_groups):
-            groups_by_simulation.setdefault(id(self.simulations[group[0]]), []).append(
-                k_group
+        key = (sid, model_id, simulation_id)
+        if key in self._simulation_cache:
+            return self._simulation_cache[key]
+        simulation = experiment._simulations[simulation_id]
+        if isinstance(simulation, TimecourseSim):
+            simulation = simulation.to_simulation()
+        if not isinstance(simulation, Simulation):
+            raise ValueError(
+                f"Only a `Simulation` is supported in fitting, but the simulation "
+                f"'{simulation_id}' of '{sid}' is a '{type(simulation).__name__}'."
             )
+        targets = simulation.targets()
+        simulation = simulation.with_values(
+            {k: v for k, v in model.changes.items() if k not in targets}
+        )
+        self._simulation_cache[key] = simulation
+        return simulation
 
-        for group_indices in groups_by_simulation.values():
-            if len(group_indices) < 2:
-                continue
-            k_first = group_indices[0]
-            bindings_first = mapping.indices_for(k_first)
-            for k_other in group_indices[1:]:
-                derived = self._derived_targets(k_first) ^ self._derived_targets(
-                    k_other
-                )
-                if derived:
-                    raise ValueError(
-                        f"'{self.opid}': the simulations "
-                        f"'{mapping.group_names[k_first]}' and "
-                        f"'{mapping.group_names[k_other]}' share one "
-                        f"`TimecourseSim` object (same simulation_id, different "
-                        f"model_id) but do not both derive {sorted(derived)}. "
-                        f"The derived change of one would leak into the other. "
-                        f"Give these fit mappings distinct simulation ids."
+    def _compile_plans(self) -> None:
+        """Compile the simulation of every group into a plan.
+
+        A group whose mappings all observe the time outputs the times of their
+        data, so an evaluation simulates exactly where the data is. The
+        factors convert the values of the parameters into the units of their
+        targets once, so an evaluation multiplies instead of calling pint.
+
+        Raises:
+            ValueError: if a time of the data is outside of its simulation.
+        """
+        Q_ = self.runner_initialized.Q_
+        mapping = self.parameter_mapping_initialized
+        self.plans = []
+        self._group_targets = []
+        for k_group, group in enumerate(self.mapping_groups):
+            k0 = group[0]
+            model: RoadrunnerSBMLModel = self.models[k0]
+            plan = compile_simulation(self.simulations[k0], model.symbols, model.uinfo)
+            if all(self.xid_observable[k] == "time" for k in group):
+                times = (
+                    np.unique(
+                        np.concatenate(
+                            [np.asarray(self.x_references[k], float) for k in group]
+                        )
                     )
-                bindings_other = mapping.indices_for(k_other)
-                if bindings_first == bindings_other:
+                    - plan.time_shift
+                )
+                outside = times[(times < plan.start) | (times > plan.end)]
+                if outside.size:
+                    raise ValueError(
+                        f"'{self.opid}': the data of "
+                        f"'{mapping.group_names[k_group]}' has the times "
+                        f"{(outside + plan.time_shift).tolist()}, which are outside "
+                        f"of its simulation [{plan.start + plan.time_shift}, "
+                        f"{plan.end + plan.time_shift}]."
+                    )
+                plan = replace(
+                    plan,
+                    output=OutputMode.TIMES,
+                    times=tuple(float(t) for t in times),
+                )
+            self.plans.append(plan)
+
+            targets: list[tuple[str, int, float]] = []
+            for target, index in mapping.indices_for(k_group).items():
+                parameter = self.parameters[index]
+                if parameter.is_external:
                     continue
-                targets = sorted(
-                    target
-                    for target in set(bindings_first) | set(bindings_other)
-                    if bindings_first.get(target) != bindings_other.get(target)
-                )
-                raise ValueError(
-                    f"'{self.opid}': the simulations '{mapping.group_names[k_first]}' "
-                    f"and '{mapping.group_names[k_other]}' share one `TimecourseSim` "
-                    f"object (same simulation_id, different model_id) but disagree "
-                    f"on {targets}. The fit does not copy that shared object, so a "
-                    f"change written for one of them would leak into the other. "
-                    f"Give these fit mappings distinct simulation ids, or make the "
-                    f"versioned parameters that reach {targets} bind identically "
-                    f"for both."
-                )
+                factor = 1.0
+                unit = model.uinfo.get(target)
+                punit = self.punits[index]
+                if unit and punit:
+                    factor = float(Q_(1.0, punit).to(unit).magnitude)
+                targets.append((target, index, factor))
+            self._group_targets.append(targets)
 
     def _derived_targets(self, k_group: int) -> set[str]:
         """Get the targets the hybridizations of a simulation group set."""
@@ -1516,22 +1548,22 @@ class OptimizationProblem(ObjectJSONEncoder):
         The mappings of a group share a simulation, so it runs once with the
         selections of all of them; `_group_mappings` builds the groups. Which
         parameter writes which entity depends on the group: a versioned
-        parameter applies to a part of the data only, so the changes are
-        resolved per group through the problem's `parameter_mapping`.
+        parameter applies to a part of the data only, so the values are
+        resolved per group through the problem's `parameter_mapping`. The
+        values replace the values of the plan of the group, which is not
+        changed, see `Plan.with_values`.
 
         Args:
             simulator: simulator of the problem.
             quantities: the quantity of every parameter, in the order of the
-                parameter vector. They are built once per evaluation of the
-                residuals and referenced here.
+                parameter vector, for the derived changes; empty without them.
             evaluated: indices of the fit mappings which are evaluated.
-            x: parameter values, for the message of a failed integration.
+            x: parameter values in the units of the parameters.
 
         Returns:
             The result of the simulation of every evaluated mapping, `None` if
             its integration failed.
         """
-        mapping = self.parameter_mapping_initialized
         results: dict[int, TimecourseResult | None] = {}
         for k_group, group in enumerate(self.mapping_groups):
             indices = [k for k in group if k in evaluated]
@@ -1539,26 +1571,16 @@ class OptimizationProblem(ObjectJSONEncoder):
                 continue
 
             k0 = indices[0]
-            simulation: TimecourseSim = self.simulations[k0]
-            simulation.timecourses[0].changes.update(
-                mapping.changes_for(k_group, quantities)
-            )
-
-            simulator.set_model(model=self.models[k0])
-            simulator.set_timecourse_selections(
-                selections=sorted({s for k in indices for s in self.selections[k]})
-            )
-            simulation.normalize(uinfo=simulator.uinfo)
-            if self.group_derived[k_group]:
-                simulation.timecourses[0].changes.update(
-                    self._derived_changes(k_group, simulation, simulator, quantities)
-                )
+            plan = self.evaluated_plan(k_group, x, quantities)
 
             result: TimecourseResult | None
             try:
-                # FIXME: just simulate at the requested timepoints with step
-                result = simulator._timecourses([simulation])[0]
-            except RuntimeError as err:
+                result = execute(
+                    plan,
+                    self.models[k0],
+                    sorted({s for k in group for s in self.selections[k]}),
+                )
+            except (RuntimeError, SteadyStateError) as err:
                 logger.error(
                     "RuntimeError in ODE integration ('%s = %s'): \n%s",
                     self.pids,
@@ -1572,31 +1594,63 @@ class OptimizationProblem(ObjectJSONEncoder):
 
         return results
 
+    def evaluated_plan(
+        self,
+        k_group: int,
+        x: np.ndarray,
+        quantities: Sequence[Quantity] | None = None,
+    ) -> Plan:
+        """Get the plan a group is simulated with for the given parameters.
+
+        Args:
+            k_group: index of the simulation group.
+            x: parameter values in the units of the parameters.
+            quantities: the quantity of every parameter, built from `x` if a
+                group has derived changes and they are not given.
+
+        Returns:
+            The plan of the group with the values of the parameters and the
+            derived changes in the units of the model.
+        """
+        values: dict[str, float] = {
+            target: float(x[index]) * factor
+            for target, index, factor in self._group_targets[k_group]
+        }
+        plan = self.plans[k_group].with_values(values)
+        if self.group_derived[k_group]:
+            if not quantities:
+                _, quantities = self._simulator_and_quantities(np.asarray(x))
+            plan = plan.with_values(self._derived_changes(k_group, plan, quantities))
+        return plan
+
     def _derived_changes(
         self,
         k_group: int,
-        simulation: TimecourseSim,
-        simulator: SimulatorSerial,
+        plan: Plan,
         quantities: Sequence[Quantity],
-    ) -> dict[str, Quantity]:
+    ) -> dict[str, float]:
         """Get the derived changes of the simulation of a group.
 
         See `sbmlsim.fit.derived.evaluate_derived_changes`.
 
         Args:
             k_group: index of the simulation group.
-            simulation: the simulation of the group with the changes of the
-                parameters, normalized to the units of the model.
-            simulator: simulator of the problem, with the model of the group.
+            plan: the plan of the group with the values of the parameters.
             quantities: the quantity of every parameter, in the order of the
                 parameter vector.
 
         Returns:
             The changes by entity of the model, in the unit of the entity.
         """
-        return evaluate_derived_changes(
-            self, k_group, simulation, simulator, quantities
+        k0 = self.mapping_groups[k_group][0]
+        defined = {a.target: a.value for a in plan.preinit if a.value is not None}
+        changes = evaluate_derived_changes(
+            self, k_group, defined, self.models[k0].uinfo, quantities
         )
+        return {
+            key: float(value.magnitude if isinstance(value, Quantity) else value)
+            for key, value in changes.items()
+        }
 
     def _interpolate(self, k: int, result: TimecourseResult) -> np.ndarray:
         """Get the simulation of a fit mapping at its reference data.
@@ -1649,6 +1703,10 @@ class OptimizationProblem(ObjectJSONEncoder):
         if simulator is None:
             raise ValueError(f"No simulator set on OptimizationProblem '{self.opid}'.")
         Q_ = self.runner_initialized.Q_
+        if not any(self.group_derived):
+            # only the derived changes read quantities, a fit without them
+            # does not call pint
+            return simulator, []
         quantities = [Q_(value, self.punits[ix]) for ix, value in enumerate(x)]
         return simulator, quantities
 

@@ -2,7 +2,7 @@
 
 import logging
 import tempfile
-from collections.abc import Collection, Sequence
+from collections.abc import Sequence
 from pathlib import Path
 from typing import TYPE_CHECKING, ClassVar
 
@@ -13,7 +13,7 @@ import roadrunner
 
 from sbmlsim.model import AbstractModel
 from sbmlsim.model.model_resources import Source
-from sbmlsim.model.symbols import ModelSymbols
+from sbmlsim.model.symbols import ModelSymbols, TargetKind
 from sbmlsim.units import Quantity, UnitRegistry, UnitsInformation
 from sbmlsim.units import ureg as package_ureg
 from sbmlsim.utils import md5_for_path
@@ -64,24 +64,22 @@ class RoadrunnerSBMLModel(AbstractModel):
         if self.language_type != AbstractModel.LanguageType.SBML:
             raise ValueError(f"language_type not supported '{self.language_type}'.")
 
-        # load model
-        self.r: roadrunner.RoadRunner | None = self.load_roadrunner_model(
-            source=self.source
-        )
-        #: the SBML the instance was loaded from, with the freed initial
-        #: assignments, see `free_initial_assignments`
-        self._sbml: str = (
+        # the SBML of the model and its symbols, read once
+        sbml: str = (
             self.source.content
             if self.source.content is not None
             else Path(str(self.source.path)).read_text(encoding="utf-8")
         )
-        #: the symbols of the model, read once
-        self.symbols: ModelSymbols = ModelSymbols.from_sbml(self._sbml)
-        #: the original initial value of every target a plan set, by its key
-        #: `init(...)`, see `set_initial_values`
-        self._init_original: dict[str, float] = {}
-        #: entity -> the parameter which holds its initial assignment
-        self.derived_initial: dict[str, str] = {}
+        self.symbols: ModelSymbols = ModelSymbols.from_sbml(sbml)
+        #: entity with an initial assignment -> the parameter whose
+        #: assignment rule is the math of the initial assignment, see
+        #: `initialize`
+        self.initial_helpers: dict[str, str] = {}
+        if self.symbols.initial_assignments:
+            sbml, self.initial_helpers = _with_initial_helpers(sbml)
+
+        # load model
+        self.r: roadrunner.RoadRunner | None = roadrunner.RoadRunner(sbml)
 
         # set selections
         # logger.info("set selections")
@@ -109,27 +107,24 @@ class RoadrunnerSBMLModel(AbstractModel):
             raise ValueError(f"The model '{self.sid}' is not loaded.")
         return self.r
 
-    def _entity_init_key(self, entity: str) -> str:
-        """Get the selection of the initial value of an entity as the model means it.
+    def initialize(self, assignments: Sequence["Assignment"]) -> None:
+        """Initialize the model with values before its initialization.
 
-        A species is its concentration unless it has only substance units,
-        which is what an initial assignment of the species means.
-        """
-        if entity in self.symbols.species and entity not in self.symbols.only_substance:
-            return f"init([{entity}])"
-        return f"init({entity})"
+        PEtab v2 sets the values of the parameter table and of the first
+        conditions on the model before it is initialized, so an initial
+        assignment follows a changed parameter, and a target which is set
+        replaces its own initial assignment. roadrunner reinitializes the
+        model when an initial value is set with `init(...)`, which costs a
+        compilation of the model per value. The model is therefore
+        initialized as it was loaded (`resetAll`), the values are set as the
+        current values, and the initial assignments which read a changed
+        entity are evaluated again, in their order, from the assignment rule
+        of their helper parameter, which roadrunner evaluates on the current
+        values. Nothing is left to restore: the next `resetAll` starts from
+        the model as it was loaded.
 
-    def set_initial_values(self, assignments: Sequence["Assignment"]) -> None:
-        """Set the initial values of a plan and restore the ones it does not set.
-
-        roadrunner keeps a value set with `init(...)` across `resetToOrigin`,
-        so the model records the original initial value of every target the
-        first time it is set and writes it back before a plan which does not
-        set it. An entity whose initial assignment was freed
-        (`free_initial_assignments`) has no fixed original value: when the
-        plan does not set it, it gets the value of its initial assignment,
-        which needs a `reset` in between. The caller initializes the model
-        with `reset()` afterwards.
+        A compartment keeps the concentration of the species whose initial
+        value is a concentration, as at the initialization of SBML.
 
         Args:
             assignments: the pre-initialization assignments of a plan, values
@@ -139,114 +134,55 @@ class RoadrunnerSBMLModel(AbstractModel):
             ValueError: if an assignment is a formula.
         """
         r = self.r_loaded
-        # `init(S)` is the initial amount, `init([S])` the initial concentration
-        values: dict[str, float] = {}
-        entities: dict[str, str] = {}
+        r.resetAll()
+        symbols = self.symbols
+        entities: set[str] = set()
         for a in assignments:
             if a.value is None:
                 raise ValueError(
                     f"The pre-initialization value of '{a.target}' is the "
                     f"formula '{a.formula}', it must be a number."
                 )
-            key = f"init({a.target})"
-            values[key] = a.value
-            entities[key] = self.symbols.entity(a.target)
+            entities.add(symbols.entity(a.target))
+        for a in assignments:
+            if a.kind is TargetKind.COMPARTMENT:
+                self._set_compartment(a.target, float(a.value), entities)  # ty: ignore[invalid-argument-type]
+        for a in assignments:
+            if a.kind is not TargetKind.COMPARTMENT:
+                r.setValue(a.target, a.value)
 
-        for key, value in self._init_original.items():
-            if key not in values:
-                r.setValue(key, value)
-        for key, value in values.items():
-            if key not in self._init_original and (
-                entities[key] not in self.derived_initial
-            ):
-                self._init_original[key] = float(r.getValue(key))
-            r.setValue(key, value)
+        dependencies = symbols.initial_assignment_dependencies or {}
+        changed = set(entities)
+        for entity in symbols.initial_assignment_order:
+            if entity in entities or not (dependencies[entity] & changed):
+                continue
+            value = float(r.getValue(self.initial_helpers[entity]))
+            if entity in symbols.compartments:
+                self._set_compartment(entity, value, entities)
+            elif entity in symbols.species and entity not in symbols.only_substance:
+                r.setValue(f"[{entity}]", value)
+            else:
+                r.setValue(entity, value)
+            changed.add(entity)
 
-        set_entities = set(entities.values())
-        missing = [e for e in self.derived_initial if e not in set_entities]
-        if missing:
-            r.resetAll()
-            initial = {e: float(r.getValue(self.derived_initial[e])) for e in missing}
-            for entity, value in initial.items():
-                r.setValue(self._entity_init_key(entity), value)
-
-    def free_initial_assignments(self, entities: Collection[str]) -> None:
-        """Make entities with an initial assignment settable before initialization.
-
-        roadrunner refuses `init(p)` for a parameter with an initial
-        assignment, and a value set with `init(...)` replaces the initial
-        assignment of a species for good. The model is therefore derived once:
-        the initial assignment of every such entity moves to a new parameter
-        `<entity>__initial`, and `set_initial_values` sets the entity to the
-        value of that parameter whenever a plan does not set it. The model is
-        loaded again from the derived SBML with its integrator settings and
-        selections.
+    def _set_compartment(self, compartment: str, value: float, kept: set[str]) -> None:
+        """Set a compartment before the initialization.
 
         Args:
-            entities: entities a plan sets before the initialization; an
-                entity without an initial assignment or already freed is
-                skipped.
+            compartment: the compartment.
+            value: its size.
+            kept: entities which are set themselves and are not rescaled.
         """
-        new = sorted(
-            e
-            for e in entities
-            if e in self.symbols.initial_assignments and e not in self.derived_initial
-        )
-        if not new:
-            return
-        doc: libsbml.SBMLDocument = libsbml.readSBMLFromString(self._sbml)
-        model: libsbml.Model = doc.getModel()
-        for entity in new:
-            helper = f"{entity}{INITIAL_SUFFIX}"
-            if model.getElementBySId(helper) is not None:
-                raise ValueError(
-                    f"The model already has an entity '{helper}', the id of the "
-                    f"initial assignment of '{entity}'."
-                )
-            assignment: libsbml.InitialAssignment = model.getInitialAssignmentBySymbol(
-                entity
-            )
-            math: libsbml.ASTNode = assignment.getMath().deepCopy()
-            model.removeInitialAssignment(entity)
-
-            parameter: libsbml.Parameter = model.createParameter()
-            parameter.setId(helper)
-            parameter.setConstant(True)
-            moved: libsbml.InitialAssignment = model.createInitialAssignment()
-            moved.setSymbol(helper)
-            moved.setMath(math)
-
-            # the entity needs a value of its own, the plan or the helper
-            # replaces it before every simulation
-            element = model.getElementBySId(entity)
-            if isinstance(element, libsbml.Parameter) and not element.isSetValue():
-                element.setValue(0.0)
-            elif isinstance(element, libsbml.Species) and not (
-                element.isSetInitialAmount() or element.isSetInitialConcentration()
-            ):
-                if element.getHasOnlySubstanceUnits():
-                    element.setInitialAmount(0.0)
-                else:
-                    element.setInitialConcentration(0.0)
-            elif isinstance(element, libsbml.Compartment) and not element.isSetSize():
-                element.setSize(1.0)
-            self.derived_initial[entity] = helper
-
-        self._sbml = libsbml.writeSBMLToString(doc)
-        old = self.r_loaded
-        r = roadrunner.RoadRunner(self._sbml)
-        integrator: roadrunner.Integrator = old.getIntegrator()
-        for key in self.IntegratorSettingKeys:
-            r.getIntegrator().setValue(key, integrator.getValue(key))
-        r.timeCourseSelections = list(old.timeCourseSelections)
-        self.r = r
-        self._init_original = {}
-        logger.info(
-            "The initial assignments of %s of '%s' are set before the "
-            "initialization, the model is derived",
-            new,
-            self.sid,
-        )
+        r = self.r_loaded
+        symbols = self.symbols
+        concentrations = {
+            s: r.getValue(f"[{s}]")
+            for s, c in symbols.species_compartment.items()
+            if c == compartment and s in symbols.initial_concentration and s not in kept
+        }
+        r.setValue(compartment, value)
+        for species, concentration in concentrations.items():
+            r.setValue(f"[{species}]", concentration)
 
     @property
     def Q_(self) -> type[Quantity]:
@@ -514,3 +450,41 @@ class RoadrunnerSBMLModel(AbstractModel):
                 ]
             ),
         )
+
+
+def _with_initial_helpers(sbml: str) -> tuple[str, dict[str, str]]:
+    """Add a helper parameter for every initial assignment of a model.
+
+    The helper `<entity>__initial` is a parameter with an assignment rule
+    which is the math of the initial assignment of the entity, so roadrunner
+    evaluates the math on the current values whenever the helper is read, see
+    `RoadrunnerSBMLModel.initialize`. The initial assignments stay.
+
+    Args:
+        sbml: the SBML of the model.
+
+    Returns:
+        The SBML with the helpers and the helper of every entity.
+
+    Raises:
+        ValueError: if the model already has an entity of the id of a helper.
+    """
+    doc: libsbml.SBMLDocument = libsbml.readSBMLFromString(sbml)
+    model: libsbml.Model = doc.getModel()
+    helpers: dict[str, str] = {}
+    for assignment in list(model.getListOfInitialAssignments()):
+        entity = assignment.getSymbol()
+        helper = f"{entity}{INITIAL_SUFFIX}"
+        if model.getElementBySId(helper) is not None:
+            raise ValueError(
+                f"The model already has an entity '{helper}', the id of the "
+                f"helper of the initial assignment of '{entity}'."
+            )
+        parameter: libsbml.Parameter = model.createParameter()
+        parameter.setId(helper)
+        parameter.setConstant(False)
+        rule: libsbml.AssignmentRule = model.createAssignmentRule()
+        rule.setVariable(helper)
+        rule.setMath(assignment.getMath().deepCopy())
+        helpers[entity] = helper
+    return libsbml.writeSBMLToString(doc), helpers

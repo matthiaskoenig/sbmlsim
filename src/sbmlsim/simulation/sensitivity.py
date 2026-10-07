@@ -220,12 +220,8 @@ class ModelSensitivity:
             model.symbols,
             model.uinfo,
         )
-        model.free_initial_assignments(
-            {model.symbols.entity(a.target) for a in plan.preinit}
-        )
-        model.set_initial_values(plan.preinit)
+        model.initialize(plan.preinit)
         r = model.r_loaded
-        r.resetAll()
 
         doc: libsbml.SBMLDocument = libsbml.readSBMLFromString(r.getSBML())
         sbml_model: libsbml.Model = doc.getModel()

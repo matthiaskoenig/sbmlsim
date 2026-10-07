@@ -183,12 +183,10 @@ def test_predictions_of_a_failed_simulation_raise(
 ) -> None:
     """A simulation which failed has no prediction, and the error says so."""
     op_hctz_iv.initialize(fit_settings)
-    simulator = op_hctz_iv.runner_initialized.simulator
-    assert simulator is not None
 
     def fail(*args: object, **kwargs: object) -> None:
         raise RuntimeError("CVODE failed")
 
-    monkeypatch.setattr(simulator, "_timecourses", fail)
+    monkeypatch.setattr("sbmlsim.fit.optimization.execute", fail)
     with pytest.raises(ValueError, match="failed"):
         op_hctz_iv.predictions(np.asarray(op_hctz_iv.x0, dtype=float))
