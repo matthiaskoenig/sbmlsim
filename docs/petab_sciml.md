@@ -70,7 +70,7 @@ The layers and the functions of PEtab SciML (the [table of PEtab SciML](https://
 
 What `sbmlsim` does not express of a hybrid problem is in the catalogue of the gaps, `sbmlsim.fit.petab_v2.gaps`, and the cases of the [PEtab SciML Test Suite](sciml_testsuite.md) which do not pass are listed with the gap they run into:
 
-- `priors`: a prior on a parameter of the model is dropped with a warning which names the parameter, the objective of `sbmlsim` has none (issue #190)
+- `priors`: the prior of a parameter of the model is its `FitParameter.prior`, which `log_prior` evaluates and the optimizer does not use (issue #190)
 - `sciml-priors`: the cases with priors on the parameters of a network state a log-posterior, which the log-likelihood is not, and wait for issue #190
 - `sciml-model-format`: a network in the format `pytorch`, `equinox` or `lux.jl`, which is not read
 - `sciml-layer-sbml`: a layer without MathML in the right hand side or in an observable
