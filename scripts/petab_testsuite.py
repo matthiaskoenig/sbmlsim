@@ -1,19 +1,19 @@
-"""Download and run the PEtab SciML test suite.
+"""Download and run the PEtab v2 test suite.
 
-The cases of the [PEtab SciML test suite](https://github.com/PEtab-dev/petab_sciml_testsuite)
-say which networks and which hybrid problems `sbmlsim` supports. This script
-is the command line around `sbmlsim.sciml.testsuite`:
+The cases of the [PEtab test suite](https://github.com/PEtab-dev/petab_test_suite)
+say which parts of PEtab v2 `sbmlsim` supports. This script is the command line
+around `sbmlsim.fit.petab_v2.testsuite`:
 
 ```bash
 # fetch the pinned commit into the cache, which the tests need
-uv run python scripts/sciml_testsuite.py download
+uv run python scripts/petab_testsuite.py download
 
 # run the cases and report the outcome, fails when a case does not have the
 # outcome of the baseline
-uv run python scripts/sciml_testsuite.py run
+uv run python scripts/petab_testsuite.py run
 
 # refresh the expected outcomes after a change which fixes or breaks cases
-uv run python scripts/sciml_testsuite.py baseline
+uv run python scripts/petab_testsuite.py baseline
 ```
 """
 
@@ -27,24 +27,22 @@ from pathlib import Path
 
 from sbmlsim import log
 from sbmlsim.console import console
-from sbmlsim.sciml.testsuite import (
-    SCIML_SUITE_COMMIT,
+from sbmlsim.fit.petab_v2.testsuite import (
+    PETAB_SUITE_COMMIT,
     CaseResult,
     CaseStatus,
-    SciMLSuite,
+    PetabSuite,
 )
 from sbmlsim.testsuite import baseline
 from sbmlsim.testsuite.baseline import MISSING_REASON, unexpected_outcomes
 
 #: the expected outcomes the tests compare a run with
-BASELINE_PATH = Path(__file__).parent.parent / "tests" / "data" / "sciml_baseline.json"
+BASELINE_PATH = Path(__file__).parent.parent / "tests" / "data" / "petab_baseline.json"
 
 
-def run(suite: SciMLSuite) -> list[CaseResult]:
+def run(suite: PetabSuite) -> list[CaseResult]:
     """Run the cases of the suite and report the outcome."""
-    console.print(
-        f"Running the PEtab SciML test suite '{suite.commit}' from {suite.path}"
-    )
+    console.print(f"Running the PEtab test suite '{suite.commit}' from {suite.path}")
     results = suite.run()
     counts = Counter(r.status for r in results)
     console.print(f"[bold]{counts[CaseStatus.PASS]}/{len(results)} cases pass[/bold]")
@@ -54,7 +52,7 @@ def run(suite: SciMLSuite) -> list[CaseResult]:
     return results
 
 
-def write_baseline(results: list[CaseResult], suite: SciMLSuite, path: Path) -> None:
+def write_baseline(results: list[CaseResult], suite: PetabSuite, path: Path) -> None:
     """Write the cases which do not pass, keeping the reasons which are recorded.
 
     See `sbmlsim.testsuite.baseline.write_baseline`, a case whose status
@@ -86,13 +84,13 @@ def main(argv: list[str] | None = None) -> int:
     """
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("command", choices=["download", "run", "baseline"])
-    parser.add_argument("--commit", default=SCIML_SUITE_COMMIT)
+    parser.add_argument("--commit", default=PETAB_SUITE_COMMIT)
     args = parser.parse_args(argv)
 
     log.enable_rich_logging()
-    suite = SciMLSuite.load(args.commit)
+    suite = PetabSuite.load(args.commit)
     if args.command == "download":
-        console.print(f"PEtab SciML test suite '{suite.commit}': {suite.path}")
+        console.print(f"PEtab test suite '{suite.commit}': {suite.path}")
         return 0
 
     if args.command == "run" and not BASELINE_PATH.is_file():

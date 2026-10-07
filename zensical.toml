@@ -119,6 +119,7 @@ nav = [
       { "petab_v2.symbols" = "api/fit.petab_v2.symbols.md" },
       { "petab_v2.gaps" = "api/fit.petab_v2.gaps.md" },
       { "petab_v2.likelihood" = "api/fit.petab_v2.likelihood.md" },
+      { "petab_v2.testsuite" = "api/fit.petab_v2.testsuite.md" },
       { "petab_v2.sciml" = "api/fit.petab_v2.sciml.md" },
       { "petab_v2.sciml_export" = "api/fit.petab_v2.sciml_export.md" },
     ] },
@@ -152,6 +153,7 @@ nav = [
       { "report" = "api/testsuite.report.md" },
       { "submission" = "api/testsuite.submission.md" },
       { "cache" = "api/testsuite.cache.md" },
+      { "baseline" = "api/testsuite.baseline.md" },
     ] },
     { "sbmlsim.comparison" = [
       { "diff" = "api/comparison.diff.md" },

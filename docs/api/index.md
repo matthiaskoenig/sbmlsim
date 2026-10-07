@@ -113,7 +113,8 @@ PEtab v2, see [PEtab](../petab.md).
 | [fit.petab_v2.extension](fit.petab_v2.extension.md) | the `sbmlsim` block of the problem, i.e., what PEtab does not express |
 | [fit.petab_v2.symbols](fit.petab_v2.symbols.md) | the identifiers and symbols shared by the PEtab layer |
 | [fit.petab_v2.gaps](fit.petab_v2.gaps.md) | the catalogue of the differences between a fit and its PEtab problem |
-| [fit.petab_v2.likelihood](fit.petab_v2.likelihood.md) | the log-likelihood and its gradient, the noise models of PEtab v2 |
+| [fit.petab_v2.likelihood](fit.petab_v2.likelihood.md) | the log-likelihood and its gradient, chi2 and the priors, the noise models of PEtab v2 |
+| [fit.petab_v2.testsuite](fit.petab_v2.testsuite.md) | the [PEtab Test Suite](../petab_testsuite.md): its cases of models and of math, and their comparison |
 | [fit.petab_v2.sciml](fit.petab_v2.sciml.md) | the networks of a PEtab SciML problem read into `Hybridization` objects |
 | [fit.petab_v2.sciml_export](fit.petab_v2.sciml_export.md) | the hybridizations of a problem written as PEtab SciML |
 
@@ -160,7 +161,8 @@ The semantic cases of the SBML Test Suite, see [SBML Test Suite](../testsuite.md
 | [testsuite.runner](testsuite.runner.md) | `run_case`, simulating a case, and `CaseStatus`, the outcomes a case can have |
 | [testsuite.comparison](testsuite.comparison.md) | comparing the results of a case within its tolerances |
 | [testsuite.report](testsuite.report.md) | `TestSuiteReport`, the interactive report of a run |
-| [testsuite.cache](testsuite.cache.md) | the download and the cache of a test suite, shared by the SBML Test Suite and the PEtab SciML test suite |
+| [testsuite.cache](testsuite.cache.md) | the download and the cache of a test suite, shared by the SBML Test Suite, the PEtab test suite and the PEtab SciML test suite |
+| [testsuite.baseline](testsuite.baseline.md) | the baseline of the PEtab test suites, i.e. the cases which do not pass with their reasons |
 
 ## sbmlsim.comparison
 

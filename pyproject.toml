@@ -119,10 +119,11 @@ testpaths = ["tests"]
 # The semantic cases of the SBML Test Suite are not part of a normal run, they
 # are the conformance of libroadrunner and not of a change: `pytest -m testsuite`
 # runs them, and a release does
-addopts = "-n auto --dist worksteal -m 'not testsuite and not sciml_testsuite'"
+addopts = "-n auto --dist worksteal -m 'not testsuite and not sciml_testsuite and not petab_testsuite'"
 markers = [
     "testsuite: a semantic case of the SBML Test Suite, run before a release",
     "sciml_testsuite: a case of the PEtab SciML test suite, run before a release",
+    "petab_testsuite: a case of the PEtab v2 test suite, run before a release",
 ]
 
 [tool.ty.environment]
