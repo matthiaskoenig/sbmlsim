@@ -88,6 +88,8 @@ dev = [
 	# without the plugin it installs with pip, whose resolver fails on python 3.14
 	"tox-uv>=1.36.1",
 	"pytest>=9.1.1",
+	# the probe models of the tests of the simulator are written in antimony
+	"antimony>=3.1.3",
 	"zensical>=0.0.68",
 	"mkdocstrings-python>=2.0.9",
 	"pytest-xdist>=3.8.0",
