@@ -60,21 +60,48 @@ jobs:
       # the slowest tests are listed at the end of the log
       run: uv run --no-sync pytest --durations=20
 
+  install:
+    # the package as `pip install sbmlsim` installs it, without extras: the
+    # environment of the test matrix has the extras of `dev`, which would hide
+    # a dependency the package needs and does not declare
+    name: plain install
+    if: ${{ !startsWith(github.ref, 'refs/tags/') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+    - uses: actions/checkout@v7
+      with:
+        persist-credentials: false
+    - name: Set up uv and python
+      uses: ./.github/actions/setup
+      with:
+        python-version: "3.14"
+    - name: Install the package without extras
+      run: |
+        uv venv "$RUNNER_TEMP/plain"
+        uv pip install --python "$RUNNER_TEMP/plain/bin/python" .
+    - name: Run a scan and write its result as netCDF
+      # isolated (-I) and outside of the repository, so the package is the
+      # installed one and not the sources
+      working-directory: ${{ runner.temp }}
+      run: '"$RUNNER_TEMP/plain/bin/python" -I "$GITHUB_WORKSPACE/scripts/plain_install.py"'
+
   tests:
     # the one check the branch protection requires; the names of the matrix
     # jobs change with the matrix, this name does not, see .github/rulesets/
     name: tests
-    needs: test
+    needs: [test, install]
     if: ${{ always() && !startsWith(github.ref, 'refs/tags/') }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-    - name: Check the result of the test matrix
+    - name: Check the results of the test matrix and of the plain install
       env:
         RESULT: ${{ needs.test.result }}
+        INSTALL: ${{ needs.install.result }}
       run: |
-        echo "test matrix: $RESULT"
-        test "$RESULT" = "success"
+        echo "test matrix: $RESULT, plain install: $INSTALL"
+        test "$RESULT" = "success" && test "$INSTALL" = "success"
 
   tested:
     # a release does not run the test matrix again. The tag is on a commit of

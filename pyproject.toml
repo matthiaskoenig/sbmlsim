@@ -44,8 +44,11 @@ dependencies = [
 	"numpy>=2.5.3",
 	"pandas>=3.0.6",
 	"xarray>=2026.9.0",
-	# the netCDF files of a ScanResult
+	# the netCDF files of a ScanResult: h5netcdf and h5py, its backend, which
+	# h5netcdf only installs as its extra `h5py`; `sbmlsim.sciml` reads the
+	# weights of the networks with h5py as well
 	"h5netcdf>=1.6.0",
+	"h5py>=3.16.0",
 	"scipy>=1.18.1",
 	"sympy>=1.14.0",
 	# the formulas of a model and of a network as sympy expressions;
@@ -71,7 +74,6 @@ dependencies = [
 # packages sbmlsim.sciml imports which are not dependencies of sbmlsim
 sciml = [
 	"petab-sciml>=0.0.3",
-	"h5py>=3.16.0",
 ]
 dev = [
 	"sbmlsim[sciml]",
