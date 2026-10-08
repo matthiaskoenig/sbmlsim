@@ -224,20 +224,10 @@ def run_optimization(
         is part of the result and carries its message.
 
     Raises:
-        ValueError: for the removed parameters `fitting_type` and
-            `weighting_local`, if a bound or a start value does not suit the
-            scale of its parameter or the algorithm, or if every worker of a
-            parallel fit failed.
+        ValueError: if a bound or a start value does not suit the scale of
+            its parameter or the algorithm, or if every worker of a parallel
+            fit failed.
     """
-    for deprecated, replacement in [
-        ("fitting_type", "fitting_strategy"),
-        ("weighting_local", "weighting_points"),
-    ]:
-        if deprecated in kwargs:
-            raise ValueError(
-                f"Deprecated parameter '{deprecated}', use '{replacement}' instead."
-            )
-
     if settings is None:
         settings = FitSettings()
 

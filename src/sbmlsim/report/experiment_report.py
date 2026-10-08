@@ -22,7 +22,6 @@ if TYPE_CHECKING:
     from sbmlsim.experiment.experiment import ExperimentResult, SimulationExperiment
 
 logger = logging.getLogger(__name__)
-TEMPLATE_PATH = TEMPLATE_DIR
 
 
 def _relative_path(path: Path, start: Path) -> Path:
@@ -149,7 +148,7 @@ class ExperimentReport:
         self,
         results: ReportResults | list[ExperimentResult],
         metadata: dict[str, Any] | None = None,
-        template_path: Path = TEMPLATE_PATH,
+        template_path: Path = TEMPLATE_DIR,
     ):
         """Construct an ExperimentReport.
 
@@ -160,7 +159,7 @@ class ExperimentReport:
         """
         report_results: ReportResults
         if isinstance(results, list):
-            # FIXME: just a bugfix for handling the old outputs
+            # the results of several experiments as a list
             report_results = ReportResults()
             for exp_result in results:
                 report_results.add_experiment_result(exp_result=exp_result)

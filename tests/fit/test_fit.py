@@ -219,17 +219,6 @@ def test_fit_lsq_parallel(
     assert opt_result.size == 2
 
 
-def test_deprecated_arguments(
-    op_hctz_pk: OptimizationProblem, fit_settings: FitSettings
-) -> None:
-    """The removed arguments are reported."""
-    kwargs: dict[str, Any] = {"weighting_local": WeightingPointsType.NO_WEIGHTING}
-    with pytest.raises(ValueError, match="weighting_local"):
-        run_optimization(
-            problem=op_hctz_pk, settings=fit_settings, serial=True, **kwargs
-        )
-
-
 def test_estimate_total_time() -> None:
     """The estimate is the time per batch times the number of batches."""
     from sbmlsim.fit.runner import estimate_total_time

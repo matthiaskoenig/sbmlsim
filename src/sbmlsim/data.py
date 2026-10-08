@@ -154,17 +154,9 @@ class Data:
         DATASET = 2
         FUNCTION = 3
 
-    class Symbols(Enum):
-        """Symbols."""
-
-        TIME = 1
-        AMOUNT = 2
-        CONCENTRATION = 3
-
     def __init__(
         self,
         index: str,
-        symbol: Symbols | None = None,
         task: str | None = None,
         dataset: str | None = None,
         function: str | None = None,
@@ -172,23 +164,32 @@ class Data:
         parameters: dict[str, float] | None = None,
         sid: str | None = None,
     ):
-        """Construct data."""
-        # FIXME: get rid of backwards compatibility
-        if not symbol:
-            if index.startswith("[") and index.endswith("]"):
-                index = index[1:-1]
-                symbol = Data.Symbols.CONCENTRATION
-                logger.debug(
-                    "Encoding concentration '[%s]' as 'index=%s' and 'symbol=%s'.",
-                    index,
-                    index,
-                    symbol,
-                )
-            else:
-                symbol = Data.Symbols.AMOUNT
+        """Construct data.
 
-        self.index: str = index
-        self.symbol: Data.Symbols | None = symbol
+        Args:
+            index: what the data is called, i.e., a selection of the results of
+                a task (`"S"` is the amount, `"[S]"` the concentration and
+                `"time"` the time), a column of a dataset or the name of a
+                function.
+            task: id of the task whose results are selected.
+            dataset: id of the dataset whose column is selected.
+            function: formula of the data, a function of `variables` and
+                `parameters`.
+            variables: the data the function reads, by the identifier in the
+                formula.
+            parameters: the numbers the function reads, by the identifier in
+                the formula.
+            sid: id of the data, `<task or dataset>__<index>` if not given.
+
+        Raises:
+            ValueError: if none of `task`, `dataset` and `function` is given.
+        """
+        #: the selection as given, `"[S]"` selects the concentration of `S`
+        self.selection: str = index
+        #: the name of the data, the selection without the brackets
+        self.index: str = (
+            index[1:-1] if index.startswith("[") and index.endswith("]") else index
+        )
         self.task_id: str | None = task
         self.dset_id: str | None = dataset
         self.function: str | None = function
@@ -201,30 +202,16 @@ class Data:
             raise ValueError(
                 "Either 'task_id', 'dset_id' or 'function' required for Data."
             )
-        if self.symbol == Data.Symbols.CONCENTRATION and index.startswith("["):
-            raise ValueError(
-                "Use index without brackets in combination with 'symbol=concentration'"
-            )
-
-    @property
-    def selection(self) -> str:
-        """Get selection string.
-
-        Depending on symbol, different selections have to be performed.
-        """
-        if self.symbol and self.symbol == Data.Symbols.CONCENTRATION:
-            return f"[{self.index}]"
-        return self.index
 
     def __repr__(self) -> str:
         """Get string."""
         s: str
         if self.is_task():
-            s = f"Data(Task|index={self.index}, symbol={self.symbol}, task_id={self.task_id})"
+            s = f"Data(Task|selection={self.selection}, task_id={self.task_id})"
         elif self.is_dataset():
-            s = f"Data(DataSet|index={self.index}, symbol={self.symbol}, dset_id={self.dset_id})"
+            s = f"Data(DataSet|selection={self.selection}, dset_id={self.dset_id})"
         elif self.is_function():
-            s = f"Data(Function|index={self.index}, symbol={self.symbol}, function={self.function})"
+            s = f"Data(Function|selection={self.selection}, function={self.function})"
         return s
 
     @property
