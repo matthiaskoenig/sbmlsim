@@ -1,13 +1,17 @@
 """Tests of running cases of the SBML Test Suite in parallel processes."""
 
 import json
+import time
 import zipfile
 from pathlib import Path
 
 import numpy as np
+import pytest
 
+from sbmlsim import parallel
 from sbmlsim.testsuite import SemanticSuite, run_suite, write_submission
-from sbmlsim.testsuite.runner import CaseStatus
+from sbmlsim.testsuite.cases import SemanticCase
+from sbmlsim.testsuite.runner import CaseResult, CaseStatus, map_cases
 
 SETTINGS = """start: 0
 duration: 2.0
@@ -95,6 +99,25 @@ def test_the_cases_run_in_parallel_as_in_one_process(tmp_path: Path) -> None:
         CaseStatus.PASS,
         CaseStatus.NOT_READ,
     ]
+
+
+def _interrupted(case: SemanticCase) -> CaseResult:
+    """Ctrl-C while a case runs; the worker hands it to the parent."""
+    raise KeyboardInterrupt
+
+
+def test_an_interrupted_run_stops_the_pool(tmp_path: Path) -> None:
+    """The workers ignore Ctrl-C, the parent stops them and does not wait for them."""
+    cases = list(_suite(tmp_path).cases())
+    executor = parallel.pool(2)
+    # every worker is started
+    list(executor.map(time.sleep, [0.2, 0.2]))
+    processes = list(executor._processes.values())
+    with pytest.raises(KeyboardInterrupt):
+        map_cases(_interrupted, cases, workers=2)
+    assert parallel._POOLS == {}
+    assert len(processes) == 2
+    assert not any(process.is_alive() for process in processes)
 
 
 def test_the_submission_holds_the_cases_which_could_be_simulated(

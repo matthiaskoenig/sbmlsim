@@ -483,7 +483,7 @@ class _Compiled:
         Returns:
             The chunks in the order of their first point.
         """
-        size = chunk_size(self.size, workers)
+        size = _chunk_size(self.size, workers)
         positions = self._positions()
         sim_axis = self._axis(DimensionKind.SIMULATIONS)
         model_axis = self._axis(DimensionKind.MODELS)
@@ -624,7 +624,7 @@ class _Compiled:
         return ScanResult(xr.Dataset(data_vars, coords=coords, attrs=attrs))
 
 
-def chunk_size(n_points: int, workers: int) -> int:
+def _chunk_size(n_points: int, workers: int) -> int:
     """Get the most points of a chunk.
 
     Four chunks per worker, so that a worker which finishes early takes

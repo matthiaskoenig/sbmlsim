@@ -1,6 +1,7 @@
 """RoadRunner model."""
 
 import logging
+import weakref
 from collections.abc import Collection, Mapping, Sequence
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -148,10 +149,11 @@ class RoadrunnerSBMLModel(AbstractModel):
         self.absolute_tolerance: AbsoluteTolerance = AbsoluteTolerance()
         self._state_tolerances: list[StateTolerance] = []
         #: what the tolerances of the states were set for: the instance of
-        #: roadrunner, the initial volumes of its compartments and the vector
-        #: of CVODE, see `_has_absolute_tolerance`
+        #: roadrunner (a weak reference, which keeps no replaced instance
+        #: alive), the initial volumes of its compartments and the vector of
+        #: CVODE, see `_has_absolute_tolerance`
         self._tolerances_of: (
-            tuple[roadrunner.RoadRunner, list[float], list[float]] | None
+            tuple[weakref.ref[roadrunner.RoadRunner], list[float], list[float]] | None
         ) = None
         #: compartments whose volume was reported as raised to the floor
         self._raised_reported: set[str] = set()
@@ -549,7 +551,7 @@ class RoadrunnerSBMLModel(AbstractModel):
         r = self.r_loaded
         instance, volumes, vector = self._tolerances_of
         return (
-            instance is r
+            instance() is r
             and _floats(r.model.getCompartmentInitVolumes()) == volumes
             and _floats(integrator.getAbsoluteToleranceVector()) == vector
         )
@@ -600,7 +602,7 @@ class RoadrunnerSBMLModel(AbstractModel):
         self.absolute_tolerance = tolerance
         self._state_tolerances = states
         self._tolerances_of = (
-            r,
+            weakref.ref(r),
             _floats(r.model.getCompartmentInitVolumes()),
             _floats(integrator.getAbsoluteToleranceVector()),
         )

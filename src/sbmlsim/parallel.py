@@ -35,7 +35,7 @@ from collections.abc import Callable, Hashable, Sequence
 from concurrent.futures import ProcessPoolExecutor
 from concurrent.futures.process import BrokenProcessPool
 from multiprocessing.context import BaseContext
-from typing import Any, cast
+from typing import cast
 
 logger = logging.getLogger(__name__)
 
@@ -174,26 +174,17 @@ def _alive() -> int:
     return os.getpid()
 
 
-def _initialize_worker(
-    initializer: Callable[..., object] | None, initargs: tuple[Any, ...]
-) -> None:
-    """Initialize a worker: SIGINT is ignored, then the initializer runs.
+def _initialize_worker() -> None:
+    """Initialize a worker: SIGINT is ignored.
 
     A terminal sends Ctrl-C to every process of the job: a worker which waits
     for a task would die with a traceback and break the pool. The parent
     handles it and stops a pool whose run it interrupts, see `stop`.
     """
     signal.signal(signal.SIGINT, signal.SIG_IGN)
-    if initializer is not None:
-        initializer(*initargs)
 
 
-def start_pool(
-    n_workers: int,
-    preload: Sequence[str] = (),
-    initializer: Callable[..., object] | None = None,
-    initargs: tuple[Any, ...] = (),
-) -> ProcessPoolExecutor:
+def start_pool(n_workers: int, preload: Sequence[str] = ()) -> ProcessPoolExecutor:
     """Start a pool whose workers answer, see `pool` for one which is kept.
 
     The workers ignore SIGINT, Ctrl-C interrupts the parent only, see the
@@ -204,9 +195,6 @@ def start_pool(
         preload: modules the forkserver imports once for all workers; it
             takes effect only when the forkserver starts for the first time in
             this process.
-        initializer: a function every worker runs when it starts, after it
-            ignored SIGINT, as the `initializer` of a `ProcessPoolExecutor`.
-        initargs: the arguments of the initializer.
 
     Returns:
         The pool, the caller stops it with `stop`.
@@ -225,7 +213,6 @@ def start_pool(
         max_workers=n_workers,
         mp_context=_context(preload),
         initializer=_initialize_worker,
-        initargs=(initializer, initargs),
     )
     logger.debug("Starting a pool of %s workers", n_workers)
     try:

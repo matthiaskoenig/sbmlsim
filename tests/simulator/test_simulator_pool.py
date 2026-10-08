@@ -71,12 +71,12 @@ def _chunk_sizes(monkeypatch: pytest.MonkeyPatch) -> list[list[int]]:
 
 def test_the_size_of_a_chunk() -> None:
     """Four chunks per worker, of at most `MAX_CHUNK` points and of at least one."""
-    assert simulator_module.chunk_size(12, 1) == 3
-    assert simulator_module.chunk_size(12, 2) == 2
-    assert simulator_module.chunk_size(12, 4) == 1
-    assert simulator_module.chunk_size(1, 8) == 1
-    assert simulator_module.chunk_size(0, 1) == 1
-    assert simulator_module.chunk_size(10**6, 1) == simulator_module.MAX_CHUNK
+    assert simulator_module._chunk_size(12, 1) == 3
+    assert simulator_module._chunk_size(12, 2) == 2
+    assert simulator_module._chunk_size(12, 4) == 1
+    assert simulator_module._chunk_size(1, 8) == 1
+    assert simulator_module._chunk_size(0, 1) == 1
+    assert simulator_module._chunk_size(10**6, 1) == simulator_module.MAX_CHUNK
 
 
 @pytest.mark.parametrize("n_workers", [1, 2, 4])
@@ -86,7 +86,7 @@ def test_the_result_does_not_depend_on_the_workers(
 ) -> None:
     """Chunks of one point and one chunk of every point give the serial result."""
     serial = Simulator(n_workers=1).run(_model(), _scan())
-    monkeypatch.setattr(simulator_module, "chunk_size", lambda n, workers: points)
+    monkeypatch.setattr(simulator_module, "_chunk_size", lambda n, workers: points)
     sizes = _chunk_sizes(monkeypatch)
     pooled = Simulator(n_workers=n_workers).run(_model(), _scan())
     assert sizes == [[points] * (12 // points)]

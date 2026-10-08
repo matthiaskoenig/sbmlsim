@@ -149,7 +149,8 @@ def map_cases[T](
     The cases are independent of each other, so they are spread over a pool of
     processes. A case takes from milliseconds to seconds, so they are handed
     out in small chunks, which keeps every process busy until the end. The
-    pool is the kept pool of `sbmlsim.parallel`.
+    pool is the kept pool of `sbmlsim.parallel`; a run which is interrupted,
+    e.g. by Ctrl-C, which the workers ignore, stops it.
 
     Args:
         function: a module level function, the processes import it.
@@ -165,7 +166,14 @@ def map_cases[T](
         return [function(case) for case in cases]
     chunksize = max(1, min(8, len(cases) // (4 * workers)))
     executor = parallel.pool(workers)
-    return list(executor.map(function, cases, chunksize=chunksize))
+    try:
+        return list(executor.map(function, cases, chunksize=chunksize))
+    except BaseException as err:
+        if not isinstance(err, Exception):
+            # e.g. Ctrl-C: the workers still run their chunks, the pool stops;
+            # after an error of a case the pending chunks are cancelled
+            parallel.stop(executor)
+        raise
 
 
 def run_suite(

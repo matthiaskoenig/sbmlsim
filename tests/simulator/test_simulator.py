@@ -1,8 +1,10 @@
 """The simulator runs a scan and answers with a ScanResult, here serially."""
 
 import ctypes
+import gc
 import os
 import sys
+import weakref
 from pathlib import Path
 
 import numpy as np
@@ -862,8 +864,11 @@ def test_the_tolerances_are_set_once_per_roadrunner_instance(
     assert calls == [tolerance]
     assert _vector(model) == expected
     assert integrator.getValue("relative_tolerance") == 1e-10
-    # a new instance of roadrunner
+    # a new instance of roadrunner, the model does not keep the old one alive
+    old = weakref.ref(model.r_loaded)
     model.r = roadrunner.RoadRunner(model.r_loaded.getSBML())
+    gc.collect()
+    assert old() is None
     calls.clear()
     simulator.simulate(model, simulation)
     assert calls == [tolerance]
