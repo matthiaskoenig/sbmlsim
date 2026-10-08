@@ -509,8 +509,10 @@ class RoadrunnerSBMLModel(AbstractModel):
         """Set the absolute tolerance of every state, see `tolerances`.
 
         roadrunner turns a single value into a vector by its own scaling, so
-        the value of the kind `other` is set first and every state is set by
-        its id afterwards; a later single value would replace the vector.
+        the tolerances are set as the vector of CVODE, in the order of
+        `state_ids`. `setIndividualTolerance` is not used: it indexes a species
+        by its index among the floating species and a rate rule after them,
+        while CVODE integrates the rate rules first.
         """
         r = self.r_loaded
         volumes = dict(
@@ -537,9 +539,9 @@ class RoadrunnerSBMLModel(AbstractModel):
                     state.volume,
                 )
         integrator: roadrunner.Integrator = r.getIntegrator()
-        integrator.setValue("absolute_tolerance", tolerance.other)
-        for state in states:
-            integrator.setIndividualTolerance(state.sid, state.absolute_tolerance)
+        integrator.setValue(
+            "absolute_tolerance", [state.absolute_tolerance for state in states]
+        )
         self.absolute_tolerance = tolerance
         self._state_tolerances = states
 

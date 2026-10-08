@@ -394,16 +394,11 @@ def test_a_problem_with_hooks_is_a_dict(
 def test_a_parallel_fit_with_hooks(definition_hctz_iv: FitDefinition) -> None:
     """The workers unpickle the hooks and fit what the serial fit fits.
 
-    The residuals do not depend on earlier evaluations, so the runs agree with
-    the serial run within the tolerances of the integration: a worker process
-    evaluates the model with differences in the last bits, which can change a
-    step of the integrator. The integration is tight for the comparison.
+    The residuals do not depend on earlier evaluations, so the runs agree
+    with the serial run up to the first load of the model by roadrunner.
     """
     definition = replace(
-        definition_hctz_iv,
-        parameters=[_factor(2.0)],
-        hybridizations=[Scaling()],
-        settings=replace(definition_hctz_iv.settings, absolute_tolerance=1e-12),
+        definition_hctz_iv, parameters=[_factor(2.0)], hybridizations=[Scaling()]
     )
     serial = run_fit(definition=definition, opid="serial", size=1, n_cores=1, seed=1)
     parallel = run_fit(
@@ -413,9 +408,9 @@ def test_a_parallel_fit_with_hooks(definition_hctz_iv: FitDefinition) -> None:
     assert result.size == 2
     # the factor moved away from its start value in the workers
     assert abs(result.xopt[0] - 2.0) > 0.5
-    np.testing.assert_allclose(result.xopt, expected.xopt, rtol=1e-5)
+    np.testing.assert_allclose(result.xopt, expected.xopt, rtol=1e-8)
     np.testing.assert_allclose(
-        result.df_fits["cost"], expected.df_fits["cost"].iloc[0], rtol=1e-5
+        result.df_fits["cost"], expected.df_fits["cost"].iloc[0], rtol=1e-8
     )
 
 

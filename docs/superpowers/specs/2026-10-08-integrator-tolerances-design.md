@@ -46,7 +46,7 @@ AbsoluteTolerance(
 )
 ```
 
-`ids` overrides the tolerance of single states, in the unit of the model of the state; an override of a concentration species is its tolerance as an amount, i.e. it is not multiplied by the volume. The default is 1e-10 for every kind, in `SimulatorSerial` and in `FitSettings`. The former default of a fit, 1e-6, was scaled by the smallest volume of the model (1e-12 l in hctz, i.e. about 1e-18) and is far too loose as a tolerance per state: it gave 1% errors in the plasma concentrations of hctz and failed its integration (see the amendments).
+`ids` overrides the tolerance of single states, in the unit of the model of the state; an override of a concentration species is its tolerance as an amount, i.e. it is not multiplied by the volume. The default is 1e-10 for every kind, in `SimulatorSerial` and in `FitSettings`. The former default of a fit, 1e-6, was scaled by the smallest volume of the model (1e-12 l in hctz, i.e. about 1e-18) and is loose as a tolerance per state: in hctz (relative tolerance 1e-6) the plasma concentrations differ by up to 1e-4 relative from a tight integration, with 1e-10 by up to 2e-6.
 
 ## B. Components and data flow
 

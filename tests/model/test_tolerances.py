@@ -14,7 +14,7 @@ from sbmlsim.model.tolerances import (
 )
 from tests.simulator.models import TOLERANCE_PROBE, sbml
 
-#: the states of the probe as roadrunner integrates them
+#: the states of the probe
 STATES = ["A", "S", "X", "D"]
 VOLUMES = {"C": 2.0, "U": 1e-12}
 
