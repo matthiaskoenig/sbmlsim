@@ -209,8 +209,10 @@ def run_optimization(
         size: number of optimizations.
         algorithm: optimization algorithm to use.
         seed: random seed (for sampling of the start values).
-        n_cores: number of workers, `None` uses all available cores but one.
-        serial: run the optimization in a serial fashion (debugging).
+        n_cores: number of workers, `None` uses all available cores but one;
+            one worker fits without starting a process.
+        serial: run the optimization in a serial fashion (debugging), whatever
+            `n_cores` says.
         show_progress: show the progress of the runs on the console.
         timeout: seconds a single optimization may run, no limit if `None`. A
             run which is out of time keeps the parameters it reached.
@@ -258,8 +260,11 @@ def run_optimization(
         hooks=hook_summaries(problem.hybridizations),
     )
 
+    # a worker without a repeat only costs the start of a process, and one
+    # worker is a serial fit without the start of a process
+    workers = 1 if serial else min(resolve_n_cores(n_cores), size)
     opt_result: OptimizationResult
-    if serial:
+    if workers <= 1:
         display.key_values({"runs": size, "workers": "1 (serial)"})
         with optimization_progress("optimizing", size, show_progress) as progress:
             opt_result = _run_optimization_serial(
@@ -282,16 +287,14 @@ def run_optimization(
                 f"i.e., the script ran again when it was imported. "
                 f"{GUARD_MESSAGE}"
             )
-        # a worker without a repeat only costs the start of a process
-        n_cores = min(resolve_n_cores(n_cores), size)
-        display.key_values({"runs": size, "workers": n_cores})
+        display.key_values({"runs": size, "workers": workers})
         opt_result = _run_optimization_parallel(
             problem=problem,
             settings=settings,
             size=size,
             algorithm=algorithm,
             seed=seed,
-            n_cores=n_cores,
+            n_cores=workers,
             show_progress=show_progress,
             sampling=sampling,
             timeout=timeout,

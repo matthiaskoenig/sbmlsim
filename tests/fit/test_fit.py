@@ -3,6 +3,7 @@
 from pathlib import Path
 from typing import Any
 
+import numpy as np
 import pytest
 
 from sbmlsim.fit import FitSettings
@@ -219,6 +220,41 @@ def test_fit_lsq_parallel(
     )
     assert opt_result is not None
     assert opt_result.size == 2
+
+
+def test_one_worker_runs_without_a_pool(
+    op_hctz_pk: OptimizationProblem,
+    fit_settings: FitSettings,
+    short_fit: dict[str, Any],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A fit with one worker is serial and fits what a serial fit fits."""
+    from sbmlsim.fit import runner
+
+    serial = runner.run_optimization(
+        problem=op_hctz_pk,
+        settings=fit_settings,
+        size=2,
+        seed=1234,
+        serial=True,
+        show_progress=False,
+        **short_fit,
+    )
+
+    def no_pool(**kwargs: Any) -> None:
+        raise AssertionError("a fit with one worker started a pool")
+
+    monkeypatch.setattr(runner, "_run_optimization_parallel", no_pool)
+    one = runner.run_optimization(
+        problem=op_hctz_pk,
+        settings=fit_settings,
+        size=2,
+        seed=1234,
+        n_cores=1,
+        show_progress=False,
+        **short_fit,
+    )
+    np.testing.assert_allclose(one.xopt, serial.xopt)
 
 
 @pytest.mark.parametrize(

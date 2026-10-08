@@ -232,7 +232,7 @@ opt_result = run_optimization(
 )
 ```
 
-A parallel fit starts worker processes which import the script again, so the fit must run behind a guard, otherwise the workers fit again and the fit does not end:
+A parallel fit (`n_cores` of two or more) starts worker processes which import the script again, so the fit must run behind a guard, otherwise the workers fit again and the fit does not end:
 
 ```py
 def main() -> None:
@@ -243,7 +243,7 @@ if __name__ == "__main__":
     main()
 ```
 
-Every repeat is a task of the pool, which hands the next repeat to the worker which is free, so repeats of different duration do not leave workers idle, and every worker resolves the data of the problem once. The start points are sampled by the runner and not by the workers, so a fit with a seed gives the same start points for any number of workers. `serial=True` runs the repeats in the process of the caller, which is what a debugger needs.
+Every repeat is a task of the pool, which hands the next repeat to the worker which is free, so repeats of different duration do not leave workers idle, and every worker resolves the data of the problem once. The start points are sampled by the runner and not by the workers, so a fit with a seed gives the same start points for any number of workers. A fit with one worker, `n_cores=1` which is the default, runs the repeats in the process of the caller without starting a pool and gives the result of `serial=True` for the same seed; `serial=True` does so whatever `n_cores` says, which is what a debugger needs.
 
 A fit keeps what it has. A single optimization which fails, with an error of the integrator or any other error of the objective, is a result which carries its message and the other repeats are unaffected; `timeout` gives every repeat a budget in seconds and a repeat which runs out of it keeps the best parameters it reached. In a parallel fit a worker which dies loses the one repeat it was running. With `runs_dir` every repeat is written as JSON the moment it finishes, so a fit which is interrupted or crashes leaves the repeats which are done and `OptimizationResult.from_directory` reads them back:
 
