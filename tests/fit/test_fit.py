@@ -1,5 +1,7 @@
 """Test fit."""
 
+from functools import partial
+from multiprocessing.pool import ApplyResult
 from pathlib import Path
 from typing import Any
 
@@ -327,6 +329,50 @@ def test_a_serial_fit_interrupted_before_a_repeat_finished_is_interrupted(
             show_progress=False,
             **short_fit,
         )
+
+
+@pytest.mark.parametrize(("interrupted", "kept"), [(0, 0), (1, 1)])
+def test_an_interrupted_parallel_fit_keeps_the_repeats_which_finished(
+    interrupted: int,
+    kept: int,
+    op_hctz_pk: OptimizationProblem,
+    fit_settings: FitSettings,
+    short_fit: dict[str, Any],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Ctrl-C while the runner waits for a repeat ends the parallel fit.
+
+    The runner collects the repeats in the order they were given out. A fit
+    interrupted after repeats finished returns them; one interrupted before
+    is interrupted and not reported as a fit in which every repeat failed.
+    """
+    get = ApplyResult.get
+    calls: list[int] = []
+
+    def interrupting(self: ApplyResult[Any], timeout: float | None = None) -> Any:
+        calls.append(len(calls))
+        if calls[-1] == interrupted:
+            raise KeyboardInterrupt
+        return get(self, timeout)
+
+    monkeypatch.setattr(ApplyResult, "get", interrupting)
+    fit = partial(
+        run_optimization,
+        problem=op_hctz_pk,
+        settings=fit_settings,
+        size=2,
+        seed=1234,
+        n_cores=2,
+        show_progress=False,
+        **short_fit,
+    )
+    if kept == 0:
+        with pytest.raises(KeyboardInterrupt):
+            fit()
+    else:
+        assert fit().size == kept
+    # the runner stopped waiting at the interrupt
+    assert calls == list(range(interrupted + 1))
 
 
 @pytest.mark.parametrize(

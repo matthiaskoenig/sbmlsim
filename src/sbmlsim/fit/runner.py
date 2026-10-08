@@ -236,6 +236,8 @@ def run_optimization(
             fit failed.
         TypeError: if `kwargs` has an argument which the optimizer of the
             algorithm does not accept, e.g. one of the other optimizer.
+        KeyboardInterrupt: if the fit is interrupted (Ctrl-C) before a repeat
+            finished, there is no result to keep.
     """
     if settings is None:
         settings = FitSettings()
@@ -496,6 +498,7 @@ def _run_optimization_parallel(
     fits: list[OptimizeResult] = []
     trajectories: list[list[float]] = []
     failures: list[str] = []
+    interrupted = False
 
     # when a repeat came back, i.e., when the workers made progress last
     finished = time.monotonic()
@@ -536,12 +539,14 @@ def _run_optimization_parallel(
                 )
                 _, fit, trajectory = async_result.get(timeout=remaining)
             except KeyboardInterrupt:
-                logger.warning(
-                    "'%s': the fit was interrupted, it keeps the %s repeats which "
-                    "finished.",
-                    problem.opid,
-                    len(fits),
-                )
+                interrupted = True
+                if fits:
+                    logger.warning(
+                        "'%s': the fit was interrupted, it keeps the %s repeats "
+                        "which finished.",
+                        problem.opid,
+                        len(fits),
+                    )
                 break
             except Exception as err:
                 message = f"repeat {k}: {type(err).__name__}: {err}"
@@ -559,6 +564,9 @@ def _run_optimization_parallel(
             size,
         )
     if not fits:
+        if interrupted:
+            # nothing to keep, like the serial fit the interrupt is not an error
+            raise KeyboardInterrupt
         stored = f" The runs which finished are in '{runs_dir}'." if runs_dir else ""
         raise ValueError(
             f"'{problem.opid}': every repeat failed, there is no result.{stored} "
@@ -697,13 +705,6 @@ def _run_optimization_serial(
     This function should not be called directly, `run_optimization` executes the
     optimizations. See `run_optimization` for the arguments.
     """
-    if "n_cores" in kwargs:
-        # remove parallel arguments
-        logger.warning(
-            "Parameter 'n_cores' does not have any effect in serial optimization."
-        )
-        kwargs.pop("n_cores")
-
     # initialize problem, which resolves the data and calculates the weights
     problem.initialize(settings)
 
