@@ -459,6 +459,23 @@ class RoadrunnerSBMLModel(AbstractModel):
             r.timeCourseSelections = selections
         return list(r.timeCourseSelections)
 
+    def set_selections(self, selections: Sequence[str] | None) -> None:
+        """Set the selections of the simulations of the model.
+
+        Args:
+            selections: the selections, every entity of the model for `None`,
+                see `set_timecourse_selections`; the parameters added to the
+                model are not selected by default.
+
+        Raises:
+            RuntimeError: if roadrunner has no selection of a name.
+        """
+        self.selections = self.set_timecourse_selections(
+            self.r_loaded,
+            selections=None if selections is None else list(selections),
+            exclude=set(self.parameters),
+        )
+
     def set_integrator_settings(
         self, **kwargs: float | int | bool | AbsoluteTolerance
     ) -> roadrunner.Integrator:

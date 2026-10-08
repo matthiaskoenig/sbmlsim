@@ -45,6 +45,7 @@ Execution of simulations.
 
 | module | description |
 | --- | --- |
+| [simulator.simulator](simulator.simulator.md) | `Simulator`, running simulations and scans of models, serially or in a pool, into a `ScanResult` |
 | [simulator.simulation_serial](simulator.simulation_serial.md) | `SimulatorSerial`, running simulations and scans on a roadrunner model |
 | [simulator.plan](simulator.plan.md) | `Plan`, a simulation compiled against a model, without units |
 | [simulator.executor](simulator.executor.md) | `execute`, running a plan on roadrunner with the semantics of PEtab v2 |

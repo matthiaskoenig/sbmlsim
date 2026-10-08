@@ -11,17 +11,26 @@ In a worker process the model of a chunk is loaded once from its `ModelSpec`
 and kept, see `sbmlsim.parallel.worker_cache`, with the settings of the
 integrator of the parent, so every worker integrates with the tolerances of
 the parent.
+
+A point which fails is reported once, by its error: roadrunner logs the error
+of CVODE as well, so its log level is lowered while a chunk runs. SUNDIALS
+writes its own messages, a dozen lines or more per failing point, which a
+worker process silences for the models it loads, see `quiet_sundials`; a
+serial run keeps them, as the model of the user is not changed.
 """
 
 from __future__ import annotations
 
 import hashlib
-from collections.abc import Mapping
+import os
+from collections.abc import Generator, Mapping
+from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Literal
 
 import numpy as np
+import roadrunner
 
 from sbmlsim import parallel
 from sbmlsim.model.model_roadrunner import RoadrunnerSBMLModel
@@ -34,6 +43,13 @@ OnError = Literal["raise", "flag"]
 
 #: the most messages of failed points a chunk reports
 MAX_ERRORS: int = 10
+
+#: the variables of the environment which name the files of the messages of
+#: SUNDIALS, read when roadrunner creates the integrator of a model
+SUNDIALS_LOGS: tuple[str, ...] = (
+    "SUNLOGGER_ERROR_FILENAME",
+    "SUNLOGGER_WARNING_FILENAME",
+)
 
 
 class ScanPointError(RuntimeError):
@@ -186,6 +202,12 @@ def run_chunk(chunk: Chunk, model: RoadrunnerSBMLModel) -> ChunkResult:
         ScanPointError: for the first point which fails, with
             `on_error="raise"`.
     """
+    with quiet_roadrunner():
+        return _run_chunk(chunk, model)
+
+
+def _run_chunk(chunk: Chunk, model: RoadrunnerSBMLModel) -> ChunkResult:
+    """Run the points of a chunk, see `run_chunk`."""
     n = len(chunk.indices)
     rows: list[np.ndarray | None] = []
     status = np.zeros(n, dtype=np.int8)
@@ -238,5 +260,37 @@ def run_chunk_in_worker(spec: ModelSpec, chunk: Chunk) -> ChunkResult:
     Returns:
         The values of every point, see `run_chunk`.
     """
+    quiet_sundials()
     model = parallel.worker_cache(("model", spec.key), spec.load)
     return run_chunk(chunk, model)
+
+
+@contextmanager
+def quiet_roadrunner() -> Generator[None]:
+    """Lower the log level of roadrunner to critical messages, then restore it.
+
+    roadrunner logs the error of CVODE of a point which fails, which the run
+    reports as the error of the point.
+    """
+    level = roadrunner.Logger.getLevel()
+    roadrunner.Logger.setLevel(min(level, roadrunner.Logger.LOG_CRITICAL))
+    try:
+        yield
+    finally:
+        roadrunner.Logger.setLevel(level)
+
+
+def quiet_sundials() -> None:
+    """Silence the messages of SUNDIALS of the models a worker process loads.
+
+    SUNDIALS reads the files of its messages from the environment when
+    roadrunner creates the integrator of a model, so this applies to the
+    models loaded after it and is no setting of a loaded model. The messages
+    repeat the errors of the points which fail, which a run reports. Only a
+    worker process of a pool is changed, never the process of the user, and a
+    file the environment names already stays.
+    """
+    if not parallel.in_worker():
+        return
+    for name in SUNDIALS_LOGS:
+        os.environ.setdefault(name, os.devnull)

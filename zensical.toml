@@ -64,6 +64,7 @@ nav = [
       { "sensitivity" = "api/simulation.sensitivity.md" },
     ] },
     { "sbmlsim.simulator" = [
+      { "simulator" = "api/simulator.simulator.md" },
       { "simulation_serial" = "api/simulator.simulation_serial.md" },
       { "plan" = "api/simulator.plan.md" },
       { "executor" = "api/simulator.executor.md" },

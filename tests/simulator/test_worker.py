@@ -126,14 +126,17 @@ def _blowup_chunk(
 
 
 def _run_failing(chunk: Chunk, model: RoadrunnerSBMLModel, capfd) -> ChunkResult:
-    """Run a chunk with failing points and take the output of CVODE."""
+    """Run a chunk with failing points and take the output of SUNDIALS.
+
+    roadrunner does not log the error of a point, the result has it.
+    """
     capfd.readouterr()
     try:
         return run_chunk(chunk, model)
     finally:
         ctypes.CDLL(None).fflush(None)
         captured = capfd.readouterr()
-        assert "CVODE" in captured.out + captured.err
+        assert "CVODE Error" not in captured.out + captured.err
 
 
 @posix
