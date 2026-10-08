@@ -164,7 +164,7 @@ def map_cases[T](
     if workers == 1 or len(cases) <= 1:
         return [function(case) for case in cases]
     chunksize = max(1, min(8, len(cases) // (4 * workers)))
-    executor = parallel.pool(min(workers, len(cases)))
+    executor = parallel.pool(workers)
     return list(executor.map(function, cases, chunksize=chunksize))
 
 

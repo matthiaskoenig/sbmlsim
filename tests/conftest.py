@@ -50,7 +50,7 @@ def _package_logging() -> Iterator[None]:
 
 @pytest.fixture(autouse=True)
 def _no_pool_left() -> Iterator[None]:
-    """Stop the pools a test started, so that no test leaves workers behind.
+    """Stop the kept pools a test started, so that no test leaves workers behind.
 
     A kept pool lives as long as its process; a worker of pytest-xdist runs
     many tests, whose pools would add up.

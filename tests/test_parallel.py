@@ -7,7 +7,10 @@ import sys
 import threading
 from collections import OrderedDict
 from collections.abc import Callable
+from concurrent.futures import Future, ProcessPoolExecutor
+from concurrent.futures.process import BrokenProcessPool
 from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -132,7 +135,7 @@ def test_none_is_serial_in_a_worker(monkeypatch: pytest.MonkeyPatch) -> None:
 
 def test_a_worker_starts_no_pool(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(multiprocessing, "parent_process", lambda: object())
-    with pytest.raises(RuntimeError, match="__main__"):
+    with pytest.raises(RuntimeError, match="inside a worker"):
         parallel.start_pool(2)
 
 
@@ -156,7 +159,8 @@ def test_shutdown_stops_every_pool() -> None:
     assert parallel._POOLS == {}
 
 
-def test_the_cache_builds_an_object_once() -> None:
+def test_the_cache_builds_an_object_once(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(parallel, "_CACHE", OrderedDict())
     built: list[int] = []
 
     def factory() -> int:
@@ -212,3 +216,50 @@ def test_a_script_without_the_guard_is_reported(tmp_path: Path) -> None:
     )
     assert result.returncode != 0
     assert 'if __name__ == "__main__":' in result.stderr
+
+
+def test_a_pool_which_broke_is_replaced() -> None:
+    first = parallel.pool(2)
+    with pytest.raises(BrokenProcessPool):
+        first.submit(os._exit, 1).result()
+    second = parallel.pool(2)
+    assert second is not first
+    assert second.submit(os.getpid).result() != os.getpid()
+
+
+def test_a_pool_which_was_shut_down_is_replaced() -> None:
+    with parallel.pool(2) as first:
+        pass
+    second = parallel.pool(2)
+    assert second is not first
+    assert second.submit(os.getpid).result() != os.getpid()
+
+
+def test_an_interrupted_start_stops_the_workers(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    started: list[ProcessPoolExecutor] = []
+    stopped: list[ProcessPoolExecutor] = []
+    real_stop = parallel.stop
+
+    def stop(executor: ProcessPoolExecutor) -> None:
+        stopped.append(executor)
+        real_stop(executor)
+
+    def interrupted(self: Future, timeout: float | None = None) -> int:
+        raise KeyboardInterrupt
+
+    monkeypatch.setattr(parallel, "stop", stop)
+    monkeypatch.setattr(Future, "result", interrupted)
+
+    class Recording(ProcessPoolExecutor):
+        def __init__(self, *args: Any, **kwargs: Any) -> None:
+            super().__init__(*args, **kwargs)
+            started.append(self)
+
+    monkeypatch.setattr(parallel, "ProcessPoolExecutor", Recording)
+    with pytest.raises(KeyboardInterrupt):
+        parallel.start_pool(2)
+    assert stopped == started and len(started) == 1
+    assert parallel._POOLS == {}
+    assert not any(p.is_alive() for p in (started[0]._processes or {}).values())

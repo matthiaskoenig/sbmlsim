@@ -14,9 +14,9 @@ Every pool of the package comes from here:
 
 A pool starts worker processes which import the main module again (the start
 methods `forkserver` and `spawn`), so a script which starts a pool must do it
-behind the guard `if __name__ == "__main__":`. A worker which starts a pool
-raises, the worker dies while it starts and the parent reports the guard, see
-`GUARD_MESSAGE`.
+behind the guard `if __name__ == "__main__":`. Without it the workers die while
+they start and the parent reports the guard, see `GUARD_MESSAGE`. A worker
+itself never starts a pool, a task which runs in a worker runs serially.
 """
 
 from __future__ import annotations
@@ -29,7 +29,6 @@ from collections import OrderedDict
 from collections.abc import Callable, Hashable, Sequence
 from concurrent.futures import ProcessPoolExecutor
 from concurrent.futures.process import BrokenProcessPool
-from contextlib import suppress
 from multiprocessing.context import BaseContext
 from typing import cast
 
@@ -77,8 +76,9 @@ def process_context() -> BaseContext:
     `fork` which is set is replaced by `forkserver` as well, see below.
 
     Every pool of sbmlsim comes from this module, see `pool` and `start_pool`,
-    and the start method of the process is not fixed by the call (`get_context()` without a method
-    would), because a start method which is set is read as one the user chose.
+    and the start method of the process is not fixed by the call
+    (`get_context()` without a method would), because a start method which is
+    set is read as one the user chose.
 
     Python 3.13 fixes the start method of the process to the default of the
     platform when a process is started by `spawn` or `forkserver`, python 3.14
@@ -102,7 +102,7 @@ def process_context() -> BaseContext:
 
 
 def in_worker() -> bool:
-    """Check whether this process is a worker of a pool."""
+    """Check whether this process is a child process of multiprocessing."""
     return multiprocessing.parent_process() is not None
 
 
@@ -151,10 +151,7 @@ def _context(preload: Sequence[str]) -> BaseContext:
     """
     context = process_context()
     if context.get_start_method() == "forkserver":
-        with suppress(Exception):
-            # preloading is an optimization, a module which does not import
-            # must not end the run
-            context.set_forkserver_preload(sorted({*PRELOAD, *preload}))
+        context.set_forkserver_preload(sorted({*PRELOAD, *preload}))
     return context
 
 
@@ -168,22 +165,25 @@ def start_pool(n_workers: int, preload: Sequence[str] = ()) -> ProcessPoolExecut
 
     Args:
         n_workers: the number of worker processes.
-        preload: modules the forkserver imports once for all workers.
+        preload: modules the forkserver imports once for all workers; it
+            takes effect only when the forkserver starts for the first time in
+            this process.
 
     Returns:
         The pool, the caller stops it with `stop`.
 
     Raises:
-        RuntimeError: in a worker process, or if the workers die while they
+        RuntimeError: in a worker process (no nested pools), or if the workers die while they
             start or do not start within `WORKER_STARTUP_TIMEOUT`; both are
             what a script without the guard does, see `GUARD_MESSAGE`.
     """
     if in_worker():
         raise RuntimeError(
-            "A worker process started a pool, i.e. the script ran again when "
-            f"it was imported. {GUARD_MESSAGE}"
+            "A pool was started inside a worker process; run the inner part "
+            "serially (n_workers=1)."
         )
     executor = ProcessPoolExecutor(max_workers=n_workers, mp_context=_context(preload))
+    logger.debug("Starting a pool of %s workers", n_workers)
     try:
         executor.submit(_alive).result(timeout=WORKER_STARTUP_TIMEOUT)
     except BrokenProcessPool as err:
@@ -196,7 +196,21 @@ def start_pool(n_workers: int, preload: Sequence[str] = ()) -> ProcessPoolExecut
         raise RuntimeError(
             f"No worker started within {WORKER_STARTUP_TIMEOUT:.0f} s. {GUARD_MESSAGE}"
         ) from err
+    except BaseException:
+        # e.g. Ctrl-C while the workers start: nobody else can stop the pool
+        stop(executor)
+        raise
     return executor
+
+
+def _dead(executor: ProcessPoolExecutor) -> bool:
+    """Check whether a pool broke or was shut down and takes no more tasks.
+
+    Reads attributes of the executor which the standard library does not
+    document; they are read directly, so a python which renames them fails
+    here and not by handing out a dead pool.
+    """
+    return bool(executor._broken or executor._shutdown_thread)
 
 
 def pool(n_workers: int) -> ProcessPoolExecutor:
@@ -216,9 +230,10 @@ def pool(n_workers: int) -> ProcessPoolExecutor:
         RuntimeError: see `start_pool`.
     """
     executor = _POOLS.get(n_workers)
-    if executor is not None and not getattr(executor, "_broken", False):
+    if executor is not None and not _dead(executor):
         return executor
     if executor is not None:
+        logger.debug("Replacing the pool of %s workers", n_workers)
         stop(executor)
     executor = start_pool(n_workers)
     _POOLS[n_workers] = executor
@@ -235,6 +250,7 @@ def stop(executor: ProcessPoolExecutor) -> None:
     for n_workers, kept in list(_POOLS.items()):
         if kept is executor:
             del _POOLS[n_workers]
+    logger.debug("Stopping a pool")
     processes = list((executor._processes or {}).values())
     executor.shutdown(wait=False, cancel_futures=True)
     for process in processes:
