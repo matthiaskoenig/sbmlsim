@@ -202,7 +202,7 @@ settings = FitSettings(
     weighting_curves=(WeightingCurvesType.POINTS,),
     weighting_points=WeightingPointsType.ERROR_WEIGHTING,
     relative_tolerance=1e-6,
-    absolute_tolerance=1e-6,
+    absolute_tolerance=1e-10,
 )
 print(settings)
 ```
@@ -212,7 +212,7 @@ print(settings)
 - `WeightingCurvesType`: weighting of the curves by their `MAPPING` weight and by the number of `POINTS`,
 - `WeightingPointsType`: `NO_WEIGHTING` or `ERROR_WEIGHTING` of the points by their errors.
 
-`variable_step_size`, `relative_tolerance`, `absolute_tolerance` and `initial_time_step` are the settings of the integrator of the simulations of the fit, see [Simulations](simulation.md#selections-and-integrator-settings). The same settings are needed to report a fit, so they are stored with its result. Initializing a problem again with the settings it already has does nothing, i.e., a fit and its report resolve the data once.
+`variable_step_size`, `relative_tolerance`, `absolute_tolerance` and `initial_time_step` are the settings of the integrator of the simulations of the fit, see [Simulations](simulation.md#selections-and-integrator-settings). `absolute_tolerance` is a float, the same tolerance for every kind of state, or an `AbsoluteTolerance` with one per kind and overrides by id; the default is `1e-10`, the one of the simulator. The settings section of the report lists the absolute tolerance of every state and whether the model is integrated in local or absolute time. The same settings are needed to report a fit, so they are stored with its result. Initializing a problem again with the settings it already has does nothing, i.e., a fit and its report resolve the data once.
 
 ## Running the optimization
 

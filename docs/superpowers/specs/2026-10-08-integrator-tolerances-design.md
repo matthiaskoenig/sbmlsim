@@ -46,17 +46,18 @@ AbsoluteTolerance(
 )
 ```
 
-`ids` overrides the tolerance of single states, in the unit of the model of the state; an override of a concentration species is its tolerance as an amount, i.e. it is not multiplied by the volume. The defaults are the ones of today: 1e-10 for every kind in `SimulatorSerial`, 1e-6 in `FitSettings`.
+`ids` overrides the tolerance of single states, in the unit of the model of the state; an override of a concentration species is its tolerance as an amount, i.e. it is not multiplied by the volume. The default is 1e-10 for every kind, in `SimulatorSerial` and in `FitSettings`. The former default of a fit, 1e-6, was scaled by the smallest volume of the model (1e-12 l in hctz, i.e. about 1e-18) and is far too loose as a tolerance per state: it gave 1% errors in the plasma concentrations of hctz and failed its integration (see the amendments).
 
 ## B. Components and data flow
 
 - `sbmlsim/model/tolerances.py`, pure functions without roadrunner:
   - `StateKind`, the enum of the three kinds.
   - `AbsoluteTolerance`, a frozen dataclass with `amount`, `concentration`, `other` and `ids` (a sorted tuple of pairs, so it is hashable), `AbsoluteTolerance.of(value)` for a float or an `AbsoluteTolerance`, `to_dict` and `from_dict`, which reads a float as well.
-  - `state_kinds(symbols) -> dict[str, StateKind]` from the `ModelSymbols`.
-  - `absolute_tolerances(symbols, initial_volumes, tolerance) -> dict[str, float]`, the vector by id, with the reference volumes of A.
-- `ModelSymbols` gets `boundary` (the boundary species) where `state_kinds` needs it, and `time_dependent` (see C).
-- `RoadrunnerSBMLModel.set_integrator_settings` becomes a method of the model, since it needs the symbols. `absolute_tolerance` is resolved into the vector, which is set with `Integrator.setIndividualTolerance(id, value)` after the scalar fallback; every other setting is passed on to roadrunner and a name the integrator does not have is an error. The vector is computed once per model and tolerance and set again whenever the model gets a new roadrunner instance, i.e. when it is loaded and when a model is derived for a change before the initialization. `_tolerance_volume_factor` is removed.
+  - `StateTolerance`, the tolerance of one state with its kind, compartment and reference volume.
+  - `state_kinds(states, symbols) -> dict[str, StateKind]` from the `ModelSymbols`.
+  - `state_tolerances(states, symbols, initial_volumes, tolerance) -> list[StateTolerance]`, the vector by id, with the reference volumes of A.
+- The states are the state ids of roadrunner (`RoadrunnerSBMLModel.state_ids`), i.e. what CVODE integrates; their kinds come from the symbols, so `ModelSymbols` gets no `boundary`. `ModelSymbols` gets `time_dependent` (see C).
+- `RoadrunnerSBMLModel.set_integrator_settings` becomes a method of the model, since it needs the symbols. `absolute_tolerance` is resolved into the vector, which is set with `Integrator.setIndividualTolerance(id, value)` after the scalar fallback; every other setting is passed on to roadrunner and a name the integrator does not have is an error. The vector is set when the model is loaded and with every `set_integrator_settings`; there is no model which is derived with a new roadrunner instance, a change before the initialization is set on the loaded instance. `_tolerance_volume_factor` and `set_default_settings`, which nothing called, are removed.
 - `SimulatorSerial(absolute_tolerance=...)` takes a float or an `AbsoluteTolerance`; its settings apply to every model it runs.
 - `FitSettings.absolute_tolerance` is an `AbsoluteTolerance`, normalized from a float in `__post_init__`; `to_dict` writes the kinds, `from_dict` reads a float of stored settings as well, and the PEtab extension carries it through the settings. `OptimizationProblem.initialize` hands it to its simulator.
 - Unchanged: `relative_tolerance` is a scalar; `SteadyState.absolute_tolerance` is the criterion on the rates of change of a steady state and not a setting of CVODE; the SBML Test Suite and the PEtab v2 test suite pass a float.
@@ -77,7 +78,7 @@ The results agree with the ones of the absolute time within the tolerances, not 
 
 ## D. Diagnostics and errors
 
-- `RoadrunnerSBMLModel.tolerances()` returns a `pandas.DataFrame` with id, kind, compartment, reference volume and absolute tolerance of every state. The console of a fit and the section of the settings of a fit report show it, with whether the model is integrated in local time.
+- `RoadrunnerSBMLModel.tolerances()` returns a `pandas.DataFrame` with id, kind, compartment, reference volume and absolute tolerance of every state. The console of a fit shows the tolerance per kind, the section of the settings of a fit report the tolerance of every state, with whether the model is integrated in local time.
 - A `ValueError` names what is wrong: a setting the integrator does not have (already on this branch), an override whose id is not a state (with the states), a tolerance which is not finite or not positive.
 - A concentration species in a compartment whose volume is `NaN` or 0 gets the floored reference volume and the warning of A.
 
@@ -86,7 +87,7 @@ The results agree with the ones of the absolute time within the tolerances, not 
 sbmlsim:
 
 - `tests/model/test_tolerances.py` on the probe model of `tests/simulator/models.py`, which has amount, concentration and rate rule states: the kinds, the vector, the floor of the reference volume and its warning, the overrides, the errors, the round trip of `AbsoluteTolerance` with the float of stored settings.
-- The simulator: the vector reaches roadrunner by id, again after `set_model` and for a model derived for a change before the initialization (`getAbsoluteToleranceVector` matched to the state ids).
+- The simulator: the vector reaches roadrunner by id, again after `set_model` (`getAbsoluteToleranceVector` matched to the state ids).
 - The executor: local time agrees with absolute time within the tolerances for the probe model, a model with events which do not read the time and a negative start; a model whose rule reads `time` is integrated in absolute time and is right; on the HCTZ model of `examples/hctz_fitting` a dose at a late time prints no "t + h = t" (stderr captured at the file descriptor).
 - The fit: the round trip of the settings, the round trip of the PEtab extension, the table of the tolerances in the report.
 - The suites: `pytest`, the SBML Test Suite (`pytest -m testsuite`, no regression against `tests/data/testsuite_baseline.json`), the PEtab v2 test suite (`pytest -m petab_testsuite`, every case) and the benchmark collection (`pytest -m petab_benchmark`, the 28 of 35 problems which agree keep agreeing).
@@ -108,3 +109,9 @@ One pull request from the branch `fix/pkdb-models-084`, released as sbmlsim 0.8.
 - Tolerances relative to the typical size of a state from a reference simulation. They are the most physical choice but need an extra simulation and depend on the conditions; they are the next step if the tolerances of A are not enough.
 - A relative tolerance per state, which CVODE does not have.
 - Units of tolerances as quantities.
+
+## Amendments during the implementation
+
+- The HCTZ model reads `power(hctz, gamma_hctz_nacl)` with a non-integer exponent. With tolerances per state CVODE undershoots `hctz` slightly below 0 once it is eliminated, the power is NaN and the integration fails (`CV_CONV_FAILURE`); the tolerances of 0.8.4 (about 1e-18) hid it, and a tighter tolerance does not remove it. The model of pkdb_models and the example of sbmlsim use `max(hctz, 0 mM)`.
+- A worker process of a parallel fit evaluates the model with differences in the last bits, which can change a step of CVODE; serial and parallel results agree within the tolerances of the integration, not bit for bit. The tests which compare them integrate with an absolute tolerance of 1e-12 and compare with a relative tolerance of 1e-5.
+- CVODE writes its warnings to the buffered standard output of C. A test of the warning flushes the streams of C before it reads the captured output.

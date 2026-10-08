@@ -137,7 +137,20 @@ simulator = SimulatorSerial(
 simulator.set_integrator_settings(stiff=True)
 ```
 
-CVODE estimates its first step after the start and after every change. At a late time a state which starts from 0, e.g. after a reset of an amount, can give a first step which is smaller than the resolution of the time, and CVODE warns "t + h = t on the next step". A small positive `initial_time_step` in the time unit of the model avoids the estimate; a step which is too large fails the error test of the integrator:
+The absolute tolerance of CVODE is one value per state, which sbmlsim sets from the kind of the state. The tolerances are plain numbers in the units of the model, so they work for a model without units. A species with `hasOnlySubstanceUnits=true` is an `amount`, its tolerance is the one of the amounts. Any other species is a `concentration`: CVODE integrates its amount, so its tolerance is the one of the concentrations times the reference volume of its compartment. The reference volume is the initial volume, raised to `1e-6` times the largest initial volume of the model when it is smaller, not finite or not positive, which is logged once per model. Every other state, i.e. a parameter or a compartment with a rate rule, is `other`. A float is the same tolerance for every kind, an `AbsoluteTolerance` gives one per kind and overrides single states by their id; an override is the tolerance of the integrated value, i.e. the amount of a concentration species. The default is `1e-10` for every kind. `tolerances()` of the model lists the tolerance of every state:
+
+```python
+from sbmlsim.model.tolerances import AbsoluteTolerance
+
+simulator.set_integrator_settings(
+    absolute_tolerance=AbsoluteTolerance(
+        amount=1e-10, concentration=1e-10, other=1e-10, ids={"PX": 1e-12}
+    )
+)
+print(simulator.model_loaded.tolerances())
+```
+
+CVODE estimates its first step after the start and after every change. A model which does not read the time, i.e. no rule, kinetic law, initial assignment or event of it reads the csymbol `time` or `delay`, is integrated in local time: every segment between two changes starts at the time 0 of roadrunner and its output is shifted back to the absolute time. The first step is then never smaller than the resolution of the time, the results agree with the ones of the absolute time within the tolerances. A model which reads the time is integrated in absolute time. At a late time a state which starts from 0, e.g. a dose after a reset, can then give a first step which is smaller than the resolution of the time, and CVODE warns "t + h = t on the next step". A small positive `initial_time_step` in the time unit of the model avoids the estimate; a step which is too large fails the error test of the integrator:
 
 ```python
 simulator.set_integrator_settings(initial_time_step=1e-10)

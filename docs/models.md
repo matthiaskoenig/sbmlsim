@@ -52,7 +52,7 @@ print(model.changes)
 print(model.selections)
 ```
 
-The roadrunner integrator is configured with `settings`, e.g., `settings={"absolute_tolerance": 1e-10}`; the defaults are set by `RoadrunnerSBMLModel.set_default_settings`. The species are integrated as amounts, so the absolute tolerance is scaled by the smallest finite positive initial volume of the compartments, which does not depend on an earlier simulation.
+The roadrunner integrator is configured with `settings`, e.g., `settings={"absolute_tolerance": 1e-10}`, or later with `set_integrator_settings`. The absolute tolerance is one value per state from the kind of the state, a concentration species gets the tolerance of a concentration times the initial volume of its compartment, see [Simulations](simulation.md#selections-and-integrator-settings). The vector depends on the initial volumes of the model as loaded, not on an earlier simulation; `RoadrunnerSBMLModel.tolerances()` lists it.
 
 ## Abstract models
 
