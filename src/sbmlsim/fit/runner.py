@@ -414,11 +414,12 @@ def _worker_run(
 #: seconds added to the timeout of a fit before its pending repeats are given up
 START_GRACE = 60.0
 
-#: how often a task which was running when a worker died is run again alone to
-#: find the one which killed it, per `FitPool.run`. A worker which dies (a crash in
-#: the integrator, the kernel killing it for memory) breaks the whole pool and
-#: with it every task in flight; after this many restarts the tasks which were in
-#: flight at a crash are failed without being run again, the others still run.
+#: the number of restarts of the pool of a run after which the tasks which were
+#: running at a crash are no longer run again alone to find the one which killed
+#: its worker: they fail at once. A worker which dies (a crash in the integrator,
+#: the kernel killing it for memory) breaks the whole pool and with it every task
+#: in flight. The pool is still started again, so the tasks which did not run
+#: complete, and every crash after the cap fails the tasks which were running.
 MAX_POOL_RESTARTS = 3
 
 
@@ -463,9 +464,11 @@ class FitPool:
         finishes, so a crash implicates only the tasks which were running. A
         worker which dies breaks the whole pool; it is started again and the
         tasks which were running, the suspects, are run again one at a time, so
-        a task fails only if it breaks the pool while it runs alone. Then the remaining tasks
-        run again at full width. After `MAX_POOL_RESTARTS` restarts the tasks
-        which were running at a crash fail without a second run. If the pool
+        a task fails only if it breaks the pool while it runs alone. Then the
+        remaining tasks run again at full width. After `MAX_POOL_RESTARTS`
+        restarts the tasks which were running at a crash fail without a second
+        run. A pool which is found broken when a task is submitted is started
+        again the same way, with no suspect if nothing was running. If the pool
         cannot be started again, the tasks which did not run fail.
 
         Args:
@@ -485,41 +488,53 @@ class FitPool:
         solo = False
         last = time.monotonic()
         while queue or alone or running:
-            if alone:
-                if not running:
-                    key = alone.popleft()
-                    running[self.submit(function, tasks[key])] = key
-                    solo = True
-            else:
-                solo = False
-                while queue and len(running) < self.n_cores:
-                    key = queue.popleft()
-                    running[self.submit(function, tasks[key])] = key
-            remaining = (
-                None
-                if timeout is None
-                else max(1.0, last + timeout + START_GRACE - time.monotonic())
-            )
-            done, _ = wait(running, timeout=remaining, return_when=FIRST_COMPLETED)
-            if not done:
-                lost = sorted([*running.values(), *alone, *queue])
-                logger.error(
-                    "'%s': no result within %s s and %g s more, the tasks %s are "
-                    "given up.",
-                    self.problem.opid,
-                    timeout,
-                    START_GRACE,
-                    lost,
+            submit_broken = False
+            try:
+                if alone:
+                    if not running:
+                        key = alone[0]
+                        running[self.submit(function, tasks[key])] = key
+                        alone.popleft()
+                        solo = True
+                else:
+                    solo = False
+                    while queue and len(running) < self.n_cores:
+                        key = queue[0]
+                        running[self.submit(function, tasks[key])] = key
+                        queue.popleft()
+            except BrokenProcessPool:
+                # the pool broke after the last result: the task did not run
+                # and is no suspect, the tasks which do are handled below
+                submit_broken = True
+            if running:
+                remaining = (
+                    None
+                    if timeout is None
+                    else max(1.0, last + timeout + START_GRACE - time.monotonic())
                 )
-                for key in lost:
-                    yield (
-                        key,
-                        TimeoutError(
-                            f"no result within {timeout} s and {START_GRACE:g} s more"
-                        ),
+                done, _ = wait(running, timeout=remaining, return_when=FIRST_COMPLETED)
+                if not done:
+                    lost = sorted([*running.values(), *alone, *queue])
+                    logger.error(
+                        "'%s': no result within %s s and %g s more, the tasks %s "
+                        "are given up.",
+                        self.problem.opid,
+                        timeout,
+                        START_GRACE,
+                        lost,
                     )
-                return
-            broken = False
+                    for key in lost:
+                        yield (
+                            key,
+                            TimeoutError(
+                                f"no result within {timeout} s and "
+                                f"{START_GRACE:g} s more"
+                            ),
+                        )
+                    return
+            else:
+                done = set()
+            broken = submit_broken
             for future in sorted(done, key=running.__getitem__):
                 key = running.pop(future)
                 try:
@@ -538,18 +553,35 @@ class FitPool:
             # the tasks which were in flight are the suspects
             suspects = sorted(running.values())
             running.clear()
-            if solo or self.restarts >= MAX_POOL_RESTARTS:
-                failed = suspects
-                reason = "killed its worker" if solo else "were running"
+            parallel.stop(self.executor)
+            if not suspects and self.restarts >= MAX_POOL_RESTARTS:
+                lost = sorted([*alone, *queue])
                 logger.error(
-                    "'%s': a worker died, the tasks %s %s and fail.",
+                    "'%s': the pool keeps breaking, the tasks %s are given up.",
                     self.problem.opid,
-                    failed,
-                    reason,
+                    lost,
                 )
-                for key in failed:
-                    yield key, RuntimeError("the task killed its worker")
-            else:
+                for key in lost:
+                    yield key, RuntimeError("the pool keeps breaking")
+                return
+            if suspects and (solo or self.restarts >= MAX_POOL_RESTARTS):
+                if solo:
+                    logger.error(
+                        "'%s': the task %s killed its worker and fails.",
+                        self.problem.opid,
+                        suspects[0],
+                    )
+                    failure = "the task killed its worker"
+                else:
+                    logger.error(
+                        "'%s': a worker died, the tasks %s were running and fail.",
+                        self.problem.opid,
+                        suspects,
+                    )
+                    failure = "a worker died while the task was running"
+                for key in suspects:
+                    yield key, RuntimeError(failure)
+            elif suspects:
                 logger.error(
                     "'%s': a worker died; restarting the pool, the tasks %s which "
                     "were running run again one at a time.",
@@ -557,7 +589,10 @@ class FitPool:
                     suspects,
                 )
                 alone.extend(suspects)
-            parallel.stop(self.executor)
+            else:
+                logger.error(
+                    "'%s': a worker died; restarting the pool.", self.problem.opid
+                )
             if not (queue or alone):
                 return
             self.restarts += 1
